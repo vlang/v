@@ -174,8 +174,18 @@ pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string)
 	defer {
 		C.mbedtls_x509_crt_free(&ca_chain)
 	}
-	pem := ca_bundle_pem.bytes()
-	parse_ret := C.mbedtls_x509_crt_parse(&ca_chain, pem.data, usize(pem.len + 1))
+	// ca_bundle_pem.str (not .bytes()): mbedtls_x509_crt_parse's PEM path
+	// needs a real NUL-terminated buffer (it scans for
+	// "-----BEGIN CERTIFICATE-----" and buf[buflen-1]=='\0'). A V string's
+	// own .str buffer is always NUL-terminated internally for C interop,
+	// but .bytes() allocates a fresh []u8 of exactly .len bytes with no
+	// such trailing byte -- passing pem.len + 1 with a .bytes()-derived
+	// buffer reads one byte past the allocation (confirmed via ASan:
+	// heap-buffer-overflow in mbedtls_x509_crt_parse). Matches every other
+	// PEM-parsing call site's own convention in this module
+	// (new_sslcerts_in_memory_with_rng et al., which all pass `<string>.str`).
+	parse_ret := C.mbedtls_x509_crt_parse(&ca_chain, ca_bundle_pem.str,
+		usize(ca_bundle_pem.len + 1))
 	// != 0, not < 0: for a PEM bundle specifically (unlike the DER path in
 	// build_certificate_chain), mbedtls_x509_crt_parse can return a
 	// POSITIVE count of certificates it failed to parse when others in the

@@ -23,10 +23,13 @@ fn test_x509_parse_and_verify_without_ssl_context() {
 	}
 
 	// mbedtls_x509_crt_parse wants a NUL-terminated PEM buffer, with the NUL
-	// counted in the length.
-	pem := standalone_test_cert.bytes()
-	pem_len := pem.len + 1
-	parse_res := C.mbedtls_x509_crt_parse(&crt, pem.data, usize(pem_len))
+	// counted in the length. Use .str (V's own internally NUL-terminated
+	// C-string buffer), not .bytes() -- .bytes() allocates a fresh []u8 of
+	// exactly .len bytes with no trailing NUL, so len+1 with that buffer
+	// reads one byte past the allocation (confirmed via ASan:
+	// heap-buffer-overflow in mbedtls_x509_crt_parse).
+	parse_res := C.mbedtls_x509_crt_parse(&crt, standalone_test_cert.str, usize(
+		standalone_test_cert.len + 1))
 	assert parse_res == 0, 'mbedtls_x509_crt_parse failed standalone (no ssl_context in scope): ${parse_res}'
 
 	// Verify the self-signed leaf cert against itself as the sole trust

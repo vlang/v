@@ -160,7 +160,13 @@ fn test_build_client_hello_rejects_retry_source_connection_id() {
 // present with the right types, in a real generated key's presence.
 fn test_build_client_hello_structure() {
 	priv := ecdsa.PrivateKey.new()!
+	defer {
+		priv.free()
+	}
 	pub_key := priv.public_key()!
+	defer {
+		pub_key.free()
+	}
 	ecdhe_public_key := pub_key.uncompressed_bytes()!
 	random := []u8{len: 32, init: 0xab}
 

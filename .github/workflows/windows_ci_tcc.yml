@@ -53,6 +53,59 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
           Write-Host "OpenSSL install:"
           Get-ChildItem 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+
+          Write-Host "OpenSSL bin DLLs:"
+          Get-ChildItem $opensslBin -Filter *.dll
+
+          # TCC resolves `-lcrypto`/`-lssl` by searching the -L dir for
+          # `lib<name>.def` FIRST (confirmed against tinycc's own source,
+          # tcc_add_library's PE search-pattern array: "%s/%s.def",
+          # "%s/lib%s.def", "%s/%s.dll", "%s/lib%s.dll"), and when a .def
+          # file is found, tccpe.c's pe_load_def reads the file's own
+          # `LIBRARY <name>` directive to get the exact DLL filename to
+          # embed in the import table -- it does NOT derive that name from
+          # the -l flag or the .def file's own filename. If the installed
+          # libcrypto.def/libssl.def declares a LIBRARY name that doesn't
+          # match the real installed DLL (a known OpenSSL packaging
+          # inconsistency -- the .def can predate a DLL rename to a
+          # versioned filename like libcrypto-3-x64.dll), TCC embeds a
+          # reference to a file that doesn't exist, and the produced .exe
+          # fails to even launch with STATUS_DLL_NOT_FOUND -- exactly the
+          # symptom seen (empty output, exit code -1073741515) on every
+          # test touching crypto.ecdsa/crypto.rsa_pss/net.quic, while MSVC
+          # (which reads the DLL name from the .lib's own build-time
+          # metadata, already correct) launches fine. Self-heal by aliasing
+          # the real DLL under whichever name each .def's LIBRARY line
+          # declares, mirroring the crypto.lib/libcrypto.lib alias already
+          # used for msvc-windows -- a plain file copy is safe, since a
+          # Windows DLL doesn't embed its own filename either.
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          foreach ($name in @('libcrypto', 'libssl')) {
+            $defPath = Join-Path $libDir "$name.def"
+            if (-not (Test-Path $defPath)) {
+              Write-Host "$name.def not found at $defPath, skipping alias check"
+              continue
+            }
+            $libraryLine = Get-Content $defPath -TotalCount 5 | Where-Object { $_ -match '^\s*LIBRARY\s+(\S+)' } | Select-Object -First 1
+            Write-Host "${name}: LIBRARY line: $libraryLine"
+            if ($null -eq $libraryLine -or $libraryLine -notmatch '^\s*LIBRARY\s+(\S+)') {
+              Write-Host "${name}: could not parse a LIBRARY directive, skipping alias check"
+              continue
+            }
+            $declaredDll = $Matches[1]
+            $declaredPath = Join-Path $opensslBin $declaredDll
+            if (Test-Path $declaredPath) {
+              Write-Host "${name}: declared DLL '$declaredDll' already exists, no alias needed"
+              continue
+            }
+            $realDll = Get-ChildItem $opensslBin -Filter "$name*.dll" | Select-Object -First 1
+            if (-not $realDll) {
+              Write-Host "${name}: no real DLL found matching '$name*.dll' in $opensslBin to alias from"
+              continue
+            }
+            Copy-Item -Path $realDll.FullName -Destination $declaredPath
+            Write-Host "${name}: aliased $($realDll.Name) as $declaredDll (tcc's .def LIBRARY directive expects this exact name)"
+          }
       - name: Build with makev.bat -tcc
         run: |
           .\makev.bat -tcc
