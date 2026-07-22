@@ -234,6 +234,24 @@ fn module_cache_artifact(cache_dir string, prefix string, extension string) stri
 	return ''
 }
 
+fn module_cache_configuration_dirs(cache_dir string) []string {
+	mut dirs := []string{}
+	for entry in os.ls(cache_dir) or { return dirs } {
+		if !entry.starts_with('v3_module_cache_') {
+			continue
+		}
+		root := os.join_path(cache_dir, entry)
+		for config in os.ls(root) or { continue } {
+			path := os.join_path(root, config)
+			if os.is_dir(path) {
+				dirs << path
+			}
+		}
+	}
+	dirs.sort()
+	return dirs
+}
+
 fn changed_module_cache_objects(before map[string]u64, after map[string]u64) []string {
 	mut changed := []string{}
 	for name, hash in before {
@@ -1366,6 +1384,55 @@ fn main() {
 	assert second.exit_code == 0, second.output
 	assert !second.output.contains('cgen (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '42'
+}
+
+fn test_module_cache_salt_tracks_default_cc_wrapper_version() {
+	$if windows {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	real_cc := os.find_abs_path_of_executable('cc') or { panic('default cc not found') }
+	root := os.join_path(os.temp_dir(), 'v3_default_cc_wrapper_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	old_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', old_path, true)
+		os.rmdir_all(root) or {}
+	}
+	version_state := os.join_path(root, 'cc-version')
+	write_module_cache_file(root, 'cc-version', 'wrapper toolchain one\n')
+	cc_wrapper := os.join_path(root, 'cc')
+	write_module_cache_file(root, 'cc', '#!/bin/sh
+if [ "\$1" = "--version" ]; then
+	cat ${os.quoted_path(version_state)}
+	exit 0
+fi
+exec ${os.quoted_path(real_cc)} "\$@"
+')
+	os.chmod(cc_wrapper, 0o700) or { panic(err) }
+	os.setenv('PATH', '${root}${os.path_delimiter}${old_path}', true)
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn main() {
+	println(42)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	first_configs := module_cache_configuration_dirs(cache_dir)
+	assert first_configs.len == 1, first_configs.str()
+
+	write_module_cache_file(root, 'cc-version', 'wrapper toolchain two\n')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	second_configs := module_cache_configuration_dirs(cache_dir)
+	assert second_configs.len == first_configs.len + 1, second_configs.str()
+	assert second_configs.any(it !in first_configs), second_configs.str()
 }
 
 fn test_module_cache_restart_preserves_compiler_stderr() {

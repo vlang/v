@@ -2933,17 +2933,13 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names []string) 
 // default_cc_identity returns a precise identity for the resolved default `cc`.
 // Module objects in the persistent cache are compiled with literal `cc` (only
 // the default compiler is cacheable), so a changed binary or retargeted symlink
-// must invalidate them. File identity avoids launching `cc --version` on every
-// warm build; fall back to the version banner on filesystems without precise
-// metadata support.
+// must invalidate them. The version probe also identifies the selected backend
+// behind stable compiler shims and wrappers.
 fn default_cc_identity() string {
 	cc_path := os.real_path(os.find_abs_path_of_executable('cc') or { 'cc' })
 	metadata := modulecache.file_metadata_signature(cc_path)
-	if metadata.len > 0 {
-		return '${cc_path}\t${metadata}'
-	}
-	cc_version := cmdexec.run('cc', ['--version']).output
-	return '${cc_path}\t${cc_version.replace('\n', ' ')}'
+	version := cmdexec.run(cc_path, ['--version'])
+	return '${cc_path}\t${metadata}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
 }
 
 fn v3_cache_compiler_signature(vroot string) string {
