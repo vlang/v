@@ -1129,28 +1129,20 @@ fn test_nested_local_header_includes_are_inlined_recursively() {
 	assert !directive_order_has_include_directive(c_code), c_code
 }
 
-fn test_unresolved_system_include_is_dropped() {
+fn test_supported_system_include_is_preserved_and_enables_system_preamble() {
 	c_code := directive_order_gen_c_unresolved_system_include(directive_order_build_v3())
-	assert !directive_order_has_include_directive(c_code), c_code
+	assert directive_order_has_include_directive(c_code), c_code
 	assert !c_code.contains('#include <platform_user_header.h>'), c_code
-	assert !c_code.contains('#include <dlfcn.h>'), c_code
-	assert !c_code.contains('#include <stdint.h>'), c_code
-	assert c_code.contains('typedef unsigned int uint32_t;'), c_code
-	assert c_code.contains('void* dlopen('), c_code
+	assert c_code.contains('#include <dlfcn.h>'), c_code
+	assert c_code.contains('#include <stdint.h>'), c_code
 	api_compat_idx := directive_order_index(c_code, '#define PLATFORM_API_COMPAT 7')
 	guard_idx := directive_order_index(c_code, '#ifdef USE_DLFCN')
-	time_t_idx := directive_order_index(c_code, 'typedef long long time_t;')
-	off_t_idx := directive_order_index(c_code, 'typedef long long off_t;')
-	wchar_idx := directive_order_index(c_code, 'typedef unsigned int wchar_t;')
-	fd_set_idx := directive_order_index(c_code, '#ifndef FD_SET')
+	dlfcn_idx := directive_order_index(c_code, '#include <dlfcn.h>')
+	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
 	assert api_compat_idx >= 0, c_code
 	assert guard_idx >= 0, c_code
-	assert time_t_idx >= 0, c_code
-	assert off_t_idx >= 0, c_code
-	assert wchar_idx >= 0, c_code
-	assert fd_set_idx >= 0, c_code
-	assert c_code.contains('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)'), c_code
-	assert c_code.contains('#if !defined(_OFF_T) && !defined(_OFF_T_DEFINED) && !defined(__off_t_defined)'), c_code
+	assert dlfcn_idx > guard_idx, c_code
+	assert preamble_idx > dlfcn_idx, c_code
 }
 
 fn test_unresolved_quoted_include_is_preserved() {

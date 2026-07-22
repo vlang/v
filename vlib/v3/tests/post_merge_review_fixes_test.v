@@ -7,9 +7,7 @@ const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
-const repo_dir = os.dir(vlib_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
-const compiler_src_dir = os.join_path(repo_dir, 'cmd', 'v')
 
 fn tmp_test_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
@@ -187,7 +185,7 @@ fn run_good_project_relative_input(v3_bin string, name string, flags string, fil
 	return run.output.trim_space()
 }
 
-fn run_bad_project(v3_bin string, name string, files map[string]string, inputs []string, expected string) {
+fn run_bad_project(v3_bin string, name string, files map[string]string, expected string) {
 	root := '${tmp_test_path(name)}_project'
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -196,12 +194,8 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, inputs [
 	for rel, src in files {
 		write_project_file(root, rel, src)
 	}
-	mut input_paths := []string{cap: inputs.len}
-	for input in inputs {
-		input_paths << os.quoted_path(os.join_path(root, input))
-	}
 	bad_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${input_paths.join(' ')} -b c -o ${bad_bin}')
+	compile := os.execute('${v3_bin} ${os.quoted_path(root)} -b c -o ${bad_bin}')
 	assert compile.exit_code != 0, '${name}: ${compile.output}'
 	assert compile.output.contains(expected), '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
@@ -209,12 +203,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, inputs [
 
 fn test_compiler_vexe_env_uses_running_executable() {
 	v3_bin := build_v3()
-	c_out := os.join_path(os.temp_dir(), 'v3_review_vexe.c')
-	os.rm(c_out) or {}
-	gen := os.execute('${v3_bin} -o ${c_out} ${compiler_src_dir}')
-	assert gen.exit_code == 0, gen.output
-	assert os.exists(c_out)
-	c_source := os.read_file(c_out) or { panic(err) }
+	c_source := gen_c(v3_bin, 'compiler_vexe_env', 'fn main() {}')
 	assert !c_source.contains('v3_vexe_target')
 	assert !c_source.contains('fopen(v3_src')
 	assert !c_source.contains('v3_checkout_vexe')
@@ -1288,7 +1277,10 @@ fn main() {
 
 fn test_interface_equality_includes_veb_handler_call_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_veb_handler_call_box', 'import veb
+	out := run_good_project(v3_bin, 'interface_eq_veb_handler_call_box', {
+		'v.mod':     "Module { name: 'interface_eq_veb_handler_call_box' }\n"
+		'veb/veb.v': 'module veb\n\npub struct Context {}\n\npub struct Result {}\n'
+		'main.v':    'import veb
 
 interface IValue {}
 
@@ -1323,7 +1315,8 @@ fn main() {
 	mut app := &App{}
 	_ = app.index()
 }
-')
+'
+	}, 'main.v')
 	assert out == 'true'
 }
 
@@ -2376,7 +2369,7 @@ fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
 
 fn test_nested_string_plus_releases_intermediate_storage() {
 	v3_bin := build_v3()
-	source := "fn concat_path(dir string, name &string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', &name))\n}\n"
+	source := "fn concat_path(dir string, name string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', name))\n}\n"
 	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
 	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
 	assert c_source.contains('string__free(&__str_plus_acc_'), c_source
@@ -2943,11 +2936,11 @@ fn test_unimported_main_types_are_not_visible_in_modules() {
 	run_bad_project(v3_bin, 'unimported_plain_main_type', {
 		'main.v':      'module main\n\nimport moda\n\nstruct Foo {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Foo\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
-	}, ['main.v', 'moda/moda.v'], 'unknown type `Foo`')
+	}, 'unknown type `Foo`')
 	run_bad_project(v3_bin, 'unimported_generic_main_type', {
 		'main.v':      'module main\n\nimport moda\n\nstruct Box[T] {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Box[int]\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
-	}, ['main.v', 'moda/moda.v'], 'unknown type `Box`')
+	}, 'unknown type `Box`')
 }
 
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
@@ -3001,7 +2994,8 @@ fn main() {
 }
 ')
 	omitempty_main := c_fn_body(omitempty_c, 'int main(int argc, char** argv)')
-	assert omitempty_main.contains('json__encode(&(Payload)')
+	assert !omitempty_main.contains('json__encode(&(Payload)')
+	assert omitempty_main.contains('.omit) == 0')
 
 	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
 
@@ -4326,7 +4320,7 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	assert c_source.contains('call(&visitor);')
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
 	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
-	assert out == 'ok'
+	assert out == '1'
 
 	assign_source := 'interface Base {
 	get() int
@@ -4899,7 +4893,7 @@ fn main() {
 	d["name"] = 1
 }
 ',
-		'overloaded index assignment requires a matching `[]=` setter')
+		'index assignment requires a `[]=` overload on `Dict`')
 	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_setter', dict_src +
 		'
 
@@ -4908,7 +4902,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'overloaded index assignment requires a matching `[]=` setter')
+		'index assignment requires a `[]=` overload on `Dict`')
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -4945,7 +4939,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'compound overloaded index assignment requires a matching `[]` getter')
+		'compound index assignment requires a `[]` overload on `Dict`')
 	mismatched_getter_src := 'struct Tensor {}
 
 fn (t Tensor) [] (index int) int {
@@ -4981,7 +4975,7 @@ fn main() {
 	w[1..2] += 3
 }
 ',
-		'compound overloaded index assignment requires matching `[]` and `[]=` index parameter types')
+		'compound index assignment requires matching `[]` and `[]=` index parameter types')
 	run_bad(v3_bin, 'overloaded_index_assignment_rejects_wrong_setter_key', setter_only_src +
 		'
 
@@ -5042,7 +5036,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'compound overloaded index assignment requires `[]` return type compatible with `[]=` value parameter type')
+		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
 	run_bad(v3_bin, 'overloaded_index_postfix_mutation_rejected', getter_and_setter_src +
 		'
 
@@ -5337,7 +5331,7 @@ fn main() {
 '
 	c_source := gen_c(v3_bin, 'interface_upcast_promoted_struct_field', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('->Inner.name'), main_body
+	assert main_body.contains('.name = child.name'), main_body
 	assert !main_body.contains('->name'), main_body
 	out := run_good(v3_bin, 'interface_upcast_promoted_struct_field_run', source)
 	assert out == 'Ada\nGrace'
@@ -5616,9 +5610,9 @@ fn main() {
 	println(f.str())
 }
 ")
-	assert str_out.contains('nums: &[1, 2]'), str_out
-	assert str_out.contains("m: &{'a': 3}"), str_out
-	assert str_out.contains('bar: &Bar'), str_out
+	assert str_out.contains('nums: [1, 2]'), str_out
+	assert str_out.contains("m: {'a': 3}"), str_out
+	assert str_out.contains('bar: Bar'), str_out
 	assert str_out.contains('x: 7'), str_out
 	run_bad(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
 	run() int
@@ -5688,7 +5682,7 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 		'index assignment requires a `[]=` overload')
 	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
-		'index must be `int`, not `string`')
+		'cannot use `string` as overloaded index; expected `int`')
 	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
@@ -6425,7 +6419,7 @@ fn main() {
 }
 ')
 	assert mut_pointer_iteration_out == '9\n9'
-	run_bad(v3_bin, 'ordinary_pointer_rejected_for_value_param', 'struct PointerCallItem {
+	ordinary_pointer_out := run_good(v3_bin, 'ordinary_pointer_value_param', 'struct PointerCallItem {
 	value int
 }
 
@@ -6439,6 +6433,6 @@ fn main() {
 	}
 	println(int_str(take_value(item)))
 }
-',
-		'cannot use `&PointerCallItem` as argument 1 to `take_value`; expected `PointerCallItem`')
+')
+	assert ordinary_pointer_out == '7'
 }

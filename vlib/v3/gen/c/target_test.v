@@ -208,6 +208,28 @@ fn test_cache_input_scan_tracks_imported_headers() {
 	assert inputs['sample'] == expected
 }
 
+fn test_cache_input_scan_rejects_native_source_includes() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_source_cache_input_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	native_source := os.join_path(dir, 'implementation.m')
+	source := os.join_path(dir, 'main.v')
+	os.write_file(native_source, 'int native_value(void) { return 1; }\n') or { panic(err) }
+	os.write_file(source, '#include "${native_source}"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'main': true
+	}, [], prefs.target)
+	assert has_untracked
+	assert inputs['main'] == [os.real_path(native_source)]
+}
+
 fn test_termux_comptime_branch_uses_canonical_target() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_termux_comptime_${os.getpid()}')
 	os.rmdir_all(dir) or {}

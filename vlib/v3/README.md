@@ -36,10 +36,11 @@ emitted as C with `-o file.c` for compilation by an external target toolchain.
 
 The command line rejects unknown options, missing option values, unsupported backends, and
 multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
-currently supported collector mode. Directory builds read `subdirs` through the canonical
-`v.mod` parser, including when other manifest strings contain punctuation resembling fields.
-The driver checks current RSS after each compiler phase and exits when it reaches 10 GiB.
-Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
+currently supported collector mode. `-autofree` is accepted for source compatibility, but V3
+does not yet insert automatic lifetime-ending frees. Directory builds read `subdirs` through
+the canonical `v.mod` parser, including when other manifest strings contain punctuation
+resembling fields. The driver checks current RSS after each compiler phase and exits when it
+reaches 10 GiB. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` uses the
 platform's default thread stack and checks allocation, thread creation, and join failures. Since

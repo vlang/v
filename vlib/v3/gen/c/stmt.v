@@ -5372,10 +5372,18 @@ fn (g &FlatGen) local_decl_cname(name string) string {
 	if local_name_shadows_c_runtime(name) {
 		return '${g.cname(name)}__local'
 	}
-	if _ := g.global_type_for_ident(name) {
+	if g.local_name_needs_global_suffix(name) {
 		return '${g.cname(name)}__local'
 	}
 	return g.cname(name)
+}
+
+fn (g &FlatGen) local_name_needs_global_suffix(name string) bool {
+	if _ := g.global_type_for_ident(name) {
+		module_name := g.global_modules[name] or { g.tc.cur_module }
+		return module_name.len == 0 || module_name in ['main', 'builtin']
+	}
+	return false
 }
 
 fn local_name_shadows_c_runtime(name string) bool {
@@ -5392,7 +5400,7 @@ fn (mut g FlatGen) track_shadowed_global_local(name string, owner types.ScopeBin
 	if name.len == 0 || name == '_' {
 		return
 	}
-	if _ := g.global_type_for_ident(name) {
+	if g.local_name_needs_global_suffix(name) {
 		key := owner.storage_key()
 		if key.len > 0 {
 			g.shadowed_global_locals[key] = true
@@ -5712,6 +5720,13 @@ fn (g &FlatGen) or_expr_source_type(expr_id flat.NodeId, expr_node flat.Node) ty
 		return ret_type
 	}
 	if expr_node.kind == .call {
+		if expr_node.children_count > 0
+			&& g.call_callee_uses_specialized_generic_abi(g.a.child(&expr_node, 0)) {
+			decl_type := g.declared_call_return_type(expr_id)
+			if decl_type is types.OptionType || decl_type is types.ResultType {
+				return decl_type
+			}
+		}
 		local_type := g.local_fn_call_return_type(expr_id, expr_node)
 		if local_type is types.OptionType || local_type is types.ResultType {
 			return local_type

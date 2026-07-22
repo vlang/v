@@ -999,7 +999,9 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 
 fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name string) []int {
 	mut ids := []int{}
-	for candidate in t.interface_alias_equivalent_names(concrete_name) {
+	// Runtime interface IDs preserve the concrete declared type. An alias and its
+	// base have compatible storage, but they remain distinct targets for `is`.
+	for candidate in [concrete_name] {
 		id := t.interface_impl_type_id(iface_name, candidate) or { continue }
 		if id !in ids {
 			ids << id
@@ -1137,8 +1139,10 @@ fn (mut t Transformer) make_sum_is_check(expr flat.NodeId, expr_type string, sum
 // sum_variant_path supports sum variant path handling for Transformer.
 fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 	clean_sum := t.trim_pointer_type(sum_name)
-	if direct := t.sum_variant_name(clean_sum, variant) {
-		return [direct]
+	for candidate in t.sum_subject_type_candidates(clean_sum) {
+		if direct := t.sum_variant_name(candidate, variant) {
+			return [direct]
+		}
 	}
 	resolved_sum := t.resolve_sum_name(clean_sum)
 	if resolved_sum != clean_sum {
@@ -1153,8 +1157,10 @@ fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 // sum_variant_path_inner supports sum variant path inner handling for Transformer.
 fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut visited map[string]bool) []string {
 	clean_sum := t.trim_pointer_type(sum_name)
-	if direct := t.sum_variant_name(clean_sum, variant) {
-		return [direct]
+	for candidate in t.sum_subject_type_candidates(clean_sum) {
+		if direct := t.sum_variant_name(candidate, variant) {
+			return [direct]
+		}
 	}
 	resolved_sum := t.resolve_sum_name(clean_sum)
 	if resolved_sum.len == 0 || resolved_sum in visited {

@@ -467,6 +467,25 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	}
 }
 
+// prepare_serial_fn_tables gives runtime `-no-parallel` generation the same
+// deterministic preseed order as the parallel dispatcher, before constants
+// can allocate string-literal IDs.
+fn (mut g FlatGen) prepare_serial_fn_tables() {
+	if g.parallel_prepared {
+		return
+	}
+	g.want_parallel_prep = true
+	items := g.ensure_fn_gen_items()
+	g.want_parallel_prep = false
+	if items.len >= min_flat_cgen_parallel_items {
+		if _ := g.ierror_interface_name() {
+			g.intern_string('')
+		}
+		g.register_interface_strings()
+		g.parallel_prepared = true
+	}
+}
+
 // flat_cgen_job_count supports flat cgen job count handling for c.
 fn flat_cgen_job_count(n_runtime_jobs int, n_items int) int {
 	if n_runtime_jobs <= 0 || n_items <= 0 {
@@ -538,6 +557,9 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		}
 		node := g.a.nodes[idx]
 		cost++
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		}
 		if node.kind == .selector {
 			g.collect_c_extern_ref_from_node(node)
 		}
@@ -756,6 +778,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		used_fns:                       g.used_fns
 		used_fn_names:                  g.used_fn_names
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
+		test_modules:                   if result_only {
+			g.test_modules
+		} else {
+			g.test_modules.clone()
+		}
 		str_lits:                       if result_only || g.scope_parallel_workers {
 			g.str_lits
 		} else {

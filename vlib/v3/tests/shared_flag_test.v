@@ -235,6 +235,8 @@ fn main() {
 	first_run := os.execute(os.quoted_path(first_bin))
 	assert first_run.exit_code == 0, first_run.output
 	assert first_run.output.trim_space() == '41'
+	first_cached_objects := shared_flag_cached_objects(first_object)
+	assert first_cached_objects.len == 1, first_cached_objects.str()
 
 	second_bin := os.join_path(second_project, 'out')
 	second_compile :=
@@ -243,9 +245,8 @@ fn main() {
 	second_run := os.execute(os.quoted_path(second_bin))
 	assert second_run.exit_code == 0, second_run.output
 	assert second_run.output.trim_space() == '42'
-	first_cached_objects := shared_flag_cached_objects(first_object)
-	second_cached_objects := shared_flag_cached_objects(second_object)
-	assert first_cached_objects.len == 1, first_cached_objects.str()
+	second_cached_objects :=
+		shared_flag_cached_objects(second_object).filter(it != first_cached_objects[0])
 	assert second_cached_objects.len == 1, second_cached_objects.str()
 	assert first_cached_objects[0] != second_cached_objects[0]
 }

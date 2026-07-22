@@ -97,6 +97,7 @@ mut:
 	fn_gen_items                   []FlatFnGenItem
 	fn_segs                        []string
 	test_files                     map[string]bool
+	test_modules                   map[string]bool
 	cache_program_files            map[string]bool
 	str_lits                       []string
 	str_lit_ids                    map[string]int
@@ -139,6 +140,7 @@ mut:
 	module_init_fn_modules         map[string]string   // C init fn name -> V module name
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
+	explicit_mach_headers          bool
 	early_c_source_directives      map[string]bool
 	native_source_contexts         map[string][]NativeSourceContextDirective
 	objective_cpp_source_requests  []ObjectiveCppSourceRequest
@@ -593,6 +595,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_gen_items:                   []FlatFnGenItem{}
 		fn_segs:                        []string{}
 		test_files:                     map[string]bool{}
+		test_modules:                   map[string]bool{}
 		cache_program_files:            map[string]bool{}
 		str_lit_ids:                    map[string]int{}
 		global_types:                   map[string]types.Type{}
@@ -772,7 +775,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
-			cur_module = ''
+			cur_module = 'main'
 			continue
 		}
 		if node.kind == .module_decl {
@@ -783,10 +786,17 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 			continue
 		}
 		if node.kind == .directive && node.value in ['include', 'insert'] && node.typ.len > 0 {
-			include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
+			selected_arg := c_directive_arg_for_target(node.typ, target) or { continue }
+			include_arg := c_include_arg_for_target(selected_arg, vroot, cur_file, target)
 			if !c_include_arg_is_literal(include_arg) {
 				has_untracked_include = true
 				continue
+			}
+			// Native source bodies cannot be copied into every split cache object:
+			// doing so defines their external symbols once per V module. Force the
+			// whole-program path even before resolving the source file tree.
+			if c_include_arg_is_source_file(include_arg) {
+				has_untracked_include = true
 			}
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
 				if !os.is_file(path) {
@@ -1017,6 +1027,15 @@ pub fn (mut g FlatGen) gen_with_used_test_options(a &flat.FlatAst, used_fns map[
 	for file in test_files {
 		g.test_files[file] = true
 	}
+	g.test_modules = map[string]bool{}
+	mut cur_file := ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+		} else if node.kind == .module_decl && g.test_files[cur_file] {
+			g.test_modules[node.value] = true
+		}
+	}
 	return g.gen_with_used_options(a, used_fns, tc, no_parallel)
 }
 
@@ -1233,6 +1252,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_init_fn_modules.clear()
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
+	g.explicit_mach_headers = false
 	g.early_c_source_directives.clear()
 	g.native_source_contexts.clear()
 	g.objective_cpp_source_requests = []ObjectiveCppSourceRequest{}
@@ -1340,6 +1360,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.collect_fixed_storage_consts()
 		g.precompute_param_type_index()
 		g.precompute_concrete_optional_abi_fns()
+		if no_parallel {
+			g.prepare_serial_fn_tables()
+		}
 	}
 	g.collect_shared_type_names()
 	g.collect_interface_impls()
@@ -2163,6 +2186,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if include_arg.len == 0 {
 			return true
 		}
+		if module_name == 'main'
+			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
+			g.explicit_mach_headers = true
+		}
 		// These helper headers are superseded by the inline compiler helpers emitted in
 		// builtin_abi_decls(); also including them would redefine the helpers.
 		if include_arg.contains('prealloc_atomics.h') || include_arg.contains('filelock_helpers.h')
@@ -2214,6 +2241,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.collect_inlined_c_declared_fns(source_text)
 				source_directive := c_native_source_context_include(source_path)
 				if source_path.ends_with('.m') {
+					late_includes := c_late_source_system_includes(source_text)
+					if late_includes.len > 0 {
+						g.add_c_directive(module_name, late_includes, before_import)
+					}
 					if g.c_source_defines_used_c_type(source_text) {
 						g.early_c_source_directives[source_directive] = true
 					}
@@ -2236,6 +2267,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		// materializing every header body into the generated translation unit.
 		if trimmed_space(include_arg).starts_with('<')
 			&& g.collect_preserved_header_tree(include_arg, source_file, include_dirs) {
+			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			return true
 		}
@@ -2438,8 +2471,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 					break
 				}
 			}
-			if !inlined && (trimmed_space(include_arg).starts_with('<')
-				|| c_include_should_remain_in_inlined_text(include_arg)) {
+			if !inlined && c_include_should_remain_in_inlined_text(include_arg) {
 				output.writeln('#include ${include_arg}')
 				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
@@ -2718,7 +2750,16 @@ fn c_is_apple_framework_include(include_arg string) bool {
 		return false
 	}
 	inner := clean[1..clean.len - 1]
-	return inner.contains('/') && inner[0] >= `A` && inner[0] <= `Z`
+	if !inner.contains('/') || inner[0] < `A` || inner[0] > `Z` {
+		return false
+	}
+	framework := inner.all_before('/')
+	for ch in framework {
+		if !((ch >= `A` && ch <= `Z`) || (ch >= `a` && ch <= `z`)) {
+			return false
+		}
+	}
+	return true
 }
 
 fn c_include_is_late_source(include_arg string) bool {
@@ -2759,6 +2800,7 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	// replaced by inline declarations; keep the include in place inside its #if
 	// context.
 	return clean in ['<dlfcn.h>', '<limits.h>', '<arm_neon.h>']
+		|| c_is_apple_framework_include(clean)
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {
@@ -2783,6 +2825,40 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 	if include_arg == '<objc/message.h>' {
 		return ['objc_msgSend']
 	}
+	if include_arg == '<sqlite3.h>' {
+		return [
+			'sqlite3_bind_double',
+			'sqlite3_bind_int',
+			'sqlite3_bind_int64',
+			'sqlite3_bind_null',
+			'sqlite3_bind_text',
+			'sqlite3_busy_timeout',
+			'sqlite3_changes',
+			'sqlite3_close',
+			'sqlite3_column_bytes',
+			'sqlite3_column_count',
+			'sqlite3_column_double',
+			'sqlite3_column_int',
+			'sqlite3_column_int64',
+			'sqlite3_column_name',
+			'sqlite3_column_text',
+			'sqlite3_column_type',
+			'sqlite3_errmsg',
+			'sqlite3_errstr',
+			'sqlite3_finalize',
+			'sqlite3_free',
+			'sqlite3_last_insert_rowid',
+			'sqlite3_memory_used',
+			'sqlite3_open',
+			'sqlite3_open_v2',
+			'sqlite3_prepare_v2',
+			'sqlite3_reset',
+			'sqlite3_step',
+			'sqlite3_vfs_find',
+			'sqlite3_vfs_register',
+			'sqlite3_vfs_unregister',
+		]
+	}
 	return []string{}
 }
 
@@ -2797,23 +2873,129 @@ fn c_preserved_system_include_struct_names(include_arg string) []string {
 			'vm_statistics64_data_t',
 		]
 	}
+	if include_arg == '<sqlite3.h>' {
+		return ['sqlite3', 'sqlite3_file', 'sqlite3_io_methods', 'sqlite3_stmt', 'sqlite3_vfs']
+	}
 	return []string{}
 }
 
 const c_cache_system_header_declared_fns = {
-	'host_page_size':       true
-	'host_statistics64':    true
-	'mach_absolute_time':   true
-	'mach_host_self':       true
-	'mach_port_deallocate': true
-	'mach_task_self':       true
-	'mach_timebase_info':   true
-	'task_info':            true
+	'_dyld_get_image_header':    true
+	'getpeername':               true
+	'host_page_size':            true
+	'host_statistics64':         true
+	'mach_absolute_time':        true
+	'mach_host_self':            true
+	'mach_port_deallocate':      true
+	'mach_task_self':            true
+	'mach_timebase_info':        true
+	'inet_pton':                 true
+	'ptrace':                    true
+	'recvfrom':                  true
+	'sigaddset':                 true
+	'sigprocmask':               true
+	'symlink':                   true
+	'task_info':                 true
+	'unsetenv':                  true
+	'sqlite3_bind_double':       true
+	'sqlite3_bind_int':          true
+	'sqlite3_bind_int64':        true
+	'sqlite3_bind_null':         true
+	'sqlite3_bind_text':         true
+	'sqlite3_busy_timeout':      true
+	'sqlite3_changes':           true
+	'sqlite3_close':             true
+	'sqlite3_column_bytes':      true
+	'sqlite3_column_count':      true
+	'sqlite3_column_double':     true
+	'sqlite3_column_int':        true
+	'sqlite3_column_int64':      true
+	'sqlite3_column_name':       true
+	'sqlite3_column_text':       true
+	'sqlite3_column_type':       true
+	'sqlite3_errmsg':            true
+	'sqlite3_errstr':            true
+	'sqlite3_finalize':          true
+	'sqlite3_free':              true
+	'sqlite3_last_insert_rowid': true
+	'sqlite3_memory_used':       true
+	'sqlite3_open':              true
+	'sqlite3_open_v2':           true
+	'sqlite3_prepare_v2':        true
+	'sqlite3_reset':             true
+	'sqlite3_step':              true
+	'sqlite3_vfs_find':          true
+	'sqlite3_vfs_register':      true
+	'sqlite3_vfs_unregister':    true
+}
+
+// These functions are declared by the fixed preamble or a preserved cache
+// prefix, so cache translation units never need an additional declaration.
+const c_cache_headerless_declared_fns = {
+	'_dyld_get_image_header':    true
+	'host_page_size':            true
+	'host_statistics64':         true
+	'mach_absolute_time':        true
+	'mach_host_self':            true
+	'mach_port_deallocate':      true
+	'mach_task_self':            true
+	'mach_timebase_info':        true
+	'sqlite3_bind_double':       true
+	'sqlite3_bind_int':          true
+	'sqlite3_bind_int64':        true
+	'sqlite3_bind_null':         true
+	'sqlite3_bind_text':         true
+	'sqlite3_busy_timeout':      true
+	'sqlite3_changes':           true
+	'sqlite3_close':             true
+	'sqlite3_column_bytes':      true
+	'sqlite3_column_count':      true
+	'sqlite3_column_double':     true
+	'sqlite3_column_int':        true
+	'sqlite3_column_int64':      true
+	'sqlite3_column_name':       true
+	'sqlite3_column_text':       true
+	'sqlite3_column_type':       true
+	'sqlite3_errmsg':            true
+	'sqlite3_errstr':            true
+	'sqlite3_finalize':          true
+	'sqlite3_free':              true
+	'sqlite3_last_insert_rowid': true
+	'sqlite3_memory_used':       true
+	'sqlite3_open':              true
+	'sqlite3_open_v2':           true
+	'sqlite3_prepare_v2':        true
+	'sqlite3_reset':             true
+	'sqlite3_step':              true
+	'sqlite3_vfs_find':          true
+	'sqlite3_vfs_register':      true
+	'sqlite3_vfs_unregister':    true
+	'symlink':                   true
+	'task_info':                 true
 }
 
 const c_cache_system_header_struct_names = {
 	'host_t':                    true
 	'mach_timebase_info_data_t': true
+	'sqlite3':                   true
+	'sqlite3_file':              true
+	'sqlite3_io_methods':        true
+	'sqlite3_stmt':              true
+	'sqlite3_vfs':               true
+	'task_basic_info':           true
+	'task_t':                    true
+	'vm_size_t':                 true
+	'vm_statistics64_data_t':    true
+}
+
+const c_cache_headerless_struct_names = {
+	'host_t':                    true
+	'mach_timebase_info_data_t': true
+	'sqlite3':                   true
+	'sqlite3_file':              true
+	'sqlite3_io_methods':        true
+	'sqlite3_stmt':              true
+	'sqlite3_vfs':               true
 	'task_basic_info':           true
 	'task_t':                    true
 	'vm_size_t':                 true
@@ -4571,12 +4753,14 @@ fn c_pragma_directive_info(directive string) (string, string) {
 }
 
 fn c_is_conditional_directive(directive string) bool {
-	return c_directive_name(trimmed_space(directive)) in ['if', 'ifdef', 'ifndef', 'elif', 'else',
-		'endif']
+	clean := trimmed_space(directive)
+	return !clean.contains('\n')
+		&& c_directive_name(clean) in ['if', 'ifdef', 'ifndef', 'elif', 'else', 'endif']
 }
 
 fn c_is_source_context_directive(directive string) bool {
-	return c_directive_name(trimmed_space(directive)) in ['define', 'undef', 'pragma']
+	clean := trimmed_space(directive)
+	return !clean.contains('\n') && c_directive_name(clean) in ['define', 'undef', 'pragma']
 }
 
 fn c_is_source_include_directive(directive string) bool {
@@ -6950,6 +7134,9 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 	match callee.kind {
 		.ident {
 			if callee.value.contains('__') {
+				if _ := g.fn_decl_return_type_for_call_name(callee.value) {
+					return ''
+				}
 				return callee.value
 			}
 		}
@@ -7128,8 +7315,9 @@ fn (g &FlatGen) sizeof_global_selector_base(name string) ?string {
 
 // optional_none_type supports optional none type handling for FlatGen.
 fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
-	if g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType {
-		return g.expected_expr_type
+	expected := optional_result_unalias_type(g.expected_expr_type)
+	if expected is types.OptionType || expected is types.ResultType {
+		return expected
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
@@ -8558,7 +8746,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if node.op == .arrow && lhs_type is types.Channel {
-				elem_ct := g.tc.c_type(lhs_type.elem_type)
+				elem_ct := g.value_c_type(lhs_type.elem_type)
 				g.write('sync__Channel__push(')
 				g.gen_expr(lhs_id)
 				g.write(', &(${elem_ct}[]){')
@@ -9210,10 +9398,20 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				initial_is_fixed_array_index, _, _ := fixed_array_index_info(index_base_type)
 				if !initial_is_fixed_array_index {
 					base_node := g.a.nodes[int(base_id)]
-					if const_type := g.const_storage_type_from_node(base_node) {
-						const_is_fixed, _, _ := fixed_array_index_info(const_type)
-						if const_is_fixed {
-							index_base_type = const_type
+					mut base_is_local := false
+					if base_node.kind == .ident {
+						if _ := g.current_param_map_type(base_node.value) {
+							base_is_local = true
+						} else if scope_type := g.tc.cur_scope.lookup(base_node.value) {
+							base_is_local = scope_type !is types.Void
+						}
+					}
+					if !base_is_local {
+						if const_type := g.const_storage_type_from_node(base_node) {
+							const_is_fixed, _, _ := fixed_array_index_info(const_type)
+							if const_is_fixed {
+								index_base_type = const_type
+							}
 						}
 					}
 				}
@@ -10591,7 +10789,8 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 			clean := trimmed_space(line)
 			if c_directive_name(clean) in ['include', 'import'] {
 				arg := c_directive_arg(clean)
-				if arg.starts_with('<') && arg.ends_with('>') {
+				if arg.starts_with('<') && arg.ends_with('>')
+					&& arg !in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 					return true
 				}
 			}
@@ -10613,8 +10812,8 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#else')
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
 		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
-		'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h', 'sys/utsname.h',
-		'sys/un.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+		'sys/ptrace.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
+		'sys/utsname.h', 'sys/un.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
 		g.writeln('#include <${header}>')
 	}
 	g.writeln('#endif')
@@ -10824,6 +11023,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int atexit(void (*f)(void));')
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('const char* _dyld_get_image_name(unsigned int image_index);')
+	g.writeln('void* _dyld_get_image_header(unsigned int image_index);')
 	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
 	g.writeln('extern FILE* __stdinp;')
@@ -11002,19 +11202,20 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_timeval_struct()
 	g.headerless_rusage_struct()
 	g.headerless_timespec_struct()
-	g.headerless_darwin_task_info_struct()
-	g.writeln('#ifdef __APPLE__')
-	g.writeln('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;')
+	g.headerless_darwin_task_info_struct(g.explicit_mach_headers)
+	g.writeln('#if defined(__APPLE__) && !defined(_MACH_MACH_TIME_H_)')
+	g.writeln('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;')
+	g.writeln('struct mach_timebase_info_data_t { u32 numer; u32 denom; };')
 	g.writeln('#endif')
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
-	g.writeln('int stat(char* path, struct stat* buf);')
+	g.writeln('int stat(const char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
 	g.writeln('time_t mktime(struct tm* timeptr);')
 	g.writeln('struct tm* localtime(time_t* timer);')
 	g.writeln('int utime(char* filename, struct utimbuf* times);')
-	g.writeln('int stat(char* path, struct stat* buf);')
+	g.writeln('int stat(const char* path, struct stat* buf);')
 	g.writeln('FILE* fopen(const char* path, const char* mode);')
 	g.writeln('FILE* freopen(const char* path, const char* mode, FILE* stream);')
 	g.writeln('int fclose(FILE* stream);')
@@ -11348,12 +11549,20 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 	g.writeln('clock_t clock(void);')
 }
 
-fn (mut g FlatGen) headerless_darwin_task_info_struct() {
-	g.writeln('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)')
+fn (mut g FlatGen) headerless_darwin_task_info_struct(explicit_mach_headers bool) {
+	if explicit_mach_headers {
+		g.writeln('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)')
+	} else {
+		g.writeln('#ifdef __APPLE__')
+		g.writeln('#ifndef _MACH_TASK_INFO_H_')
+	}
 	g.writeln('typedef unsigned int task_t;')
 	g.writeln('#pragma pack(push, 4)')
 	g.writeln('struct task_basic_info { i32 suspend_count; u64 virtual_size; u64 resident_size; struct { i32 seconds; i32 microseconds; } user_time; struct { i32 seconds; i32 microseconds; } system_time; i32 policy; };')
 	g.writeln('#pragma pack(pop)')
+	if !explicit_mach_headers {
+		g.writeln('#endif')
+	}
 	g.writeln('#endif')
 }
 
@@ -12907,6 +13116,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline int v3_string_display_width(string s) { int width = 0; int join = 0; for (int i = 0; i < s.len;) { int cp = v3_utf8_next_cp(s.str, s.len, &i); if (cp == 0x200D) { join = 1; continue; } if (v3_codepoint_is_combining(cp)) continue; if (join) { join = 0; continue; } width += v3_codepoint_is_wide(cp) ? 2 : 1; } return width; }')
 	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } int visible = v3_string_display_width(s); if (visible >= width) return s; int pad = width - visible; int out_len = s.len + pad; u8* out = malloc_noscan((ptrdiff_t)out_len + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[out_len] = 0; return (string){.str = out, .len = out_len, .is_lit = 0}; }")
 	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'f' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
+	g.writeln("static inline string v3_indent_multiline(string s) { int lines = 0; for (int i = 0; i < s.len; ++i) if (s.str[i] == '\\n') ++lines; if (lines == 0) return s; int out_len = s.len + lines * 4; u8* out = malloc_noscan((ptrdiff_t)out_len + 1); int p = 0; for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[p++] = c; if (c == '\\n') { memset(out + p, ' ', 4); p += 4; } } out[p] = 0; return (string){.str = out, .len = out_len, .is_lit = 0}; }")
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((u32)c); }')
 	g.writeln('static inline string v3_chan_str(chan ch, string elem) { if (ch == NULL) return string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("(nil)", 5)); string out = string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("{\\n    cap: ", 11)); out = string__plus(out, int__str(ch->cap)); out = string__plus(out, ch->closed != 0 ? v3_c_lit(", closed: true\\n}", 16) : v3_c_lit(", closed: false\\n}", 17)); return out; }')
 	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
@@ -13627,9 +13837,24 @@ fn (mut g FlatGen) emit_fixed_array_elem_deps(elem types.Type, needed map[string
 			g.emit_fixed_array_typedef(inner_name, inner, needed, mut emitted)
 		}
 	} else if elem is types.FnType {
+		for param in elem.params {
+			g.emit_fixed_array_elem_deps(param, needed, mut emitted)
+		}
+		g.emit_fixed_array_elem_deps(elem.return_type, needed, mut emitted)
 		encoded := g.tc.c_type(elem)
 		name := g.resolve_fn_ptr_type(encoded)
 		g.emit_fn_ptr_typedef(encoded, name, mut g.emitted_fn_ptr_typedefs)
+	} else if elem is types.Pointer {
+		g.emit_fixed_array_elem_deps(elem.base_type, needed, mut emitted)
+	} else if elem is types.Array {
+		g.emit_fixed_array_elem_deps(elem.elem_type, needed, mut emitted)
+	} else if elem is types.Map {
+		g.emit_fixed_array_elem_deps(elem.key_type, needed, mut emitted)
+		g.emit_fixed_array_elem_deps(elem.value_type, needed, mut emitted)
+	} else if elem is types.MultiReturn {
+		for item in elem.types {
+			g.emit_fixed_array_elem_deps(item, needed, mut emitted)
+		}
 	} else if elem is types.OptionType {
 		g.emit_fixed_array_optional_elem_deps(elem, needed, mut emitted)
 	} else if elem is types.ResultType {

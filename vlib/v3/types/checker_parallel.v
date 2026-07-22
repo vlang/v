@@ -433,6 +433,7 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
 	saved_fn_context := tc.fn_context
 	tc.fn_context = new_function_check_context()
+	tc.fn_context.node_id = fn_idx
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope

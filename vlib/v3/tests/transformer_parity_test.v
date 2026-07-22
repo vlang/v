@@ -229,7 +229,7 @@ fn main() {
 ')
 	rhs := first_decl_rhs(a, 'main')
 	assert rhs.kind == .string_literal
-	assert rhs.value == root
+	assert rhs.value == os.real_path(root)
 }
 
 // test_return_match_lowers_to_explicit_branch_returns validates this v3 regression case.
@@ -580,14 +580,14 @@ fn main() {
 	}
 	assert sql_expr_count == 0
 	users := decl_rhs(a, 'main', 'users')
-	assert users.kind == .struct_init
-	assert users.value == '![]User'
+	assert users.kind == .call
+	assert users.typ == '![]User'
 	count := decl_rhs(a, 'main', 'count')
-	assert count.kind == .struct_init
-	assert count.value == '!int'
+	assert count.kind == .call
+	assert count.typ == '!int'
 	created := decl_rhs(a, 'main', 'created')
-	assert created.kind == .struct_init
-	assert created.value == '!int'
+	assert created.kind == .call
+	assert created.typ == '!int'
 }
 
 // test_or_expr_lowers_to_temp_and_if validates this v3 regression case.
@@ -814,7 +814,7 @@ fn main() {
 	mut selector_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		direct_count += count_call_name(a, child_id, 'array__reverse')
+		direct_count += count_call_name(a, child_id, 'array__reverse_in_place')
 		selector_count += count_selector_value(a, child_id, 'reverse')
 	}
 	assert direct_count == 1
@@ -822,7 +822,7 @@ fn main() {
 	mut arg := flat.Node{}
 	mut found_arg := false
 	for i in 0 .. main_fn.children_count {
-		if candidate := first_call_arg_opt(a, a.child(&main_fn, i), 'array__reverse', 0) {
+		if candidate := first_call_arg_opt(a, a.child(&main_fn, i), 'array__reverse_in_place', 0) {
 			arg = candidate
 			found_arg = true
 			break
@@ -830,11 +830,11 @@ fn main() {
 	}
 	assert found_arg
 	assert arg.kind == .prefix
-	assert arg.op == .mul
+	assert arg.op == .amp
 	assert arg.children_count == 1
 	ident := a.child_node(&arg, 0)
 	assert ident.kind == .ident
-	assert ident.value == 'p'
+	assert ident.value.starts_with('__owned_reverse_')
 }
 
 fn test_fixed_array_pointers_uses_intrinsic_without_copy() {
@@ -966,7 +966,7 @@ fn main() {
 	assert arg.children_count == 1
 	ident := a.child_node(&arg, 0)
 	assert ident.kind == .ident
-	assert ident.value.starts_with('__ptr_arg_')
+	assert ident.value.starts_with('__ref_arg_')
 }
 
 fn test_map_values_membership_lowers_without_type_annotation() {

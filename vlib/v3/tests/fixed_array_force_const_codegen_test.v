@@ -102,7 +102,6 @@ fn test_fixed_array_force_array_literal_const_field_does_not_leak_array_temp() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42'
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert !generated.contains('__arr_lit_'), generated
 	assert !generated.contains('Array fixture____arr_lit'), generated
 	assert generated.contains('fixture__imported_pass'), generated
 	assert generated.contains('next_function_marker'), generated

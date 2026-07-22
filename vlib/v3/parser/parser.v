@@ -3421,7 +3421,7 @@ fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_targ
 	if c == 'false' {
 		return false
 	}
-	if c.starts_with('pkgconfig') {
+	if c.starts_with('pkgconfig') || c.starts_with('$pkgconfig') {
 		return eval_pkgconfig_cond(c)
 	}
 	if value := eval_comptime_define_cond(p.prefs, c) {
@@ -8193,7 +8193,20 @@ fn (mut p Parser) index_part_expr() flat.NodeId {
 		}
 		return p.make_index_range_part(low, high, dotdot_start)
 	}
-	low := p.expr(.logical_or)
+	mut low := p.expr(.logical_or)
+	// `or {}` before the closing bracket belongs to the index expression. It
+	// cannot be parsed at `.lowest` here because that also consumes slice ranges
+	// before index_expr can flatten their bounds.
+	if p.tok == .key_or {
+		p.next()
+		or_body := p.block_stmt()
+		ostart := p.add_children2(low, or_body)
+		low = p.add_node(flat.Node{
+			kind:           .or_expr
+			children_start: ostart
+			children_count: 2
+		})
+	}
 	if p.tok == .dotdot {
 		low_start := p.node_start(low)
 		start := if low_start >= 0 { low_start } else { p.span_start() }

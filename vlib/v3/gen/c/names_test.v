@@ -10,8 +10,8 @@ fn test_c_name_sanitize_operator_overloads() {
 	assert c_name('Point.<=') == 'Point__le'
 	assert c_name('Point.>') == 'Point__gt'
 	assert c_name('Point.>=') == 'Point__ge'
-	assert c_name('Point.[]') == 'Point__index'
-	assert c_name('Point.[]=') == 'Point__index_set'
+	assert c_name('Point.[]') == 'Point__op_index'
+	assert c_name('Point.[]=') == 'Point__op_index_set'
 }
 
 fn test_c_name_sanitize_escaped_keywords() {
@@ -73,6 +73,18 @@ fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
 	}))
 }
 
+fn test_enum_autostr_name_uses_canonical_collected_enum() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.enum_names['AttributeKind'] = true
+	mut g := FlatGen.new()
+	g.tc = &tc
+
+	assert g.enum_autostr_c_name('orm.AttributeKind') == 'AttributeKind'
+	tc.enum_names['orm.AttributeKind'] = true
+	assert g.enum_autostr_c_name('orm.AttributeKind') == 'orm__AttributeKind'
+}
+
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -108,6 +120,33 @@ fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
 	g.fn_decl_variadic_short_counts['total'] = 1
 	g.fn_decl_variadic['total'] = true
 	assert g.fn_decl_is_variadic('missing.total', 'missing.total')
+}
+
+fn test_param_types_for_prefers_exact_mangled_generic_method() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	receiver := types.Type(types.Pointer{
+		base_type: types.Type(types.Struct{
+			name: 'sink.Counter_user.LocalWriter'
+		})
+	})
+	tc.fn_param_types['sink__Counter_user__LocalWriter__write'] = [receiver, types.Type(types.int_)]
+	tc.fn_param_types['write'] = [
+		types.Type(types.Pointer{
+			base_type: types.Type(types.void_)
+		}),
+		types.Type(types.Pointer{
+			base_type: types.Type(types.void_)
+		}),
+	]
+	mut g := FlatGen.new()
+	g.tc = &tc
+	params := g.param_types_for('sink__Counter_user__LocalWriter__write',
+		'sink__Counter_user__LocalWriter__write')
+	assert params.len == 2
+	assert params[0].name() == '&sink.Counter_user.LocalWriter'
+	assert params[1] is types.Primitive
+	assert params[1].name() == 'int'
 }
 
 fn test_guarded_preamble_externs_keep_explicit_declarations() {

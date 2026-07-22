@@ -487,13 +487,17 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 				}
 				lhs_addr := t.make_prefix(.amp, lhs_err)
 				rhs_addr := t.make_prefix(.amp, rhs_err)
+				lhs_typ := t.make_selector(lhs_err, '_typ', 'int')
+				rhs_typ := t.make_selector(rhs_err, '_typ', 'int')
+				type_eq := t.make_infix(.eq, lhs_typ, rhs_typ)
 				lhs_msg := t.make_call_typed('IError__msg', arr1(lhs_addr), 'string')
 				rhs_msg := t.make_call_typed('IError__msg', arr1(rhs_addr), 'string')
 				msg_eq := t.make_call_typed('string__eq', arr2(lhs_msg, rhs_msg), 'bool')
 				lhs_code := t.make_call_typed('IError__code', arr1(lhs_addr), 'int')
 				rhs_code := t.make_call_typed('IError__code', arr1(rhs_addr), 'int')
 				code_eq := t.make_infix(.eq, lhs_code, rhs_code)
-				err_eq := t.make_infix(.logical_and, msg_eq, code_eq)
+				err_eq := t.make_infix(.logical_and, type_eq, t.make_infix(.logical_and, msg_eq,
+					code_eq))
 				if node.op == .ne {
 					return t.make_prefix(.not, err_eq)
 				}
@@ -2515,6 +2519,9 @@ fn (t &Transformer) map_value_needs_element_eq(value_type string) bool {
 	}
 	clean := t.membership_container_type(value_type)
 	if t.is_fixed_array_type(clean) {
+		return true
+	}
+	if clean.starts_with('[]') {
 		return true
 	}
 	return t.type_needs_semantic_eq(clean)

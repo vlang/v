@@ -167,6 +167,19 @@ fn pick(x int) int {
 	assert found_phi
 }
 
+// test_sizeof_local_fixed_array_uses_the_variable_type validates this v3 regression case.
+fn test_sizeof_local_fixed_array_uses_the_variable_type() {
+	m := build_source('sizeof_local_fixed_array', '
+fn buffer_size() usize {
+	buf := [1024]char{}
+	return sizeof(buf)
+}
+')
+	result := m.values[ret_operand(m, 'buffer_size')]
+	assert result.kind == .constant
+	assert result.name == '1024'
+}
+
 // test_string_infix_lowers_to_runtime_calls validates this v3 regression case.
 fn test_string_infix_lowers_to_runtime_calls() {
 	m := build_source('string_infix', '

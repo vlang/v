@@ -123,6 +123,13 @@ fn (g &FlatGen) struct_init_effective_type_name(node flat.Node) string {
 		if expected is types.Struct && expected.name.all_after_last('.') == node.value {
 			return expected.name
 		}
+		if node.typ.len > 0 {
+			resolved := default_init_unalias_type(types.unwrap_pointer(g.tc.parse_type(node.typ)))
+			if resolved is types.Struct
+				&& resolved.name.all_after_last('.') == node.value.all_after_last('.') {
+				return resolved.name
+			}
+		}
 	}
 	return node.value
 }
@@ -165,6 +172,27 @@ fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected
 fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) {
 	if g.gen_embed_file_uncompressed_field(value_id, struct_name, field_name) {
 		return
+	}
+	if raw, module_name := g.shared_array_field_raw_type(struct_name, field_name) {
+		value := g.a.node(value_id)
+		if info := g.shared_array_info_from_raw(raw, module_name, false) {
+			if value.kind in [.array_init, .array_literal, .struct_init]
+				&& value.children_count == 0 {
+				g.write('array_new(sizeof(${info.wrapper}*), 0, 0)')
+				return
+			}
+			if value.kind == .call && value.children_count == 4 {
+				callee := g.a.child_node(value, 0)
+				if callee.kind == .ident && callee.value == 'array_new' {
+					g.write('array_new(sizeof(${info.wrapper}*), ')
+					g.gen_expr(g.a.child(value, 2))
+					g.write(', ')
+					g.gen_expr(g.a.child(value, 3))
+					g.write(')')
+					return
+				}
+			}
+		}
 	}
 	if c_abi_fn := g.struct_field_c_abi_fn_ptr_type(struct_name, field_name) {
 		if g.gen_callback_fn_value_for_field_c_abi(value_id, expected, c_abi_fn) {
@@ -305,6 +333,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	init_type := g.tc.parse_type(init_value)
 	is_optional_init := init_value == 'Optional' || init_type is types.OptionType
 		|| init_type is types.ResultType
+	if is_optional_init && init_value != 'Optional' {
+		name = g.optional_type_name(init_type)
+	}
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
 	if init_value == 'Optional'
@@ -964,7 +995,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 // gen_channel_init emits channel init output for c.
 fn (mut g FlatGen) gen_channel_init(node flat.Node) {
 	elem_type := g.tc.parse_type(node.value[5..])
-	elem_ct := g.tc.c_type(elem_type)
+	elem_ct := g.value_c_type(elem_type)
 	g.write('sync__new_channel_st((u32)(')
 	if cap_id := channel_init_field(node, g.a, 'cap') {
 		g.gen_expr(cap_id)
@@ -2810,6 +2841,9 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 }
 
 fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string {
+	if node.value.contains('[') {
+		return none
+	}
 	if node.typ.len > 0 {
 		candidate := g.tc.parse_type(node.typ)
 		base := default_init_unalias_type(types.unwrap_pointer(candidate))
@@ -2825,6 +2859,9 @@ fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string
 }
 
 fn (g &FlatGen) generic_struct_init_instance_name_for_node(node flat.Node) ?string {
+	if node.value.contains('[') {
+		return none
+	}
 	if node.typ.len > 0 {
 		candidate := g.tc.parse_type(node.typ)
 		base := default_init_unalias_type(types.unwrap_pointer(candidate))
@@ -2971,6 +3008,9 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?strin
 			continue
 		}
 		if candidate_base.all_after_last('.') != base_short {
+			continue
+		}
+		if base.contains('.') && candidate_base != base {
 			continue
 		}
 		if generic_receiver_type_suffixes(candidate_args) == arg_suffix {
@@ -3853,11 +3893,14 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	} else {
 		g.tc.c_type(key_type)
 	}
-	size_suffix := match c_key {
-		'u8', 'i8', 'bool', 'char' { '1' }
-		'u16', 'i16' { '2' }
-		'i64', 'u64', 'isize', 'usize', 'f64', 'double', 'voidptr' { '8' }
-		else { '4' }
+	mut size_suffix := '4'
+	if c_key in ['u8', 'i8', 'bool', 'char'] {
+		size_suffix = '1'
+	} else if c_key in ['u16', 'i16'] {
+		size_suffix = '2'
+	} else if c_key in ['i64', 'u64', 'isize', 'usize', 'f64', 'double', 'voidptr']
+		|| c_key.starts_with('arc__Arc_') {
+		size_suffix = '8'
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
@@ -3890,7 +3933,9 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	}
 	if g.cache_split {
 		system_name := if name.starts_with('C.') { name[2..] } else { name }
-		if system_name in c_cache_system_header_struct_names {
+		if system_name in c_cache_headerless_struct_names
+			|| (g.c_directives_use_system_libc()
+			&& system_name in c_cache_system_header_struct_names) {
 			return true
 		}
 	}
@@ -4064,7 +4109,9 @@ fn (mut g FlatGen) struct_decls() {
 			if name.starts_with('C.') && name !in c_preamble_defined_structs
 				&& c_struct_needs_typedef(name) && g.inlined_c_structs[name[2..]]
 				&& !g.inlined_c_typedef_names[name[2..]] && !(g.cache_split
-				&& name[2..] in c_cache_system_header_struct_names) {
+				&& (name[2..] in c_cache_headerless_struct_names
+				|| (g.c_directives_use_system_libc()
+				&& name[2..] in c_cache_system_header_struct_names))) {
 				ityp := if name in g.tc.unions { 'union' } else { 'struct' }
 				cn := g.struct_cname(name)
 				if cn != 'mach_timebase_info_data_t' {
@@ -4396,7 +4443,11 @@ fn (mut g FlatGen) emit_struct(name string) {
 		for f in fields {
 			g.write_struct_field(name, f)
 		}
-		g.writeln('};')
+		if align := g.struct_decl_alignment_for_name(name) {
+			g.writeln('} ${struct_decl_alignment_attr(align)};')
+		} else {
+			g.writeln('};')
+		}
 		g.writeln('')
 	}
 	g.tc.cur_module = old_module

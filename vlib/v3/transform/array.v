@@ -59,6 +59,9 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	base_type := t.node_type(base_id)
 	count_id := t.a.child(&node, 1)
 	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
+	if expanded := t.try_expand_interface_array_literal_repeat(base_id, count_id, base_type) {
+		return expanded
+	}
 	if !isnil(t.tc) && clean_base_type.starts_with('[]') {
 		elem_type := clean_base_type[2..]
 		elem := t.tc.parse_type(elem_type)
@@ -74,9 +77,6 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 		if base_is_owned_temporary {
 			return t.make_plain_array_repeat_value(base_id, count_id, clean_base_type)
 		}
-	}
-	if expanded := t.try_expand_interface_array_literal_repeat(base_id, count_id, base_type) {
-		return expanded
 	}
 	depth := array_repeat_clone_depth(base_type)
 	if depth == 0 {
@@ -97,7 +97,8 @@ fn (mut t Transformer) make_plain_array_repeat_value(base_id flat.NodeId, count_
 		'plain_array_repeat_source')
 	count := t.transform_expr_for_type(count_id, 'int')
 	repeat_selector := t.make_selector(stable_source, 'repeat_to_depth', '')
-	repeated := t.make_call_expr_typed(repeat_selector, arr2(count, t.make_int_literal(0)),
+	depth := array_repeat_clone_depth(array_type)
+	repeated := t.make_call_expr_typed(repeat_selector, arr2(count, t.make_int_literal(depth)),
 		array_type)
 	out_name := t.new_temp('plain_array_repeat')
 	t.pending_stmts << t.make_decl_assign_typed(out_name, repeated, array_type)
@@ -550,7 +551,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	if t.in_const_init {
 		return id
 	}
-	array_type := if elem_type := t.array_literal_pointer_value_elem_type(node) {
+	mut array_type := if elem_type := t.array_literal_pointer_value_elem_type(node) {
 		'[]${elem_type}'
 	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
 		checker_alias_type
@@ -559,6 +560,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	} else {
 		t.node_type(id)
 	}
+	array_type = t.refine_array_literal_generic_type(node, array_type)
 	if !array_type.starts_with('[]') {
 		return id
 	}
@@ -588,6 +590,31 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), array_type)
 	return result
+}
+
+fn (mut t Transformer) refine_array_literal_generic_type(node flat.Node, array_type string) string {
+	needs_refinement := array_type in ['', 'array']
+		|| (array_type.starts_with('[]') && stringify_type_has_generic_placeholder(array_type))
+	if !needs_refinement {
+		return array_type
+	}
+	for i in 0 .. node.children_count {
+		mut elem_id := t.a.child(&node, i)
+		elem := t.a.nodes[int(elem_id)]
+		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
+			elem_id = t.a.child(&elem, 0)
+			spread_type := t.generic_call_arg_type_for_inference(elem_id)
+			if spread_type.starts_with('[]') && !t.generic_arg_is_unresolved(spread_type) {
+				return spread_type
+			}
+			continue
+		}
+		elem_type := t.generic_call_arg_type_for_inference(elem_id)
+		if elem_type.len > 0 && !t.generic_arg_is_unresolved(elem_type) {
+			return '[]${elem_type}'
+		}
+	}
+	return array_type
 }
 
 // append_array_literal_spread appends independent element clones when the destination
@@ -784,7 +811,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		return none
 	}
 	target_array_type := t.normalize_type_alias(target_type)
-	array_type := if target_array_type.starts_with('[]')
+	mut array_type := if target_array_type.starts_with('[]')
 		&& t.is_sum_type_name(target_array_type[2..]) {
 		target_array_type
 	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
@@ -794,6 +821,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 	} else {
 		target_array_type
 	}
+	array_type = t.refine_array_literal_generic_type(node, array_type)
 	if !array_type.starts_with('[]') {
 		return none
 	}

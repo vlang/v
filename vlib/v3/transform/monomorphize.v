@@ -2518,7 +2518,15 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 				cur_module = node.value
 			}
 			.fn_decl {
-				fn_module := t.node_module_or(i, cur_module)
+				// Use the declaration's source position when available. Cached-module
+				// inputs can interleave synthetic file markers with program nodes, so
+				// the last streamed marker is not always this declaration's module.
+				fn_file := if source_file := t.a.source_files[node.pos.id] {
+					source_file.name
+				} else {
+					cur_file
+				}
+				fn_module := t.tc.file_modules[fn_file] or { cur_module }
 				if !t.fn_decl_has_unresolved_generics(node, fn_module) {
 					continue
 				}
@@ -2526,7 +2534,7 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 				decls[key] = GenericFnDecl{
 					id:     flat.NodeId(i)
 					node:   node
-					file:   cur_file
+					file:   fn_file
 					module: fn_module
 					key:    key
 				}
@@ -2726,12 +2734,13 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 		t.tc.cur_module = decl.module
 		t.tc.cur_file = decl.file
 	}
-	if decl.module.len > 0 {
-		t.a.add_node(flat.Node{
-			kind:  .module_decl
-			value: decl.module
-		})
-	}
+	// Specializations are appended after all parsed files. Emit an explicit
+	// marker even for main so their naming does not inherit the final imported
+	// module from the source stream.
+	t.a.add_node(flat.Node{
+		kind:  .module_decl
+		value: if decl.module.len > 0 { decl.module } else { 'main' }
+	})
 	old_params := t.active_generic_params
 	old_specialization_args := t.active_specialization_args
 	mut old_specialization_main_types := t.active_specialization_main_types.clone()
@@ -2793,10 +2802,11 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	if !t.generic_signatures_pre_registered {
 		t.register_specialized_fn_signature(decl, clone, concrete_args)
 	}
+	generic_params := t.active_generic_params.clone()
 	t.active_generic_params = old_params
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.move()
-	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, concrete_args)
+	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, concrete_args, generic_params)
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(clone_id, decl.module, decl.file)
 	t.cur_module = old_module
@@ -2808,7 +2818,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	return clone_id
 }
 
-fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, module_name string, file_name string, args []string) {
+fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, module_name string, file_name string, args []string, params []string) {
 	if int(clone_id) < 0 || int(clone_id) >= t.a.nodes.len {
 		return
 	}
@@ -2820,8 +2830,10 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	old_var_types := t.var_types.clone()
 	old_is_generic := t.cur_fn_is_generic
 	old_specialization_args := t.active_specialization_args
+	old_specialization_params := t.active_specialization_params
 	old_specialization_main_types := t.active_specialization_main_types.clone()
 	t.active_specialization_args = args
+	t.active_specialization_params = params
 	t.active_specialization_main_types = t.specialization_main_type_closure(args)
 	t.cur_module = module_name
 	t.cur_file = file_name
@@ -2847,6 +2859,7 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	t.restore_var_types(old_var_types)
 	t.cur_fn_is_generic = old_is_generic
 	t.active_specialization_args = old_specialization_args
+	t.active_specialization_params = old_specialization_params
 	t.active_specialization_main_types = old_specialization_main_types.clone()
 }
 
@@ -3621,6 +3634,7 @@ fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node fl
 	if node.kind != .call || node.children_count == 0 {
 		return ''
 	}
+	callee := t.a.child_node(&node, 0)
 	decls := t.cached_generic_fn_decls()
 	if decls.len == 0 {
 		return ''
@@ -3631,10 +3645,19 @@ fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node fl
 		return ''
 	}
 	mut args := []string{}
-	if explicit := t.explicit_generic_call_args(node, t.cur_module) {
-		args = explicit.clone()
-	} else {
-		args = t.infer_generic_call_args_from_params(decl, id, node, t.cur_module) or { return '' }
+	if callee.kind == .ident && t.generic_callee_is_specialization(callee.value) {
+		if specialized := t.specialized_plain_generic_call_args(node, decl, t.cur_module) {
+			args = specialized.clone()
+		}
+	}
+	if args.len == 0 {
+		if explicit := t.explicit_generic_call_args(node, t.cur_module) {
+			args = explicit.clone()
+		} else {
+			args = t.infer_generic_call_args_from_params(decl, id, node, t.cur_module) or {
+				return ''
+			}
+		}
 	}
 	if args.len == 0 || t.generic_args_have_placeholders(args) {
 		return ''
@@ -5061,6 +5084,13 @@ fn (mut t Transformer) specialized_plain_generic_call_args(node flat.Node, decl 
 		return none
 	}
 	params := t.generic_fn_param_names(decl.node, decl.module)
+	if node.value.starts_with('generic_args:') {
+		if explicit := t.explicit_generic_call_args(node, module_name) {
+			if explicit.len == params.len {
+				return t.generic_call_args_for_decl(explicit, module_name, decl.module)
+			}
+		}
+	}
 	if recorded := t.recorded_generic_specialization_args(callee.value) {
 		if recorded.len == params.len {
 			// The specialized callee name is already bound to these canonical concrete
@@ -5436,7 +5466,12 @@ fn (t &Transformer) generic_receiver_decl_key(base_name string, method string, d
 
 fn (t &Transformer) explicit_generic_call_args(node flat.Node, module_name string) ?[]string {
 	if node.value.len > 0 {
-		return normalize_generic_args(split_generic_args(node.value), module_name)
+		value := if node.value.starts_with('generic_args:') {
+			node.value.all_after('generic_args:')
+		} else {
+			node.value
+		}
+		return normalize_generic_args(split_generic_args(value), module_name)
 	}
 	if node.children_count == 0 {
 		return none
@@ -5793,8 +5828,8 @@ fn (mut t Transformer) infer_generic_sum_literal_args(param_type string, arg_id 
 }
 
 fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module string, decl_module string) string {
-	if t.substituted_type_belongs_to_main_generic(arg)
-		&& (call_module in ['', 'main'] || t.current_specialization_has_generic_arg(arg)) {
+	if t.current_specialization_has_generic_arg(arg)
+		|| (call_module in ['', 'main'] && t.substituted_type_belongs_to_main_generic(arg)) {
 		return arg
 	}
 	if t.generic_type_text_contains_alias(arg, call_module) {
@@ -5906,8 +5941,7 @@ fn (t &Transformer) collect_specialization_main_types(typ string, mut types_in_s
 }
 
 fn (t &Transformer) generic_arg_for_decl_module(arg string, module_name string) string {
-	if t.substituted_type_belongs_to_main_generic(arg)
-		&& t.current_specialization_has_generic_arg(arg) {
+	if t.current_specialization_has_generic_arg(arg) {
 		return arg
 	}
 	if t.generic_type_text_contains_alias(arg, module_name) {
@@ -8173,19 +8207,21 @@ fn (mut t Transformer) concrete_type_name_known(name string, module_name string)
 	if types.is_builtin_type_name(name) || name in ['C', 'JS'] {
 		return true
 	}
-	qname := if name.contains('.') || module_name.len == 0 || module_name == 'main'
-		|| module_name == 'builtin' {
+	can_use_unqualified := name.contains('.') || module_name.len == 0 || module_name == 'main'
+		|| module_name == 'builtin'
+	qname := if can_use_unqualified {
 		name
 	} else {
 		'${module_name}.${name}'
 	}
-	return name in t.structs || qname in t.structs || name in t.sum_types
-		|| qname in t.sum_types || name in t.enum_types || qname in t.enum_types
-		|| (!isnil(t.tc) && (name in t.tc.type_aliases || qname in t.tc.type_aliases
-		|| name in t.tc.structs || qname in t.tc.structs || name in t.tc.sum_types
-		|| qname in t.tc.sum_types || name in t.tc.enum_names
-		|| qname in t.tc.enum_names || name in t.tc.interface_names
-		|| qname in t.tc.interface_names))
+	return
+		(can_use_unqualified && (name in t.structs || name in t.sum_types || name in t.enum_types))
+		|| qname in t.structs || qname in t.sum_types || qname in t.enum_types
+		|| (!isnil(t.tc) && ((can_use_unqualified && (name in t.tc.type_aliases
+		|| name in t.tc.structs || name in t.tc.sum_types || name in t.tc.enum_names
+		|| name in t.tc.interface_names)) || qname in t.tc.type_aliases
+		|| qname in t.tc.structs || qname in t.tc.sum_types
+		|| qname in t.tc.enum_names || qname in t.tc.interface_names))
 }
 
 fn (mut t Transformer) generic_fn_decl_key(node flat.Node, module_name string) string {
@@ -8969,7 +9005,8 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	if clean.starts_with('atomic ') {
 		return 'atomic ' + t.resolve_substituted_type_text(clean[7..])
 	}
-	if t.substituted_type_belongs_to_main_generic(clean) {
+	if t.current_specialization_has_generic_arg(clean)
+		|| t.substituted_type_belongs_to_main_generic(clean) {
 		return clean
 	}
 	parsed := t.tc.parse_resolution_type(clean)
@@ -9000,6 +9037,10 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 	}
 	if !clean.contains('.') && (clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
 		return true
+	}
+	if !clean.contains('.') && !isnil(t.tc) && clean in t.tc.structs {
+		decl_module := t.tc.struct_modules[clean] or { '' }
+		return decl_module.len == 0 || decl_module in ['main', 'builtin']
 	}
 	base, _, ok := generic_app_parts(clean)
 	if !ok || base.contains('.') || isnil(t.tc) {
@@ -9434,8 +9475,8 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 	if clean.len == 0 {
 		return clean
 	}
-	if t.substituted_type_belongs_to_main_generic(clean)
-		&& t.current_specialization_has_generic_arg(clean) {
+	if t.current_specialization_has_generic_arg(clean)
+		|| (t.cur_module in ['', 'main'] && t.substituted_type_belongs_to_main_generic(clean)) {
 		return clean
 	}
 	if clean.starts_with('&') {
@@ -9699,17 +9740,14 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 // declared concrete type (struct, sum type, enum, interface or alias), so that
 // one-letter type names like `A` are not mistaken for generic placeholders.
 fn (t &Transformer) is_known_concrete_type_name(name string) bool {
-	if t.type_name_is_declared(name) {
-		return true
+	if name.contains('.') {
+		return t.type_name_is_declared(name)
 	}
-	if !name.contains('.') {
-		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
-			&& t.type_name_is_declared('${t.cur_module}.${name}') {
-			return true
-		}
-		if t.type_name_is_declared('main.${name}') {
-			return true
-		}
+	if t.cur_module.len == 0 || t.cur_module in ['main', 'builtin'] {
+		return t.type_name_is_declared(name) || t.type_name_is_declared('main.${name}')
+	}
+	if t.type_name_is_declared('${t.cur_module}.${name}') {
+		return true
 	}
 	return false
 }

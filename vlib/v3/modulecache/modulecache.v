@@ -860,8 +860,38 @@ fn c_has_static_storage_class(value string) bool {
 }
 
 fn c_declaration_head_is_function(value string) bool {
-	return value.contains('(') && !c_contains_parenthesized_pointer_declarator(value)
-		&& !c_contains_declaration_attribute(value) && !c_has_top_level_assign(value)
+	return c_contains_non_attribute_parenthesis(value)
+		&& !c_contains_parenthesized_pointer_declarator(value) && !c_has_top_level_assign(value)
+}
+
+fn c_contains_non_attribute_parenthesis(value string) bool {
+	mut attribute_depth := 0
+	for i, ch in value.bytes() {
+		if ch == `(` {
+			if attribute_depth > 0 {
+				attribute_depth++
+				continue
+			}
+			mut end := i
+			for end > 0 && value[end - 1].is_space() {
+				end--
+			}
+			mut start := end
+			for start > 0 && signature_name_char(value[start - 1]) {
+				start--
+			}
+			name := value[start..end]
+			if name in ['__attribute__', '__declspec', '_Alignas', 'alignas'] {
+				attribute_depth = 1
+				continue
+			}
+			return true
+		}
+		if ch == `)` && attribute_depth > 0 {
+			attribute_depth--
+		}
+	}
+	return false
 }
 
 fn c_declaration_head_keeps_definition(value string) bool {

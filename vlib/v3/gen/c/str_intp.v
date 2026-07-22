@@ -58,7 +58,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Enum {
-				g.write('${g.cname(typ.name)}__autostr(')
+				g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Interface {
@@ -226,7 +226,7 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		} else if f.width > 0 {
 			g.write('v3_string_pad(')
 		}
-		g.write('${g.cname(typ.name)}__autostr(')
+		g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
 		g.gen_string_interp_child_expr(child_id)
 		g.write(')')
 		if f.zero && f.width > 0 {

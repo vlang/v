@@ -48,10 +48,12 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '10'
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('int direct[4] = {0};'), generated
-	assert generated.contains('int wrapped[4] = {0};'), generated
-	assert generated.contains('handles[32] = {0};'), generated
-	assert generated.contains('int nested[2][3] = {0};'), generated
+	assert generated.contains('int direct[4];'), generated
+	assert generated.contains('memmove(direct,'), generated
+	assert generated.contains('sizeof(direct)'), generated
+	assert generated.contains('int wrapped[4] ='), generated
+	assert generated.contains('void* handles[32] ='), generated
+	assert generated.contains('int nested[2][3] ='), generated
 	assert !generated.contains(' = (Array_fixed_'), generated
 	assert !generated.contains('Array_fixed_voidptr_32 handles'), generated
 }

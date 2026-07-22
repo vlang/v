@@ -1240,7 +1240,7 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) str
 		bracket_end := iter_type.index(']') or { return '' }
 		if bracket_end + 1 < iter_type.len {
 			value_type := iter_type[bracket_end + 1..]
-			fixed_type := fixed_array_map_value_type_text(value_type)
+			fixed_type := t.fixed_array_map_value_type_text(value_type)
 			if fixed_type.len > 0 {
 				return fixed_type
 			}

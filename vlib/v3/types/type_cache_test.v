@@ -2,6 +2,17 @@ module types
 
 import v3.flat
 
+fn test_collect_resets_function_context_before_type_cache_keys() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	assert tc.fn_context.generic_params.len == 0
+	tc.fn_context.generic_params = ['T']
+
+	tc.collect(&a)
+	assert tc.fn_context.generic_params.len == 0
+	assert tc.parse_type('voidptr').name() == '&void'
+}
+
 fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -89,6 +100,36 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	second := tc.type_name(typ)
 	assert first == 'map[string][]int'
 	assert first.str == second.str
+}
+
+fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	typ := tc.parse_type('arc.Arc[Resource][2]')
+	assert typ is ArrayFixed
+	fixed := typ as ArrayFixed
+	assert fixed.len == 2
+	assert fixed.elem_type.name() == 'arc.Arc[Resource]'
+}
+
+fn test_resolution_function_type_keeps_concrete_caller_type() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'decode.v'
+	tc.cur_module = 'json2'
+	tc.structs['Event'] = []StructField{}
+
+	assert tc.qualify_type_text('fn (voidptr, &Event)') == 'fn(voidptr, &json2.Event)'
+	assert tc.qualify_resolution_type_text('fn (voidptr, &Event)') == 'fn(voidptr, &Event)'
+	resolved := tc.parse_resolution_type('fn (voidptr, &Event)')
+	assert resolved is FnType
+	fn_type := resolved as FnType
+	assert fn_type.params.len == 2
+	assert fn_type.params[1] is Pointer
+	assert (fn_type.params[1] as Pointer).base_type.name() == 'Event'
+	cached := tc.resolution_type_views.by_file['decode.v'] or { panic('missing cached view') }
+	assert cached.type_interner == tc.type_interner
+	assert tc.parse_resolution_type('fn (voidptr, &Event)').name() == resolved.name()
 }
 
 fn test_resolved_symbols_have_stable_ids_and_storage() {

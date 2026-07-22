@@ -112,7 +112,7 @@ fn main() {
 	assert run.output.trim_space() == '81'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('int xs[3];'), generated
-	assert generated.contains('int ys[3] = {0};'), generated
+	assert generated.contains('int ys[3];'), generated
 	assert generated.contains('int zs[3];'), generated
 	assert generated.contains('int ds[2];'), generated
 	assert generated.contains('int choice[3];'), generated

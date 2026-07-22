@@ -176,6 +176,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')
+	assert help.output.contains('-autofree')
 	assert help.output.contains('-no-memory-limit')
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
@@ -185,7 +186,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert c_source.contains('typedef signed char i8;')
 	compat_output := os.join_path(root, 'hello_compat')
 	compat_compile := cmdexec.run(v3_bin, ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
-		'-g', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])
+		'-g', '-autofree', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])
 	assert compat_compile.exit_code == 0, compat_compile.output
 	assert os.is_file(compat_output)
 	assert os.is_file(compat_output + '.c')

@@ -646,6 +646,34 @@ fn test_interface_array_repeat_evaluates_receiver_once() {
 	assert out == '1\n3'
 }
 
+fn test_temporary_array_repeat_clones_interface_elements_and_nested_rows() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'temporary_array_repeat_clones',
+		'interface Sample {\n\tvalue() int\nmut:\n\tchange()\n}\n\nstruct Item {\nmut:\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\nfn (mut i Item) change() {\n\ti.n += 2\n}\n\nfn main() {\n\tmut samples := [\n\t\tSample(Item{n: 1}),\n\t\tSample(Item{n: 2}),\n\t].repeat(2)\n\tsamples[0].change()\n\tsamples[1].change()\n\tsamples[1].change()\n\tprintln(int_str(samples[0].value()))\n\tprintln(int_str(samples[1].value()))\n\tprintln(int_str(samples[2].value()))\n\tprintln(int_str(samples[3].value()))\n\tmut rows := [[0].repeat(3)].repeat(2)\n\trows[0][0] = 1\n\tprintln(rows.str())\n}\n')
+	assert out == '3\n6\n1\n2\n[[1, 0, 0], [0, 0, 0]]'
+}
+
+fn test_runtime_function_call_selector_is_not_c_typedef_cast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'runtime_call_selector_not_typedef',
+		"fn main() {\n\tmut source := {\n\t\t'abc': 42\n\t}\n\tmut moved := source.move()\n\tmoved.clear()\n\tprintln(int_str(moved.clone().len))\n}\n")
+	assert out == '0'
+}
+
+fn test_map_equality_compares_nested_array_values_semantically() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_nested_array_equality',
+		"fn main() {\n\tleft := {\n\t\t'a': [[1]]\n\t\t'b': [[2]]\n\t}\n\tright := {\n\t\t'a': [[1]]\n\t\t'b': [[2]]\n\t}\n\tprintln(left == right)\n}\n")
+	assert out == 'true'
+}
+
+fn test_result_pointer_payload_heap_copies_local_address_return() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'result_pointer_local_address',
+		'struct Box {\n\tn int\n}\n\nfn make_box() !&Box {\n\tbox := Box{\n\t\tn: 42\n\t}\n\treturn &box\n}\n\nfn main() {\n\tbox := make_box() or { panic(err) }\n\tprintln(int_str(box.n))\n}\n')
+	assert out == '42'
+}
+
 fn test_negative_is_return_smartcasts_following_statements() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'negative_is_return_smartcast',
@@ -1578,4 +1606,93 @@ fn test_moved_module_alias_uses_target_module_identity() {
 		'main.v':                     'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '42'
+}
+
+fn test_specialized_receiver_method_accepts_compatible_integer_argument() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'specialized_receiver_integer_argument', 'struct File {}
+
+fn (mut f File) seek(pos i64) {
+	_ = f
+	_ = pos
+}
+
+fn (mut f File) write_at[T](value T, pos u64) {
+	_ = value
+	f.seek(pos)
+}
+
+fn main() {
+	mut file := File{}
+	file.write_at(1, u64(7))
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_generic_pointer_parameter_materializes_constant_argument() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_pointer_constant_argument', 'const another_byte = u8(123)
+
+struct File {}
+
+fn (mut f File) write_raw[T](value &T) {
+	_ = f
+	println(*value)
+}
+
+fn main() {
+	mut file := File{}
+	file.write_raw(another_byte)
+}
+')
+	assert out == '123'
+}
+
+fn test_generic_array_call_equality_keeps_concrete_element_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_array_call_equality', 'fn append[T](a []T, b []T) []T {
+	mut result := a.clone()
+	result << b
+	return result
+}
+
+fn main() {
+	assert append([1, 2], [3]) == [1, 2, 3]
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_module_generic_copy_is_not_lowered_as_builtin_byte_copy() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'module_generic_copy', {
+		'v.mod':           "Module { name: 'module_generic_copy' }\n"
+		'values/values.v': 'module values
+
+pub fn copy[T](mut dst []T, src []T) int {
+	for i in 0 .. src.len {
+		dst[i] = src[i]
+	}
+	return src.len
+}
+
+pub fn verify() bool {
+	mut dst := [0, 0, 0]
+	src := [1, 2, 3]
+	return copy(mut dst, src) == 3 && dst == src
+}
+'
+		'main.v':          'module main
+
+import values
+
+fn main() {
+	println(values.verify())
+}
+'
+	}, 'main.v')
+	assert out == 'true'
 }

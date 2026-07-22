@@ -108,9 +108,9 @@ fn main() {
 	assert !shape_c.contains('[max_items]'), shape_c
 	assert !shape_c.contains('[rows]'), shape_c
 	assert !shape_c.contains('[cols]'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_max_items[8];'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_cols[16];'), shape_c
-	assert shape_c.contains('typedef Array_fixed_int_cols Array_fixed_Array_fixed_int_cols_rows[6];'), shape_c
+	assert shape_c.contains('typedef int Array_fixed_int_8[8];'), shape_c
+	assert shape_c.contains('typedef int Array_fixed_int_16[16];'), shape_c
+	assert shape_c.contains('typedef Array_fixed_int_16 Array_fixed_Array_fixed_int_16_6[6];'), shape_c
 }
 
 fn test_fixed_array_typedefs_keep_declaring_module_with_unrelated_math_import() {

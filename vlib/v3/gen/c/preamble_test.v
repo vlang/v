@@ -14,3 +14,16 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert windows_code.contains('CloseHandle('), windows_code
 	assert !windows_code.contains('pthread_'), windows_code
 }
+
+fn test_late_source_context_does_not_replay_multiline_header_body() {
+	directives := [
+		'#define SOKOL_IMPL\n#ifndef SOKOL_INCLUDED\ntypedef int sokol_value;\n#endif',
+		'#if defined(SOKOL_IMPL)\ntypedef int sokol_impl_value;\n#endif',
+		'#include "/tmp/native.m"',
+	]
+	emission := c_source_directive_emission(directives, map[string]bool{})
+	assert 0 !in emission.emit_late
+	assert 1 !in emission.emit_late
+	assert emission.emit_late[2]
+	assert emission.skip_early[2]
+}

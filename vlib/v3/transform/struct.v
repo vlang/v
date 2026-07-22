@@ -31,18 +31,28 @@ fn (mut t Transformer) transform_field_init_expr(id flat.NodeId, node flat.Node)
 // For each .field_init child, transforms the value expression. If the struct field type
 // is a known enum, resolves shorthand enum values (e.g. `.red` -> `Color.red`).
 fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) flat.NodeId {
-	if node.children_count == 0 {
-		return t.add_missing_struct_defaults(id, node)
+	struct_type := t.selective_import_struct_type_name(node.value)
+	mut source_id := id
+	mut source_node := node
+	if struct_type != node.value {
+		source_node.value = struct_type
+		if source_node.typ.len == 0 || source_node.typ == node.value {
+			source_node.typ = struct_type
+		}
+		source_id = t.a.add_node(source_node)
 	}
-	info := t.lookup_struct_info(node.value) or {
+	if source_node.children_count == 0 {
+		return t.add_missing_struct_defaults(source_id, source_node)
+	}
+	info := t.lookup_struct_info(struct_type) or {
 		// Unknown struct: fall back to generic child transform
-		return t.transform_struct_children(id, node)
+		return t.transform_struct_children(source_id, source_node)
 	}
 	// Build a field name -> type lookup from the struct definition
 	mut field_types := map[string]string{}
 	mut field_order := []string{cap: info.fields.len}
 	for f in info.fields {
-		field_types[f.name] = t.lookup_struct_field_type(node.value, f.name) or { f.typ }
+		field_types[f.name] = t.lookup_struct_field_type(struct_type, f.name) or { f.typ }
 		field_order << f.name
 	}
 	mut field_ids := []flat.NodeId{}
@@ -50,8 +60,8 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 	mut promoted_paths := map[string][]FieldInfo{}
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	for i in 0 .. node.children_count {
-		child_id := t.a.child(&node, i)
+	for i in 0 .. source_node.children_count {
+		child_id := t.a.child(&source_node, i)
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .field_init && child.children_count > 0 {
 			val_id := t.a.child(&child, 0)
@@ -78,13 +88,13 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				}
 			}
 			if field_type.len == 0 {
-				if path := t.struct_field_path_for_field(node.value, field_name) {
+				if path := t.struct_field_path_for_field(struct_type, field_name) {
 					if path.len > 0 {
 						promoted_key = promoted_field_path_key(path)
 						promoted_paths[promoted_key] = path
 						embedded_owner := path[path.len - 1].typ
 						field_type = t.lookup_struct_field_raw_type(embedded_owner, field_name) or {
-							t.checker_struct_field_type_name(node.value, field_name) or { '' }
+							t.checker_struct_field_type_name(struct_type, field_name) or { '' }
 						}
 					}
 				}
@@ -156,18 +166,39 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 	}
 	new_id := t.a.add_node(flat.Node{
 		kind:           .struct_init
-		op:             node.op
+		op:             source_node.op
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		pos:            node.pos
-		value:          node.value
-		typ:            if node.typ.len > 0 { node.typ } else { node.value }
+		pos:            source_node.pos
+		value:          struct_type
+		typ:            if source_node.typ.len > 0 { source_node.typ } else { struct_type }
 	})
 	final_id := t.add_missing_struct_defaults(new_id, t.a.nodes[int(new_id)])
 	for stmt in prelude {
 		t.pending_stmts << stmt
 	}
 	return final_id
+}
+
+fn (t &Transformer) selective_import_struct_type_name(name string) string {
+	if isnil(t.tc) || name.len == 0 {
+		return name
+	}
+	base, _, is_generic := generic_app_parts(name)
+	if base.contains('.') {
+		return name
+	}
+	candidates := t.tc.file_selective_imports[file_import_key(t.cur_file, base)] or { return name }
+	for candidate in candidates {
+		if candidate !in t.structs && candidate !in t.tc.structs {
+			continue
+		}
+		if is_generic {
+			return candidate + name[base.len..]
+		}
+		return candidate
+	}
+	return name
 }
 
 fn promoted_field_path_key(path []FieldInfo) string {

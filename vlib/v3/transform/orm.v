@@ -590,10 +590,12 @@ fn (mut t Transformer) sql_create_drop_table_call(stmt SqlTransformStmt, db_expr
 	t.record_generic_specialization_args_for_names([spec_name], [stmt.table.name])
 	t.sql_record_table_generic_spec(stmt.table.name)
 	callee := t.make_ident(spec_name)
-	return t.make_call_expr_typed(callee, [
+	call := t.make_call_expr_typed(callee, [
 		t.sql_db_connection_arg(db_expr),
 		t.make_attribute_array_literal(t.sql_table_attributes(stmt.table.name)),
 	], '!int')
+	t.set_node_value(int(call), 'generic_args:${stmt.table.name}')
+	return call
 }
 
 fn (mut t Transformer) sql_new_query_call(table_name string, db_expr flat.NodeId) flat.NodeId {
@@ -604,7 +606,7 @@ fn (mut t Transformer) sql_new_query_call(table_name string, db_expr flat.NodeId
 	callee := t.make_ident(spec_name)
 	qb_type := t.sql_query_builder_type(table_name)
 	mut qb := t.make_call_expr_typed(callee, [t.sql_db_connection_arg(db_expr)], qb_type)
-	t.set_node_value(int(qb), table_name)
+	t.set_node_value(int(qb), 'generic_args:${table_name}')
 	attrs := t.sql_table_attributes(table_name)
 	if attrs.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_table_attrs', [

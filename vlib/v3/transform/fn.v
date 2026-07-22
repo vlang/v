@@ -2005,6 +2005,7 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 	}
 	mut current := t.transform_expr(arg_id)
 	mut force_materialize := t.expr_is_overloaded_index_result(arg_id)
+		|| t.raw_const_type_name_for_expr(arg_id) != none
 	mut current_type := arg_type
 	mut current_depth := actual_depth
 	for current_depth < expected_depth {
@@ -2126,6 +2127,14 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
+	if param_type.starts_with('&') && arg_node.kind == .int_literal
+		&& (arg_node.value.len == 0 || arg_node.value == '0') {
+		// Integer zero is the traditional null pointer spelling accepted by V's C APIs.
+		// Preserve it as a null value instead of coercing it to the address of a literal.
+		value := t.transform_expr(arg_id)
+		t.set_node_typ(int(value), param_type)
+		return value
+	}
 	if t.in_spawn_expr && t.call_arg_has_shared_marker(arg_id) {
 		return t.transform_expr(arg_id)
 	}
@@ -3567,6 +3576,11 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 // `${enum}` stringification when the user has not defined a custom `.str()` — V auto-derives
 // one. Mirrors the struct-str qualification so the C name matches cgen's enum_decls naming.
 fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.NodeId {
+	qualified := t.enum_autostr_type_name(typ)
+	return t.make_call_typed('${c_name(qualified)}__autostr', arr1(expr), 'string')
+}
+
+fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	mut qualified := typ
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]
@@ -3577,7 +3591,16 @@ fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.Node
 			qualified = q
 		}
 	}
-	return t.make_call_typed('${c_name(qualified)}__autostr', arr1(expr), 'string')
+	short_name := qualified.all_after_last('.')
+	if qualified !in t.enum_types && short_name in t.enum_types {
+		return short_name
+	}
+	if !isnil(t.tc) && qualified !in t.tc.enum_names {
+		if short_name in t.tc.enum_names {
+			return short_name
+		}
+	}
+	return qualified
 }
 
 // wrap_string_conversion transforms wrap string conversion data for transform.
@@ -3968,7 +3991,7 @@ fn (mut t Transformer) lower_ref_interface_str(expr flat.NodeId, iface_name stri
 fn (mut t Transformer) lower_ref_str(expr flat.NodeId, aggregate string) flat.NodeId {
 	if str_fn := t.aggregate_str_method_name(aggregate) {
 		t.mark_fn_used_name(str_fn)
-		return t.lower_ref_str_guarded(expr, aggregate, true, str_fn, '&nil')
+		return t.lower_ref_str_guarded(expr, aggregate, false, str_fn, '&nil')
 	}
 	return t.lower_ref_str_prefixed(expr, aggregate)
 }
@@ -4565,7 +4588,7 @@ fn struct_string_display_name(typ string) string {
 // Unlike top-level stringification, V wraps an alias-typed field as `AliasName(value)` even
 // when the alias base is primitive (`d: Duration(42)`), unless the alias defines its own
 // str() method, which is used bare.
-fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string, owner_is_union bool) flat.NodeId {
+fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string, _owner_is_union bool) flat.NodeId {
 	mut clean := raw_field_type.trim_space()
 	if clean.starts_with('&') {
 		return t.lower_ref_value_str(expr, field_type, '&nil')
@@ -4971,13 +4994,16 @@ fn (mut t Transformer) mark_interface_method_implementers_used(iface_name string
 	if isnil(t.tc) {
 		return
 	}
+	t.collect_interface_boxed_types()
 	for concrete, _ in t.tc.structs {
-		if t.tc.named_type_implements_interface(concrete, iface_name) {
+		if t.interface_boxed_type_marked(iface_name, concrete)
+			&& t.tc.named_type_implements_interface(concrete, iface_name) {
 			t.mark_fn_used_name('${concrete}.${method}')
 		}
 	}
 	for concrete, _ in t.tc.type_aliases {
-		if t.tc.named_type_implements_interface(concrete, iface_name) {
+		if t.interface_boxed_type_marked(iface_name, concrete)
+			&& t.tc.named_type_implements_interface(concrete, iface_name) {
 			t.mark_fn_used_name('${concrete}.${method}')
 		}
 	}
@@ -5714,7 +5740,9 @@ fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) f
 				field_base_type = field_base_type[7..].trim_space()
 			}
 			if raw_type := t.lookup_struct_field_raw_type(field_base_type, selector.value) {
-				selector_type = raw_type
+				if !stringify_type_has_generic_placeholder(raw_type) {
+					selector_type = raw_type
+				}
 			} else if field_type := t.lookup_struct_field_type(field_base_type, selector.value) {
 				selector_type = field_type
 			}
@@ -5895,7 +5923,7 @@ fn current_receiver_matches_open_generic_base(receiver string, base string) bool
 
 fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat.NodeId {
 	key_type, raw_value_type := t.map_type_parts(map_type)
-	fixed_value_type := fixed_array_map_value_type_text(raw_value_type)
+	fixed_value_type := t.fixed_array_map_value_type_text(raw_value_type)
 	value_type := if fixed_value_type.len > 0 { fixed_value_type } else { raw_value_type }
 	if key_type.len == 0 || value_type.len == 0 {
 		return map_expr
@@ -6497,7 +6525,8 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 // replaces each owning element with an independent clone. The initial element copies
 // are non-owning and are overwritten without being dropped.
 fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat.NodeId, raw_fixed_type string) flat.NodeId {
-	fixed_type := t.resolved_fixed_array_canonical_type(raw_fixed_type)
+	fixed_type :=
+		t.receiver_type_text_source_fixed_spelling(t.resolved_fixed_array_canonical_type(raw_fixed_type))
 	elem_type := fixed_array_elem_type(fixed_type)
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return source
@@ -8358,6 +8387,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	}
 	match name {
 		'copy' {
+			if t.call_name_for_node(_id, node) !in ['copy', 'builtin.copy'] {
+				return none
+			}
 			return t.try_lower_copy_call(node)
 		}
 		'println', 'eprintln', 'print', 'eprint' {
@@ -9566,6 +9598,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		}
 	}
 	if actual == expected {
+		return true
+	}
+	if t.is_integer_type_name(expected) && t.is_integer_type_name(actual) {
+		return true
+	}
+	if expected in ['f32', 'f64'] && (actual in ['f32', 'f64'] || t.is_integer_type_name(actual)) {
 		return true
 	}
 	if t.expr_is_nil_like(arg_id)

@@ -409,6 +409,7 @@ pub struct Module {
 pub mut:
 	name       string
 	target     TargetData
+	track_uses bool = true
 	type_store TypeStore
 	values     []Value
 	instrs     []Instruction
@@ -439,6 +440,26 @@ pub fn Module.new() &Module {
 	return m
 }
 
+// release_codegen_analysis_metadata drops SSA analysis data that direct backends do not read.
+// Keeping a use-list allocation for every value through large native self-host emission can
+// otherwise retain several gigabytes after the optimizer has finished.
+pub fn (mut m Module) release_codegen_analysis_metadata() {
+	unsafe {
+		for mut value in m.values {
+			value.uses.free()
+			value.uses = []ValueID{}
+		}
+		for mut block in m.blocks {
+			block.preds.free()
+			block.preds = []BlockID{}
+			block.succs.free()
+			block.succs = []BlockID{}
+			block.dom_tree.free()
+			block.dom_tree = []BlockID{}
+		}
+	}
+}
+
 // add_value updates add value state for Module.
 pub fn (mut m Module) add_value(kind ValueKind, typ TypeID, name string, index int) ValueID {
 	id := ValueID(m.values.len)
@@ -465,14 +486,16 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 	mut blk := m.blocks[block]
 	blk.instrs << val_id
 	m.blocks[block] = blk
-	for oi, op_id in m.instrs[instr_idx].operands {
-		if !m.instrs[instr_idx].is_value_operand(oi) {
-			continue
-		}
-		if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
-			mut op_val := m.values[op_id]
-			op_val.uses << val_id
-			m.values[op_id] = op_val
+	if m.track_uses {
+		for oi, op_id in m.instrs[instr_idx].operands {
+			if !m.instrs[instr_idx].is_value_operand(oi) {
+				continue
+			}
+			if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
+				mut op_val := m.values[op_id]
+				op_val.uses << val_id
+				m.values[op_id] = op_val
+			}
 		}
 	}
 	return val_id
@@ -492,14 +515,16 @@ pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, oper
 	mut blk := m.blocks[block]
 	blk.instrs.prepend(val_id)
 	m.blocks[block] = blk
-	for oi, op_id in m.instrs[instr_idx].operands {
-		if !m.instrs[instr_idx].is_value_operand(oi) {
-			continue
-		}
-		if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
-			mut op_val := m.values[op_id]
-			op_val.uses << val_id
-			m.values[op_id] = op_val
+	if m.track_uses {
+		for oi, op_id in m.instrs[instr_idx].operands {
+			if !m.instrs[instr_idx].is_value_operand(oi) {
+				continue
+			}
+			if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
+				mut op_val := m.values[op_id]
+				op_val.uses << val_id
+				m.values[op_id] = op_val
+			}
 		}
 	}
 	return val_id
@@ -515,7 +540,7 @@ pub fn (mut m Module) append_phi_operands(phi_val_id ValueID, val ValueID, block
 	instr.operands << val
 	instr.operands << block_id
 	m.instrs[instr_idx] = instr
-	if val > 0 && val < m.values.len {
+	if m.track_uses && val > 0 && val < m.values.len {
 		if phi_val_id !in m.values[val].uses {
 			mut op_val := m.values[val]
 			op_val.uses << phi_val_id

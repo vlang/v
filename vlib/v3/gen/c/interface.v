@@ -1825,13 +1825,16 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			return g.interface_fixed_array_str_expr(clean, expr, mut stack)
 		}
 		types.Map {
-			key_kind := map_str_kind(g.tc, clean.key_type)
-			value_kind := map_str_kind(g.tc, clean.value_type)
-			fixed_len := map_str_fixed_len(clean.value_type)
-			return 'v3_map_str(${expr}, ${key_kind}, ${value_kind}, ${fixed_len})'
+			return g.interface_map_str_expr(clean, expr, mut stack)
+		}
+		types.OptionType {
+			return g.interface_optional_str_expr(clean.base_type, expr, mut stack)
+		}
+		types.ResultType {
+			return g.interface_optional_str_expr(clean.base_type, expr, mut stack)
 		}
 		types.Enum {
-			return '${g.cname(clean.name)}__autostr(${expr})'
+			return '${g.enum_autostr_c_name(clean.name)}__autostr(${expr})'
 		}
 		types.Struct {
 			if custom := g.interface_custom_str_expr(clean.name, types.Type(clean), expr) {
@@ -1880,15 +1883,27 @@ fn (mut g FlatGen) interface_pointer_str_expr(base_type types.Type, expr string,
 	tmp := g.interface_tmp('iface_str_ptr')
 	out := g.interface_tmp('iface_str_out')
 	mut inner := ''
-	if custom := g.interface_custom_str_expr(base_type.name(), ptr_type, tmp) {
-		inner = custom
-	} else {
-		inner = g.interface_implicit_str_expr(base_type, '*${tmp}', false, mut stack) or {
-			'ptr_str(${tmp})'
+	clean_base := g.interface_unaliased_type(base_type)
+	use_custom := base_type is types.Alias || clean_base is types.Struct
+	if use_custom {
+		if custom := g.interface_custom_str_expr(base_type.name(), ptr_type, tmp) {
+			inner = custom
 		}
 	}
-	return '({ ${ptr_ct} ${tmp} = (${ptr_ct})(${expr}); string ${out} = ${g.interface_str_lit('&nil')}; if (${tmp} != 0) { ${out} = ${g.interface_str_plus(g.interface_str_lit('&'),
-		inner)}; } ${out}; })'
+	if inner.len == 0 {
+		inner = g.interface_implicit_str_expr(base_type, '*${tmp}', clean_base is types.String, mut
+			stack) or { 'ptr_str(${tmp})' }
+	}
+	return '({ ${ptr_ct} ${tmp} = (${ptr_ct})(${expr}); string ${out} = ${g.interface_str_lit('&nil')}; if (${tmp} != 0) { ${out} = ${inner}; } ${out}; })'
+}
+
+fn (mut g FlatGen) interface_optional_str_expr(base_type types.Type, expr string, mut stack []string) ?string {
+	clean_base := g.interface_unaliased_type(base_type)
+	inner := g.interface_implicit_str_expr(base_type, '(${expr}).value',
+		clean_base is types.String, mut stack) or { g.interface_str_lit('<option value>') }
+	some := g.interface_str_plus(g.interface_str_plus(g.interface_str_lit('Option('), inner),
+		g.interface_str_lit(')'))
+	return '((${expr}).ok ? ${some} : ${g.interface_str_lit('Option(none)')})'
 }
 
 fn (mut g FlatGen) interface_array_str_expr(arr types.Array, expr string, mut stack []string) ?string {
@@ -1897,9 +1912,10 @@ fn (mut g FlatGen) interface_array_str_expr(arr types.Array, expr string, mut st
 	out := g.interface_tmp('iface_str_out')
 	idx := g.interface_tmp('iface_str_i')
 	item := '*(${elem_ct}*)((u8*)${tmp}.data + ${idx} * ${tmp}.element_size)'
-	item_str := g.interface_implicit_str_expr(arr.elem_type, item, true, mut stack) or {
+	mut item_str := g.interface_implicit_str_expr(arr.elem_type, item, true, mut stack) or {
 		g.interface_str_lit('<array value>')
 	}
+	item_str = 'v3_indent_multiline(${item_str})'
 	return '({ Array ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${tmp}.len; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out,
 		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out,
 		g.interface_str_lit(']'))}; })'
@@ -1911,12 +1927,35 @@ fn (mut g FlatGen) interface_fixed_array_str_expr(arr types.ArrayFixed, expr str
 	out := g.interface_tmp('iface_str_out')
 	idx := g.interface_tmp('iface_str_i')
 	item := '${tmp}[${idx}]'
-	item_str := g.interface_implicit_str_expr(arr.elem_type, item, true, mut stack) or {
+	mut item_str := g.interface_implicit_str_expr(arr.elem_type, item, true, mut stack) or {
 		g.interface_str_lit('<array value>')
 	}
+	item_str = 'v3_indent_multiline(${item_str})'
 	return '({ ${elem_ct}* ${tmp} = (${elem_ct}*)(${expr}); string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${arr.len}; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out,
 		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out,
 		g.interface_str_lit(']'))}; })'
+}
+
+fn (mut g FlatGen) interface_map_str_expr(map_type types.Map, expr string, mut stack []string) ?string {
+	key_ct := g.tc.c_type(map_type.key_type)
+	value_ct := g.tc.c_type(map_type.value_type)
+	tmp := g.interface_tmp('iface_str_map')
+	out := g.interface_tmp('iface_str_out')
+	idx := g.interface_tmp('iface_str_i')
+	key := '*(${key_ct}*)((u8*)${tmp}.key_values.keys + ${idx} * ${tmp}.key_values.key_bytes)'
+	value := '*(${value_ct}*)((u8*)${tmp}.key_values.values + ${idx} * ${tmp}.key_values.value_bytes)'
+	mut key_str := g.interface_implicit_str_expr(map_type.key_type, key, true, mut stack) or {
+		g.interface_str_lit('<map key>')
+	}
+	mut value_str := g.interface_implicit_str_expr(map_type.value_type, value, true, mut stack) or {
+		g.interface_str_lit('<map value>')
+	}
+	key_str = 'v3_indent_multiline(${key_str})'
+	value_str = 'v3_indent_multiline(${value_str})'
+	return '({ map ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('{')}; bool first = true; for (int ${idx} = 0; ${idx} < ${tmp}.key_values.len; ++${idx}) { if (${tmp}.key_values.deletes != 0 && ${tmp}.key_values.all_deleted != 0 && ${tmp}.key_values.all_deleted[${idx}] != 0) continue; if (!first) ${out} = ${g.interface_str_plus(out,
+		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, key_str)}; ${out} = ${g.interface_str_plus(out,
+		g.interface_str_lit(': '))}; ${out} = ${g.interface_str_plus(out, value_str)}; first = false; } ${g.interface_str_plus(out,
+		g.interface_str_lit('}'))}; })'
 }
 
 fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mut stack []string) ?string {
@@ -1925,7 +1964,7 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	if struct_name in stack {
 		return g.interface_str_lit(empty_struct)
 	}
-	fields := g.tc.structs[struct_name] or { return none }
+	fields := g.struct_fields_for_type(struct_name) or { return none }
 	if fields.len == 0 {
 		return g.interface_str_lit(empty_struct)
 	}
@@ -1936,7 +1975,7 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	tmp := g.interface_tmp('iface_str_struct')
 	out := g.interface_tmp('iface_str_out')
 	ct := g.cname(struct_name)
-	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('${display_name} {\n')};'
+	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('${display_name}{\n')};'
 	for field in fields {
 		field_expr := '${tmp}.${c_field_name(field.name)}'
 		field_clean_type := g.interface_unaliased_type(field.typ)
@@ -1946,6 +1985,7 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 			g.interface_implicit_str_expr(field.typ, field_expr, field_clean_type is types.String, mut
 				stack) or { g.interface_str_lit('<field value>') }
 		}
+		field_str = 'v3_indent_multiline(${field_str})'
 		body += ' ${out} = ${g.interface_str_plus(out, g.interface_str_lit('    ${field.name}: '))};'
 		body += ' ${out} = ${g.interface_str_plus(out, field_str)};'
 		body += ' ${out} = ${g.interface_str_plus(out, g.interface_str_lit('\n'))};'

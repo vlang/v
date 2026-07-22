@@ -3,6 +3,13 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_map_callback_names_uses_pointer_width_for_arc_keys() {
+	hash_fn, eq_fn, clone_fn, _ := map_callback_names('arc.Arc[Resource]')
+	assert hash_fn == 'map_hash_int_8'
+	assert eq_fn == 'map_eq_int_8'
+	assert clone_fn == 'map_clone_int_8'
+}
+
 fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 	_, _, numeric_fixed := generic_app_parts('C.sg_color_attachment_action[4]')
 	assert !numeric_fixed
@@ -37,6 +44,24 @@ fn test_flattened_generic_receiver_short_variants() {
 fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
 	t := Transformer{}
 	assert t.receiver_method_matches_type_name('Thing.str', 'pkg.Thing')
+}
+
+fn test_enum_autostr_type_name_uses_canonical_collected_enum() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.enum_names['AttributeKind'] = true
+	mut t := Transformer{
+		tc:         &tc
+		enum_types: {
+			'AttributeKind': []string{}
+		}
+	}
+
+	assert t.enum_autostr_type_name('orm.AttributeKind') == 'AttributeKind'
+	tc.enum_names['orm.AttributeKind'] = true
+	assert t.enum_autostr_type_name('orm.AttributeKind') == 'AttributeKind'
+	t.enum_types['orm.AttributeKind'] = []string{}
+	assert t.enum_autostr_type_name('orm.AttributeKind') == 'orm.AttributeKind'
 }
 
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {

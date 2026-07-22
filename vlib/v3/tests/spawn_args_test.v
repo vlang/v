@@ -38,7 +38,8 @@ fn assert_spawn_pthread_decls(c_code string) {
 	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
 	assert c_code.contains('typedef struct { pthread_t handle; } __v_thread;'), c_code
 	assert c_code.contains('static __v_thread __v_thread_spawn('), c_code
-	assert c_code.contains('static const size_t __v_thread_stack_size = 8388608;'), c_code
+	assert c_code.contains('#define V_THREAD_STACK_SIZE 8388608'), c_code
+	assert c_code.contains('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;'), c_code
 	assert c_code.contains('pthread_attr_setstacksize(&attr, __v_thread_stack_size);'), c_code
 	assert c_code.contains('pthread_create(&result.handle, &attr, (void*)start, arg);'), c_code
 	assert c_code.contains('int attr_rc = pthread_attr_destroy(&attr);'), c_code

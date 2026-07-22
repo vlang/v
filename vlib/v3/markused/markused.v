@@ -2389,7 +2389,7 @@ fn enqueue_implicit_interface_str_helpers_for_impl(iface_name string, method str
 
 fn enqueue_implicit_interface_str_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	mut seen := map[string]bool{}
-	enqueue_implicit_interface_str_helpers_inner(typ, tc, mut used, mut queue, mut seen)
+	enqueue_implicit_str_type_helpers(typ, tc, mut used, mut queue, mut seen)
 }
 
 fn markused_interface_method_is_plain_str(iface_name string, tc &types.TypeChecker) bool {
@@ -2400,56 +2400,6 @@ fn markused_interface_method_is_plain_str(iface_name string, tc &types.TypeCheck
 	}
 	params := tc.fn_param_types[key] or { return false }
 	return params.len == 1
-}
-
-fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
-	enqueue('string__plus', mut used, mut queue)
-	typ_name := typ.name()
-	if typ_name in seen {
-		return
-	}
-	seen[typ_name] = true
-	match typ {
-		types.Alias {
-			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut
-				seen)
-		}
-		types.Pointer {
-			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut
-				seen)
-		}
-		types.Primitive, types.Rune, types.Char, types.ISize, types.USize, types.String {
-			enqueue_stringified_primitive_helpers(types.Type(typ).name(), mut used, mut queue)
-		}
-		types.Enum {
-			enqueue('${markused_c_name(typ.name)}__autostr', mut used, mut queue)
-		}
-		types.Array {
-			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut
-				seen)
-		}
-		types.ArrayFixed {
-			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut
-				seen)
-		}
-		types.Map {
-			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'f64.str', 'f64__str',
-				'rune.str', 'rune__str'] {
-				enqueue(helper, mut used, mut queue)
-			}
-			enqueue_implicit_interface_str_helpers_inner(typ.key_type, tc, mut used, mut queue, mut
-				seen)
-			enqueue_implicit_interface_str_helpers_inner(typ.value_type, tc, mut used, mut queue, mut
-				seen)
-		}
-		types.Struct {
-			for field in tc.structs[typ.name] or { []types.StructField{} } {
-				enqueue_implicit_interface_str_helpers_inner(field.typ, tc, mut used, mut queue, mut
-					seen)
-			}
-		}
-		else {}
-	}
 }
 
 fn enqueue_implicit_interface_str_dispatch_helpers(iface_name string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {

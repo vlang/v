@@ -838,6 +838,14 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			// Prefer the instantiated signature over the template annotation. A
+			// generic call can normalize a public alias (for example sapp.Event)
+			// to its C typedef target, and the lowered optional/value temporaries
+			// must use the same payload type as the actual call result.
+			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
+			if t.is_optional_type_name(concrete_ret) {
+				return t.canonical_or_expr_types(concrete_ret)
+			}
 			if expr_node.children_count > 0 {
 				callee := t.a.child_node(&expr_node, 0)
 				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
@@ -852,10 +860,6 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			}
 			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
 				return t.canonical_or_expr_types(decode_ret)
-			}
-			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
-			if t.is_optional_type_name(concrete_ret) {
-				return t.canonical_or_expr_types(concrete_ret)
 			}
 			call_ret := t.get_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(call_ret) {

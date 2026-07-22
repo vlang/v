@@ -363,7 +363,7 @@ fn main() {
 	assert used['string__plus']
 }
 
-fn test_implicit_interface_str_dispatch_seeds_generated_helpers() {
+fn test_implicit_interface_str_dispatch_seeds_array_helpers() {
 	source := '
 interface Printable {
 	str() string
@@ -391,7 +391,7 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('array_get('), c_code
+	assert c_code.contains('_iface_str_arr_'), c_code
 }
 
 fn test_implicit_interface_str_dispatch_seeds_optional_payload_helpers() {
@@ -1618,7 +1618,8 @@ fn main() {
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('string__plus('), c_code
-	assert c_code.contains('v3_map_str('), c_code
+	assert c_code.contains('_iface_str_map_'), c_code
+	assert c_code.contains('v3_indent_multiline('), c_code
 	assert c_code.contains('f64__str('), c_code
 }
 

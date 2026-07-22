@@ -109,6 +109,11 @@ fn test_module_cache_split_uses_marker_lines() {
 	assert !header.contains('extern extern "C"')
 }
 
+fn test_module_cache_static_inline_attribute_is_not_static_storage() {
+	assert !modulecache.c_source_has_static_storage('static __inline void\natomic_thread_fence(int order __attribute__((unused)))\n{\n\t(void)order;\n}\n')
+	assert modulecache.c_source_has_static_storage('static int counter;\n')
+}
+
 fn test_module_cache_split_ignores_module_marker_text() {
 	source := '/* V3CACHE_BODY_BEGIN */\n/* V3CACHE_MODULE main */\nstatic string marker = {"/* V3CACHE_MODULE fake */", 25};\nint main(void) { return 0; }\n/* V3CACHE_BODY_END */\n'
 	split := modulecache.split_generated_c(source) or { panic(err) }
@@ -837,6 +842,9 @@ fn main() {
 	assert builtin_names.len == 1
 	builtin_name := builtin_names[0]
 	builtin_hash := first_hashes[builtin_name]
+	warm_output := os.join_path(root, 'warm')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, warm_output)
+	assert run_module_cache_binary(warm_output) == '7|v'
 
 	write_module_cache_file(root, 'main.v', 'module main
 
@@ -1459,7 +1467,7 @@ fn main() {}
 	header_path := module_cache_artifact(cache_dir, 'terminator_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('@[noreturn]\nfn die()')
+	assert header.contains('@[noreturn]\npub fn die()')
 	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')

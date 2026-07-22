@@ -168,6 +168,49 @@ fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 	return false
 }
 
+fn (t &Transformer) result_return_expr_is_ierror_payload(id flat.NodeId, result_type string) bool {
+	if isnil(t.tc) || !t.is_optional_type_name(result_type) || result_type[0] != `!` {
+		return false
+	}
+	payload_name := t.optional_base_type(t.qualify_optional_type(result_type))
+	if payload_name in ['IError', 'builtin.IError'] || t.is_interface_type_name(payload_name) {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.cast_expr, .struct_init] && node.value.len > 0
+		&& t.normalize_type_alias(node.value) != t.normalize_type_alias(payload_name)
+		&& t.type_name_or_alias_compatible_with_ierror(node.value) {
+		return true
+	}
+	actual := t.tc.resolve_type(id)
+	actual_name := actual.name()
+	if actual_name.len == 0 || actual_name == 'unknown' {
+		return false
+	}
+	if t.normalize_type_alias(actual_name) == t.normalize_type_alias(payload_name) {
+		return false
+	}
+	return actual_name in ['IError', 'builtin.IError']
+		|| t.type_name_or_alias_compatible_with_ierror(actual_name)
+}
+
+fn (t &Transformer) type_name_or_alias_compatible_with_ierror(name string) bool {
+	mut candidate := name
+	mut seen := map[string]bool{}
+	for candidate.len > 0 && !seen[candidate] {
+		seen[candidate] = true
+		if t.tc.named_type_compatible_with_ierror(candidate) {
+			return true
+		}
+		next := t.normalize_type_alias(candidate)
+		if next == candidate {
+			break
+		}
+		candidate = next
+	}
+	return false
+}
+
 fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {
 	if node.children_count != 1 || !t.is_optional_type_name(t.cur_fn_ret_type) {
 		return none

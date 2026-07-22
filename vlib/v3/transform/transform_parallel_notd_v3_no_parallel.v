@@ -89,11 +89,8 @@ mut:
 @[heap]
 struct MonomorphClaimState {
 mut:
-	mu        sync.Mutex
-	cond      &sync.Cond = unsafe { nil }
-	claimed   map[string]bool
-	queues    [][]PendingGenericFnSpec
-	remaining int
+	mu     sync.Mutex
+	queues [][]PendingGenericFnSpec
 }
 
 $if !windows {
@@ -117,10 +114,7 @@ $if !windows {
 		mut claims := a.claims
 		for {
 			claims.mu.lock()
-			for claims.queues[a.worker_idx].len == 0 && claims.remaining > 0 {
-				claims.cond.wait()
-			}
-			if claims.remaining == 0 {
+			if claims.queues[a.worker_idx].len == 0 {
 				claims.mu.unlock()
 				break
 			}
@@ -147,22 +141,6 @@ $if !windows {
 			}
 			roots << root
 			emitted_specs << spec
-			pending := w.pending_generic_fn_specs
-			w.pending_generic_fn_specs = []PendingGenericFnSpec{}
-			claims.mu.lock()
-			for request in pending {
-				if !claims.claimed[request.key] {
-					claims.claimed[request.key] = true
-					target := monomorph_spec_worker(request.key, claims.queues.len)
-					claims.queues[target] << request
-					claims.remaining++
-				} else {
-					w.pending_generic_fn_spec_keys.delete(request.key)
-				}
-			}
-			claims.remaining--
-			claims.cond.broadcast()
-			claims.mu.unlock()
 		}
 		mut scan_nodes := []int{cap: (w.a.nodes.len - generated_start) / 8}
 		for i in generated_start .. w.a.nodes.len {
@@ -266,15 +244,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		decls := t.cached_generic_fn_decls()
 		mut claims := &MonomorphClaimState{
-			claimed:   map[string]bool{}
-			queues:    [][]PendingGenericFnSpec{len: n_jobs}
-			remaining: specs.len
+			queues: [][]PendingGenericFnSpec{len: n_jobs}
 		}
-		claims.cond = sync.new_cond(&claims.mu)
 		for spec in specs {
-			claims.claimed[spec.key] = true
 			target := monomorph_spec_worker(spec.key, n_jobs)
-			claims.queues[target] << spec
+			mut queue := claims.queues[target]
+			queue << spec
+			claims.queues[target] = queue
 		}
 		mut args := []MonomorphChunkArgs{len: n_jobs}
 		args[0] = MonomorphChunkArgs{

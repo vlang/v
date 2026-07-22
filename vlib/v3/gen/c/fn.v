@@ -209,7 +209,9 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		is_program_fn := item.is_program_specialization
 			|| g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
 			|| (is_anon_fn && item.module in ['', 'main']) || g.test_files[item.file]
-			|| g.cache_program_files[item.file]
+			|| (is_anon_fn && g.test_modules[item.module])
+			|| g.cache_program_files[item.file] || (is_anon_fn && !g.cache_split
+			&& g.used_fn_contains_in_module(node.value, item.module))
 		if node.is_mut && item.file.ends_with('.vh') && !is_program_fn {
 			continue
 		}
@@ -663,7 +665,7 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		return 'v_free'
 	}
 	if name == 'new_map' {
-		return 'main__new_map'
+		return if g.tc.cur_module == 'builtin' { 'new_map' } else { 'main__new_map' }
 	}
 	if name == 'int_str' {
 		return 'int__str'
@@ -3002,12 +3004,18 @@ fn (mut g FlatGen) gen_shared_array_push_arg(marker string, arg_id flat.NodeId) 
 	wrapper := g.shared_wrapper_c_name(qualified)
 	mut value_id := arg_id
 	arg := g.a.nodes[int(arg_id)]
+	mut stripped_address := false
 	if arg.kind == .prefix && arg.op == .amp && arg.children_count > 0 {
 		value_id = g.a.child(&arg, 0)
+		stripped_address = true
 	}
 	value_type := g.tc.parse_type(qualified)
 	g.write('&(${wrapper}*[]){(${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = ')
-	g.gen_expr_with_expected_type(value_id, value_type)
+	if stripped_address {
+		g.gen_expr(value_id)
+	} else {
+		g.gen_expr_with_expected_type(value_id, value_type)
+	}
 	g.write('}, sizeof(${wrapper}))}')
 	return true
 }
@@ -4402,6 +4410,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 			mut call_args_name := fn_name
 			call_name := if user_name := g.main_runtime_shadow_call_c_name(node, fn_node) {
+				call_args_name = user_name
 				user_name
 			} else if resolved_target_name.len > 0 && resolved_target_name != fn_name {
 				call_args_name = resolved_target_name
@@ -7928,11 +7937,7 @@ fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
 // interpolation exactly — including `[flag]` enums' `Enum{.a | .b}` form, which the
 // old inline single-value ternary chain could not render.
 fn (mut g FlatGen) gen_enum_str_call(fn_node &flat.Node, enum_type types.Enum) {
-	mut name := enum_type.name
-	if name.starts_with('main.') {
-		name = name[5..]
-	}
-	g.write('${g.cname(name)}__autostr(')
+	g.write('${g.enum_autostr_c_name(enum_type.name)}__autostr(')
 	g.gen_expr(g.a.child(fn_node, 0))
 	g.write(')')
 }
@@ -8212,18 +8217,6 @@ fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []type
 			return params
 		}
 	}
-	if name.contains('__') {
-		dotted_name := name.replace('__', '.')
-		dotted_decl_types := g.param_types_from_decl(dotted_name, dotted_name)
-		for candidate in [dotted_name, dotted_name.all_after_last('.')] {
-			if params := g.tc.fn_param_types[candidate] {
-				return merge_decl_pointer_param_abi(params, dotted_decl_types)
-			}
-		}
-		if dotted_decl_types.len > 0 {
-			return dotted_decl_types
-		}
-	}
 	decl_types := g.param_types_from_decl(name, fallback)
 	for candidate in [name, fallback] {
 		if params := g.tc.fn_param_types[candidate] {
@@ -8238,6 +8231,18 @@ fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []type
 	}
 	if decl_types.len > 0 {
 		return decl_types
+	}
+	if name.contains('__') {
+		dotted_name := name.replace('__', '.')
+		dotted_decl_types := g.param_types_from_decl(dotted_name, dotted_name)
+		for candidate in [dotted_name, dotted_name.all_after_last('.')] {
+			if params := g.tc.fn_param_types[candidate] {
+				return merge_decl_pointer_param_abi(params, dotted_decl_types)
+			}
+		}
+		if dotted_decl_types.len > 0 {
+			return dotted_decl_types
+		}
 	}
 	if name.contains('__') {
 		short_name := name.all_after_last('__')
@@ -11688,7 +11693,8 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if g.c_directives_use_system_libc() && cfn in c_system_libc_preamble_declared_fns {
 		return false
 	}
-	if g.cache_split && cfn in c_cache_system_header_declared_fns {
+	if g.cache_split && (cfn in c_cache_headerless_declared_fns
+		|| (g.c_directives_use_system_libc() && cfn in c_cache_system_header_declared_fns)) {
 		return false
 	}
 	if cfn in c_preamble_declared_extern_symbols {
@@ -11733,6 +11739,7 @@ const c_system_libc_preamble_declared_fns = {
 	'bind':                          true
 	'chdir':                         true
 	'chmod':                         true
+	'chown':                         true
 	'clock_gettime_nsec_np':         true
 	'clock_gettime':                 true
 	'closedir':                      true
@@ -11743,26 +11750,38 @@ const c_system_libc_preamble_declared_fns = {
 	'fdopen':                        true
 	'feof':                          true
 	'ferror':                        true
+	'fgets':                         true
 	'fputs':                         true
 	'freeaddrinfo':                  true
 	'gai_strerror':                  true
 	'getaddrinfo':                   true
 	'getcwd':                        true
+	'getegid':                       true
+	'geteuid':                       true
+	'getgid':                        true
+	'gethostname':                   true
 	'getpid':                        true
 	'gettimeofday':                  true
 	'getuid':                        true
 	'gmtime_r':                      true
+	'getline':                       true
 	'inet_ntop':                     true
 	'ioctl':                         true
 	'isatty':                        true
+	'link':                          true
 	'localtime_r':                   true
 	'log':                           true
 	'lstat':                         true
 	'mkdir':                         true
+	'mkstemp':                       true
 	'mmap':                          true
 	'opendir':                       true
 	'popen':                         true
 	'printf':                        true
+	'puts':                          true
+	'pthread_getspecific':           true
+	'pthread_key_delete':            true
+	'pthread_setspecific':           true
 	'pthread_mutex_trylock':         true
 	'pthread_cond_timedwait':        true
 	'pthread_rwlock_init':           true
@@ -11774,12 +11793,14 @@ const c_system_libc_preamble_declared_fns = {
 	'rand':                          true
 	'readdir':                       true
 	'recv':                          true
+	'readlink':                      true
 	'rewind':                        true
 	'rmdir':                         true
 	'send':                          true
 	'sendto':                        true
 	'setsockopt':                    true
 	'shutdown':                      true
+	'sigemptyset':                   true
 	'sin':                           true
 	'sinf':                          true
 	'socket':                        true
@@ -11963,8 +11984,10 @@ const c_static_helper_symbols = {
 	'vschannel_cleanup':                   true
 	'vschannel_init':                      true
 	'v_prealloc_atomic_add_i32':           true
+	'v_prealloc_atomic_add_i64':           true
 	'v_prealloc_atomic_cas_i32':           true
 	'v_prealloc_atomic_load_i32':          true
+	'v_prealloc_atomic_load_i64':          true
 	'v_prealloc_atomic_store_i32':         true
 	'v_signal_with_handler_cast':          true
 	'wyhash':                              true
