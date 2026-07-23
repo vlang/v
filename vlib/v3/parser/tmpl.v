@@ -1059,9 +1059,12 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 	if node.kind in [.decl_assign, .assign] && node.children_count == 2 && node.op == .assign {
 		rhs_id := p.a.child(&node, 1)
 		rhs := p.a.nodes[int(rhs_id)]
-		if rhs.kind == .veb_template {
-			lhs_id := p.a.child(&node, 0)
-			lhs := p.a.nodes[int(lhs_id)]
+		lhs_id := p.a.child(&node, 0)
+		lhs := p.a.nodes[int(lhs_id)]
+		// Only a plain identifier target can be re-emitted from `lhs.value`; a selector
+		// (`page.body`) or index (`items[i]`) LHS would lose its receiver, so those fall
+		// through to the general path, which keeps the original assignment node intact.
+		if rhs.kind == .veb_template && lhs.kind == .ident {
 			bind_op := if node.kind == .decl_assign { ':=' } else { '=' }
 			// `mut x := $tmpl(...)` records its mutability on the decl_assign node
 			// (see mark_node_mut); re-emit `mut` so the reparsed binding is not
@@ -1244,7 +1247,11 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 	match node.kind {
 		.ident {
 			name := node.value
-			if name.len > 0 && name != '_' && name !in declared && name !in seen {
+			// Skip the builder's own bindings and imported module names — a module
+			// (`os` in `@{os.base(path)}`) is not a local variable and must not be
+			// captured. A module-qualified helper is still reachable inside the closure.
+			if name.len > 0 && name != '_' && name !in declared && name !in seen
+				&& name !in p.imported_module_names {
 				seen[name] = true
 				out << name
 			}

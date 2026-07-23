@@ -65,6 +65,7 @@ mut:
 	comptime_method_var               string   // innermost active `$for method in Type.methods` loop variable
 	comptime_const_values             map[string]string
 	comptime_local_values             map[string]string
+	imported_module_names             map[string]bool // import aliases in the current file; not captured by inlined template closures
 	comptime_value_undos              []ComptimeValueUndo
 	comptime_value_scopes             []int
 	pending_flag                      bool
@@ -141,6 +142,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		anonymous_struct_types:        map[string][]string{}
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
+		imported_module_names:         map[string]bool{}
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases:        map[string]bool{}
 		a:                             &flat.FlatAst{
@@ -239,6 +241,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_local_values.clear()
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
+	p.imported_module_names.clear()
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
@@ -2122,6 +2125,11 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 	if p.tok == .key_as {
 		p.next()
 		alias = p.expect_name()
+	}
+	// Record the module's in-file alias (the identifier used as a `mod.symbol` base) so
+	// an inlined template closure does not try to capture it as if it were a local.
+	if alias.len > 0 {
+		p.imported_module_names[alias] = true
 	}
 	// selective import: import mod { sym1, sym2 }
 	if p.tok == .lcbr {
