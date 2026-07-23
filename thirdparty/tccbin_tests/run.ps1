@@ -66,13 +66,22 @@ foreach ($dir in (Get-TestDirs)) {
         # returned, for short-lived processes - both reproduced locally).
         # ReadToEnd() blocks until the stream closes (i.e. the process has
         # actually finished producing output), so there's no race.
+        #
+        # stdout and stderr are read one async + one sync (not both
+        # ReadToEnd()'d sequentially) to avoid deadlocking: a process that
+        # writes enough to the stream read second to fill its OS pipe
+        # buffer before the stream read first closes would block forever,
+        # since nothing drains the second stream while ReadToEnd() blocks
+        # on the first - reproduced locally with a test program that only
+        # writes to stderr.
         $psi = [System.Diagnostics.ProcessStartInfo]::new($exe)
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
         $psi.UseShellExecute = $false
         $proc = [System.Diagnostics.Process]::Start($psi)
-        $stdoutText = $proc.StandardOutput.ReadToEnd()
+        $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
         $stderrText = $proc.StandardError.ReadToEnd()
+        $stdoutText = $stdoutTask.GetAwaiter().GetResult()
         $proc.WaitForExit()
         $code = $proc.ExitCode
         $out = $stdoutText + $stderrText
@@ -84,7 +93,11 @@ foreach ($dir in (Get-TestDirs)) {
         elseif ($code -ne [int]$expectExit) {
             $ok = $false
         }
-        if ($expectSubstr -ne "" -and $out -notmatch [regex]::Escape($expectSubstr)) {
+        # -notmatch is case-INSENSITIVE by default in PowerShell, which
+        # would make this laxer than run.sh's case-sensitive `case`
+        # pattern match and could miss a diagnostic-wording regression
+        # that only changes case. -cnotmatch forces case-sensitivity.
+        if ($expectSubstr -ne "" -and $out -cnotmatch [regex]::Escape($expectSubstr)) {
             $ok = $false
         }
 

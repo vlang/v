@@ -34,7 +34,7 @@ if [ -n "$platform" ] && [ -d "$here/platform/$platform" ]; then
     dirs+=("$here/platform/$platform")
 fi
 
-work=$(mktemp -d)
+work=$(mktemp -d) || exit 1
 trap 'rm -rf "$work"' EXIT
 
 passed=0
