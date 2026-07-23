@@ -1099,6 +1099,7 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_containers() {
 		return
 	}
 	mut boxed_containers := map[string][]string{}
+	mut runtime_type_names := []string{}
 	for key, _ in t.interface_boxed_types {
 		parts := key.split('\n')
 		if parts.len != 2 || (!parts[1].starts_with('[]') && !parts[1].starts_with('map[')) {
@@ -1112,8 +1113,10 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_containers() {
 		if parts[1] !in concrete_types {
 			concrete_types << parts[1]
 			boxed_containers[iface] = concrete_types
+			runtime_type_names << parts[1]
 		}
 	}
+	types.extend_stable_type_indexes(mut t.runtime_type_indexes, runtime_type_names)
 	mut refreshed := t.interface_impl_indexes.clone()
 	mut iface_names := t.interface_impl_indexes.keys()
 	iface_names.sort()

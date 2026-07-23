@@ -41,6 +41,14 @@ fn test_stable_type_indexes_extend_without_renumbering_existing_types() {
 	}
 }
 
+fn test_stable_type_indexes_resolve_boxed_container_collisions() {
+	assert stable_type_index('[]main.AQVA') == stable_type_index('[]main.CFGS')
+	assert stable_type_index('[]Aaxtc') == stable_type_index('[]Abddb')
+	indexes := stable_type_indexes(['[]main.AQVA', '[]main.CFGS', '[]Aaxtc', '[]Abddb'])
+	assert indexes['[]main.AQVA'] != indexes['[]main.CFGS']
+	assert indexes['[]Aaxtc'] != indexes['[]Abddb']
+}
+
 fn test_const_int_power_string_respects_unary_minus_precedence() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

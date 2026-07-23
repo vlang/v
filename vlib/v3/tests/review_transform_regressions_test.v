@@ -1640,6 +1640,22 @@ fn main() {
 	assert out == 'true\ntrue\ntrue\ntrue'
 }
 
+fn test_boxed_container_runtime_type_indexes_resolve_hash_collisions() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'boxed_container_runtime_type_index_hash_collisions', 'interface Value {}
+
+struct Aaxtc {}
+struct Abddb {}
+
+fn main() {
+	left := Value([Aaxtc{}])
+	right := Value([Abddb{}])
+	println(left.type_idx() != right.type_idx())
+}
+')
+	assert out == 'true'
+}
+
 fn test_runtime_type_indexes_resolve_hash_collisions() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'runtime_type_index_hash_collisions', 'interface Value {}
