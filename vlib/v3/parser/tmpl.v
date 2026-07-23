@@ -1499,6 +1499,37 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 				declared.delete(name)
 			}
 		}
+		.lambda_expr {
+			// A lambda's parameters are scoped to its body, not the enclosing template, so
+			// seed them as declared before walking the body: in `@{items.map(|item|
+			// item.name)}` the `item` inside belongs to the lambda and must NOT be captured
+			// into the outer IIFE (which would reference a non-existent outer `item`, or the
+			// wrong shadowed one). The body is the last child; the parameters precede it and
+			// are declaration targets, so they are declared rather than collected. Snapshot
+			// and restore the outer declared names (mirroring the loop/if-guard scoping) so an
+			// OUTER use of a shadowed name elsewhere is still captured, while a free outer var
+			// referenced inside the body (`|item| item.name + suffix`) still is too.
+			mut outer_declared := map[string]bool{}
+			for name in declared.keys() {
+				outer_declared[name] = true
+			}
+			for i in 0 .. int(node.children_count) - 1 {
+				p.declare_template_ident(p.a.child(&node, i), mut declared)
+			}
+			if node.children_count > 0 {
+				p.collect_template_free_idents(p.a.child(&node, int(node.children_count) - 1),
+					mut declared, mut seen, mut out, mut mut_names)
+			}
+			mut lambda_local := []string{}
+			for name in declared.keys() {
+				if name !in outer_declared {
+					lambda_local << name
+				}
+			}
+			for name in lambda_local {
+				declared.delete(name)
+			}
+		}
 		.selector {
 			// A selector's base (child 0) is normally a receiver local to capture — `user`
 			// in `@{user.name}` or a `recv.method` callee. But a type-qualified static or
