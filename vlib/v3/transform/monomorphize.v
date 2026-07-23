@@ -3465,7 +3465,29 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 		return t.lock_colliding_main_generic_type_text(direct, decl.module)
 	}
 	substituted := substitute_generic_type_text_with_params(typ, args, params)
-	qualified := t.qualify_specialized_signature_type_text(substituted, decl)
+	// The scalar `direct` branch above pins a colliding main type to `main.` before it can be
+	// rebased into the decl module. A composite (`fn (T)`, `[]T`, `map[string]T`) hides that
+	// type from the direct check, so lock it here too: otherwise the decl-module qualify below
+	// rebases a nested main `Context` to the decl module's own `Context`, giving the callback
+	// or element the wrong ABI. Only lock when substitution actually replaced a generic
+	// parameter (mirroring the param clone in clone_generic_node): a decl-module type that
+	// appears verbatim (e.g. the method receiver `Builder`) must not be locked, or the lock
+	// over-fires its own homonym to a non-existent `main.Builder`.
+	locked := if substituted != typ {
+		t.lock_colliding_main_generic_type_text(substituted, decl.module)
+	} else {
+		substituted
+	}
+	qualified := t.qualify_specialized_signature_type_text(locked, decl)
+	// A composite that carries a collision-locked `main.` type (e.g. `fn (main.Context)`
+	// from `fn wrap[T](cb fn (T))` specialized with a main `Context`) must not go through
+	// the parse + name() round-trip below: name() renders `main.Context` back to a bare
+	// `Context`, which the decl module then rebinds to its own homonym, giving the callback
+	// the wrong ABI. Return the locked/qualified spelling directly, as the scalar `direct`
+	// branch above already does for a locked scalar.
+	if locked != substituted && qualified.contains('main.') {
+		return qualified
+	}
 	is_shared := qualified.trim_space().starts_with('shared ')
 	if isnil(t.tc) {
 		return qualified
@@ -9433,6 +9455,24 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 			}
 		}
 	}
+	// A function type resolves its parameter and return types independently (keeping a bare
+	// program type bare) so the caller's lock can pin a nested `Context` to `main.` instead
+	// of parse_resolution_type rebasing the whole `fn (Context)` into the current module.
+	// Handled regardless of a `.` elsewhere in the signature so mixed types stay correct.
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut resolved_params := []string{cap: params.len}
+			for param in params {
+				resolved_params << t.resolve_substituted_type_text(param)
+			}
+			resolved_ret := t.resolve_substituted_type_text(ret)
+			return if resolved_ret.len > 0 {
+				'fn (${resolved_params.join(', ')}) ${resolved_ret}'
+			} else {
+				'fn (${resolved_params.join(', ')})'
+			}
+		}
+	}
 	parsed := t.tc.parse_resolution_type(clean)
 	if parsed is types.Unknown {
 		return typ
@@ -9471,6 +9511,36 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
 		if clean.starts_with(prefix) {
 			return prefix + t.lock_colliding_main_generic_type_text(clean[prefix.len..], module_name)
+		}
+	}
+	// A function type hides its parameter and return types from the scalar checks below,
+	// so a bare main type nested in `fn (T)` / `fn (T) R` (e.g. the callback of
+	// `fn wrap[T](cb fn (T))` specialized with a colliding `Context`) would otherwise be
+	// parsed in the callee module as that module's type. Recurse through each parameter and
+	// the return type, rebuilding only when a component actually changed.
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut changed := false
+			mut locked_params := []string{cap: params.len}
+			for param in params {
+				locked := t.lock_colliding_main_generic_type_text(param, module_name)
+				if locked != param.trim_space() {
+					changed = true
+				}
+				locked_params << locked
+			}
+			locked_ret := t.lock_colliding_main_generic_type_text(ret, module_name)
+			if locked_ret != ret {
+				changed = true
+			}
+			if changed {
+				return if locked_ret.len > 0 {
+					'fn (${locked_params.join(', ')}) ${locked_ret}'
+				} else {
+					'fn (${locked_params.join(', ')})'
+				}
+			}
+			return clean
 		}
 	}
 	// A composite must lock its component types even behind a qualified base: a bare main
