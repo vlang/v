@@ -1279,7 +1279,6 @@ vlib/v/tests/comptime/comptime_variant_interp_test.v
 vlib/v/tests/comptime/comptime_variant_test.v
 vlib/v/tests/comptime/comptime_voidptr_unsafe_nil_test.v
 vlib/v/tests/comptime_generic_comptime_variant_test.v
-vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/concurrency/atomic_test.v
 vlib/v/tests/concurrency/autolock_array1_test.v
 vlib/v/tests/concurrency/autolock_array2_test.v

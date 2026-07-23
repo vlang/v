@@ -4424,12 +4424,15 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.peek() == .key_for {
 		return p.parse_comptime_if()
 	}
+	dollar_pos := p.tok_pos
 	p.next() // skip $
 	match p.tok {
 		.key_typeof {
+			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
 			return p.typeof_expr()
 		}
 		.key_sizeof {
+			p.record_diagnostic('`$sizeof` is not supported; use `sizeof(...)` instead', dollar_pos)
 			return p.sizeof_expr()
 		}
 		.key_isreftype {

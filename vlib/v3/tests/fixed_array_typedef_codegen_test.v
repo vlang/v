@@ -196,6 +196,42 @@ fn main() {
 	assert run.output.trim_space() == '7', run.output
 }
 
+fn test_sizeof_pointer_fixed_array_typedef_precedes_function_pointer() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('sizeof_pointer_fn_ptr', 'module fixture
+', 'module main
+
+struct Payload {
+	value int
+}
+
+type IntPointerCallback = fn ([sizeof(&int)]u8) int
+type StructPointerCallback = fn ([sizeof(&Payload)]u8) int
+
+fn int_pointer_size(data [sizeof(&int)]u8) int {
+	return data.len
+}
+
+fn struct_pointer_size(data [sizeof(&Payload)]u8) int {
+	return data.len
+}
+
+fn main() {
+	int_callback := IntPointerCallback(int_pointer_size)
+	struct_callback := StructPointerCallback(struct_pointer_size)
+	int_data := [sizeof(&int)]u8{}
+	struct_data := [sizeof(&Payload)]u8{}
+	println(int_callback(int_data) + struct_callback(struct_data))
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}
+
 fn test_sizeof_struct_fixed_array_typedef_is_emitted_when_target_is_defined() {
 	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('sizeof_struct', 'module fixture

@@ -9307,6 +9307,11 @@ fn (mut g FlatGen) fixed_array_elem_c_type(elem types.Type) string {
 }
 
 fn (mut g FlatGen) fixed_array_c_type(arr types.ArrayFixed) string {
+	// Function signatures use TypeChecker.c_type(), whose fixed-array name preserves
+	// the V spelling of pointer sizeof targets. Keep the emitted typedef identical.
+	if arr.len_expr.contains('sizeof(&') {
+		return g.tc.c_type(arr)
+	}
 	len_text := g.fixed_array_len_value(arr)
 	// Const-expression rendering can inherit the current writer indentation.
 	// Whitespace is immaterial to the C dimension and must not change the typedef name.
@@ -14471,6 +14476,10 @@ fn (mut g FlatGen) fixed_array_len_types_are_early_complete(arr types.ArrayFixed
 			return false
 		}
 		target := expr[open + 1..close].trim_space()
+		if target.ends_with('*') {
+			offset = close + 1
+			continue
+		}
 		if !g.fixed_array_len_type_is_early_complete(g.tc.parse_type(target)) {
 			return false
 		}

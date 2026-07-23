@@ -25,6 +25,15 @@ fn parse_parser_regression_sources(name string, sources []string) &flat.FlatAst 
 	return p.a
 }
 
+fn parse_parser_regression_diagnostics(name string, source string) []parser.Diagnostic {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(src)
+	return p.diagnostics
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
@@ -171,6 +180,14 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 		}
 	}
 	assert false_literals == 2
+}
+
+fn test_dollar_prefixed_sizeof_and_typeof_are_rejected() {
+	diagnostics := parse_parser_regression_diagnostics('dollar_sizeof_typeof',
+		'fn main() {\n\tx := 1\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n}\n')
+	assert diagnostics.len == 2, '${diagnostics}'
+	assert diagnostics[0].message.contains('`$sizeof` is not supported'), '${diagnostics}'
+	assert diagnostics[1].message.contains('`$typeof` is not supported'), '${diagnostics}'
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {
