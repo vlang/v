@@ -9160,6 +9160,15 @@ fn substitute_generic_type_text_with_params(typ string, args []string, params []
 	if clean.starts_with('shared ') {
 		return 'shared ' + substitute_generic_type_text_with_params(clean[7..], args, params)
 	}
+	// A `chan T` / `thread T` payload is a generic parameter too; substitute it so the clone
+	// emits `chan Context` / `thread Context` rather than leaving the placeholder `chan T`,
+	// which later resolves the unsubstituted `T` to a bogus `int` channel/thread element.
+	if clean.starts_with('chan ') {
+		return 'chan ' + substitute_generic_type_text_with_params(clean[5..], args, params)
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + substitute_generic_type_text_with_params(clean[7..], args, params)
+	}
 	if clean.starts_with('[]') {
 		return '[]' + substitute_generic_type_text_with_params(clean[2..], args, params)
 	}
@@ -9455,6 +9464,18 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 			}
 		}
 	}
+	// `chan T` / `thread T` carry a single payload type; a bare program type there
+	// (`chan Context` where the callee module also declares `Context`) must be resolved
+	// independently and kept bare so the caller's lock can pin it to `main.`, instead of
+	// parse_resolution_type rebasing the payload into the current module. Handled regardless
+	// of a `.` elsewhere (`chan other.Box[Context]`), mirroring how the type checker qualifies
+	// chan/thread payloads.
+	if clean.starts_with('chan ') {
+		return 'chan ' + t.resolve_substituted_type_text(clean[5..])
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + t.resolve_substituted_type_text(clean[7..])
+	}
 	// A function type resolves its parameter and return types independently (keeping a bare
 	// program type bare) so the caller's lock can pin a nested `Context` to `main.` instead
 	// of parse_resolution_type rebasing the whole `fn (Context)` into the current module.
@@ -9542,6 +9563,16 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 			}
 			return clean
 		}
+	}
+	// `chan T` / `thread T` hide a bare program payload just like a composite: a colliding
+	// `Context` in `chan Context` / `thread Context` must be locked to `main.`, or the callee
+	// module rebases the payload to its own type. Recurse through the payload; an unchanged
+	// payload rebuilds to a byte-identical spelling.
+	if clean.starts_with('chan ') {
+		return 'chan ' + t.lock_colliding_main_generic_type_text(clean[5..], module_name)
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + t.lock_colliding_main_generic_type_text(clean[7..], module_name)
 	}
 	// A composite must lock its component types even behind a qualified base: a bare main
 	// `Context` nested in `map[string]Context`, `[3]Context`, `Box[Context]` or
