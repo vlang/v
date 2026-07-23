@@ -1,0 +1,12 @@
+type Num = u8 | u16
+
+fn (n Num) str() string {
+	return match n {
+		u8 { n.str() }
+		else { n.str() }
+	}
+}
+
+fn main() {
+	println(Num(u16(0)))
+}
