@@ -1331,9 +1331,25 @@ fn (mut p Parser) inline_templates_as_closures(id flat.NodeId) {
 	if node.kind in veb_template_stmt_scope_kinds {
 		return
 	}
-	// A `lambda_expr` body is a bare expression whose templates render when the lambda runs,
-	// so it is NOT skipped here: descend and inline them in place (also handling a lambda that
-	// sits inside a short-circuit operand, this function's other caller).
+	if node.kind == .lambda_expr {
+		// A `lambda_expr` body is a bare expression whose templates render when the lambda runs,
+		// so it is NOT skipped here: descend and inline them in place (this also covers a lambda
+		// inside a short-circuit operand, this function's other caller). Register the lambda's
+		// parameters as local bindings first, scoped to the body, so a template that calls a
+		// function-valued parameter (`|render| $tmpl(...)` with `@{render(row)}`) captures
+		// `render` — collect_template_free_idents only captures a bare callee that
+		// is_local_binding(), and nested lambdas push their own scope on top. The body is the
+		// last child; the parameters precede it.
+		p.begin_local_binding_scope()
+		for i in 0 .. int(node.children_count) - 1 {
+			p.declare_local_binding_node(p.a.child(&node, i))
+		}
+		if node.children_count > 0 {
+			p.inline_templates_as_closures(p.a.child(&node, int(node.children_count) - 1))
+		}
+		p.end_local_binding_scope()
+		return
+	}
 	for i in 0 .. node.children_count {
 		p.inline_templates_as_closures(p.a.child(&node, i))
 	}
@@ -1352,11 +1368,10 @@ fn (mut p Parser) inline_lambda_body_templates(id flat.NodeId) {
 	}
 	node := p.a.nodes[int(id)]
 	if node.kind == .lambda_expr {
-		// inline_templates_as_closures descends through the whole lambda subtree (its body and
-		// any nested expression lambdas), stopping only at separately-parsed statement bodies.
-		for i in 0 .. node.children_count {
-			p.inline_templates_as_closures(p.a.child(&node, i))
-		}
+		// inline_templates_as_closures registers this lambda's parameters as local bindings and
+		// descends through its whole subtree (its body and any nested expression lambdas),
+		// stopping only at separately-parsed statement bodies.
+		p.inline_templates_as_closures(id)
 		return
 	}
 	if node.kind in veb_template_stmt_scope_kinds {
