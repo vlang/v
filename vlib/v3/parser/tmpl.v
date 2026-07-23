@@ -1165,6 +1165,10 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 	// it runs only when the guard allows. The hoist collection below skips those
 	// operands, so this is what keeps their placeholders from leaking.
 	p.replace_short_circuit_templates(stmt_id)
+	// A template inside an expression-bodied lambda (`rows.map(|r| $tmpl('row.txt'))`) is neither
+	// hoistable (it renders when the lambda runs) nor re-expanded via parse_block_body, so lower
+	// it in place here; the hoist collection below skips lambda bodies, so this prevents leaks.
+	p.inline_lambda_body_templates(stmt_id)
 	// General case: a `$tmpl(...)` / `$veb.html()` used as a subexpression (e.g.
 	// `ctx.html($tmpl('x.html'))`, `bump() + $tmpl('x.html')`, `f(bump(), $tmpl('x.html'))`).
 	// Render each placeholder in place as an immediately-invoked closure rather than
@@ -1186,16 +1190,24 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 	return [stmt_id]
 }
 
-// veb_template_no_descend_kinds are the hard scope boundaries whose contents are never
-// reached from the enclosing statement: nested function bodies (`fn_literal`/
-// `lambda_expr`/`fn_decl`) and separately-parsed blocks (`block`). A `$tmpl()` inside
-// those is handled where the inner scope itself is parsed, not here. Constructs with an
-// unconditional header/source but conditional/scoped bodies — `if_expr`/`match_stmt`
-// (control expression), `for_stmt` (loop header) and `or_expr` (guarded source
-// expression) — are NOT listed here; they are special-cased so their header runs are
-// descended into while their bodies/or-blocks are left to be parsed on their own.
+// veb_template_no_descend_kinds are the scope boundaries the hoist collector and the
+// short-circuit pass never reach into from the enclosing statement: nested function bodies
+// (`fn_literal`/`lambda_expr`/`fn_decl`) and separately-parsed blocks (`block`). A template in a
+// `fn_literal`/`fn_decl`/`block` body is expanded where that body is parsed (parse_block_body); a
+// template in a `lambda_expr` body cannot be hoisted (it must render when the lambda runs) and is
+// instead lowered in place by inline_lambda_body_templates. Constructs with an unconditional
+// header/source but conditional/scoped bodies — `if_expr`/`match_stmt` (control expression),
+// `for_stmt` (loop header) and `or_expr` (guarded source expression) — are NOT listed here; they
+// are special-cased so their header runs are descended into while their bodies/or-blocks are left
+// to be parsed on their own.
 const veb_template_no_descend_kinds = [flat.NodeKind.fn_literal, .lambda_expr, .fn_decl,
 	.block]
+
+// veb_template_stmt_scope_kinds are the nested STATEMENT-body scopes whose templates are expanded
+// where the body is parsed (parse_block_body), so an in-place inliner must not reach into them. A
+// `lambda_expr` is intentionally absent: its body is a bare expression that is never re-expanded,
+// so inline_templates_as_closures descends into it and lowers the template at its own position.
+const veb_template_stmt_scope_kinds = [flat.NodeKind.fn_literal, .fn_decl, .block]
 
 // collect_veb_template_node_ids gathers the `.veb_template` placeholders in the subtree
 // rooted at `id` that are safe to hoist into the current statement — i.e. reached only
@@ -1316,11 +1328,44 @@ fn (mut p Parser) inline_templates_as_closures(id flat.NodeId) {
 		}
 		return
 	}
-	if node.kind in veb_template_no_descend_kinds {
+	if node.kind in veb_template_stmt_scope_kinds {
+		return
+	}
+	// A `lambda_expr` body is a bare expression whose templates render when the lambda runs,
+	// so it is NOT skipped here: descend and inline them in place (also handling a lambda that
+	// sits inside a short-circuit operand, this function's other caller).
+	for i in 0 .. node.children_count {
+		p.inline_templates_as_closures(p.a.child(&node, i))
+	}
+}
+
+// inline_lambda_body_templates lowers, in place, every `$tmpl()`/`$veb.html()` inside an
+// expression-bodied lambda (`rows.map(|r| $tmpl('row.txt'))`, `cb := || $tmpl('x.txt')`). A
+// lambda body is parsed as a bare expression and — unlike a `fn_literal`/`fn_decl`/`block` body —
+// is never re-expanded via parse_block_body, so its `.veb_template` placeholders would otherwise
+// leak past the parser (the hoist collector deliberately skips lambda bodies). They also cannot be
+// hoisted out of the closure (they must render when the lambda is called), so each is replaced by
+// an inline IIFE at its own position, capturing the lambda's parameters like any other local.
+fn (mut p Parser) inline_lambda_body_templates(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .lambda_expr {
+		// inline_templates_as_closures descends through the whole lambda subtree (its body and
+		// any nested expression lambdas), stopping only at separately-parsed statement bodies.
+		for i in 0 .. node.children_count {
+			p.inline_templates_as_closures(p.a.child(&node, i))
+		}
+		return
+	}
+	if node.kind in veb_template_stmt_scope_kinds {
+		// A `fn_literal`/`fn_decl`/`block` body is parsed on its own; its lambdas are lowered
+		// when that body is expanded, so descending here would double-process them.
 		return
 	}
 	for i in 0 .. node.children_count {
-		p.inline_templates_as_closures(p.a.child(&node, i))
+		p.inline_lambda_body_templates(p.a.child(&node, i))
 	}
 }
 
