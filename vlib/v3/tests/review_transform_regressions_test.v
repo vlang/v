@@ -1640,6 +1640,29 @@ fn main() {
 	assert out == 'true\ntrue\ntrue\ntrue'
 }
 
+fn test_runtime_type_indexes_resolve_hash_collisions() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'runtime_type_index_hash_collisions', 'interface Value {}
+
+struct ULz {}
+struct AAbA {}
+struct Uc {}
+struct ACRB {}
+
+type Pair = ULz | AAbA
+
+fn main() {
+	left := Pair(ULz{})
+	right := Pair(AAbA{})
+	first := Value(Uc{})
+	second := Value(ACRB{})
+	println(left.type_idx() != right.type_idx())
+	println(first.type_idx() != second.type_idx())
+}
+')
+	assert out == 'true\ntrue'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

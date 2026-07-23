@@ -3499,7 +3499,7 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
-		if arg_type is MultiReturn && i == node.children_count - 1 {
+		if !info.is_variadic && arg_type is MultiReturn && i == node.children_count - 1 {
 			actual_count += arg_type.types.len - 1
 		}
 	}
@@ -3523,7 +3523,7 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 			continue
 		}
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
-		if arg_type is MultiReturn && i == node.children_count - 1
+		if !info.is_variadic && arg_type is MultiReturn && i == node.children_count - 1
 			&& arg_type.types.len == info.params.len - param_idx {
 			expanded_arg_offset += arg_type.types.len - 1
 			continue
@@ -16734,7 +16734,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
-		if arg_type is MultiReturn && i == node.children_count - 1 {
+		if !info.is_variadic && arg_type is MultiReturn && i == node.children_count - 1 {
 			actual_count += arg_type.types.len - 1
 		}
 	}
@@ -16896,7 +16896,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.check_node(check_arg_id)
 		}
 		multi_arg_type := tc.cached_expr_type(check_arg_id) or { tc.resolve_type(check_arg_id) }
-		if multi_arg_type is MultiReturn && i == node.children_count - 1
+		if !info.is_variadic && multi_arg_type is MultiReturn && i == node.children_count - 1
 			&& multi_arg_type.types.len == info.params.len - param_idx {
 			for multi_idx, actual in multi_arg_type.types {
 				multi_param_idx := param_idx + multi_idx
@@ -24078,7 +24078,8 @@ fn stable_interface_type_id_hash(name string) int {
 	return if id == 0 { 1 } else { id }
 }
 
-// stable_type_index returns the deterministic nonzero runtime index for a named type.
+// stable_type_index returns the deterministic nonzero runtime-index seed for a named type.
+// Use stable_type_indexes when assigning indexes across a complete program type set.
 pub fn stable_type_index(name string) int {
 	mut type_idx := stable_interface_type_id_hash(name) & ~(0xff << 16)
 	if type_idx < 65536 {
@@ -24086,6 +24087,66 @@ pub fn stable_type_index(name string) int {
 		type_idx |= 1 << 24
 	}
 	return type_idx
+}
+
+// stable_type_indexes assigns deterministic, collision-free runtime indexes to
+// the complete caller-supplied program type set.
+pub fn stable_type_indexes(type_names []string) map[string]int {
+	mut names := type_names.clone()
+	names.sort()
+	mut indexes := map[string]int{}
+	mut used := map[int]bool{}
+	for raw_name in names {
+		name := raw_name.trim_space()
+		if name.len == 0 || name in indexes {
+			continue
+		}
+		mut type_idx := stable_type_index(name)
+		for used[type_idx] {
+			type_idx = next_stable_type_index(type_idx)
+		}
+		indexes[name] = type_idx
+		used[type_idx] = true
+	}
+	return indexes
+}
+
+fn next_stable_type_index(type_idx int) int {
+	if type_idx & 0xffff < 0xffff {
+		return type_idx + 1
+	}
+	high_bits := type_idx & 0x7f000000
+	return if high_bits < 0x7f000000 { high_bits + (1 << 24) } else { 1 << 24 }
+}
+
+// runtime_type_index_names returns the canonical program type names that can
+// participate in runtime interface/sum type_idx() lowering.
+pub fn (tc &TypeChecker) runtime_type_index_names() []string {
+	mut names := map[string]bool{}
+	for name, _ in tc.structs {
+		names[name] = true
+	}
+	for name, variants in tc.sum_types {
+		names[name] = true
+		for variant in variants {
+			names[variant] = true
+		}
+	}
+	for name, _ in tc.enum_names {
+		names[name] = true
+	}
+	for name, _ in tc.type_aliases {
+		names[name] = true
+	}
+	for name, _ in tc.interface_names {
+		names[name] = true
+	}
+	for _, index in tc.interface_impl_indexes {
+		for name in index.names {
+			names[name] = true
+		}
+	}
+	return names.keys()
 }
 
 pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool {

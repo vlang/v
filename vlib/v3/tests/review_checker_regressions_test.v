@@ -190,6 +190,9 @@ fn test_multi_return_arguments_must_consume_the_parameter_tail() {
 	run_bad(v3_bin, 'bad_non_tail_multi_return_argument',
 		'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn consume(a int, b int, c int) {}\n\nfn main() {\n\tconsume(pair(), 3)\n}\n',
 		'argument count mismatch for `consume`: expected 3, got 2')
+	run_bad(v3_bin, 'bad_variadic_multi_return_argument',
+		'fn pair() (int, []int) {\n\treturn 1, [2, 3]\n}\n\nfn consume(a int, rest ...int) {}\n\nfn main() {\n\tconsume(pair())\n}\n',
+		'cannot use `(int, []int)` as argument 1 to `consume`; expected `int`')
 }
 
 fn test_receiver_method_tail_multi_return_arguments_are_expanded() {

@@ -14,6 +14,20 @@ fn test_stable_type_index_keeps_custom_types_above_builtin_range() {
 	assert type_id & (0xff << 16) == 0
 }
 
+fn test_stable_type_indexes_resolve_custom_type_collisions() {
+	assert stable_type_index('ULz') == stable_type_index('AAbA')
+	assert stable_type_index('main.Uc') == stable_type_index('main.ACRB')
+	indexes := stable_type_indexes(['ULz', 'AAbA', 'main.Uc', 'main.ACRB'])
+	reversed := stable_type_indexes(['main.ACRB', 'main.Uc', 'AAbA', 'ULz'])
+	assert indexes == reversed
+	assert indexes['ULz'] != indexes['AAbA']
+	assert indexes['main.Uc'] != indexes['main.ACRB']
+	for _, type_idx in indexes {
+		assert type_idx > 65535
+		assert type_idx & (0xff << 16) == 0
+	}
+}
+
 fn test_const_int_power_string_respects_unary_minus_precedence() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

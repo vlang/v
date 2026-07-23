@@ -106,6 +106,7 @@ mut:
 	const_suffixes                map[string]string
 	enum_types                    map[string][]string
 	enum_backing_types            map[string]string
+	runtime_type_indexes          map[string]int
 	cur_file                      string
 	cur_module                    string
 	cur_fn_name                   string
@@ -1008,6 +1009,7 @@ fn local_method_fn_name_needs_module_prefix(name string) bool {
 
 fn (mut t Transformer) prepare() {
 	t.collect_types()
+	t.prepare_runtime_type_indexes()
 	t.rebuild_struct_short_name_index()
 	t.collect_multi_return_fn_ret_types()
 	t.collect_const_suffixes()
@@ -1033,6 +1035,14 @@ fn (mut t Transformer) prepare() {
 	}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
+}
+
+fn (mut t Transformer) prepare_runtime_type_indexes() {
+	if isnil(t.tc) {
+		t.runtime_type_indexes = map[string]int{}
+		return
+	}
+	t.runtime_type_indexes = types.stable_type_indexes(t.tc.runtime_type_index_names())
 }
 
 fn (mut t Transformer) prepare_interface_impl_indexes() {
@@ -2648,6 +2658,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		const_suffixes:                     t.const_suffixes
 		enum_types:                         t.enum_types
 		enum_backing_types:                 t.enum_backing_types
+		runtime_type_indexes:               t.runtime_type_indexes
 		generic_alias_names:                t.generic_alias_names
 		local_decl_nodes_by_name:           t.local_decl_nodes_by_name
 		struct_field_decl_metas_cache:      t.struct_field_decl_metas_cache
@@ -14968,7 +14979,8 @@ fn (t &Transformer) type_index_for_type_name(type_name string) int {
 		return builtin_idx | indirection_bits
 	}
 	normalized := t.normalize_type_in_module(base_name, t.cur_module)
-	base_idx := types.stable_type_index(if normalized.len > 0 { normalized } else { base_name })
+	index_name := if normalized.len > 0 { normalized } else { base_name }
+	base_idx := t.runtime_type_indexes[index_name] or { types.stable_type_index(index_name) }
 	return base_idx | indirection_bits
 }
 
