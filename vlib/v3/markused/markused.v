@@ -52,8 +52,8 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 }
 
 // reachable_const_exprs returns const initializer expressions referenced by the supplied
-// post-transform function bodies, including transitive const-to-const references.
-pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, fn_ids []flat.NodeId, fn_modules []string, fn_files []string) []flat.NodeId {
+// post-transform AST roots, including transitive const-to-const references.
+pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []flat.NodeId, root_modules []string, root_files []string) []flat.NodeId {
 	mut import_contexts := []map[string]string{cap: 64}
 	import_contexts << map[string]string{}
 	mut import_context_by_file := map[string]int{}
@@ -90,13 +90,13 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, fn_ids []fl
 		generic_type_bases:      map[string]bool{}
 	}
 	mut pending := []string{cap: 16}
-	for i, fn_id in fn_ids {
-		if i >= fn_modules.len || i >= fn_files.len {
+	for i, root_id in root_ids {
+		if i >= root_modules.len || i >= root_files.len {
 			break
 		}
-		fn_node := a.node(fn_id)
-		context := import_context_by_file[fn_files[i]] or { 0 }
-		collector.collect_initializer_refs(fn_node, fn_modules[i], collector.imports(context), mut
+		root := a.node(root_id)
+		context := import_context_by_file[root_files[i]] or { 0 }
+		collector.collect_initializer_expr_refs(root, root_modules[i], collector.imports(context), mut
 			pending)
 	}
 	mut result := []flat.NodeId{cap: pending.len}
@@ -7120,6 +7120,9 @@ fn (c &CallCollector) value_name_candidates(name string, cur_module string, impo
 	if name.contains('.') {
 		base := name.all_before_last('.')
 		member := name.all_after_last('.')
+		if base == 'main' && cur_module in ['', 'main'] {
+			candidates << member
+		}
 		if base in imports {
 			candidates << '${imports[base]}.${member}'
 		}

@@ -6063,9 +6063,9 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 	mut cur_module := ''
 	mut cur_file := ''
 	mut visited := []bool{len: a.nodes.len}
-	mut fn_ids := []flat.NodeId{}
-	mut fn_modules := []string{}
-	mut fn_files := []string{}
+	mut root_ids := []flat.NodeId{}
+	mut root_modules := []string{}
+	mut root_files := []string{}
 	for idx, node in a.nodes {
 		if node.kind == .file {
 			cur_module = ''
@@ -6083,30 +6083,45 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 		if !transformed_fn_is_used(node.value, module_name, used_fns) {
 			continue
 		}
-		fn_ids << flat.NodeId(idx)
-		fn_modules << module_name
-		fn_files << (a.specialized_fn_files[idx] or { cur_file })
+		root_ids << flat.NodeId(idx)
+		root_modules << module_name
+		root_files << (a.specialized_fn_files[idx] or { cur_file })
 		if msg := unsupported_power_node_error(a, flat.NodeId(idx), backend, mut visited) {
 			return msg
 		}
 	}
-	for expr_id in markused.reachable_const_exprs(a, tc, fn_ids, fn_modules, fn_files) {
-		if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
-			return msg
-		}
-	}
+	cur_module = ''
+	cur_file = ''
 	for idx, node in a.nodes {
+		if node.kind == .file {
+			cur_module = ''
+			cur_file = node.value
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
 		if idx < a.user_code_start || node.kind != .global_decl {
 			continue
 		}
 		for i in 0 .. node.children_count {
-			field := a.child_node(&node, i)
+			field_id := a.child(&node, i)
+			field := a.node(field_id)
 			if field.children_count == 0 {
 				continue
 			}
+			root_ids << a.child(field, 0)
+			root_modules << cur_module
+			root_files << cur_file
 			if msg := unsupported_power_node_error(a, a.child(field, 0), backend, mut visited) {
 				return msg
 			}
+		}
+	}
+	for expr_id in markused.reachable_const_exprs(a, tc, root_ids, root_modules, root_files) {
+		if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
+			return msg
 		}
 	}
 	return none

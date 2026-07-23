@@ -4008,19 +4008,24 @@ fn main() {
 			assert const_result.exit_code != 0, const_result.output
 			assert const_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), const_result.output
 		}
-		global_src := os.join_path(os.temp_dir(), 'v3_${backend}_global_power.v')
-		global_use := if backend == 'wasm' {
-			'mut value := v3_power_global\n\tvalue += 1'
-		} else {
-			'println(v3_power_global)'
+		for name, declarations in {
+			'direct':         '__global v3_power_global int = 2 ** 3'
+			'const':          'const v3_power_const = 2 ** 3\n\n__global v3_power_global int = v3_power_const'
+			'chained_consts': 'const v3_power_base = 2 ** 3\nconst v3_power_const = v3_power_base\n\n__global v3_power_global int = v3_power_const'
+		} {
+			global_src := os.join_path(os.temp_dir(), 'v3_${backend}_${name}_global_power.v')
+			global_use := if backend == 'wasm' {
+				'mut value := v3_power_global\n\tvalue += 1'
+			} else {
+				'println(v3_power_global)'
+			}
+			os.write_file(global_src, '${declarations}\n\nfn main() {\n\t${global_use}\n}\n') or {
+				panic(err)
+			}
+			global_result := os.execute('${v3_bin} -b ${backend} ${global_src}')
+			assert global_result.exit_code != 0, global_result.output
+			assert global_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), global_result.output
 		}
-		os.write_file(global_src,
-			'__global v3_power_global int = 2 ** 3\n\nfn main() {\n\t${global_use}\n}\n') or {
-			panic(err)
-		}
-		global_result := os.execute('${v3_bin} -b ${backend} ${global_src}')
-		assert global_result.exit_code != 0, global_result.output
-		assert global_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), global_result.output
 		shadowed_src := os.join_path(os.temp_dir(), 'v3_${backend}_shadowed_const_power.v')
 		os.write_file(shadowed_src,
 			'const v3_unreachable_power_const_27908 = 2 ** 3\n\nfn main() {\n\tv3_unreachable_power_const_27908 := 1\n\tprintln(v3_unreachable_power_const_27908)\n}\n') or {
