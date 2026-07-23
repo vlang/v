@@ -66,6 +66,7 @@ mut:
 	comptime_const_values             map[string]string
 	comptime_local_values             map[string]string
 	imported_module_names             map[string]bool // import aliases in the current file; not captured by inlined template closures
+	declared_fn_names                 map[string]bool // bare names of free functions declared in the current file; a template-closure callee named one of these is a top-level helper, not a capturable local
 	comptime_value_undos              []ComptimeValueUndo
 	comptime_value_scopes             []int
 	pending_flag                      bool
@@ -143,6 +144,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
 		imported_module_names:         map[string]bool{}
+		declared_fn_names:             map[string]bool{}
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases:        map[string]bool{}
 		a:                             &flat.FlatAst{
@@ -242,6 +244,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
 	p.imported_module_names.clear()
+	p.declared_fn_names.clear()
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
@@ -1075,6 +1078,13 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, is_c_decl bool, name_pos int) flat.NodeId {
 	is_pub := p.pending_fn_pub
 	p.pending_fn_pub = false
+	// Record free (non-method) function names so an inlined template closure can tell a
+	// top-level/module helper callee (never captured — it is globally reachable) from a
+	// function-valued local/parameter of the same bare name (which must be captured).
+	// Methods are excluded: they are only ever called through a selector, not bare.
+	if !is_method {
+		p.declared_fn_names[name] = true
+	}
 	// Capture & clear here so it applies only to this function (not nested closures
 	// or a following declaration), and is cleared even on the extern/no-body path.
 	disable_body := p.disable_fn_body

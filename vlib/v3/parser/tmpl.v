@@ -1347,17 +1347,23 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			}
 		}
 		.call {
-			// The callee (child 0) names the function being invoked. A bare-ident callee
-			// such as `render_row` in `@{render_row(row)}` is a top-level/module helper,
-			// not a capturable local, so skip it and collect only from the arguments; a
-			// non-ident callee (e.g. a `recv.method` selector) is still descended into so
-			// its receiver local is captured.
+			// The callee (child 0) names the function being invoked. Skip it ONLY when it
+			// is a known top-level/module helper (a bare ident in p.declared_fn_names):
+			// those are globally reachable and must not be captured. A bare-ident callee
+			// that is not a declared function is a function-valued local/parameter (e.g.
+			// `render` in `@{render(row)}` where `render` is a handler parameter) and must
+			// be captured, since v3 closures do not auto-capture; a non-ident callee (a
+			// `recv.method` selector) is descended into so its receiver local is captured.
 			if node.children_count > 0 {
 				callee := p.a.child(&node, 0)
-				if int(callee) >= 0 && int(callee) < p.a.nodes.len
-					&& p.a.nodes[int(callee)].kind != .ident {
-					p.collect_template_free_idents(callee, mut declared, mut seen, mut out,
-						mut mut_names)
+				if int(callee) >= 0 && int(callee) < p.a.nodes.len {
+					callee_node := p.a.nodes[int(callee)]
+					is_known_top_level_fn := callee_node.kind == .ident
+						&& callee_node.value in p.declared_fn_names
+					if !is_known_top_level_fn {
+						p.collect_template_free_idents(callee, mut declared, mut seen, mut out,
+							mut mut_names)
+					}
 				}
 			}
 			for i in 1 .. node.children_count {
