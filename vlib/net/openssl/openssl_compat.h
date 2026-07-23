@@ -1,15 +1,122 @@
-// Match the init API to the OpenSSL headers that are actually available.
-#if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
-	|| OPENSSL_VERSION_NUMBER < 0x10100000L
-static int v_net_openssl_init_ssl(void) {
-	SSL_load_error_strings();
-	return SSL_library_init();
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+#include <openssl/err.h>
+#include <openssl/pem.h>
+#include <openssl/x509_vfy.h>
+
+static int v_net_openssl_pem_read_reached_eof(void) {
+	unsigned long err = ERR_peek_last_error();
+	if (err == 0) {
+		return 1;
+	}
+	if (ERR_GET_LIB(err) == ERR_LIB_PEM && ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+		ERR_clear_error();
+		return 1;
+	}
+	return 0;
 }
-#else
-static int v_net_openssl_init_ssl(void) {
-	return OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, 0);
+
+static int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL_CTX *ctx,
+		const unsigned char *data, size_t len) {
+	if (len > INT_MAX) {
+		return 0;
+	}
+	BIO *bio = BIO_new_mem_buf((const void *)data, (int)len);
+	if (bio == NULL) {
+		return 0;
+	}
+	X509 *cert = PEM_read_bio_X509_AUX(bio, NULL, NULL, NULL);
+	if (cert == NULL) {
+		BIO_free(bio);
+		return 0;
+	}
+	int result = SSL_CTX_use_certificate(ctx, cert);
+	X509_free(cert);
+	if (result != 1) {
+		BIO_free(bio);
+		return 0;
+	}
+	ERR_clear_error();
+	while ((cert = PEM_read_bio_X509(bio, NULL, NULL, NULL)) != NULL) {
+		// SSL_CTX_add_extra_chain_cert takes ownership of cert on success.
+		if (SSL_CTX_add_extra_chain_cert(ctx, cert) != 1) {
+			X509_free(cert);
+			BIO_free(bio);
+			return 0;
+		}
+	}
+	if (!v_net_openssl_pem_read_reached_eof()) {
+		BIO_free(bio);
+		return 0;
+	}
+	BIO_free(bio);
+	return 1;
 }
+
+static int v_net_openssl_SSL_CTX_extra_chain_certs_count(SSL_CTX *ctx) {
+	STACK_OF(X509) *chain = NULL;
+	SSL_CTX_get_extra_chain_certs(ctx, &chain);
+	return chain == NULL ? 0 : sk_X509_num(chain);
+}
+
+static int v_net_openssl_SSL_CTX_use_PrivateKey_memory(SSL_CTX *ctx,
+		const unsigned char *data, size_t len) {
+	if (len > INT_MAX) {
+		return 0;
+	}
+	BIO *bio = BIO_new_mem_buf((const void *)data, (int)len);
+	if (bio == NULL) {
+		return 0;
+	}
+	EVP_PKEY *key = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
+	BIO_free(bio);
+	if (key == NULL) {
+		return 0;
+	}
+	int result = SSL_CTX_use_PrivateKey(ctx, key);
+	EVP_PKEY_free(key);
+	return result;
+}
+
+static int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
+		const unsigned char *data, size_t len) {
+	if (len > INT_MAX) {
+		return 0;
+	}
+	BIO *bio = BIO_new_mem_buf((const void *)data, (int)len);
+	if (bio == NULL) {
+		return 0;
+	}
+	X509_STORE *store = SSL_CTX_get_cert_store(ctx);
+	X509 *cert = NULL;
+	int loaded = 0;
+	ERR_clear_error();
+	while ((cert = PEM_read_bio_X509_AUX(bio, NULL, NULL, NULL)) != NULL) {
+		if (X509_STORE_add_cert(store, cert) != 1) {
+#ifdef X509_R_CERT_ALREADY_IN_HASH_TABLE
+			unsigned long err = ERR_peek_last_error();
+			if (ERR_GET_LIB(err) == ERR_LIB_X509
+					&& ERR_GET_REASON(err) == X509_R_CERT_ALREADY_IN_HASH_TABLE) {
+				ERR_clear_error();
+				X509_free(cert);
+				continue;
+			}
 #endif
+			X509_free(cert);
+			BIO_free(bio);
+			return 0;
+		}
+		X509_free(cert);
+		loaded++;
+	}
+	if (!v_net_openssl_pem_read_reached_eof()) {
+		BIO_free(bio);
+		return 0;
+	}
+	BIO_free(bio);
+	return loaded > 0 ? 1 : 0;
+}
 
 // SSL_get1_peer_certificate is only available in OpenSSL 3.x.
 #if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
@@ -40,12 +147,116 @@ static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **dat
 	*data = NULL;
 	*len = 0;
 }
+static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
+		const unsigned char *protos, unsigned int protos_len) {
+	(void)ctx;
+	(void)protos;
+	(void)protos_len;
+	return NULL;
+}
+static void v_net_openssl_free_alpn_select_state(void *state) {
+	(void)state;
+}
+static int v_net_openssl_init_alpn_select_state_index(void) {
+	return 1;
+}
 #else
+typedef struct {
+	unsigned char *protos;
+	unsigned int protos_len;
+} v_net_openssl_alpn_select_state;
+
+static int v_net_openssl_alpn_select_state_index = -1;
+
+static void v_net_openssl_free_alpn_select_state(void *state) {
+	v_net_openssl_alpn_select_state *selection =
+		(v_net_openssl_alpn_select_state *)state;
+	if (selection != NULL) {
+		free(selection->protos);
+		free(selection);
+	}
+}
+
+static void v_net_openssl_free_alpn_select_state_ex(void *parent, void *ptr,
+		CRYPTO_EX_DATA *ad, int idx, long argl, void *argp) {
+	(void)parent;
+	(void)ad;
+	(void)idx;
+	(void)argl;
+	(void)argp;
+	v_net_openssl_free_alpn_select_state(ptr);
+}
+
+static int v_net_openssl_init_alpn_select_state_index(void) {
+	if (v_net_openssl_alpn_select_state_index >= 0) {
+		return 1;
+	}
+	v_net_openssl_alpn_select_state_index =
+		SSL_CTX_get_ex_new_index(0, NULL, NULL, NULL,
+			v_net_openssl_free_alpn_select_state_ex);
+	return v_net_openssl_alpn_select_state_index >= 0;
+}
+
+static int v_net_openssl_alpn_select_cb(SSL *ssl, const unsigned char **out,
+		unsigned char *outlen, const unsigned char *in, unsigned int inlen, void *arg) {
+	(void)ssl;
+	v_net_openssl_alpn_select_state *state = (v_net_openssl_alpn_select_state *)arg;
+	if (SSL_select_next_proto((unsigned char **)out, outlen, state->protos,
+			state->protos_len, in, inlen) == OPENSSL_NPN_NEGOTIATED) {
+		return SSL_TLSEXT_ERR_OK;
+	}
+	return SSL_TLSEXT_ERR_NOACK;
+}
+
+static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
+		const unsigned char *protos, unsigned int protos_len) {
+	if (!v_net_openssl_init_alpn_select_state_index()) {
+		return NULL;
+	}
+	v_net_openssl_alpn_select_state *selection =
+		(v_net_openssl_alpn_select_state *)malloc(sizeof(*selection));
+	if (selection == NULL) {
+		return NULL;
+	}
+	selection->protos = (unsigned char *)malloc(protos_len);
+	if (selection->protos == NULL) {
+		free(selection);
+		return NULL;
+	}
+	memcpy(selection->protos, protos, protos_len);
+	selection->protos_len = protos_len;
+	if (SSL_CTX_set_ex_data(ctx, v_net_openssl_alpn_select_state_index, selection) != 1) {
+		v_net_openssl_free_alpn_select_state(selection);
+		return NULL;
+	}
+	SSL_CTX_set_alpn_select_cb(ctx, v_net_openssl_alpn_select_cb, selection);
+	return selection;
+}
+
 static int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {
 	return SSL_set_alpn_protos(ssl, protos, protos_len);
 }
 static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
 	SSL_get0_alpn_selected(ssl, data, len);
+}
+#endif
+
+// Match the init API to the OpenSSL headers that are actually available.
+#if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
+	|| OPENSSL_VERSION_NUMBER < 0x10100000L
+static int v_net_openssl_init_ssl(void) {
+	SSL_load_error_strings();
+	if (SSL_library_init() != 1) {
+		return 0;
+	}
+	return v_net_openssl_init_alpn_select_state_index();
+}
+#else
+static int v_net_openssl_init_ssl(void) {
+	if (OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, 0) != 1) {
+		return 0;
+	}
+	return v_net_openssl_init_alpn_select_state_index();
 }
 #endif
 
@@ -57,4 +268,17 @@ static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **dat
 
 #ifndef SSL_ERROR_WANT_ASYNC_JOB
 #define SSL_ERROR_WANT_ASYNC_JOB 10
+#endif
+
+// TLS_server_method() is only available in OpenSSL 1.1.0 and newer.
+// On older OpenSSL/LibreSSL, fall back to SSLv23_server_method().
+#if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
+	|| OPENSSL_VERSION_NUMBER < 0x10100000L
+static const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
+	return SSLv23_server_method();
+}
+#else
+static const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
+	return TLS_server_method();
+}
 #endif

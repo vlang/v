@@ -345,6 +345,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				if !user_context.Context.done {
 					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
 						user_context.Context.req.method))
+					// Preserve an after-middleware response, or restore the handler response state.
+					user_context.Context.done = user_context.Context.done || was_done
 				}
 			}
 		}
