@@ -829,9 +829,10 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	prefix << t.make_decl_assign_typed(iter_name, iter_expr, iter_type)
+	idx_name := if has_index && key.value == '_' { t.new_temp('for_idx') } else { key.value }
 	init := if has_index {
-		t.set_var_type(key.value, 'int')
-		t.make_decl_assign_typed(key.value, t.make_int_literal(0), 'int')
+		t.set_var_type(idx_name, 'int')
+		t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	} else {
 		t.make_empty()
 	}
@@ -850,7 +851,7 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	loop_body << elem_decl
 	loop_body << t.transform_stmts(body_ids)
 	post := if has_index {
-		t.make_expr_stmt(t.make_postfix(t.make_ident(key.value), .inc))
+		t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	} else {
 		t.make_empty()
 	}
@@ -1258,7 +1259,7 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) str
 		bracket_end := iter_type.index(']') or { return '' }
 		if bracket_end + 1 < iter_type.len {
 			value_type := iter_type[bracket_end + 1..]
-			fixed_type := fixed_array_map_value_type_text(value_type)
+			fixed_type := t.fixed_array_map_value_type_text(value_type)
 			if fixed_type.len > 0 {
 				return fixed_type
 			}

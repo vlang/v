@@ -47,6 +47,9 @@ fn test_operator_precedence_boundaries() {
 	assert eval_int(v3_bin, 'mul_vs_add', '2 + 3 * 4') == '14'
 	assert eval_int(v3_bin, 'div_vs_sub', '20 - 12 / 4') == '17'
 
+	// power binds tighter than product
+	assert eval_int(v3_bin, 'mul_vs_power', '2 * 3 ** 2') == '18'
+
 	// shifts live at product, so they bind tighter than +/-
 	assert eval_int(v3_bin, 'add_then_shift', '1 + 2 << 3') == '17'
 	assert eval_int(v3_bin, 'shift_then_add', '8 << 1 + 1') == '17'

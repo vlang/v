@@ -1359,16 +1359,14 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 		return ids
 	}
-	names << p.lit
-	p.next()
+	names << p.expect_name_or_keyword()
 	for p.tok == .comma {
 		p.next()
 		if p.tok == .key_mut {
 			p.next()
 		}
-		if p.tok == .name {
-			names << p.lit
-			p.next()
+		if p.tok_can_be_decl_name() {
+			names << p.expect_name_or_keyword()
 		}
 	}
 	mut typ := p.parse_type_name()
@@ -4467,7 +4465,8 @@ fn eval_pkgconfig_cond(cond string) bool {
 	if !is_safe_pkgconfig_name(name) {
 		return false
 	}
-	return cmdexec.run('pkg-config', ['--exists', name]).exit_code == 0
+	result := cmdexec.run('pkg-config', ['--exists', name])
+	return result.exit_code == 0
 }
 
 fn is_safe_pkgconfig_name(name string) bool {
@@ -4600,9 +4599,38 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.peek() == .key_for {
 		return p.parse_comptime_if()
 	}
+	dollar_pos := p.tok_pos
 	p.next() // skip $
+	match p.tok {
+		.key_typeof {
+			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
+			return p.typeof_expr()
+		}
+		.key_sizeof {
+			p.record_diagnostic('`$sizeof` is not supported; use `sizeof(...)` instead', dollar_pos)
+			return p.sizeof_expr()
+		}
+		.key_isreftype {
+			p.record_diagnostic('`$isreftype` is not supported; use `isreftype(...)` instead',
+				dollar_pos)
+			return p.isreftype_expr()
+		}
+		.key_offsetof {
+			p.record_diagnostic('`$__offsetof` is not supported; use `__offsetof(...)` instead',
+				dollar_pos)
+			return p.offsetof_expr()
+		}
+		.key_dump {
+			p.record_diagnostic('`$dump` is not supported; use `dump(...)` instead', dollar_pos)
+			return p.dump_expr()
+		}
+		else {}
+	}
 	if p.tok == .key_if || (p.tok == .name && p.lit == 'if') {
 		return p.parse_comptime_if_expr_after_if()
+	}
+	if p.tok == .key_match || (p.tok == .name && p.lit == 'match') {
+		return p.parse_comptime_match(false)
 	}
 	if p.tok == .name && p.lit == 'd' {
 		p.next()
@@ -4662,7 +4690,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			return flat.empty_node
 		}
 		p.next()
-		type_expr := p.expr(.lowest)
+		type_expr := p.parse_comptime_type_arg()
 		p.check(.rpar)
 		return p.a.add_node(flat.Node{
 			kind:           .string_literal
@@ -4689,6 +4717,114 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
+	if p.tok in [.question, .not, .amp, .and] {
+		typ := p.parse_type_name()
+		if p.tok == .lcbr && p.peek() == .rcbr {
+			p.next()
+			p.check(.rcbr)
+		}
+		return p.add_node(flat.Node{
+			kind:  .ident
+			value: typ
+		})
+	}
+	if p.tok == .lsbr && p.peek() != .rsbr {
+		typ := p.parse_type_name()
+		if p.tok == .lcbr && p.peek() == .rcbr {
+			p.next()
+			p.check(.rcbr)
+		}
+		return p.add_node(flat.Node{
+			kind:  .ident
+			value: typ
+		})
+	}
+	if p.tok != .lsbr || p.peek() != .rsbr {
+		if p.can_start_type_name() && p.comptime_type_arg_has_empty_literal_suffix() {
+			typ := p.parse_type_name()
+			if p.tok == .lcbr && p.peek() == .rcbr {
+				p.next()
+				p.check(.rcbr)
+			}
+			return p.add_node(flat.Node{
+				kind:  .ident
+				value: typ
+			})
+		}
+		return p.expr(.lowest)
+	}
+	p.next() // skip `[` in `[]T`
+	p.check(.rsbr)
+	mut elem := flat.empty_node
+	if p.tok in [.question, .not, .amp, .and] || (p.tok == .lsbr && p.peek() == .rsbr) {
+		elem = p.parse_comptime_type_arg()
+	} else if p.tok == .name {
+		elem = p.add_node(flat.Node{
+			kind:  .ident
+			value: p.parse_type_name()
+		})
+	} else {
+		elem = p.prefix_expr()
+		for p.tok == .dot {
+			elem = p.selector_or_method(elem)
+		}
+	}
+	if p.tok == .lcbr && p.peek() == .rcbr {
+		p.next()
+		p.check(.rcbr)
+	}
+	return p.add_node(flat.Node{
+		kind:           .array_init
+		value:          '__v3_comptime_type_array'
+		children_start: p.add_child(elem)
+		children_count: 1
+	})
+}
+
+fn (mut p Parser) comptime_type_arg_has_empty_literal_suffix() bool {
+	mut look := scanner.new_scanner(p.prefs, .normal)
+	look.init(p.s.current_file(), p.s.src)
+	look.offset = p.tok_pos
+	look.pos = p.tok_pos
+	mut bracket_depth := 0
+	mut paren_depth := 0
+	for {
+		tok := look.scan()
+		match tok {
+			.eof {
+				return false
+			}
+			.lsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			.lpar {
+				paren_depth++
+			}
+			.rpar {
+				if paren_depth == 0 && bracket_depth == 0 {
+					return false
+				}
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			.lcbr {
+				if bracket_depth == 0 && paren_depth == 0 {
+					return look.scan() == .rcbr
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
@@ -5253,18 +5389,20 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	// Check for for-in: `for x in ...` or `for mut x in ...`.
 	// A comma after the first name is ambiguous with C-style multi-init
 	// (`for h, t := ...`), so handle it after parsing the first expression.
-	// `.key_type` is `type` used as a loop variable (`for type in ...`). Detect it
-	// here like a plain name so `p.expr` does not greedily consume the `in` as a
-	// membership operator (which would turn the loop into a `while`).
-	if (p.tok == .name || p.tok == .key_type) && p.peek() == .key_in {
+	if p.tok_can_be_decl_name() && p.peek() == .key_in {
 		first_expr := p.expr(.sum)
 		return p.for_in(first_expr, false)
 	}
 	if p.tok == .key_mut {
 		p.next()
 		mut first_expr := flat.empty_node
-		if p.tok == .name {
-			ident := p.add_val(.ident, p.expect_name())
+		if p.tok_can_be_decl_name() {
+			name_pos := p.tok_pos
+			ident := p.a.add_node(flat.Node{
+				kind:  .ident
+				value: p.expect_name_or_keyword()
+				pos:   p.span_to(name_pos)
+			})
 			if p.tok == .key_in || p.tok == .comma {
 				first_expr = ident
 			} else {
@@ -6583,20 +6721,20 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 fn (mut p Parser) expr(min_bp token.BindingPower) flat.NodeId {
 	lhs := p.prefix_expr()
-	return p.expr_with_lhs_context(lhs, min_bp, false)
+	return p.expr_with_lhs_context(lhs, min_bp, false, false)
 }
 
 fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) flat.NodeId {
-	return p.expr_with_lhs_context(first, min_bp, false)
+	return p.expr_with_lhs_context(first, min_bp, false, false)
 }
 
 fn (mut p Parser) stmt_expr() flat.NodeId {
 	is_stmt_ident := p.tok == .name
 	lhs := p.prefix_expr()
-	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident)
+	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false)
 }
 
-fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool) flat.NodeId {
+fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool, stop_before_or bool) flat.NodeId {
 	mut lhs := first
 	for {
 		if p.in_struct_init_value > 0 && (p.tok == .name || p.tok.is_keyword())
@@ -6619,6 +6757,22 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			continue
 		}
+		// Bind an option/result handler to the expression immediately before it,
+		// including when that expression is the right operand of an infix operator.
+		if p.tok == .key_or {
+			if stop_before_or {
+				break
+			}
+			p.next()
+			or_body := p.block_stmt()
+			ostart := p.add_children2(lhs, or_body)
+			lhs = p.add_node(flat.Node{
+				kind:           .or_expr
+				children_start: ostart
+				children_count: 2
+			})
+			continue
+		}
 		// selector / method call
 		if p.tok == .dot {
 			if p.in_array_literal > 0 && p.spaced_dot_starts_array_enum_value(lhs) {
@@ -6630,6 +6784,18 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
 		if p.tok == .lcbr && (!p.in_for_container || p.current_lcbr_is_attached()) {
 			lhs_node := p.a.nodes[int(lhs)]
+			if p.peek() == .rcbr && p.is_comptime_type_accessor(lhs) {
+				p.next() // skip `{`
+				p.check(.rcbr)
+				lhs = p.add_node_from(flat.Node{
+					kind:           .string_literal
+					value:          '__v3_comptime_zero'
+					typ:            'string'
+					children_start: p.add_child(lhs)
+					children_count: 1
+				}, lhs)
+				continue
+			}
 			if lhs_node.kind == .index {
 				if full_name := p.generic_struct_init_type_name(lhs) {
 					lhs = p.struct_init(full_name)
@@ -6735,23 +6901,6 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				value:          type_name
 				children_start: astart
 				children_count: 1
-			})
-			continue
-		}
-		// `or` block: expr or { ... }
-		// Binds tightly to the immediately preceding or-able expression (call /
-		// index / propagation), like the `?`/`!` postfixes above — never to an
-		// enclosing infix. So `50 + f() or { 0 }` parses as `50 + (f() or { 0 })`,
-		// matching v1. A min_bp guard here would let `or` bubble up to the whole
-		// `50 + f()` infix (an `int`, not an Option/Result).
-		if p.tok == .key_or {
-			p.next()
-			or_body := p.block_stmt()
-			ostart := p.add_children2(lhs, or_body)
-			lhs = p.add_node(flat.Node{
-				kind:           .or_expr
-				children_start: ostart
-				children_count: 2
 			})
 			continue
 		}
@@ -6953,6 +7102,21 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 	return lhs
 }
 
+fn (p &Parser) is_comptime_type_accessor(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return false
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .typeof_expr {
+		return true
+	}
+	if node.kind != .selector || node.children_count == 0
+		|| node.value !in ['typ', 'unaliased_typ', 'payload_type', 'pointee_type', 'element_type', 'key_type', 'value_type'] {
+		return false
+	}
+	return p.is_comptime_type_accessor(p.a.child(&node, 0))
+}
+
 fn (p &Parser) expr_can_continue_with_newline_call(id flat.NodeId) bool {
 	if p.tok_pos < 0 || p.tok_pos >= p.s.src.len || p.s.src[p.tok_pos] != `\n` {
 		return false
@@ -6964,7 +7128,7 @@ fn (p &Parser) expr_can_continue_with_newline_call(id flat.NodeId) bool {
 	if node.kind !in [.ident, .selector] {
 		return false
 	}
-	return p.column_for_pos(p.peek_pos) > p.column_for_pos(node.pos.offset)
+	return p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(node.pos.offset)
 }
 
 fn (p &Parser) spaced_dot_starts_array_enum_value(id flat.NodeId) bool {
@@ -7232,6 +7396,7 @@ fn (p &Parser) sql_token_text() string {
 		.mul { '*' }
 		.div { '/' }
 		.mod { '%' }
+		.power { '**' }
 		.and { '&&' }
 		.logical_or { '||' }
 		.lpar { '(' }
@@ -7423,9 +7588,14 @@ fn sql_type_name_tokens(tokens []string) string {
 }
 
 fn (mut p Parser) keyword_ident_expr() flat.NodeId {
+	name_pos := p.tok_pos
 	name := p.tok.str()
 	p.next()
-	return p.a.add_val(.ident, name)
+	return p.a.add_node(flat.Node{
+		kind:  .ident
+		value: name
+		pos:   p.span_to(name_pos)
+	})
 }
 
 fn sql_type_name(raw string) string {
@@ -7453,46 +7623,6 @@ fn is_float_number_literal(val string) bool {
 	return val.contains('.') || val.contains('e') || val.contains('E')
 }
 
-// arrow_receive builds a `<-operand` channel-receive prefix. A trailing
-// propagation postfix (`or { ... }` / `?` / `!`) binds to the receive RESULT,
-// not the channel operand — `<-ch or { break }` is `(<-ch) or { ... }`, since a
-// receive from a closed channel can fail. Prefix operands are parsed at
-// `.highest`, where the unconditional propagation postfixes would otherwise
-// attach to the bare operand (yielding `<-(ch or { ... })`, whose inner `ch` is
-// a plain channel — "not an Option or a Result"). So when the operand parse
-// returns a bare trailing or_expr, re-associate it outward around the receive.
-// An explicitly parenthesized `<-(x or { ... })` is a `.paren` node, not a bare
-// `.or_expr`, so it is left intact.
-fn (mut p Parser) arrow_receive(op_start int) flat.NodeId {
-	inner := p.expr(.highest)
-	inner_node := p.a.nodes[int(inner)]
-	if inner_node.kind == .or_expr && inner_node.children_count == 2 {
-		guarded := p.a.child(&inner_node, 0)
-		body := p.a.child(&inner_node, 1)
-		recv := p.a.add_node(flat.Node{
-			kind:           .prefix
-			op:             .arrow
-			children_start: p.add_child(guarded)
-			children_count: 1
-			pos:            p.span_to(op_start)
-		})
-		ostart := p.add_children2(recv, body)
-		return p.a.add_node(flat.Node{
-			kind:           .or_expr
-			value:          inner_node.value
-			children_start: ostart
-			children_count: 2
-		})
-	}
-	return p.a.add_node(flat.Node{
-		kind:           .prefix
-		op:             .arrow
-		children_start: p.add_child(inner)
-		children_count: 1
-		pos:            p.span_to(op_start)
-	})
-}
-
 fn (mut p Parser) prefix_expr() flat.NodeId {
 	// Capture the leading token's span before consuming it so leaf literals keep
 	// their own location and prefix operators can span from here to the operand.
@@ -7501,7 +7631,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	tok_id := int(p.tok)
 	if p.tok == .plus {
 		p.next()
-		operand := p.expr(.highest)
+		operand := p.expr(.power)
 		return p.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             .plus
@@ -7546,11 +7676,34 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	}
 	if tok_id == 3 {
 		p.next()
-		return p.arrow_receive(op_start)
+		operand := p.prefix_expr()
+		inner := p.expr_with_lhs_context(operand, .highest, false, true)
+		return p.a.add_node(flat.Node{
+			kind:           .prefix
+			op:             .arrow
+			children_start: p.add_child(inner)
+			children_count: 1
+			pos:            p.span_to(op_start)
+		})
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
-		operand := p.expr(.highest)
+		mut operand := p.expr(.power)
+		// A trailing `or {}` binds to the operand, not to the prefix operator:
+		// `!f() or {}` means `!(f() or {})`. The main expression loop only
+		// attaches `or` at lowest binding power (below the prefix), so it would
+		// otherwise wrap the whole prefix expression, which is not an
+		// Option/Result. Consume it here so the unwrap happens before the prefix.
+		if p.tok == .key_or {
+			p.next()
+			or_body := p.block_stmt()
+			ostart := p.add_children2(operand, or_body)
+			operand = p.a.add_node(flat.Node{
+				kind:           .or_expr
+				children_start: ostart
+				children_count: 2
+			})
+		}
 		pstart := p.add_child(operand)
 		return p.a.add_node(flat.Node{
 			kind:           .prefix
@@ -7597,7 +7750,15 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.arrow {
 			p.next()
-			return p.arrow_receive(op_start)
+			operand := p.prefix_expr()
+			inner := p.expr_with_lhs_context(operand, .highest, false, true)
+			return p.a.add_node(flat.Node{
+				kind:           .prefix
+				op:             .arrow
+				children_start: p.add_child(inner)
+				children_count: 1
+				pos:            p.span_to(op_start)
+			})
 		}
 		.logical_or {
 			return p.lambda_expr_no_args()
@@ -7923,6 +8084,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						pos:            p.span_to(amp_start)
 					})
 				}
+				if p.tok == .semicolon && p.peek() == .lcbr {
+					p.next()
+				}
 				if p.tok == .lcbr {
 					inner := p.struct_init(name)
 					return p.add_node(flat.Node{
@@ -8080,10 +8244,22 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			return p.add(.empty)
 		}
-		.minus, .not, .bit_not, .mul {
+		.minus {
 			op_id := int(p.tok)
 			p.next()
-			operand := p.expr(.highest)
+			operand := p.expr(.power)
+			pstart := p.add_child(operand)
+			return p.a.add_node(flat.Node{
+				kind:           .prefix
+				op:             token_id_to_op(op_id)
+				children_start: pstart
+				children_count: 1
+			})
+		}
+		.not, .bit_not, .mul {
+			op_id := int(p.tok)
+			p.next()
+			operand := p.expr(.power)
 			pstart := p.add_child(operand)
 			return p.add_node(flat.Node{
 				kind:           .prefix
@@ -9202,7 +9378,7 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 		}
 		if name == 'chan' {
 			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
-				|| p.tok == .not {
+				|| p.tok == .not || p.tok == .key_mut {
 				return 'chan ${p.parse_fixed_array_literal_type_name()}'
 			}
 			return 'chan'
@@ -10341,7 +10517,7 @@ fn (mut p Parser) parse_type_name() string {
 		// chan T
 		if name == 'chan' {
 			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
-				|| p.tok == .not {
+				|| p.tok == .not || p.tok == .key_mut {
 				elem := p.parse_type_name()
 				return 'chan ${elem}'
 			}
@@ -10602,7 +10778,7 @@ fn (p &Parser) infer_anonymous_struct_literal_type(node flat.Node) ?string {
 			return 'bool'
 		}
 		.char_literal {
-			return 'rune'
+			return if node.value.starts_with('c:') { '&u8' } else { 'rune' }
 		}
 		.struct_init {
 			if node.value.len > 0 && node.value != 'struct' {
@@ -10651,7 +10827,7 @@ fn (p &Parser) anonymous_struct_literal_field_type(value_id flat.NodeId) ?string
 			return 'bool'
 		}
 		.char_literal {
-			return 'rune'
+			return if node.value.starts_with('c:') { '&u8' } else { 'rune' }
 		}
 		.string_literal {
 			return 'string'
@@ -11204,6 +11380,7 @@ fn token_to_op(tok token.Token) flat.Op {
 		.plus { .plus }
 		.minus { .minus }
 		.mul { .mul }
+		.power { .power }
 		.div { .div }
 		.mod { .mod }
 		.eq { .eq }
@@ -11226,6 +11403,7 @@ fn token_to_op(tok token.Token) flat.Op {
 		.plus_assign { .plus_assign }
 		.minus_assign { .minus_assign }
 		.mul_assign { .mul_assign }
+		.power_assign { .power_assign }
 		.div_assign { .div_assign }
 		.mod_assign { .mod_assign }
 		.and_assign { .amp_assign }

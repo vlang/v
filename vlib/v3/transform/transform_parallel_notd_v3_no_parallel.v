@@ -17,13 +17,20 @@ const max_parallel_transform_jobs = 7
 // Shared-base (clone-free) transform: workers share the master arrays and
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
-const max_shared_transform_jobs = 7
+const max_shared_transform_jobs = 10
+// Split the shared-base transform into more chunks than pool threads: the
+// persistent pool hands queued chunks to whichever worker frees up first, so
+// finer chunks level the load across asymmetric (performance/efficiency)
+// cores while the fixed region merge order keeps node ids deterministic.
+const shared_transform_chunk_factor = 3
+// Keep enough items per chunk that per-chunk append-region headroom (sized
+// proportionally to estimated cost) still averages out expansion variance.
+const min_shared_transform_chunk_items = 24
 const max_parallel_monomorph_jobs = 10
-const scoped_transform_worker_batches = 48
-const scoped_transform_master_batches = 48
-const scoped_transform_max_batch_items = 32
+const scoped_transform_worker_batches = 1
+const scoped_transform_master_batches = 1
+const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
-const scoped_monomorph_scan_nodes = 32768
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each persistent worker.
@@ -635,62 +642,6 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	return true
 }
 
-// collect_generic_specs_range_scoped bounds the temporary type parsing and
-// string splitting needed when a monomorphization round scans newly generated
-// nodes. Only the small set of discovered specs escapes each scratch arena.
-fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut struct_specs map[string]string, mut sum_specs map[string]GenericSpecContext, first int, last int) {
-	if first >= last {
-		return
-	}
-	t.tc.freeze_type_cache_for_forks()
-	defer {
-		t.tc.unfreeze_type_cache_after_forks()
-	}
-	mut start := first
-	for start < last {
-		end := if start + scoped_monomorph_scan_nodes < last {
-			start + scoped_monomorph_scan_nodes
-		} else {
-			last
-		}
-		scope := transform_worker_scope_begin(true)
-		mut wtc := t.tc.fork_for_parallel_transform(t.a)
-		mut w := t.fork_scoped_batch_worker(t.a, wtc)
-		// The master has already extended these append-only context arrays to
-		// `last`; workers only read them while collecting type spellings.
-		w.node_module_map_cache = t.node_module_map_cache
-		w.node_file_map_cache = t.node_file_map_cache
-		w.node_module_map_nodes = t.node_module_map_nodes
-		mut batch_struct_specs := map[string]string{}
-		mut batch_sum_specs := map[string]GenericSpecContext{}
-		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
-		w.collect_generic_sum_specs_range(sum_decls, mut batch_sum_specs, start, end)
-		transform_worker_scope_leave(scope)
-		for spec, base in batch_struct_specs {
-			struct_specs[spec.clone()] = base.clone()
-		}
-		for spec, context in batch_sum_specs {
-			sum_specs[spec.clone()] = GenericSpecContext{
-				base:   context.base.clone()
-				file:   context.file.clone()
-				module: context.module.clone()
-			}
-		}
-		for name, args in w.generic_specialization_args {
-			if name in t.generic_specialization_args {
-				continue
-			}
-			mut owned_args := []string{cap: args.len}
-			for arg in args {
-				owned_args << arg.clone()
-			}
-			t.generic_specialization_args[name.clone()] = owned_args
-		}
-		transform_worker_scope_free(scope)
-		start = end
-	}
-}
-
 fn monomorph_spec_worker(key string, worker_count int) int {
 	if worker_count <= 1 {
 		return 0
@@ -997,13 +948,25 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 
 // absorb_scoped_batch publishes one batch's observable state into the helper's
 // result arena before its large scratch arena is released.
-fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr) {
-	// Generic lowering can rewrite nodes reached indirectly through late calls, outside
-	// the initial work item's subtree. Verify the flat payload fields exhaustively before
-	// releasing the batch arena instead of trusting a mutation log that cannot observe
-	// every such rewrite.
-	for idx in 0 .. batch.a.nodes.len {
-		t.promote_scoped_node_to_current(idx, scope)
+fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
+	if t.skip_generics {
+		// Non-generic workers mutate only newly appended nodes and slots recorded by
+		// the setter log. This avoids a full, growing-AST scan after every batch.
+		for idx in new_node_start .. batch.a.nodes.len {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+		for idx in batch.scoped_owned_base_nodes.keys() {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+		for idx in batch.scoped_owned_base_log {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+	} else {
+		// Generic lowering can rewrite nodes reached indirectly through late calls.
+		// Keep the exhaustive fallback for those transforms.
+		for idx in 0 .. batch.a.nodes.len {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
 		t.scoped_owned_base_log << idx
@@ -1098,10 +1061,14 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		batch.used_fns_log_active = true
 		batch.scoped_base_log_active = true
 		batch.ignored_comptime_log_active = true
+		new_node_start := t.a.nodes.len
+		// Nodes appended by an earlier batch are base nodes for this batch too.
+		// Record rewrites to them so their scratch-owned payloads are promoted.
+		batch.scoped_base_nodes = new_node_start
 		batch.transform_pure_items_serial(items[start..end])
 		transform_worker_scope_leave(scratch_scope)
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
-		t.absorb_scoped_batch(batch, scratch_scope)
+		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		t.promote_scoped_ast_storage(scratch_scope)
 		// absorb_scoped_batch publishes every appended node and every base-node
 		// mutation recorded by the batch. Avoid rescanning the continuously growing
@@ -1163,6 +1130,8 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		batch.used_fns_log_active = true
 		batch.scoped_base_log_active = true
 		batch.ignored_comptime_log_active = true
+		new_node_start := t.a.nodes.len
+		batch.scoped_base_nodes = new_node_start
 		for si, ci in selected {
 			node_starts[si] = t.a.nodes.len
 			batch.cur_file = candidates[ci].file
@@ -1172,7 +1141,7 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		node_starts[selected.len] = t.a.nodes.len
 		transform_worker_scope_leave(scratch_scope)
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
-		t.absorb_scoped_batch(batch, scratch_scope)
+		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		t.promote_scoped_ast_storage(scratch_scope)
 		transform_worker_scope_free(scratch_scope)
 		for si, ci in selected {
@@ -1273,6 +1242,16 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// before any worker can rewrite a shared-base fn_decl; lazily scanning or
 		// reading declarations inside workers can otherwise observe a torn node.
 		t.prepare_parallel_call_param_types()
+		// Clone-free shared-base path: needs the checker's top-level index for
+		// exact per-item subtree ranges, and skip_generics (the generic passes
+		// scan and mutate arbitrary AST regions, which the shared design forbids).
+		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
+			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
+			if shared_jobs > 1 {
+				return t.run_parallel_transform_shared(items, base_nodes, base_children,
+					shared_jobs)
+			}
+		}
 		// Freeze the checker's warm type cache (fully populated by the check
 		// phase) as the shared read-only base for every worker fork, so workers
 		// do not re-parse every type text from a cold cache; the master itself
@@ -1394,9 +1373,21 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		return false
 	} $else {
 		t.tc.freeze_type_cache_for_forks()
-		mut chunks := split_work_items_ex(items, n_jobs, false)
+		mut chunk_target := n_jobs * shared_transform_chunk_factor
+		max_chunks_by_items := items.len / min_shared_transform_chunk_items
+		if chunk_target > max_chunks_by_items {
+			chunk_target = max_chunks_by_items
+		}
+		if chunk_target < n_jobs {
+			chunk_target = n_jobs
+		}
+		mut chunks := split_work_items_ex(items, chunk_target, false)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
+		// The master transforms chunk 0 in place and then this many additional
+		// forked chunks synchronously (keeping its former ~1/n_jobs share),
+		// while the pool workers drain the rest of the queue dynamically.
+		master_sync_chunks := chunk_count / n_jobs - 1
 		// Partition the reserved capacity into per-chunk append regions,
 		// proportional to chunk cost (the caller reserved ~2x the expected
 		// total growth for this pool).
@@ -1465,7 +1456,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			tasks << workers.Task{
 				run:        shared_chunk_thread
 				arg:        unsafe { voidptr(&args[ci]) }
-				force_sync: ci == 0 || fail == 'transform:all' || fail == 'transform:${helper_idx}'
+				force_sync: ci <= master_sync_chunks || fail == 'transform:all'
+					|| fail == 'transform:${helper_idx}'
 			}
 		}
 		transform_worker_scope_leave(setup_scope)

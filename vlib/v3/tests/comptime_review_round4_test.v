@@ -867,6 +867,43 @@ fn main() {
 	assert out == '4'
 }
 
+fn test_enum_value_metadata_folds_power() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_power', "enum Powered {
+	a = 2 ** 3
+	b
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Powered.values {
+		rows << item.name + ':' + item.value.str()
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'a:8|b:9'
+}
+
+fn test_enum_power_metadata_prunes_static_checker_branches() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_power_metadata_static_checker', 'enum Powered {
+	a = 2 ** 3
+}
+
+fn main() {
+	$for item in Powered.values {
+		$if item.value == 8 {
+			println(item.name)
+		} $else {
+			missing_from_inactive_enum_power_branch()
+		}
+	}
+}
+')
+	assert out == 'a'
+}
+
 fn test_enum_value_metadata_interpolation_stays_numeric() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {
@@ -2071,10 +2108,14 @@ fn test_comptime_pseudo_value_is_not_resolved_as_cached_local() {
 }
 
 fn test_build_pseudo_values_expand_in_comptime_conditions() {
-	previous_epoch := os.getenv('SOURCE_DATE_EPOCH')
+	previous_epoch := os.getenv_opt('SOURCE_DATE_EPOCH')
 	os.setenv('SOURCE_DATE_EPOCH', '0', true)
 	defer {
-		os.setenv('SOURCE_DATE_EPOCH', previous_epoch, true)
+		if epoch := previous_epoch {
+			os.setenv('SOURCE_DATE_EPOCH', epoch, true)
+		} else {
+			os.unsetenv('SOURCE_DATE_EPOCH')
+		}
 	}
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'build_pseudo_values_in_comptime_conditions', "fn main() {

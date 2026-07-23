@@ -66,6 +66,9 @@ fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	assert c_source.contains('sync__Channel* __chan_src_'), 'missing channel source temp'
 	assert c_source.contains('sync__Channel__pop(__chan_src_'), 'pop does not use channel source temp'
 	assert c_source.contains('sync__Channel__closed_error(__chan_src_'), 'closed_error does not use channel source temp'
+	selector_out := or_review_run(v3_bin, 'channel_receive_or_selector',
+		"struct Holder {\n\tch chan int\n}\n\nfn main() {\n\th := Holder{ch: chan int{}}\n\th.ch.close()\n\tvalue := <-h.ch or {\n\t\tprintln('closed')\n\t\treturn\n\t}\n\tprintln(int_str(value))\n}\n")
+	assert selector_out == 'closed'
 }
 
 fn test_bare_channel_or_is_rejected() {

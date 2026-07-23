@@ -1302,10 +1302,7 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
 		}
 		OptionType {
-			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen) {
-				return bad
-			}
-			return tc.ownership_default_clone_missing_ierror_method()
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
 		}
 		ResultType {
 			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen) {
@@ -1723,7 +1720,7 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 				cur_module = node.value
 			}
 			.global_decl {
-				tc.ownership_collect_global_decl(cur_module, node)
+				tc.ownership_collect_global_decl(tc.ownership_node_module(node, cur_module), node)
 			}
 			.fn_decl {
 				tc.ownership_collect_fn_signature(node)
@@ -1750,14 +1747,27 @@ fn (mut tc TypeChecker) ownership_collect_globals_after_prescan() {
 				cur_module = node.value
 			}
 			.global_decl {
-				tc.ownership_collect_global_decl(cur_module, node)
+				tc.ownership_collect_global_decl(tc.ownership_node_module(node, cur_module), node)
 			}
 			else {}
 		}
 	}
 }
 
+fn (tc &TypeChecker) ownership_node_module(node flat.Node, fallback string) string {
+	if source_file := tc.a.source_files[node.pos.id] {
+		return tc.file_modules[source_file.name] or { fallback }
+	}
+	return fallback
+}
+
 fn (mut tc TypeChecker) ownership_collect_global_decl(cur_module string, node flat.Node) {
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	if source_file := tc.a.source_files[node.pos.id] {
+		tc.cur_file = source_file.name
+	}
+	tc.cur_module = cur_module
 	mut st := tc.ownership_state()
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
@@ -1786,6 +1796,8 @@ fn (mut tc TypeChecker) ownership_collect_global_decl(cur_module string, node fl
 			}
 		}
 	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
 }
 
 fn (mut tc TypeChecker) ownership_collect_global_init_descendants(name string, qname string, expr_id flat.NodeId) bool {
@@ -4121,6 +4133,10 @@ fn (mut tc TypeChecker) ownership_prescan_expr_is_owned_clone_call(id flat.NodeI
 		return false
 	}
 	_ = tc.ownership_prescan_expr_for_owned_calls(recv_id, mut owned_locals, mut local_types)
+	recv_name := tc.ownership_expr_ident_name(recv_id)
+	if recv_name.len > 0 && recv_name in owned_locals {
+		return true
+	}
 	return tc.ownership_type_requires_destruction(tc.resolve_type(call_id))
 }
 
@@ -7760,6 +7776,16 @@ fn (mut tc TypeChecker) ownership_mark_from_conditional_expr(lhs_name string, rh
 		tc.ownership_mark_owned(target_name, tc.ownership_type_for_var(move.source, lhs_type), pos)
 		marked = true
 	}
+	if marked {
+		if tc.ownership_type_requires_destruction(lhs_type) {
+			tc.ownership_mark_owned(lhs_name, lhs_type, pos)
+		} else {
+			mut st := tc.ownership_state()
+			st.owned_vars.delete(lhs_name)
+			st.owned_var_types.delete(lhs_name)
+			marked = false
+		}
+	}
 	tc.ownership_flush_value_branch_moves()
 	return marked
 }
@@ -8926,6 +8952,9 @@ fn (mut tc TypeChecker) ownership_consume_expr(expr_id flat.NodeId, target strin
 	if tc.ownership_effects_disabled() {
 		return
 	}
+	if unwrap_pointer(tc.resolve_type(expr_id)) != tc.resolve_type(expr_id) {
+		return
+	}
 	if tc.ownership_consume_array_element_method_result(expr_id, target, at) {
 		return
 	}
@@ -9007,9 +9036,6 @@ fn (mut tc TypeChecker) ownership_consume_array_element_method_result(expr_id fl
 		return false
 	}
 	recv_id := tc.a.child(fn_node, 0)
-	if _ := tc.ownership_cloned_array_accessor_elem_type(recv_id, method) {
-		return true
-	}
 	if unwrap_pointer(tc.resolve_type(recv_id)) !is Array {
 		return false
 	}
@@ -10294,6 +10320,9 @@ fn (mut tc TypeChecker) ownership_owned_dynamic_overlap_names(source_name string
 	for owned_name, _ in st.owned_vars {
 		owned_dynamic := ownership_storage_key_has_dynamic_index(owned_name)
 		if !source_dynamic && !owned_dynamic {
+			continue
+		}
+		if source_dynamic && ownership_storage_key_is_descendant(source_name, owned_name) {
 			continue
 		}
 		if ownership_storage_keys_overlap(source_name, owned_name) {

@@ -66,7 +66,7 @@ fn test_interface_field_in_params_struct_codegen() {
 
 fn test_fixed_array_field_struct_init_codegen() {
 	v3_bin := build_v3()
-	source := "struct Item {\n\tx int\n}\n\nstruct Header {\n\tdata [2]Item\n\tcur_pos int\n}\n\nfn main() {\n\tmut h := Header{}\n\th.data[0] = Item{x: 4}\n\th.data[1] = Item{x: 9}\n\th.cur_pos = 2\n\tcombined := Header{\n\t\tdata: h.data\n\t\tcur_pos: h.cur_pos\n\t}\n\tprintln('\${combined.cur_pos}|\${combined.data[0].x}|\${combined.data[1].x}')\n}\n"
+	source := "struct Item {\n\tx int\n}\n\nstruct Header {\n\tdata [2]Item\n\tcur_pos int\n}\n\nstruct Uniforms {\n\tlights [2][4]f32\n}\n\nfn row() [4]f32 {\n\treturn [f32(1.1), 1.2, 1.3, 1.4]!\n}\n\nfn main() {\n\tmut h := Header{}\n\th.data[0] = Item{x: 4}\n\th.data[1] = Item{x: 9}\n\th.cur_pos = 2\n\tcombined := Header{\n\t\tdata: h.data\n\t\tcur_pos: h.cur_pos\n\t}\n\tprintln('\${combined.cur_pos}|\${combined.data[0].x}|\${combined.data[1].x}')\n\tmixed := Uniforms{\n\t\tlights: [\n\t\t\trow(),\n\t\t\t[f32(2.1), 2.2]!,\n\t\t]!\n\t}\n\tassert mixed.lights[0][0] == f32(1.1)\n\tassert mixed.lights[1][0] == f32(2.1)\n\tassert mixed.lights[1][1] == f32(2.2)\n\tassert mixed.lights[1][2] == 0\n\tassert mixed.lights[1][3] == 0\n}\n"
 	out := run_good(v3_bin, 'fixed_array_field_struct_init_input', source)
 	assert out == '2|4|9'
 }

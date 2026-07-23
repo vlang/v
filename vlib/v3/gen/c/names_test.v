@@ -29,7 +29,11 @@ fn test_c_name_sanitizes_compound_generic_type_arguments() {
 
 fn test_c_name_libc_collision_abs() {
 	assert c_name('abs') == 'v_abs'
+	assert c_name('send') == 'v_send'
 	assert c_name('C.abs') == 'abs'
+	assert c_name('printf') == 'v_printf'
+	assert c_name('C.printf') == 'printf'
+	assert c_name('C.send') == 'send'
 }
 
 fn test_c_name_generated_string_symbol_collision() {
@@ -37,6 +41,38 @@ fn test_c_name_generated_string_symbol_collision() {
 	assert c_name('_str_002') == 'v__str_002'
 	assert c_name('_str_value') == '_str_value'
 	assert c_name('C._str_3') == '_str_3'
+}
+
+fn test_direct_call_uses_custom_enum_method_symbol() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.enum_names['token.Kind'] = true
+	tc.cur_module = 'ast'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.direct_call_name('token.Kind.str') == 'token__Kind_str'
+	assert g.direct_call_name_for_call(flat.empty_node, 'token.Kind.str') == 'token__Kind_str'
+	tc.enum_names['ast.Kind'] = true
+	assert g.direct_call_name('Kind.str') == 'Kind_str'
+}
+
+fn test_context_lookup_cache_tracks_source_file_imports() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_imports['one.v\nkind'] = 'first.token'
+	tc.file_imports['two.v\nkind'] = 'second.token'
+	tc.enum_names['first.token.Kind'] = true
+	tc.enum_names['second.token.Kind'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_file = 'one.v'
+	assert g.import_alias_module('kind')? == 'first.token'
+	assert g.enum_selector_base_name('kind.Kind')? == 'first.token.Kind'
+	tc.cur_file = 'two.v'
+	assert g.import_alias_module('kind')? == 'second.token'
+	assert g.enum_selector_base_name('kind.Kind')? == 'second.token.Kind'
 }
 
 fn test_cgen_flattened_generic_receiver_short_variants() {
@@ -142,6 +178,14 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
 	]
+	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_apple_framework_include_does_not_match_x11() {
+	assert c_is_apple_framework_include('<Cocoa/Cocoa.h>')
+	assert c_is_apple_framework_include('<CoreFoundation/CFString.h>')
+	assert !c_is_apple_framework_include('<X11/Xlib.h>')
+	assert !c_is_apple_framework_include('<sys/ptrace.h>')
 }
 
 fn test_large_transitive_header_tree_is_preserved() {

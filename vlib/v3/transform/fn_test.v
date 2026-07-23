@@ -24,6 +24,25 @@ fn test_normalize_function_type_preserves_mut_parameter() {
 	assert t.normalize_type_in_module('fn (mut item Item) bool', 'main') == 'fn (&Item) bool'
 }
 
+fn test_normalize_type_in_module_cache_tracks_current_file() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_imports[file_import_key('first.v', 'dep')] = 'alpha'
+	tc.file_imports[file_import_key('second.v', 'dep')] = 'beta'
+	tc.structs['alpha.Type'] = []
+	tc.structs['beta.Type'] = []
+	mut t := Transformer{
+		tc:                &tc
+		cur_module:        'shared'
+		module_type_cache: &AliasCache{}
+	}
+
+	t.cur_file = 'first.v'
+	assert t.normalize_type_in_module('dep.Type', 'shared') == 'alpha.Type'
+	t.cur_file = 'second.v'
+	assert t.normalize_type_in_module('dep.Type', 'shared') == 'beta.Type'
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
@@ -184,7 +203,7 @@ fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	batch.tc.fork_overlay.resolved_call_names[10] = 'main.resolved_call'
 	batch.tc.fork_overlay.resolved_fn_values[11] = 'main.resolved_fn_value'
 
-	master.absorb_scoped_batch(batch, unsafe { nil })
+	master.absorb_scoped_batch(batch, unsafe { nil }, batch.a.nodes.len)
 	assert tc.sparse_resolved_call_names[10] == 'main.resolved_call'
 	assert tc.sparse_resolved_fn_values[11] == 'main.resolved_fn_value'
 }

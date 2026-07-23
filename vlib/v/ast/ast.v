@@ -950,6 +950,7 @@ pub mut:
 	is_c_variadic          bool // it is a C variadic
 	is_c_type_cast         bool // unresolved `C.Type(x)` reclassified by checker after imports are parsed
 	args                   []CallArg
+	args_start_on_new_line bool // the arguments each start on their own line (a newline right after `(`); vfmt keeps them expanded, one per line with a trailing comma
 	expected_arg_types     []Type
 	comptime_ret_val       bool
 	language               Language

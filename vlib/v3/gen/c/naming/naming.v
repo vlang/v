@@ -87,10 +87,12 @@ const libc_collisions = {
 	'open':     true
 	'pipe':     true
 	'pow':      true
+	'printf':   true
 	'read':     true
 	'realpath': true
 	'rint':     true
 	'scalb':    true
+	'send':     true
 	'setenv':   true
 	'signal':   true
 	'snprintf': true

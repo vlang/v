@@ -65,3 +65,13 @@ fn test_short_type_name_ambiguity_remains_sticky() {
 	assert 'Event' in index
 	assert index['Event'] == ''
 }
+
+fn test_interface_concrete_method_keys_include_dispatch_methods() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['orm.TransactionalConnection'] = true
+	tc.interface_abstract_methods['orm.TransactionalConnection'] = ['select']
+
+	keys := tc.interface_concrete_method_keys()
+	assert 'orm.TransactionalConnection.select' in keys
+}

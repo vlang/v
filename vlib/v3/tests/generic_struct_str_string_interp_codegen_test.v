@@ -359,7 +359,7 @@ fn main() {
 	assert body.len > 0, generated
 	assert generated.contains('gr__WrapperQueue_Array_string__str'), generated
 	assert body.contains('Array __arr_str_it_'), body
-	assert body.contains('string __arr_str_it_'), body
+	assert body.contains('Array_string__str(__arr_str_it_'), body
 	assert !body.contains('int __arr_str_it_'), body
 	assert !generated.contains('WrapperQueue_T__str'), generated
 	assert !generated.contains('LinkList_T__str'), generated

@@ -108,9 +108,9 @@ fn main() {
 	assert !shape_c.contains('[max_items]'), shape_c
 	assert !shape_c.contains('[rows]'), shape_c
 	assert !shape_c.contains('[cols]'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_max_items[8];'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_cols[16];'), shape_c
-	assert shape_c.contains('typedef Array_fixed_int_cols Array_fixed_Array_fixed_int_cols_rows[6];'), shape_c
+	assert shape_c.contains('typedef int Array_fixed_int_8[8];'), shape_c
+	assert shape_c.contains('typedef int Array_fixed_int_16[16];'), shape_c
+	assert shape_c.contains('typedef Array_fixed_int_16 Array_fixed_Array_fixed_int_16_6[6];'), shape_c
 }
 
 fn test_fixed_array_typedefs_keep_declaring_module_with_unrelated_math_import() {
@@ -162,4 +162,115 @@ fn main() {
 	assert !generated.contains('math__Image'), generated
 	assert !generated.contains('math__TouchPoint'), generated
 	assert !generated.contains('Array_fixed_math__'), generated
+}
+
+fn test_sizeof_fixed_array_typedef_precedes_function_pointer() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('sizeof_fn_ptr', 'module fixture
+
+pub type Callback = fn ([sizeof(int)]u8) int
+
+fn first_byte(data [sizeof(int)]u8) int {
+	return int(data[0])
+}
+
+pub fn call() int {
+	callback := Callback(first_byte)
+	mut data := [sizeof(int)]u8{}
+	data[0] = 7
+	return callback(data)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.call())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '7', run.output
+}
+
+fn test_sizeof_pointer_fixed_array_typedef_precedes_function_pointer() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('sizeof_pointer_fn_ptr', 'module fixture
+', 'module main
+
+struct Payload {
+	value int
+}
+
+type IntPointerCallback = fn ([sizeof(&int)]u8) int
+type StructPointerCallback = fn ([sizeof(&Payload)]u8) int
+
+fn int_pointer_size(data [sizeof(&int)]u8) int {
+	return data.len
+}
+
+fn struct_pointer_size(data [sizeof(&Payload)]u8) int {
+	return data.len
+}
+
+fn main() {
+	int_callback := IntPointerCallback(int_pointer_size)
+	struct_callback := StructPointerCallback(struct_pointer_size)
+	int_data := [sizeof(&int)]u8{}
+	struct_data := [sizeof(&Payload)]u8{}
+	println(int_callback(int_data) + struct_callback(struct_data))
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}
+
+fn test_sizeof_struct_fixed_array_typedef_is_emitted_when_target_is_defined() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('sizeof_struct', 'module fixture
+
+pub type Bytes = [sizeof(ZSize)]u8
+
+pub struct ZSize {
+	value int
+}
+
+pub struct ZZHolder {
+pub mut:
+	data Bytes
+}
+
+pub fn score() int {
+	mut holder := ZZHolder{}
+	holder.data[0] = 9
+	return int(holder.data[0]) + holder.data.len
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.score())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '13', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	size_pos := generated.index('struct fixture__ZSize {') or { -1 }
+	typedef_pos := generated.index('typedef u8 Array_fixed_u8_sizeof_fixture__ZSize') or { -1 }
+	holder_pos := generated.index('struct fixture__ZZHolder {') or { -1 }
+	assert size_pos >= 0, generated
+	assert typedef_pos > size_pos, generated
+	assert holder_pos > typedef_pos, generated
 }

@@ -322,6 +322,14 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .mod
 		}
 		`*` {
+			if s.peek_byte(0) == `*` {
+				s.offset++
+				if s.peek_byte(0) == `=` {
+					s.offset++
+					return .power_assign
+				}
+				return .power
+			}
 			if s.peek_byte(0) == `=` {
 				s.offset++
 				return .mul_assign

@@ -504,6 +504,26 @@ fn main() {
 	assert out == '49'
 }
 
+fn test_const_generic_fn_factory_value_call_uses_const_storage() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'const_generic_fn_factory_value_call', '
+type Validator[T] = fn (value T) ?int
+
+fn make_validator[T]() Validator[T] {
+	return fn [T] (value T) ?int {
+		return none
+	}
+}
+
+const validate_int = make_validator[int]()
+
+fn main() {
+	println(validate_int(123) == none)
+}
+')
+	assert out == 'true'
+}
+
 fn test_fn_value_expected_context_respects_value_shadowing() {
 	v3_bin := build_v3()
 	ident_output := run_bad(v3_bin, 'fn_value_expected_ident_shadow',

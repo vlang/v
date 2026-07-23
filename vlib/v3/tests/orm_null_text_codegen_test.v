@@ -63,7 +63,7 @@ fn main() {
 		return
 	}
 	after_marker := c_code[marker_idx + '.name = '.len..]
-	symbol := after_marker.all_before(';').trim_space()
+	symbol := after_marker.all_before('}').all_before(',').all_before(';').trim_space()
 	assert symbol.starts_with('_str_'), c_code
 	assert c_code.contains('string ${symbol} ='), c_code
 }
@@ -224,21 +224,21 @@ fn main() {
 	_ = rows
 }
 ')
-	assert c_code.contains('extern long long sqlite3_column_int64'), c_code
-	assert c_code.contains('extern int sqlite3_bind_int64'), c_code
+	assert c_code.contains('i64 sqlite3_column_int64('), c_code
+	assert c_code.contains('i32 sqlite3_bind_int64('), c_code
 	assert c_code.contains('sqlite3_bind_int('), c_code
 	assert c_code.contains('sqlite3_bind_int64('), c_code
 	assert c_code.contains('sqlite3_column_int('), c_code
 	assert c_code.contains('sqlite3_column_int64('), c_code
-	assert c_code.contains(', 1, (int)(metric).small);'), c_code
-	assert c_code.contains(', 2, (i64)(metric).wide_32);'), c_code
-	assert c_code.contains(', 3, (i64)(metric).wide_i);'), c_code
-	assert c_code.contains(', 4, (i64)(metric).wide_u);'), c_code
-	assert c_code.contains(', 5, (i64)(metric).wide_is);'), c_code
-	assert c_code.contains(', 6, (i64)(metric).wide_us);'), c_code
-	assert c_code.contains('.wide_32 = (u32)sqlite3_column_int64'), c_code
-	assert c_code.contains('.wide_i = (i64)sqlite3_column_int64'), c_code
-	assert c_code.contains('.wide_u = (u64)sqlite3_column_int64'), c_code
-	assert c_code.contains('.wide_is = (ptrdiff_t)sqlite3_column_int64'), c_code
-	assert c_code.contains('.wide_us = (size_t)sqlite3_column_int64'), c_code
+	assert c_code.contains('orm__append_field_value_data_T_v_int('), c_code
+	assert c_code.contains('orm__append_field_value_data_T_u32('), c_code
+	assert c_code.contains('orm__append_field_value_data_T_i64('), c_code
+	assert c_code.contains('orm__append_field_value_data_T_u64('), c_code
+	assert c_code.contains('orm__append_field_value_data_T_isize('), c_code
+	assert c_code.contains('orm__append_field_value_data_T_usize('), c_code
+	assert c_code.contains('orm__primitive_from_field_value_T_u32('), c_code
+	assert c_code.contains('orm__primitive_from_field_value_T_i64('), c_code
+	assert c_code.contains('orm__primitive_from_field_value_T_u64('), c_code
+	assert c_code.contains('orm__primitive_from_field_value_T_isize('), c_code
+	assert c_code.contains('orm__primitive_from_field_value_T_usize('), c_code
 }

@@ -329,7 +329,7 @@ fn test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_trans
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('colors__Color__str(')
+	assert c_code.contains('colors__Color_str(')
 }
 
 // test_imported_operator_infix_lowers_after_used_filter_transform
@@ -382,7 +382,7 @@ fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_fil
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('colors__Color__str(')
+	assert c_code.contains('colors__Color_str(')
 }
 
 // test_imported_enum_print_compile_keeps_str_method validates this v3 regression case.

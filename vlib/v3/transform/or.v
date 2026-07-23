@@ -949,7 +949,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 				callee := t.a.child_node(&expr_node, 0)
 				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
 					&& t.is_optional_type_name(expr_node.typ) {
-					return t.canonical_or_expr_types(expr_node.typ)
+					return specialized_or_expr_types(expr_node.typ)
 				}
 			}
 			if current_ret := t.current_generic_receiver_call_return_type(expr_node) {
@@ -1048,6 +1048,25 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	return expr_type, value_type
 }
 
+fn specialized_or_expr_types(expr_type string) (string, string) {
+	clean := expr_type.trim_space()
+	if clean in ['!', '?'] {
+		return '${clean}void', 'void'
+	}
+	if clean.len < 2 || (clean[0] != `!` && clean[0] != `?`) {
+		return clean, clean
+	}
+	base := clean[1..]
+	if base.len == 0 || base in ['void', 'Optional'] {
+		return '${clean[..1]}void', 'void'
+	}
+	// The specialized signature is the ABI authority. In particular, resolving
+	// `StructKeyDecodeResult[sapp.Event]` again here would unalias the argument to
+	// `C.sapp_event`, while the specialized callee still returns the former C
+	// generic struct type.
+	return clean, base
+}
+
 fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
 	if call.children_count == 0 {
 		return none
@@ -1083,6 +1102,12 @@ fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
 }
 
 fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
+	// A bare `!` or `?` (a result/option of `void`, e.g. `fn f() !`) carries no payload.
+	// Falling through would run `optional_base_type('!')` -> `'!'`, then resolve `'!'` as
+	// the `Optional` wrapper struct and double-wrap the temporary as `Optional_Optional`.
+	if expr_type == '!' || expr_type == '?' {
+		return '${expr_type}void', 'void'
+	}
 	mut clean_expr_type := expr_type
 	if !t.is_optional_type_name(clean_expr_type) {
 		normalized := t.normalize_type_alias(clean_expr_type)
@@ -1146,6 +1171,12 @@ fn (t &Transformer) normalize_or_expr_value_type(typ string) string {
 			normalized_items << t.normalize_or_expr_value_type(item)
 		}
 		return '(${normalized_items.join(', ')})'
+	}
+	if typ.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(typ)
+		if key_type.len > 0 && value_type.len > 0 {
+			return 'map[${t.normalize_or_expr_value_type(key_type)}]${t.normalize_or_expr_value_type(value_type)}'
+		}
 	}
 	base, args, is_generic := generic_app_parts(typ)
 	if !is_generic {

@@ -52,6 +52,7 @@ pub mut:
 	has_import_stmt          bool
 	use_short_fn_args        bool
 	single_line_fields       bool // should struct fields be on a single line
+	expand_call_args         bool // one-shot: the next call_args() keeps each argument on its own line
 	in_lambda_depth          int
 	inside_const             bool
 	inside_unsafe            bool
@@ -2649,6 +2650,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	}
 	f.write_generic_call_if_require(node)
 	f.write('(')
+	f.expand_call_args = node.args_start_on_new_line
 	f.call_args(node.args)
 	f.write(')')
 	f.or_expr(node.or_block)
@@ -2743,16 +2745,34 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	old_short_arg_state := f.use_short_fn_args
 	f.single_line_fields = true
 	f.use_short_fn_args = false
+	// When the user starts a call's arguments on a line after `(` and ends them with a
+	// trailing comma, vfmt keeps the call expanded (#27909). Like gofmt, it preserves
+	// the source line grouping: arguments the user placed on the same line stay
+	// together, the rest go on their own line, and a trailing comma is written before
+	// the closing `)`. The trailing comma is the explicit opt-in — vfmt never emits one
+	// otherwise, so already-formatted calls are left untouched. The trailing short-struct
+	// syntax `f(a, b, c: 1)` has its own multiline layout (use_short_fn_args below), so
+	// it is left untouched.
+	last_is_short_struct := args.len > 0 && args.last().expr is ast.StructInit
+		&& (args.last().expr as ast.StructInit).typ == ast.void_type
+	expand := f.expand_call_args && args.len > 0 && !last_is_short_struct
+	f.expand_call_args = false
 	defer {
 		f.single_line_fields = old_single_line_fields_state
 		f.use_short_fn_args = old_short_arg_state
+	}
+	if expand {
+		f.writeln('')
+		f.indent++
 	}
 	for i, arg in args {
 		pre_comments := arg.comments.filter(it.pos.pos < arg.expr.pos().pos)
 		post_comments := arg.comments[pre_comments.len..]
 		if pre_comments.len > 0 {
 			f.comments(pre_comments)
-			f.write(' ')
+			if !expand {
+				f.write(' ')
+			}
 		}
 		if i == args.len - 1 && arg.expr is ast.StructInit {
 			if arg.expr.typ == ast.void_type {
@@ -2762,7 +2782,8 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 && !f.single_line_if && !f.use_short_fn_args && arg.expr !is ast.StructInit {
+		if !expand && i > 0 && !f.single_line_if && !f.use_short_fn_args
+			&& arg.expr !is ast.StructInit {
 			arg_str := f.node_str(arg.expr)
 			tail_len := if i < args.len - 1 { 2 } else { 1 }
 			is_tiny_last_assign_arg := f.is_assign && i == args.len - 1 && arg_str.len <= 4
@@ -2772,13 +2793,31 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			}
 		}
 		f.expr(arg.expr)
-		if post_comments.len > 0 {
-			f.comments(post_comments)
-			f.write(' ')
+		if expand {
+			f.write(',')
+			if post_comments.len > 0 {
+				f.comments(post_comments, same_line: true, has_nl: false)
+			}
+			// Preserve the source line grouping: keep the next argument on this line
+			// if the user wrote them together, otherwise start a new line. The last
+			// argument always ends the line, so the closing `)` lands on its own line.
+			if i == args.len - 1 || args[i + 1].pos.line_nr > arg.pos.last_line {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
+		} else {
+			if post_comments.len > 0 {
+				f.comments(post_comments)
+				f.write(' ')
+			}
+			if i < args.len - 1 {
+				f.write(', ')
+			}
 		}
-		if i < args.len - 1 {
-			f.write(', ')
-		}
+	}
+	if expand {
+		f.indent--
 	}
 }
 

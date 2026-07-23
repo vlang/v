@@ -59,6 +59,34 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_reject_fixed_array_decay_to_pointer() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_fixed_array_pointer_argument',
+		'fn consume(value &int) {}\n\nfn main() {\n\tconsume([1, 2]!)\n}\n',
+		'cannot use `[2]int` as argument 1 to `consume`; expected `&int`')
+	run_bad(v3_bin, 'bad_fixed_array_pointer_return',
+		'fn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
+		'cannot return `[2]int` as `&int`')
+	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
+		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
+		'cannot return `[2]int` as `&int`')
+	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_temporary_assignment',
+		'@[translated]\nmodule main\n\nfn main() {\n\tmut ptr := &int(0)\n\tptr = [1, 2]!\n}\n',
+		'cannot assign `[2]int` to `&int`')
+	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
+		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
+		'cannot use `&[2]u8` as argument 1 to `consume`; expected `&u8`')
+	run_bad(v3_bin, 'bad_fixed_i32_array_byte_pointer_assignment',
+		'fn main() {\n\tbuf := [i32(1), 2]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n}\n',
+		'cannot assign `&[2]i32` to `&u8`')
+	byte_out := run_good(v3_bin, 'good_fixed_u8_array_byte_pointer_assignment',
+		'fn main() {\n\tbuf := [u8(65), 66]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n\tprintln(int_str(int(*ptr)))\n}\n')
+	assert byte_out == '65'
+	out := run_good(v3_bin, 'good_translated_fixed_array_pointer_assignment',
+		'@[translated]\nmodule main\n\nfn main() {\n\tvalues := [1, 2]!\n\tmut ptr := &int(0)\n\tptr = values\n\tprintln(int_str(*ptr))\n}\n')
+	assert out == '1'
+}
+
 fn test_reject_cross_wrapper_option_result_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_result_value_in_option_return',
@@ -70,6 +98,35 @@ fn test_reject_cross_wrapper_option_result_returns() {
 	run_bad(v3_bin, 'bad_option_value_in_result_pointer_return',
 		'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n',
 		'cannot return `?Item` as `&Item`')
+	run_bad(v3_bin, 'bad_error_branch_in_option_return',
+		"fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_constant_error_branch_in_option_return',
+		"fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	out := run_good(v3_bin, 'good_error_branch_in_result_return',
+		"fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n")
+	assert out == '1\n-1'
+}
+
+fn test_option_void_is_not_compatible_with_payload_options() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_unsafe_none_option_default', 'struct Holder {
+	value ?int = unsafe { none }
+}
+
+fn main() {
+	holder := Holder{}
+	println((holder.value == none).str())
+}
+')
+	assert out == 'true'
+	run_bad(v3_bin, 'bad_option_void_returned_as_option_int',
+		'fn empty() ? {\n\treturn\n}\n\nfn value() ?int {\n\treturn empty()\n}\n\nfn main() {}\n',
+		'cannot return `?void` as `?int`')
+	run_bad(v3_bin, 'bad_option_void_assigned_to_option_int',
+		'fn empty() ? {\n\treturn\n}\n\nfn main() {\n\tmut value := ?int(1)\n\tvalue = empty()\n}\n',
+		'cannot assign `?void` to `?int`')
 }
 
 fn test_optional_address_preserves_wrapper_shape() {
@@ -128,6 +185,61 @@ fn test_optional_parameters_are_required() {
 		'argument count mismatch for `consume`: expected 1, got 0')
 }
 
+fn test_multi_return_arguments_must_consume_the_parameter_tail() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_non_tail_multi_return_argument',
+		'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn consume(a int, b int, c int) {}\n\nfn main() {\n\tconsume(pair(), 3)\n}\n',
+		'argument count mismatch for `consume`: expected 3, got 2')
+	run_bad(v3_bin, 'bad_variadic_multi_return_argument',
+		'fn pair() (int, []int) {\n\treturn 1, [2, 3]\n}\n\nfn consume(a int, rest ...int) {}\n\nfn main() {\n\tconsume(pair())\n}\n',
+		'cannot use `(int, []int)` as argument 1 to `consume`; expected `int`')
+}
+
+fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'receiver_method_tail_multi_return',
+		'struct Receiver {}\n\nfn pair() (int, int) {\n\treturn 2, 3\n}\n\nfn (receiver Receiver) use(a int, b int) int {\n\treturn a * 10 + b\n}\n\nfn (receiver Receiver) use_with_prefix(prefix int, a int, b int) int {\n\treturn prefix * 100 + a * 10 + b\n}\n\nfn main() {\n\tprintln(int_str(Receiver{}.use(pair())))\n\tprintln(int_str(Receiver{}.use_with_prefix(1, pair())))\n}\n')
+	assert out == '23\n123'
+}
+
+fn test_power_requires_numeric_operands_or_an_overload() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n',
+		'operator `**` requires numeric operands; got `bool` and `int`')
+	run_bad(v3_bin, 'bad_array_power', 'fn main() {\n\t_ := [1] ** 2\n}\n',
+		'operator `**` requires numeric operands; got `[]int` and `int`')
+	run_bad(v3_bin, 'bad_string_power', "fn main() {\n\t_ := 'x' ** 2\n}\n",
+		'operator `**` requires numeric operands; got `string` and `int`')
+	run_bad(v3_bin, 'bad_bool_power_assign', 'fn main() {\n\tmut ok := true\n\tok **= false\n}\n',
+		'operator `**=` requires numeric operands; got `bool` and `bool`')
+	run_bad(v3_bin, 'bad_array_power_assign',
+		'fn main() {\n\tmut values := [1]\n\tvalues **= [2]\n}\n',
+		'operator `**=` requires numeric operands; got `[]int` and `[]int`')
+	run_bad(v3_bin, 'bad_string_power_assign',
+		"fn main() {\n\tmut value := 'x'\n\tvalue **= 'y'\n}\n",
+		'operator `**=` requires numeric operands; got `string` and `string`')
+	out := run_good(v3_bin, 'good_overloaded_power', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * b.value
+	}
+}
+
+fn main() {
+	value := Exponent{
+		value: 2
+	} ** Exponent{
+		value: 3
+	}
+	println(int_str(value.value))
+}
+')
+	assert out == '6'
+}
+
 fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',
@@ -138,8 +250,8 @@ fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 fn test_reject_narrowed_interface_method_parameters() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_narrowed_interface_method_param',
-		'interface A {\n\ta() string\n}\n\ninterface B {\n\tA\n\tb() string\n}\n\nstruct Impl {}\n\nfn (Impl) m(x B) {\n\t_ = x\n}\n\ninterface I {\n\tm(x A)\n}\n\nfn main() {\n\t_ := I(Impl{})\n}\n',
-		'type `Impl` does not implement interface `I`')
+		'interface Eq {\n\teq(other Eq) bool\n}\n\ninterface Ord {\n\tEq\n\tlt(other Ord) bool\n}\n\nstruct Int {}\n\nfn (Int) eq(other Ord) bool {\n\t_ = other\n\treturn true\n}\n\nfn (Int) lt(other Ord) bool {\n\t_ = other\n\treturn false\n}\n\nfn main() {\n\t_ := Eq(Int{})\n}\n',
+		'type `Int` does not implement interface `Eq`')
 }
 
 fn test_implicit_str_sum_does_not_satisfy_interface() {

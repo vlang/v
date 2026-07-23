@@ -1623,6 +1623,17 @@ fn (t &Transformer) post_if_exit_smartcasts(id flat.NodeId) []IsExprInfo {
 	return []IsExprInfo{}
 }
 
+fn (t &Transformer) post_assert_smartcasts(id flat.NodeId) []IsExprInfo {
+	if int(id) < 0 {
+		return []IsExprInfo{}
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .assert_stmt || node.children_count == 0 {
+		return []IsExprInfo{}
+	}
+	return t.extract_all_is_exprs(t.a.child(&node, 0))
+}
+
 fn (t &Transformer) negated_is_expr_info(cond_id flat.NodeId) ?IsExprInfo {
 	if int(cond_id) < 0 {
 		return none

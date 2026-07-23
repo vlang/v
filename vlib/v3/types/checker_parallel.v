@@ -112,6 +112,10 @@ fn check_worker_scope_free(scope voidptr) {
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	if !want_parallel {
+		if tc.scope_parallel_check_workers {
+			tc.check_semantics_scoped_serial()
+			return false
+		}
 		tc.check_semantics()
 		return false
 	}
@@ -121,6 +125,35 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	} $else {
 		return tc.check_semantics_parallel()
 	}
+}
+
+// check_semantics_scoped_serial keeps a no-parallel preallocated check bounded
+// without starting helper threads. Each function batch publishes only its
+// diagnostics and node caches before its disposable arena is released.
+fn (mut tc TypeChecker) check_semantics_scoped_serial() {
+	tc.resolution_type_mode = false
+	tc.install_type_cache_overlay()
+	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+	tc.selected_file_called_fns = map[string]bool{}
+	tc.selected_file_worklist = []string{}
+	tc.check_export_attrs()
+	items := tc.collect_parallel_check_items()
+	final_file := tc.cur_file
+	final_module := tc.cur_module
+	tc.check_scoped_batches(items)
+	tc.cur_file = final_file
+	tc.cur_module = final_module
+	if tc.defer_ierror_gating {
+		if tc.pending_ierror_errors.len > 0 {
+			tc.collect_selected_file_called_fns()
+		}
+		if tc.filter_pending_ierror_errors() {
+			tc.sort_parallel_check_errors()
+		}
+		tc.defer_ierror_gating = false
+	}
+	tc.restore_type_cache_base()
+	tc.resolution_type_mode = true
 }
 
 // check_semantics_selected validates declarations and only the named function
@@ -691,6 +724,9 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Parallel checker workers may populate this cache concurrently, so each
+	// worker (and each disposable scoped batch) owns its maps.
+	w.visible_mutation_cache = new_visible_mutation_cache()
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint

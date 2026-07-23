@@ -264,8 +264,10 @@ fn test_cache_input_scan_uses_initial_cflags() {
 	}
 	header := os.join_path(include_dir, 'cli_only.h')
 	forced_header := os.join_path(include_dir, 'forced_cli.h')
-	os.write_file(header, '#define CLI_ONLY_VALUE 1\n') or { panic(err) }
-	os.write_file(forced_header, '#define FORCED_CLI_VALUE 2\n') or { panic(err) }
+	forced_nested_header := os.join_path(include_dir, 'forced_nested.h')
+	os.write_file(header, '#include FORCED_CLI_HEADER\n') or { panic(err) }
+	os.write_file(forced_header, '#define FORCED_CLI_HEADER "forced_nested.h"\n') or { panic(err) }
+	os.write_file(forced_nested_header, '#define FORCED_CLI_VALUE 2\n') or { panic(err) }
 	source := os.join_path(dir, 'sample.v')
 	os.write_file(source, 'module sample
 #include "cli_only.h"
@@ -279,7 +281,9 @@ fn test_cache_input_scan_uses_initial_cflags() {
 		'sample': true
 	}, ['-I', include_dir, '-include', 'forced_cli.h'], target)
 	assert !has_untracked
-	assert inputs['sample'] == [os.real_path(header)]
+	mut expected := [os.real_path(header), os.real_path(forced_nested_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
 	assert inputs['__v3_c_flags__'] == [os.real_path(forced_header)]
 }
 
@@ -311,6 +315,88 @@ fn test_cache_input_scan_tracks_imported_headers() {
 	assert inputs['sample'] == expected
 }
 
+fn test_cache_input_scan_tracks_literal_include_macros() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_macro_header_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	definitions_header := os.join_path(dir, 'definitions.h')
+	outer_header := os.join_path(dir, 'outer.h')
+	nested_header := os.join_path(dir, 'nested.h')
+	os.write_file(definitions_header, '#define V3_NESTED_HEADER "nested.h"\n') or { panic(err) }
+	os.write_file(outer_header, '#include V3_NESTED_HEADER\n') or { panic(err) }
+	os.write_file(nested_header, '#define NESTED_VALUE 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "definitions.h"\n#include "outer.h"\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(definitions_header), os.real_path(outer_header),
+		os.real_path(nested_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+}
+
+fn test_cache_input_scan_rejects_dynamic_include_macros() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_dynamic_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(dir, 'outer.h')
+	os.write_file(header,
+		'#define V3_NESTED_HEADER V3_SELECTED_HEADER\n#include V3_NESTED_HEADER\n') or {
+		panic(err)
+	}
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	_, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert has_untracked
+}
+
+fn test_cache_input_scan_rejects_unresolved_include_macros() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_unresolved_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	nested_header := os.join_path(dir, 'nested.h')
+	os.write_file(outer_header, '#include V3_EXTERNAL_HEADER\n') or { panic(err) }
+	os.write_file(nested_header, '#define NESTED_VALUE 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source,
+		'module sample\n#define V3_EXTERNAL_HEADER "nested.h"\n#include "outer.h"\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert has_untracked
+	assert inputs['sample'] == [os.real_path(outer_header)]
+}
+
 fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_source_root_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -320,22 +406,34 @@ fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
 	}
 	root_source := os.join_path(dir, 'root.c')
 	nested_source := os.join_path(dir, 'nested.c')
+	direct_header := os.join_path(dir, 'direct.h')
+	nested_header := os.join_path(dir, 'nested.h')
 	os.write_file(root_source, '#include "nested.c"\n') or { panic(err) }
 	os.write_file(nested_source, 'static int nested_value(void) { return 42; }\n') or { panic(err) }
+	os.write_file(direct_header, '#include "nested.h"\n') or { panic(err) }
+	os.write_file(nested_header, 'static int header_value(void) { return 1; }\n') or { panic(err) }
 	source := os.join_path(dir, 'sample.v')
-	os.write_file(source, 'module sample\n#include "root.c"\n') or { panic(err) }
+	os.write_file(source, 'module sample\n#include "root.c"\n#include "direct.h"\n') or {
+		panic(err)
+	}
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, native_roots, has_untracked := cache_external_input_files(a, '', {
+	inputs, native_roots, unscoped_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
 		'sample': true
 	}, [], prefs.target)
 	assert !has_untracked
-	mut expected_inputs := [os.real_path(root_source), os.real_path(nested_source)]
+	mut expected_inputs := [os.real_path(root_source), os.real_path(nested_source),
+		os.real_path(direct_header), os.real_path(nested_header)]
 	expected_inputs.sort()
 	assert inputs['sample'] == expected_inputs
 	assert native_roots['sample'] == [os.real_path(root_source)]
+	mut expected_unscoped_inputs := [os.real_path(direct_header),
+		os.real_path(nested_header)]
+	expected_unscoped_inputs.sort()
+	assert unscoped_inputs['sample'] == expected_unscoped_inputs
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {
