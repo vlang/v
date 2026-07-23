@@ -3754,6 +3754,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
 	g.ierror_stack_pointer_aliases.clear()
+	g.ierror_owned_pointer_by_owner.clear()
 	g.local_pointer_storage_by_owner.clear()
 	g.local_c_type_by_owner.clear()
 	g.local_pointer_alias_by_owner.clear()
@@ -3941,6 +3942,8 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.pending_loop_label = ''
 	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases
 	g.ierror_stack_pointer_aliases = []map[string]bool{}
+	mut old_ierror_owned_pointer_by_owner := g.ierror_owned_pointer_by_owner.move()
+	g.ierror_owned_pointer_by_owner = map[string]bool{}
 	mut old_local_pointer_storage_by_owner := g.local_pointer_storage_by_owner.move()
 	g.local_pointer_storage_by_owner = map[string]bool{}
 	mut old_local_c_type_by_owner := g.local_c_type_by_owner.move()
@@ -4011,6 +4014,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.tc.cur_module = old_tc_module
 	g.pop_scope()
 	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases
+	g.ierror_owned_pointer_by_owner = old_ierror_owned_pointer_by_owner.move()
 	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.move()
 	g.local_c_type_by_owner = old_local_c_type_by_owner.move()
 	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.move()
@@ -4542,7 +4546,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		g.write(')')
 		return
 	}
-	if fn_node.kind == .selector && fn_node.value == 'value' {
+	if fn_node.kind == .selector && fn_node.value == 'value'
+		&& !g.call_callee_is_module_selector(node) {
 		if fn_type := fn_type_from(g.usable_expr_type(g.a.child(&node, 0))) {
 			g.gen_expr(g.a.child(&node, 0))
 			g.write('(')
@@ -12350,6 +12355,23 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	return true
 }
 
+// clone_parallel_type_checker builds a per-worker TypeChecker for parallel codegen.
+//
+// During codegen the checker's lookup tables are READ-ONLY: cgen only ever assigns the
+// scalar `cur_file`/`cur_module` fields, and the read paths it uses (expr_type, c_type,
+// parse_type, resolve_type, cached_resolved_call) never write into the big maps — the only
+// memoizing write is into `type_cache`, which is left nil here so workers take the uncached
+// path. V maps and arrays are reference types, so the read-only tables are SHARED by
+// reference (no `.clone()`), exactly like the already-shared `a` FlatAst. This avoids
+// deep-copying the program-wide `expr_type_*`/`structs`/signature tables once per worker,
+// which was the bulk of parallel cgen's extra RAM and serial setup time.
+//
+// Only genuinely per-worker mutable state is given its own copy: the scope chain (gen pushes
+// child scopes) and `errors` (avoid a concurrent append race, though gen does not emit any).
+fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
+	return g.tc.fork_for_parallel_codegen()
+}
+
 // forward_decls supports forward decls handling for FlatGen.
 fn (mut g FlatGen) forward_decls() {
 	items := g.ensure_fn_gen_items()
@@ -12367,6 +12389,10 @@ fn (mut g FlatGen) forward_decls() {
 		output_sb := g.sb
 		master_tc := g.tc
 		master_c_name_cache := g.c_name_cache
+		master_import_alias_cache := g.import_alias_cache
+		master_enum_selector_cache := g.enum_selector_cache
+		master_enum_method_cache := g.enum_method_cache
+		master_qualified_enum_method_cache := g.qualified_enum_method_cache
 		mut master_concrete_optional_params := g.cur_concrete_optional_params.move()
 		mut master_needed_optional_types := g.needed_optional_types.move()
 		mut master_fn_ptr_types := g.fn_ptr_types.move()
@@ -12376,6 +12402,12 @@ fn (mut g FlatGen) forward_decls() {
 		g.line_start = true
 		g.tc = g.clone_parallel_type_checker()
 		g.c_name_cache = &CNameCache{}
+		// Context-cache entries can own strings allocated by this disposable
+		// batch. Disable them until the master caches are restored.
+		g.import_alias_cache = unsafe { nil }
+		g.enum_selector_cache = unsafe { nil }
+		g.enum_method_cache = unsafe { nil }
+		g.qualified_enum_method_cache = unsafe { nil }
 		g.cur_concrete_optional_params = map[string]bool{}
 		g.needed_optional_types = map[string]string{}
 		g.fn_ptr_types = master_fn_ptr_types.clone()
@@ -12387,6 +12419,10 @@ fn (mut g FlatGen) forward_decls() {
 		g.line_start = true
 		g.tc = master_tc
 		g.c_name_cache = master_c_name_cache
+		g.import_alias_cache = master_import_alias_cache
+		g.enum_selector_cache = master_enum_selector_cache
+		g.enum_method_cache = master_enum_method_cache
+		g.qualified_enum_method_cache = master_qualified_enum_method_cache
 		g.cur_concrete_optional_params = master_concrete_optional_params.move()
 		g.needed_optional_types = master_needed_optional_types.move()
 		g.fn_ptr_types = master_fn_ptr_types.move()
@@ -12447,6 +12483,9 @@ fn (mut g FlatGen) cached_header_forward_decls() {
 			continue
 		}
 		if node.kind != .fn_decl || !cur_file.ends_with('.vh') {
+			continue
+		}
+		if cur_module == 'builtin' && node.value == 'u8.vbytes' {
 			continue
 		}
 		// Most cached functions are declaration-only nodes (`is_mut` is the parser's
@@ -13011,8 +13050,10 @@ const c_static_helper_symbols = {
 	'vschannel_cleanup':                   true
 	'vschannel_init':                      true
 	'v_prealloc_atomic_add_i32':           true
+	'v_prealloc_atomic_add_i64':           true
 	'v_prealloc_atomic_cas_i32':           true
 	'v_prealloc_atomic_load_i32':          true
+	'v_prealloc_atomic_load_i64':          true
 	'v_prealloc_atomic_store_i32':         true
 	'v_signal_with_handler_cast':          true
 	'wyhash':                              true

@@ -5,6 +5,8 @@ import time
 import v3.flat
 import v3.types
 
+const scoped_monomorph_scan_nodes = 32768
+
 struct GenericStructDecl {
 	id     flat.NodeId
 	node   flat.Node
@@ -25,6 +27,62 @@ struct GenericSpecContext {
 	base   string
 	file   string
 	module string
+}
+
+// collect_generic_specs_range_scoped bounds the temporary type parsing and
+// string splitting needed when a monomorphization round scans newly generated
+// nodes. Only the small set of discovered specs escapes each scratch arena.
+fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut struct_specs map[string]string, mut sum_specs map[string]GenericSpecContext, first int, last int) {
+	if first >= last {
+		return
+	}
+	t.tc.freeze_type_cache_for_forks()
+	defer {
+		t.tc.unfreeze_type_cache_after_forks()
+	}
+	mut start := first
+	for start < last {
+		end := if start + scoped_monomorph_scan_nodes < last {
+			start + scoped_monomorph_scan_nodes
+		} else {
+			last
+		}
+		scope := transform_worker_scope_begin(true)
+		mut wtc := t.tc.fork_for_parallel_transform(t.a)
+		mut w := t.fork_scoped_batch_worker(t.a, wtc)
+		// The master has already extended these append-only context arrays to
+		// `last`; workers only read them while collecting type spellings.
+		w.node_module_map_cache = t.node_module_map_cache
+		w.node_file_map_cache = t.node_file_map_cache
+		w.node_module_map_nodes = t.node_module_map_nodes
+		mut batch_struct_specs := map[string]string{}
+		mut batch_sum_specs := map[string]GenericSpecContext{}
+		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
+		w.collect_generic_sum_specs_range(sum_decls, mut batch_sum_specs, start, end)
+		transform_worker_scope_leave(scope)
+		for spec, base in batch_struct_specs {
+			struct_specs[spec.clone()] = base.clone()
+		}
+		for spec, context in batch_sum_specs {
+			sum_specs[spec.clone()] = GenericSpecContext{
+				base:   context.base.clone()
+				file:   context.file.clone()
+				module: context.module.clone()
+			}
+		}
+		for name, args in w.generic_specialization_args {
+			if name in t.generic_specialization_args {
+				continue
+			}
+			mut owned_args := []string{cap: args.len}
+			for arg in args {
+				owned_args << arg.clone()
+			}
+			t.generic_specialization_args[name.clone()] = owned_args
+		}
+		transform_worker_scope_free(scope)
+		start = end
+	}
 }
 
 struct GenericCallSite {
@@ -4005,8 +4063,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 			}
 		}
 		inference_param_type := generic_inference_param_type(child)
-		if (child.is_mut || child.op == .amp || child.typ.starts_with('mut '))
-			&& inferred_arg_type.starts_with('&') {
+		if (child.is_mut || child.typ.starts_with('mut ')) && inferred_arg_type.starts_with('&') {
 			// A mutable parameter's leading pointer is its storage ABI, whether the
 			// generic placeholder is direct (`T`) or nested (`Container[T]`).
 			inferred_arg_type = inferred_arg_type[1..]
@@ -4854,8 +4911,8 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 		arg := t.a.nodes[int(arg_id)]
 		inference_param_type := generic_inference_param_type(param)
 		mut raw_arg_type := arg.typ
-		if (param.is_mut || param.op == .amp || param.typ.starts_with('mut '))
-			&& arg.kind == .prefix && arg.op == .amp && raw_arg_type.starts_with('&') {
+		if (param.is_mut || param.typ.starts_with('mut ')) && arg.kind == .prefix && arg.op == .amp
+			&& raw_arg_type.starts_with('&') {
 			// A rewritten `mut value` call stores the C ABI address on the argument
 			// node. Infer the generic from the language-level value, removing exactly
 			// that storage pointer (and preserving a pointer-valued `T`).
@@ -5355,6 +5412,11 @@ fn generic_operator_symbol_for_c_method(method string) ?string {
 
 fn (t &Transformer) specialized_plain_generic_call_decl_key(name string, module_name string, decls map[string]GenericFnDecl) ?string {
 	if !name.contains('_T_') {
+		return none
+	}
+	if !isnil(t.tc) && name in t.tc.fn_ret_types && !t.tc.specialized_generic_fns[name] {
+		// `_T_` is valid in an ordinary function name. Prefer that concrete source
+		// declaration over decoding the suffix as a generated specialization.
 		return none
 	}
 	base := name.all_before('_T_')
@@ -6743,6 +6805,13 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 			if child.is_mut {
 				return inner
 			}
+			if child.kind == .ident && t.mut_value_ident_nodes[int(child_id)]
+				&& inner.starts_with('&') && !t.raw_var_type(child.value).starts_with('&') {
+				// A cloned `mut value T` parameter carries `&Concrete` on its identifier
+				// as storage metadata. Source `&value` denotes `&Concrete`, not
+				// `&&Concrete`; consume the storage pointer before applying the source one.
+				return inner
+			}
 			return '&${inner}'
 		}
 	}
@@ -6769,6 +6838,12 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 			return alias_type
 		}
 	}
+	if node.kind == .map_init {
+		map_type := t.infer_map_init_entry_type(node)
+		if map_type.len > 0 {
+			return map_type
+		}
+	}
 	if node.kind in [.array_literal, .fn_literal, .lambda_expr] {
 		typ := t.generic_arg_expr_type(id)
 		if typ.len > 0 {
@@ -6776,6 +6851,14 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		}
 	}
 	if node.kind == .ident {
+		if node.value.starts_with('__') && generic_inference_arg_type_usable(node.typ)
+			&& !t.generic_arg_is_unresolved(t.normalize_type_alias(node.typ)) {
+			// Lowered expression temporaries carry their concrete type on the generated
+			// identifier. The checker's expression cache belongs to the original tree and
+			// can only report the unspecialized container (`map`, `array`) here.
+			return t.generic_inference_argument_type(node.typ, t.node_module_or(int(id),
+				t.cur_module))
+		}
 		if t.mut_value_ident_nodes[int(id)] && generic_inference_arg_type_usable(node.typ) {
 			return node.typ
 		}
@@ -7820,7 +7903,14 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		is_mut:         node.is_mut
 	})
 	if node.kind == .param && cloned_value.len > 0 && cloned_typ.len > 0 {
-		t.set_var_type(cloned_value, cloned_typ)
+		mut scoped_param_type := cloned_typ
+		if node.is_mut && node.op != .amp && scoped_param_type.starts_with('&') {
+			// The specialized signature keeps `mut value T` as pointer storage, but
+			// expressions in its body see the language-level `T`. Do not overwrite
+			// the value scope seeded by emit_generic_fn_specialization with `&T`.
+			scoped_param_type = scoped_param_type[1..]
+		}
+		t.set_var_type(cloned_value, scoped_param_type)
 	}
 	if node.kind == .ident && t.mut_param_values[node.value] {
 		t.mut_value_ident_nodes[int(clone_id)] = true
@@ -8489,8 +8579,7 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 				&& !child.typ.starts_with('mut ') {
 				arg_type = arg_type[1..]
 			}
-			if (child.is_mut || child.op == .amp || child.typ.starts_with('mut '))
-				&& arg_type.starts_with('&') {
+			if (child.is_mut || child.typ.starts_with('mut ')) && arg_type.starts_with('&') {
 				arg_type = arg_type[1..]
 			}
 			if !is_generic_fn_placeholder_name(inference_param_type) {
@@ -9722,7 +9811,11 @@ fn generic_arg_type_for_param(param_type string, arg_type string) string {
 
 fn generic_inference_param_type(param &flat.Node) string {
 	clean := param.typ.trim_space()
-	if (param.is_mut || param.op == .amp) && clean.starts_with('&') {
+	// `mut value T` is represented as `&T` for storage, so that synthetic
+	// pointer must not become part of T. An explicitly declared `value &T`
+	// keeps its pointer: inferring it from an `&int` argument must bind T to
+	// `int`, not `&int`.
+	if param.is_mut && param.op != .amp && clean.starts_with('&') {
 		return clean[1..]
 	}
 	if clean.starts_with('mut ') {

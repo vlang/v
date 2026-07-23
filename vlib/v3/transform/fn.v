@@ -5201,8 +5201,22 @@ fn (t &Transformer) normalize_runtime_array_stringify_type(typ string) string {
 }
 
 fn (mut t Transformer) mark_interface_method_implementers_used(iface_name string, method string) {
-	for name in t.interface_method_implementer_names(iface_name, method) {
-		t.mark_fn_used_name(name)
+	impls := if t.is_builtin_ierror_interface_name(iface_name) {
+		t.tc.ierror_impl_names()
+	} else {
+		t.tc.interface_impl_names(iface_name)
+	}
+	for concrete in impls {
+		if t.has_used_fn_filter() && !t.interface_boxed_type_used(iface_name, concrete) {
+			continue
+		}
+		concrete_method := '${concrete}.${method}'
+		t.mark_fn_used_name(concrete_method)
+		if method_name := t.tc.concrete_method_signature_key(concrete, method) {
+			if method_name != concrete_method {
+				t.mark_fn_used_name(method_name)
+			}
+		}
 	}
 }
 
@@ -6261,7 +6275,7 @@ fn current_receiver_matches_open_generic_base(receiver string, base string) bool
 
 fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat.NodeId {
 	key_type, raw_value_type := t.map_type_parts(map_type)
-	fixed_value_type := fixed_array_map_value_type_text(raw_value_type)
+	fixed_value_type := t.fixed_array_map_value_type_text(raw_value_type)
 	value_type := if fixed_value_type.len > 0 { fixed_value_type } else { raw_value_type }
 	if key_type.len == 0 || value_type.len == 0 {
 		return map_expr
@@ -6906,7 +6920,8 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 // replaces each owning element with an independent clone. The initial element copies
 // are non-owning and are overwritten without being dropped.
 fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat.NodeId, raw_fixed_type string) flat.NodeId {
-	fixed_type := t.resolved_fixed_array_canonical_type(raw_fixed_type)
+	fixed_type :=
+		t.receiver_type_text_source_fixed_spelling(t.resolved_fixed_array_canonical_type(raw_fixed_type))
 	elem_type := fixed_array_elem_type(fixed_type)
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return source
@@ -9707,7 +9722,18 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return t.make_call_typed('Array_u8__hex', arr1(t.transform_expr(base_id)), 'string')
 		}
 	}
-	if pointer_method := t.pointer_builtin_vbytes_method(base_is_pointer, builtin_base_type, method) {
+	mut pointer_method := t.pointer_builtin_vbytes_method(base_is_pointer, builtin_base_type,
+		method) or { '' }
+	if method == 'vbytes' && !isnil(t.tc) {
+		if resolved := t.tc.resolved_call_name(id) {
+			if resolved in ['byteptr.vbytes', 'byteptr__vbytes', 'u8.vbytes', 'u8__vbytes'] {
+				pointer_method = 'byteptr.vbytes'
+			} else if resolved in ['voidptr.vbytes', 'voidptr__vbytes'] {
+				pointer_method = 'voidptr.vbytes'
+			}
+		}
+	}
+	if pointer_method.len > 0 {
 		args := t.transform_receiver_method_args(node, base_id, pointer_method)
 		ret_type := t.receiver_method_return_type(pointer_method, node.typ)
 		t.mark_fn_used(pointer_method)
@@ -12058,14 +12084,14 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
 	decl_module := t.tc.fn_type_modules[name] or { '' }
-	if ret_text := t.tc.fn_ret_type_texts[name] {
-		if ret_text.len > 0 {
-			return t.call_return_type_name_in_module(ret_text, node, decl_module)
-		}
-	}
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
 			return t.call_return_type_name_in_module(ret.name(), node, decl_module)
+		}
+	}
+	if ret_text := t.tc.fn_ret_type_texts[name] {
+		if ret_text.len > 0 {
+			return t.call_return_type_name_in_module(ret_text, node, decl_module)
 		}
 	}
 	if typ := t.tc.expr_type(id) {

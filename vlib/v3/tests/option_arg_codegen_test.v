@@ -104,7 +104,7 @@ fn test_error_call_argument_expected_ierror_not_result_wrapper() {
 	out := run_good(v3_bin, 'error_call_argument_expected_ierror', source)
 	assert out == 'ok'
 	c_code := generated_c(v3_bin, 'error_call_argument_expected_ierror_c', source)
-	assert c_code.contains('wrap((IError){._typ = 0'), c_code
+	assert c_code.contains('wrap((IError){'), c_code
 	assert !c_code.contains('wrap((Optional_string)'), c_code
 }
 

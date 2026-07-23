@@ -386,6 +386,7 @@ struct VariantMatchCache {
 mut:
 	generation  u32 = 1
 	module      string
+	file        string
 	a_ptrs      [2048]voidptr
 	b_ptrs      [2048]voidptr
 	a_lens      [2048]int
@@ -6623,7 +6624,9 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 		if t.is_optional_type_name(t.cur_fn_ret_type)
 			&& t.return_expr_is_propagated_err(child_id, payload_type) {
 			err_expr := t.transform_expr(child_id)
-			return t.with_pending_before(t.make_none_return_stmt_with_err_expr(err_expr))
+			ret := t.make_none_return_stmt_with_err_expr(err_expr)
+			t.mark_transformed_return(ret, source_return_id)
+			return t.with_pending_before(ret)
 		}
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
@@ -9945,12 +9948,26 @@ fn (t &Transformer) multi_return_types_for_expr(id flat.NodeId, expected_count i
 	if int(id) < 0 || isnil(t.tc) {
 		return none
 	}
+	node := t.a.nodes[int(id)]
+	// A call expression can carry the surrounding expected tuple type in the
+	// checker cache. Prefer the callee declaration so forwarded returns still
+	// see the concrete source slots that need conversion.
+	if node.kind == .call {
+		ret := t.get_call_return_type(id, node)
+		if ret.len > 0 {
+			if items := multi_return_types_from_type(t.tc.parse_type(ret), expected_count) {
+				return items
+			}
+		}
+		if items := t.find_multi_return_call_types(node, expected_count) {
+			return items
+		}
+	}
 	if typ := t.tc.expr_type(id) {
 		if items := multi_return_types_from_type(typ, expected_count) {
 			return items
 		}
 	}
-	node := t.a.nodes[int(id)]
 	if node.kind == .or_expr && node.children_count > 0 {
 		return t.multi_return_types_for_expr(t.a.child(&node, 0), expected_count)
 	}
@@ -15983,8 +16000,10 @@ fn (t &Transformer) variant_names_match(a string, b string) bool {
 		return t.variant_names_match_uncached(a, b)
 	}
 	mut cache := t.variant_match_cache
-	if unsafe { cache.module.str != t.cur_module.str } || cache.module.len != t.cur_module.len {
+	if unsafe { cache.module.str != t.cur_module.str } || cache.module.len != t.cur_module.len
+		|| unsafe { cache.file.str != t.cur_file.str } || cache.file.len != t.cur_file.len {
 		cache.module = t.cur_module
+		cache.file = t.cur_file
 		cache.generation++
 	}
 	slot := int(((u64(voidptr(a.str)) >> 4) * 2654435761 ^ (u64(voidptr(b.str)) >> 4)) & 2047)
@@ -16004,6 +16023,14 @@ fn (t &Transformer) variant_names_match(a string, b string) bool {
 }
 
 fn (t &Transformer) variant_names_match_uncached(a string, b string) bool {
+	a_is_container := a.starts_with('[]') || a.starts_with('map[') || t.is_fixed_array_type(a)
+	b_is_container := b.starts_with('[]') || b.starts_with('map[') || t.is_fixed_array_type(b)
+	if a_is_container && b_is_container && !t.generic_arg_is_unresolved(a)
+		&& !t.generic_arg_is_unresolved(b) {
+		resolved_a := t.normalize_type_alias(t.resolve_type_text_import_aliases(a))
+		resolved_b := t.normalize_type_alias(t.resolve_type_text_import_aliases(b))
+		return resolved_a == resolved_b
+	}
 	a_has_dot := a.contains('.')
 	b_has_dot := b.contains('.')
 	if (a_has_dot || b_has_dot) && t.variant_short_name(a) == t.variant_short_name(b) {

@@ -2867,16 +2867,16 @@ fn (c &CallCollector) node_uses_generics(node &flat.Node, cur_module string, imp
 	if c.type_text_uses_generics(node.typ, cur_module, imports) {
 		return true
 	}
-	return match node.kind {
-		.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
-			c.type_text_uses_generics(node.value, cur_module, imports)
-				|| (!node.value.contains('[') && node.generic_params().len > 0
-				&& c.type_text_uses_generics('${node.value}[${node.generic_params().join(', ')}]', cur_module, imports))
-		}
-		else {
-			false
-		}
+	if node.kind !in [.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
+		.is_expr] {
+		return false
 	}
+	if c.type_text_uses_generics(node.value, cur_module, imports) {
+		return true
+	}
+	params := node.generic_params()
+	return !node.value.contains('[') && params.len > 0
+		&& c.type_text_uses_generics('${node.value}[${params.join(', ')}]', cur_module, imports)
 }
 
 fn (c &CallCollector) type_text_uses_generics(typ string, cur_module string, imports map[string]string) bool {

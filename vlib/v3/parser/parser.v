@@ -4291,7 +4291,8 @@ fn eval_pkgconfig_cond(cond string) bool {
 	if !is_safe_pkgconfig_name(name) {
 		return false
 	}
-	return cmdexec.run('pkg-config', ['--exists', name]).exit_code == 0
+	result := cmdexec.run('pkg-config', ['--exists', name])
+	return result.exit_code == 0
 }
 
 fn is_safe_pkgconfig_name(name string) bool {

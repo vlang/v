@@ -2358,11 +2358,37 @@ fn (g &FlatGen) shared_qualify_type_text(typ string, module_name string) string 
 }
 
 fn (g &FlatGen) shared_qualify_leaf_type_text(name string, module_name string) string {
-	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin'
-		|| name.contains('.') {
+	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin' {
 		return name
 	}
-	candidate := '${module_name}.${name}'
+	mut clean := name
+	if name.contains('.') {
+		if name in g.tc.structs || name in g.tc.type_aliases || name in g.tc.interface_names
+			|| name in g.tc.sum_types || name in g.tc.enum_names || name in g.tc.flag_enums {
+			return name
+		}
+		prefix := '${module_name}.'
+		if !name.starts_with(prefix) {
+			return name
+		}
+		clean = name[prefix.len..]
+	}
+	mut imported := ''
+	for candidate in g.tc.file_selective_imports['${g.tc.cur_file}\n${clean}'] or { []string{} } {
+		if candidate !in g.tc.structs && candidate !in g.tc.type_aliases
+			&& candidate !in g.tc.interface_names && candidate !in g.tc.sum_types
+			&& candidate !in g.tc.enum_names && candidate !in g.tc.flag_enums {
+			continue
+		}
+		if imported.len > 0 && imported != candidate {
+			return name
+		}
+		imported = candidate
+	}
+	if imported.len > 0 {
+		return imported
+	}
+	candidate := '${module_name}.${clean}'
 	if candidate in g.tc.structs || candidate in g.tc.type_aliases
 		|| candidate in g.tc.interface_names || candidate in g.tc.sum_types
 		|| candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
@@ -4225,11 +4251,14 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	} else {
 		g.tc.c_type(key_type)
 	}
-	size_suffix := match c_key {
-		'u8', 'i8', 'bool', 'char' { '1' }
-		'u16', 'i16' { '2' }
-		'i64', 'u64', 'isize', 'usize', 'f64', 'double', 'voidptr' { '8' }
-		else { '4' }
+	mut size_suffix := '4'
+	if c_key in ['u8', 'i8', 'bool', 'char'] {
+		size_suffix = '1'
+	} else if c_key in ['u16', 'i16'] {
+		size_suffix = '2'
+	} else if c_key in ['i64', 'u64', 'isize', 'usize', 'f64', 'double', 'voidptr']
+		|| c_key.starts_with('arc__Arc_') {
+		size_suffix = '8'
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'

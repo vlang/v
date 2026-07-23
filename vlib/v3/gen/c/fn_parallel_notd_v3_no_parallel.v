@@ -240,14 +240,6 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	_ = g.unique_const_ref_name('__v3_prewarm__') or { '' }
 }
 
-fn clone_cgen_string_list(values []string) []string {
-	mut cloned := []string{cap: values.len}
-	for value in values {
-		cloned << value.clone()
-	}
-	return cloned
-}
-
 fn clone_cgen_string_map(values map[string]string) map[string]string {
 	mut cloned := map[string]string{}
 	for key, value in values {
@@ -576,9 +568,12 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		if isnil(g.a.worker_pool) {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
-		parallel_type_decls := g.scope_parallel_workers && !g.program_body_only
-			&& g.incremental_fn_names.len == 0
 		available_jobs := g.a.worker_pool.size() + 1
+		// With only the master and one helper, reserving the helper for type
+		// declarations would make body generation serial. Generate declarations
+		// normally in that case and keep both jobs available for function bodies.
+		parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
+			&& !g.program_body_only && g.incremental_fn_names.len == 0
 		body_jobs := available_jobs - if parallel_type_decls && available_jobs <= max_flat_cgen_jobs {
 			1
 		} else {
@@ -775,6 +770,25 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		} else {
 			unsafe { synthetic_output.free() }
 		}
+	}
+}
+
+// prepare_serial_fn_tables gives runtime `-no-parallel` generation the same
+// deterministic preseed order as the parallel dispatcher, before constants
+// can allocate string-literal IDs.
+fn (mut g FlatGen) prepare_serial_fn_tables() {
+	if g.parallel_prepared {
+		return
+	}
+	g.want_parallel_prep = true
+	items := g.ensure_fn_gen_items()
+	g.want_parallel_prep = false
+	if items.len >= min_flat_cgen_parallel_items {
+		if _ := g.ierror_interface_name() {
+			g.intern_string('')
+		}
+		g.register_interface_strings()
+		g.parallel_prepared = true
 	}
 }
 
@@ -1206,6 +1220,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		interface_boxed_types_done:     g.interface_boxed_types_done
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		ierror_stack_pointer_aliases:   []map[string]bool{}
+		ierror_owned_pointer_by_owner:  map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}
 		local_c_type_by_owner:          map[string]string{}
 		local_raw_type_by_owner:        map[string]string{}
@@ -1352,23 +1367,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 			}
 		}
 	}
-}
-
-// clone_parallel_type_checker builds a per-worker TypeChecker for parallel codegen.
-//
-// During codegen the checker's lookup tables are READ-ONLY: cgen only ever assigns the
-// scalar `cur_file`/`cur_module` fields, and the read paths it uses (expr_type, c_type,
-// parse_type, resolve_type, cached_resolved_call) never write into the big maps — the only
-// memoizing write is into `type_cache`, which is left nil here so workers take the uncached
-// path. V maps and arrays are reference types, so the read-only tables are SHARED by
-// reference (no `.clone()`), exactly like the already-shared `a` FlatAst. This avoids
-// deep-copying the program-wide `expr_type_*`/`structs`/signature tables once per worker,
-// which was the bulk of parallel cgen's extra RAM and serial setup time.
-//
-// Only genuinely per-worker mutable state is given its own copy: the scope chain (gen pushes
-// child scopes) and `errors` (avoid a concurrent append race, though gen does not emit any).
-fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
-	return g.tc.fork_for_parallel_codegen()
 }
 
 fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {

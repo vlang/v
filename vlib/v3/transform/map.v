@@ -92,11 +92,14 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	if key_type == 'string' {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
-	size_suffix := match key_type {
-		'u8', 'i8', 'bool', 'char' { '1' }
-		'u16', 'i16' { '2' }
-		'i64', 'u64', 'isize', 'usize', 'f64', 'voidptr' { '8' }
-		else { '4' }
+	mut size_suffix := '4'
+	if key_type in ['u8', 'i8', 'bool', 'char'] {
+		size_suffix = '1'
+	} else if key_type in ['u16', 'i16'] {
+		size_suffix = '2'
+	} else if key_type in ['i64', 'u64', 'isize', 'usize', 'f64', 'voidptr']
+		|| key_type.contains('Arc[') || key_type.contains('Arc_') {
+		size_suffix = '8'
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
@@ -145,7 +148,7 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 
 // make_map_get_expr builds make map get expr data for transform.
 fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string, key_name string, zero_name string, value_type string) flat.NodeId {
-	fixed_value_type := fixed_array_map_value_type_text(value_type)
+	fixed_value_type := t.fixed_array_map_value_type_text(value_type)
 	effective_value_type := if fixed_value_type.len > 0 { fixed_value_type } else { value_type }
 	clean_value_type := if t.is_fixed_array_type(effective_value_type) {
 		if t.fixed_array_type_contains_map(effective_value_type) {
@@ -1205,10 +1208,11 @@ fn (mut t Transformer) try_lower_map_index_append_stmt_with_prelude(id flat.Node
 	return result
 }
 
-fn fixed_array_map_value_type_text(value_type string) string {
+fn (t &Transformer) fixed_array_map_value_type_text(value_type string) string {
 	if value_type.starts_with('map[') {
 		elem, dims := transform_postfix_fixed_array_parts(value_type)
-		if dims.len > 0 {
+		if dims.len > 0 && (is_decimal_text(dims[0]) || (!isnil(t.tc)
+			&& t.tc.const_int_value_in_module(dims[0], t.cur_module, []string{}) != none)) {
 			return '[${dims[0]}]${elem}'
 		}
 		return ''

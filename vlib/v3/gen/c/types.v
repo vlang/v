@@ -327,15 +327,47 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
 			continue
 		}
-		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] {
-			g.collect_optional_typedef_type(g.tc.parse_type(node.typ))
-		} else if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
+		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx]
 			if typ := g.tc.fn_ret_types[name] {
 				g.collect_optional_typedef_type(typ)
+				continue
 			}
 		}
+		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown']
+			&& cgen_type_text_is_complete(node.typ) {
+			g.collect_optional_typedef_type(g.tc.parse_type(node.typ))
+		}
 	}
+}
+
+fn cgen_type_text_is_complete(text string) bool {
+	mut parens := 0
+	mut brackets := 0
+	for ch in text {
+		match ch {
+			`(` {
+				parens++
+			}
+			`)` {
+				if parens == 0 {
+					return false
+				}
+				parens--
+			}
+			`[` {
+				brackets++
+			}
+			`]` {
+				if brackets == 0 {
+					return false
+				}
+				brackets--
+			}
+			else {}
+		}
+	}
+	return parens == 0 && brackets == 0
 }
 
 fn (mut g FlatGen) collect_declaration_signature_types() {
@@ -471,6 +503,12 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_contains_generic_placeholder(t.base_type)
 		}
 		types.Struct {
+			// A stale generic-call annotation can carry the concrete C function name
+			// as a nominal type. It is not a payload type and must not create an
+			// `Optional_<function>` typedef in the program prefix.
+			if t.name.contains('_T_') && !g.type_name_known(t.name) {
+				return true
+			}
 			if type_name_is_unbound_generic_decl(t.name, g.struct_generic_params_for_name(t.name),
 
 				t.name in g.tc.structs || g.tc.qualify_name(t.name) in g.tc.structs)

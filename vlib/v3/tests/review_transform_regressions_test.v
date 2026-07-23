@@ -10,10 +10,18 @@ fn review_v3_bin_path() string {
 	return os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test')
 }
 
+fn review_v3_ownership_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_review_transform_ownership_regressions_test')
+}
+
 fn testsuite_begin() {
 	v3_bin := review_v3_bin_path()
 	if os.exists(v3_bin) {
 		os.rm(v3_bin) or {}
+	}
+	ownership_bin := review_v3_ownership_bin_path()
+	if os.exists(ownership_bin) {
+		os.rm(ownership_bin) or {}
 	}
 }
 
@@ -24,6 +32,17 @@ fn build_v3_review_transform() string {
 	}
 	build :=
 		os.execute('${vexe} -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+fn build_v3_review_transform_ownership() string {
+	v3_bin := review_v3_ownership_bin_path()
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
+	build :=
+		os.execute('${vexe} -prealloc -d ownership -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -885,14 +904,14 @@ fn test_result_multi_return_match_branch_unwraps_imported_payload_type() {
 }
 
 fn test_string_to_owned_compiles_under_ownership_cgen() {
-	v3_bin := build_v3_review_transform()
+	v3_bin := build_v3_review_transform_ownership()
 	out := run_good_with_flags(v3_bin, 'string_to_owned_ownership_cgen', '-ownership',
 		"fn main() {\n\tname := 'owned'.to_owned()\n\tcopy := name.to_owned()\n\tprintln(copy)\n}\n")
 	assert out == 'owned'
 }
 
 fn test_generic_interface_method_body_marks_log_debug_dispatch() {
-	v3_bin := build_v3_review_transform()
+	v3_bin := build_v3_review_transform_ownership()
 	out := run_good_with_flags(v3_bin, 'generic_interface_log_debug_dispatch', '-ownership',
 		"import log\n\ninterface Sink {\n\tbinary_data()\n}\n\nstruct Box[T] {}\n\nfn (mut b Box[T]) binary_data() {\n\t_ = b\n\tlog.debug('hidden')\n}\n\nstruct Runner {}\n\nfn (mut r Runner) run(mut s Sink) {\n\t_ = r\n\ts.binary_data()\n}\n\nstruct Worker {\nmut:\n\trunner Runner\n}\n\nfn main() {\n\tmut worker := Worker{\n\t\trunner: Runner{}\n\t}\n\tmut b := Box[int]{}\n\tworker.runner.run(mut b)\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
