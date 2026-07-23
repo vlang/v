@@ -5162,6 +5162,15 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 			}
 		}
 	}
+	if v_type is types.Pointer {
+		if cgen_unalias_type(v_type.base_type).name() == 'u8' {
+			rhs_type := g.usable_expr_type(rhs_id)
+			if g.fixed_array_address_to_byte_pointer_expr_compatible(rhs_id, v_type, rhs_type) {
+				g.gen_fixed_array_address_to_byte_pointer_expr(rhs_id, v_type)
+				return
+			}
+		}
+	}
 	g.gen_expr_with_expected_type(rhs_id, v_type)
 }
 
@@ -5351,10 +5360,10 @@ fn (mut g FlatGen) gen_single_fixed_array_elem_assign_to_scalar_local(lhs flat.N
 	return true
 }
 
-fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
-	lhs_ptr := if lhs_type is types.Pointer { lhs_type } else { return false }
+fn (g &FlatGen) fixed_array_address_to_byte_pointer_expr_compatible(rhs_id flat.NodeId, target_type types.Type, rhs_type types.Type) bool {
+	target_ptr := if target_type is types.Pointer { target_type } else { return false }
 	rhs_ptr := if rhs_type is types.Pointer { rhs_type } else { return false }
-	if cgen_unalias_type(lhs_ptr.base_type).name() != 'u8'
+	if cgen_unalias_type(target_ptr.base_type).name() != 'u8'
 		|| cgen_unalias_type(rhs_ptr.base_type) !is types.ArrayFixed {
 		return false
 	}
@@ -5362,10 +5371,24 @@ fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_assign(lhs_id flat.No
 	if rhs.kind != .prefix || rhs.op != .amp || rhs.children_count == 0 {
 		return false
 	}
-	g.gen_expr(lhs_id)
-	g.write(' = ((${g.tc.c_type(lhs_type)})(')
+	return true
+}
+
+fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_expr(rhs_id flat.NodeId, target_type types.Type) {
+	rhs := g.a.nodes[int(rhs_id)]
+	g.write('((${g.tc.c_type(target_type)})(')
 	g.gen_expr(g.a.child(&rhs, 0))
-	g.writeln('));')
+	g.write('))')
+}
+
+fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if !g.fixed_array_address_to_byte_pointer_expr_compatible(rhs_id, lhs_type, rhs_type) {
+		return false
+	}
+	g.gen_expr(lhs_id)
+	g.write(' = ')
+	g.gen_fixed_array_address_to_byte_pointer_expr(rhs_id, lhs_type)
+	g.writeln(';')
 	return true
 }
 

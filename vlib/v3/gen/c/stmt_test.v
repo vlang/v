@@ -25,6 +25,38 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	})
 }
 
+fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	fixed_type := types.Type(types.ArrayFixed{
+		elem_type: types.Type(types.u8_)
+		len:       2
+	})
+	byte_pointer := types.Type(types.Pointer{
+		base_type: types.Type(types.u8_)
+	})
+	tc.push_scope()
+	tc.cur_scope.insert('buf', fixed_type)
+	buf_id := stmt_test_node(mut a, .ident, 'buf', [])
+	rhs_id := stmt_test_prefix(mut a, .amp, buf_id)
+	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true)
+	assert g.sb.str() == '((u8*)(buf))'
+	fixed_pointer := types.Type(types.Pointer{
+		base_type: fixed_type
+	})
+	mut assign_gen := FlatGen.new()
+	assign_gen.a = &a
+	assign_gen.tc = &tc
+	p_id := stmt_test_node(mut a, .ident, 'p', [])
+	assert assign_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, rhs_id, byte_pointer,
+		fixed_pointer)
+	assert assign_gen.sb.str() == 'p = ((u8*)(buf));\n'
+	tc.pop_scope()
+}
+
 fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
