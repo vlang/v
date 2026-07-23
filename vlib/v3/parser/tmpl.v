@@ -1052,7 +1052,11 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			return p.parse_stmts_from_source(src)
 		}
 	}
-	if node.kind in [.decl_assign, .assign] && node.children_count == 2 {
+	// Only a plain `:=` / `=` binding is re-emitted here (both carry op `.assign`); a
+	// compound assignment like `html += $tmpl(...)` must keep its operator, so it falls
+	// through to the general path below, which rewrites the RHS in place and leaves the
+	// original assign node (and its `+=`) intact instead of overwriting with `=`.
+	if node.kind in [.decl_assign, .assign] && node.children_count == 2 && node.op == .assign {
 		rhs_id := p.a.child(&node, 1)
 		rhs := p.a.nodes[int(rhs_id)]
 		if rhs.kind == .veb_template {
