@@ -1643,7 +1643,14 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			g.write('; array__set(_a${tmp}, _i${tmp}, &(${c_elem}[]){')
 			if node.op == .power_assign {
 				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
-				g.gen_power_expr_from_lhs_text(lhs_text, g.a.child(&node, 1), arr_type.elem_type)
+				if method_name := g.assign_struct_operator_method(arr_type.elem_type, node.op) {
+					g.write('${g.cname(method_name)}(${lhs_text}, ')
+					g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
+					g.write(')')
+				} else {
+					g.gen_power_expr_from_lhs_text(lhs_text, g.a.child(&node, 1),
+						arr_type.elem_type)
+				}
 			} else if node.op in [.left_shift_assign, .right_shift_assign,
 				.right_shift_unsigned_assign] {
 				shift_op := match node.op {

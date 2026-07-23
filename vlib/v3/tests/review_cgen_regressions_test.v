@@ -152,6 +152,13 @@ fn main() {
 	mut values := [2, 3]
 	values[0] **= 3
 	println(int_str(values[0]))
+	mut direct := [Exponent{
+		value: 4
+	}]
+	direct[0] **= Exponent{
+		value: 5
+	}
+	println(int_str(direct[0].value))
 	mut list := IntList{
 		values: [3]
 	}
@@ -168,10 +175,11 @@ fn main() {
 	println(int_str(exponents.values[0].value))
 }
 ')
-	assert out == '8\n9\n23'
+	assert out == '8\n45\n9\n23'
 	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
+	assert compact.contains('array__set(_a1,_i1,&(Exponent[]){Exponent__mul_(*(Exponent*)array_get(*_a1,_i1),'), c_code
 	assert compact.contains('IntList__op_index_set('), c_code
 	assert compact.contains('ExponentList__op_index_set('), c_code
 	assert compact.contains('Exponent__mul_('), c_code
