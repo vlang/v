@@ -9599,9 +9599,9 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 				t.lock_colliding_main_generic_type_text(clean[bracket_end + 1..], module_name)
 		}
 	}
-	// Lock the nested arguments only (never the generic base, which may itself be a
-	// qualified `other.Box`) and rebuild the text solely when an argument actually
-	// changed, so a non-colliding application keeps its exact original spelling.
+	// Lock the nested arguments and — when it is a bare program-module generic — the base too,
+	// rebuilding the text only when something actually changed so a non-colliding application
+	// keeps its exact original spelling.
 	base, nested_args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app {
 		mut changed := false
@@ -9613,8 +9613,17 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 			}
 			locked_args << locked
 		}
+		// The base may itself be a bare main-module generic (`Box[string]` where `main.Box`
+		// exists) that collides with a same-named generic in the callee module (`mid.Box`).
+		// Without locking it, the cloned signature parsed in the callee binds `Box` to its own
+		// homonym, giving the wrong ABI/fields. Recurse so the scalar main-type lock at this
+		// function's tail applies; an already-qualified base (`other.Box`) is returned verbatim.
+		locked_base := t.lock_colliding_main_generic_type_text(base, module_name)
+		if locked_base != base.trim_space() {
+			changed = true
+		}
 		if changed {
-			return '${base}[${locked_args.join(', ')}]'
+			return '${locked_base}[${locked_args.join(', ')}]'
 		}
 		return clean
 	}

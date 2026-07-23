@@ -583,6 +583,24 @@ enum TmplBraceBlockKind {
 	span
 }
 
+// nearest_templates_root walks up from `start_dir` to the closest ancestor directory named
+// `templates` (inclusive), or returns none. veb keeps shared partials at that root, so a nested
+// template can `@include` them by bare name (`templates/pages/x.html` → `templates/header.html`).
+fn nearest_templates_root(start_dir string) ?string {
+	mut d := start_dir
+	for d.len > 0 {
+		if os.base(d) == 'templates' {
+			return d
+		}
+		parent := os.dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+	return none
+}
+
 // process_tmpl_includes recursively resolves `@include 'file'` directives into
 // the list of lines they expand to. `dir` is the directory of the including file.
 // A referenced partial that cannot be opened records a diagnostic instead of being
@@ -616,6 +634,14 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 	mut file_path := os.join_path_single(dir, '${file_name}${file_ext}')
 	if os.exists(file_path) {
 		file_path = os.real_path(file_path)
+	} else if root := nearest_templates_root(dir) {
+		// v1 fallback: a nested template (`templates/pages/index.html`) that `@include`s a shared
+		// partial by bare name resolves it against the containing `templates/` root
+		// (`templates/header.html`), not only the including file's own directory.
+		root_path := os.join_path_single(root, '${file_name}${file_ext}')
+		if os.exists(root_path) {
+			file_path = os.real_path(root_path)
+		}
 	}
 	if file_path in seen {
 		// The file is on the current include stack: a circular include. Report it and
@@ -948,9 +974,15 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	// An argument that is present but not a compile-time string (`$veb.html(runtime_path)`) is an
 	// unsupported dynamic path. Its unresolved '' must NOT reuse the no-arg sentinel, which
 	// resolve_veb_template_path treats as the handler-template lookup — that would silently render
-	// the wrong file for a valid-looking explicit selection. Reject it like a missing call: yield
-	// an empty string literal (diagnosed where a template value is expected).
+	// the wrong file for a valid-looking explicit selection. Record an error rather than returning
+	// a bare empty literal: in a plain string context (`x := $tmpl(runtime_path)`) no
+	// `.veb_template` node remains, so nothing else would diagnose it and the code would compile
+	// and render '' instead of reporting the unsupported dynamic path. The empty literal is still
+	// returned so parsing can continue past the recorded error.
 	if had_arg && arg.len == 0 {
+		call := if is_html { '\$veb.html' } else { '\$tmpl' }
+		p.record_diagnostic('${call}() template path must be a compile-time string (a string literal, `const`, or a `+` of those); dynamic paths are not supported',
+			p.tok_pos)
 		return p.add_val_id(5, '')
 	}
 	path := p.resolve_veb_template_path(is_html, arg)
