@@ -2065,7 +2065,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 		if fn_value_node.kind == .ident {
 			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), 'bool')
 		} else {
-			fn_value
+			t.make_call_expr_typed(fn_value, arr1(t.make_ident(elem_name)), 'bool')
 		}
 	} else {
 		t.transform_expr(predicate_source)
@@ -2199,7 +2199,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		if fn_value_node.kind == .ident && result_elem_type.len > 0 {
 			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), result_elem_type)
 		} else {
-			fn_value
+			t.make_call_expr_typed(fn_value, arr1(t.make_ident(elem_name)), result_elem_type)
 		}
 	} else if has_bound_method_array {
 		t.make_cast(result_elem_type, t.make_cast('usize', t.make_ident(elem_name), 'usize'),

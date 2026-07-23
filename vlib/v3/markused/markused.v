@@ -479,6 +479,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	} else {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	}
+	if markused_program_needs_closure_runtime(a, tc) {
+		enqueue('closure.closure_create_with_data', mut used, mut queue)
+	}
 	enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
 	// through a wrapper cgen generates later. The checker records them per enclosing
@@ -2024,6 +2027,37 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+}
+
+fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker) bool {
+	if tc.method_values_by_fn.len > 0 {
+		return true
+	}
+	mut call_callees := map[int]bool{}
+	for node in a.nodes {
+		if node.kind == .call && node.children_count > 0 {
+			call_callees[int(a.child(&node, 0))] = true
+		}
+	}
+	for idx, node in a.nodes {
+		if node.kind == .selector && node.children_count > 0 && idx !in call_callees {
+			base := a.child_node(&node, 0)
+			if base.kind in [.string_literal, .int_literal, .float_literal, .char_literal] {
+				return true
+			}
+		}
+	}
+	for node in a.nodes {
+		if node.kind != .fn_literal {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			if a.child_node(&node, i).kind == .ident {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn markused_call_is_json_encode_fast_path(a &flat.FlatAst, tc &types.TypeChecker, call_id flat.NodeId, fn_node flat.Node, cur_module string, imports map[string]string) bool {
@@ -4118,6 +4152,16 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				calls << 'string_plus_many'
 			}
 			.index {
+				if child.value != 'range' && child.children_count >= 2 {
+					base_id := c.a.child(child, 0)
+					base := c.a.node(base_id)
+					if base.kind == .ident && base.value !in local_values
+						&& c.generic_fn_name_is_known(base.value, cur_module) {
+						qname := qualify_fn(cur_module, base.value)
+						calls << if c.is_known_fn_name(qname) { qname } else { base.value }
+						uses_generics = true
+					}
+				}
 				c.collect_index_operator_method(child_id, '[]', cur_module, imports, local_values,
 					local_types, mut calls)
 				c.collect_index_overload_getter_method(child, cur_module, local_types, mut calls)

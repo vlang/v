@@ -2974,18 +2974,36 @@ fn clone_string_list_map(values map[string][]string) map[string][]string {
 	return cloned
 }
 
-fn promote_scoped_monomorph_metadata(mut tc types.TypeChecker) {
-	// Specialization records the source context for every generated function.
-	// These maps can grow inside the disposable monomorph arena, so move both
-	// their storage and string payloads before releasing that arena.
+fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
+	// Transform and specialization can grow these maps inside a disposable arena,
+	// so move both their storage and string payloads before releasing that arena.
 	tc.fn_type_files = clone_string_string_map(tc.fn_type_files)
 	tc.fn_type_modules = clone_string_string_map(tc.fn_type_modules)
 	tc.structs = clone_struct_field_map(tc.structs)
 	tc.struct_modules = clone_string_string_map(tc.struct_modules)
+	tc.struct_files = clone_string_string_map(tc.struct_files)
+	tc.soa_structs = clone_string_bool_map(tc.soa_structs)
+	tc.declared_type_scope_keys = clone_string_bool_map(tc.declared_type_scope_keys)
+	tc.struct_error_embeds_shadow_builtin =
+		clone_string_bool_map(tc.struct_error_embeds_shadow_builtin)
+	tc.struct_generic_params = clone_string_list_map(tc.struct_generic_params)
+	tc.struct_implements = clone_string_list_map(tc.struct_implements)
+	tc.struct_shared_fields = clone_string_bool_map(tc.struct_shared_fields)
+	tc.struct_field_c_abi_fns = clone_string_string_map(tc.struct_field_c_abi_fns)
 	tc.unions = clone_string_bool_map(tc.unions)
 	tc.params_structs = clone_string_bool_map(tc.params_structs)
+	tc.c_typedef_structs = clone_string_bool_map(tc.c_typedef_structs)
+	tc.type_alias_generic_params = clone_string_list_map(tc.type_alias_generic_params)
+	tc.type_alias_c_abi_fns = clone_string_string_map(tc.type_alias_c_abi_fns)
 	tc.sum_types = clone_string_list_map(tc.sum_types)
 	tc.sum_generic_params = clone_string_list_map(tc.sum_generic_params)
+	tc.enum_names = clone_string_bool_map(tc.enum_names)
+	tc.enum_fields = clone_string_list_map(tc.enum_fields)
+	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
+	tc.interface_names = clone_string_bool_map(tc.interface_names)
+	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
+	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
+	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
 }
 
 fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int) {
@@ -4443,6 +4461,12 @@ fn main() {
 				eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 				post_sw.restart()
 			}
+			promote_scoped_type_metadata(mut pre_tc)
+			// Transform type lookups can canonicalize alias keys/targets while the
+			// disposable arena is active. Re-own the table before releasing that arena;
+			// interface snapshotting below iterates every alias, including otherwise
+			// unreachable callback aliases.
+			pre_tc.type_aliases = clone_string_string_map(pre_tc.type_aliases)
 			transform_used_fns = clone_string_bool_map(transform_used_fns)
 			transform_errors = clone_string_list(transform_errors)
 			pre_tc.set_fresh_type_cache(parse_cache_enabled)
@@ -4665,7 +4689,7 @@ fn main() {
 			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes)
 			pre_tc.rebuild_scoped_transform_signature_maps()
 			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
-			promote_scoped_monomorph_metadata(mut pre_tc)
+			promote_scoped_type_metadata(mut pre_tc)
 			monomorph_used_fns = clone_string_bool_map(monomorph_used_fns)
 			monomorph_errors = clone_string_list(monomorph_errors)
 			generated_monomorph_specs = clone_monomorph_cache_specs(generated_monomorph_specs)
@@ -6239,7 +6263,8 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	if module_name.len > 0 {
 		for file in all_files {
 			declared_module := declared_module_in_file(file)
-			if declared_module != module_name {
+			if declared_module != module_name && !(declared_module in ['', 'main']
+				&& module_name in ['', 'main']) {
 				continue
 			}
 			files << file
@@ -6823,6 +6848,7 @@ mut:
 	has_sync         bool
 	needs_embed      bool
 	has_embed_import bool
+	has_closure      bool
 }
 
 fn seed_implicit_imports(mut a flat.FlatAst) {
@@ -6834,6 +6860,12 @@ fn seed_implicit_imports(mut a flat.FlatAst) {
 	}
 	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
+	}
+	// Bound method values and escaped fn literals are materialized during transform,
+	// after import resolution. Keep the small closure runtime available for those
+	// generated calls; markused still removes it from programs that do not use it.
+	if !scan.has_closure {
+		a.add_node(closure_import_node())
 	}
 	a.intern_node_texts_from(start)
 }
@@ -6851,6 +6883,14 @@ fn embed_file_import_node() flat.Node {
 		kind:  .import_decl
 		value: 'v.embed_file'
 		typ:   'embed_file'
+	}
+}
+
+fn closure_import_node() flat.Node {
+	return flat.Node{
+		kind:  .import_decl
+		value: 'builtin.closure'
+		typ:   'closure'
 	}
 }
 
@@ -6891,6 +6931,8 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				scan.has_sync = true
 			} else if node.value == 'v.embed_file' {
 				scan.has_embed_import = true
+			} else if node.value == 'builtin.closure' {
+				scan.has_closure = true
 			}
 		}
 		if !scan.needs_sync {

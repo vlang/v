@@ -299,7 +299,31 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 	if t is types.ArrayFixed {
 		return g.fixed_array_c_type(t)
 	}
-	return g.value_c_type(t)
+	mut ct := g.value_c_type(t)
+	mut pointer_suffix := ''
+	for ct.ends_with('*') {
+		ct = ct[..ct.len - 1]
+		pointer_suffix += '*'
+	}
+	// A concrete generic type can reach this collector through a stale bare
+	// specialization spelling while its declaration is module-qualified
+	// (`StructKeyDecodeResult_T` vs `json2__StructKeyDecodeResult_T`). Resolve
+	// the unique declaration here so we neither emit an unusable phantom
+	// Optional typedef nor duplicate the correctly qualified one.
+	if optional_payload_is_bare_struct(t) {
+		if qualified := g.unique_qualified_struct_c_type(ct) {
+			return qualified + pointer_suffix
+		}
+	}
+	return ct + pointer_suffix
+}
+
+fn optional_payload_is_bare_struct(t types.Type) bool {
+	mut clean := t
+	for clean is types.Pointer {
+		clean = clean.base_type
+	}
+	return clean is types.Struct && !clean.name.contains('.')
 }
 
 // optional_typedefs supports optional typedefs handling for FlatGen.
