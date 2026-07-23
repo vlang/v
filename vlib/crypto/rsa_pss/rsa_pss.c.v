@@ -17,7 +17,19 @@ module rsa_pss
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
-#flag linux -I/usr/local/include/openssl
+// -I points at the PARENT of the openssl/ header dir (matching the darwin
+// flags above), not at .../openssl itself -- #include <openssl/evp.h> below
+// already spells out the openssl/ prefix, so an -I ending in .../openssl
+// would make the compiler look for .../openssl/openssl/evp.h. This was
+// silently masked on every OTHER compiler by /usr/include being implicitly
+// on the default search path regardless of this flag being wrong --
+// musl-gcc's -nostdinc removes that implicit fallback, and was the first to
+// surface it (confirmed via an actual CI failure: "Header file
+// <openssl/evp.h> ... was not found" on docker-ubuntu-musl, even with
+// libssl-dev/openssl/evp.h genuinely present on disk). Same bug as
+// vlib/crypto/ecdsa/ecdsa.c.v, which this module's #flag setup was copied
+// from.
+#flag linux -I/usr/local/include
 #flag linux -L/usr/local/lib64/
 
 #flag openbsd -I/usr/local/include/eopenssl35
@@ -31,7 +43,7 @@ module rsa_pss
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
 
-#flag -I/usr/include/openssl
+#flag -I/usr/include
 
 #flag -lcrypto
 
