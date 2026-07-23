@@ -54,7 +54,13 @@ Each test is a pair of files with the same base name:
 
 "Extra args" are whatever the given tcc build needs on that platform to
 link a program that uses the GC - e.g. on Windows:
-`-DGC_NOT_DLL -DGC_WIN32_THREADS -DGC_THREADS -DGC_BUILTIN_ATOMIC -I <path to thirdparty/libgc/include> -bt25 -municode -ldbghelp -luser32 <path to lib/libgc.a>`.
+
+```
+-DGC_NOT_DLL -DGC_WIN32_THREADS -DGC_THREADS -DGC_BUILTIN_ATOMIC
+-I <path to thirdparty/libgc/include> -bt25 -municode -ldbghelp -luser32
+<path to lib/libgc.a>
+```
+
 The runners don't hardcode any platform-specific flags themselves -
 each platform branch's CI supplies them, since they genuinely differ
 (different GC threading defines, different Windows-only libs, etc).
@@ -67,9 +73,12 @@ branch) is the reference implementation. The shape to copy for another
 platform:
 
 1. Sparse-checkout this repo (`vlang/v`) for `thirdparty/tccbin_tests`
-   and `thirdparty/libgc` (the latter only if the platform also needs
-   to rebuild `libgc.a` from source - if the platform branch just
-   ships a prebuilt one, skip it).
+   and `thirdparty/libgc`. Both are needed unconditionally: no platform
+   branch bundles its own `gc.h`, so `thirdparty/libgc/include` is
+   required to compile `shared/hello.c`/`shared/gc_alloc.c` even if
+   the platform ships a prebuilt `libgc.a` and never touches
+   `thirdparty/libgc/gc.c` (the *source*, only needed if the platform
+   is rebuilding `libgc.a` from scratch, as windows-amd64 does).
 2. Build that platform's `tcc` (and `libgc.a`, if applicable) as the
    branch already does.
 3. Run `run.sh <tcc> <platform-name> -- <that platform's link flags>`
