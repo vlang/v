@@ -259,6 +259,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/db/sqlite/sqlite_f32_test.v',
 	'vlib/gg/draw_rect_empty_test.v', // sokol.sapp needs X11/Xlib.h, not installed in the musl Docker image
 	'vlib/gg/text_rendering_test.v',
+	'vlib/gg/multiwindow_render_runtime_contract_test.v', // same sokol.sapp/X11/Xlib.h gap as the two entries above
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
