@@ -29229,11 +29229,15 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		}
 		if t.name.starts_with('C.') {
 			raw := t.name[2..]
-			// A struct declared `@[typedef] struct C.foo {}` is referenced by its
-			// typedef name (`foo`), never as `struct foo` — the C header (and v3's own
-			// emitted `typedef struct {...} foo;`) has no matching `struct foo` tag, so
-			// a `struct foo` reference would stay an incomplete type.
-			if t.name in tc.c_typedef_structs {
+			// A struct declared `@[typedef] struct C.foo {}` may be referenced by its bare
+			// typedef name (`foo`) — but ONLY when that typedef actually exists in the
+			// generated C. c_struct_needs_typedef() skips emitting a typedef for a lowercase C
+			// struct that is not a `_t` alias (`@[typedef] struct C.log__Logger {}`), which v3
+			// then defines only as a `struct <tag>`; those keep the `struct <tag>` spelling via
+			// the fallback below, or the reference would stay an incomplete type. An uppercase or
+			// `_t` typedef struct (its typedef IS emitted) is referenced by the bare name.
+			if t.name in tc.c_typedef_structs && !(raw.len > 0 && raw[0] >= `a` && raw[0] <= `z`
+				&& !raw.ends_with('_t')) {
 				return raw
 			}
 			if raw.ends_with('_s')

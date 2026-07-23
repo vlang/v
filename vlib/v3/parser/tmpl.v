@@ -1606,31 +1606,38 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			}
 		}
 		.if_expr {
-			// An `@if item := maybe() { … }` guard (and any `:=` declared inside a branch
-			// body) binds names that are scoped to the if/else branches, not to the
-			// enclosing template. Snapshot the outer declared names, collect through the
-			// whole if-subtree so a use of the guard binding inside a branch is treated as
-			// local, then drop those branch-local names once the branches end — otherwise a
-			// later OUTER use of a shadowed name (`@item` after the guard) would stay
-			// "declared" and be omitted from the closure's capture list, leaving the
-			// reference undefined (or resolving a wrong outer/global name).
+			// In V, a guard binding `@if item := maybe() { ... }` is scoped to the THEN branch
+			// only: the ELSE branch, and code after the whole `if`, see the OUTER `item`. So
+			// collect the guard, then branch, and else branch with SEPARATE declared scopes.
+			// Declaring the guard binding while collecting the then branch keeps `@item` there
+			// guard-local, but it must be dropped before the else branch -- otherwise an `@item`
+			// in the else is wrongly treated as guard-local and omitted from the closure's
+			// capture list, leaving it unresolved or bound to the wrong symbol. Any `:=` inside
+			// a branch body is likewise local to that branch only.
 			mut outer_declared := map[string]bool{}
 			for name in declared.keys() {
 				outer_declared[name] = true
 			}
-			for i in 0 .. int(node.children_count) {
+			// Child 0 is the condition/guard; a guard `:=` declares its binding here. Child 1 is
+			// the then branch, collected with that binding in scope. The guard RHS is evaluated
+			// in the outer scope (see `.decl_assign`), so an outer name reused there is captured.
+			if node.children_count > 0 {
+				p.collect_template_free_idents(p.a.child(&node, 0), mut declared, mut seen, mut
+					out, mut mut_names)
+			}
+			if node.children_count > 1 {
+				p.collect_template_free_idents(p.a.child(&node, 1), mut declared, mut seen, mut
+					out, mut mut_names)
+			}
+			// The else branch (children 2+: a block or nested `else if`) does not see the guard
+			// binding or the then-branch locals.
+			restore_template_declared(mut declared, outer_declared)
+			for i in 2 .. int(node.children_count) {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
 					out, mut mut_names)
 			}
-			mut branch_local := []string{}
-			for name in declared.keys() {
-				if name !in outer_declared {
-					branch_local << name
-				}
-			}
-			for name in branch_local {
-				declared.delete(name)
-			}
+			// Drop else-branch locals so a use AFTER the whole `if` captures the outer name.
+			restore_template_declared(mut declared, outer_declared)
 		}
 		.lambda_expr {
 			// A lambda's parameters are scoped to its body, not the enclosing template, so
@@ -1751,6 +1758,22 @@ fn (p &Parser) declare_template_ident(id flat.NodeId, mut declared map[string]bo
 	node := p.a.nodes[int(id)]
 	if node.kind == .ident && node.value.len > 0 {
 		declared[node.value] = true
+	}
+}
+
+// restore_template_declared drops every name in `declared` that was not present in
+// `outer_declared`, i.e. everything introduced by a just-collected inner scope (a guard binding
+// or a branch/loop-body `:=`), returning `declared` to its pre-scope state so later collection
+// sees the outer bindings again.
+fn restore_template_declared(mut declared map[string]bool, outer_declared map[string]bool) {
+	mut to_drop := []string{}
+	for name in declared.keys() {
+		if name !in outer_declared {
+			to_drop << name
+		}
+	}
+	for name in to_drop {
+		declared.delete(name)
 	}
 }
 
