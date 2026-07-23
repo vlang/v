@@ -433,18 +433,22 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				// but this would take a bit of modification
 				if p.tok.kind == .lpar {
 					p.next()
+					lpar_line := p.prev_tok.pos().line_nr
 					pos := p.tok.pos()
 					args := p.call_args()
+					args_trailing_comma := p.call_args_trailing_comma
 					p.check(.rpar)
 					or_block := p.gen_or_block()
 					node = ast.CallExpr{
-						name:           'anon'
-						left:           node
-						args:           args
-						pos:            pos
-						or_block:       or_block
-						scope:          p.scope
-						is_return_used: p.expecting_value
+						name:                   'anon'
+						left:                   node
+						args:                   args
+						args_start_on_new_line: call_args_are_multiline(lpar_line,
+							args_trailing_comma, args)
+						pos:                    pos
+						or_block:               or_block
+						scope:                  p.scope
+						is_return_used:         p.expecting_value
 					}
 				}
 				return node
@@ -860,8 +864,10 @@ fn unwrap_parenthesized_call_left(expr ast.Expr) ast.Expr {
 
 fn (mut p Parser) call_expr_with_left(left ast.Expr) ast.CallExpr {
 	p.next()
+	lpar_line := p.prev_tok.pos().line_nr
 	pos := p.tok.pos()
 	args := p.call_args()
+	args_trailing_comma := p.call_args_trailing_comma
 	p.check(.rpar)
 	or_block := p.gen_or_block()
 	unwrapped_left := unwrap_parenthesized_call_left(left)
@@ -885,17 +891,18 @@ fn (mut p Parser) call_expr_with_left(left ast.Expr) ast.CallExpr {
 		kind = p.call_kind(fn_name)
 	}
 	return ast.CallExpr{
-		name:                  name
-		name_pos:              name_pos
-		mod:                   mod
-		kind:                  kind
-		left:                  unwrapped_left
-		args:                  args
-		pos:                   pos
-		scope:                 p.scope
-		or_block:              or_block
-		is_return_used:        p.expecting_value
-		is_paren_wrapped_call: left is ast.ParExpr
+		name:                   name
+		name_pos:               name_pos
+		mod:                    mod
+		kind:                   kind
+		left:                   unwrapped_left
+		args:                   args
+		args_start_on_new_line: call_args_are_multiline(lpar_line, args_trailing_comma, args)
+		pos:                    pos
+		scope:                  p.scope
+		or_block:               or_block
+		is_return_used:         p.expecting_value
+		is_paren_wrapped_call:  left is ast.ParExpr
 	}
 }
 
