@@ -1617,6 +1617,29 @@ fn main() {
 	assert out == "Value([1, 2])\nValue(['x'])\ntrue"
 }
 
+fn test_empty_interface_type_idx_maps_raw_containers() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'empty_interface_raw_container_type_idx', 'interface Value {}
+
+fn box[T](value T) Value {
+	return value
+}
+
+fn main() {
+	array_value := box([1, 2])
+	map_value := box({
+		"a": 3
+	})
+	int_value := Value(1)
+	println(array_value.type_idx() != 0)
+	println(map_value.type_idx() != 0)
+	println(array_value.type_idx() != map_value.type_idx())
+	println(array_value.type_idx() != int_value.type_idx())
+}
+')
+	assert out == 'true\ntrue\ntrue\ntrue'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

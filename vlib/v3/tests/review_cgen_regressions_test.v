@@ -587,6 +587,8 @@ fn main() {
 	nested := $zero([][]int{})
 	optional := $zero([]?int{})
 	generic := $zero([]GenericBox[int]{})
+	fixed := $zero([2]int{})
+	fixed_ptr := $new([3]int{})
 	mut generic_ptr := $new([]GenericBox[int]{})
 	mut direct_ptr := new_value[&NewInts]()
 	mut nested_ptr := new_value[&NewNested]()
@@ -609,6 +611,8 @@ fn main() {
 	println(int_str(nested.len))
 	println(int_str(optional.len))
 	println(int_str(generic.len))
+	println(int_str(fixed.len))
+	println(int_str((*fixed_ptr).len))
 	println(int_str(generic_ptr.len))
 	println(int_str(payload.len))
 	println(int_str(optional_generic.len))
@@ -623,7 +627,7 @@ fn main() {
 	println(int_str(defaults.count))
 }
 ')
-	assert out == '0\n0\n0\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
+	assert out == '0\n0\n0\n2\n3\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
 }
 
 fn test_generic_new_default_initialization_stays_in_expression_scope() {

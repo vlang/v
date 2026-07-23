@@ -9314,7 +9314,20 @@ fn (mut t Transformer) try_lower_interface_runtime_method_call(node flat.Node) ?
 
 fn (mut t Transformer) build_interface_type_idx_chain(tag flat.NodeId, iface_name string, impls []string, idx int) flat.NodeId {
 	if idx >= impls.len {
-		return t.make_int_literal(0)
+		is_container := t.make_infix(.lt, tag, t.make_int_literal(0))
+		container_idx := t.make_infix(.amp, tag, t.make_int_literal(0x7fffffff))
+		then_block := t.make_block(arr1(t.make_expr_stmt(container_idx)))
+		else_block := t.make_block(arr1(t.make_expr_stmt(t.make_int_literal(0))))
+		start := t.a.children.len
+		t.a.children << is_container
+		t.a.children << then_block
+		t.a.children << else_block
+		return t.a.add_node(flat.Node{
+			kind:           .if_expr
+			children_start: start
+			children_count: 3
+			typ:            'int'
+		})
 	}
 	impl := impls[idx]
 	type_id := t.interface_impl_type_id(iface_name, impl) or {

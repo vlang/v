@@ -4538,6 +4538,17 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 			value: typ
 		})
 	}
+	if p.tok == .lsbr && p.peek() != .rsbr {
+		typ := p.parse_type_name()
+		if p.tok == .lcbr && p.peek() == .rcbr {
+			p.next()
+			p.check(.rcbr)
+		}
+		return p.add_node(flat.Node{
+			kind:  .ident
+			value: typ
+		})
+	}
 	if p.tok != .lsbr || p.peek() != .rsbr {
 		return p.expr(.lowest)
 	}

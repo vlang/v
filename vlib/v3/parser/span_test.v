@@ -525,3 +525,30 @@ fn make_zero[T](x ?T) {
 	assert saw_generic_array_target
 	assert saw_generic_new_array_target
 }
+
+fn test_comptime_fixed_array_targets_stay_type_nodes() {
+	ast, _ := parse_span_source('comptime_fixed_array_type_arg', 'struct Box[T] {}
+
+fn main() {
+	_ := \$zero([2]int{})
+	_ := \$new([3]Box[int]{})
+}
+')
+	mut saw_zero := false
+	mut saw_new := false
+	for node in ast.nodes {
+		if node.kind != .string_literal || node.children_count != 1 {
+			continue
+		}
+		target := ast.child_node(&node, 0)
+		if node.value == '__v3_comptime_zero' && target.kind == .ident && target.value == '[2]int' {
+			saw_zero = true
+		}
+		if node.value == '__v3_comptime_new' && target.kind == .ident
+			&& target.value == '[3]Box[int]' {
+			saw_new = true
+		}
+	}
+	assert saw_zero
+	assert saw_new
+}
