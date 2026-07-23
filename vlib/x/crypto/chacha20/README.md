@@ -24,22 +24,22 @@ import x.crypto.chacha20
 
 fn main() {
 	// 1. Creates a standard IETF variant, supplied with 12-bytes nonce
-	key0 := rand.read(32)!
-	nonce0 := rand.read(12)!
+	key0 := rand.bytes(32)!
+	nonce0 := rand.bytes(12)!
 
 	mut c0 := chacha20.new_cipher(key0, nonce0)!
 	// and then, do work with the c0 that was just created
 
 	// 2. Creates an original (DJ Bernstein) variant, supplied with 8-bytes nonce
-	key1 := rand.read(32)!
-	nonce1 := rand.read(8)!
+	key1 := rand.bytes(32)!
+	nonce1 := rand.bytes(8)!
 
 	mut c1 := chacha20.new_cipher(key1, nonce1)!
 	// do with yours cipher
 
 	// 3. Creates an eXtended ChaCha20 construction with 64-bit counter
-	key2 := rand.read(32)!
-	nonce2 := rand.read(24)!
+	key2 := rand.bytes(32)!
+	nonce2 := rand.bytes(24)!
 
 	mut c2 := chacha20.new_cipher(key2, nonce2, use_64bit_counter: true)!
 	// do with yours cipher
