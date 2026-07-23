@@ -1122,15 +1122,16 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 	return result
 }
 
-// veb_template_no_descend_kinds are the constructs whose builder must NOT be hoisted
-// out to the enclosing statement, because they introduce their own scope and/or run
-// conditionally: nested function bodies (`fn_literal`/`lambda_expr`/`fn_decl`) and
-// block/branch bodies (`block`/`for_stmt`/`or_expr`). A `$tmpl()` inside those is
-// handled where the inner block itself is parsed, not here. `if_expr`/`match_stmt` are
-// handled specially in collect_veb_template_node_ids: their control expression runs
-// unconditionally and is descended into, while their branch bodies are not.
+// veb_template_no_descend_kinds are the hard scope boundaries whose contents are never
+// reached from the enclosing statement: nested function bodies (`fn_literal`/
+// `lambda_expr`/`fn_decl`) and separately-parsed blocks (`block`). A `$tmpl()` inside
+// those is handled where the inner scope itself is parsed, not here. Constructs with an
+// unconditional header/source but conditional/scoped bodies — `if_expr`/`match_stmt`
+// (control expression), `for_stmt` (loop header) and `or_expr` (guarded source
+// expression) — are NOT listed here; they are special-cased so their header runs are
+// descended into while their bodies/or-blocks are left to be parsed on their own.
 const veb_template_no_descend_kinds = [flat.NodeKind.fn_literal, .lambda_expr, .fn_decl,
-	.block, .for_stmt, .or_expr]
+	.block]
 
 // collect_veb_template_node_ids gathers the `.veb_template` placeholders in the subtree
 // rooted at `id` that are safe to hoist into the current statement — i.e. reached only
@@ -1165,6 +1166,22 @@ fn (p &Parser) collect_veb_template_node_ids(id flat.NodeId, mut out []flat.Node
 		p.collect_veb_template_node_ids(p.a.child(&node, 0), mut out)
 		return
 	}
+	if node.kind == .for_stmt {
+		// A `for` header (init/cond/post — children 0..2) runs in this scope, so a
+		// template there is safe to hoist; the loop body (children 3+) is a conditional,
+		// separately-parsed block and is not descended into.
+		header_end := if int(node.children_count) < 3 { int(node.children_count) } else { 3 }
+		for i in 0 .. header_end {
+			p.collect_veb_template_node_ids(p.a.child(&node, i), mut out)
+		}
+		return
+	}
+	if node.kind == .or_expr && node.children_count == 2 {
+		// The guarded source expression (child 0) runs unconditionally; the `or {}`
+		// block / `?`/`!` propagation (child 1) is conditional and handled on its own.
+		p.collect_veb_template_node_ids(p.a.child(&node, 0), mut out)
+		return
+	}
 	if node.kind in veb_template_no_descend_kinds {
 		return
 	}
@@ -1196,6 +1213,21 @@ fn (mut p Parser) replace_short_circuit_templates(id flat.NodeId) {
 		if node.children_count > 0 {
 			p.replace_short_circuit_templates(p.a.child(&node, 0))
 		}
+		return
+	}
+	if node.kind == .for_stmt {
+		// Only the header (init/cond/post) runs in this scope; the loop body is a
+		// separately-parsed block handled on its own.
+		header_end := if int(node.children_count) < 3 { int(node.children_count) } else { 3 }
+		for i in 0 .. header_end {
+			p.replace_short_circuit_templates(p.a.child(&node, i))
+		}
+		return
+	}
+	if node.kind == .or_expr && node.children_count == 2 {
+		// Descend into the guarded source expression only; the `or {}` block runs
+		// conditionally and is parsed separately.
+		p.replace_short_circuit_templates(p.a.child(&node, 0))
 		return
 	}
 	if node.kind in veb_template_no_descend_kinds {
@@ -1310,6 +1342,25 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 				p.declare_template_ident(p.a.child(&node, 1), mut declared)
 			}
 			for i in header .. int(node.children_count) {
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
+					out, mut mut_names)
+			}
+		}
+		.call {
+			// The callee (child 0) names the function being invoked. A bare-ident callee
+			// such as `render_row` in `@{render_row(row)}` is a top-level/module helper,
+			// not a capturable local, so skip it and collect only from the arguments; a
+			// non-ident callee (e.g. a `recv.method` selector) is still descended into so
+			// its receiver local is captured.
+			if node.children_count > 0 {
+				callee := p.a.child(&node, 0)
+				if int(callee) >= 0 && int(callee) < p.a.nodes.len
+					&& p.a.nodes[int(callee)].kind != .ident {
+					p.collect_template_free_idents(callee, mut declared, mut seen, mut out,
+						mut mut_names)
+				}
+			}
+			for i in 1 .. node.children_count {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
 					out, mut mut_names)
 			}
