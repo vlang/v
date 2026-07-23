@@ -1050,6 +1050,13 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 			p.predeclare_local_type_names_in_block(body_start)
 			for p.tok != .rcbr && p.tok != .eof {
 				id := p.stmt()
+				// Lower a `$tmpl()` / `$veb.html()` used in an operator overload body, so
+				// its `.veb_template` placeholder does not leak past the parser (no later
+				// phase handles it), matching normal function/block parsing.
+				if expansion := p.expand_veb_template_stmt(id) {
+					body_ids << expansion
+					continue
+				}
 				if int(id) >= 0 {
 					body_ids << id
 				}
