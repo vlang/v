@@ -750,6 +750,26 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	mut has_field := false
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
+		// `EmbedType: value` sets the embedded struct field itself. Its C field name comes
+		// from the embed type (`veb__Context`), not the source key, and the source key can
+		// be a short name (`Context`) that is not in `allowed_fields`. Mirror the non-fixed
+		// -array path so the value is not dropped as "not allowed" or emitted under a
+		// non-existent designator, which would leave the embed at defaults. A real field of
+		// the same name wins over the embed short-name match. The embed is a struct value,
+		// so it lives in the compound literal, not the memcpy tail.
+		if field.value.len > 0 && !g.struct_has_direct_named_field(lookup_name, field.value) {
+			if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
+				if has_field {
+					g.write(', ')
+				}
+				g.write('.${c_field_name(emb.name)} = ')
+				g.gen_struct_field_expr_for_field(g.a.child(field, 0), lookup_name, emb.name,
+					emb.typ)
+				g.mark_embedded_promoted_fields_set(emb.name, lookup_name, mut set_fields)
+				has_field = true
+				continue
+			}
+		}
 		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
 			continue
 		}
