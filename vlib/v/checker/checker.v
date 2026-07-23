@@ -2158,6 +2158,116 @@ fn (c &Checker) generic_names_for_type_parent(typ_sym &ast.TypeSymbol) []string 
 	return []string{}
 }
 
+// find_unresolved_placeholder_name recursively looks for an unresolved
+// `.placeholder` type symbol (e.g. an undeclared type `Missing`) inside `sym`:
+// either `sym` itself, or - for a generic instantiation such as `Missing[int]` or
+// `Box[Missing]` - its parent type or any of its concrete type arguments,
+// including ones nested inside a container (`Box[[]Missing]`, `Box[map[string]Missing]`, etc.).
+// Returns the short (unqualified) name of the first unresolved identifier found,
+// so callers can locate it in the source for a precise diagnostic position
+// or none if `sym` is fully resolved.
+fn (c &Checker) find_unresolved_placeholder_name(sym &ast.TypeSymbol) ?string {
+	if sym.kind == .placeholder && sym.language != .c {
+		short_name := sym.name.all_after_last('.')
+		// An undeclared generic base type (e.g. `Missing` in `Missing[int]`) is registered
+		// as a single opaque placeholder whose name is the whole bracketed text
+		// (`Missing[int]`); strip everything from the first `[` to get just the
+		// actually-undeclared identifier.
+		return if short_name.contains('[') { short_name.all_before('[') } else { short_name }
+	}
+	if sym.info is ast.GenericInst {
+		parent_sym := c.table.sym_by_idx(sym.info.parent_idx)
+		if name := c.find_unresolved_placeholder_name(parent_sym) {
+			return name
+		}
+	}
+	// Monomorphized generic instantiations (e.g. `Box[Missing]`)
+	// keep the concrete types that were used to build them on their own `.info`,
+	// regardless of whether the symbol itself ends up a struct, interface,
+	// sumtype or generic_inst; reject them if any concrete type is unresolved.
+	concrete_types := match sym.info {
+		ast.GenericInst { sym.info.concrete_types }
+		ast.Struct { sym.info.concrete_types }
+		ast.Interface { sym.info.concrete_types }
+		ast.SumType { sym.info.concrete_types }
+		else { []ast.Type{} }
+	}
+
+	for concrete_type in concrete_types {
+		if name := c.find_unresolved_placeholder_name(c.table.sym(concrete_type)) {
+			return name
+		}
+	}
+	// A concrete type argument can itself be a container (e.g. `Box[[]Missing]`,
+	// `Box[map[string]Missing]`, `Box[chan Missing]`); recurse into its
+	// element/value/parent types too, so an unresolved type nested inside one
+	// is not missed.
+	nested_types := match sym.info {
+		ast.Array { [sym.info.elem_type] }
+		ast.ArrayFixed { [sym.info.elem_type] }
+		ast.Chan { [sym.info.elem_type] }
+		ast.Map { [sym.info.key_type, sym.info.value_type] }
+		ast.MultiReturn { sym.info.types }
+		ast.Alias { [sym.info.parent_type] }
+		else { []ast.Type{} }
+	}
+
+	for nested_type in nested_types {
+		if name := c.find_unresolved_placeholder_name(c.table.sym(nested_type)) {
+			return name
+		}
+	}
+	return none
+}
+
+// sym_has_unresolved_placeholder reports whether `sym` is itself an unresolved
+// `.placeholder` type symbol (e.g. an undeclared type `Missing`), or a generic
+// instantiation (e.g. `Missing[int]`, `Box[Missing]`) whose parent type or any of
+// its concrete types is - possibly transitively - an unresolved placeholder.
+fn (c &Checker) sym_has_unresolved_placeholder(sym &ast.TypeSymbol) bool {
+	return c.find_unresolved_placeholder_name(sym) != none
+}
+
+// Unresolved_type_error_pos locates the exact position of `name` on the source
+// line of `fallback_pos`, so diagnostics for a generic instantiation with an
+// unresolved part (e.g. `Missing` in `Box[Missing]`) point at that specific
+// identifier instead of the whole expression. This is recomputed fresh from
+// already-resolved symbol info and the source text at check time (not cached
+// across occurrences), so it stays correct regardless of declaration order and
+// repeated uses of the same generic instantiation. Falls back to
+// `fallback_pos` if `name` cannot be found on that line.
+fn (c &Checker) unresolved_type_error_pos(name string, fallback_pos token.Pos) token.Pos {
+	if name == '' || fallback_pos.line_nr < 0 {
+		return fallback_pos
+	}
+	source_lines := util.cached_file2sourcelines(c.file.path)
+	if fallback_pos.line_nr >= source_lines.len {
+		return fallback_pos
+	}
+	line := source_lines[fallback_pos.line_nr]
+	mut start := 0
+	for {
+		idx := line.index_after(name, start) or { break }
+		is_word_char := fn (b u8) bool {
+			return b.is_letter() || b.is_digit() || b == `_`
+		}
+		before_ok := idx == 0 || !is_word_char(line[idx - 1])
+		after_idx := idx + name.len
+		after_ok := after_idx >= line.len || !is_word_char(line[after_idx])
+		if before_ok && after_ok {
+			line_start_pos := fallback_pos.pos - int(fallback_pos.col)
+			return token.Pos{
+				...fallback_pos
+				pos: line_start_pos + idx
+				col: u16(idx)
+				len: name.len
+			}
+		}
+		start = idx + 1
+	}
+	return fallback_pos
+}
+
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
 	return c.type_implements_with_mut_receiver(typ, interface_type, pos, false)
 }
@@ -2177,6 +2287,12 @@ fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_typ
 	utyp := c.unwrap_generic(typ)
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
+	if c.sym_has_unresolved_placeholder(typ_sym) {
+		// `typ` is unresolved (undeclared), or a generic instantiation of an
+		// unresolved type, so it never implements anything.
+		// Callers report the error themselves to avoid duplicate messages.
+		return false
+	}
 	mut inter_sym := c.table.final_sym(resolved_interface_type)
 	if !inter_sym.is_pub && inter_sym.mod !in [typ_sym.mod, c.mod] && typ_sym.mod != 'builtin' {
 		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
