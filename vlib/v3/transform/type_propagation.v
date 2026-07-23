@@ -1260,8 +1260,9 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 		return t.normalize_type_in_module_uncached(typ, mod)
 	}
 	mut cache := t.module_type_cache
-	if cache.module != mod {
+	if cache.module != mod || cache.file != t.cur_file {
 		cache.module = mod
+		cache.file = t.cur_file
 		cache.entries.clear()
 		cache.clear_recent()
 	}
