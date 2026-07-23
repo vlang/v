@@ -183,3 +183,31 @@ fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	assert g.fn_gen_items[0].direct_array_access
 	g.release_scoped_fn_items()
 }
+
+fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
+	mut g, _ := parallel_worker_test_gen(true)
+	base, args, ok := g.shared_generic_app_parts('Frozen[int]')
+	assert ok
+	assert base == 'Frozen'
+	assert args == ['int']
+	frozen := g.generic_app_cache
+
+	g.freeze_parallel_lookup_caches()
+	assert voidptr(g.generic_app_cache) != voidptr(frozen)
+	assert voidptr(g.generic_app_cache.base) == voidptr(frozen)
+
+	mut dispatcher := g.new_parallel_dispatch_worker(1)
+	assert voidptr(dispatcher.generic_app_cache) != voidptr(g.generic_app_cache)
+	assert voidptr(dispatcher.generic_app_cache.base) == voidptr(frozen)
+	mut batch := dispatcher.new_parallel_worker(0)
+	assert voidptr(batch.generic_app_cache) != voidptr(dispatcher.generic_app_cache)
+	assert voidptr(batch.generic_app_cache.base) == voidptr(frozen)
+
+	g.shared_generic_app_parts('Shared[string]')
+	dispatcher.shared_generic_app_parts('Shared[string]')
+	batch.shared_generic_app_parts('Shared[string]')
+	assert 'Shared[string]' in g.generic_app_cache.entries
+	assert 'Shared[string]' in dispatcher.generic_app_cache.entries
+	assert 'Shared[string]' in batch.generic_app_cache.entries
+	assert 'Shared[string]' !in frozen.entries
+}

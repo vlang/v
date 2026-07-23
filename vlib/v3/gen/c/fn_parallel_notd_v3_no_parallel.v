@@ -582,10 +582,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		// fresh cache; the master's own memoization writes go to a private
 		// overlay for the duration of the region.
 		g.tc.freeze_type_cache_for_forks()
-		shared_c_name_cache := g.c_name_cache
-		g.c_name_cache = &CNameCache{
-			base: shared_c_name_cache
-		}
+		g.freeze_parallel_lookup_caches()
 		if !g.parallel_prepared {
 			g.prepare_parallel_items(items)
 		}
@@ -743,6 +740,19 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		} else {
 			unsafe { synthetic_output.free() }
 		}
+	}
+}
+
+// freeze_parallel_lookup_caches keeps the warm pre-dispatch caches as immutable
+// bases while the master and every body worker memoize into private overlays.
+fn (mut g FlatGen) freeze_parallel_lookup_caches() {
+	shared_c_name_cache := g.c_name_cache
+	g.c_name_cache = &CNameCache{
+		base: shared_c_name_cache
+	}
+	shared_generic_app_cache := g.generic_app_cache
+	g.generic_app_cache = &GenericAppCache{
+		base: shared_generic_app_cache
 	}
 }
 
