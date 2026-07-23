@@ -1235,6 +1235,10 @@ fn (t &Transformer) is_known_type_name(typ string) bool {
 // is_plain_builtin_alias_type reports whether is plain builtin alias type applies in transform.
 @[inline]
 fn is_plain_builtin_alias_type(typ string) bool {
+	// 'i8'..'voidptr': every plain builtin spelling is 2..7 bytes long.
+	if typ.len < 2 || typ.len > 7 {
+		return false
+	}
 	return match typ {
 		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 		'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {

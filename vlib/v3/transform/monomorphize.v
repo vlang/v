@@ -10346,6 +10346,20 @@ fn generic_param_index(name string) int {
 }
 
 fn is_generic_fn_placeholder_name(typ string) bool {
+	if typ.len == 0 {
+		return false
+	}
+	if typ.len == 1 {
+		return typ[0] >= `A` && typ[0] <= `Z`
+	}
+	// Fast path: nothing to trim, so a placeholder is exactly one capital
+	// letter after the final '.' — no trimmed/suffix copies needed.
+	if typ[0] > ` ` && typ[typ.len - 1] > ` ` {
+		if typ[typ.len - 1] < `A` || typ[typ.len - 1] > `Z` {
+			return false
+		}
+		return typ[typ.len - 2] == `.`
+	}
 	clean := typ.trim_space()
 	if clean.contains('.') {
 		return is_generic_fn_placeholder_name(clean.all_after_last('.'))

@@ -18,6 +18,14 @@ const max_parallel_transform_jobs = 7
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
 const max_shared_transform_jobs = 10
+// Split the shared-base transform into more chunks than pool threads: the
+// persistent pool hands queued chunks to whichever worker frees up first, so
+// finer chunks level the load across asymmetric (performance/efficiency)
+// cores while the fixed region merge order keeps node ids deterministic.
+const shared_transform_chunk_factor = 3
+// Keep enough items per chunk that per-chunk append-region headroom (sized
+// proportionally to estimated cost) still averages out expansion variance.
+const min_shared_transform_chunk_items = 24
 const max_parallel_monomorph_jobs = 10
 const scoped_transform_worker_batches = 1
 const scoped_transform_master_batches = 1
@@ -1422,9 +1430,21 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		return false
 	} $else {
 		t.tc.freeze_type_cache_for_forks()
-		mut chunks := split_work_items_ex(items, n_jobs, false)
+		mut chunk_target := n_jobs * shared_transform_chunk_factor
+		max_chunks_by_items := items.len / min_shared_transform_chunk_items
+		if chunk_target > max_chunks_by_items {
+			chunk_target = max_chunks_by_items
+		}
+		if chunk_target < n_jobs {
+			chunk_target = n_jobs
+		}
+		mut chunks := split_work_items_ex(items, chunk_target, false)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
+		// The master transforms chunk 0 in place and then this many additional
+		// forked chunks synchronously (keeping its former ~1/n_jobs share),
+		// while the pool workers drain the rest of the queue dynamically.
+		master_sync_chunks := chunk_count / n_jobs - 1
 		// Partition the reserved capacity into per-chunk append regions,
 		// proportional to chunk cost (the caller reserved ~2x the expected
 		// total growth for this pool).
@@ -1493,7 +1513,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			tasks << workers.Task{
 				run:        shared_chunk_thread
 				arg:        unsafe { voidptr(&args[ci]) }
-				force_sync: ci == 0 || fail == 'transform:all' || fail == 'transform:${helper_idx}'
+				force_sync: ci <= master_sync_chunks || fail == 'transform:all'
+					|| fail == 'transform:${helper_idx}'
 			}
 		}
 		transform_worker_scope_leave(setup_scope)

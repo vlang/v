@@ -2390,8 +2390,14 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 	if lookup_key in cache.local_fn_decl_index {
 		return true
 	}
-	if !isnil(cache.base) && lookup_key in cache.base.local_fn_decl_index {
-		return true
+	// The base chain can be more than one level deep during transform (the
+	// scoped-transform overlay sits between forks and the warm check cache).
+	mut fallback := cache.base
+	for !isnil(fallback) {
+		if lookup_key in fallback.local_fn_decl_index {
+			return true
+		}
+		fallback = fallback.base
 	}
 	// Parallel forks only append transformed expressions to their private AST
 	// regions; declarations remain the frozen master's authority. Scanning the
@@ -24296,8 +24302,12 @@ pub fn (tc &TypeChecker) ierror_impl_names() []string {
 		if cache.ierror_impl_names_set {
 			return cache.ierror_impl_names.clone()
 		}
-		if !isnil(cache.base) && cache.base.ierror_impl_names_set {
-			return cache.base.ierror_impl_names.clone()
+		mut fallback := cache.base
+		for !isnil(fallback) {
+			if fallback.ierror_impl_names_set {
+				return fallback.ierror_impl_names.clone()
+			}
+			fallback = fallback.base
 		}
 	}
 	mut struct_names := []string{}
@@ -24466,10 +24476,12 @@ pub fn (tc &TypeChecker) named_type_compatible_with_ierror(concrete_name string)
 	cache_key := tc.ierror_compat_cache_key(concrete_name)
 	if tc.type_cache != unsafe { nil } {
 		mut cache := unsafe { tc.type_cache }
-		if !isnil(cache.base) {
-			if cached := cache.base.ierror_compat_entries[cache_key] {
+		mut fallback := cache.base
+		for !isnil(fallback) {
+			if cached := fallback.ierror_compat_entries[cache_key] {
 				return cached > 0
 			}
+			fallback = fallback.base
 		}
 		if cached := cache.ierror_compat_entries[cache_key] {
 			return cached > 0
@@ -24650,8 +24662,12 @@ fn (tc &TypeChecker) source_struct_has_non_builtin_error_embed(concrete_name str
 	if tc.type_cache != unsafe { nil } {
 		mut cache := unsafe { tc.type_cache }
 		if !cache.source_error_embed_indexed {
-			if !isnil(cache.base) && cache.base.source_error_embed_indexed {
-				return cache.base.source_error_embed_entries[key] > 0
+			mut fallback := cache.base
+			for !isnil(fallback) {
+				if fallback.source_error_embed_indexed {
+					return fallback.source_error_embed_entries[key] > 0
+				}
+				fallback = fallback.base
 			}
 			cache.source_error_embed_entries = tc.collect_source_error_embed_entries()
 			cache.source_error_embed_indexed = true
@@ -24672,8 +24688,12 @@ pub fn (tc &TypeChecker) precompute_source_error_embed_index() {
 	if cache.source_error_embed_indexed {
 		return
 	}
-	if !isnil(cache.base) && cache.base.source_error_embed_indexed {
-		return
+	mut fallback := cache.base
+	for !isnil(fallback) {
+		if fallback.source_error_embed_indexed {
+			return
+		}
+		fallback = fallback.base
 	}
 	cache.source_error_embed_entries = tc.collect_source_error_embed_entries()
 	cache.source_error_embed_indexed = true
@@ -25182,13 +25202,15 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
 	cache_key := '${struct_name}\n${field_name}'
 	if !isnil(tc.type_cache) {
-		if !isnil(tc.type_cache.base) {
-			if typ := tc.type_cache.base.struct_field_entries[cache_key] {
+		mut fallback := tc.type_cache.base
+		for !isnil(fallback) {
+			if typ := fallback.struct_field_entries[cache_key] {
 				return typ
 			}
-			if tc.type_cache.base.struct_field_misses[cache_key] {
+			if fallback.struct_field_misses[cache_key] {
 				return none
 			}
+			fallback = fallback.base
 		}
 		if typ := tc.type_cache.struct_field_entries[cache_key] {
 			return typ
@@ -26220,10 +26242,12 @@ pub fn (tc &TypeChecker) cached_c_name(name string) string {
 		return naming.c_name(name)
 	}
 	mut cache := unsafe { tc.type_cache }
-	if !isnil(cache.base) {
-		if cached := cache.base.c_name_entries[name] {
+	mut fallback := cache.base
+	for !isnil(fallback) {
+		if cached := fallback.c_name_entries[name] {
 			return cached
 		}
+		fallback = fallback.base
 	}
 	if cached := cache.c_name_entries[name] {
 		return cached
@@ -26443,8 +26467,10 @@ fn parse_type_cache_get(mut cache TypeCache, file string, module_name string, te
 			key = parse_type_cache_next_key(key)
 			continue
 		}
-		if !isnil(cache.base) {
-			if entry := cache.base.parse_entries[key] {
+		mut fallback := cache.base
+		mut fallback_collision := false
+		for !isnil(fallback) {
+			if entry := fallback.parse_entries[key] {
 				if parse_type_cache_entry_matches(entry, file, module_name, text, generic_params,
 					resolution)
 				{
@@ -26452,9 +26478,14 @@ fn parse_type_cache_get(mut cache TypeCache, file string, module_name string, te
 					cache.parse_last_valid = true
 					return entry.typ
 				}
-				key = parse_type_cache_next_key(key)
-				continue
+				fallback_collision = true
+				break
 			}
+			fallback = fallback.base
+		}
+		if fallback_collision {
+			key = parse_type_cache_next_key(key)
+			continue
 		}
 		return none
 	}
@@ -26475,16 +26506,23 @@ fn parse_type_cache_put(mut cache TypeCache, file string, module_name string, te
 			key = parse_type_cache_next_key(key)
 			continue
 		}
-		if !isnil(cache.base) {
-			if entry := cache.base.parse_entries[key] {
+		mut fallback := cache.base
+		mut fallback_collision := false
+		for !isnil(fallback) {
+			if entry := fallback.parse_entries[key] {
 				if parse_type_cache_entry_matches(entry, file, module_name, text, generic_params,
 					resolution)
 				{
 					return
 				}
-				key = parse_type_cache_next_key(key)
-				continue
+				fallback_collision = true
+				break
 			}
+			fallback = fallback.base
+		}
+		if fallback_collision {
+			key = parse_type_cache_next_key(key)
+			continue
 		}
 		entry := ParseTypeCacheEntry{
 			file:           file
@@ -27302,12 +27340,16 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 		return tc.unique_qualified_type_name_scan(short_name)
 	}
 	if !cache.short_type_name_index_built {
-		if !isnil(cache.base) && cache.base.short_type_name_index_built {
-			found := cache.base.short_type_name_index[short_name] or { return none }
-			if found.len == 0 {
-				return none
+		mut fallback := cache.base
+		for !isnil(fallback) {
+			if fallback.short_type_name_index_built {
+				found := fallback.short_type_name_index[short_name] or { return none }
+				if found.len == 0 {
+					return none
+				}
+				return found
 			}
-			return found
+			fallback = fallback.base
 		}
 		cache.short_type_name_index_built = true
 		tc.build_short_type_name_index(mut cache.short_type_name_index)
@@ -27346,10 +27388,14 @@ pub fn (tc &TypeChecker) register_short_type_name(name string) {
 		return
 	}
 	if !cache.short_type_name_index_built {
-		if isnil(cache.base) || !cache.base.short_type_name_index_built {
+		mut fallback := cache.base
+		for !isnil(fallback) && !fallback.short_type_name_index_built {
+			fallback = fallback.base
+		}
+		if isnil(fallback) {
 			return
 		}
-		cache.short_type_name_index = cache.base.short_type_name_index.clone()
+		cache.short_type_name_index = fallback.short_type_name_index.clone()
 		cache.short_type_name_index_built = true
 	}
 	index_short_type_name(name, mut cache.short_type_name_index)
@@ -27364,10 +27410,14 @@ pub fn (tc &TypeChecker) unregister_short_type_name(name string) {
 		return
 	}
 	if !cache.short_type_name_index_built {
-		if isnil(cache.base) || !cache.base.short_type_name_index_built {
+		mut fallback := cache.base
+		for !isnil(fallback) && !fallback.short_type_name_index_built {
+			fallback = fallback.base
+		}
+		if isnil(fallback) {
 			return
 		}
-		cache.short_type_name_index = cache.base.short_type_name_index.clone()
+		cache.short_type_name_index = fallback.short_type_name_index.clone()
 		cache.short_type_name_index_built = true
 	}
 	short := name.all_after_last('.')
