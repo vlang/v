@@ -51,6 +51,7 @@ fn test_direct_call_uses_custom_enum_method_symbol() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
+	assert g.direct_call_name('token.Kind.str') == 'token__Kind_str'
 	assert g.direct_call_name_for_call(flat.empty_node, 'token.Kind.str') == 'token__Kind_str'
 }
 

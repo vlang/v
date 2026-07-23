@@ -6095,6 +6095,20 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 			return msg
 		}
 	}
+	for idx, node in a.nodes {
+		if idx < a.user_code_start || node.kind != .global_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.children_count == 0 {
+				continue
+			}
+			if msg := unsupported_power_node_error(a, a.child(field, 0), backend, mut visited) {
+				return msg
+			}
+		}
+	}
 	return none
 }
 

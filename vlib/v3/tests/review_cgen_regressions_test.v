@@ -285,6 +285,17 @@ pub fn free(values []int) int {
 	assert out == '4'
 }
 
+fn test_imported_enum_method_call_uses_declaration_symbol() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good_project(v3_bin, 'imported_enum_method_call', {
+		'v.mod':         'Module { name: "imported_enum_method_call" }\n'
+		'token/token.v': "module token\n\npub enum Kind {\n\tword\n}\n\npub fn (kind Kind) str() string {\n\treturn 'word'\n}\n"
+		'ast/ast.v':     'module ast\n\nimport token\n\npub fn render(kind token.Kind) string {\n\treturn kind.str()\n}\n'
+		'main.v':        'module main\n\nimport ast\nimport token\n\nfn main() {\n\tprintln(ast.render(token.Kind.word))\n}\n'
+	}, 'main.v')
+	assert out == 'word'
+}
+
 fn test_selectively_imported_free_call_is_not_rewritten_to_array_intrinsic() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good_project(v3_bin, 'selective_import_free_call', {

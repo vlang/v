@@ -772,6 +772,9 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 	if collision_name := g.operator_overload_collision_c_name('', name) {
 		return collision_name
 	}
+	if enum_method_name := g.enum_method_c_name_in_module('', name) {
+		return enum_method_name
+	}
 	if enum_method_name := g.enum_method_c_name_in_module(g.tc.cur_module, name) {
 		return enum_method_name
 	}
