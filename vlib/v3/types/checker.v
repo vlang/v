@@ -12022,6 +12022,10 @@ fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat
 	if actual_base !is ArrayFixed || expected_base.name() != 'u8' || !tc.valid_node_id(expr_id) {
 		return false
 	}
+	actual_fixed := actual_base as ArrayFixed
+	if unalias_type(actual_fixed.elem_type).name() != 'u8' {
+		return false
+	}
 	node := tc.a.nodes[int(expr_id)]
 	return node.kind == .prefix && node.op == .amp && node.children_count > 0
 }

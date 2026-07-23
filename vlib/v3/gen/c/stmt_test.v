@@ -54,6 +54,22 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	assert assign_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, rhs_id, byte_pointer,
 		fixed_pointer)
 	assert assign_gen.sb.str() == 'p = ((u8*)(buf));\n'
+	int_fixed_type := types.Type(types.ArrayFixed{
+		elem_type: types.Type(types.i32_)
+		len:       2
+	})
+	tc.cur_scope.insert('int_buf', int_fixed_type)
+	int_buf_id := stmt_test_node(mut a, .ident, 'int_buf', [])
+	int_rhs_id := stmt_test_prefix(mut a, .amp, int_buf_id)
+	int_fixed_pointer := types.Type(types.Pointer{
+		base_type: int_fixed_type
+	})
+	mut rejected_gen := FlatGen.new()
+	rejected_gen.a = &a
+	rejected_gen.tc = &tc
+	assert !rejected_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, int_rhs_id,
+		byte_pointer, int_fixed_pointer)
+	assert rejected_gen.sb.str() == ''
 	tc.pop_scope()
 }
 

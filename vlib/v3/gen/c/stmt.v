@@ -5363,8 +5363,12 @@ fn (mut g FlatGen) gen_single_fixed_array_elem_assign_to_scalar_local(lhs flat.N
 fn (g &FlatGen) fixed_array_address_to_byte_pointer_expr_compatible(rhs_id flat.NodeId, target_type types.Type, rhs_type types.Type) bool {
 	target_ptr := if target_type is types.Pointer { target_type } else { return false }
 	rhs_ptr := if rhs_type is types.Pointer { rhs_type } else { return false }
-	if cgen_unalias_type(target_ptr.base_type).name() != 'u8'
-		|| cgen_unalias_type(rhs_ptr.base_type) !is types.ArrayFixed {
+	rhs_base := cgen_unalias_type(rhs_ptr.base_type)
+	if cgen_unalias_type(target_ptr.base_type).name() != 'u8' || rhs_base !is types.ArrayFixed {
+		return false
+	}
+	rhs_fixed := rhs_base as types.ArrayFixed
+	if cgen_unalias_type(rhs_fixed.elem_type).name() != 'u8' {
 		return false
 	}
 	rhs := g.a.nodes[int(rhs_id)]
