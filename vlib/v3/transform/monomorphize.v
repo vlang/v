@@ -1891,6 +1891,7 @@ fn (mut t Transformer) materialize_generic_struct_specs(specs map[string]string,
 	if isnil(t.tc) {
 		return
 	}
+	types.extend_stable_type_indexes(mut t.runtime_type_indexes, specs.keys())
 	for spec, base in specs {
 		decl := decls[base] or { continue }
 		t.materialize_generic_struct_spec(spec, decl)

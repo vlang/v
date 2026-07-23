@@ -24092,10 +24092,20 @@ pub fn stable_type_index(name string) int {
 // stable_type_indexes assigns deterministic, collision-free runtime indexes to
 // the complete caller-supplied program type set.
 pub fn stable_type_indexes(type_names []string) map[string]int {
+	mut indexes := map[string]int{}
+	extend_stable_type_indexes(mut indexes, type_names)
+	return indexes
+}
+
+// extend_stable_type_indexes assigns deterministic, collision-free runtime indexes
+// to new names without changing indexes that have already been used during lowering.
+pub fn extend_stable_type_indexes(mut indexes map[string]int, type_names []string) {
+	mut used := map[int]bool{}
+	for _, type_idx in indexes {
+		used[type_idx] = true
+	}
 	mut names := type_names.clone()
 	names.sort()
-	mut indexes := map[string]int{}
-	mut used := map[int]bool{}
 	for raw_name in names {
 		name := raw_name.trim_space()
 		if name.len == 0 || name in indexes {
@@ -24108,7 +24118,6 @@ pub fn stable_type_indexes(type_names []string) map[string]int {
 		indexes[name] = type_idx
 		used[type_idx] = true
 	}
-	return indexes
 }
 
 fn next_stable_type_index(type_idx int) int {

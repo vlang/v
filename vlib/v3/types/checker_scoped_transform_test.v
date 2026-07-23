@@ -28,6 +28,19 @@ fn test_stable_type_indexes_resolve_custom_type_collisions() {
 	}
 }
 
+fn test_stable_type_indexes_extend_without_renumbering_existing_types() {
+	assert stable_type_index('Box[Dxw]') == stable_type_index('Box[Kdd]')
+	mut indexes := stable_type_indexes(['Existing'])
+	existing_idx := indexes['Existing']
+	extend_stable_type_indexes(mut indexes, ['Box[Kdd]', 'Box[Dxw]'])
+	assert indexes['Existing'] == existing_idx
+	assert indexes['Box[Dxw]'] != indexes['Box[Kdd]']
+	for _, type_idx in indexes {
+		assert type_idx > 65535
+		assert type_idx & (0xff << 16) == 0
+	}
+}
+
 fn test_const_int_power_string_respects_unary_minus_precedence() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

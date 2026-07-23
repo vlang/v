@@ -3,6 +3,7 @@ vlib/v/tests/comptime/comptime_call_test.v
 vlib/v/tests/comptime/comptime_for_test.v
 vlib/v/tests/comptime/comptime_if_fn_type_signature_test.v
 vlib/v/tests/comptime/comptime_kinds_test.v
+vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/options/option_mut_struct_init_test.v
 vlib/v/tests/options/option_none_guard_return_unwrap_test.v
 vlib/v/tests/options/option_optional_param_test.v

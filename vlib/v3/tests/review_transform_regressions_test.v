@@ -1663,6 +1663,35 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_late_generic_runtime_type_indexes_resolve_hash_collisions() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'late_generic_runtime_type_index_hash_collisions', 'interface Value {}
+
+struct Dxw {}
+struct Kdd {}
+
+struct Box[T] {
+	value T
+}
+
+fn type_index[T](value T) int {
+	boxed := Value(value)
+	return boxed.type_idx()
+}
+
+fn main() {
+	left := type_index(Box[Dxw]{
+		value: Dxw{}
+	})
+	right := type_index(Box[Kdd]{
+		value: Kdd{}
+	})
+	println(left != right)
+}
+')
+	assert out == 'true'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',
