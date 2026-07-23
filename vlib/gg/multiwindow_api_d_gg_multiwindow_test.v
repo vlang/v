@@ -272,15 +272,7 @@ fn test_multiwindow_auto_capabilities_with_invalid_wayland_display_fail_cleanly(
 }
 
 fn test_multiwindow_new_app_does_not_require_renderer_by_default() {
-	$if linux {
-		snapshot := snapshot_graphical_env()
-		defer {
-			restore_graphical_env(snapshot)
-		}
-		set_graphical_env('', '')
-	}
-
-	mut app := new_app()!
+	mut app := $if linux { new_app(backend: .mock)! } $else { new_app()! }
 	assert !app.config.require_renderer
 	caps := app.capabilities()
 	$if windows {

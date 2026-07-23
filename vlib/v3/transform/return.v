@@ -148,67 +148,74 @@ fn (mut t Transformer) return_values_from_ids(ids []flat.NodeId) []flat.NodeId {
 	return vals
 }
 
-// return_expr_is_err supports return expr is err handling for Transformer.
-fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
-	if int(id) < 0 {
+fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind != .ident || node.value != 'err' {
+	actual_type := t.return_ierror_expr_type(id)
+	if actual_type.len == 0 {
 		return false
 	}
-	typ := node.typ
-	if typ == 'IError' || typ.ends_with('.IError') {
+	// Explicit error construction and the active implicit `err` binding denote
+	// failure. Other IError-compatible values can instead be successful payloads
+	// when the surrounding result expects their type (for example `!IError`).
+	if t.is_error_call(node)
+		|| (node.kind == .ident && node.value == 'err' && t.implicit_err_binding_active()) {
 		return true
 	}
-	var_type := t.var_type('err')
-	if var_type.len > 0 {
-		return var_type == 'IError' || var_type.ends_with('.IError')
+	if payload_type.len == 0 || payload_type == 'unknown' || payload_type.contains('unknown') {
+		return true
 	}
-	return false
+	return !t.resolved_receiver_arg_compatible(id, actual_type, payload_type)
 }
 
-fn (t &Transformer) result_return_expr_is_ierror_payload(id flat.NodeId, result_type string) bool {
-	if isnil(t.tc) || !t.is_optional_type_name(result_type) || result_type[0] != `!` {
-		return false
-	}
-	payload_name := t.optional_base_type(t.qualify_optional_type(result_type))
-	if payload_name in ['IError', 'builtin.IError'] || t.is_interface_type_name(payload_name) {
-		return false
+fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.cast_expr, .struct_init] && node.value.len > 0
-		&& t.normalize_type_alias(node.value) != t.normalize_type_alias(payload_name)
-		&& t.type_name_or_alias_compatible_with_ierror(node.value) {
-		return true
+	primary_type := match node.kind {
+		.struct_init, .cast_expr, .as_expr {
+			node.value
+		}
+		.ident {
+			t.var_type(node.value)
+		}
+		.call {
+			t.get_call_return_type(id, node)
+		}
+		else {
+			''
+		}
 	}
-	actual := t.tc.resolve_type(id)
-	actual_name := actual.name()
-	if actual_name.len == 0 || actual_name == 'unknown' {
-		return false
+	if typ := t.return_ierror_type_candidate(primary_type) {
+		return typ
 	}
-	if t.normalize_type_alias(actual_name) == t.normalize_type_alias(payload_name) {
-		return false
+	for typ in [node.typ, t.raw_checker_node_type(id), t.original_expr_type(id),
+		t.node_type(id)] {
+		if candidate := t.return_ierror_type_candidate(typ) {
+			return candidate
+		}
 	}
-	return actual_name in ['IError', 'builtin.IError']
-		|| t.type_name_or_alias_compatible_with_ierror(actual_name)
+	return ''
 }
 
-fn (t &Transformer) type_name_or_alias_compatible_with_ierror(name string) bool {
-	mut candidate := name
-	mut seen := map[string]bool{}
-	for candidate.len > 0 && !seen[candidate] {
-		seen[candidate] = true
-		if t.tc.named_type_compatible_with_ierror(candidate) {
-			return true
-		}
-		next := t.normalize_type_alias(candidate)
-		if next == candidate {
-			break
-		}
-		candidate = next
+fn (t &Transformer) return_ierror_type_candidate(typ string) ?string {
+	if typ.len == 0 || typ == 'unknown' || typ.contains('unknown') {
+		return none
 	}
-	return false
+	if t.is_ierror_type(typ) {
+		return typ
+	}
+	if !t.is_type_alias_name(t.trim_pointer_type(typ)) {
+		return none
+	}
+	resolved := t.alias_str_resolved_base_type(typ)
+	if resolved != typ && t.is_ierror_type(resolved) {
+		return resolved
+	}
+	return none
 }
 
 fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {
@@ -299,7 +306,8 @@ fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.
 	}
 	mut needs_conversion := false
 	for i, actual_type in actual_types {
-		if actual_type.name() != expected_types[i].name() {
+		if actual_type.name() != expected_types[i].name()
+			&& t.forwarded_slot_conversion_supported(actual_type, expected_types[i]) {
 			needs_conversion = true
 			break
 		}
@@ -354,7 +362,8 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 	actual_types := t.multi_return_types_for_expr(value_id, expected_types.len) or { return none }
 	mut needs_conversion := false
 	for i, actual_type in actual_types {
-		if actual_type.name() != expected_types[i].name() {
+		if actual_type.name() != expected_types[i].name()
+			&& t.forwarded_slot_conversion_supported(actual_type, expected_types[i]) {
 			needs_conversion = true
 			break
 		}
@@ -378,6 +387,9 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 }
 
 fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, actual types.Type, expected types.Type) flat.NodeId {
+	if !t.forwarded_slot_conversion_supported(actual, expected) {
+		return t.transform_expr(value_id)
+	}
 	actual_base := forwarded_return_unalias_type(actual)
 	expected_base := forwarded_return_unalias_type(expected)
 	if actual_base is types.OptionType && expected_base is types.OptionType
@@ -419,10 +431,16 @@ fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, act
 }
 
 fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expected types.Type) bool {
+	if forwarded_return_type_is_unresolved(actual) || forwarded_return_type_is_unresolved(expected) {
+		return false
+	}
 	actual_base := forwarded_return_unalias_type(actual)
 	expected_base := forwarded_return_unalias_type(expected)
 	if actual_base.name() == expected_base.name() {
 		return false
+	}
+	if actual_base.is_integer() && expected_base.is_integer() {
+		return true
 	}
 	if expected_base is types.Interface {
 		return true
@@ -453,6 +471,31 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 	if actual_base is types.Map && expected_base is types.Map {
 		return t.forwarded_slot_conversion_supported(actual_base.key_type, expected_base.key_type)
 			|| t.forwarded_slot_conversion_supported(actual_base.value_type, expected_base.value_type)
+	}
+	return false
+}
+
+fn forwarded_return_type_is_unresolved(typ types.Type) bool {
+	base := forwarded_return_unalias_type(typ)
+	name := base.name().trim_space()
+	if name == 'unknown' || name.ends_with('.unknown') || is_generic_placeholder_type_name(name) {
+		return true
+	}
+	if base is types.OptionType {
+		return forwarded_return_type_is_unresolved(base.base_type)
+	}
+	if base is types.ResultType {
+		return forwarded_return_type_is_unresolved(base.base_type)
+	}
+	if base is types.Array {
+		return forwarded_return_type_is_unresolved(base.elem_type)
+	}
+	if base is types.ArrayFixed {
+		return forwarded_return_type_is_unresolved(base.elem_type)
+	}
+	if base is types.Map {
+		return forwarded_return_type_is_unresolved(base.key_type)
+			|| forwarded_return_type_is_unresolved(base.value_type)
 	}
 	return false
 }

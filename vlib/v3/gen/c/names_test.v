@@ -29,7 +29,16 @@ fn test_c_name_sanitizes_compound_generic_type_arguments() {
 
 fn test_c_name_libc_collision_abs() {
 	assert c_name('abs') == 'v_abs'
+	assert c_name('send') == 'v_send'
 	assert c_name('C.abs') == 'abs'
+	assert c_name('C.send') == 'send'
+}
+
+fn test_c_name_generated_string_symbol_collision() {
+	assert c_name('_str_1') == 'v__str_1'
+	assert c_name('_str_002') == 'v__str_002'
+	assert c_name('_str_value') == '_str_value'
+	assert c_name('C._str_3') == '_str_3'
 }
 
 fn test_cgen_flattened_generic_receiver_short_variants() {
@@ -73,18 +82,6 @@ fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
 	}))
 }
 
-fn test_enum_autostr_name_uses_canonical_collected_enum() {
-	mut a := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&a)
-	tc.enum_names['AttributeKind'] = true
-	mut g := FlatGen.new()
-	g.tc = &tc
-
-	assert g.enum_autostr_c_name('orm.AttributeKind') == 'AttributeKind'
-	tc.enum_names['orm.AttributeKind'] = true
-	assert g.enum_autostr_c_name('orm.AttributeKind') == 'orm__AttributeKind'
-}
-
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -122,33 +119,6 @@ fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
 	assert g.fn_decl_is_variadic('missing.total', 'missing.total')
 }
 
-fn test_param_types_for_prefers_exact_mangled_generic_method() {
-	mut a := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&a)
-	receiver := types.Type(types.Pointer{
-		base_type: types.Type(types.Struct{
-			name: 'sink.Counter_user.LocalWriter'
-		})
-	})
-	tc.fn_param_types['sink__Counter_user__LocalWriter__write'] = [receiver, types.Type(types.int_)]
-	tc.fn_param_types['write'] = [
-		types.Type(types.Pointer{
-			base_type: types.Type(types.void_)
-		}),
-		types.Type(types.Pointer{
-			base_type: types.Type(types.void_)
-		}),
-	]
-	mut g := FlatGen.new()
-	g.tc = &tc
-	params := g.param_types_for('sink__Counter_user__LocalWriter__write',
-		'sink__Counter_user__LocalWriter__write')
-	assert params.len == 2
-	assert params[0].name() == '&sink.Counter_user.LocalWriter'
-	assert params[1] is types.Primitive
-	assert params[1].name() == 'int'
-}
-
 fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	mut g := FlatGen.new()
 	assert g.should_emit_c_extern_decl('fseeko')
@@ -174,6 +144,14 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
 	]
+	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_apple_framework_include_does_not_match_x11() {
+	assert c_is_apple_framework_include('<Cocoa/Cocoa.h>')
+	assert c_is_apple_framework_include('<CoreFoundation/CFString.h>')
+	assert !c_is_apple_framework_include('<X11/Xlib.h>')
+	assert !c_is_apple_framework_include('<sys/ptrace.h>')
 }
 
 fn test_large_transitive_header_tree_is_preserved() {

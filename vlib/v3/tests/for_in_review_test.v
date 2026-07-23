@@ -65,11 +65,11 @@ fn test_pointer_conditions_reject_plain_if_and_for() {
 		'if condition must be `bool`, not `&int`')
 }
 
-fn test_c_style_for_rejects_pointer_condition() {
+fn test_c_style_for_accepts_pointer_condition() {
 	v3_bin := build_v3_for_in_review()
-	for_in_review_run_bad(v3_bin, 'c_style_pointer_condition',
-		'fn main() {\n\tx := 1\n\tmut p := &x\n\tfor ; p; p = unsafe { nil } {\n\t\tbreak\n\t}\n}\n',
-		'if condition must be `bool`, not `&int`')
+	out := for_in_review_run_good(v3_bin, 'c_style_pointer_condition',
+		'fn main() {\n\tmut x := 1\n\tmut p := &x\n\tmut count := 0\n\tfor ; p; p = unsafe { nil } {\n\t\tcount++\n\t}\n\tprintln(count)\n}\n')
+	assert out == '1'
 }
 
 fn test_optional_array_for_in_skips_none_payload() {

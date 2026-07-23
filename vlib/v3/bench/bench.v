@@ -1,9 +1,11 @@
 module bench
 
+import os
 import runtime
 import time
 
 const default_memory_limit_kb = i64(10) * 1024 * 1024
+const memory_monitor_interval = 100 * time.millisecond
 
 // Step represents step data used by bench.
 pub struct Step {
@@ -16,12 +18,25 @@ pub:
 	allocated_bytes  u64
 }
 
+// StepPart describes one measured part of a pipeline step.
+pub struct StepPart {
+pub:
+	name     string
+	time_us  i64
+	parallel bool
+}
+
 // Metric represents one structural compiler counter reported with a build.
 pub struct Metric {
 pub:
 	name  string
 	value i64
 	unit  string
+}
+
+struct LimitMemory {
+	kb     i64
+	metric string
 }
 
 // Bench represents bench data used by bench.
@@ -48,9 +63,28 @@ pub fn new() Bench {
 	}
 }
 
-// disable_memory_limit disables the compiler RSS safety limit.
+// disable_memory_limit disables the compiler memory safety limit.
 pub fn (mut b Bench) disable_memory_limit() {
 	b.memory_limit_kb = 0
+}
+
+// start_memory_monitor starts the compiler memory safety watchdog.
+pub fn (b &Bench) start_memory_monitor() {
+	if b.memory_limit_kb > 0 {
+		spawn monitor_memory_limit(b.memory_limit_kb)
+	}
+}
+
+fn monitor_memory_limit(limit_kb i64) {
+	for {
+		time.sleep(memory_monitor_interval)
+		memory := current_limit_memory()
+		message := memory_limit_error(memory.kb, limit_kb, 'during compilation', memory.metric)
+		if message.len > 0 {
+			eprintln(message)
+			exit(1)
+		}
+	}
 }
 
 // step records a serial pipeline step.
@@ -58,31 +92,79 @@ pub fn (mut b Bench) step(name string) {
 	b.step_parallel(name, false)
 }
 
+// current_step_time_us returns the elapsed wall time in the current pipeline step.
+pub fn (b &Bench) current_step_time_us() i64 {
+	return b.step_sw.elapsed().microseconds()
+}
+
 // step_parallel records a pipeline step, appending "(parallel)" to its name
 // when the step actually ran across threads.
 pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	elapsed_us := b.step_sw.elapsed().microseconds()
+	allocations := current_allocation_stats()
+	b.report_step(name, parallel, elapsed_us,
+		allocations.allocation_count - b.last_allocation_count,
+		allocations.allocated_bytes - b.last_allocated_bytes, allocations.enabled)
+	b.finish_step_report()
+}
+
+// step_parts records measured parts that together make up the current pipeline step.
+pub fn (mut b Bench) step_parts(parts []StepPart) {
+	if parts.len == 0 {
+		return
+	}
+	allocations := current_allocation_stats()
+	total_allocation_count := allocations.allocation_count - b.last_allocation_count
+	total_allocated_bytes := allocations.allocated_bytes - b.last_allocated_bytes
+	mut total_us := i64(0)
+	for part in parts {
+		total_us += part.time_us
+	}
+	mut reported_allocation_count := u64(0)
+	mut reported_allocated_bytes := u64(0)
+	for idx, part in parts {
+		is_last := idx == parts.len - 1
+		allocation_count := if is_last || total_us <= 0 {
+			total_allocation_count - reported_allocation_count
+		} else {
+			u64(i64(total_allocation_count) * part.time_us / total_us)
+		}
+		allocated_bytes := if is_last || total_us <= 0 {
+			total_allocated_bytes - reported_allocated_bytes
+		} else {
+			u64(i64(total_allocated_bytes) * part.time_us / total_us)
+		}
+		b.report_step(part.name, part.parallel, part.time_us, allocation_count, allocated_bytes,
+			allocations.enabled)
+		reported_allocation_count += allocation_count
+		reported_allocated_bytes += allocated_bytes
+	}
+	b.finish_step_report()
+}
+
+fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocation_count u64, allocated_bytes u64, allocations_enabled bool) {
 	label := if parallel { '${name} (parallel)' } else { name }
 	ram_kb := current_rss_kb()
 	peak_ram_kb := peak_rss_kb()
-	message := memory_limit_error(ram_kb, b.memory_limit_kb, label)
-	if message.len > 0 {
-		eprintln(message)
-		exit(1)
+	memory := current_limit_memory()
+	if b.memory_limit_kb > 0 {
+		message := memory_limit_error(memory.kb, b.memory_limit_kb, 'after ${label}', memory.metric)
+		if message.len > 0 {
+			eprintln(message)
+			exit(1)
+		}
 	}
 	ram_mb := f64(ram_kb) / 1024.0
 	peak_ram_mb := f64(peak_ram_kb) / 1024.0
+	footprint_suffix := physical_footprint_suffix(memory)
 	ms := f64(elapsed_us) / 1000.0
-	allocations := current_allocation_stats()
-	allocation_count := allocations.allocation_count - b.last_allocation_count
-	allocated_bytes := allocations.allocated_bytes - b.last_allocated_bytes
-	allocation_suffix := if allocations.enabled {
+	allocation_suffix := if allocations_enabled {
 		allocated_mb := f64(allocated_bytes) / (1024.0 * 1024.0)
 		'   ${allocation_count} allocs   ${allocated_mb:8.2f} MB allocated'
 	} else {
 		''
 	}
-	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
+	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
 	b.steps << Step{
 		name:             label
 		time_us:          elapsed_us
@@ -91,6 +173,9 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 		allocation_count: allocation_count
 		allocated_bytes:  allocated_bytes
 	}
+}
+
+fn (mut b Bench) finish_step_report() {
 	// Exclude the benchmark line's own formatting allocations from the next phase.
 	after_report := current_allocation_stats()
 	b.last_allocation_count = after_report.allocation_count
@@ -98,13 +183,21 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	b.step_sw.restart()
 }
 
-fn memory_limit_error(ram_kb i64, limit_kb i64, step string) string {
-	if limit_kb <= 0 || ram_kb < limit_kb {
+fn physical_footprint_suffix(memory LimitMemory) string {
+	if memory.metric != 'physical footprint' {
 		return ''
 	}
-	ram_mb := ram_kb / 1024
+	footprint_mb := f64(memory.kb) / 1024.0
+	return '   ${footprint_mb:6.0f} MB physical footprint'
+}
+
+fn memory_limit_error(memory_kb i64, limit_kb i64, context string, metric string) string {
+	if limit_kb <= 0 || memory_kb < limit_kb {
+		return ''
+	}
+	memory_mb := memory_kb / 1024
 	limit_gib := limit_kb / (1024 * 1024)
-	return 'error: v3 compiler memory usage reached ${ram_mb} MiB RSS after ${step} ' +
+	return 'error: v3 compiler memory usage reached ${memory_mb} MiB ${metric} ${context} ' +
 		'(limit: ${limit_gib} GiB); use `-no-memory-limit` to disable this limit'
 }
 
@@ -117,6 +210,23 @@ pub fn (mut b Bench) metric(name string, value i64, unit string) {
 	}
 }
 
+// metric_items prints a structural counter and a one-line list of its items immediately.
+pub fn (_ &Bench) metric_items(name string, value i64, unit string, items_label string, items []string) {
+	metric := Metric{
+		name:  name
+		value: value
+		unit:  unit
+	}
+	print_metric(metric)
+	short_items := items.map(shorten_home_path(it))
+	println('      ${items_label}: ${short_items.join(' ')}')
+}
+
+fn print_metric(metric Metric) {
+	suffix := if metric.unit.len > 0 { ' ${metric.unit}' } else { '' }
+	println('    ${metric.name:-28s} ${metric.value}${suffix}')
+}
+
 // print_report updates print report state for Bench.
 pub fn (b &Bench) print_report() {
 	total_ms := f64(b.total_sw.elapsed().microseconds()) / 1000.0
@@ -124,11 +234,24 @@ pub fn (b &Bench) print_report() {
 	if b.metrics.len > 0 {
 		println('  metrics:')
 		for metric in b.metrics {
-			suffix := if metric.unit.len > 0 { ' ${metric.unit}' } else { '' }
-			println('    ${metric.name:-28s} ${metric.value}${suffix}')
+			print_metric(metric)
 		}
 	}
 	println('')
+}
+
+fn shorten_home_path(path string) string {
+	home := os.home_dir()
+	if home.len == 0 || !path.starts_with(home) {
+		return path
+	}
+	if path.len == home.len {
+		return '~'
+	}
+	if path[home.len] !in [`/`, `\\`] {
+		return path
+	}
+	return '~${path[home.len..]}'
 }
 
 // current_rss_kb returns current rss kb data for bench.

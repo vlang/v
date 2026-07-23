@@ -108,7 +108,7 @@ fn main() {
 	}
 }
 ',
-		'capturing fn literal cannot be stored in a container')
+		'capturing fn literal cannot be stored or returned')
 	checker_assignment_run_bad(v3_bin, 'bad_field_assign_alias_capturing_fn_literal', 'struct Holder {
 mut:
 	cb fn () int
@@ -129,7 +129,7 @@ fn main() {
 	holder.cb = f
 }
 ',
-		'capturing fn literal cannot be stored in a container')
+		'capturing fn literal cannot be stored or returned')
 	checker_assignment_run_bad(v3_bin, 'bad_index_assign_capturing_fn_literal', 'fn plain() int {
 	return 0
 }

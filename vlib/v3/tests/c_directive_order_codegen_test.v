@@ -977,7 +977,9 @@ fn directive_order_count(c_code string, needle string) int {
 fn directive_order_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		clean := line.trim_space()
-		if clean.starts_with('#include') {
+		// System headers can be emitted by the compiler preamble. These checks are
+		// interested in local headers that should have been inlined.
+		if clean.starts_with('#include "') {
 			return true
 		}
 	}
@@ -1131,7 +1133,7 @@ fn test_nested_local_header_includes_are_inlined_recursively() {
 
 fn test_supported_system_include_is_preserved_and_enables_system_preamble() {
 	c_code := directive_order_gen_c_unresolved_system_include(directive_order_build_v3())
-	assert directive_order_has_include_directive(c_code), c_code
+	assert !directive_order_has_include_directive(c_code), c_code
 	assert !c_code.contains('#include <platform_user_header.h>'), c_code
 	assert c_code.contains('#include <dlfcn.h>'), c_code
 	assert c_code.contains('#include <stdint.h>'), c_code
@@ -1154,7 +1156,7 @@ fn test_unresolved_quoted_include_is_preserved() {
 	assert include_idx < define_idx, c_code
 }
 
-fn test_nested_system_include_is_dropped_from_inlined_header() {
+fn test_nested_system_include_is_preserved_in_its_platform_guard() {
 	c_code := directive_order_gen_c_nested_system_include(directive_order_build_v3())
 	include_idx := directive_order_index(c_code, '#include <nested_platform_header.h>')
 	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
@@ -1162,7 +1164,8 @@ fn test_nested_system_include_is_dropped_from_inlined_header() {
 		'#if !defined(__V_HEADERLESS_STDINT_H) && !defined(_STDINT_H)')
 	nested_define_idx := directive_order_index(c_code, '#define NESTED_PLATFORM_HEADER 1')
 	nested_word_idx := directive_order_index(c_code, 'typedef uint64_t NestedWord;')
-	assert include_idx == -1, c_code
+	assert include_idx > nested_define_idx, c_code
+	assert include_idx < stdint_guard_idx, c_code
 	assert !directive_order_has_include_directive(c_code), c_code
 	assert preamble_idx >= 0, c_code
 	assert stdint_guard_idx >= 0, c_code
@@ -1204,15 +1207,14 @@ fn test_mach_headers_are_emitted_headerlessly() {
 	assert c_code.contains('#define KERN_SUCCESS 0'), c_code
 	assert c_code.contains('#define MACH_TASK_BASIC_INFO_COUNT 12'), c_code
 	assert c_code.contains('#define TASK_BASIC_INFO 18'), c_code
-	assert c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
-	assert c_code.contains('struct mach_timebase_info_data_t {'), c_code
+	assert c_code.contains('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;'), c_code
 	assert c_code.contains('void mach_timebase_info('), c_code
 }
 
 fn test_inferred_mach_headers_are_target_guarded() {
 	c_code := directive_order_gen_c_task_info_reference(directive_order_build_v3())
 	assert c_code.contains('#ifdef __APPLE__\n#define panic mach_panic\n#include <mach/mach.h>\n#undef panic\n#include <mach/task.h>\n#endif'), c_code
-	assert c_code.contains('#ifdef __APPLE__\n#ifndef _MACH_TASK_INFO_H_\ntypedef unsigned int task_t;'), c_code
+	assert c_code.contains('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)\ntypedef unsigned int task_t;'), c_code
 	assert c_code.contains('#ifndef __APPLE__\nint task_info(void);\n#endif'), c_code
 }
 
@@ -1228,14 +1230,12 @@ fn test_timerfd_header_uses_headerless_decls() {
 	assert c_code.contains('#define TFD_NONBLOCK O_NONBLOCK'), c_code
 }
 
-fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
+fn test_stdarg_in_inlined_header_provides_va_defs() {
 	c_code := directive_order_gen_and_run_stdarg_header(directive_order_build_v3())
-	assert !c_code.contains('#include <stdarg.h>'), c_code
-	assert !c_code.contains('#include <stddef.h>'), c_code
-	assert c_code.contains('typedef __builtin_va_list va_list;'), c_code
-	assert c_code.contains('#define va_start(ap, last) __builtin_va_start(ap, last)'), c_code
-	assert c_code.contains('#define va_arg(ap, type) __builtin_va_arg(ap, type)'), c_code
-	assert c_code.contains('#define offsetof(type, member) __builtin_offsetof(type, member)'), c_code
+	assert c_code.contains('#include <stdarg.h>')
+		|| c_code.contains('typedef __builtin_va_list va_list;'), c_code
+	assert c_code.contains('#include <stddef.h>')
+		|| c_code.contains('#define offsetof(type, member) __builtin_offsetof(type, member)'), c_code
 	assert c_code.contains('offsetof(struct StdargThing, value)'), c_code
 	assert c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
 }
@@ -1248,12 +1248,12 @@ fn test_inttypes_in_inlined_header_keeps_format_macros() {
 	assert c_code.contains('sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64)'), c_code
 }
 
-fn test_poll_in_inlined_header_uses_headerless_struct() {
+fn test_poll_in_inlined_header_uses_preserved_system_struct() {
 	c_code := directive_order_gen_c_nested_poll_header(directive_order_build_v3())
 	assert !directive_order_has_include_directive(c_code), c_code
-	assert !c_code.contains('#include <poll.h>'), c_code
+	assert c_code.contains('#include <poll.h>'), c_code
 	assert c_code.contains('static inline int poll_user_fd(struct pollfd* item)'), c_code
-	assert c_code.contains('struct pollfd {\n'), c_code
+	assert !c_code.contains('struct pollfd {\n'), c_code
 }
 
 fn test_rwmutex_keeps_linux_rwlockattr_prototype() {

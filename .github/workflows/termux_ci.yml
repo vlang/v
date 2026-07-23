@@ -21,6 +21,10 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
+concurrency:
+  group: termux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   termux-build:
     runs-on: ubuntu-latest

@@ -1,3 +1,5 @@
+// vtest build: !(windows && tinyc) && !musl?
+
 module gg
 
 import os

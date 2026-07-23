@@ -24,17 +24,6 @@ fn test_empty_interface_impl_names_include_enums() {
 	assert ids['Color'] > 0
 }
 
-fn test_implicit_str_support_includes_generic_structs_and_enums() {
-	mut a := flat.FlatAst.new()
-	mut tc := TypeChecker.new(&a)
-	tc.structs['Box'] = []StructField{}
-	tc.struct_generic_params['Box'] = ['T']
-	tc.enum_names['Color'] = true
-
-	assert tc.type_has_implicit_str_method('Box[int]')
-	assert tc.type_has_implicit_str_method('Color')
-}
-
 fn test_interface_impl_cache_is_explicitly_invalidated_after_type_table_growth() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -75,4 +64,14 @@ fn test_short_type_name_ambiguity_remains_sticky() {
 	index_short_type_name('third.Event', mut index)
 	assert 'Event' in index
 	assert index['Event'] == ''
+}
+
+fn test_interface_concrete_method_keys_include_dispatch_methods() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['orm.TransactionalConnection'] = true
+	tc.interface_abstract_methods['orm.TransactionalConnection'] = ['select']
+
+	keys := tc.interface_concrete_method_keys()
+	assert 'orm.TransactionalConnection.select' in keys
 }

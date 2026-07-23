@@ -517,7 +517,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		return result
 	}
 	saved_var_types := t.var_types.clone()
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	err_value := if int(err_expr) >= 0 {
 		err_expr
 	} else {
@@ -1267,7 +1267,6 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		t.node_type(id)
 	}
 	map_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(map_type))
-	map_type = t.refine_map_init_generic_type(node, map_type)
 	if !map_type.starts_with('map[') {
 		return id
 	}
@@ -1347,65 +1346,6 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		}
 	}
 	return t.make_ident(tmp_name)
-}
-
-fn (mut t Transformer) refine_map_init_generic_type(node flat.Node, map_type string) string {
-	mut key_type := ''
-	mut value_type := ''
-	if map_type.starts_with('map[') {
-		key_type, value_type = t.map_type_parts(map_type)
-	}
-	mut need_key := key_type.len == 0 || stringify_type_has_generic_placeholder(key_type)
-	mut need_value := value_type.len == 0 || stringify_type_has_generic_placeholder(value_type)
-	if !need_key && !need_value {
-		return map_type
-	}
-	mut i := 0
-	for i + 1 < node.children_count && (need_key || need_value) {
-		key_id := t.a.child(&node, i)
-		key := t.a.nodes[int(key_id)]
-		if key.kind == .prefix && key.value == '...' && key.children_count > 0 {
-			spread_type := t.generic_call_arg_type_for_inference(t.a.child(&key, 0))
-			spread_key, spread_value := t.map_type_parts(spread_type)
-			if need_key && spread_key.len > 0 && !t.generic_arg_is_unresolved(spread_key) {
-				key_type = spread_key
-				need_key = false
-			}
-			if need_value && spread_value.len > 0 && !t.generic_arg_is_unresolved(spread_value)
-				&& !stringify_type_has_generic_placeholder(spread_value) {
-				value_type = spread_value
-				need_value = false
-			}
-			i += 2
-			continue
-		}
-		if need_key {
-			actual_key := t.generic_call_arg_type_for_inference(key_id)
-			if actual_key.len > 0 && !t.generic_arg_is_unresolved(actual_key) {
-				key_type = actual_key
-				need_key = false
-			}
-		}
-		if need_value {
-			value_id := t.a.child(&node, i + 1)
-			value_node := t.a.nodes[int(value_id)]
-			mut actual_value := t.generic_call_arg_type_for_inference(value_id)
-			if value_node.kind == .map_init && (t.generic_arg_is_unresolved(actual_value)
-				|| stringify_type_has_generic_placeholder(actual_value)) {
-				actual_value = t.refine_map_init_generic_type(value_node, actual_value)
-			}
-			if actual_value.len > 0 && !t.generic_arg_is_unresolved(actual_value)
-				&& !stringify_type_has_generic_placeholder(actual_value) {
-				value_type = actual_value
-				need_value = false
-			}
-		}
-		i += 2
-	}
-	if key_type.len > 0 && value_type.len > 0 {
-		return 'map[${key_type}]${value_type}'
-	}
-	return map_type
 }
 
 fn (t &Transformer) refine_map_init_fixed_array_value_type(node flat.Node, map_type string) string {

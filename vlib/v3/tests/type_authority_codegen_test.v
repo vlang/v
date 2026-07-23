@@ -133,12 +133,10 @@ fn test_imported_type_authority_for_if_expr_and_fixed_array_index() {
 	assert !generated.contains('\nColor __if_val_'), generated
 	assert !generated.contains('main__Color __if_val_'), generated
 
-	assert generated.contains('fixture__Thing* ptrs[3];'), generated
-	assert generated.contains('memmove(ptrs,'), generated
+	assert generated.contains('fixture__Thing* ptrs[3] = {0};'), generated
 	assert generated.contains('fixture__Thing* item = ptrs[idx];'), generated
 	assert generated.contains('fixture__Thing item = fixture__vals[idx];'), generated
 	assert !generated.contains('Array_fixed_fixture__Thingptr_3 item'), generated
 	assert !generated.contains('Array_fixed_fixture__Thing_3 item'), generated
-	assert generated.contains('fixture__Thing fixed[3];'), generated
-	assert generated.contains('memmove(fixed,'), generated
+	assert generated.contains('fixture__Thing fixed[3] = {0};'), generated
 }

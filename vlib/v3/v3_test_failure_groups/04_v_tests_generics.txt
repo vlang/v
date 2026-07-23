@@ -26,7 +26,6 @@ vlib/v/tests/generics/generic_lambda_expr_test.v
 vlib/v/tests/generics/generic_match_expr_test.v
 vlib/v/tests/generics/generic_selector_test.v
 vlib/v/tests/generics/generic_struct_default_interface_field_test.v
-vlib/v/tests/generics/generic_struct_init_ptr_test.v
 vlib/v/tests/generics/generic_sumtype_of_alias_generic_struct_test.v
 vlib/v/tests/generics/generic_sumtype_repeated_test.v
 vlib/v/tests/generics/generic_sumtype_test.v
@@ -42,11 +41,9 @@ vlib/v/tests/generics/generics_interface_with_generic_sumtype_test.v
 vlib/v/tests/generics/generics_interface_with_multi_generic_structs_test.v
 vlib/v/tests/generics/generics_interface_with_multi_generic_types_test.v
 vlib/v/tests/generics/generics_interface_with_non_generic_method_test.v
-vlib/v/tests/generics/generics_map_with_reference_arg_test.v
 vlib/v/tests/generics/generics_method_call_with_short_syntax_args_test.v
 vlib/v/tests/generics/generics_method_chaining_call_test.v
 vlib/v/tests/generics/generics_method_on_nested_struct_test.v
-vlib/v/tests/generics/generics_method_returning_option_test.v
 vlib/v/tests/generics/generics_method_variable_test.v
 vlib/v/tests/generics/generics_method_with_diff_generic_names_test.v
 vlib/v/tests/generics/generics_method_with_embedded_structs_test.v
@@ -54,9 +51,7 @@ vlib/v/tests/generics/generics_method_with_multi_types_test.v
 vlib/v/tests/generics/generics_mutual_recursive_struct_reference_test.v
 vlib/v/tests/generics/generics_option_fn_concrete_type_test.v
 vlib/v/tests/generics/generics_return_closure_test.v
-vlib/v/tests/generics/generics_struct_anon_fn_type_test.v
 vlib/v/tests/generics/generics_struct_field_with_default_fn_type_test.v
-vlib/v/tests/generics/generics_struct_field_with_generics_struct_elements_test.v
 vlib/v/tests/generics/generics_struct_types_infer_test.v
 vlib/v/tests/generics/generics_test.v
 vlib/v/tests/generics/generics_unused_specialized_fn_array_param_test.v

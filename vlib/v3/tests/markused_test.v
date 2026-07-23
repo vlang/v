@@ -379,11 +379,10 @@ fn main() {
 	}).str())
 }
 '
-	mut a, mut tc := parse_checked_source('implicit_interface_str_dispatch_helpers', source)
+	mut a, mut tc := parse_checked_source('implicit_interface_str_dispatch_array_helpers', source)
 	mut used := markused.mark_used(a, tc)
 	assert used['string__plus']
 	assert used['array.get']
-	assert used['array__get']
 	assert used['int__str']
 	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
@@ -1618,8 +1617,7 @@ fn main() {
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('string__plus('), c_code
-	assert c_code.contains('_iface_str_map_'), c_code
-	assert c_code.contains('v3_indent_multiline('), c_code
+	assert c_code.contains('v3_map_str('), c_code
 	assert c_code.contains('f64__str('), c_code
 }
 

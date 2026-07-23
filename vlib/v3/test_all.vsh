@@ -87,10 +87,10 @@ fn main() {
 	])
 
 	section(1, 'V3 unit tests')
-	run('${host_v_cmd(cfg)} -enable-globals -silent test ${q(cfg.script_dir)}')
+	run_v3_unit_tests(cfg)
 
 	section(2, 'Build v3')
-	run('${host_v_driver_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
+	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
 
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {
@@ -114,7 +114,7 @@ fn main() {
 	if cfg.c99 {
 		println('  Skipping ARM64 self-host in C99 mode (-c99 applies to the C backend)')
 	} else if cfg.host_backend == 'arm64' && cfg.host_os == 'macos' {
-		run('${q(v3_bin)} --no-parallel --no-prealloc -no-memory-limit -selfhost -b arm64 -o ${q(v4_arm_bin)} ${q(cfg.v3_src)}')
+		run('${q(v3_bin)} -selfhost -b arm64 -o ${q(v4_arm_bin)} ${q(cfg.v3_src)}')
 		run('${q(v4_arm_bin)} -b arm64 -o ${q(hello_arm_bin)} ${q(hello_v)}')
 		run(q(hello_arm_bin))
 		cleanup_files([v4_arm_bin, hello_arm_bin])
@@ -147,6 +147,17 @@ fn main() {
 
 	println('')
 	println('=== ALL TESTS PASSED ===')
+}
+
+fn run_v3_unit_tests(cfg Config) {
+	old_vflags := os.getenv('VFLAGS')
+	os.setenv('VFLAGS', '${old_vflags} -gc none'.trim_space(), true)
+	run('${host_v_cmd(cfg)} -enable-globals -silent test ${q(cfg.script_dir)}')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
 }
 
 fn setup_isolated_vtmp() string {
@@ -204,12 +215,6 @@ fn parse_args() bool {
 
 fn host_v_cmd(cfg Config) string {
 	return '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)}'
-}
-
-fn host_v_driver_cmd(cfg Config) string {
-	// The self-host stages build a million-value SSA module. Keep the normal collector
-	// for this long-lived compiler process so per-function builder scratch is reclaimed.
-	return '${q(cfg.vexe)} -gc boehm -path ${q(cfg.vlib_dir)}'
 }
 
 fn native_backend_arch() string {

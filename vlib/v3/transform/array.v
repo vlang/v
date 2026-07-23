@@ -58,10 +58,10 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	base_id := t.a.child(&fn_node, 0)
 	base_type := t.node_type(base_id)
 	count_id := t.a.child(&node, 1)
-	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
 	if expanded := t.try_expand_interface_array_literal_repeat(base_id, count_id, base_type) {
 		return expanded
 	}
+	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
 	if !isnil(t.tc) && clean_base_type.starts_with('[]') {
 		elem_type := clean_base_type[2..]
 		elem := t.tc.parse_type(elem_type)
@@ -97,9 +97,9 @@ fn (mut t Transformer) make_plain_array_repeat_value(base_id flat.NodeId, count_
 		'plain_array_repeat_source')
 	count := t.transform_expr_for_type(count_id, 'int')
 	repeat_selector := t.make_selector(stable_source, 'repeat_to_depth', '')
-	depth := array_repeat_clone_depth(array_type)
-	repeated := t.make_call_expr_typed(repeat_selector, arr2(count, t.make_int_literal(depth)),
-		array_type)
+	clone_depth := array_repeat_clone_depth(array_type)
+	repeated := t.make_call_expr_typed(repeat_selector,
+		arr2(count, t.make_int_literal(clone_depth)), array_type)
 	out_name := t.new_temp('plain_array_repeat')
 	t.pending_stmts << t.make_decl_assign_typed(out_name, repeated, array_type)
 	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source), 'void'))
@@ -551,7 +551,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	if t.in_const_init {
 		return id
 	}
-	mut array_type := if elem_type := t.array_literal_pointer_value_elem_type(node) {
+	array_type := if elem_type := t.array_literal_pointer_value_elem_type(node) {
 		'[]${elem_type}'
 	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
 		checker_alias_type
@@ -560,7 +560,6 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	} else {
 		t.node_type(id)
 	}
-	array_type = t.refine_array_literal_generic_type(node, array_type)
 	if !array_type.starts_with('[]') {
 		return id
 	}
@@ -590,31 +589,6 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), array_type)
 	return result
-}
-
-fn (mut t Transformer) refine_array_literal_generic_type(node flat.Node, array_type string) string {
-	needs_refinement := array_type in ['', 'array']
-		|| (array_type.starts_with('[]') && stringify_type_has_generic_placeholder(array_type))
-	if !needs_refinement {
-		return array_type
-	}
-	for i in 0 .. node.children_count {
-		mut elem_id := t.a.child(&node, i)
-		elem := t.a.nodes[int(elem_id)]
-		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
-			elem_id = t.a.child(&elem, 0)
-			spread_type := t.generic_call_arg_type_for_inference(elem_id)
-			if spread_type.starts_with('[]') && !t.generic_arg_is_unresolved(spread_type) {
-				return spread_type
-			}
-			continue
-		}
-		elem_type := t.generic_call_arg_type_for_inference(elem_id)
-		if elem_type.len > 0 && !t.generic_arg_is_unresolved(elem_type) {
-			return '[]${elem_type}'
-		}
-	}
-	return array_type
 }
 
 // append_array_literal_spread appends independent element clones when the destination
@@ -811,7 +785,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		return none
 	}
 	target_array_type := t.normalize_type_alias(target_type)
-	mut array_type := if target_array_type.starts_with('[]')
+	array_type := if target_array_type.starts_with('[]')
 		&& t.is_sum_type_name(target_array_type[2..]) {
 		target_array_type
 	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
@@ -821,7 +795,6 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 	} else {
 		target_array_type
 	}
-	array_type = t.refine_array_literal_generic_type(node, array_type)
 	if !array_type.starts_with('[]') {
 		return none
 	}
@@ -1194,15 +1167,20 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs := flat.empty_node
 	if !push_many {
 		if !rhs_is_sum_variant {
-			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
-				rhs = converted
-				rhs_type = array_type
-				push_many = true
+			if t.array_append_elem_is_interface(elem_type) {
+				rhs = t.transform_expr_for_type(rhs_id, elem_type)
 			} else {
-				rhs = if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-					t.wrap_sum_value(rhs_id, elem_type)
+				if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+					rhs = converted
+					rhs_type = array_type
+					push_many = true
 				} else {
-					t.transform_expr_for_type(rhs_id, elem_type)
+					rhs = if elem_type in t.sum_types
+						|| t.resolve_sum_name(elem_type) in t.sum_types {
+						t.wrap_sum_value(rhs_id, elem_type)
+					} else {
+						t.transform_expr_for_type(rhs_id, elem_type)
+					}
 				}
 			}
 		} else {
@@ -1237,7 +1215,8 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		return result
 	}
 	value_name := t.new_temp('arr_val')
-	result << t.make_decl_assign_typed(value_name, rhs, elem_type)
+	value_type := t.shared_array_lhs_inner_type(lhs_id) or { elem_type }
+	result << t.make_decl_assign_typed(value_name, rhs, value_type)
 	push_call := t.make_call_typed('array_push', arr2(lhs_addr, t.make_prefix(.amp,
 		t.make_ident(value_name))), 'void')
 	if shared_inner := t.shared_array_lhs_inner_type(lhs_id) {
@@ -1349,15 +1328,20 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	mut rhs := flat.empty_node
 	if !push_many {
 		if !rhs_is_sum_variant {
-			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
-				rhs_type = array_type
-				push_many = true
-				rhs = converted
+			if t.array_append_elem_is_interface(elem_type) {
+				rhs = t.transform_expr_for_type(rhs_id, elem_type)
 			} else {
-				rhs = if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-					t.wrap_sum_value(rhs_id, elem_type)
+				if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+					rhs_type = array_type
+					push_many = true
+					rhs = converted
 				} else {
-					t.transform_expr_for_type(rhs_id, elem_type)
+					rhs = if elem_type in t.sum_types
+						|| t.resolve_sum_name(elem_type) in t.sum_types {
+						t.wrap_sum_value(rhs_id, elem_type)
+					} else {
+						t.transform_expr_for_type(rhs_id, elem_type)
+					}
 				}
 			}
 		} else {
@@ -1640,6 +1624,13 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 	if !t.is_sum_type_name(elem_type) {
 		return false
 	}
+	mut clean_rhs := rhs_type.trim_space()
+	if clean_rhs.starts_with('!') || clean_rhs.starts_with('?') {
+		clean_rhs = clean_rhs[1..].trim_space()
+	}
+	if clean_rhs.starts_with('[]') && t.array_append_elem_types_match(clean_rhs[2..], elem_type) {
+		return false
+	}
 	candidate := t.array_append_rhs_variant_candidate(rhs_id, rhs_type)
 	if candidate.len == 0 {
 		return false
@@ -1697,6 +1688,11 @@ fn (t &Transformer) array_append_literal_should_push_many(rhs_id flat.NodeId, el
 	if !elem_type.starts_with('[]') && !t.is_fixed_array_type(elem_type) {
 		return true
 	}
+	// With an array-shaped destination element, an empty literal is the single empty
+	// element (`mut a := [][]int{}; a << []`), not a zero-element spread.
+	if node.children_count == 0 {
+		return false
+	}
 	return t.array_append_literal_children_match_elem(rhs_id, elem_type)
 }
 
@@ -1708,6 +1704,13 @@ fn (t &Transformer) array_append_rhs_is_sum_array_variant(rhs_type string, elem_
 		clean_rhs = clean_rhs[3..].trim_space()
 	}
 	if clean_rhs.len == 0 {
+		return false
+	}
+	// An array with exactly the destination's element type is the push-many
+	// form (`[]Value << []Value`), even when `[]Value` also appears recursively
+	// as a variant of `Value`. Distinct array variants such as `[]int` appended
+	// to `[]Any` remain single sum-type elements.
+	if clean_rhs.starts_with('[]') && t.array_append_elem_types_match(clean_rhs[2..], elem_type) {
 		return false
 	}
 	for variant in variants {
@@ -1914,7 +1917,12 @@ fn (mut t Transformer) array_get_ptr(base flat.NodeId, index flat.NodeId, elem_t
 }
 
 fn (t &Transformer) array_get_base_is_fixed_array(base flat.NodeId) bool {
-	mut base_type := t.node_type(base).trim_space()
+	node := t.a.node(base)
+	mut base_type := if node.kind == .ident && t.var_type(node.value).len > 0 {
+		t.var_type(node.value).trim_space()
+	} else {
+		t.node_type(base).trim_space()
+	}
 	if base_type.len == 0 {
 		base_type = t.original_expr_type(base).trim_space()
 	}
@@ -2148,7 +2156,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		}
 	}
 	if mapped_source_node.kind == .selector {
-		selector_type := t.resolve_selector_type(mapped_source_node)
+		selector_type := t.lookup_struct_field_type(elem_type, mapped_source_node.value) or {
+			t.resolve_selector_type(mapped_source_node)
+		}
 		if selector_type.len > 0 {
 			direct_selector_type = selector_type
 			result_elem_type = selector_type
@@ -2213,10 +2223,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	if direct_selector_type.len > 0 && map_fn_name.len == 0 {
 		result_elem_type = direct_selector_type
 	}
-	if mapped_expr_node := t.selector_expr_node(mapped_expr) {
-		selector_type := t.resolve_selector_type(mapped_expr_node)
-		if selector_type.len > 0 {
-			result_elem_type = selector_type
+	if direct_selector_type.len == 0 {
+		if mapped_expr_node := t.selector_expr_node(mapped_expr) {
+			selector_type := t.resolve_selector_type(mapped_expr_node)
+			if selector_type.len > 0 {
+				result_elem_type = selector_type
+			}
 		}
 	}
 	if result_elem_type.len == 0 {

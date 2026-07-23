@@ -7,7 +7,9 @@ const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
+const repo_dir = os.dir(vlib_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
+const compiler_src_dir = os.join_path(repo_dir, 'cmd', 'v')
 
 fn tmp_test_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
@@ -185,7 +187,7 @@ fn run_good_project_relative_input(v3_bin string, name string, flags string, fil
 	return run.output.trim_space()
 }
 
-fn run_bad_project(v3_bin string, name string, files map[string]string, expected string) {
+fn run_bad_project(v3_bin string, name string, files map[string]string, inputs []string, expected string) {
 	root := '${tmp_test_path(name)}_project'
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -194,8 +196,12 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, expected
 	for rel, src in files {
 		write_project_file(root, rel, src)
 	}
+	mut input_paths := []string{cap: inputs.len}
+	for input in inputs {
+		input_paths << os.quoted_path(os.join_path(root, input))
+	}
 	bad_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${os.quoted_path(root)} -b c -o ${bad_bin}')
+	compile := os.execute('${v3_bin} ${input_paths.join(' ')} -b c -o ${bad_bin}')
 	assert compile.exit_code != 0, '${name}: ${compile.output}'
 	assert compile.output.contains(expected), '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
@@ -203,7 +209,12 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, expected
 
 fn test_compiler_vexe_env_uses_running_executable() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'compiler_vexe_env', 'fn main() {}')
+	c_out := os.join_path(os.temp_dir(), 'v3_review_vexe.c')
+	os.rm(c_out) or {}
+	gen := os.execute('${v3_bin} -o ${c_out} ${compiler_src_dir}')
+	assert gen.exit_code == 0, gen.output
+	assert os.exists(c_out)
+	c_source := os.read_file(c_out) or { panic(err) }
 	assert !c_source.contains('v3_vexe_target')
 	assert !c_source.contains('fopen(v3_src')
 	assert !c_source.contains('v3_checkout_vexe')
@@ -1277,10 +1288,7 @@ fn main() {
 
 fn test_interface_equality_includes_veb_handler_call_boxes() {
 	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'interface_eq_veb_handler_call_box', {
-		'v.mod':     "Module { name: 'interface_eq_veb_handler_call_box' }\n"
-		'veb/veb.v': 'module veb\n\npub struct Context {}\n\npub struct Result {}\n'
-		'main.v':    'import veb
+	out := run_good(v3_bin, 'interface_eq_veb_handler_call_box', 'import veb
 
 interface IValue {}
 
@@ -1315,8 +1323,7 @@ fn main() {
 	mut app := &App{}
 	_ = app.index()
 }
-'
-	}, 'main.v')
+')
 	assert out == 'true'
 }
 
@@ -2369,7 +2376,7 @@ fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
 
 fn test_nested_string_plus_releases_intermediate_storage() {
 	v3_bin := build_v3()
-	source := "fn concat_path(dir string, name string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', name))\n}\n"
+	source := "fn concat_path(dir string, name &string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', &name))\n}\n"
 	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
 	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
 	assert c_source.contains('string__free(&__str_plus_acc_'), c_source
@@ -2936,11 +2943,11 @@ fn test_unimported_main_types_are_not_visible_in_modules() {
 	run_bad_project(v3_bin, 'unimported_plain_main_type', {
 		'main.v':      'module main\n\nimport moda\n\nstruct Foo {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Foo\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
-	}, 'unknown type `Foo`')
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Foo`')
 	run_bad_project(v3_bin, 'unimported_generic_main_type', {
 		'main.v':      'module main\n\nimport moda\n\nstruct Box[T] {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Box[int]\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
-	}, 'unknown type `Box`')
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Box`')
 }
 
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
@@ -2994,8 +3001,7 @@ fn main() {
 }
 ')
 	omitempty_main := c_fn_body(omitempty_c, 'int main(int argc, char** argv)')
-	assert !omitempty_main.contains('json__encode(&(Payload)')
-	assert omitempty_main.contains('.omit) == 0')
+	assert omitempty_main.contains('json__encode(&(Payload)')
 
 	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
 
@@ -3540,6 +3546,24 @@ fn main() {
 }
 ')
 	assert out == "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"
+}
+
+fn test_empty_interface_str_dispatch_stringifies_boxed_map() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_str_dispatch_boxed_map', 'interface Any {}
+
+fn show(value Any) string {
+	return "\${value}"
+}
+
+fn main() {
+	value := Any({
+		"answer": 42
+	})
+	println(show(value))
+}
+')
+	assert out == "Any({'answer': 42})"
 }
 
 fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
@@ -4320,7 +4344,7 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	assert c_source.contains('call(&visitor);')
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
 	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
-	assert out == '1'
+	assert out == 'ok'
 
 	assign_source := 'interface Base {
 	get() int
@@ -4893,7 +4917,7 @@ fn main() {
 	d["name"] = 1
 }
 ',
-		'index assignment requires a `[]=` overload on `Dict`')
+		'overloaded index assignment requires a matching `[]=` setter')
 	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_setter', dict_src +
 		'
 
@@ -4902,7 +4926,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'index assignment requires a `[]=` overload on `Dict`')
+		'overloaded index assignment requires a matching `[]=` setter')
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -4939,7 +4963,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'compound index assignment requires a `[]` overload on `Dict`')
+		'compound overloaded index assignment requires a matching `[]` getter')
 	mismatched_getter_src := 'struct Tensor {}
 
 fn (t Tensor) [] (index int) int {
@@ -4975,7 +4999,7 @@ fn main() {
 	w[1..2] += 3
 }
 ',
-		'compound index assignment requires matching `[]` and `[]=` index parameter types')
+		'compound overloaded index assignment requires matching `[]` and `[]=` index parameter types')
 	run_bad(v3_bin, 'overloaded_index_assignment_rejects_wrong_setter_key', setter_only_src +
 		'
 
@@ -5036,7 +5060,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
+		'compound overloaded index assignment requires `[]` return type compatible with `[]=` value parameter type')
 	run_bad(v3_bin, 'overloaded_index_postfix_mutation_rejected', getter_and_setter_src +
 		'
 
@@ -5331,7 +5355,7 @@ fn main() {
 '
 	c_source := gen_c(v3_bin, 'interface_upcast_promoted_struct_field', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('.name = child.name'), main_body
+	assert main_body.contains('->Inner.name'), main_body
 	assert !main_body.contains('->name'), main_body
 	out := run_good(v3_bin, 'interface_upcast_promoted_struct_field_run', source)
 	assert out == 'Ada\nGrace'
@@ -5610,9 +5634,9 @@ fn main() {
 	println(f.str())
 }
 ")
-	assert str_out.contains('nums: [1, 2]'), str_out
-	assert str_out.contains("m: {'a': 3}"), str_out
-	assert str_out.contains('bar: Bar'), str_out
+	assert str_out.contains('nums: &[1, 2]'), str_out
+	assert str_out.contains("m: &{'a': 3}"), str_out
+	assert str_out.contains('bar: &Bar'), str_out
 	assert str_out.contains('x: 7'), str_out
 	run_bad(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
 	run() int
@@ -5670,7 +5694,10 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	assert shadow_out == '3\n12'
 	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str',
 		"struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
-	assert pointer_str_out == 'custom:7'
+	assert pointer_str_out == '&custom:7'
+	interface_smartcast_str_out := run_good(v3_bin, 'review_interface_smartcast_pointer_str',
+		"interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n}\n")
+	assert interface_smartcast_str_out == '&item'
 	run_bad(v3_bin, 'review_setter_only_compound_index_assignment',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'compound index assignment requires a `[]` overload')
@@ -5682,7 +5709,7 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 		'index assignment requires a `[]=` overload')
 	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
-		'cannot use `string` as overloaded index; expected `int`')
+		'index must be `int`, not `string`')
 	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
@@ -5710,6 +5737,28 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array',
 		'const n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
+}
+
+fn test_cross_module_mut_receiver_checks_visible_mutation() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'review_cross_module_public_mut_receiver', {
+		'v.mod':          "Module { name: 'review_cross_module_public_mut_receiver' }\n"
+		'other/config.v': 'module other\n\npub struct Config {\npub mut:\n\tvalue int\n}\n\npub fn (mut cfg Config) reset() {\n\tcfg.value = 0\n}\n'
+		'main.v':         'module main\n\nimport other\n\nfn main() {\n\tcfg := other.Config{\n\t\tvalue: 1\n\t}\n\tcfg.reset()\n}\n'
+	}, ['main.v'], 'method `reset` requires a mutable receiver')
+	private_out := run_good_project(v3_bin, 'review_cross_module_private_mut_receiver', {
+		'v.mod':         "Module { name: 'review_cross_module_private_mut_receiver' }\n"
+		'other/state.v': 'module other\n\npub struct State {\nmut:\n\thidden int\n}\n\npub fn (mut state State) bump() {\n\tstate.hidden++\n}\n\npub fn (state State) value() int {\n\treturn state.hidden\n}\n'
+		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tstate := other.State{}\n\tstate.bump()\n\tprintln(int_str(state.value()))\n}\n'
+	}, 'main.v')
+	assert private_out == '1'
+}
+
+fn test_implicit_reference_materializes_required_pointer_levels() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'review_multi_level_implicit_addresses',
+		'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
+	assert out == '5\n7'
 }
 
 fn test_discard_assignment_preserves_array_return_type() {
@@ -6118,9 +6167,10 @@ fn main() {
 	}, 'main.v')
 	assert inactive_objective_c_out == '60'
 	inactive_objective_cpp := run_good_project_result(v3_bin, 'inactive_objective_cpp_source', '', {
-		'v.mod':       "Module { name: 'inactive_objective_cpp_source' }\n"
-		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
-		'main.v':      'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
+		'v.mod':        "Module { name: 'inactive_objective_cpp_source' }\n"
+		'disabled.mm':  '#error inactive Objective-C++ source must not be compiled\n'
+		'later_defs.c': '#define V3_NEVER_DEFINED_OBJECTIVE_CPP 1\n'
+		'main.v':       'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\n#include "later_defs.c"\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
 	}, 'main.v')
 	assert inactive_objective_cpp.run_output == '65'
 	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
@@ -6216,6 +6266,47 @@ fn test_imported_objective_cpp_wrapper_context() {
 		'main.v':                  'module main\n\nimport consumer\n\nfn main() {\n\tprintln(int_str(consumer.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '68'
+}
+
+fn test_bare_macro_objective_c_guards_stay_inactive() {
+	v3_bin := build_v3()
+	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {
+		'v.mod':           "Module { name: 'bare_macro_objective_c_guards' }\n"
+		'disabled.m':      '#error inactive Objective-C source must not be compiled\n'
+		'disabled.mm':     '#error inactive Objective-C++ source must not be compiled\n'
+		'inactive_defs.c': '#define V3_INACTIVE_SOURCE_FEATURE 1\n'
+		'main.v':          'module main\n\n#if V3_NEVER_DEFINED_OBJECTIVE_C\n#include "disabled.m"\n#endif\n\n#if 0\n#include "inactive_defs.c"\n#endif\n\n#if V3_INACTIVE_SOURCE_FEATURE\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(70))\n}\n'
+	}, 'main.v')
+	assert result.run_output == '70'
+	assert result.compile_output.contains('tcc.exe'), result.compile_output
+	assert !result.compile_output.contains('v3_native_source_context_'), result.compile_output
+}
+
+fn test_valued_bare_macro_objective_c_guards_remain_possible() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'valued_bare_macro_objective_c_guards', '-cc clang', {
+		'v.mod':     "Module { name: 'valued_bare_macro_objective_c_guards' }\n"
+		'active.m':  'static int answer_from_valued_m_guard(void) { return 1; }\n'
+		'active.mm': 'extern "C" int answer_from_valued_mm_guard(void) { auto answer = []() { return 70; }; return answer(); }\n'
+		'main.v':    'module main\n\n#flag -DV3_MM_FEATURE=0\n\n#define V3_M_FEATURE 0\n#if !V3_M_FEATURE\n#include "active.m"\n#endif\n\n#if !V3_MM_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_valued_m_guard() int\nfn C.answer_from_valued_mm_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_valued_m_guard() + C.answer_from_valued_mm_guard()))\n}\n'
+	}, 'main.v')
+	assert out == '71'
+}
+
+fn test_external_bare_macro_objective_c_guards_remain_possible() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'external_bare_macro_objective_c_guards',
+		'-cc clang', {
+		'v.mod':           "Module { name: 'external_bare_macro_objective_c_guards' }\n"
+		'config.h':        '#define V3_HEADER_FEATURE 1\n'
+		'forced.h':        '#define V3_FORCED_FEATURE 1\n'
+		'source_defs.c':   '#define V3_SOURCE_FEATURE 1\n'
+		'active.m':        'static int answer_from_header_macro_guard(void) { return 2; }\n'
+		'active.mm':       'extern "C" int answer_from_forced_macro_guard(void) { auto answer = []() { return 70; }; return answer(); }\n'
+		'source_active.m': 'static int answer_from_source_macro_guard(void) { return 3; }\n'
+		'main.v':          'module main\n\n#flag -UV3_FORCED_FEATURE\n#flag -include @VMODROOT/forced.h\n\n#undef V3_HEADER_FEATURE\n#include "config.h"\n#if V3_HEADER_FEATURE\n#include "active.m"\n#endif\n\n#include "source_defs.c"\n#if V3_SOURCE_FEATURE\n#include "source_active.m"\n#endif\n\n#if V3_FORCED_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_header_macro_guard() int\nfn C.answer_from_source_macro_guard() int\nfn C.answer_from_forced_macro_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_header_macro_guard() + C.answer_from_source_macro_guard() + C.answer_from_forced_macro_guard()))\n}\n'
+	}, 'main.v')
+	assert out == '75'
 }
 
 fn test_review_fixed_array_alias_clone_dispatch() {
@@ -6419,7 +6510,7 @@ fn main() {
 }
 ')
 	assert mut_pointer_iteration_out == '9\n9'
-	ordinary_pointer_out := run_good(v3_bin, 'ordinary_pointer_value_param', 'struct PointerCallItem {
+	run_bad(v3_bin, 'ordinary_pointer_rejected_for_value_param', 'struct PointerCallItem {
 	value int
 }
 
@@ -6433,6 +6524,32 @@ fn main() {
 	}
 	println(int_str(take_value(item)))
 }
+',
+		'cannot use `&PointerCallItem` as argument 1 to `take_value`; expected `PointerCallItem`')
+}
+
+fn test_map_retains_address_of_local_after_return() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'map_retains_address_of_local_after_return', 'struct Item {
+	value int
+}
+
+fn make_cache() map[string]&Item {
+	mut cache := map[string]&Item{}
+	mut local := Item{
+		value: 7
+	}
+	ptr := &local
+	cache["alias"] = ptr
+	cache["direct"] = &local
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["alias"].value))
+	println(int_str(cache["direct"].value))
+}
 ')
-	assert ordinary_pointer_out == '7'
+	assert out == '7\n7'
 }

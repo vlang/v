@@ -751,9 +751,13 @@ fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
 	iter_type_value := t.tc.parse_type(clean)
 	info := t.tc.iterator_for_in_next_call_info(iter_type_value) or { return none }
 	elem_type := t.iterator_for_in_elem_type_from_next_return(info.return_type) or { return none }
+	mut next_method := info.name
+	if !for_iter_type_has_generic_placeholder(clean) && info.name.contains('.') {
+		next_method = '${clean}.${info.name.all_after_last('.')}'
+	}
 	return IteratorForInInfo{
 		elem_type:   elem_type
-		next_method: info.name
+		next_method: next_method
 	}
 }
 
@@ -863,7 +867,14 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if key.kind != .ident || key.value.len == 0 {
 		return arr1(id)
 	}
-	raw_container_type := t.raw_checker_node_type(container_id)
+	container_node := if int(container_id) >= 0 { t.a.nodes[int(container_id)] } else { flat.Node{} }
+	checker_container_type := t.raw_checker_node_type(container_id)
+	raw_container_type := if container_node.kind == .ident
+		&& t.var_type(container_node.value).trim_space().starts_with('?') {
+		t.var_type(container_node.value)
+	} else {
+		checker_container_type
+	}
 	source_container_type := if t.node_type(container_id).len > 0 {
 		t.node_type(container_id)
 	} else if raw_container_type.len > 0 {
@@ -873,7 +884,6 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	source_is_owned_temporary := !source_container_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
-	container_node := if int(container_id) >= 0 { t.a.nodes[int(container_id)] } else { flat.Node{} }
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id
@@ -970,7 +980,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
 		had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
 		t.pointer_value_lvalues[elem_name] = true
-		t.pointer_value_rvalues.delete(elem_name)
+		t.pointer_value_rvalues[elem_name] = true
 		transformed_body = t.transform_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[elem_name] = true
@@ -1089,7 +1099,14 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		}
 		iter_node := t.a.nodes[int(iter_id)]
 		if iter_node.kind == .ident && iter_node.value.len > 0 {
-			local_type := t.normalize_type_alias(t.var_type(iter_node.value))
+			mut local_type := t.normalize_type_alias(t.var_type(iter_node.value))
+			// A `mut` parameter is stored as a pointer by the C ABI, but iterating it
+			// without `mut value` still binds map values by value. Preserve real source
+			// `&map` expressions while removing only this implicit storage pointer.
+			if t.mut_param_values[iter_node.value] && local_type.starts_with('&')
+				&& for_iter_type_is_container(local_type[1..]) {
+				local_type = local_type[1..]
+			}
 			if local_type.len > 0 && for_iter_type_is_container(local_type) {
 				t.set_node_typ(int(iter_id), local_type)
 				return local_type
@@ -1110,7 +1127,8 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		checker_type := t.raw_checker_node_type(iter_id)
 		if checker_type.len > 0 {
 			checker_payload := for_iter_payload_type(checker_type)
-			if for_iter_type_is_container(checker_payload) {
+			if for_iter_type_is_container(checker_payload)
+				|| t.iterator_for_in_info(checker_payload) != none {
 				if checker_payload == checker_type {
 					t.set_node_typ(int(iter_id), checker_type)
 				}
@@ -1162,11 +1180,11 @@ fn (t &Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?strin
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
-	if fixed_storage_type := t.const_array_literal_storage_type_name_for_expr(id) {
-		return fixed_storage_type
-	}
 	if t.var_type(node.value).len > 0 {
 		return none
+	}
+	if fixed_storage_type := t.const_array_literal_storage_type_name_for_expr(id) {
+		return fixed_storage_type
 	}
 	mut candidates := []string{}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {

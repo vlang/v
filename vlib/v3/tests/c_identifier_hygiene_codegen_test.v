@@ -178,9 +178,9 @@ fn main() {
 		assert objc_compile.exit_code == 0, objc_compile.output
 		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
 		type_pos := objc_code.index('struct V3PointUnique {') or { -1 }
-		source_pos := objc_code.index('v3_c_identifier_hygiene_objc_${pid}.m"') or { -1 }
 		assert type_pos >= 0, objc_code
-		assert source_pos > type_pos, objc_code
+		// Objective-C source bodies are compiled in a separate native unit.
+		assert !objc_code.contains('int v3_point_sum(V3PointUnique p) {'), objc_code
 		objc_run := os.execute(objc_bin)
 		assert objc_run.exit_code == 0, objc_run.output
 		assert objc_run.output.trim_space() == '9'

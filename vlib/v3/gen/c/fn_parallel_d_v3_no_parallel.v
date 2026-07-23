@@ -1,23 +1,6 @@
 module c
 
 import v3.flat
-import v3.types
-
-// clone_cgen_string_list keeps stage-scoped results alive in serial-only builds.
-fn clone_cgen_string_list(values []string) []string {
-	mut cloned := []string{cap: values.len}
-	for value in values {
-		cloned << value.clone()
-	}
-	return cloned
-}
-
-// clone_parallel_type_checker returns the serial checker when worker codegen is
-// compiled out. The call sites still use their scoped serial batching path, but
-// no concurrent mutation requires a private checker view.
-fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
-	return g.tc
-}
 
 // gen_fns_dispatch emits all functions serially when v3 is built with the
 // internal `v3_no_parallel` define.

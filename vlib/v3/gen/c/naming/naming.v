@@ -91,6 +91,7 @@ const libc_collisions = {
 	'realpath': true
 	'rint':     true
 	'scalb':    true
+	'send':     true
 	'setenv':   true
 	'signal':   true
 	'snprintf': true
@@ -125,19 +126,31 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	if is_plain_identifier(name) {
-		if name in reserved_words || name in libc_collisions {
+		if name in reserved_words || name in libc_collisions || is_string_literal_symbol(name) {
 			return 'v_${name}'
 		}
 		return name
 	}
 	n := sanitize(name)
-	if n in reserved_words || n in libc_collisions {
+	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
 		if name.contains('@') {
 			return '_v_${n}'
 		}
 		return 'v_${n}'
 	}
 	return n
+}
+
+fn is_string_literal_symbol(name string) bool {
+	if name.len <= 5 || !name.starts_with('_str_') {
+		return false
+	}
+	for i in 5 .. name.len {
+		if name[i] < `0` || name[i] > `9` {
+			return false
+		}
+	}
+	return true
 }
 
 // sanitize converts a V symbol or type spelling into a C identifier spelling
@@ -321,4 +334,13 @@ pub fn type_name_part(s string) string {
 		}
 	}
 	return b.bytestr()
+}
+
+// fn_ptr_type_name returns the stable C typedef name for an encoded function-pointer signature.
+pub fn fn_ptr_type_name(encoded string) string {
+	mut hash := u64(1469598103934665603)
+	for c in encoded.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_fn_ptr_${hash.hex()}'
 }

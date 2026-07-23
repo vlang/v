@@ -61,6 +61,18 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn run_runtime_bad(v3_bin string, name string, src string, expected string) {
+	out := unique_temp_path(name)
+	src_path := out + '.v'
+	os.write_file(src_path, src) or { panic(err) }
+	compile := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
+	run := os.execute(out)
+	assert run.exit_code != 0, '${name}: expected runtime failure, got success: ${run.output}'
+	assert run.output.contains(expected), '${name}: expected `${expected}` in ${run.output}'
+}
+
 // write_project_file writes project file output for v3 tests.
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -215,9 +227,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'`map[string]string` is not compatible with interface `Any`')
 	run_bad(v3_bin, 'bad_empty_interface_match_array_pattern',
 		'interface Any {}\nfn check(x Any) int {\n\treturn match x {\n\t\t[]string { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
-		'`[]string` is not compatible with interface `Any`')
-	run_bad(v3_bin, 'bad_empty_interface_as_array_pattern',
-		'interface Any {}\nfn check(x Any) []string {\n\treturn x as []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
 		'`[]string` is not compatible with interface `Any`')
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
@@ -401,6 +410,28 @@ fn test_type_checker_reports_core_semantic_errors() {
 	}, 'main.v')
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
+}
+
+fn test_interface_container_as_cast_requirements() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nonempty_interface_as_array_pattern',
+		'interface Speaker {\n\tspeak()\n}\nfn check(x Speaker) []int {\n\treturn x as []int\n}\nfn main() {}\n',
+		'`[]int` is not compatible with interface `Speaker`')
+	empty_interface_as_out := run_good(v3_bin, 'empty_interface_as_array_pattern',
+		'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n')
+	assert empty_interface_as_out == '3'
+	run_runtime_bad(v3_bin, 'empty_interface_as_array_non_array_payload',
+		"interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any('not an array'))\n}\n",
+		'as cast: cannot cast interface value to `[]int`')
+	run_runtime_bad(v3_bin, 'empty_interface_as_array_wrong_element_payload',
+		"interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any(['wrong element type']))\n}\n",
+		'as cast: cannot cast interface value to `[]int`')
+	empty_interface_map_as_out := run_good(v3_bin, 'empty_interface_as_map_pattern',
+		"interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n")
+	assert empty_interface_map_as_out == '42'
+	run_runtime_bad(v3_bin, 'empty_interface_as_map_wrong_value_payload',
+		"interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\t_ := values(Any({'answer': 'wrong value type'}))\n}\n",
+		'as cast: cannot cast interface value to `map[string]int`')
 }
 
 fn test_interface_method_rejects_narrowed_interface_param() {
@@ -1071,6 +1102,9 @@ fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
 	nested_if_tail := run_good(v3_bin, 'good_nested_if_tail_decl_assign',
 		'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert nested_if_tail == '7'
+	run_bad(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type',
+		"fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n",
+		'multi-return assignment mismatch')
 	prefixed_block_tail := run_good(v3_bin, 'good_prefixed_nested_block_tail_decl_assign',
 		"fn main() {\n\tc := true\n\ta, b := if c {\n\t\t{\n\t\t\tprintln('side')\n\t\t\t1\n\t\t\t2\n\t\t}\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n")
 	assert prefixed_block_tail == 'side\n3'
@@ -1357,7 +1391,7 @@ fn test_bare_generic_literal_adopts_expected_instance() {
 	// checker (rather than adopting the type and emitting broken C).
 	run_bad(v3_bin, 'bad_bare_generic_literal_field_mismatch',
 		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n",
-		'cannot return `Box[string]` as `Box[int]`')
+		'cannot return `Box` as `Box[int]`')
 }
 
 // Regression tests for the fourth PR-review batch (vlang/v#27557).
@@ -1412,7 +1446,7 @@ fn test_pr_review_codegen_batch_six() {
 	// that codegen would init an `int` field from a string.
 	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch',
 		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n",
-		'cannot return `Box[string]` as `Box[int]`')
+		'cannot return `Box` as `Box[int]`')
 	// A positional bare generic literal whose value matches the concrete field type is
 	// accepted and round-trips.
 	pos_good := run_good(v3_bin, 'good_positional_generic_literal',
@@ -1461,7 +1495,7 @@ fn test_pr_review_codegen_batch_eight() {
 	// as `&Box[int]`.
 	run_bad(v3_bin, 'bad_value_literal_pointer_expectation',
 		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n',
-		'cannot return `Box[int]` as `&Box[int]`')
+		'cannot return `Box` as `&Box[int]`')
 	// The pointer form `&Box{...}` still adopts the `&Box[int]` expectation and round-trips.
 	heap := run_good(v3_bin, 'good_amp_generic_literal_pointer',
 		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
@@ -1599,18 +1633,19 @@ fn test_pr_review_codegen_batch_fourteen() {
 
 fn test_pr_review_codegen_batch_fifteen() {
 	v3_bin := build_v3()
-	// The string length evaluator folds with the same operator precedence as the V parser
-	// and AST const evaluator: shifts share the product level and bind tighter than `+`, so
-	// `1 << 2 + 1` groups as `(1 << 2) + 1` = 5 whether the length is recovered from a
-	// const's source text or a literal expression.
+	// The string length evaluator folds with the same operator precedence as the v3 parser
+	// and AST const evaluator: shifts bind looser than `+`, so `1 << 2 + 1` groups as
+	// `1 << (2 + 1)` = 8 (not `(1 << 2) + 1` = 5) whether the length is recovered from a
+	// const's source text (string evaluator) or a literal expression. Both must agree, else
+	// the literal length check and the generated C dimension would diverge.
 	prec := run_good(v3_bin, 'good_shift_add_precedence_fixed_array_len',
 		'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
-	// 5 + 5 + 5 = 15
-	assert prec == '15'
+	// 8 + 8 + 6 = 22
+	assert prec == '22'
 	// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
-	// parameter (length 5) rejects a 4-element literal.
+	// parameter (length 8) rejects a 5-element literal.
 	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len',
-		'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n',
+		'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4, 5]!)\n}\n',
 		'cannot use')
 	// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
 	// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and

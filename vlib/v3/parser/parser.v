@@ -80,7 +80,9 @@ mut:
 	pending_decl_attrs                []string
 	pending_decl_attr_kinds           []int
 	in_for_container                  bool
+	in_array_literal                  int
 	in_map_value                      int
+	in_struct_init_value              int
 	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
 	diagnostic_limit_reached          bool
@@ -91,9 +93,12 @@ mut:
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
 pub mut:
-	a              &flat.FlatAst = unsafe { nil }
-	parsed_v_files int
-	diagnostics    []Diagnostic
+	a                          &flat.FlatAst = unsafe { nil }
+	parsed_v_files             int
+	parsed_v_file_paths        []string
+	parsed_v_header_files      int
+	parsed_v_header_file_paths []string
+	diagnostics                []Diagnostic
 }
 
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
@@ -137,13 +142,15 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases:        map[string]bool{}
 		a:                             &flat.FlatAst{
-			nodes:                []flat.Node{cap: 256}
-			children:             []flat.NodeId{cap: 512}
-			disabled_fns:         map[string]bool{}
-			export_fn_names:      map[string]string{}
-			source_files:         map[int]&token.File{}
-			text_ids:             map[string]flat.TextId{}
-			specialized_fn_nodes: map[int]bool{}
+			nodes:                  []flat.Node{cap: 256}
+			children:               []flat.NodeId{cap: 512}
+			disabled_fns:           map[string]bool{}
+			export_fn_names:        map[string]string{}
+			source_files:           map[int]&token.File{}
+			text_ids:               map[string]flat.TextId{}
+			specialized_fn_nodes:   map[int]bool{}
+			specialized_fn_modules: map[int]string{}
+			specialized_fn_files:   map[int]string{}
 		}
 	}
 }
@@ -162,11 +169,10 @@ pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 	return p.a
 }
 
-// release_source_storage canonicalizes every retained source slice and drops
-// parser/scanner references to raw file buffers. Source files keep only their
-// compact line indexes for later diagnostic lookup.
+// release_source_storage canonicalizes retained metadata and drops parser/scanner
+// references to raw file buffers. Parsed node text is canonicalized as each file
+// is completed and when parallel worker ASTs are merged.
 pub fn (mut p Parser) release_source_storage() {
-	p.a.intern_node_texts_from(0)
 	p.a.intern_metadata_texts()
 	p.lit = ''
 	p.peek_lit = ''
@@ -255,6 +261,10 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	if path.ends_with('.v') {
 		p.parsed_v_files++
+		p.parsed_v_file_paths << path
+	} else if path.ends_with('.vh') {
+		p.parsed_v_header_files++
+		p.parsed_v_header_file_paths << path
 	}
 	p.reserve_for_source(stable_src.len)
 	mut file_set := token.FileSet.new()
@@ -1307,6 +1317,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 	}
 	mut typ := p.parse_type_name()
+	explicit_mut_ref := is_mut && typ.starts_with('&')
 	if is_mut && !typ.starts_with('&') {
 		typ = '&' + typ
 	}
@@ -1316,6 +1327,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	for name in names {
 		ids << p.add_node(flat.Node{
 			kind:   .param
+			op:     if explicit_mut_ref { .amp } else { .none }
 			value:  name
 			typ:    typ
 			is_mut: is_mut
@@ -3084,6 +3096,9 @@ fn (p &Parser) comptime_cond_token_text() string {
 	if tok == .and {
 		return '&&'
 	}
+	if tok == .amp {
+		return '&'
+	}
 	if tok == .logical_or {
 		return '||'
 	}
@@ -3176,7 +3191,7 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 	if prev == 'is' || prev == '!is' {
 		return true
 	}
-	if prev == '?' || prev == '!' {
+	if prev == '?' || prev == '!' || prev == '&' {
 		return false
 	}
 	if cur == '?' || cur == ']' || cur == '[' || cur == '.' || cur == ',' {
@@ -3194,6 +3209,9 @@ fn comptime_cond_has_type_test(cond string) bool {
 }
 
 fn comptime_cond_has_type_metadata(cond string) bool {
+	if cond.contains('typeof[') && cond.contains('.idx') {
+		return true
+	}
 	for member in ['.indirections', '.typ', '.unaliased_typ', '.key_type', '.value_type',
 		'.element_type', '.pointee_type', '.payload_type', '.variant_types'] {
 		if cond.contains(member) {
@@ -3421,7 +3439,7 @@ fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_targ
 	if c == 'false' {
 		return false
 	}
-	if c.starts_with('pkgconfig') || c.starts_with('$pkgconfig') {
+	if c.starts_with('pkgconfig') {
 		return eval_pkgconfig_cond(c)
 	}
 	if value := eval_comptime_define_cond(p.prefs, c) {
@@ -3439,7 +3457,7 @@ fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_targ
 }
 
 fn source_contains_target_inline_asm(source string, target_arch string) bool {
-	if source.len < 3 {
+	if source.len < 3 || !source.contains('asm') {
 		return false
 	}
 	mut offset := 0
@@ -4275,7 +4293,8 @@ fn eval_pkgconfig_cond(cond string) bool {
 	if !is_safe_pkgconfig_name(name) {
 		return false
 	}
-	return cmdexec.run('pkg-config', ['--exists', name]).exit_code == 0
+	result := cmdexec.run('pkg-config', ['--exists', name])
+	return result.exit_code == 0
 }
 
 fn is_safe_pkgconfig_name(name string) bool {
@@ -4662,7 +4681,8 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_if {
 			if_id := p.if_stmt()
-			if token_is_infix(p.tok) || p.tok == .key_as {
+			if token_is_infix(p.tok) || p.tok in [.key_as, .dot, .lpar, .lsbr]
+				|| token_is_postfix(p.tok) || p.tok == .not {
 				expr_id := p.expr_with_lhs(if_id, .lowest)
 				if p.tok == .semicolon {
 					p.next()
@@ -5106,6 +5126,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 		start := p.add_children(ids)
 		return p.add_node(flat.Node{
 			kind:           .for_stmt
+			value:          'c_style'
 			children_start: start
 			children_count: flat.child_count(ids.len)
 		})
@@ -5163,6 +5184,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			start := p.add_children(ids)
 			return p.add_node(flat.Node{
 				kind:           .for_stmt
+				value:          'c_style'
 				children_start: start
 				children_count: flat.child_count(ids.len)
 			})
@@ -5308,6 +5330,7 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 	for_start := p.add_children(for_ids)
 	for_id := p.add_node(flat.Node{
 		kind:           .for_stmt
+		value:          'c_style'
 		children_start: for_start
 		children_count: flat.child_count(for_ids.len)
 	})
@@ -5371,6 +5394,7 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	start := p.add_children(ids)
 	return p.add_node(flat.Node{
 		kind:           .for_stmt
+		value:          'c_style'
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
@@ -6323,6 +6347,10 @@ fn (mut p Parser) stmt_expr() flat.NodeId {
 fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool) flat.NodeId {
 	mut lhs := first
 	for {
+		if p.in_struct_init_value > 0 && (p.tok == .name || p.tok.is_keyword())
+			&& p.peek() == .colon {
+			break
+		}
 		// A newline (scanned as `;`) directly followed by `.` continues the
 		// expression: `expr or { ... }` / `expr` on one line, `.method()` on
 		// the next. Inside a map literal, however, `.member:` can begin the next
@@ -6334,12 +6362,16 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			continue
 		}
-		if p.tok == .semicolon && p.peek() == .lpar && p.expr_can_continue_with_newline_call(lhs) {
+		if min_bp == .lowest && p.tok == .semicolon && p.peek() == .lpar
+			&& p.expr_can_continue_with_newline_call(lhs) {
 			p.next()
 			continue
 		}
 		// selector / method call
 		if p.tok == .dot {
+			if p.in_array_literal > 0 && p.spaced_dot_starts_array_enum_value(lhs) {
+				break
+			}
 			lhs = p.selector_or_method(lhs)
 			continue
 		}
@@ -6355,9 +6387,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			if lhs_node.kind == .selector && lhs_node.value.len > 0 {
 				base := p.a.child_node(&lhs_node, 0)
 				is_c_struct := base.kind == .ident && base.value == 'C'
-					&& !is_all_upper_ident(lhs_node.value)
-					&& (p.peek() == .rcbr || p.peek() == .name
-					|| p.peek() == .ellipsis)
+					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
 				is_v_struct := base.kind == .ident && base.value != 'C' && lhs_node.value[0] >= `A`
 					&& lhs_node.value[0] <= `Z`
 				if is_c_struct || is_v_struct {
@@ -6615,6 +6645,13 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			peek_tok := p.peek()
 			if (token_is_infix(peek_tok) || peek_tok == .key_as) && peek_tok != .mul
 				&& peek_tok != .amp {
+				// At the same indentation, a leading `+`/`-` starts the next
+				// expression (commonly the value expression in an `or` block).
+				// More deeply indented operators continue a multiline infix.
+				if peek_tok in [.plus, .minus]
+					&& p.line_indent_for_pos(p.peek_pos) <= p.line_indent_for_pos(p.a.nodes[int(lhs)].pos.offset) {
+					break
+				}
 				p.next()
 				continue
 			}
@@ -6673,7 +6710,33 @@ fn (p &Parser) expr_can_continue_with_newline_call(id flat.NodeId) bool {
 	if node.kind !in [.ident, .selector] {
 		return false
 	}
-	return p.column_for_pos(p.peek_pos) > p.line_indent_for_pos(node.pos.offset)
+	return p.column_for_pos(p.peek_pos) > p.column_for_pos(node.pos.offset)
+}
+
+fn (p &Parser) spaced_dot_starts_array_enum_value(id flat.NodeId) bool {
+	if p.tok != .dot || p.tok_pos <= p.prev_tok_end || p.tok_pos > p.s.src.len || int(id) < 0
+		|| int(id) >= p.a.nodes.len {
+		return false
+	}
+	if !p.s.src[p.tok_pos - 1].is_space() {
+		return false
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .enum_val {
+		return true
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	base := p.a.child_node(&node, 0)
+	type_part := if base.kind == .selector {
+		base.value
+	} else if base.kind == .ident {
+		base.value
+	} else {
+		''
+	}
+	return type_part.len > 0 && type_part[0] >= `A` && type_part[0] <= `Z`
 }
 
 fn (mut p Parser) newline_dot_starts_map_entry() bool {
@@ -7142,6 +7205,17 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	start_pos := p.current_pos()
 	op_start := p.span_start()
 	tok_id := int(p.tok)
+	if p.tok == .plus {
+		p.next()
+		operand := p.expr(.highest)
+		return p.a.add_node(flat.Node{
+			kind:           .prefix
+			op:             .plus
+			children_start: p.add_child(operand)
+			children_count: 1
+			pos:            p.span_to(op_start)
+		})
+	}
 	if tok_id == 92 {
 		val := p.lit
 		p.next()
@@ -7189,7 +7263,22 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
-		operand := p.expr(.highest)
+		mut operand := p.expr(.highest)
+		// A trailing `or {}` binds to the operand, not to the prefix operator:
+		// `!f() or {}` means `!(f() or {})`. The main expression loop only
+		// attaches `or` at lowest binding power (below the prefix), so it would
+		// otherwise wrap the whole prefix expression, which is not an
+		// Option/Result. Consume it here so the unwrap happens before the prefix.
+		if p.tok == .key_or {
+			p.next()
+			or_body := p.block_stmt()
+			ostart := p.add_children2(operand, or_body)
+			operand = p.a.add_node(flat.Node{
+				kind:           .or_expr
+				children_start: ostart
+				children_count: 2
+			})
+		}
 		pstart := p.add_child(operand)
 		return p.a.add_node(flat.Node{
 			kind:           .prefix
@@ -7251,7 +7340,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.pipe {
 			return p.pipe_lambda_expr()
 		}
-		.key_mut, .key_shared {
+		.key_mut {
+			p.next()
+			id := p.prefix_expr()
+			p.mark_node_mut(id)
+			return id
+		}
+		.key_shared {
 			p.next()
 			return p.prefix_expr()
 		}
@@ -8194,18 +8289,12 @@ fn (mut p Parser) index_part_expr() flat.NodeId {
 		return p.make_index_range_part(low, high, dotdot_start)
 	}
 	mut low := p.expr(.logical_or)
-	// `or {}` before the closing bracket belongs to the index expression. It
-	// cannot be parsed at `.lowest` here because that also consumes slice ranges
-	// before index_expr can flatten their bounds.
+	// An option/result handler before the closing bracket belongs to the index
+	// expression (`a[f() or { 0 }]`), not to the completed `a[f()]` node. Resume
+	// only for `or`; parsing the whole part at `.lowest` would consume `..` and
+	// prevent the slice-specific representation below.
 	if p.tok == .key_or {
-		p.next()
-		or_body := p.block_stmt()
-		ostart := p.add_children2(low, or_body)
-		low = p.add_node(flat.Node{
-			kind:           .or_expr
-			children_start: ostart
-			children_count: 2
-		})
+		low = p.expr_with_lhs(low, .lowest)
 	}
 	if p.tok == .dotdot {
 		low_start := p.node_start(low)
@@ -8416,7 +8505,9 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 			}
 			fname := p.expect_name_or_keyword()
 			p.check(.colon)
+			p.in_struct_init_value++
 			val := p.expr(.lowest)
+			p.in_struct_init_value--
 			vstart := p.add_child(val)
 			field_ids << p.add_node(flat.Node{
 				kind:           .field_init
@@ -8446,7 +8537,9 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 		if (p.tok == .name || p.tok.is_keyword()) && p.peek() == .colon {
 			fname := p.expect_name_or_keyword()
 			p.check(.colon)
+			p.in_struct_init_value++
 			val := p.expr(.lowest)
+			p.in_struct_init_value--
 			vstart := p.add_child(val)
 			ids << p.add_node(flat.Node{
 				kind:           .field_init
@@ -8564,6 +8657,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	}
 	bracket_start := p.span_start() // start offset of the opening '['
 	p.next() // skip '['
+	p.in_array_literal++
+	defer {
+		p.in_array_literal--
+	}
 	// inferred-size fixed array literal: [..]u32[0x1, 0x2, ...]
 	if p.tok == .dotdot && p.peek() == .rsbr {
 		p.next()
@@ -8732,7 +8829,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	// instead of merging operands; the stray tokens are then left to the
 	// (permissive) `p.check(.rsbr)` below, matching how this parser recovers
 	// from other malformed input.
-	for p.tok == .comma || p.tok == .semicolon {
+	for p.tok == .comma || p.tok == .semicolon || p.tok == .dot {
 		if p.tok == .comma {
 			p.next()
 		}
@@ -8839,7 +8936,7 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 		}
 		if name == 'thread' {
 			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
-				|| p.tok == .not {
+				|| p.tok == .lpar || p.tok == .not || p.tok == .key_fn {
 				return 'thread ${p.parse_fixed_array_literal_type_name()}'
 			}
 			return 'thread'
@@ -10652,6 +10749,16 @@ fn unescape_string(s string) string {
 					i += 10
 					continue
 				}
+			}
+			if i + 3 < s.len && s[i + 1] >= `0` && s[i + 1] <= `7` && s[i + 2] >= `0`
+				&& s[i + 2] <= `7` && s[i + 3] >= `0` && s[i + 3] <= `7` {
+				octal := u8(int(s[i + 1] - `0`) * 64 + int(s[i + 2] - `0`) * 8 + int(s[i + 3] - `0`))
+				unsafe {
+					buf[j] = octal
+				}
+				j++
+				i += 4
+				continue
 			}
 			c := match s[i + 1] {
 				`n` { u8(`\n`) }

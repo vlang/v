@@ -38,8 +38,7 @@ fn assert_spawn_pthread_decls(c_code string) {
 	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
 	assert c_code.contains('typedef struct { pthread_t handle; } __v_thread;'), c_code
 	assert c_code.contains('static __v_thread __v_thread_spawn('), c_code
-	assert c_code.contains('#define V_THREAD_STACK_SIZE 8388608'), c_code
-	assert c_code.contains('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;'), c_code
+	assert c_code.contains('static const size_t __v_thread_stack_size = 8388608;'), c_code
 	assert c_code.contains('pthread_attr_setstacksize(&attr, __v_thread_stack_size);'), c_code
 	assert c_code.contains('pthread_create(&result.handle, &attr, (void*)start, arg);'), c_code
 	assert c_code.contains('int attr_rc = pthread_attr_destroy(&attr);'), c_code
@@ -183,6 +182,30 @@ fn main() {
 	assert c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
 	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
 	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
+}
+
+fn test_spawn_mutable_local_address_copies_value_into_heap_packet() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_mutable_local_address', '
+fn takes_ptr(value &int) {
+	println(*value)
+}
+
+fn main() {
+	for i in 0 .. 1 {
+		mut value := i + 9
+		_ := spawn takes_ptr(&value)
+		value = 10
+	}
+	println("ok")
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
+	assert c_compact.contains('->a0=value;'), c_code
+	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
+	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
+	assert !c_compact.contains('->a0=&value;'), c_code
 }
 
 fn test_spawn_result_uses_checked_allocation_and_typed_join() {

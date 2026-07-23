@@ -332,14 +332,15 @@ mut:
 	veb_filter_fn_name   string   // veb__filter, used by $veb.html() for escaping strings in templates
 	export_funcs         []string // for .dll export function names
 	//
-	type_default_impl_level int
-	preinclude_nodes        []&ast.HashStmtNode // allows hash stmts to go before `includes`
-	include_nodes           []&ast.HashStmtNode // all hash stmts to go `includes`
-	definition_nodes        []&ast.HashStmtNode // allows hash stmts to go `definitions`
-	postinclude_nodes       []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
-	curr_comptime_node      ast.Expr = ast.empty_expr // current `$if` expr
-	is_builtin_overflow_mod bool
-	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
+	type_default_impl_level    int
+	type_default_sumtype_stack []int
+	preinclude_nodes           []&ast.HashStmtNode // allows hash stmts to go before `includes`
+	include_nodes              []&ast.HashStmtNode // all hash stmts to go `includes`
+	definition_nodes           []&ast.HashStmtNode // allows hash stmts to go `definitions`
+	postinclude_nodes          []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
+	curr_comptime_node         ast.Expr = ast.empty_expr // current `$if` expr
+	is_builtin_overflow_mod    bool
+	do_int_overflow_checks     bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 	//
 	tid                  string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
 	fid                  int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
@@ -13353,6 +13354,16 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	if typ_.has_flag(.option) {
 		return '(${g.styp(typ_)}){.state=2, .err=_const_none__, .data={E_STRUCT}}'
 	}
+	sumtype_idx := g.unwrap_generic(typ_).idx()
+	is_recursive := sumtype_idx in g.type_default_sumtype_stack
+	if !is_recursive {
+		g.type_default_sumtype_stack << sumtype_idx
+	}
+	defer {
+		if !is_recursive {
+			g.type_default_sumtype_stack.delete_last()
+		}
+	}
 	first_typ := g.unwrap_generic((sym.info as ast.SumType).variants[0])
 	first_sym := g.table.sym(first_typ)
 	first_styp := g.styp(first_typ)
@@ -13368,7 +13379,12 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	if sumtype_info.fields.len > 0 && !g.inside_global_decl && !g.inside_const {
 		// Route local defaults through the cast helper so common-field pointers stay valid.
 		fname := g.get_sumtype_casting_fn(first_typ, typ_)
-		mut first_default := g.type_default(first_typ)
+		// Reuse the shallow default when a non-sum variant refers back to this sum type.
+		mut first_default := if is_recursive && first_sym.kind != .sum_type {
+			default_str
+		} else {
+			g.type_default(first_typ)
+		}
 		if first_default[0] == `{` {
 			first_default = '(${first_styp})${first_default}'
 		}

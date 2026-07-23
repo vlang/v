@@ -8,9 +8,6 @@ const orm_null_text_v3_src = os.join_path(orm_null_text_v3_dir, 'v3.v')
 
 fn orm_null_text_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_null_text_test_${os.getpid()}')
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
 	os.rm(v3_bin) or {}
 	build :=
 		os.execute('${orm_null_text_vexe} -gc none -path "${orm_null_text_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${orm_null_text_v3_src}')
@@ -66,7 +63,7 @@ fn main() {
 		return
 	}
 	after_marker := c_code[marker_idx + '.name = '.len..]
-	symbol := after_marker.all_before('}').trim_space()
+	symbol := after_marker.all_before('}').all_before(',').all_before(';').trim_space()
 	assert symbol.starts_with('_str_'), c_code
 	assert c_code.contains('string ${symbol} ='), c_code
 }

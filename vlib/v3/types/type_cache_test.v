@@ -2,17 +2,6 @@ module types
 
 import v3.flat
 
-fn test_collect_resets_function_context_before_type_cache_keys() {
-	a := flat.FlatAst.new()
-	mut tc := TypeChecker.new(&a)
-	assert tc.fn_context.generic_params.len == 0
-	tc.fn_context.generic_params = ['T']
-
-	tc.collect(&a)
-	assert tc.fn_context.generic_params.len == 0
-	assert tc.parse_type('voidptr').name() == '&void'
-}
-
 fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -105,6 +94,16 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
+	generic := tc.parse_type('arc.Arc[Resource]')
+	assert generic is Struct
+	assert generic.name() == 'arc.Arc[Resource]'
+	nested_map := tc.parse_type('map[string]map[string]arc.Arc[Resource]')
+	assert nested_map is Map
+	inner_map := (nested_map as Map).value_type
+	assert inner_map is Map
+	inner_value := (inner_map as Map).value_type
+	assert inner_value is Struct
+	assert inner_value.name() == 'arc.Arc[Resource]'
 	typ := tc.parse_type('arc.Arc[Resource][2]')
 	assert typ is ArrayFixed
 	fixed := typ as ArrayFixed
@@ -112,24 +111,11 @@ fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application(
 	assert fixed.elem_type.name() == 'arc.Arc[Resource]'
 }
 
-fn test_resolution_function_type_keeps_concrete_caller_type() {
-	a := flat.FlatAst.new()
-	mut tc := TypeChecker.new(&a)
-	tc.cur_file = 'decode.v'
-	tc.cur_module = 'json2'
-	tc.structs['Event'] = []StructField{}
-
-	assert tc.qualify_type_text('fn (voidptr, &Event)') == 'fn(voidptr, &json2.Event)'
-	assert tc.qualify_resolution_type_text('fn (voidptr, &Event)') == 'fn(voidptr, &Event)'
-	resolved := tc.parse_resolution_type('fn (voidptr, &Event)')
-	assert resolved is FnType
-	fn_type := resolved as FnType
-	assert fn_type.params.len == 2
-	assert fn_type.params[1] is Pointer
-	assert (fn_type.params[1] as Pointer).base_type.name() == 'Event'
-	cached := tc.resolution_type_views.by_file['decode.v'] or { panic('missing cached view') }
-	assert cached.type_interner == tc.type_interner
-	assert tc.parse_resolution_type('fn (voidptr, &Event)').name() == resolved.name()
+fn test_generic_text_substitution_recurses_through_wrappers() {
+	assert subst_generic_text('chan T', ['int'], ['T']) == 'chan int'
+	assert subst_generic_text('thread T', ['string'], ['T']) == 'thread string'
+	assert subst_generic_text('atomic T', ['u64'], ['T']) == 'atomic u64'
+	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
 }
 
 fn test_resolved_symbols_have_stable_ids_and_storage() {

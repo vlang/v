@@ -483,20 +483,21 @@ fn (t &Transformer) resolve_interface_pattern_interface(pattern string) ?string 
 
 // transform_global_amp_interface_cast supports transform_global_amp_interface_cast handling.
 fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, target_type string) ?flat.NodeId {
-	mut cast := node
-	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
-		cast = t.a.nodes[int(t.a.child(&node, 0))]
-	}
-	if cast.kind != .cast_expr || cast.children_count == 0 {
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
 		return none
 	}
-	iface_name := t.resolve_interface_type_name(cast.value)
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .cast_expr || child.children_count == 0 {
+		return none
+	}
+	iface_name := t.resolve_interface_type_name(child.value)
 	if iface_name.len == 0 || t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
 	old_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	literal := t.make_interface_literal_from_expr(t.a.child(&cast, 0), iface_name, false) or {
+	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name, false) or {
 		t.pending_stmts = old_pending
 		return none
 	}
@@ -693,7 +694,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source
 	}
 	mut field_ids := []flat.NodeId{cap: fields.len + 2}
-	if type_id := t.interface_impl_type_id(iface_name, concrete_type) {
+	type_id := t.interface_impl_type_id(iface_name, concrete_type) or {
+		if interface_pattern_is_collapsed_container_type(concrete_type) {
+			t.interface_container_cast_type_id(iface_name, concrete_type) or { 0 }
+		} else {
+			0
+		}
+	}
+	if type_id != 0 {
 		field_ids << t.make_sum_literal_field('_typ', t.make_int_literal(type_id), 'int')
 	}
 	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')
