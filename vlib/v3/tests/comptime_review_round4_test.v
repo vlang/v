@@ -867,6 +867,24 @@ fn main() {
 	assert out == '4'
 }
 
+fn test_enum_value_metadata_folds_power() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_power', "enum Powered {
+	a = 2 ** 3
+	b
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Powered.values {
+		rows << item.name + ':' + item.value.str()
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'a:8|b:9'
+}
+
 fn test_enum_value_metadata_interpolation_stays_numeric() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {

@@ -1817,6 +1817,9 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 				.mul {
 					l * r
 				}
+				.power {
+					enum_metadata_int_power(l, r)
+				}
 				.div {
 					if r == 0 {
 						none
@@ -1881,6 +1884,30 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 			return none
 		}
 	}
+}
+
+@[ignore_overflow]
+fn enum_metadata_int_power(base i64, exponent i64) i64 {
+	mut exp := exponent
+	mut power := base
+	mut value := i64(1)
+	if exp < 0 {
+		if base == 0 {
+			return -1
+		}
+		if base != 1 && base != -1 {
+			return 0
+		}
+		return if exp & 1 != 0 { base } else { 1 }
+	}
+	for exp > 0 {
+		if exp & 1 != 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
 }
 
 fn (t &Transformer) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
