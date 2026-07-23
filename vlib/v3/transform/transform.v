@@ -5143,7 +5143,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			if child.typ.starts_with('...') {
 				t.cur_fn_variadic_param = child.value
 			}
-			raw_source_typ := if child.typ.starts_with('...') {
+			mut raw_source_typ := if child.typ.starts_with('...') {
 				'[]' + child.typ[3..]
 			} else {
 				child.typ
@@ -5168,6 +5168,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			}
 			if child.is_mut && child.op == .amp && typ.starts_with('&') {
 				typ = '&${typ}'
+			}
+			if child.is_mut {
+				typ = mut_optional_param_value_type(typ)
+				raw_source_typ = mut_optional_param_value_type(raw_source_typ)
 			}
 			if typ.starts_with('&') && raw_typ.len > 0 && !raw_typ.starts_with('&')
 				&& t.normalize_type_alias(typ[1..]) == raw_typ {
@@ -5242,6 +5246,24 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.invalidated_smartcasts.clear()
 	t.cur_fn_is_generic = old_is_generic
 	t.temp_counter = outer_temp_counter
+}
+
+fn mut_optional_param_value_type(typ string) string {
+	mut clean := typ.trim_space()
+	if clean.starts_with('mut ') {
+		clean = clean[4..].trim_space()
+	}
+	if clean.starts_with('&?') {
+		clean = clean[1..]
+	}
+	if !clean.starts_with('?') {
+		return typ
+	}
+	payload := clean[1..].trim_space()
+	if payload.starts_with('&') {
+		return '?${payload}'
+	}
+	return '?&${payload}'
 }
 
 // fn_body_param_types supports fn body param types handling for Transformer.
@@ -9864,6 +9886,9 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs_type.len == 0 {
 			lhs_type = t.lvalue_type(lhs_id)
 		}
+		if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] && lhs_type.starts_with('&') {
+			lhs_type = lhs_type[1..]
+		}
 		rhs := if lhs_type.len > 0 {
 			t.transform_expr_for_type(rhs_id, lhs_type)
 		} else {
@@ -9887,7 +9912,11 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs.kind == .ident && lhs.value == '_' {
 			continue
 		}
-		mut lvalue := t.transform_lvalue_without_smartcast(lhs_id)
+		mut lvalue := if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] {
+			t.make_prefix(.mul, t.make_ident(lhs.value))
+		} else {
+			t.transform_lvalue_without_smartcast(lhs_id)
+		}
 		t.drain_pending(mut result)
 		mut lhs_type := t.lvalue_type(lhs_id)
 		if lhs_type.len == 0 {

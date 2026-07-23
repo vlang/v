@@ -1403,6 +1403,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		enum_fields:                           g.tc.enum_fields
 		flag_enums:                            g.tc.flag_enums
 		interface_names:                       g.tc.interface_names
+		interface_generic_params:              g.tc.interface_generic_params
 		interface_fields:                      g.tc.interface_fields
 		interface_embeds:                      g.tc.interface_embeds
 		interface_abstract_methods:            g.tc.interface_abstract_methods

@@ -581,16 +581,25 @@ fn (mut g FlatGen) register_interface_strings() {
 fn (mut g FlatGen) collect_interface_impls() {
 	g.ierror_method_emit_names = map[string]bool{}
 	g.collect_interface_boxed_types_for_dispatch()
-	mut boxed_containers := map[string][]string{}
+	mut boxed_concrete_types := map[string][]string{}
 	for key, _ in g.interface_boxed_types {
 		parts := key.split('::')
-		if parts.len != 2 || (!parts[1].starts_with('[]') && !parts[1].starts_with('map[')) {
+		if parts.len != 2 {
 			continue
 		}
-		mut concrete_types := boxed_containers[parts[0]] or { []string{} }
-		if parts[1] !in concrete_types {
-			concrete_types << parts[1]
-			boxed_containers[parts[0]] = concrete_types
+		mut concrete := parts[1]
+		is_container := concrete.starts_with('[]') || concrete.starts_with('map[')
+		if !is_container && concrete !in g.tc.structs && concrete !in g.tc.type_aliases {
+			qualified := g.tc.qualify_name(concrete)
+			if qualified !in g.tc.structs && qualified !in g.tc.type_aliases {
+				continue
+			}
+			concrete = qualified
+		}
+		mut concrete_types := boxed_concrete_types[parts[0]] or { []string{} }
+		if concrete !in concrete_types {
+			concrete_types << concrete
+			boxed_concrete_types[parts[0]] = concrete_types
 		}
 	}
 	mut iface_names := []string{}
@@ -609,7 +618,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 			// checks agree with the dispatch ids assigned here.
 			impls = g.tc.interface_impl_names(iface)
 			base_impls = impls.clone()
-			mut concrete_types := boxed_containers[iface] or { []string{} }
+			mut concrete_types := boxed_concrete_types[iface] or { []string{} }
 			concrete_types.sort()
 			for concrete in concrete_types {
 				if concrete !in impls {
@@ -632,6 +641,35 @@ fn (mut g FlatGen) collect_interface_impls() {
 			g.collect_ierror_method_emit_names(impls)
 		}
 	}
+}
+
+fn (g &FlatGen) interface_dispatch_return_type(decl_key string, concrete_key string) types.Type {
+	decl_type := g.tc.fn_ret_types[decl_key] or { types.Type(types.void_) }
+	if !g.type_contains_generic_placeholder(decl_type) || concrete_key.len == 0 {
+		return decl_type
+	}
+	return g.tc.fn_ret_types[concrete_key] or { decl_type }
+}
+
+fn (g &FlatGen) interface_dispatch_param_types(decl_key string, concrete_key string) []types.Type {
+	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
+	concrete_params := if concrete_key.len > 0 {
+		g.tc.fn_param_types[concrete_key] or { []types.Type{} }
+	} else {
+		[]types.Type{}
+	}
+	mut decl_has_generic := false
+	for param in decl_params {
+		if g.type_contains_generic_placeholder(param) {
+			decl_has_generic = true
+			break
+		}
+	}
+	if concrete_params.len > 0
+		&& (decl_has_generic || decl_params.len == 0 || decl_params.len != concrete_params.len) {
+		return concrete_params
+	}
+	return decl_params
 }
 
 fn (mut g FlatGen) collect_ierror_method_emit_names(impls []string) {
@@ -1333,25 +1371,8 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 					break
 				}
 			}
-			ret_type := g.tc.fn_ret_types[decl_key] or {
-				if sig_key.len > 0 {
-					g.tc.fn_ret_types[sig_key] or { types.Type(types.void_) }
-				} else {
-					types.Type(types.void_)
-				}
-			}
-			decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
-			concrete_params := if sig_key.len > 0 {
-				g.tc.fn_param_types[sig_key] or { []types.Type{} }
-			} else {
-				[]types.Type{}
-			}
-			sig_params := if decl_params.len > 0
-				&& (concrete_params.len == 0 || decl_params.len == concrete_params.len) {
-				decl_params
-			} else {
-				concrete_params
-			}
+			ret_type := g.interface_dispatch_return_type(decl_key, sig_key)
+			sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
 			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${cn}* i')
 			for pi := 1; pi < sig_params.len; pi++ {
 				pt := sig_params[pi]
@@ -1443,26 +1464,9 @@ fn (mut g FlatGen) interface_dispatch_signature(iface_name string, cn string, me
 			break
 		}
 	}
-	ret_type := g.tc.fn_ret_types[decl_key] or {
-		if sig_key.len > 0 {
-			g.tc.fn_ret_types[sig_key] or { types.Type(types.void_) }
-		} else {
-			types.Type(types.void_)
-		}
-	}
+	ret_type := g.interface_dispatch_return_type(decl_key, sig_key)
 	ret_ct := g.fn_return_type_name(ret_type)
-	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
-	concrete_sig_params := if sig_key.len > 0 {
-		g.tc.fn_param_types[sig_key] or { []types.Type{} }
-	} else {
-		[]types.Type{}
-	}
-	sig_params := if decl_params.len > 0
-		&& (concrete_sig_params.len == 0 || decl_params.len == concrete_sig_params.len) {
-		decl_params.clone()
-	} else {
-		concrete_sig_params.clone()
-	}
+	sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
 	mut sig := '${ret_ct} ${cn}__${method}(${cn}* i'
 	for pi := 1; pi < sig_params.len; pi++ {
 		pt := sig_params[pi]
@@ -1553,29 +1557,12 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			break
 		}
 	}
-	ret_type := g.tc.fn_ret_types[decl_key] or {
-		if sig_key.len > 0 {
-			g.tc.fn_ret_types[sig_key] or { types.Type(types.void_) }
-		} else {
-			types.Type(types.void_)
-		}
-	}
+	ret_type := g.interface_dispatch_return_type(decl_key, sig_key)
 	// Use the ABI return type, not the bare value type: a fixed-array return is its `_v_ret_*`
 	// wrapper struct (a C function cannot return an array by value), matching what the concrete
 	// implementer's method returns and what the call site unwraps.
 	ret_ct := g.fn_return_type_name(ret_type)
-	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
-	concrete_sig_params := if sig_key.len > 0 {
-		g.tc.fn_param_types[sig_key] or { []types.Type{} }
-	} else {
-		[]types.Type{}
-	}
-	mut sig_params := if decl_params.len > 0
-		&& (concrete_sig_params.len == 0 || decl_params.len == concrete_sig_params.len) {
-		decl_params.clone()
-	} else {
-		concrete_sig_params.clone()
-	}
+	mut sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
 	mut arg_names := []string{}
 	g.write('${ret_ct} ${cn}__${method}(${cn}* i')
 	for pi := 1; pi < sig_params.len; pi++ {

@@ -353,7 +353,19 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 				1), body_ids)
 		}
 	}
-	iter_type := t.normalize_type_alias(t.detect_for_in_type(node))
+	detected_iter_type := t.detect_for_in_type(node)
+	mut iter_type := t.normalize_type_alias(detected_iter_type)
+	if !isnil(t.tc) {
+		clean_detected := detected_iter_type.trim_left('&')
+		generic_base, _, is_generic := generic_app_parts(clean_detected)
+		is_generic_interface := is_generic && (generic_base in t.tc.interface_names
+			|| t.tc.qualify_name(generic_base) in t.tc.interface_names)
+		has_alias_next := '${clean_detected}.next' in t.tc.fn_ret_types
+			|| '${t.tc.qualify_name(clean_detected)}.next' in t.tc.fn_ret_types
+		if is_generic_interface || has_alias_next {
+			iter_type = detected_iter_type
+		}
+	}
 	if t.cur_fn_is_generic
 		&& (iter_type.len == 0 || for_iter_type_has_generic_placeholder(iter_type)) {
 		return t.rebuild_for_in_stmt(id, node)
@@ -748,11 +760,14 @@ fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
 	if isnil(t.tc) || clean.len == 0 {
 		return none
 	}
-	iter_type_value := t.tc.parse_type(clean)
-	info := t.tc.iterator_for_in_next_call_info(iter_type_value) or { return none }
+	info := t.tc.iterator_for_in_next_call_info_text(clean) or { return none }
 	elem_type := t.iterator_for_in_elem_type_from_next_return(info.return_type) or { return none }
 	mut next_method := info.name
-	if !for_iter_type_has_generic_placeholder(clean) && info.name.contains('.') {
+	generic_base, _, is_generic := generic_app_parts(clean)
+	is_generic_interface := is_generic && (generic_base in t.tc.interface_names
+		|| t.tc.qualify_name(generic_base) in t.tc.interface_names)
+	if !is_generic_interface && !for_iter_type_has_generic_placeholder(clean)
+		&& info.name.contains('.') {
 		next_method = '${clean}.${info.name.all_after_last('.')}'
 	}
 	return IteratorForInInfo{
@@ -1100,6 +1115,10 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		}
 		iter_node := t.a.nodes[int(iter_id)]
 		if iter_node.kind == .ident && iter_node.value.len > 0 {
+			raw_local_type := t.raw_var_type(iter_node.value)
+			if raw_local_type.len > 0 && t.iterator_for_in_info(raw_local_type) != none {
+				return raw_local_type
+			}
 			mut local_type := t.normalize_type_alias(t.var_type(iter_node.value))
 			// A `mut` parameter is stored as a pointer by the C ABI, but iterating it
 			// without `mut value` still binds map values by value. Preserve real source

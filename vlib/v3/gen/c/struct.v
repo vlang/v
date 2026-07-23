@@ -110,6 +110,13 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	if g.gen_pointer_value_struct_field(value_id, expected) {
 		return
 	}
+	// A `mut opt ?T` parameter is stored as `Optional_T*` in C. Struct fields
+	// hold the option value itself, so read through that ABI pointer before the
+	// generic optional conversion path treats it as an already-materialized
+	// option.
+	if g.gen_current_mut_param_value_read(value_id, cgen_unalias_type(expected)) {
+		return
+	}
 	if g.gen_optional_arg(value_id, expected) {
 		return
 	}
@@ -3803,6 +3810,21 @@ fn (g &FlatGen) struct_fields_for_type(type_name string) ?[]types.StructField {
 
 fn (g &FlatGen) embedded_field_type_name(field types.StructField) string {
 	clean_type := types.unwrap_pointer(field.typ)
+	// An embedded callback alias is stored semantically as its underlying FnType,
+	// whose generated name no longer matches the source field name. Recover the
+	// alias name so promoted methods on the alias receive the embedded callback,
+	// rather than the outer struct.
+	if clean_type is types.FnType {
+		for candidate in [field.name, g.tc.qualify_name(field.name)] {
+			if candidate !in g.tc.type_aliases {
+				continue
+			}
+			alias_type := g.tc.parse_type(candidate)
+			if alias_type is types.Alias && alias_type.base_type is types.FnType {
+				return candidate
+			}
+		}
+	}
 	field_type_name := clean_type.name()
 	if field_type_name.len == 0 {
 		return ''
@@ -3898,7 +3920,11 @@ fn (g &FlatGen) embedded_field_for_embed_key(type_name string, key string) ?type
 		if field.kind != .field_decl || field.value.len == 0 || field.value != field.typ {
 			continue
 		}
-		short := if field.value.contains('.') { field.value.all_after_last('.') } else { field.value }
+		short := if field.value.contains('.') {
+			field.value.all_after_last('.')
+		} else {
+			field.value
+		}
 		key_short := if key.contains('.') { key.all_after_last('.') } else { key }
 		if field.value == key || short == key_short {
 			return types.StructField{
@@ -3970,8 +3996,7 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 		// A generic embed (`veb.Middleware[Context]`) is accessed by its base name
 		// (`app.Middleware`), so compare against the generic base too.
 		short_base := types.generic_base_name(short_type)
-		if field_name == embedded_type_name || field_name == short_type
-			|| field_name == short_base
+		if field_name == embedded_type_name || field_name == short_type || field_name == short_base
 			|| g.cname(field_name) == g.cname(embedded_type_name) {
 			return field
 		}

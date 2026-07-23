@@ -244,6 +244,7 @@ mut:
 	cur_fn_ret                   types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional       bool
 	cur_fn_ret_base              types.Type = types.Type(types.void_)
+	defer_return_tmp_var         string
 	active_locks                 []ActiveLock
 	unsafe_depth                 int
 	loop_depth                   int
@@ -5854,7 +5855,11 @@ fn c_include_arg_for_target(raw string, vroot string, source_file string, target
 
 fn c_flag_args(raw string, vroot string, source_file string, target pref.Target) []string {
 	target_arg := c_directive_arg_for_target(raw.trim_space(), target) or { return []string{} }
-	clean := c_expand_existing_path_macros(target_arg, vroot, source_file) or { return []string{} }
+	defaults_expanded := c_expand_default_define_macros(target_arg) or { return []string{} }
+	without_comment := c_flag_strip_hash_comment(defaults_expanded)
+	clean := c_expand_existing_path_macros(without_comment, vroot, source_file) or {
+		return []string{}
+	}
 	args := cmdexec.split_args(clean) or { return []string{} }
 	if args.len == 0 {
 		return []string{}
@@ -5876,6 +5881,106 @@ fn c_flag_args(raw string, vroot string, source_file string, target pref.Target)
 		resolve_next_path = c_flag_takes_path_operand(arg)
 	}
 	return resolved
+}
+
+// c_expand_default_define_macros resolves the fallback arm of `$d(name, fallback)`
+// inside a C flag. Without this step, spaces inside the macro become bogus
+// linker input files when the expanded flag is split into arguments.
+fn c_expand_default_define_macros(raw string) ?string {
+	mut result := raw
+	for {
+		idx := result.index(r'$d(') or { return result }
+		open_idx := idx + 2
+		close_idx := c_flag_macro_close(result, open_idx)
+		if close_idx < 0 {
+			return none
+		}
+		inner := result[open_idx + 1..close_idx]
+		comma_idx := c_flag_top_level_comma(inner)
+		if comma_idx < 0 {
+			return none
+		}
+		mut fallback := inner[comma_idx + 1..].trim_space()
+		if fallback.len >= 2 && fallback[0] in [`'`, `"`]
+			&& fallback[fallback.len - 1] == fallback[0] {
+			fallback = fallback[1..fallback.len - 1]
+		}
+		result = result[..idx] + fallback + result[close_idx + 1..]
+	}
+	return result
+}
+
+fn c_flag_macro_close(text string, open_idx int) int {
+	mut quote := u8(0)
+	mut depth := 1
+	for i := open_idx + 1; i < text.len; i++ {
+		ch := text[i]
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+			continue
+		}
+		if quote != 0 {
+			continue
+		}
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+fn c_flag_top_level_comma(text string) int {
+	mut quote := u8(0)
+	mut depth := 0
+	for i, ch in text {
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+			continue
+		}
+		if quote != 0 {
+			continue
+		}
+		if ch == `(` {
+			depth++
+		} else if ch == `)` && depth > 0 {
+			depth--
+		} else if ch == `,` && depth == 0 {
+			return i
+		}
+	}
+	return -1
+}
+
+fn c_flag_strip_hash_comment(raw string) string {
+	mut quote := u8(0)
+	for i := 0; i + 1 < raw.len; i++ {
+		ch := raw[i]
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+			continue
+		}
+		if quote == 0 && ch == `#` && raw[i + 1] == `#` {
+			return raw[..i].trim_space()
+		}
+	}
+	return raw.trim_space()
 }
 
 fn c_expand_existing_path_macros(raw string, vroot string, source_file string) ?string {
@@ -6869,8 +6974,11 @@ fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected typ
 	}
 	param_type := g.current_param_type(node.value) or { return false }
 	if param_type is types.Pointer {
-		if !g.type_names_match(select_receive_unalias_type(param_type.base_type),
-			select_receive_unalias_type(expected)) {
+		param_base := select_receive_unalias_type(param_type.base_type)
+		expected_base := select_receive_unalias_type(expected)
+		if !g.type_names_match(param_base, expected_base)
+			&& !mut_optional_param_value_types_match(param_base, expected_base)
+			&& g.value_c_type(param_base) != g.value_c_type(expected_base) {
 			return false
 		}
 	} else {
@@ -6879,6 +6987,23 @@ fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected typ
 	g.write('*')
 	g.gen_expr(id)
 	return true
+}
+
+fn mut_optional_param_value_types_match(param_type types.Type, expected types.Type) bool {
+	param_payload := if param_type is types.OptionType {
+		param_type.base_type
+	} else {
+		return false
+	}
+	expected_payload := if expected is types.OptionType {
+		expected.base_type
+	} else {
+		return false
+	}
+	if expected_payload is types.Pointer {
+		return select_receive_unalias_type(param_payload).name() == select_receive_unalias_type(expected_payload.base_type).name()
+	}
+	return false
 }
 
 // gen_expr_with_expected_type emits expr with expected type output for c.
@@ -9650,6 +9775,20 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.ident {
+			if node.value.starts_with('__v3_defer_result') {
+				has_index := node.value.starts_with('__v3_defer_result:')
+				if g.defer_return_tmp_var.len > 0 {
+					g.write(g.defer_return_tmp_var)
+				} else if has_index {
+					g.write('((${g.value_c_type(g.cur_fn_ret)}){0})')
+				} else {
+					g.write('((${g.value_c_type(g.cur_fn_ret)}){0})')
+				}
+				if has_index {
+					g.write('.arg${node.value.all_after(':')}')
+				}
+				return
+			}
 			if c_fn_name := g.test_user_main_fn_value_c_name(id, node) {
 				g.write(c_fn_name)
 				return
@@ -9831,6 +9970,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if g.gen_map_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
+			if g.gen_thread_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -11610,6 +11753,23 @@ fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId,
 	return true
 }
 
+fn (mut g FlatGen) gen_thread_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if node.op !in [.eq, .ne] || lhs_type is types.Pointer || rhs_type is types.Pointer
+		|| g.tc.c_type(lhs_type) != '__v_thread' || g.tc.c_type(rhs_type) != '__v_thread' {
+		return false
+	}
+	lhs_name := g.tmp_name()
+	rhs_name := g.tmp_name()
+	g.write('({ __v_thread ${lhs_name} = ')
+	g.gen_expr(lhs_id)
+	g.write('; __v_thread ${rhs_name} = ')
+	g.gen_expr(rhs_id)
+	g.write('; memcmp(&${lhs_name}, &${rhs_name}, sizeof(__v_thread)) ')
+	g.write(if node.op == .eq { '==' } else { '!=' })
+	g.write(' 0; })')
+	return true
+}
+
 // gen_map_infix_eq lowers `map == map` / `map != map` to the runtime map
 // equality helper. C cannot compare `struct map` values with `==`, so without
 // this the generated comparison fails to compile. Pointer operands are left
@@ -11803,10 +11963,16 @@ fn (g &FlatGen) expr_can_be_fixed_array_literal(id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) gen_array_value_arg(id flat.NodeId, typ types.Type, fallback types.Array) {
-	if typ is types.Pointer {
+	node := g.a.nodes[int(id)]
+	semantic_array_in_pointer_storage := typ is types.Array && node.kind == .ident
+		&& g.local_storage_is_pointer(node.value)
+	semantic_array_deref_in_pointer_storage := typ is types.Array && node.kind == .prefix
+		&& node.op == .mul && node.children_count > 0 && g.a.child_node(&node, 0).kind == .ident
+		&& g.local_storage_is_pointer(g.a.child_node(&node, 0).value)
+	if typ is types.Pointer || semantic_array_in_pointer_storage
+		|| semantic_array_deref_in_pointer_storage {
 		g.write('*')
 	}
-	node := g.a.nodes[int(id)]
 	if node.kind == .array_literal {
 		g.gen_expr_with_expected_type(id, types.Type(fallback))
 	} else {
@@ -12357,7 +12523,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	// deliberately oversized (and over-aligned) to safely back the real objects
 	// on mainstream targets; a platform whose pthread objects exceed these sizes
 	// must be built with its real <pthread.h> in scope.
-	g.writeln('#if !defined(_BITS_PTHREADTYPES_COMMON_H) && !defined(_PTHREAD_H) && !defined(_PTHREADTYPES_H_) && !defined(_PTHREADTYPES_H) && !defined(__pthread_t_defined)')
+	g.writeln('#if !defined(_BITS_PTHREADTYPES_COMMON_H) && !defined(_PTHREAD_H) && !defined(_PTHREADTYPES_H_) && !defined(_PTHREADTYPES_H) && !defined(__pthread_t_defined) && !defined(_SYS__PTHREAD_TYPES_H_) && !defined(_PTHREAD_T)')
 	g.writeln('typedef void* pthread_t;')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_attr_t;')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_mutex_t;')
@@ -14826,6 +14992,7 @@ fn fixed_array_ret_wrapper_name(bare_c_name string) string {
 fn fixed_array_elem_is_early_complete(elem types.Type) bool {
 	return elem is types.Primitive || elem is types.Pointer || elem is types.Enum
 		|| elem is types.FnType
+		|| (elem is types.Struct && (elem.name == 'thread' || elem.name.ends_with('.thread')))
 }
 
 // fn_return_type_name is the C type to write for a function/fn-ptr return type,
@@ -14921,6 +15088,9 @@ fn (g &FlatGen) fixed_array_type_defined(typ0 types.Type, emitted_structs map[st
 		return g.fixed_array_type_defined(typ.base_type, emitted_structs)
 	}
 	if typ is types.Struct {
+		if typ.name == 'thread' || typ.name.ends_with('.thread') {
+			return true
+		}
 		return g.tc.c_type(typ) in emitted_structs
 	}
 	if typ is types.Interface || typ is types.SumType {
@@ -15020,6 +15190,9 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, source_module str
 
 fn (g &FlatGen) fixed_array_type_has_unknown_struct(typ types.Type) bool {
 	if typ is types.Struct {
+		if typ.name == 'thread' || typ.name.ends_with('.thread') {
+			return false
+		}
 		return typ.name !in g.tc.structs
 	}
 	if typ is types.ArrayFixed {

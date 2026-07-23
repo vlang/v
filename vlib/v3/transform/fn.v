@@ -536,10 +536,7 @@ fn (t &Transformer) resolve_embedded_receiver_method(base_type string, method st
 		return none
 	}
 	mut lookup_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
-	// Keep an explicit `main.` lock intact: lookup_struct_info resolves it to the
-	// program type by its exact table key, whereas the short-name fallback below
-	// would rebase it into the active (callee) module and lose the embedding chain.
-	if lookup_type !in t.structs && lookup_type.contains('.') && !lookup_type.starts_with('main.') {
+	if lookup_type !in t.structs && lookup_type.contains('.') {
 		short_type := lookup_type.all_after_last('.')
 		if short_type in t.structs {
 			lookup_type = short_type
@@ -3071,9 +3068,17 @@ fn (mut t Transformer) append_missing_params_struct_args(mut args []flat.NodeId,
 	}
 	for param_idx < params.len {
 		param_type := params[param_idx].name()
-		struct_type := t.params_struct_type_name(param_type) or { break }
-		args << t.zero_value_for_type(struct_type)
-		t.mark_params_struct_default_calls(struct_type)
+		if struct_type := t.params_struct_type_name(param_type) {
+			args << t.zero_value_for_type(struct_type)
+			t.mark_params_struct_default_calls(struct_type)
+		} else if params[param_idx] is types.OptionType {
+			args << t.a.add_node(flat.Node{
+				kind: .none_expr
+				typ:  param_type
+			})
+		} else {
+			break
+		}
 		param_idx++
 	}
 }
@@ -3294,7 +3299,13 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 	}
 	if t.in_const_init {
 		mut values := []flat.NodeId{cap: int(node.children_count) - first_arg}
-		for i in first_arg .. node.children_count {
+		mut i := first_arg
+		for i < node.children_count {
+			if named_arg := t.transform_variadic_struct_fields(node, i, elem_type) {
+				values << named_arg
+				i = t.next_non_field_init_arg(node, i)
+				continue
+			}
 			arg_id := t.a.child(&node, i)
 			arg := t.a.nodes[int(arg_id)]
 			if arg.kind == .enum_val && expected_enum in t.enum_types {
@@ -3304,6 +3315,7 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 			} else {
 				values << t.transform_expr(arg_id)
 			}
+			i++
 		}
 		return t.make_array_literal_typed(values, array_type)
 	}
@@ -3311,8 +3323,15 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum,
 		t.make_int_literal(0), t.make_int_literal(int(node.children_count) - first_arg)),
 		array_type)
-	for i in first_arg .. node.children_count {
+	mut i := first_arg
+	for i < node.children_count {
+		if named_arg := t.transform_variadic_struct_fields(node, i, elem_type) {
+			t.append_variadic_value_push(tmp_name, named_arg, flat.empty_node, elem_type)
+			i = t.next_non_field_init_arg(node, i)
+			continue
+		}
 		t.append_variadic_arg_push(tmp_name, t.a.child(&node, i), elem_type)
+		i++
 	}
 	t.set_var_type(tmp_name, array_type)
 	return t.make_ident(tmp_name)
@@ -4233,13 +4252,11 @@ fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface
 
 fn (mut t Transformer) lower_ref_interface_str(expr flat.NodeId, iface_name string) flat.NodeId {
 	ptr_type := '&${iface_name}'
-	display_name := iface_name.all_after_last('.')
 	ptr_name := t.new_temp('iface_ref_str_ptr')
 	res_name := t.new_temp('iface_ref_str_text')
 	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, ptr_type)
 	t.set_var_type(ptr_name, ptr_type)
-	t.pending_stmts << t.make_decl_assign_typed(res_name,
-		t.make_string_literal('&${display_name}(0x0)'), 'string')
+	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal('&nil'), 'string')
 	saved := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	value := t.make_prefix(.mul, t.make_ident(ptr_name))
@@ -4286,6 +4303,16 @@ fn (t &Transformer) aggregate_str_method_name(aggregate string) ?string {
 	if method := t.resolve_receiver_method_for_type(aggregate, 'str') {
 		if t.receiver_method_matches_type_name(method, aggregate) {
 			return method
+		}
+	}
+	// Imported declarations have a short convenience entry in the transformer's
+	// struct table. When that short spelling is used through a selective import,
+	// resolve its qualified owner before falling back to generated auto-str.
+	if !aggregate.contains('.') && !t.bare_struct_name_is_local_to_current_module(aggregate) {
+		if qualified := t.qualified_types[aggregate] {
+			if method := t.resolve_receiver_method_for_type(qualified, 'str') {
+				return method
+			}
 		}
 	}
 	c_name_fn := '${c_name(aggregate)}__str'
@@ -8494,11 +8521,8 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut param_names := []string{}
 	mut capture_names := []string{}
 	mut capture_types := map[string]string{}
-	mut capture_global_types := map[string]string{}
-	mut capture_globals := map[string]string{}
-	mut capture_mut := map[string]bool{}
+	mut context_field_types := map[string]string{}
 	mut capture_by_ref := map[string]bool{}
-	mut capture_outer_ref := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -8550,27 +8574,36 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				is_mut_capture := child.is_mut
 				is_ref_capture := is_mut_capture && !capture_type.starts_with('&')
 					&& !t.is_fn_pointer_type_name(capture_type)
-				is_outer_ref_capture := is_ref_capture && t.is_fixed_array_type(capture_type)
 				capture_types[child.value] = if is_ref_capture {
 					'&${capture_type}'
 				} else {
 					capture_type
 				}
-				capture_global_types[child.value] = if is_outer_ref_capture {
+				// A mutable value capture belongs to the closure instance. Store the
+				// value itself in the heap context and expose a pointer alias only
+				// inside the lifted body; storing `&outer_local` would dangle when a
+				// closure is returned and would make separate instances interfere.
+				context_field_types[child.value] = if is_ref_capture
+					&& t.is_fixed_array_type(capture_type) {
 					'&${capture_type}'
 				} else {
 					capture_type
 				}
-				capture_globals[child.value] = '${name}_${child.value}'
-				capture_mut[child.value] = is_mut_capture
 				capture_by_ref[child.value] = is_ref_capture
-				capture_outer_ref[child.value] = is_outer_ref_capture
 			}
 		} else {
 			body_ids << child_id
 		}
 	}
 	ret_type := if node.typ.len > 0 { node.typ } else { 'void' }
+	file_module := t.current_source_module()
+	generated_module := if file_module.len > 0 { file_module } else { 'main' }
+	context_type := '${name}_Ctx'
+	context_local := '${name}_ctx'
+	if capture_names.len > 0 {
+		t.add_fn_literal_capture_context(context_type, generated_module, capture_names,
+			context_field_types)
+	}
 	saved_fn_name := t.cur_fn_name
 	saved_ret_type := t.cur_fn_ret_type
 	saved_vars := t.var_types.clone()
@@ -8588,25 +8621,22 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			}
 		}
 	}
-	mut lifted_body := []flat.NodeId{cap: capture_names.len + body_ids.len}
+	mut lifted_body := []flat.NodeId{cap: capture_names.len + body_ids.len + 1}
 	mut saved_capture_pointer_flags := map[string]bool{}
 	mut saved_capture_pointer_rvalue_flags := map[string]bool{}
+	if capture_names.len > 0 {
+		current_data := t.make_call_typed('__v3_closure_current_data', []flat.NodeId{}, 'voidptr')
+		context_ptr := t.make_cast('&${context_type}', current_data, '&${context_type}')
+		context_decl := t.make_decl_assign_typed(context_local, context_ptr, '&${context_type}')
+		t.set_var_type(context_local, '&${context_type}')
+		lifted_body << context_decl
+	}
 	for capture_name in capture_names {
 		if capture_name in param_names {
 			continue
 		}
 		capture_type := capture_types[capture_name] or { continue }
-		capture_global_type := capture_global_types[capture_name] or { capture_type }
-		capture_global := capture_globals[capture_name] or { continue }
-		t.add_fn_literal_capture_global(capture_global, capture_global_type)
 		is_ref_capture := capture_by_ref[capture_name] or { false }
-		is_outer_ref_capture := capture_outer_ref[capture_name] or { false }
-		capture_rhs := if is_ref_capture && is_outer_ref_capture {
-			t.make_prefix(.amp, t.make_ident(capture_name))
-		} else {
-			t.make_ident(capture_name)
-		}
-		t.pending_stmts << t.make_assign(t.make_ident(capture_global), capture_rhs)
 		t.set_var_type(capture_name, capture_type)
 		// Only captures that were rewritten into a synthetic `&T` pointer-value local
 		// (`capture_by_ref`) need pointer-value lvalue/rvalue lowering. A mut capture
@@ -8624,14 +8654,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			t.pointer_value_lvalues[capture_name] = true
 			t.pointer_value_rvalues[capture_name] = true
 		}
-		capture_decl_rhs := if is_ref_capture {
-			if is_outer_ref_capture {
-				t.make_ident(capture_global)
-			} else {
-				t.make_prefix(.amp, t.make_ident(capture_global))
-			}
-		} else {
-			t.make_ident(capture_global)
+		context_ident := t.make_ident(context_local)
+		t.set_node_typ(int(context_ident), '&${context_type}')
+		context_field_type := context_field_types[capture_name] or { capture_type }
+		mut capture_decl_rhs := t.make_selector(context_ident, capture_name, context_field_type)
+		if is_ref_capture && !context_field_type.starts_with('&') {
+			capture_decl_rhs = t.make_prefix(.amp, capture_decl_rhs)
+			t.set_node_typ(int(capture_decl_rhs), capture_type)
 		}
 		capture_decl := t.make_decl_assign_typed(capture_name, capture_decl_rhs, capture_type)
 		if capture_type.starts_with('shared ') {
@@ -8675,8 +8704,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	// Generated declarations are appended after all parsed files. Preserve both
 	// source markers, otherwise C generation can associate a lifted literal with
 	// the preceding cached header and omit its program-owned body.
-	file_module := t.current_source_module()
-	generated_module := if file_module.len > 0 { file_module } else { 'main' }
 	t.add_generated_fn_decl_context(generated_module)
 	start := t.a.children.len
 	for child_id in all_ids {
@@ -8719,7 +8746,39 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	if fn_value_type.len > 0 {
 		t.set_node_typ(int(ident), fn_value_type)
 	}
-	return ident
+	if capture_names.len == 0 {
+		return ident
+	}
+	mut context_fields := []flat.NodeId{cap: capture_names.len}
+	for capture_name in capture_names {
+		context_field_type := context_field_types[capture_name] or { continue }
+		mut value := t.make_ident(capture_name)
+		if capture_by_ref[capture_name] or { false } && context_field_type.starts_with('&') {
+			value = t.make_prefix(.amp, value)
+			t.set_node_typ(int(value), context_field_type)
+		}
+		context_fields << t.make_named_field_init(capture_name, value, context_field_type)
+	}
+	context_start := t.a.children.len
+	for field in context_fields {
+		t.a.children << field
+	}
+	context_init := t.a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          context_type
+		typ:            context_type
+		children_start: context_start
+		children_count: flat.child_count(context_fields.len)
+	})
+	context_ptr := t.make_prefix(.amp, context_init)
+	t.set_node_typ(int(context_ptr), '&${context_type}')
+	create := t.make_call_typed('closure.closure_create_with_data', [
+		t.make_cast('voidptr', ident, 'voidptr'),
+		t.make_cast('voidptr', context_ptr, 'voidptr'),
+		t.make_bool_literal(true),
+	], 'voidptr')
+	t.mark_fn_used_name('closure.closure_create_with_data')
+	return t.make_cast(fn_value_type, create, fn_value_type)
 }
 
 fn fn_literal_value_type_text(params []types.Type, ret_type string) string {
@@ -8764,31 +8823,69 @@ fn (t &Transformer) fn_literal_name_exists(name string) bool {
 	return false
 }
 
-fn (mut t Transformer) add_fn_literal_capture_global(name string, typ string) {
-	if typ.len == 0 {
-		return
-	}
-	if t.cur_module.len > 0 {
-		t.a.add_node(flat.Node{
-			kind:  .module_decl
-			value: t.cur_module
+fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name string, capture_names []string, capture_types map[string]string) {
+	t.add_generated_fn_decl_context(module_name)
+	mut field_ids := []flat.NodeId{cap: capture_names.len}
+	mut semantic_fields := []types.StructField{cap: capture_names.len}
+	mut transform_fields := []FieldInfo{cap: capture_names.len}
+	for capture_name in capture_names {
+		capture_type := capture_types[capture_name] or { continue }
+		field_ids << t.a.add_node(flat.Node{
+			kind:  .field_decl
+			value: capture_name
+			typ:   capture_type
 		})
+		parsed_type := if isnil(t.tc) {
+			types.Type(types.Unknown{
+				reason: 'capture context without type checker'
+			})
+		} else {
+			t.tc.parse_type(capture_type)
+		}
+		semantic_fields << types.StructField{
+			name: capture_name
+			typ:  parsed_type
+		}
+		transform_fields << FieldInfo{
+			name:         capture_name
+			typ:          capture_type
+			raw_typ:      capture_type
+			default_expr: flat.empty_node
+		}
 	}
-	field := t.a.add_node(flat.Node{
-		kind:  .field_decl
-		value: name
-		typ:   typ
-	})
 	start := t.a.children.len
-	t.a.children << field
-	t.a.add_node(flat.Node{
-		kind:           .global_decl
+	for field_id in field_ids {
+		t.a.children << field_id
+	}
+	struct_id := t.a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          name
 		children_start: start
-		children_count: 1
+		children_count: flat.child_count(field_ids.len)
 	})
-	t.globals[name] = typ
-	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		t.globals['${t.cur_module}.${name}'] = typ
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(struct_id, module_name, t.cur_file)
+	info := StructInfo{
+		name:   name
+		module: module_name
+		fields: transform_fields
+	}
+	t.structs[name] = info
+	if !isnil(t.tc) {
+		t.tc.structs[name] = semantic_fields
+		t.tc.struct_modules[name] = module_name
+		t.tc.struct_files[name] = t.cur_file
+		t.tc.register_short_type_name(name)
+	}
+	if module_name.len > 0 && module_name !in ['main', 'builtin'] {
+		qualified := '${module_name}.${name}'
+		t.structs[qualified] = info
+		if !isnil(t.tc) {
+			t.tc.structs[qualified] = semantic_fields
+			t.tc.struct_modules[qualified] = module_name
+			t.tc.struct_files[qualified] = t.cur_file
+			t.tc.register_short_type_name(qualified)
+		}
 	}
 }
 
@@ -9647,6 +9744,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
+	}
+	if t.active_specialization_args.len > 0 {
+		specialized := t.subst_type(base_type, t.active_specialization_args)
+		if specialized.len > 0 && !t.generic_arg_is_unresolved(specialized) {
+			base_type = specialized
+		}
 	}
 	base_is_pointer := base_type.starts_with('&')
 	if base_type.starts_with('&') {
@@ -10751,6 +10854,12 @@ fn (mut t Transformer) embedded_receiver_base(base_id flat.NodeId, method_name s
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
 	}
+	if t.active_specialization_args.len > 0 {
+		specialized := t.subst_type(base_type, t.active_specialization_args)
+		if specialized.len > 0 && !t.generic_arg_is_unresolved(specialized) {
+			base_type = specialized
+		}
+	}
 	mut is_ptr := false
 	if base_type.starts_with('&') {
 		is_ptr = true
@@ -10808,7 +10917,9 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 	fields := t.embedded_fields[lookup_type] or { return none }
 	clean_receiver := t.normalize_type_alias(receiver_type)
 	for field in fields {
-		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		// The semantic type of an embedded alias can be its underlying function
+		// type. Keep the source alias spelling for promoted receiver matching.
+		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
 		raw_field := field_type.trim_left('&')
 		clean_field := t.normalize_type_alias(raw_field)
 		short_field := if clean_field.contains('.') {

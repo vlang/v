@@ -545,6 +545,13 @@ fn (mut g FlatGen) gen_return_cleanup() {
 	g.gen_current_return_ownership_drops()
 }
 
+fn (mut g FlatGen) gen_return_cleanup_with_result(tmp string) {
+	old_tmp := g.defer_return_tmp_var
+	g.defer_return_tmp_var = tmp
+	g.gen_return_cleanup()
+	g.defer_return_tmp_var = old_tmp
+}
+
 fn (mut g FlatGen) gen_current_return_ownership_drops() {
 	g.gen_ownership_drops(g.cur_return_drops)
 }
@@ -2567,7 +2574,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		tmp := g.tmp_name()
 		g.gen_return_expr_loop_control_copybacks()
 		g.gen_assoc_return_tmp(ret_node, tmp)
-		g.gen_return_cleanup()
+		g.gen_return_cleanup_with_result(tmp)
 		g.writeln('return ${tmp};')
 		return
 	}
@@ -2578,7 +2585,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		g.write('${wrapper} ${tmp} = ')
 		g.gen_fixed_array_return_wrap(ret_fixed, ret_id)
 		g.writeln(';')
-		g.gen_return_cleanup()
+		g.gen_return_cleanup_with_result(tmp)
 		g.writeln('return ${tmp};')
 		return
 	}
@@ -2588,7 +2595,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		if g.multi_return_types_have_fixed_array(ret_types) {
 			g.gen_return_expr_loop_control_copybacks()
 			tmp := g.gen_multi_return_temp(ct, ret_types, node)
-			g.gen_return_cleanup()
+			g.gen_return_cleanup_with_result(tmp)
 			g.writeln('return ${tmp};')
 			return
 		}
@@ -2597,7 +2604,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 	tmp := g.tmp_name()
 	g.gen_return_expr_loop_control_copybacks()
 	g.writeln('${ct} ${tmp} = ${expr};')
-	g.gen_return_cleanup()
+	g.gen_return_cleanup_with_result(tmp)
 	g.writeln('return ${tmp};')
 }
 
@@ -4549,6 +4556,18 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					base_type: g.usable_expr_type(g.a.child(&rhs, 0))
 				})
 			}
+			if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
+				child_id := g.a.child(&rhs, 0)
+				child := g.a.node(child_id)
+				if child.kind == .struct_init {
+					child_type := g.usable_expr_type(child_id)
+					if child_type !is types.Unknown && child_type !is types.Void {
+						v_type = types.Type(types.Pointer{
+							base_type: types.unwrap_all_pointers(child_type)
+						})
+					}
+				}
+			}
 			if fixed := g.to_fixed_size_call_fixed_type(rhs_id) {
 				v_type = types.Type(fixed)
 			}
@@ -6265,7 +6284,10 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 		g.write('; ${elem_ct} ${value_tmp}; memmove(${value_tmp}, ${src}, sizeof(${value_tmp}))')
 	} else {
 		g.write('; ${elem_ct} ${value_tmp} = ')
-		g.gen_expr_with_expected_type(value_id, channel_type.elem_type)
+		// The `or` applies both to producing the value and to pushing it into the
+		// channel. Unwrap an optional/result source before trying the push; the
+		// same handler is emitted again below for a closed channel.
+		g.gen_or_expr(or_node)
 	}
 	g.write('; if (sync__Channel__try_push_priv(${channel_tmp}, &${value_tmp}, false) == 2) { IError err = sync__Channel__closed_error(${channel_tmp}); (void)err; ')
 	g.push_scope()
