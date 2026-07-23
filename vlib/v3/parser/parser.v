@@ -9379,6 +9379,13 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 				p.declare_local_binding(pnode.value)
 			}
 		}
+		// The explicit `[captures]` are in scope in the closure body just like parameters,
+		// so register them too: a template subexpression that calls a captured function
+		// (e.g. `@{render(row)}` inside `fn [render] (...) {}`) must treat that callee as a
+		// local binding and capture it in the nested template IIFE.
+		for cid in capture_ids {
+			p.declare_local_binding_node(cid)
+		}
 		p.check(.lcbr)
 		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
