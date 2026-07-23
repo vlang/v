@@ -7472,13 +7472,32 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.No
 	return clone_id
 }
 
+fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, target string) flat.NodeId {
+	type_expr := t.a.add_node(flat.Node{
+		kind:  .ident
+		value: target
+	})
+	start := t.a.children.len
+	t.a.children << type_expr
+	marker := t.a.add_node(flat.Node{
+		kind:           .string_literal
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		children_start: start
+		children_count: 1
+	})
+	// Keep the deferred marker pointer-typed when call arguments inspect it before transforming it.
+	return t.make_cast('&${target}', marker, '&${target}')
+}
+
 @[direct_array_access]
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
 	if node.kind == .string_literal && node.children_count == 1
 		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
 		if target := t.generic_comptime_type_expr(t.a.child(&node, 0), args) {
 			return if node.value == '__v3_comptime_new' {
-				t.comptime_new_value(target)
+				t.clone_specialized_comptime_new_marker(node, target)
 			} else {
 				t.zero_value_for_type(target)
 			}

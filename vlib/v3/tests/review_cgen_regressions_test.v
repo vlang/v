@@ -625,3 +625,35 @@ fn main() {
 ')
 	assert out == '0\n0\n0\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
 }
+
+fn test_generic_new_default_initialization_stays_in_expression_scope() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'generic_new_expression_scope', "fn initialized_value() int {
+	println('initialized')
+	return 1
+}
+
+struct NeedsInitialization {
+	value int = initialized_value()
+}
+
+fn maybe_new[T](cond bool) {
+	if cond {
+		_ = \$new(T)
+	}
+}
+
+fn maybe_short_new[T](cond bool) bool {
+	return cond && !isnil(\$new(T))
+}
+
+fn main() {
+	maybe_new[NeedsInitialization](false)
+	println('after false')
+	maybe_new[NeedsInitialization](true)
+	println(maybe_short_new[NeedsInitialization](false))
+	println(maybe_short_new[NeedsInitialization](true))
+}
+")
+	assert out == 'after false\ninitialized\nfalse\ninitialized\ntrue'
+}
