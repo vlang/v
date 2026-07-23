@@ -137,7 +137,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					cur_file
 				}
 			}
-			if g.program_body_only && !g.cache_program_files[item_file]
+			if g.program_body_only && !is_specialization && !g.cache_program_files[item_file]
 				&& item_module !in ['', 'main'] {
 				continue
 			}
@@ -781,6 +781,9 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 	if collision_name := g.operator_overload_collision_c_name(module_name, name) {
 		return collision_name
 	}
+	if enum_method_name := g.enum_method_c_name_in_module(module_name, name) {
+		return enum_method_name
+	}
 	if g.should_rename_user_main_for_tests(module_name, name) {
 		return g.test_user_main_c_name()
 	}
@@ -852,6 +855,12 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 	if collision_name := g.operator_overload_collision_c_name('', name) {
 		return collision_name
 	}
+	if enum_method_name := g.enum_method_c_name_in_module('', name) {
+		return enum_method_name
+	}
+	if enum_method_name := g.enum_method_c_name_in_module(g.tc.cur_module, name) {
+		return enum_method_name
+	}
 	if compat_name := g.libc_compat_call_name(name) {
 		return compat_name
 	}
@@ -897,7 +906,30 @@ fn (g &FlatGen) operator_overload_collision_c_name(module_name string, name stri
 	return '${g.cname(qualified)}__operator'
 }
 
+fn (g &FlatGen) enum_method_c_name_in_module(module_name string, name string) ?string {
+	if !name.contains('.') {
+		return none
+	}
+	qualified := if module_name !in ['', 'main', 'builtin'] && !name.starts_with('${module_name}.') {
+		'${module_name}.${name}'
+	} else {
+		name
+	}
+	receiver := qualified.all_before_last('.')
+	method := qualified.all_after_last('.')
+	if receiver.len == 0 || method.len == 0 {
+		return none
+	}
+	if _ := g.enum_selector_base_name(receiver) {
+		return '${g.cname(receiver)}_${g.cname(method)}'
+	}
+	return none
+}
+
 fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string {
+	if enum_method := g.enum_method_c_name_in_module('', name) {
+		return enum_method
+	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
 		qname := '${g.tc.cur_module}.${name}'
 		qcname := g.qualified_fn_name_in_module_c(g.tc.cur_module, name)
@@ -1156,7 +1188,7 @@ fn (mut g FlatGen) gen_fn(node flat.Node) {
 }
 
 fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_name string) {
-	g.write(g.cname(g.method_call_name_for_call(id, node, method_name)))
+	g.write(g.direct_call_name(g.method_call_name_for_call(id, node, method_name)))
 }
 
 fn (mut g FlatGen) gen_channel_close_call(base_id flat.NodeId, node flat.Node) {
@@ -6515,8 +6547,11 @@ fn (g &FlatGen) call_target_name(id flat.NodeId) string {
 }
 
 fn (g &FlatGen) const_fn_call_target_name(node flat.Node) ?string {
-	key := g.const_key_for_call_target(node) or { return none }
-	expr_id := g.tc.const_exprs[key] or { return none }
+	key := g.const_key_for_call_target(node) or { g.const_ref_name_from_node(node) }
+	if key.len == 0 {
+		return none
+	}
+	expr_id := g.tc.const_exprs[key] or { g.const_vals[key] or { return none } }
 	if int(expr_id) < 0 || int(expr_id) >= g.a.nodes.len {
 		return none
 	}
@@ -6528,28 +6563,29 @@ fn (g &FlatGen) const_fn_call_target_name(node flat.Node) ?string {
 				|| g.cname(target) in g.tc.fn_ret_types || g.cname(target) in g.tc.fn_param_types {
 				return target
 			}
-			typ := if node.kind == .selector {
-				g.tc.selector_const_type(node) or { g.tc.const_types[key] or { return none } }
-			} else {
-				g.tc.const_types[key] or { return none }
-			}
+			typ := g.const_fn_call_type(node, key, expr_id)
 			if typ.name().starts_with('fn ') {
 				return target
 			}
 			return none
 		}
 		else {
-			typ := if node.kind == .selector {
-				g.tc.selector_const_type(node) or { g.tc.const_types[key] or { return none } }
-			} else {
-				g.tc.const_types[key] or { return none }
-			}
+			typ := g.const_fn_call_type(node, key, expr_id)
 			if _ := fn_type_from(typ) {
 				return g.const_ident_c_name(key)
 			}
 			return none
 		}
 	}
+}
+
+fn (g &FlatGen) const_fn_call_type(node flat.Node, key string, expr_id flat.NodeId) types.Type {
+	if node.kind == .selector {
+		if typ := g.tc.selector_const_type(node) {
+			return typ
+		}
+	}
+	return g.tc.const_types[key] or { g.tc.resolve_type(expr_id) }
 }
 
 fn (g &FlatGen) const_key_for_call_target(node flat.Node) ?string {
@@ -9033,6 +9069,13 @@ fn (mut g FlatGen) gen_interface_pointer_arg(arg_id flat.NodeId, expected types.
 			actual = param_type
 		}
 	}
+	actual_unaliased := cgen_unalias_type(actual)
+	if actual_unaliased is types.Nil || (actual_unaliased is types.Pointer
+		&& cgen_unalias_type(actual_unaliased.base_type) is types.Void) {
+		g.write('(${g.tc.c_type(iface_type)}*)')
+		g.gen_expr(arg_id)
+		return true
+	}
 	actual_depth := cgen_type_pointer_depth(actual)
 	expected_depth := cgen_type_pointer_depth(expected)
 	if actual_depth > expected_depth {
@@ -11298,6 +11341,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx], is_c_call) {
 			needs_addr = true
 		}
+		if arg_idx < typed_param_count && g.gen_interface_pointer_arg(arg_id, param_types[arg_idx]) {
+			continue
+		}
 		is_rvalue := arg_node.kind == .call
 			|| (arg_node.kind == .index && arg_node.value == 'range')
 			|| g.arg_is_const_ident(arg_node)
@@ -11997,6 +12043,26 @@ fn (mut g FlatGen) gen_addressed_rvalue_arg(child_id flat.NodeId, pt types.Type)
 fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
 	if expected !is types.Pointer {
 		return false
+	}
+	// A mutable parameter is already the address of its caller-owned storage. In
+	// particular, `mut p &T` is represented as `T**`; forwarding `mut p` to
+	// another such parameter must pass that slot directly, not read `*p` first.
+	if arg_node.is_mut && arg_node.kind == .ident && g.current_param_is_mut(arg_node.value) {
+		g.write(g.cname(arg_node.value))
+		return true
+	}
+	// Transform lowers a forwarded `mut p` argument to the lvalue `*p`. When p
+	// is itself a mutable parameter, its C variable is already the slot expected
+	// by the callee, so emitting the lowered dereference would lose one level.
+	if arg_node.kind == .prefix && arg_node.op == .mul && arg_node.children_count == 1 {
+		child := g.a.child_node(&arg_node, 0)
+		if child.kind == .ident && g.current_param_is_mut(child.value) {
+			param_type := g.current_param_type(child.value) or { types.Type(types.void_) }
+			if g.tc.c_type(param_type) == g.tc.c_type(expected) {
+				g.write(g.cname(child.value))
+				return true
+			}
+		}
 	}
 	expected_base := (expected as types.Pointer).base_type
 

@@ -1134,6 +1134,13 @@ fn (t &Transformer) normalize_or_expr_value_type(typ string) string {
 		}
 		return '(${normalized_items.join(', ')})'
 	}
+	if typ.starts_with('map[') {
+		key_type := t.map_key_type(typ)
+		value_type := t.map_value_type(typ)
+		if key_type.len > 0 && value_type.len > 0 {
+			return 'map[${t.normalize_or_expr_value_type(key_type)}]${t.normalize_or_expr_value_type(value_type)}'
+		}
+	}
 	base, args, is_generic := generic_app_parts(typ)
 	if !is_generic {
 		return t.normalize_type_alias(typ)

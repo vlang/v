@@ -9,7 +9,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-42'
+const cache_format = 'v3-module-cache-45'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -20,6 +20,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
+const source_signature_cache_format = 'v3-source-signature-cache-1'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -32,6 +33,8 @@ pub:
 
 // Entry contains the persistent artifacts for one V module.
 pub struct Entry {
+	source_bodies       bool
+	source_bodies_known bool
 pub:
 	header       string
 	object       string
@@ -206,21 +209,27 @@ fn (m &Manager) incremental_program_entry(source_files []string) IncrementalProg
 // source_signature hashes selected source paths, contents, resolved module roots,
 // build/environment values, and pkg-config probe results in stable order.
 pub fn source_signature(source_files []string) string {
-	return source_signature_with_build_values(source_files, '')
+	return source_signature_details(source_files, '').signature
 }
 
-fn source_signature_with_build_values(source_files []string, build_pseudo_values string) string {
+struct SourceSignatureDetails {
+	signature  string
+	validation []string
+}
+
+fn source_signature_details(source_files []string, build_pseudo_values string) SourceSignatureDetails {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
 	mut env_names := map[string]bool{}
 	mut pkgconfig_names := map[string]bool{}
 	mut uses_build_pseudo := false
+	mut validation := []string{}
 	for file in files {
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
 		hash = hash_bytes(hash, [u8(0)])
-		content := os.read_bytes(file) or { return '' }
+		content := os.read_bytes(file) or { return SourceSignatureDetails{} }
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
@@ -231,11 +240,17 @@ fn source_signature_with_build_values(source_files []string, build_pseudo_values
 		if source.contains('@VMODROOT') || source.contains('@VMOD_FILE')
 			|| source.contains('@VROOT') {
 			root, vmod_file := signature_vmod_root(file)
+			vmod_metadata := if vmod_file.len > 0 {
+				file_metadata_signature(vmod_file)
+			} else {
+				''
+			}
+			validation << 'vmod=${path}\t${root}\t${vmod_file}\t${vmod_metadata}'
 			hash = hash_bytes(hash, [u8(0xfc)])
 			hash = hash_bytes(hash, root.bytes())
 			hash = hash_bytes(hash, [u8(0)])
 			if vmod_file.len > 0 {
-				vmod_content := os.read_bytes(vmod_file) or { return '' }
+				vmod_content := os.read_bytes(vmod_file) or { return SourceSignatureDetails{} }
 				hash = hash_bytes(hash, [u8(1)])
 				hash = hash_bytes(hash, vmod_file.bytes())
 				hash = hash_bytes(hash, [u8(0)])
@@ -253,6 +268,7 @@ fn source_signature_with_build_values(source_files []string, build_pseudo_values
 		}
 	}
 	if uses_build_pseudo {
+		validation << 'build=${hash_text(build_pseudo_values)}'
 		hash = hash_bytes(hash, [u8(0xfb)])
 		hash = hash_bytes(hash, build_pseudo_values.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
@@ -260,27 +276,163 @@ fn source_signature_with_build_values(source_files []string, build_pseudo_values
 	mut names := env_names.keys()
 	names.sort()
 	for name in names {
+		value := os.getenv(name)
+		validation << 'env=${name}\t${hash_text(value)}'
 		hash = hash_bytes(hash, [u8(0xfe)])
 		hash = hash_bytes(hash, name.bytes())
 		hash = hash_bytes(hash, [u8(0)])
-		hash = hash_bytes(hash, os.getenv(name).bytes())
+		hash = hash_bytes(hash, value.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	mut packages := pkgconfig_names.keys()
 	packages.sort()
 	for name in packages {
 		available := os.execute('pkg-config --exists ${name}').exit_code == 0
+		validation << 'pkg=${name}\t${if available { 1 } else { 0 }}'
 		hash = hash_bytes(hash, [u8(0xfd)])
 		hash = hash_bytes(hash, name.bytes())
 		hash = hash_bytes(hash, [u8(0)])
 		hash = hash_bytes(hash, [u8(if available { 1 } else { 0 })])
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
-	return hash.hex()
+	return SourceSignatureDetails{
+		signature:  hash.hex()
+		validation: validation
+	}
 }
 
 fn (m &Manager) source_signature(source_files []string) string {
-	return source_signature_with_build_values(source_files, m.build_pseudo_values)
+	return cached_source_signature_with_build_values(m.dir, 'module', source_files,
+		m.build_pseudo_values)
+}
+
+// cached_source_signature returns a content signature while using precise file
+// metadata to avoid rereading unchanged inputs on subsequent compiler runs.
+pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
+	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '')
+}
+
+fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string) string {
+	mut paths := source_files.map(os.real_path(it))
+	paths.sort()
+	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
+	cache_path := os.join_path(cache_dir, '.source_signature_${cache_key}')
+	metadata := source_files_metadata_signature(paths)
+	if metadata.len > 0 {
+		cached := os.read_file(cache_path) or { '' }
+		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values) {
+			return signature
+		}
+	}
+	details := source_signature_details(paths, build_pseudo_values)
+	if details.signature.len == 0 {
+		return ''
+	}
+	fresh_metadata := source_files_metadata_signature(paths)
+	if content := source_signature_cache_content(metadata, fresh_metadata, details) {
+		os.mkdir_all(cache_dir) or {}
+		if os.is_dir(cache_dir) {
+			write_atomic(cache_path, content) or {}
+		}
+	}
+	return details.signature
+}
+
+fn source_signature_cache_content(metadata string, fresh_metadata string, details SourceSignatureDetails) ?string {
+	if metadata.len == 0 || fresh_metadata != metadata {
+		return none
+	}
+	mut out := strings.new_builder(192 + details.validation.len * 96)
+	out.writeln('format=${source_signature_cache_format}')
+	out.writeln('metadata=${metadata}')
+	for input in details.validation {
+		out.writeln(input)
+	}
+	out.writeln('source=${details.signature}')
+	out.writeln('complete=1')
+	return out.str()
+}
+
+fn source_files_metadata_signature(paths []string) string {
+	mut hash := u64(1469598103934665603)
+	for path in paths {
+		metadata := file_metadata_signature(path)
+		if metadata.len == 0 {
+			return ''
+		}
+		hash = hash_bytes(hash, path.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		hash = hash_bytes(hash, metadata.bytes())
+		hash = hash_bytes(hash, [u8(0xff)])
+	}
+	return hash.hex()
+}
+
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string) ?string {
+	lines := content.split_into_lines()
+	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
+		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
+		return none
+	}
+	mut signature := ''
+	for line in lines[2..lines.len - 1] {
+		if line.starts_with('source=') {
+			if signature.len > 0 {
+				return none
+			}
+			signature = line.all_after('source=')
+			continue
+		}
+		if line.starts_with('build=') {
+			if line != 'build=${hash_text(build_pseudo_values)}' {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('env=') {
+			parts := line['env='.len..].split('\t')
+			if parts.len != 2 || parts[0].len == 0 || hash_text(os.getenv(parts[0])) != parts[1] {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('pkg=') {
+			parts := line['pkg='.len..].split('\t')
+			if parts.len != 2 || parts[0].len == 0 {
+				return none
+			}
+			available := os.execute('pkg-config --exists ${parts[0]}').exit_code == 0
+			if parts[1] != '${if available {
+				1
+			} else {
+				0
+			}}' {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('vmod=') {
+			parts := line['vmod='.len..].split('\t')
+			if parts.len != 4 || parts[0].len == 0 {
+				return none
+			}
+			root, vmod_file := signature_vmod_root(parts[0])
+			vmod_metadata := if vmod_file.len > 0 {
+				file_metadata_signature(vmod_file)
+			} else {
+				''
+			}
+			if root != parts[1] || vmod_file != parts[2] || vmod_metadata != parts[3] {
+				return none
+			}
+			continue
+		}
+		return none
+	}
+	if signature.len == 0 {
+		return none
+	}
+	return signature
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
@@ -491,24 +643,33 @@ fn skip_signature_quoted_text(source string, quote_pos int, is_raw bool) int {
 
 // valid_entry reports whether both interface and object artifacts match their sources.
 pub fn (m &Manager) valid_entry(module_name string, source_files []string) ?Entry {
+	mut dependency_metadata := map[string]string{}
+	return m.valid_entry_with_metadata_cache(module_name, source_files, mut dependency_metadata)
+}
+
+// valid_entry_with_metadata_cache reports whether both interface and object
+// artifacts match their sources, reusing dependency metadata already observed
+// during this compiler run.
+pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_files []string, mut dependency_metadata map[string]string) ?Entry {
 	if !m.enabled || source_files.len == 0 {
 		return none
 	}
 	entry := m.entry(module_name, source_files)
-	if !os.is_file(entry.header) || !os.is_file(entry.header_stamp)
-		|| !os.is_file(entry.object_stamp) {
+	if !os.is_file(entry.header) {
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
 	expected := entry_stamp(m.salt, m.source_signature(source_files))
-	if stamp != expected {
-		return none
-	}
+	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	object_stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(object_stamp, expected) {
+	if !object_stamp_valid_with_metadata_cache(object_stamp, expected, mut dependency_metadata) {
 		return none
 	}
-	return entry
+	return Entry{
+		...entry
+		source_bodies:       source_bodies
+		source_bodies_known: true
+	}
 }
 
 // valid_header reports whether a declaration header matches its module sources.
@@ -517,21 +678,27 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	entry := m.entry(module_name, source_files)
-	if !os.is_file(entry.header) || !os.is_file(entry.header_stamp) {
+	if !os.is_file(entry.header) {
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
-	if stamp != entry_stamp(m.salt, m.source_signature(source_files)) {
-		return none
+	expected := entry_stamp(m.salt, m.source_signature(source_files))
+	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
+	return Entry{
+		...entry
+		source_bodies:       source_bodies
+		source_bodies_known: true
 	}
-	return entry
 }
 
 // header_needs_source reports whether a declaration header has bodies that must
 // remain available to per-program monomorphization.
 pub fn header_needs_source(entry Entry) bool {
-	header := os.read_file(entry.header) or { return true }
-	return header.contains(source_body_marker)
+	if !entry.source_bodies_known {
+		header := os.read_file(entry.header) or { return true }
+		return header.contains(source_body_marker)
+	}
+	return entry.source_bodies
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -557,7 +724,8 @@ pub fn (m &Manager) write_entry(module_name string, source_files []string, heade
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, entry_stamp(m.salt, m.source_signature(source_files)))!
+	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files),
+		header))!
 	return entry
 }
 
@@ -568,7 +736,8 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, entry_stamp(m.salt, m.source_signature(source_files)))!
+	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files),
+		header))!
 	return entry
 }
 
@@ -610,6 +779,57 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 		return none
 	}
 	return entry
+}
+
+// cached_cgen_dependency_inputs restores dependency records whose prefixes are
+// allowed to vary, after validating the program sources, generation signature,
+// and every fixed dependency supplied by the caller.
+pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generation_signature string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	entry := m.cgen_entry(source_files)
+	if !os.is_file(entry.source) || !os.is_file(entry.metadata) || !os.is_file(entry.stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) +
+		'generation=${hash_text(generation_signature)}\n'
+	if !stamp.starts_with(expected_head) {
+		return none
+	}
+	mut restored := map[string]string{}
+	mut fixed_seen := map[string]bool{}
+	for line in stamp[expected_head.len..].split_into_lines() {
+		if !line.starts_with('dependency=') {
+			return none
+		}
+		value := line['dependency='.len..]
+		tab := value.index_u8(`\t`)
+		if tab <= 0 || tab + 1 >= value.len {
+			return none
+		}
+		key := value[..tab]
+		signature := value[tab + 1..]
+		if key in restored || fixed_seen[key] {
+			return none
+		}
+		if expected := fixed_dependencies[key] {
+			if expected != signature {
+				return none
+			}
+			fixed_seen[key] = true
+			continue
+		}
+		if !restored_prefixes.any(key.starts_with(it)) {
+			return none
+		}
+		restored[key] = signature
+	}
+	if fixed_seen.len != fixed_dependencies.len {
+		return none
+	}
+	return restored
 }
 
 // valid_generic_program reports whether cached dependency specializations match
@@ -804,6 +1024,21 @@ fn entry_stamp(salt string, source_hash string) string {
 	return 'format=${cache_format}\nconfig=${hash_text(salt)}\nsource=${source_hash}\n'
 }
 
+fn header_entry_stamp(salt string, source_hash string, header string) string {
+	return entry_stamp(salt, source_hash) +
+		'source_bodies=${int(header.contains(source_body_marker))}\n'
+}
+
+fn header_stamp_source_bodies(stamp string, expected_entry string) ?bool {
+	if stamp == expected_entry + 'source_bodies=0\n' {
+		return false
+	}
+	if stamp == expected_entry + 'source_bodies=1\n' {
+		return true
+	}
+	return none
+}
+
 fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, compile_signature string) string {
 	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
@@ -811,7 +1046,7 @@ fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[str
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}')
+		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
 	}
 	return out.str()
 }
@@ -829,6 +1064,11 @@ fn cgen_entry_stamp(salt string, source_hash string, dependency_inputs map[strin
 }
 
 fn object_stamp_valid(stamp string, expected_entry string) bool {
+	mut dependency_metadata := map[string]string{}
+	return object_stamp_valid_with_metadata_cache(stamp, expected_entry, mut dependency_metadata)
+}
+
+fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, mut dependency_metadata map[string]string) bool {
 	if !stamp.starts_with(expected_entry) {
 		return false
 	}
@@ -847,18 +1087,56 @@ fn object_stamp_valid(stamp string, expected_entry string) bool {
 		if !line.starts_with('dependency=') {
 			return false
 		}
-		value := line['dependency='.len..]
-		tab := value.last_index_u8(`\t`)
-		if tab <= 0 || tab + 1 >= value.len {
-			return false
+		dependency := parse_object_stamp_dependency(line) or { return false }
+		current_metadata := dependency_metadata[dependency.path] or {
+			metadata := file_metadata_signature(dependency.path)
+			dependency_metadata[dependency.path] = metadata
+			metadata
 		}
-		path := value[..tab]
-		expected_signature := value[tab + 1..]
-		if file_signature(path) != expected_signature {
+		if dependency.metadata.len > 0 && current_metadata == dependency.metadata {
+			continue
+		}
+		// Headers produced later in a cold cache build can have no metadata in an
+		// earlier module's stamp. Hash each such dependency only once per compiler
+		// run even when it appears in many transitive object stamps.
+		signature_key := '\x00${dependency.path}'
+		current_signature := dependency_metadata[signature_key] or {
+			signature := file_signature(dependency.path)
+			dependency_metadata[signature_key] = signature
+			signature
+		}
+		if current_signature != dependency.signature {
 			return false
 		}
 	}
 	return has_compile_signature
+}
+
+struct ObjectStampDependency {
+	path      string
+	signature string
+	metadata  string
+}
+
+fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
+	if !line.starts_with('dependency=') {
+		return none
+	}
+	value := line['dependency='.len..]
+	metadata_tab := value.last_index_u8(`\t`)
+	if metadata_tab <= 0 {
+		return none
+	}
+	path_and_signature := value[..metadata_tab]
+	signature_tab := path_and_signature.last_index_u8(`\t`)
+	if signature_tab <= 0 || signature_tab + 1 >= path_and_signature.len {
+		return none
+	}
+	return ObjectStampDependency{
+		path:      path_and_signature[..signature_tab]
+		signature: path_and_signature[signature_tab + 1..]
+		metadata:  value[metadata_tab + 1..]
+	}
 }
 
 fn object_stamp_dependencies_match(stamp string, expected map[string]string) bool {
@@ -867,16 +1145,11 @@ fn object_stamp_dependencies_match(stamp string, expected map[string]string) boo
 		if !line.starts_with('dependency=') {
 			continue
 		}
-		value := line['dependency='.len..]
-		tab := value.last_index_u8(`\t`)
-		if tab <= 0 || tab + 1 >= value.len {
+		dependency := parse_object_stamp_dependency(line) or { return false }
+		if dependency.path in actual {
 			return false
 		}
-		path := value[..tab]
-		if path in actual {
-			return false
-		}
-		actual[path] = value[tab + 1..]
+		actual[dependency.path] = dependency.signature
 	}
 	for path, signature in expected {
 		if path !in actual {
@@ -1392,7 +1665,8 @@ fn c_native_localize_function_definitions(source string) string {
 		if brace_depth == 0 {
 			if pending.len == 0
 				&& (in_block_comment || trimmed.len == 0 || trimmed.starts_with('//')
-				|| trimmed.starts_with('#')) {
+				|| trimmed.starts_with('#')
+				|| trim_leading_c_comments(trimmed).len == 0) {
 				out.writeln(raw_line)
 				in_block_comment = next_comment
 				continue
@@ -3250,7 +3524,13 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 	}
 	node := a.nodes[int(id)]
 	if node.kind == .call && node.children_count > 0 {
-		callee := a.child_node(&node, 0)
+		callee_id := a.child(&node, 0)
+		if name := generic_call_source_name(a, callee_id) {
+			if generic_callees[name] {
+				return true
+			}
+		}
+		callee := a.nodes[int(callee_id)]
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver_type := tc.resolve_type(a.child(callee, 0)).name().trim_left('&?')
 			receiver_base := receiver_type.all_before('[')
@@ -3266,6 +3546,34 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		}
 	}
 	return false
+}
+
+fn generic_call_source_name(a &flat.FlatAst, id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return none
+	}
+	node := a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return none
+			}
+			base := a.child_node(&node, 0)
+			if base.kind == .ident && base.value.len > 0 && node.value.len > 0 {
+				return '${base.value}.${node.value}'
+			}
+		}
+		.index, .paren {
+			if node.children_count > 0 {
+				return generic_call_source_name(a, a.child(&node, 0))
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
@@ -3697,7 +4005,12 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		}
 		mut ptype := p.typ
 		mut prefix := ''
-		if ptype.starts_with('&') && p.is_mut {
+		if p.is_mut && p.op == .amp {
+			prefix = 'mut '
+			if !ptype.starts_with('&') {
+				ptype = '&${ptype}'
+			}
+		} else if ptype.starts_with('&') && p.is_mut {
 			prefix = 'mut '
 			ptype = ptype[1..].trim_space()
 		}

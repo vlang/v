@@ -346,7 +346,7 @@ fn test_parallel_parser_compiles_multi_module_project() {
 	compile := os.execute('VJOBS=4 ${v3_bin} ${main_path} -b c -o ${bin_out}')
 	assert compile.exit_code == 0, compile.output
 	$if !windows {
-		assert compile.output.contains('parse (parallel)'), compile.output
+		assert compile.output.contains('parse .v (parallel)'), compile.output
 	}
 	run := os.execute(bin_out)
 	assert run.exit_code == 0, run.output
@@ -643,7 +643,8 @@ fn test_no_parallel_parser_keeps_parse_serial() {
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_serial_out_${os.getpid()}')
 	compile := os.execute('VJOBS=4 ${v3_bin} --no-parallel ${main_path} -b c -o ${bin_out}')
 	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('parse (parallel)'), compile.output
+	assert !compile.output.contains('parse .v (parallel)'), compile.output
+	assert !compile.output.contains('parse .vh (parallel)'), compile.output
 	run := os.execute(bin_out)
 	assert run.exit_code == 0, run.output
 }

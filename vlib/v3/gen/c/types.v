@@ -1022,6 +1022,9 @@ fn (g &FlatGen) enum_field_expr_value(id flat.NodeId) ?int {
 				.mul {
 					left * right
 				}
+				.power {
+					int(enum_foldable_int_power(i64(left), i64(right)))
+				}
 				.div {
 					if right == 0 {
 						none
@@ -1133,6 +1136,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				.plus { left + right }
 				.minus { left - right }
 				.mul { left * right }
+				.power { enum_foldable_int_power(left, right) }
 				.div { left / right }
 				.mod { left % right }
 				.amp { left & right }
@@ -1331,6 +1335,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 				.plus { left + right }
 				.minus { left - right }
 				.mul { left * right }
+				.power { enum_foldable_int_power(left, right) }
 				.div { left / right }
 				.mod { left % right }
 				.amp { left & right }
@@ -1352,6 +1357,30 @@ fn enum_foldable_int_literal(value string) ?i64 {
 	clean := value.replace('_', '')
 	parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
 	return parsed
+}
+
+@[ignore_overflow]
+fn enum_foldable_int_power(base i64, exponent i64) i64 {
+	mut exp := exponent
+	mut power := base
+	mut value := i64(1)
+	if exp < 0 {
+		if base == 0 {
+			return -1
+		}
+		if base != 1 && base != -1 {
+			return 0
+		}
+		return if exp & 1 != 0 { base } else { 1 }
+	}
+	for exp > 0 {
+		if exp & 1 != 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
 }
 
 fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_module string, enum_name string, enum_c_name string, field_names map[string]bool) ?string {

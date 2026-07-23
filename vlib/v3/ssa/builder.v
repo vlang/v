@@ -8141,6 +8141,9 @@ fn (b &Builder) current_block_terminated() bool {
 }
 
 fn (mut b Builder) build_infix(node flat.Node) ValueID {
+	if node.op == .power {
+		panic('power expression reached the V3 SSA backend')
+	}
 	if node.op == .logical_and || node.op == .logical_or {
 		return b.build_short_circuit(node)
 	}
@@ -11774,6 +11777,7 @@ fn (b &Builder) compound_to_op(op flat.Op) OpCode {
 		.xor_assign { .xor }
 		.left_shift_assign { .shl }
 		.right_shift_assign { .ashr }
+		.power_assign { panic('power assignment reached the V3 SSA backend') }
 		else { .add }
 	}
 }

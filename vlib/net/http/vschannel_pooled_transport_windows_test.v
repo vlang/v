@@ -100,7 +100,8 @@ fn vpt_start_listener() (int, &mbedtls.SSLListener) {
 fn test_vschannel_pooled_transport_stable_address() {
 	port, mut listener := vpt_start_listener()
 	th := spawn vpt_echo_loop(mut listener)
-	mut t := new_vschannel_pooled_transport(&Request{ validate: false }, '127.0.0.1', port) or {
+	mut t := new_vschannel_pooled_transport('127.0.0.1', port, false, ['h2', 'http/1.1'],
+		h2_pooled_io_timeout, h2_pooled_write_stall_limit) or {
 		assert false, 'connect: ${err}'
 		return
 	}
@@ -124,7 +125,8 @@ fn test_vschannel_pooled_transport_concurrent_read_write_close() {
 	for round in 0 .. 3 {
 		port, mut listener := vpt_start_listener()
 		th := spawn vpt_echo_loop(mut listener)
-		mut t := new_vschannel_pooled_transport(&Request{ validate: false }, '127.0.0.1', port) or {
+		mut t := new_vschannel_pooled_transport('127.0.0.1', port, false, ['h2', 'http/1.1'],
+			h2_pooled_io_timeout, h2_pooled_write_stall_limit) or {
 			assert false, 'round ${round}: connect: ${err}'
 			return
 		}
@@ -150,7 +152,8 @@ fn test_vschannel_pooled_transport_concurrent_read_write_close() {
 fn test_vschannel_pooled_transport_read_times_out() {
 	port, mut listener := vpt_start_listener()
 	th := spawn vpt_echo_loop(mut listener)
-	mut t := new_vschannel_pooled_transport(&Request{ validate: false }, '127.0.0.1', port) or {
+	mut t := new_vschannel_pooled_transport('127.0.0.1', port, false, ['h2', 'http/1.1'],
+		h2_pooled_io_timeout, h2_pooled_write_stall_limit) or {
 		assert false, 'connect: ${err}'
 		return
 	}
@@ -186,7 +189,8 @@ fn test_vschannel_pooled_transport_write_survives_stall_past_io_timeout() {
 		sconn.shutdown() or {}
 	}(mut listener)
 
-	mut t := new_vschannel_pooled_transport(&Request{ validate: false }, '127.0.0.1', port) or {
+	mut t := new_vschannel_pooled_transport('127.0.0.1', port, false, ['h2', 'http/1.1'],
+		h2_pooled_io_timeout, h2_pooled_write_stall_limit) or {
 		assert false, 'connect: ${err}'
 		return
 	}

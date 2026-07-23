@@ -18,6 +18,14 @@ pub:
 	allocated_bytes  u64
 }
 
+// StepPart describes one measured part of a pipeline step.
+pub struct StepPart {
+pub:
+	name     string
+	time_us  i64
+	parallel bool
+}
+
 // Metric represents one structural compiler counter reported with a build.
 pub struct Metric {
 pub:
@@ -84,10 +92,57 @@ pub fn (mut b Bench) step(name string) {
 	b.step_parallel(name, false)
 }
 
+// current_step_time_us returns the elapsed wall time in the current pipeline step.
+pub fn (b &Bench) current_step_time_us() i64 {
+	return b.step_sw.elapsed().microseconds()
+}
+
 // step_parallel records a pipeline step, appending "(parallel)" to its name
 // when the step actually ran across threads.
 pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	elapsed_us := b.step_sw.elapsed().microseconds()
+	allocations := current_allocation_stats()
+	b.report_step(name, parallel, elapsed_us,
+		allocations.allocation_count - b.last_allocation_count,
+		allocations.allocated_bytes - b.last_allocated_bytes, allocations.enabled)
+	b.finish_step_report()
+}
+
+// step_parts records measured parts that together make up the current pipeline step.
+pub fn (mut b Bench) step_parts(parts []StepPart) {
+	if parts.len == 0 {
+		return
+	}
+	allocations := current_allocation_stats()
+	total_allocation_count := allocations.allocation_count - b.last_allocation_count
+	total_allocated_bytes := allocations.allocated_bytes - b.last_allocated_bytes
+	mut total_us := i64(0)
+	for part in parts {
+		total_us += part.time_us
+	}
+	mut reported_allocation_count := u64(0)
+	mut reported_allocated_bytes := u64(0)
+	for idx, part in parts {
+		is_last := idx == parts.len - 1
+		allocation_count := if is_last || total_us <= 0 {
+			total_allocation_count - reported_allocation_count
+		} else {
+			u64(i64(total_allocation_count) * part.time_us / total_us)
+		}
+		allocated_bytes := if is_last || total_us <= 0 {
+			total_allocated_bytes - reported_allocated_bytes
+		} else {
+			u64(i64(total_allocated_bytes) * part.time_us / total_us)
+		}
+		b.report_step(part.name, part.parallel, part.time_us, allocation_count, allocated_bytes,
+			allocations.enabled)
+		reported_allocation_count += allocation_count
+		reported_allocated_bytes += allocated_bytes
+	}
+	b.finish_step_report()
+}
+
+fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocation_count u64, allocated_bytes u64, allocations_enabled bool) {
 	label := if parallel { '${name} (parallel)' } else { name }
 	ram_kb := current_rss_kb()
 	peak_ram_kb := peak_rss_kb()
@@ -103,10 +158,7 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	peak_ram_mb := f64(peak_ram_kb) / 1024.0
 	footprint_suffix := physical_footprint_suffix(memory)
 	ms := f64(elapsed_us) / 1000.0
-	allocations := current_allocation_stats()
-	allocation_count := allocations.allocation_count - b.last_allocation_count
-	allocated_bytes := allocations.allocated_bytes - b.last_allocated_bytes
-	allocation_suffix := if allocations.enabled {
+	allocation_suffix := if allocations_enabled {
 		allocated_mb := f64(allocated_bytes) / (1024.0 * 1024.0)
 		'   ${allocation_count} allocs   ${allocated_mb:8.2f} MB allocated'
 	} else {
@@ -121,6 +173,9 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 		allocation_count: allocation_count
 		allocated_bytes:  allocated_bytes
 	}
+}
+
+fn (mut b Bench) finish_step_report() {
 	// Exclude the benchmark line's own formatting allocations from the next phase.
 	after_report := current_allocation_stats()
 	b.last_allocation_count = after_report.allocation_count

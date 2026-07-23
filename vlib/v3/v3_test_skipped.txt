@@ -107,3 +107,7 @@ vlib/v/tests/orm_sub_struct_test.v
 vlib/v/tests/orm_table_name_test.v
 vlib/v/tests/orm_type_alias_test.v
 vlib/v/tests/orm_update_test.v
+vlib/x/atomics/i32_test.v
+vlib/x/atomics/i64_test.v
+vlib/x/atomics/u32_test.v
+vlib/x/atomics/u64_test.v

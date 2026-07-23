@@ -539,8 +539,20 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 		}
 	}
 	iface := if lhs_iface.len > 0 { lhs_iface } else { rhs_iface }
-	lhs := t.transform_expr_for_type(lhs_id, iface)
-	rhs := t.transform_expr_for_type(rhs_id, iface)
+	lhs := if lhs_iface.len == 0 && t.is_builtin_ierror_interface_name(iface) {
+		t.make_interface_literal_from_expr(lhs_id, iface, false) or {
+			t.transform_expr_for_type(lhs_id, iface)
+		}
+	} else {
+		t.transform_expr_for_type(lhs_id, iface)
+	}
+	rhs := if rhs_iface.len == 0 && t.is_builtin_ierror_interface_name(iface) {
+		t.make_interface_literal_from_expr(rhs_id, iface, false) or {
+			t.transform_expr_for_type(rhs_id, iface)
+		}
+	} else {
+		t.transform_expr_for_type(rhs_id, iface)
+	}
 	concrete_type := t.interface_box_concrete_type(lhs) or {
 		t.interface_box_concrete_type(rhs) or {
 			// The boxed concrete type is unknown at compile time. For IError
@@ -797,8 +809,8 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	if !lhs_is_ptr && !rhs_is_ptr {
 		return none
 	}
-	lhs_type := t.node_type(lhs_id)
-	rhs_type := t.node_type(rhs_id)
+	lhs_type := t.infix_operand_pointer_type(lhs_id) or { t.node_type(lhs_id) }
+	rhs_type := t.infix_operand_pointer_type(rhs_id) or { t.node_type(rhs_id) }
 	lhs_clean := t.trim_pointer_type(lhs_type)
 	rhs_clean := t.trim_pointer_type(rhs_type)
 	lhs_struct := t.struct_lookup_name(lhs_clean)
@@ -949,25 +961,57 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 }
 
 fn (t &Transformer) infix_operand_is_pointer(id flat.NodeId) bool {
+	return t.infix_operand_pointer_type(id) != none
+}
+
+fn (t &Transformer) infix_operand_pointer_type(id flat.NodeId) ?string {
 	if int(id) < 0 {
-		return false
+		return none
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .nil_literal || node.typ.starts_with('&') {
-		return true
+	if node.kind == .nil_literal {
+		return '&void'
+	}
+	if node.typ.starts_with('&') {
+		return node.typ
 	}
 	if node.kind == .ident && t.var_type(node.value).starts_with('&') {
-		return true
+		return t.var_type(node.value)
 	}
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
-			return typ is types.Pointer
+			name := typ.name()
+			if typ is types.Pointer {
+				return name
+			}
 		}
-		if t.tc.resolve_type(id) is types.Pointer {
-			return true
+		resolved := t.tc.resolve_type(id)
+		resolved_name := resolved.name()
+		if resolved is types.Pointer {
+			return resolved_name
+		}
+		// A postfix option unwrap (`value?`) is represented as an `or_expr`. Its
+		// result metadata can lose the pointer wrapper after generic specialization,
+		// while the source still retains the precise `?&T` type.
+		if node.kind == .or_expr && node.children_count > 0 {
+			source := t.tc.expr_type(t.a.child(&node, 0)) or {
+				t.tc.resolve_type(t.a.child(&node, 0))
+			}
+			if source is types.OptionType {
+				base_name := source.base_type.name()
+				if source.base_type is types.Pointer {
+					return base_name
+				}
+			}
+			if source is types.ResultType {
+				base_name := source.base_type.name()
+				if source.base_type is types.Pointer {
+					return base_name
+				}
+			}
 		}
 	}
-	return false
+	return none
 }
 
 fn (t &Transformer) checker_node_type(id flat.NodeId) string {
@@ -1220,6 +1264,7 @@ fn struct_operator_symbol(op flat.Op) ?string {
 		.plus { return '+' }
 		.minus { return '-' }
 		.mul { return '*' }
+		.power { return '**' }
 		.div { return '/' }
 		.mod { return '%' }
 		.eq { return '==' }
@@ -1501,6 +1546,18 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	lhs_type = t.normalize_type_alias(lhs_type)
 	rhs_type = t.normalize_type_alias(rhs_type)
+	if !t.is_sum_type_name(lhs_type) {
+		lhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(lhs_id)))
+		if t.is_sum_type_name(lhs_original) {
+			lhs_type = lhs_original
+		}
+	}
+	if !t.is_sum_type_name(rhs_type) {
+		rhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(rhs_id)))
+		if t.is_sum_type_name(rhs_original) {
+			rhs_type = rhs_original
+		}
+	}
 	// A specialized generic call can retain its open `T` return type on the
 	// call node, even though the surrounding comparison has already resolved
 	// the other operand to the concrete sum type.  The checker has validated
@@ -1513,7 +1570,9 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	if lhs_is_sum != rhs_is_sum {
 		unresolved_type := if lhs_is_sum { rhs_type } else { lhs_type }
-		if !t.generic_arg_is_unresolved(unresolved_type) {
+		sum_type := if lhs_is_sum { lhs_type } else { rhs_type }
+		if !t.generic_arg_is_unresolved(unresolved_type)
+			&& !t.sum_target_accepts_variant_type(sum_type, unresolved_type) {
 			return none
 		}
 	}

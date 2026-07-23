@@ -4092,6 +4092,40 @@ fn (g &FlatGen) lock_expr_multi_return_type(node flat.Node, count int) ?types.Mu
 	}
 }
 
+// gen_static_local_lazy_init emits a `static` local whose initializer is not a
+// compile-time constant as zero-initialized storage plus a one-shot guarded
+// assignment, so the value persists across calls but is computed at runtime on
+// first entry (C forbids `static T x = <runtime expr>`).
+fn (mut g FlatGen) gen_static_local_lazy_init(lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	name := g.decl_lhs_str(lhs_id)
+	var_type := g.usable_expr_type(rhs_id)
+	ct := g.tc.c_type(var_type)
+	// Register the lhs as a local before emitting: this path skips the normal
+	// decl handling, so without this a later reference in the same function that
+	// shadows a const/global of the same name would resolve to that global's C
+	// name instead of the static local declared here. track_local_pointer_storage_decl
+	// also records the shadowed-global mapping the ident emitter needs, otherwise
+	// reads/writes of a static local shadowing a global still target the global.
+	lhs := g.a.nodes[int(lhs_id)]
+	if lhs.kind == .ident && lhs.value.len > 0 {
+		owner := g.tc.cur_scope.insert_with_owner(lhs.value, var_type)
+		g.track_local_pointer_storage_decl(lhs, owner, var_type, ct)
+	}
+	guard := '${name}_v3_static_inited'
+	g.writeln('static ${ct} ${name};')
+	g.writeln('static bool ${guard} = false;')
+	g.writeln('if (!${guard}) {')
+	// Set the guard only after the assignment completes: a non-constant
+	// initializer may leave through an `or { return ... }` block, and marking
+	// the variable initialized before that would skip the retry on the next
+	// call and expose the zero value.
+	g.write('\t${name} = ')
+	g.gen_expr_with_expected_type(rhs_id, var_type)
+	g.writeln(';')
+	g.writeln('\t${guard} = true;')
+	g.writeln('}')
+}
+
 // gen_decl_assign emits decl assign output for c.
 fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 	old_decl_is_mut := g.current_decl_is_mut
@@ -4133,6 +4167,17 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 		rhs_id := g.a.child(&node, i + 1)
 		lhs := g.a.nodes[int(lhs_id)]
 		rhs := g.a.nodes[int(rhs_id)]
+		// A `static` local with a non-constant initializer cannot use a C static
+		// initializer (`static Array x = array_new(...)` is rejected: not a
+		// compile-time constant). Emit the storage once and run the initializer
+		// lazily on first entry. Fixed-array statics need element memmove and are
+		// left to the existing paths below.
+		if node.value == 'static' && lhs.kind == .ident && !g.is_const_expr(rhs_id)
+			&& array_fixed_type(g.usable_expr_type(rhs_id)) == none {
+			g.gen_static_local_lazy_init(lhs_id, rhs_id)
+			i += 2
+			continue
+		}
 		lhs_is_defer_capture := lhs.kind == .ident && lhs.value in g.defer_capture_types
 		g.track_ierror_stack_pointer_alias(lhs, rhs)
 		if decl_is_shared_alias && lhs.kind == .ident
@@ -5120,6 +5165,15 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 			}
 		}
 	}
+	if v_type is types.Pointer {
+		if cgen_unalias_type(v_type.base_type).name() == 'u8' {
+			rhs_type := g.usable_expr_type(rhs_id)
+			if g.fixed_array_address_to_byte_pointer_expr_compatible(rhs_id, v_type, rhs_type) {
+				g.gen_fixed_array_address_to_byte_pointer_expr(rhs_id, v_type)
+				return
+			}
+		}
+	}
 	g.gen_expr_with_expected_type(rhs_id, v_type)
 }
 
@@ -5309,6 +5363,42 @@ fn (mut g FlatGen) gen_single_fixed_array_elem_assign_to_scalar_local(lhs flat.N
 	return true
 }
 
+fn (g &FlatGen) fixed_array_address_to_byte_pointer_expr_compatible(rhs_id flat.NodeId, target_type types.Type, rhs_type types.Type) bool {
+	target_ptr := if target_type is types.Pointer { target_type } else { return false }
+	rhs_ptr := if rhs_type is types.Pointer { rhs_type } else { return false }
+	rhs_base := cgen_unalias_type(rhs_ptr.base_type)
+	if cgen_unalias_type(target_ptr.base_type).name() != 'u8' || rhs_base !is types.ArrayFixed {
+		return false
+	}
+	rhs_fixed := rhs_base as types.ArrayFixed
+	if cgen_unalias_type(rhs_fixed.elem_type).name() != 'u8' {
+		return false
+	}
+	rhs := g.a.nodes[int(rhs_id)]
+	if rhs.kind != .prefix || rhs.op != .amp || rhs.children_count == 0 {
+		return false
+	}
+	return true
+}
+
+fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_expr(rhs_id flat.NodeId, target_type types.Type) {
+	rhs := g.a.nodes[int(rhs_id)]
+	g.write('((${g.tc.c_type(target_type)})(')
+	g.gen_expr(g.a.child(&rhs, 0))
+	g.write('))')
+}
+
+fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if !g.fixed_array_address_to_byte_pointer_expr_compatible(rhs_id, lhs_type, rhs_type) {
+		return false
+	}
+	g.gen_expr(lhs_id)
+	g.write(' = ')
+	g.gen_fixed_array_address_to_byte_pointer_expr(rhs_id, lhs_type)
+	g.writeln(';')
+	return true
+}
+
 // gen_assign emits assign output for c.
 fn (mut g FlatGen) gen_assign(node flat.Node) {
 	if node.children_count >= 3 {
@@ -5434,6 +5524,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					g.usable_expr_type(lhs_id)
 				}
 				rhs_type := g.usable_expr_type(rhs_id)
+				if node.op == .assign
+					&& g.gen_fixed_array_address_to_byte_pointer_assign(lhs_id, rhs_id, lhs_type, rhs_type) {
+					i += 2
+					continue
+				}
 				if node.op == .assign {
 					if lhs_fixed := array_fixed_type(lhs_type) {
 						if g.gen_single_fixed_array_elem_assign_to_scalar_local(lhs, lhs_id,
@@ -5490,6 +5585,30 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 							continue
 						}
 					}
+				}
+				if node.op == .power_assign {
+					lhs_assign_id := g.a.child(&node, i)
+					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
+						mut lhs_text := g.expr_to_string(lhs_assign_id)
+						if g.assign_lhs_needs_deref(lhs_assign_id, lhs_type, rhs_type, node.op) {
+							lhs_text = '*${lhs_text}'
+						}
+						g.write('${lhs_text} = ')
+						power_type := g.assign_rhs_expected_type(lhs_assign_id, lhs_type)
+						g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, power_type)
+						g.writeln(';')
+					} else {
+						lhs_ct := g.value_c_type(lhs_type)
+						addr_tmp := g.tmp_name()
+						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
+						g.gen_expr(lhs_assign_id)
+						g.write('); *${addr_tmp} = ')
+						g.gen_power_expr_from_lhs_text('*${addr_tmp}', rhs_id, lhs_type)
+						g.writeln('; }')
+					}
+					g.expected_enum = ''
+					i += 2
+					continue
 				}
 				if node.op in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 					shift_op := match node.op {
@@ -5608,6 +5727,7 @@ fn assign_struct_operator_symbol(op flat.Op) ?string {
 		.plus_assign { return '+' }
 		.minus_assign { return '-' }
 		.mul_assign { return '*' }
+		.power_assign { return '**' }
 		.div_assign { return '/' }
 		.mod_assign { return '%' }
 		else {}
@@ -5721,7 +5841,15 @@ fn (g &FlatGen) local_decl_cname(name string) string {
 }
 
 fn local_name_shadows_c_runtime(name string) bool {
-	return name == 'new_map'
+	return match name {
+		'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt',
+		'string__plus' {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (g &FlatGen) local_shadows_global(name string) bool {

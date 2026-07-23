@@ -248,6 +248,13 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if source_type.len == 0 {
 		source_type = t.checker_node_type(id)
 	}
+	if target_is_ptr && source_type in ['nil', 'voidptr', '&void'] {
+		expr := t.transform_expr(id)
+		if int(expr) >= 0 {
+			t.set_node_typ(int(expr), target_type)
+		}
+		return expr
+	}
 	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
