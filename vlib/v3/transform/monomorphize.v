@@ -9443,28 +9443,28 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	if t.substituted_type_belongs_to_main_generic(clean) {
 		return clean
 	}
-	// Decompose fully-bare composites and resolve each component independently, so a
-	// nested program (main) type is preserved bare (via the belongs-to-main check on
-	// the recursion) instead of being rebased into the current module; the caller then
-	// locks the bare nested name to an explicit `main.` spelling. generic_app args are
-	// already handled below; maps and fixed arrays are not, so `map[string]Context` /
-	// `[3]Context` would otherwise rebase the nested `Context`. Qualified composites are
-	// left to parse_resolution_type (a nested `.` component already resolves correctly).
-	if !clean.contains('.') {
-		if clean.starts_with('map[') {
-			bracket_end := generic_matching_bracket(clean, 3)
-			if bracket_end < clean.len - 1 {
-				key := t.resolve_substituted_type_text(clean[4..bracket_end])
-				value := t.resolve_substituted_type_text(clean[bracket_end + 1..])
-				return 'map[${key}]${value}'
-			}
+	// Decompose map and fixed-array composites and resolve each component independently, so a
+	// nested program (main) type is preserved bare (via the belongs-to-main check on the
+	// recursion) instead of being rebased into the current module; the caller then locks the
+	// bare nested name to an explicit `main.` spelling. Handled regardless of an UNRELATED
+	// qualified component elsewhere (`map[other.Key]Context`, `[N]other.Box[Context]`): a `.` in
+	// the key/base must not stop the bare value/element from being kept bare, or
+	// parse_resolution_type rebases it into the callee module before the lock runs. Each
+	// qualified component still resolves correctly on its own through the recursion, mirroring
+	// the chan/thread/fn/generic_app handling below.
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := t.resolve_substituted_type_text(clean[4..bracket_end])
+			value := t.resolve_substituted_type_text(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
 		}
-		if clean.starts_with('[') && !clean.starts_with('[]') {
-			bracket_end := generic_matching_bracket(clean, 0)
-			if bracket_end > 1 && bracket_end < clean.len - 1 {
-				return clean[..bracket_end + 1] +
-					t.resolve_substituted_type_text(clean[bracket_end + 1..])
-			}
+	}
+	if clean.starts_with('[') && !clean.starts_with('[]') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 1 && bracket_end < clean.len - 1 {
+			return clean[..bracket_end + 1] +
+				t.resolve_substituted_type_text(clean[bracket_end + 1..])
 		}
 	}
 	// `chan T` / `thread T` carry a single payload type; a bare program type there
