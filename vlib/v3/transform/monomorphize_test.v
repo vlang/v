@@ -68,6 +68,10 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	// colliding `Context` of its own.
 	t.structs['Context'] = StructInfo{}
 	t.structs['callee.Context'] = StructInfo{}
+	t.structs['MiddlewareOptions'] = StructInfo{}
+	t.structs['callee.MiddlewareOptions'] = StructInfo{}
+	tc.struct_generic_params['MiddlewareOptions'] = ['T']
+	tc.struct_generic_params['callee.MiddlewareOptions'] = ['T']
 
 	// A bare program type substituted into a specialization is locked to `main.`.
 	assert t.lock_colliding_main_generic_type_text('Context', 'callee') == 'main.Context'
@@ -83,4 +87,50 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	assert t.lock_colliding_main_generic_type_text('other.Box[user.LocalWriter]', 'callee') == 'other.Box[user.LocalWriter]'
 	// No lock target: the callee module does not declare `Other`, so nothing changes.
 	assert t.lock_colliding_main_generic_type_text('other.Box[Other]', 'callee') == 'other.Box[Other]'
+	// A module-local generic base must stay local even when one of its concrete arguments
+	// is a colliding main type. `callee.MiddlewareOptions` is not `main.MiddlewareOptions`.
+	assert t.lock_colliding_main_generic_type_text('MiddlewareOptions[Context]', 'callee') == 'MiddlewareOptions[main.Context]'
+}
+
+fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['json2.Node'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'json2'
+
+	assert t.resolve_substituted_type_text('Node[json2.ValueInfo]') == 'json2.Node[json2.ValueInfo]'
+	assert t.resolve_substituted_type_text('&Node[json2.ValueInfo]') == '&json2.Node[json2.ValueInfo]'
+}
+
+fn test_generic_method_decl_matches_embedded_receiver() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.embedded_fields['Outer'] = [
+		FieldInfo{
+			name:        'Middle'
+			typ:         'Middle'
+			raw_typ:     'Middle'
+			is_embedded: true
+		},
+	]
+	t.embedded_fields['Middle'] = [
+		FieldInfo{
+			name:        'Collector'
+			typ:         'Collector[int]'
+			raw_typ:     'Collector[int]'
+			is_embedded: true
+		},
+	]
+	decl := GenericFnDecl{
+		node:   flat.Node{
+			kind:  .fn_decl
+			value: 'Collector[T].use'
+		}
+		module: 'main'
+		key:    'Collector[T].use'
+	}
+	mut seen := map[string]bool{}
+	assert t.generic_decl_matches_embedded_receiver('Outer', decl, 'main', mut seen)
 }

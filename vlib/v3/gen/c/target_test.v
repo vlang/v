@@ -38,6 +38,19 @@ fn test_c_directive_targets_use_requested_platform() {
 	assert c_include_arg_for_target('windows <windows.h>', '', '', target) == ''
 }
 
+fn test_c_flag_default_define_macros_stay_single_arguments() {
+	target := pref.host_target()
+	assert c_flag_args("-DNUMBER=\$d('N', 1234 ) ##", '', '', target) == [
+		'-DNUMBER=1234',
+	]
+	assert c_flag_args('-DFNAME=\$d(\'A1\', \'"check_d\')\$d(\'A2\',\'flags_fn"\')', '', '', target) == [
+		'-DFNAME=check_dflags_fn',
+	]
+	assert c_flag_args("-DMIXED=\$d('A1', 'mixed' )_\$d('A2', 4 ) ##", '', '', target) == [
+		'-DMIXED=mixed_4',
+	]
+}
+
 fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	empty := map[string]bool{}

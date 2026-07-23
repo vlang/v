@@ -91,6 +91,38 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	assert first.str == second.str
 }
 
+fn test_recursive_callback_alias_parses_once_and_keeps_its_abi() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_aliases['Handlers'] = 'map[string]fn (Handlers) int'
+	tc.type_cache.parse_enabled = true
+
+	typ := tc.parse_type('Handlers')
+	assert typ is Alias
+	base := (typ as Alias).base_type
+	assert base is Map
+	callback := (base as Map).value_type
+	assert callback is FnType
+	param := (callback as FnType).params[0]
+	assert param is Alias
+	assert (param as Alias).name == 'Handlers'
+	assert tc.c_type(param) == 'map'
+	assert tc.parse_type('Handlers').name() == 'Handlers'
+	assert tc.type_cache.alias_parse_stack.len == 0
+}
+
+fn test_fn_type_with_spaced_empty_parameter_list_has_no_void_parameter() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+
+	typ := tc.parse_type('fn ( ) int')
+	assert typ is FnType
+	fn_typ := typ as FnType
+	assert fn_typ.params.len == 0
+	assert fn_typ.return_type.name() == 'int'
+	assert Type(fn_typ).name() == 'fn() int'
+}
+
 fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

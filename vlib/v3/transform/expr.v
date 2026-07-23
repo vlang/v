@@ -291,6 +291,8 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	} else {
 		t.transform_expr(rhs_id)
 	}
+	new_lhs = t.preserve_array_comparison_deref(lhs_id, new_lhs, lhs_type)
+	new_rhs = t.preserve_array_comparison_deref(rhs_id, new_rhs, rhs_type)
 	new_lhs_type := t.membership_container_type(t.node_type(new_lhs))
 	new_rhs_type := t.membership_container_type(t.node_type(new_rhs))
 	if new_lhs_type.starts_with('[]') {
@@ -321,6 +323,26 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (mut t Transformer) preserve_array_comparison_deref(source_id flat.NodeId, transformed_id flat.NodeId, array_type string) flat.NodeId {
+	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(transformed_id) < 0
+		|| int(transformed_id) >= t.a.nodes.len {
+		return transformed_id
+	}
+	source := t.a.nodes[int(source_id)]
+	transformed := t.a.nodes[int(transformed_id)]
+	if source.kind != .prefix || source.op != .mul || source.children_count == 0
+		|| (transformed.kind == .prefix && transformed.op == .mul) {
+		return transformed_id
+	}
+	source_child_type := t.node_type(t.a.child(&source, 0))
+	if !source_child_type.starts_with('&') {
+		return transformed_id
+	}
+	deref := t.make_prefix(.mul, transformed_id)
+	t.set_node_typ(int(deref), array_type)
+	return deref
 }
 
 fn (t &Transformer) array_comparison_map_index_value_type(id flat.NodeId) ?string {

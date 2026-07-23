@@ -42,30 +42,30 @@ pub:
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                                 scanner.Scanner
-	tok                               token.Token
-	lit                               string
-	tok_pos                           int
-	tok_end                           int
-	prev_tok_end                      int
-	peek_tok                          token.Token = .eof
-	peek_lit                          string
-	peek_pos                          int
-	peek_end                          int
-	has_peek                          bool
-	cur_file                          string
-	cur_file_id                       int
-	next_file_id                      int = 1
-	cur_module                        string
-	cur_fn                            string
-	veb_tmpl_counter                  int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
-	cur_struct                        string   // receiver type name of the current method, for `@STRUCT`
-	cur_method_is_static              bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
-	comptime_for_vars                 []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	comptime_method_var               string   // innermost active `$for method in Type.methods` loop variable
-	comptime_const_values             map[string]string
-	comptime_local_values             map[string]string
-	imported_module_names             map[string]bool // import aliases in the current file; not captured by inlined template closures
+	s                     scanner.Scanner
+	tok                   token.Token
+	lit                   string
+	tok_pos               int
+	tok_end               int
+	prev_tok_end          int
+	peek_tok              token.Token = .eof
+	peek_lit              string
+	peek_pos              int
+	peek_end              int
+	has_peek              bool
+	cur_file              string
+	cur_file_id           int
+	next_file_id          int = 1
+	cur_module            string
+	cur_fn                string
+	veb_tmpl_counter      int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
+	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
+	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
+	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
+	comptime_const_values map[string]string
+	comptime_local_values map[string]string
+	imported_module_names map[string]bool // import aliases in the current file; not captured by inlined template closures
 	// local_binding_* track the variable/parameter names currently in scope, so an inlined
 	// template closure captures a bare callee only when it is an actual local binding (a
 	// function-valued parameter/local) rather than a module/top-level function. Scoped like
@@ -1463,8 +1463,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:    .struct_decl
 			value:   name
-			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned,
-				aligned, implements_types)
+			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa,
+				is_aligned, aligned, implements_types)
 			payload: flat.node_payload(generic_params)
 		})
 	}
@@ -4599,29 +4599,21 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.peek() == .key_for {
 		return p.parse_comptime_if()
 	}
-	dollar_pos := p.tok_pos
 	p.next() // skip $
 	match p.tok {
 		.key_typeof {
-			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
 			return p.typeof_expr()
 		}
 		.key_sizeof {
-			p.record_diagnostic('`$sizeof` is not supported; use `sizeof(...)` instead', dollar_pos)
 			return p.sizeof_expr()
 		}
 		.key_isreftype {
-			p.record_diagnostic('`$isreftype` is not supported; use `isreftype(...)` instead',
-				dollar_pos)
 			return p.isreftype_expr()
 		}
 		.key_offsetof {
-			p.record_diagnostic('`$__offsetof` is not supported; use `__offsetof(...)` instead',
-				dollar_pos)
 			return p.offsetof_expr()
 		}
 		.key_dump {
-			p.record_diagnostic('`$dump` is not supported; use `dump(...)` instead', dollar_pos)
 			return p.dump_expr()
 		}
 		else {}
@@ -4657,10 +4649,19 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	}
 	if p.tok == .name && p.lit == 'res' {
 		p.next()
+		mut value := '__v3_defer_result'
 		if p.tok == .lpar {
-			p.skip_parens()
+			p.next()
+			if p.tok != .rpar && p.tok != .eof {
+				value += ':' + p.lit
+				p.next()
+			}
+			for p.tok != .rpar && p.tok != .eof {
+				p.next()
+			}
+			p.check(.rpar)
 		}
-		return p.add_val_id(3, 'false')
+		return p.add_val(.ident, value)
 	}
 	if p.tok == .name && p.lit == 'env' {
 		// $env('NAME') evaluates an environment variable at compile time and
@@ -5864,6 +5865,10 @@ fn (mut p Parser) control_header_expr(min_bp token.BindingPower) flat.NodeId {
 }
 
 fn (mut p Parser) match_branch_cond() flat.NodeId {
+	if p.tok == .question {
+		name := p.parse_type_name()
+		return p.match_type_pattern_node(name)
+	}
 	if p.tok == .lsbr && p.peek() == .rsbr {
 		typ := p.parse_type_name()
 		elem_type := if typ.starts_with('[]') { typ[2..] } else { typ }
@@ -6695,23 +6700,41 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	asm_pos := p.tok_pos
 	p.next() // skip 'asm'
 	// consume optional volatile keyword
-	if p.tok == .name && p.lit == 'volatile' {
+	if p.tok == .key_volatile || (p.tok == .name && p.lit == 'volatile') {
 		p.next()
 	}
 	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
 	// The C backend intentionally ignores the block and uses the source fallback, so the
 	// architecture token must be consumed with the block instead of becoming stray statements.
-	if p.tok == .name {
+	for p.tok == .name {
 		p.next()
 	}
-	// consume the asm block
+	// Consume the asm block. Empty blocks (including the assembly grammar's
+	// `memory` clobber marker) have no backend work and are portable no-ops, so
+	// accept them even when the selected backend does not implement assembly.
+	mut is_empty := true
 	if p.tok == .lcbr {
-		p.skip_block()
+		mut depth := 1
+		p.next()
+		for depth > 0 && p.tok != .eof {
+			if p.tok == .lcbr {
+				depth++
+			} else if p.tok == .rcbr {
+				depth--
+				if depth == 0 {
+					p.next()
+					break
+				}
+			} else if depth == 1 && p.tok != .semicolon && !(p.tok == .name && p.lit == 'memory') {
+				is_empty = false
+			}
+			p.next()
+		}
 	}
 	if p.tok == .semicolon {
 		p.next()
 	}
-	if !p.prefs.supports_inline_asm {
+	if !p.prefs.supports_inline_asm && !is_empty {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	return p.add(flat.NodeKind.asm_stmt)
