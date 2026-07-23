@@ -4100,7 +4100,7 @@ fn main() {
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
 			transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				true, transform_scope)
+				true, building_v || cmd_v_build, transform_scope)
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			prealloc_scope_leave_for_v3(transform_scope)
 			retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
@@ -4134,7 +4134,10 @@ fn main() {
 					promote_scoped_ast_nodes(mut a, last_worker_end, a.nodes.len, []int{},
 						transform_scope)
 				} else {
-					a.intern_node_texts_from(0)
+					// Workers report every rewritten base node. Publish those and the
+					// appended range without rebuilding the text table for the source AST.
+					promote_scoped_ast_nodes(mut a, base_transform_nodes, a.nodes.len,
+						scoped_owned_base_nodes, transform_scope)
 					transform_texts_canonical = true
 				}
 			} else {
@@ -4187,10 +4190,10 @@ fn main() {
 		} else {
 			transform_used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				false)
+				false, building_v || cmd_v_build)
 		}
 		if !incremental_cache_hit {
-			used_fns = clone_string_bool_map(transform_used_fns)
+			used_fns = transform_used_fns.move()
 		} else {
 			incremental_stage_used_fns = clone_string_bool_map(transform_used_fns)
 			// Synthesized helpers have no source snapshot key, so explicitly include
@@ -4908,6 +4911,7 @@ fn main() {
 		mut result := os.Result{}
 		mut tried_tcc := false
 		mut tcc_cache_hit := false
+		mut used_tcc := false
 		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
@@ -4940,6 +4944,7 @@ fn main() {
 			if os.is_file(tcc_cached_executable) {
 				os.cp(tcc_cached_executable, cc_out) or {}
 				tcc_cache_hit = os.is_file(cc_out)
+				used_tcc = tcc_cache_hit
 			}
 			println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
 				' (cached)'
@@ -4949,6 +4954,7 @@ fn main() {
 			if !tcc_cache_hit {
 				result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 				if result.exit_code == 0 {
+					used_tcc = true
 					publish_v3_cached_executable(cc_out, tcc_cached_executable)
 				}
 			}
@@ -4995,8 +5001,10 @@ fn main() {
 			tcc_args << '-lm'
 			println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			used_tcc = result.exit_code == 0
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
+			used_tcc = false
 			if !os.is_file(cc_src) {
 				os.cp(published_c_source, cc_src) or {
 					eprintln('error restoring cached main source ${published_c_source}: ${err.msg()}')
@@ -5069,7 +5077,13 @@ fn main() {
 		os.rm(tcc_main_file) or {}
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
-		b.step(if tcc_cache_hit { 'cc (cached)' } else { 'cc' })
+		b.step(if tcc_cache_hit {
+			'tcc (cached)'
+		} else if used_tcc {
+			'tcc'
+		} else {
+			'cc'
+		})
 		if should_run {
 			run_result := run_binary(bin_file, run_args)
 			if run_result != 0 {

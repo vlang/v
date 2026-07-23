@@ -1057,6 +1057,24 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 	if isnil(t.tc) || name.len == 0 {
 		return false
 	}
+	if !isnil(t.type_alias_name_cache) {
+		mut cache := t.type_alias_name_cache
+		if cache.module != t.cur_module || cache.file != t.cur_file {
+			cache.module = t.cur_module
+			cache.file = t.cur_file
+			cache.entries.clear()
+		}
+		if cached := cache.entries[name] {
+			return cached > 0
+		}
+		result := t.is_type_alias_name_uncached(name)
+		cache.entries[name] = if result { i8(1) } else { i8(-1) }
+		return result
+	}
+	return t.is_type_alias_name_uncached(name)
+}
+
+fn (t &Transformer) is_type_alias_name_uncached(name string) bool {
 	if name in t.tc.type_aliases {
 		return true
 	}
@@ -3647,25 +3665,37 @@ pub fn (mut t Transformer) make_sizeof_type(type_name string) flat.NodeId {
 
 // is_fixed_array_type reports whether a v-type string denotes a fixed array
 // like `int[5]` (as opposed to a dynamic array `[]int` or a map `map[...]...`).
+@[inline]
 fn (t &Transformer) is_fixed_array_type(s string) bool {
-	if s.starts_with('[]') || s.starts_with('map[') {
+	if s.len < 2 {
 		return false
 	}
-	if !s.starts_with('[') && !isnil(t.tc) {
-		base, _, is_generic_app := generic_app_parts(s)
-		if is_generic_app && t.type_name_is_known_generic_app_base(base) {
-			return false
-		}
+	if s[0] == `[` {
+		return s[1] != `]` && s.contains(']')
 	}
-	if s.starts_with('[') {
-		return s.contains(']')
+	// Scalars and dynamic containers do not end in `]`; this is the dominant
+	// transform path, so keep it out of generic and constant-name resolution.
+	if s[s.len - 1] != `]` || s.starts_with('map[') {
+		return false
 	}
-	if !s.contains('[') || !s.ends_with(']') {
+	return t.is_postfix_fixed_array_type(s)
+}
+
+fn (t &Transformer) is_postfix_fixed_array_type(s string) bool {
+	if !s.contains('[') {
 		return false
 	}
 	len_text := fixed_array_len_text(s)
 	if is_decimal_text(len_text) {
+		// generic_app_parts rejects decimal bracket contents as fixed-array
+		// lengths too, so avoid parsing the same brackets before this result.
 		return true
+	}
+	if !isnil(t.tc) {
+		base, _, is_generic_app := generic_app_parts(s)
+		if is_generic_app && t.type_name_is_known_generic_app_base(base) {
+			return false
+		}
 	}
 	// A postfix fixed-array name (`ArrayFixed.name()`) can carry a non-decimal length — a const
 	// (`int[seg_count]`) or an expression (`int[segs + 1]`) — once the checker round-trips

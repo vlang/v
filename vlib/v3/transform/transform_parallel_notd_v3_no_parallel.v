@@ -17,11 +17,11 @@ const max_parallel_transform_jobs = 7
 // Shared-base (clone-free) transform: workers share the master arrays and
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
-const max_shared_transform_jobs = 7
+const max_shared_transform_jobs = 10
 const max_parallel_monomorph_jobs = 10
-const scoped_transform_worker_batches = 48
-const scoped_transform_master_batches = 48
-const scoped_transform_max_batch_items = 32
+const scoped_transform_worker_batches = 1
+const scoped_transform_master_batches = 1
+const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_scan_nodes = 32768
 
@@ -997,13 +997,25 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 
 // absorb_scoped_batch publishes one batch's observable state into the helper's
 // result arena before its large scratch arena is released.
-fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr) {
-	// Generic lowering can rewrite nodes reached indirectly through late calls, outside
-	// the initial work item's subtree. Verify the flat payload fields exhaustively before
-	// releasing the batch arena instead of trusting a mutation log that cannot observe
-	// every such rewrite.
-	for idx in 0 .. batch.a.nodes.len {
-		t.promote_scoped_node_to_current(idx, scope)
+fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
+	if t.skip_generics {
+		// Non-generic workers mutate only newly appended nodes and slots recorded by
+		// the setter log. This avoids a full, growing-AST scan after every batch.
+		for idx in new_node_start .. batch.a.nodes.len {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+		for idx in batch.scoped_owned_base_nodes.keys() {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+		for idx in batch.scoped_owned_base_log {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+	} else {
+		// Generic lowering can rewrite nodes reached indirectly through late calls.
+		// Keep the exhaustive fallback for those transforms.
+		for idx in 0 .. batch.a.nodes.len {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
 		t.scoped_owned_base_log << idx
@@ -1098,10 +1110,14 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		batch.used_fns_log_active = true
 		batch.scoped_base_log_active = true
 		batch.ignored_comptime_log_active = true
+		new_node_start := t.a.nodes.len
+		// Nodes appended by an earlier batch are base nodes for this batch too.
+		// Record rewrites to them so their scratch-owned payloads are promoted.
+		batch.scoped_base_nodes = new_node_start
 		batch.transform_pure_items_serial(items[start..end])
 		transform_worker_scope_leave(scratch_scope)
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
-		t.absorb_scoped_batch(batch, scratch_scope)
+		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		t.promote_scoped_ast_storage(scratch_scope)
 		// absorb_scoped_batch publishes every appended node and every base-node
 		// mutation recorded by the batch. Avoid rescanning the continuously growing
@@ -1163,6 +1179,8 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		batch.used_fns_log_active = true
 		batch.scoped_base_log_active = true
 		batch.ignored_comptime_log_active = true
+		new_node_start := t.a.nodes.len
+		batch.scoped_base_nodes = new_node_start
 		for si, ci in selected {
 			node_starts[si] = t.a.nodes.len
 			batch.cur_file = candidates[ci].file
@@ -1172,7 +1190,7 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		node_starts[selected.len] = t.a.nodes.len
 		transform_worker_scope_leave(scratch_scope)
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
-		t.absorb_scoped_batch(batch, scratch_scope)
+		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		t.promote_scoped_ast_storage(scratch_scope)
 		transform_worker_scope_free(scratch_scope)
 		for si, ci in selected {
@@ -1273,6 +1291,16 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// before any worker can rewrite a shared-base fn_decl; lazily scanning or
 		// reading declarations inside workers can otherwise observe a torn node.
 		t.prepare_parallel_call_param_types()
+		// Clone-free shared-base path: needs the checker's top-level index for
+		// exact per-item subtree ranges, and skip_generics (the generic passes
+		// scan and mutate arbitrary AST regions, which the shared design forbids).
+		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
+			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
+			if shared_jobs > 1 {
+				return t.run_parallel_transform_shared(items, base_nodes, base_children,
+					shared_jobs)
+			}
+		}
 		// Freeze the checker's warm type cache (fully populated by the check
 		// phase) as the shared read-only base for every worker fork, so workers
 		// do not re-parse every type text from a cold cache; the master itself

@@ -508,11 +508,8 @@ fn (t &Transformer) resolve_embedded_receiver_method(base_type string, method st
 			lookup_type = short_type
 		}
 	}
-	info := t.lookup_struct_info(lookup_type) or { return none }
-	for field in info.fields {
-		if !t.is_embedded_field(field) {
-			continue
-		}
+	fields := t.embedded_fields[lookup_type] or { return none }
+	for field in fields {
 		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
 		clean_field := if field_type.starts_with('&') { field_type[1..] } else { field_type }
 		if method_name := t.resolve_receiver_method_for_type(clean_field, method) {
@@ -10704,12 +10701,9 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 			lookup_type = short_type
 		}
 	}
-	info := t.structs[lookup_type] or { return none }
+	fields := t.embedded_fields[lookup_type] or { return none }
 	clean_receiver := t.normalize_type_alias(receiver_type)
-	for field in info.fields {
-		if !t.is_embedded_field(field) {
-			continue
-		}
+	for field in fields {
 		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
 		raw_field := field_type.trim_left('&')
 		clean_field := t.normalize_type_alias(raw_field)
@@ -12005,6 +11999,26 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?s
 }
 
 fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, node flat.Node) ?string {
+	if isnil(t.resolved_call_return_cache) {
+		return t.checker_resolved_non_builtin_return_type_uncached(id, node)
+	}
+	mut cache := t.resolved_call_return_cache
+	slot := int(id) & 1023
+	if cache.generations[slot] == cache.generation && cache.keys[slot] == int(id)
+		&& cache.value_ptrs[slot] == voidptr(node.value.str)
+		&& cache.value_lens[slot] == node.value.len {
+		return cache.results[slot]
+	}
+	result := t.checker_resolved_non_builtin_return_type_uncached(id, node) or { return none }
+	cache.keys[slot] = int(id)
+	cache.value_ptrs[slot] = voidptr(node.value.str)
+	cache.value_lens[slot] = node.value.len
+	cache.generations[slot] = cache.generation
+	cache.results[slot] = result
+	return result
+}
+
+fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.NodeId, node flat.Node) ?string {
 	if isnil(t.tc) {
 		return none
 	}

@@ -320,36 +320,9 @@ fn (mut g FlatGen) optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_optional_typedefs() {
-	for _, ret in g.tc.fn_ret_types {
-		g.collect_optional_typedef_type(ret)
-	}
-	for _, params in g.tc.fn_param_types {
-		for param in params {
-			g.collect_optional_typedef_type(param)
-		}
-	}
-	for _, fields in g.tc.structs {
-		for field in fields {
-			g.collect_optional_typedef_type(field.typ)
-		}
-	}
-	for _, fields in g.tc.interface_fields {
-		for field in fields {
-			g.collect_optional_typedef_type(field.typ)
-		}
-	}
-	for _, typ in g.tc.c_globals {
-		g.collect_optional_typedef_type(typ)
-	}
-	for _, typ in g.tc.const_types {
-		g.collect_optional_typedef_type(typ)
-	}
-	for idx, is_set in g.tc.expr_type_set {
-		if !is_set || idx >= g.tc.expr_type_values.len {
-			continue
-		}
-		g.collect_optional_typedef_type(g.tc.expr_type_values[idx])
-	}
+	g.collect_declaration_signature_types()
+	// Calls without a resolved expression type are the only optional-type source
+	// not covered by the shared declaration-signature scan.
 	for idx, node in g.a.nodes {
 		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
 			continue
@@ -365,47 +338,97 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 	}
 }
 
+fn (mut g FlatGen) collect_declaration_signature_types() {
+	if g.decl_types_ready {
+		return
+	}
+	for _, ret in g.tc.fn_ret_types {
+		g.collect_declaration_signature_type(ret)
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			g.collect_declaration_signature_type(param)
+		}
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.collect_declaration_signature_type(field.typ)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.collect_declaration_signature_type(field.typ)
+		}
+	}
+	for _, typ in g.tc.c_globals {
+		g.collect_declaration_signature_type(typ)
+	}
+	for _, typ in g.tc.const_types {
+		g.collect_declaration_signature_type(typ)
+	}
+	for idx, is_set in g.tc.expr_type_set {
+		if !is_set || idx >= g.tc.expr_type_values.len {
+			continue
+		}
+		g.collect_declaration_signature_type(g.tc.expr_type_values[idx])
+	}
+	g.decl_types_ready = true
+	g.multi_return_types_ready = true
+}
+
+fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
+	if g.type_contains_generic_placeholder(t) {
+		return
+	}
+	g.collect_concrete_optional_typedef_type(t)
+	g.collect_known_concrete_multi_return_type(t)
+}
+
 fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {
 	if g.type_contains_generic_placeholder(t) {
 		return
 	}
+	g.collect_concrete_optional_typedef_type(t)
+}
+
+fn (mut g FlatGen) collect_concrete_optional_typedef_type(t types.Type) {
 	match t {
 		types.OptionType {
 			g.optional_type_name(t)
-			g.collect_optional_typedef_type(t.base_type)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.ResultType {
 			g.optional_type_name(t)
-			g.collect_optional_typedef_type(t.base_type)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.Array {
-			g.collect_optional_typedef_type(t.elem_type)
+			g.collect_concrete_optional_typedef_type(t.elem_type)
 		}
 		types.ArrayFixed {
-			g.collect_optional_typedef_type(t.elem_type)
+			g.collect_concrete_optional_typedef_type(t.elem_type)
 		}
 		types.Channel {
-			g.collect_optional_typedef_type(t.elem_type)
+			g.collect_concrete_optional_typedef_type(t.elem_type)
 		}
 		types.Map {
-			g.collect_optional_typedef_type(t.key_type)
-			g.collect_optional_typedef_type(t.value_type)
+			g.collect_concrete_optional_typedef_type(t.key_type)
+			g.collect_concrete_optional_typedef_type(t.value_type)
 		}
 		types.Pointer {
-			g.collect_optional_typedef_type(t.base_type)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.FnType {
 			for param in t.params {
-				g.collect_optional_typedef_type(param)
+				g.collect_concrete_optional_typedef_type(param)
 			}
-			g.collect_optional_typedef_type(t.return_type)
+			g.collect_concrete_optional_typedef_type(t.return_type)
 		}
 		types.Alias {
-			g.collect_optional_typedef_type(t.base_type)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.MultiReturn {
 			for typ in t.types {
-				g.collect_optional_typedef_type(typ)
+				g.collect_concrete_optional_typedef_type(typ)
 			}
 		}
 		else {}
@@ -490,7 +513,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 }
 
 fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
-	base, _, ok := shared_generic_app_parts(name)
+	base, _, ok := g.shared_generic_app_parts(name)
 	if !ok {
 		return []string{}
 	}
@@ -500,7 +523,7 @@ fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
 }
 
 fn (g &FlatGen) sum_generic_params_for_name(name string) []string {
-	base, _, ok := shared_generic_app_parts(name)
+	base, _, ok := g.shared_generic_app_parts(name)
 	if !ok {
 		return []string{}
 	}
@@ -510,7 +533,7 @@ fn (g &FlatGen) sum_generic_params_for_name(name string) []string {
 }
 
 fn type_name_is_unbound_generic_decl(name string, params []string, materialized bool) bool {
-	_, args, ok := shared_generic_app_parts(name)
+	_, args, ok := parse_shared_generic_app_parts(name)
 	if !ok || materialized || params.len == 0 {
 		return false
 	}
@@ -607,7 +630,8 @@ fn (mut g FlatGen) enum_decls() {
 	}
 	mut cur_module := ''
 	mut emitted := map[string]bool{}
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = 'main'
@@ -794,7 +818,8 @@ fn (mut g FlatGen) enum_decls() {
 fn (mut g FlatGen) enum_str_forward_decls() {
 	mut cur_module := ''
 	mut emitted := map[string]bool{}
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
@@ -828,7 +853,8 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 fn (mut g FlatGen) enum_str_defs() {
 	mut cur_module := ''
 	mut emitted := map[string]bool{}
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
@@ -1164,7 +1190,8 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	mut exact_found := false
 	mut suffix_node := flat.Node{}
 	mut suffix_found := false
-	for candidate in g.a.nodes {
+	for candidate_idx in g.top_level_nodes() {
+		candidate := g.a.nodes[candidate_idx]
 		if candidate.kind == .file {
 			cur_mod = ''
 			continue

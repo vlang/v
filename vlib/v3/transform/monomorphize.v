@@ -2551,6 +2551,7 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	t.tc.register_short_type_name(spec_name)
 	if !isnil(t.sum_cache) {
 		t.sum_cache.entries.clear()
+		t.sum_cache.clear_recent()
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file

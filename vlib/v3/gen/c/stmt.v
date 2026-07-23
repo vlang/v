@@ -3716,8 +3716,11 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			if typ := g.current_param_type(node.value) {
 				return typ
 			}
-			if typ := g.current_param_map_type(node.value) {
-				return typ
+			if typ := g.tc.expr_type(id) {
+				if typ !is types.Unknown && typ !is types.Void
+					&& !g.type_contains_generic_placeholder(typ) {
+					return typ
+				}
 			}
 			if typ := g.tc.cur_scope.lookup(node.value) {
 				if typ !is types.Void {

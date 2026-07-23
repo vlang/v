@@ -216,6 +216,22 @@ struct SourceStructFieldDecl {
 	typ  string
 }
 
+@[heap]
+struct VisibleMutationCache {
+mut:
+	decls       map[string]VisibleMutationFnDecl
+	decl_misses map[string]bool
+	results     map[u64]bool
+}
+
+fn new_visible_mutation_cache() &VisibleMutationCache {
+	return &VisibleMutationCache{
+		decls:       map[string]VisibleMutationFnDecl{}
+		decl_misses: map[string]bool{}
+		results:     map[u64]bool{}
+	}
+}
+
 fn push_type_name_candidate(mut candidates []string, name string) {
 	clean := name.trim_space()
 	if clean.len > 0 && clean !in candidates {
@@ -238,6 +254,14 @@ mut:
 	c_hits                     i64
 	c_misses                   i64
 	parse_entries              map[u64]ParseTypeCacheEntry
+	parse_context_file         string
+	parse_context_module       string
+	parse_context_generics     []string
+	parse_context_resolution   bool
+	parse_context_hash         u64
+	parse_context_valid        bool
+	parse_last_entry           ParseTypeCacheEntry
+	parse_last_valid           bool
 	c_entries                  map[TypeId]string
 	c_name_entries             map[string]string
 	struct_field_entries       map[string]Type
@@ -552,6 +576,7 @@ mut:
 	type_cache               &TypeCache               = unsafe { nil }
 	pre_transform_type_cache &TypeCache               = unsafe { nil }
 	resolution_type_views    &ResolutionTypeViewCache = unsafe { nil }
+	visible_mutation_cache   &VisibleMutationCache    = unsafe { nil }
 	type_interner            &TypeInterner            = unsafe { nil }
 	symbols                  &SymbolInterner          = unsafe { nil }
 }
@@ -677,6 +702,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		resolution_type_views:                   &ResolutionTypeViewCache{
 			by_file: map[string]&TypeChecker{}
 		}
+		visible_mutation_cache:                  new_visible_mutation_cache()
 		type_interner:                           type_interner
 		symbols:                                 symbols
 	}
@@ -791,9 +817,37 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		resolution_type_views:              &ResolutionTypeViewCache{
 			by_file: map[string]&TypeChecker{}
 		}
+		visible_mutation_cache:             tc.visible_mutation_cache
 		type_interner:                      tc.type_interner
 		symbols:                            tc.symbols
 	}
+}
+
+// fork_for_parallel_codegen returns a complete read-only semantic view with
+// private scope and memoization state for one C-generation worker.
+pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
+	mut forked := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Cgen resolves locals in child scopes but must keep the checked file scope
+	// as the immutable root shared by all workers.
+	forked.file_scope = tc.file_scope
+	forked.cur_scope = new_scope(tc.file_scope)
+	forked.errors = tc.errors.clone()
+	forked.parallel_check_sparse = tc.parallel_check_sparse
+	forked.check_range_lo = tc.check_range_lo
+	forked.check_range_hi = tc.check_range_hi
+	// These sparse transform results are immutable by cgen. Share their backing
+	// maps just like the node-indexed semantic arrays in fork_program_view.
+	unsafe {
+		forked.sparse_resolved_call_names = tc.sparse_resolved_call_names
+		forked.sparse_resolved_fn_values = tc.sparse_resolved_fn_values
+		forked.sparse_statement_nodes = tc.sparse_statement_nodes
+		forked.sparse_expr_type_values = tc.sparse_expr_type_values
+		forked.sparse_checking_nodes = tc.sparse_checking_nodes
+	}
+	forked.visible_mutation_cache = unsafe { nil }
+	forked.inherit_ownership_codegen_metadata_from(tc)
+	forked.set_fresh_type_cache_based_on(tc, tc.type_cache_parse_enabled())
+	return &forked
 }
 
 // fork_type_parse_view creates a lookup-only view in an explicit source
@@ -837,6 +891,9 @@ fn (tc &TypeChecker) fork_smartcast_query_view() TypeChecker {
 // expr_type lookup on a freshly-created node id indexes a valid array.
 pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
 	mut forked := tc.fork_program_view(ast, map[int][]SymbolId{})
+	// Visible-mutation analysis only runs during checking. Do not allocate its
+	// three private maps for the many short-lived transform forks.
+	forked.visible_mutation_cache = unsafe { nil }
 	// The transformer propagates call/fn-value resolution metadata onto the call
 	// nodes it clones (Transformer.copy_cloned_resolution). In a worker those
 	// writes must not touch (or grow/realloc) the shared node-indexed arrays
@@ -914,6 +971,8 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 		cache.c_hits = 0
 		cache.c_misses = 0
 		cache.parse_entries.clear()
+		cache.parse_context_valid = false
+		cache.parse_last_valid = false
 		cache.c_entries.clear()
 		cache.c_name_entries.clear()
 		cache.struct_field_entries.clear()
@@ -1377,6 +1436,7 @@ fn split_sum_variant_texts(text string) []string {
 // collect supports collect handling for TypeChecker.
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.a = a
+	tc.visible_mutation_cache = new_visible_mutation_cache()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.file_scope = new_scope(unsafe { nil })
@@ -16070,6 +16130,16 @@ fn visible_mutation_fn_names_match(actual string, declared string) bool {
 }
 
 fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
+	cache_key := '${fallback_mod}\x01${name}'
+	if !isnil(tc.visible_mutation_cache) {
+		cache := tc.visible_mutation_cache
+		if decl := cache.decls[cache_key] {
+			return decl
+		}
+		if cache.decl_misses[cache_key] {
+			return none
+		}
+	}
 	mut cur_mod := ''
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
@@ -16088,14 +16158,23 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				if visible_mutation_fn_names_match(name, qname)
 					|| visible_mutation_fn_names_match(name, node.value)
 					|| tc.cached_c_name(qname) == name || tc.cached_c_name(node.value) == name {
-					return VisibleMutationFnDecl{
+					decl := VisibleMutationFnDecl{
 						idx: i
 						mod: cur_mod
 					}
+					if !isnil(tc.visible_mutation_cache) {
+						mut cache := tc.visible_mutation_cache
+						cache.decls[cache_key] = decl
+					}
+					return decl
 				}
 			}
 			else {}
 		}
+	}
+	if !isnil(tc.visible_mutation_cache) {
+		mut cache := tc.visible_mutation_cache
+		cache.decl_misses[cache_key] = true
 	}
 	return none
 }
@@ -16246,7 +16325,7 @@ fn (tc &TypeChecker) visible_mutation_call_name(call_id flat.NodeId, call flat.N
 	return ''
 }
 
-fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, call flat.Node, root_name string, root_type string, decl_mod string, mut visiting map[string]bool, mut cache map[string]bool) bool {
+fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, call flat.Node, root_name string, root_type string, decl_mod string, mut visiting map[u64]bool) bool {
 	if call.children_count == 0 {
 		return false
 	}
@@ -16288,9 +16367,7 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 				root_type, decl_mod)
 			match recv_vis {
 				.direct {
-					if tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting, mut
-						cache)
-					{
+					if tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting) {
 						return true
 					}
 				}
@@ -16315,9 +16392,7 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 		arg_vis := tc.receiver_expr_mutation_visibility(arg_id, root_name, root_type, decl_mod)
 		match arg_vis {
 			.direct {
-				if tc.visible_mutation_fn_param_has_visible_mutation(decl, param_idx, mut visiting, mut
-					cache)
-				{
+				if tc.visible_mutation_fn_param_has_visible_mutation(decl, param_idx, mut visiting) {
 					return true
 				}
 			}
@@ -16330,7 +16405,7 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 	return false
 }
 
-fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_name string, root_type string, decl_mod string, mut visiting map[string]bool, mut cache map[string]bool) bool {
+fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_name string, root_type string, decl_mod string, mut visiting map[u64]bool) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
 	}
@@ -16374,7 +16449,7 @@ fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_nam
 		}
 		.call {
 			if tc.call_has_visible_receiver_mutation(id, node, root_name, root_type, decl_mod, mut
-				visiting, mut cache)
+				visiting)
 			{
 				return true
 			}
@@ -16383,7 +16458,7 @@ fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_nam
 	}
 	for i in 0 .. node.children_count {
 		if tc.node_has_visible_receiver_mutation(tc.a.child(&node, i), root_name, root_type,
-			decl_mod, mut visiting, mut cache)
+			decl_mod, mut visiting)
 		{
 			return true
 		}
@@ -16391,16 +16466,34 @@ fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_nam
 	return false
 }
 
-fn (tc &TypeChecker) visible_mutation_fn_param_has_visible_mutation(decl VisibleMutationFnDecl, param_idx int, mut visiting map[string]bool, mut cache map[string]bool) bool {
-	key := '${decl.idx}|${param_idx}'
-	if key in cache {
-		return cache[key]
+fn visible_mutation_cache_id(decl VisibleMutationFnDecl, param_idx int) u64 {
+	return u64(u32(decl.idx)) << 32 | u64(u32(param_idx))
+}
+
+fn (tc &TypeChecker) cached_visible_mutation_result(key u64) ?bool {
+	if !isnil(tc.visible_mutation_cache) {
+		cache := tc.visible_mutation_cache
+		if key in cache.results {
+			return cache.results[key]
+		}
 	}
-	if key in visiting {
+	return none
+}
+
+fn (tc &TypeChecker) visible_mutation_fn_param_has_visible_mutation(decl VisibleMutationFnDecl, param_idx int, mut visiting map[u64]bool) bool {
+	cache_id := visible_mutation_cache_id(decl, param_idx)
+	if cached := tc.cached_visible_mutation_result(cache_id) {
+		return cached
+	}
+	if cache_id in visiting {
 		return true
 	}
-	param := tc.visible_mutation_fn_param(decl, param_idx) or { return true }
+	param := tc.visible_mutation_fn_param(decl, param_idx) or {
+		tc.cache_visible_mutation_result(cache_id, true)
+		return true
+	}
 	if !param.is_mut {
+		tc.cache_visible_mutation_result(cache_id, false)
 		return false
 	}
 	fn_node := tc.a.nodes[decl.idx]
@@ -16414,21 +16507,29 @@ fn (tc &TypeChecker) visible_mutation_fn_param_has_visible_mutation(decl Visible
 	if param_count == int(fn_node.children_count) {
 		// A source method with `{}` has no visible mutation. Header declarations use
 		// `is_mut` as the parser's cached-body marker and remain conservative.
+		tc.cache_visible_mutation_result(cache_id, fn_node.is_mut)
 		return fn_node.is_mut
 	}
-	visiting[key] = true
+	visiting[cache_id] = true
 	mut result := false
 	for i in param_count .. fn_node.children_count {
 		if tc.node_has_visible_receiver_mutation(tc.a.child(&fn_node, i), param.value, param.typ,
-			decl.mod, mut visiting, mut cache)
+			decl.mod, mut visiting)
 		{
 			result = true
 			break
 		}
 	}
-	visiting.delete(key)
-	cache[key] = result
+	visiting.delete(cache_id)
+	tc.cache_visible_mutation_result(cache_id, result)
 	return result
+}
+
+fn (tc &TypeChecker) cache_visible_mutation_result(key u64, result bool) {
+	if !isnil(tc.visible_mutation_cache) {
+		mut cache := tc.visible_mutation_cache
+		cache.results[key] = result
+	}
 }
 
 fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, recv_id flat.NodeId) bool {
@@ -16442,10 +16543,13 @@ fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, re
 	if method_module.len > 0 && method_module != tc.cur_module {
 		// Match V's private-mutability rule: an immutable binding is accepted across a
 		// module boundary only when the method cannot mutate caller-visible state.
-		mut visiting := map[string]bool{}
-		mut cache := map[string]bool{}
 		decl := tc.visible_mutation_fn_decl(info.name, method_module) or { return true }
-		return tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting, mut cache)
+		cache_id := visible_mutation_cache_id(decl, 0)
+		if cached := tc.cached_visible_mutation_result(cache_id) {
+			return cached
+		}
+		mut visiting := map[u64]bool{}
+		return tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting)
 	}
 	return true
 }
@@ -24558,6 +24662,23 @@ fn (tc &TypeChecker) source_struct_has_non_builtin_error_embed(concrete_name str
 	return entries[key] > 0
 }
 
+// precompute_source_error_embed_index builds the immutable source-error embedding
+// index once before parallel consumers fork their private memoization overlays.
+pub fn (tc &TypeChecker) precompute_source_error_embed_index() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	mut cache := unsafe { tc.type_cache }
+	if cache.source_error_embed_indexed {
+		return
+	}
+	if !isnil(cache.base) && cache.base.source_error_embed_indexed {
+		return
+	}
+	cache.source_error_embed_entries = tc.collect_source_error_embed_entries()
+	cache.source_error_embed_indexed = true
+}
+
 fn (tc &TypeChecker) collect_source_error_embed_entries() map[string]int {
 	mut entries := map[string]int{}
 	if isnil(tc.a) {
@@ -26119,7 +26240,7 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	}
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
 		mut cache := unsafe { tc.type_cache }
-		if cached := parse_type_cache_get(cache, tc.cur_file, tc.cur_module, typ,
+		if cached := parse_type_cache_get(mut cache, tc.cur_file, tc.cur_module, typ,
 			tc.fn_context.generic_params, tc.resolution_type_mode)
 		{
 			cache.parse_hits++
@@ -26232,7 +26353,13 @@ pub fn (tc &TypeChecker) type_cache_stats() TypeCacheStats {
 	}
 }
 
-fn parse_type_cache_hash(file string, module_name string, text string, generic_params []string, resolution bool) u64 {
+fn parse_type_cache_context_hash(mut cache TypeCache, file string, module_name string, generic_params []string, resolution bool) u64 {
+	if cache.parse_context_valid && cache.parse_context_resolution == resolution
+		&& parse_type_cache_string_matches(cache.parse_context_file, file)
+		&& parse_type_cache_string_matches(cache.parse_context_module, module_name)
+		&& parse_type_cache_strings_match(cache.parse_context_generics, generic_params) {
+		return cache.parse_context_hash
+	}
 	mut hash := u64(14_695_981_039_346_656_037)
 	if resolution {
 		hash = (hash ^ u64(1)) * u64(1_099_511_628_211)
@@ -26243,7 +26370,13 @@ fn parse_type_cache_hash(file string, module_name string, text string, generic_p
 	for param in generic_params {
 		hash = parse_type_cache_hash_part(hash, param)
 	}
-	return parse_type_cache_hash_part(hash, text)
+	cache.parse_context_file = file
+	cache.parse_context_module = module_name
+	cache.parse_context_generics = generic_params.clone()
+	cache.parse_context_resolution = resolution
+	cache.parse_context_hash = hash
+	cache.parse_context_valid = true
+	return hash
 }
 
 fn parse_type_cache_hash_part(initial u64, part string) u64 {
@@ -26260,26 +26393,51 @@ fn parse_type_cache_next_key(key u64) u64 {
 	return key * u64(2_862_933_555_777_941_757) + u64(3_037_000_493)
 }
 
-fn parse_type_cache_entry_matches(entry ParseTypeCacheEntry, file string, module_name string, text string, generic_params []string, resolution bool) bool {
-	if entry.generic_params.len != generic_params.len {
+@[inline]
+fn parse_type_cache_string_matches(a string, b string) bool {
+	if a.len != b.len {
 		return false
 	}
-	for i, param in generic_params {
-		if entry.generic_params[i] != param {
+	if unsafe { a.str == b.str } {
+		return true
+	}
+	return a == b
+}
+
+fn parse_type_cache_strings_match(a []string, b []string) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i in 0 .. a.len {
+		if !parse_type_cache_string_matches(a[i], b[i]) {
 			return false
 		}
 	}
-	return entry.file == file && entry.module == module_name && entry.text == text
-		&& entry.resolution == resolution
+	return true
 }
 
-fn parse_type_cache_get(cache &TypeCache, file string, module_name string, text string, generic_params []string, resolution bool) ?Type {
-	mut key := parse_type_cache_hash(file, module_name, text, generic_params, resolution)
+fn parse_type_cache_entry_matches(entry ParseTypeCacheEntry, file string, module_name string, text string, generic_params []string, resolution bool) bool {
+	return parse_type_cache_strings_match(entry.generic_params, generic_params)
+		&& parse_type_cache_string_matches(entry.file, file)
+		&& parse_type_cache_string_matches(entry.module, module_name)
+		&& parse_type_cache_string_matches(entry.text, text) && entry.resolution == resolution
+}
+
+fn parse_type_cache_get(mut cache TypeCache, file string, module_name string, text string, generic_params []string, resolution bool) ?Type {
+	if cache.parse_last_valid
+		&& parse_type_cache_entry_matches(cache.parse_last_entry, file, module_name, text, generic_params, resolution) {
+		return cache.parse_last_entry.typ
+	}
+	context_hash := parse_type_cache_context_hash(mut cache, file, module_name, generic_params,
+		resolution)
+	mut key := parse_type_cache_hash_part(context_hash, text)
 	for {
 		if entry := cache.parse_entries[key] {
 			if parse_type_cache_entry_matches(entry, file, module_name, text, generic_params,
 				resolution)
 			{
+				cache.parse_last_entry = entry
+				cache.parse_last_valid = true
 				return entry.typ
 			}
 			key = parse_type_cache_next_key(key)
@@ -26290,6 +26448,8 @@ fn parse_type_cache_get(cache &TypeCache, file string, module_name string, text 
 				if parse_type_cache_entry_matches(entry, file, module_name, text, generic_params,
 					resolution)
 				{
+					cache.parse_last_entry = entry
+					cache.parse_last_valid = true
 					return entry.typ
 				}
 				key = parse_type_cache_next_key(key)
@@ -26302,7 +26462,9 @@ fn parse_type_cache_get(cache &TypeCache, file string, module_name string, text 
 }
 
 fn parse_type_cache_put(mut cache TypeCache, file string, module_name string, text string, generic_params []string, resolution bool, typ Type) {
-	mut key := parse_type_cache_hash(file, module_name, text, generic_params, resolution)
+	context_hash := parse_type_cache_context_hash(mut cache, file, module_name, generic_params,
+		resolution)
+	mut key := parse_type_cache_hash_part(context_hash, text)
 	for {
 		if entry := cache.parse_entries[key] {
 			if parse_type_cache_entry_matches(entry, file, module_name, text, generic_params,
@@ -26324,7 +26486,7 @@ fn parse_type_cache_put(mut cache TypeCache, file string, module_name string, te
 				continue
 			}
 		}
-		cache.parse_entries[key] = ParseTypeCacheEntry{
+		entry := ParseTypeCacheEntry{
 			file:           file
 			module:         module_name
 			text:           text
@@ -26332,6 +26494,9 @@ fn parse_type_cache_put(mut cache TypeCache, file string, module_name string, te
 			resolution:     resolution
 			typ:            typ
 		}
+		cache.parse_entries[key] = entry
+		cache.parse_last_entry = entry
+		cache.parse_last_valid = true
 		return
 	}
 }

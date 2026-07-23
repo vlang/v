@@ -14,6 +14,7 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	tc.direct_dependencies_by_fn[10] = [master_dependency]
 
 	mut worker := tc.fork_for_parallel_check()
+	assert voidptr(worker.visible_mutation_cache) != voidptr(tc.visible_mutation_cache)
 	assert worker.direct_dependencies_by_fn.len == 0
 	worker.direct_dependencies_by_fn[10] = [worker_dependency]
 	worker.direct_dependencies_by_fn[20] = [master_dependency]
@@ -26,6 +27,7 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	worker.free_parallel_check_worker_cache()
 
 	mut transform_worker := tc.fork_for_parallel_transform(&a)
+	assert isnil(transform_worker.visible_mutation_cache)
 	assert transform_worker.direct_dependencies_by_fn.len == 0
 	transform_worker.free_parallel_transform_caches()
 }

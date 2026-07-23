@@ -128,12 +128,21 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 	if c.module != t.cur_module {
 		c.module = t.cur_module
 		c.entries.clear()
+		c.clear_recent()
+	}
+	recent_slot := alias_cache_slot(sum_name)
+	if c.recent_generations[recent_slot] == c.recent_generation
+		&& unsafe { c.recent_types[recent_slot].str == sum_name.str }
+		&& c.recent_types[recent_slot].len == sum_name.len {
+		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[sum_name] {
+		c.put_recent(sum_name, cached)
 		return cached
 	}
 	result := t.resolve_sum_name_uncached(sum_name)
 	c.entries[sum_name] = result
+	c.put_recent(sum_name, result)
 	return result
 }
 
