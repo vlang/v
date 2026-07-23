@@ -66,7 +66,13 @@ mut:
 	comptime_const_values             map[string]string
 	comptime_local_values             map[string]string
 	imported_module_names             map[string]bool // import aliases in the current file; not captured by inlined template closures
-	declared_fn_names                 map[string]bool // bare names of free functions declared in the current file; a template-closure callee named one of these is a top-level helper, not a capturable local
+	// local_binding_* track the variable/parameter names currently in scope, so an inlined
+	// template closure captures a bare callee only when it is an actual local binding (a
+	// function-valued parameter/local) rather than a module/top-level function. Scoped like
+	// comptime_value_*: a name is in scope when local_binding_counts[name] > 0.
+	local_binding_counts              map[string]int
+	local_binding_undos               []string
+	local_binding_scopes              []int
 	comptime_value_undos              []ComptimeValueUndo
 	comptime_value_scopes             []int
 	pending_flag                      bool
@@ -144,7 +150,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
 		imported_module_names:         map[string]bool{}
-		declared_fn_names:             map[string]bool{}
+		local_binding_counts:          map[string]int{}
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases:        map[string]bool{}
 		a:                             &flat.FlatAst{
@@ -244,7 +250,9 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
 	p.imported_module_names.clear()
-	p.declared_fn_names.clear()
+	p.local_binding_counts.clear()
+	p.local_binding_undos.clear()
+	p.local_binding_scopes.clear()
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
@@ -1032,6 +1040,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		p.cur_method_is_static = false
 		p.push_local_type_scope(name)
 		p.begin_comptime_value_scope()
+		p.begin_local_binding_scope()
 		if disable_body {
 			p.mark_disabled_fn(name)
 			p.skip_block()
@@ -1047,6 +1056,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 			}
 			p.check(.rcbr)
 		}
+		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
@@ -1078,13 +1088,6 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, is_c_decl bool, name_pos int) flat.NodeId {
 	is_pub := p.pending_fn_pub
 	p.pending_fn_pub = false
-	// Record free (non-method) function names so an inlined template closure can tell a
-	// top-level/module helper callee (never captured — it is globally reachable) from a
-	// function-valued local/parameter of the same bare name (which must be captured).
-	// Methods are excluded: they are only ever called through a selector, not bare.
-	if !is_method {
-		p.declared_fn_names[name] = true
-	}
 	// Capture & clear here so it applies only to this function (not nested closures
 	// or a following declaration), and is cleared even on the extern/no-body path.
 	disable_body := p.disable_fn_body
@@ -1167,6 +1170,14 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.cur_method_is_static = is_method && receiver_name.len == 0
 	p.push_local_type_scope(name)
 	p.begin_comptime_value_scope()
+	// The parameters (and receiver) are the function body's outermost local bindings.
+	p.begin_local_binding_scope()
+	for pid in param_ids {
+		pnode := p.a.nodes[int(pid)]
+		if pnode.kind == .param {
+			p.declare_local_binding(pnode.value)
+		}
+	}
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
 	if disable_body {
@@ -1188,6 +1199,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 		p.check(.rcbr)
 	}
+	p.end_local_binding_scope()
 	p.end_comptime_value_scope()
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
@@ -4180,6 +4192,57 @@ fn (mut p Parser) begin_comptime_value_scope() {
 	p.comptime_value_scopes << p.comptime_value_undos.len
 }
 
+// begin_local_binding_scope opens a variable scope; end_local_binding_scope removes the
+// bindings declared within it. A name is an in-scope local while its count stays above 0.
+fn (mut p Parser) begin_local_binding_scope() {
+	p.local_binding_scopes << p.local_binding_undos.len
+}
+
+fn (mut p Parser) end_local_binding_scope() {
+	if p.local_binding_scopes.len == 0 {
+		return
+	}
+	start := p.local_binding_scopes.pop()
+	for i := p.local_binding_undos.len - 1; i >= start; i-- {
+		name := p.local_binding_undos[i]
+		count := p.local_binding_counts[name] or { 0 }
+		if count <= 1 {
+			p.local_binding_counts.delete(name)
+		} else {
+			p.local_binding_counts[name] = count - 1
+		}
+	}
+	p.local_binding_undos.trim(start)
+}
+
+// declare_local_binding records `name` as an in-scope variable/parameter for the current
+// local scope, so template closures can tell it apart from a module/top-level function.
+fn (mut p Parser) declare_local_binding(name string) {
+	if name.len == 0 || name == '_' || p.local_binding_scopes.len == 0 {
+		return
+	}
+	p.local_binding_undos << name
+	p.local_binding_counts[name] = (p.local_binding_counts[name] or { 0 }) + 1
+}
+
+// is_local_binding reports whether `name` currently names an in-scope local variable or
+// parameter (as opposed to a module/top-level function or an unknown name).
+fn (p &Parser) is_local_binding(name string) bool {
+	return (p.local_binding_counts[name] or { 0 }) > 0
+}
+
+// declare_local_binding_node records the identifier `id` (a declaration's left-hand side)
+// as an in-scope local binding; non-identifier nodes are ignored.
+fn (mut p Parser) declare_local_binding_node(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .ident {
+		p.declare_local_binding(node.value)
+	}
+}
+
 fn (mut p Parser) end_comptime_value_scope() {
 	if p.comptime_value_scopes.len == 0 {
 		return
@@ -5538,7 +5601,12 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_
 		range_end = p.expr(.lowest)
 	}
 
+	// The key/value loop variables are locals scoped to the loop body.
+	p.begin_local_binding_scope()
+	p.declare_local_binding_node(key_id)
+	p.declare_local_binding_node(val_id)
 	body_ids := p.parse_block_body()
+	p.end_local_binding_scope()
 
 	mut ids := []flat.NodeId{cap: 4 + body_ids.len}
 	ids << key_id
@@ -5749,6 +5817,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 	block_scope := p.block_local_type_scope(branch_block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
+	p.begin_local_binding_scope()
 	p.predeclare_local_type_names_in_block(branch_block_start)
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.looks_like_match_branch_start() {
@@ -5767,6 +5836,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	p.end_local_binding_scope()
 	p.end_comptime_value_scope()
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
@@ -5814,6 +5884,7 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 	block_scope := p.block_local_type_scope(block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
+	p.begin_local_binding_scope()
 	p.predeclare_local_type_names_in_block(block_start)
 	mut ids := []flat.NodeId{}
 	for p.tok != .rcbr && p.tok != .eof {
@@ -5827,6 +5898,7 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	p.end_local_binding_scope()
 	p.end_comptime_value_scope()
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
@@ -5869,6 +5941,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			mut all_ids := []flat.NodeId{cap: lhs_ids.len * 2}
 			for i in 0 .. lhs_ids.len {
 				all_ids << lhs_ids[i]
+				// `:=` (op_id 12) introduces each left-hand side as a new local binding.
+				if op_id == 12 {
+					p.declare_local_binding_node(lhs_ids[i])
+				}
 				if i < rhs_ids.len {
 					all_ids << rhs_ids[i]
 					if op_id == 12 {
@@ -5924,6 +6000,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			p.expr(.lowest)
 		}
 		p.remember_comptime_decl_value(lhs, rhs)
+		p.declare_local_binding_node(lhs)
 		if p.tok == .semicolon {
 			p.next()
 		}
@@ -9288,6 +9365,13 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
+		p.begin_local_binding_scope()
+		for pid in param_ids {
+			pnode := p.a.nodes[int(pid)]
+			if pnode.kind == .param {
+				p.declare_local_binding(pnode.value)
+			}
+		}
 		p.check(.lcbr)
 		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
@@ -9303,6 +9387,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			}
 		}
 		p.check(.rcbr)
+		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 	}

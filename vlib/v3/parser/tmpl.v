@@ -1060,6 +1060,9 @@ fn (mut p Parser) parse_stmts_from_source(src string) []flat.NodeId {
 	p.s.init(file, stable_src)
 	p.has_peek = false
 	p.next()
+	// Isolate any bindings the re-parsed builder declares (e.g. its `mut <builder> := ''`)
+	// so they do not leak into the enclosing function's local-binding scope.
+	p.begin_local_binding_scope()
 	mut ids := []flat.NodeId{}
 	for p.tok != .eof {
 		if p.tok == .semicolon {
@@ -1071,6 +1074,7 @@ fn (mut p Parser) parse_stmts_from_source(src string) []flat.NodeId {
 			ids << id
 		}
 	}
+	p.end_local_binding_scope()
 
 	p.s = saved_s
 	p.tok = saved_tok
@@ -1388,20 +1392,20 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			}
 		}
 		.call {
-			// The callee (child 0) names the function being invoked. Skip it ONLY when it
-			// is a known top-level/module helper (a bare ident in p.declared_fn_names):
-			// those are globally reachable and must not be captured. A bare-ident callee
-			// that is not a declared function is a function-valued local/parameter (e.g.
-			// `render` in `@{render(row)}` where `render` is a handler parameter) and must
-			// be captured, since v3 closures do not auto-capture; a non-ident callee (a
-			// `recv.method` selector) is descended into so its receiver local is captured.
+			// The callee (child 0) names the function being invoked. A bare-ident callee is
+			// captured only when it is an actual in-scope local binding (a function-valued
+			// parameter/local, e.g. `render` in `@{render(row)}` where `render` is a handler
+			// parameter) — v3 closures do not auto-capture. A bare ident that is not a local
+			// binding is a module/top-level function, which is globally reachable and must
+			// not be captured. A non-ident callee (a `recv.method` selector) is descended so
+			// its receiver local is captured.
 			if node.children_count > 0 {
 				callee := p.a.child(&node, 0)
 				if int(callee) >= 0 && int(callee) < p.a.nodes.len {
 					callee_node := p.a.nodes[int(callee)]
-					is_known_top_level_fn := callee_node.kind == .ident
-						&& callee_node.value in p.declared_fn_names
-					if !is_known_top_level_fn {
+					callee_is_local_binding := callee_node.kind == .ident
+						&& p.is_local_binding(callee_node.value)
+					if callee_node.kind != .ident || callee_is_local_binding {
 						p.collect_template_free_idents(callee, mut declared, mut seen, mut out,
 							mut mut_names)
 					}
