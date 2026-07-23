@@ -211,3 +211,18 @@ fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	assert 'Shared[string]' in batch.generic_app_cache.entries
 	assert 'Shared[string]' !in frozen.entries
 }
+
+fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.parallel_type_decls = '/* precomputed type declarations */\n'.clone()
+	encoded := 'fn_ptr:int|int'
+	name := g.resolve_fn_ptr_type(encoded)
+
+	g.write_type_declaration_block()
+	source := g.sb.str()
+	precomputed_idx := source.index('/* precomputed type declarations */') or { -1 }
+	typedef_idx := source.index('typedef int (*${name})(int);') or { -1 }
+	assert precomputed_idx >= 0
+	assert typedef_idx > precomputed_idx
+	assert g.emitted_fn_ptr_typedefs[encoded]
+}

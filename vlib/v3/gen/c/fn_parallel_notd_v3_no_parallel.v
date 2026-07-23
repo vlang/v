@@ -56,11 +56,6 @@ $if !windows {
 		// repeatedly copying a geometrically growing builder.
 		w.sb.ensure_cap(4 * 1024 * 1024)
 		w.parallel_const_code = w.precompute_consts()
-		w.preseed_struct_fn_ptr_types()
-		w.preseed_sum_fn_ptr_types()
-		w.preseed_global_fn_ptr_types()
-		w.preseed_fn_signature_fn_ptr_types()
-		w.preseed_all_c_extern_fn_ptr_types()
 		w.gen_type_declaration_block()
 		w.parallel_type_decls = w.sb.str()
 		unsafe { w.sb.free() }
@@ -167,16 +162,17 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		selection_scope := cgen_worker_scope_begin(true)
 		master_tc := g.tc
 		g.tc = g.clone_parallel_type_checker()
-		// Function workers discover their own deterministic function-pointer
-		// typedefs. Only the globally numbered string table must be complete before
-		// streamed worker output starts.
+		// Fuse body-local function-pointer discovery into the item cost walk so
+		// parallel type declarations see every typedef before their task starts.
+		// The globally numbered string table must also be complete before output.
 		for node in g.a.nodes {
 			if node.kind == .string_literal {
 				g.intern_string(node.value)
 			}
 		}
-		g.want_parallel_prep = false
+		g.want_parallel_prep = true
 		items := g.ensure_fn_gen_items()
+		g.want_parallel_prep = false
 		if _ := g.ierror_interface_name() {
 			g.intern_string('')
 		}

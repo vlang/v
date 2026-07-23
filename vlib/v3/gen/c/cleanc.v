@@ -1561,6 +1561,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// Decide fixed-array return wrappers before generating function bodies, so
 		// signatures, returns and call sites all agree on the wrapped types.
 		g.populate_fixed_array_ret_wrappers()
+		// Seed declaration-owned function-pointer types before parallel type
+		// generation starts. The pre-dispatch item walk adds body-local types
+		// before the declaration task is launched.
+		g.preseed_struct_fn_ptr_types()
+		g.preseed_sum_fn_ptr_types()
+		g.preseed_global_fn_ptr_types()
+		g.preseed_fn_signature_fn_ptr_types()
+		g.preseed_c_extern_fn_ptr_types()
 	}
 	defer_parallel_support := g.scope_parallel_workers && !no_parallel && !g.program_body_only
 		&& g.incremental_fn_names.len == 0
@@ -1648,13 +1656,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_END */')
 	}
-	if g.parallel_type_decls.len > 0 {
-		g.sb.write_string(g.parallel_type_decls)
-		unsafe { g.parallel_type_decls.free() }
-		g.parallel_type_decls = ''
-	} else {
-		g.gen_type_declaration_block()
-	}
+	g.write_type_declaration_block()
 	if g.cache_split {
 		g.writeln('/* V3CACHE_SOURCE_DIRECTIVES_BEGIN */')
 	}
@@ -1782,6 +1784,21 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
+}
+
+// write_type_declaration_block writes the precomputed parallel block when available,
+// then supplements it with function-pointer types discovered by body workers.
+fn (mut g FlatGen) write_type_declaration_block() {
+	if g.parallel_type_decls.len == 0 {
+		g.gen_type_declaration_block()
+		return
+	}
+	g.sb.write_string(g.parallel_type_decls)
+	unsafe { g.parallel_type_decls.free() }
+	g.parallel_type_decls = ''
+	// The parallel declaration task finishes before body-worker state is merged.
+	// fn_ptr_typedefs deduplicates the precomputed set and emits only late types.
+	g.fn_ptr_typedefs()
 }
 
 fn (mut g FlatGen) gen_vinit() {
