@@ -4436,12 +4436,17 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			return p.sizeof_expr()
 		}
 		.key_isreftype {
+			p.record_diagnostic('`$isreftype` is not supported; use `isreftype(...)` instead',
+				dollar_pos)
 			return p.isreftype_expr()
 		}
 		.key_offsetof {
+			p.record_diagnostic('`$__offsetof` is not supported; use `__offsetof(...)` instead',
+				dollar_pos)
 			return p.offsetof_expr()
 		}
 		.key_dump {
+			p.record_diagnostic('`$dump` is not supported; use `dump(...)` instead', dollar_pos)
 			return p.dump_expr()
 		}
 		else {}

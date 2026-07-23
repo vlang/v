@@ -182,12 +182,15 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 	assert false_literals == 2
 }
 
-fn test_dollar_prefixed_sizeof_and_typeof_are_rejected() {
-	diagnostics := parse_parser_regression_diagnostics('dollar_sizeof_typeof',
-		'fn main() {\n\tx := 1\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n}\n')
-	assert diagnostics.len == 2, '${diagnostics}'
+fn test_dollar_prefixed_pseudo_functions_are_rejected() {
+	diagnostics := parse_parser_regression_diagnostics('dollar_pseudo_functions',
+		'struct Item {\n\tvalue int\n}\n\nfn main() {\n\tx := Item{}\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n\t_ = $isreftype(x)\n\t_ = $__offsetof(Item, value)\n\t_ = $dump(x)\n}\n')
+	assert diagnostics.len == 5, '${diagnostics}'
 	assert diagnostics[0].message.contains('`$sizeof` is not supported'), '${diagnostics}'
 	assert diagnostics[1].message.contains('`$typeof` is not supported'), '${diagnostics}'
+	assert diagnostics[2].message.contains('`$isreftype` is not supported'), '${diagnostics}'
+	assert diagnostics[3].message.contains('`$__offsetof` is not supported'), '${diagnostics}'
+	assert diagnostics[4].message.contains('`$dump` is not supported'), '${diagnostics}'
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {

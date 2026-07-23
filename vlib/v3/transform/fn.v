@@ -11551,6 +11551,25 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 			i++
 			continue
 		}
+		if variadic_idx < 0 && param_idx < params.len {
+			arg_type := t.tc.resolve_type(arg_id)
+			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+				items := arg_type.types
+				multi_type := t.multi_return_type_name(items)
+				value := t.stable_transformed_expr_for_reuse(t.transform_expr(arg_id), multi_type,
+					'multi_arg')
+				for multi_idx, item_type in items {
+					expected_idx := param_idx + multi_idx
+					if expected_idx >= params.len {
+						break
+					}
+					field := t.make_selector(value, 'arg${multi_idx}', item_type.name())
+					args << t.transform_call_arg_for_param(field, params[expected_idx].name())
+				}
+				i++
+				continue
+			}
+		}
 		args << t.transform_call_arg_for_param(arg_id, param_type)
 		i++
 	}

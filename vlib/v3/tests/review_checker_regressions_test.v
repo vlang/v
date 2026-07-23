@@ -192,6 +192,13 @@ fn test_multi_return_arguments_must_consume_the_parameter_tail() {
 		'argument count mismatch for `consume`: expected 3, got 2')
 }
 
+fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'receiver_method_tail_multi_return',
+		'struct Receiver {}\n\nfn pair() (int, int) {\n\treturn 2, 3\n}\n\nfn (receiver Receiver) use(prefix int, a int, b int) int {\n\treturn prefix * 100 + a * 10 + b\n}\n\nfn main() {\n\tprintln(int_str(Receiver{}.use(1, pair())))\n}\n')
+	assert out == '123'
+}
+
 fn test_power_requires_numeric_operands_or_an_overload() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n',
