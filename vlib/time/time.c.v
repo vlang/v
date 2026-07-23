@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module time
 
+import strings
+
 #include <time.h>
 
 // C.timeval represents a C time value.
@@ -57,6 +59,9 @@ pub fn utc() Time {
 }
 
 fn time_with_unix(t Time) Time {
+	if _ := t.loc {
+		return t
+	}
 	if t.unix != 0 {
 		return t
 	}
@@ -137,16 +142,73 @@ fn convert_ctime(t C.tm, nanosecond int) Time {
 
 // strftime returns the formatted time using `strftime(3)`.
 pub fn (t Time) strftime(fmt string) string {
+	mut strftime_fmt := fmt
+	mut strftime_unix := t.unix
+	mut zone_name := ''
+	mut zone_offset := ''
+	mut unix_time := ''
+	if loc := t.location() {
+		zone := loc.zone_at(t.unix) or { Zone{} }
+		zone_name = zone.name
+		zone_offset = strftime_zone_offset(zone.offset)
+		unix_time = t.unix.str()
+		strftime_fmt = strftime_location_format(fmt)
+		strftime_unix = t.local_unix()
+	}
 	mut tm := &C.tm{}
 	$if windows {
-		tm = C.gmtime(voidptr(&t.unix))
+		tm = C.gmtime(voidptr(&strftime_unix))
 	} $else {
-		C.gmtime_r(voidptr(&t.unix), tm)
+		C.gmtime_r(voidptr(&strftime_unix), tm)
 	}
 	mut buf := [1024]char{}
-	fmt_c := unsafe { &char(fmt.str) }
+	fmt_c := unsafe { &char(strftime_fmt.str) }
 	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
-	return unsafe { cstring_to_vstring(&buf[0]) }
+	res := unsafe { cstring_to_vstring(&buf[0]) }
+	if zone_name != '' || zone_offset != '' || unix_time != '' {
+		return res.replace(strftime_zone_name_placeholder, zone_name).replace(strftime_zone_offset_placeholder,
+			zone_offset).replace(strftime_unix_placeholder, unix_time)
+	}
+	return res
+}
+
+const strftime_zone_name_placeholder = '@V_STRFTIME_ZONE_NAME@'
+const strftime_zone_offset_placeholder = '@V_STRFTIME_ZONE_OFFSET@'
+const strftime_unix_placeholder = '@V_STRFTIME_UNIX@'
+
+fn strftime_location_format(fmt string) string {
+	mut out := strings.new_builder(fmt.len)
+	for i := 0; i < fmt.len; i++ {
+		if fmt[i] != `%` || i + 1 >= fmt.len {
+			out.write_u8(fmt[i])
+			continue
+		}
+		i++
+		match fmt[i] {
+			`Z` {
+				out.write_string(strftime_zone_name_placeholder)
+			}
+			`z` {
+				out.write_string(strftime_zone_offset_placeholder)
+			}
+			`s` {
+				out.write_string(strftime_unix_placeholder)
+			}
+			else {
+				out.write_u8(`%`)
+				out.write_u8(fmt[i])
+			}
+		}
+	}
+	return out.str()
+}
+
+fn strftime_zone_offset(offset int) string {
+	sign := if offset < 0 { '-' } else { '+' }
+	abs_offset := if offset < 0 { -offset } else { offset }
+	hours := abs_offset / seconds_per_hour
+	minutes := (abs_offset % seconds_per_hour) / seconds_per_minute
+	return '${sign}${hours:02}${minutes:02}'
 }
 
 // some *nix system functions (e.g. `C.poll()`, C.epoll_wait()) accept an `int`

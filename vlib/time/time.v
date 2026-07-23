@@ -38,6 +38,7 @@ pub const days_before = [
 @[markused]
 pub struct Time {
 	unix i64
+	loc  ?Location
 pub:
 	year       int
 	month      int
@@ -143,12 +144,29 @@ pub fn (t Time) smonth() string {
 // unix returns the UNIX time with second resolution.
 @[inline]
 pub fn (t Time) unix() i64 {
+	if _ := t.loc {
+		return t.unix
+	}
 	return time_with_unix(t.local_to_utc()).unix
 }
 
 // local_unix returns the UNIX local time with second resolution.
+// For IANA locations this is the absolute unix instant plus the zone offset
+// active at that instant (wall-clock seconds since epoch in that location).
 @[inline]
 pub fn (t Time) local_unix() i64 {
+	if loc := t.loc {
+		// zone_at only fails for empty/corrupt locations; use the first zone
+		// offset rather than silently treating the instant as UTC.
+		zone_offset := loc.offset_at(t.unix) or {
+			if loc.zones.len > 0 {
+				loc.zones[0].offset
+			} else {
+				0
+			}
+		}
+		return t.unix + i64(zone_offset)
+	}
 	return time_with_unix(t).unix
 }
 
@@ -185,13 +203,26 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
 	// increased_time_second
-	mut increased_time_second := t.local_unix() + (increased_time_nanosecond / second)
+	base_unix := if _ := t.loc { t.unix } else { t.local_unix() }
+	mut increased_time_second := base_unix + (increased_time_nanosecond / second)
 	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
 		increased_time_second--
 		increased_time_nanosecond += second
 	}
 	res := unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
+
+	if loc := t.loc {
+		return loc.unix_nanosecond_to_local(res.unix, res.nanosecond) or {
+			// Keep the location even if projection fails so later operations
+			// still treat this value as an IANA-zoned instant.
+			Time{
+				...res
+				loc:  loc
+				unix: res.unix
+			}
+		}
+	}
 
 	if t.is_local {
 		// we need to reset unix to 0, because we don't know the offset
@@ -441,6 +472,9 @@ pub fn offset() int {
 // local_to_utc converts the receiver `t` to the corresponding UTC time, if it contains local time.
 // If the receiver already does contain UTC time, it returns it unchanged.
 pub fn (t Time) local_to_utc() Time {
+	if _ := t.loc {
+		return unix_nanosecond(t.unix, t.nanosecond)
+	}
 	if !t.is_local {
 		return t
 	}
@@ -453,6 +487,9 @@ pub fn (t Time) local_to_utc() Time {
 // utc_to_local converts the receiver `u` to the corresponding local time, if it contains UTC time.
 // If the receiver already does contain local time, it returns it unchanged.
 pub fn (u Time) utc_to_local() Time {
+	if _ := u.loc {
+		return u
+	}
 	if u.is_local {
 		return u
 	}
@@ -483,5 +520,5 @@ pub fn (t Time) as_utc() Time {
 // is_utc returns true, when the receiver `t` is a UTC time, and false otherwise.
 // See also #Time.utc_to_local .
 pub fn (t Time) is_utc() bool {
-	return !t.is_local
+	return !t.is_local && t.location() == none
 }

@@ -587,7 +587,7 @@ fn (mut u Unpacker) unpack_into[T](mut out T) ! {
 // session is encoded as the correct instant rather than as wall-clock
 // digits without an offset.
 fn format_rfc3339_nano(t time.Time) string {
-	utc := if t.is_local { t.local_to_utc() } else { t }
+	utc := if t.is_local || t.location() != none { t.local_to_utc() } else { t }
 	return '${utc.year:04d}-${utc.month:02d}-${utc.day:02d}T${utc.hour:02d}:${utc.minute:02d}:${utc.second:02d}.${utc.nanosecond:09d}Z'
 }
 
