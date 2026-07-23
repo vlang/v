@@ -1403,6 +1403,33 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 				declared.delete(name)
 			}
 		}
+		.if_expr {
+			// An `@if item := maybe() { … }` guard (and any `:=` declared inside a branch
+			// body) binds names that are scoped to the if/else branches, not to the
+			// enclosing template. Snapshot the outer declared names, collect through the
+			// whole if-subtree so a use of the guard binding inside a branch is treated as
+			// local, then drop those branch-local names once the branches end — otherwise a
+			// later OUTER use of a shadowed name (`@item` after the guard) would stay
+			// "declared" and be omitted from the closure's capture list, leaving the
+			// reference undefined (or resolving a wrong outer/global name).
+			mut outer_declared := map[string]bool{}
+			for name in declared.keys() {
+				outer_declared[name] = true
+			}
+			for i in 0 .. int(node.children_count) {
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
+					out, mut mut_names)
+			}
+			mut branch_local := []string{}
+			for name in declared.keys() {
+				if name !in outer_declared {
+					branch_local << name
+				}
+			}
+			for name in branch_local {
+				declared.delete(name)
+			}
+		}
 		.call {
 			// The callee (child 0) names the function being invoked. A bare-ident callee is
 			// captured only when it is an actual in-scope local binding (a function-valued
