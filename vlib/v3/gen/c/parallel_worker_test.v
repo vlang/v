@@ -226,3 +226,18 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 	assert typedef_idx > precomputed_idx
 	assert g.emitted_fn_ptr_typedefs[encoded]
 }
+
+fn test_dynamic_parallel_merge_preserves_chunk_order() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut first := g.new_parallel_dispatch_worker(1)
+	first.fn_segs = ['chunk-2;', 'chunk-0;']
+	first.fn_seg_chunk_indexes = [2, 0]
+	mut second := g.new_parallel_dispatch_worker(2)
+	second.fn_segs = ['chunk-3;', 'chunk-1;']
+	second.fn_seg_chunk_indexes = [3, 1]
+	mut ordered := []string{len: 4}
+
+	g.merge_parallel_worker_ordered(first, mut ordered)
+	g.merge_parallel_worker_ordered(second, mut ordered)
+	assert ordered == ['chunk-0;', 'chunk-1;', 'chunk-2;', 'chunk-3;']
+}

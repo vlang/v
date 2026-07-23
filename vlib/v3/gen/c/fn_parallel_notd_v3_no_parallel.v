@@ -444,12 +444,28 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(chunks [][]FlatFnGenItem, chunk_
 	scratch_scope := cgen_worker_scope_begin(true)
 	mut batch := g.new_parallel_worker(0)
 	batch.sb = strings.new_builder(int(reserve_cost * 5) + 65_536)
+	mut chunk_indexes := []int{cap: 16}
+	mut output_starts := []int{cap: 16}
+	mut output_lengths := []int{cap: 16}
 	for {
 		chunk_idx := <-chunk_queue or { break }
+		output_start := batch.sb.len
 		batch.gen_fn_items(chunks[chunk_idx])
+		chunk_indexes << chunk_idx
+		output_starts << output_start
+		output_lengths << batch.sb.len - output_start
 	}
 	cgen_worker_scope_leave(scratch_scope)
-	g.absorb_scoped_cgen_batch(batch, false)
+	for i, chunk_idx in chunk_indexes {
+		output := batch.sb.spart(output_starts[i], output_lengths[i])
+		if output.len > 0 {
+			g.fn_segs << output
+			g.fn_seg_chunk_indexes << chunk_idx
+		} else {
+			unsafe { output.free() }
+		}
+	}
+	g.absorb_scoped_cgen_batch(batch, true)
 	cgen_worker_scope_free(scratch_scope)
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
@@ -590,6 +606,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			static_dispatch := fail.len > 0
 			worker_count := if static_dispatch { chunk_count } else { n_jobs }
 			mut cgen_workers := []voidptr{cap: worker_count}
+			mut ordered_chunk_outputs := []string{}
 			worker_setup_scope := cgen_worker_scope_begin(true)
 			for ci := 0; ci < worker_count; ci++ {
 				mut w := g.new_parallel_dispatch_worker(ci)
@@ -621,6 +638,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				// Long-lived workers pull small source-contiguous chunks from a shared
 				// queue. This balances expression-cost and scheduler variation without
 				// rebuilding the generator caches for every chunk.
+				ordered_chunk_outputs = []string{len: chunk_count}
 				chunk_queue := chan int{cap: chunk_count}
 				for ci in 0 .. chunk_count {
 					chunk_queue <- ci
@@ -652,10 +670,19 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			}
 			for worker_ptr in cgen_workers {
 				mut w := unsafe { &FlatGen(worker_ptr) }
-				g.merge_parallel_worker(w)
+				if ordered_chunk_outputs.len > 0 {
+					g.merge_parallel_worker_ordered(w, mut ordered_chunk_outputs)
+				} else {
+					g.merge_parallel_worker(w)
+				}
 				if w.worker_scope != unsafe { nil } {
 					cgen_worker_scope_free(w.worker_scope)
 					w.worker_scope = unsafe { nil }
+				}
+			}
+			for output in ordered_chunk_outputs {
+				if output.len > 0 {
+					g.fn_segs << output
 				}
 			}
 			cgen_worker_scope_free(worker_setup_scope)
@@ -1518,6 +1545,15 @@ fn remap_scoped_worker_string_symbols(source string, remap map[int]int, user_c_s
 
 // merge_parallel_worker supports merge parallel worker handling for FlatGen.
 fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
+	mut unordered := []string{}
+	g.merge_parallel_worker_into(w, mut unordered)
+}
+
+fn (mut g FlatGen) merge_parallel_worker_ordered(w &FlatGen, mut ordered []string) {
+	g.merge_parallel_worker_into(w, mut ordered)
+}
+
+fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string) {
 	mut ww := unsafe { w }
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
@@ -1550,15 +1586,22 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	}
 	// The ordered segment owns the copied output; release the worker builder.
 	unsafe { ww.sb.free() }
-	for segment in w.fn_segs {
-		if g.cache_split {
-			g.fn_segs << ww.rewrite_cache_string_symbols(segment)
+	for segment_idx, segment in w.fn_segs {
+		normalized := if g.cache_split {
+			ww.rewrite_cache_string_symbols(segment)
 		} else if string_id_remap.len > 0 {
-			g.fn_segs << remap_scoped_worker_string_symbols(segment, string_id_remap,
-				user_c_symbols)
+			remap_scoped_worker_string_symbols(segment, string_id_remap, user_c_symbols)
 		} else {
-			g.fn_segs << segment.clone()
+			segment.clone()
 		}
+		if ordered.len > 0 && segment_idx < w.fn_seg_chunk_indexes.len {
+			chunk_idx := w.fn_seg_chunk_indexes[segment_idx]
+			if chunk_idx >= 0 && chunk_idx < ordered.len {
+				ordered[chunk_idx] = normalized
+				continue
+			}
+		}
+		g.fn_segs << normalized
 	}
 	if g.cache_split {
 		for literal in w.str_lits {
