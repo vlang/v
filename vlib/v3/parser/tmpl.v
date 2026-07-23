@@ -1142,29 +1142,24 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 	// operands, so this is what keeps their placeholders from leaking.
 	p.replace_short_circuit_templates(stmt_id)
 	// General case: a `$tmpl(...)` / `$veb.html()` used as a subexpression (e.g.
-	// `ctx.html($tmpl('x.html'))`, `$tmpl('x.html').trim_space()`). Render each nested
-	// placeholder into a builder hoisted ahead of this statement, and rewrite the
-	// placeholder in place to the resulting value (`<builder>` for `$tmpl`,
-	// `ctx.html(<builder>)` for `$veb.html()`), so no `.veb_template` node leaks past
-	// the parser into the checker/backend.
+	// `ctx.html($tmpl('x.html'))`, `bump() + $tmpl('x.html')`, `f(bump(), $tmpl('x.html'))`).
+	// Render each placeholder in place as an immediately-invoked closure rather than
+	// hoisting its builder to the front of the statement: hoisting would run the template
+	// before earlier side-effecting operands, so an interpolation reading state those
+	// operands change would see stale values and the template's own side effects would move
+	// ahead of expressions meant to run first. The IIFE keeps every template at its original
+	// evaluation position, and no `.veb_template` node leaks past the parser.
 	mut tmpl_ids := []flat.NodeId{}
 	p.collect_veb_template_node_ids(stmt_id, mut tmpl_ids)
 	if tmpl_ids.len == 0 {
 		return none
 	}
-	mut result := []flat.NodeId{}
 	for tid in tmpl_ids {
 		tnode := p.a.nodes[int(tid)]
-		bname, builder_src := p.veb_template_builder_source(tnode)
-		for bid in p.parse_stmts_from_source(builder_src) {
-			result << bid
-		}
-		value_expr := if tnode.typ == 'html' { 'ctx.html(${bname})' } else { bname }
-		repl := p.parse_veb_template_replacement_expr(value_expr) or { return none }
+		repl := p.veb_template_iife_replacement(tnode) or { return none }
 		p.a.nodes[int(tid)] = p.a.nodes[int(repl)]
 	}
-	result << stmt_id
-	return result
+	return [stmt_id]
 }
 
 // veb_template_no_descend_kinds are the hard scope boundaries whose contents are never
