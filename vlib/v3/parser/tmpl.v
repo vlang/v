@@ -930,10 +930,12 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		return p.add_val_id(5, '')
 	}
 	p.next() // skip `(`
+	mut had_arg := false
 	if p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
 		// The path may be a compile-time expression (a `const`, a local binding
 		// with a literal value, or a `+` concatenation of those), not just a raw
 		// string token — e.g. `const p = 'x.html'; $tmpl(p)`. Parse and resolve it.
+		had_arg = true
 		arg_id := p.expr(.lowest)
 		arg = p.resolve_tmpl_path_arg(arg_id)
 	}
@@ -942,6 +944,14 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	}
 	if p.tok == .rpar {
 		p.next()
+	}
+	// An argument that is present but not a compile-time string (`$veb.html(runtime_path)`) is an
+	// unsupported dynamic path. Its unresolved '' must NOT reuse the no-arg sentinel, which
+	// resolve_veb_template_path treats as the handler-template lookup — that would silently render
+	// the wrong file for a valid-looking explicit selection. Reject it like a missing call: yield
+	// an empty string literal (diagnosed where a template value is expected).
+	if had_arg && arg.len == 0 {
+		return p.add_val_id(5, '')
 	}
 	path := p.resolve_veb_template_path(is_html, arg)
 	return p.add_node(flat.Node{
@@ -1158,6 +1168,31 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			value_expr := if rhs.typ == 'html' { 'ctx.html(${bname})' } else { bname }
 			src += '\n${mut_prefix}${lhs.value} ${bind_op} ${value_expr}\n'
 			return p.parse_stmts_from_source(src)
+		}
+	}
+	// A declaration's LHS name is not in scope during its own initializer, so hide the
+	// binding(s) while the RHS template is lowered below: otherwise `render := ok &&
+	// $tmpl('row.txt')` (whose template calls a same-named top-level helper via `@{render(row)}`)
+	// treats the variable being declared as an in-scope function-valued local, and
+	// collect_template_free_idents captures it into the IIFE — breaking valid shadowing of the
+	// top-level helper. Restore afterwards; the binding is real for the statements that follow.
+	mut hidden_lhs := map[string]int{}
+	if node.kind == .decl_assign {
+		lhs_slots, _ := decl_assign_lhs_rhs_slots(node)
+		for i in lhs_slots {
+			lhs_child := p.a.nodes[int(p.a.child(&node, i))]
+			if lhs_child.kind == .ident && lhs_child.value.len > 0 {
+				c := p.local_binding_counts[lhs_child.value] or { 0 }
+				if c > 0 {
+					hidden_lhs[lhs_child.value] = c
+					p.local_binding_counts.delete(lhs_child.value)
+				}
+			}
+		}
+	}
+	defer {
+		for name, c in hidden_lhs {
+			p.local_binding_counts[name] = c
 		}
 	}
 	// A template in a short-circuited condition operand cannot be hoisted (that would
@@ -1423,6 +1458,45 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 	return p.parse_veb_template_replacement_expr(iife_src)
 }
 
+// decl_assign_lhs_rhs_slots returns the child indices that hold the LHS declaration targets and
+// the RHS value expressions of a `decl_assign`/`assign` node. The flat layout varies: a single
+// `x := y` is `[LHS, RHS]` (value empty); an if-guard `a, b := expr` is `[LHS0, RHS, LHS1, …]`
+// (one RHS, value = lhs count, children = lhs+1); a multi `a, b := c, d` and a C-style for init
+// interleave as `[LHS0, RHS0, LHS1, RHS1, …]` (value = lhs count, children = 2*lhs).
+fn decl_assign_lhs_rhs_slots(node flat.Node) ([]int, []int) {
+	count := int(node.children_count)
+	n := node.value.int()
+	if n >= 2 && count == n + 1 {
+		// if-guard `a, b := expr`: one shared RHS at index 1, LHS targets everywhere else.
+		mut lhs := []int{cap: n}
+		lhs << 0
+		for i in 2 .. count {
+			lhs << i
+		}
+		return lhs, [1]
+	}
+	if n >= 2 && count == 2 * n {
+		// `a, b := c, d`: alternating LHS/RHS pairs.
+		mut lhs := []int{cap: n}
+		mut rhs := []int{cap: n}
+		for i in 0 .. count {
+			if i % 2 == 0 {
+				lhs << i
+			} else {
+				rhs << i
+			}
+		}
+		return lhs, rhs
+	}
+	// Single `x := y`, or an unrecognized/arity-mismatch layout: child 0 is the LHS target and
+	// every remaining child is treated as RHS (the pre-existing behavior).
+	mut rhs := []int{cap: if count > 1 { count - 1 } else { 0 }}
+	for i in 1 .. count {
+		rhs << i
+	}
+	return [0], rhs
+}
+
 // collect_template_free_idents accumulates, in first-seen order, the identifiers a
 // template builder references that are not declared within it (the builder variable and
 // any `for`-loop / `:=` bindings), so they can be captured by an inline closure.
@@ -1599,17 +1673,22 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 		}
 		.decl_assign {
 			// Collect the value expression(s) as free idents BEFORE binding the declaration's
-			// own name, so a RHS that reuses a shadowed outer name is captured rather than
+			// own names, so a RHS that reuses a shadowed outer name is captured rather than
 			// treated as builder-local: in `@if item := maybe(item)` the RHS `item` is the
 			// OUTER value and must be captured, even though the LHS `item` shadows it for the
-			// following scope. Child 0 is the declaration target (always a fresh ident, not a
-			// use), so it is declared, not collected; the remaining children hold the RHS.
-			for i in 1 .. node.children_count {
+			// following scope. A multi-declaration interleaves LHS and RHS in the flat layout
+			// (`@if a, b := pair()` is `[a, rhs, b]`), so declare EVERY LHS slot and collect
+			// only the RHS slots — otherwise a later LHS like `b` is walked as a free outer
+			// ident and the closure captures a non-existent outer `b` instead of the
+			// branch-local one. LHS targets are declaration sites, not uses, so they are
+			// declared, never collected.
+			lhs_slots, rhs_slots := decl_assign_lhs_rhs_slots(node)
+			for i in rhs_slots {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
 					out, mut mut_names)
 			}
-			if node.children_count > 0 {
-				p.declare_template_ident(p.a.child(&node, 0), mut declared)
+			for i in lhs_slots {
+				p.declare_template_ident(p.a.child(&node, i), mut declared)
 			}
 		}
 		else {
