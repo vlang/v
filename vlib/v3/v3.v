@@ -4443,7 +4443,7 @@ fn main() {
 		b.step('monomorphize')
 	}
 	if backend == 'wasm' {
-		if msg := unsupported_power_backend_error(a, used_fns, backend) {
+		if msg := unsupported_power_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
 			exit(1)
 		}
@@ -4467,7 +4467,7 @@ fn main() {
 	}
 	mut newly_cached_module_count := 0
 	if backend == 'arm64' {
-		if msg := unsupported_power_backend_error(a, used_fns, backend) {
+		if msg := unsupported_power_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
 			exit(1)
 		}
@@ -6059,12 +6059,17 @@ fn print_type_errors(errors []types.TypeError) {
 	}
 }
 
-fn unsupported_power_backend_error(a &flat.FlatAst, used_fns map[string]bool, backend string) ?string {
+fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
 	mut cur_module := ''
+	mut cur_file := ''
 	mut visited := []bool{len: a.nodes.len}
+	mut fn_ids := []flat.NodeId{}
+	mut fn_modules := []string{}
+	mut fn_files := []string{}
 	for idx, node in a.nodes {
 		if node.kind == .file {
 			cur_module = ''
+			cur_file = node.value
 			continue
 		}
 		if node.kind == .module_decl {
@@ -6078,7 +6083,15 @@ fn unsupported_power_backend_error(a &flat.FlatAst, used_fns map[string]bool, ba
 		if !transformed_fn_is_used(node.value, module_name, used_fns) {
 			continue
 		}
+		fn_ids << flat.NodeId(idx)
+		fn_modules << module_name
+		fn_files << (a.specialized_fn_files[idx] or { cur_file })
 		if msg := unsupported_power_node_error(a, flat.NodeId(idx), backend, mut visited) {
+			return msg
+		}
+	}
+	for expr_id in markused.reachable_const_exprs(a, tc, fn_ids, fn_modules, fn_files) {
+		if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
 			return msg
 		}
 	}

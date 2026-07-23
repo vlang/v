@@ -3990,5 +3990,31 @@ fn main() {
 		active := os.execute('${v3_bin} -b ${backend} ${active_src}')
 		assert active.exit_code != 0, active.output
 		assert active.output.contains('operator `**` is not supported by the V3 ${backend} backend'), active.output
+		for name, consts in {
+			'direct':   'const n = 2 ** 3'
+			'indirect': 'const base = 2 ** 3\nconst n = base'
+		} {
+			const_src := os.join_path(os.temp_dir(),
+				'v3_${backend}_reachable_${name}_const_power.v')
+			const_use := if backend == 'wasm' {
+				'mut value := n\n\tvalue += 1'
+			} else {
+				'println(n)'
+			}
+			os.write_file(const_src, '${consts}\n\nfn main() {\n\t${const_use}\n}\n') or {
+				panic(err)
+			}
+			const_result := os.execute('${v3_bin} -b ${backend} ${const_src}')
+			assert const_result.exit_code != 0, const_result.output
+			assert const_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), const_result.output
+		}
+		shadowed_src := os.join_path(os.temp_dir(), 'v3_${backend}_shadowed_const_power.v')
+		os.write_file(shadowed_src,
+			'const v3_unreachable_power_const_27908 = 2 ** 3\n\nfn main() {\n\tv3_unreachable_power_const_27908 := 1\n\tprintln(v3_unreachable_power_const_27908)\n}\n') or {
+			panic(err)
+		}
+		shadowed := os.execute('${v3_bin} -b ${backend} ${shadowed_src}')
+		assert shadowed.exit_code == 0, shadowed.output
+		assert !shadowed.output.contains('operator `**` is not supported by the V3 ${backend} backend'), shadowed.output
 	}
 }

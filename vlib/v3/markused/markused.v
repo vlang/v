@@ -51,6 +51,78 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	return mark_used_with_test_files(a, tc, file_map, source_modules, true)
 }
 
+// reachable_const_exprs returns const initializer expressions referenced by the supplied
+// post-transform function bodies, including transitive const-to-const references.
+pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, fn_ids []flat.NodeId, fn_modules []string, fn_files []string) []flat.NodeId {
+	mut import_contexts := []map[string]string{cap: 64}
+	import_contexts << map[string]string{}
+	mut import_context_by_file := map[string]int{}
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		if node.kind != .file {
+			continue
+		}
+		import_context_by_file[node.value] = import_contexts.len
+		import_contexts << markused_top_level_file_imports(a, node)
+	}
+	mut const_decls := map[string]ConstDeclInfo{}
+	mut const_suffixes := map[string]bool{}
+	for name, expr_id in tc.const_exprs {
+		file := tc.const_files[name] or { '' }
+		const_decls[name] = ConstDeclInfo{
+			expr_id:        expr_id
+			module:         tc.const_modules[name] or { '' }
+			import_context: import_context_by_file[file] or { 0 }
+		}
+		add_candidate_suffix(mut const_suffixes, name)
+	}
+	collector := CallCollector{
+		a:                       a
+		tc:                      tc
+		fn_decls:                map[string]FnDeclInfo{}
+		fn_suffixes:             map[string]bool{}
+		struct_decls:            map[string]StructDeclInfo{}
+		const_decls:             const_decls
+		const_suffixes:          const_suffixes
+		import_contexts:         import_contexts
+		selective_alias_targets: map[string][]string{}
+		iface_param_gate:        map[string]bool{}
+		generic_type_bases:      map[string]bool{}
+	}
+	mut pending := []string{cap: 16}
+	for i, fn_id in fn_ids {
+		if i >= fn_modules.len || i >= fn_files.len {
+			break
+		}
+		fn_node := a.node(fn_id)
+		context := import_context_by_file[fn_files[i]] or { 0 }
+		collector.collect_initializer_refs(fn_node, fn_modules[i], collector.imports(context), mut
+			pending)
+	}
+	mut result := []flat.NodeId{cap: pending.len}
+	mut seen_names := map[string]bool{}
+	mut seen_exprs := map[int]bool{}
+	mut qi := 0
+	for qi < pending.len {
+		name := pending[qi]
+		qi++
+		if name in seen_names {
+			continue
+		}
+		seen_names[name] = true
+		info := const_decls[name] or { continue }
+		expr_idx := int(info.expr_id)
+		if expr_idx in seen_exprs {
+			continue
+		}
+		seen_exprs[expr_idx] = true
+		result << info.expr_id
+		collector.collect_initializer_expr_refs(a.node(info.expr_id), info.module,
+			collector.imports(info.import_context), mut pending)
+	}
+	return result
+}
+
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool) (map[string]bool, bool) {
 	mut cur_module := ''
 	mut cur_file := ''
@@ -4077,6 +4149,25 @@ fn (c &CallCollector) collect_initializer_refs(node &flat.Node, cur_module strin
 	}
 	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values,
 		visible_local_idents, mut refs)
+}
+
+fn (c &CallCollector) collect_initializer_expr_refs(node &flat.Node, cur_module string, imports map[string]string, mut refs []string) {
+	match node.kind {
+		.ident {
+			c.add_initializer_ref_candidates(node.value, cur_module, imports, mut refs)
+		}
+		.selector {
+			if node.children_count > 0 {
+				base := c.a.child_node(node, 0)
+				if base.kind == .ident && base.value.len > 0 && node.value.len > 0 {
+					c.add_initializer_ref_candidates('${base.value}.${node.value}', cur_module,
+						imports, mut refs)
+				}
+			}
+		}
+		else {}
+	}
+	c.collect_initializer_refs(node, cur_module, imports, mut refs)
 }
 
 // collect_initializer_refs_with_locals is collect_initializer_refs with the
