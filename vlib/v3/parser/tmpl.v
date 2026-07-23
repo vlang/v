@@ -595,6 +595,7 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		quote_pos++
 	}
 	if quote_pos >= line.len || (line[quote_pos] != `'` && line[quote_pos] != `"`) {
+		p.record_diagnostic('path for @include must be quoted with \' or "', p.tok_pos)
 		return []
 	}
 	quote := line[quote_pos]
@@ -603,6 +604,7 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		end_pos++
 	}
 	if end_pos >= line.len {
+		p.record_diagnostic('path for @include must be quoted with \' or "', p.tok_pos)
 		return []
 	}
 	mut file_name := line[quote_pos + 1..end_pos]

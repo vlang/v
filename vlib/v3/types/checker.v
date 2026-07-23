@@ -18398,12 +18398,31 @@ fn (tc &TypeChecker) method_receiver_compatible(actual Type, expected Type, meth
 	return false
 }
 
+// qualifier_relaxed_type_name_match reports whether `a` and `b` name the same type
+// allowing ONLY a missing module qualifier on one side: they are equal, or one is the
+// unqualified spelling of the other (`Vec3` vs `vec.Vec3`). Two *different* qualified
+// names that merely share a short name (`a.Box` vs `b.Box`, `foo.User` vs `bar.User`)
+// are distinct types and do NOT match.
+fn qualifier_relaxed_type_name_match(a string, b string) bool {
+	if a == b {
+		return true
+	}
+	a_qualified := a.contains('.')
+	b_qualified := b.contains('.')
+	if a_qualified && b_qualified {
+		return false
+	}
+	return a.all_after_last('.') == b.all_after_last('.')
+}
+
 // generic_receiver_qualifier_mismatch accepts a method receiver that differs from
-// the declared receiver ONLY by module qualifier on the same generic form
-// (`Vec3[T]` vs `vec.Vec3[T]`, or `Vec3[int]` vs `vec.Vec3[int]`). It requires the
-// short base name and every generic argument's short name to match, and the base to
-// be a known generic struct, so it never conflates two different instantiations
-// (`Vec3[string]` vs `vec.Vec3[int]`) or non-generic types.
+// the declared receiver ONLY by a missing module qualifier on the same generic form
+// (`Vec3[T]` vs `vec.Vec3[T]`, or `Vec3[int]` vs `vec.Vec3[int]`). It requires the base
+// and every generic argument to be qualifier-relaxed matches (an unqualified spelling
+// of the same qualified name), and the base to be a known generic struct, so it never
+// conflates two different instantiations (`Vec3[string]` vs `vec.Vec3[int]`), two
+// different modules' same-short-named types (`a.Box[int]` vs `b.Box[int]`,
+// `Vec[foo.User]` vs `Vec[bar.User]`), or non-generic types.
 fn (tc &TypeChecker) generic_receiver_qualifier_mismatch(actual Type, expected Type) bool {
 	if (actual is Pointer) != (expected is Pointer) {
 		return false
@@ -18418,11 +18437,11 @@ fn (tc &TypeChecker) generic_receiver_qualifier_mismatch(actual Type, expected T
 	if !a_ok || !e_ok || a_args.len != e_args.len || a_args.len == 0 {
 		return false
 	}
-	if a_base.all_after_last('.') != e_base.all_after_last('.') {
+	if !qualifier_relaxed_type_name_match(a_base, e_base) {
 		return false
 	}
 	for i in 0 .. a_args.len {
-		if a_args[i].trim_space().all_after_last('.') != e_args[i].trim_space().all_after_last('.') {
+		if !qualifier_relaxed_type_name_match(a_args[i].trim_space(), e_args[i].trim_space()) {
 			return false
 		}
 	}
