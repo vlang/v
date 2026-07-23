@@ -1082,6 +1082,16 @@ fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.N
 
 fn (mut g FlatGen) gen_index_overload_compound_value_expr(recv_tmp string, index_tmp string, setter types.CallInfo, getter types.CallInfo, assign_op flat.Op, infix_op flat.Op, rhs_id flat.NodeId) {
 	if infix_op == .power {
+		if setter.params.len > 2 {
+			if method_name := g.assign_struct_operator_method(getter.return_type, assign_op) {
+				g.write('${g.cname(method_name)}(')
+				g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+				g.write(', ')
+				g.gen_expr(rhs_id)
+				g.write(')')
+				return
+			}
+		}
 		lhs_text := g.index_overload_cached_getter_call_string(recv_tmp, index_tmp, getter)
 		g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, getter.return_type)
 		return
@@ -1358,9 +1368,20 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.write(', ')
 	if op := compound_assign_to_infix_op(node.op) {
 		if op == .power {
-			lhs_text := g.index_operator_get_call_from_temps_string(getter, recv_tmp, recv_storage,
-				index_tmp, index_storage)
-			g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, getter.return_type)
+			if method_name := g.index_operator_compound_operator_method(getter.return_type,
+				setter.params[2], node.op)
+			{
+				g.write('${g.cname(method_name)}(')
+				g.gen_index_operator_get_call_from_temps(getter, recv_tmp, recv_storage, index_tmp,
+					index_storage)
+				g.write(', ')
+				g.gen_expr_with_expected_type(rhs_id, setter.params[2])
+				g.write(')')
+			} else {
+				lhs_text := g.index_operator_get_call_from_temps_string(getter, recv_tmp,
+					recv_storage, index_tmp, index_storage)
+				g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, getter.return_type)
+			}
 		} else if op == .plus && (g.index_operator_type_is_string_like(getter.return_type)
 			|| g.index_operator_type_is_string_like(setter.params[2])) {
 			g.write('string__plus(')

@@ -125,6 +125,29 @@ fn (mut list IntList) []= (index int, value int) {
 	list.values[index] = value
 }
 
+struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct ExponentList {
+mut:
+	values []Exponent
+}
+
+fn (list ExponentList) [] (index int) Exponent {
+	return list.values[index]
+}
+
+fn (mut list ExponentList) []= (index int, value Exponent) {
+	list.values[index] = value
+}
+
 fn main() {
 	mut values := [2, 3]
 	values[0] **= 3
@@ -134,13 +157,24 @@ fn main() {
 	}
 	list[0] **= 2
 	println(int_str(list.values[0]))
+	mut exponents := ExponentList{
+		values: [Exponent{
+			value: 2
+		}]
+	}
+	exponents[0] **= Exponent{
+		value: 3
+	}
+	println(int_str(exponents.values[0].value))
 }
 ')
-	assert out == '8\n9'
+	assert out == '8\n9\n23'
 	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
 	assert compact.contains('IntList__op_index_set('), c_code
+	assert compact.contains('ExponentList__op_index_set('), c_code
+	assert compact.contains('Exponent__mul_('), c_code
 	assert !c_code.contains(' ** '), c_code
 }
 
