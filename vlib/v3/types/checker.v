@@ -23270,7 +23270,23 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		if lhs.len == 0 || rhs.len == 0 {
 			continue
 		}
-		l := tc.const_int_value_in_module(lhs, module_name, seen) or { return none }
+		// Prefix operators bind below power in the parser. Strip leading signs
+		// from the power base and apply them to the complete power expression:
+		// `-2 ** 2` is `-(2 ** 2)`, while `(-2) ** 2` keeps the signed base.
+		mut lhs_text := lhs
+		mut power_sign := 1
+		if op == '**' {
+			for lhs_text.len > 0 && lhs_text[0] in [`+`, `-`] {
+				if lhs_text[0] == `-` {
+					power_sign = -power_sign
+				}
+				lhs_text = lhs_text[1..].trim_space()
+			}
+			if lhs_text.len == 0 {
+				return none
+			}
+		}
+		l := tc.const_int_value_in_module(lhs_text, module_name, seen) or { return none }
 		r := tc.const_int_value_in_module(rhs, module_name, seen) or { return none }
 		if (op == '/' || op == '%') && r == 0 {
 			return none
@@ -23278,7 +23294,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		if (op == '<<' || op == '>>' || op == '>>>') && (r < 0 || r >= 64) {
 			return none
 		}
-		return match op {
+		value := match op {
 			'+' { l + r }
 			'-' { l - r }
 			'*' { l * r }
@@ -23292,6 +23308,13 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 			'**' { const_int_power(l, r) }
 			else { int(u64(l) >> r) }
 		}
+		return if op == '**' && power_sign < 0 { -value } else { value }
+	}
+	if expr.len > 1 && expr[0] in [`+`, `-`] {
+		value := tc.const_int_value_in_module(expr[1..].trim_space(), module_name, seen) or {
+			return none
+		}
+		return if expr[0] == `-` { -value } else { value }
 	}
 	return none
 }
@@ -27382,12 +27405,44 @@ fn struct_field_c_abi_key(struct_name string, field_name string) string {
 	return '${struct_name}\n${field_name}'
 }
 
+fn (tc &TypeChecker) comptime_static_type_expr_name(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .array_init && node.value == '__v3_comptime_type_array'
+		&& node.children_count == 1 {
+		elem := tc.comptime_static_type_expr_name(tc.a.child(&node, 0)) or { return none }
+		return '[]${elem}'
+	}
+	if node.kind != .ident || node.value.len == 0
+		|| tc.type_text_has_generic_placeholder(node.value) {
+		return none
+	}
+	return node.value
+}
+
 // resolve_type resolves resolve type information for types.
 pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	if int(id) < 0 {
 		return unknown_type('missing node')
 	}
 	node := tc.a.nodes[int(id)]
+	if node.kind == .string_literal && node.children_count == 1
+		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
+		if type_name := tc.comptime_static_type_expr_name(tc.a.child(&node, 0)) {
+			target := tc.parse_type(type_name)
+			if target !is Unknown {
+				return if node.value == '__v3_comptime_new' {
+					Type(Pointer{
+						base_type: target
+					})
+				} else {
+					target
+				}
+			}
+		}
+	}
 	if node.kind == .paren && node.children_count > 0 {
 		return tc.resolve_type(tc.a.child(&node, 0))
 	}

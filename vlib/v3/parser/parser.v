@@ -4550,6 +4550,17 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 		})
 	}
 	if p.tok != .lsbr || p.peek() != .rsbr {
+		if p.can_start_type_name() && p.comptime_type_arg_has_empty_literal_suffix() {
+			typ := p.parse_type_name()
+			if p.tok == .lcbr && p.peek() == .rcbr {
+				p.next()
+				p.check(.rcbr)
+			}
+			return p.add_node(flat.Node{
+				kind:  .ident
+				value: typ
+			})
+		}
 		return p.expr(.lowest)
 	}
 	p.next() // skip `[` in `[]T`
@@ -4578,6 +4589,49 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 		children_start: p.add_child(elem)
 		children_count: 1
 	})
+}
+
+fn (mut p Parser) comptime_type_arg_has_empty_literal_suffix() bool {
+	mut look := scanner.new_scanner(p.prefs, .normal)
+	look.init(p.s.current_file(), p.s.src)
+	look.offset = p.tok_pos
+	look.pos = p.tok_pos
+	mut bracket_depth := 0
+	mut paren_depth := 0
+	for {
+		tok := look.scan()
+		match tok {
+			.eof {
+				return false
+			}
+			.lsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			.lpar {
+				paren_depth++
+			}
+			.rpar {
+				if paren_depth == 0 && bracket_depth == 0 {
+					return false
+				}
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			.lcbr {
+				if bracket_depth == 0 && paren_depth == 0 {
+					return look.scan() == .rcbr
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 fn (mut p Parser) parse_embed_file_expr() flat.NodeId {

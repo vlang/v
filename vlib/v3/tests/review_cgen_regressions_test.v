@@ -630,6 +630,25 @@ fn main() {
 	assert out == '0\n0\n0\n2\n3\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
 }
 
+fn test_zero_and_new_preserve_direct_map_and_generic_type_arguments() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'direct_map_generic_zero_new', 'struct Box[T] {
+mut:
+	value T
+}
+
+fn main() {
+	mut values := $zero(map[string]int{})
+	mut box := $new(Box[int]{})
+	values["answer"] = 19
+	box.value = 20
+	println(int_str(values["answer"]))
+	println(int_str(box.value))
+}
+')
+	assert out == '19\n20'
+}
+
 fn test_generic_new_default_initialization_stays_in_expression_scope() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'generic_new_expression_scope', "fn initialized_value() int {

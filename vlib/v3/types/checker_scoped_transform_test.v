@@ -14,6 +14,17 @@ fn test_stable_type_index_keeps_custom_types_above_builtin_range() {
 	assert type_id & (0xff << 16) == 0
 }
 
+fn test_const_int_power_string_respects_unary_minus_precedence() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	negative_power := tc.const_int_value('-2 ** 2', []string{}) or { panic(err) }
+	parenthesized_base := tc.const_int_value('(-2) ** 2', []string{}) or { panic(err) }
+	nested_power := tc.const_int_value('-2 ** 2 ** 3', []string{}) or { panic(err) }
+	assert negative_power == -4
+	assert parenthesized_base == 4
+	assert nested_power == -256
+}
+
 struct SignatureDenseArrayLayoutForTest {
 	key_bytes   int
 	value_bytes int

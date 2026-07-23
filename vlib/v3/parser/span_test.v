@@ -552,3 +552,30 @@ fn main() {
 	assert saw_zero
 	assert saw_new
 }
+
+fn test_comptime_map_and_generic_targets_stay_type_nodes() {
+	ast, _ := parse_span_source('comptime_map_generic_type_arg', 'struct Box[T] {}
+
+fn main() {
+	_ := \$zero(map[string]int{})
+	_ := \$new(Box[int]{})
+}
+')
+	mut saw_map := false
+	mut saw_generic := false
+	for node in ast.nodes {
+		if node.kind != .string_literal || node.children_count != 1 {
+			continue
+		}
+		target := ast.child_node(&node, 0)
+		if node.value == '__v3_comptime_zero' && target.kind == .ident
+			&& target.value == 'map[string]int' {
+			saw_map = true
+		}
+		if node.value == '__v3_comptime_new' && target.kind == .ident && target.value == 'Box[int]' {
+			saw_generic = true
+		}
+	}
+	assert saw_map
+	assert saw_generic
+}
