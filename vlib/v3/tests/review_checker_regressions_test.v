@@ -195,8 +195,8 @@ fn test_multi_return_arguments_must_consume_the_parameter_tail() {
 fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'receiver_method_tail_multi_return',
-		'struct Receiver {}\n\nfn pair() (int, int) {\n\treturn 2, 3\n}\n\nfn (receiver Receiver) use(prefix int, a int, b int) int {\n\treturn prefix * 100 + a * 10 + b\n}\n\nfn main() {\n\tprintln(int_str(Receiver{}.use(1, pair())))\n}\n')
-	assert out == '123'
+		'struct Receiver {}\n\nfn pair() (int, int) {\n\treturn 2, 3\n}\n\nfn (receiver Receiver) use(a int, b int) int {\n\treturn a * 10 + b\n}\n\nfn (receiver Receiver) use_with_prefix(prefix int, a int, b int) int {\n\treturn prefix * 100 + a * 10 + b\n}\n\nfn main() {\n\tprintln(int_str(Receiver{}.use(pair())))\n\tprintln(int_str(Receiver{}.use_with_prefix(1, pair())))\n}\n')
+	assert out == '23\n123'
 }
 
 fn test_power_requires_numeric_operands_or_an_overload() {
