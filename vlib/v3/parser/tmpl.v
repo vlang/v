@@ -268,6 +268,18 @@ fn escape_bare_tmpl_dollar_interpolations(line string) string {
 	return sb.str()
 }
 
+// escape_tmpl_comment_line prepares an HTML-comment template line for literal emission into a
+// generated `bname += '...'` write. Like a normal text line it escapes bare `$name`
+// interpolations (via escape_bare_tmpl_dollar_interpolations) so the generated V source does not
+// treat them as string interpolation — `<!-- $schema -->` must render literally, not resolve a
+// variable — then escapes backslashes and single quotes for the string literal. `@{...}`/`${...}`
+// are left verbatim, matching a normal text line's handling. The literal-dollar marker is
+// finalized to `\$` after the backslash escaping so its backslash is not doubled.
+fn escape_tmpl_comment_line(line string) string {
+	return escape_bare_tmpl_dollar_interpolations(line).replace('\\', '\\\\').replace("'",
+		"\\'").replace(tmpl_literal_dollar_marker, r'\$')
+}
+
 // tmpl_interp_format_split splits an `@{expr:fmt}` interpolation body at its
 // top-level format-specifier `:` (a `:` outside quotes and any `()[]{}` nesting),
 // returning `(expr, fmt)`. Returns none when there is no format specifier.
@@ -761,14 +773,14 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 				if line.contains('-->') {
 					in_html_comment = false
 				}
-				source.writeln(line.replace('\\', '\\\\').replace("'", "\\'"))
+				source.writeln(escape_tmpl_comment_line(line))
 				continue
 			}
 			if line.contains('<!--') {
 				if !line.contains('-->') {
 					in_html_comment = true
 				}
-				source.writeln(line.replace('\\', '\\\\').replace("'", "\\'"))
+				source.writeln(escape_tmpl_comment_line(line))
 				continue
 			}
 		}

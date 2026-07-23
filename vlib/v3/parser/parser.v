@@ -1041,6 +1041,17 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		p.push_local_type_scope(name)
 		p.begin_comptime_value_scope()
 		p.begin_local_binding_scope()
+		// Seed the operator's parameters as local bindings before the body is parsed, so a
+		// `$tmpl()` in a short-circuit/subexpression template that calls a function-valued
+		// operator parameter (`@{render(row)}`) captures it into the inlined IIFE —
+		// collect_template_free_idents only captures a bare callee that is_local_binding().
+		// Mirrors fn_decl_body's parameter seeding.
+		for pid in param_ids {
+			pnode := p.a.nodes[int(pid)]
+			if pnode.kind == .param {
+				p.declare_local_binding(pnode.value)
+			}
+		}
 		if disable_body {
 			p.mark_disabled_fn(name)
 			p.skip_block()
