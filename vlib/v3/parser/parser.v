@@ -5717,11 +5717,19 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		is_else = true
 		p.next()
 	} else {
-		branch_ids << p.match_branch_cond()
+		// A `$tmpl()` / `$veb.html()` in a branch condition value is evaluated in place
+		// (conditionally, like a short-circuit operand), so lower it to an inline closure
+		// here — the whole-statement expansion descends only into the match subject and
+		// would otherwise leave the placeholder in the condition.
+		first_cond := p.match_branch_cond()
+		p.inline_templates_as_closures(first_cond)
+		branch_ids << first_cond
 		n_conds = 1
 		for p.tok == .comma {
 			p.next()
-			branch_ids << p.match_branch_cond()
+			cond := p.match_branch_cond()
+			p.inline_templates_as_closures(cond)
+			branch_ids << cond
 			n_conds++
 		}
 	}

@@ -466,7 +466,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 				// embedded value, so mark them (and any nested-embed fields) set, so the
 				// flattened-defaults pass does not re-emit them. `emb.name` is the
 				// qualified embed type (`veb.Context`), which resolves unambiguously.
-				g.mark_embedded_promoted_fields_set(emb.name, mut set_fields)
+				g.mark_embedded_promoted_fields_set(emb.name, lookup_name, mut set_fields)
 				has_field = true
 				continue
 			}
@@ -1205,7 +1205,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 				// embedded value, so mark them (and any nested-embed fields) set, so the
 				// flattened-defaults pass does not re-emit them. `emb.name` is the
 				// qualified embed type (`veb.Context`), which resolves unambiguously.
-				g.mark_embedded_promoted_fields_set(emb.name, mut set_fields)
+				g.mark_embedded_promoted_fields_set(emb.name, lookup_name, mut set_fields)
 				has_field = true
 				continue
 			}
@@ -3741,7 +3741,7 @@ fn (g &FlatGen) embedded_field_for_promoted_field(type_name string, field_name s
 // the embedded struct named `embed_type_name` (a qualified name like `veb.Context`,
 // which resolves unambiguously) as set, so the flattened-defaults pass does not
 // re-emit them after the whole embed was initialized via `Embed: value`.
-fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name string, mut set_fields map[string]bool) {
+fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name string, owner_type string, mut set_fields map[string]bool) {
 	if embed_type_name.len == 0 {
 		return
 	}
@@ -3753,11 +3753,19 @@ fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name string, mut se
 		if field.kind != .field_decl || field.value.len == 0 {
 			continue
 		}
+		// A direct field on the owner with the same name shadows this promoted field:
+		// it is a distinct field the embed initializer does not set, so leave it to
+		// default/zero initialization instead of marking it set.
+		if field.value != field.typ && owner_type.len > 0
+			&& g.struct_has_direct_named_field(owner_type, field.value) {
+			continue
+		}
 		set_fields[field.value] = true
 		set_fields[c_field_name(field.value)] = true
-		// A nested embedded field_decl has value == typ; recurse into it.
+		// A nested embedded field_decl has value == typ; recurse into it, keeping the
+		// original owner so its direct fields still win over deeper promoted names.
 		if field.value == field.typ {
-			g.mark_embedded_promoted_fields_set(field.value, mut set_fields)
+			g.mark_embedded_promoted_fields_set(field.value, owner_type, mut set_fields)
 		}
 	}
 }

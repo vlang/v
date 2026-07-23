@@ -1230,18 +1230,27 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 	mut declared := map[string]bool{}
 	declared[bname] = true
 	mut seen := map[string]bool{}
-	mut captures := []string{}
+	mut names := []string{}
+	mut mut_names := map[string]bool{}
 	for bid in builder_ids {
-		p.collect_template_free_idents(bid, mut declared, mut seen, mut captures)
+		p.collect_template_free_idents(bid, mut declared, mut seen, mut names, mut mut_names)
 	}
 	value_expr := if tmpl.typ == 'html' { 'ctx.html(${bname})' } else { bname }
 	ret_type := if tmpl.typ == 'html' { 'veb.Result' } else { 'string' }
+	mut captures := []string{}
 	if tmpl.typ == 'html' {
 		// The html value expression is `ctx.html(...)`, so the closure must capture
 		// `ctx` even when the template body never references it — and mutably, since
-		// `Context.html` has a mut receiver. Put it first and drop any plain `ctx`.
-		captures = captures.filter(it != 'ctx')
-		captures.insert(0, 'mut ctx')
+		// `Context.html` has a mut receiver. Put it first (dropping any plain `ctx`).
+		captures << 'mut ctx'
+	}
+	for name in names {
+		if tmpl.typ == 'html' && name == 'ctx' {
+			continue
+		}
+		// A name used mutably (`@{fill(mut buf)}`) must be captured `mut`, or the
+		// closure body cannot pass/mutate it.
+		captures << if name in mut_names { 'mut ${name}' } else { name }
 	}
 	cap_part := if captures.len > 0 { '[${captures.join(', ')}] ' } else { '' }
 	iife_src := '(fn ${cap_part}() ${ret_type} {\n${builder_src}\nreturn ${value_expr}\n}())'
@@ -1251,7 +1260,7 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 // collect_template_free_idents accumulates, in first-seen order, the identifiers a
 // template builder references that are not declared within it (the builder variable and
 // any `for`-loop / `:=` bindings), so they can be captured by an inline closure.
-fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[string]bool, mut seen map[string]bool, mut out []string) {
+fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[string]bool, mut seen map[string]bool, mut out []string, mut mut_names map[string]bool) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
 	}
@@ -1262,10 +1271,16 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			// Skip the builder's own bindings and imported module names — a module
 			// (`os` in `@{os.base(path)}`) is not a local variable and must not be
 			// captured. A module-qualified helper is still reachable inside the closure.
-			if name.len > 0 && name != '_' && name !in declared && name !in seen
-				&& name !in p.imported_module_names {
-				seen[name] = true
-				out << name
+			if name.len > 0 && name != '_' && name !in declared && name !in p.imported_module_names {
+				// A mutable use (`mut buf` argument) must be captured `mut`; record it
+				// even if the name was already seen through an immutable use.
+				if node.is_mut {
+					mut_names[name] = true
+				}
+				if name !in seen {
+					seen[name] = true
+					out << name
+				}
 			}
 		}
 		.for_in_stmt {
@@ -1274,7 +1289,7 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			for i in 2 .. header {
 				if i < int(node.children_count) {
 					p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-						out)
+						out, mut mut_names)
 				}
 			}
 			// The key/value loop variables are locals of the loop body, not captures.
@@ -1286,7 +1301,7 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			}
 			for i in header .. int(node.children_count) {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out)
+					out, mut mut_names)
 			}
 		}
 		.decl_assign {
@@ -1295,13 +1310,13 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			}
 			for i in 0 .. node.children_count {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out)
+					out, mut mut_names)
 			}
 		}
 		else {
 			for i in 0 .. node.children_count {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out)
+					out, mut mut_names)
 			}
 		}
 	}
