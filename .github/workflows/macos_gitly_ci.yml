@@ -1,0 +1,74 @@
+name: macOS CI (gitly_ci)
+
+# Runs V's macOS CI through a local gitly_ci instance on a self-hosted macOS
+# runner, streaming its logs into this Actions log in real time.
+#
+# Requirements on the self-hosted runner (a Mac):
+#   * a gitly_ci service reachable at $GITLY_CI_URL (default http://localhost:8081)
+#   * python3 and curl (both ship with macOS)
+#   * a committed .gitly-ci.yml at the repo root describing the steps to run
+#
+# Security: self-hosted runners must not execute untrusted code, so this
+# workflow deliberately does NOT trigger on `pull_request` (fork PRs). It runs
+# only for branches pushed by people with write access, plus manual dispatch.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-gitly-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-gitly-ci:
+    runs-on: [self-hosted, macOS, gitly-ci]
+    timeout-minutes: 120
+    env:
+      GITLY_CI_URL: http://localhost:8081
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check gitly_ci is up
+        run: |
+          if ! curl -fsS -m 5 "$GITLY_CI_URL/" >/dev/null; then
+            echo "::error::gitly_ci is not reachable at $GITLY_CI_URL on this runner"
+            exit 1
+          fi
+
+      - name: Run gitly_ci and stream logs live
+        run: |
+          set -uo pipefail
+          CONFIG_FILE="$GITHUB_WORKSPACE/.gitly-ci.yml"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::No .gitly-ci.yml at repo root"; exit 1
+          fi
+
+          # Build the trigger payload (python3 JSON-escapes the YAML safely).
+          payload="$(python3 -c 'import json,sys; c,b,r,f=sys.argv[1:5]; print(json.dumps({"repo_id":0,"commit_hash":c,"branch":b,"repo_path":r,"yaml_config":open(f,encoding="utf-8").read(),"callback_url":""}))' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_WORKSPACE" "$CONFIG_FILE")"
+
+          resp="$(curl -sS -m 20 -X POST "$GITLY_CI_URL/api/v1/trigger" \
+            -H 'Content-Type: application/json' -d "$payload")"
+          run_id="$(printf '%s' "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])' 2>/dev/null)"
+          if [ -z "${run_id:-}" ]; then
+            echo "::error::Failed to trigger gitly_ci: $resp"; exit 1
+          fi
+          echo "▶ gitly_ci run #$run_id — $GITHUB_REF_NAME @ ${GITHUB_SHA:0:12}"
+          echo
+
+          hdr="$(mktemp)"; trap 'rm -f "$hdr"' EXIT
+          offset=0; final=""
+          while true; do
+            body="$(curl -sS -m 60 -D "$hdr" "$GITLY_CI_URL/api/v1/runs/$run_id/log?offset=$offset")"
+            status="$(awk 'tolower($1)=="x-ci-status:"{print $2}' "$hdr" | tr -d '\r')"
+            total="$(awk 'tolower($1)=="x-ci-log-length:"{print $2}' "$hdr" | tr -d '\r')"
+            [ -n "$body" ] && printf '%s' "$body"
+            [ -n "$total" ] && offset="$total"
+            case "$status" in success|failure|cancelled) final="$status"; break;; esac
+            sleep 1
+          done
+          tail_body="$(curl -sS -m 60 "$GITLY_CI_URL/api/v1/runs/$run_id/log?offset=$offset")"
+          [ -n "$tail_body" ] && printf '%s' "$tail_body"
+          echo; echo "■ gitly_ci run #$run_id finished: $final"
+          [ "$final" = "success" ]

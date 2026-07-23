@@ -1,0 +1,16 @@
+# CI pipeline executed by a local gitly_ci instance on a self-hosted macOS
+# runner (see .github/workflows/macos_gitly_ci.yml). gitly_ci runs each step and
+# streams its output back into the GitHub Actions log in real time.
+#
+# This is a small, fast, reliable subset of ci/macos_ci.vsh to start with; add
+# more tasks from that file (self_tests, build_examples, sanitizers, ...) as the
+# self-hosted runner is scaled up.
+jobs:
+  macos-clang:
+    steps:
+      - name: v doctor
+        run: v run ci/macos_ci.vsh v_doctor
+      - name: Build examples with -prod
+        run: v run ci/macos_ci.vsh build_examples_prod
+      - name: Build tetris with -autofree
+        run: v run ci/macos_ci.vsh build_tetris_autofree
