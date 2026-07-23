@@ -3968,6 +3968,14 @@ fn main() {
 			assert unsupported.exit_code != 0
 			assert unsupported.output.contains('operator `${operator}` is not supported by the V3 ${backend} backend'), unsupported.output
 		}
+		enum_src := os.join_path(os.temp_dir(), 'v3_${backend}_enum_power.v')
+		os.write_file(enum_src,
+			'enum Powered {\n\ta = 2 ** 3\n}\n\nfn main() {\n\tprintln(Powered.a)\n}\n') or {
+			panic(err)
+		}
+		enum_result := os.execute('${v3_bin} -b ${backend} ${enum_src}')
+		assert enum_result.exit_code != 0, enum_result.output
+		assert enum_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), enum_result.output
 		inactive_src := os.join_path(os.temp_dir(), 'v3_${backend}_inactive_generic_power.v')
 		inactive_code := 'fn only_for_int[T](value int) int {
 	$if T is int {

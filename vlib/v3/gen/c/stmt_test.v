@@ -73,6 +73,39 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	tc.pop_scope()
 }
 
+fn test_mut_parameter_power_assign_uses_scalar_result_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	int_type := types.Type(types.int_)
+	ptr_type := types.Type(types.Pointer{
+		base_type: int_type
+	})
+
+	tc.push_scope()
+	arg_owner := tc.cur_scope.insert_with_owner('arg', ptr_type)
+	g.cur_param_types['arg'] = ptr_type
+	g.cur_mut_params['arg'] = true
+	g.cur_mut_param_owners['arg'] = arg_owner
+	arg_id := stmt_test_node(mut a, .ident, 'arg', [])
+	exponent_id := stmt_test_node(mut a, .int_literal, '2', [])
+	children_start := a.children.len
+	a.children << arg_id
+	a.children << exponent_id
+	g.gen_assign(flat.Node{
+		kind:           .assign
+		op:             .power_assign
+		children_start: i32(children_start)
+		children_count: 2
+	})
+	compact := g.sb.str().replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('*arg=((int)__v_pow_i64('), compact
+	assert !compact.contains('(int*)__v_pow_i64('), compact
+	tc.pop_scope()
+}
+
 fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

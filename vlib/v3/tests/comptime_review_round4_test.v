@@ -885,6 +885,25 @@ fn main() {
 	assert out == 'a:8|b:9'
 }
 
+fn test_enum_power_metadata_prunes_static_checker_branches() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_power_metadata_static_checker', 'enum Powered {
+	a = 2 ** 3
+}
+
+fn main() {
+	$for item in Powered.values {
+		$if item.value == 8 {
+			println(item.name)
+		} $else {
+			missing_from_inactive_enum_power_branch()
+		}
+	}
+}
+')
+	assert out == 'a'
+}
+
 fn test_enum_value_metadata_interpolation_stays_numeric() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {

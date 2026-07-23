@@ -5591,7 +5591,8 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 							lhs_text = '*${lhs_text}'
 						}
 						g.write('${lhs_text} = ')
-						g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, lhs_type)
+						power_type := g.assign_rhs_expected_type(lhs_assign_id, lhs_type)
+						g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, power_type)
 						g.writeln(';')
 					} else {
 						lhs_ct := g.value_c_type(lhs_type)

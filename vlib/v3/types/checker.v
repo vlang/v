@@ -8178,6 +8178,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
+				.power { const_int_power(left, right) }
 				else { none }
 			}
 		}

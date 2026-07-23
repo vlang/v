@@ -6102,20 +6102,36 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 			cur_module = node.value
 			continue
 		}
-		if idx < a.user_code_start || node.kind != .global_decl {
+		if idx < a.user_code_start {
 			continue
 		}
-		for i in 0 .. node.children_count {
-			field_id := a.child(&node, i)
-			field := a.node(field_id)
-			if field.children_count == 0 {
-				continue
+		if node.kind == .global_decl {
+			for i in 0 .. node.children_count {
+				field_id := a.child(&node, i)
+				field := a.node(field_id)
+				if field.children_count == 0 {
+					continue
+				}
+				root_ids << a.child(field, 0)
+				root_modules << cur_module
+				root_files << cur_file
+				if msg := unsupported_power_node_error(a, a.child(field, 0), backend, mut visited) {
+					return msg
+				}
 			}
-			root_ids << a.child(field, 0)
-			root_modules << cur_module
-			root_files << cur_file
-			if msg := unsupported_power_node_error(a, a.child(field, 0), backend, mut visited) {
-				return msg
+		} else if node.kind == .enum_decl {
+			for i in 0 .. node.children_count {
+				field := a.child_node(&node, i)
+				if field.kind != .enum_field || field.children_count == 0 {
+					continue
+				}
+				expr_id := a.child(field, 0)
+				root_ids << expr_id
+				root_modules << cur_module
+				root_files << cur_file
+				if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
+					return msg
+				}
 			}
 		}
 	}

@@ -215,6 +215,27 @@ fn main() {
 	assert compact.contains('box.value=Exponent__mul_(box.value,(Exponent){.value=3});'), c_code
 }
 
+fn test_mut_parameter_power_assign_uses_scalar_type() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'mut_parameter_power_assign', 'fn square(mut value int) {
+	value **= 2
+}
+
+fn main() {
+	mut value := 3
+	square(mut value)
+	println(int_str(value))
+}
+')
+	assert out == '9'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_mut_parameter_power_assign.c')) or {
+		panic(err)
+	}
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('__v_pow_i64('), c_code
+	assert !compact.contains('(int*)__v_pow_i64('), c_code
+}
+
 fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'addressed_inferred_array_const', 'const vals = [1, 2, 3]
