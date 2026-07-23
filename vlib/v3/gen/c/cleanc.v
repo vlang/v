@@ -14450,7 +14450,7 @@ fn (mut g FlatGen) fixed_array_typedefs() {
 // emitted before struct definitions: its element chain must bottom out in a
 // primitive/pointer/enum (not a struct or `string`, whose definitions come later).
 fn (mut g FlatGen) fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
-	if g.fixed_array_len_value(arr).contains('sizeof(') {
+	if !g.fixed_array_len_types_are_early_complete(arr) {
 		return false
 	}
 	elem := arr.elem_type
@@ -14458,6 +14458,38 @@ fn (mut g FlatGen) fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
 		return g.fixed_array_typedef_is_early(elem)
 	}
 	return fixed_array_elem_is_early_complete(elem)
+}
+
+fn (mut g FlatGen) fixed_array_len_types_are_early_complete(arr types.ArrayFixed) bool {
+	expr := g.fixed_array_len_value(arr)
+	mut offset := 0
+	for offset < expr.len {
+		rel := expr[offset..].index('sizeof(') or { return true }
+		open := offset + rel + 'sizeof'.len
+		close := fixed_array_len_matching_paren(expr, open)
+		if close < 0 {
+			return false
+		}
+		target := expr[open + 1..close].trim_space()
+		if !g.fixed_array_len_type_is_early_complete(g.tc.parse_type(target)) {
+			return false
+		}
+		offset = close + 1
+	}
+	return true
+}
+
+fn (mut g FlatGen) fixed_array_len_type_is_early_complete(typ types.Type) bool {
+	if typ is types.Alias {
+		return g.fixed_array_len_type_is_early_complete(typ.base_type)
+	}
+	if typ is types.Pointer {
+		return true
+	}
+	if typ is types.ArrayFixed {
+		return g.fixed_array_typedef_is_early(typ)
+	}
+	return typ is types.Primitive || typ is types.Enum
 }
 
 // populate_fixed_array_ret_wrappers records which fixed-array types get a return

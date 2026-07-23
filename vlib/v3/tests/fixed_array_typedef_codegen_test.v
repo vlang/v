@@ -108,9 +108,9 @@ fn main() {
 	assert !shape_c.contains('[max_items]'), shape_c
 	assert !shape_c.contains('[rows]'), shape_c
 	assert !shape_c.contains('[cols]'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_max_items[8];'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_cols[16];'), shape_c
-	assert shape_c.contains('typedef Array_fixed_int_cols Array_fixed_Array_fixed_int_cols_rows[6];'), shape_c
+	assert shape_c.contains('typedef int Array_fixed_int_8[8];'), shape_c
+	assert shape_c.contains('typedef int Array_fixed_int_16[16];'), shape_c
+	assert shape_c.contains('typedef Array_fixed_int_16 Array_fixed_Array_fixed_int_16_6[6];'), shape_c
 }
 
 fn test_fixed_array_typedefs_keep_declaring_module_with_unrelated_math_import() {
@@ -162,4 +162,36 @@ fn main() {
 	assert !generated.contains('math__Image'), generated
 	assert !generated.contains('math__TouchPoint'), generated
 	assert !generated.contains('Array_fixed_math__'), generated
+}
+
+fn test_sizeof_fixed_array_typedef_precedes_function_pointer() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('sizeof_fn_ptr', 'module fixture
+
+pub type Callback = fn ([sizeof(int)]u8) int
+
+fn first_byte(data [sizeof(int)]u8) int {
+	return int(data[0])
+}
+
+pub fn call() int {
+	callback := Callback(first_byte)
+	mut data := [sizeof(int)]u8{}
+	data[0] = 7
+	return callback(data)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.call())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '7', run.output
 }
