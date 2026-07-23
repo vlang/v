@@ -1817,6 +1817,9 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 				.mul {
 					l * r
 				}
+				.power {
+					enum_metadata_int_power(l, r)
+				}
 				.div {
 					if r == 0 {
 						none
@@ -1881,6 +1884,30 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 			return none
 		}
 	}
+}
+
+@[ignore_overflow]
+fn enum_metadata_int_power(base i64, exponent i64) i64 {
+	mut exp := exponent
+	mut power := base
+	mut value := i64(1)
+	if exp < 0 {
+		if base == 0 {
+			return -1
+		}
+		if base != 1 && base != -1 {
+			return 0
+		}
+		return if exp & 1 != 0 { base } else { 1 }
+	}
+	for exp > 0 {
+		if exp & 1 != 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
 }
 
 fn (t &Transformer) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
@@ -2816,11 +2843,23 @@ fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
 	if key.len == 0 {
 		return 0
 	}
-	builtin_idx := comptime_builtin_type_idx(key)
-	if builtin_idx > 0 {
-		return builtin_idx
+	mut base_key := key
+	mut indirections := 0
+	for base_key.starts_with('&') {
+		indirections++
+		base_key = base_key[1..].trim_space()
 	}
-	return comptime_type_id_hash(key)
+	builtin_idx := comptime_builtin_type_idx(base_key)
+	indirection_bits := int(u32(indirections) << 16)
+	if builtin_idx > 0 {
+		return builtin_idx | indirection_bits
+	}
+	mut custom_idx := comptime_type_id_hash(base_key) & ~(0xff << 16)
+	if custom_idx < 65536 {
+		// Bit 24 is the first available bit above the reserved indirection byte.
+		custom_idx |= 1 << 24
+	}
+	return custom_idx | indirection_bits
 }
 
 // comptime_builtin_type_idx maps a builtin type name to V's stable ast type index
@@ -3030,6 +3069,22 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children_with_type(node, t.clone_field_subst_type_text(node,
 			var_name, fm))
+	}
+	// `sizeof(field)` stores the parser's ambiguous identifier in the node value rather
+	// than as a child expression. Inside a reflected field loop it denotes the concrete
+	// field type, just like `typeof(field)`.
+	if node.kind == .sizeof_expr && node.value == var_name {
+		return t.make_sizeof_type(fm.comptime_typ)
+	}
+	// `isreftype(field)` does carry `field` as an expression. Preserve its reflected type
+	// instead of materializing the FieldData value used by ordinary bare `field` access.
+	if node.kind == .call && node.children_count == 2 {
+		callee := t.a.child_node(&node, 0)
+		arg := t.a.child_node(&node, 1)
+		if callee.kind == .ident && callee.value == '__v3_isreftype' && arg.kind == .ident
+			&& arg.value == var_name {
+			return t.make_call('__v3_isreftype', arr1(t.make_sizeof_type(fm.comptime_typ)))
+		}
 	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_field_data_literal(fm)
@@ -3461,10 +3516,13 @@ fn (mut t Transformer) comptime_field_type_accessor(id flat.NodeId, var_name str
 }
 
 fn (mut t Transformer) comptime_new_value(typ string) flat.NodeId {
-	zero := t.zero_value_for_type(typ)
-	addr := t.make_prefix(.amp, zero)
-	dup := t.make_call_typed('memdup', arr2(addr, t.make_sizeof_type(typ)), 'voidptr')
-	return t.make_cast('&${typ}', dup, '&${typ}')
+	value := t.transform_expr(t.zero_value_for_type(typ))
+	tmp_name := t.new_temp('new')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, typ)
+	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+	t.set_node_typ(int(addr), '&${typ}')
+	allocation := t.make_memdup_call_for_type(addr, typ)
+	return t.make_cast('&${typ}', allocation, '&${typ}')
 }
 
 fn (t &Transformer) clone_field_subst_type_text(node flat.Node, var_name string, fm FieldMeta) string {

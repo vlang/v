@@ -111,8 +111,10 @@ pub enum Token {
 	str_dollar
 	string // 'foo'
 	unknown
-	xor        // ^
-	xor_assign // ^=
+	xor          // ^
+	xor_assign   // ^=
+	power        // **
+	power_assign // **=
 }
 
 // BindingPower lists binding power values used by token.
@@ -129,6 +131,7 @@ pub enum BindingPower {
 	compare     // ==, !=, <, <=, >, >=, in, !in, is, !is
 	sum         // +, -, |, ^
 	product     // *, /, %, <<, >>, >>>, &
+	power       // **
 	highest
 }
 
@@ -141,15 +144,15 @@ pub fn (t Token) left_binding_power() BindingPower {
 		.eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is { .compare }
 		.plus, .minus, .pipe, .xor { .sum }
 		.mul, .div, .mod, .amp, .left_shift, .right_shift, .right_shift_unsigned { .product }
+		.power { .power }
 		else { .lowest }
 	}
 }
 
 // right_binding_power supports right binding power handling for Token.
-// Every binary operator here is left-associative, so the right binding power is
-// the level immediately above the operator's own level: parsing the right
-// operand stops as soon as it sees another operator at the same level, which
-// hands that operator back to the outer loop and folds left.
+// Binary operators are left-associative except for power. Their right binding
+// power is the level immediately above their own level, while power keeps the
+// same level so `a ** b ** c` folds as `a ** (b ** c)`.
 @[inline]
 pub fn (t Token) right_binding_power() BindingPower {
 	return match t.left_binding_power() {
@@ -157,7 +160,8 @@ pub fn (t Token) right_binding_power() BindingPower {
 		.logical_and { .compare }
 		.compare { .sum }
 		.sum { .product }
-		.product { .highest }
+		.product { .power }
+		.power { .power }
 		else { .lowest }
 	}
 }
@@ -184,8 +188,8 @@ pub fn (t Token) is_prefix() bool {
 @[inline]
 pub fn (t Token) is_infix() bool {
 	return t in [.amp, .and, .arrow, .div, .eq, .ge, .gt, .key_in, .key_is, .le, .left_shift,
-		.logical_or, .lt, .minus, .mod, .mul, .ne, .not_in, .not_is, .pipe, .plus, .right_shift,
-		.right_shift_unsigned, .xor]
+		.logical_or, .lt, .minus, .mod, .mul, .power, .ne, .not_in, .not_is, .pipe, .plus,
+		.right_shift, .right_shift_unsigned, .xor]
 }
 
 // is_postfix reports whether is postfix applies in token.
@@ -198,14 +202,15 @@ pub fn (t Token) is_postfix() bool {
 @[inline]
 pub fn (t Token) is_assignment() bool {
 	return t in [.and_assign, .assign, .decl_assign, .div_assign, .left_shift_assign, .minus_assign,
-		.mod_assign, .mul_assign, .or_assign, .plus_assign, .right_shift_assign,
+		.mod_assign, .mul_assign, .power_assign, .or_assign, .plus_assign, .right_shift_assign,
 		.right_shift_unsigned_assign, .xor_assign]
 }
 
 // is_overloadable reports whether is overloadable applies in token.
 @[inline]
 pub fn (t Token) is_overloadable() bool {
-	return t in [.div, .eq, .ge, .gt, .le, .lt, .minus, .mod, .mul, .ne, .pipe, .plus, .xor]
+	return t in [.div, .eq, .ge, .gt, .le, .lt, .minus, .mod, .mul, .power, .ne, .pipe, .plus,
+		.xor]
 }
 
 // is_comparison reports whether is comparison applies in token.
@@ -304,6 +309,8 @@ pub fn (t Token) str() string {
 		.mod_assign { '%=' }
 		.mul { '*' }
 		.mul_assign { '*=' }
+		.power { '**' }
+		.power_assign { '**=' }
 		.name { 'name' }
 		.ne { '!=' }
 		.not { '!' }

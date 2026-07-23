@@ -2,6 +2,64 @@ module types
 
 import v3.flat
 
+fn test_power_assignment_reads_index_lhs() {
+	assert assignment_op_reads_lhs(.power_assign)
+}
+
+fn test_stable_type_index_keeps_custom_types_above_builtin_range() {
+	assert stable_interface_type_id_hash('BwoZ') & ~(0xff << 16) == 19
+	type_id := stable_type_index('BwoZ')
+	assert type_id > 65535
+	assert type_id != 19
+	assert type_id & (0xff << 16) == 0
+}
+
+fn test_stable_type_indexes_resolve_custom_type_collisions() {
+	assert stable_type_index('ULz') == stable_type_index('AAbA')
+	assert stable_type_index('main.Uc') == stable_type_index('main.ACRB')
+	indexes := stable_type_indexes(['ULz', 'AAbA', 'main.Uc', 'main.ACRB'])
+	reversed := stable_type_indexes(['main.ACRB', 'main.Uc', 'AAbA', 'ULz'])
+	assert indexes == reversed
+	assert indexes['ULz'] != indexes['AAbA']
+	assert indexes['main.Uc'] != indexes['main.ACRB']
+	for _, type_idx in indexes {
+		assert type_idx > 65535
+		assert type_idx & (0xff << 16) == 0
+	}
+}
+
+fn test_stable_type_indexes_extend_without_renumbering_existing_types() {
+	assert stable_type_index('Box[Dxw]') == stable_type_index('Box[Kdd]')
+	mut indexes := stable_type_indexes(['Existing'])
+	existing_idx := indexes['Existing']
+	extend_stable_type_indexes(mut indexes, ['Box[Kdd]', 'Box[Dxw]'])
+	assert indexes['Existing'] == existing_idx
+	assert indexes['Box[Dxw]'] != indexes['Box[Kdd]']
+	for _, type_idx in indexes {
+		assert type_idx > 65535
+		assert type_idx & (0xff << 16) == 0
+	}
+}
+
+fn test_stable_type_indexes_resolve_boxed_container_collisions() {
+	assert stable_type_index('[]main.AQVA') == stable_type_index('[]main.CFGS')
+	assert stable_type_index('[]Aaxtc') == stable_type_index('[]Abddb')
+	indexes := stable_type_indexes(['[]main.AQVA', '[]main.CFGS', '[]Aaxtc', '[]Abddb'])
+	assert indexes['[]main.AQVA'] != indexes['[]main.CFGS']
+	assert indexes['[]Aaxtc'] != indexes['[]Abddb']
+}
+
+fn test_const_int_power_string_respects_unary_minus_precedence() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	negative_power := tc.const_int_value('-2 ** 2', []string{}) or { panic(err) }
+	parenthesized_base := tc.const_int_value('(-2) ** 2', []string{}) or { panic(err) }
+	nested_power := tc.const_int_value('-2 ** 2 ** 3', []string{}) or { panic(err) }
+	assert negative_power == -4
+	assert parenthesized_base == 4
+	assert nested_power == -256
+}
+
 struct SignatureDenseArrayLayoutForTest {
 	key_bytes   int
 	value_bytes int

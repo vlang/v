@@ -1891,6 +1891,7 @@ fn (mut t Transformer) materialize_generic_struct_specs(specs map[string]string,
 	if isnil(t.tc) {
 		return
 	}
+	types.extend_stable_type_indexes(mut t.runtime_type_indexes, specs.keys())
 	for spec, base in specs {
 		decl := decls[base] or { continue }
 		t.materialize_generic_struct_spec(spec, decl)
@@ -3200,6 +3201,9 @@ fn (mut t Transformer) generated_fn_value_name_for_used(id flat.NodeId, node fla
 		return none
 	}
 	if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
+		if t.selector_is_enum_value(id) {
+			return none
+		}
 		base := t.a.child_node(&node, 0)
 		if base.kind != .ident || base.value.len == 0 {
 			return none
@@ -4163,7 +4167,9 @@ fn (mut t Transformer) rewrite_generic_plain_call(id flat.NodeId, node flat.Node
 		arg_id := t.a.child(&node, i)
 		param_idx := i - 1
 		param_type := if param_idx < param_types.len { param_types[param_idx] } else { '' }
-		children << t.retype_generic_call_literal_arg(arg_id, param_type)
+		children << t.specialize_generic_fn_value_arg(arg_id, param_type, false) or {
+			t.retype_generic_call_literal_arg(arg_id, param_type)
+		}
 	}
 	t.append_missing_specialized_params_struct_args(mut children, param_types, decl.module)
 	start := t.a.children.len
@@ -4279,6 +4285,81 @@ fn (mut t Transformer) retype_generic_call_literal_arg(arg_id flat.NodeId, param
 		}
 	}
 	return arg_id
+}
+
+fn (mut t Transformer) specialize_generic_fn_value_arg(arg_id flat.NodeId, expected_type string, defer_emit bool) ?flat.NodeId {
+	if int(arg_id) < 0 || expected_type.len == 0 {
+		return none
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind != .ident {
+		return none
+	}
+	mut expected := expected_type.trim_space()
+	if expected.starts_with('...') {
+		expected = expected[3..].trim_space()
+	}
+	if expected.starts_with('[]fn') {
+		expected = expected[2..]
+	}
+	if !expected.starts_with('fn') {
+		return none
+	}
+	name := if !isnil(t.tc) {
+		t.tc.resolved_fn_value_name(arg_id) or { arg.value }
+	} else {
+		arg.value
+	}
+	decls := t.cached_generic_fn_decls()
+	for candidate in t.generic_plain_call_candidates(name, t.cur_module) {
+		decl := decls[candidate] or { continue }
+		if decl.node.value.contains('.') {
+			continue
+		}
+		params := t.generic_fn_param_names(decl.node, decl.module)
+		if params.len == 0 {
+			continue
+		}
+		mut signature_params := []string{}
+		for i in 0 .. decl.node.children_count {
+			param := t.a.child_node(&decl.node, i)
+			if param.kind == .param {
+				signature_params << param.typ
+			}
+		}
+		signature := 'fn (${signature_params.join(', ')})${if decl.node.typ.len > 0
+			&& decl.node.typ != 'void' {
+			' ${decl.node.typ}'
+		} else {
+			''
+		}}'
+		mut inferred := map[string]string{}
+		infer_generic_type_args(signature, expected, mut inferred)
+		mut concrete_args := []string{cap: params.len}
+		for param in params {
+			value := inferred[param] or { continue }
+			concrete_args << t.generic_arg_for_decl_module(value, decl.module)
+		}
+		if concrete_args.len != params.len || t.generic_args_have_placeholders(concrete_args) {
+			continue
+		}
+		concrete_args = t.canonical_generic_specialization_args(concrete_args)
+		if !t.generic_specialization_registered(decl, concrete_args)
+			&& !t.generic_specialization_in_progress(decl, concrete_args) {
+			if defer_emit {
+				t.request_generic_fn_specialization(decl, concrete_args)
+			} else {
+				t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
+					concrete_args), concrete_args)
+			}
+		}
+		spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
+		qualified_spec := transform_qualified_fn_name(decl.module, spec_value)
+		result := t.make_ident(qualified_spec)
+		t.set_node_typ(int(result), expected)
+		return result
+	}
+	return none
 }
 
 fn (t &Transformer) generic_call_array_literal_can_retype_inline(node flat.Node, param_type string) bool {
@@ -4470,7 +4551,9 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 					continue
 				}
 			}
-			children << t.retype_generic_call_literal_arg(arg_id, param_type)
+			children << t.specialize_generic_fn_value_arg(arg_id, param_type, false) or {
+				t.retype_generic_call_literal_arg(arg_id, param_type)
+			}
 			i++
 		}
 	} else {
@@ -4493,7 +4576,9 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 					continue
 				}
 			}
-			children << t.retype_generic_call_literal_arg(arg_id, param_type)
+			children << t.specialize_generic_fn_value_arg(arg_id, param_type, false) or {
+				t.retype_generic_call_literal_arg(arg_id, param_type)
+			}
 			i++
 		}
 	}
@@ -7388,8 +7473,37 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.No
 	return clone_id
 }
 
+fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, target string) flat.NodeId {
+	type_expr := t.a.add_node(flat.Node{
+		kind:  .ident
+		value: target
+	})
+	start := t.a.children.len
+	t.a.children << type_expr
+	marker := t.a.add_node(flat.Node{
+		kind:           .string_literal
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		children_start: start
+		children_count: 1
+	})
+	// Keep the deferred marker pointer-typed when call arguments inspect it before transforming it.
+	return t.make_cast('&${target}', marker, '&${target}')
+}
+
 @[direct_array_access]
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
+	if node.kind == .string_literal && node.children_count == 1
+		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
+		if target := t.generic_comptime_type_expr(t.a.child(&node, 0), args) {
+			return if node.value == '__v3_comptime_new' {
+				t.clone_specialized_comptime_new_marker(node, target)
+			} else {
+				t.zero_value_for_type(target)
+			}
+		}
+	}
 	if node.kind == .selector && node.children_count > 0 {
 		base_id := t.a.child(&node, 0)
 		if node.value == 'name' {
@@ -7403,15 +7517,31 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 				return t.make_string_literal(generic_type_name_display(reflected))
 			}
 		}
-		if node.value in ['idx', 'key_type', 'value_type', 'element_type'] {
-			if concrete := t.generic_comptime_base_type(base_id, args) {
-				target := if node.value == 'idx' {
+		if node.value in ['idx', 'typ', 'key_type', 'value_type', 'element_type', 'payload_type',
+			'pointee_type', 'indirections'] {
+			if concrete := t.generic_comptime_type_expr(base_id, args) {
+				if node.value == 'indirections' {
+					return t.make_int_literal(generic_type_indirections(concrete))
+				}
+				target := if node.value in ['idx', 'typ'] {
 					concrete
 				} else {
 					t.generic_comptime_type_member(concrete, node.value) or { '' }
 				}
 				if target.len > 0 {
 					return t.make_int_literal(t.comptime_field_type_id(target, t.cur_module))
+				}
+			}
+		}
+		if node.value == 'variant_types' {
+			if concrete := t.generic_comptime_type_expr(base_id, args) {
+				resolved := t.resolve_sum_name(concrete)
+				if variants := t.sum_types[resolved] {
+					mut ids := []flat.NodeId{cap: variants.len}
+					for variant in variants {
+						ids << t.make_int_literal(t.comptime_field_type_id(variant, t.cur_module))
+					}
+					return t.make_array_literal_typed(ids, '[]int')
 				}
 			}
 		}
@@ -7762,10 +7892,20 @@ fn (t &Transformer) generic_comptime_base_type(id flat.NodeId, args []string) ?s
 		return none
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .ident && is_generic_fn_placeholder_name(node.value) {
-		idx := t.active_generic_param_index(node.value)
-		if idx < args.len {
-			return args[idx]
+	if node.kind == .ident {
+		if is_generic_fn_placeholder_name(node.value) {
+			idx := t.active_generic_param_index(node.value)
+			if idx < args.len {
+				return args[idx]
+			}
+		}
+		substituted := t.subst_type(node.value, args)
+		if substituted != node.value && !t.generic_args_have_placeholders([substituted]) {
+			return t.resolve_substituted_type_text(substituted)
+		}
+		typ := t.raw_var_type(node.value)
+		if typ.len > 0 && !t.generic_arg_is_unresolved(typ) {
+			return typ
 		}
 	}
 	if node.kind == .typeof_expr {
@@ -7777,6 +7917,42 @@ fn (t &Transformer) generic_comptime_base_type(id flat.NodeId, args []string) ?s
 		}
 	}
 	return none
+}
+
+fn (mut t Transformer) generic_comptime_type_expr(id flat.NodeId, args []string) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .array_init && node.value == '__v3_comptime_type_array'
+		&& node.children_count == 1 {
+		elem := t.generic_comptime_type_expr(t.a.child(&node, 0), args) or { return none }
+		return '[]${elem}'
+	}
+	if node.kind == .typeof_expr {
+		return t.generic_comptime_typeof_target(node, args)
+	}
+	if node.kind == .ident {
+		return t.generic_comptime_base_type(id, args)
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	base := t.generic_comptime_type_expr(t.a.child(&node, 0), args) or { return none }
+	return match node.value {
+		'typ' {
+			base
+		}
+		'unaliased_typ' {
+			t.comptime_normalize_type_alias_chain(base)
+		}
+		'payload_type', 'pointee_type', 'element_type', 'key_type', 'value_type' {
+			t.generic_comptime_type_member(base, node.value)
+		}
+		else {
+			none
+		}
+	}
 }
 
 fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []string) ?string {
@@ -7813,6 +7989,21 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 fn (mut t Transformer) generic_comptime_type_member(raw string, member string) ?string {
 	clean := t.comptime_normalize_type_alias_chain(raw)
 	match member {
+		'payload_type' {
+			if clean.starts_with('?') || clean.starts_with('!') {
+				return clean[1..].trim_space()
+			}
+		}
+		'pointee_type' {
+			pointee := if clean.starts_with('?') || clean.starts_with('!') {
+				clean[1..].trim_space()
+			} else {
+				clean
+			}
+			if pointee.starts_with('&') {
+				return pointee[1..].trim_space()
+			}
+		}
 		'key_type', 'value_type' {
 			if !clean.starts_with('map[') {
 				return none

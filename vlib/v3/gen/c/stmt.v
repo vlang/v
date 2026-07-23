@@ -5162,6 +5162,15 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 			}
 		}
 	}
+	if v_type is types.Pointer {
+		if cgen_unalias_type(v_type.base_type).name() == 'u8' {
+			rhs_type := g.usable_expr_type(rhs_id)
+			if g.fixed_array_address_to_byte_pointer_expr_compatible(rhs_id, v_type, rhs_type) {
+				g.gen_fixed_array_address_to_byte_pointer_expr(rhs_id, v_type)
+				return
+			}
+		}
+	}
 	g.gen_expr_with_expected_type(rhs_id, v_type)
 }
 
@@ -5351,6 +5360,42 @@ fn (mut g FlatGen) gen_single_fixed_array_elem_assign_to_scalar_local(lhs flat.N
 	return true
 }
 
+fn (g &FlatGen) fixed_array_address_to_byte_pointer_expr_compatible(rhs_id flat.NodeId, target_type types.Type, rhs_type types.Type) bool {
+	target_ptr := if target_type is types.Pointer { target_type } else { return false }
+	rhs_ptr := if rhs_type is types.Pointer { rhs_type } else { return false }
+	rhs_base := cgen_unalias_type(rhs_ptr.base_type)
+	if cgen_unalias_type(target_ptr.base_type).name() != 'u8' || rhs_base !is types.ArrayFixed {
+		return false
+	}
+	rhs_fixed := rhs_base as types.ArrayFixed
+	if cgen_unalias_type(rhs_fixed.elem_type).name() != 'u8' {
+		return false
+	}
+	rhs := g.a.nodes[int(rhs_id)]
+	if rhs.kind != .prefix || rhs.op != .amp || rhs.children_count == 0 {
+		return false
+	}
+	return true
+}
+
+fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_expr(rhs_id flat.NodeId, target_type types.Type) {
+	rhs := g.a.nodes[int(rhs_id)]
+	g.write('((${g.tc.c_type(target_type)})(')
+	g.gen_expr(g.a.child(&rhs, 0))
+	g.write('))')
+}
+
+fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if !g.fixed_array_address_to_byte_pointer_expr_compatible(rhs_id, lhs_type, rhs_type) {
+		return false
+	}
+	g.gen_expr(lhs_id)
+	g.write(' = ')
+	g.gen_fixed_array_address_to_byte_pointer_expr(rhs_id, lhs_type)
+	g.writeln(';')
+	return true
+}
+
 // gen_assign emits assign output for c.
 fn (mut g FlatGen) gen_assign(node flat.Node) {
 	if node.children_count >= 3 {
@@ -5476,6 +5521,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					g.usable_expr_type(lhs_id)
 				}
 				rhs_type := g.usable_expr_type(rhs_id)
+				if node.op == .assign
+					&& g.gen_fixed_array_address_to_byte_pointer_assign(lhs_id, rhs_id, lhs_type, rhs_type) {
+					i += 2
+					continue
+				}
 				if node.op == .assign {
 					if lhs_fixed := array_fixed_type(lhs_type) {
 						if g.gen_single_fixed_array_elem_assign_to_scalar_local(lhs, lhs_id,
@@ -5532,6 +5582,30 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 							continue
 						}
 					}
+				}
+				if node.op == .power_assign {
+					lhs_assign_id := g.a.child(&node, i)
+					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
+						mut lhs_text := g.expr_to_string(lhs_assign_id)
+						if g.assign_lhs_needs_deref(lhs_assign_id, lhs_type, rhs_type, node.op) {
+							lhs_text = '*${lhs_text}'
+						}
+						g.write('${lhs_text} = ')
+						power_type := g.assign_rhs_expected_type(lhs_assign_id, lhs_type)
+						g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, power_type)
+						g.writeln(';')
+					} else {
+						lhs_ct := g.value_c_type(lhs_type)
+						addr_tmp := g.tmp_name()
+						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
+						g.gen_expr(lhs_assign_id)
+						g.write('); *${addr_tmp} = ')
+						g.gen_power_expr_from_lhs_text('*${addr_tmp}', rhs_id, lhs_type)
+						g.writeln('; }')
+					}
+					g.expected_enum = ''
+					i += 2
+					continue
 				}
 				if node.op in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 					shift_op := match node.op {
@@ -5650,6 +5724,7 @@ fn assign_struct_operator_symbol(op flat.Op) ?string {
 		.plus_assign { return '+' }
 		.minus_assign { return '-' }
 		.mul_assign { return '*' }
+		.power_assign { return '**' }
 		.div_assign { return '/' }
 		.mod_assign { return '%' }
 		else {}
@@ -5763,7 +5838,15 @@ fn (g &FlatGen) local_decl_cname(name string) string {
 }
 
 fn local_name_shadows_c_runtime(name string) bool {
-	return name == 'new_map'
+	return match name {
+		'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt',
+		'string__plus' {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (g &FlatGen) local_shadows_global(name string) bool {
