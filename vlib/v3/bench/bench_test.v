@@ -22,6 +22,27 @@ fn test_disable_memory_limit() {
 	assert memory_limit_error(default_memory_limit_kb, b.memory_limit_kb, 'after check', 'RSS') == ''
 }
 
+fn test_step_parts_record_individual_timings() {
+	mut b := new()
+	b.disable_memory_limit()
+	b.step_parts([
+		StepPart{
+			name:     'parse .vh'
+			time_us:  1250
+			parallel: true
+		},
+		StepPart{
+			name:    'parse .v'
+			time_us: 2750
+		},
+	])
+	assert b.steps.len == 2
+	assert b.steps[0].name == 'parse .vh (parallel)'
+	assert b.steps[0].time_us == 1250
+	assert b.steps[1].name == 'parse .v'
+	assert b.steps[1].time_us == 2750
+}
+
 fn test_limit_memory_metric_is_available() {
 	memory := current_limit_memory()
 	assert memory.kb > 0
@@ -60,4 +81,15 @@ fn test_memory_monitor_exits_above_limit() {
 	assert child.code == 1
 	assert error_output.contains('during compilation'), error_output
 	assert error_output.contains('limit: 0 GiB'), error_output
+}
+
+fn test_shorten_home_path() {
+	home := os.home_dir()
+	if home.len == 0 {
+		return
+	}
+	assert shorten_home_path(home) == '~'
+	assert shorten_home_path('${home}/code/project/main.v') == '~/code/project/main.v'
+	assert shorten_home_path('${home}_other/code/project/main.v') == '${home}_other/code/project/main.v'
+	assert shorten_home_path('/tmp/project/main.v') == '/tmp/project/main.v'
 }

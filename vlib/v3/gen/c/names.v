@@ -15,7 +15,10 @@ fn c_name(name string) string {
 @[heap]
 struct CNameCache {
 mut:
-	entries map[string]string
+	entries    map[string]string
+	base       &CNameCache = unsafe { nil }
+	last_name  string
+	last_value string
 }
 
 // ConstShortIndex maps a const short name to its unique primary const name
@@ -36,6 +39,50 @@ mut:
 	entries map[string]i8
 }
 
+// StringLookupCache memoizes context-qualified string lookups whose empty
+// result is meaningful. Keeping the cache behind a pointer lets read-only
+// FlatGen query methods populate a worker-local cache.
+@[heap]
+struct StringLookupCache {
+mut:
+	entries map[string]string
+}
+
+// ContextStringLookupCache memoizes string lookups whose answers depend on the
+// current source file and module. Cgen visits functions in source order, so
+// replacing on a context switch avoids allocating a compound key on every hot
+// lookup while retaining almost all hits.
+@[heap]
+struct ContextStringLookupCache {
+mut:
+	file       string = '\x00'
+	module     string
+	entries    map[string]string
+	last_name  string
+	last_value string
+	last_valid bool
+}
+
+@[inline]
+fn (mut c ContextStringLookupCache) select_context(file string, module_name string) {
+	if c.file == file && c.module == module_name {
+		return
+	}
+	c.file = file
+	c.module = module_name
+	c.entries = map[string]string{}
+	c.last_name = ''
+	c.last_value = ''
+	c.last_valid = false
+}
+
+fn (mut g FlatGen) reset_context_lookup_caches() {
+	g.import_alias_cache = &ContextStringLookupCache{}
+	g.enum_selector_cache = &ContextStringLookupCache{}
+	g.enum_method_cache = &ContextStringLookupCache{}
+	g.qualified_enum_method_cache = &ContextStringLookupCache{}
+}
+
 // cname is the memoizing wrapper for naming.c_name used on FlatGen hot paths.
 @[inline]
 fn (g &FlatGen) cname(name string) string {
@@ -43,11 +90,26 @@ fn (g &FlatGen) cname(name string) string {
 		return naming.c_name(name)
 	}
 	mut cache := g.c_name_cache
+	if cache.last_name.len == name.len
+		&& (unsafe { cache.last_name.str == name.str } || cache.last_name == name) {
+		return cache.last_value
+	}
 	if cached := cache.entries[name] {
+		cache.last_name = name
+		cache.last_value = cached
 		return cached
+	}
+	if !isnil(cache.base) {
+		if cached := cache.base.entries[name] {
+			cache.last_name = name
+			cache.last_value = cached
+			return cached
+		}
 	}
 	result := naming.c_name(name)
 	cache.entries[name] = result
+	cache.last_name = name
+	cache.last_value = result
 	return result
 }
 

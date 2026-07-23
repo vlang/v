@@ -68,6 +68,206 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
+fn test_power_consts_are_initialized_at_runtime() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'power_const_runtime_init', 'const byte_power = u8(2 ** 3)
+const max_len = 2 ** 3
+const address_power = 3 ** 2
+const float_power = 9.0 ** 0.5
+const array_len = 2 ** 3
+
+type NamedPowerArray = [array_len]int
+type DirectPowerArray = [2 ** 2]int
+
+fn read_int(value &int) int {
+	return *value
+}
+
+fn read_float(value &f64) f64 {
+	return *value
+}
+
+fn main() {
+	println(int_str(int(byte_power)))
+	println(int_str(max_len))
+	println(int_str(read_int(&address_power)))
+	println(read_float(&float_power).str())
+	println(int_str(NamedPowerArray{}.len))
+	println(int_str(DirectPowerArray{}.len))
+}
+')
+	assert out == '8\n8\n9\n3.0\n8\n4'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_power_const_runtime_init.c')) or {
+		panic(err)
+	}
+	assert c_code.contains('u8 main__byte_power;'), c_code
+	assert c_code.contains('int main__max_len;'), c_code
+	assert c_code.contains('int main__address_power;'), c_code
+	assert c_code.contains('double main__float_power;'), c_code
+	assert c_code.contains('main__byte_power = '), c_code
+	assert c_code.contains('main__max_len = '), c_code
+	assert c_code.contains('main__address_power = '), c_code
+	assert c_code.contains('main__float_power = '), c_code
+}
+
+fn test_array_power_assign_uses_power_helper() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'array_power_assign', 'struct IntList {
+mut:
+	values []int
+}
+
+fn (list IntList) [] (index int) int {
+	return list.values[index]
+}
+
+fn (mut list IntList) []= (index int, value int) {
+	list.values[index] = value
+}
+
+struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct ExponentList {
+mut:
+	values []Exponent
+}
+
+fn (list ExponentList) [] (index int) Exponent {
+	return list.values[index]
+}
+
+fn (mut list ExponentList) []= (index int, value Exponent) {
+	list.values[index] = value
+}
+
+fn main() {
+	mut values := [2, 3]
+	values[0] **= 3
+	println(int_str(values[0]))
+	mut direct := [Exponent{
+		value: 4
+	}]
+	direct[0] **= Exponent{
+		value: 5
+	}
+	println(int_str(direct[0].value))
+	mut list := IntList{
+		values: [3]
+	}
+	list[0] **= 2
+	println(int_str(list.values[0]))
+	mut exponents := ExponentList{
+		values: [Exponent{
+			value: 2
+		}]
+	}
+	exponents[0] **= Exponent{
+		value: 3
+	}
+	println(int_str(exponents.values[0].value))
+}
+')
+	assert out == '8\n45\n9\n23'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
+	assert compact.contains('array__set(_a1,_i1,&(Exponent[]){Exponent__mul_(*(Exponent*)array_get(*_a1,_i1),'), c_code
+	assert compact.contains('IntList__op_index_set('), c_code
+	assert compact.contains('ExponentList__op_index_set('), c_code
+	assert compact.contains('Exponent__mul_('), c_code
+	assert !c_code.contains(' ** '), c_code
+}
+
+fn test_struct_field_power_assign_uses_operator_overload() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'struct_field_power_assign', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct Box {
+mut:
+	value Exponent
+}
+
+fn main() {
+	mut box := Box{
+		value: Exponent{
+			value: 2
+		}
+	}
+	box.value **= Exponent{
+		value: 3
+	}
+	println(int_str(box.value.value))
+}
+')
+	assert out == '23'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_field_power_assign.c')) or {
+		panic(err)
+	}
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('box.value=Exponent__mul_(box.value,(Exponent){.value=3});'), c_code
+}
+
+fn test_mut_parameter_power_assign_uses_scalar_type() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'mut_parameter_power_assign', 'fn square(mut value int) {
+	value **= 2
+}
+
+fn main() {
+	mut value := 3
+	square(mut value)
+	println(int_str(value))
+}
+')
+	assert out == '9'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_mut_parameter_power_assign.c')) or {
+		panic(err)
+	}
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('__v_pow_i64('), c_code
+	assert !compact.contains('(int*)__v_pow_i64('), c_code
+}
+
+fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'addressed_inferred_array_const', 'const vals = [1, 2, 3]
+
+fn array_len(values &[]int) int {
+	return values.len
+}
+
+fn main() {
+	ptr := &vals
+	copy := vals
+	println(int_str(array_len(ptr) + ptr[0] + copy[2]))
+}
+')
+	assert out == '7'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_addressed_inferred_array_const.c')) or {
+		panic(err)
+	}
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('Arraymain__vals;'), c_code
+	assert compact.contains('main__vals=new_array_from_c_array(3,3,sizeof(int),'), c_code
+	assert !compact.contains('intmain__vals[3]'), c_code
+}
+
 fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'numbered_string_identifier_collision', 'struct Named {
@@ -112,6 +312,17 @@ pub fn free(values []int) int {
 '
 	}, 'main.v')
 	assert out == '4'
+}
+
+fn test_imported_enum_method_call_uses_declaration_symbol() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good_project(v3_bin, 'imported_enum_method_call', {
+		'v.mod':         'Module { name: "imported_enum_method_call" }\n'
+		'token/token.v': "module token\n\npub enum Kind {\n\tword\n}\n\npub fn (kind Kind) str() string {\n\treturn 'word'\n}\n"
+		'ast/ast.v':     'module ast\n\nimport token\n\npub fn render(kind token.Kind) string {\n\treturn kind.str()\n}\n'
+		'main.v':        'module main\n\nimport ast\nimport token\n\nfn main() {\n\tprintln(ast.render(token.Kind.word))\n}\n'
+	}, 'main.v')
+	assert out == 'word'
 }
 
 fn test_selectively_imported_free_call_is_not_rewritten_to_array_intrinsic() {
@@ -316,4 +527,185 @@ fn main() {
 }
 ')
 	assert out == '15'
+}
+
+fn test_enum_power_initializers_are_folded() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'fn enum_power(base int, exponent int) int {
+	return base ** exponent
+}
+
+enum Power {
+	direct = 2 ** 3
+	helper = enum_power(3, 2)
+	next
+}
+
+@[flag]
+enum FlagPower {
+	direct = 2 ** 1
+	next
+}
+
+enum BackedPower as u64 {
+	direct = 2 ** 5
+}
+
+@[flag]
+enum BackedFlagPower as u64 {
+	direct = 2 ** 2
+	next
+}
+
+fn main() {
+	println(int_str(int(Power.direct)))
+	println(int_str(int(Power.helper)))
+	println(int_str(int(Power.next)))
+	println(int_str(int(FlagPower.direct)))
+	println(int_str(int(FlagPower.next)))
+	println(u64(BackedPower.direct))
+	println(u64(BackedFlagPower.direct))
+	println(u64(BackedFlagPower.next))
+}
+')
+	assert out == '8\n9\n10\n4\n8\n32\n16\n32'
+}
+
+fn test_zero_and_new_preserve_nested_array_type_arguments() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'nested_array_zero_new', 'struct NewDefaults {
+mut:
+	values []int
+	lookup map[string]int
+	count  int = 16
+}
+
+struct GenericBox[T] {
+	value T
+}
+
+type NewInts = []int
+type NewNested = [][]int
+type NewOptional = []?int
+
+fn zero_payload_array[T](value ?T) []T {
+	return $zero([]typeof(value).payload_type{})
+}
+
+fn zero_optional_array[T]() []?T {
+	return $zero([]?T{})
+}
+
+fn zero_result_array[T]() []!T {
+	return $zero([]!T{})
+}
+
+fn zero_pointer_array[T]() []&T {
+	return $zero([]&T{})
+}
+
+fn new_optional_array[T]() &[]?T {
+	return $new([]?T{})
+}
+
+fn new_value[T]() T {
+	return $new(T.pointee_type)
+}
+
+fn main() {
+	nested := $zero([][]int{})
+	optional := $zero([]?int{})
+	generic := $zero([]GenericBox[int]{})
+	fixed := $zero([2]int{})
+	fixed_ptr := $new([3]int{})
+	mut generic_ptr := $new([]GenericBox[int]{})
+	mut direct_ptr := new_value[&NewInts]()
+	mut nested_ptr := new_value[&NewNested]()
+	mut optional_ptr := new_value[&NewOptional]()
+	mut defaults := new_value[&NewDefaults]()
+	payload := zero_payload_array[int](none)
+	optional_generic := zero_optional_array[int]()
+	result_generic := zero_result_array[int]()
+	pointer_generic := zero_pointer_array[int]()
+	mut optional_generic_ptr := new_optional_array[int]()
+	direct_ptr << 11
+	nested_ptr << [12]
+	optional_ptr << 13
+	defaults.values << 14
+	defaults.lookup["answer"] = 15
+	optional_generic_ptr << 17
+	generic_ptr << GenericBox[int]{
+		value: 18
+	}
+	println(int_str(nested.len))
+	println(int_str(optional.len))
+	println(int_str(generic.len))
+	println(int_str(fixed.len))
+	println(int_str((*fixed_ptr).len))
+	println(int_str(generic_ptr.len))
+	println(int_str(payload.len))
+	println(int_str(optional_generic.len))
+	println(int_str(result_generic.len))
+	println(int_str(pointer_generic.len))
+	println(int_str(optional_generic_ptr[0] or { -1 }))
+	println(int_str(direct_ptr[0]))
+	println(int_str(nested_ptr[0][0]))
+	println(int_str(optional_ptr[0] or { -1 }))
+	println(int_str(defaults.values[0]))
+	println(int_str(defaults.lookup["answer"]))
+	println(int_str(defaults.count))
+}
+')
+	assert out == '0\n0\n0\n2\n3\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
+}
+
+fn test_zero_and_new_preserve_direct_map_and_generic_type_arguments() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'direct_map_generic_zero_new', 'struct Box[T] {
+mut:
+	value T
+}
+
+fn main() {
+	mut values := $zero(map[string]int{})
+	mut box := $new(Box[int]{})
+	values["answer"] = 19
+	box.value = 20
+	println(int_str(values["answer"]))
+	println(int_str(box.value))
+}
+')
+	assert out == '19\n20'
+}
+
+fn test_generic_new_default_initialization_stays_in_expression_scope() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'generic_new_expression_scope', "fn initialized_value() int {
+	println('initialized')
+	return 1
+}
+
+struct NeedsInitialization {
+	value int = initialized_value()
+}
+
+fn maybe_new[T](cond bool) {
+	if cond {
+		_ = \$new(T)
+	}
+}
+
+fn maybe_short_new[T](cond bool) bool {
+	return cond && !isnil(\$new(T))
+}
+
+fn main() {
+	maybe_new[NeedsInitialization](false)
+	println('after false')
+	maybe_new[NeedsInitialization](true)
+	println(maybe_short_new[NeedsInitialization](false))
+	println(maybe_short_new[NeedsInitialization](true))
+}
+")
+	assert out == 'after false\ninitialized\nfalse\ninitialized\ntrue'
 }

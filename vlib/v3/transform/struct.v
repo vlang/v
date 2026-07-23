@@ -643,6 +643,18 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	if info.module.len > 0 {
 		t.cur_module = info.module
 	}
+	// Field defaults are declaration-scope expressions. Caller locals with the same
+	// name as an imported module (for example `seed`) must not turn module calls in a
+	// reused default into receiver calls.
+	saved_var_types := t.var_types.clone()
+	saved_fn_value_locals := t.fn_value_locals.clone()
+	saved_mut_param_values := t.mut_param_values.clone()
+	saved_fixed_array_param_values := t.fixed_array_param_values.clone()
+	saved_interface_var_concrete_types := t.interface_var_concrete_types.clone()
+	saved_addr_lvalue_pointer_locals := t.addr_lvalue_pointer_locals.clone()
+	saved_orm_initialized_fields := t.orm_initialized_fields.clone()
+	saved_sql_query_data_aliases := t.sql_query_data_aliases.clone()
+	t.reset_var_types()
 	mut added := false
 	for field in info.fields {
 		if field.name in provided || int(field.default_expr) < 0 {
@@ -674,6 +686,14 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		provided[field.name] = true
 		added = true
 	}
+	t.restore_var_types(saved_var_types)
+	t.fn_value_locals = saved_fn_value_locals.clone()
+	t.mut_param_values = saved_mut_param_values.clone()
+	t.fixed_array_param_values = saved_fixed_array_param_values.clone()
+	t.interface_var_concrete_types = saved_interface_var_concrete_types.clone()
+	t.addr_lvalue_pointer_locals = saved_addr_lvalue_pointer_locals.clone()
+	t.orm_initialized_fields = saved_orm_initialized_fields.clone()
+	t.sql_query_data_aliases = saved_sql_query_data_aliases.clone()
 	t.cur_module = old_module
 	if !added {
 		for stmt in prelude {
@@ -1031,7 +1051,11 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 
 	mut prelude := []flat.NodeId{}
 	transformed_base := t.transform_expr(base_id)
-	base := if base_type.starts_with('&') {
+	transformed_base_type := t.node_type(transformed_base)
+	base_is_loaded_pointer_value := base_node.kind == .ident
+		&& t.pointer_value_rvalues[base_node.value]
+	base := if base_type.starts_with('&') && transformed_base_type.starts_with('&')
+		&& !base_is_loaded_pointer_value {
 		t.make_prefix(.mul, transformed_base)
 	} else {
 		transformed_base
@@ -1302,6 +1326,18 @@ fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.No
 // fixed_array_value_to_array converts fixed array value to array data for transform.
 fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	return t.fixed_array_data_to_array(t.transform_expr(value_id), fixed_type, array_type)
+}
+
+fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	elem_type := fixed_array_elem_type(fixed_type)
+	len_expr := t.make_fixed_array_len_expr(fixed_type)
+	t.mark_fn_used('new_array_from_c_array_no_alloc')
+	return t.make_call_typed('new_array_from_c_array_no_alloc', [
+		len_expr,
+		len_expr,
+		t.make_sizeof_type(elem_type),
+		t.transform_expr(value_id),
+	], array_type)
 }
 
 fn (mut t Transformer) fixed_array_data_to_array(data_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {

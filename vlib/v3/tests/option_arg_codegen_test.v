@@ -47,6 +47,57 @@ fn test_optional_argument_codegen_wraps_values_and_none() {
 	assert out == 'ok'
 }
 
+fn test_optional_literal_argument_uses_expected_wrapper() {
+	v3_bin := build_v3()
+	source := 'fn take(x ?i64) i64 {
+	return x or { -1 }
+}
+
+fn main() {
+	assert take(?int(1)) == 1
+	println("ok")
+}
+'
+	out := run_good(v3_bin, 'optional_literal_expected_wrapper', source)
+	assert out == 'ok'
+	c_code := generated_c(v3_bin, 'optional_literal_expected_wrapper_c', source)
+	assert c_code.contains('take((Optional_i64){.ok = true, .value = 1})'), c_code
+}
+
+fn test_optional_params_field_inside_result_function_keeps_field_wrapper() {
+	v3_bin := build_v3()
+	source := 'enum Filter {
+	linear
+}
+
+@[params]
+struct Config {
+	filter ?Filter
+}
+
+struct Image {}
+
+fn create(cfg Config) !Image {
+	filter := cfg.filter or { return error("missing filter") }
+	if filter != .linear {
+		return error("wrong filter")
+	}
+	return Image{}
+}
+
+fn wrapper(filter Filter) !Image {
+	return create(filter: filter)!
+}
+
+fn main() {
+	_ := wrapper(.linear) or { panic(err) }
+	println("ok")
+}
+'
+	out := run_good(v3_bin, 'optional_params_field_result_wrapper', source)
+	assert out == 'ok'
+}
+
 fn test_error_call_argument_expected_ierror_not_result_wrapper() {
 	v3_bin := build_v3()
 	source := "fn wrap(err IError) string {\n\treturn err.msg()\n}\n\nfn f() !string {\n\treturn wrap(error('x'))\n}\n\nfn main() {\n\ts := f() or { '' }\n\tassert s == 'x'\n\tprintln('ok')\n}\n"

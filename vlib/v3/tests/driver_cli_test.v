@@ -20,6 +20,79 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn test_v3_build_rejects_garbage_collectors() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_build_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
+		'boehm_leak', 'vgc'] {
+		output := os.join_path(root, 'v3_${mode}')
+		result := cmdexec.run(@VEXE, ['-gc', mode, '-path', '${driver_cli_vlib_dir}|@vlib|@vmodules',
+			'-o', output, driver_cli_v3_src])
+		assert result.exit_code != 0
+		assert result.output.contains('v3 must be built without a garbage collector'), result.output
+		assert !os.is_file(output)
+	}
+	for define in ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak', 'vgc'] {
+		output := os.join_path(root, 'v3_define_${define}')
+		result := cmdexec.run(@VEXE, ['-gc', 'none', '-d', define, '-path',
+			'${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', output, driver_cli_v3_src])
+		assert result.exit_code != 0
+		assert result.output.contains('v3 must be built without a garbage collector'), result.output
+		assert !os.is_file(output)
+	}
+}
+
+fn test_standard_v3_excludes_ownership_checker() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_ownership_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "fn main() {
+	println('no ownership')
+}
+")!
+	output := os.join_path(root, 'no_ownership')
+	compile := cmdexec.run(v3_bin, ['-o', output, source])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'no ownership\n'
+	assert_driver_cli_failure(v3_bin, ['-ownership', source],
+		'ownership support is not compiled into this v3 executable')
+	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', source],
+		'ownership support is not compiled into this v3 executable')
+	assert_driver_cli_failure(v3_bin, ['-downership', source],
+		'ownership support is not compiled into this v3 executable')
+}
+
+fn test_explicit_arm64_import_unskips_ssa_dependencies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_arm64_import_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main
+
+import v3.gen.arm64
+
+fn main() {}
+')!
+	output := os.join_path(root, 'arm64_import')
+	compile := cmdexec.run(v3_bin, ['-o', output, source])
+	assert compile.exit_code == 0, compile.output
+}
+
 fn test_driver_cflags_include_dir_is_visible_to_header_inliner() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_cflags_include_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -239,6 +312,10 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
 	assert_driver_cli_failure(v3_bin, ['-gc', 'boehm', source],
 		'currently supports only `-gc none`')
+	assert_driver_cli_failure(v3_bin, ['-d', 'gcboehm', source],
+		'v3 programs must not use a garbage collector')
+	assert_driver_cli_failure(v3_bin, ['-dvgc', source],
+		'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, [source, source], 'multiple input paths are not supported')
 	assert_driver_cli_failure(v3_bin, ['-compile-backend', 'bogus', source],
 		'unknown compile backend `bogus`')

@@ -164,6 +164,14 @@ fn main() { println(int_str(C.cached_value())) }
 	assert third.exit_code == 0, third.output
 	assert cmdexec.run(third_out, []string{}).output.trim_space() == '9'
 
+	warm_out := os.join_path(root, 'warm')
+	warm := cmdexec.run(v3_bin, [v_source, '-prod', '-o', warm_out])
+	assert warm.exit_code == 0, warm.output
+	stage_lines := warm.output.split_into_lines().filter(it.starts_with('  C object cache'))
+	assert stage_lines.len == 1, warm.output
+	scan_lines := warm.output.split_into_lines().filter(it.contains('C object dependency scans'))
+	assert scan_lines.len == 1 && scan_lines[0].contains('0 objects'), warm.output
+
 	os.setenv('V3_CACHE_TRACE', '1', true)
 	defer {
 		os.unsetenv('V3_CACHE_TRACE')
@@ -173,6 +181,7 @@ fn main() { println(int_str(C.cached_value())) }
 	assert fourth.exit_code == 0, fourth.output
 	assert fourth.output.contains('C object cache hit: key='), fourth.output
 	assert fourth.output.contains('reason=compiler, target, argv, and dependency contents matched'), fourth.output
+	assert fourth.output.contains('matched via manifest'), fourth.output
 
 	assert fourth.output.contains('dependencies=2'), fourth.output
 	assert fourth.output.contains('C object content-key hits'), fourth.output

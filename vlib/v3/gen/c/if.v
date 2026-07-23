@@ -237,6 +237,19 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	lhs := g.a.nodes[int(lhs_id)]
 	lhs_ids := g.if_guard_lhs_ids(cond)
 	rhs := g.a.nodes[int(rhs_id)]
+	mut rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
+	mut rhs_needs_deref := false
+	if rhs.kind == .ident && g.current_param_is_mut(rhs.value) {
+		if param_type := g.current_param_type(rhs.value) {
+			if param_type is types.Pointer {
+				base_type := optional_result_unalias_type(param_type.base_type)
+				if base_type is types.OptionType || base_type is types.ResultType {
+					rhs_type = param_type.base_type
+					rhs_needs_deref = true
+				}
+			}
+		}
+	}
 	var_name := g.cname(lhs.value)
 	tmp := g.tmp_name()
 	defer_start := g.defers.len
@@ -257,7 +270,6 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			g.writeln('${c_val_type} ${var_name} = *(${c_val_type}*)${tmp};')
 			g.tc.cur_scope.insert(lhs.value, base_type.value_type)
 		} else {
-			rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
 			opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
 			val_ct0, val_type := g.optional_value_ct(rhs_type)
 			val_ct := if val_type is types.MultiReturn {
@@ -266,7 +278,13 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 				val_ct0
 			}
 			g.write('${opt_ct} ${tmp} = ')
-			g.gen_expr(rhs_id)
+			if rhs_needs_deref {
+				g.write('*(')
+				g.gen_expr(rhs_id)
+				g.write(')')
+			} else {
+				g.gen_expr(rhs_id)
+			}
 			g.writeln(';')
 			g.writeln('if (${tmp}.ok) {')
 			g.push_scope()
@@ -274,7 +292,6 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			g.gen_if_guard_value_bindings(lhs_ids, val_type, val_ct, tmp)
 		}
 	} else {
-		rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
 		opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
 		val_ct0, val_type := g.optional_value_ct(rhs_type)
 		val_ct := if val_type is types.MultiReturn {
@@ -283,7 +300,13 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			val_ct0
 		}
 		g.write('${opt_ct} ${tmp} = ')
-		g.gen_expr(rhs_id)
+		if rhs_needs_deref {
+			g.write('*(')
+			g.gen_expr(rhs_id)
+			g.write(')')
+		} else {
+			g.gen_expr(rhs_id)
+		}
 		g.writeln(';')
 		g.writeln('if (${tmp}.ok) {')
 		g.push_scope()

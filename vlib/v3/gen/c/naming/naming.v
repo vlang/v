@@ -87,10 +87,12 @@ const libc_collisions = {
 	'open':     true
 	'pipe':     true
 	'pow':      true
+	'printf':   true
 	'read':     true
 	'realpath': true
 	'rint':     true
 	'scalb':    true
+	'send':     true
 	'setenv':   true
 	'signal':   true
 	'snprintf': true
@@ -333,4 +335,13 @@ pub fn type_name_part(s string) string {
 		}
 	}
 	return b.bytestr()
+}
+
+// fn_ptr_type_name returns the stable C typedef name for an encoded function-pointer signature.
+pub fn fn_ptr_type_name(encoded string) string {
+	mut hash := u64(1469598103934665603)
+	for c in encoded.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_fn_ptr_${hash.hex()}'
 }

@@ -123,6 +123,25 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	}
 }
 
+// check_semantics_selected validates declarations and only the named function
+// bodies. It is used by the function-level incremental compiler after it has
+// proven that every top-level declaration is unchanged.
+pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
+	tc.resolution_type_mode = false
+	tc.check_export_attrs()
+	items := tc.collect_parallel_check_items()
+	mut selected_items := []CheckWorkItem{cap: selected.len}
+	for item in items {
+		node := tc.a.nodes[item.fn_idx]
+		qname := checker_qualified_fn_name(item.module, node.value)
+		if selected[qname] || selected[node.value] {
+			selected_items << item
+		}
+	}
+	tc.check_fn_items_serial(selected_items)
+	tc.resolution_type_mode = true
+}
+
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	$if windows {
 		tc.check_semantics()
@@ -438,6 +457,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_scope = tc.file_scope
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
+	tc.fn_context.node_id = fn_idx
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
 	tc.method_value_local_depth = map[string]int{}
@@ -463,9 +483,15 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	tc.fn_context.node_id = -1
 	is_disabled_stub := node.value in tc.a.disabled_fns
+	// A terminal propagation whose payload still contains a generic placeholder
+	// and return control flow guarded by a generic `$if` are lowered against the
+	// concrete specialization. Keep those narrow deferrals without suppressing
+	// ordinary generic fallthrough.
+	has_deferred_generic_return := generic_params.len > 0
+		&& tc.fn_has_deferred_generic_return(node, generic_params)
 	if tc.fn_context.return_type !is Unknown
 		&& !type_allows_implicit_return(tc.fn_context.return_type)
-		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
+		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.record_error(.return_mismatch,
 			'missing return at end of function `${node.value}`; expected `${tc.fn_context.return_type.name()}`',
@@ -476,6 +502,111 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.ownership_end_fn()
 	}
 	tc.fn_context = saved_fn_context
+}
+
+fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+	mut last_stmt := flat.empty_node
+	for i := int(node.children_count) - 1; i >= 0; i-- {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .param {
+			continue
+		}
+		last_stmt = child_id
+		break
+	}
+	if last_stmt == flat.empty_node {
+		return false
+	}
+	if tc.stmt_is_generic_comptime_return(last_stmt, generic_params) {
+		return true
+	}
+	mode := if tc.fn_context.return_type is ResultType {
+		'!'
+	} else if tc.fn_context.return_type is OptionType {
+		'?'
+	} else {
+		return false
+	}
+	if !type_contains_unknown(tc.fn_context.return_type) {
+		return false
+	}
+	return tc.stmt_is_terminal_void_propagation(last_stmt, mode)
+}
+
+fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[string]bool) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .comptime_if
+		|| !comptime_condition_references_generic_param(node.value, generic_params) {
+		return false
+	}
+	// A returning branch only makes completeness specialization-dependent. The
+	// monomorphizer rechecks the selected, pruned branch before emitting it.
+	for i in 0 .. node.children_count {
+		if tc.generic_comptime_branch_terminates(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) generic_comptime_branch_terminates(id flat.NodeId) bool {
+	if tc.stmt_definitely_returns(id) {
+		return true
+	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				if tc.generic_comptime_branch_terminates(tc.a.child(&node, i)) {
+					return true
+				}
+			}
+		}
+		.expr_stmt, .paren, .call {
+			return tc.expr_never_returns_resolving(id)
+		}
+		else {}
+	}
+	return false
+}
+
+fn comptime_condition_references_generic_param(cond string, generic_params map[string]bool) bool {
+	for param, _ in generic_params {
+		mut offset := 0
+		for offset + param.len <= cond.len {
+			if cond[offset..offset + param.len] == param {
+				before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+				after := offset + param.len
+				after_ok := after >= cond.len || !comptime_cond_name_char(cond[after])
+				if before_ok && after_ok {
+					return true
+				}
+			}
+			offset++
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) stmt_is_terminal_void_propagation(id flat.NodeId, mode string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .or_expr {
+		return node.value == mode && tc.resolve_type(id) is Void
+	}
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return tc.stmt_is_terminal_void_propagation(tc.a.child(&node, 0), mode)
+	}
+	return false
 }
 
 // prewarm_shared_type_cache forces the lazily-built type_cache indexes that
@@ -560,6 +691,9 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Parallel checker workers may populate this cache concurrently, so each
+	// worker (and each disposable scoped batch) owns its maps.
+	w.visible_mutation_cache = new_visible_mutation_cache()
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint

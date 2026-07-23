@@ -318,10 +318,6 @@ fn start_h2t_h1only_srv(mut s H2PoolSrv) !(int, &mbedtls.SSLListener, thread) {
 // delayed, N concurrent requests running in parallel finish in roughly one
 // delay; serialized behind one response they would take roughly two.
 fn test_h2_pool_alpn_fallback_avoids_hol_blocking() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{
 		respond_delay: 400 * time.millisecond
 	}
@@ -352,6 +348,79 @@ fn test_h2_pool_alpn_fallback_avoids_hol_blocking() {
 	assert elapsed < 1200 * time.millisecond, 'expected concurrent requests to a fresh h1-only origin to run in parallel (~1 respond_delay), not serialize behind one dialer response; took ${elapsed}'
 }
 
+// A plain, non-concurrent h2-enabled request to an h1-only origin must
+// succeed end to end: ALPN negotiates http/1.1, and the still-open probe
+// connection is reused directly for the request itself (h2_dial_and_do's
+// vsc_probe/ssl_probe branch), on every platform including native Windows
+// (#27879). This is a direct correctness check, distinct from
+// test_h2_pool_alpn_fallback_avoids_hol_blocking above, which focuses on
+// concurrent-waiter timing rather than a single request's basic result.
+//
+// Accepts in a loop (rather than once) defensively: exactly one connection
+// is expected per request (the ALPN probe is reused, not redialed), but a
+// loop tolerates a retry without needing to know the exact count.
+fn vpah_serve_one(mut conn mbedtls.SSLConn) {
+	defer {
+		conn.shutdown() or {}
+	}
+	conn.set_read_timeout(10 * time.second)
+	mut buf := []u8{len: 4096}
+	mut sofar := []u8{}
+	for !sofar.bytestr().contains('\r\n\r\n') {
+		n := conn.read(mut buf) or { return }
+		if n <= 0 {
+			return
+		}
+		sofar << buf[..n]
+	}
+	conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: ${h2t_body.len}\r\nConnection: close\r\n\r\n${h2t_body}') or {
+		return
+	}
+}
+
+fn test_h2_pool_alpn_fallback_completes_request() {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
+		assert false, 'port: ${err}'
+		return
+	}
+	port := port_listener.addr() or {
+		assert false, 'addr: ${err}'
+		return
+	}.port() or {
+		assert false, 'addr.port: ${err}'
+		return
+	}
+	port_listener.close() or {}
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:     h2t_cert_path
+		cert_key: h2t_key_path
+		validate: false
+	}) or {
+		assert false, 'listener: ${err}'
+		return
+	}
+	th := spawn fn (mut l mbedtls.SSLListener) {
+		for {
+			mut conn := l.accept() or { return }
+			spawn vpah_serve_one(mut conn)
+		}
+	}(mut listener)
+
+	mut t := new_transport()
+	req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false, enable_http2: true) or {
+		assert false, 'prepare: ${err}'
+		return
+	}
+	resp := t.round_trip(req, .get, 'https', '127.0.0.1', port, '/x', '', req.header) or {
+		assert false, 'round_trip: ${err}'
+		return
+	}
+	assert resp.status_code == 200
+	assert resp.body == h2t_body
+	listener.shutdown() or {}
+	th.wait()
+}
+
 // A caller-set req.read_timeout must bound a pooled h2 request's wait for its
 // response. H2MuxConn.read_loop treats every transport read timeout as a
 // benign wake-up (needed so the reader thread doesn't die from an otherwise
@@ -361,10 +430,6 @@ fn test_h2_pool_alpn_fallback_avoids_hol_blocking() {
 // what read_timeout was configured (Codex P1, vlang/v#27643
 // pullrequestreview-4627654418, discussion 3521494711).
 fn test_h2_pool_respects_request_read_timeout() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{
 		respond_delay: 3 * time.second
 	}
@@ -392,10 +457,6 @@ fn test_h2_pool_respects_request_read_timeout() {
 // dial (the H2DialCall singleflight) and then multiplex on the one resulting
 // connection: exactly one server accept for all of them.
 fn test_h2_pool_dial_dedup_race() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{}
 	port, mut listener, th := start_h2_pool_srv(mut srv) or {
 		assert false, 'server: ${err}'
@@ -422,10 +483,6 @@ fn test_h2_pool_dial_dedup_race() {
 // off in that race window (Codex P2, vlang/v#27643
 // pullrequestreview-4631763931, discussion 3525390895).
 fn test_h2_dial_and_do_reuses_pooled_conn_instead_of_redialing() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut t := new_transport()
 	mut srv := &H2PoolSrv{}
 	port, mut listener, th := start_h2_pool_srv(mut srv) or {
@@ -468,10 +525,6 @@ fn test_h2_dial_and_do_reuses_pooled_conn_instead_of_redialing() {
 // file-descriptor use (Codex P2, vlang/v#27643 pullrequestreview-4627654418,
 // discussion 3521494717).
 fn test_h2_pool_respects_max_idle_conns_cap() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut t := new_transport()
 	t.max_idle_conns = 1
 	mut srv1 := &H2PoolSrv{}
@@ -520,10 +573,6 @@ fn test_h2_pool_respects_max_idle_conns_cap() {
 // connection down before its own request ever executes on it (Codex P1,
 // vlang/v#27643 pullrequestreview-4628439062).
 fn test_h2_pool_does_not_evict_its_own_new_connection() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut t := new_transport()
 	t.max_idle_conns = 1
 
@@ -577,10 +626,6 @@ fn test_h2_pool_does_not_evict_its_own_new_connection() {
 // connection stay pooled, exceeding the documented global cap indefinitely
 // (Codex P2, vlang/v#27643 pullrequestreview-4630174759).
 fn test_h2_pool_evicts_h1_idle_to_make_room_for_h2() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut t := new_transport()
 	t.max_idle_conns = 1
 
@@ -637,10 +682,6 @@ fn test_h2_pool_evicts_h1_idle_to_make_room_for_h2() {
 // count is within max_idle_conns (Codex P3, vlang/v#27643
 // pullrequestreview-4631763931, discussion 3525390899).
 fn test_h2_pool_idle_cap_excludes_busy_h2_conn() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut t := new_transport()
 	t.max_idle_conns = 2
 
@@ -724,10 +765,6 @@ fn test_h2_pool_idle_cap_excludes_busy_h2_conn() {
 // check (Codex P2, vlang/v#27643 pullrequestreview-4631763931, discussion
 // 3525390896).
 fn test_h2_pool_respects_idle_timeout() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut t := new_transport()
 	t.idle_timeout = 100 * time.millisecond
 
@@ -779,10 +816,6 @@ fn h2t_race_idle_evict(mut t Transport, port int, path string) {
 // over-decrements it). Self-caught in review, vlang/v#27643
 // pullrequestreview-4636271901.
 fn test_h2_pool_idle_evict_race_does_not_double_release() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{}
 	port, mut listener, th := start_h2_pool_srv(mut srv) or {
 		assert false, 'server: ${err}'
@@ -827,10 +860,6 @@ fn test_h2_pool_idle_evict_race_does_not_double_release() {
 // Sequential requests to the same h2 origin must reuse the pooled multiplexed
 // connection (fast path), not redial.
 fn test_h2_pool_sequential_reuse() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{}
 	port, mut listener, th := start_h2_pool_srv(mut srv) or {
 		assert false, 'server: ${err}'
@@ -857,10 +886,6 @@ fn test_h2_pool_sequential_reuse() {
 // replaces it, and the old connection's own close_transport (captured stale
 // dial_id) must not evict the new pool entry.
 fn test_h2_pool_goaway_redial() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{
 		goaway_after_first: true
 	}
@@ -893,10 +918,6 @@ fn test_h2_pool_goaway_redial() {
 // failing fast, a regression from the one-shot h2 path (Codex P2, vlang/v#27643
 // pullrequestreview-4627654418, discussion 3521494715).
 fn test_h2_pool_dial_failure_preserves_error_code() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
 		assert false, 'port: ${err}'
 		return
@@ -910,21 +931,21 @@ fn test_h2_pool_dial_failure_preserves_error_code() {
 	}
 	port_listener.close() or {}
 
-	// Capture the raw dial's own error code against this now-closed port
-	// (nothing listening — a fast, deterministic connection failure).
-	mut raw_conn := ssl.new_ssl_conn(validate: false) or {
-		assert false, 'ssl conn: ${err}'
+	req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false) or {
+		assert false, 'prepare: ${err}'
 		return
 	}
-	raw_conn.dial('127.0.0.1', port) or {
+
+	// Capture the raw dial's own error code against this now-closed port
+	// (nothing listening — a fast, deterministic connection failure), through
+	// the SAME platform-dispatching probe the real path uses (h2_dial_probe),
+	// so both sides of the comparison see the same error-code space (WSA
+	// codes on native Windows, mbedTLS/OpenSSL codes elsewhere).
+	h2_dial_probe(req, '127.0.0.1', port) or {
 		raw_code := err.code()
 		assert raw_code != 0, 'expected a coded dial failure to compare against, got: ${err}'
 
 		mut t := new_transport()
-		req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false) or {
-			assert false, 'prepare: ${err}'
-			return
-		}
 		t.round_trip(req, .get, 'https', '127.0.0.1', port, '/x', '', req.header) or {
 			assert err.code() == raw_code, 'h2 dial failure lost its error code: got ${err.code()} (${err}), want ${raw_code}'
 			return
@@ -948,10 +969,6 @@ fn test_h2_pool_dial_failure_preserves_error_code() {
 // in-flight fetch's eventual outcome, which depends on unrelated timing
 // between the teardown and the reader thread noticing it.
 fn test_h2_pool_close_idle_release_is_idempotent() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{
 		respond_delay: 800 * time.millisecond
 	}
@@ -1011,10 +1028,6 @@ fn test_h2_pool_close_idle_release_is_idempotent() {
 // down — proven by the server-side serve thread exiting, not merely by the
 // call returning — and leave the pool usable for subsequent requests.
 fn test_h2_pool_close_idle_flushes() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{}
 	port, mut listener, th := start_h2_pool_srv(mut srv) or {
 		assert false, 'server: ${err}'
@@ -1051,10 +1064,6 @@ fn test_h2_pool_close_idle_flushes() {
 // disable_connection_reuse must keep its pre-pooling behavior on an h2-capable
 // origin: every request dials its own connection and nothing is pooled.
 fn test_h2_pool_disable_reuse_opt_out() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut srv := &H2PoolSrv{}
 	port, mut listener, th := start_h2_pool_srv(mut srv) or {
 		assert false, 'server: ${err}'

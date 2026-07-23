@@ -25,6 +25,15 @@ fn parse_parser_regression_sources(name string, sources []string) &flat.FlatAst 
 	return p.a
 }
 
+fn parse_parser_regression_diagnostics(name string, source string) []parser.Diagnostic {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(src)
+	return p.diagnostics
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
@@ -171,6 +180,17 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 		}
 	}
 	assert false_literals == 2
+}
+
+fn test_dollar_prefixed_pseudo_functions_are_rejected() {
+	diagnostics := parse_parser_regression_diagnostics('dollar_pseudo_functions',
+		'struct Item {\n\tvalue int\n}\n\nfn main() {\n\tx := Item{}\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n\t_ = $isreftype(x)\n\t_ = $__offsetof(Item, value)\n\t_ = $dump(x)\n}\n')
+	assert diagnostics.len == 5, '${diagnostics}'
+	assert diagnostics[0].message.contains('`$sizeof` is not supported'), '${diagnostics}'
+	assert diagnostics[1].message.contains('`$typeof` is not supported'), '${diagnostics}'
+	assert diagnostics[2].message.contains('`$isreftype` is not supported'), '${diagnostics}'
+	assert diagnostics[3].message.contains('`$__offsetof` is not supported'), '${diagnostics}'
+	assert diagnostics[4].message.contains('`$dump` is not supported'), '${diagnostics}'
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {
@@ -508,6 +528,28 @@ fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
 	assert is_count == 1
 	assert in_count == 1
 	assert as_count == 1
+}
+
+fn test_indented_plus_minus_continue_before_operand_column() {
+	a := parse_parser_regression_source('indented_plus_minus_continuation',
+		"module main\n\nfn main() {\n\tfirst := 7\n\tsecond := 2\n\ttotal := first\n\t\t+ second\n\tdifference := first\n\t\t- second\n\tfallback := none or {\n\t\tprintln('fallback')\n\t\t-1\n\t}\n\t_ = total\n\t_ = difference\n\t_ = fallback\n}\n")
+	mut infix_plus := 0
+	mut infix_minus := 0
+	mut prefix_minus := 0
+	for node in a.nodes {
+		if node.kind == .infix && node.op == .plus {
+			infix_plus++
+		}
+		if node.kind == .infix && node.op == .minus {
+			infix_minus++
+		}
+		if node.kind == .prefix && node.op == .minus {
+			prefix_minus++
+		}
+	}
+	assert infix_plus == 1
+	assert infix_minus == 1
+	assert prefix_minus == 1
 }
 
 fn test_parenthesized_statement_after_call_is_not_call_continuation() {

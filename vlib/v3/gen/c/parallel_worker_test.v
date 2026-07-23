@@ -37,6 +37,23 @@ fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
 	assert g.str_lits == ['source', 'master generated']
 }
 
+fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.fn_gen_items = [FlatFnGenItem{
+		c_name: 'main__run'
+	}]
+	g.c_extern_refs['puts'] = true
+	g.c_extern_refs_ready = true
+
+	w := g.new_parallel_worker(1)
+	assert w.fn_gen_items.len == 1
+	assert w.fn_gen_items[0].c_name == 'main__run'
+	assert w.c_extern_refs == {
+		'puts': true
+	}
+	assert w.c_extern_refs_ready
+}
+
 fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	g, mut tc := parallel_worker_test_gen(false)
 	tc.a.nodes = [flat.Node{
@@ -143,4 +160,84 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	g.fn_item_cost_and_prep(0, mut stack, mut type_text_cache)
 	assert g.str_lits == ['worker literal']
 	assert g.str_lit_ids['worker literal'] == 0
+}
+
+fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
+	mut g, _ := parallel_worker_test_gen(true)
+	fn_id := g.a.add_node(flat.Node{
+		kind:  .fn_decl
+		value: 'unchecked_index'
+	})
+	g.fn_gen_items = [
+		FlatFnGenItem{
+			node_id:             fn_id
+			file:                'direct_array_access.v'
+			module:              'main'
+			c_name:              'main__unchecked_index'
+			cost:                1
+			direct_array_access: true
+		},
+	]
+	g.prepare_pre_dispatch_master()
+	assert g.fn_gen_items.len == 1
+	assert g.fn_gen_items[0].direct_array_access
+	g.release_scoped_fn_items()
+}
+
+fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
+	mut g, _ := parallel_worker_test_gen(true)
+	base, args, ok := g.shared_generic_app_parts('Frozen[int]')
+	assert ok
+	assert base == 'Frozen'
+	assert args == ['int']
+	frozen := g.generic_app_cache
+
+	g.freeze_parallel_lookup_caches()
+	assert voidptr(g.generic_app_cache) != voidptr(frozen)
+	assert voidptr(g.generic_app_cache.base) == voidptr(frozen)
+
+	mut dispatcher := g.new_parallel_dispatch_worker(1)
+	assert voidptr(dispatcher.generic_app_cache) != voidptr(g.generic_app_cache)
+	assert voidptr(dispatcher.generic_app_cache.base) == voidptr(frozen)
+	mut batch := dispatcher.new_parallel_worker(0)
+	assert voidptr(batch.generic_app_cache) != voidptr(dispatcher.generic_app_cache)
+	assert voidptr(batch.generic_app_cache.base) == voidptr(frozen)
+
+	g.shared_generic_app_parts('Shared[string]')
+	dispatcher.shared_generic_app_parts('Shared[string]')
+	batch.shared_generic_app_parts('Shared[string]')
+	assert 'Shared[string]' in g.generic_app_cache.entries
+	assert 'Shared[string]' in dispatcher.generic_app_cache.entries
+	assert 'Shared[string]' in batch.generic_app_cache.entries
+	assert 'Shared[string]' !in frozen.entries
+}
+
+fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.parallel_type_decls = '/* precomputed type declarations */\n'.clone()
+	encoded := 'fn_ptr:int|int'
+	name := g.resolve_fn_ptr_type(encoded)
+
+	g.write_type_declaration_block()
+	source := g.sb.str()
+	precomputed_idx := source.index('/* precomputed type declarations */') or { -1 }
+	typedef_idx := source.index('typedef int (*${name})(int);') or { -1 }
+	assert precomputed_idx >= 0
+	assert typedef_idx > precomputed_idx
+	assert g.emitted_fn_ptr_typedefs[encoded]
+}
+
+fn test_dynamic_parallel_merge_preserves_chunk_order() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut first := g.new_parallel_dispatch_worker(1)
+	first.fn_segs = ['chunk-2;', 'chunk-0;']
+	first.fn_seg_chunk_indexes = [2, 0]
+	mut second := g.new_parallel_dispatch_worker(2)
+	second.fn_segs = ['chunk-3;', 'chunk-1;']
+	second.fn_seg_chunk_indexes = [3, 1]
+	mut ordered := []string{len: 4}
+
+	g.merge_parallel_worker_ordered(first, mut ordered)
+	g.merge_parallel_worker_ordered(second, mut ordered)
+	assert ordered == ['chunk-0;', 'chunk-1;', 'chunk-2;', 'chunk-3;']
 }

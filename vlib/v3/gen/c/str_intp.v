@@ -44,10 +44,9 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
 			} else if g.is_ierror_type_name(typ_name) {
-				// IError may resolve as Interface/Alias/Struct depending on context; match by
-				// name and interpolate its `.message` (mirrors the transformer's IError path).
-				g.gen_string_interp_child_expr(expr_id)
-				g.write('.message')
+				// IError may resolve as Interface/Alias/Struct depending on context. Dispatch
+				// through msg() so boxed MessageError values do not depend on the legacy cache.
+				g.gen_ierror_dynamic_method_expr(expr_id, typ, 'msg')
 			} else if typ is types.Primitive {
 				prim_name := types.Type(typ).name()
 				g.write('${g.cname('${prim_name}.str')}(')
@@ -345,11 +344,20 @@ fn (mut g FlatGen) string_literals() {
 // anything interned later (worker novelties, the synthetic main) is emitted
 // as a supplement after the joins — per-id definitions are order-independent.
 fn (mut g FlatGen) string_literals_from(start int) {
-	for i := start; i < g.str_lits.len; i++ {
-		s := g.str_lits[i]
-		escaped := c_escape(s)
-		storage := if g.cache_split { 'static ' } else { '' }
-		g.writeln('${storage}string _str_${i} = {"${escaped}", ${s.len}, 1};')
+	if g.cache_split {
+		mut literals := g.str_lits[start..].clone()
+		literals.sort()
+		for s in literals {
+			i := g.str_lit_ids[s]
+			escaped := c_escape(s)
+			g.writeln('static string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
+	} else {
+		for i := start; i < g.str_lits.len; i++ {
+			s := g.str_lits[i]
+			escaped := c_escape(s)
+			g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
 	}
 	if g.str_lits.len > start {
 		g.writeln('')

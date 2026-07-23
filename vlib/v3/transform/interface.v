@@ -113,6 +113,26 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
 		return ''
 	}
+	if isnil(t.interface_type_cache) {
+		return t.resolve_interface_type_name_uncached(name)
+	}
+	mut cache := t.interface_type_cache
+	if cache.module != t.cur_module || cache.file != t.cur_file {
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.entries.clear()
+	}
+	if resolved := cache.entries[name] {
+		return resolved
+	}
+	resolved := t.resolve_interface_type_name_uncached(name)
+	// An empty value is a cached miss. Map lookup guards distinguish a present
+	// empty string from an absent key, avoiding a second map probe for misses.
+	cache.entries[name] = resolved
+	return resolved
+}
+
+fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
 	mut clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	base, _, is_generic := generic_app_parts(clean)
 	if is_generic {
@@ -227,6 +247,13 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	if source_type.len == 0 {
 		source_type = t.checker_node_type(id)
+	}
+	if target_is_ptr && source_type in ['nil', 'voidptr', '&void'] {
+		expr := t.transform_expr(id)
+		if int(expr) >= 0 {
+			t.set_node_typ(int(expr), target_type)
+		}
+		return expr
 	}
 	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
@@ -694,7 +721,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source
 	}
 	mut field_ids := []flat.NodeId{cap: fields.len + 2}
-	if type_id := t.interface_impl_type_id(iface_name, concrete_type) {
+	type_id := t.interface_impl_type_id(iface_name, concrete_type) or {
+		if interface_pattern_is_collapsed_container_type(concrete_type) {
+			t.interface_container_cast_type_id(iface_name, concrete_type) or { 0 }
+		} else {
+			0
+		}
+	}
+	if type_id != 0 {
 		field_ids << t.make_sum_literal_field('_typ', t.make_int_literal(type_id), 'int')
 	}
 	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')

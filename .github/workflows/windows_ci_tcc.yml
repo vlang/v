@@ -162,6 +162,8 @@ jobs:
         run: v -silent -W build-tools
       - name: Test pure V math module
         run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Multiwindow render runtime contract
+        run: .\v.exe -silent vlib\gg\multiwindow_render_runtime_contract_test.v
       - name: Self tests
         run: v -silent test-self vlib
       - name: Test v->js

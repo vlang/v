@@ -207,6 +207,29 @@ const optional_fn_src = "fn main() {
 }
 "
 
+const optional_callback_param_src = 'fn accept_optional_callback(callback ?fn ()) {
+	_ = callback
+}
+
+fn run_optional_callback_handler(handler fn (?fn ())) {
+	handler(none)
+}
+
+fn accept_result_callback(callback !fn ()) {
+	_ = callback
+}
+
+fn run_result_callback_handler(handler fn (!fn ())) {
+	handler(fn () {})
+}
+
+fn main() {
+	run_optional_callback_handler(accept_optional_callback)
+	run_result_callback_handler(accept_result_callback)
+	println("callback-ok")
+}
+'
+
 const plain_fn_src = 'fn main() {
 	f := fn (i int) int {
 		return i + 2
@@ -356,6 +379,7 @@ println(int_str(take(foo)))
 fn test_local_fn_literal_decl_types_are_callable() {
 	v3_bin := build_v3()
 	assert run_good(v3_bin, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
+	assert run_good(v3_bin, 'fn_value_optional_callback_param', optional_callback_param_src) == 'callback-ok'
 	assert run_good(v3_bin, 'fn_value_plain_int_local', plain_fn_src) == '7'
 	assert run_good(v3_bin, 'fn_value_local_ident_shadow', local_ident_shadow_src) == '10'
 	assert run_good(v3_bin, 'fn_value_local_call_shadows_global_return',
@@ -397,6 +421,107 @@ fn main() {
 ') == '7'
 	assert run_project_good(v3_bin, 'fn_value_imported_selector_local',
 		imported_fn_value_project_files()) == 'imported-ok'
+}
+
+fn test_imported_generic_fn_alias_keeps_parameters() {
+	v3_bin := build_v3()
+	out := run_project_good(v3_bin, 'fn_value_imported_generic_alias', {
+		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias' }\n"
+		'callbacks/callbacks.v': 'module callbacks
+
+pub type Callback[T] = fn (T) int
+'
+		'main.v':                'module main
+
+import callbacks
+
+fn twice(value int) int {
+	return value * 2
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
+fn main() {
+	println(int_str(invoke(twice)))
+}
+'
+	})
+	assert out == '42'
+	bad_output := run_project_bad(v3_bin, 'fn_value_imported_generic_alias_mismatch', {
+		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias_mismatch' }\n"
+		'callbacks/callbacks.v': 'module callbacks
+
+pub type Callback[T] = fn (T) int
+'
+		'main.v':                'module main
+
+import callbacks
+
+fn wrong(value string) int {
+	return value.len
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
+fn main() {
+	_ := invoke(wrong)
+}
+'
+	})
+	assert bad_output.contains('cannot use `fn(string) int`'), bad_output
+	assert bad_output.contains('expected `callbacks.Callback[int]`'), bad_output
+}
+
+fn test_resolved_fn_value_wins_over_imported_const_suffix() {
+	v3_bin := build_v3()
+	out := run_project_good(v3_bin, 'fn_value_imported_const_suffix', {
+		'v.mod':                 "Module { name: 'fn_value_imported_const_suffix' }\n"
+		'collision/collision.v': 'module collision
+
+pub const foo = 7
+'
+		'main.v':                'module main
+
+import collision
+
+fn foo() int {
+	return 42
+}
+
+fn take(callback fn () int) int {
+	return callback()
+}
+
+fn main() {
+	println(int_str(take(foo) + collision.foo))
+}
+'
+	})
+	assert out == '49'
+}
+
+fn test_const_generic_fn_factory_value_call_uses_const_storage() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'const_generic_fn_factory_value_call', '
+type Validator[T] = fn (value T) ?int
+
+fn make_validator[T]() Validator[T] {
+	return fn [T] (value T) ?int {
+		return none
+	}
+}
+
+const validate_int = make_validator[int]()
+
+fn main() {
+	println(validate_int(123) == none)
+}
+')
+	assert out == 'true'
 }
 
 fn test_fn_value_expected_context_respects_value_shadowing() {
@@ -448,6 +573,11 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert !optional_c.contains('int f = __anon_fn'), optional_c
 	assert optional_c.contains('typedef struct Optional (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
+
+	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',
+		optional_callback_param_src)
+	assert !optional_callback_c.contains('Optional_fn_ptr:'), optional_callback_c
+	assert optional_callback_c.contains('struct Optional__fn_ptr_'), optional_callback_c
 
 	plain_c := gen_c(v3_bin, 'fn_value_plain_int_local_c', plain_fn_src)
 	assert !plain_c.contains('Optional f = __anon_fn'), plain_c
