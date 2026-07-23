@@ -18398,21 +18398,43 @@ fn (tc &TypeChecker) method_receiver_compatible(actual Type, expected Type, meth
 	return false
 }
 
+// is_locally_declared_bare_type reports whether the bare `name` is a type declared in
+// the current program (main module), which is bare-keyed in the type tables. Such a name
+// denotes that local type, not an unqualified spelling of some other module's type.
+pub fn (tc &TypeChecker) is_locally_declared_bare_type(name string) bool {
+	return name in tc.structs || name in tc.interface_names || name in tc.sum_types
+		|| name in tc.enum_names || name in tc.flag_enums || name in tc.type_aliases
+}
+
 // qualifier_relaxed_type_name_match reports whether `a` and `b` name the same type
 // allowing ONLY a missing module qualifier on one side: they are equal, or one is the
 // unqualified spelling of the other (`Vec3` vs `vec.Vec3`). Two *different* qualified
 // names that merely share a short name (`a.Box` vs `b.Box`, `foo.User` vs `bar.User`)
-// are distinct types and do NOT match.
-fn qualifier_relaxed_type_name_match(a string, b string) bool {
+// are distinct types and do NOT match. A bare name that is itself a locally-declared
+// type (`User` alongside another module's `foo.User`) denotes that local type, so it
+// does NOT match a qualified name from a different module.
+fn (tc &TypeChecker) qualifier_relaxed_type_name_match(a string, b string) bool {
 	if a == b {
 		return true
 	}
 	a_qualified := a.contains('.')
 	b_qualified := b.contains('.')
-	if a_qualified && b_qualified {
+	// Both bare (but unequal) or both qualified (but unequal) name different types.
+	if a_qualified == b_qualified {
 		return false
 	}
-	return a.all_after_last('.') == b.all_after_last('.')
+	if a.all_after_last('.') != b.all_after_last('.') {
+		return false
+	}
+	bare := if a_qualified { b } else { a }
+	qualified := if a_qualified { a } else { b }
+	qualifier := qualified.all_before_last('.')
+	// A locally-declared bare type only relaxes to a qualified name that is its own
+	// main spelling; against another module's same-short-named type it is distinct.
+	if qualifier != 'main' && qualifier.len > 0 && tc.is_locally_declared_bare_type(bare) {
+		return false
+	}
+	return true
 }
 
 // generic_receiver_qualifier_mismatch accepts a method receiver that differs from
@@ -18437,11 +18459,11 @@ fn (tc &TypeChecker) generic_receiver_qualifier_mismatch(actual Type, expected T
 	if !a_ok || !e_ok || a_args.len != e_args.len || a_args.len == 0 {
 		return false
 	}
-	if !qualifier_relaxed_type_name_match(a_base, e_base) {
+	if !tc.qualifier_relaxed_type_name_match(a_base, e_base) {
 		return false
 	}
 	for i in 0 .. a_args.len {
-		if !qualifier_relaxed_type_name_match(a_args[i].trim_space(), e_args[i].trim_space()) {
+		if !tc.qualifier_relaxed_type_name_match(a_args[i].trim_space(), e_args[i].trim_space()) {
 			return false
 		}
 	}

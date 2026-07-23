@@ -316,8 +316,11 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 		// under the declaring module's qualified name (`cli.Command.add_flag`). The
 		// selective-import table can be unavailable this late, so scan for the unique
 		// module-qualified struct that both shares the short name AND declares the
-		// method (disambiguating e.g. `cli.Command` from `os.Command`).
-		if !clean_type.contains('.') && !clean_type.contains('[') && !isnil(t.tc) {
+		// method (disambiguating e.g. `cli.Command` from `os.Command`). Only do this
+		// when the bare name is NOT a locally-declared type: a real local `Command`
+		// that lacks the method is a genuine missing-method error, not an import.
+		if !clean_type.contains('.') && !clean_type.contains('[') && !isnil(t.tc)
+			&& !t.tc.is_locally_declared_bare_type(clean_type) {
 			mut matched := ''
 			for sname, _ in t.tc.structs {
 				if !sname.contains('.') || sname.contains('[')
