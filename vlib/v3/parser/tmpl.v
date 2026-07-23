@@ -667,17 +667,30 @@ fn expand_veb_tr_shorthand(line string) string {
 			}
 			key := out[pos + 5..end]
 			if key.len > 0 {
-				out = out.replace('%raw ${key}', '@{veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+				// Splice only the `%raw key` marker that was just scanned (range pos..end)
+				// rather than `replace`-ing every occurrence of it on the line: a global
+				// replace would also rewrite a longer key that has this one as a prefix
+				// (`%raw title` inside `%raw title_long`) before it is scanned as its own
+				// key. Advance past the inserted interpolation so scanning resumes after it.
+				replacement := '@{veb.raw(veb.tr(ctx.lang.str(), "${key}"))}'
+				out = out[..pos] + replacement + out[end..]
+				search_start = pos + replacement.len
+			} else {
+				search_start = pos + 1
 			}
-			search_start = pos + 1
 		} else if pos + 1 < out.len && out[pos + 1].is_letter() {
 			mut end := pos + 1
 			for end < out.len && (out[end].is_letter() || out[end] == `_`) {
 				end++
 			}
 			key := out[pos + 1..end]
-			out = out.replace('%${key}', '@{veb.tr(ctx.lang.str(), "${key}")}')
-			search_start = pos + 1
+			// Splice only the `%key` marker just scanned (range pos..end), not every
+			// occurrence on the line: a global replace of `%title` would also corrupt a
+			// later `%title_long` (a key with `title` as its prefix), turning it into the
+			// `title` interpolation followed by a stray `_long` before it can be scanned.
+			replacement := '@{veb.tr(ctx.lang.str(), "${key}")}'
+			out = out[..pos] + replacement + out[end..]
+			search_start = pos + replacement.len
 		} else {
 			search_start = pos + 1
 		}
@@ -903,21 +916,32 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		p.next() // skip `tmpl`
 	}
 	mut arg := ''
-	if p.tok == .lpar {
+	// `$tmpl(...)` / `$veb.html(...)` are call expressions; the `(...)` is what invokes
+	// the template. Without it there is no call to lower, so a bare `$veb.html` (no
+	// parentheses) must NOT fall through and resolve its empty argument to the valid
+	// no-arg handler-template lookup — that would render the handler template for an
+	// invalid comptime expression instead of diagnosing it. Require the call syntax and,
+	// when it is absent, fall back to the unknown-comptime handling (consume to the
+	// statement end and yield an empty string literal), exactly like `$veb.htm()` above.
+	if p.tok != .lpar {
+		for p.tok != .semicolon && p.tok != .eof {
+			p.next()
+		}
+		return p.add_val_id(5, '')
+	}
+	p.next() // skip `(`
+	if p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
+		// The path may be a compile-time expression (a `const`, a local binding
+		// with a literal value, or a `+` concatenation of those), not just a raw
+		// string token — e.g. `const p = 'x.html'; $tmpl(p)`. Parse and resolve it.
+		arg_id := p.expr(.lowest)
+		arg = p.resolve_tmpl_path_arg(arg_id)
+	}
+	for p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
 		p.next()
-		if p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
-			// The path may be a compile-time expression (a `const`, a local binding
-			// with a literal value, or a `+` concatenation of those), not just a raw
-			// string token — e.g. `const p = 'x.html'; $tmpl(p)`. Parse and resolve it.
-			arg_id := p.expr(.lowest)
-			arg = p.resolve_tmpl_path_arg(arg_id)
-		}
-		for p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
-			p.next()
-		}
-		if p.tok == .rpar {
-			p.next()
-		}
+	}
+	if p.tok == .rpar {
+		p.next()
 	}
 	path := p.resolve_veb_template_path(is_html, arg)
 	return p.add_node(flat.Node{
@@ -1428,6 +1452,33 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			}
 			for name in branch_local {
 				declared.delete(name)
+			}
+		}
+		.selector {
+			// A selector's base (child 0) is normally a receiver local to capture — `user`
+			// in `@{user.name}` or a `recv.method` callee. But a type-qualified static or
+			// enum access such as `@{Tool.make(row)}` / `@{Color.red}` has a TYPE name as
+			// its base; type names are not variables and must never enter the IIFE capture
+			// list, or the generated closure gets an invalid capture like `fn [Tool]`. V
+			// forbids capitalised variable names, so an uppercase-initial base that is not
+			// an actual local binding is a type/static name — skip it; descend into every
+			// other base as before. The field name lives in `node.value`, not a child.
+			if node.children_count > 0 {
+				base := p.a.child(&node, 0)
+				if int(base) >= 0 && int(base) < p.a.nodes.len {
+					base_node := p.a.nodes[int(base)]
+					base_is_type_name := base_node.kind == .ident && base_node.value.len > 0
+						&& base_node.value[0] >= `A` && base_node.value[0] <= `Z`
+						&& !p.is_local_binding(base_node.value)
+					if !base_is_type_name {
+						p.collect_template_free_idents(base, mut declared, mut seen, mut out,
+							mut mut_names)
+					}
+				}
+			}
+			for i in 1 .. node.children_count {
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
+					out, mut mut_names)
 			}
 		}
 		.call {
