@@ -38,6 +38,21 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+      - name: Install OpenSSL
+        run: |
+          choco install openssl -y --no-progress
+          # choco's openssl package (Win64OpenSSL installer under the hood)
+          # deploys to `C:\Program Files\OpenSSL\`, matching
+          # ecdsa.c.v/rsa_pss.c.v's SECOND `#flag windows` fallback path --
+          # NOT the first one (`...OpenSSL-Win64\...`), confirmed by an
+          # actual CI run after guessing wrong the first time.
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          if (-not (Test-Path $opensslBin)) {
+            throw "OpenSSL bin directory not found at $opensslBin after choco install"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+          Write-Host "OpenSSL install:"
+          Get-ChildItem 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
       - name: Build with makev.bat -tcc
         run: |
           .\makev.bat -tcc
