@@ -12,7 +12,7 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(),
 		'v3_type_checker_errors_test_${os.getpid()}_${rand.ulid()}')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0
 	return v3_bin
 }

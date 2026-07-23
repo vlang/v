@@ -9,7 +9,7 @@ const shared_flag_v3_src = os.join_path(shared_flag_v3_dir, 'v3.v')
 fn test_shared_flag_builds_no_main_module() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_shared_flag_test_${os.getpid()}')
 	build :=
-		os.execute('${os.quoted_path(shared_flag_vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
+		os.execute('${os.quoted_path(shared_flag_vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
@@ -49,7 +49,7 @@ fn test_shared_flag_builds_object_dependencies_as_pic() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_shared_flag_pic_test_${pid}')
 	build :=
-		os.execute('${os.quoted_path(shared_flag_vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
+		os.execute('${os.quoted_path(shared_flag_vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_shared_flag_pic_${pid}')
@@ -124,7 +124,7 @@ fn test_relative_c_object_cache_rebuilds_when_header_changes() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_object_header_test_${pid}')
 	build :=
-		os.execute('${os.quoted_path(shared_flag_vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
+		os.execute('${os.quoted_path(shared_flag_vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
 	assert build.exit_code == 0, build.output
 
 	project_dir := os.join_path(os.temp_dir(), 'v3_c_object_header_${pid}')
@@ -187,7 +187,7 @@ fn test_relative_c_object_caches_use_resolved_source_path() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_object_path_test_${pid}')
 	build :=
-		os.execute('${os.quoted_path(shared_flag_vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
+		os.execute('${os.quoted_path(shared_flag_vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_c_object_path_${pid}')

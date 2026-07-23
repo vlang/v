@@ -43,6 +43,12 @@ fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string
 	// defaults from an unrelated imported `gg.Context`.
 	if info := g.find_struct_decl(type_name) {
 		if info.full_name in g.tc.structs {
+			// A main-module type is bare-keyed (`full_name == short`); keep the
+			// explicit `main.` qualifier so downstream field lookups resolve to it
+			// rather than a same-named imported struct.
+			if type_name.starts_with('main.') && !info.full_name.contains('.') {
+				return type_name
+			}
 			return info.full_name
 		}
 	}
@@ -70,6 +76,13 @@ fn (g &FlatGen) struct_init_lookup_type_name(type_name string) string {
 			return struct_init_unaliased_type_name(typ.base_type, type_name)
 		}
 		types.Struct {
+			// Preserve an explicit `main.` qualifier when `parse_type` collapses it to
+			// the bare short name: resolving that short name later in an imported
+			// module's codegen context can otherwise borrow a same-named imported
+			// struct (`struct Context { veb.Context }`).
+			if type_name.starts_with('main.') && !typ.name.contains('.') {
+				return type_name
+			}
 			return typ.name
 		}
 		else {}
@@ -434,6 +447,30 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		mut promoted := PromotedStructInitField{}
+		// `EmbedType: value` sets the embedded struct field itself. Its C field name
+		// comes from the embed type (`veb__Context`), not the source key, and the two
+		// collide when the outer struct shares the embed's short name
+		// (`struct Context { veb.Context }`). Emit the correct embedded designator so
+		// the value is not dropped (which flattens the embed's defaults) or written
+		// under a non-existent member. A real field of the same name wins over the
+		// embed short-name match, so only take this path when no direct field matches.
+		if field.value.len > 0 && !g.struct_has_direct_named_field(lookup_name, field.value) {
+			if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
+				if has_field {
+					g.write(', ')
+				}
+				g.write('.${c_field_name(emb.name)} = ')
+				g.gen_struct_field_expr_for_field(g.a.child(field, 0), lookup_name, emb.name,
+					emb.typ)
+				// The embed's promoted fields are covered by initializing the whole
+				// embedded value, so mark them (and any nested-embed fields) set, so the
+				// flattened-defaults pass does not re-emit them. `emb.name` is the
+				// qualified embed type (`veb.Context`), which resolves unambiguously.
+				g.mark_embedded_promoted_fields_set(emb.name, lookup_name, mut set_fields)
+				has_field = true
+				continue
+			}
+		}
 		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
 			promoted = g.promoted_struct_init_field(lookup_name, field.value) or { continue }
 		}
@@ -722,6 +759,26 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	mut has_field := false
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
+		// `EmbedType: value` sets the embedded struct field itself. Its C field name comes
+		// from the embed type (`veb__Context`), not the source key, and the source key can
+		// be a short name (`Context`) that is not in `allowed_fields`. Mirror the non-fixed
+		// -array path so the value is not dropped as "not allowed" or emitted under a
+		// non-existent designator, which would leave the embed at defaults. A real field of
+		// the same name wins over the embed short-name match. The embed is a struct value,
+		// so it lives in the compound literal, not the memcpy tail.
+		if field.value.len > 0 && !g.struct_has_direct_named_field(lookup_name, field.value) {
+			if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
+				if has_field {
+					g.write(', ')
+				}
+				g.write('.${c_field_name(emb.name)} = ')
+				g.gen_struct_field_expr_for_field(g.a.child(field, 0), lookup_name, emb.name,
+					emb.typ)
+				g.mark_embedded_promoted_fields_set(emb.name, lookup_name, mut set_fields)
+				has_field = true
+				continue
+			}
+		}
 		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
 			continue
 		}
@@ -1161,6 +1218,30 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		mut promoted := PromotedStructInitField{}
+		// `EmbedType: value` sets the embedded struct field itself. Its C field name
+		// comes from the embed type (`veb__Context`), not the source key, and the two
+		// collide when the outer struct shares the embed's short name
+		// (`struct Context { veb.Context }`). Emit the correct embedded designator so
+		// the value is not dropped (which flattens the embed's defaults) or written
+		// under a non-existent member. A real field of the same name wins over the
+		// embed short-name match, so only take this path when no direct field matches.
+		if field.value.len > 0 && !g.struct_has_direct_named_field(lookup_name, field.value) {
+			if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
+				if has_field {
+					g.write(', ')
+				}
+				g.write('.${c_field_name(emb.name)} = ')
+				g.gen_struct_field_expr_for_field(g.a.child(field, 0), lookup_name, emb.name,
+					emb.typ)
+				// The embed's promoted fields are covered by initializing the whole
+				// embedded value, so mark them (and any nested-embed fields) set, so the
+				// flattened-defaults pass does not re-emit them. `emb.name` is the
+				// qualified embed type (`veb.Context`), which resolves unambiguously.
+				g.mark_embedded_promoted_fields_set(emb.name, lookup_name, mut set_fields)
+				has_field = true
+				continue
+			}
+		}
 		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
 			promoted = g.promoted_struct_init_field(lookup_name, field.value) or { continue }
 		}
@@ -3058,6 +3139,18 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 fn (g &FlatGen) struct_init_value_c_type(typ types.Type) string {
 	clean := default_init_unalias_type(types.unwrap_all_pointers(typ))
 	if clean is types.Struct && !clean.name.starts_with('C.') {
+		// A bare (unqualified) struct name that is not itself a registered struct is
+		// the short form of a type reached through a selective import (`import cli
+		// { Command }`, then `Command{...}`). Resolve it to the declaring module's
+		// qualified name so the C declaration type matches the struct initializer
+		// (`cli__Command`), not a bare `Command`.
+		if !clean.name.contains('.') && clean.name !in g.tc.structs {
+			if info := g.find_struct_decl(clean.name) {
+				if !info.full_name.starts_with('C.') && info.full_name != clean.name {
+					return g.struct_cname(info.full_name)
+				}
+			}
+		}
 		// Route through the struct type mapper so user declarations that collide
 		// with runtime C names (`Array`, `map`, ...) keep their collision-safe name.
 		return g.struct_cname(clean.name)
@@ -3507,6 +3600,16 @@ fn (g &FlatGen) find_struct_decl_preferred(type_name string) ?StructDeclInfo {
 			return info
 		}
 	}
+	// A program (`main`) type is bare-keyed (`full_name == short`) in the decl
+	// tables; resolve an explicit `main.X` reference to it, and only to a genuinely
+	// main-module declaration, so it never binds a same-named imported struct.
+	if type_name.starts_with('main.') {
+		if info := g.struct_decl_infos[short_name] {
+			if info.node.value == short_name && info.module in ['', 'main'] {
+				return info
+			}
+		}
+	}
 	return none
 }
 
@@ -3749,6 +3852,64 @@ fn (g &FlatGen) embedded_field_for_promoted_field(type_name string, field_name s
 	return path[0]
 }
 
+// mark_embedded_promoted_fields_set records every (transitively) promoted field of
+// the embedded struct named `embed_type_name` (a qualified name like `veb.Context`,
+// which resolves unambiguously) as set, so the flattened-defaults pass does not
+// re-emit them after the whole embed was initialized via `Embed: value`.
+fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name string, owner_type string, mut set_fields map[string]bool) {
+	if embed_type_name.len == 0 {
+		return
+	}
+	set_fields[embed_type_name] = true
+	set_fields[c_field_name(embed_type_name)] = true
+	info := g.find_struct_decl(embed_type_name) or { return }
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl || field.value.len == 0 {
+			continue
+		}
+		// A direct field on the owner with the same name shadows this promoted field:
+		// it is a distinct field the embed initializer does not set, so leave it to
+		// default/zero initialization instead of marking it set.
+		if field.value != field.typ && owner_type.len > 0
+			&& g.struct_has_direct_named_field(owner_type, field.value) {
+			continue
+		}
+		set_fields[field.value] = true
+		set_fields[c_field_name(field.value)] = true
+		// A nested embedded field_decl has value == typ; recurse into it, keeping the
+		// original owner so its direct fields still win over deeper promoted names.
+		if field.value == field.typ {
+			g.mark_embedded_promoted_fields_set(field.value, owner_type, mut set_fields)
+		}
+	}
+}
+
+// embedded_field_for_embed_key returns the embedded struct field of `type_name`
+// whose embed key (the embedded type name, e.g. `veb.Context` or its short
+// `Context`) equals `key`. This is how `Outer{ EmbedType: value }` names the
+// embedded field. `struct_fields_for_type` promotes/flattens embeds away, so
+// resolve against the struct declaration, where an embedded field_decl has
+// value == typ == the embed type name.
+fn (g &FlatGen) embedded_field_for_embed_key(type_name string, key string) ?types.StructField {
+	info := g.find_struct_decl(type_name) or { return none }
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl || field.value.len == 0 || field.value != field.typ {
+			continue
+		}
+		short := if field.value.contains('.') { field.value.all_after_last('.') } else { field.value }
+		key_short := if key.contains('.') { key.all_after_last('.') } else { key }
+		if field.value == key || short == key_short {
+			return types.StructField{
+				name: field.value
+				typ:  g.tc.parse_type(field.typ)
+			}
+		}
+	}
+	return none
+}
+
 fn (g &FlatGen) promoted_struct_init_field(type_name string, field_name string) ?PromotedStructInitField {
 	path := g.embedded_field_path_for_promoted_field(type_name, field_name) or { return none }
 	if path.len == 0 {
@@ -3806,9 +3967,23 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 		} else {
 			embedded_type_name
 		}
+		// A generic embed (`veb.Middleware[Context]`) is accessed by its base name
+		// (`app.Middleware`), so compare against the generic base too.
+		short_base := types.generic_base_name(short_type)
 		if field_name == embedded_type_name || field_name == short_type
+			|| field_name == short_base
 			|| g.cname(field_name) == g.cname(embedded_type_name) {
 			return field
+		}
+	}
+	// `type_lookup_name` can collapse a program type (`main.Context`) to its bare
+	// short name, which then resolves the embed lists of a same-named imported
+	// struct. Resolve against the declaration using the qualified type name so
+	// `ctx.Context` (accessing the embedded `veb.Context`) finds the right field.
+	qualified := types.unwrap_pointer(base_type).name()
+	if qualified.len > 0 && qualified != type_name {
+		if emb := g.embedded_field_for_embed_key(qualified, field_name) {
+			return emb
 		}
 	}
 	return none
@@ -3869,6 +4044,30 @@ fn (g &FlatGen) struct_field_named(type_name string, field_name string) ?types.S
 		}
 	}
 	return none
+}
+
+// struct_has_direct_named_field reports whether `type_name` declares a real (non-embed)
+// field named `field_name`. It ignores embedded field_decls (whose `value == typ`, and
+// which are otherwise reachable by their short type name), so a genuine field wins over
+// an embed short-name collision — `Outer{ Context: 1 }` sets the real `Context` field,
+// while `struct Context { veb.Context }` (no direct field) still routes `Context:` to
+// the embed.
+fn (g &FlatGen) struct_has_direct_named_field(type_name string, field_name string) bool {
+	info := g.find_struct_decl(type_name) or { return false }
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl || field.value.len == 0 {
+			continue
+		}
+		// An embedded field_decl carries `value == typ`; only a real field can win here.
+		if field.value == field.typ {
+			continue
+		}
+		if field.value == field_name {
+			return true
+		}
+	}
+	return false
 }
 
 // struct_field_at supports struct field at handling for FlatGen.

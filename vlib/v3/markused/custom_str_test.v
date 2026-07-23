@@ -67,7 +67,9 @@ fn parse_checked_prelude_user_source(name string, prelude_rel string, prelude_so
 // build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
-	build := os.execute('${custom_str_vexe} -o ${v3_bin} ${custom_str_v3_src}')
+	// v3.v guards against being built with a garbage collector (see the `$if gcboehm`
+	// `$compile_error` blocks at its top), so this sub-build must pass `-gc none`.
+	build := os.execute('${custom_str_vexe} -gc none -o ${v3_bin} ${custom_str_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

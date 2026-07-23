@@ -3569,10 +3569,32 @@ fn (mut t Transformer) specialized_fn_return_display_type_text(decl GenericFnDec
 
 fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ string, args []string, params []string) string {
 	if direct := t.specialized_direct_generic_type_text(typ, args, params) {
-		return direct
+		return t.lock_colliding_main_generic_type_text(direct, decl.module)
 	}
 	substituted := substitute_generic_type_text_with_params(typ, args, params)
-	qualified := t.qualify_specialized_signature_type_text(substituted, decl)
+	// The scalar `direct` branch above pins a colliding main type to `main.` before it can be
+	// rebased into the decl module. A composite (`fn (T)`, `[]T`, `map[string]T`) hides that
+	// type from the direct check, so lock it here too: otherwise the decl-module qualify below
+	// rebases a nested main `Context` to the decl module's own `Context`, giving the callback
+	// or element the wrong ABI. Only lock when substitution actually replaced a generic
+	// parameter (mirroring the param clone in clone_generic_node): a decl-module type that
+	// appears verbatim (e.g. the method receiver `Builder`) must not be locked, or the lock
+	// over-fires its own homonym to a non-existent `main.Builder`.
+	locked := if substituted != typ {
+		t.lock_colliding_main_generic_type_text(substituted, decl.module)
+	} else {
+		substituted
+	}
+	qualified := t.qualify_specialized_signature_type_text(locked, decl)
+	// A composite that carries a collision-locked `main.` type (e.g. `fn (main.Context)`
+	// from `fn wrap[T](cb fn (T))` specialized with a main `Context`) must not go through
+	// the parse + name() round-trip below: name() renders `main.Context` back to a bare
+	// `Context`, which the decl module then rebinds to its own homonym, giving the callback
+	// the wrong ABI. Return the locked/qualified spelling directly, as the scalar `direct`
+	// branch above already does for a locked scalar.
+	if locked != substituted && qualified.contains('main.') {
+		return qualified
+	}
 	is_shared := qualified.trim_space().starts_with('shared ')
 	if isnil(t.tc) {
 		return qualified
@@ -5945,6 +5967,16 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 			}
 		}
 		inference_param_type := generic_inference_param_type(child)
+		if (child.is_mut || child.op == .amp || child.typ.starts_with('mut '))
+			&& inferred_arg_type.starts_with('&') {
+			// A mutable parameter's leading pointer is its storage ABI, whether the
+			// generic placeholder is direct (`T`) or nested (`Container[T]`). A `mut`
+			// argument that is a field/selector (`mut g.cells`) arrives here still
+			// carrying that `&`, unlike a plain `mut ident` whose value node already
+			// dropped it — strip it so `[]T` matches `[]Cell`, not `&[]Cell`. Mirrors
+			// infer_generic_call_args_from_params.
+			inferred_arg_type = inferred_arg_type[1..]
+		}
 		arg_type := generic_arg_type_for_param(inference_param_type, inferred_arg_type)
 		if arg_type.len > 0 {
 			infer_generic_type_args(inference_param_type, arg_type, mut inferred)
@@ -6218,6 +6250,19 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module
 	if t.substituted_type_belongs_to_main_generic(arg)
 		&& (call_module in ['', 'main'] || t.current_specialization_has_generic_arg(arg)) {
 		return arg
+	}
+	// A bare program (main) type alias that collides by short name with a type in the
+	// callee module (e.g. a user `RawHtml` alias against `veb.RawHtml`) must be kept as the
+	// caller's own type: rebasing it into the callee module would merge the two into one
+	// specialization, so `veb.filter_html` could no longer tell user data from trusted
+	// `veb.RawHtml` and would skip escaping it. Only same-named collisions are preserved.
+	if call_module in ['', 'main'] && !arg.contains('.') && !isnil(t.tc)
+		&& arg in t.tc.type_aliases {
+		qname := '${decl_module}.${arg}'
+		if qname in t.tc.type_aliases || qname in t.tc.structs || qname in t.tc.sum_types
+			|| qname in t.tc.enum_names || qname in t.tc.interface_names {
+			return arg
+		}
 	}
 	if t.generic_type_text_contains_alias(arg, call_module) {
 		if t.generic_type_text_contains_fixed_array_alias(arg, call_module) {
@@ -7712,6 +7757,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	} else {
 		t.resolve_substituted_type_text(substituted_node_type)
 	}
+	// A parameter type produced by substituting a generic parameter can carry an
+	// external program (main) type that collides by short name with a same-named
+	// type in the specialization's module (a user `Context` embedding `veb.Context`).
+	// Lock it to an explicit `main.` spelling so codegen (and the closure's field
+	// accesses like `ctx.Context`) bind the program type, not the callee module's
+	// homonym — mirroring the struct-init literal lock below.
+	if node.kind == .param && substituted_node_type != node.typ {
+		cloned_typ = t.lock_colliding_main_generic_type_text(cloned_typ, t.cur_module)
+	}
 	if node.kind == .ident && t.cloning_generic_fn_depth > 0 {
 		scoped_type := t.raw_var_type(node.value)
 		if scoped_type.len > 0 && !t.generic_arg_is_unresolved(scoped_type) {
@@ -7742,17 +7796,37 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	} else if node.kind == .struct_init && node.value.len > 0 {
 		// The checker can annotate `T{}` with its surrounding optional/result
 		// context. For a concrete clone the literal itself is authoritative.
-		struct_value0 := t.resolve_substituted_type_text(t.subst_type(node.value, args))
-		struct_value := t.normalize_type_alias(struct_value0)
-		parsed := t.tc.parse_resolution_type(struct_value)
-		cloned_typ = if t.is_fixed_array_type(struct_value0) {
-			t.resolved_fixed_array_canonical_type(struct_value0)
-		} else if t.generic_arg_is_alias_name(struct_value0, t.cur_module) {
-			struct_value0
-		} else if parsed is types.Unknown {
-			struct_value
+		struct_subst := t.subst_type(node.value, args)
+		struct_value_pre := t.resolve_substituted_type_text(struct_subst)
+		mut struct_value0 := struct_value_pre
+		if struct_subst != node.value {
+			// Only a `T{}` literal whose type came from substituting a generic
+			// parameter can carry an external program (main) type. Lock a colliding
+			// one so codegen builds that struct rather than the callee module's
+			// homonym. A literal module type (`json2.Decoder{}` written as `Decoder{}`
+			// inside json2) is left untouched — it is bare-keyed but not a lock target.
+			struct_value0 = t.lock_colliding_main_generic_type_text(struct_value_pre, t.cur_module)
+		}
+		if struct_value0.contains('main.') && struct_value0 != struct_value_pre {
+			// Keep the explicit `main.` lock as the literal's type: parsing it back to
+			// its bare program name here would let codegen rebase it into the callee
+			// module (the very collision the lock prevents). The lock may be nested inside
+			// a composite (`chan main.Context`, `[]main.Context`, `map[string]main.Context`),
+			// not just a scalar `main.Context`, so match `main.` anywhere — a bare
+			// `chan Context{}` literal would otherwise round-trip to the callee's homonym.
+			cloned_typ = struct_value0
 		} else {
-			specialized_signature_storage_type_name(parsed)
+			struct_value := t.normalize_type_alias(struct_value0)
+			parsed := t.tc.parse_resolution_type(struct_value)
+			cloned_typ = if t.is_fixed_array_type(struct_value0) {
+				t.resolved_fixed_array_canonical_type(struct_value0)
+			} else if t.generic_arg_is_alias_name(struct_value0, t.cur_module) {
+				struct_value0
+			} else if parsed is types.Unknown {
+				struct_value
+			} else {
+				specialized_signature_storage_type_name(parsed)
+			}
 		}
 	}
 	if node.kind == .or_expr && children.len > 0 {
@@ -9414,6 +9488,15 @@ fn substitute_generic_type_text_with_params(typ string, args []string, params []
 	if clean.starts_with('shared ') {
 		return 'shared ' + substitute_generic_type_text_with_params(clean[7..], args, params)
 	}
+	// A `chan T` / `thread T` payload is a generic parameter too; substitute it so the clone
+	// emits `chan Context` / `thread Context` rather than leaving the placeholder `chan T`,
+	// which later resolves the unsubstituted `T` to a bogus `int` channel/thread element.
+	if clean.starts_with('chan ') {
+		return 'chan ' + substitute_generic_type_text_with_params(clean[5..], args, params)
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + substitute_generic_type_text_with_params(clean[7..], args, params)
+	}
 	if clean.starts_with('[]') {
 		return '[]' + substitute_generic_type_text_with_params(clean[2..], args, params)
 	}
@@ -9685,6 +9768,60 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	if t.substituted_type_belongs_to_main_generic(clean) {
 		return clean
 	}
+	// Decompose map and fixed-array composites and resolve each component independently, so a
+	// nested program (main) type is preserved bare (via the belongs-to-main check on the
+	// recursion) instead of being rebased into the current module; the caller then locks the
+	// bare nested name to an explicit `main.` spelling. Handled regardless of an UNRELATED
+	// qualified component elsewhere (`map[other.Key]Context`, `[N]other.Box[Context]`): a `.` in
+	// the key/base must not stop the bare value/element from being kept bare, or
+	// parse_resolution_type rebases it into the callee module before the lock runs. Each
+	// qualified component still resolves correctly on its own through the recursion, mirroring
+	// the chan/thread/fn/generic_app handling below.
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := t.resolve_substituted_type_text(clean[4..bracket_end])
+			value := t.resolve_substituted_type_text(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') && !clean.starts_with('[]') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 1 && bracket_end < clean.len - 1 {
+			return clean[..bracket_end + 1] +
+				t.resolve_substituted_type_text(clean[bracket_end + 1..])
+		}
+	}
+	// `chan T` / `thread T` carry a single payload type; a bare program type there
+	// (`chan Context` where the callee module also declares `Context`) must be resolved
+	// independently and kept bare so the caller's lock can pin it to `main.`, instead of
+	// parse_resolution_type rebasing the payload into the current module. Handled regardless
+	// of a `.` elsewhere (`chan other.Box[Context]`), mirroring how the type checker qualifies
+	// chan/thread payloads.
+	if clean.starts_with('chan ') {
+		return 'chan ' + t.resolve_substituted_type_text(clean[5..])
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + t.resolve_substituted_type_text(clean[7..])
+	}
+	// A function type resolves its parameter and return types independently (keeping a bare
+	// program type bare) so the caller's lock can pin a nested `Context` to `main.` instead
+	// of parse_resolution_type rebasing the whole `fn (Context)` into the current module.
+	// Handled regardless of a `.` elsewhere in the signature so mixed types stay correct.
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut resolved_params := []string{cap: params.len}
+			for param in params {
+				resolved_params << t.resolve_substituted_type_text(param)
+			}
+			resolved_ret := t.resolve_substituted_type_text(ret)
+			return if resolved_ret.len > 0 {
+				'fn (${resolved_params.join(', ')}) ${resolved_ret}'
+			} else {
+				'fn (${resolved_params.join(', ')})'
+			}
+		}
+	}
 	parsed := t.tc.parse_resolution_type(clean)
 	if parsed is types.Unknown {
 		return typ
@@ -9693,7 +9830,11 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	base, args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app && args.len > 0 {
 		resolved_base := if resolved.contains('[') { resolved.all_before('[') } else { resolved }
-		if resolved_base.len > 0 && resolved_base != base {
+		// Re-resolve the arguments (keeping a bare program type bare) not only when the
+		// base itself was requalified, but also when the base is already qualified
+		// (`other.Box[Context]`): otherwise parse_resolution_type rebases the nested bare
+		// `Context` into the current module before the caller's lock can pin it to `main.`.
+		if resolved_base.len > 0 && (resolved_base != base || base.contains('.')) {
 			mut resolved_args := []string{cap: args.len}
 			for arg in args {
 				resolved_args << t.resolve_substituted_type_text(arg)
@@ -9702,6 +9843,128 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 		}
 	}
 	return resolved
+}
+
+// lock_colliding_main_generic_type_text rewrites a bare program-module (main)
+// type substituted into a generic specialization to an explicit `main.` spelling
+// when the specialization's own module declares a same-named type. Without the
+// lock, codegen re-resolves the bare name in that module context and captures the
+// wrong type (e.g. a user `Context` embedding `veb.Context` becoming `veb.Context`
+// inside a specialized veb function). resolve_imported_type_text strips `main.`
+// back to the program type.
+fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_name string) string {
+	clean := typ.trim_space()
+	if module_name.len == 0 || module_name == 'main' {
+		return clean
+	}
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
+		if clean.starts_with(prefix) {
+			return prefix + t.lock_colliding_main_generic_type_text(clean[prefix.len..], module_name)
+		}
+	}
+	// A function type hides its parameter and return types from the scalar checks below,
+	// so a bare main type nested in `fn (T)` / `fn (T) R` (e.g. the callback of
+	// `fn wrap[T](cb fn (T))` specialized with a colliding `Context`) would otherwise be
+	// parsed in the callee module as that module's type. Recurse through each parameter and
+	// the return type, rebuilding only when a component actually changed.
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut changed := false
+			mut locked_params := []string{cap: params.len}
+			for param in params {
+				locked := t.lock_colliding_main_generic_type_text(param, module_name)
+				if locked != param.trim_space() {
+					changed = true
+				}
+				locked_params << locked
+			}
+			locked_ret := t.lock_colliding_main_generic_type_text(ret, module_name)
+			if locked_ret != ret {
+				changed = true
+			}
+			if changed {
+				return if locked_ret.len > 0 {
+					'fn (${locked_params.join(', ')}) ${locked_ret}'
+				} else {
+					'fn (${locked_params.join(', ')})'
+				}
+			}
+			return clean
+		}
+	}
+	// `chan T` / `thread T` hide a bare program payload just like a composite: a colliding
+	// `Context` in `chan Context` / `thread Context` must be locked to `main.`, or the callee
+	// module rebases the payload to its own type. Recurse through the payload; an unchanged
+	// payload rebuilds to a byte-identical spelling.
+	if clean.starts_with('chan ') {
+		return 'chan ' + t.lock_colliding_main_generic_type_text(clean[5..], module_name)
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + t.lock_colliding_main_generic_type_text(clean[7..], module_name)
+	}
+	// A composite must lock its component types even behind a qualified base: a bare main
+	// `Context` nested in `map[string]Context`, `[3]Context`, `Box[Context]` or
+	// `other.Box[Context]` is never a struct/sum/enum key on its own, so without descending
+	// the collision goes unlocked and the callee module rebases the nested name to its own
+	// type. Decompose these before the broad qualified-name return below; an unchanged
+	// component (e.g. the `user.LocalWriter` in `Box[user.LocalWriter]`) is rebuilt to a
+	// byte-identical spelling, so the specialization's declared/referenced names stay in sync.
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := t.lock_colliding_main_generic_type_text(clean[4..bracket_end], module_name)
+			value := t.lock_colliding_main_generic_type_text(clean[bracket_end + 1..], module_name)
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 1 && bracket_end < clean.len - 1 {
+			return clean[..bracket_end + 1] +
+				t.lock_colliding_main_generic_type_text(clean[bracket_end + 1..], module_name)
+		}
+	}
+	// Lock the nested arguments and — when it is a bare program-module generic — the base too,
+	// rebuilding the text only when something actually changed so a non-colliding application
+	// keeps its exact original spelling.
+	base, nested_args, is_generic_app := generic_app_parts(clean)
+	if is_generic_app {
+		mut changed := false
+		mut locked_args := []string{cap: nested_args.len}
+		for nested_arg in nested_args {
+			locked := t.lock_colliding_main_generic_type_text(nested_arg, module_name)
+			if locked != nested_arg.trim_space() {
+				changed = true
+			}
+			locked_args << locked
+		}
+		// The base may itself be a bare main-module generic (`Box[string]` where `main.Box`
+		// exists) that collides with a same-named generic in the callee module (`mid.Box`).
+		// Without locking it, the cloned signature parsed in the callee binds `Box` to its own
+		// homonym, giving the wrong ABI/fields. Recurse so the scalar main-type lock at this
+		// function's tail applies; an already-qualified base (`other.Box`) is returned verbatim.
+		locked_base := t.lock_colliding_main_generic_type_text(base, module_name)
+		if locked_base != base.trim_space() {
+			changed = true
+		}
+		if changed {
+			return '${locked_base}[${locked_args.join(', ')}]'
+		}
+		return clean
+	}
+	// A remaining spelling that still carries a module qualifier is a simple qualified
+	// type with no lockable bare component (e.g. `veb.Context`); return it verbatim.
+	if clean.contains('.') {
+		return clean
+	}
+	if !(clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
+		return clean
+	}
+	qname := '${module_name}.${clean}'
+	if qname in t.structs || qname in t.sum_types || qname in t.enum_types {
+		return 'main.' + clean
+	}
+	return clean
 }
 
 fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {

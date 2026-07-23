@@ -38,7 +38,7 @@ fn check_print_sources(name string, files map[string]string) []types.TypeError {
 // build_checker_print_v3_bin builds checker print v3 bin data for v3 tests.
 fn build_checker_print_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_print_${name}')
-	build := os.execute('${checker_print_vexe} -o ${v3_bin} ${checker_print_v3_src}')
+	build := os.execute('${checker_print_vexe} -gc none -o ${v3_bin} ${checker_print_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

@@ -1333,6 +1333,13 @@ fn (t &Transformer) generic_struct_instance_name(type_name string) string {
 		return ''
 	}
 	if _ := t.generic_struct_params_for_base(base) {
+		// Qualify a bare imported generic base to its canonical struct name so the
+		// operator lowers to the monomorphized method (`vec__Vec2_int__minus`), not a
+		// bogus bare `Vec2_int__minus`.
+		resolved_base := t.struct_lookup_name(base)
+		if resolved_base.len > 0 && resolved_base != base {
+			return resolved_base + normalized[base.len..]
+		}
 		return normalized
 	}
 	return ''
@@ -1768,7 +1775,14 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 	}
 	base, _, has_generic_args := generic_app_parts(type_name)
 	if has_generic_args {
-		if t.struct_lookup_name(base).len > 0 {
+		resolved_base := t.struct_lookup_name(base)
+		if resolved_base.len > 0 {
+			// Qualify a bare imported generic base so the instance name matches the
+			// materialized struct (`Vec2[int]` -> `vec.Vec2[int]`); a matching or bare
+			// base keeps the original spelling.
+			if resolved_base != base {
+				return resolved_base + type_name[base.len..]
+			}
 			return type_name
 		}
 	}

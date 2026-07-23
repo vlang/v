@@ -58,17 +58,27 @@ mut:
 	next_file_id                      int = 1
 	cur_module                        string
 	cur_fn                            string
+	veb_tmpl_counter                  int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
 	cur_struct                        string   // receiver type name of the current method, for `@STRUCT`
 	cur_method_is_static              bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
 	comptime_for_vars                 []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	comptime_method_var               string   // innermost active `$for method in Type.methods` loop variable
 	comptime_const_values             map[string]string
 	comptime_local_values             map[string]string
+	imported_module_names             map[string]bool // import aliases in the current file; not captured by inlined template closures
+	// local_binding_* track the variable/parameter names currently in scope, so an inlined
+	// template closure captures a bare callee only when it is an actual local binding (a
+	// function-valued parameter/local) rather than a module/top-level function. Scoped like
+	// comptime_value_*: a name is in scope when local_binding_counts[name] > 0.
+	local_binding_counts              map[string]int
+	local_binding_undos               []string
+	local_binding_scopes              []int
 	comptime_value_undos              []ComptimeValueUndo
 	comptime_value_scopes             []int
 	pending_flag                      bool
 	pending_json_as_number            bool // `@[json_as_number]` seen before the next enum decl
 	pending_params                    bool
+	pending_typedef                   bool
 	pending_export                    string
 	pending_noreturn                  bool
 	pending_soa                       bool
@@ -139,6 +149,8 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		anonymous_struct_types:        map[string][]string{}
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
+		imported_module_names:         map[string]bool{}
+		local_binding_counts:          map[string]int{}
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases:        map[string]bool{}
 		a:                             &flat.FlatAst{
@@ -222,6 +234,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.has_peek = false
 	p.pending_flag = false
 	p.pending_params = false
+	p.pending_typedef = false
 	p.pending_export = ''
 	p.pending_noreturn = false
 	p.pending_soa = false
@@ -236,6 +249,10 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_local_values.clear()
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
+	p.imported_module_names.clear()
+	p.local_binding_counts.clear()
+	p.local_binding_undos.clear()
+	p.local_binding_scopes.clear()
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
@@ -744,6 +761,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.consume_decl_prefix_after_attrs()
 	if p.skip_next_decl {
 		p.pending_params = false
+		p.pending_typedef = false
 		p.pending_has_aligned = false
 		p.pending_aligned = ''
 		// A skipped enum (e.g. disabled by a preceding `@[if false]`) never reaches
@@ -775,6 +793,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	res := p.top_level_stmt()
 	p.apply_decl_attrs(res)
 	p.pending_params = false
+	p.pending_typedef = false
 	p.pending_export = ''
 	p.pending_noreturn = false
 	p.pending_json_as_number = false
@@ -829,6 +848,9 @@ fn (mut p Parser) apply_decl_attr_flags(attrs []string) {
 			}
 			'params' {
 				p.pending_params = true
+			}
+			'typedef' {
+				p.pending_typedef = true
 			}
 			'noreturn' {
 				p.pending_noreturn = true
@@ -1018,6 +1040,18 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		p.cur_method_is_static = false
 		p.push_local_type_scope(name)
 		p.begin_comptime_value_scope()
+		p.begin_local_binding_scope()
+		// Seed the operator's parameters as local bindings before the body is parsed, so a
+		// `$tmpl()` in a short-circuit/subexpression template that calls a function-valued
+		// operator parameter (`@{render(row)}`) captures it into the inlined IIFE —
+		// collect_template_free_idents only captures a bare callee that is_local_binding().
+		// Mirrors fn_decl_body's parameter seeding.
+		for pid in param_ids {
+			pnode := p.a.nodes[int(pid)]
+			if pnode.kind == .param {
+				p.declare_local_binding(pnode.value)
+			}
+		}
 		if disable_body {
 			p.mark_disabled_fn(name)
 			p.skip_block()
@@ -1027,12 +1061,20 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 			p.predeclare_local_type_names_in_block(body_start)
 			for p.tok != .rcbr && p.tok != .eof {
 				id := p.stmt()
+				// Lower a `$tmpl()` / `$veb.html()` used in an operator overload body, so
+				// its `.veb_template` placeholder does not leak past the parser (no later
+				// phase handles it), matching normal function/block parsing.
+				if expansion := p.expand_veb_template_stmt(id) {
+					body_ids << expansion
+					continue
+				}
 				if int(id) >= 0 {
 					body_ids << id
 				}
 			}
 			p.check(.rcbr)
 		}
+		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
@@ -1146,6 +1188,14 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.cur_method_is_static = is_method && receiver_name.len == 0
 	p.push_local_type_scope(name)
 	p.begin_comptime_value_scope()
+	// The parameters (and receiver) are the function body's outermost local bindings.
+	p.begin_local_binding_scope()
+	for pid in param_ids {
+		pnode := p.a.nodes[int(pid)]
+		if pnode.kind == .param {
+			p.declare_local_binding(pnode.value)
+		}
+	}
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
 	if disable_body {
@@ -1157,12 +1207,17 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
 			id := p.stmt()
+			if expansion := p.expand_veb_template_stmt(id) {
+				body_ids << expansion
+				continue
+			}
 			if int(id) >= 0 {
 				body_ids << id
 			}
 		}
 		p.check(.rcbr)
 	}
+	p.end_local_binding_scope()
 	p.end_comptime_value_scope()
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
@@ -1359,10 +1414,12 @@ fn (mut p Parser) c_anon_param_starts_type() bool {
 fn (mut p Parser) struct_decl() flat.NodeId {
 	is_union := p.tok == .key_union
 	is_params := p.pending_params
+	is_typedef := p.pending_typedef
 	is_soa := p.pending_soa
 	is_aligned := p.pending_has_aligned
 	aligned := p.pending_aligned
 	p.pending_params = false
+	p.pending_typedef = false
 	p.pending_soa = false
 	p.pending_has_aligned = false
 	p.pending_aligned = ''
@@ -1406,8 +1463,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:    .struct_decl
 			value:   name
-			typ:     struct_decl_typ(is_union, is_generic, is_params, is_soa, is_aligned, aligned,
-				implements_types)
+			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned,
+				aligned, implements_types)
 			payload: flat.node_payload(generic_params)
 		})
 	}
@@ -1620,15 +1677,15 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            struct_decl_typ(is_union, is_generic, is_params, is_soa, is_aligned,
-			aligned, implements_types)
+		typ:            struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa,
+			is_aligned, aligned, implements_types)
 		payload:        flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
 }
 
-fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_soa bool, is_aligned bool, aligned string, implements_types []string) string {
+fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_typedef bool, is_soa bool, is_aligned bool, aligned string, implements_types []string) string {
 	mut parts := []string{}
 	if is_union {
 		parts << 'union'
@@ -1638,6 +1695,9 @@ fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_soa bool, 
 	}
 	if is_params {
 		parts << 'params'
+	}
+	if is_typedef {
+		parts << 'typedef'
 	}
 	if is_soa {
 		parts << 'soa'
@@ -2104,6 +2164,11 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 		p.next()
 		alias = p.expect_name()
 	}
+	// Record the module's in-file alias (the identifier used as a `mod.symbol` base) so
+	// an inlined template closure does not try to capture it as if it were a local.
+	if alias.len > 0 {
+		p.imported_module_names[alias] = true
+	}
 	// selective import: import mod { sym1, sym2 }
 	if p.tok == .lcbr {
 		p.next()
@@ -2183,6 +2248,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
+				} else if p.lit == 'typedef' {
+					p.pending_typedef = true
 				} else if p.lit == 'noreturn' {
 					p.pending_noreturn = true
 				} else if p.lit == 'soa' {
@@ -2218,6 +2285,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
+				} else if p.lit == 'typedef' {
+					p.pending_typedef = true
 				} else if p.lit == 'noreturn' {
 					p.pending_noreturn = true
 				} else if p.lit == 'soa' {
@@ -4075,14 +4144,119 @@ fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
 				none
 			}
 		}
+		.infix {
+			p.comptime_infix_value(node)
+		}
+		.call {
+			p.comptime_join_path_value(node)
+		}
 		else {
 			none
 		}
 	}
 }
 
+// comptime_infix_value evaluates a compile-time `a + b` string concatenation so
+// composed `const`/local path values (`const p = dir + '/' + file`) resolve like v1.
+fn (p &Parser) comptime_infix_value(node flat.Node) ?string {
+	if node.op != .plus || node.children_count != 2 {
+		return none
+	}
+	left := p.comptime_node_value(p.a.children[int(node.children_start)])?
+	right := p.comptime_node_value(p.a.children[int(node.children_start) + 1])?
+	return comptime_cond_quoted_string(comptime_cond_value(left) + comptime_cond_value(right))
+}
+
+// comptime_join_path_value evaluates a compile-time `os.join_path(...)` /
+// `os.join_path_single(...)` call so composed path constants using them resolve like
+// v1's template path resolver. Returns none for any other call or non-const argument.
+fn (p &Parser) comptime_join_path_value(node flat.Node) ?string {
+	if node.children_count < 2 {
+		return none
+	}
+	callee := p.a.nodes[int(p.a.children[int(node.children_start)])]
+	if callee.kind != .selector || callee.value !in ['join_path', 'join_path_single']
+		|| callee.children_count < 1 {
+		return none
+	}
+	base := p.a.nodes[int(p.a.children[int(callee.children_start)])]
+	if base.kind != .ident || base.value != 'os' {
+		return none
+	}
+	mut parts := []string{}
+	for i in 1 .. int(node.children_count) {
+		arg_value := p.comptime_node_value(p.a.children[int(node.children_start) + i])?
+		parts << comptime_cond_value(arg_value)
+	}
+	if parts.len == 0 {
+		return none
+	}
+	joined := if callee.value == 'join_path_single' {
+		if parts.len != 2 {
+			return none
+		}
+		os.join_path_single(parts[0], parts[1])
+	} else if parts.len == 1 {
+		parts[0]
+	} else {
+		os.join_path(parts[0], ...parts[1..])
+	}
+	return comptime_cond_quoted_string(joined)
+}
+
 fn (mut p Parser) begin_comptime_value_scope() {
 	p.comptime_value_scopes << p.comptime_value_undos.len
+}
+
+// begin_local_binding_scope opens a variable scope; end_local_binding_scope removes the
+// bindings declared within it. A name is an in-scope local while its count stays above 0.
+fn (mut p Parser) begin_local_binding_scope() {
+	p.local_binding_scopes << p.local_binding_undos.len
+}
+
+fn (mut p Parser) end_local_binding_scope() {
+	if p.local_binding_scopes.len == 0 {
+		return
+	}
+	start := p.local_binding_scopes.pop()
+	for i := p.local_binding_undos.len - 1; i >= start; i-- {
+		name := p.local_binding_undos[i]
+		count := p.local_binding_counts[name] or { 0 }
+		if count <= 1 {
+			p.local_binding_counts.delete(name)
+		} else {
+			p.local_binding_counts[name] = count - 1
+		}
+	}
+	p.local_binding_undos.trim(start)
+}
+
+// declare_local_binding records `name` as an in-scope variable/parameter for the current
+// local scope, so template closures can tell it apart from a module/top-level function.
+fn (mut p Parser) declare_local_binding(name string) {
+	if name.len == 0 || name == '_' || p.local_binding_scopes.len == 0 {
+		return
+	}
+	p.local_binding_undos << name
+	p.local_binding_counts[name] = (p.local_binding_counts[name] or { 0 }) + 1
+}
+
+// is_local_binding reports whether `name` currently names an in-scope local variable or
+// parameter (as opposed to a module/top-level function or an unknown name).
+fn (p &Parser) is_local_binding(name string) bool {
+	return (p.local_binding_counts[name] or { 0 }) > 0
+}
+
+// declare_local_binding_node records the identifier `id` (a declaration's left-hand side)
+// as an in-scope local binding; non-identifier nodes are ignored.
+fn (mut p Parser) declare_local_binding_node(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .ident {
+		p.declare_local_binding(node.value)
+	}
 }
 
 fn (mut p Parser) end_comptime_value_scope() {
@@ -4525,6 +4699,16 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			children_start: p.add_child(type_expr)
 			children_count: 1
 		})
+	}
+	// `$tmpl('path')` renders a template to a string; `$veb.html([...])` renders
+	// a veb HTML template to a `veb.Result`. Both produce a `.veb_template`
+	// placeholder that `expand_veb_template_stmt` (called from parse_block_body)
+	// lowers into inline builder statements at the enclosing statement.
+	if p.tok == .name && p.lit == 'tmpl' {
+		return p.parse_veb_template_expr(false)
+	}
+	if p.tok == .name && p.lit == 'veb' && p.peek() == .dot {
+		return p.parse_veb_template_expr(true)
 	}
 	for p.tok != .semicolon && p.tok != .eof {
 		p.next()
@@ -5096,11 +5280,13 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 
 	// if-guard: if a, b := expr { ... } or if val := expr { ... }
 	mut guard_cond := cond
+	mut guard_lhs_ids := []flat.NodeId{}
 	if p.tok == .comma || p.tok == .decl_assign {
 		// Simple if-guard; treat as regular condition for flat AST
 		if p.tok == .decl_assign {
 			p.next()
 			rhs := p.control_header_expr(.lowest)
+			guard_lhs_ids << guard_cond
 			istart := p.add_children2(guard_cond, rhs)
 			guard_cond = p.add_node(flat.Node{
 				kind:           .decl_assign
@@ -5133,6 +5319,9 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 					children_start: istart
 					children_count: flat.child_count(all_ids.len)
 				})
+				for lid in lhs_ids {
+					guard_lhs_ids << lid
+				}
 			}
 		}
 	}
@@ -5141,7 +5330,15 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
+	// The if-guard binding(s) are in scope only inside the guarded block; register them so
+	// a conditionally inlined template that calls one (e.g. `@{render(row)}` after
+	// `if render := maybe_render()`) captures it in the nested template IIFE.
+	p.begin_local_binding_scope()
+	for lid in guard_lhs_ids {
+		p.declare_local_binding_node(lid)
+	}
 	body := p.block_stmt()
+	p.end_local_binding_scope()
 	mut ids := []flat.NodeId{}
 	ids << guard_cond
 	ids << body
@@ -5443,6 +5640,15 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 		children_start: init_start
 		children_count: flat.child_count(all_ids.len)
 	})
+	// The `:=` init bindings (`for h, t := head, tail; …`) are in scope for the loop's
+	// condition, post clause and body; register them so a conditionally inlined template in
+	// the body captures a loop-local function value instead of treating it as a top helper.
+	p.begin_local_binding_scope()
+	if is_decl {
+		for lid in lhs_ids {
+			p.declare_local_binding_node(lid)
+		}
+	}
 	if p.tok == .semicolon {
 		p.next()
 	}
@@ -5460,6 +5666,7 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 		p.add(flat.NodeKind.empty)
 	}
 	body_ids := p.parse_block_body()
+	p.end_local_binding_scope()
 	mut for_ids := []flat.NodeId{}
 	for_ids << p.add(flat.NodeKind.empty)
 	for_ids << cond
@@ -5488,8 +5695,9 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	p.next()
 	rhs := p.expr(.lowest)
 
+	is_decl := op_id == 12
 	mut init_id := flat.empty_node
-	if op_id == 12 {
+	if is_decl {
 		istart := p.add_children2(lhs_expr, rhs)
 		init_id = p.add_node(flat.Node{
 			kind:           .decl_assign
@@ -5505,6 +5713,14 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 			children_start: istart
 			children_count: 2
 		})
+	}
+
+	// A `:=` init binding (`for render := get_render(); …`) is in scope for the loop's
+	// condition, post clause and body. Register it so a conditionally inlined template in
+	// the body can tell the loop-local from a top-level helper and capture it.
+	p.begin_local_binding_scope()
+	if is_decl {
+		p.declare_local_binding_node(lhs_expr)
 	}
 
 	if p.tok == .semicolon {
@@ -5523,6 +5739,7 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	}
 
 	body_ids := p.parse_block_body()
+	p.end_local_binding_scope()
 
 	mut ids := []flat.NodeId{}
 	ids << init_id
@@ -5573,7 +5790,12 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_
 		range_end = p.expr(.lowest)
 	}
 
+	// The key/value loop variables are locals scoped to the loop body.
+	p.begin_local_binding_scope()
+	p.declare_local_binding_node(key_id)
+	p.declare_local_binding_node(val_id)
 	body_ids := p.parse_block_body()
+	p.end_local_binding_scope()
 
 	mut ids := []flat.NodeId{cap: 4 + body_ids.len}
 	ids << key_id
@@ -5762,11 +5984,19 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		is_else = true
 		p.next()
 	} else {
-		branch_ids << p.match_branch_cond()
+		// A `$tmpl()` / `$veb.html()` in a branch condition value is evaluated in place
+		// (conditionally, like a short-circuit operand), so lower it to an inline closure
+		// here — the whole-statement expansion descends only into the match subject and
+		// would otherwise leave the placeholder in the condition.
+		first_cond := p.match_branch_cond()
+		p.inline_templates_as_closures(first_cond)
+		branch_ids << first_cond
 		n_conds = 1
 		for p.tok == .comma {
 			p.next()
-			branch_ids << p.match_branch_cond()
+			cond := p.match_branch_cond()
+			p.inline_templates_as_closures(cond)
+			branch_ids << cond
 			n_conds++
 		}
 	}
@@ -5776,17 +6006,26 @@ fn (mut p Parser) match_branch() flat.NodeId {
 	block_scope := p.block_local_type_scope(branch_block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
+	p.begin_local_binding_scope()
 	p.predeclare_local_type_names_in_block(branch_block_start)
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.looks_like_match_branch_start() {
 			break
 		}
 		id := p.stmt()
+		// Expand a `$tmpl()` / `$veb.html()` used inside a match branch (including as
+		// the branch's trailing value expression), keeping its builder in the branch's
+		// scope, so `return match ... { $tmpl(...) }` renders like v1.
+		if expansion := p.expand_veb_template_stmt(id) {
+			branch_ids << expansion
+			continue
+		}
 		if int(id) >= 0 {
 			branch_ids << id
 		}
 	}
 	p.check(.rcbr)
+	p.end_local_binding_scope()
 	p.end_comptime_value_scope()
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
@@ -5834,15 +6073,21 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 	block_scope := p.block_local_type_scope(block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
+	p.begin_local_binding_scope()
 	p.predeclare_local_type_names_in_block(block_start)
 	mut ids := []flat.NodeId{}
 	for p.tok != .rcbr && p.tok != .eof {
 		id := p.stmt()
+		if expansion := p.expand_veb_template_stmt(id) {
+			ids << expansion
+			continue
+		}
 		if int(id) >= 0 {
 			ids << id
 		}
 	}
 	p.check(.rcbr)
+	p.end_local_binding_scope()
 	p.end_comptime_value_scope()
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
@@ -5885,6 +6130,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			mut all_ids := []flat.NodeId{cap: lhs_ids.len * 2}
 			for i in 0 .. lhs_ids.len {
 				all_ids << lhs_ids[i]
+				// `:=` (op_id 12) introduces each left-hand side as a new local binding.
+				if op_id == 12 {
+					p.declare_local_binding_node(lhs_ids[i])
+				}
 				if i < rhs_ids.len {
 					all_ids << rhs_ids[i]
 					if op_id == 12 {
@@ -5940,6 +6189,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			p.expr(.lowest)
 		}
 		p.remember_comptime_decl_value(lhs, rhs)
+		p.declare_local_binding_node(lhs)
 		if p.tok == .semicolon {
 			p.next()
 		}
@@ -7526,9 +7776,6 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			p.next()
 			return p.prefix_expr()
 		}
-		.key_type {
-			return p.keyword_ident_expr()
-		}
 		.name, .key_module {
 			name_pos := p.tok_pos
 			name := p.lit
@@ -8111,6 +8358,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_isreftype {
 			return p.isreftype_expr()
+		}
+		.key_type {
+			// `type` used as a plain identifier (loop variable, local, or reference),
+			// e.g. `for type in [...] { ... ${type} ... }`. Type declarations
+			// (`type Foo = Bar`) are handled at statement level before expression
+			// parsing, so an atom-position `type` is always the identifier. Matches v1,
+			// which does not reserve `type` as a C name.
+			return p.keyword_ident_expr()
 		}
 		.dot {
 			// enum value: .member
@@ -9337,15 +9592,36 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
+		p.begin_local_binding_scope()
+		for pid in param_ids {
+			pnode := p.a.nodes[int(pid)]
+			if pnode.kind == .param {
+				p.declare_local_binding(pnode.value)
+			}
+		}
+		// The explicit `[captures]` are in scope in the closure body just like parameters,
+		// so register them too: a template subexpression that calls a captured function
+		// (e.g. `@{render(row)}` inside `fn [render] (...) {}`) must treat that callee as a
+		// local binding and capture it in the nested template IIFE.
+		for cid in capture_ids {
+			p.declare_local_binding_node(cid)
+		}
 		p.check(.lcbr)
 		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
 			id := p.stmt()
+			// Lower `$tmpl()` / `$veb.html()` inside an anon fn body too, so a
+			// `return $tmpl(...)` in a closure renders like it does in a named fn.
+			if expansion := p.expand_veb_template_stmt(id) {
+				body_ids << expansion
+				continue
+			}
 			if int(id) >= 0 {
 				body_ids << id
 			}
 		}
 		p.check(.rcbr)
+		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 	}

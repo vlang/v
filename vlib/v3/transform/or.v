@@ -1120,7 +1120,10 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 	}
 	prefix := clean_expr_type[..1]
 	mut base := t.optional_base_type(clean_expr_type)
-	if base.len == 0 || base == 'void' || base == 'Optional' {
+	// A bare `!`/`?` (a void Result/Option, e.g. `fn f() !`) has no payload. Its
+	// `optional_base_type` returns the marker unchanged (`base == clean_expr_type`);
+	// treat it as void so it is not re-parsed into `!void` and re-wrapped to `!!void`.
+	if base.len == 0 || base == 'void' || base == 'Optional' || base == clean_expr_type {
 		return '${prefix}void', 'void'
 	}
 	// Monomorphized collection arguments can reach an or-expression in their
@@ -1146,6 +1149,22 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 }
 
 fn (t &Transformer) normalize_or_expr_value_type(typ string) string {
+	// Container types must be decomposed before `generic_app_parts`, which mistakes
+	// a `map[K]V` for a `map[K]` generic application and drops the value type (V).
+	if typ.starts_with('&') {
+		return '&' + t.normalize_or_expr_value_type(typ[1..])
+	}
+	if typ.starts_with('[]') {
+		return '[]' + t.normalize_or_expr_value_type(typ[2..])
+	}
+	if typ.starts_with('map[') {
+		bracket_end := generic_matching_bracket(typ, 3)
+		if bracket_end > 3 && bracket_end < typ.len {
+			key := typ[4..bracket_end]
+			val := typ[bracket_end + 1..]
+			return 'map[${t.normalize_or_expr_value_type(key)}]${t.normalize_or_expr_value_type(val)}'
+		}
+	}
 	if typ.starts_with('(') && typ.ends_with(')') {
 		mut normalized_items := []string{}
 		for item in split_generic_args(typ[1..typ.len - 1]) {

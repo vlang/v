@@ -3825,6 +3825,27 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 								}
 							}
 						}
+						// A generic call `f[T](...)` has an `.index` callee whose base is the
+						// (possibly module-qualified) function name. The checker usually records
+						// a `resolved_call` for it, but a generic call inside a still-generic
+						// template body can lose that annotation (notably under parallel check),
+						// leaving only the `.index` node. Unwrap to the base function so markused
+						// still follows the call — but only when the base actually names a known
+						// function, so a real value index `arr[i](...)` is left alone.
+						if callee.kind == .index && callee.children_count > 0 {
+							base_id := c.a.child(&callee, 0)
+							if int(base_id) >= 0 {
+								base := c.a.nodes[int(base_id)]
+								if base.kind == .selector {
+									callee = base
+								} else if base.kind == .ident && base.value.len > 0
+									&& base.value !in local_values
+									&& (c.is_known_fn_name(base.value)
+									|| c.is_known_fn_name(qualify_fn(cur_module, base.value))) {
+									callee = base
+								}
+							}
+						}
 						if callee.kind == .ident && callee.value.len > 0 {
 							if resolved_call.len > 0 {
 								calls << resolved_call
@@ -3967,6 +3988,8 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				}
 				c.collect_generic_alias_operator_usage(child, resolved_call, cur_module, imports,
 					local_values, local_types, mut calls)
+				c.collect_omitted_params_default_calls(child, resolved_call, cur_module, imports, mut
+					calls)
 			}
 			.prefix {
 				if child.op == .amp && child.children_count > 0 {
@@ -4480,8 +4503,19 @@ fn markused_mark_visible_local_ident(a &flat.FlatAst, id flat.NodeId, local_valu
 fn (c &CallCollector) top_level_decl_rhs_type_name(rhs_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {
 	rhs := c.a.node(rhs_id)
 	if rhs.kind == .struct_init && rhs.value.len > 0 {
-		return c.struct_lookup_name(markused_resolve_imported_type_name(rhs.value, imports),
-			cur_module)
+		resolved := markused_resolve_imported_type_name(rhs.value, imports)
+		struct_type := c.struct_lookup_name(resolved, cur_module)
+		if struct_type.len > 0 {
+			return struct_type
+		}
+		// An alias-to-struct literal (`Alias{...}` where `type Alias = Base`) is not
+		// itself a struct key; keep the alias name so a later method call on the var
+		// resolves `Alias.method` (methods are registered on the alias).
+		if resolved in c.tc.type_aliases || markused_resolve_imported_type_name(rhs.value,
+			imports) in c.tc.type_aliases {
+			return resolved
+		}
+		return struct_type
 	}
 	type_name := c.top_level_expr_type_name(rhs_id, cur_module, imports, local_values, local_types,
 		false)
@@ -4509,9 +4543,20 @@ fn (c &CallCollector) collect_top_level_stmt_calls(id flat.NodeId, cur_module st
 			c.collect_top_level_global_decl_calls(node, cur_module, imports, mut local_values, mut
 				local_types, mut calls)
 		}
-		.block, .for_stmt, .for_in_stmt {
+		.block, .for_stmt {
 			mut nested_values := markused_clone_bool_map(local_values)
 			mut nested_types := markused_clone_string_map(local_types)
+			c.collect_top_level_child_calls(node, cur_module, imports, mut nested_values, mut
+				nested_types, mut calls)
+		}
+		.for_in_stmt {
+			mut nested_values := markused_clone_bool_map(local_values)
+			mut nested_types := markused_clone_string_map(local_types)
+			// Register the loop variable's element type so a method call on it in the
+			// body (`for a in addrs { a.family() }`) marks that method used. The checker
+			// types the loop var, but this simplified top-level collector must too.
+			c.register_top_level_for_in_vars(node, cur_module, imports, mut nested_values, mut
+				nested_types)
 			c.collect_top_level_child_calls(node, cur_module, imports, mut nested_values, mut
 				nested_types, mut calls)
 		}
@@ -4643,6 +4688,15 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 					// handled
 				} else if !c.top_level_selector_base_is_local(child, local_values) {
 					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
+				} else if child.children_count > 0 {
+					// A method value on a local/global receiver (`app.frame` passed as a
+					// callback field, e.g. `gg.new_context(frame_fn: app.frame)`). Mark the
+					// receiver's method so its body is emitted for the generated
+					// method-value wrapper; a plain field access resolves to no method and
+					// is left untouched.
+					base_id := c.a.child(child, 0)
+					c.collect_top_level_typed_receiver_method(base_id, child.value, cur_module,
+						imports, local_values, local_types, mut calls)
 				}
 			}
 			.call {
@@ -5447,6 +5501,25 @@ fn (c &CallCollector) top_level_receiver_type_name(base_id flat.NodeId, cur_modu
 			return or_type_name
 		}
 	}
+	// A field-access receiver (`app.best.load()`): resolve the base struct's field
+	// type so a method on it (including one declared on a type alias) is marked used.
+	// The checker keeps the declared field type name (e.g. the alias `HighScore`).
+	if base.kind == .selector && base.value.len > 0 && base.children_count > 0 {
+		inner_id := c.a.child(base, 0)
+		if int(inner_id) >= 0 {
+			inner_type := c.top_level_receiver_type_name(inner_id, cur_module, imports,
+				local_values, local_types)
+			if inner_type.len > 0 {
+				struct_name := c.struct_lookup_name(inner_type, cur_module)
+				lookup := if struct_name.len > 0 { struct_name } else { inner_type }
+				if field_type := c.tc.struct_field_type_name(lookup, base.value) {
+					if field_type.len > 0 {
+						return field_type
+					}
+				}
+			}
+		}
+	}
 	if base.kind == .ident && base.value.len > 0 {
 		return c.value_type_name(base.value, cur_module, imports)
 	}
@@ -5493,6 +5566,64 @@ fn (c &CallCollector) top_level_expr_type_name(id flat.NodeId, cur_module string
 	}
 
 	return ''
+}
+
+// register_top_level_for_in_vars records the loop variable(s) of a top-level
+// `for .. in ..` as locals and gives the value variable the container's element
+// type, so a method call on it in the body is marked used.
+fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module string, imports map[string]string, mut local_values map[string]bool, mut local_types map[string]string) {
+	if node.children_count < 3 {
+		return
+	}
+	header := node.value.int()
+	key_id := c.a.child(node, 0)
+	val_id := c.a.child(node, 1)
+	container_id := c.a.child(node, 2)
+	key_node := c.a.node(key_id)
+	has_second := int(val_id) >= 0 && c.a.node(val_id).kind == .ident
+		&& c.a.node(val_id).value.len > 0
+	mut value_var := ''
+	if has_second {
+		value_var = c.a.node(val_id).value
+		if key_node.kind == .ident && key_node.value.len > 0 && key_node.value != '_' {
+			local_values[key_node.value] = true
+		}
+	} else if key_node.kind == .ident && key_node.value.len > 0 {
+		value_var = key_node.value
+	}
+	if value_var.len == 0 || value_var == '_' {
+		return
+	}
+	local_values[value_var] = true
+	// A range loop (`for i in 0 .. n`, header == 4) binds an integer, not a container
+	// element — nothing to resolve.
+	if header == 4 {
+		return
+	}
+	elem := c.top_level_for_in_elem_type_name(container_id, cur_module, imports, local_values,
+		local_types) or { return }
+	if elem.len > 0 {
+		local_types[value_var] = elem
+	}
+}
+
+fn (c &CallCollector) top_level_for_in_elem_type_name(container_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) ?string {
+	type_name := c.top_level_expr_type_name(container_id, cur_module, imports, local_values,
+		local_types, true)
+	if type_name.len == 0 {
+		return none
+	}
+	ct := types.unwrap_pointer(c.tc.parse_canonical_type(type_name))
+	if ct is types.Array {
+		return ct.elem_type.name()
+	}
+	if ct is types.ArrayFixed {
+		return ct.elem_type.name()
+	}
+	if ct is types.Map {
+		return ct.value_type.name()
+	}
+	return none
 }
 
 fn (c &CallCollector) top_level_index_elem_type_name(id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) ?string {
@@ -7186,6 +7317,70 @@ fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module s
 		}
 	}
 	c.collect_struct_default_calls_from_info(info, set_fields, mut calls)
+}
+
+// collect_omitted_params_default_calls marks the field-initializer calls of a
+// trailing struct parameter that the call site omitted (e.g. `zstd.compress(data)`
+// leaving out its `@[params] CompressParams` argument). The transformer synthesizes
+// that default argument only AFTER markused runs, so a field default that calls a
+// function (`compression_level int = default_c_level()`) would otherwise leave that
+// function unmarked and undefined at link.
+fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, callee_name string, cur_module string, imports map[string]string, mut calls []string) {
+	if call.children_count == 0 {
+		return
+	}
+	// The checker records a `resolved_call` for most calls, but a call inside a
+	// still-generic template body can lack it; derive the qualified callee name
+	// from the call node in that case.
+	mut name := callee_name
+	if name.len == 0 {
+		callee := c.a.child_node(call, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			base := c.a.child_node(callee, 0)
+			if base.kind == .ident && base.value.len > 0 {
+				mod := imports[base.value] or { base.value }
+				name = '${mod}.${callee.value}'
+			}
+		} else if callee.kind == .ident && callee.value.len > 0 {
+			name = qualify_fn(cur_module, callee.value)
+		}
+	}
+	if name.len == 0 {
+		return
+	}
+	info := c.fn_decls[name] or {
+		c.fn_decls[callee_name] or { return }
+	}
+	fn_node := c.a.node(info.node_id)
+	mut param_type_texts := []string{}
+	for i in 0 .. fn_node.children_count {
+		p := c.a.child_node(fn_node, i)
+		// Skip the receiver parameter (op == .dot): it is the selector base, not a
+		// positional call argument.
+		if p.kind == .param && p.op != .dot {
+			param_type_texts << p.typ
+		}
+	}
+	// Count only positional arguments. Trailing named params
+	// (`compress(data, level: 3)`) are `field_init` children of the call, not
+	// positional arguments; counting them would make the trailing params struct
+	// look fully provided and skip collecting its omitted field defaults.
+	mut provided := 0
+	for i in 1 .. int(call.children_count) {
+		arg := c.a.child_node(call, i)
+		if arg.kind == .field_init {
+			continue
+		}
+		provided++
+	}
+	if provided >= param_type_texts.len {
+		return
+	}
+	fn_imports := c.imports(info.import_context)
+	for i in provided .. param_type_texts.len {
+		c.collect_struct_default_calls_for_type(param_type_texts[i], info.module, fn_imports, mut
+			calls)
+	}
 }
 
 // collect_struct_default_calls_for_type supports collect_struct_default_calls_for_type handling.

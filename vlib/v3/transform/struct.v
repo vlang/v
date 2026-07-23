@@ -727,6 +727,17 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 
 // lookup_struct_info resolves lookup struct info information for transform.
 fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
+	// `main.Foo` is the explicit lock spelling for a program-module type (used so a
+	// bare concrete generic argument is not rebased into a callee module with a
+	// same-named type). Resolve it against the exact bare table key so it keeps its
+	// own identity instead of being requalified into the active module.
+	if name.starts_with('main.') && !name['main.'.len..].contains('.')
+		&& !name['main.'.len..].contains('[') {
+		bare := name['main.'.len..]
+		if bare in t.structs {
+			return t.structs[bare]
+		}
+	}
 	base, args, has_generic_args := generic_app_parts(name)
 	if has_generic_args {
 		if base_info := t.lookup_struct_info_direct(base) {
@@ -831,7 +842,39 @@ fn (t &Transformer) checker_struct_lookup_name(name string) string {
 			return qualified_name
 		}
 	}
+	// A bare imported struct short name (e.g. `Vec2` from `import math.vec { Vec2 }`,
+	// keyed `vec.Vec2`). The bare name survives only as a generic-params shadow, so
+	// resolve it to the unique qualified struct whose short name matches. Without this
+	// an operator/eq on the imported generic instance leaves a raw C struct binary op.
+	if resolved := t.unique_qualified_struct_for_short(name) {
+		return resolved
+	}
 	return ''
+}
+
+// unique_qualified_struct_for_short resolves a bare struct short name to the unique
+// module-qualified struct key that shares it (`Vec2` -> `vec.Vec2`), or none when
+// absent or ambiguous. Scans the small generic-struct table.
+fn (t &Transformer) unique_qualified_struct_for_short(name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') {
+		return none
+	}
+	mut found := ''
+	for sname, _ in t.tc.structs {
+		// Match a module-qualified struct whose short name equals `name`, excluding
+		// generic instances (`vec.Vec2[int]`) — only the plain declaration counts.
+		if !sname.contains('.') || sname.contains('[') || sname.all_after_last('.') != name {
+			continue
+		}
+		if found.len > 0 && found != sname {
+			return none
+		}
+		found = sname
+	}
+	if found.len > 0 {
+		return found
+	}
+	return none
 }
 
 fn (t &Transformer) lookup_checker_struct_info(name string) ?StructInfo {

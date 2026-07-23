@@ -2939,6 +2939,26 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 				return
 			}
 		}
+	} else if module_call := g.selector_module_call_name(call_id, fn_node, call_node) {
+		// `spawn mod.fn(...)` is a module-qualified free function, not a method: its
+		// selector base is a module name. Pack and dispatch it like the `.ident` path
+		// above; the receiver-method branch below cannot resolve it and would
+		// otherwise fall through to a bogus `(void*)0` thread value.
+		cfn := g.direct_call_name_for_call(call_id, module_call)
+		if call_node.children_count == 1 {
+			wrapper = g.ensure_noarg_spawn_wrapper(cfn, ret_ct)
+		} else {
+			param_types := g.param_types_for(module_call, fn_node.value)
+			if param_types.len > 0 && param_types.len == int(call_node.children_count) - 1 {
+				mut packed_args := []SpawnPackedArg{}
+				for i, pt in param_types {
+					arg_id := g.a.child(&call_node, i + 1)
+					packed_args << g.spawn_packed_arg_for_call_param(module_call, arg_id, pt, i)
+				}
+				g.emit_args_spawn_expr(cfn, packed_args, ret_ct)
+				return
+			}
+		}
 	} else if fn_node.kind == .selector && fn_node.children_count > 0 {
 		base_id := g.a.child(fn_node, 0)
 		base_type := g.receiver_base_type(base_id)
@@ -12583,7 +12603,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		if cfn !in decls {
 			names << cfn
 		}
-		decls[cfn] = c_cache_safe_extern_decl(cfn, g.c_extern_decl_line(node, cfn), g.cache_split)
+		decls[cfn] = c_macro_safe_extern_decl(cfn, g.c_extern_decl_line(node, cfn))
 	}
 	names.sort()
 	for name in names {
@@ -12730,8 +12750,14 @@ const c_cache_macro_sensitive_extern_symbols = {
 	'tanf':  true
 }
 
-fn c_cache_safe_extern_decl(cfn string, declaration string, cache_split bool) string {
-	if !cache_split || cfn !in c_cache_macro_sensitive_extern_symbols {
+// c_macro_safe_extern_decl parenthesizes the name of a math extern that <tgmath.h>
+// turns into a function-like macro (`double exp(double);` -> `double (exp)(double);`).
+// Any program that includes a header pulling in <tgmath.h> hits this, not just
+// cache-split builds — notably gg's `gg_darwin.m` (Objective-C/Metal) brings it in,
+// so the parenthesized form must be emitted unconditionally. `(exp)(x)` is plain C
+// that calls the function and is inert when no such macro is present.
+fn c_macro_safe_extern_decl(cfn string, declaration string) string {
+	if cfn !in c_cache_macro_sensitive_extern_symbols {
 		return declaration
 	}
 	return declaration.replace_once('${cfn}(', '(${cfn})(')
@@ -12902,11 +12928,13 @@ const c_preamble_declared_extern_symbols = {
 	'fork':                          true
 	'getenv':                        true
 	'ldexp':                         true
+	'memchr':                        true
 	'memcmp':                        true
 	'memcpy':                        true
 	'memmove':                       true
 	'memset':                        true
 	'open':                          true
+	'perror':                        true
 	'pipe':                          true
 	'pow':                           true
 	'pthread_attr_destroy':          true
@@ -12972,8 +13000,12 @@ const c_preamble_declared_extern_symbols = {
 }
 
 const c_libc_compat_extern_symbols = {
-	'gettid': true
-	'puts':   true
+	'gettid':   true
+	'puts':     true
+	// sendfile is declared by the platform header (<sys/socket.h>/<sys/uio.h>)
+	// that its declaring module (fasthttp/veb) already includes; the V-side
+	// prototype signature differs per platform and conflicts with that header.
+	'sendfile': true
 }
 
 const c_libc_compat_syscall_decl_key = 'syscall_decl'
