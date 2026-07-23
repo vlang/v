@@ -268,8 +268,12 @@ mut:
 	emitted_fns                    map[string]bool
 	array_method_cache             map[string]string
 	param_types_cache              map[string][]types.Type // (name|fallback) -> resolved param types
-	interface_receiver_cache       &StringLookupCache = unsafe { nil }
-	normalize_call_cache           &StringLookupCache = unsafe { nil }
+	interface_receiver_cache       &StringLookupCache        = unsafe { nil }
+	normalize_call_cache           &StringLookupCache        = unsafe { nil }
+	import_alias_cache             &ContextStringLookupCache = unsafe { nil }
+	enum_selector_cache            &ContextStringLookupCache = unsafe { nil }
+	enum_method_cache              &ContextStringLookupCache = unsafe { nil }
+	qualified_enum_method_cache    &ContextStringLookupCache = unsafe { nil }
 	embedded_fields_by_type        map[string][]types.StructField // type name -> its embedded fields (usually empty)
 	param_types_by_short           map[string][]types.Type        // method short-name suffix -> param types (fallback index)
 	generic_method_candidates      map[string][]GenericMethodCandidate
@@ -737,6 +741,10 @@ pub fn FlatGen.new() FlatGen {
 		param_types_cache:              map[string][]types.Type{}
 		interface_receiver_cache:       &StringLookupCache{}
 		normalize_call_cache:           &StringLookupCache{}
+		import_alias_cache:             &ContextStringLookupCache{}
+		enum_selector_cache:            &ContextStringLookupCache{}
+		enum_method_cache:              &ContextStringLookupCache{}
+		qualified_enum_method_cache:    &ContextStringLookupCache{}
 		embedded_fields_by_type:        map[string][]types.StructField{}
 		param_types_by_short:           map[string][]types.Type{}
 		generic_method_candidates:      map[string][]GenericMethodCandidate{}
@@ -1628,6 +1636,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.param_types_cache.clear()
 	g.interface_receiver_cache = &StringLookupCache{}
 	g.normalize_call_cache = &StringLookupCache{}
+	g.import_alias_cache = &ContextStringLookupCache{}
+	g.enum_selector_cache = &ContextStringLookupCache{}
+	g.enum_method_cache = &ContextStringLookupCache{}
+	g.qualified_enum_method_cache = &ContextStringLookupCache{}
 	g.embedded_fields_by_type.clear()
 	g.param_types_by_short.clear()
 	g.generic_method_candidates.clear()
@@ -6249,6 +6261,45 @@ fn (g &FlatGen) enum_value_expr_for_type(type_name string, field_name string) ?s
 }
 
 fn (g &FlatGen) enum_selector_base_name(name string) ?string {
+	mut cache := g.enum_selector_cache
+	if !isnil(cache) {
+		cache.select_context(g.tc.cur_file, g.tc.cur_module)
+		if cache.last_valid && cache.last_name.len == name.len
+			&& (unsafe { cache.last_name.str == name.str } || cache.last_name == name) {
+			if cache.last_value.len > 0 {
+				return cache.last_value
+			}
+			return none
+		}
+		if cached := cache.entries[name] {
+			cache.last_name = name
+			cache.last_value = cached
+			cache.last_valid = true
+			if cached.len > 0 {
+				return cached
+			}
+			return none
+		}
+	}
+	result := g.enum_selector_base_name_uncached(name) or {
+		if !isnil(cache) {
+			cache.entries[name] = ''
+			cache.last_name = name
+			cache.last_value = ''
+			cache.last_valid = true
+		}
+		return none
+	}
+	if !isnil(cache) {
+		cache.entries[name] = result
+		cache.last_name = name
+		cache.last_value = result
+		cache.last_valid = true
+	}
+	return result
+}
+
+fn (g &FlatGen) enum_selector_base_name_uncached(name string) ?string {
 	if name in g.tc.enum_names || name in g.tc.flag_enums {
 		return name
 	}

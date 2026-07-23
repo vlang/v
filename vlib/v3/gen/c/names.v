@@ -48,6 +48,41 @@ mut:
 	entries map[string]string
 }
 
+// ContextStringLookupCache memoizes string lookups whose answers depend on the
+// current source file and module. Cgen visits functions in source order, so
+// replacing on a context switch avoids allocating a compound key on every hot
+// lookup while retaining almost all hits.
+@[heap]
+struct ContextStringLookupCache {
+mut:
+	file       string = '\x00'
+	module     string
+	entries    map[string]string
+	last_name  string
+	last_value string
+	last_valid bool
+}
+
+@[inline]
+fn (mut c ContextStringLookupCache) select_context(file string, module_name string) {
+	if c.file == file && c.module == module_name {
+		return
+	}
+	c.file = file
+	c.module = module_name
+	c.entries = map[string]string{}
+	c.last_name = ''
+	c.last_value = ''
+	c.last_valid = false
+}
+
+fn (mut g FlatGen) reset_context_lookup_caches() {
+	g.import_alias_cache = &ContextStringLookupCache{}
+	g.enum_selector_cache = &ContextStringLookupCache{}
+	g.enum_method_cache = &ContextStringLookupCache{}
+	g.qualified_enum_method_cache = &ContextStringLookupCache{}
+}
+
 // cname is the memoizing wrapper for naming.c_name used on FlatGen hot paths.
 @[inline]
 fn (g &FlatGen) cname(name string) string {

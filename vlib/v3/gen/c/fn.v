@@ -858,9 +858,6 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 	if enum_method_name := g.enum_method_c_name_in_module('', name) {
 		return enum_method_name
 	}
-	if enum_method_name := g.enum_method_c_name_in_module(g.tc.cur_module, name) {
-		return enum_method_name
-	}
 	if compat_name := g.libc_compat_call_name(name) {
 		return compat_name
 	}
@@ -907,9 +904,56 @@ fn (g &FlatGen) operator_overload_collision_c_name(module_name string, name stri
 }
 
 fn (g &FlatGen) enum_method_c_name_in_module(module_name string, name string) ?string {
+	// Most direct calls are plain functions. Reject them before selecting a
+	// context or probing a cache; self-host cgen reaches this path hundreds of
+	// thousands of times.
 	if !name.contains('.') {
 		return none
 	}
+	mut cache := if module_name.len == 0 {
+		g.enum_method_cache
+	} else {
+		g.qualified_enum_method_cache
+	}
+	if !isnil(cache) {
+		context_module := if module_name.len == 0 { g.tc.cur_module } else { module_name }
+		cache.select_context(g.tc.cur_file, context_module)
+		if cache.last_valid && cache.last_name.len == name.len
+			&& (unsafe { cache.last_name.str == name.str } || cache.last_name == name) {
+			if cache.last_value.len > 0 {
+				return cache.last_value
+			}
+			return none
+		}
+		if cached := cache.entries[name] {
+			cache.last_name = name
+			cache.last_value = cached
+			cache.last_valid = true
+			if cached.len > 0 {
+				return cached
+			}
+			return none
+		}
+	}
+	result := g.enum_method_c_name_in_module_uncached(module_name, name) or {
+		if !isnil(cache) {
+			cache.entries[name] = ''
+			cache.last_name = name
+			cache.last_value = ''
+			cache.last_valid = true
+		}
+		return none
+	}
+	if !isnil(cache) {
+		cache.entries[name] = result
+		cache.last_name = name
+		cache.last_value = result
+		cache.last_valid = true
+	}
+	return result
+}
+
+fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name string) ?string {
 	qualified := if module_name !in ['', 'main', 'builtin'] && !name.starts_with('${module_name}.') {
 		'${module_name}.${name}'
 	} else {
@@ -1090,6 +1134,46 @@ fn (g &FlatGen) import_alias_module(alias string) ?string {
 	if alias.len == 0 {
 		return none
 	}
+	mut cache := g.import_alias_cache
+	if !isnil(cache) {
+		cur_file := if g.tc == unsafe { nil } { '' } else { g.tc.cur_file }
+		cache.select_context(cur_file, '')
+		if cache.last_valid && cache.last_name.len == alias.len
+			&& (unsafe { cache.last_name.str == alias.str } || cache.last_name == alias) {
+			if cache.last_value.len > 0 {
+				return cache.last_value
+			}
+			return none
+		}
+		if cached := cache.entries[alias] {
+			cache.last_name = alias
+			cache.last_value = cached
+			cache.last_valid = true
+			if cached.len > 0 {
+				return cached
+			}
+			return none
+		}
+	}
+	result := g.import_alias_module_uncached(alias) or {
+		if !isnil(cache) {
+			cache.entries[alias] = ''
+			cache.last_name = alias
+			cache.last_value = ''
+			cache.last_valid = true
+		}
+		return none
+	}
+	if !isnil(cache) {
+		cache.entries[alias] = result
+		cache.last_name = alias
+		cache.last_value = result
+		cache.last_valid = true
+	}
+	return result
+}
+
+fn (g &FlatGen) import_alias_module_uncached(alias string) ?string {
 	if g.tc != unsafe { nil } && g.tc.cur_file.len > 0 {
 		key := g.tc.cur_file + '\n' + alias
 		if mod := g.tc.file_imports[key] {
@@ -1188,7 +1272,23 @@ fn (mut g FlatGen) gen_fn(node flat.Node) {
 }
 
 fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_name string) {
-	g.write(g.direct_call_name(g.method_call_name_for_call(id, node, method_name)))
+	call_name := g.method_call_name_for_call(id, node, method_name)
+	if node.children_count > 0 {
+		fn_node := g.a.child_node(&node, 0)
+		if fn_node.children_count > 0 {
+			receiver_type := concrete_receiver_type(g.usable_expr_type(g.a.child(fn_node, 0)))
+			if receiver_type is types.Enum {
+				g.write(g.direct_call_name(call_name))
+				return
+			}
+			if receiver_type !is types.Unknown && receiver_type !is types.Void {
+				g.write(g.cname(call_name))
+				return
+			}
+		}
+	}
+	// Keep the name-based fallback for synthetic or partially typed calls.
+	g.write(g.direct_call_name(call_name))
 }
 
 fn (mut g FlatGen) gen_channel_close_call(base_id flat.NodeId, node flat.Node) {
