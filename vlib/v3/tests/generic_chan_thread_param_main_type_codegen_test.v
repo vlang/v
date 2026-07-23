@@ -80,3 +80,18 @@ fn test_thread_generic_param_substitutes_payload() {
 	})
 	assert out == 'got: threaded'
 }
+
+// A generic function that CREATES a channel inside its body (`ch := chan T{cap: 1}`), rather than
+// receiving one as a parameter, must lock a colliding program payload to `main.` on the channel
+// literal itself. The literal's type is a composite `chan main.Context`, so the collision lock is
+// nested, not a leading `main.`; without matching a nested `main.` the literal round-trips through
+// the callee module and the channel is built with that module's homonym `Context` (wrong element
+// size/ABI), so pushing the program `Context` value into it fails to compile.
+fn test_chan_literal_inside_body_locks_nested_main_type() {
+	v3_bin := gct_build_v3()
+	out := gct_run_project(v3_bin, 'generic_chan_literal_main_type', {
+		'mid/mid.v': 'module mid\n\npub struct Context {\npub:\n\tid int\n}\n\npub fn make_and_send[T](v T) chan T {\n\tch := chan T{cap: 1}\n\tch <- v\n\treturn ch\n}\n'
+		'main.v':    "module main\n\nimport mid\n\nstruct Context {\npub:\n\tname string\n}\n\nfn main() {\n\tch := mid.make_and_send[Context](Context{\n\t\tname: 'inside'\n\t})\n\tgot := <-ch\n\tprintln('got: ' + got.name)\n}\n"
+	})
+	assert out == 'got: inside'
+}

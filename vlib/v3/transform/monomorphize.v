@@ -7549,10 +7549,13 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			// inside json2) is left untouched — it is bare-keyed but not a lock target.
 			struct_value0 = t.lock_colliding_main_generic_type_text(struct_value_pre, t.cur_module)
 		}
-		if struct_value0.starts_with('main.') && struct_value0 != struct_value_pre {
+		if struct_value0.contains('main.') && struct_value0 != struct_value_pre {
 			// Keep the explicit `main.` lock as the literal's type: parsing it back to
 			// its bare program name here would let codegen rebase it into the callee
-			// module (the very collision the lock prevents).
+			// module (the very collision the lock prevents). The lock may be nested inside
+			// a composite (`chan main.Context`, `[]main.Context`, `map[string]main.Context`),
+			// not just a scalar `main.Context`, so match `main.` anywhere — a bare
+			// `chan Context{}` literal would otherwise round-trip to the callee's homonym.
 			cloned_typ = struct_value0
 		} else {
 			struct_value := t.normalize_type_alias(struct_value0)
