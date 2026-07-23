@@ -5133,11 +5133,13 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 
 	// if-guard: if a, b := expr { ... } or if val := expr { ... }
 	mut guard_cond := cond
+	mut guard_lhs_ids := []flat.NodeId{}
 	if p.tok == .comma || p.tok == .decl_assign {
 		// Simple if-guard; treat as regular condition for flat AST
 		if p.tok == .decl_assign {
 			p.next()
 			rhs := p.control_header_expr(.lowest)
+			guard_lhs_ids << guard_cond
 			istart := p.add_children2(guard_cond, rhs)
 			guard_cond = p.add_node(flat.Node{
 				kind:           .decl_assign
@@ -5170,6 +5172,9 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 					children_start: istart
 					children_count: flat.child_count(all_ids.len)
 				})
+				for lid in lhs_ids {
+					guard_lhs_ids << lid
+				}
 			}
 		}
 	}
@@ -5178,7 +5183,15 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
+	// The if-guard binding(s) are in scope only inside the guarded block; register them so
+	// a conditionally inlined template that calls one (e.g. `@{render(row)}` after
+	// `if render := maybe_render()`) captures it in the nested template IIFE.
+	p.begin_local_binding_scope()
+	for lid in guard_lhs_ids {
+		p.declare_local_binding_node(lid)
+	}
 	body := p.block_stmt()
+	p.end_local_binding_scope()
 	mut ids := []flat.NodeId{}
 	ids << guard_cond
 	ids << body
