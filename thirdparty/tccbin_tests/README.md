@@ -79,8 +79,11 @@ platform:
    step 3 - add one (following `platform/windows/`'s example) if a
    platform-specific regression is worth pinning down permanently.
 
-`run.sh` is currently unverified on a real POSIX tcc build - it hasn't
-been run against Linux/macOS/BSD binaries yet, only exercised by
-reading through it carefully and mirroring `run.ps1`'s (verified)
-logic. First real use on a non-Windows platform branch should treat it
-as untested until proven otherwise.
+`run.sh` has been verified against a native Linux tcc (built from this
+same source via `./configure && make install`, WSL/Ubuntu 24.04, gcc
+16) linked against `libgc-dev` 8.2.6 from apt - `shared/hello.c`,
+`shared/gc_alloc.c`, and `shared/crash.c` all pass, stress-tested over
+10 consecutive runs with no flakiness. It has *not* been run on macOS
+or any BSD - the differences there (different GC threading defines,
+different linker behavior) are unverified; treat those as untested
+until a real platform branch adopts it.
