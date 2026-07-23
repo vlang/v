@@ -1507,12 +1507,18 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			}
 		}
 		.decl_assign {
-			if node.children_count > 0 {
-				p.declare_template_ident(p.a.child(&node, 0), mut declared)
-			}
-			for i in 0 .. node.children_count {
+			// Collect the value expression(s) as free idents BEFORE binding the declaration's
+			// own name, so a RHS that reuses a shadowed outer name is captured rather than
+			// treated as builder-local: in `@if item := maybe(item)` the RHS `item` is the
+			// OUTER value and must be captured, even though the LHS `item` shadows it for the
+			// following scope. Child 0 is the declaration target (always a fresh ident, not a
+			// use), so it is declared, not collected; the remaining children hold the RHS.
+			for i in 1 .. node.children_count {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
 					out, mut mut_names)
+			}
+			if node.children_count > 0 {
+				p.declare_template_ident(p.a.child(&node, 0), mut declared)
 			}
 		}
 		else {
