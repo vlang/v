@@ -5491,6 +5491,15 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 		children_start: init_start
 		children_count: flat.child_count(all_ids.len)
 	})
+	// The `:=` init bindings (`for h, t := head, tail; …`) are in scope for the loop's
+	// condition, post clause and body; register them so a conditionally inlined template in
+	// the body captures a loop-local function value instead of treating it as a top helper.
+	p.begin_local_binding_scope()
+	if is_decl {
+		for lid in lhs_ids {
+			p.declare_local_binding_node(lid)
+		}
+	}
 	if p.tok == .semicolon {
 		p.next()
 	}
@@ -5508,6 +5517,7 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 		p.add(flat.NodeKind.empty)
 	}
 	body_ids := p.parse_block_body()
+	p.end_local_binding_scope()
 	mut for_ids := []flat.NodeId{}
 	for_ids << p.add(flat.NodeKind.empty)
 	for_ids << cond
@@ -5536,8 +5546,9 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	p.next()
 	rhs := p.expr(.lowest)
 
+	is_decl := op_id == 12
 	mut init_id := flat.empty_node
-	if op_id == 12 {
+	if is_decl {
 		istart := p.add_children2(lhs_expr, rhs)
 		init_id = p.add_node(flat.Node{
 			kind:           .decl_assign
@@ -5553,6 +5564,14 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 			children_start: istart
 			children_count: 2
 		})
+	}
+
+	// A `:=` init binding (`for render := get_render(); …`) is in scope for the loop's
+	// condition, post clause and body. Register it so a conditionally inlined template in
+	// the body can tell the loop-local from a top-level helper and capture it.
+	p.begin_local_binding_scope()
+	if is_decl {
+		p.declare_local_binding_node(lhs_expr)
 	}
 
 	if p.tok == .semicolon {
@@ -5571,6 +5590,7 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	}
 
 	body_ids := p.parse_block_body()
+	p.end_local_binding_scope()
 
 	mut ids := []flat.NodeId{}
 	ids << init_id
