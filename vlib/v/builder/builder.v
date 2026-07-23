@@ -887,6 +887,8 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 	return true
 }
 
+// path_belongs_to_lookup_path returns true when the given path is at or
+// inside any of the configured lookup paths.
 fn (b &Builder) path_belongs_to_lookup_path(path string) bool {
 	abs_path := comparable_real_path(path)
 	for lookup in b.pref.lookup_path {

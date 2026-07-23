@@ -305,7 +305,17 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 						// after `'v.mod' in ls` can be removed once a proper solution is added
 						if 'v.mod' in ls
 							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
+							// Reject v.mod files in or above the system temp
+							// directory when the path contains uppercase
+							// letters (e.g. ULID-based test session dirs),
+							// as they are likely unrelated to the project.
+							if j < i && is_unrelated_vmod_in_temp_dir(parent, try_path_parts[j..i]) {
+								continue
+							}
 							last_v_mod = j
+							break
+						}
+						if has_vmod_boundary_marker(ls) {
 							break
 						}
 						continue
@@ -331,9 +341,15 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 		} else {
 			os.join_path_single(os.getwd(), pref_.path)
 		}
-		rel_mod_path := path.replace(abs_pref_path.all_before_last(os.path_separator) +
-			os.path_separator, '')
-		if rel_mod_path != path {
+		normalized_abs_pref_path := os.real_path(abs_pref_path)
+		abs_pref_base := if os.is_dir(normalized_abs_pref_path) {
+			normalized_abs_pref_path
+		} else {
+			os.dir(normalized_abs_pref_path)
+		}
+		prefix := abs_pref_base + os.path_separator
+		if path.starts_with(prefix) {
+			rel_mod_path := path.all_after(prefix)
 			return normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
 		}
 	}
@@ -352,10 +368,16 @@ fn module_name_has_empty_part(name string) bool {
 	return false
 }
 
+fn has_vmod_boundary_marker(ls []string) bool {
+	return '.v.mod.stop' in ls || '.git' in ls
+}
+
 // project_root_vmod_folder returns the absolute folder of the closest
 // enclosing v.mod for the current compilation (`pref_.path`). Module-name
 // qualification uses this as the boundary so a nested v.mod inside the
 // project does not silently rename its sub-modules.
+// It also respects `.v.mod.stop` and `.git` as project boundaries to
+// prevent walking past the current project's root.
 fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 	if pref_.path == '' {
 		return ''
@@ -370,9 +392,29 @@ fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 		return ''
 	}
 	mut cfolder := os.real_path(start)
+	start_folder := cfolder
 	for {
 		if os.is_file(os.join_path(cfolder, 'v.mod')) {
+			// Reject v.mod files in or above the system temp directory
+			// when the path contains uppercase letters (e.g. ULID-based
+			// test session dirs), as they are likely unrelated.
+			if cfolder != start_folder {
+				rel := start_folder.all_after(cfolder + os.path_separator)
+				if is_unrelated_vmod_in_temp_dir(cfolder, rel.split(os.path_separator)) {
+					return ''
+				}
+			}
 			return cfolder
+		}
+		// `.v.mod.stop` and `.git` mark project boundaries; stop walking
+		// up to avoid picking up a v.mod from an unrelated parent project
+		// (e.g. the V compiler repo when compiling tests in a temp dir).
+		// These markers are NOT v.mod roots — they only stop the search.
+		// `.git` can be a directory (normal repos) or a file (worktrees,
+		// submodules), so use os.exists instead of os.is_dir.
+		if os.is_file(os.join_path(cfolder, '.v.mod.stop'))
+			|| os.exists(os.join_path(cfolder, '.git')) {
+			return ''
 		}
 		parent := os.dir(cfolder)
 		if parent == cfolder || parent == '' {
@@ -381,6 +423,40 @@ fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 		cfolder = parent
 	}
 	return ''
+}
+
+// is_unrelated_vmod_in_temp_dir returns true when `vmod_folder` is in or
+// above the system temp directory and `rel_parts` (the path segments between
+// the v.mod and the source file) contain uppercase letters. This pattern
+// indicates the v.mod belongs to an unrelated project that happens to live
+// in a shared temp location, not to the current compilation.
+fn is_unrelated_vmod_in_temp_dir(vmod_folder string, rel_parts []string) bool {
+	temp_dir := os.real_path(os.temp_dir())
+	normalized_vmod_folder := os.real_path(vmod_folder)
+	is_in_temp := normalized_vmod_folder == temp_dir
+		|| normalized_vmod_folder.starts_with(temp_dir + os.path_separator)
+		|| temp_dir.starts_with(normalized_vmod_folder + os.path_separator)
+	if !is_in_temp {
+		return false
+	}
+	filtered_rel_parts := rel_parts.filter(it.len > 0)
+	if vmod_base_url_matches_rel_parts(normalized_vmod_folder, filtered_rel_parts) {
+		return false
+	}
+	return filtered_rel_parts.any(contains_capital(it))
+}
+
+fn vmod_base_url_matches_rel_parts(vmod_folder string, rel_parts []string) bool {
+	manifest := vmod.from_file(os.join_path(vmod_folder, 'v.mod')) or { return false }
+	if manifest.base_url == '' {
+		return false
+	}
+	base_parts := os.norm_path(manifest.base_url).split(os.path_separator).filter(it.len > 0
+		&& it != '.')
+	if base_parts.len == 0 || rel_parts.len < base_parts.len {
+		return false
+	}
+	return rel_parts[..base_parts.len] == base_parts
 }
 
 // normalize_base_url_mod_name strips the `base_url` prefix from `mod_full_name`
