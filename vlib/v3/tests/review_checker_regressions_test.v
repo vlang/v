@@ -70,6 +70,9 @@ fn test_reject_fixed_array_decay_to_pointer() {
 	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
 		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
 		'cannot return `[2]int` as `&int`')
+	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_temporary_assignment',
+		'@[translated]\nmodule main\n\nfn main() {\n\tmut ptr := &int(0)\n\tptr = [1, 2]!\n}\n',
+		'cannot assign `[2]int` to `&int`')
 	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
 		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
 		'cannot use `&[2]u8` as argument 1 to `consume`; expected `&u8`')
@@ -191,6 +194,14 @@ fn test_power_requires_numeric_operands_or_an_overload() {
 		'operator `**` requires numeric operands; got `[]int` and `int`')
 	run_bad(v3_bin, 'bad_string_power', "fn main() {\n\t_ := 'x' ** 2\n}\n",
 		'operator `**` requires numeric operands; got `string` and `int`')
+	run_bad(v3_bin, 'bad_bool_power_assign', 'fn main() {\n\tmut ok := true\n\tok **= false\n}\n',
+		'operator `**=` requires numeric operands; got `bool` and `bool`')
+	run_bad(v3_bin, 'bad_array_power_assign',
+		'fn main() {\n\tmut values := [1]\n\tvalues **= [2]\n}\n',
+		'operator `**=` requires numeric operands; got `[]int` and `[]int`')
+	run_bad(v3_bin, 'bad_string_power_assign',
+		"fn main() {\n\tmut value := 'x'\n\tvalue **= 'y'\n}\n",
+		'operator `**=` requires numeric operands; got `string` and `string`')
 	out := run_good(v3_bin, 'good_overloaded_power', 'struct Exponent {
 	value int
 }

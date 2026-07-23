@@ -11848,6 +11848,15 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.type_mismatch(.assignment_mismatch,
 				'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
 		}
+		if node.op == .power_assign && expected_type !is Unknown && rhs_type !is Unknown
+			&& tc.should_diagnose(id) && (!infix_power_type_is_numeric(expected_type)
+			|| !infix_power_type_is_numeric(rhs_type)) {
+			_ := tc.infix_operator_return_type(.power, expected_type, rhs_type) or {
+				tc.record_error(.assignment_mismatch,
+					'operator `**=` requires numeric operands; got `${expected_type.name()}` and `${rhs_type.name()}`', id)
+				Type(void_)
+			}
+		}
 		$if ownership ? {
 			tc.check_ownership_map_assignment_key(lhs_id, node.op)
 			tc.check_ownership_uncloneable_overlapping_map_assignment(lhs_id, rhs_id, lhs_type,
@@ -11971,7 +11980,7 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
 	if op == .assign && tc.translated_files[tc.cur_file] && rhs_type is ArrayFixed
-		&& expected_type is Pointer {
+		&& expected_type is Pointer && tc.expr_can_take_address(rhs_id) {
 		return tc.type_compatible(rhs_type.elem_type, expected_type.base_type)
 	}
 	if op == .assign
