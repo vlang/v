@@ -3962,12 +3962,6 @@ fn main() {
 		incremental_uses_generics = incremental_cache_hit
 			&& incremental_changed_functions_use_generics(a, pre_tc, incremental_changed_names)
 		pre_tc.prune_inactive_top_level_comptime(mut a)
-		if backend in ['wasm', 'arm64'] {
-			if msg := unsupported_power_backend_error(a, backend) {
-				eprintln(msg)
-				exit(1)
-			}
-		}
 		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
 		if test_harness_errors.len > 0 {
 			for msg in test_harness_errors {
@@ -4280,26 +4274,6 @@ fn main() {
 		exit(1)
 	}
 
-	if backend == 'wasm' {
-		$if !skip_wasm ? {
-			// Direct flat-AST-to-WASM native backend. Runs before monomorphize (which
-			// targets generics, not yet supported here). output_file is the exact path
-			// requested via -o (or the <name>.wasm default).
-			mut g := wasm.Gen.new(a, pre_tc, used_fns)
-			g.gen()
-			g.write(output_file) or {
-				eprintln('error writing ${output_file}')
-				exit(1)
-			}
-			for w in g.warnings_list() {
-				eprintln('wasm: ${w}')
-			}
-			b.step('wasm gen')
-			b.print_report()
-			return
-		}
-	}
-
 	// Monomorphization only adds specialized generic instantiations to `used_fns`. Skip
 	// it when markused found no reachable generic use; the small metadata cleanup keeps
 	// unreachable generic templates out of C without walking or rewriting their ASTs.
@@ -4468,8 +4442,35 @@ fn main() {
 	} else {
 		b.step('monomorphize')
 	}
+	if backend == 'wasm' {
+		if msg := unsupported_power_backend_error(a, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_wasm ? {
+			// Generate only after monomorphization has pruned deferred generic comptime
+			// branches. output_file is the exact path requested via -o (or the
+			// <name>.wasm default).
+			mut g := wasm.Gen.new(a, pre_tc, used_fns)
+			g.gen()
+			g.write(output_file) or {
+				eprintln('error writing ${output_file}')
+				exit(1)
+			}
+			for w in g.warnings_list() {
+				eprintln('wasm: ${w}')
+			}
+			b.step('wasm gen')
+			b.print_report()
+			return
+		}
+	}
 	mut newly_cached_module_count := 0
 	if backend == 'arm64' {
+		if msg := unsupported_power_backend_error(a, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
 		$if !skip_arm64 ? {
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_used(a, used_fns, pre_tc)
@@ -6058,19 +6059,56 @@ fn print_type_errors(errors []types.TypeError) {
 	}
 }
 
-fn unsupported_power_backend_error(a &flat.FlatAst, backend string) ?string {
-	for node in a.nodes {
-		op := match node.op {
-			.power { '**' }
-			.power_assign { '**=' }
-			else { continue }
+fn unsupported_power_backend_error(a &flat.FlatAst, used_fns map[string]bool, backend string) ?string {
+	mut cur_module := ''
+	mut visited := []bool{len: a.nodes.len}
+	for idx, node in a.nodes {
+		if node.kind == .file {
+			cur_module = ''
+			continue
 		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .fn_decl || node.generic_params().len > 0 {
+			continue
+		}
+		module_name := a.specialized_fn_modules[idx] or { cur_module }
+		if !transformed_fn_is_used(node.value, module_name, used_fns) {
+			continue
+		}
+		if msg := unsupported_power_node_error(a, flat.NodeId(idx), backend, mut visited) {
+			return msg
+		}
+	}
+	return none
+}
+
+fn unsupported_power_node_error(a &flat.FlatAst, id flat.NodeId, backend string, mut visited []bool) ?string {
+	idx := int(id)
+	if idx < 0 || idx >= a.nodes.len || visited[idx] {
+		return none
+	}
+	visited[idx] = true
+	node := a.nodes[idx]
+	op := match node.op {
+		.power { '**' }
+		.power_assign { '**=' }
+		else { '' }
+	}
+	if op.len > 0 {
 		location := if source_pos := a.source_position(node.pos) {
 			'${source_pos}: '
 		} else {
 			''
 		}
 		return '${location}error: operator `${op}` is not supported by the V3 ${backend} backend'
+	}
+	for i in 0 .. node.children_count {
+		if msg := unsupported_power_node_error(a, a.child(&node, i), backend, mut visited) {
+			return msg
+		}
 	}
 	return none
 }

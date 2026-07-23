@@ -24043,7 +24043,12 @@ fn stable_interface_type_id_hash(name string) int {
 
 // stable_type_index returns the deterministic nonzero runtime index for a named type.
 pub fn stable_type_index(name string) int {
-	return stable_interface_type_id_hash(name) & ~(0xff << 16)
+	mut type_idx := stable_interface_type_id_hash(name) & ~(0xff << 16)
+	if type_idx < 65536 {
+		// Bit 24 is the first available bit above the reserved indirection byte.
+		type_idx |= 1 << 24
+	}
+	return type_idx
 }
 
 pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool {

@@ -3968,5 +3968,27 @@ fn main() {
 			assert unsupported.exit_code != 0
 			assert unsupported.output.contains('operator `${operator}` is not supported by the V3 ${backend} backend'), unsupported.output
 		}
+		inactive_src := os.join_path(os.temp_dir(), 'v3_${backend}_inactive_generic_power.v')
+		inactive_code := 'fn only_for_int[T](value int) int {
+	$if T is int {
+		return value ** 2
+	} $else {
+		return value
+	}
+}
+
+fn main() {
+	println(only_for_int[string](3))
+}
+'
+		os.write_file(inactive_src, inactive_code) or { panic(err) }
+		inactive := os.execute('${v3_bin} -b ${backend} ${inactive_src}')
+		assert inactive.exit_code == 0, inactive.output
+		assert !inactive.output.contains('operator `**` is not supported by the V3 ${backend} backend'), inactive.output
+		active_src := os.join_path(os.temp_dir(), 'v3_${backend}_active_generic_power.v')
+		os.write_file(active_src, inactive_code.replace('[string]', '[int]')) or { panic(err) }
+		active := os.execute('${v3_bin} -b ${backend} ${active_src}')
+		assert active.exit_code != 0, active.output
+		assert active.output.contains('operator `**` is not supported by the V3 ${backend} backend'), active.output
 	}
 }

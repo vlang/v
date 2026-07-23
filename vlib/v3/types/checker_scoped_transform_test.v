@@ -6,6 +6,14 @@ fn test_power_assignment_reads_index_lhs() {
 	assert assignment_op_reads_lhs(.power_assign)
 }
 
+fn test_stable_type_index_keeps_custom_types_above_builtin_range() {
+	assert stable_interface_type_id_hash('BwoZ') & ~(0xff << 16) == 19
+	type_id := stable_type_index('BwoZ')
+	assert type_id > 65535
+	assert type_id != 19
+	assert type_id & (0xff << 16) == 0
+}
+
 struct SignatureDenseArrayLayoutForTest {
 	key_bytes   int
 	value_bytes int
