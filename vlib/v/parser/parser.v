@@ -47,6 +47,7 @@ mut:
 	inside_fn_param             bool // true while parsing function parameter types
 	inside_fn_concrete_type     bool // parsing fn_name[concrete_type]() call expr
 	inside_call_args            bool // true inside f(  ....  )
+	call_args_trailing_comma    bool // set by call_args(): the last parsed argument list ended with a trailing comma before `)`
 	inside_unsafe_fn            bool
 	inside_str_interp           bool
 	inside_array_lit            bool
@@ -1982,18 +1983,23 @@ fn (mut p Parser) name_expr() ast.Expr {
 			} else {
 				node = p.call_expr(language, mod)
 				if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
+					left_pos := node.pos()
 					p.next()
-					pos := p.tok.pos()
+					lpar_line := p.prev_tok.pos().line_nr
 					args := p.call_args()
+					args_trailing_comma := p.call_args_trailing_comma
 					p.check(.rpar)
+					rpar_pos := p.prev_tok.pos()
 					or_block := p.gen_or_block()
 					node = ast.CallExpr{
-						left:           node
-						args:           args
-						pos:            pos
-						scope:          p.scope
-						or_block:       or_block
-						is_return_used: p.expecting_value
+						left:                   node
+						args:                   args
+						args_start_on_new_line: call_args_are_multiline(lpar_line,
+							args_trailing_comma, args)
+						pos:                    left_pos.extend(rpar_pos)
+						scope:                  p.scope
+						or_block:               or_block
+						is_return_used:         p.expecting_value
 					}
 				}
 			}
@@ -2370,7 +2376,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	if p.tok.kind == .lpar {
 		p.next()
+		lpar_line := p.prev_tok.pos().line_nr
 		args := p.call_args()
+		args_trailing_comma := p.call_args_trailing_comma
 		p.check(.rpar)
 		or_block := p.gen_or_block()
 		end_pos := p.prev_tok.pos()
@@ -2398,20 +2406,21 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 		p.maybe_register_implied_vlib_import(left)
 		mcall_expr := ast.CallExpr{
-			left:               left
-			name:               field_name
-			kind:               p.call_kind(field_name)
-			args:               args
-			name_pos:           name_pos
-			pos:                pos
-			is_method:          true
-			concrete_types:     concrete_types
-			concrete_list_pos:  concrete_list_pos
-			raw_concrete_types: concrete_types
-			or_block:           or_block
-			scope:              p.scope
-			comments:           comments
-			is_return_used:     p.expecting_value
+			left:                   left
+			name:                   field_name
+			kind:                   p.call_kind(field_name)
+			args:                   args
+			args_start_on_new_line: call_args_are_multiline(lpar_line, args_trailing_comma, args)
+			name_pos:               name_pos
+			pos:                    pos
+			is_method:              true
+			concrete_types:         concrete_types
+			concrete_list_pos:      concrete_list_pos
+			raw_concrete_types:     concrete_types
+			or_block:               or_block
+			scope:                  p.scope
+			comments:               comments
+			is_return_used:         p.expecting_value
 		}
 		return mcall_expr
 	}

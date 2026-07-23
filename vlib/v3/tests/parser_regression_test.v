@@ -25,6 +25,15 @@ fn parse_parser_regression_sources(name string, sources []string) &flat.FlatAst 
 	return p.a
 }
 
+fn parse_parser_regression_diagnostics(name string, source string) []parser.Diagnostic {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(src)
+	return p.diagnostics
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
@@ -196,6 +205,17 @@ fn run() int {
 		}
 	}
 	assert saw_index_assign
+}
+
+fn test_dollar_prefixed_pseudo_functions_are_rejected() {
+	diagnostics := parse_parser_regression_diagnostics('dollar_pseudo_functions',
+		'struct Item {\n\tvalue int\n}\n\nfn main() {\n\tx := Item{}\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n\t_ = $isreftype(x)\n\t_ = $__offsetof(Item, value)\n\t_ = $dump(x)\n}\n')
+	assert diagnostics.len == 5, '${diagnostics}'
+	assert diagnostics[0].message.contains('`$sizeof` is not supported'), '${diagnostics}'
+	assert diagnostics[1].message.contains('`$typeof` is not supported'), '${diagnostics}'
+	assert diagnostics[2].message.contains('`$isreftype` is not supported'), '${diagnostics}'
+	assert diagnostics[3].message.contains('`$__offsetof` is not supported'), '${diagnostics}'
+	assert diagnostics[4].message.contains('`$dump` is not supported'), '${diagnostics}'
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {

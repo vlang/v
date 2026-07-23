@@ -855,6 +855,32 @@ fn main() {
 	assert e.stdout() == '7\n'
 }
 
+fn test_eval_power_and_power_assignment() {
+	mut e := create()
+	e.run_text('
+struct Number {
+	value int
+}
+
+fn (a Number) ** (b Number) Number {
+	return Number{value: a.value + b.value}
+}
+
+fn main() {
+	mut value := 2
+	value **= 3
+	println(int_str(value))
+	println(int_str(2 ** 3 ** 2))
+	println(4.0 ** 0.5)
+	result := Number{value: 2} ** Number{value: 5}
+	println(int_str(result.value))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '8\n512\n2.0\n7\n'
+}
+
 fn test_eval_alias_receiver_method_dispatches_by_static_type() {
 	mut e := create()
 	e.run_text('
@@ -3918,11 +3944,103 @@ fn main() {
 		total += i
 	}
 	println(int_str(total))
+	mut powered := 2
+	powered **= 3
+	println(int_str(powered))
+	println(int_str(2 ** 3 ** 2))
 }
 ') or {
 		panic(err)
 	}
 	result := os.execute('${v3_bin} ${src} -b eval')
 	assert result.exit_code == 0
-	assert result.output.contains('21\n')
+	assert result.output.contains('21\n8\n512\n')
+
+	for backend in ['wasm', 'arm64'] {
+		for operator, expression in {
+			'**':  'println(2 ** 3)'
+			'**=': 'mut value := 2\n\tvalue **= 3'
+		} {
+			unsupported_src := os.join_path(os.temp_dir(),
+				'v3_${backend}_unsupported_power_${operator.len}.v')
+			os.write_file(unsupported_src, 'fn main() {\n\t${expression}\n}\n') or { panic(err) }
+			unsupported := os.execute('${v3_bin} -b ${backend} ${unsupported_src}')
+			assert unsupported.exit_code != 0
+			assert unsupported.output.contains('operator `${operator}` is not supported by the V3 ${backend} backend'), unsupported.output
+		}
+		enum_src := os.join_path(os.temp_dir(), 'v3_${backend}_enum_power.v')
+		os.write_file(enum_src,
+			'enum Powered {\n\ta = 2 ** 3\n}\n\nfn main() {\n\tprintln(Powered.a)\n}\n') or {
+			panic(err)
+		}
+		enum_result := os.execute('${v3_bin} -b ${backend} ${enum_src}')
+		assert enum_result.exit_code != 0, enum_result.output
+		assert enum_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), enum_result.output
+		inactive_src := os.join_path(os.temp_dir(), 'v3_${backend}_inactive_generic_power.v')
+		inactive_code := 'fn only_for_int[T](value int) int {
+	$if T is int {
+		return value ** 2
+	} $else {
+		return value
+	}
+}
+
+fn main() {
+	println(only_for_int[string](3))
+}
+'
+		os.write_file(inactive_src, inactive_code) or { panic(err) }
+		inactive := os.execute('${v3_bin} -b ${backend} ${inactive_src}')
+		assert inactive.exit_code == 0, inactive.output
+		assert !inactive.output.contains('operator `**` is not supported by the V3 ${backend} backend'), inactive.output
+		active_src := os.join_path(os.temp_dir(), 'v3_${backend}_active_generic_power.v')
+		os.write_file(active_src, inactive_code.replace('[string]', '[int]')) or { panic(err) }
+		active := os.execute('${v3_bin} -b ${backend} ${active_src}')
+		assert active.exit_code != 0, active.output
+		assert active.output.contains('operator `**` is not supported by the V3 ${backend} backend'), active.output
+		for name, consts in {
+			'direct':   'const n = 2 ** 3'
+			'indirect': 'const base = 2 ** 3\nconst n = base'
+		} {
+			const_src := os.join_path(os.temp_dir(),
+				'v3_${backend}_reachable_${name}_const_power.v')
+			const_use := if backend == 'wasm' {
+				'mut value := n\n\tvalue += 1'
+			} else {
+				'println(n)'
+			}
+			os.write_file(const_src, '${consts}\n\nfn main() {\n\t${const_use}\n}\n') or {
+				panic(err)
+			}
+			const_result := os.execute('${v3_bin} -b ${backend} ${const_src}')
+			assert const_result.exit_code != 0, const_result.output
+			assert const_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), const_result.output
+		}
+		for name, declarations in {
+			'direct':         '__global v3_power_global int = 2 ** 3'
+			'const':          'const v3_power_const = 2 ** 3\n\n__global v3_power_global int = v3_power_const'
+			'chained_consts': 'const v3_power_base = 2 ** 3\nconst v3_power_const = v3_power_base\n\n__global v3_power_global int = v3_power_const'
+		} {
+			global_src := os.join_path(os.temp_dir(), 'v3_${backend}_${name}_global_power.v')
+			global_use := if backend == 'wasm' {
+				'mut value := v3_power_global\n\tvalue += 1'
+			} else {
+				'println(v3_power_global)'
+			}
+			os.write_file(global_src, '${declarations}\n\nfn main() {\n\t${global_use}\n}\n') or {
+				panic(err)
+			}
+			global_result := os.execute('${v3_bin} -b ${backend} ${global_src}')
+			assert global_result.exit_code != 0, global_result.output
+			assert global_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), global_result.output
+		}
+		shadowed_src := os.join_path(os.temp_dir(), 'v3_${backend}_shadowed_const_power.v')
+		os.write_file(shadowed_src,
+			'const v3_unreachable_power_const_27908 = 2 ** 3\n\nfn main() {\n\tv3_unreachable_power_const_27908 := 1\n\tprintln(v3_unreachable_power_const_27908)\n}\n') or {
+			panic(err)
+		}
+		shadowed := os.execute('${v3_bin} -b ${backend} ${shadowed_src}')
+		assert shadowed.exit_code == 0, shadowed.output
+		assert !shadowed.output.contains('operator `**` is not supported by the V3 ${backend} backend'), shadowed.output
+	}
 }

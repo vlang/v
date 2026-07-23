@@ -20,19 +20,12 @@ fn start_vschannel_test_https_server() !(int, thread) {
 	return port, spawn serve_vschannel_test_https_server(mut listener)
 }
 
-// serve_vschannel_test_https_server accepts vschannel_test_https_max_accepts
-// connections, one at a time, then returns (triggering the deferred
-// listener.shutdown()) -- identical in structure and behavior to a plain
-// single accept() when the max is 1, which is exactly what -d no_vschannel
-// and every non-Windows platform need.
-//
-// Only native Windows (without -d no_vschannel) ever needs 2: an h2-enabled
-// request to an origin that turns out not to speak h2 makes TWO separate
-// connections there -- h2_dial_probe_vschannel's ALPN probe (closes
-// immediately once it sees h2 wasn't selected, without sending a request)
-// and the real request from req.ssl_do's own independent dial. Every other
-// configuration reuses the probe connection directly (h2_dial_probe_ssl),
-// needing only one.
+// serve_vschannel_test_https_server accepts one connection, then returns
+// (triggering the deferred listener.shutdown()). Every configuration --
+// including native Windows without -d no_vschannel -- reuses the ALPN probe
+// connection directly for an h2-enabled request that turns out to be
+// h1-only (h2_dial_probe_vschannel/h2_dial_probe_ssl's vsc_probe/ssl_probe,
+// #27879), so exactly one connection is ever made here.
 //
 // Deliberately bounded rather than an unbounded loop: a client that aborts
 // mid-handshake (exactly what the certificate-rejection test below does)
@@ -41,9 +34,8 @@ fn start_vschannel_test_https_server() !(int, thread) {
 // -- listener.shutdown() only frees the LISTENING socket, so it cannot
 // unblock an accept() already stuck processing one specific connection's
 // handshake. That test's failure happens on the very first accept() call
-// and returns immediately regardless of the bound, matching the original
-// single-accept design exactly.
-const vschannel_test_https_max_accepts = $if windows && !no_vschannel ? { 2 } $else { 1 }
+// and returns immediately regardless of the bound.
+const vschannel_test_https_max_accepts = 1
 
 fn serve_vschannel_test_https_server(mut listener mbedtls.SSLListener) {
 	defer {

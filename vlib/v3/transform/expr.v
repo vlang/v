@@ -539,8 +539,20 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 		}
 	}
 	iface := if lhs_iface.len > 0 { lhs_iface } else { rhs_iface }
-	lhs := t.transform_expr_for_type(lhs_id, iface)
-	rhs := t.transform_expr_for_type(rhs_id, iface)
+	lhs := if lhs_iface.len == 0 && t.is_builtin_ierror_interface_name(iface) {
+		t.make_interface_literal_from_expr(lhs_id, iface, false) or {
+			t.transform_expr_for_type(lhs_id, iface)
+		}
+	} else {
+		t.transform_expr_for_type(lhs_id, iface)
+	}
+	rhs := if rhs_iface.len == 0 && t.is_builtin_ierror_interface_name(iface) {
+		t.make_interface_literal_from_expr(rhs_id, iface, false) or {
+			t.transform_expr_for_type(rhs_id, iface)
+		}
+	} else {
+		t.transform_expr_for_type(rhs_id, iface)
+	}
 	concrete_type := t.interface_box_concrete_type(lhs) or {
 		t.interface_box_concrete_type(rhs) or {
 			// The boxed concrete type is unknown at compile time. For IError
@@ -797,8 +809,8 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	if !lhs_is_ptr && !rhs_is_ptr {
 		return none
 	}
-	lhs_type := t.node_type(lhs_id)
-	rhs_type := t.node_type(rhs_id)
+	lhs_type := t.infix_operand_pointer_type(lhs_id) or { t.node_type(lhs_id) }
+	rhs_type := t.infix_operand_pointer_type(rhs_id) or { t.node_type(rhs_id) }
 	lhs_clean := t.trim_pointer_type(lhs_type)
 	rhs_clean := t.trim_pointer_type(rhs_type)
 	lhs_struct := t.struct_lookup_name(lhs_clean)
@@ -949,25 +961,57 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 }
 
 fn (t &Transformer) infix_operand_is_pointer(id flat.NodeId) bool {
+	return t.infix_operand_pointer_type(id) != none
+}
+
+fn (t &Transformer) infix_operand_pointer_type(id flat.NodeId) ?string {
 	if int(id) < 0 {
-		return false
+		return none
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .nil_literal || node.typ.starts_with('&') {
-		return true
+	if node.kind == .nil_literal {
+		return '&void'
+	}
+	if node.typ.starts_with('&') {
+		return node.typ
 	}
 	if node.kind == .ident && t.var_type(node.value).starts_with('&') {
-		return true
+		return t.var_type(node.value)
 	}
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
-			return typ is types.Pointer
+			name := typ.name()
+			if typ is types.Pointer {
+				return name
+			}
 		}
-		if t.tc.resolve_type(id) is types.Pointer {
-			return true
+		resolved := t.tc.resolve_type(id)
+		resolved_name := resolved.name()
+		if resolved is types.Pointer {
+			return resolved_name
+		}
+		// A postfix option unwrap (`value?`) is represented as an `or_expr`. Its
+		// result metadata can lose the pointer wrapper after generic specialization,
+		// while the source still retains the precise `?&T` type.
+		if node.kind == .or_expr && node.children_count > 0 {
+			source := t.tc.expr_type(t.a.child(&node, 0)) or {
+				t.tc.resolve_type(t.a.child(&node, 0))
+			}
+			if source is types.OptionType {
+				base_name := source.base_type.name()
+				if source.base_type is types.Pointer {
+					return base_name
+				}
+			}
+			if source is types.ResultType {
+				base_name := source.base_type.name()
+				if source.base_type is types.Pointer {
+					return base_name
+				}
+			}
 		}
 	}
-	return false
+	return none
 }
 
 fn (t &Transformer) checker_node_type(id flat.NodeId) string {
@@ -1013,6 +1057,24 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 	if isnil(t.tc) || name.len == 0 {
 		return false
 	}
+	if !isnil(t.type_alias_name_cache) {
+		mut cache := t.type_alias_name_cache
+		if cache.module != t.cur_module || cache.file != t.cur_file {
+			cache.module = t.cur_module
+			cache.file = t.cur_file
+			cache.entries.clear()
+		}
+		if cached := cache.entries[name] {
+			return cached > 0
+		}
+		result := t.is_type_alias_name_uncached(name)
+		cache.entries[name] = if result { i8(1) } else { i8(-1) }
+		return result
+	}
+	return t.is_type_alias_name_uncached(name)
+}
+
+fn (t &Transformer) is_type_alias_name_uncached(name string) bool {
 	if name in t.tc.type_aliases {
 		return true
 	}
@@ -1202,6 +1264,7 @@ fn struct_operator_symbol(op flat.Op) ?string {
 		.plus { return '+' }
 		.minus { return '-' }
 		.mul { return '*' }
+		.power { return '**' }
 		.div { return '/' }
 		.mod { return '%' }
 		.eq { return '==' }
@@ -1483,6 +1546,18 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	lhs_type = t.normalize_type_alias(lhs_type)
 	rhs_type = t.normalize_type_alias(rhs_type)
+	if !t.is_sum_type_name(lhs_type) {
+		lhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(lhs_id)))
+		if t.is_sum_type_name(lhs_original) {
+			lhs_type = lhs_original
+		}
+	}
+	if !t.is_sum_type_name(rhs_type) {
+		rhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(rhs_id)))
+		if t.is_sum_type_name(rhs_original) {
+			rhs_type = rhs_original
+		}
+	}
 	// A specialized generic call can retain its open `T` return type on the
 	// call node, even though the surrounding comparison has already resolved
 	// the other operand to the concrete sum type.  The checker has validated
@@ -1495,7 +1570,9 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	if lhs_is_sum != rhs_is_sum {
 		unresolved_type := if lhs_is_sum { rhs_type } else { lhs_type }
-		if !t.generic_arg_is_unresolved(unresolved_type) {
+		sum_type := if lhs_is_sum { lhs_type } else { rhs_type }
+		if !t.generic_arg_is_unresolved(unresolved_type)
+			&& !t.sum_target_accepts_variant_type(sum_type, unresolved_type) {
 			return none
 		}
 	}
@@ -3588,25 +3665,37 @@ pub fn (mut t Transformer) make_sizeof_type(type_name string) flat.NodeId {
 
 // is_fixed_array_type reports whether a v-type string denotes a fixed array
 // like `int[5]` (as opposed to a dynamic array `[]int` or a map `map[...]...`).
+@[inline]
 fn (t &Transformer) is_fixed_array_type(s string) bool {
-	if s.starts_with('[]') || s.starts_with('map[') {
+	if s.len < 2 {
 		return false
 	}
-	if !s.starts_with('[') && !isnil(t.tc) {
-		base, _, is_generic_app := generic_app_parts(s)
-		if is_generic_app && t.type_name_is_known_generic_app_base(base) {
-			return false
-		}
+	if s[0] == `[` {
+		return s[1] != `]` && s.contains(']')
 	}
-	if s.starts_with('[') {
-		return s.contains(']')
+	// Scalars and dynamic containers do not end in `]`; this is the dominant
+	// transform path, so keep it out of generic and constant-name resolution.
+	if s[s.len - 1] != `]` || s.starts_with('map[') {
+		return false
 	}
-	if !s.contains('[') || !s.ends_with(']') {
+	return t.is_postfix_fixed_array_type(s)
+}
+
+fn (t &Transformer) is_postfix_fixed_array_type(s string) bool {
+	if !s.contains('[') {
 		return false
 	}
 	len_text := fixed_array_len_text(s)
 	if is_decimal_text(len_text) {
+		// generic_app_parts rejects decimal bracket contents as fixed-array
+		// lengths too, so avoid parsing the same brackets before this result.
 		return true
+	}
+	if !isnil(t.tc) {
+		base, _, is_generic_app := generic_app_parts(s)
+		if is_generic_app && t.type_name_is_known_generic_app_base(base) {
+			return false
+		}
 	}
 	// A postfix fixed-array name (`ArrayFixed.name()`) can carry a non-decimal length — a const
 	// (`int[seg_count]`) or an expression (`int[segs + 1]`) — once the checker round-trips

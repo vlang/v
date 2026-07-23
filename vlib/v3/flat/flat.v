@@ -141,6 +141,8 @@ pub enum Op as u8 {
 	dot
 	arrow
 	gated_index
+	power
+	power_assign
 }
 
 // NodePayload holds the uncommon managed fields used only by declarations and

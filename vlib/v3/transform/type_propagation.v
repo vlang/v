@@ -416,6 +416,27 @@ fn type_text_ident_char(ch u8) bool {
 // resolve_selector_type resolves the type of a .selector node (e.g. `obj.field`).
 // Looks up the base expression type, then finds the field in the struct definition.
 fn (t &Transformer) resolve_selector_type(node flat.Node) string {
+	if node.kind != .selector || node.children_count == 0 || t.smartcast_stack.len > 0
+		|| isnil(t.selector_type_cache) {
+		return t.resolve_selector_type_uncached(node)
+	}
+	mut cache := t.selector_type_cache
+	slot := int((u64(node.children_start) * 2654435761 ^ (u64(voidptr(node.value.str)) >> 4)) & 1023)
+	if cache.generations[slot] == cache.generation && cache.keys[slot] == node.children_start
+		&& cache.value_ptrs[slot] == voidptr(node.value.str)
+		&& cache.value_lens[slot] == node.value.len {
+		return cache.results[slot]
+	}
+	result := t.resolve_selector_type_uncached(node)
+	cache.keys[slot] = node.children_start
+	cache.value_ptrs[slot] = voidptr(node.value.str)
+	cache.value_lens[slot] = node.value.len
+	cache.generations[slot] = cache.generation
+	cache.results[slot] = result
+	return result
+}
+
+fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 	if node.kind != .selector || node.children_count == 0 {
 		return ''
 	}
@@ -957,6 +978,7 @@ fn (t &Transformer) type_authority_has(name string) bool {
 }
 
 // normalize_type_alias transforms normalize type alias data for transform.
+@[inline]
 fn (t &Transformer) normalize_type_alias(typ string) string {
 	if typ.len == 0 || isnil(t.tc) {
 		return typ
@@ -972,12 +994,21 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		c.module = t.cur_module
 		c.file = t.cur_file
 		c.entries.clear()
+		c.clear_recent()
+	}
+	recent_slot := alias_cache_slot(typ)
+	if c.recent_generations[recent_slot] == c.recent_generation
+		&& unsafe { c.recent_types[recent_slot].str == typ.str }
+		&& c.recent_types[recent_slot].len == typ.len {
+		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[typ] {
+		c.put_recent(typ, cached)
 		return cached
 	}
 	result := t.normalize_type_alias_uncached(typ)
 	c.entries[typ] = result
+	c.put_recent(typ, result)
 	return result
 }
 
@@ -1202,7 +1233,12 @@ fn (t &Transformer) is_known_type_name(typ string) bool {
 }
 
 // is_plain_builtin_alias_type reports whether is plain builtin alias type applies in transform.
+@[inline]
 fn is_plain_builtin_alias_type(typ string) bool {
+	// 'i8'..'voidptr': every plain builtin spelling is 2..7 bytes long.
+	if typ.len < 2 || typ.len > 7 {
+		return false
+	}
 	return match typ {
 		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 		'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
@@ -1224,6 +1260,33 @@ fn is_generic_placeholder_type_name(typ string) bool {
 
 // normalize_type_in_module transforms normalize type in module data for transform.
 fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
+	if isnil(t.module_type_cache) {
+		return t.normalize_type_in_module_uncached(typ, mod)
+	}
+	mut cache := t.module_type_cache
+	if cache.module != mod || cache.file != t.cur_file {
+		cache.module = mod
+		cache.file = t.cur_file
+		cache.entries.clear()
+		cache.clear_recent()
+	}
+	recent_slot := alias_cache_slot(typ)
+	if cache.recent_generations[recent_slot] == cache.recent_generation
+		&& unsafe { cache.recent_types[recent_slot].str == typ.str }
+		&& cache.recent_types[recent_slot].len == typ.len {
+		return cache.recent_results[recent_slot]
+	}
+	if cached := cache.entries[typ] {
+		cache.put_recent(typ, cached)
+		return cached
+	}
+	result := t.normalize_type_in_module_uncached(typ, mod)
+	cache.entries[typ] = result
+	cache.put_recent(typ, result)
+	return result
+}
+
+fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return clean
@@ -1413,8 +1476,13 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 	}
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {
-		if checked := t.checker_type_over_struct_guess(id, resolved) {
-			return checked
+		// The checker override only applies to named struct types. Most expressions
+		// are builtin scalars or containers; avoid parsing both types and deriving
+		// their C names for those overwhelmingly common cases.
+		if !t.building_v && type_text_may_name_struct(resolved) {
+			if checked := t.checker_type_over_struct_guess(id, resolved) {
+				return checked
+			}
 		}
 		if resolved.contains('typeof(') && !isnil(t.tc) {
 			if typ := t.tc.expr_type(id) {
@@ -1524,6 +1592,24 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 	return ''
 }
 
+@[inline]
+fn type_text_may_name_struct(typ string) bool {
+	mut start := 0
+	for start < typ.len && typ[start] == `&` {
+		start++
+	}
+	if start >= typ.len {
+		return false
+	}
+	clean := typ[start..]
+	if is_plain_builtin_alias_type(clean) {
+		return false
+	}
+	return !clean.starts_with('[]') && !clean.starts_with('map[') && !clean.starts_with('[')
+		&& !clean.starts_with('fn(') && !clean.starts_with('fn (') && !clean.starts_with('chan ')
+		&& !clean.starts_with('?') && !clean.starts_with('!')
+}
+
 fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed string) ?string {
 	if isnil(t.tc) || int(id) < 0 || guessed.len == 0 {
 		return none
@@ -1539,18 +1625,44 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed strin
 			return none
 		}
 	}
-	guessed_type := t.tc.parse_type(guessed)
-	guessed_base := types.unwrap_all_pointers(guessed_type)
-	guessed_is_struct := guessed_base is types.Struct
-		|| (guessed_base is types.Alias && guessed_base.base_type is types.Struct)
-	if !guessed_is_struct {
-		return none
+	mut guessed_c_type := ''
+	if isnil(t.struct_guess_cache) {
+		guessed_type := t.tc.parse_type(guessed)
+		guessed_base := types.unwrap_all_pointers(guessed_type)
+		if guessed_base !is types.Struct && !(guessed_base is types.Alias
+			&& guessed_base.base_type is types.Struct) {
+			return none
+		}
+		guessed_c_type = t.tc.c_type(guessed_type)
+	} else {
+		mut cache := t.struct_guess_cache
+		if cache.module != t.cur_module || cache.file != t.cur_file {
+			cache.module = t.cur_module
+			cache.file = t.cur_file
+			cache.entries.clear()
+		}
+		if cached := cache.entries[guessed] {
+			if cached.len == 0 {
+				return none
+			}
+			guessed_c_type = cached
+		} else {
+			guessed_type := t.tc.parse_type(guessed)
+			guessed_base := types.unwrap_all_pointers(guessed_type)
+			if guessed_base !is types.Struct && !(guessed_base is types.Alias
+				&& guessed_base.base_type is types.Struct) {
+				cache.entries[guessed] = ''
+				return none
+			}
+			guessed_c_type = t.tc.c_type(guessed_type)
+			cache.entries[guessed] = guessed_c_type
+		}
 	}
 	checked_type := t.tc.expr_type(id) or { return none }
 	if checked_type is types.Unknown || checked_type is types.Void {
 		return none
 	}
-	if t.tc.c_type(guessed_type) == t.tc.c_type(checked_type) {
+	if guessed_c_type == t.tc.c_type(checked_type) {
 		return none
 	}
 	checked := t.normalize_type_alias(checked_type.name())

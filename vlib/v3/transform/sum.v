@@ -128,12 +128,21 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 	if c.module != t.cur_module {
 		c.module = t.cur_module
 		c.entries.clear()
+		c.clear_recent()
+	}
+	recent_slot := alias_cache_slot(sum_name)
+	if c.recent_generations[recent_slot] == c.recent_generation
+		&& unsafe { c.recent_types[recent_slot].str == sum_name.str }
+		&& c.recent_types[recent_slot].len == sum_name.len {
+		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[sum_name] {
+		c.put_recent(sum_name, cached)
 		return cached
 	}
 	result := t.resolve_sum_name_uncached(sum_name)
 	c.entries[sum_name] = result
+	c.put_recent(sum_name, result)
 	return result
 }
 
@@ -996,6 +1005,16 @@ fn (t &Transformer) interface_container_cast_type_id(iface_name string, target_n
 		return none
 	}
 	concrete := t.interface_concrete_impl_name(target_name) or { return none }
+	if interface_pattern_is_collapsed_container_type(concrete) {
+		type_idx := t.type_index_for_type_name(concrete)
+		if type_idx <= 0 {
+			return none
+		}
+		// Interface dispatch IDs are always positive. Reserve the sign bit for
+		// late containers so type_idx() can recover their stable type index even
+		// when specialization introduced them after the immutable index snapshot.
+		return int(u32(type_idx) | (u32(1) << 31))
+	}
 	index := t.interface_impl_index_for_transform(iface)
 	mut impls := index.names.clone()
 	if concrete !in impls {
@@ -1086,14 +1105,16 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 	}
 	if name.starts_with('[]') {
 		typ := t.tc.parse_type(name)
+		canonical := typ.name()
 		if typ is types.Array {
-			return types.Type(typ).name()
+			return canonical
 		}
 	}
 	if name.starts_with('map[') {
 		typ := t.tc.parse_type(name)
+		canonical := typ.name()
 		if typ is types.Map {
-			return types.Type(typ).name()
+			return canonical
 		}
 	}
 	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',

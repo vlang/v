@@ -724,6 +724,9 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Parallel checker workers may populate this cache concurrently, so each
+	// worker (and each disposable scoped batch) owns its maps.
+	w.visible_mutation_cache = new_visible_mutation_cache()
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint

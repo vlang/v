@@ -131,11 +131,17 @@ struct H2ProbeResult {
 	closer    ?H2TransportCloser // set only when is_h2
 	// ssl_probe carries the still-open probe connection when ALPN did not
 	// select h2, so the caller can complete its own request over it directly
-	// instead of dialing again -- mbedTLS/OpenSSL only. On native Windows,
-	// h2_dial_probe_vschannel closes its own probe before returning (h1-over-
-	// vschannel pooling is out of scope), so this stays nil there and the
-	// caller falls back to the one-shot req.ssl_do instead.
+	// instead of dialing again -- mbedTLS/OpenSSL only.
 	ssl_probe &ssl.SSLConn = unsafe { nil }
+	// vsc_probe is ssl_probe's native-Windows counterpart: the still-open,
+	// ALPN-probed VSchannelPooledTransport, handed back for h1 reuse the same
+	// way ssl_probe is. A separate Option field rather than widening ssl_probe
+	// itself, since VSchannelPooledTransport doesn't satisfy ssl.SSLConn's
+	// concrete type -- it satisfies H1StreamConn instead (transport.v). Stays
+	// none when there is no reusable probe connection at all (pre-Windows-8.1,
+	// where h2_dial_probe_vschannel reports h1-only without ever dialing), in
+	// which case the caller falls back to a fresh dial via h2_fallback_h1.
+	vsc_probe ?H1StreamConn
 }
 
 // h2_dial_probe performs the ALPN-probing dial itself, branching on the TLS
@@ -181,17 +187,14 @@ fn h2_dial_probe_ssl(req &Request, host string, port int) !H2ProbeResult {
 
 // h2_fallback_h1 completes a request already known to be against an h1-only
 // origin, when there is no still-open probe connection to reuse (a waiter
-// behind someone else's dial, or -- on native Windows -- the dialer itself,
-// since h2_dial_probe_vschannel always closes its own probe rather than
-// leaving it open for h1-over-vschannel reuse, which is out of scope). On
-// native Windows this routes to the proven one-shot SChannel path instead of
-// h2_use_h1_pool_or_dial, which falls back to tls_fresh_round_trip -- an
-// mbedTLS/OpenSSL dial that would silently switch TLS backends for this
-// fallback if used here.
+// behind someone else's dial, or a dialer whose probe found no ALPN result to
+// hand back -- e.g. pre-Windows-8.1 SChannel, which reports h1-only without
+// ever dialing at all: see h2_dial_probe_vschannel). Falls back to
+// h2_use_h1_pool_or_dial's existing pooled-or-dial-fresh path, which is
+// itself platform-aware via tls_fresh_round_trip (native Windows dials
+// through vschannel_fresh_round_trip there, never silently switching TLS
+// backends).
 fn (mut t Transport) h2_fallback_h1(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
-	$if windows && !no_vschannel ? {
-		return req.ssl_do(port, method, host, path, data, header)
-	}
 	return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
 }
 
@@ -281,10 +284,33 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		call.done = true
 		call.mu.unlock()
 		call.cv.broadcast()
+		if mut vp := probe.vsc_probe {
+			// Native Windows: the probe's still-open connection is reused
+			// directly as a pooled h1 connection, the same way the ssl_probe
+			// branch below does for mbedTLS/OpenSSL.
+			mut conn := &H1PooledConn{
+				key: key
+				vsc: vp
+			}
+			resp, reusable := conn.exchange(req, raw) or {
+				conn.close_conn()
+				// Past the TLS handshake the request bytes may have been
+				// (partially) written; a non-idempotent method must not be
+				// replayed by the outer retry loop, mirroring
+				// tls_fresh_round_trip's own error handling.
+				if !transport_is_idempotent(method) {
+					return error_with_code(err.msg(), transport_err_unsafe_retry)
+				}
+				return err
+			}
+			t.maybe_checkin(mut conn, header, reusable, resp)
+			return resp
+		}
 		if probe.ssl_probe == unsafe { nil } {
-			// Native Windows: the probe already closed itself (h1-over-
-			// vschannel pooling is out of scope). Complete this caller's own
-			// request the same way a waiter behind this dial would.
+			// No reusable probe connection at all -- pre-Windows-8.1 SChannel
+			// reports h1-only without ever dialing (see
+			// h2_dial_probe_vschannel). Complete this caller's own request
+			// the same way a waiter behind this dial would.
 			return t.h2_fallback_h1(req, key, raw, method, host, port, path, data, header)
 		}
 		mut ssl_probe := probe.ssl_probe

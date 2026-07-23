@@ -1636,6 +1636,97 @@ fn main() {
 	assert out == "Value([1, 2])\nValue(['x'])\ntrue"
 }
 
+fn test_empty_interface_type_idx_maps_raw_containers() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'empty_interface_raw_container_type_idx', 'interface Value {}
+
+fn box[T](value T) Value {
+	return value
+}
+
+fn main() {
+	array_value := box([1, 2])
+	map_value := box({
+		"a": 3
+	})
+	int_value := Value(1)
+	println(array_value.type_idx() != 0)
+	println(map_value.type_idx() != 0)
+	println(array_value.type_idx() != map_value.type_idx())
+	println(array_value.type_idx() != int_value.type_idx())
+}
+')
+	assert out == 'true\ntrue\ntrue\ntrue'
+}
+
+fn test_boxed_container_runtime_type_indexes_resolve_hash_collisions() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'boxed_container_runtime_type_index_hash_collisions', 'interface Value {}
+
+struct Aaxtc {}
+struct Abddb {}
+
+fn main() {
+	left := Value([Aaxtc{}])
+	right := Value([Abddb{}])
+	println(left.type_idx() != right.type_idx())
+}
+')
+	assert out == 'true'
+}
+
+fn test_runtime_type_indexes_resolve_hash_collisions() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'runtime_type_index_hash_collisions', 'interface Value {}
+
+struct ULz {}
+struct AAbA {}
+struct Uc {}
+struct ACRB {}
+
+type Pair = ULz | AAbA
+
+fn main() {
+	left := Pair(ULz{})
+	right := Pair(AAbA{})
+	first := Value(Uc{})
+	second := Value(ACRB{})
+	println(left.type_idx() != right.type_idx())
+	println(first.type_idx() != second.type_idx())
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_late_generic_runtime_type_indexes_resolve_hash_collisions() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'late_generic_runtime_type_index_hash_collisions', 'interface Value {}
+
+struct Dxw {}
+struct Kdd {}
+
+struct Box[T] {
+	value T
+}
+
+fn type_index[T](value T) int {
+	boxed := Value(value)
+	return boxed.type_idx()
+}
+
+fn main() {
+	left := type_index(Box[Dxw]{
+		value: Dxw{}
+	})
+	right := type_index(Box[Kdd]{
+		value: Kdd{}
+	})
+	println(left != right)
+}
+')
+	assert out == 'true'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

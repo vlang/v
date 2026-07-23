@@ -1201,7 +1201,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 // is_interface_type_name reports whether is interface type name applies in c.
 fn (g &FlatGen) is_interface_type_name(name string) bool {
 	mut clean := name
-	base, _, is_generic := shared_generic_app_parts(clean)
+	base, _, is_generic := g.shared_generic_app_parts(clean)
 	if is_generic {
 		clean = base
 	}

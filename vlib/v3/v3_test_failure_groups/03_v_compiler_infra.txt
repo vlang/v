@@ -6,6 +6,4 @@ vlib/v/gen/c/freestanding_i386_test.v
 vlib/v/gen/c/freestanding_size_t_test.v
 vlib/v/gen/wasm/features_test.v
 vlib/v/slow_tests/assembly/asm_empty_statement_test.v
-vlib/v/token/token_test.v
 vlib/v/util/check_dflags_test.v
-vlib/v/vmod/parser_test.v
