@@ -647,6 +647,44 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 	return out
 }
 
+// expand_veb_tr_shorthand rewrites veb's translation shorthand on an HTML template text
+// line, mirroring v1: `%key` becomes an interpolation of `veb.tr(ctx.lang.str(), "key")`
+// and `%raw key` an interpolation of `veb.raw(veb.tr(ctx.lang.str(), "key"))`. A `%` not
+// followed by a valid key (letters/`_`) is left untouched. The result uses the template's
+// own `@{...}` interpolation syntax so tmpl_line_content renders it like any other value
+// (a non-raw key is HTML-escaped; `veb.raw` yields RawHtml, emitted verbatim). Requires a
+// veb request context named `ctx` with a `lang` field, exactly as in v1.
+fn expand_veb_tr_shorthand(line string) string {
+	mut out := line
+	mut search_start := 0
+	for {
+		pos := out.index_after('%', search_start) or { break }
+		is_raw := pos + 4 < out.len && out[pos..pos + 5] == '%raw '
+		if is_raw {
+			mut end := pos + 5
+			for end < out.len && (out[end].is_letter() || out[end] == `_`) {
+				end++
+			}
+			key := out[pos + 5..end]
+			if key.len > 0 {
+				out = out.replace('%raw ${key}', '@{veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+			}
+			search_start = pos + 1
+		} else if pos + 1 < out.len && out[pos + 1].is_letter() {
+			mut end := pos + 1
+			for end < out.len && (out[end].is_letter() || out[end] == `_`) {
+				end++
+			}
+			key := out[pos + 1..end]
+			out = out.replace('%${key}', '@{veb.tr(ctx.lang.str(), "${key}")}')
+			search_start = pos + 1
+		} else {
+			search_start = pos + 1
+		}
+	}
+	return out
+}
+
 // compile_template_file compiles the template at `template_file` into V source
 // that accumulates the rendered string into `bname` (declared here as `mut bname := ''`).
 // After the returned source runs, `bname` holds the rendered output. When `escape` is
@@ -833,7 +871,10 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			}
 			else {}
 		}
-		source.writeln(tmpl_line_content(line, escape))
+		// Only HTML text lines reach here (simple/js/css states are emitted and continue
+		// above), so expand veb's `%key` / `%raw key` translation shorthand before the
+		// line's `@`-interpolations are rendered, matching v1.
+		source.writeln(tmpl_line_content(expand_veb_tr_shorthand(line), escape))
 	}
 	source.writeln(tmpl_str_end)
 	return source.str()

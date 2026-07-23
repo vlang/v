@@ -9428,7 +9428,11 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	base, args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app && args.len > 0 {
 		resolved_base := if resolved.contains('[') { resolved.all_before('[') } else { resolved }
-		if resolved_base.len > 0 && resolved_base != base {
+		// Re-resolve the arguments (keeping a bare program type bare) not only when the
+		// base itself was requalified, but also when the base is already qualified
+		// (`other.Box[Context]`): otherwise parse_resolution_type rebases the nested bare
+		// `Context` into the current module before the caller's lock can pin it to `main.`.
+		if resolved_base.len > 0 && (resolved_base != base || base.contains('.')) {
 			mut resolved_args := []string{cap: args.len}
 			for arg in args {
 				resolved_args << t.resolve_substituted_type_text(arg)
@@ -9456,17 +9460,13 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 			return prefix + t.lock_colliding_main_generic_type_text(clean[prefix.len..], module_name)
 		}
 	}
-	// A spelling that already carries a module qualifier is not a bare program type
-	// and must be returned verbatim: decomposing and reassembling it would rewrite
-	// the specialization's type text (e.g. `Box[user.LocalWriter]`) and desync the
-	// declared vs referenced codegen names.
-	if clean.contains('.') {
-		return clean
-	}
-	// A fully-bare composite must lock its component types too: a bare main `Context`
-	// nested in `map[string]Context`, `[3]Context` or `Box[Context]` is never a
-	// struct/sum/enum key on its own, so without descending the collision goes
-	// unlocked and the callee module rebases the nested name to its own type.
+	// A composite must lock its component types even behind a qualified base: a bare main
+	// `Context` nested in `map[string]Context`, `[3]Context`, `Box[Context]` or
+	// `other.Box[Context]` is never a struct/sum/enum key on its own, so without descending
+	// the collision goes unlocked and the callee module rebases the nested name to its own
+	// type. Decompose these before the broad qualified-name return below; an unchanged
+	// component (e.g. the `user.LocalWriter` in `Box[user.LocalWriter]`) is rebuilt to a
+	// byte-identical spelling, so the specialization's declared/referenced names stay in sync.
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len - 1 {
@@ -9482,9 +9482,9 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 				t.lock_colliding_main_generic_type_text(clean[bracket_end + 1..], module_name)
 		}
 	}
-	// Lock the nested arguments only (never the generic base) and rebuild the text
-	// solely when an argument actually changed, so a non-colliding application keeps
-	// its exact original spelling.
+	// Lock the nested arguments only (never the generic base, which may itself be a
+	// qualified `other.Box`) and rebuild the text solely when an argument actually
+	// changed, so a non-colliding application keeps its exact original spelling.
 	base, nested_args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app {
 		mut changed := false
@@ -9499,6 +9499,11 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 		if changed {
 			return '${base}[${locked_args.join(', ')}]'
 		}
+		return clean
+	}
+	// A remaining spelling that still carries a module qualifier is a simple qualified
+	// type with no lockable bare component (e.g. `veb.Context`); return it verbatim.
+	if clean.contains('.') {
 		return clean
 	}
 	if !(clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
