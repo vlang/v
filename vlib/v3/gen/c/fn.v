@@ -67,6 +67,24 @@ struct FlatFnGenCandidate {
 	item           FlatFnGenItem
 }
 
+struct DirectArrayAccessFns {
+	node_ids         map[int]bool
+	source_positions map[u64]bool
+}
+
+@[inline]
+fn (attrs &DirectArrayAccessFns) contains(node_idx int, node flat.Node) bool {
+	if node.pos.is_valid() {
+		return attrs.source_positions[flat_fn_source_position_key(node)]
+	}
+	return attrs.node_ids[node_idx]
+}
+
+@[inline]
+fn flat_fn_source_position_key(node flat.Node) u64 {
+	return (u64(node.pos.id) << 32) | u64(node.pos.offset)
+}
+
 // gen_fns emits fns output for c.
 fn (mut g FlatGen) gen_fns() {
 	g.gen_fn_items(g.ensure_fn_gen_items())
@@ -82,7 +100,7 @@ fn (mut g FlatGen) ensure_fn_gen_items() []FlatFnGenItem {
 // collect_fn_gen_items updates collect fn gen items state for c.
 fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut candidates := []FlatFnGenCandidate{}
-	direct_array_access_positions := g.direct_array_access_fn_positions()
+	direct_array_access_fns := g.direct_array_access_fns()
 	mut preferred_fns := map[string]int{}
 	mut ranks := map[string]int{}
 	mut program_specializations := map[string]bool{}
@@ -159,7 +177,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					file:                item_file
 					module:              item_module
 					c_name:              preferred_name
-					direct_array_access: direct_array_access_positions[i]
+					direct_array_access: direct_array_access_fns.contains(i, node)
 				}
 			}
 		}
@@ -203,8 +221,9 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	return items
 }
 
-fn (g &FlatGen) direct_array_access_fn_positions() map[int]bool {
-	mut positions := map[int]bool{}
+fn (g &FlatGen) direct_array_access_fns() DirectArrayAccessFns {
+	mut node_ids := map[int]bool{}
+	mut source_positions := map[u64]bool{}
 	for directive_idx in g.top_level_nodes() {
 		directive := g.a.nodes[directive_idx]
 		if directive.kind != .directive || !directive.value.starts_with('@attributes:') {
@@ -224,11 +243,19 @@ fn (g &FlatGen) direct_array_access_fn_positions() map[int]bool {
 		if target_idx < 0 || target_idx >= g.a.nodes.len {
 			continue
 		}
-		if g.a.nodes[target_idx].kind == .fn_decl {
-			positions[target_idx] = true
+		target := g.a.nodes[target_idx]
+		// Generic templates can be replaced with an empty node after their
+		// concrete declarations are cloned. The directive keeps targeting the
+		// template id, and both nodes retain its source position.
+		node_ids[target_idx] = true
+		if target.pos.is_valid() {
+			source_positions[flat_fn_source_position_key(target)] = true
 		}
 	}
-	return positions
+	return DirectArrayAccessFns{
+		node_ids:         node_ids
+		source_positions: source_positions
+	}
 }
 
 fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
