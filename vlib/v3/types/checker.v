@@ -10065,6 +10065,9 @@ fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
 		}
 	}
 	if node.kind == .index && node.children_count > 0 {
+		if node.op == .gated_index {
+			return true
+		}
 		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(node, 0)))
 		return base_type is Map || base_type is Array || base_type is ArrayFixed
 			|| base_type is String
@@ -16074,6 +16077,12 @@ fn (tc &TypeChecker) mut_receiver_expr_is_mutable_lvalue(id flat.NodeId) bool {
 			// borrows the payload stored in the original lvalue.
 			return node.value in ['?', '!'] && node.children_count > 0
 				&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
+		}
+		.call {
+			// A call that returns a pointer yields mutable pointee storage even though
+			// the pointer expression itself is not an lvalue. This permits fluent
+			// mutable methods that return `&Receiver`.
+			return tc.type_is_pointer_receiver(tc.cached_expr_type(id) or { tc.resolve_type(id) })
 		}
 		.prefix {
 			if node.op in [.amp, .mul] {
@@ -27275,6 +27284,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			tc.qualify_resolution_type_name(resolved_base)
 		} else {
 			tc.qualify_name(resolved_base)
+		}
+		if !resolved_base.contains('.') {
+			if resolved := tc.resolve_selective_import_type_symbol(resolved_base) {
+				qbase = resolved
+			}
 		}
 		if qbase == resolved_base && resolved_base.contains('.') {
 			qbase = tc.resolve_imported_type_text(resolved_base)

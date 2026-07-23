@@ -7,15 +7,29 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
+const type_checker_v3_bin = os.join_path(os.temp_dir(),
+	'v3_type_checker_errors_test_${os.getpid()}')
+
+fn setup_v3_cache() {
+	cache_dir := os.join_path(os.temp_dir(), 'v3_type_checker_errors_cache_${os.getpid()}')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.rm(type_checker_v3_bin) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(),
-		'v3_type_checker_errors_test_${os.getpid()}_${rand.ulid()}')
+	setup_v3_cache()
+	if os.is_executable(type_checker_v3_bin) {
+		return type_checker_v3_bin
+	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
-	assert build.exit_code == 0
-	return v3_bin
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${type_checker_v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+	return type_checker_v3_bin
 }
 
 fn unique_temp_path(name string) string {
@@ -42,7 +56,7 @@ fn run_bad_with_flags(v3_bin string, name string, src string, expected string, f
 	bad_src := out + '.v'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := out
-	result := os.execute('${v3_bin} ${bad_src} ${flags} -b c -o ${bad_bin}')
+	result := os.execute('${v3_bin} -nocache ${bad_src} ${flags} -b c -o ${bad_bin}')
 	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
@@ -54,7 +68,7 @@ fn run_good(v3_bin string, name string, src string) string {
 	good_src := out + '.v'
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := out
-	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} -nocache ${good_src} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.execute(good_bin)
@@ -66,7 +80,7 @@ fn run_runtime_bad(v3_bin string, name string, src string, expected string) {
 	out := unique_temp_path(name)
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	compile := os.execute('${v3_bin} -nocache ${src_path} -b c -o ${out}')
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.execute(out)
@@ -93,7 +107,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bad_bin := unique_temp_path(name)
-	result := os.execute('${v3_bin} ${input_path} -b c -o ${bad_bin}')
+	result := os.execute('${v3_bin} -nocache ${input_path} -b c -o ${bad_bin}')
 	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
@@ -111,7 +125,7 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := unique_temp_path(name)
-	compile := os.execute('${v3_bin} ${input_path} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} -nocache ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.execute(good_bin)
@@ -159,7 +173,7 @@ fn test_parallel_checker_preserves_diagnostic_order() {
 			os.unsetenv('VJOBS')
 		}
 	}
-	result := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	result := os.execute('${v3_bin} -nocache ${src_path} -b c -o ${out}')
 	assert result.exit_code != 0, result.output
 	first := error_index(result.output, 'unknown identifier `missing_0`')
 	second := error_index(result.output, 'unknown identifier `missing_1`')

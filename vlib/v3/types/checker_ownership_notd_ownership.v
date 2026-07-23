@@ -43,6 +43,10 @@ pub fn (tc &TypeChecker) ownership_drop_type_names() []string {
 	return []string{}
 }
 
+pub fn (tc &TypeChecker) ownership_drop_value_type_names() []string {
+	return []string{}
+}
+
 pub fn (tc &TypeChecker) ownership_type_requires_drop(_ Type) bool {
 	return false
 }

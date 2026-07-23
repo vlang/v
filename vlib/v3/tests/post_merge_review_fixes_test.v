@@ -15,7 +15,17 @@ fn tmp_test_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 }
 
+fn setup_v3_cache() {
+	cache_dir := tmp_test_path('post_merge_review_fixes_cache')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
+
 fn build_v3() string {
+	setup_v3_cache()
 	v3_bin := tmp_test_path('post_merge_review_fixes_test')
 	build :=
 		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')

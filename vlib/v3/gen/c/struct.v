@@ -120,11 +120,24 @@ fn is_anonymous_struct_type_name(name string) bool {
 	return name.all_after_last('.').starts_with('AnonStruct_')
 }
 
-fn (g &FlatGen) struct_init_effective_type_name(node flat.Node) string {
+fn (g &FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
 	if node.value == 'struct' {
 		expected := types.unwrap_pointer(g.expected_expr_type)
 		if expected is types.Struct && is_anonymous_struct_type_name(expected.name) {
 			return expected.name
+		}
+	}
+	// Selectively imported generic literals retain their short source spelling
+	// (`Box[int]{}`), while the checker records the authoritative qualified type
+	// (`geometry.Box[int]`) for this expression.
+	source_base := node.value.trim_left('&?!').all_before('[').all_after_last('.')
+	if source_base.len > 0 {
+		if resolved := g.tc.expr_type(id) {
+			resolved_value := default_init_unalias_type(types.unwrap_pointer(resolved))
+			if resolved_value is types.Struct
+				&& resolved_value.name.all_before('[').all_after_last('.') == source_base {
+				return resolved.name()
+			}
 		}
 	}
 	// A bare literal can collide with an imported type of the same short name.
@@ -178,6 +191,27 @@ fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected
 fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) {
 	if g.gen_embed_file_uncompressed_field(value_id, struct_name, field_name) {
 		return
+	}
+	if raw, module_name := g.shared_array_field_raw_type(struct_name, field_name) {
+		value := g.a.node(value_id)
+		if info := g.shared_array_info_from_raw(raw, module_name, false) {
+			if value.kind in [.array_init, .array_literal, .struct_init]
+				&& value.children_count == 0 {
+				g.write('array_new(sizeof(${info.wrapper}*), 0, 0)')
+				return
+			}
+			if value.kind == .call && value.children_count == 4 {
+				callee := g.a.child_node(value, 0)
+				if callee.kind == .ident && callee.value == 'array_new' {
+					g.write('array_new(sizeof(${info.wrapper}*), ')
+					g.gen_expr(g.a.child(value, 2))
+					g.write(', ')
+					g.gen_expr(g.a.child(value, 3))
+					g.write(')')
+					return
+				}
+			}
+		}
 	}
 	if c_abi_fn := g.struct_field_c_abi_fn_ptr_type(struct_name, field_name) {
 		if g.gen_callback_fn_value_for_field_c_abi(value_id, expected, c_abi_fn) {
@@ -296,9 +330,10 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 }
 
 // gen_struct_init emits struct init output for c.
-fn (mut g FlatGen) gen_struct_init(node flat.Node) {
+fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
+	node := g.a.nodes[int(id)]
 	init_module := g.tc.cur_module
-	init_value := g.struct_init_effective_type_name(node)
+	init_value := g.struct_init_effective_type_name(id, node)
 	if init_value.starts_with('chan ') {
 		g.gen_channel_init(node)
 		return
@@ -334,8 +369,10 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	// A bare generic struct literal (`Vec4{..}`) carries no type args; when the
 	// surrounding expected type fixes them (e.g. a `Vec4[f32]` return), emit the
 	// concrete instance name so it matches the materialized struct.
-	if inst := g.generic_struct_init_instance_ct_for_node(node) {
-		name = inst
+	if !init_value.contains('.') {
+		if inst := g.generic_struct_init_instance_ct_for_node(node) {
+			name = inst
+		}
 	}
 	mut contextual_lookup_name := ''
 	expected_init_type := default_init_unalias_type(types.unwrap_all_pointers(g.expected_expr_type))
@@ -3364,8 +3401,7 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
 					continue
 				}
 				for candidate in candidates {
-					if candidate.len > 0 && candidate !in resolved
-						&& g.generic_struct_import_candidate_is_materialized(candidate, args) {
+					if candidate.len > 0 && candidate !in resolved {
 						resolved << candidate
 					}
 				}
@@ -3390,36 +3426,6 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
 		return '${mod}.${suffix}'
 	}
 	return type_name
-}
-
-fn (g &FlatGen) generic_struct_import_candidate_is_materialized(base string, args []string) bool {
-	wanted_suffix := generic_receiver_type_suffixes(args).replace('_', '')
-	base_info := g.find_struct_decl(base) or { return false }
-	for candidate in g.tc.structs.keys() {
-		candidate_base, candidate_args, ok := g.shared_generic_app_parts(candidate)
-		if !ok || candidate_base.all_after_last('.') != base.all_after_last('.')
-			|| (candidate_base != base && base_info.module != base.all_before_last('.'))
-			|| candidate_args.len != args.len {
-			continue
-		}
-		if generic_receiver_type_suffixes(candidate_args).replace('_', '') == wanted_suffix {
-			return true
-		}
-		mut same_args := true
-		for i, candidate_arg in candidate_args {
-			candidate_type := g.tc.parse_resolution_type(candidate_arg)
-			requested_type := g.tc.parse_resolution_type(args[i])
-			if candidate_type is types.Unknown || requested_type is types.Unknown
-				|| g.tc.c_type(candidate_type) != g.tc.c_type(requested_type) {
-				same_args = false
-				break
-			}
-		}
-		if same_args {
-			return true
-		}
-	}
-	return false
 }
 
 fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?string {

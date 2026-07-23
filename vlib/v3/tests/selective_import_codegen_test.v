@@ -6,7 +6,17 @@ const selective_import_v3_dir = os.dir(selective_import_tests_dir)
 const selective_import_vlib_dir = os.dir(selective_import_v3_dir)
 const selective_import_v3_src = os.join_path(selective_import_v3_dir, 'v3.v')
 
+fn selective_import_setup_v3_cache() {
+	cache_dir := os.join_path(os.temp_dir(), 'v3_selective_import_cache_${os.getpid()}')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
+
 fn selective_import_build_v3() string {
+	selective_import_setup_v3_cache()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
@@ -64,7 +74,7 @@ fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -84,7 +94,7 @@ fn selective_import_compile_bad_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_bad_root(v3_bin string, name string, root string) string {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	return compile.output
@@ -937,10 +947,10 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == 'on'
-	assert generated.contains('return mode == 7;'), generated
-	assert generated.contains('is_on(7)'), generated
-	assert !generated.contains('return mode == 70;'), generated
-	assert !generated.contains('is_on(70)'), generated
+	assert generated.contains('return mode == geometry__Mode__on;'), generated
+	assert generated.contains('is_on(geometry__Mode__on)'), generated
+	assert !generated.contains('return mode == pixels__Mode__on;'), generated
+	assert !generated.contains('is_on(pixels__Mode__on)'), generated
 }
 
 fn test_selective_import_enum_from_uses_selected_type() {

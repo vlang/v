@@ -7579,8 +7579,10 @@ fn (mut t Transformer) generic_const_string_value(id flat.NodeId, args []string)
 				return generic_type_name_display(reflected)
 			}
 		}
-		if reflected := t.generic_comptime_base_type(base_id, args) {
-			return generic_type_name_display(reflected)
+		if t.selector_base_is_comptime_type_value(base_id) {
+			if reflected := t.generic_comptime_base_type(base_id, args) {
+				return generic_type_name_display(reflected)
+			}
 		}
 	}
 	return none
@@ -7641,12 +7643,14 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 					return t.make_string_literal(generic_type_name_display(reflected))
 				}
 			}
-			if reflected := t.generic_comptime_base_type(base_id, args) {
-				return t.make_string_literal(generic_type_name_display(reflected))
+			if t.selector_base_is_comptime_type_value(base_id) {
+				if reflected := t.generic_comptime_base_type(base_id, args) {
+					return t.make_string_literal(generic_type_name_display(reflected))
+				}
 			}
 		}
-		if node.value in ['idx', 'typ', 'key_type', 'value_type', 'element_type', 'payload_type',
-			'pointee_type', 'indirections'] {
+		if node.value in ['idx', 'typ', 'key_type', 'value_type', 'element_type', 'payload_type', 'pointee_type', 'indirections']
+			&& t.selector_base_is_comptime_type_value(base_id) {
 			if concrete := t.generic_comptime_type_expr(base_id, args) {
 				if node.value == 'indirections' {
 					return t.make_int_literal(generic_type_indirections(concrete))
@@ -7661,7 +7665,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 				}
 			}
 		}
-		if node.value == 'variant_types' {
+		if node.value == 'variant_types' && t.selector_base_is_comptime_type_value(base_id) {
 			if concrete := t.generic_comptime_type_expr(base_id, args) {
 				resolved := t.resolve_sum_name(concrete)
 				if variants := t.sum_types[resolved] {

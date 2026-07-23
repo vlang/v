@@ -6,8 +6,18 @@ const parallel_v3_dir = os.dir(parallel_tests_dir)
 const parallel_vlib_dir = os.dir(parallel_v3_dir)
 const parallel_v3_src = os.join_path(parallel_v3_dir, 'v3.v')
 
+fn setup_parallel_v3_cache() {
+	cache_dir := os.join_path(os.temp_dir(), 'v3_parallel_cgen_cache_${os.getpid()}')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
+
 // build_parallel_v3 builds parallel v3 data for v3 tests.
 fn build_parallel_v3() string {
+	setup_parallel_v3_cache()
 	vexe := @VEXE
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
@@ -18,6 +28,7 @@ fn build_parallel_v3() string {
 }
 
 fn build_parallel_prod_v3() string {
+	setup_parallel_v3_cache()
 	vexe := @VEXE
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
@@ -28,6 +39,7 @@ fn build_parallel_prod_v3() string {
 }
 
 fn build_parallel_prealloc_prod_v3() string {
+	setup_parallel_v3_cache()
 	vexe := @VEXE
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prealloc_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
@@ -450,13 +462,13 @@ fn parallel_file_value() string {
 }
 
 fn test_no_parallel_preserves_user_parallel_define_for_project() {
-	v3_bin := build_parallel_prod_v3()
+	v3_bin := build_parallel_v3()
 	project_dir := write_no_parallel_user_define_project('no_parallel_user_define')
 	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_user_define_out_${os.getpid()}')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	compile :=
-		os.execute('VJOBS=2 ${v3_bin} --no-parallel -d parallel -b c -o ${bin_out} ${project_dir}')
+		os.execute('VJOBS=2 ${v3_bin} -nocache --no-parallel -d parallel -b c -o ${bin_out} ${project_dir}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output

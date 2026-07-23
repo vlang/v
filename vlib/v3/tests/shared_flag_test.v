@@ -112,7 +112,13 @@ pub fn answer() int {
 	assert compile_shared.exit_code == 0, compile_shared.output
 	assert compile_shared.output.contains('-fPIC'), compile_shared.output
 	cached_after_shared := shared_flag_cached_objects(obj_path)
-	assert cached_after_shared.len == 2, '${compile_shared.output}\n${cached_after_shared}'
+	$if macos {
+		// Cached development executables already link through a PIC dylib on macOS,
+		// so the normal and shared builds can reuse the same dependency object.
+		assert cached_after_shared.len == 1, '${compile_shared.output}\n${cached_after_shared}'
+	} $else {
+		assert cached_after_shared.len == 2, '${compile_shared.output}\n${cached_after_shared}'
+	}
 	assert os.exists(out_path)
 	assert os.file_size(out_path) > 0
 }
@@ -235,6 +241,8 @@ fn main() {
 	first_run := os.execute(os.quoted_path(first_bin))
 	assert first_run.exit_code == 0, first_run.output
 	assert first_run.output.trim_space() == '41'
+	first_cached_objects := shared_flag_cached_objects(first_object)
+	assert first_cached_objects.len == 1, first_cached_objects.str()
 
 	second_bin := os.join_path(second_project, 'out')
 	second_compile :=
@@ -243,9 +251,8 @@ fn main() {
 	second_run := os.execute(os.quoted_path(second_bin))
 	assert second_run.exit_code == 0, second_run.output
 	assert second_run.output.trim_space() == '42'
-	first_cached_objects := shared_flag_cached_objects(first_object)
-	second_cached_objects := shared_flag_cached_objects(second_object)
-	assert first_cached_objects.len == 1, first_cached_objects.str()
+	second_cached_objects :=
+		shared_flag_cached_objects(second_object).filter(it != first_cached_objects[0])
 	assert second_cached_objects.len == 1, second_cached_objects.str()
 	assert first_cached_objects[0] != second_cached_objects[0]
 }

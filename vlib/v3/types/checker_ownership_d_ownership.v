@@ -10769,6 +10769,45 @@ pub fn (tc &TypeChecker) ownership_drop_type_names() []string {
 	return names
 }
 
+fn ownership_collect_drop_value_type_names(entries []OwnershipDropEntry, mut names map[string]bool) {
+	for entry in entries {
+		names[entry.type_name] = true
+	}
+}
+
+// ownership_drop_value_type_names returns the types of values referenced by
+// compiler-generated ownership cleanup sites.
+pub fn (tc &TypeChecker) ownership_drop_value_type_names() []string {
+	if tc.ownership == unsafe { nil } {
+		return []string{}
+	}
+	mut names := map[string]bool{}
+	for _, entries in tc.ownership.drop_at_fn_exit {
+		ownership_collect_drop_value_type_names(entries, mut names)
+	}
+	for _, entries in tc.ownership.drop_at_returns {
+		ownership_collect_drop_value_type_names(entries, mut names)
+	}
+	for _, entries in tc.ownership.drop_at_return_nodes {
+		ownership_collect_drop_value_type_names(entries, mut names)
+	}
+	for _, entries in tc.ownership.drop_at_propagations {
+		ownership_collect_drop_value_type_names(entries, mut names)
+	}
+	for _, entries in tc.ownership.drop_at_loop_controls {
+		ownership_collect_drop_value_type_names(entries, mut names)
+	}
+	for _, entries in tc.ownership.drop_at_loop_iterations {
+		ownership_collect_drop_value_type_names(entries, mut names)
+	}
+	for _, entries in tc.ownership.drop_at_scope_exit {
+		ownership_collect_drop_value_type_names(entries, mut names)
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
 // inherit_ownership_codegen_metadata_from shares the immutable ownership
 // snapshots with a parallel code-generation checker fork.
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(src &TypeChecker) {

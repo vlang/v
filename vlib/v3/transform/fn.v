@@ -868,6 +868,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		return addr
 	}
 	call_name := t.call_name_for_node(id, node)
+	if call_name == 'json.encode' {
+		return t.transform_cgen_json_encode_call(id, node)
+	}
 	mut params := t.call_param_types_for_node(call_name, node)
 	mut param_type_names := t.call_param_type_names(params)
 	if concrete_params := t.concrete_generic_call_param_types(id, node) {
@@ -1081,6 +1084,30 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			args:     cached_args
 		}
 	}
+	return new_id
+}
+
+fn (mut t Transformer) transform_cgen_json_encode_call(id flat.NodeId, node flat.Node) flat.NodeId {
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	saved_in_call_callee := t.in_call_callee
+	t.in_call_callee = true
+	children << t.transform_expr(t.a.child(&node, 0))
+	t.in_call_callee = saved_in_call_callee
+	for i in 1 .. node.children_count {
+		children << t.transform_expr(t.a.child(&node, i))
+	}
+	start := t.a.children.len
+	t.a.children << children
+	new_id := t.a.add_node(flat.Node{
+		kind:           .call
+		op:             node.op
+		children_start: start
+		children_count: flat.child_count(children.len)
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+	})
+	t.copy_cloned_resolution(id, new_id)
 	return new_id
 }
 
@@ -11414,6 +11441,12 @@ fn (t &Transformer) receiver_type_text_source_fixed_spelling(type_text string) s
 	clean := type_text.trim_space()
 	if clean.len == 0 || clean.starts_with('[') || !t.is_fixed_array_type(clean) {
 		return clean
+	}
+	if !isnil(t.tc) {
+		parsed := t.tc.parse_type(clean)
+		if parsed is types.ArrayFixed {
+			return types.Type(parsed).name()
+		}
 	}
 	elem, dims := transform_postfix_fixed_array_parts(clean)
 	if elem.len == 0 || dims.len == 0 {
