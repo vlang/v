@@ -527,25 +527,6 @@ fn (mut t Transport) maybe_checkin(mut conn H1PooledConn, header Header, reusabl
 // retrying once on a connection that turned out to be stale), dials otherwise,
 // and returns healthy connections to the pool afterwards.
 fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host string, port int, path string, data string, header Header) !Response {
-	$if windows && !no_vschannel ? {
-		if scheme == 'https' {
-			mut go_one_shot := !req.enable_http2
-			if !go_one_shot {
-				key0 := transport_pool_key(req, scheme, host, port)
-				t.mu.lock()
-				proto0 := t.key_proto[key0] or { 0 }
-				t.mu.unlock()
-				// An origin already proven http/1.1-only: h1-over-vschannel
-				// pooling is out of scope, so keep the proven one-shot path.
-				go_one_shot = proto0 == 1
-			}
-			if go_one_shot {
-				return req.ssl_do(port, method, host, path, data, header)
-			}
-			// h2-enabled and not yet known to be h1-only: fall through to the
-			// pooled h2 path below, same as every other platform.
-		}
-	}
 	raw := req.build_request_headers_opts(method, host, port, path, data, header, false)
 	$if trace_http_request ? {
 		eprint('> ')
@@ -622,6 +603,9 @@ fn (mut t Transport) dial_h1_tcp(req &Request, key string, host string, port int
 // connection is not pooled yet; an http/1.1 connection is pooled afterwards
 // like any other.
 fn (mut t Transport) tls_fresh_round_trip(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	$if windows && !no_vschannel ? {
+		return t.vschannel_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
+	}
 	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	mut ssl_conn := ssl.new_ssl_conn(
 		verify:                 req.verify
