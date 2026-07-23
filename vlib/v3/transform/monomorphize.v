@@ -9396,6 +9396,30 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	if t.substituted_type_belongs_to_main_generic(clean) {
 		return clean
 	}
+	// Decompose fully-bare composites and resolve each component independently, so a
+	// nested program (main) type is preserved bare (via the belongs-to-main check on
+	// the recursion) instead of being rebased into the current module; the caller then
+	// locks the bare nested name to an explicit `main.` spelling. generic_app args are
+	// already handled below; maps and fixed arrays are not, so `map[string]Context` /
+	// `[3]Context` would otherwise rebase the nested `Context`. Qualified composites are
+	// left to parse_resolution_type (a nested `.` component already resolves correctly).
+	if !clean.contains('.') {
+		if clean.starts_with('map[') {
+			bracket_end := generic_matching_bracket(clean, 3)
+			if bracket_end < clean.len - 1 {
+				key := t.resolve_substituted_type_text(clean[4..bracket_end])
+				value := t.resolve_substituted_type_text(clean[bracket_end + 1..])
+				return 'map[${key}]${value}'
+			}
+		}
+		if clean.starts_with('[') && !clean.starts_with('[]') {
+			bracket_end := generic_matching_bracket(clean, 0)
+			if bracket_end > 1 && bracket_end < clean.len - 1 {
+				return clean[..bracket_end + 1] +
+					t.resolve_substituted_type_text(clean[bracket_end + 1..])
+			}
+		}
+	}
 	parsed := t.tc.parse_resolution_type(clean)
 	if parsed is types.Unknown {
 		return typ
@@ -9424,12 +9448,57 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 // back to the program type.
 fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_name string) string {
 	clean := typ.trim_space()
+	if module_name.len == 0 || module_name == 'main' {
+		return clean
+	}
 	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
 		if clean.starts_with(prefix) {
 			return prefix + t.lock_colliding_main_generic_type_text(clean[prefix.len..], module_name)
 		}
 	}
-	if clean.contains('.') || module_name.len == 0 || module_name == 'main' {
+	// A spelling that already carries a module qualifier is not a bare program type
+	// and must be returned verbatim: decomposing and reassembling it would rewrite
+	// the specialization's type text (e.g. `Box[user.LocalWriter]`) and desync the
+	// declared vs referenced codegen names.
+	if clean.contains('.') {
+		return clean
+	}
+	// A fully-bare composite must lock its component types too: a bare main `Context`
+	// nested in `map[string]Context`, `[3]Context` or `Box[Context]` is never a
+	// struct/sum/enum key on its own, so without descending the collision goes
+	// unlocked and the callee module rebases the nested name to its own type.
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := t.lock_colliding_main_generic_type_text(clean[4..bracket_end], module_name)
+			value := t.lock_colliding_main_generic_type_text(clean[bracket_end + 1..], module_name)
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 1 && bracket_end < clean.len - 1 {
+			return clean[..bracket_end + 1] +
+				t.lock_colliding_main_generic_type_text(clean[bracket_end + 1..], module_name)
+		}
+	}
+	// Lock the nested arguments only (never the generic base) and rebuild the text
+	// solely when an argument actually changed, so a non-colliding application keeps
+	// its exact original spelling.
+	base, nested_args, is_generic_app := generic_app_parts(clean)
+	if is_generic_app {
+		mut changed := false
+		mut locked_args := []string{cap: nested_args.len}
+		for nested_arg in nested_args {
+			locked := t.lock_colliding_main_generic_type_text(nested_arg, module_name)
+			if locked != nested_arg.trim_space() {
+				changed = true
+			}
+			locked_args << locked
+		}
+		if changed {
+			return '${base}[${locked_args.join(', ')}]'
+		}
 		return clean
 	}
 	if !(clean in t.structs || clean in t.sum_types || clean in t.enum_types) {

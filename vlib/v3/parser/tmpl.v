@@ -847,6 +847,16 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	if is_html {
 		p.next() // skip `veb`
 		p.check(.dot)
+		// Only `$veb.html(...)` lowers to a template. A mistyped or unrelated
+		// selector such as `$veb.htm()` / `$veb.foo()` must not silently render
+		// the handler template; fall back to the unknown-comptime handling
+		// (consume to the statement end and yield an empty string literal).
+		if p.tok != .name || p.lit != 'html' {
+			for p.tok != .semicolon && p.tok != .eof {
+				p.next()
+			}
+			return p.add_val_id(5, '')
+		}
 		p.next() // skip `html`
 	} else {
 		p.next() // skip `tmpl`
