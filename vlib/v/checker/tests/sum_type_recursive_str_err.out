@@ -1,0 +1,7 @@
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:6:12: error: cannot call `str()` method recursively
+    4 |     return match n {
+    5 |         u8 { n.str() }
+    6 |         else { n.str() }
+      |                  ~~~~~
+    7 |     }
+    8 | }

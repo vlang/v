@@ -3590,6 +3590,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
 		c.need_recheck_generic_fns = true
 	}
+	if method_name == 'str' && c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
+		&& c.table.cur_fn.name == 'str' && node.left is ast.Ident
+		&& (node.left as ast.Ident).name == c.table.cur_fn.receiver.name
+		&& left_type.idx() == c.table.cur_fn.receiver.typ.idx() {
+		c.error('cannot call `str()` method recursively', node.pos)
+	}
 	node.is_noreturn = method.is_noreturn
 	node.is_expand_simple_interpolation = method.is_expand_simple_interpolation
 	node.is_ctor_new = method.is_ctor_new
