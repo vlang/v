@@ -110,6 +110,7 @@ mut:
 	is_void_expr_stmt                    bool // ExprStmt whose result is discarded
 	is_arraymap_set                      bool // map or array set value state
 	is_amp                               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(unsafe { nil })` etc
+	is_direct_amp_as_cast                bool // direct `&(expr as Type)` operand; consumed by AsCast codegen
 	is_sql                               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared                            bool // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled                    bool // is it safe to generate #line directives when -g is passed
@@ -7263,12 +7264,24 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				// where the receiver is already a pointer in C), the `&` and the
 				// implicit dereference cancel out, so emit neither.
 				is_amp_auto_deref := node.op == .amp && node.right.is_auto_deref_var()
+				mut is_as_cast_ptr := false
 				if !g.is_option_auto_heap {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
 						&& node.right.index is ast.RangeExpr
+					if node.op == .amp && tmp_var == '' {
+						mut right_expr := node.right
+						if right_expr is ast.ParExpr {
+							right_expr = right_expr.expr
+						}
+						if right_expr is ast.AsCast {
+							if g.as_cast_will_use_ptr(right_expr) {
+								is_as_cast_ptr = true
+							}
+						}
+					}
 					if has_slice_call {
 						g.write('ADDR(${g.styp(node.right_type)}, ')
-					} else if !is_amp_auto_deref {
+					} else if !is_amp_auto_deref && !is_as_cast_ptr {
 						g.write(node.op.str())
 					}
 				}
@@ -7297,7 +7310,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					g.write('(')
 				}
 				if tmp_var == '' {
+					old_is_direct_amp_as_cast := g.is_direct_amp_as_cast
+					g.is_direct_amp_as_cast = is_as_cast_ptr
 					g.expr(node.right)
+					g.is_direct_amp_as_cast = old_is_direct_amp_as_cast
 				} else {
 					g.write(tmp_var)
 				}
@@ -13750,10 +13766,10 @@ fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr
 	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
 }
 
-fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol) {
+fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol, is_direct_amp bool) {
 	if sym.info is ast.FnType {
 		g.write('(${styp})')
-	} else if g.inside_smartcast {
+	} else if g.inside_smartcast || is_direct_amp {
 		g.write('(${styp}*)')
 	} else {
 		g.write('*(${styp}*)')
@@ -13824,7 +13840,27 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 	}
 }
 
+fn (mut g Gen) as_cast_will_use_ptr(node ast.AsCast) bool {
+	unwrapped_node_typ := g.unwrap_generic(node.typ)
+	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
+	expr_type_without_option := unwrapped_expr_type.clear_flag(.option)
+	expr_type_sym := g.table.sym(unwrapped_expr_type)
+	if expr_type_sym.kind == .sum_type && expr_type_without_option == unwrapped_node_typ {
+		return false
+	}
+	if expr_type_sym.info is ast.SumType
+		|| (expr_type_sym.info is ast.Interface && node.expr_type != node.typ) {
+		return true
+	}
+	return false
+}
+
 fn (mut g Gen) as_cast(node ast.AsCast) {
+	is_direct_amp := g.is_direct_amp_as_cast
+	g.is_direct_amp_as_cast = false
+	defer {
+		g.is_direct_amp_as_cast = is_direct_amp
+	}
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
 	unwrapped_node_typ := g.unwrap_generic(node.typ)
@@ -13873,7 +13909,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := if expr_is_option {
@@ -13883,7 +13919,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
@@ -13936,13 +13972,13 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(${tmp_var}${dot}_typ)'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := g.expr_string(node.expr)
 			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}((${expr_str})${dot}_typ)'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
