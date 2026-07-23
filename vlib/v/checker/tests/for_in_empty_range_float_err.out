@@ -1,0 +1,41 @@
+vlib/v/checker/tests/for_in_empty_range_float_err.vv:2:11: error: empty range: `4 .. 4` will never execute
+    1 | fn main() {
+    2 |     for i in 4 .. int(2.5 + 1.5) {
+      |              ~~~~~~~~~~~~~~~~~~~
+    3 |         println(i)
+    4 |     }
+vlib/v/checker/tests/for_in_empty_range_float_err.vv:6:11: error: empty range: `0 .. -5` will never execute
+    4 |     }
+    5 | 
+    6 |     for i in 0 .. int(5.5 - 10.5) {
+      |              ~~~~~~~~~~~~~~~~~~~~
+    7 |         println(i)
+    8 |     }
+vlib/v/checker/tests/for_in_empty_range_float_err.vv:10:11: error: empty range: `6 .. 2` will never execute
+    8 |     }
+    9 | 
+   10 |     for i in u8(3.5) + u16(3.5) .. int(1.5 + 0.5) {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   11 |         println(i)
+   12 |     }
+vlib/v/checker/tests/for_in_empty_range_float_err.vv:14:11: error: empty range: `5 .. 4` will never execute
+   12 |     }
+   13 | 
+   14 |     for i in int(2.0 + 3.0) .. int(10.0 - 6.0) {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 |         println(i)
+   16 |     }
+vlib/v/checker/tests/for_in_empty_range_float_err.vv:18:11: error: empty range: `5 .. 3` will never execute
+   16 |     }
+   17 | 
+   18 |     for i in int(10.5) - 5 .. 3 {
+      |              ~~~~~~~~~~~~~~~~~~
+   19 |         println(i)
+   20 |     }
+vlib/v/checker/tests/for_in_empty_range_float_err.vv:22:11: error: empty range: `5 .. 3` will never execute
+   20 |     }
+   21 | 
+   22 |     for i in 5 .. int(2.5) + 1 {
+      |              ~~~~~~~~~~~~~~~~~
+   23 |         println(i)
+   24 |     }

@@ -104,25 +104,23 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		high_val := c.eval_comptime_const_expr(node.high, 0)
 
 		// Check for empty ranges with comptime constant integer bounds
-		// TODO: fix case when a bound is overflowing (e.g. 0 .. max_u8 + 1)
-		// TODO: fix case where a bound is an operation with 2 different casts (e.g. 4 .. int(2) + u8(1))
 		if low_val != none && high_val != none {
-			low_i64 := low_val.i64()
-			high_i64 := high_val.i64()
+			low_i := low_val.i64()
+			high_i := high_val.i64()
 
-			if low_i64 != none && high_i64 != none {
-				if low_i64 >= high_i64 {
-					c.error('empty range: `${low_i64} .. ${high_i64}` will never execute',
+			if low_i != none && high_i != none {
+				if low_i >= high_i {
+					c.error('empty range: `${low_i} .. ${high_i}` will never execute',
 						cond_pos.extend(high_pos))
 				}
 			} else {
 				// Fall back to an unsigned comparison for literals that overflow i64
-				low_u64 := low_val.u64()
-				high_u64 := high_val.u64()
+				low_u := low_val.u64()
+				high_u := high_val.u64()
 
-				if low_u64 != none && high_u64 != none {
-					if low_u64 >= high_u64 {
-						c.error('empty range: `${low_u64} .. ${high_u64}` will never execute',
+				if low_u != none && high_u != none {
+					if low_u >= high_u {
+						c.error('empty range: `${low_u} .. ${high_u}` will never execute',
 							cond_pos.extend(high_pos))
 					}
 				}

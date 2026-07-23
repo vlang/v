@@ -1,0 +1,25 @@
+fn main() {
+	for i in 4 .. int(2.5 + 1.5) {
+		println(i)
+	}
+
+	for i in 0 .. int(5.5 - 10.5) {
+		println(i)
+	}
+
+	for i in u8(3.5) + u16(3.5) .. int(1.5 + 0.5) {
+		println(i)
+	}
+
+	for i in int(2.0 + 3.0) .. int(10.0 - 6.0) {
+		println(i)
+	}
+
+	for i in int(10.5) - 5 .. 3 {
+		println(i)
+	}
+
+	for i in 5 .. int(2.5) + 1 {
+		println(i)
+	}
+}
