@@ -618,9 +618,12 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		file_path = os.real_path(file_path)
 	}
 	if file_path in seen {
-		// The file is on the current include stack: a circular include. Stop
-		// expanding. (A partial already fully expanded and popped is NOT in `seen`,
-		// so the same partial may legitimately be included more than once.)
+		// The file is on the current include stack: a circular include. Report it and
+		// stop expanding, rather than silently dropping the include line. (A partial
+		// already fully expanded and popped is NOT in `seen`, so the same partial may
+		// legitimately be included more than once.)
+		p.record_diagnostic('circular veb template include `${file_name}${file_ext}` (${file_path})',
+			p.tok_pos)
 		return []
 	}
 	content := os.read_lines(file_path) or {
@@ -1233,6 +1236,13 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 	}
 	value_expr := if tmpl.typ == 'html' { 'ctx.html(${bname})' } else { bname }
 	ret_type := if tmpl.typ == 'html' { 'veb.Result' } else { 'string' }
+	if tmpl.typ == 'html' {
+		// The html value expression is `ctx.html(...)`, so the closure must capture
+		// `ctx` even when the template body never references it — and mutably, since
+		// `Context.html` has a mut receiver. Put it first and drop any plain `ctx`.
+		captures = captures.filter(it != 'ctx')
+		captures.insert(0, 'mut ctx')
+	}
 	cap_part := if captures.len > 0 { '[${captures.join(', ')}] ' } else { '' }
 	iife_src := '(fn ${cap_part}() ${ret_type} {\n${builder_src}\nreturn ${value_expr}\n}())'
 	return p.parse_veb_template_replacement_expr(iife_src)
