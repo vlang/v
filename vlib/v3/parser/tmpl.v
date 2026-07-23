@@ -1374,7 +1374,15 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 						out, mut mut_names)
 				}
 			}
-			// The key/value loop variables are locals of the loop body, not captures.
+			// The key/value loop variables and any `:=` bindings inside the body are locals
+			// of the loop body, not of the enclosing template. Snapshot the outer declared
+			// names so a later OUTER use of a shadowed name (`@item` after the loop) is still
+			// collected as a capture, then drop the body-local names once the body ends —
+			// otherwise the loop var would stay "declared" and the outer use is omitted.
+			mut outer_declared := map[string]bool{}
+			for name in declared.keys() {
+				outer_declared[name] = true
+			}
 			if node.children_count > 0 {
 				p.declare_template_ident(p.a.child(&node, 0), mut declared)
 			}
@@ -1384,6 +1392,15 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			for i in header .. int(node.children_count) {
 				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
 					out, mut mut_names)
+			}
+			mut body_local := []string{}
+			for name in declared.keys() {
+				if name !in outer_declared {
+					body_local << name
+				}
+			}
+			for name in body_local {
+				declared.delete(name)
 			}
 		}
 		.call {
