@@ -2494,16 +2494,19 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			// declaration approximates this function's subtree size.
 			span_cost := i - prev_decl_end
 			prev_decl_end = i
-			if t.fn_decl_has_unresolved_generics(node, t.cur_module) {
-				continue
-			}
-			if !t.should_transform_fn(node) {
-				continue
+			for literal_decl_idx < literal_decls.len && literal_decls[literal_decl_idx] < i {
+				literal_decl_idx++
 			}
 			has_literal := literal_decl_idx < literal_decls.len
 				&& literal_decls[literal_decl_idx] == i
 			if has_literal {
 				literal_decl_idx++
+			}
+			if t.fn_decl_has_unresolved_generics(node, t.cur_module) {
+				continue
+			}
+			if !t.should_transform_fn(node) {
+				continue
 			}
 			cost := if scan_fn_literals {
 				if span_cost > 0 { span_cost } else { 1 }
