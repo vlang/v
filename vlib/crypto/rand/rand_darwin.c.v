@@ -8,12 +8,23 @@ module rand
 
 fn C.getentropy(buf voidptr, buflen usize) i32
 
-// read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ![]u8 {
-	mut buffer := []u8{len: bytes_needed}
-	status := C.getentropy(buffer.data, bytes_needed)
-	if status != 0 {
-		return &ReadError{}
+const read_batch_size = 256
+
+// read fills `buffer` with random bytes from the OS.
+pub fn read(mut buffer []u8) ! {
+	mut bytes_read := 0
+	mut remaining_bytes := buffer.len
+	for bytes_read < buffer.len {
+		batch_size := if remaining_bytes > read_batch_size {
+			read_batch_size
+		} else {
+			remaining_bytes
+		}
+		status := unsafe { C.getentropy(&u8(buffer.data) + bytes_read, batch_size) }
+		if status != 0 {
+			return &ReadError{}
+		}
+		bytes_read += batch_size
+		remaining_bytes -= batch_size
 	}
-	return buffer
 }
