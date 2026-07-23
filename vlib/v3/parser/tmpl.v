@@ -1069,6 +1069,11 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			return p.parse_stmts_from_source(src)
 		}
 	}
+	// A template in a short-circuited condition operand cannot be hoisted (that would
+	// evaluate it unconditionally); render it in place with an inline closure first, so
+	// it runs only when the guard allows. The hoist collection below skips those
+	// operands, so this is what keeps their placeholders from leaking.
+	p.replace_short_circuit_templates(stmt_id)
 	// General case: a `$tmpl(...)` / `$veb.html()` used as a subexpression (e.g.
 	// `ctx.html($tmpl('x.html'))`, `$tmpl('x.html').trim_space()`). Render each nested
 	// placeholder into a builder hoisted ahead of this statement, and rewrite the
@@ -1143,6 +1148,149 @@ fn (p &Parser) collect_veb_template_node_ids(id flat.NodeId, mut out []flat.Node
 	}
 	for i in 0 .. node.children_count {
 		p.collect_veb_template_node_ids(p.a.child(&node, i), mut out)
+	}
+}
+
+// replace_short_circuit_templates rewrites, in place, each `$tmpl()`/`$veb.html()` that
+// sits in a short-circuited condition operand (the right side of `&&`/`||`) into an
+// immediately-invoked closure, so the template renders only when that operand actually
+// runs. This must run before collect_veb_template_node_ids, which deliberately skips
+// those operands, so they are neither hoisted (which would run unconditionally) nor left
+// to leak as `.veb_template` placeholders.
+fn (mut p Parser) replace_short_circuit_templates(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .infix && node.op in [.logical_and, .logical_or]
+		&& node.children_count == 2 {
+		// Left runs unconditionally (it may hold further short-circuits); the right runs
+		// only when the left does not short-circuit, so any template there is inlined.
+		p.replace_short_circuit_templates(p.a.child(&node, 0))
+		p.inline_templates_as_closures(p.a.child(&node, 1))
+		return
+	}
+	if node.kind in [.if_expr, .match_stmt] {
+		if node.children_count > 0 {
+			p.replace_short_circuit_templates(p.a.child(&node, 0))
+		}
+		return
+	}
+	if node.kind in veb_template_no_descend_kinds {
+		return
+	}
+	for i in 0 .. node.children_count {
+		p.replace_short_circuit_templates(p.a.child(&node, i))
+	}
+}
+
+// inline_templates_as_closures replaces every `.veb_template` in the subtree rooted at
+// `id` with an inline immediately-invoked closure. Used for conditionally-evaluated
+// operands, where the template must render at its own position rather than be hoisted.
+fn (mut p Parser) inline_templates_as_closures(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .veb_template {
+		if repl := p.veb_template_iife_replacement(node) {
+			p.a.nodes[int(id)] = p.a.nodes[int(repl)]
+		}
+		return
+	}
+	if node.kind in veb_template_no_descend_kinds {
+		return
+	}
+	for i in 0 .. node.children_count {
+		p.inline_templates_as_closures(p.a.child(&node, i))
+	}
+}
+
+// veb_template_iife_replacement builds `(fn [captures] () <ret> { <builder>; return
+// <value> }())` for a template placeholder, so it renders in place (preserving
+// short-circuit / conditional evaluation). The closure explicitly captures the locals
+// the template's interpolations reference, since v3 closures do not auto-capture.
+fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
+	bname, builder_src := p.veb_template_builder_source(tmpl)
+	// Parse the builder once to discover which names it references, so the closure can
+	// capture the locals among them (capturing a `const`/`fn` too is harmless).
+	builder_ids := p.parse_stmts_from_source(builder_src)
+	mut declared := map[string]bool{}
+	declared[bname] = true
+	mut seen := map[string]bool{}
+	mut captures := []string{}
+	for bid in builder_ids {
+		p.collect_template_free_idents(bid, mut declared, mut seen, mut captures)
+	}
+	value_expr := if tmpl.typ == 'html' { 'ctx.html(${bname})' } else { bname }
+	ret_type := if tmpl.typ == 'html' { 'veb.Result' } else { 'string' }
+	cap_part := if captures.len > 0 { '[${captures.join(', ')}] ' } else { '' }
+	iife_src := '(fn ${cap_part}() ${ret_type} {\n${builder_src}\nreturn ${value_expr}\n}())'
+	return p.parse_veb_template_replacement_expr(iife_src)
+}
+
+// collect_template_free_idents accumulates, in first-seen order, the identifiers a
+// template builder references that are not declared within it (the builder variable and
+// any `for`-loop / `:=` bindings), so they can be captured by an inline closure.
+fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[string]bool, mut seen map[string]bool, mut out []string) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			name := node.value
+			if name.len > 0 && name != '_' && name !in declared && name !in seen {
+				seen[name] = true
+				out << name
+			}
+		}
+		.for_in_stmt {
+			header := if node.value.int() > 0 { node.value.int() } else { 3 }
+			// The container (and optional range end) evaluate in the outer scope.
+			for i in 2 .. header {
+				if i < int(node.children_count) {
+					p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
+						out)
+				}
+			}
+			// The key/value loop variables are locals of the loop body, not captures.
+			if node.children_count > 0 {
+				p.declare_template_ident(p.a.child(&node, 0), mut declared)
+			}
+			if node.children_count > 1 {
+				p.declare_template_ident(p.a.child(&node, 1), mut declared)
+			}
+			for i in header .. int(node.children_count) {
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
+					out)
+			}
+		}
+		.decl_assign {
+			if node.children_count > 0 {
+				p.declare_template_ident(p.a.child(&node, 0), mut declared)
+			}
+			for i in 0 .. node.children_count {
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
+					out)
+			}
+		}
+		else {
+			for i in 0 .. node.children_count {
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
+					out)
+			}
+		}
+	}
+}
+
+fn (p &Parser) declare_template_ident(id flat.NodeId, mut declared map[string]bool) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .ident && node.value.len > 0 {
+		declared[node.value] = true
 	}
 }
 

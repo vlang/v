@@ -452,8 +452,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		// collide when the outer struct shares the embed's short name
 		// (`struct Context { veb.Context }`). Emit the correct embedded designator so
 		// the value is not dropped (which flattens the embed's defaults) or written
-		// under a non-existent member.
-		if field.value.len > 0 {
+		// under a non-existent member. A real field of the same name wins over the
+		// embed short-name match, so only take this path when no direct field matches.
+		if field.value.len > 0 && !g.struct_has_direct_named_field(lookup_name, field.value) {
 			if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
 				if has_field {
 					g.write(', ')
@@ -1190,8 +1191,9 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		// collide when the outer struct shares the embed's short name
 		// (`struct Context { veb.Context }`). Emit the correct embedded designator so
 		// the value is not dropped (which flattens the embed's defaults) or written
-		// under a non-existent member.
-		if field.value.len > 0 {
+		// under a non-existent member. A real field of the same name wins over the
+		// embed short-name match, so only take this path when no direct field matches.
+		if field.value.len > 0 && !g.struct_has_direct_named_field(lookup_name, field.value) {
 			if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
 				if has_field {
 					g.write(', ')
@@ -3919,6 +3921,30 @@ fn (g &FlatGen) struct_field_named(type_name string, field_name string) ?types.S
 		}
 	}
 	return none
+}
+
+// struct_has_direct_named_field reports whether `type_name` declares a real (non-embed)
+// field named `field_name`. It ignores embedded field_decls (whose `value == typ`, and
+// which are otherwise reachable by their short type name), so a genuine field wins over
+// an embed short-name collision — `Outer{ Context: 1 }` sets the real `Context` field,
+// while `struct Context { veb.Context }` (no direct field) still routes `Context:` to
+// the embed.
+fn (g &FlatGen) struct_has_direct_named_field(type_name string, field_name string) bool {
+	info := g.find_struct_decl(type_name) or { return false }
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl || field.value.len == 0 {
+			continue
+		}
+		// An embedded field_decl carries `value == typ`; only a real field can win here.
+		if field.value == field.typ {
+			continue
+		}
+		if field.value == field_name {
+			return true
+		}
+	}
+	return false
 }
 
 // struct_field_at supports struct field at handling for FlatGen.
