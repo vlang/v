@@ -11,16 +11,17 @@ fn filter(s string) string {
 }
 
 // filter_html renders a `$veb.html()` template interpolation value. A plain string is
-// HTML-escaped so user-controlled data cannot inject markup; a `RawHtml` value is
+// HTML-escaped so user-controlled data cannot inject markup; a `veb.RawHtml` value is
 // emitted verbatim; any other value uses its default string representation. This
 // mirrors v1, where cgen wraps only `string`-typed template interpolations with
 // `veb__filter` (`RawHtml` has a distinct type there). The v3 backend lowers templates
 // to source before types are known, so the escaping decision is made here at render
-// time; the comptime `string` branch also matches string aliases such as `RawHtml`, so
-// `RawHtml` is distinguished at runtime.
+// time; the comptime `string` branch also matches string aliases, so the trusted type is
+// matched by its exact `veb.RawHtml` name. Any other alias (e.g. a `main.RawHtml` holding
+// user-controlled data) is still escaped rather than emitted verbatim.
 pub fn filter_html[T](x T) string {
 	$if T is string {
-		if typeof(x).name.all_after_last('.') == 'RawHtml' {
+		if typeof(x).name == 'veb.RawHtml' {
 			return x
 		}
 		return filter(x)

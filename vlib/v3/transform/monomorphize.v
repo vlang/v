@@ -6037,6 +6037,19 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module
 		&& (call_module in ['', 'main'] || t.current_specialization_has_generic_arg(arg)) {
 		return arg
 	}
+	// A bare program (main) type alias that collides by short name with a type in the
+	// callee module (e.g. a user `RawHtml` alias against `veb.RawHtml`) must be kept as the
+	// caller's own type: rebasing it into the callee module would merge the two into one
+	// specialization, so `veb.filter_html` could no longer tell user data from trusted
+	// `veb.RawHtml` and would skip escaping it. Only same-named collisions are preserved.
+	if call_module in ['', 'main'] && !arg.contains('.') && !isnil(t.tc)
+		&& arg in t.tc.type_aliases {
+		qname := '${decl_module}.${arg}'
+		if qname in t.tc.type_aliases || qname in t.tc.structs || qname in t.tc.sum_types
+			|| qname in t.tc.enum_names || qname in t.tc.interface_names {
+			return arg
+		}
+	}
 	if t.generic_type_text_contains_alias(arg, call_module) {
 		if t.generic_type_text_contains_fixed_array_alias(arg, call_module) {
 			call_normalized := t.normalize_type_in_module(arg, call_module)
