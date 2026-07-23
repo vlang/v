@@ -14720,7 +14720,10 @@ fn (mut g FlatGen) fixed_array_len_types_defined(arr types.ArrayFixed, emitted_s
 			return false
 		}
 		target := expr[open + 1..close].trim_space()
-		if !g.fixed_array_type_defined(g.tc.parse_type(target), emitted_structs) {
+		// fixed_array_len_value() has already rendered V struct names as their C
+		// spelling, which parse_type() cannot resolve back to the original type.
+		if target !in emitted_structs
+			&& !g.fixed_array_type_defined(g.tc.parse_type(target), emitted_structs) {
 			return false
 		}
 		offset = close + 1

@@ -195,3 +195,46 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7', run.output
 }
+
+fn test_sizeof_struct_fixed_array_typedef_is_emitted_when_target_is_defined() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('sizeof_struct', 'module fixture
+
+pub type Bytes = [sizeof(ZSize)]u8
+
+pub struct ZSize {
+	value int
+}
+
+pub struct ZZHolder {
+pub mut:
+	data Bytes
+}
+
+pub fn score() int {
+	mut holder := ZZHolder{}
+	holder.data[0] = 9
+	return int(holder.data[0]) + holder.data.len
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.score())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '13', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	size_pos := generated.index('struct fixture__ZSize {') or { -1 }
+	typedef_pos := generated.index('typedef u8 Array_fixed_u8_sizeof_fixture__ZSize') or { -1 }
+	holder_pos := generated.index('struct fixture__ZZHolder {') or { -1 }
+	assert size_pos >= 0, generated
+	assert typedef_pos > size_pos, generated
+	assert holder_pos > typedef_pos, generated
+}
