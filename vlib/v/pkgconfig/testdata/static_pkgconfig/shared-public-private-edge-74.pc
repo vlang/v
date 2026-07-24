@@ -1,0 +1,7 @@
+Name: shared-public-private-edge-74
+Description: Shared public and private dependency regression
+Version: 1.0.0
+Requires: static-public-74
+Requires.private: static-public-74
+Libs: -lissue74_shared_edge_root
+Cflags: -DISSUE74_SHARED_EDGE_ROOT

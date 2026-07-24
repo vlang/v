@@ -1,0 +1,4 @@
+Name: split-link-pairs-a-74
+Description: First public split linker pair fixture
+Version: 1.0.0
+Libs: -L /issue74/search-a -l issue74_a

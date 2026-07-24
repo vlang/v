@@ -166,6 +166,53 @@ fn test_resolve_ccompiler_type_detects_cc_alias_path_as_clang() {
 	assert resolve_ccompiler_type(alias_cc, pref.cc_from_string(alias_cc)) == .clang
 }
 
+fn test_resolved_tcc_wrapper_recomputes_pkgconfig_mode_as_dynamic() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_cc_pkgconfig_tcc_${os.getpid()}')
+	alias_cc := prepare_test_ccompiler_alias(test_root, 'cc', 'tcc version 0.9.27 (x86_64 Linux)')
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	mut full_args := ['']
+	full_args << ['-cc', alias_cc, '-cflags', '-static', hello_world_example()]
+	mut prefs, _ := pref.parse_args_and_show_errors([], full_args, false)
+	assert prefs.ccompiler_type == .gcc
+	assert prefs.pkgconfig_mode == .static_
+
+	resolve_ccompiler_type_and_pkgconfig_mode(mut prefs)
+
+	assert prefs.ccompiler_type == .tinyc
+	assert prefs.pkgconfig_mode == .dynamic
+}
+
+fn test_resolved_gnu_wrappers_keep_pkgconfig_mode_static() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_cc_pkgconfig_gnu_${os.getpid()}')
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	for version_output, expected_type in {
+		'gcc (GCC) 13.2.0':             pref.CompilerType.gcc
+		'OpenBSD clang version 16.0.6': pref.CompilerType.clang
+	} {
+		alias_cc := prepare_test_ccompiler_alias(test_root, 'cc', version_output)
+		mut full_args := ['']
+		full_args << ['-cc', alias_cc, '-cflags', '-static', hello_world_example()]
+		mut prefs, _ := pref.parse_args_and_show_errors([], full_args, false)
+		assert prefs.ccompiler_type == .gcc
+		assert prefs.pkgconfig_mode == .static_
+
+		resolve_ccompiler_type_and_pkgconfig_mode(mut prefs)
+
+		assert prefs.ccompiler_type == expected_type
+		assert prefs.pkgconfig_mode == .static_
+	}
+}
+
 fn test_resolve_ccompiler_type_detects_real_path_without_running_alias() {
 	$if windows {
 		return

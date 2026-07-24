@@ -6256,8 +6256,7 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module
 	// caller's own type: rebasing it into the callee module would merge the two into one
 	// specialization, so `veb.filter_html` could no longer tell user data from trusted
 	// `veb.RawHtml` and would skip escaping it. Only same-named collisions are preserved.
-	if call_module in ['', 'main'] && !arg.contains('.') && !isnil(t.tc)
-		&& arg in t.tc.type_aliases {
+	if call_module in ['', 'main'] && !arg.contains('.') && !isnil(t.tc) && arg in t.tc.type_aliases {
 		qname := '${decl_module}.${arg}'
 		if qname in t.tc.type_aliases || qname in t.tc.structs || qname in t.tc.sum_types
 			|| qname in t.tc.enum_names || qname in t.tc.interface_names {
@@ -9788,8 +9787,8 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	if clean.starts_with('[') && !clean.starts_with('[]') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end > 1 && bracket_end < clean.len - 1 {
-			return clean[..bracket_end + 1] +
-				t.resolve_substituted_type_text(clean[bracket_end + 1..])
+			return clean[..bracket_end + 1] + t.resolve_substituted_type_text(clean[bracket_end +
+				1..])
 		}
 	}
 	// `chan T` / `thread T` carry a single payload type; a bare program type there
@@ -9859,7 +9858,8 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 	}
 	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
 		if clean.starts_with(prefix) {
-			return prefix + t.lock_colliding_main_generic_type_text(clean[prefix.len..], module_name)
+			return prefix +
+				t.lock_colliding_main_generic_type_text(clean[prefix.len..], module_name)
 		}
 	}
 	// A function type hides its parameter and return types from the scalar checks below,

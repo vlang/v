@@ -10,7 +10,8 @@ fn mdg_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_multi_decl_guard_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${mdg_vexe} -gc none -path "${mdg_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${mdg_v3_src}')
+	build :=
+		os.execute('${mdg_vexe} -gc none -path "${mdg_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${mdg_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -28,7 +29,9 @@ fn test_template_multi_decl_guard_declares_all_lhs_names() {
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'mdg' }\n") or { panic(err) }
-	os.write_file(os.join_path(root, 't.html'), '@if a, b := pair()\n@{a}@{b}\n@end\n') or { panic(err) }
+	os.write_file(os.join_path(root, 't.html'), '@if a, b := pair()\n@{a}@{b}\n@end\n') or {
+		panic(err)
+	}
 	source := "module main\n\nfn pair() ?(string, string) {\n\treturn 'A', 'B'\n}\n\nfn build() string {\n\treturn ('[' + \$tmpl('t.html') + ']').replace('\\n', '')\n}\n\nfn main() {\n\tprintln(build())\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_multi_decl_guard_bin_${pid}')

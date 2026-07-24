@@ -3898,7 +3898,11 @@ fn (g &FlatGen) embedded_field_for_embed_key(type_name string, key string) ?type
 		if field.kind != .field_decl || field.value.len == 0 || field.value != field.typ {
 			continue
 		}
-		short := if field.value.contains('.') { field.value.all_after_last('.') } else { field.value }
+		short := if field.value.contains('.') {
+			field.value.all_after_last('.')
+		} else {
+			field.value
+		}
 		key_short := if key.contains('.') { key.all_after_last('.') } else { key }
 		if field.value == key || short == key_short {
 			return types.StructField{
@@ -3970,8 +3974,7 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 		// A generic embed (`veb.Middleware[Context]`) is accessed by its base name
 		// (`app.Middleware`), so compare against the generic base too.
 		short_base := types.generic_base_name(short_type)
-		if field_name == embedded_type_name || field_name == short_type
-			|| field_name == short_base
+		if field_name == embedded_type_name || field_name == short_type || field_name == short_base
 			|| g.cname(field_name) == g.cname(embedded_type_name) {
 			return field
 		}

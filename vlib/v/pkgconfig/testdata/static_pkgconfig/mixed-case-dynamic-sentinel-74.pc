@@ -1,0 +1,5 @@
+Name: mixed-case-dynamic-sentinel-74
+Description: Exact-key dynamic compatibility sentinel
+Version: 1.0.0
+Libs: -Wl,--issue74-dynamic-sentinel
+Cflags: -DISSUE74_DYNAMIC_SENTINEL

@@ -254,6 +254,46 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	}
 }
 
+fn issue74_cache_path_for_ldflags(ldflags string) (string, pref.PkgConfigMode) {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	mut args := ['-cc', 'gcc']
+	if ldflags != '' {
+		args << ['-ldflags', ldflags]
+	}
+	args << target
+	mut prefs, _ := pref.parse_args_and_show_errors([], args, false)
+	path := prefs.cache_manager.mod_postfix_with_key2cpath('issue74-cache-salt', '.o',
+		'same-source')
+	return path, prefs.pkgconfig_mode
+}
+
+fn test_pkgconfig_mode_salts_cache_without_salt_for_all_ldflags() {
+	cache_root := os.join_path(os.vtmp_dir(), 'issue74_pkgconfig_mode_cache_${os.getpid()}')
+	old_cache := os.getenv_opt('VCACHE')
+	os.setenv('VCACHE', cache_root, true)
+	defer {
+		if cache := old_cache {
+			os.setenv('VCACHE', cache, true)
+		} else {
+			os.unsetenv('VCACHE')
+		}
+		os.rmdir_all(cache_root) or {}
+	}
+
+	dynamic_path, dynamic_mode := issue74_cache_path_for_ldflags('')
+	dynamic_link_path, dynamic_link_mode := issue74_cache_path_for_ldflags('-Wl,--as-needed')
+	static_path, static_mode := issue74_cache_path_for_ldflags('-static')
+	static_link_path, static_link_mode := issue74_cache_path_for_ldflags('-static -Wl,--as-needed')
+
+	assert dynamic_mode == .dynamic
+	assert dynamic_link_mode == .dynamic
+	assert static_mode == .static_
+	assert static_link_mode == .static_
+	assert dynamic_path == dynamic_link_path
+	assert static_path == static_link_path
+	assert dynamic_path != static_path
+}
+
 fn test_v_compiler_targets_default_to_no_gc() {
 	for target in [
 		os.join_path(vroot, 'cmd', 'v'),

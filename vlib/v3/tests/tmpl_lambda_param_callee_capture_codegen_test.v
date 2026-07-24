@@ -10,7 +10,8 @@ fn tlc_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_lambda_param_callee_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${tlc_vexe} -gc none -path "${tlc_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tlc_v3_src}')
+	build :=
+		os.execute('${tlc_vexe} -gc none -path "${tlc_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tlc_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

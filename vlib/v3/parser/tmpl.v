@@ -276,8 +276,8 @@ fn escape_bare_tmpl_dollar_interpolations(line string) string {
 // are left verbatim, matching a normal text line's handling. The literal-dollar marker is
 // finalized to `\$` after the backslash escaping so its backslash is not doubled.
 fn escape_tmpl_comment_line(line string) string {
-	return escape_bare_tmpl_dollar_interpolations(line).replace('\\', '\\\\').replace("'",
-		"\\'").replace(tmpl_literal_dollar_marker, r'\$')
+	return escape_bare_tmpl_dollar_interpolations(line).replace('\\', '\\\\').replace("'", "\\'").replace(tmpl_literal_dollar_marker,
+		r'\$')
 }
 
 // tmpl_interp_format_split splits an `@{expr:fmt}` interpolation body at its
@@ -309,10 +309,18 @@ fn tmpl_interp_format_split(content string) ?(string, string) {
 			continue
 		}
 		match ch {
-			`'` { in_sq = true }
-			`"` { in_dq = true }
-			`(`, `[`, `{` { depth++ }
-			`)`, `]`, `}` { depth-- }
+			`'` {
+				in_sq = true
+			}
+			`"` {
+				in_dq = true
+			}
+			`(`, `[`, `{` {
+				depth++
+			}
+			`)`, `]`, `}` {
+				depth--
+			}
 			`:` {
 				if depth == 0 {
 					return content[..i], content[i + 1..]
@@ -396,10 +404,10 @@ fn tmpl_line_content(line string, escape bool) string {
 					next := rewritten_line[i + 1]
 					if next == `{` {
 						if escape {
-							expr_end := find_tmpl_balanced_end(rewritten_line, i + 1, `{`,
-								`}`)
+							expr_end := find_tmpl_balanced_end(rewritten_line, i + 1, `{`, `}`)
 							if expr_end != -1 {
-								tmpl_write_escaped_interpolation(mut sb, rewritten_line[i + 2..expr_end - 1])
+								tmpl_write_escaped_interpolation(mut sb,
+									rewritten_line[i + 2..expr_end - 1])
 								i = expr_end
 								continue
 							}
@@ -1279,8 +1287,7 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 // `for_stmt` (loop header) and `or_expr` (guarded source expression) — are NOT listed here; they
 // are special-cased so their header runs are descended into while their bodies/or-blocks are left
 // to be parsed on their own.
-const veb_template_no_descend_kinds = [flat.NodeKind.fn_literal, .lambda_expr, .fn_decl,
-	.block]
+const veb_template_no_descend_kinds = [flat.NodeKind.fn_literal, .lambda_expr, .fn_decl, .block]
 
 // veb_template_stmt_scope_kinds are the nested STATEMENT-body scopes whose templates are expanded
 // where the body is parsed (parse_block_body), so an in-place inliner must not reach into them. A
@@ -1312,8 +1319,7 @@ fn (p &Parser) collect_veb_template_node_ids(id flat.NodeId, mut out []flat.Node
 		}
 		return
 	}
-	if node.kind == .infix && node.op in [.logical_and, .logical_or]
-		&& node.children_count == 2 {
+	if node.kind == .infix && node.op in [.logical_and, .logical_or] && node.children_count == 2 {
 		// Short-circuit operators only evaluate their left operand unconditionally; the
 		// right runs solely when the left does not short-circuit (`&&` left true, `||`
 		// left false). Hoisting a template from the right operand would render it
@@ -1356,8 +1362,7 @@ fn (mut p Parser) replace_short_circuit_templates(id flat.NodeId) {
 		return
 	}
 	node := p.a.nodes[int(id)]
-	if node.kind == .infix && node.op in [.logical_and, .logical_or]
-		&& node.children_count == 2 {
+	if node.kind == .infix && node.op in [.logical_and, .logical_or] && node.children_count == 2 {
 		// Left runs unconditionally (it may hold further short-circuits); the right runs
 		// only when the left does not short-circuit, so any template there is inlined.
 		p.replace_short_circuit_templates(p.a.child(&node, 0))
@@ -1650,8 +1655,8 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 				p.declare_template_ident(p.a.child(&node, i), mut declared)
 			}
 			if node.children_count > 0 {
-				p.collect_template_free_idents(p.a.child(&node, int(node.children_count) - 1),
-					mut declared, mut seen, mut out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, int(node.children_count) - 1), mut
+					declared, mut seen, mut out, mut mut_names)
 			}
 			mut lambda_local := []string{}
 			for name in declared.keys() {
@@ -1680,8 +1685,8 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 						&& base_node.value[0] >= `A` && base_node.value[0] <= `Z`
 						&& !p.is_local_binding(base_node.value)
 					if !base_is_type_name {
-						p.collect_template_free_idents(base, mut declared, mut seen, mut out,
-							mut mut_names)
+						p.collect_template_free_idents(base, mut declared, mut seen, mut out, mut
+							mut_names)
 					}
 				}
 			}
@@ -1705,8 +1710,8 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 					callee_is_local_binding := callee_node.kind == .ident
 						&& p.is_local_binding(callee_node.value)
 					if callee_node.kind != .ident || callee_is_local_binding {
-						p.collect_template_free_idents(callee, mut declared, mut seen, mut out,
-							mut mut_names)
+						p.collect_template_free_idents(callee, mut declared, mut seen, mut out, mut
+							mut_names)
 					}
 				}
 			}

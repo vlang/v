@@ -580,6 +580,8 @@ pub enum CC {
 }
 
 pub struct CcompilerOptions {
+mut:
+	pkgconfig_pthread bool // exact `-pthread` supplied by an ordered pkg-config linker segment
 pub mut:
 	guessed_compiler string
 	shared_postfix   string // .so, .dll
@@ -717,6 +719,169 @@ fn cc_from_pref_ccompiler_type(cc_type pref.CompilerType) CC {
 		.msvc { .msvc }
 		.cplusplus { .unknown }
 	}
+}
+
+fn ordered_link_cflag_key(flag cflag.CFlag) string {
+	return '${flag.os}\x00${flag.name}\x00${flag.value}'
+}
+
+fn quote_spaced_ordered_pkgconfig_operand(flag cflag.CFlag, preserve_msvc_slash_option bool) cflag.CFlag {
+	value := flag.value
+	is_quoted := value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`))
+	is_msvc_slash_option := preserve_msvc_slash_option && flag.name == '' && value.starts_with('/')
+		&& value.contains(':')
+	if is_msvc_slash_option {
+		colon_index := value.index(':') or { return flag }
+		option_name := value[1..colon_index]
+		operand := value[colon_index + 1..]
+		is_operand_quoted := operand.len >= 2
+			&& ((operand[0] == `"` && operand[operand.len - 1] == `"`)
+			|| (operand[0] == `'` && operand[operand.len - 1] == `'`))
+		if option_name != '' && option_name.bytes().all(it.is_alnum())
+			&& operand.contains_any(' \t\r\n') && !is_operand_quoted {
+			return cflag.CFlag{
+				mod:    flag.mod
+				os:     flag.os
+				name:   flag.name
+				value:  '${value[..colon_index + 1]}"${operand}"'
+				cached: flag.cached
+			}
+		}
+		return flag
+	}
+	is_raw_operand := flag.name == '' && !is_msvc_slash_option
+	if (flag.name != '-L' && !is_raw_operand) || !value.contains_any(' \t\r\n') || is_quoted {
+		return flag
+	}
+	return cflag.CFlag{
+		mod:    flag.mod
+		os:     flag.os
+		name:   flag.name
+		value:  '"${value}"'
+		cached: flag.cached
+	}
+}
+
+fn generic_ordered_pkgconfig_flag(flag cflag.CFlag) cflag.CFlag {
+	value := flag.value
+	if flag.name != '-L' || value.len <= 2 || value[0] != `"` || value[value.len - 1] != `"` {
+		return flag
+	}
+	return cflag.CFlag{
+		mod:    flag.mod
+		os:     flag.os
+		name:   flag.name
+		value:  value[1..value.len - 1]
+		cached: flag.cached
+	}
+}
+
+fn ordered_pkgconfig_link_args(flag cflag.CFlag, convert_windows_import_libs bool) []string {
+	if flag.name == '-Wl' && flag.value.contains_any(' \t\r\n') {
+		formatted := flag.format() or { return []string{} }
+		return ['"${formatted}"']
+	}
+	raw_safe_flag := quote_spaced_ordered_pkgconfig_operand(flag, false)
+	if convert_windows_import_libs {
+		return raw_safe_flag.windows_import_lib_link_args()
+	}
+	formatted_flag := generic_ordered_pkgconfig_flag(raw_safe_flag)
+	return [formatted_flag.format() or { return []string{} }]
+}
+
+fn ordinary_flag_is_linker_control(flag cflag.CFlag) bool {
+	raw := flag.value.trim_space()
+	return flag.name in ['-L', '-Wl', '-framework', '-library'] || raw == '-Xlinker'
+		|| raw.starts_with('-Xlinker ') || raw == '-force_load' || raw.starts_with('-force_load ')
+		|| raw == '-weak_framework' || raw.starts_with('-weak_framework ')
+}
+
+fn ordinary_flag_takes_linker_operand(flag cflag.CFlag) bool {
+	raw := flag.value.trim_space()
+	return (flag.name == '' && raw in ['-Xlinker', '-force_load', '-weak_framework'])
+		|| (flag.name == '-Wl'
+		&& raw in [',-rpath', ',--rpath', ',-R', ',-rpath-link', ',--rpath-link', ',--version-script'])
+}
+
+fn ordered_ordinary_link_args(flag cflag.CFlag, force_linker bool) []string {
+	if force_linker {
+		return [flag.format() or { return []string{} }]
+	}
+	_, others, libs := [flag].defines_others_libs()
+	if libs.len > 0 {
+		return libs
+	}
+	if ordinary_flag_is_linker_control(flag) {
+		return others
+	}
+	return []string{}
+}
+
+fn (v &Builder) split_ordered_pkgconfig_link_flags(cflags []cflag.CFlag) ([]cflag.CFlag, []string, bool) {
+	mut has_pkgconfig_segment := false
+	for segment in v.table.link_flag_segments {
+		if segment.is_pkgconfig {
+			has_pkgconfig_segment = true
+			break
+		}
+	}
+	if !has_pkgconfig_segment {
+		return cflags, []string{}, false
+	}
+	mut active_cflags := map[string]bool{}
+	for flag in cflags {
+		active_cflags[ordered_link_cflag_key(flag)] = true
+	}
+	mut routed_cflags := map[string]bool{}
+	mut ordered_link_flags := []string{}
+	mut pkgconfig_pthread := false
+	mut pending_linker_option := ''
+	convert_windows_import_libs := v.pref.os == .windows && v.pref.ccompiler_type in [.gcc, .mingw]
+	for segment in v.table.link_flag_segments {
+		if segment.is_pkgconfig {
+			if pending_linker_option != '' {
+				verror('incomplete linker option `${pending_linker_option}` before `#pkgconfig`; provide its operand in the next ordinary `#flag` directive before the pkg-config directive')
+			}
+			for flag in segment.flags {
+				args := ordered_pkgconfig_link_args(flag, convert_windows_import_libs)
+				for arg in args {
+					ordered_link_flags << arg
+					if arg == '-pthread' {
+						pkgconfig_pthread = true
+					}
+				}
+			}
+			continue
+		}
+		for flag in segment.flags {
+			key := ordered_link_cflag_key(flag)
+			if key !in active_cflags {
+				continue
+			}
+			force_linker := pending_linker_option != ''
+			pending_linker_option = ''
+			if !force_linker && ordinary_flag_takes_linker_operand(flag) {
+				pending_linker_option = flag.format() or { flag.value.trim_space() }
+			}
+			args := ordered_ordinary_link_args(flag, force_linker)
+			if args.len == 0 {
+				continue
+			}
+			routed_cflags[key] = true
+			ordered_link_flags << args
+		}
+	}
+	if pending_linker_option != '' {
+		verror('incomplete linker option `${pending_linker_option}` at the end of ordered linker flags; provide its operand in the next ordinary `#flag` directive')
+	}
+	mut legacy_cflags := []cflag.CFlag{cap: cflags.len}
+	for flag in cflags {
+		if ordered_link_cflag_key(flag) !in routed_cflags {
+			legacy_cflags << flag
+		}
+	}
+	return legacy_cflags, ordered_link_flags, pkgconfig_pthread
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -1080,10 +1245,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.o_args << only_o_files
 	}
 
-	defines, others, libs := cflags.defines_others_libs()
+	legacy_cflags, ordered_link_flags, pkgconfig_pthread :=
+		v.split_ordered_pkgconfig_link_flags(cflags)
+	defines, others, libs := legacy_cflags.defines_others_libs()
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
+	ccoptions.linker_flags << ordered_link_flags
+	ccoptions.pkgconfig_pthread = pkgconfig_pthread
 	v.fixup_tcc_macos_comma_path_flags(mut ccoptions)
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc {
@@ -1150,6 +1319,10 @@ pub fn (v &Builder) get_compile_args() []string {
 	return v.only_compile_args(v.ccoptions)
 }
 
+pub fn (v &Builder) has_pkgconfig_pthread() bool {
+	return v.ccoptions.pkgconfig_pthread
+}
+
 fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 	mut all := []string{}
 	all << ccoptions.env_cflags
@@ -1178,6 +1351,12 @@ fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
+	if ccoptions.pkgconfig_pthread
+		&& (ccoptions.cc in [.gcc, .clang] || v.pref.ccompiler_type == .cplusplus)
+		&& (v.pref.is_o || (v.pref.build_mode == .build_module && !v.pref.is_shared))
+		&& !all.any(pref.contains_exact_cflag_token(it, '-pthread')) {
+		all << '-pthread'
+	}
 	return all
 }
 
@@ -1389,6 +1568,13 @@ fn (v &Builder) rsp_safe_arg(arg string) string {
 	return arg
 }
 
+fn shell_safe_cc_arg(arg string) string {
+	if arg in ['-Wl,-(', '-Wl,-)'] {
+		return os.quoted_path(arg)
+	}
+	return arg
+}
+
 fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 	if v.pref.no_rsp || v.pref.os == .termux {
 		return false
@@ -1523,13 +1709,14 @@ fn (mut v Builder) generate_c_project() {
 	}
 	v.dump_c_options(all_args)
 	cc_cmd := '${v.quote_compiler_name(ccompiler)} ${all_args.join(' ')}'
+	posix_cc_cmd := '${v.quote_compiler_name(ccompiler)} ${all_args.map(shell_safe_cc_arg(it)).join(' ')}'
 	os.write_file(os.join_path(project_dir, 'build_command.txt'), cc_cmd + '\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build_command.txt'))}: ${err}')
 	}
-	os.write_file(os.join_path(project_dir, 'Makefile'), 'all:\n\t${cc_cmd}\n') or {
+	os.write_file(os.join_path(project_dir, 'Makefile'), 'all:\n\t${posix_cc_cmd}\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'Makefile'))}: ${err}')
 	}
-	os.write_file(os.join_path(project_dir, 'build.sh'), '#!/bin/sh\nset -eu\n${cc_cmd}\n') or {
+	os.write_file(os.join_path(project_dir, 'build.sh'), '#!/bin/sh\nset -eu\n${posix_cc_cmd}\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build.sh'))}: ${err}')
 	}
 	os.write_file(os.join_path(project_dir, 'build.bat'), '@echo off\r\n${cc_cmd}\r\n') or {
@@ -1751,12 +1938,11 @@ pub fn (mut v Builder) cc() {
 		v.dump_c_options(all_args)
 		mut rsp_args := all_args.map(v.rsp_safe_arg(it))
 		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
-		shell_args := rsp_args.join(' ')
 		mut should_use_rsp := v.should_use_rsp(rsp_args)
 		mut str_args := if !should_use_rsp {
-			shell_args.replace('\n', ' ')
+			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
 		} else {
-			shell_args
+			rsp_args.join(' ')
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		if v.pref.parallel_cc {

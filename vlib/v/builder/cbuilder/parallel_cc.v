@@ -4,6 +4,7 @@ import os
 import time
 import v.util
 import v.builder
+import v.pref
 import sync.pool
 import v.gen.c
 
@@ -26,6 +27,22 @@ fn parallel_cc_uses_tcc(cc_kind builder.CC, ccompiler string) bool {
 	normalized := ccompiler.replace('\\', '/').to_lower()
 	return normalized == 'tcc' || normalized.ends_with('/tcc') || normalized.ends_with('/tcc.exe')
 		|| normalized.contains('/thirdparty/tcc/')
+}
+
+fn parallel_cc_shell_safe_linker_arg(arg string) string {
+	if arg in ['-Wl,-(', '-Wl,-)'] {
+		return os.quoted_path(arg)
+	}
+	return arg
+}
+
+fn parallel_cc_compile_driver_args(compile_args []string, pkgconfig_pthread bool, cc_kind builder.CC, compiler_type pref.CompilerType) []string {
+	mut projected := compile_args.clone()
+	if pkgconfig_pthread && (cc_kind in [.gcc, .clang] || compiler_type == .cplusplus)
+		&& !projected.any(pref.contains_exact_cflag_token(it, '-pthread')) {
+		projected << '-pthread'
+	}
+	return projected
 }
 
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
@@ -121,9 +138,11 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 			linker_args << tcc_l_arg
 		}
 	}
-	scompile_args := compile_args.join(' ')
-	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
+	compile_args = parallel_cc_compile_driver_args(compile_args, b.has_pkgconfig_pthread(),
+		b.ccoptions.cc, b.pref.ccompiler_type)
+	scompile_args := compile_args.join(' ')
+	slinker_args := linker_args.map(parallel_cc_shell_safe_linker_arg(it)).join(' ')
 
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}

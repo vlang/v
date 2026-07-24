@@ -15444,8 +15444,9 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg string) string 
 	qualified := tc.qualify_resolution_type_text(type_arg)
 	if !qualified.contains('.') && !is_builtin_type_name(qualified)
 		&& qualified !in tc.fn_context.generic_params && (qualified in tc.structs
-		|| qualified in tc.enum_names || qualified in tc.flag_enums || qualified in tc.sum_types
-		|| qualified in tc.interface_names || qualified in tc.type_aliases) {
+		|| qualified in tc.enum_names || qualified in tc.flag_enums
+		|| qualified in tc.sum_types || qualified in tc.interface_names
+		|| qualified in tc.type_aliases) {
 		return 'main.' + qualified
 	}
 	return qualified

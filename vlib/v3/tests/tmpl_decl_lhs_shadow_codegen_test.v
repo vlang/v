@@ -10,7 +10,8 @@ fn dls_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_decl_lhs_shadow_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${dls_vexe} -gc none -path "${dls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${dls_v3_src}')
+	build :=
+		os.execute('${dls_vexe} -gc none -path "${dls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${dls_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

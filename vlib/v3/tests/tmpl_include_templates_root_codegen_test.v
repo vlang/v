@@ -10,7 +10,8 @@ fn tir_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_include_templates_root_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${tir_vexe} -gc none -path "${tir_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tir_v3_src}')
+	build :=
+		os.execute('${tir_vexe} -gc none -path "${tir_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tir_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

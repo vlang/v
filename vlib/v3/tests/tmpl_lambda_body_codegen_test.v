@@ -10,7 +10,8 @@ fn tlb_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_lambda_body_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${tlb_vexe} -gc none -path "${tlb_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tlb_v3_src}')
+	build :=
+		os.execute('${tlb_vexe} -gc none -path "${tlb_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tlb_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

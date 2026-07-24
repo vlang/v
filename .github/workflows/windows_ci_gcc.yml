@@ -59,6 +59,22 @@ jobs:
           .\makev.bat -gcc
           .\v.exe symlink
           .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: Pkg-config regressions (GCC)
+        run: |
+          $tests = @(
+            'vlib\v\pkgconfig\pkgconfig_define_prefix_test.v'
+            'vlib\v\pkgconfig\pkgconfig_define_prefix_compile_test.v'
+            'vlib\v\pkgconfig\pkgconfig_static_test.v'
+            'vlib\v\checker\pkgconfig_static_mode_test.v'
+            'vlib\v\checker\pkgconfig_cross_compile_test.v'
+            'vlib\v\builder\pkgconfig_link_segment_test.v'
+          )
+          foreach ($test in $tests) {
+            .\v.exe -cc gcc -no-retry-compilation test $test
+            if ($LASTEXITCODE -ne 0) {
+              throw "pkg-config regression failed for $test with exit code $LASTEXITCODE"
+            }
+          }
       - name: Legacy gg import multiwindow isolation
         run: v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Test v binaries

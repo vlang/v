@@ -42,30 +42,30 @@ pub:
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                                 scanner.Scanner
-	tok                               token.Token
-	lit                               string
-	tok_pos                           int
-	tok_end                           int
-	prev_tok_end                      int
-	peek_tok                          token.Token = .eof
-	peek_lit                          string
-	peek_pos                          int
-	peek_end                          int
-	has_peek                          bool
-	cur_file                          string
-	cur_file_id                       int
-	next_file_id                      int = 1
-	cur_module                        string
-	cur_fn                            string
-	veb_tmpl_counter                  int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
-	cur_struct                        string   // receiver type name of the current method, for `@STRUCT`
-	cur_method_is_static              bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
-	comptime_for_vars                 []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	comptime_method_var               string   // innermost active `$for method in Type.methods` loop variable
-	comptime_const_values             map[string]string
-	comptime_local_values             map[string]string
-	imported_module_names             map[string]bool // import aliases in the current file; not captured by inlined template closures
+	s                     scanner.Scanner
+	tok                   token.Token
+	lit                   string
+	tok_pos               int
+	tok_end               int
+	prev_tok_end          int
+	peek_tok              token.Token = .eof
+	peek_lit              string
+	peek_pos              int
+	peek_end              int
+	has_peek              bool
+	cur_file              string
+	cur_file_id           int
+	next_file_id          int = 1
+	cur_module            string
+	cur_fn                string
+	veb_tmpl_counter      int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
+	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
+	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
+	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
+	comptime_const_values map[string]string
+	comptime_local_values map[string]string
+	imported_module_names map[string]bool // import aliases in the current file; not captured by inlined template closures
 	// local_binding_* track the variable/parameter names currently in scope, so an inlined
 	// template closure captures a bare callee only when it is an actual local binding (a
 	// function-valued parameter/local) rather than a module/top-level function. Scoped like
@@ -1463,8 +1463,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:    .struct_decl
 			value:   name
-			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned,
-				aligned, implements_types)
+			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa,
+				is_aligned, aligned, implements_types)
 			payload: flat.node_payload(generic_params)
 		})
 	}

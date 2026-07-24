@@ -4511,8 +4511,8 @@ fn (c &CallCollector) top_level_decl_rhs_type_name(rhs_id flat.NodeId, cur_modul
 		// An alias-to-struct literal (`Alias{...}` where `type Alias = Base`) is not
 		// itself a struct key; keep the alias name so a later method call on the var
 		// resolves `Alias.method` (methods are registered on the alias).
-		if resolved in c.tc.type_aliases || markused_resolve_imported_type_name(rhs.value,
-			imports) in c.tc.type_aliases {
+		if resolved in c.tc.type_aliases
+			|| markused_resolve_imported_type_name(rhs.value, imports) in c.tc.type_aliases {
 			return resolved
 		}
 		return struct_type
@@ -7348,9 +7348,7 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 	if name.len == 0 {
 		return
 	}
-	info := c.fn_decls[name] or {
-		c.fn_decls[callee_name] or { return }
-	}
+	info := c.fn_decls[name] or { c.fn_decls[callee_name] or { return } }
 	fn_node := c.a.node(info.node_id)
 	mut param_type_texts := []string{}
 	for i in 0 .. fn_node.children_count {

@@ -1,0 +1,4 @@
+Name: whole-archive-literal-normal-74
+Description: Ordinary literal archive duplicate before a whole-archive epoch
+Version: 1.0.0
+Libs: /issue74/libliteral-epoch.a /issue74/libliteral-epoch.a /issue74/libliteral-dependency.a
