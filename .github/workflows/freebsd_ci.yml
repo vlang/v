@@ -29,6 +29,7 @@ on:
       - 'vlib/dl/**'
       - 'vlib/encoding/**'
       - 'vlib/flag/**'
+      - 'vlib/hash/**'
       - 'vlib/io/**'
       - 'vlib/json/**'
       - 'vlib/json2/**'
@@ -45,6 +46,7 @@ on:
       - 'vlib/toml/**'
       - 'vlib/v/**'
       # build-examples / DB / Sokol deps exercised by ci/freebsd_ci.vsh
+      - 'examples/**'
       - 'vlib/compress/**'
       - 'vlib/crypto/rand/**'
       - 'vlib/db/**'
