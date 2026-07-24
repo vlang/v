@@ -16,9 +16,9 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_strerror', '_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort', '_time', '_localtime_r',
 	'_gmtime_r', '_mktime', '_gettimeofday', '_clock', '_clock_gettime_nsec_np',
 	'_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep', '_usleep', '_strftime',
-	'_task_info', '_mach_task_self_', '_rand', '_srand', '_isdigit', '_isspace', '_tolower',
-	'_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init',
-	'_pthread_mutex_lock', '_pthread_mutex_trylock', '_pthread_mutex_unlock',
+	'_task_info', '_mach_task_self', '_mach_task_self_', '_rand', '_srand', '_isdigit', '_isspace',
+	'_tolower', '_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname', '_gethostname',
+	'_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock', '_pthread_mutex_unlock',
 	'_pthread_mutex_destroy', '_pthread_self', '_pthread_create', '_pthread_join',
 	'_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
 	'_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy',
@@ -39,7 +39,7 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt', '_ceil', '_floor', '_round', '_trunc',
 	'_fmod', '_remainder', '_fabs', '_copysign', '_fmax', '_fmin', '_hypot', '_ldexp', '_frexp',
 	'_modf', '_scalbn', '_ilogb', '_logb', '_erf', '_erfc', '_lgamma', '_tgamma', '_j0', '_j1',
-	'_jn', '_y0', '_y1', '_yn', '_mprotect', '_sys_icache_invalidate', '_objc_msgSend',
+	'_jn', '_y0', '_y1', '_yn', '_getrusage', '_mprotect', '_sys_icache_invalidate', '_objc_msgSend',
 	'_objc_getClass', '_sel_registerName', '_objc_alloc_init', '_objc_autoreleasePoolPush',
 	'_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen', '_dlsym']
 
@@ -59,6 +59,7 @@ mut:
 	cur_func_ret_type  string
 	cur_block          BlockID
 	vars               map[string]ValueID
+	global_vars        map[string]ValueID
 	var_type_names     map[string]string
 	i64_type           TypeID
 	i32_type           TypeID
@@ -133,6 +134,7 @@ pub:
 	hot_fn         string   // build only this function's body (hot reload)
 	skip_fn_bodies bool     // register signatures only, mark them prototypes
 	skip_modules   []string // skip all functions declared in these modules
+	track_uses     bool = true // build optimizer/verifier use lists
 }
 
 // build supports build handling for ssa.
@@ -153,6 +155,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		tc:                 unsafe { tc }
 		used_fns:           used_fns
 		vars:               map[string]ValueID{}
+		global_vars:        map[string]ValueID{}
 		var_type_names:     map[string]string{}
 		fn_types:           map[string]TypeID{}
 		fn_ids:             map[string]int{}
@@ -176,6 +179,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		skip_modules:       map[string]bool{}
 		type_aliases:       map[string]TypeID{}
 	}
+	b.m.track_uses = opts.track_uses
 	b.void_type = TypeID(0)
 	b.i64_type = b.m.type_store.get_int(64)
 	b.i32_type = b.m.type_store.get_int(32)
@@ -261,6 +265,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	b.register_types()
 	b.register_consts()
 	b.register_globals()
+	b.global_vars = b.vars.clone()
 	b.register_functions()
 	b.build_functions()
 	return b.m
@@ -300,8 +305,10 @@ fn (mut b Builder) register_types() {
 			mut field_names := []string{}
 			for i in 0 .. node.children_count {
 				f := b.a.child_node(&node, i)
-				field_type := b.resolve_type_in_module(f.typ, cur_module)
-				field_type_name := qualify_type_ref_name(f.typ, cur_module)
+				field_type_name := native_c_struct_field_type(node.value, f.value) or {
+					qualify_type_ref_name(f.typ, cur_module)
+				}
+				field_type := b.resolve_type_in_module(field_type_name, cur_module)
 				field_types << field_type
 				field_names << f.value
 				b.struct_field_types[node.value + '.' + f.value] = field_type_name
@@ -310,6 +317,20 @@ fn (mut b Builder) register_types() {
 				if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
 					b.struct_field_types[cur_module + '.' + short_name + '.' + f.value] = field_type_name
 				}
+			}
+			if abi := native_c_struct_abi(node.value) {
+				field_names = abi.field_names.clone()
+				field_types = abi.field_types.map(b.resolve_type(it))
+				for i, name in field_names {
+					b.struct_field_types[node.value + '.' + name] = abi.field_types[i]
+					b.struct_field_types[node.value.all_after('.') + '.' + name] = abi.field_types[i]
+				}
+			}
+			if node.value == 'C.tm' && 'tm_zone' !in field_names {
+				field_names << 'tm_zone'
+				field_types << b.resolve_type('&char')
+				b.struct_field_types['C.tm.tm_zone'] = '&char'
+				b.struct_field_types['tm.tm_zone'] = '&char'
 			}
 			typ_id := b.struct_type_id_for_decl(node.value, cur_module)
 			b.m.type_store.types[typ_id] = Type{
@@ -376,6 +397,43 @@ fn (mut b Builder) register_types() {
 		}
 	}
 	b.register_multi_return_types()
+}
+
+struct NativeCStructAbi {
+	field_names []string
+	field_types []string
+}
+
+fn native_c_struct_abi(struct_name string) ?NativeCStructAbi {
+	if struct_name == 'C.task_basic_info' {
+		// `task_info` writes the complete macOS mach_task_basic_info ABI value even
+		// though runtime.used_memory exposes only resident_size in its V declaration.
+		return NativeCStructAbi{
+			field_names: ['virtual_size', 'resident_size', 'resident_size_max', 'user_time_seconds',
+				'user_time_microseconds', 'system_time_seconds', 'system_time_microseconds', 'policy',
+				'suspend_count']
+			field_types: ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
+		}
+	}
+	if struct_name == 'C.rusage' {
+		// getrusage fills two 16-byte timeval values followed by fourteen longs.
+		return NativeCStructAbi{
+			field_names: ['ru_utime_sec', 'ru_utime_usec', 'ru_stime_sec', 'ru_stime_usec',
+				'ru_maxrss', 'ru_ixrss', 'ru_idrss', 'ru_isrss', 'ru_minflt', 'ru_majflt', 'ru_nswap',
+				'ru_inblock', 'ru_oublock', 'ru_msgsnd', 'ru_msgrcv', 'ru_nsignals', 'ru_nvcsw',
+				'ru_nivcsw']
+			field_types: ['i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64',
+				'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64']
+		}
+	}
+	return none
+}
+
+fn native_c_struct_field_type(struct_name string, field_name string) ?string {
+	if struct_name == 'C.tm' && field_name == 'tm_gmtoff' {
+		return 'i64'
+	}
+	return none
 }
 
 // register_multi_return_types updates register multi return types state for ssa.
@@ -1075,6 +1133,7 @@ fn (mut b Builder) register_functions() {
 	b.register_at_exit_stub()
 	b.register_rand_prng_interface_stubs()
 	b.register_pthread_compat_stubs()
+	b.register_prealloc_allocator_stubs()
 	b.register_prealloc_atomic_stubs()
 	b.register_atomic_builtin_stubs()
 	b.register_process_capture_stubs()
@@ -1412,7 +1471,8 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'charptr.vstring_with_len', 'u8.vstring_literal', 'u8.vstring_literal_with_len',
 		'char.vstring_literal', 'char.vstring_literal_with_len', 'byteptr.vstring_literal',
 		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
-		'charptr.vstring_literal_with_len'] {
+		'charptr.vstring_literal_with_len', 'prealloc_malloc', 'prealloc_malloc_align',
+		'prealloc_calloc', 'prealloc_realloc', 'prealloc_scope_begin', 'v_realloc'] {
 		return true
 	}
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
@@ -2768,7 +2828,7 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	b.generate_map_delete_body(delete_id)
 
 	mut p1_map := []TypeID{}
-	p1_map << b.map_type
+	p1_map << ptr_map
 	clone_id := b.register_synthetic_function('map__clone', b.map_type, p1_map)
 	b.generate_map_clone_body(clone_id)
 
@@ -2880,11 +2940,8 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
 	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
 	entry := b.m.add_block(func_id, 'entry')
-	m := b.func_add_argument(func_id, b.map_type, 'm')
-	map_slot := b.block_instr0(.alloca, entry, ptr_map)
-	b.block_instr2(.store, entry, b.void_type, m, map_slot)
-	state_field := b.block_struct_field_ptr(entry, map_slot, b.map_type, 0)
-	old_state := b.block_instr1(.load, entry, ptr_state, state_field)
+	m := b.func_add_argument(func_id, ptr_map, 'm')
+	old_state := b.map_state_ptr(entry, m)
 	zero_state := b.m.get_or_add_const(ptr_state, '0')
 	has_state := b.block_instr2(.ne, entry, b.i1_type, old_state, zero_state)
 	blk_clone := b.m.add_block(func_id, 'map_clone_copy')
@@ -2937,7 +2994,8 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 	result := b.block_instr1(.load, blk_clone, b.map_type, result_slot)
 	b.block_instr1(.ret, blk_clone, b.void_type, result)
 
-	b.block_instr1(.ret, blk_empty, b.void_type, m)
+	empty_result := b.block_instr1(.load, blk_empty, b.map_type, m)
+	b.block_instr1(.ret, blk_empty, b.void_type, empty_result)
 }
 
 // generate_map_move_body moves the simplified SSA map header out of `m` and zeroes `m`.
@@ -3321,6 +3379,90 @@ fn (mut b Builder) emit_cstring_from_string(block_id BlockID, value ValueID) Val
 fn (mut b Builder) generate_const_i64_body(func_id int, value string) {
 	entry := b.m.add_block(func_id, 'entry')
 	result := b.m.get_or_add_const(b.i64_type, value)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+// register_prealloc_allocator_stubs uses libc allocation for the native backend.
+// Scoped preallocation is a C runtime optimization; returning a nil scope keeps its
+// callers on their existing no-scope paths without requiring the arena ABI in SSA.
+fn (mut b Builder) register_prealloc_allocator_stubs() {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	mut p1 := []TypeID{}
+	p1 << b.i64_type
+	malloc_id := b.register_synthetic_function('prealloc_malloc', ptr_i8, p1)
+	b.generate_prealloc_malloc_body(malloc_id)
+	calloc_id := b.register_synthetic_function('prealloc_calloc', ptr_i8, p1)
+	b.generate_prealloc_calloc_body(calloc_id)
+
+	mut p2 := []TypeID{}
+	p2 << b.i64_type
+	p2 << b.i64_type
+	malloc_align_id := b.register_synthetic_function('prealloc_malloc_align', ptr_i8, p2)
+	b.generate_prealloc_malloc_align_body(malloc_align_id)
+
+	mut p3 := []TypeID{}
+	p3 << ptr_i8
+	p3 << b.i64_type
+	p3 << b.i64_type
+	realloc_id := b.register_synthetic_function('prealloc_realloc', ptr_i8, p3)
+	b.generate_prealloc_realloc_body(realloc_id)
+	mut realloc_params := []TypeID{}
+	realloc_params << ptr_i8
+	realloc_params << b.i64_type
+	v_realloc_id := b.register_synthetic_function('v_realloc', ptr_i8, realloc_params)
+	b.generate_libc_realloc_body(v_realloc_id)
+
+	scope_begin_id := b.register_synthetic_function('prealloc_scope_begin', ptr_i8, []TypeID{})
+	b.generate_const_ptr_with_params_body(scope_begin_id, []TypeID{}, ptr_i8, '0')
+}
+
+fn (mut b Builder) generate_prealloc_malloc_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'entry')
+	n := b.func_add_argument(func_id, b.i64_type, 'n')
+	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.fn_ids['malloc'])
+	result := b.block_instr2(.call, entry, ptr_i8, malloc_ref, n)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+fn (mut b Builder) generate_prealloc_calloc_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'entry')
+	n := b.func_add_argument(func_id, b.i64_type, 'n')
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	calloc_ref := b.m.add_value(.func_ref, b.void_type, 'calloc', b.fn_ids['calloc'])
+	result := b.block_instr3(.call, entry, ptr_i8, calloc_ref, one, n)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+fn (mut b Builder) generate_prealloc_malloc_align_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'entry')
+	n := b.func_add_argument(func_id, b.i64_type, 'n')
+	_ := b.func_add_argument(func_id, b.i64_type, 'align')
+	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.fn_ids['malloc'])
+	result := b.block_instr2(.call, entry, ptr_i8, malloc_ref, n)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+fn (mut b Builder) generate_prealloc_realloc_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'entry')
+	old_data := b.func_add_argument(func_id, ptr_i8, 'old_data')
+	_ := b.func_add_argument(func_id, b.i64_type, 'old_size')
+	new_size := b.func_add_argument(func_id, b.i64_type, 'new_size')
+	realloc_ref := b.m.add_value(.func_ref, b.void_type, 'realloc', b.fn_ids['realloc'])
+	result := b.block_instr3(.call, entry, ptr_i8, realloc_ref, old_data, new_size)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+fn (mut b Builder) generate_libc_realloc_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'entry')
+	old_data := b.func_add_argument(func_id, ptr_i8, 'old_data')
+	new_size := b.func_add_argument(func_id, b.i64_type, 'new_size')
+	realloc_ref := b.m.add_value(.func_ref, b.void_type, 'realloc', b.fn_ids['realloc'])
+	result := b.block_instr3(.call, entry, ptr_i8, realloc_ref, old_data, new_size)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -3786,6 +3928,13 @@ fn (mut b Builder) generate_at_exit_body(func_id int, result_type TypeID, params
 
 fn (mut b Builder) register_pthread_compat_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	mut p_create := []TypeID{}
+	p_create << ptr_i8
+	p_create << b.i64_type
+	p_create << ptr_i8
+	p_create << ptr_i8
+	create_id := b.register_synthetic_c_function('v3_pthread_create', b.i32_type, p_create)
+	b.generate_const_body_with_params(create_id, b.i32_type, '11', p_create)
 	mut p_setkind := []TypeID{}
 	p_setkind << ptr_i8
 	p_setkind << b.i32_type
@@ -5711,7 +5860,12 @@ fn (b &Builder) fn_is_used(name string) bool {
 		|| name.ends_with('__bench__new') {
 		return true
 	}
-	if name in ['error_file_not_opened', 'error_size_of_type_0', 'vpopen', 'vpclose'] {
+	if name in ['os.Process.close', 'os__Process__close', 'os.fd_close', 'os__fd_close'] {
+		return true
+	}
+	runtime_name := name.replace('__', '.').all_after_last('.')
+	if runtime_name in ['error_file_not_opened', 'error_size_of_type_0', 'fileno', 'posix_wait4_to_exit_status', 'vpopen', 'vpclose']
+		|| runtime_name.starts_with('posix_wait_status_') {
 		return true
 	}
 	if name.contains('__') && name.replace('__', '.') in b.used_fns {
@@ -5727,8 +5881,8 @@ fn (b &Builder) fn_is_used(name string) bool {
 	}
 	if name.contains('.') {
 		normalized_name := name.replace('__', '.')
-		short_name := normalized_name.all_after_last('.')
-		if short_name in b.used_fns {
+		used_short_name := normalized_name.all_after_last('.')
+		if used_short_name in b.used_fns {
 			return true
 		}
 		for used_name, _ in b.used_fns {
@@ -5759,6 +5913,29 @@ fn (b &Builder) source_fn_is_used(name string, module_name string) bool {
 	return b.fn_is_used(name) || b.fn_is_used(fn_name)
 }
 
+// ownership_drop_intrinsic_name recognizes generic cleanup calls that backends lower
+// directly rather than materializing as source functions.
+fn (b &Builder) ownership_drop_intrinsic_name(name string) bool {
+	if name in ['builtin.drop_owned', 'builtin__drop_owned']
+		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
+		return true
+	}
+	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+		|| name.starts_with('drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
+		return true
+	}
+	if name != 'drop_owned' && !name.starts_with('drop_owned_T_') {
+		return false
+	}
+	if b.tc == unsafe { nil } {
+		return name == 'drop_owned'
+	}
+	module_name := b.tc.fn_type_modules['drop_owned'] or { return false }
+	return module_name == 'builtin'
+}
+
 // build_function builds function data for ssa.
 fn (mut b Builder) build_function(node flat.Node, module_name string) {
 	fn_name := ssa_fn_name_in_module(module_name, node.value)
@@ -5766,16 +5943,7 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 	b.cur_module = module_name
 	b.cur_func = func_id
 	b.cur_func_ret_type = qualify_type_ref_name(node.typ, module_name)
-	b.vars = map[string]ValueID{}
-	b.var_type_names = map[string]string{}
-	b.label_blocks = map[string]BlockID{}
-	b.defer_body_ids = []flat.NodeId{}
-
-	for v in b.m.values {
-		if v.kind == .global {
-			b.vars[v.name] = v.id
-		}
-	}
+	b.reset_function_state()
 
 	entry := b.m.add_block(func_id, 'entry')
 	b.cur_block = entry
@@ -5824,15 +5992,7 @@ fn (mut b Builder) build_top_level_main() {
 	b.cur_module = 'main'
 	b.cur_func = func_id
 	b.cur_func_ret_type = ''
-	b.vars = map[string]ValueID{}
-	b.var_type_names = map[string]string{}
-	b.label_blocks = map[string]BlockID{}
-	b.defer_body_ids = []flat.NodeId{}
-	for v in b.m.values {
-		if v.kind == .global {
-			b.vars[v.name] = v.id
-		}
-	}
+	b.reset_function_state()
 	entry := b.m.add_block(func_id, 'entry')
 	b.cur_block = entry
 
@@ -5844,6 +6004,16 @@ fn (mut b Builder) build_top_level_main() {
 	if blk.instrs.len == 0 || !b.is_terminator(blk.instrs.last()) {
 		b.emit_deferred_stmts()
 		b.emit0(.ret, b.void_type)
+	}
+}
+
+fn (mut b Builder) reset_function_state() {
+	b.vars.clear()
+	b.var_type_names.clear()
+	b.label_blocks.clear()
+	b.defer_body_ids.clear()
+	for name, val_id in b.global_vars {
+		b.vars[name] = val_id
 	}
 }
 
@@ -7178,7 +7348,14 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.build_enum_val(id, node)
 		}
 		.sizeof_expr {
-			size := b.m.type_size(b.resolve_type(node.value))
+			mut size := 0
+			if type_name := b.var_type_names[node.value] {
+				size = b.sizeof_type_name(type_name)
+			} else if addr := b.vars[node.value] {
+				size = b.m.type_size(b.deref_type(addr))
+			} else {
+				size = b.sizeof_type_name(node.value)
+			}
 			return b.m.get_or_add_const(b.i64_type, '${size}')
 		}
 		.ident {
@@ -7859,6 +8036,14 @@ fn (b &Builder) is_decimal_int_text(text string) bool {
 		}
 	}
 	return true
+}
+
+fn (mut b Builder) sizeof_type_name(type_name string) int {
+	if b.is_fixed_array_type_name(type_name) {
+		elem_type := b.resolve_type(b.fixed_array_elem_type_name(type_name))
+		return b.fixed_array_len_text(type_name).int() * b.m.type_size(elem_type)
+	}
+	return b.m.type_size(b.resolve_type(type_name))
 }
 
 fn (mut b Builder) build_fixed_array_init(node flat.Node) ValueID {
@@ -8812,12 +8997,13 @@ fn (mut b Builder) const_global_addr(name string, expr_id flat.NodeId) ?ValueID 
 		b.cur_module + '.' + name
 	}
 	global_name := '__const_' + ssa_c_name(qualified_name)
-	for v in b.m.values {
-		if v.kind == .global && v.name == global_name {
-			return v.id
-		}
+	if val_id := b.global_vars[global_name] {
+		return val_id
 	}
-	return b.m.add_global(global_name, typ_id)
+	val_id := b.m.add_global(global_name, typ_id)
+	b.global_vars[global_name] = val_id
+	b.vars[global_name] = val_id
+	return val_id
 }
 
 fn (mut b Builder) build_postfix(node flat.Node) ValueID {
@@ -9077,6 +9263,11 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	if actual_name.starts_with('C.') {
 		actual_name = actual_name[2..]
 		is_c_call = true
+	}
+	if node.children_count == 2 && b.ownership_drop_intrinsic_name(actual_name) {
+		// SSA does not yet have the C backend's recursive ownership-destruction ABI.
+		// Preserve evaluation and the native backend's previous leak-tolerant behavior.
+		return b.build_expr(b.a.child(&node, 1))
 	}
 
 	if fn_node.kind == .selector && fn_node.value in ['set', 'clear', 'has'] {
@@ -10105,7 +10296,7 @@ fn (mut b Builder) build_map_delete_call(base_id flat.NodeId, key_id flat.NodeId
 
 fn (mut b Builder) build_map_clone_call(base_id flat.NodeId) ValueID {
 	fn_ref := b.m.add_value(.func_ref, b.void_type, 'map__clone', b.fn_ids['map__clone'])
-	base := b.coerce_value_for_param(b.build_expr(base_id), b.map_type)
+	base := b.map_expr_ptr(base_id)
 	return b.emit2(.call, b.map_type, fn_ref, base)
 }
 
@@ -10257,6 +10448,9 @@ fn (b &Builder) declared_v_type_name(lhs_id flat.NodeId, rhs_id flat.NodeId) str
 		rhs := b.a.nodes[int(rhs_id)]
 		if rhs.kind == .array_init && b.is_fixed_array_type_name(rhs.value) {
 			return rhs.value
+		}
+		if rhs.kind == .array_literal && b.is_fixed_array_type_name(rhs.typ) {
+			return rhs.typ
 		}
 		if rhs.kind == .call && rhs.children_count > 0 {
 			fn_node := b.a.child_node(&rhs, 0)
@@ -11392,13 +11586,13 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 		'int' {
 			b.i32_type
 		}
-		'i8' {
+		'i8', 'char' {
 			b.i8_type
 		}
 		'i16' {
 			b.i32_type
 		}
-		'i32' {
+		'i32', 'rune' {
 			b.i32_type
 		}
 		'i64' {
@@ -11443,8 +11637,8 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 fn normalize_primitive_type_name(name string) string {
 	short_name := name.all_after('.')
 	return match short_name {
-		'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool',
-		'string', 'void', 'voidptr', '' {
+		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
+		'f64', 'bool', 'string', 'void', 'voidptr', '' {
 			short_name
 		}
 		else {

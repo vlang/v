@@ -1318,6 +1318,14 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 	if clean.starts_with('chan ') {
 		return 'chan ' + t.normalize_type_in_module(clean[5..], mod)
 	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end > 3 && bracket_end < clean.len {
+			key_type := t.normalize_type_in_module(clean[4..bracket_end], mod)
+			value_type := t.normalize_type_in_module(clean[bracket_end + 1..], mod)
+			return 'map[${key_type}]${value_type}'
+		}
+	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
 		params, ret := fn_type_text_parts(clean) or { return clean }
 		mut normalized_params := []string{cap: params.len}
@@ -1334,8 +1342,34 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 			'fn (${normalized_params.join(', ')})'
 		}
 	}
+	base, args, is_generic_app := generic_app_parts(clean)
+	if is_generic_app {
+		mut normalized_args := []string{cap: args.len}
+		for arg in args {
+			normalized_args << t.normalize_type_in_module(arg, mod)
+		}
+		return '${t.normalize_type_in_module(base, mod)}[${normalized_args.join(', ')}]'
+	}
 	if clean.contains('.') || mod.len == 0 || mod == 'main' || mod == 'builtin' {
 		return t.normalize_type_alias(clean)
+	}
+	if !isnil(t.tc) && mod == t.cur_module && t.cur_file.len > 0 {
+		mut imported := ''
+		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
+			[]string{}
+		} {
+			if !t.type_authority_has(candidate) {
+				continue
+			}
+			if imported.len > 0 && imported != candidate {
+				imported = ''
+				break
+			}
+			imported = candidate
+		}
+		if imported.len > 0 {
+			return t.normalize_type_alias(imported)
+		}
 	}
 	qtyp := '${mod}.${clean}'
 	if t.type_authority_has(qtyp) {

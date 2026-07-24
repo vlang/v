@@ -29,10 +29,10 @@ fn test_c_name_sanitizes_compound_generic_type_arguments() {
 
 fn test_c_name_libc_collision_abs() {
 	assert c_name('abs') == 'v_abs'
+	assert c_name('send') == 'v_send'
 	assert c_name('C.abs') == 'abs'
 	assert c_name('printf') == 'v_printf'
 	assert c_name('C.printf') == 'printf'
-	assert c_name('send') == 'v_send'
 	assert c_name('C.send') == 'send'
 }
 
@@ -178,6 +178,14 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
 	]
+	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_apple_framework_include_does_not_match_x11() {
+	assert c_is_apple_framework_include('<Cocoa/Cocoa.h>')
+	assert c_is_apple_framework_include('<CoreFoundation/CFString.h>')
+	assert !c_is_apple_framework_include('<X11/Xlib.h>')
+	assert !c_is_apple_framework_include('<sys/ptrace.h>')
 }
 
 fn test_large_transitive_header_tree_is_preserved() {

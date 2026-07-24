@@ -341,7 +341,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	// An open generic template must survive the pre-monomorph transform pass.
 	// Its metadata and `$zero(field.typ)` children are needed when the concrete
 	// specialization is cloned later; erasing them here leaves empty child ids.
-	if is_generic_fn_placeholder_name(base_type) || t.generic_arg_is_unresolved(base_type) {
+	if t.generic_arg_is_unresolved(base_type) {
 		return arr1(id)
 	}
 	t.ignore_comptime_for_subtree(id)
@@ -1102,7 +1102,7 @@ fn comptime_source_location(path string, encoded_offset int, line_offsets []int)
 		}
 	}
 	line_index := if lo > 0 { lo - 1 } else { 0 }
-	return '${path}:${line_index + 1}:${offset - line_offsets[line_index]}'
+	return '${path}:${line_index + 1}:${offset - line_offsets[line_index] + 1}'
 }
 
 fn comptime_method_receiver_matches(receiver string, requested string, normalized string, receiver_module string, requested_module string) bool {
@@ -2138,13 +2138,11 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	}
 	spec_value := specialized_generic_fn_value(decl.node.value, args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
-	if spec_name !in t.fn_ret_types {
-		if t.defer_nested_generic_emissions {
-			t.request_generic_fn_specialization(decl, args)
-		} else {
-			clone_id := t.emit_generic_fn_specialization(decl, args)
-			t.generated_fn_used_names(decl, clone_id, args)
-		}
+	if t.defer_nested_generic_emissions || t.parallel_monomorph_worker {
+		t.request_generic_fn_specialization(decl, args)
+	} else {
+		clone_id := t.emit_generic_fn_specialization(decl, args)
+		t.generated_fn_used_names(decl, clone_id, args)
 	}
 	if is_receiver {
 		receiver := t.a.child(&callee, 0)
@@ -2153,7 +2151,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	} else {
 		t.set_node_value(int(children[0]), spec_name)
 	}
-	return ''
+	return spec_name
 }
 
 fn (t &Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMeta) ?string {

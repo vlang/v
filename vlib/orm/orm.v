@@ -836,7 +836,9 @@ fn clone_query_data(data QueryData) QueryData {
 pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind, num bool, qm string,
 	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
-	mut c := start_pos
+	mut c := PlaceholderCounter{
+		position: start_pos
+	}
 	insert_data := prepare_insert_query_data(data)
 
 	match kind {
@@ -853,8 +855,8 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 				for _ in 0 .. row_count {
 					mut row_values := []string{}
 					for _ in insert_data.fields {
-						row_values << factory_insert_qm_value(num, qm, c)
-						c++
+						row_values << factory_insert_qm_value(num, qm, c.position)
+						c.position++
 					}
 					values << '(${row_values.join(', ')})'
 				}
@@ -884,13 +886,13 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 					for _ in 0 .. data.batch_rows {
 						str += 'WHEN ${qm}'
 						if num {
-							str += '${c}'
-							c++
+							str += '${c.position}'
+							c.position++
 						}
 						str += ' THEN ${qm}'
 						if num {
-							str += '${c}'
-							c++
+							str += '${c.position}'
+							c.position++
 						}
 						str += ' '
 					}
@@ -928,8 +930,8 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 						str += '${qm}'
 					}
 					if num {
-						str += '${c}'
-						c++
+						str += '${c.position}'
+						c.position++
 					}
 					if i < data.fields.len - 1 {
 						str += ', '
@@ -945,7 +947,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 	// where
 	if kind == .update || kind == .delete {
-		str += gen_where_clause(where, q, qm, num, mut &c)
+		str += gen_where_clause(where, q, qm, num, mut c)
 	}
 	str += ';'
 	$if trace_orm_stmt ? {
@@ -1209,7 +1211,9 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 		str += ' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
 	}
 
-	mut c := start_pos
+	mut c := PlaceholderCounter{
+		position: start_pos
+	}
 
 	if cfg.has_where {
 		str += ' WHERE '
@@ -1220,7 +1224,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 				eprintln('> orm_select_gen: field[${i}] = ${field}')
 			}
 		}
-		str += gen_where_clause(where, q, qm, num, mut &c)
+		str += gen_where_clause(where, q, qm, num, mut c)
 	}
 
 	// Note: do not order, if the user did not want it explicitly,
@@ -1234,16 +1238,16 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 	if cfg.has_limit {
 		str += ' LIMIT ${qm}'
 		if num {
-			str += '${c}'
-			c++
+			str += '${c.position}'
+			c.position++
 		}
 	}
 
 	if cfg.has_offset {
 		str += ' OFFSET ${qm}'
 		if num {
-			str += '${c}'
-			c++
+			str += '${c.position}'
+			c.position++
 		}
 	}
 
@@ -1259,11 +1263,16 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 const table_qualified_field_separator = '::v_orm_table::'
 
+struct PlaceholderCounter {
+mut:
+	position int
+}
+
 fn table_qualified_field(table_name string, column_name string) string {
 	return '${table_name}${table_qualified_field_separator}${column_name}'
 }
 
-fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
+fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c PlaceholderCounter) string {
 	mut str := ''
 	mut data_idx := 0
 	for i, field in where.fields {
@@ -1286,16 +1295,16 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 				for j in 0 .. array_len {
 					tmp[j] = '${qm}'
 					if num {
-						tmp[j] += '${c}'
-						c++
+						tmp[j] += '${c.position}'
+						c.position++
 					}
 				}
 				str += ' (${tmp.join(', ')})'
 			} else {
 				str += ' ${qm}'
 				if num {
-					str += '${c}'
-					c++
+					str += '${c.position}'
+					c.position++
 				}
 			}
 			data_idx++

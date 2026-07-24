@@ -273,13 +273,23 @@ fn (g &FlatGen) interface_dispatch_method_is_required(concrete_key string) bool 
 		for concrete in impls {
 			concrete_method := '${concrete}.${method}'
 			if concrete_method == concrete_key || g.cname(concrete_method) == concrete_c_name {
-				return true
+				return g.interface_dispatch_target_decl_is_used(concrete_method)
 			}
 			expected := g.tc.concrete_method_signature_key(concrete, method) or { concrete_method }
 			if expected == concrete_key || g.cname(expected) == concrete_c_name {
-				return true
+				return g.interface_dispatch_target_decl_is_used(expected)
 			}
 		}
+	}
+	return false
+}
+
+fn (g &FlatGen) interface_dispatch_target_decl_is_used(name string) bool {
+	if g.used_interface_dispatch_key(name) {
+		return true
+	}
+	if source_file := g.tc.fn_type_files[name] {
+		return source_file.ends_with('.vh')
 	}
 	return false
 }
@@ -1057,6 +1067,9 @@ fn (g &FlatGen) ierror_pointer_payload_root_needs_heap_copy(root flat.Node) bool
 		return param_type !is types.Pointer
 	}
 	if local_type := g.tc.cur_scope.lookup(root.value) {
+		if local_type is types.Pointer && g.ierror_local_pointer_is_owned(root.value) {
+			return true
+		}
 		return local_type !is types.Pointer
 	}
 	return false
@@ -1600,7 +1613,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					continue
 				}
 				concrete_params := g.tc.fn_param_types[decl] or { []types.Type{} }
-				if !g.interface_dispatch_signature_compatible(decl, ret_ct, sig_params) {
+				if !g.interface_dispatch_signature_compatible(decl, ret_type, sig_params) {
 					continue
 				}
 				recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
@@ -1658,7 +1671,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 				continue
 			}
 			concrete_params := g.tc.fn_param_types[method_key] or { []types.Type{} }
-			if !g.interface_dispatch_signature_compatible(method_key, ret_ct, sig_params) {
+			if !g.interface_dispatch_signature_compatible(method_key, ret_type, sig_params) {
 				continue
 			}
 			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
@@ -1717,6 +1730,9 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 // gen_interface_dispatch_wrapped_return adapts an option/result whose successful
 // concrete payload implements the interface returned by the dispatch signature.
 fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type) bool {
+	if !g.interface_dispatch_wrapped_return_can_adapt(expected, actual) {
+		return false
+	}
 	expected_base := interface_dispatch_wrapped_base_type(expected) or { return false }
 	actual_base := interface_dispatch_wrapped_base_type(actual) or { return false }
 	expected_iface_type := cgen_unalias_type(expected_base)
@@ -1765,6 +1781,22 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 	return true
 }
 
+fn (g &FlatGen) interface_dispatch_wrapped_return_can_adapt(expected types.Type, actual types.Type) bool {
+	expected_base := interface_dispatch_wrapped_base_type(expected) or { return false }
+	actual_base := interface_dispatch_wrapped_base_type(actual) or { return false }
+	expected_iface_type := cgen_unalias_type(expected_base)
+	if expected_iface_type !is types.Interface {
+		return false
+	}
+	expected_iface := expected_iface_type as types.Interface
+	actual_clean := cgen_unalias_type(actual_base)
+	actual_value := if actual_clean is types.Pointer { actual_clean.base_type } else { actual_clean }
+	if cgen_unalias_type(actual_value) is types.Interface {
+		return false
+	}
+	return g.iface_type_id_for_concrete(expected_iface.name, actual_value) != 0
+}
+
 fn interface_dispatch_wrapped_base_type(typ types.Type) ?types.Type {
 	match typ {
 		types.OptionType, types.ResultType {
@@ -1778,6 +1810,10 @@ fn interface_dispatch_wrapped_base_type(typ types.Type) ?types.Type {
 
 fn (mut g FlatGen) interface_boxed_type_marked_for_dispatch(iface_name string, concrete string) bool {
 	g.collect_interface_boxed_types_for_dispatch()
+	return g.interface_boxed_type_collected_for_dispatch(iface_name, concrete)
+}
+
+fn (g &FlatGen) interface_boxed_type_collected_for_dispatch(iface_name string, concrete string) bool {
 	if g.interface_boxed_types['${iface_name}::${concrete}']
 		|| g.interface_boxed_types['${iface_name}::${c_name(concrete)}']
 		|| g.interface_boxed_types['${iface_name}::${concrete.all_after_last('.')}'] {
@@ -1828,9 +1864,10 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 	}
 }
 
-fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, ret_ct string, sig_params []types.Type) bool {
+fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, expected_ret types.Type, sig_params []types.Type) bool {
 	ret_type := g.tc.fn_ret_types[method_key] or { return false }
-	if g.fn_return_type_name(ret_type) != ret_ct {
+	if g.fn_return_type_name(ret_type) != g.fn_return_type_name(expected_ret)
+		&& !g.interface_dispatch_wrapped_return_can_adapt(expected_ret, ret_type) {
 		return false
 	}
 	params := g.tc.fn_param_types[method_key] or { return false }

@@ -439,6 +439,9 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 	if actual_base.name() == expected_base.name() {
 		return false
 	}
+	if actual_base.is_integer() && expected_base.is_integer() {
+		return true
+	}
 	if expected_base is types.Interface {
 		return true
 	}

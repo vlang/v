@@ -697,23 +697,46 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 }
 
 fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
+	mut expanding := map[string]bool{}
+	g.gen_ownership_drop_value_inner(typ, expr, depth, mut expanding)
+}
+
+fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, depth int, mut expanding map[string]bool) {
 	if depth > 64 || expr.len == 0 {
 		return
 	}
+	expansion_key := match typ {
+		types.Struct { 'struct:${typ.name}' }
+		types.Interface { 'interface:${typ.name}' }
+		types.SumType { 'sum:${typ.name}' }
+		else { '' }
+	}
+	if expansion_key.len > 0 {
+		if expanding[expansion_key] {
+			return
+		}
+		expanding[expansion_key] = true
+	}
+	defer {
+		if expansion_key.len > 0 {
+			expanding.delete(expansion_key)
+		}
+	}
 	match typ {
 		types.Alias {
-			g.gen_ownership_drop_value(typ.base_type, expr, depth + 1)
+			g.gen_ownership_drop_value_inner(typ.base_type, expr, depth + 1, mut expanding)
 		}
 		types.OptionType {
 			g.writeln('if ((${expr}).ok) {')
 			g.indent++
 			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
-				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
+				g.gen_ownership_drop_value_inner(typ.base_type, '(${expr}).value', depth + 1, mut
+					expanding)
 			}
 			g.indent--
 			g.writeln('} else {')
 			g.indent++
-			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1)
+			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1, mut expanding)
 			g.indent--
 			g.writeln('}')
 		}
@@ -721,12 +744,13 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 			g.writeln('if ((${expr}).ok) {')
 			g.indent++
 			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
-				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
+				g.gen_ownership_drop_value_inner(typ.base_type, '(${expr}).value', depth + 1, mut
+					expanding)
 			}
 			g.indent--
 			g.writeln('} else {')
 			g.indent++
-			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1)
+			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1, mut expanding)
 			g.indent--
 			g.writeln('}')
 		}
@@ -742,8 +766,8 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				elem_ct := g.value_c_type(typ.elem_type)
 				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < (${expr}).len; _drop_i${idx}++) {')
 				g.indent++
-				g.gen_ownership_drop_value(typ.elem_type,
-					'*((${elem_ct}*)array_get(${expr}, _drop_i${idx}))', depth + 1)
+				g.gen_ownership_drop_value_inner(typ.elem_type,
+					'*((${elem_ct}*)array_get(${expr}, _drop_i${idx}))', depth + 1, mut expanding)
 				g.indent--
 				g.writeln('}')
 			}
@@ -757,7 +781,8 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				g.tmp_count++
 				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < ${typ.len}; _drop_i${idx}++) {')
 				g.indent++
-				g.gen_ownership_drop_value(typ.elem_type, '(${expr})[_drop_i${idx}]', depth + 1)
+				g.gen_ownership_drop_value_inner(typ.elem_type, '(${expr})[_drop_i${idx}]', depth +
+					1, mut expanding)
 				g.indent--
 				g.writeln('}')
 			}
@@ -775,15 +800,15 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 					&& typ.key_type !is types.String {
 					key_ct := g.map_key_temp_c_type(typ.key_type)
 					key_slot := '${key_values}.keys + _drop_i${idx} * ${key_values}.key_bytes'
-					g.gen_ownership_drop_value(typ.key_type, '*(${key_ct}*)(${key_slot})',
-						depth + 1)
+					g.gen_ownership_drop_value_inner(typ.key_type, '*(${key_ct}*)(${key_slot})',
+
+						depth + 1, mut expanding)
 				}
 				if g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
 					value_ct := g.value_c_type(typ.value_type)
 					value_slot := '${key_values}.values + _drop_i${idx} * ${key_values}.value_bytes'
-					g.gen_ownership_drop_value(typ.value_type, '*(${value_ct}*)(${value_slot})',
-
-						depth + 1)
+					g.gen_ownership_drop_value_inner(typ.value_type,
+						'*(${value_ct}*)(${value_slot})', depth + 1, mut expanding)
 				}
 				g.indent--
 				g.writeln('}')
@@ -798,15 +823,15 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 			}
 			for field in g.tc.struct_fields_for_type(typ.name) {
 				if g.ownership_type_requires_destruction(field.typ, depth + 1) {
-					g.gen_ownership_drop_value(field.typ, '(${expr}).${g.cname(field.name)}',
+					g.gen_ownership_drop_value_inner(field.typ, '(${expr}).${g.cname(field.name)}',
 
-						depth + 1)
+						depth + 1, mut expanding)
 				}
 			}
 		}
 		types.Interface {
 			if g.is_ierror_type_name(typ.name) {
-				g.gen_ownership_drop_result_error(expr, depth + 1)
+				g.gen_ownership_drop_result_error(expr, depth + 1, mut expanding)
 				return
 			}
 			mut iface_name := typ.name
@@ -829,8 +854,9 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				concrete_ct := g.value_c_type(concrete_type)
 				g.writeln('case ${id}:')
 				g.indent++
-				g.gen_ownership_drop_value(concrete_type, '*((${concrete_ct}*)${object})',
-					depth + 1)
+				g.gen_ownership_drop_value_inner(concrete_type, '*((${concrete_ct}*)${object})',
+
+					depth + 1, mut expanding)
 				g.writeln('break;')
 				g.indent--
 			}
@@ -858,8 +884,9 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 					payload := '((${expr}).${field})'
 					g.writeln('if ((${expr})._pointer_variant_is_owned && ${payload} != NULL) {')
 					g.indent++
-					g.gen_ownership_drop_value(clean_variant_type.base_type, '*${payload}', depth +
-						1)
+					g.gen_ownership_drop_value_inner(clean_variant_type.base_type, '*${payload}',
+
+						depth + 1, mut expanding)
 					g.writeln('free(${payload});')
 					g.indent--
 					g.writeln('}')
@@ -871,7 +898,8 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				payload := '((${expr}).${field})'
 				g.writeln('if (${payload} != NULL) {')
 				g.indent++
-				g.gen_ownership_drop_value(variant_type, '*${payload}', depth + 1)
+				g.gen_ownership_drop_value_inner(variant_type, '*${payload}', depth + 1, mut
+					expanding)
 				g.writeln('free(${payload});')
 				g.indent--
 				g.writeln('}')
@@ -888,7 +916,7 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 // gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
 // Direct error messages and owned concrete objects are released. Borrowed pointer-backed
 // interfaces and the process-wide none and error-sentinel objects remain untouched.
-fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int) {
+fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut expanding map[string]bool) {
 	object := '((${expr})._object)'
 	g.writeln('string__free(&((${expr}).message));')
 	g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
@@ -907,7 +935,8 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int) {
 		concrete_ct := g.value_c_type(concrete_type)
 		g.writeln('case ${id}:')
 		g.indent++
-		g.gen_ownership_drop_value(concrete_type, '*((${concrete_ct}*)${object})', depth + 1)
+		g.gen_ownership_drop_value_inner(concrete_type, '*((${concrete_ct}*)${object})', depth + 1, mut
+			expanding)
 		g.writeln('break;')
 		g.indent--
 	}
@@ -3194,7 +3223,7 @@ fn (mut g FlatGen) result_error_from_expr_string(id flat.NodeId) ?string {
 		expr_value_type = expr_type.base_type
 	}
 	if g.is_ierror_type_name(expr_value_type.name()) {
-		return g.expr_to_string_with_expected_type(id, g.tc.parse_type('IError'))
+		return g.expr_to_string_with_expected_type(id, g.tc.parse_type('IError')).trim_space()
 	}
 	if !g.type_can_return_as_ierror(expr_value_type) {
 		return none
@@ -3716,14 +3745,17 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			if typ := g.current_param_type(node.value) {
 				return typ
 			}
-			if typ := g.tc.expr_type(id) {
-				if typ !is types.Unknown && typ !is types.Void
-					&& !g.type_contains_generic_placeholder(typ) {
-					return typ
-				}
+			if typ := g.current_param_map_type(node.value) {
+				return typ
 			}
 			if typ := g.tc.cur_scope.lookup(node.value) {
 				if typ !is types.Void {
+					return typ
+				}
+			}
+			if typ := g.tc.expr_type(id) {
+				if typ !is types.Unknown && typ !is types.Void
+					&& !g.type_contains_generic_placeholder(typ) {
 					return typ
 				}
 			}
@@ -3795,6 +3827,13 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 		}
 		if node.kind == .call && node.children_count > 0 {
 			fn_node := g.a.child_node(&node, 0)
+			if fn_node.kind == .ident && fn_node.value == 'malloc' {
+				if typ := g.tc.expr_type(id) {
+					if typ !is types.Unknown && typ !is types.Void {
+						return typ
+					}
+				}
+			}
 			if node.typ.len > 0 {
 				node_type := g.tc.parse_type(node.typ)
 				if !decl_annotation_is_unusable(node_type, node.typ) {
@@ -4625,6 +4664,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			if lhs.kind == .ident {
 				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
 				g.track_local_pointer_storage_decl(lhs, owner, v_type, ct)
+				g.track_ierror_owned_pointer_decl(owner, rhs_id, v_type)
 				g.track_local_pointer_alias_source(lhs, owner, rhs_id, v_type)
 				g.track_local_fn_value_decl(lhs, owner, rhs)
 				g.declare_local_raw_type(owner, g.decl_raw_type_text(node, lhs, rhs))
@@ -4756,6 +4796,11 @@ fn (mut g FlatGen) track_ierror_stack_pointer_alias(lhs flat.Node, rhs flat.Node
 	needs_copy := g.ierror_pointer_payload_expr_needs_heap_copy(rhs)
 		|| g.ierror_array_get_pointer_alias_needs_copy(rhs)
 	g.declare_ierror_pointer_alias(lhs.value, needs_copy)
+}
+
+fn (mut g FlatGen) track_ierror_owned_pointer_decl(owner types.ScopeBindingOwner, rhs_id flat.NodeId, typ types.Type) {
+	g.declare_ierror_owned_pointer(owner, typ is types.Pointer
+		&& g.pointer_variant_expr_creates_owned_value(rhs_id))
 }
 
 fn (mut g FlatGen) track_local_pointer_storage_decl(lhs flat.Node, owner types.ScopeBindingOwner, typ types.Type, c_type string) {
@@ -6020,10 +6065,20 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 	g.write(', &(${c_key}[]){')
 	g.gen_expr(g.a.child(&expr_node, 1))
 	g.writeln('});')
-	g.writeln('${c_val} ${lhs_name};')
+	fixed := array_fixed_type(m.value_type)
+	if fa := fixed {
+		c_elem, dims := g.fixed_array_decl_parts(fa)
+		g.writeln('${c_elem} ${lhs_name}${dims};')
+	} else {
+		g.writeln('${c_val} ${lhs_name};')
+	}
 	g.writeln('if (${tmp}) {')
 	g.indent++
-	g.writeln('${lhs_name} = *(${c_val}*)${tmp};')
+	if fixed != none {
+		g.writeln('memmove(${lhs_name}, ${tmp}, sizeof(${lhs_name}));')
+	} else {
+		g.writeln('${lhs_name} = *(${c_val}*)${tmp};')
+	}
 	g.indent--
 	g.writeln('} else {')
 	g.indent++
@@ -6035,6 +6090,8 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 				inner_id := g.a.child(&child, 0)
 				if g.is_noreturn_call(inner_id) {
 					g.gen_node(child_id)
+				} else if fa := fixed {
+					g.gen_fixed_array_copy_from_node(lhs_name, inner_id, fa)
 				} else {
 					g.write('${lhs_name} = ')
 					g.gen_expr(g.a.child(&child, 0))
@@ -6233,7 +6290,10 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 
 fn (g &FlatGen) optional_payload_c_type_for_optional_ct(opt_ct string, fallback string) string {
 	if payload := g.needed_optional_types[opt_ct] {
-		return payload
+		safe_payload := payload.replace('*', 'ptr').replace(' ', '_')
+		if opt_ct == 'Optional_${safe_payload}' {
+			return payload
+		}
 	}
 	if opt_ct.starts_with('Optional_') && opt_ct.ends_with('ptr') {
 		inner := opt_ct['Optional_'.len..opt_ct.len - 3]
@@ -6241,9 +6301,13 @@ fn (g &FlatGen) optional_payload_c_type_for_optional_ct(opt_ct string, fallback 
 			return '${inner}*'
 		}
 	}
-	if opt_ct.starts_with('Optional_') && opt_ct.ends_with('ptr') && fallback.len > 0
-		&& opt_ct == 'Optional_${fallback}ptr' {
-		return '${fallback}*'
+	if opt_ct.starts_with('Optional_') {
+		// Parallel Cgen workers can encounter a concrete optional ABI before the
+		// worker that registered its payload type has merged its metadata. The
+		// typedef name is authoritative in that case: using the semantic fallback
+		// can unalias `sapp.Event` to `C.sapp_event` and produce a distinct generic
+		// struct C type from the callee's actual optional payload.
+		return opt_ct['Optional_'.len..]
 	}
 	return fallback
 }

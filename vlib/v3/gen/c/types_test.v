@@ -1,9 +1,28 @@
 module c
 
 import os
+import v3.flat
 import v3.parser
 import v3.pref
 import v3.types
+
+fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
+	mut ast := &flat.FlatAst{}
+	ast.nodes = [flat.Node{
+		kind: .call
+		typ:  '?([]'
+	}, flat.Node{
+		kind: .call
+		typ:  '?string'
+	}]
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.collect_optional_typedefs()
+	assert 'Optional_string' in g.needed_optional_types
+	assert g.needed_optional_types.len == 1
+}
 
 fn test_enum_decls_resets_checker_module_at_file_boundary() {
 	test_dir := os.join_path(os.vtmp_dir(), 'v3_enum_decls_module_reset_${os.getpid()}')

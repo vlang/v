@@ -61,9 +61,11 @@ fn test_cache_tracks_omitted_native_function_definitions() {
 }
 
 fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
-	assert c_cache_safe_extern_decl('exp', 'double exp(double x);', true) == 'double (exp)(double x);'
-	assert c_cache_safe_extern_decl('exp', 'double exp(double x);', false) == 'double exp(double x);'
-	assert c_cache_safe_extern_decl('custom', 'int custom(int x);', true) == 'int custom(int x);'
+	// A <tgmath.h> function-like macro can be pulled in by any build (e.g. gg's
+	// Objective-C `gg_darwin.m`), so the parenthesized form is emitted regardless
+	// of cache-split mode; only the listed math externs are affected.
+	assert c_macro_safe_extern_decl('exp', 'double exp(double x);') == 'double (exp)(double x);'
+	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
 fn test_builtin_abi_compat_macros_precede_late_c_source() {

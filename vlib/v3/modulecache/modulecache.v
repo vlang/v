@@ -9,7 +9,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-45'
+const cache_format = 'v3-module-cache-46'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -779,6 +779,16 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 		return none
 	}
 	return entry
+}
+
+// has_cgen_commit reports whether an exact whole-program cache entry still has
+// all payloads and its commit stamp, without validating their current inputs.
+pub fn (m &Manager) has_cgen_commit(source_files []string) bool {
+	if !m.enabled || source_files.len == 0 {
+		return false
+	}
+	entry := m.cgen_entry(source_files)
+	return os.is_file(entry.source) && os.is_file(entry.metadata) && os.is_file(entry.stamp)
 }
 
 // cached_cgen_dependency_inputs restores dependency records whose prefixes are

@@ -42,6 +42,14 @@ fn cgen_worker_scope_free(scope voidptr) {
 	}
 }
 
+fn clone_cgen_string_list(values []string) []string {
+	mut cloned := []string{cap: values.len}
+	for value in values {
+		cloned << value.clone()
+	}
+	return cloned
+}
+
 struct ActiveLock {
 	mutexes_var string
 	modes_var   string
@@ -134,6 +142,7 @@ mut:
 	interface_boxed_types_done     bool
 	ierror_method_emit_names       map[string]bool   // names/lowered names of concrete IError msg/code methods
 	ierror_stack_pointer_aliases   []map[string]bool // scoped local pointer aliases to stack subobjects
+	ierror_owned_pointer_by_owner  map[string]bool   // exact scope binding owner -> local owns its pointer allocation
 	local_pointer_storage_by_owner map[string]bool   // exact scope binding owner -> C storage is already a pointer
 	local_c_type_by_owner          map[string]string // exact scope binding owner -> emitted C declaration type
 	local_mutable_by_owner         map[string]bool
@@ -471,6 +480,26 @@ fn (mut g FlatGen) declare_local_pointer_storage(owner types.ScopeBindingOwner, 
 	}
 }
 
+fn (mut g FlatGen) declare_ierror_owned_pointer(owner types.ScopeBindingOwner, is_owned bool) {
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	if is_owned {
+		g.ierror_owned_pointer_by_owner[key] = true
+	} else {
+		g.ierror_owned_pointer_by_owner.delete(key)
+	}
+}
+
+fn (g &FlatGen) ierror_local_pointer_is_owned(name string) bool {
+	if name.len == 0 || g.ierror_owned_pointer_by_owner.len == 0 {
+		return false
+	}
+	owner := g.local_storage_owner(name) or { return false }
+	return g.ierror_owned_pointer_by_owner[owner.storage_key()] or { false }
+}
+
 fn (mut g FlatGen) declare_local_c_type(owner types.ScopeBindingOwner, c_type string) {
 	key := owner.storage_key()
 	if key.len == 0 {
@@ -665,6 +694,7 @@ pub fn FlatGen.new() FlatGen {
 		interface_boxed_types:          map[string]bool{}
 		ierror_method_emit_names:       map[string]bool{}
 		ierror_stack_pointer_aliases:   []map[string]bool{}
+		ierror_owned_pointer_by_owner:  map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}
 		local_c_type_by_owner:          map[string]string{}
 		local_mutable_by_owner:         map[string]bool{}
@@ -1554,6 +1584,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.iface_type_ids.clear()
 	g.ierror_method_emit_names.clear()
 	g.ierror_stack_pointer_aliases = []map[string]bool{}
+	g.ierror_owned_pointer_by_owner.clear()
 	g.local_pointer_storage_by_owner.clear()
 	g.local_c_type_by_owner.clear()
 	g.local_mutable_by_owner.clear()
@@ -1707,6 +1738,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.collect_fixed_storage_consts()
 			g.precompute_param_type_index()
 			g.precompute_concrete_optional_abi_fns()
+			if no_parallel {
+				g.prepare_serial_fn_tables()
+			}
 		}
 		g.collect_shared_type_names()
 		g.precompute_sum_name_lookup()
@@ -3262,7 +3296,14 @@ fn c_is_apple_framework_include(include_arg string) bool {
 		return false
 	}
 	inner := clean[1..clean.len - 1]
-	return inner.contains('/') && inner[0] >= `A` && inner[0] <= `Z`
+	slash := inner.index_u8(`/`)
+	if slash < 0 {
+		return false
+	}
+	framework := inner[..slash]
+	return framework.len > 0 && framework[0] >= `A` && framework[0] <= `Z`
+		&& framework.bytes().all((it >= `A` && it <= `Z`)
+		|| (it >= `a` && it <= `z`))
 }
 
 fn c_include_is_late_source(include_arg string) bool {
@@ -3334,6 +3375,9 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 }
 
 fn c_preserved_system_include_struct_names(include_arg string) []string {
+	if include_arg == '<poll.h>' {
+		return ['pollfd']
+	}
 	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 		return [
 			'host_t',
@@ -6458,6 +6502,18 @@ fn (mut g FlatGen) expr_to_string_with_expected_type(id flat.NodeId, expected ty
 	return result
 }
 
+fn (mut g FlatGen) default_value_to_string(typ types.Type) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	g.gen_default_value_for_type(typ)
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
+}
+
 fn (mut g FlatGen) gen_amp_c_string_literal(id flat.NodeId, node flat.Node) bool {
 	if node.kind == .char_literal && node.value.starts_with('c:') {
 		// `&c'...'` always denotes the C string pointer; emit the literal
@@ -7749,15 +7805,19 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 types.Type) ?string {
 		clean = clean.base_type
 	}
 	if clean is types.SumType {
-		sum_name := g.resolve_sum_name(clean.name)
-		if sum_name in g.tc.sum_types {
-			return sum_name
+		for candidate in [g.shared_qualify_type_text(clean.name, g.tc.cur_module), clean.name] {
+			sum_name := g.resolve_sum_name(candidate)
+			if sum_name in g.tc.sum_types {
+				return sum_name
+			}
 		}
 	}
 	if clean is types.Struct {
-		sum_name := g.resolve_sum_name(clean.name)
-		if sum_name in g.tc.sum_types {
-			return sum_name
+		for candidate in [g.shared_qualify_type_text(clean.name, g.tc.cur_module), clean.name] {
+			sum_name := g.resolve_sum_name(candidate)
+			if sum_name in g.tc.sum_types {
+				return sum_name
+			}
 		}
 	}
 	return none
@@ -11992,7 +12052,7 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 				// A quoted local header can include system headers itself. Emit the
 				// system preamble first so its declarations do not conflict with the
 				// standalone declarations from the headerless preamble.
-				if arg.len > 0 {
+				if arg.len > 0 && arg != '<sys/ptrace.h>' {
 					return true
 				}
 			}
@@ -16270,11 +16330,7 @@ fn (mut g FlatGen) write_fixed_array_default_elem_initializer(mut builder string
 		return
 	}
 	if elem_type is types.Struct {
-		builder.write_string(g.expr_to_string_with_expected_type(g.a.add_node(flat.Node{
-			kind:  .struct_init
-			value: elem_type.name
-			typ:   elem_type.name
-		}), elem_type))
+		builder.write_string(g.default_value_to_string(elem_type))
 		return
 	}
 	if elem_type is types.Map {

@@ -11,6 +11,9 @@ fn (mut g FlatGen) gen_fns_dispatch(_ bool) {
 	g.gen_synthetic_main_after_fns()
 }
 
+// prepare_serial_fn_tables is unnecessary when parallel cgen is compiled out.
+fn (mut g FlatGen) prepare_serial_fn_tables() {}
+
 // run_pre_dispatch_parallel is serial-only in `v3_no_parallel` builds.
 fn (mut g FlatGen) run_pre_dispatch_parallel(_ bool) bool {
 	return false

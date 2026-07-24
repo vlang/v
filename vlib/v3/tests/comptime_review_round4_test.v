@@ -2108,10 +2108,14 @@ fn test_comptime_pseudo_value_is_not_resolved_as_cached_local() {
 }
 
 fn test_build_pseudo_values_expand_in_comptime_conditions() {
-	previous_epoch := os.getenv('SOURCE_DATE_EPOCH')
+	previous_epoch := os.getenv_opt('SOURCE_DATE_EPOCH')
 	os.setenv('SOURCE_DATE_EPOCH', '0', true)
 	defer {
-		os.setenv('SOURCE_DATE_EPOCH', previous_epoch, true)
+		if epoch := previous_epoch {
+			os.setenv('SOURCE_DATE_EPOCH', epoch, true)
+		} else {
+			os.unsetenv('SOURCE_DATE_EPOCH')
+		}
 	}
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'build_pseudo_values_in_comptime_conditions', "fn main() {

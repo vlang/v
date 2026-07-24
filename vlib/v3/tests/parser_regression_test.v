@@ -173,13 +173,38 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 	a := parse_parser_regression_source('isreftype_qualified_type_names',
 		'module main\n\nfn main() {\n\t_ = isreftype(foo.Bar)\n\t_ = isreftype(&foo.Bar)\n}\n')
 	assert 'Bar' !in selector_values(a)
-	mut false_literals := 0
+	mut type_args := []string{}
 	for node in a.nodes {
-		if node.kind == .bool_literal && node.value == 'false' {
-			false_literals++
+		if node.kind == .sizeof_expr {
+			type_args << node.value
 		}
 	}
-	assert false_literals == 2
+	assert type_args == ['foo.Bar', '&foo.Bar']
+}
+
+fn test_or_block_inside_index_stays_in_index_expression() {
+	a := parse_parser_regression_source('or_block_inside_index', 'fn idx() ?int {
+	return none
+}
+
+fn run() int {
+	mut xs := [0]
+	xs[idx() or { return 7 }] = 1
+	return xs[0]
+}
+')
+	mut saw_index_assign := false
+	for node in a.nodes {
+		if node.kind != .index_assign || node.children_count < 2 {
+			continue
+		}
+		index := a.child_node(&node, 0)
+		if index.kind == .index && index.children_count > 1
+			&& a.child_node(index, 1).kind == .or_expr {
+			saw_index_assign = true
+		}
+	}
+	assert saw_index_assign
 }
 
 fn test_dollar_prefixed_pseudo_functions_are_rejected() {

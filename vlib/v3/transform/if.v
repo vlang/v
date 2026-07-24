@@ -287,15 +287,20 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 
 	ptr_ident := t.make_ident(ptr_name)
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
-	ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name),
-		'&${info.value_type}'))
-	value_decl := t.make_decl_assign_typed(lhs_name, ptr_value, info.value_type)
 
 	then_id := t.a.child(&node, 1)
 	then_node := t.a.nodes[int(then_id)]
-	t.set_var_type(lhs_name, info.value_type)
 	mut then_children := []flat.NodeId{}
-	then_children << value_decl
+	// A discarded binding (`if _ := m[k]`) only tests key presence; the value is
+	// never read, so skip the value dereference. That deref would otherwise cast to
+	// `&${info.value_type}` and, when the value type is unresolved, emit an invalid
+	// `void __discard = *(void*)ptr`.
+	if lhs_name != '_' {
+		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name),
+			'&${info.value_type}'))
+		t.set_var_type(lhs_name, info.value_type)
+		then_children << t.make_decl_assign_typed(lhs_name, ptr_value, info.value_type)
+	}
 	if then_node.kind == .block {
 		then_children << t.transform_stmts(t.a.children_of(&then_node))
 	} else {

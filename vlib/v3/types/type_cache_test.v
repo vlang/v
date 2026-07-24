@@ -91,6 +91,26 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	assert first.str == second.str
 }
 
+fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	generic := tc.parse_type('arc.Arc[Resource]')
+	assert generic is Struct
+	assert generic.name() == 'arc.Arc[Resource]'
+	nested_map := tc.parse_type('map[string]map[string]arc.Arc[Resource]')
+	assert nested_map is Map
+	inner_map := (nested_map as Map).value_type
+	assert inner_map is Map
+	inner_value := (inner_map as Map).value_type
+	assert inner_value is Struct
+	assert inner_value.name() == 'arc.Arc[Resource]'
+	typ := tc.parse_type('arc.Arc[Resource][2]')
+	assert typ is ArrayFixed
+	fixed := typ as ArrayFixed
+	assert fixed.len == 2
+	assert fixed.elem_type.name() == 'arc.Arc[Resource]'
+}
+
 fn test_generic_text_substitution_recurses_through_wrappers() {
 	assert subst_generic_text('chan T', ['int'], ['T']) == 'chan int'
 	assert subst_generic_text('thread T', ['string'], ['T']) == 'thread string'

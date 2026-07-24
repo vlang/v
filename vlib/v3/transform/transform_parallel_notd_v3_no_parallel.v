@@ -31,7 +31,6 @@ const scoped_transform_worker_batches = 1
 const scoped_transform_master_batches = 1
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
-const scoped_monomorph_scan_nodes = 32768
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each persistent worker.
@@ -641,62 +640,6 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		start = end
 	}
 	return true
-}
-
-// collect_generic_specs_range_scoped bounds the temporary type parsing and
-// string splitting needed when a monomorphization round scans newly generated
-// nodes. Only the small set of discovered specs escapes each scratch arena.
-fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut struct_specs map[string]string, mut sum_specs map[string]GenericSpecContext, first int, last int) {
-	if first >= last {
-		return
-	}
-	t.tc.freeze_type_cache_for_forks()
-	defer {
-		t.tc.unfreeze_type_cache_after_forks()
-	}
-	mut start := first
-	for start < last {
-		end := if start + scoped_monomorph_scan_nodes < last {
-			start + scoped_monomorph_scan_nodes
-		} else {
-			last
-		}
-		scope := transform_worker_scope_begin(true)
-		mut wtc := t.tc.fork_for_parallel_transform(t.a)
-		mut w := t.fork_scoped_batch_worker(t.a, wtc)
-		// The master has already extended these append-only context arrays to
-		// `last`; workers only read them while collecting type spellings.
-		w.node_module_map_cache = t.node_module_map_cache
-		w.node_file_map_cache = t.node_file_map_cache
-		w.node_module_map_nodes = t.node_module_map_nodes
-		mut batch_struct_specs := map[string]string{}
-		mut batch_sum_specs := map[string]GenericSpecContext{}
-		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
-		w.collect_generic_sum_specs_range(sum_decls, mut batch_sum_specs, start, end)
-		transform_worker_scope_leave(scope)
-		for spec, base in batch_struct_specs {
-			struct_specs[spec.clone()] = base.clone()
-		}
-		for spec, context in batch_sum_specs {
-			sum_specs[spec.clone()] = GenericSpecContext{
-				base:   context.base.clone()
-				file:   context.file.clone()
-				module: context.module.clone()
-			}
-		}
-		for name, args in w.generic_specialization_args {
-			if name in t.generic_specialization_args {
-				continue
-			}
-			mut owned_args := []string{cap: args.len}
-			for arg in args {
-				owned_args << arg.clone()
-			}
-			t.generic_specialization_args[name.clone()] = owned_args
-		}
-		transform_worker_scope_free(scope)
-		start = end
-	}
 }
 
 fn monomorph_spec_worker(key string, worker_count int) int {

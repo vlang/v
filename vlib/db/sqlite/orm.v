@@ -3,6 +3,11 @@ module sqlite
 import orm
 import time
 
+struct StmtBindCounter {
+mut:
+	position int
+}
+
 // select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	where_with_tenant := orm.apply_tenant_filter(config.table, where)
@@ -19,7 +24,9 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 	defer {
 		stmt.finalize()
 	}
-	mut c := 1
+	mut c := StmtBindCounter{
+		position: 1
+	}
 	sqlite_stmt_binder(stmt, where_with_tenant, query, mut c)!
 	sqlite_stmt_binder(stmt, data, query, mut c)!
 
@@ -138,14 +145,16 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 	defer {
 		stmt.finalize()
 	}
-	mut c := 1
+	mut c := StmtBindCounter{
+		position: 1
+	}
 	sqlite_stmt_binder(stmt, data, query, mut c)!
 	sqlite_stmt_binder(stmt, where, query, mut c)!
 	stmt.orm_step(query)!
 }
 
 // Binds all values of d in the prepared statement
-fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
+fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c StmtBindCounter) ! {
 	mut kind_index := 0
 	for data in d.data {
 		for kind_index < d.kinds.len && d.kinds[kind_index] in [.is_null, .is_not_null] {
@@ -158,17 +167,17 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
 			return stmt.db.error_message(err, query)
 		}
 		if !array_operator {
-			c++
+			c.position++
 		}
 		kind_index++
 	}
 }
 
-fn bind_array[T](stmt Stmt, mut c &int, data []T) int {
+fn bind_array[T](stmt Stmt, mut c StmtBindCounter, data []T) int {
 	mut err := 0
 	for element in data {
 		tmp_err := bind(stmt, mut c, orm.Primitive(element))
-		c++
+		c.position++
 		if tmp_err != 0 {
 			err = tmp_err
 			break
@@ -178,29 +187,29 @@ fn bind_array[T](stmt Stmt, mut c &int, data []T) int {
 }
 
 // Universal bind function
-fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
+fn bind(stmt Stmt, mut c StmtBindCounter, data orm.Primitive) int {
 	mut err := 0
 	match data {
 		i8, i16, int, u8, u16, u32, bool {
-			err = stmt.bind_int(c, int(data))
+			err = stmt.bind_int(c.position, int(data))
 		}
 		i64, u64 {
-			err = stmt.bind_i64(c, i64(data))
+			err = stmt.bind_i64(c.position, i64(data))
 		}
 		f32, f64 {
-			err = stmt.bind_f64(c, f64(data))
+			err = stmt.bind_f64(c.position, f64(data))
 		}
 		string {
-			err = stmt.bind_text(c, data)
+			err = stmt.bind_text(c.position, data)
 		}
 		time.Time {
-			err = stmt.bind_int(c, int(data.unix()))
+			err = stmt.bind_int(c.position, int(data.unix()))
 		}
 		orm.InfixType {
 			err = bind(stmt, mut c, data.right)
 		}
 		orm.Null {
-			err = stmt.bind_null(c)
+			err = stmt.bind_null(c.position)
 		}
 		[]orm.Primitive {
 			err = bind_array(stmt, mut c, data)
