@@ -8,18 +8,25 @@ name: macOS CI (gitly_ci)
 #   * python3 and curl (both ship with macOS)
 #   * a committed .gitly-ci.yml at the repo root describing the steps to run
 #
-# Security: self-hosted runners must not execute untrusted code, so this
-# workflow deliberately does NOT trigger on `pull_request` (fork PRs). It runs
-# only for branches pushed by people with write access, plus manual dispatch.
+# Triggers on every commit to master and every commit to a pull request, so the
+# self-hosted macOS runner runs each one and streams the results back here.
+#
+# SECURITY: this is a self-hosted runner on a public repo, and `pull_request`
+# builds run PR-authored code (including .gitly-ci.yml and ci/*) on the runner
+# machine. Gate fork PRs behind manual approval under
+# Settings > Actions > General > "Fork pull request workflows from outside
+# collaborators" > "Require approval for all external contributors".
+#
+# No `concurrency:` cancellation on purpose: every commit must run. A single
+# self-hosted runner executes one job at a time and queues the rest, so runs are
+# serialized (one macOS CI job at a time) without dropping any commit.
 
 on:
   push:
     branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
-
-concurrency:
-  group: macos-gitly-ci-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   macos-gitly-ci:
