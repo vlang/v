@@ -12946,11 +12946,14 @@ const c_preamble_declared_extern_symbols = {
 	'pthread_cond_wait':             true
 	'pthread_create':                true
 	'pthread_detach':                true
+	'pthread_getspecific':           true
 	'pthread_join':                  true
+	'pthread_key_create':            true
 	'pthread_mutex_destroy':         true
 	'pthread_mutex_init':            true
 	'pthread_mutex_lock':            true
 	'pthread_mutex_unlock':          true
+	'pthread_setspecific':           true
 	'malloc':                        true
 	'calloc':                        true
 	'realloc':                       true

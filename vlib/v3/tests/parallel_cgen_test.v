@@ -369,23 +369,32 @@ fn test_prealloc_keeps_parallel_transform_enabled() {
 	assert compile.output.contains('cgen (parallel)'), compile.output
 }
 
-fn test_parallel_transform_selfhost_builds_v3() {
+fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {
 	v3_bin := build_parallel_prod_v3()
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_${os.getpid()}')
-	os.rm(bin_out) or {}
-	os.rm(bin_out + '.c') or {}
-	compile := os.execute('VJOBS=2 ${v3_bin} -nocache -building-v -o ${bin_out} ${parallel_v3_src}')
-	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('transform'), compile.output
-	assert compile.output.contains('cgen (parallel)'), compile.output
-	assert os.exists(bin_out), compile.output
-	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	c_out_4 := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_4_${os.getpid()}.c')
+	os.rm(c_out_4) or {}
+	cgen_4 :=
+		os.execute('VJOBS=4 ${v3_bin} -nocache -building-v -b c -o ${c_out_4} ${parallel_v3_src}')
+	assert cgen_4.exit_code == 0, cgen_4.output
+	assert cgen_4.output.contains('transform (parallel)'), cgen_4.output
+	assert cgen_4.output.contains('cgen (parallel)'), cgen_4.output
+	assert os.exists(c_out_4), cgen_4.output
+	c_code := os.read_file(c_out_4) or { panic(err) }
 	assert c_code.contains('Array_u8__bytestr'), c_code
 	assert c_code.contains('Array_u8__hex'), c_code
 	assert c_code.contains('typedef void* pthread_t;'), c_code
 	assert !c_code.contains('typedef struct pthread_t pthread_t;'), c_code
 	assert c_code.contains('flat_cgen_chunk_thread'), c_code
 	assert c_code.contains('run_parallel_transform'), c_code
+
+	c_out_12 := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_12_${os.getpid()}.c')
+	os.rm(c_out_12) or {}
+	cgen_12 :=
+		os.execute('VJOBS=12 ${v3_bin} -nocache -building-v -b c -o ${c_out_12} ${parallel_v3_src}')
+	assert cgen_12.exit_code == 0, cgen_12.output
+	assert cgen_12.output.contains('transform (parallel)'), cgen_12.output
+	assert cgen_12.output.contains('cgen (parallel)'), cgen_12.output
+	assert os.exists(c_out_12), cgen_12.output
 }
 
 fn test_no_parallel_directory_selfhost_omits_parallel_support() {
