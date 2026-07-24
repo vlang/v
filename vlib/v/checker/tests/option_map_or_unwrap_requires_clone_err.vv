@@ -1,0 +1,35 @@
+// Or-unwrapping an option map into a new variable is a map copy, so it keeps the
+// `cannot copy map` guard just like `m2 := m1`: an immutable binding is not proof
+// that the unwrapped map is unaliased (e.g. it can wrap a still-mutable map), so
+// V requires an explicit `clone`/`move`, e.g. `x := (c.f or { ... }).clone()`.
+// See vlang/v issue #27867.
+struct Category {
+	translations ?map[string]int
+}
+
+fn get_opt() ?map[string]int {
+	return {
+		'a': 1
+	}
+}
+
+fn main() {
+	c := Category{
+		translations: {
+			'x': 1
+		}
+	}
+	field := c.translations or { panic('none') }
+
+	opt := get_opt()
+	variable := opt or { panic('none') }
+
+	m := {
+		'k': get_opt()
+	}
+	index := m['k'] or { panic('none') }
+
+	println(field)
+	println(variable)
+	println(index)
+}
