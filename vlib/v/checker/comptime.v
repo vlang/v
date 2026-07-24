@@ -1240,49 +1240,48 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 						return none
 					}
 				}
-			} else if left is u32 && right is i64 {
-				match expr.op {
-					.plus { return i64(left) + right }
-					.minus { return i64(left) - right }
-					.mul { return i64(left) * right }
-					.div { return i64(left) / right }
-					.mod { return i64(left) % right }
-					.xor { return i64(left) ^ right }
-					.pipe { return i64(left) | right }
-					.amp { return i64(left) & right }
-					.left_shift { return i64(u64(left) << right) }
-					.right_shift { return i64(u64(left) >> right) }
-					.unsigned_right_shift { return i64(u64(left) >>> right) }
-					else { return none }
+			} else if left is f32 || left is f64 || right is f32 || right is f64 {
+				// Float arithmetic must be checked before the generic integer fallbacks below,
+				// since ComptTimeConstValue.i64() truncates floats (e.g. `1.5.i64() == 1`)
+				// instead of rejecting them.
+				if left_f := left.f64() {
+					if right_f := right.f64() {
+						match expr.op {
+							.plus {
+								return left_f + right_f
+							}
+							.minus {
+								return left_f - right_f
+							}
+							.mul {
+								return left_f * right_f
+							}
+							.div {
+								if _unlikely_(right_f == 0) {
+									return none
+								} else {
+									return left_f / right_f
+								}
+							}
+							else {
+								return none
+							}
+						}
+					}
 				}
-			} else if left is i64 && right is u32 {
+			} else if left is u64 && right is u64 {
 				match expr.op {
-					.plus { return left + i64(right) }
-					.minus { return left - i64(right) }
-					.mul { return left * i64(right) }
-					.div { return left / i64(right) }
-					.mod { return left % i64(right) }
-					.xor { return left ^ i64(right) }
-					.pipe { return left | i64(right) }
-					.amp { return left & i64(right) }
-					.left_shift { return i64(u64(left) << i64(right)) }
-					.right_shift { return i64(u64(left) >> i64(right)) }
-					.unsigned_right_shift { return i64(u64(left) >>> i64(right)) }
-					else { return none }
-				}
-			} else if left is u32 && right is u32 {
-				match expr.op {
-					.plus { return i64(left) + i64(right) }
-					.minus { return i64(left) - i64(right) }
-					.mul { return i64(left) * i64(right) }
-					.div { return i64(left) / i64(right) }
-					.mod { return i64(left) % i64(right) }
-					.xor { return i64(left) ^ i64(right) }
-					.pipe { return i64(left) | i64(right) }
-					.amp { return i64(left) & i64(right) }
-					.left_shift { return i64(u64(left) << right) }
-					.right_shift { return i64(u64(left) >> right) }
-					.unsigned_right_shift { return i64(u64(left) >>> right) }
+					.plus { return left + right }
+					.minus { return left - right }
+					.mul { return left * right }
+					.div { return if _unlikely_(right == 0) { none } else { left / right } }
+					.mod { return if _unlikely_(right == 0) { none } else { left % right } }
+					.xor { return left ^ right }
+					.pipe { return left | right }
+					.amp { return left & right }
+					.left_shift { return left << right }
+					.right_shift { return left >> right }
+					.unsigned_right_shift { return left >>> right }
 					else { return none }
 				}
 			} else if left is u64 && right is i64 {
@@ -1290,8 +1289,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return i64(left) + i64(right) }
 					.minus { return i64(left) - i64(right) }
 					.mul { return i64(left) * i64(right) }
-					.div { return i64(left) / i64(right) }
-					.mod { return i64(left) % i64(right) }
+					.div { return if _unlikely_(right == 0) { none } else { i64(left) / i64(right) } }
+					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % i64(right) } }
 					.xor { return i64(left) ^ i64(right) }
 					.pipe { return i64(left) | i64(right) }
 					.amp { return i64(left) & i64(right) }
@@ -1305,8 +1304,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return i64(left) + i64(right) }
 					.minus { return i64(left) - i64(right) }
 					.mul { return i64(left) * i64(right) }
-					.div { return i64(left) / i64(right) }
-					.mod { return i64(left) % i64(right) }
+					.div { return if _unlikely_(right == 0) { none } else { i64(left) / i64(right) } }
+					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % i64(right) } }
 					.xor { return i64(left) ^ i64(right) }
 					.pipe { return i64(left) | i64(right) }
 					.amp { return i64(left) & i64(right) }
@@ -1315,50 +1314,24 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.unsigned_right_shift { return i64(u64(left) >>> i64(right)) }
 					else { return none }
 				}
-			} else if left is u64 && right is u64 {
-				match expr.op {
-					.plus { return left + right }
-					.minus { return left - right }
-					.mul { return left * right }
-					.div { return left / right }
-					.mod { return left % right }
-					.xor { return left ^ right }
-					.pipe { return left | right }
-					.amp { return left & right }
-					.left_shift { return left << right }
-					.right_shift { return left >> right }
-					.unsigned_right_shift { return left >>> right }
-					else { return none }
-				}
-			} else if left is i64 && right is i64 {
-				match expr.op {
-					.plus { return left + right }
-					.minus { return left - right }
-					.mul { return left * right }
-					.div { return left / right }
-					.mod { return left % right }
-					.xor { return left ^ right }
-					.pipe { return left | right }
-					.amp { return left & right }
-					.left_shift { return i64(u64(left) << right) }
-					.right_shift { return i64(u64(left) >> right) }
-					.unsigned_right_shift { return i64(u64(left) >>> right) }
-					else { return none }
-				}
-			} else if left is u8 && right is u8 {
-				match expr.op {
-					.plus { return left + right }
-					.minus { return left - right }
-					.mul { return left * right }
-					.div { return left / right }
-					.mod { return left % right }
-					.xor { return left ^ right }
-					.pipe { return left | right }
-					.amp { return left & right }
-					.left_shift { return left << right }
-					.right_shift { return left >> right }
-					.unsigned_right_shift { return left >>> right }
-					else { return none }
+			}
+			// Generic fallback for combinations of integer types that both fit in i64
+			else if left_i := left.i64() {
+				if right_i := right.i64() {
+					match expr.op {
+						.plus { return left_i + right_i }
+						.minus { return left_i - right_i }
+						.mul { return left_i * right_i }
+						.div { return if _unlikely_(right_i == 0) { none } else { left_i / right_i } }
+						.mod { return if _unlikely_(right_i == 0) { none } else { left_i % right_i } }
+						.xor { return left_i ^ right_i }
+						.pipe { return left_i | right_i }
+						.amp { return left_i & right_i }
+						.left_shift { return i64(u64(left_i) << right_i) }
+						.right_shift { return i64(u64(left_i) >> right_i) }
+						.unsigned_right_shift { return i64(u64(left_i) >>> right_i) }
+						else { return none }
+					}
 				}
 			}
 		}

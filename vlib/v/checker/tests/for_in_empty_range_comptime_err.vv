@@ -1,0 +1,21 @@
+fn main() {
+	for i in 4 .. int(2) {
+		println(i)
+	}
+
+	for i in int(4) .. 2 {
+		println(i)
+	}
+
+	for i in int(4) .. int(2) {
+		println(i)
+	}
+
+	for b in u16(4) .. u8(2) {
+		println(b)
+	}
+
+	for i in u8(4) .. u16(2) {
+		println(i)
+	}
+}
