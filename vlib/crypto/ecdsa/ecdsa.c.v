@@ -12,7 +12,17 @@ module ecdsa
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
-#flag linux -I/usr/local/include/openssl
+// -I points at the PARENT of the openssl/ header dir (matching the darwin
+// flags above), not at .../openssl itself -- #include <openssl/ecdsa.h>
+// below already spells out the openssl/ prefix, so an -I ending in
+// .../openssl would make the compiler look for .../openssl/openssl/ecdsa.h.
+// This was silently masked on every OTHER compiler by /usr/include being
+// implicitly on the default search path regardless of this flag being
+// wrong -- musl-gcc's -nostdinc removes that implicit fallback, and was the
+// first to surface it (confirmed via an actual CI failure: "Header file
+// <openssl/ecdsa.h> ... was not found" on docker-ubuntu-musl, even with
+// libssl-dev/openssl/ecdsa.h genuinely present on disk).
+#flag linux -I/usr/local/include
 #flag linux -L/usr/local/lib64/
 
 #flag openbsd -I/usr/local/include/eopenssl35
@@ -26,7 +36,7 @@ module ecdsa
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
 
-#flag -I/usr/include/openssl
+#flag -I/usr/include
 
 #flag -lcrypto
 
@@ -49,6 +59,11 @@ pub const C.NID_secp384r1 int
 pub const C.NID_secp521r1 int
 pub const C.NID_secp256k1 int
 pub const C.NID_X9_62_id_ecPublicKey int // The new opaque of public key pair high level API
+// EVP_PKEY_fromdata() selection flag for public-key-only material (no private
+// component) — used to reconstruct a peer's ephemeral P-256 public key from
+// the raw uncompressed point bytes carried in a TLS 1.3 key_share extension.
+
+pub const C.EVP_PKEY_PUBLIC_KEY int
 
 @[typedef]
 struct C.EVP_PKEY {}
@@ -104,6 +119,11 @@ fn C.EVP_PKEY_keygen(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY) i32
 fn C.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx &C.EVP_PKEY_CTX, nid i32) i32
 fn C.EVP_PKEY_CTX_set_ec_param_enc(ctx &C.EVP_PKEY_CTX, param_enc i32) i32
 fn C.EVP_PKEY_CTX_free(ctx &C.EVP_PKEY_CTX)
+
+// ECDH key agreement (used to derive TLS 1.3's P-256 ECDHE shared secret).
+fn C.EVP_PKEY_derive_init(ctx &C.EVP_PKEY_CTX) i32
+fn C.EVP_PKEY_derive_set_peer(ctx &C.EVP_PKEY_CTX, peer &C.EVP_PKEY) i32
+fn C.EVP_PKEY_derive(ctx &C.EVP_PKEY_CTX, key &u8, keylen &usize) i32
 
 fn C.EVP_PKEY_get_bits(pkey &C.EVP_PKEY) i32
 

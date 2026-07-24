@@ -97,7 +97,16 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Add dependencies
-        run: apt install libsqlite3-dev
+        # libssl-dev provides /usr/include/openssl/*.h + libcrypto/libssl at
+        # the default Debian/Ubuntu locations -- crypto.ecdsa's P-256 ECDH
+        # support and the new crypto.rsa_pss module (added for net.quic,
+        # https://github.com/vlang/v/issues/27675) are the first vlib code
+        # to require these headers in this specific container image; the
+        # sibling docker-alpine-musl-gcc/tcc jobs never hit this gap because
+        # they run narrower test subsets (vlib/builtin only, or
+        # VTEST_JUST_ESSENTIAL=1) that don't exercise crypto.ecdsa/net.quic,
+        # unlike this job's full `test-self vlib` run.
+        run: apt install libsqlite3-dev libssl-dev
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Test V fixed tests

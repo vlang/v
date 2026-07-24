@@ -38,6 +38,38 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+      - name: Install OpenSSL
+        run: |
+          choco install openssl -y --no-progress
+          # choco's openssl package (Win64OpenSSL installer under the hood)
+          # deploys to `C:\Program Files\OpenSSL\`, matching
+          # ecdsa.c.v/rsa_pss.c.v's SECOND `#flag windows` fallback path --
+          # NOT the first one (`...OpenSSL-Win64\...`), confirmed by an
+          # actual CI run after guessing wrong the first time.
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          if (-not (Test-Path $opensslBin)) {
+            throw "OpenSSL bin directory not found at $opensslBin after choco install"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+
+          # ecdsa.c.v/rsa_pss.c.v use the unqualified `#flag -lcrypto`,
+          # which MSVC's linker (unlike gcc/tcc/clang's own `-l` convention,
+          # which implies a `lib` prefix automatically) passes straight
+          # through as a literal `crypto.lib` reference. This OpenSSL
+          # package only ships `libcrypto.lib` (confirmed via a real CI
+          # failure: `LNK1104: cannot open file 'crypto.lib'`) -- V's own
+          # `#flag` mechanism has no compiler-specific gating that can
+          # special-case MSVC here (only OS-name gates and one hardcoded
+          # `mingw` case are ever actually selected at build time, verified
+          # by reading vlib/v/builder/cflags.v's get_os_cflags()), so fix
+          # it here instead: alias the file under the name MSVC expects.
+          # A plain copy is safe -- a Windows import library doesn't embed
+          # its own filename.
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          Copy-Item -Path (Join-Path $libDir 'libcrypto.lib') -Destination (Join-Path $libDir 'crypto.lib')
+
+          Write-Host "OpenSSL install:"
+          Get-ChildItem $libDir
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64

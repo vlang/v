@@ -220,6 +220,36 @@ const skip_on_ubuntu_musl = [
 	'do_not_remove',
 	'vlib/arrays/parallel/parallel_test.v',
 	'vlib/builtin/js/array_test.js.v',
+	// crypto.ecdsa/crypto.rsa_pss (and net.quic, which imports both -- added
+	// for https://github.com/vlang/v/issues/27675) need Ubuntu's system
+	// OpenSSL dev headers, which are built against glibc. Fixing the -I
+	// flag (ecdsa.c.v/rsa_pss.c.v were pointing one directory too deep,
+	// `.../openssl` instead of `.../include` -- masked everywhere else by
+	// /usr/include being on every other compiler's implicit default search
+	// path, which musl-gcc's -nostdinc removes) only gets past the
+	// __has_include() check; the actual headers then transitively pull in
+	// glibc's own <stdio.h>/<time.h>/<limits.h>, which conflict at the
+	// type level with musl's parallel headers already active via
+	// musl-gcc's own -isystem wrapper (confirmed directly: __gnuc_va_list/
+	// __time64_t undefined, va_list/__BYTE_ORDER redefined incompatibly).
+	// Same root cause as the pg/sqlite entry below -- a glibc-targeted dev
+	// package is not usable from a musl-gcc build without a musl-native
+	// OpenSSL. Add any NEW net.quic/crypto.rsa_pss test file here too.
+	'vlib/crypto/ecdsa/ecdsa_p256_ecdh_test.v',
+	'vlib/crypto/rsa_pss/rsa_pss_test.v',
+	'vlib/net/quic/header_test.v',
+	'vlib/net/quic/initial_secrets_test.v',
+	'vlib/net/quic/packet_number_test.v',
+	'vlib/net/quic/tls13_certificate_chain_test.v',
+	'vlib/net/quic/tls13_certificate_test.v',
+	'vlib/net/quic/tls13_client_hello_test.v',
+	'vlib/net/quic/tls13_handshake_test.v',
+	'vlib/net/quic/tls13_keyschedule_test.v',
+	'vlib/net/quic/tls13_messages_test.v',
+	'vlib/net/quic/tls13_quiche_vector_test.v',
+	'vlib/net/quic/tls13_server_hello_test.v',
+	'vlib/net/quic/transport_parameters_test.v',
+	'vlib/net/quic/varint_test.v', // pure V, no OpenSSL of its own -- but V compiles net.quic as one package, so a sibling file's #include failure still fails this file's build
 	'vlib/db/pg_sqlite_consistency_test.v', // pg + sqlite dev headers pull in glibc-only sys/cdefs.h on musl-gcc
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
@@ -229,6 +259,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/db/sqlite/sqlite_f32_test.v',
 	'vlib/gg/draw_rect_empty_test.v', // sokol.sapp needs X11/Xlib.h, not installed in the musl Docker image
 	'vlib/gg/text_rendering_test.v',
+	'vlib/gg/multiwindow_render_runtime_contract_test.v', // same sokol.sapp/X11/Xlib.h gap as the two entries above
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
