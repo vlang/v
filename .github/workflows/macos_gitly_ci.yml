@@ -35,7 +35,7 @@ jobs:
     env:
       GITLY_CI_URL: http://localhost:8081
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check gitly_ci is up
         run: |
