@@ -183,6 +183,17 @@ fn main() {
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
+	$if windows {
+		// An invalid `-cc` setting should take precedence over an unknown command,
+		// but must not affect commands that do not compile code.
+		if builder.should_find_windows_host_c_compiler(prefs) && prefs.ccompiler_set_by_flag
+			&& prefs.ccompiler != 'msvc' {
+			mut probe := builder.Builder{
+				pref: unsafe { prefs }
+			}
+			probe.find_win_cc() or { builder.verror(err.msg()) }
+		}
+	}
 
 	other_commands := ['run', 'crun', 'build', 'build-module', 'help', 'version', 'new', 'init',
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
