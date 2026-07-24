@@ -280,28 +280,50 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			}
 		}
 
-		exp_typ := if unwrap_opt_or_res { typ.clear_option_and_result() } else { typ }
+		mut exp_typ := if unwrap_opt_or_res { typ.clear_option_and_result() } else { typ }
 		if unwrap_opt_or_res {
 			typ = exp_typ
 		}
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := g.expr_is_auto_deref_var(expr) && !typ.has_flag(.option)
+		mut option_payload_ref_tmp := false
+		if expr is ast.PrefixExpr {
+			right_expr := expr.right.remove_par()
+			right_type := g.table.fully_unaliased_type(expr.right_type)
+			if expr.op == .amp && right_type.has_flag(.option) {
+				option_payload_ref_tmp = match right_expr {
+					ast.Ident, ast.IndexExpr, ast.SelectorExpr { true }
+					else { false }
+				}
+			}
+		}
+		if option_payload_ref_tmp && expr is ast.PrefixExpr {
+			exp_typ =
+				g.table.fully_unaliased_type(expr.right_type).clear_option_and_result().ref().set_flag(.option)
+			typ = exp_typ
+		}
 		str_fn_name := if mut_arg_option_type != 0 {
 			g.get_str_fn(mut_arg_option_type)
 		} else {
 			g.get_str_fn(exp_typ)
 		}
-		temp_var_needed := expr is ast.CallExpr
-			&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
+		temp_var_needed := (expr is ast.CallExpr && (expr.return_type.is_ptr()
+			|| g.table.sym(expr.return_type).is_c_struct()))
+			|| option_payload_ref_tmp
 		mut tmp_var := ''
 		if temp_var_needed {
 			tmp_var = g.new_tmp_var()
 			ret_typ := g.styp(exp_typ)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
-			g.write('${ret_typ} ${tmp_var} = ')
-			g.expr(expr)
-			g.writeln(';')
+			if option_payload_ref_tmp && expr is ast.PrefixExpr {
+				g.writeln('${ret_typ} ${tmp_var};')
+				g.gen_option_payload_ref(expr, exp_typ, tmp_var)
+			} else {
+				g.write('${ret_typ} ${tmp_var} = ')
+				g.expr(expr)
+				g.writeln(';')
+			}
 			g.write(line)
 		}
 		if is_ptr && !is_ptr_alias_with_str && !is_var_mut {
