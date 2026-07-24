@@ -1,0 +1,4 @@
+Name: xlinker-other-state-74
+Description: Non-whole-archive Xlinker operand fixture
+Version: 1.0.0
+Libs: -Xlinker --as-needed -lissue74_xlinker_other -Xlinker --no-as-needed -lissue74_xlinker_other

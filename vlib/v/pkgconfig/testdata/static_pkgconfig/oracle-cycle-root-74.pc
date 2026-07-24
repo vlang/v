@@ -1,0 +1,6 @@
+Name: oracle-cycle-root-74
+Description: Multi-consumer public cycle oracle root
+Version: 1.0.0
+Requires: oracle-cycle-a-74 oracle-cycle-c-74
+Libs: -loracle_cycle_root
+Cflags: -DORACLE_CYCLE_ROOT

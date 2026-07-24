@@ -18,6 +18,63 @@ pub fn new_preferences() &Preferences {
 const windows_default_gc_defines = ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt',
 	'gcboehm_leak', 'vgc']
 
+// contains_exact_cflag_token reports whether input contains expected as an exact compiler flag token.
+pub fn contains_exact_cflag_token(input string, expected string) bool {
+	mut token := []u8{cap: input.len}
+	mut quote := u8(0)
+	mut i := 0
+	for i < input.len {
+		ch := input[i]
+		if quote == 0 && ch in [` `, `\t`, `\r`, `\n`] {
+			if token.len > 0 && token.bytestr() == expected {
+				return true
+			}
+			token = []u8{cap: input.len - i}
+			i++
+			continue
+		}
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+				i++
+				continue
+			}
+			if quote == ch {
+				quote = 0
+				i++
+				continue
+			}
+		}
+		if ch == `\\` && quote != `'` && i + 1 < input.len {
+			next := input[i + 1]
+			escapable := if quote == `"` {
+				next in [`"`, `\\`]
+			} else {
+				next in [` `, `\t`, `\r`, `\n`, `'`, `"`, `\\`]
+			}
+			if escapable {
+				token << next
+				i += 2
+				continue
+			}
+		}
+		token << ch
+		i++
+	}
+	return token.len > 0 && token.bytestr() == expected
+}
+
+pub fn (mut p Preferences) resolve_pkgconfig_mode() {
+	p.pkgconfig_mode = .dynamic
+	if p.ccompiler_type !in [.gcc, .clang, .mingw, .cplusplus] {
+		return
+	}
+	if contains_exact_cflag_token(p.cflags, '-static')
+		|| contains_exact_cflag_token(p.ldflags, '-static') {
+		p.pkgconfig_mode = .static_
+	}
+}
+
 fn (p &Preferences) default_thread_stack_size() int {
 	return match p.arch {
 		.arm32, .rv32, .i386, .ppc, .wasm32 { 2 * 1024 * 1024 }
@@ -281,6 +338,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.thread_stack_size = p.default_thread_stack_size()
 	}
 	p.ccompiler_type = cc_from_string(p.ccompiler)
+	p.resolve_pkgconfig_mode()
 	p.normalize_gc_defaults_for_resolved_ccompiler()
 	p.prefer_source_boehm_without_thread_local_alloc()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
@@ -311,6 +369,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		'${p.backend} | ${final_os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
 		p.defines_map_unique_keys(),
 		p.cflags.trim_space(),
+		'pkgconfig_mode=${p.pkgconfig_mode}',
 		p.third_party_option.trim_space(),
 		p.lookup_path.str(),
 	])

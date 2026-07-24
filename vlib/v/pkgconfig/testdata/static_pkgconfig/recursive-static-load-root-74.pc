@@ -1,0 +1,6 @@
+Name: recursive-static-load-root-74
+Description: Recursive static load mode propagation
+Version: 1.0.0
+Requires: mixed-case-static-74
+Libs: -lissue74_recursive_static_root
+Cflags: -DISSUE74_RECURSIVE_STATIC_ROOT

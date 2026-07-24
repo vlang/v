@@ -1,0 +1,4 @@
+Name: whole-archive-idempotent-74
+Description: Repeated whole-archive start with a single end and ordinary duplicate tail
+Version: 1.0.0
+Libs: -Wl,--whole-archive -Wl,--whole-archive /issue74/libliteral-active.a -Wl,--no-whole-archive /issue74/libliteral-tail.a /issue74/libliteral-tail.a
