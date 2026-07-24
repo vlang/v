@@ -44,21 +44,11 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	return r
 }
 
-// read fufills the Reader interface.
-pub fn (mut r BufferedReader) read(mut buf []u8) !int {
+fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
 	if buf.len == 0 {
 		return 0
 	}
-	if r.end_of_stream {
-		return Eof{}
-	}
-	// read data out of the buffer if we dont have any
-	if r.needs_fill() {
-		if !r.fill_buffer() {
-			// end of stream
-			return Eof{}
-		}
-	}
+
 	read := copy(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
 		return NotExpected{
@@ -69,6 +59,77 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	r.offset += read
 	r.total_read += read
 	return read
+}
+
+// read fufills the Reader interface.
+pub fn (mut r BufferedReader) read(mut buf []u8) !int {
+	if r.end_of_stream {
+		if r.offset < r.len {
+			return r.copy_unread(mut buf)
+		}
+		return Eof{}
+	}
+	// read data out of the buffer if we dont have any
+	if r.needs_fill() {
+		if !r.fill_buffer() {
+			// end of stream
+			return Eof{}
+		}
+	}
+	return r.copy_unread(mut buf)
+}
+
+// fill buffer but keep unread data
+fn (mut r BufferedReader) fill_buffer_keep_unread() ! {
+	// shift unread bytes to front
+	unread := r.len - r.offset
+	for i := 0; i < unread; i++ {
+		r.buf[i] = r.buf[r.offset + i]
+	}
+	mut rest := r.buf[unread..]
+	read_len := r.reader.read(mut rest) or {
+		r.end_of_stream = true // read must check if there are unread bytes even though r.end_of_stream
+		return Eof{}
+	}
+	r.len = unread + read_len
+	r.offset = 0
+}
+
+// peek reads n bytes without advancing the cursor.
+// returns Eof if reached the end of the stream.
+// returns an error if n < 0.
+// returns an array with less than n bytes if n > capacity.
+pub fn (mut r BufferedReader) peek(n int) ![]u8 {
+	if n < 0 {
+		return error('cannot read a negative number of bytes')
+	}
+
+	if r.end_of_stream {
+		return Eof{}
+	}
+
+	// refill buffer if no more bytes in buffer
+	if r.needs_fill() {
+		if !r.fill_buffer() {
+			return Eof{}
+		}
+	}
+
+	// enough data in buffer, re refill
+	if n <= r.buf.len - r.offset {
+		return r.buf[r.offset..r.offset + n].clone()
+	}
+
+	r.fill_buffer_keep_unread() or {
+		// reached Eof
+		return r.buf[r.offset..].clone()
+	}
+
+	// asking for more bytes than buffer can contain
+	if n > r.buf.len {
+		return r.buf[r.offset..].clone()
+	}
+	return r.buf[r.offset..r.offset + n].clone()
 }
 
 // free deallocates the memory for a buffered reader's internal buffer.
