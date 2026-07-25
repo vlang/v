@@ -3591,10 +3591,20 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.need_recheck_generic_fns = true
 	}
 	if method_name == 'str' && c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
-		&& c.table.cur_fn.name == 'str' && left_expr is ast.Ident
-		&& left_expr.name == c.table.cur_fn.receiver.name
+		&& c.table.cur_fn.name == 'str' && !c.table.cur_fn.rec_mut
 		&& left_type.idx() == c.table.cur_fn.receiver.typ.idx() {
-		c.error('cannot call `str()` method recursively', node.pos)
+		receiver_name := c.table.cur_fn.receiver.name
+		is_same_receiver := if left_expr is ast.Ident {
+			left_expr.name == receiver_name
+		} else if left_expr is ast.PrefixExpr {
+			left_expr.op == .mul && left_expr.right is ast.Ident
+				&& (left_expr.right as ast.Ident).name == receiver_name
+		} else {
+			false
+		}
+		if is_same_receiver {
+			c.error('cannot call `str()` method recursively', node.pos)
+		}
 	}
 	node.is_noreturn = method.is_noreturn
 	node.is_expand_simple_interpolation = method.is_expand_simple_interpolation

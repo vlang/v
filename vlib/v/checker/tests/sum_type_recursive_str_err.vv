@@ -7,6 +7,13 @@ fn (n Num) str() string {
 	}
 }
 
+type Val = int | string
+
+fn (v Val) str() string {
+	return (v).str()
+}
+
 fn main() {
 	println(Num(u16(0)))
+	println(Val(0))
 }

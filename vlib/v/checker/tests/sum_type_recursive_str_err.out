@@ -5,3 +5,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:6:12: error: cannot call `str
       |                  ~~~~~
     7 |     }
     8 | }
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:13:13: error: cannot call `str()` method recursively
+   11 |
+   12 | fn (v Val) str() string {
+   13 |     return (v).str()
+      |                ~~~~~
+   14 | }
+   15 |
