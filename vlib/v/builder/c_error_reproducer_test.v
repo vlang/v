@@ -254,6 +254,35 @@ fn test_repro_render_includes_hash_directives() {
 	assert out.contains('#include <stdio.h>')
 }
 
+fn test_repro_is_markused_root() {
+	mk := fn (name string, is_method bool, attrs []ast.Attr) ast.FnDecl {
+		return ast.FnDecl{
+			name:      name
+			is_method: is_method
+			attrs:     attrs
+			scope:     unsafe { nil }
+		}
+	}
+	assert repro_is_markused_root(mk('main.init', false, []))
+	assert repro_is_markused_root(mk('main.cleanup', false, []))
+	assert !repro_is_markused_root(mk('main.helper', false, []))
+	// `init` as a method is not a lifecycle root
+	assert !repro_is_markused_root(mk('main.Foo.init', true, []))
+	// `@[export]` / `@[markused]` functions are roots
+	assert repro_is_markused_root(mk('main.exp', false, [ast.Attr{ name: 'export' }]))
+	assert repro_is_markused_root(mk('main.mu', false, [ast.Attr{ name: 'markused' }]))
+}
+
+fn test_repro_hash_is_local() {
+	assert !repro_hash_is_local('#include <stdio.h>')
+	assert repro_hash_is_local('#include "private.h"')
+	assert !repro_hash_is_local('#flag -lssl')
+	assert !repro_hash_is_local('#flag darwin -framework Cocoa')
+	assert repro_hash_is_local('#flag -I@VMODROOT/c')
+	assert repro_hash_is_local('#flag -L./libs -lfoo')
+	assert repro_hash_is_local('#flag "./local.o"')
+}
+
 fn test_repro_render_preserves_module_attributes() {
 	decls := [
 		ReproDecl{

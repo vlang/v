@@ -76,8 +76,8 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	mut hashes := []ReproHash{}
 	mut root_id := -1
 	mut main_id := -1
-	mut extra_seeds := []int{} // module-lifecycle roots (`init`/`cleanup`) that must stay reachable
-	mut mod_header := 'module main'
+	mut extra_seeds := []int{} // skip_unused roots (init/cleanup/@[markused]/@[export])
+	mut file_headers := map[int]string{} // per-file `module` header (attributes are per-file)
 	mut file_id := -1
 	for pf in v.parsed_files {
 		file := pf
@@ -91,16 +91,16 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		if lines.len == 0 {
 			continue
 		}
-		// keep the failing file's `module` declaration verbatim, including any leading attributes
-		// (`@[has_globals]`, `@[manualfree]`, ...), which affect whether the source even checks
-		if is_root_file {
-			for li, ln in lines {
-				if ln.trim_space().starts_with('module ') {
-					mod_header = lines[repro_attr_start(lines, li)..li + 1].join('\n')
-					break
-				}
+		// capture this file's `module` declaration verbatim, including any leading attributes
+		// (`@[has_globals]`, `@[manualfree]`, ...), which the parser treats as per-file
+		mut header := 'module main'
+		for li, ln in lines {
+			if ln.trim_space().starts_with('module ') {
+				header = lines[repro_attr_start(lines, li)..li + 1].join('\n')
+				break
 			}
 		}
+		file_headers[file_id] = header
 		for imp in file.imports {
 			mut triggers := [repro_import_alias(imp)]
 			for s in imp.syms {
@@ -163,10 +163,9 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			if stmt is ast.FnDecl && stmt.is_main {
 				main_id = id
 			}
-			// `init`/`cleanup` are called automatically, so keep them (and thus any helper they
-			// reach) even though nothing references them by name
-			if stmt is ast.FnDecl && !stmt.is_method
-				&& repro_short_name(stmt.name) in ['init', 'cleanup'] {
+			// skip_unused roots (init/cleanup, and `@[markused]`/`@[export]` functions) are kept
+			// regardless of references, so a failing helper reached only from one stays reachable
+			if stmt is ast.FnDecl && repro_is_markused_root(stmt) {
 				extra_seeds << id
 			}
 			if is_root_file && v_line - 1 >= start && v_line - 1 < end {
@@ -197,17 +196,31 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	if ordered.len == 0 {
 		return ''
 	}
-	mut referenced := map[string]bool{}
+	// track which files contributed a declaration, and the identifiers each such file references,
+	// so imports are judged only against declarations from their own file (a same-named local var
+	// in another file must not make an unrelated import look needed)
+	mut included_files := map[int]bool{}
+	mut file_referenced := map[string]bool{} // key: "<file_id>\x00<name>"
 	for id in ordered {
+		fid := decls[id].file_id
+		included_files[fid] = true
 		for name in repro_identifiers(decls[id].source) {
-			referenced[name] = true
+			file_referenced['${fid}\x00${name}'] = true
 		}
 	}
-	// imports are file-scoped: only consider imports from files that actually contributed an
-	// inlined declaration, so a same-alias import from an unselected file is never emitted
-	mut included_files := map[int]bool{}
-	for id in ordered {
-		included_files[decls[id].file_id] = true
+	// the flattened file can carry only one module header: if contributing files disagree on their
+	// module attributes (e.g. one has `@[has_globals]`), we cannot faithfully merge them, so fall back
+	mut mod_header := ''
+	for fid, _ in included_files {
+		h := file_headers[fid]
+		if mod_header == '' {
+			mod_header = h
+		} else if h != mod_header {
+			return ''
+		}
+	}
+	if mod_header == '' {
+		mod_header = 'module main'
 	}
 	mut scoped_imports := []ReproImport{}
 	mut bound := map[string]string{} // binding name -> the import source that provides it
@@ -215,7 +228,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		if imp.file_id !in included_files {
 			continue
 		}
-		if !imp.side_effect && !imp.triggers.any(referenced[it]) {
+		if !imp.side_effect && !imp.triggers.any('${imp.file_id}\x00${it}' in file_referenced) {
 			continue
 		}
 		// a needed project-local import cannot be satisfied by the single uploaded file
@@ -231,13 +244,18 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		}
 		scoped_imports << imp
 	}
-	// hash directives are file-scoped too: only include `#include`/`#flag`/... from files that
-	// contributed a declaration, so an unrelated file's project-local directive is not emitted
+	// hash directives are file-scoped too. A project-local dependency (`#include "private.h"`, a
+	// path/`@V...`-based `#flag`, ...) references a file we do not upload, so fall back instead of
+	// emitting a directive the receiver cannot satisfy.
 	mut scoped_hashes := []string{}
 	for h in hashes {
-		if h.file_id in included_files {
-			scoped_hashes << h.source
+		if h.file_id !in included_files {
+			continue
 		}
+		if repro_hash_is_local(h.source) {
+			return ''
+		}
+		scoped_hashes << h.source
 	}
 	// every declaration in the closure is required, so an over-budget reproducer is dropped whole
 	// (the caller then falls back to a source window) rather than emitting a partial program
@@ -361,6 +379,36 @@ fn repro_import_stmt(imp ast.Import) string {
 		s += ' { ${imp.syms.map(it.name).join(', ')} }'
 	}
 	return s
+}
+
+// repro_is_markused_root reports whether a function is a `skip_unused` root that is retained even
+// when nothing references it: an `init`/`cleanup` lifecycle function, or one tagged `@[markused]`
+// or `@[export]`. Such a function must be inlined so any helper it alone reaches stays reachable.
+fn repro_is_markused_root(f ast.FnDecl) bool {
+	if !f.is_method && repro_short_name(f.name) in ['init', 'cleanup'] {
+		return true
+	}
+	return f.attrs.any(it.name == 'markused' || it.name == 'export')
+}
+
+// repro_hash_is_local reports whether a `#`-directive depends on a project-local file or path that
+// is not uploaded with the reproducer (a quoted/relative `#include`, or a `#flag`/other directive
+// naming a path or `@V...` root), as opposed to a system header or library.
+fn repro_hash_is_local(directive string) bool {
+	t := directive.trim_space()
+	if t.starts_with('#include') || t.starts_with('#insert') || t.starts_with('#preinclude') {
+		// system headers use `<...>`; a quoted or relative include is project-local
+		return !t.contains('<')
+	}
+	if t.starts_with('#flag') {
+		return t.contains('"') || t.contains('@V') || t.contains('./') || t.contains('../')
+			|| t.contains('-I') || t.contains('-L')
+	}
+	if t.starts_with('#pkgconfig') {
+		return false // resolved from installed pkg-config packages, like a system library
+	}
+	// any other directive: be conservative and treat it as a local dependency
+	return t.starts_with('#')
 }
 
 // repro_render assembles the given declaration ids into a single-file source string, headed by
