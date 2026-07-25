@@ -33,3 +33,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:31:14: error: cannot call `st
       |                 ~~~~~
    32 | }
    33 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:37:17: error: cannot call `str()` method recursively
+   35 |
+   36 | fn (q Qux) str() string {
+   37 |     return (*(&q)).str()
+      |                    ~~~~~
+   38 | }
+   39 |

@@ -31,10 +31,17 @@ fn (z Baz) str() string {
 	return (&z).str()
 }
 
+struct Qux {}
+
+fn (q Qux) str() string {
+	return (*(&q)).str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
 	println(Foo{})
 	println(Bar{})
 	println(Baz{})
+	println(Qux{})
 }

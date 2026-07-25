@@ -3594,19 +3594,15 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& c.table.cur_fn.name == 'str' && !c.table.cur_fn.rec_mut
 		&& left_type.idx() == c.table.cur_fn.receiver.typ.idx() {
 		receiver_name := c.table.cur_fn.receiver.name
-		is_same_receiver := if left_expr is ast.Ident {
-			left_expr.name == receiver_name
-		} else if left_expr is ast.PrefixExpr {
-			if left_expr.op in [.mul, .amp] {
-				mut inner_expr := left_expr.right
-				inner_expr = inner_expr.remove_par()
-				inner_expr is ast.Ident && inner_expr.name == receiver_name
+		mut inner := ast.Expr(left_expr)
+		for {
+			if inner is ast.PrefixExpr && inner.op in [.mul, .amp] {
+				inner = inner.right.remove_par()
 			} else {
-				false
+				break
 			}
-		} else {
-			false
 		}
+		is_same_receiver := inner is ast.Ident && inner.name == receiver_name
 		if is_same_receiver {
 			c.error('cannot call `str()` method recursively', node.pos)
 		}
