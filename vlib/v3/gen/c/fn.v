@@ -2533,6 +2533,9 @@ fn (mut g FlatGen) spawn_wrapper_decls() {
 }
 
 fn (mut g FlatGen) add_spawn_wrapper_def(def string) {
+	if g.parallel_chunk_wrapper_capture >= 0 {
+		g.parallel_chunk_wrapper_defs[g.parallel_chunk_wrapper_capture].spawn << def.clone()
+	}
 	if g.spawn_wrapper_defs_seen[def] {
 		return
 	}
@@ -2541,6 +2544,9 @@ fn (mut g FlatGen) add_spawn_wrapper_def(def string) {
 }
 
 fn (mut g FlatGen) add_callback_wrapper_def(def string) {
+	if g.parallel_chunk_wrapper_capture >= 0 {
+		g.parallel_chunk_wrapper_defs[g.parallel_chunk_wrapper_capture].callback << def.clone()
+	}
 	if g.callback_wrapper_defs_seen[def] {
 		return
 	}
@@ -12767,7 +12773,11 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn.contains('.') {
 		return false
 	}
-	if g.c_directives_use_system_libc() && cfn in c_system_libc_preamble_declared_fns {
+	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
+		&& g.target.os in ['linux', 'android', 'termux'] && g.c_directives_use_system_libc() {
+		return false
+	}
+	if cfn in c_system_libc_preamble_declared_fns && g.c_directives_use_system_libc() {
 		return false
 	}
 	if g.cache_split && cfn in c_cache_system_header_declared_fns {

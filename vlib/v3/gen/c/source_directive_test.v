@@ -1,5 +1,9 @@
 module c
 
+import v3.flat
+import v3.pref
+import v3.types
+
 fn test_late_source_does_not_reemit_multiline_header_context() {
 	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' +
 		'#endif'
@@ -84,6 +88,50 @@ fn test_cache_extern_filter_uses_pthread_preamble_declarations() {
 	assert !g.should_emit_c_extern_decl('pthread_getspecific')
 	assert !g.should_emit_c_extern_decl('pthread_setspecific')
 	assert g.should_emit_c_extern_decl('pthread_key_delete')
+}
+
+fn posix_declaration_filter_gen(target_os string, system_libc bool) FlatGen {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from(target_os, 'amd64') or { panic(err) })
+	if system_libc {
+		g.add_c_directive('main', '#include <semaphore.h>', false)
+	}
+	return g
+}
+
+fn test_linux_family_system_libc_owns_itimerspec_and_semaphore_declarations() {
+	for target_os in ['linux', 'android', 'termux'] {
+		g := posix_declaration_filter_gen(target_os, true)
+		assert g.c_directives_use_system_libc()
+		assert g.skip_builtin_struct('C.itimerspec'), target_os
+		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
+			'sem_wait'] {
+			assert !g.should_emit_c_extern_decl(name), '${target_os}: ${name}'
+		}
+	}
+}
+
+fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations() {
+	for target_os in ['linux', 'android', 'termux'] {
+		headerless := posix_declaration_filter_gen(target_os, false)
+		assert !headerless.c_directives_use_system_libc()
+		assert !headerless.skip_builtin_struct('C.itimerspec'), target_os
+		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
+			'sem_wait'] {
+			assert headerless.should_emit_c_extern_decl(name), '${target_os}: ${name}'
+		}
+	}
+
+	cross_target := posix_declaration_filter_gen('freebsd', true)
+	assert cross_target.c_directives_use_system_libc()
+	assert !cross_target.skip_builtin_struct('C.itimerspec')
+	for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait'] {
+		assert cross_target.should_emit_c_extern_decl(name), name
+	}
 }
 
 fn test_builtin_abi_compat_macros_precede_late_c_source() {

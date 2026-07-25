@@ -397,6 +397,13 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.add_callback_wrapper_def(def.clone())
 		}
 	}
+	for wrappers in batch.parallel_chunk_wrapper_defs {
+		g.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
+			chunk_idx: wrappers.chunk_idx
+			spawn:     clone_cgen_string_list(wrappers.spawn)
+			callback:  clone_cgen_string_list(wrappers.callback)
+		}
+	}
 }
 
 // gen_fn_items_scoped_batches bounds helper scratch without adding worker-pool
@@ -448,8 +455,13 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(chunks [][]FlatFnGenItem, chunk_
 	mut output_lengths := []int{cap: 16}
 	for {
 		chunk_idx := <-chunk_queue or { break }
+		batch.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
+			chunk_idx: chunk_idx
+		}
+		batch.parallel_chunk_wrapper_capture = batch.parallel_chunk_wrapper_defs.len - 1
 		output_start := batch.sb.len
 		batch.gen_fn_items(chunks[chunk_idx])
+		batch.parallel_chunk_wrapper_capture = -1
 		chunk_indexes << chunk_idx
 		output_starts << output_start
 		output_lengths << batch.sb.len - output_start
@@ -611,6 +623,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			worker_count := if static_dispatch { chunk_count } else { n_jobs }
 			mut cgen_workers := []voidptr{cap: worker_count}
 			mut ordered_chunk_outputs := []string{}
+			mut ordered_wrapper_defs := []ParallelChunkWrapperDefs{}
 			worker_setup_scope := cgen_worker_scope_begin(true)
 			for ci := 0; ci < worker_count; ci++ {
 				mut w := g.new_parallel_dispatch_worker(ci)
@@ -643,6 +656,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				// queue. This balances expression-cost and scheduler variation without
 				// rebuilding the generator caches for every chunk.
 				ordered_chunk_outputs = []string{len: chunk_count}
+				ordered_wrapper_defs = []ParallelChunkWrapperDefs{len: chunk_count}
 				chunk_queue := chan int{cap: chunk_count}
 				for ci in 0 .. chunk_count {
 					chunk_queue <- ci
@@ -678,7 +692,8 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			for worker_ptr in cgen_workers {
 				mut w := unsafe { &FlatGen(worker_ptr) }
 				if ordered_chunk_outputs.len > 0 {
-					g.merge_parallel_worker_ordered(w, mut ordered_chunk_outputs)
+					g.merge_parallel_worker_ordered(w, mut ordered_chunk_outputs, mut
+						ordered_wrapper_defs)
 				} else {
 					g.merge_parallel_worker(w)
 				}
@@ -687,6 +702,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					w.worker_scope = unsafe { nil }
 				}
 			}
+			g.replay_ordered_parallel_wrapper_defs(ordered_wrapper_defs)
 			for output in ordered_chunk_outputs {
 				if output.len > 0 {
 					g.fn_segs << output
@@ -1561,14 +1577,15 @@ fn remap_scoped_worker_string_symbols(source string, remap map[int]int, user_c_s
 // merge_parallel_worker supports merge parallel worker handling for FlatGen.
 fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	mut unordered := []string{}
-	g.merge_parallel_worker_into(w, mut unordered)
+	mut unordered_wrapper_defs := []ParallelChunkWrapperDefs{}
+	g.merge_parallel_worker_into(w, mut unordered, mut unordered_wrapper_defs)
 }
 
-fn (mut g FlatGen) merge_parallel_worker_ordered(w &FlatGen, mut ordered []string) {
-	g.merge_parallel_worker_into(w, mut ordered)
+fn (mut g FlatGen) merge_parallel_worker_ordered(w &FlatGen, mut ordered []string, mut ordered_wrapper_defs []ParallelChunkWrapperDefs) {
+	g.merge_parallel_worker_into(w, mut ordered, mut ordered_wrapper_defs)
 }
 
-fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string) {
+fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, mut ordered_wrapper_defs []ParallelChunkWrapperDefs) {
 	mut ww := unsafe { w }
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
@@ -1654,14 +1671,32 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string) 
 			g.spawn_wrapper_names[key.clone()] = name.clone()
 		}
 	}
-	for def in w.spawn_wrapper_defs {
-		if g.cache_split {
-			g.add_spawn_wrapper_def(ww.rewrite_cache_string_symbols(def))
-		} else if string_id_remap.len > 0 {
-			g.add_spawn_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
-				user_c_symbols))
-		} else {
-			g.add_spawn_wrapper_def(def.clone())
+	if ordered.len > 0 {
+		for wrappers in w.parallel_chunk_wrapper_defs {
+			if wrappers.chunk_idx < 0 || wrappers.chunk_idx >= ordered_wrapper_defs.len {
+				continue
+			}
+			for def in wrappers.spawn {
+				normalized := if g.cache_split {
+					ww.rewrite_cache_string_symbols(def)
+				} else if string_id_remap.len > 0 {
+					remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
+				} else {
+					def.clone()
+				}
+				ordered_wrapper_defs[wrappers.chunk_idx].spawn << normalized
+			}
+		}
+	} else {
+		for def in w.spawn_wrapper_defs {
+			if g.cache_split {
+				g.add_spawn_wrapper_def(ww.rewrite_cache_string_symbols(def))
+			} else if string_id_remap.len > 0 {
+				g.add_spawn_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
+					user_c_symbols))
+			} else {
+				g.add_spawn_wrapper_def(def.clone())
+			}
 		}
 	}
 	for key, name in w.callback_wrapper_names {
@@ -1669,14 +1704,43 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string) 
 			g.callback_wrapper_names[key.clone()] = name.clone()
 		}
 	}
-	for def in w.callback_wrapper_defs {
-		if g.cache_split {
-			g.add_callback_wrapper_def(ww.rewrite_cache_string_symbols(def))
-		} else if string_id_remap.len > 0 {
-			g.add_callback_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
-				user_c_symbols))
-		} else {
-			g.add_callback_wrapper_def(def.clone())
+	if ordered.len > 0 {
+		for wrappers in w.parallel_chunk_wrapper_defs {
+			if wrappers.chunk_idx < 0 || wrappers.chunk_idx >= ordered_wrapper_defs.len {
+				continue
+			}
+			for def in wrappers.callback {
+				normalized := if g.cache_split {
+					ww.rewrite_cache_string_symbols(def)
+				} else if string_id_remap.len > 0 {
+					remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
+				} else {
+					def.clone()
+				}
+				ordered_wrapper_defs[wrappers.chunk_idx].callback << normalized
+			}
+		}
+	} else {
+		for def in w.callback_wrapper_defs {
+			if g.cache_split {
+				g.add_callback_wrapper_def(ww.rewrite_cache_string_symbols(def))
+			} else if string_id_remap.len > 0 {
+				g.add_callback_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
+					user_c_symbols))
+			} else {
+				g.add_callback_wrapper_def(def.clone())
+			}
+		}
+	}
+}
+
+fn (mut g FlatGen) replay_ordered_parallel_wrapper_defs(wrapper_defs []ParallelChunkWrapperDefs) {
+	for wrappers in wrapper_defs {
+		for def in wrappers.spawn {
+			g.add_spawn_wrapper_def(def)
+		}
+		for def in wrappers.callback {
+			g.add_callback_wrapper_def(def)
 		}
 	}
 }
