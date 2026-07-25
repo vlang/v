@@ -167,6 +167,15 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			for n in names {
 				name_to_decl[n] << id
 			}
+			// index instance methods under a synthetic `<ReceiverType>#methods` key too, so a
+			// declaration that reflects over `<Type>.methods` (`$for m in Foo.methods`) can pull in
+			// the type's methods even though their names never appear as identifier tokens
+			if stmt is ast.FnDecl && stmt.is_method {
+				recv := repro_short_name(v.table.sym(stmt.receiver.typ).name)
+				if recv != '' {
+					name_to_decl['${recv}#methods'] << id
+				}
+			}
 			if stmt is ast.FnDecl && stmt.is_main {
 				main_id = id
 			}
@@ -218,6 +227,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	mut included_files := map[int]bool{}
 	mut file_referenced := map[string]bool{} // key: "<file_id>\x00<name>"
 	mut included_names := map[string]bool{} // all names the inlined declarations define
+	mut reflection_targets := []string{} // types reflected over with `<Type>.methods`
 	for id in ordered {
 		fid := decls[id].file_id
 		included_files[fid] = true
@@ -226,11 +236,27 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		if repro_uses_local_resource(decls[id].source) {
 			return ''
 		}
+		// a retained top-level comptime block (`$if`/`$match`) that carries its own conditional
+		// `import` would collide with the same import re-emitted at the top of the flattened file
+		// (`file.imports` also lists it), which the checker rejects as "module already imported";
+		// only such a block can hold an `import` in its copied source, so fall back on it
+		if repro_source_has_toplevel_import(decls[id].source) {
+			return ''
+		}
+		reflection_targets << repro_reflection_method_targets(decls[id].source)
 		for n in decls[id].names {
 			included_names[n] = true
 		}
 		for name in repro_identifiers(decls[id].source) {
 			file_referenced['${fid}\x00${name}'] = true
+		}
+	}
+	// `$for m in T.methods` over a target we did not inline as a concrete type (a generic parameter,
+	// or a type resolved from another module) cannot be modelled here: the replayed loop would then
+	// iterate a different method set and the C error may vanish, so fall back instead
+	for t in reflection_targets {
+		if t !in included_names {
+			return ''
 		}
 	}
 	// the flattened file can carry only one module header: if contributing files disagree on their
@@ -394,6 +420,11 @@ fn repro_closure(decls []ReproDecl, name_to_decl map[string][]int, seeds []int) 
 		// overloaded operators are indexed under their punctuation method name (`+`, `[]`, ...),
 		// which is not an identifier token, so add the operator methods a declaration may use
 		refs << repro_operator_refs(decls[id].source)
+		// `$for m in Foo.methods` reflection needs Foo's methods, which are indexed under the
+		// synthetic `Foo#methods` key; add those refs so the whole method set is retained
+		for t in repro_reflection_method_targets(decls[id].source) {
+			refs << '${t}#methods'
+		}
 		for name in refs {
 			for ref in name_to_decl[name] {
 				if ref >= 0 && ref < decls.len && !included[ref] {
@@ -431,6 +462,39 @@ fn repro_operator_refs(source string) []string {
 		}
 	}
 	return ops
+}
+
+// repro_reflection_method_targets returns the type names a declaration reflects over with
+// `<Type>.methods` (as in `$for m in Foo.methods`). Method names never appear as identifier tokens
+// in such a loop, so these targets are used to pull the type's methods into the closure.
+fn repro_reflection_method_targets(source string) []string {
+	// method reflection only appears inside a comptime `$for` loop; without one, any `.methods`
+	// is an ordinary member access (`registry.methods()`) and must not drive retention or fallback
+	if !source.contains('\$for') {
+		return []
+	}
+	suffix := '.methods'
+	mut targets := []string{}
+	mut i := 0
+	for i + suffix.len <= source.len {
+		if source[i] == `.` && source[i..i + suffix.len] == suffix {
+			after := i + suffix.len
+			// `.methods` must be a whole token (not `.methodsX`) to be reflection
+			if after >= source.len || !is_ident_char(source[after]) {
+				mut j := i
+				for j > 0 && is_ident_char(source[j - 1]) {
+					j--
+				}
+				// require a capitalized identifier (a type name or generic parameter), so a runtime
+				// `.methods` member access on a lowercase variable is not mistaken for reflection
+				if j < i && source[j].is_capital() {
+					targets << source[j..i]
+				}
+			}
+		}
+		i++
+	}
+	return targets
 }
 
 // repro_import_stmt reconstructs a single valid `import` line from the AST, so multi-line, aliased
@@ -483,10 +547,17 @@ fn repro_decl_attrs(stmt ast.Stmt) []ast.Attr {
 }
 
 // repro_is_markused_root reports whether a function is a `skip_unused` root that is retained even
-// when nothing references it: an `init`/`cleanup` lifecycle function, or one tagged `@[markused]`
-// or `@[export]`. Such a function must be inlined so any helper it alone reaches stays reachable.
+// when nothing references it: an `init`/`cleanup` lifecycle function, a `lock`/`unlock`/`rlock`/
+// `runlock` method (the mark-used pass roots all of these — see markused.v), or one tagged
+// `@[markused]`/`@[export]`. Such a function must be inlined so any helper it alone reaches stays
+// reachable when `skip_unused` runs again on the replayed reproducer.
 fn repro_is_markused_root(f ast.FnDecl) bool {
-	if !f.is_method && repro_short_name(f.name) in ['init', 'cleanup'] {
+	short := repro_short_name(f.name)
+	if !f.is_method && short in ['init', 'cleanup'] {
+		return true
+	}
+	// lock helpers for `shared` types are rooted by name regardless of references
+	if f.is_method && short in ['lock', 'unlock', 'rlock', 'runlock'] {
 		return true
 	}
 	return f.attrs.any(it.name == 'markused' || it.name == 'export')
@@ -523,6 +594,19 @@ fn repro_flag_has_abs_path(directive string) bool {
 		// windows drive-absolute path: `C:\lib\x.a` or `C:/lib/x.a`
 		if field.len >= 3 && field[1] == `:` && (field[2] == `\\` || field[2] == `/`)
 			&& u8(field[0]).is_letter() {
+			return true
+		}
+	}
+	return false
+}
+
+// repro_source_has_toplevel_import reports whether a declaration's copied source contains an
+// `import` statement. In valid V, `import` may only appear at the top of a file or inside a
+// beginning-of-file comptime `$if`/`$match` block, so a non-empty result means a retained comptime
+// block carries a conditional import (which the flattener would otherwise duplicate at the top).
+fn repro_source_has_toplevel_import(source string) bool {
+	for line in source.split_into_lines() {
+		if line.trim_space().starts_with('import ') {
 			return true
 		}
 	}

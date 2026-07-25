@@ -289,6 +289,15 @@ fn test_repro_is_markused_root() {
 	// `@[export]` / `@[markused]` functions are roots
 	assert repro_is_markused_root(mk('main.exp', false, [ast.Attr{ name: 'export' }]))
 	assert repro_is_markused_root(mk('main.mu', false, [ast.Attr{ name: 'markused' }]))
+	// `lock`/`unlock`/`rlock`/`runlock` methods (shared-type helpers) are roots
+	assert repro_is_markused_root(mk('main.Foo.lock', true, []))
+	assert repro_is_markused_root(mk('main.Foo.unlock', true, []))
+	assert repro_is_markused_root(mk('main.Foo.rlock', true, []))
+	assert repro_is_markused_root(mk('main.Foo.runlock', true, []))
+	// an ordinary method is not a root
+	assert !repro_is_markused_root(mk('main.Foo.bar', true, []))
+	// a plain function named `lock` (not a method) is not a lock helper root
+	assert !repro_is_markused_root(mk('main.lock', false, []))
 }
 
 fn test_repro_hash_is_local() {
@@ -414,4 +423,70 @@ fn test_repro_attr_start_walks_over_multiline_attribute() {
 	// a multi-line array const above the declaration is likewise preserved
 	lines3 := ['const arr = [', '\t1,', '\t2,', ']', 'fn f() {}']
 	assert repro_attr_start(lines3, 4) == 4
+}
+
+fn test_repro_source_has_toplevel_import() {
+	// a retained comptime block that carries its own conditional import is detectable
+	block := '\$if linux {\n\timport os\n\tconst x = 1\n}'
+	assert repro_source_has_toplevel_import(block)
+	// ordinary declarations never contain an import statement
+	assert !repro_source_has_toplevel_import('fn main() { println(1) }')
+	assert !repro_source_has_toplevel_import('struct Foo {\n\tx int\n}')
+}
+
+fn test_repro_reflection_method_targets() {
+	t1 := repro_reflection_method_targets('fn f() { \$for m in Foo.methods { } }')
+	assert 'Foo' in t1
+	// a generic parameter target is captured too (it is capitalized)
+	t2 := repro_reflection_method_targets('fn f[T]() { \$for m in T.methods { } }')
+	assert 'T' in t2
+	// `.methods` must be a whole token, so `.methods_count` is not reflection
+	assert repro_reflection_method_targets('\$for x in T.methods_count { }') == []
+	// a runtime member access on a lowercase variable (no `$for`) is not reflection
+	assert repro_reflection_method_targets('fn f(r Registry) { r.methods() }') == []
+	// even with a `$for` present, a lowercase receiver is an ordinary access, not a type reflection
+	assert repro_reflection_method_targets('\$for i in 0 .. 3 { registry.methods() }') == []
+	// no reflection at all
+	assert repro_reflection_method_targets('fn f() {}') == []
+}
+
+fn test_repro_closure_retains_reflected_methods() {
+	// `describe` reflects over `Foo.methods`; its methods (indexed under `Foo#methods`) must be
+	// pulled into the closure even though their names never appear as identifier tokens
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: 'fn main() { describe(Foo{}) }'
+		},
+		ReproDecl{
+			names:  ['describe']
+			source: 'fn describe(f Foo) { \$for m in Foo.methods {} }'
+		},
+		ReproDecl{
+			names:  ['Foo']
+			source: 'struct Foo {}'
+		},
+		ReproDecl{
+			names:  ['bar']
+			source: 'fn (f Foo) bar() {}'
+		},
+		ReproDecl{
+			names:  ['unrelated']
+			source: 'fn unrelated() {}'
+		},
+	]
+	name_to_decl := {
+		'main':        [0]
+		'describe':    [1]
+		'Foo':         [2]
+		'bar':         [3]
+		'Foo#methods': [3]
+		'unrelated':   [4]
+	}
+	order := repro_closure(decls, name_to_decl, [0]) or {
+		assert false, 'closure returned none'
+		return
+	}
+	assert 3 in order // Foo.bar retained via `.methods` reflection
+	assert 4 !in order
 }
