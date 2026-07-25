@@ -666,6 +666,10 @@ fn (mut tc TypeChecker) install_type_cache_overlay() {
 		base:          tc.type_cache
 		parse_enabled: tc.type_cache.parse_enabled
 	}
+	if !isnil(tc.resolution_type_views) {
+		// Cached parse views still point at the cache that is now the shared base.
+		tc.reset_resolution_type_view_cache()
+	}
 }
 
 // restore_type_cache_base folds the master's private overlay back into the
@@ -720,6 +724,9 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 		base.local_fn_decl_last_module = overlay.local_fn_decl_last_module
 	}
 	tc.type_cache = base
+	if !isnil(tc.resolution_type_views) {
+		tc.reset_resolution_type_view_cache()
+	}
 }
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {

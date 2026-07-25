@@ -94,6 +94,13 @@ struct SumUniqueFieldInfo {
 	typ     types.Type
 }
 
+struct ParallelChunkWrapperDefs {
+	chunk_idx int
+mut:
+	spawn    []string
+	callback []string
+}
+
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
@@ -106,6 +113,8 @@ mut:
 	top_level_node_ids             []int
 	fn_segs                        []string
 	fn_seg_chunk_indexes           []int
+	parallel_chunk_wrapper_defs    []ParallelChunkWrapperDefs
+	parallel_chunk_wrapper_capture int = -1
 	parallel_type_decls            string
 	parallel_forward_decls         string
 	parallel_const_code            string
@@ -670,6 +679,7 @@ pub fn FlatGen.new() FlatGen {
 		top_level_node_ids:             []int{}
 		fn_segs:                        []string{}
 		fn_seg_chunk_indexes:           []int{}
+		parallel_chunk_wrapper_defs:    []ParallelChunkWrapperDefs{}
 		test_files:                     map[string]bool{}
 		cache_program_files:            map[string]bool{}
 		incremental_fn_names:           map[string]bool{}
@@ -1548,6 +1558,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.unsafe_depth = 0
 	g.fn_segs = []string{}
 	g.fn_seg_chunk_indexes = []int{}
+	g.parallel_chunk_wrapper_defs = []ParallelChunkWrapperDefs{}
+	g.parallel_chunk_wrapper_capture = -1
 	g.parallel_type_decls = ''
 	g.parallel_forward_decls = ''
 	g.parallel_const_code = ''

@@ -236,8 +236,74 @@ fn test_dynamic_parallel_merge_preserves_chunk_order() {
 	second.fn_segs = ['chunk-3;', 'chunk-1;']
 	second.fn_seg_chunk_indexes = [3, 1]
 	mut ordered := []string{len: 4}
+	mut ordered_wrapper_defs := []ParallelChunkWrapperDefs{len: 4}
 
-	g.merge_parallel_worker_ordered(first, mut ordered)
-	g.merge_parallel_worker_ordered(second, mut ordered)
+	g.merge_parallel_worker_ordered(first, mut ordered, mut ordered_wrapper_defs)
+	g.merge_parallel_worker_ordered(second, mut ordered, mut ordered_wrapper_defs)
 	assert ordered == ['chunk-0;', 'chunk-1;', 'chunk-2;', 'chunk-3;']
+}
+
+fn test_dynamic_parallel_merge_replays_wrapper_defs_in_chunk_order() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut high := g.new_parallel_dispatch_worker(1)
+	high.fn_segs = ['chunk-3;', 'chunk-2;']
+	high.fn_seg_chunk_indexes = [3, 2]
+	high.parallel_chunk_wrapper_defs = [
+		ParallelChunkWrapperDefs{
+			chunk_idx: 3
+			spawn:     ['spawn-3-typedef;', 'spawn-3-trampoline;', 'spawn-shared;']
+			callback:  ['callback-3;']
+		},
+		ParallelChunkWrapperDefs{
+			chunk_idx: 2
+			spawn:     ['spawn-2-typedef;', 'spawn-2-trampoline;']
+			callback:  ['callback-2;']
+		},
+	]
+
+	mut low := g.new_parallel_dispatch_worker(2)
+	low.fn_segs = ['chunk-1;', 'chunk-0;']
+	low.fn_seg_chunk_indexes = [1, 0]
+	low.parallel_chunk_wrapper_defs = [
+		ParallelChunkWrapperDefs{
+			chunk_idx: 1
+			spawn:     ['spawn-1-typedef;', 'spawn-1-trampoline;']
+			callback:  ['callback-1;']
+		},
+		ParallelChunkWrapperDefs{
+			chunk_idx: 0
+			spawn:     ['spawn-0-typedef;', 'spawn-0-trampoline;', 'spawn-shared;']
+			callback:  ['callback-0;']
+		},
+	]
+
+	mut ordered := []string{len: 4}
+	mut ordered_wrapper_defs := []ParallelChunkWrapperDefs{len: 4}
+	g.merge_parallel_worker_ordered(high, mut ordered, mut ordered_wrapper_defs)
+	g.merge_parallel_worker_ordered(low, mut ordered, mut ordered_wrapper_defs)
+	g.replay_ordered_parallel_wrapper_defs(ordered_wrapper_defs)
+
+	assert ordered == ['chunk-0;', 'chunk-1;', 'chunk-2;', 'chunk-3;']
+	assert g.spawn_wrapper_defs == ['spawn-0-typedef;', 'spawn-0-trampoline;', 'spawn-shared;',
+		'spawn-1-typedef;', 'spawn-1-trampoline;', 'spawn-2-typedef;', 'spawn-2-trampoline;',
+		'spawn-3-typedef;', 'spawn-3-trampoline;']
+	assert g.callback_wrapper_defs == ['callback-0;', 'callback-1;', 'callback-2;', 'callback-3;']
+}
+
+fn test_dynamic_parallel_chunk_capture_keeps_deduplicated_wrapper_attempts() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
+		chunk_idx: 2
+	}
+	g.parallel_chunk_wrapper_capture = 0
+	g.add_spawn_wrapper_def('spawn-shared;')
+	g.add_spawn_wrapper_def('spawn-shared;')
+	g.add_callback_wrapper_def('callback-shared;')
+	g.add_callback_wrapper_def('callback-shared;')
+	g.parallel_chunk_wrapper_capture = -1
+
+	assert g.spawn_wrapper_defs == ['spawn-shared;']
+	assert g.callback_wrapper_defs == ['callback-shared;']
+	assert g.parallel_chunk_wrapper_defs[0].spawn == ['spawn-shared;', 'spawn-shared;']
+	assert g.parallel_chunk_wrapper_defs[0].callback == ['callback-shared;', 'callback-shared;']
 }

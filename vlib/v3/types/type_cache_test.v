@@ -21,6 +21,57 @@ fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	assert tc.type_cache.parse_entries.len == 3
 }
 
+fn test_type_cache_overlay_rebinds_resolution_type_views() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_cache.parse_enabled = true
+	tc.cur_file = 'main.v'
+	tc.cur_module = 'main'
+
+	assert tc.parse_resolution_type('int').name() == 'int'
+	base := tc.type_cache
+	base_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing base view') }
+	assert base_view.type_cache == base
+
+	tc.freeze_type_cache_for_forks()
+	overlay := tc.type_cache
+	assert overlay != base
+	assert overlay.base == base
+	assert tc.resolution_type_views.by_file.len == 0
+	assert tc.parse_resolution_type('string').name() == 'string'
+	overlay_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing overlay view') }
+	assert overlay_view.type_cache == overlay
+
+	tc.unfreeze_type_cache_after_forks()
+	assert tc.type_cache == base
+	assert tc.resolution_type_views.by_file.len == 0
+	assert tc.parse_resolution_type('bool').name() == 'bool'
+	restored_view := tc.resolution_type_views.by_file['main.v'] or {
+		panic('missing restored view')
+	}
+	assert restored_view.type_cache == base
+}
+
+fn test_type_cache_restore_preserves_disabled_resolution_type_views() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+
+	tc.disable_resolution_type_view_cache()
+	tc.freeze_type_cache_for_forks()
+	assert isnil(tc.resolution_type_views)
+	tc.unfreeze_type_cache_after_forks()
+	assert isnil(tc.resolution_type_views)
+
+	tc.reset_resolution_type_view_cache()
+	tc.freeze_type_cache_for_forks()
+	assert !isnil(tc.resolution_type_views)
+	tc.disable_resolution_type_view_cache()
+	assert isnil(tc.resolution_type_views)
+
+	tc.unfreeze_type_cache_after_forks()
+	assert isnil(tc.resolution_type_views)
+}
+
 fn test_c_type_cache_uses_existing_named_type_identity() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
