@@ -211,7 +211,7 @@ fn test_repro_render_emits_module_and_referenced_imports() {
 			triggers: ['math']
 		},
 	]
-	out := repro_render(imports, [], decls, [0])
+	out := repro_render('module main', imports, [], decls, [0])
 	assert out.starts_with('module main')
 	assert out.contains('import os')
 	assert !out.contains('import math')
@@ -236,7 +236,7 @@ fn test_repro_render_keeps_selective_and_side_effect_imports() {
 			side_effect: true
 		},
 	]
-	out := repro_render(imports, [], decls, [0])
+	out := repro_render('module main', imports, [], decls, [0])
 	// the selective import is kept because `abs` (its selected symbol) is referenced
 	assert out.contains('import math { abs }')
 	// the side-effect import is always kept
@@ -250,8 +250,42 @@ fn test_repro_render_includes_hash_directives() {
 			source: 'fn main() { C.puts(c"hi".str) }'
 		},
 	]
-	out := repro_render([], ['#include <stdio.h>'], decls, [0])
+	out := repro_render('module main', [], ['#include <stdio.h>'], decls, [0])
 	assert out.contains('#include <stdio.h>')
+}
+
+fn test_repro_render_preserves_module_attributes() {
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: 'fn main() {}'
+		},
+	]
+	// a `@[has_globals] module main` header must survive, or `__global` fails the checker
+	out := repro_render('@[has_globals]\nmodule main', [], [], decls, [0])
+	assert out.starts_with('@[has_globals]\nmodule main')
+}
+
+fn test_repro_comptime_decl_names_indexes_nested_decls() {
+	block := ast.ExprStmt{
+		expr: ast.IfExpr{
+			is_comptime: true
+			branches:    [
+				ast.IfBranch{
+					stmts: [
+						ast.Stmt(ast.FnDecl{
+							name:  'main.linux_only'
+							scope: unsafe { nil }
+						}),
+					]
+				},
+			]
+		}
+	}
+	names := repro_comptime_decl_names(block)
+	assert 'linux_only' in names
+	// a plain (non-comptime) statement yields nothing
+	assert repro_comptime_decl_names(ast.ExprStmt{ expr: ast.BoolLiteral{} }) == []
 }
 
 fn test_repro_render_excludes_unreferenced_local_import() {
@@ -270,6 +304,6 @@ fn test_repro_render_excludes_unreferenced_local_import() {
 			is_local: true
 		},
 	]
-	out := repro_render(imports, [], decls, [0])
+	out := repro_render('module main', imports, [], decls, [0])
 	assert !out.contains('import foo')
 }

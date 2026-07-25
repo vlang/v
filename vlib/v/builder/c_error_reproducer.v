@@ -37,6 +37,12 @@ struct ReproImport {
 	file_id     int      // the file this import belongs to (imports are file-scoped)
 }
 
+// ReproHash is a top-level `#include` / `#flag` / ... C-interop directive and the file it is in.
+struct ReproHash {
+	source  string
+	file_id int
+}
+
 // v_source_reproducer builds a self-contained reproducer for the failing V line, or '' when it
 // cannot (no mapping, the failure is not in an ordinary single-module `main` program, or the
 // reproducer would not fit the byte budget).
@@ -67,9 +73,11 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	mut decls := []ReproDecl{}
 	mut name_to_decl := map[string][]int{}
 	mut imports := []ReproImport{}
-	mut hashes := []string{}
+	mut hashes := []ReproHash{}
 	mut root_id := -1
 	mut main_id := -1
+	mut extra_seeds := []int{} // module-lifecycle roots (`init`/`cleanup`) that must stay reachable
+	mut mod_header := 'module main'
 	mut file_id := -1
 	for pf in v.parsed_files {
 		file := pf
@@ -82,6 +90,16 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		lines := src.split_into_lines()
 		if lines.len == 0 {
 			continue
+		}
+		// keep the failing file's `module` declaration verbatim, including any leading attributes
+		// (`@[has_globals]`, `@[manualfree]`, ...), which affect whether the source even checks
+		if is_root_file {
+			for li, ln in lines {
+				if ln.trim_space().starts_with('module ') {
+					mod_header = lines[repro_attr_start(lines, li)..li + 1].join('\n')
+					break
+				}
+			}
 		}
 		for imp in file.imports {
 			mut triggers := [repro_import_alias(imp)]
@@ -118,10 +136,18 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 				continue
 			}
 			if stmt is ast.HashStmt {
-				hashes << source
+				hashes << ReproHash{
+					source:  source
+					file_id: file_id
+				}
 				continue
 			}
-			names := repro_top_decl_names(stmt)
+			mut names := repro_top_decl_names(stmt)
+			if names.len == 0 {
+				// declarations nested in a top-level comptime `$if` block are wrapped in an
+				// ExprStmt; index them under the whole block so referencing one keeps the block
+				names = repro_comptime_decl_names(stmt)
+			}
 			if names.len == 0 {
 				continue
 			}
@@ -137,6 +163,12 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			if stmt is ast.FnDecl && stmt.is_main {
 				main_id = id
 			}
+			// `init`/`cleanup` are called automatically, so keep them (and thus any helper they
+			// reach) even though nothing references them by name
+			if stmt is ast.FnDecl && !stmt.is_method
+				&& repro_short_name(stmt.name) in ['init', 'cleanup'] {
+				extra_seeds << id
+			}
 			if is_root_file && v_line - 1 >= start && v_line - 1 < end {
 				root_id = id
 			}
@@ -151,6 +183,13 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	mut seeds := [root_id]
 	if main_id != root_id {
 		seeds << main_id
+	}
+	// plus the module-lifecycle roots, so a failing helper reached only from `init`/`cleanup`
+	// stays reachable under the default `skip_unused`
+	for s in extra_seeds {
+		if s !in seeds {
+			seeds << s
+		}
 	}
 	// `none` means the closure hit the declaration cap, i.e. it is incomplete; fall back rather
 	// than upload a program with missing symbols
@@ -192,9 +231,17 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		}
 		scoped_imports << imp
 	}
+	// hash directives are file-scoped too: only include `#include`/`#flag`/... from files that
+	// contributed a declaration, so an unrelated file's project-local directive is not emitted
+	mut scoped_hashes := []string{}
+	for h in hashes {
+		if h.file_id in included_files {
+			scoped_hashes << h.source
+		}
+	}
 	// every declaration in the closure is required, so an over-budget reproducer is dropped whole
 	// (the caller then falls back to a source window) rather than emitting a partial program
-	out := repro_render(scoped_imports, hashes, decls, ordered)
+	out := repro_render(mod_header, scoped_imports, scoped_hashes, decls, ordered)
 	if out == '' || (max_bytes > 0 && out.len > max_bytes) {
 		return ''
 	}
@@ -316,8 +363,9 @@ fn repro_import_stmt(imp ast.Import) string {
 	return s
 }
 
-// repro_render assembles the given declaration ids into a single `module main` source string.
-fn repro_render(imports []ReproImport, hashes []string, decls []ReproDecl, ids []int) string {
+// repro_render assembles the given declaration ids into a single-file source string, headed by
+// `mod_header` (the failing file's `module` line, including any module attributes).
+fn repro_render(mod_header string, imports []ReproImport, hashes []string, decls []ReproDecl, ids []int) string {
 	mut parts := []string{cap: ids.len}
 	for id in ids {
 		if id >= 0 && id < decls.len {
@@ -329,7 +377,7 @@ fn repro_render(imports []ReproImport, hashes []string, decls []ReproDecl, ids [
 	for name in repro_identifiers(body) {
 		referenced[name] = true
 	}
-	mut out := 'module main\n\n'
+	mut out := '${mod_header}\n\n'
 	mut emitted := map[string]bool{}
 	for imp in imports {
 		if imp.source == '' || imp.source in emitted {
@@ -457,6 +505,31 @@ fn repro_import_alias(imp ast.Import) string {
 		return imp.alias
 	}
 	return imp.mod.all_after_last('.')
+}
+
+// repro_comptime_decl_names returns the names declared inside a top-level comptime `$if` block
+// (which the parser wraps in an `ExprStmt`), so the whole block is inlined when one is referenced.
+// Returns [] for anything that is not such a block.
+fn repro_comptime_decl_names(stmt ast.Stmt) []string {
+	if stmt is ast.ExprStmt {
+		if stmt.expr is ast.IfExpr {
+			if stmt.expr.is_comptime {
+				mut names := []string{}
+				for branch in stmt.expr.branches {
+					for s in branch.stmts {
+						inner := repro_top_decl_names(s)
+						if inner.len > 0 {
+							names << inner
+						} else {
+							names << repro_comptime_decl_names(s)
+						}
+					}
+				}
+				return names
+			}
+		}
+	}
+	return []
 }
 
 // repro_top_decl_names returns the top-level names a statement defines, or [] when it is not an
