@@ -109,7 +109,16 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
-	v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
+	// Prefer a self-contained reproducer (the failing declaration plus the closure of the user
+	// declarations it references). It already keeps itself within the byte budget, returning ''
+	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
+	repro := v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
+	v_source := if repro != '' {
+		repro
+	} else {
+		v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
+		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
+	}
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -126,8 +135,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		v_line:         v_line
 		v_context:      numbered_context_lines(mapped_source.split_into_lines(), v_line,
 			c_error_context_radius)
-		v_source:       bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes,
-			v_chunk.focus)
+		v_source:       v_source
 	}
 }
 
