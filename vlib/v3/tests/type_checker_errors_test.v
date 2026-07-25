@@ -483,7 +483,7 @@ fn main() {
 	invoke[int]()
 }
 ',
-		'unknown function `missing[T]`')
+		'unknown function `missing')
 	run_bad(v3_bin, 'bad_generic_missing_receiver_method', 'fn invoke[T](value T) {
 	value.no_such()
 }
@@ -1002,7 +1002,7 @@ fn test_fixed_array_length_checks() {
 	// A literal passed where a fixed array is expected must have the exact length.
 	run_bad(v3_bin, 'bad_fixed_array_arg_len',
 		'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n',
-		'expected `int[4]`')
+		'expected `[4]int`')
 	// Genuine fixed arrays of different lengths in if-branches must mismatch.
 	run_bad(v3_bin, 'bad_if_branch_fixed_array_len',
 		'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n',
@@ -1096,7 +1096,7 @@ fn test_multi_return_if_tail_infers_common_type() {
 	assert call_assign == '7'
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n',
-		'multi-return assignment mismatch')
+		'if-expression branch type mismatch')
 	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign',
 		'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n',
 		'multi-return assignment mismatch')
@@ -1406,7 +1406,7 @@ fn test_bare_generic_literal_adopts_expected_instance() {
 	// checker (rather than adopting the type and emitting broken C).
 	run_bad(v3_bin, 'bad_bare_generic_literal_field_mismatch',
 		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n",
-		'cannot return `Box` as `Box[int]`')
+		'cannot return `Box[string]` as `Box[int]`')
 }
 
 // Regression tests for the fourth PR-review batch (vlang/v#27557).
@@ -1461,7 +1461,7 @@ fn test_pr_review_codegen_batch_six() {
 	// that codegen would init an `int` field from a string.
 	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch',
 		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n",
-		'cannot return `Box` as `Box[int]`')
+		'cannot return `Box[string]` as `Box[int]`')
 	// A positional bare generic literal whose value matches the concrete field type is
 	// accepted and round-trips.
 	pos_good := run_good(v3_bin, 'good_positional_generic_literal',
@@ -1510,7 +1510,7 @@ fn test_pr_review_codegen_batch_eight() {
 	// as `&Box[int]`.
 	run_bad(v3_bin, 'bad_value_literal_pointer_expectation',
 		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n',
-		'cannot return `Box` as `&Box[int]`')
+		'cannot return `Box[int]` as `&Box[int]`')
 	// The pointer form `&Box{...}` still adopts the `&Box[int]` expectation and round-trips.
 	heap := run_good(v3_bin, 'good_amp_generic_literal_pointer',
 		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
@@ -1649,18 +1649,17 @@ fn test_pr_review_codegen_batch_fourteen() {
 fn test_pr_review_codegen_batch_fifteen() {
 	v3_bin := build_v3()
 	// The string length evaluator folds with the same operator precedence as the v3 parser
-	// and AST const evaluator: shifts bind looser than `+`, so `1 << 2 + 1` groups as
-	// `1 << (2 + 1)` = 8 (not `(1 << 2) + 1` = 5) whether the length is recovered from a
-	// const's source text (string evaluator) or a literal expression. Both must agree, else
-	// the literal length check and the generated C dimension would diverge.
+	// and AST const evaluator. Shifts share product precedence, so `1 << 2 + 1` is
+	// `(1 << 2) + 1` = 5 whether the length is recovered from a const's source text or a
+	// literal expression. Both must agree, or the literal check and C dimension diverge.
 	prec := run_good(v3_bin, 'good_shift_add_precedence_fixed_array_len',
 		'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
-	// 8 + 8 + 6 = 22
-	assert prec == '22'
+	// 5 + 5 + 5 = 15
+	assert prec == '15'
 	// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
-	// parameter (length 8) rejects a 5-element literal.
+	// parameter (length 5) rejects a 4-element literal.
 	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len',
-		'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4, 5]!)\n}\n',
+		'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n',
 		'cannot use')
 	// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
 	// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and

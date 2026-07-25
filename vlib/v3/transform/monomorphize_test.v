@@ -60,6 +60,31 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	assert fields[1].typ.name() == '[]int'
 }
 
+fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
+	mut a := flat.FlatAst.new()
+	mut arc_decl := flat.Node{
+		kind:  .struct_decl
+		value: 'Arc'
+	}
+	arc_decl.set_generic_params(['T'])
+	arc_id := a.add_node(arc_decl)
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['ResourceSum'] = ['Resource', 'int']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.record_generic_specialization_args_in_module('Arc', 'arc', ['ResourceSum'])
+	decls := {
+		'arc.Arc': GenericStructDecl{
+			id:     arc_id
+			node:   arc_decl
+			module: 'arc'
+			key:    'arc.Arc'
+		}
+	}
+	mut specs := map[string]string{}
+	t.collect_generic_struct_spec_from_type('arc.Arc_ResourceSum', 'main', '', decls, mut specs)
+	assert specs['arc.Arc[ResourceSum]'] == 'arc.Arc'
+}
+
 fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -77,10 +102,44 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	// The same nested program type behind a map / fixed array is locked too.
 	assert t.lock_colliding_main_generic_type_text('map[string]Context', 'callee') == 'map[string]main.Context'
 	assert t.lock_colliding_main_generic_type_text('[3]Context', 'callee') == '[3]main.Context'
+	assert t.lock_colliding_main_generic_type_text('(Context, []Context)', 'callee') == '(main.Context, []main.Context)'
 	// A simple qualified type has no lockable bare component and is returned verbatim.
 	assert t.lock_colliding_main_generic_type_text('veb.Context', 'callee') == 'veb.Context'
 	// An already-qualified argument keeps its exact spelling (no rewrite / name desync).
 	assert t.lock_colliding_main_generic_type_text('other.Box[user.LocalWriter]', 'callee') == 'other.Box[user.LocalWriter]'
 	// No lock target: the callee module does not declare `Other`, so nothing changes.
 	assert t.lock_colliding_main_generic_type_text('other.Box[Other]', 'callee') == 'other.Box[Other]'
+	// A main type that is active in the specialization is locked even without a
+	// callee homonym, since a different imported module can own the same short name.
+	t.structs['Event'] = StructInfo{}
+	t.structs['other.Event'] = StructInfo{}
+	t.structs['string'] = StructInfo{
+		module: 'builtin'
+	}
+	t.active_specialization_main_types['Event'] = true
+	assert t.lock_colliding_main_generic_type_text('Event', 'callee') == 'main.Event'
+	assert t.canonical_generic_specialization_arg('[]main.Event') == '[]Event'
+	assert t.specialization_main_type_closure(['map[string]Event']) == {
+		'Event': true
+	}
+}
+
+fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Arc'] = StructInfo{
+		name:   'Arc'
+		module: 'arc'
+	}
+	t.structs['arc.Arc'] = StructInfo{
+		name:   'Arc'
+		module: 'arc'
+	}
+	assert t.lock_colliding_main_substitution_type_text('Arc[T]', 'Arc[Resource]', 'arc', [
+		'T',
+	]) == 'Arc[Resource]'
+	assert t.lock_colliding_main_substitution_type_text('([]T, []T)', '([]int, []int)', 'arrays', [
+		'T',
+	]) == '([]int, []int)'
 }

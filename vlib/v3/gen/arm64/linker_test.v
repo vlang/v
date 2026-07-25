@@ -5,4 +5,5 @@ fn test_getrusage_is_always_linked_from_the_system_library() {
 	assert '_getrusage' in force_external_syms
 	assert '_mach_task_self' in force_external_syms
 	assert '_mach_task_self_' in force_external_syms
+	assert '_proc_pid_rusage' in force_external_syms
 }

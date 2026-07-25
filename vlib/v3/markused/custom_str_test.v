@@ -279,6 +279,27 @@ fn main() {
 	assert used['int__str']
 }
 
+fn test_channel_send_or_seeds_transform_helpers() {
+	main_src := '
+module main
+
+import support
+
+fn main() {
+	mut ch := chan int{cap: support.capacity}
+	ch <- 7 or { return }
+}
+'
+	mut a, mut tc := parse_checked_two_file_source('channel_send_or_helpers', main_src,
+		'support/support.v', 'module support\n\npub const capacity = 1\n')
+	mut used := mark_used(a, tc)
+	assert used['sync.Channel.try_push_priv']
+	assert used['sync.Channel.closed_error']
+	used = transform.transform_with_used(mut a, tc, used)
+	assert used['sync__Channel__try_push_priv']
+	assert used['sync__Channel__closed_error']
+}
+
 // test_optional_struct_zero_seeds_imported_default_helper validates this v3 regression case.
 fn test_optional_struct_zero_seeds_imported_default_helper() {
 	a, tc := parse_checked_two_file_source('imported_struct_default_or',

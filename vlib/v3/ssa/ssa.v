@@ -423,6 +423,12 @@ pub mut:
 	c_typedef_structs map[int]bool
 	// Constant cache: "type:name" -> ValueID for deduplication.
 	const_cache map[string]ValueID
+mut:
+	// Layout queries are hot in both SSA construction and native codegen. Keep
+	// their scratch and completed sizes on the module instead of allocating two
+	// type-table-sized arrays for every query.
+	type_size_cache    []int
+	type_size_visiting []bool
 }
 
 // new creates a Module value for ssa.
@@ -756,9 +762,17 @@ pub fn (m &Module) get_block_from_val(val_id int) int {
 
 // type_size returns the byte size for an SSA type on the current target.
 pub fn (m &Module) type_size(typ_id TypeID) int {
-	mut visiting := []bool{len: m.type_store.types.len}
-	mut cache := []int{len: m.type_store.types.len}
-	return m.type_size_inner(typ_id, 0, mut visiting, mut cache)
+	mut mm := unsafe { &Module(voidptr(m)) }
+	mm.ensure_type_layout_cache()
+	return m.type_size_inner(typ_id, 0, mut mm.type_size_visiting, mut mm.type_size_cache)
+}
+
+fn (mut m Module) ensure_type_layout_cache() {
+	type_count := m.type_store.types.len
+	if m.type_size_cache.len < type_count {
+		m.type_size_cache << []int{len: type_count - m.type_size_cache.len}
+		m.type_size_visiting << []bool{len: type_count - m.type_size_visiting.len}
+	}
 }
 
 // type_size_inner returns type size inner data for Module.
@@ -954,9 +968,9 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 	if typ.is_union {
 		return 0
 	}
-	mut visiting := []bool{len: m.type_store.types.len}
-	mut cache := []int{len: m.type_store.types.len}
-	visiting[typ_id] = true
+	mut mm := unsafe { &Module(voidptr(m)) }
+	mm.ensure_type_layout_cache()
+	mm.type_size_visiting[typ_id] = true
 	mut offset := 0
 	for i in 0 .. field_idx {
 		if i >= typ.fields.len {
@@ -966,7 +980,8 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 		if align > 1 && offset % align != 0 {
 			offset = (offset + align - 1) & ~(align - 1)
 		}
-		offset += m.type_size_inner(typ.fields[i], 1, mut visiting, mut cache)
+		offset += m.type_size_inner(typ.fields[i], 1, mut mm.type_size_visiting, mut
+			mm.type_size_cache)
 	}
 	if field_idx < typ.fields.len {
 		align := m.type_align_for_layout(typ.fields[field_idx])
@@ -974,6 +989,7 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 			offset = (offset + align - 1) & ~(align - 1)
 		}
 	}
+	mm.type_size_visiting[typ_id] = false
 	return offset
 }
 
@@ -986,8 +1002,11 @@ pub fn (m &Module) struct_field_size(typ_id TypeID, field_idx int) int {
 	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
 		return 0
 	}
-	mut visiting := []bool{len: m.type_store.types.len}
-	mut cache := []int{len: m.type_store.types.len}
-	visiting[typ_id] = true
-	return m.type_size_inner(typ.fields[field_idx], 1, mut visiting, mut cache)
+	mut mm := unsafe { &Module(voidptr(m)) }
+	mm.ensure_type_layout_cache()
+	mm.type_size_visiting[typ_id] = true
+	size := m.type_size_inner(typ.fields[field_idx], 1, mut mm.type_size_visiting, mut
+		mm.type_size_cache)
+	mm.type_size_visiting[typ_id] = false
+	return size
 }

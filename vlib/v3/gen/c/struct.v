@@ -2548,7 +2548,8 @@ fn (mut g FlatGen) collect_local_shared_type_names() {
 		}
 		if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
 			if node.kind == .fn_decl {
-				g.collect_fn_shared_param_type_names(node, cur_module)
+				module_name := g.a.specialized_fn_modules[i] or { cur_module }
+				g.collect_fn_shared_param_type_names(node, module_name)
 			}
 			continue
 		}
@@ -2686,6 +2687,11 @@ fn (mut g FlatGen) shared_value_c_type(inner string) string {
 
 fn (mut g FlatGen) shared_wrapper_c_name(inner string) string {
 	name := g.shared_value_type_name(inner)
+	if info := g.find_struct_decl(inner) {
+		if info.module == 'main' {
+			return '__shared__main__${name}'
+		}
+	}
 	typ := g.tc.parse_type(inner)
 	if typ is types.Struct {
 		struct_type := typ as types.Struct
@@ -4716,7 +4722,7 @@ fn (mut g FlatGen) struct_decls() {
 			}
 			continue
 		}
-		if !c_struct_needs_typedef(name) {
+		if !c_struct_needs_typedef(name) && name !in g.tc.c_typedef_structs {
 			continue
 		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
@@ -5021,7 +5027,7 @@ fn (mut g FlatGen) type_forward_decls() {
 		if g.skip_builtin_struct(name) {
 			continue
 		}
-		if !c_struct_needs_typedef(name) {
+		if !c_struct_needs_typedef(name) && name !in g.tc.c_typedef_structs {
 			continue
 		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
@@ -5077,7 +5083,11 @@ fn (mut g FlatGen) emit_struct(name string) {
 		for f in fields {
 			g.write_struct_field(name, f)
 		}
-		g.writeln('};')
+		if align := g.struct_decl_alignment_for_name(name) {
+			g.writeln('} ${struct_decl_alignment_attr(align)};')
+		} else {
+			g.writeln('};')
+		}
 		if pack.len > 0 {
 			g.writeln('#pragma pack(pop)')
 		}

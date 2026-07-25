@@ -106,7 +106,14 @@ pub:
 pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string) Manager {
 	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
-	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or { os.vtmp_dir() })
+	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or {
+		default_dir := os.vtmp_dir()
+		if os.getenv('V3_TEST_ISOLATE_CACHE') == '1' {
+			os.join_path(default_dir, 'v3_test_cache_${hash_text(os.real_path(os.executable()))}')
+		} else {
+			default_dir
+		}
+	})
 	return Manager{
 		dir:                 os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
 		enabled:             enabled
@@ -1293,18 +1300,18 @@ pub fn declaration_header(prefix string) string {
 			}
 		}
 		if selected < 0 {
-			header, _ := c_declaration_header(prefix[pos..])
+			header, _, _ := c_declaration_header(prefix[pos..])
 			out.write_string(header)
 			break
 		}
 		if next_pos > pos {
-			header, _ := c_declaration_header(prefix[pos..next_pos])
+			header, _, _ := c_declaration_header(prefix[pos..next_pos])
 			out.write_string(header)
 		}
 		section := sections[selected]
 		body_start := next_pos + section.begin.len
 		relative_end := prefix[body_start..].index(section.end) or {
-			header, _ := c_declaration_header(prefix[next_pos..])
+			header, _, _ := c_declaration_header(prefix[next_pos..])
 			out.write_string(header)
 			break
 		}
@@ -1717,11 +1724,18 @@ fn c_native_localize_function_definitions(source string) string {
 // c_source_has_static_storage reports whether a local C input would give cached
 // translation units separate copies of static storage.
 pub fn c_source_has_static_storage(source string) bool {
-	_, has_static_storage := c_declaration_header(source)
+	_, has_static_storage, _ := c_declaration_header(source)
 	return has_static_storage
 }
 
-fn c_declaration_header(prefix string) (string, bool) {
+// c_source_declares_types reports whether a local C input defines a type whose
+// declaration may be required by generated V declarations in another cache unit.
+pub fn c_source_declares_types(source string) bool {
+	_, _, declares_types := c_declaration_header(source)
+	return declares_types
+}
+
+fn c_declaration_header(prefix string) (string, bool, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut item_head := strings.new_builder(512)
@@ -1731,6 +1745,7 @@ fn c_declaration_header(prefix string) (string, bool) {
 	mut function_has_conditionals := false
 	mut function_conditional_depth := 0
 	mut has_static_storage := false
+	mut declares_types := false
 	mut in_block_comment := false
 	mut in_preprocessor_directive := false
 	mut preprocessor_in_item := false
@@ -1850,6 +1865,7 @@ fn c_declaration_header(prefix string) (string, bool) {
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
+		declares_types = declares_types || c_declaration_item_declares_type(declaration, has_brace)
 		out.write_string(c_declaration_item(declaration, has_brace))
 		item_head.clear()
 		brace_depth = 0
@@ -1862,9 +1878,10 @@ fn c_declaration_header(prefix string) (string, bool) {
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
+		declares_types = declares_types || c_declaration_item_declares_type(declaration, has_brace)
 		out.write_string(c_declaration_item(declaration, has_brace))
 	}
-	return out.str(), has_static_storage
+	return out.str(), has_static_storage, declares_types
 }
 
 fn c_function_block_closes_at_line_start(line string) bool {
@@ -1913,7 +1930,7 @@ fn c_declaration_item(item string, has_brace bool) string {
 	}
 	clean := trim_leading_c_comments(trimmed)
 	if block := c_extern_c_block(item) {
-		inner_header, _ := c_declaration_header(block.inner)
+		inner_header, _, _ := c_declaration_header(block.inner)
 		mut result := block.before
 		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
 			result += '\n'
@@ -1952,7 +1969,7 @@ fn c_declaration_item(item string, has_brace bool) string {
 fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 	clean := trim_leading_c_comments(item.trim_space())
 	if block := c_extern_c_block(item) {
-		_, has_static_storage := c_declaration_header(block.inner)
+		_, has_static_storage, _ := c_declaration_header(block.inner)
 		return has_static_storage
 	}
 	mut storage_head := clean
@@ -1977,6 +1994,30 @@ fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 		return !c_declaration_head_is_function(clean.trim_right(';'))
 	}
 	return true
+}
+
+fn c_declaration_item_declares_type(item string, has_brace bool) bool {
+	clean := trim_leading_c_comments(item.trim_space())
+	if block := c_extern_c_block(item) {
+		_, _, declares_types := c_declaration_header(block.inner)
+		return declares_types
+	}
+	if c_code_contains_identifier(clean, 'typedef') {
+		return true
+	}
+	if !has_brace {
+		return false
+	}
+	brace := clean.index_u8(`{`)
+	if brace <= 0 {
+		return false
+	}
+	head := clean[..brace].trim_space()
+	if c_static_declaration_head_is_function(head) || c_has_top_level_assign(head) {
+		return false
+	}
+	return c_code_contains_identifier(head, 'struct') || c_code_contains_identifier(head, 'union')
+		|| c_code_contains_identifier(head, 'enum')
 }
 
 struct CExternBlock {

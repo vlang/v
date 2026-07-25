@@ -672,20 +672,16 @@ fn (mut g FlatGen) enum_decls() {
 		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
-				cur_module = 'main'
+				cur_module = g.tc.file_modules[node.value] or { '' }
 				g.tc.cur_file = node.value
-				g.tc.cur_module = 'main'
+				g.tc.cur_module = cur_module
 			}
 			.module_decl {
 				cur_module = node.value
 				g.tc.cur_module = node.value
 			}
 			.enum_decl {
-				name := if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-					'${cur_module}.${node.value}'
-				} else {
-					node.value
-				}
+				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
 				if emitted[cn] {
 					continue
@@ -860,17 +856,13 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
-				cur_module = ''
+				cur_module = g.tc.file_modules[node.value] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
 			}
 			.enum_decl {
-				name := if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-					'${cur_module}.${node.value}'
-				} else {
-					node.value
-				}
+				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
 				if emitted[cn] {
 					continue
@@ -895,17 +887,13 @@ fn (mut g FlatGen) enum_str_defs() {
 		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
-				cur_module = ''
+				cur_module = g.tc.file_modules[node.value] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
 			}
 			.enum_decl {
-				name := if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-					'${cur_module}.${node.value}'
-				} else {
-					node.value
-				}
+				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
 				if emitted[cn] {
 					continue
@@ -952,6 +940,46 @@ fn (mut g FlatGen) enum_str_defs() {
 			else {}
 		}
 	}
+}
+
+fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
+	if node.value.contains('.') {
+		return node.value
+	}
+	candidate := if module_name.len > 0 && module_name !in ['main', 'builtin'] {
+		'${module_name}.${node.value}'
+	} else {
+		node.value
+	}
+	if candidate in g.tc.enum_names {
+		return candidate
+	}
+	mut resolved := ''
+	for name in g.tc.enum_names.keys() {
+		if name.all_after_last('.') != node.value {
+			continue
+		}
+		if resolved.len > 0 && resolved != name {
+			return candidate
+		}
+		resolved = name
+	}
+	return if resolved.len > 0 { resolved } else { candidate }
+}
+
+fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
+	mut name := type_name
+	if name.starts_with('main.') {
+		name = name['main.'.len..]
+	}
+	if name in g.tc.enum_names {
+		return g.cname(name)
+	}
+	short_name := name.all_after_last('.')
+	if short_name in g.tc.enum_names {
+		return g.cname(short_name)
+	}
+	return g.cname(name)
 }
 
 // emit_flag_enum_autostr emits the `<Enum>__autostr` helper for a `[flag]` enum.

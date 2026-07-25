@@ -6129,14 +6129,15 @@ fn (mut g FlatGen) decl_lhs_str(id flat.NodeId) string {
 }
 
 fn (g &FlatGen) local_cname(name string) string {
-	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name) {
+	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name)
+		|| g.local_name_shadows_c_typedef(name) {
 		return '${g.cname(name)}__local'
 	}
 	return g.cname(name)
 }
 
 fn (g &FlatGen) local_decl_cname(name string) string {
-	if local_name_shadows_c_runtime(name) {
+	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name) {
 		return '${g.cname(name)}__local'
 	}
 	if g.local_name_needs_global_suffix(name) {
@@ -6151,6 +6152,12 @@ fn (g &FlatGen) local_name_needs_global_suffix(name string) bool {
 		return module_name.len == 0 || module_name in ['main', 'builtin']
 	}
 	return false
+}
+
+fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
+	cname := g.cname(name)
+	return cname in g.inlined_c_typedef_names || cname in g.tc.c_typedef_structs
+		|| 'C.${cname}' in g.tc.c_typedef_structs
 }
 
 fn local_name_shadows_c_runtime(name string) bool {

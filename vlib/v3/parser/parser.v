@@ -8268,6 +8268,26 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				children_count: 1
 			})
 		}
+		.power {
+			// At prefix position `**p` is two pointer dereferences. The scanner
+			// combines the adjacent stars into the infix power token, so split it
+			// back into nested prefix nodes here; after a left operand the normal
+			// expression loop still treats the same token as exponentiation.
+			p.next()
+			operand := p.expr(.power)
+			inner := p.add_node(flat.Node{
+				kind:           .prefix
+				op:             .mul
+				children_start: p.add_child(operand)
+				children_count: 1
+			})
+			return p.add_node(flat.Node{
+				kind:           .prefix
+				op:             .mul
+				children_start: p.add_child(inner)
+				children_count: 1
+			})
+		}
 		.question {
 			p.next()
 			inner_type := p.parse_type_name()

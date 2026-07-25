@@ -1709,6 +1709,29 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	return !has_untracked_c_include && can_scope_static_inputs
 }
 
+fn cached_native_sources_require_monolithic_cgen(state &V3ModuleCacheState) bool {
+	if state.native_source_modules.len == 0 {
+		return false
+	}
+	for raw_module_name, paths in state.module_external_inputs {
+		module_name := if raw_module_name == 'main' {
+			'main'
+		} else {
+			cache_state_module_name(state, raw_module_name) or { continue }
+		}
+		if !state.native_source_modules[module_name] {
+			continue
+		}
+		for path in paths {
+			source := os.read_file(path) or { continue }
+			if modulecache.c_source_declares_types(source) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn v3_path_is_within(path string, dir string) bool {
 	return dir.len > 0 && (path == dir || path.starts_with(dir + os.path_separator))
 }
@@ -3848,6 +3871,9 @@ fn main() {
 			&& !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, cache_c_flags) {
 			restart_v3_without_cache()
 		}
+		if cached_native_sources_require_monolithic_cgen(cache_state) {
+			restart_v3_without_cache()
+		}
 		input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
 		cgen_cache_commit_exists = cache_state.manager.has_cgen_commit(input.source_files)
 		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature,
@@ -4021,6 +4047,9 @@ fn main() {
 		}
 		if cache_state.manager.enabled {
 			if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, cache_c_flags) {
+				restart_v3_without_cache()
+			}
+			if cached_native_sources_require_monolithic_cgen(cache_state) {
 				restart_v3_without_cache()
 			}
 			for module_name, parsed in cache_state.parsed_from_source {
@@ -4535,7 +4564,9 @@ fn main() {
 		}
 		$if !skip_arm64 ? {
 			// SSA + ARM64 native backend
-			mut m := ssa.build_with_used(a, used_fns, pre_tc)
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses: is_prod
+			})
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
 			b.metric('SSA instructions before optimize', m.instrs.len, 'instructions')
@@ -4548,6 +4579,7 @@ fn main() {
 				b.metric('SSA instructions after optimize', m.instrs.len, 'instructions')
 				b.metric('SSA blocks after optimize', m.blocks.len, 'blocks')
 			}
+			m.release_codegen_analysis_metadata()
 
 			mut g := arm64.Gen.new(m)
 			g.gen()
@@ -5423,7 +5455,7 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 		// A cached module can expose a function value through a global initializer
 		// in the program prefix. Keep its prototype even when no generated program
 		// function calls it directly.
-		if program_generated_support.contains(c_name.clone()) {
+		if program_generated_support.contains(c_name.clone()) || source.count(c_name) > 1 {
 			continue
 		}
 		cache_only_functions[c_name] = true
@@ -5835,7 +5867,7 @@ fn cache_external_input_owner_modules(state &V3ModuleCacheState, unscoped_inputs
 				has_static_storage = true
 			}
 		}
-		if !has_static_storage {
+		if roots.len == 0 && !has_static_storage {
 			continue
 		}
 		if roots.len == 0 {
