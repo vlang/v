@@ -82,18 +82,34 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 
 // fill buffer but keep unread data
 fn (mut r BufferedReader) fill_buffer_keep_unread() ! {
-	// shift unread bytes to front
-	unread := r.len - r.offset
-	for i := 0; i < unread; i++ {
-		r.buf[i] = r.buf[r.offset + i]
-	}
-	mut rest := r.buf[unread..]
-	read_len := r.reader.read(mut rest) or {
-		r.end_of_stream = true // read must check if there are unread bytes even though r.end_of_stream
+	if r.end_of_stream {
 		return Eof{}
 	}
-	r.len = unread + read_len
+
+	// shift unread bytes to front
+	r.len = r.len - r.offset
+	for i := 0; i < r.len; i++ {
+		r.buf[i] = r.buf[r.offset + i]
+	}
 	r.offset = 0
+
+	for r.len < r.buf.len {
+		read := r.reader.read(mut r.buf[r.len..]) or {
+			r.end_of_stream = true
+			return Eof{}
+		}
+
+		if read == 0 {
+			r.fails++
+			if r.fails >= r.mfails {
+				r.end_of_stream = true
+				return Eof{}
+			}
+		} else {
+			r.fails = 0
+			r.len += read
+		}
+	}
 }
 
 // peek reads n bytes without advancing the cursor.
@@ -116,15 +132,12 @@ pub fn (mut r BufferedReader) peek(n int) ![]u8 {
 		}
 	}
 
-	// enough data in buffer, re refill
+	// enough data in buffer
 	if n <= r.len - r.offset {
 		return r.buf[r.offset..r.offset + n].clone()
 	}
 
-	r.fill_buffer_keep_unread() or {
-		// reached Eof
-		return r.buf[r.offset..].clone()
-	}
+	r.fill_buffer_keep_unread() or { return r.buf[r.offset..r.len].clone() }
 
 	// asking for more bytes than buffer contains after refill
 	if n > r.len {

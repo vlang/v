@@ -34,7 +34,7 @@ fn test_read_basic() {
 	mut res := []u8{len: 16}
 	r := br.read(mut res)!
 	assert r == 16
-	for i, byte in res {
+	for i, _ in res {
 		assert data[i] == res[i]
 	}
 }
@@ -50,7 +50,7 @@ fn test_peek_basic() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data)
 	mut p := br.peek(4)!
-	for i, byte in p {
+	for i, _ in p {
 		assert data[i] == p[i]
 	}
 
@@ -58,7 +58,7 @@ fn test_peek_basic() {
 	br.read(mut read)!
 
 	p = br.peek(4)!
-	for i, byte in p {
+	for i, _ in p {
 		assert data[i + 2] == p[i]
 	}
 }
@@ -70,7 +70,7 @@ fn test_peek_does_not_advance_offset() {
 	mut res := []u8{len: 8}
 	r := br.read(mut res)!
 	assert r == 8
-	for i, byte in res {
+	for i, _ in res {
 		assert data[i] == res[i]
 	}
 }
@@ -79,7 +79,7 @@ fn test_peek_refill_buffer() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data, 6)
 	mut p := br.peek(4)!
-	for i, byte in p {
+	for i, _ in p {
 		assert data[i] == p[i]
 	}
 
@@ -87,7 +87,7 @@ fn test_peek_refill_buffer() {
 	br.read(mut read)!
 
 	p = br.peek(4)!
-	for i, byte in p {
+	for i, _ in p {
 		assert data[i + 4] == p[i]
 	}
 }
@@ -98,7 +98,8 @@ fn test_peek_reaches_eof() {
 	mut res := []u8{len: 4}
 	br.read(mut res)!
 
-	p := br.peek(4)!
+	p := br.peek(4)! // offset now at 4, buffer has 2 bytes, need to read source for more
+	assert p.len == 4
 
 	r := br.read(mut res)!
 	assert r == 4
@@ -110,7 +111,7 @@ fn test_peek_too_many_bytes() {
 	mut br := new_array_buffered_reader(data)
 	mut p := br.peek(16)!
 	assert p.len == 8
-	for i, byte in p {
+	for i, _ in p {
 		assert data[i] == p[i]
 	}
 }
@@ -121,7 +122,7 @@ fn test_peek_repeated() {
 	for j := 0; j < 8; j++ {
 		mut p := br.peek(6)!
 		assert p.len == 6
-		for i, byte in p {
+		for i, _ in p {
 			assert data[i] == p[i]
 		}
 	}
@@ -129,14 +130,14 @@ fn test_peek_repeated() {
 	mut res := []u8{len: 8}
 	r := br.read(mut res)!
 	assert r == 8
-	for i, byte in res {
+	for i, _ in res {
 		assert data[i] == res[i]
 	}
 }
 
 fn test_peek_zero_and_negative() {
 	data := rand.bytes(8)!
-	mut br := new_array_buffered_reader(data, none)
+	mut br := new_array_buffered_reader(data)
 	p := br.peek(0)!
 	assert p.len == 0
 	br.peek(-1) or { assert true }
@@ -144,7 +145,7 @@ fn test_peek_zero_and_negative() {
 
 fn test_peek_does_not_advance_total_read() {
 	data := rand.bytes(8)!
-	mut br := new_array_buffered_reader(data, none)
+	mut br := new_array_buffered_reader(data)
 	br.peek(4)!
 	assert br.total_read == 0
 	mut res := []u8{len: 4}
@@ -152,4 +153,79 @@ fn test_peek_does_not_advance_total_read() {
 	assert br.total_read == 4
 	br.peek(4)!
 	assert br.total_read == 4
+}
+
+struct OneByteReader {
+	a []u8
+mut:
+	i int
+}
+
+fn new_one_byte_reader(a []u8) &OneByteReader {
+	return &OneByteReader{
+		a: a
+	}
+}
+
+fn new_one_byte_buffered_reader(a []u8, cap ?int) &BufferedReader {
+	r := new_one_byte_reader(a)
+	return new_buffered_reader(reader: r)
+}
+
+fn (mut r OneByteReader) read(mut buf []u8) !int {
+	if r.i == r.a.len {
+		return Eof{}
+	}
+	read := copy(mut buf, [r.a[r.i]])
+	r.i++
+	return read
+}
+
+fn test_read_refills_buffer() {
+	data := 'abc'.bytes()
+	mut br := new_one_byte_buffered_reader(data)
+	mut res := []u8{len: 4}
+	read := br.read(mut res)!
+	assert read == data.len
+	for i := 0; i < read; i++ {
+		assert data[i] == res[i]
+	}
+}
+
+fn test_peek_refills_buffer() {
+	data := 'abc'.bytes()
+	mut br := new_one_byte_buffered_reader(data)
+	p := br.peek(4)!
+	assert p.len == 3
+
+	mut res := []u8{len: 4}
+	read := br.read(mut res)!
+	assert read == data.len
+	for i := 0; i < read; i++ {
+		assert data[i] == res[i]
+	}
+}
+
+// https://github.com/vlang/v/pull/27928#issuecomment-5079703057
+struct EofAfterDataReader {
+	data []u8
+mut:
+	offset int
+}
+
+fn (mut r EofAfterDataReader) read(mut buf []u8) !int {
+	if r.offset >= r.data.len {
+		return Eof{}
+	}
+	n := copy(mut buf, r.data[r.offset..])
+	r.offset += n
+	return n
+}
+
+fn test_peek_does_not_return_stale_bytes() {
+	mut source := &EofAfterDataReader{
+		data: 'abc'.bytes()
+	}
+	mut reader := new_buffered_reader(reader: source, cap: 4)
+	assert reader.peek(4)! == 'abc'.bytes()
 }
