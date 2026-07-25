@@ -163,9 +163,11 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			if stmt is ast.FnDecl && stmt.is_main {
 				main_id = id
 			}
-			// skip_unused roots (init/cleanup, and `@[markused]`/`@[export]` functions) are kept
-			// regardless of references, so a failing helper reached only from one stays reachable
-			if stmt is ast.FnDecl && repro_is_markused_root(stmt) {
+			// skip_unused roots are kept regardless of references, so a failing helper reached only
+			// from one stays reachable: init/cleanup, `@[markused]`/`@[export]`, and — for a
+			// `-shared` build — every public function (markused roots all of them).
+			if stmt is ast.FnDecl
+				&& (repro_is_markused_root(stmt) || (v.pref.is_shared && stmt.is_pub)) {
 				extra_seeds << id
 			}
 			if is_root_file && v_line - 1 >= start && v_line - 1 < end {
@@ -201,9 +203,18 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	// in another file must not make an unrelated import look needed)
 	mut included_files := map[int]bool{}
 	mut file_referenced := map[string]bool{} // key: "<file_id>\x00<name>"
+	mut included_names := map[string]bool{} // all names the inlined declarations define
 	for id in ordered {
 		fid := decls[id].file_id
 		included_files[fid] = true
+		// a retained declaration using a compile-time resource (`$embed_file`/`$tmpl`/`$res`)
+		// needs a project-local file we do not upload, so the reproducer cannot be standalone
+		if repro_uses_local_resource(decls[id].source) {
+			return ''
+		}
+		for n in decls[id].names {
+			included_names[n] = true
+		}
 		for name in repro_identifiers(decls[id].source) {
 			file_referenced['${fid}\x00${name}'] = true
 		}
@@ -235,9 +246,14 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		if imp.is_local {
 			return ''
 		}
-		// two files binding the same name to different modules cannot be flattened into one file
 		for t in imp.triggers {
+			// two files binding the same name to different modules cannot be flattened into one file
 			if t in bound && bound[t] != imp.source {
+				return ''
+			}
+			// a file-scoped import binding (e.g. `import time { Time }`) that clashes with an
+			// inlined declaration of the same name would, when flattened, shadow it module-wide
+			if t != '_' && t in included_names {
 				return ''
 			}
 			bound[t] = imp.source
@@ -411,6 +427,13 @@ fn repro_hash_is_local(directive string) bool {
 	return t.starts_with('#')
 }
 
+// repro_uses_local_resource reports whether a declaration uses a compile-time construct that reads
+// a project-local file (`$embed_file`, `$tmpl`, `$res`) which is not uploaded with the reproducer.
+fn repro_uses_local_resource(source string) bool {
+	return source.contains('\$embed_file(') || source.contains('\$tmpl(')
+		|| source.contains('\$res(')
+}
+
 // repro_render assembles the given declaration ids into a single-file source string, headed by
 // `mod_header` (the failing file's `module` line, including any module attributes).
 fn repro_render(mod_header string, imports []ReproImport, hashes []string, decls []ReproDecl, ids []int) string {
@@ -519,6 +542,10 @@ fn scan_string_literal(source string, start int, mut ids []string) int {
 				} else if ci == `}` {
 					depth--
 					i++
+				} else if ci == `'` || ci == `"` {
+					// a nested string inside the interpolation: skip its contents (its own braces
+					// must not be counted) while still collecting its `${...}` identifiers
+					i = scan_string_literal(source, i, mut ids)
 				} else if ci == `_` || ci.is_letter() {
 					st := i
 					for i < source.len && is_ident_char(source[i]) {

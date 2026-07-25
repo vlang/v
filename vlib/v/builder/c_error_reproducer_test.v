@@ -34,6 +34,24 @@ fn test_repro_identifiers_collects_string_interpolation() {
 	assert 'helper' in ids
 }
 
+fn test_repro_identifiers_skips_nested_literals_in_interpolation() {
+	// a string/char literal nested inside a `${...}` interpolation must be skipped just like a
+	// top-level literal, while a real reference in the same interpolation is still collected
+	ids := repro_identifiers("println('\${pick(cond, 'word_in_nested_str', other_ref)}')")
+	assert 'pick' in ids
+	assert 'other_ref' in ids
+	assert 'word_in_nested_str' !in ids
+}
+
+fn test_repro_uses_local_resource() {
+	assert repro_uses_local_resource('const data = \$embed_file("logo.png")')
+	assert repro_uses_local_resource('x := \$tmpl("page.html")')
+	assert repro_uses_local_resource('s := \$res("a.txt")')
+	// ordinary source, and unrelated comptime constructs, are not local resources
+	assert !repro_uses_local_resource('fn main() { println(1) }')
+	assert !repro_uses_local_resource('\$if linux { println("x") }')
+}
+
 fn test_repro_attr_start_walks_over_attributes() {
 	lines := ['fn a() {}', '', '@[direct_array_access]', '@[inline]', 'fn b() {}']
 	// `b` is on line 4 (0-based), its attributes start on line 2
