@@ -10358,13 +10358,26 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 			return none
 		}
 		body_start := if branch.value == 'else' { 0 } else { t.count_conds(branch) }
-		parts := t.match_branch_tuple_parts(branch, body_start, lhs_ids.len) or { return none }
-		mut branch_children := []flat.NodeId{cap: body_start + parts.prefix.len + 1}
+		mut prefix := []flat.NodeId{}
+		mut assignment := flat.empty_node
+		if parts := t.match_branch_tuple_parts(branch, body_start, lhs_ids.len) {
+			prefix = parts.prefix.clone()
+			assignment = t.make_multi_value_assign(lhs_ids, parts.values)
+		} else {
+			tail_id := t.match_branch_multi_return_expr(branch, body_start, lhs_ids.len) or {
+				return none
+			}
+			for j in body_start .. int(branch.children_count) - 1 {
+				prefix << t.a.child(branch, j)
+			}
+			assignment = t.make_multi_return_assign(lhs_ids, tail_id)
+		}
+		mut branch_children := []flat.NodeId{cap: body_start + prefix.len + 1}
 		for j in 0 .. body_start {
 			branch_children << t.a.child(branch, j)
 		}
-		branch_children << parts.prefix
-		branch_children << t.make_multi_value_assign(lhs_ids, parts.values)
+		branch_children << prefix
+		branch_children << assignment
 		start := t.a.children.len
 		t.a.children << branch_children
 		match_children << t.a.add_node(flat.Node{
@@ -10396,6 +10409,19 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 	}
 }
 
+fn (t &Transformer) match_branch_multi_return_expr(branch flat.Node, body_start int, count int) ?flat.NodeId {
+	if count <= 1 || branch.children_count <= body_start {
+		return none
+	}
+	tail := t.a.child_node(&branch, branch.children_count - 1)
+	if tail.kind != .expr_stmt || tail.children_count != 1 {
+		return none
+	}
+	expr_id := t.a.child(tail, 0)
+	_ := t.multi_return_types_for_expr(expr_id, count) or { return none }
+	return expr_id
+}
+
 fn (mut t Transformer) make_multi_value_assign(lhs_ids []flat.NodeId, values []flat.NodeId) flat.NodeId {
 	start := t.a.children.len
 	for i, lhs_id in lhs_ids {
@@ -10408,6 +10434,22 @@ fn (mut t Transformer) make_multi_value_assign(lhs_ids []flat.NodeId, values []f
 		value:          lhs_ids.len.str()
 		children_start: start
 		children_count: flat.child_count(lhs_ids.len * 2)
+	})
+}
+
+fn (mut t Transformer) make_multi_return_assign(lhs_ids []flat.NodeId, value flat.NodeId) flat.NodeId {
+	start := t.a.children.len
+	t.a.children << lhs_ids[0]
+	t.a.children << value
+	for lhs_id in lhs_ids[1..] {
+		t.a.children << lhs_id
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .assign
+		op:             .assign
+		value:          lhs_ids.len.str()
+		children_start: start
+		children_count: flat.child_count(lhs_ids.len + 1)
 	})
 }
 

@@ -11670,9 +11670,8 @@ fn (tc &TypeChecker) match_has_incompatible_multi_return_branches(expr_id flat.N
 			continue
 		}
 		for j, actual in multi.types {
-			if actual.name() != expected[j].name() {
-				return true
-			}
+			promoted := tc.promoted_multi_tail_type(expected[j], actual) or { return true }
+			expected[j] = promoted
 		}
 	}
 	return false
@@ -12476,6 +12475,24 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 				tc.record_error(.assignment_mismatch,
 					'multi-return assignment mismatch: expression branches must all produce ${lhs_ids.len} compatible values',
 					id)
+			}
+			return true
+		}
+		if rhs_types := tc.multi_expr_tail_types(rhs_id, lhs_ids.len) {
+			tc.register_synth_type(rhs_id, MultiReturn{
+				types: rhs_types
+			})
+			for i, lhs_id in lhs_ids {
+				lhs_type := tc.resolve_lvalue_type(lhs_id)
+				if !tc.type_compatible(rhs_types[i], lhs_type) {
+					tc.type_mismatch(.assignment_mismatch,
+						'cannot assign `${rhs_types[i].name()}` to `${lhs_type.name()}`', id)
+				}
+			}
+			$if ownership ? {
+				tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, MultiReturn{
+					types: rhs_types
+				}, id)
 			}
 			return true
 		}
