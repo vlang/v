@@ -28,7 +28,7 @@ fn new_array_buffered_reader(a []u8, cap ?int) &BufferedReader {
 	return new_buffered_reader(reader: r)
 }
 
-fn test_buffered_reader_read_basic() {
+fn test_read_basic() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data)
 	mut res := []u8{len: 16}
@@ -39,14 +39,14 @@ fn test_buffered_reader_read_basic() {
 	}
 }
 
-fn test_buffered_reader_empty() {
+fn test_empty() {
 	data := []u8{}
 	mut br := new_array_buffered_reader(data)
 	mut res := []u8{len: 16}
 	br.read(mut res) or { assert err is Eof }
 }
 
-fn test_buffered_reader_peek_basic() {
+fn test_peek_basic() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data)
 	mut p := br.peek(4)!
@@ -63,7 +63,7 @@ fn test_buffered_reader_peek_basic() {
 	}
 }
 
-fn test_buffered_reader_peek_does_not_advance_offset() {
+fn test_peek_does_not_advance_offset() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data)
 	p := br.peek(8)!
@@ -75,7 +75,7 @@ fn test_buffered_reader_peek_does_not_advance_offset() {
 	}
 }
 
-fn test_buffered_reader_peek_refill_buffer() {
+fn test_peek_refill_buffer() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data, 6)
 	mut p := br.peek(4)!
@@ -92,7 +92,7 @@ fn test_buffered_reader_peek_refill_buffer() {
 	}
 }
 
-fn test_buffered_reader_peek_reaches_eof() {
+fn test_peek_reaches_eof() {
 	data := rand.bytes(8)!
 	mut br := new_array_buffered_reader(data, 6)
 	mut res := []u8{len: 4}
@@ -105,7 +105,7 @@ fn test_buffered_reader_peek_reaches_eof() {
 	br.read(mut res) or { assert err is Eof }
 }
 
-fn test_buffered_reader_peek_too_many_bytes() {
+fn test_peek_too_many_bytes() {
 	data := rand.bytes(8)!
 	mut br := new_array_buffered_reader(data)
 	mut p := br.peek(16)!
@@ -115,7 +115,7 @@ fn test_buffered_reader_peek_too_many_bytes() {
 	}
 }
 
-fn test_buffered_reader_peek_repeated() {
+fn test_peek_repeated() {
 	data := rand.bytes(8)!
 	mut br := new_array_buffered_reader(data)
 	for j := 0; j < 8; j++ {
@@ -132,4 +132,24 @@ fn test_buffered_reader_peek_repeated() {
 	for i, byte in res {
 		assert data[i] == res[i]
 	}
+}
+
+fn test_peek_zero_and_negative() {
+	data := rand.bytes(8)!
+	mut br := new_array_buffered_reader(data, none)
+	p := br.peek(0)!
+	assert p.len == 0
+	br.peek(-1) or { assert true }
+}
+
+fn test_peek_does_not_advance_total_read() {
+	data := rand.bytes(8)!
+	mut br := new_array_buffered_reader(data, none)
+	br.peek(4)!
+	assert br.total_read == 0
+	mut res := []u8{len: 4}
+	br.read(mut res)!
+	assert br.total_read == 4
+	br.peek(4)!
+	assert br.total_read == 4
 }

@@ -102,7 +102,7 @@ fn (mut r BufferedReader) fill_buffer_keep_unread() ! {
 // returns an array with less than n bytes if n > capacity.
 pub fn (mut r BufferedReader) peek(n int) ![]u8 {
 	if n < 0 {
-		return error('cannot read a negative number of bytes')
+		return error('cannot peek a negative number of bytes')
 	}
 
 	if r.end_of_stream {
