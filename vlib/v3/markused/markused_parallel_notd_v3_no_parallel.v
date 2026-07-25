@@ -11,7 +11,7 @@ import runtime
 import v3.flat
 import v3.workers
 
-const max_markused_jobs = 8
+const max_markused_jobs = 10
 const min_markused_parallel_bodies = 512
 const scoped_markused_worker_batches = 16
 
@@ -47,6 +47,18 @@ $if !windows {
 				*results)
 		}
 		markused_worker_scope_leave(args.scope)
+		if args.scope != unsafe { nil } {
+			// Publish this worker's call lists into its persistent arena here,
+			// in parallel, instead of the former serial clone loop on the
+			// master; the freed scope is marked nil so the master skips it.
+			for result_idx in args.start .. args.end {
+				unsafe {
+					(*results)[result_idx] = clone_body_calls((*results)[result_idx])
+				}
+			}
+			markused_worker_scope_free(args.scope)
+			args.scope = unsafe { nil }
+		}
 		return unsafe { nil }
 	}
 }

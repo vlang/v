@@ -1,6 +1,7 @@
 module types
 
 import os
+import time
 import strings
 import v3.flat
 import v3.gen.c.naming
@@ -219,9 +220,10 @@ struct SourceStructFieldDecl {
 @[heap]
 struct VisibleMutationCache {
 mut:
-	decls       map[string]VisibleMutationFnDecl
-	decl_misses map[string]bool
-	results     map[u64]bool
+	decls            map[string]VisibleMutationFnDecl
+	decl_misses      map[string]bool
+	results          map[u64]bool
+	decl_index_ready bool
 }
 
 fn new_visible_mutation_cache() &VisibleMutationCache {
@@ -233,7 +235,7 @@ fn new_visible_mutation_cache() &VisibleMutationCache {
 }
 
 fn push_type_name_candidate(mut candidates []string, name string) {
-	clean := name.trim_space()
+	clean := trimmed_space(name)
 	if clean.len > 0 && clean !in candidates {
 		candidates << clean
 	}
@@ -562,7 +564,15 @@ pub mut:
 	channel_send_or_expr_id int  = -1
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
-	selfhost                bool
+	// See QualifyNameCache: nil unless armed for a static-table phase; forks
+	// must replace it with their own instance (fork_for_parallel_codegen).
+	qualify_name_cache &QualifyNameCache = unsafe { nil }
+	import_info_cache  &ImportInfoCache  = unsafe { nil }
+	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
+	// Only `-d ownership` builds ever write it (every writer lives in
+	// checker_ownership_d_ownership.v), so plain builds report exactly 0.
+	ownership_time_ns i64
+	selfhost          bool
 	// resolution_type_mode is enabled only after semantic checking, while transform
 	// and codegen read synthesized generic-specialization type text. Source annotations
 	// must keep normal module scoping and never enable this fallback.
@@ -850,6 +860,10 @@ pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
 	forked.visible_mutation_cache = unsafe { nil }
 	forked.inherit_ownership_codegen_metadata_from(tc)
 	forked.set_fresh_type_cache_based_on(tc, tc.type_cache_parse_enabled())
+	if !isnil(tc.qualify_name_cache) {
+		// Never share the memo across threads; each fork owns a private one.
+		forked.qualify_name_cache = &QualifyNameCache{}
+	}
 	return &forked
 }
 
@@ -897,6 +911,12 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// Visible-mutation analysis only runs during checking. Do not allocate its
 	// three private maps for the many short-lived transform forks.
 	forked.visible_mutation_cache = unsafe { nil }
+	if check_memos_enabled() {
+		// Per-fork memos; the fork (and these caches) live inside one batch
+		// scope, so cached scratch-arena strings can never outlive their arena.
+		forked.import_info_cache = &ImportInfoCache{}
+		forked.qualify_name_cache = &QualifyNameCache{}
+	}
 	// The transformer propagates call/fn-value resolution metadata onto the call
 	// nodes it clones (Transformer.copy_cloned_resolution). In a worker those
 	// writes must not touch (or grow/realloc) the shared node-indexed arrays
@@ -1422,14 +1442,14 @@ fn split_sum_variant_texts(text string) []string {
 				depth--
 			}
 		} else if ch == `|` && depth == 0 {
-			part := text[start..i].trim_space()
+			part := trimmed_space(text[start..i])
 			if part.len > 0 {
 				parts << part
 			}
 			start = i + 1
 		}
 	}
-	part := text[start..].trim_space()
+	part := trimmed_space(text[start..])
 	if part.len > 0 {
 		parts << part
 	}
@@ -1437,7 +1457,99 @@ fn split_sum_variant_texts(text string) []string {
 }
 
 // collect supports collect handling for TypeChecker.
+fn file_index_usable(a &flat.FlatAst) bool {
+	return a.file_node_ids.len > 0 && a.file_node_ids.len % 2 == 0 && !a.file_index_incomplete
+		&& os.getenv('V3_NO_FILE_IDX') == ''
+}
+
+// collect_top_level_idx_fast rebuilds the top-level declaration index from the
+// parser-recorded (marker, trailing) .file node pairs instead of scanning every
+// AST node: the trailing file node's children are exactly the file's top-level
+// declarations (with comptime_if/block containers descended in child order,
+// which matches ascending node-id order). Output must stay identical to the
+// full scan in collect().
+fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []bool) {
+	if inactive.len > 0 {
+		// The scan records every flagged id (whole inactive subtrees, consumed
+		// by prune_inactive_top_level_comptime).
+		for i, f in inactive {
+			if f {
+				tc.inactive_top_level_node_ids << i
+			}
+		}
+	}
+	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
+		marker := a.file_node_ids[k]
+		trailing := a.file_node_ids[k + 1]
+		idx_file := a.nodes[marker].value
+		tc.top_level_idx << marker
+		tnode := a.nodes[trailing]
+		mut idx_module := ''
+		for ci in 0 .. tnode.children_count {
+			idx_module = tc.collect_index_child(a, int(a.child(&tnode, ci)), idx_file, idx_module,
+				inactive)
+		}
+		tc.top_level_idx << trailing
+	}
+}
+
+fn (mut tc TypeChecker) collect_index_child(a &flat.FlatAst, i int, idx_file string, idx_module string, inactive []bool) string {
+	if i < 0 || i >= a.nodes.len {
+		return idx_module
+	}
+	if inactive.len > 0 && i < inactive.len && inactive[i] {
+		return idx_module
+	}
+	node := a.nodes[i]
+	match node.kind {
+		.directive {
+			if idx_file.len > 0 && node.value.starts_with('@attributes:') {
+				decl_idx := node.value['@attributes:'.len..].int()
+				if decl_idx >= 0 && decl_idx < a.nodes.len && a.nodes[decl_idx].kind == .module_decl {
+					for attr in node.generic_params() {
+						if attr.all_before(':').trim_space() == 'translated' {
+							tc.translated_files[idx_file] = true
+							break
+						}
+					}
+				}
+			}
+		}
+		.module_decl {
+			tc.top_level_idx << i
+			return node.value
+		}
+		.struct_decl {
+			if node.value == 'string' {
+				tc.has_builtins = true
+			}
+			tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, node.value)] = true
+			tc.top_level_idx << i
+		}
+		.type_decl, .interface_decl, .enum_decl {
+			tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, node.value)] = true
+			tc.top_level_idx << i
+		}
+		.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl {
+			tc.top_level_idx << i
+		}
+		.comptime_if, .block {
+			// Top-level $if containers hold declarations the full scan reaches
+			// by node order; descend in child order (same ascending ids).
+			mut inner_module := idx_module
+			for ci in 0 .. node.children_count {
+				inner_module = tc.collect_index_child(a, int(a.child(&node, ci)), idx_file,
+					inner_module, inactive)
+			}
+			return inner_module
+		}
+		else {}
+	}
+	return idx_module
+}
+
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
+	mut ck_c_sw := time.new_stopwatch()
 	tc.a = a
 	tc.visible_mutation_cache = new_visible_mutation_cache()
 	tc.has_spawn_expr = -1
@@ -1471,6 +1583,13 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.prepare_threads_condition()
 	inactive_comptime_nodes := tc.inactive_top_level_comptime_nodes()
 	tc.inactive_top_level_node_ids.clear()
+	if file_index_usable(a) {
+		tc.collect_top_level_idx_fast(a, inactive_comptime_nodes)
+		tc.top_level_idx_nodes_len = a.nodes.len
+		eprintln('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (fast)')
+		tc.collect_after_index(a)
+		return
+	}
 	mut idx_file := ''
 	mut idx_module := ''
 	for i, node in a.nodes {
@@ -1520,6 +1639,15 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		}
 	}
 	tc.top_level_idx_nodes_len = a.nodes.len
+	eprintln('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.collect_after_index(a)
+}
+
+// collect_after_index runs collection passes 1 and 2 plus the resolution tail
+// over the already-built top-level index (shared by the fast file-index path
+// and the full-scan fallback in collect()).
+fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
+	mut ck_c_sw := time.new_stopwatch()
 	// Pass 1: collect type-level names (aliases, enums, sum types)
 	for tl_idx in tc.top_level_idx {
 		node := a.nodes[tl_idx]
@@ -1654,6 +1782,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.type_cache.c_name_entries.clear()
 	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
+	eprintln('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	ck_c_sw.restart()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
 	// The native backend does not yet preserve large aggregate arguments reliably
 	// through the parse-cache helpers. Parsing uncached keeps native self-hosts
@@ -1675,6 +1805,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			}
 			.fn_decl {
 				qname := tc.qualify_fn_name(node.value)
+				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, qname, node.value)
 				is_open_generic := node.generic_params().len > 0 || node.value.contains('[')
 				ret_type := if is_open_generic {
 					tc.parse_scope_param_type(node.typ)
@@ -1933,9 +2064,16 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			else {}
 		}
 	}
+	eprintln('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	ck_c_sw.restart()
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
 	tc.build_const_suffixes()
+	eprintln('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	if !isnil(tc.visible_mutation_cache) {
+		mut visible_mutation_cache := tc.visible_mutation_cache
+		visible_mutation_cache.decl_index_ready = true
+	}
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
@@ -2497,7 +2635,54 @@ fn (tc &TypeChecker) local_fn_decl_exists_scan(name string) bool {
 }
 
 // qualify_name supports qualify name handling for TypeChecker.
+// QualifyNameCache memoizes qualify_name per (module, file) context. It must
+// only be armed while the declared-type tables are static (parallel cgen of
+// generic-free builds); every checker fork gets its own instance.
+pub struct QualifyNameCache {
+pub mut:
+	module      string
+	file        string
+	fingerprint int = -1
+	entries     map[string]string
+}
+
+// qualify_table_fingerprint tracks growth of every declared-type table
+// qualify_name consults, so the memo stays valid even in phases that can
+// still register types (e.g. anonymous structs during fn-body checking).
+fn (tc &TypeChecker) qualify_table_fingerprint() int {
+	return tc.structs.len + tc.type_aliases.len + tc.interface_names.len + tc.sum_types.len +
+		tc.enum_names.len + tc.flag_enums.len
+}
+
+// ownership_time_spent_us reports the accumulated ownership-analysis time for
+// the dedicated benchmark stage. Compiled-out ownership (no `-d ownership`)
+// cannot spend time, so this returns 0 by construction in plain builds.
+pub fn (tc &TypeChecker) ownership_time_spent_us() i64 {
+	return tc.ownership_time_ns / 1000
+}
+
 pub fn (tc &TypeChecker) qualify_name(name string) string {
+	if !isnil(tc.qualify_name_cache) {
+		mut cache := tc.qualify_name_cache
+		fingerprint := tc.qualify_table_fingerprint()
+		if cache.module != tc.cur_module || cache.file != tc.cur_file
+			|| cache.fingerprint != fingerprint {
+			cache.module = tc.cur_module
+			cache.file = tc.cur_file
+			cache.fingerprint = fingerprint
+			cache.entries.clear()
+		}
+		if cached := cache.entries[name] {
+			return cached
+		}
+		result := tc.qualify_name_uncached(name)
+		cache.entries[name] = result
+		return result
+	}
+	return tc.qualify_name_uncached(name)
+}
+
+fn (tc &TypeChecker) qualify_name_uncached(name string) string {
 	// Qualify container / wrapper types by recursing into the element type first,
 	// so imported dotted names inside `[]T`, `[N]T`, `map[K]V`, `&T`, `?T`, `!T`
 	// still get resolved. The `.contains('.')` fast path below only understands the
@@ -2594,7 +2779,7 @@ fn (tc &TypeChecker) qualify_candidate_type_exists(name string) bool {
 }
 
 fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []string) string {
-	clean := name.trim_space()
+	clean := trimmed_space(name)
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
 		return tc.qualify_type_text(clean)
 	}
@@ -2641,7 +2826,7 @@ fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []stri
 	if bracket > 0 {
 		bracket_end := find_matching_bracket(clean, bracket)
 		if bracket_end < clean.len {
-			inner := clean[bracket + 1..bracket_end].trim_space()
+			inner := trimmed_space(clean[bracket + 1..bracket_end])
 			if is_fixed_array_len_text(inner) || is_builtin_type_name(clean[..bracket]) {
 				return tc.qualify_sum_variant_name(clean[..bracket], generic_params) +
 					clean[bracket..]
@@ -2678,7 +2863,7 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 // parse_resolution_type parses type text that can mix declaration-local names with concrete
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.contains('.') {
 		if exact := tc.type_from_known_symbol(clean) {
 			return exact
@@ -2716,7 +2901,7 @@ pub fn (mut tc TypeChecker) disable_resolution_type_view_cache() {
 }
 
 fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic_params []string) string {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.len == 0 {
 		return typ
 	}
@@ -2792,7 +2977,7 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 	if bracket > 0 {
 		bracket_end := find_matching_bracket(clean, bracket)
 		if bracket_end < clean.len {
-			inner := clean[bracket + 1..bracket_end].trim_space()
+			inner := trimmed_space(clean[bracket + 1..bracket_end])
 			if is_fixed_array_len_text(inner) || is_builtin_type_name(clean[..bracket]) {
 				return tc.qualify_type_text_impl(clean[..bracket], resolution, generic_params) +
 					clean[bracket..]
@@ -2837,13 +3022,13 @@ fn (tc &TypeChecker) qualify_fn_type_text(typ string, generic_params []string) s
 	}
 	params_str := typ[params_start..params_end]
 	mut params := []string{}
-	if params_str.trim_space().len > 0 {
+	if trimmed_space(params_str).len > 0 {
 		for part in split_params(params_str) {
 			params << tc.qualify_type_text_impl(normalize_fn_type_param_text(part), false,
 				generic_params)
 		}
 	}
-	ret_str := typ[params_end + 1..].trim_space()
+	ret_str := trimmed_space(typ[params_end + 1..])
 	if ret_str.len > 0 {
 		return 'fn(${params.join(', ')}) ${tc.qualify_type_text_impl(ret_str, false, generic_params)}'
 	}
@@ -2931,9 +3116,44 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 	}
 }
 
+// check_memos_enabled gates the per-fork qualify/import memos, so a single
+// binary can A/B them (`V3_NO_CHECK_MEMOS=1` disables).
+fn check_memos_enabled() bool {
+	return os.getenv('V3_NO_CHECK_MEMOS') == ''
+}
+
+// ImportInfoCache pins the current file's import table so the hot
+// resolve_import_alias/selective-import paths skip re-hashing the long
+// file-path key on every call. Refreshed whenever the file or the registration
+// table length changes; the pinned &FileImportInfo is heap-stable and its maps
+// stay live through the pin. Each checker fork owns a private instance.
+struct ImportInfoCache {
+mut:
+	file     string
+	info     &FileImportInfo = unsafe { nil }
+	seen_len int             = -1
+}
+
+fn (tc &TypeChecker) current_file_import_info() &FileImportInfo {
+	mut cache := tc.import_info_cache
+	if isnil(cache) {
+		return tc.file_imports_by_file[tc.cur_file] or { return unsafe { &FileImportInfo(nil) } }
+	}
+	if cache.seen_len != tc.file_imports_by_file.len
+		|| voidptr(cache.file.str) != voidptr(tc.cur_file.str) || cache.file.len != tc.cur_file.len {
+		cache.file = tc.cur_file
+		cache.seen_len = tc.file_imports_by_file.len
+		cache.info = tc.file_imports_by_file[tc.cur_file] or { unsafe { &FileImportInfo(nil) } }
+	}
+	return cache.info
+}
+
 // resolve_import_alias resolves resolve import alias information for types.
 fn (tc &TypeChecker) resolve_import_alias(alias string) ?string {
-	info := tc.file_imports_by_file[tc.cur_file] or { return none }
+	info := tc.current_file_import_info()
+	if isnil(info) {
+		return none
+	}
 	if mod := info.imports[alias] {
 		return mod
 	}
@@ -2962,7 +3182,10 @@ fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
 }
 
 fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {
-	info := tc.file_imports_by_file[tc.cur_file] or { return none }
+	info := tc.current_file_import_info()
+	if isnil(info) {
+		return none
+	}
 	return info.selective_imports[name] or { return none }
 }
 
@@ -3147,7 +3370,8 @@ fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, param
 	tc.fn_param_types[name] = params.clone()
 	if shared_params.len > 0 {
 		tc.fn_shared_params[name] = shared_params.clone()
-	} else {
+	} else if tc.fn_shared_params.len > 0 {
+		// Deleting from an empty map is a paid no-op on this hot path.
 		tc.fn_shared_params.delete(name)
 	}
 	if tc.cur_file.len > 0 {
@@ -3155,7 +3379,11 @@ fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, param
 		tc.fn_type_modules[name] = tc.cur_module
 	}
 	tc.fn_variadic[name] = is_variadic
-	tc.fn_implicit_veb_ctx[name] = implicit_veb_ctx
+	if implicit_veb_ctx || tc.fn_implicit_veb_ctx.len > 0 {
+		// All readers default absent entries to false, so false inserts only
+		// matter once the map holds any true entry (veb builds).
+		tc.fn_implicit_veb_ctx[name] = implicit_veb_ctx
+	}
 	tc.add_receiver_method_suffix_index(name)
 }
 
@@ -5128,7 +5356,7 @@ fn (tc &TypeChecker) fn_shared_params_with_implicit_veb_ctx(node flat.Node, flag
 }
 
 fn param_type_text_is_shared(raw string) bool {
-	return raw.trim_space().starts_with('shared ')
+	return trimmed_space(raw).starts_with('shared ')
 }
 
 fn decl_assign_is_shared_marker(value string) bool {
@@ -5357,7 +5585,7 @@ fn (tc &TypeChecker) collect_generic_receiver_params(node flat.Node, mut params 
 }
 
 fn (tc &TypeChecker) collect_generic_param_candidates(typ string, mut counts map[string]int) bool {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.len == 0 {
 		return false
 	}
@@ -5420,7 +5648,7 @@ fn (tc &TypeChecker) collect_generic_param_candidates(typ string, mut counts map
 		}
 		if params_end < clean.len {
 			for part in split_params(clean[params_start..params_end]) {
-				trimmed := part.trim_space()
+				trimmed := trimmed_space(part)
 				parts := trimmed.split(' ')
 				param_type := if parts.len >= 2 { parts[parts.len - 1] } else { trimmed }
 				if tc.collect_generic_param_candidates(param_type, mut counts) {
@@ -5452,7 +5680,7 @@ fn (tc &TypeChecker) collect_generic_param_candidates(typ string, mut counts map
 // check_type_string_for_unsupported_generics
 // validates helper state for types.
 fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, node_id flat.NodeId, generic_params map[string]bool) {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.len == 0 {
 		return
 	}
@@ -5522,7 +5750,7 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 		}
 		bracket := clean.index_u8(`[`)
 		bracket_end := find_matching_bracket(clean, bracket)
-		base := clean[..bracket].trim_space()
+		base := trimmed_space(clean[..bracket])
 		if should_check_named_type(base) && !tc.type_name_known(base) {
 			tc.record_unknown_decl_type(base, node_id)
 		}
@@ -5597,12 +5825,12 @@ fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ string
 		return
 	}
 	for part in split_params(typ[params_start..params_end]) {
-		trimmed := part.trim_space()
+		trimmed := trimmed_space(part)
 		parts := trimmed.split(' ')
 		param_type := if parts.len >= 2 { parts[parts.len - 1] } else { trimmed }
 		tc.check_type_string_for_unsupported_generics(param_type, node_id, generic_params)
 	}
-	ret := typ[params_end + 1..].trim_space()
+	ret := trimmed_space(typ[params_end + 1..])
 	tc.check_type_string_for_unsupported_generics(ret, node_id, generic_params)
 }
 
@@ -5622,7 +5850,7 @@ fn (tc &TypeChecker) generic_args_are_concrete(args []string) bool {
 }
 
 fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if is_bare_generic_param(clean) {
 		return !tc.is_known_type_text(clean)
 	}
@@ -5677,7 +5905,7 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 	if bracket <= 0 || bracket_end <= bracket {
 		return '', []string{}, false
 	}
-	inner := typ[bracket + 1..bracket_end].trim_space()
+	inner := trimmed_space(typ[bracket + 1..bracket_end])
 	if is_fixed_array_len_text(inner) {
 		return '', []string{}, false
 	}
@@ -5691,7 +5919,7 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 // three keeps such a postfix name parsing as a fixed array (e.g. when `[]thread T.wait()` recovers
 // the spawned return type) instead of a bogus generic application.
 fn is_fixed_array_len_text(inner string) bool {
-	s := inner.trim_space()
+	s := trimmed_space(inner)
 	if s.len == 0 {
 		return false
 	}
@@ -6416,13 +6644,20 @@ fn (tc &TypeChecker) branch_tail_never_returns(branch_id flat.NodeId) bool {
 	} else {
 		0
 	}
-	mut scoped := *tc
-	scoped.smartcasts = clone_smartcasts(tc.smartcasts)
+	// Only the `smartcasts` binding needs isolation here: a full `*tc` copy
+	// shares every map's backing storage anyway and memmoves the ~11KB
+	// TypeChecker per call, so swap in a scratch clone and restore instead.
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	mut saved_smartcasts := mtc.smartcasts.move()
+	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+	defer {
+		mtc.smartcasts = saved_smartcasts.move()
+	}
 	tail_index := int(branch.children_count) - 1
 	for i in body_start .. tail_index {
-		scoped.apply_return_analysis_local_binding(tc.a.child(&branch, i))
+		mtc.apply_return_analysis_local_binding(tc.a.child(&branch, i))
 	}
-	return scoped.expr_never_returns(tail_id)
+	return tc.expr_never_returns(tail_id)
 }
 
 // match_covers_all_enum_variants reports whether a `match` over an enum subject
@@ -6481,14 +6716,20 @@ fn (tc &TypeChecker) match_branch_definitely_returns(branch &flat.Node) bool {
 }
 
 fn (tc &TypeChecker) stmt_sequence_definitely_returns(node &flat.Node, body_start int) bool {
-	mut scoped := *tc
-	scoped.smartcasts = clone_smartcasts(tc.smartcasts)
+	// Only the `smartcasts` binding needs isolation here (see
+	// branch_tail_never_returns); avoid the ~11KB full struct copy.
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	mut saved_smartcasts := mtc.smartcasts.move()
+	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+	defer {
+		mtc.smartcasts = saved_smartcasts.move()
+	}
 	for i in body_start .. node.children_count {
 		child_id := tc.a.child(node, i)
-		if scoped.stmt_definitely_returns(child_id) {
+		if tc.stmt_definitely_returns(child_id) {
 			return true
 		}
-		scoped.apply_return_analysis_local_binding(child_id)
+		mtc.apply_return_analysis_local_binding(child_id)
 	}
 	return false
 }
@@ -6551,10 +6792,16 @@ fn (tc &TypeChecker) match_branch_definitely_returns_with_context(node flat.Node
 	} else {
 		return tc.match_branch_definitely_returns(branch)
 	}
-	mut scoped := *tc
-	scoped.smartcasts = clone_smartcasts(tc.smartcasts)
-	scoped.smartcasts[subject_key] = tc.parse_type(smartcast_type)
-	return scoped.match_branch_definitely_returns(branch)
+	// Only the `smartcasts` binding needs isolation here (see
+	// branch_tail_never_returns); avoid the ~11KB full struct copy.
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	mut saved_smartcasts := mtc.smartcasts.move()
+	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+	defer {
+		mtc.smartcasts = saved_smartcasts.move()
+	}
+	mtc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
+	return tc.match_branch_definitely_returns(branch)
 }
 
 fn (tc &TypeChecker) match_without_else_exhaustive_enum_returns(node flat.Node) bool {
@@ -7143,15 +7390,15 @@ fn comptime_static_source_location(path string, encoded_offset int, line_offsets
 }
 
 fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase {
-	clean := raw.trim_space()
+	clean := trimmed_space(raw)
 	colon := clean.index_u8(`:`)
 	has_arg := colon >= 0 && !(kind == 1
-		&& !comptime_static_attr_is_string_literal(clean[colon + 1..].trim_space()))
-	mut name := if has_arg { clean[..colon].trim_space() } else { clean }
+		&& !comptime_static_attr_is_string_literal(trimmed_space(clean[colon + 1..])))
+	mut name := if has_arg { trimmed_space(clean[..colon]) } else { clean }
 	if name.len >= 2 && name[0] in [`'`, `"`] && name[name.len - 1] == name[0] {
 		name = name[1..name.len - 1]
 	}
-	mut arg := if has_arg { clean[colon + 1..].trim_space() } else { '' }
+	mut arg := if has_arg { trimmed_space(clean[colon + 1..]) } else { '' }
 	if arg.len >= 3 && arg[0] == `r` && arg[1] in [`'`, `"`] && arg[arg.len - 1] == arg[1] {
 		arg = arg[2..arg.len - 1]
 	} else if arg.len >= 2 && arg[0] in [`'`, `"`] && arg[arg.len - 1] == arg[0] {
@@ -7172,7 +7419,7 @@ fn comptime_static_attr_is_string_literal(raw string) bool {
 }
 
 fn (tc &TypeChecker) comptime_deferred_decl_source(source string, allow_type bool) ?ComptimeDeferredDeclSource {
-	clean := source.trim_space()
+	clean := trimmed_space(source)
 	if clean.len == 0 {
 		return none
 	}
@@ -7511,7 +7758,7 @@ fn comptime_static_subst_method_param_cond(cond string, var_name string, item Co
 				offset = member_start
 				continue
 			}
-			index_text := result[index_start..index_end].trim_space()
+			index_text := trimmed_space(result[index_start..index_end])
 			if !comptime_static_is_int(index_text) || index_text.starts_with('-') {
 				offset = member_end
 				continue
@@ -7961,7 +8208,7 @@ fn (mut tc TypeChecker) comptime_static_enum_value_cases(base_type string) Compt
 }
 
 fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
-	mut cur := raw.trim_space()
+	mut cur := trimmed_space(raw)
 	mut seen := map[string]bool{}
 	for cur.len > 0 && cur !in seen {
 		seen[cur] = true
@@ -7978,7 +8225,7 @@ fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
 		if next == cur {
 			break
 		}
-		cur = next.trim_space()
+		cur = trimmed_space(next)
 	}
 	return none
 }
@@ -8121,22 +8368,22 @@ fn (tc &TypeChecker) comptime_static_type_name_is_struct(name string) bool {
 }
 
 fn comptime_static_unwrap_type_text(name string) string {
-	mut clean := name.trim_space()
+	mut clean := trimmed_space(name)
 	for _ in 0 .. 16 {
 		if clean.starts_with('?') || clean.starts_with('!') {
-			clean = clean[1..].trim_space()
+			clean = trimmed_space(clean[1..])
 			continue
 		}
 		if clean.starts_with('shared ') {
-			clean = clean[7..].trim_space()
+			clean = trimmed_space(clean[7..])
 			continue
 		}
 		if clean.starts_with('atomic ') {
-			clean = clean[7..].trim_space()
+			clean = trimmed_space(clean[7..])
 			continue
 		}
 		if clean.starts_with('&') {
-			clean = clean[1..].trim_space()
+			clean = trimmed_space(clean[1..])
 			continue
 		}
 		break
@@ -8152,7 +8399,7 @@ fn (tc &TypeChecker) comptime_static_for_base_type(raw string) string {
 }
 
 fn (tc &TypeChecker) comptime_static_for_value_source_type(raw string) ?string {
-	clean := raw.trim_space()
+	clean := trimmed_space(raw)
 	if clean.len == 0 {
 		return none
 	}
@@ -8462,7 +8709,7 @@ fn comptime_static_source_type_name(typ Type) string {
 }
 
 fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {
-	mut cur := raw.trim_space()
+	mut cur := trimmed_space(raw)
 	mut seen := map[string]bool{}
 	for cur.len > 0 && cur !in seen {
 		seen[cur] = true
@@ -8479,14 +8726,14 @@ fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {
 		if next == cur {
 			break
 		}
-		cur = next.trim_space()
+		cur = trimmed_space(next)
 	}
 	return none
 }
 
 fn (tc &TypeChecker) comptime_static_field_decl_metas(base_type string) map[string]ComptimeStaticFieldDeclMeta {
 	mut out := map[string]ComptimeStaticFieldDeclMeta{}
-	mut decl_name := base_type.trim_space()
+	mut decl_name := trimmed_space(base_type)
 	if idx := decl_name.index('[') {
 		decl_name = decl_name[..idx]
 	}
@@ -8581,22 +8828,22 @@ fn comptime_static_unwrap_field_type(typ Type) Type {
 }
 
 fn comptime_static_field_type_flags(raw string) ComptimeStaticFieldTypeFlags {
-	mut core := raw.trim_space()
+	mut core := trimmed_space(raw)
 	mut flags := ComptimeStaticFieldTypeFlags{}
 	if core.starts_with('?') {
-		core = core[1..].trim_space()
+		core = trimmed_space(core[1..])
 	}
 	if core.starts_with('shared ') {
 		flags.is_shared = true
 		flags.indirections++
-		core = core[7..].trim_space()
+		core = trimmed_space(core[7..])
 	} else if core.starts_with('atomic ') {
 		flags.is_atomic = true
-		core = core[7..].trim_space()
+		core = trimmed_space(core[7..])
 	}
 	for core.starts_with('&') {
 		flags.indirections++
-		core = core[1..].trim_space()
+		core = trimmed_space(core[1..])
 	}
 	return flags
 }
@@ -8657,7 +8904,7 @@ fn comptime_static_replace_bare_ident(cond string, ident string, replacement str
 }
 
 fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
-	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	clean := comptime_condition_strip_outer_parens(trimmed_space(cond))
 	if clean == 'true' {
 		return true
 	}
@@ -8683,8 +8930,8 @@ fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 	for op in [' !is ', ' is '] {
 		op_idx := comptime_condition_top_level_index(clean, op)
 		if op_idx >= 0 {
-			left := clean[..op_idx].trim_space()
-			right := clean[op_idx + op.len..].trim_space()
+			left := trimmed_space(clean[..op_idx])
+			right := trimmed_space(clean[op_idx + op.len..])
 			matches := tc.comptime_type_matches(left, right) or { return none }
 			return if op == ' is ' { matches } else { !matches }
 		}
@@ -8692,8 +8939,8 @@ fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 	for op in [' != ', ' == '] {
 		op_idx := comptime_condition_top_level_index(clean, op)
 		if op_idx >= 0 {
-			left := comptime_static_unquote(clean[..op_idx].trim_space())
-			right := comptime_static_unquote(clean[op_idx + op.len..].trim_space())
+			left := comptime_static_unquote(trimmed_space(clean[..op_idx]))
+			right := comptime_static_unquote(trimmed_space(clean[op_idx + op.len..]))
 			eq := left == right
 			return if op == ' == ' { eq } else { !eq }
 		}
@@ -8706,16 +8953,16 @@ fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 				&& clean[after] != `(` {
 				continue
 			}
-			needle := comptime_static_unquote(clean[..op_idx].trim_space())
-			found := comptime_static_list_contains(clean[after..].trim_space(), needle)
+			needle := comptime_static_unquote(trimmed_space(clean[..op_idx]))
+			found := comptime_static_list_contains(trimmed_space(clean[after..]), needle)
 			return if op == ' in' { found } else { !found }
 		}
 	}
 	for op in [' <= ', ' >= ', ' < ', ' > '] {
 		op_idx := comptime_condition_top_level_index(clean, op)
 		if op_idx >= 0 {
-			left := clean[..op_idx].trim_space()
-			right := clean[op_idx + op.len..].trim_space()
+			left := trimmed_space(clean[..op_idx])
+			right := trimmed_space(clean[op_idx + op.len..])
 			if !comptime_static_is_int(left) || !comptime_static_is_int(right) {
 				return none
 			}
@@ -8737,13 +8984,13 @@ fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 }
 
 fn comptime_static_list_contains(list_text string, needle string) bool {
-	clean := list_text.trim_space()
+	clean := trimmed_space(list_text)
 	if !clean.starts_with('[') || !clean.ends_with(']') {
 		return false
 	}
 	inner := clean[1..clean.len - 1]
 	for part in inner.split(',') {
-		if comptime_static_unquote(part.trim_space()) == needle {
+		if comptime_static_unquote(trimmed_space(part)) == needle {
 			return true
 		}
 	}
@@ -9304,6 +9551,20 @@ fn (tc &TypeChecker) mark_inactive_top_level_comptime(id flat.NodeId, mut inacti
 
 fn (tc &TypeChecker) inactive_top_level_comptime_nodes() []bool {
 	mut inactive := []bool{}
+	if file_index_usable(tc.a) {
+		// Only trailing .file nodes have children; the recorded list visits
+		// them in node order, matching the full scan.
+		for fid in tc.a.file_node_ids {
+			node := tc.a.nodes[fid]
+			if node.kind != .file || node.children_count == 0 {
+				continue
+			}
+			for i in 0 .. node.children_count {
+				tc.mark_inactive_top_level_comptime(tc.a.child(&node, i), mut inactive)
+			}
+		}
+		return inactive
+	}
 	for node in tc.a.nodes {
 		if node.kind != .file || node.children_count == 0 {
 			continue
@@ -9548,8 +9809,8 @@ fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	for op in [' !is ', ' is '] {
 		op_idx := comptime_condition_top_level_index(clean, op)
 		if op_idx >= 0 {
-			left := clean[..op_idx].trim_space()
-			right := clean[op_idx + op.len..].trim_space()
+			left := trimmed_space(clean[..op_idx])
+			right := trimmed_space(clean[op_idx + op.len..])
 			matches := tc.comptime_type_matches(left, right) or { return none }
 			return if op == ' is ' { matches } else { !matches }
 		}
@@ -9562,8 +9823,8 @@ fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
 }
 
 fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
-	clean_actual := actual.trim_space()
-	clean_expected := expected.trim_space()
+	clean_actual := trimmed_space(actual)
+	clean_expected := trimmed_space(expected)
 	if clean_actual.len == 0 || clean_expected.len == 0
 		|| (is_bare_generic_param(clean_actual) && !tc.type_name_known(clean_actual)) {
 		return none
@@ -9639,7 +9900,7 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 }
 
 fn (tc &TypeChecker) comptime_type_text_is_shared(type_text string) bool {
-	mut cur := type_text.trim_space()
+	mut cur := trimmed_space(type_text)
 	for _ in 0 .. 16 {
 		if cur.starts_with('shared ') {
 			return true
@@ -9648,7 +9909,7 @@ fn (tc &TypeChecker) comptime_type_text_is_shared(type_text string) bool {
 		if target == cur {
 			return false
 		}
-		cur = target.trim_space()
+		cur = trimmed_space(target)
 	}
 	return false
 }
@@ -9705,13 +9966,13 @@ fn comptime_condition_matching_paren(s string, start int) int {
 }
 
 fn comptime_condition_strip_outer_parens(cond string) string {
-	mut clean := cond.trim_space()
+	mut clean := trimmed_space(cond)
 	for clean.len >= 2 && clean.starts_with('(') {
 		end := comptime_condition_matching_paren(clean, 0)
 		if end != clean.len - 1 {
 			break
 		}
-		clean = clean[1..clean.len - 1].trim_space()
+		clean = trimmed_space(clean[1..clean.len - 1])
 	}
 	return clean
 }
@@ -13985,7 +14246,7 @@ fn (tc &TypeChecker) call_generic_args_have_placeholders(node flat.Node) bool {
 	}
 	if node.value.len > 0 {
 		for arg in node.value.split(',') {
-			if tc.type_text_has_generic_placeholder(arg.trim_space()) {
+			if tc.type_text_has_generic_placeholder(trimmed_space(arg)) {
 				return true
 			}
 		}
@@ -15965,7 +16226,7 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 
 fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 	ret_text := tc.fn_ret_type_texts[fn_name] or { return none }
-	clean := ret_text.trim_space()
+	clean := trimmed_space(ret_text)
 	if clean.len == 0 {
 		return none
 	}
@@ -16003,12 +16264,12 @@ fn array_type_from_receiver(t Type) ?Array {
 fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
 	clean := unwrap_pointer(t)
 	if clean is Struct {
-		thread_name := clean.name.trim_space()
+		thread_name := trimmed_space(clean.name)
 		if thread_name == 'thread' || thread_name.ends_with('.thread') {
 			return Type(void_)
 		}
 		if thread_name.starts_with('thread ') {
-			return tc.parse_type(thread_name[7..].trim_space())
+			return tc.parse_type(trimmed_space(thread_name[7..]))
 		}
 	}
 	return none
@@ -16122,7 +16383,7 @@ fn (tc &TypeChecker) fixed_array_type_from_receiver(t Type) ?ArrayFixed {
 		bracket := name.last_index_u8(`[`)
 		bracket_end := name.last_index_u8(`]`)
 		if bracket >= 0 && bracket_end > bracket {
-			len_text := name[bracket + 1..bracket_end].trim_space()
+			len_text := trimmed_space(name[bracket + 1..bracket_end])
 			if !is_fixed_array_len_text(len_text)
 				&& tc.const_int_value_in_module(len_text, tc.cur_module, []string{}) == none {
 				return none
@@ -16140,7 +16401,7 @@ fn (tc &TypeChecker) fixed_array_type_from_receiver(t Type) ?ArrayFixed {
 fn (tc &TypeChecker) fixed_array_thread_wait_call_info(base_type Type, arr ArrayFixed) ?CallInfo {
 	elem := arr.elem_type
 	if elem is Struct {
-		name := elem.name.trim_space()
+		name := trimmed_space(elem.name)
 		if name == 'thread' {
 			return CallInfo{
 				name:         ''
@@ -16164,7 +16425,7 @@ fn (tc &TypeChecker) fixed_array_thread_wait_call_info(base_type Type, arr Array
 }
 
 fn (tc &TypeChecker) thread_array_wait_return_type(payload string) Type {
-	ret_name := payload.trim_space()
+	ret_name := trimmed_space(payload)
 	if ret_name == '?' {
 		return Type(OptionType{
 			base_type: Type(void_)
@@ -16493,13 +16754,13 @@ fn receiver_mutation_is_visible(vis ReceiverMutationVisibility) bool {
 }
 
 fn visible_mutation_receiver_type_name(typ string) string {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_space(typ)
 	for clean.starts_with('&') {
-		clean = clean[1..].trim_space()
+		clean = trimmed_space(clean[1..])
 	}
 	for prefix in ['mut ', 'shared '] {
 		if clean.starts_with(prefix) {
-			clean = clean[prefix.len..].trim_space()
+			clean = trimmed_space(clean[prefix.len..])
 		}
 	}
 	return strip_generic_args_name(clean)
@@ -16517,14 +16778,55 @@ fn visible_mutation_fn_names_match(actual string, declared string) bool {
 	return strip_generic_args_name(actual_receiver) == strip_generic_args_name(declared_receiver)
 }
 
+fn visible_mutation_fn_lookup_name(name string) string {
+	dot := name.last_index_u8(`.`)
+	if dot <= 0 {
+		return name
+	}
+	receiver := name[..dot]
+	clean_receiver := strip_generic_args_name(receiver)
+	if clean_receiver == receiver {
+		return name
+	}
+	return clean_receiver + name[dot..]
+}
+
+fn (tc &TypeChecker) cache_visible_mutation_fn_decl(key string, decl VisibleMutationFnDecl) {
+	if isnil(tc.visible_mutation_cache) || key.len == 0 {
+		return
+	}
+	mut cache := tc.visible_mutation_cache
+	if key !in cache.decls {
+		cache.decls[key] = decl
+	}
+}
+
+fn (tc &TypeChecker) register_visible_mutation_fn_decl(idx int, module_name string, qname string, source_name string) {
+	decl := VisibleMutationFnDecl{
+		idx: idx
+		mod: module_name
+	}
+	normalized_qname := visible_mutation_fn_lookup_name(qname)
+	normalized_source_name := visible_mutation_fn_lookup_name(source_name)
+	c_qname := tc.cached_c_name(qname)
+	c_source_name := tc.cached_c_name(source_name)
+	for candidate in [normalized_qname, normalized_source_name, c_qname, c_source_name] {
+		tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
+		tc.cache_visible_mutation_fn_decl('${module_name}\x01${candidate}', decl)
+	}
+}
+
 fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
-	cache_key := '${fallback_mod}\x01${name}'
+	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
 	if !isnil(tc.visible_mutation_cache) {
 		cache := tc.visible_mutation_cache
 		if decl := cache.decls[cache_key] {
 			return decl
 		}
 		if cache.decl_misses[cache_key] {
+			return none
+		}
+		if cache.decl_index_ready {
 			return none
 		}
 	}
@@ -18154,12 +18456,12 @@ fn (tc &TypeChecker) call_has_explicit_generic_type_args(node flat.Node) bool {
 }
 
 fn generic_variadic_elem_param_text(param_text string) string {
-	clean := param_text.trim_space()
+	clean := trimmed_space(param_text)
 	if clean.starts_with('...') {
-		return clean[3..].trim_space()
+		return trimmed_space(clean[3..])
 	}
 	if clean.starts_with('[]') {
-		return clean[2..].trim_space()
+		return trimmed_space(clean[2..])
 	}
 	return clean
 }
@@ -18176,7 +18478,7 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
-	clean := param_text.trim_space()
+	clean := trimmed_space(param_text)
 	if clean.len == 0 {
 		return
 	}
@@ -18249,7 +18551,7 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 // named applications, but semantic substitution must not parse a caller-local or
 // canonical qualified name again in the callee's import context.
 fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]Type) {
-	clean := param_text.trim_space()
+	clean := trimmed_space(param_text)
 	if clean.len == 0 {
 		return
 	}
@@ -18312,8 +18614,8 @@ fn (tc &TypeChecker) generic_infer_type_text(actual Type) string {
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_text(param_text string, actual_text string, generic_params []string, mut inferred map[string]string) {
-	clean := param_text.trim_space()
-	actual := actual_text.trim_space()
+	clean := trimmed_space(param_text)
+	actual := trimmed_space(actual_text)
 	if clean.len == 0 || actual.len == 0 {
 		return
 	}
@@ -18432,7 +18734,7 @@ fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type(param_text string, 
 		tc.infer_generic_type_text_from_type(normalize_fn_type_param_text(part), fn_param_type(actual,
 			i), generic_params, mut inferred)
 	}
-	ret := param_text[params_end + 1..].trim_space()
+	ret := trimmed_space(param_text[params_end + 1..])
 	if ret.len > 0 {
 		tc.infer_generic_type_text_from_type(ret, actual.return_type, generic_params, mut inferred)
 	}
@@ -19081,7 +19383,7 @@ fn (tc &TypeChecker) generic_receiver_qualifier_mismatch(actual Type, expected T
 		return false
 	}
 	for i in 0 .. a_args.len {
-		if !tc.qualifier_relaxed_type_name_match(a_args[i].trim_space(), e_args[i].trim_space()) {
+		if !tc.qualifier_relaxed_type_name_match(trimmed_space(a_args[i]), trimmed_space(e_args[i])) {
 			return false
 		}
 	}
@@ -21049,7 +21351,7 @@ fn (tc &TypeChecker) resolve_interface_match_pattern(pattern string) ?string {
 }
 
 fn interface_pattern_is_collapsed_container(pattern string) bool {
-	clean := pattern.trim_space()
+	clean := trimmed_space(pattern)
 	return clean.starts_with('[]') || clean.starts_with('map[')
 }
 
@@ -21099,7 +21401,7 @@ fn (tc &TypeChecker) interface_runtime_pattern_allowed(subject_iface string, tar
 }
 
 fn (tc &TypeChecker) pattern_type_known(pattern string) bool {
-	clean := pattern.trim_space()
+	clean := trimmed_space(pattern)
 	if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
 		|| clean.starts_with('fn ') || clean.starts_with('fn(') {
 		return tc.parse_type(clean) !is Unknown
@@ -21402,10 +21704,15 @@ fn (tc &TypeChecker) match_expr_tail_type(id flat.NodeId) Type {
 			continue
 		}
 		branch_type := if subject_key.len > 0 && valid_string_data(subject_key) {
-			mut scoped := *tc
-			scoped.smartcasts = clone_smartcasts(tc.smartcasts)
-			scoped.apply_match_branch_context_smartcasts(subject_key, subject_type, branch)
-			scoped.branch_tail_type(branch_id)
+			// Only the `smartcasts` binding needs isolation here (see
+			// branch_tail_never_returns); avoid the ~11KB full struct copy.
+			mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+			mut saved_smartcasts := mtc.smartcasts.move()
+			mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+			mtc.apply_match_branch_context_smartcasts(subject_key, subject_type, branch)
+			bt := tc.branch_tail_type(branch_id)
+			mtc.smartcasts = saved_smartcasts.move()
+			bt
 		} else {
 			tc.branch_tail_type(branch_id)
 		}
@@ -21734,7 +22041,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 }
 
 fn (mut tc TypeChecker) infer_generic_struct_init_type(node flat.Node) ?Type {
-	base_name := node.value.trim_space()
+	base_name := trimmed_space(node.value)
 	if base_name.len == 0 || base_name.contains('[') {
 		return none
 	}
@@ -23183,7 +23490,7 @@ fn (tc &TypeChecker) static_assoc_type_candidates(type_ident string) []string {
 }
 
 fn (tc &TypeChecker) add_static_assoc_type_candidate(mut candidates []string, name string) {
-	clean := name.trim_space()
+	clean := trimmed_space(name)
 	if clean.len == 0 {
 		return
 	}
@@ -23583,7 +23890,7 @@ fn thread_handle_type_names_match(actual string, expected string) bool {
 }
 
 fn canonical_thread_handle_type_name(name string) string {
-	clean := name.trim_space()
+	clean := trimmed_space(name)
 	if clean == 'thread void' {
 		return 'thread'
 	}
@@ -23879,9 +24186,9 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 	// operator (the `+` inside `2 * (segs + 1)`) is not chosen; precedence and left
 	// associativity hold and each side is trimmed and resolved recursively. A leading `-`
 	// (unary) leaves an empty lhs and is skipped.
-	expr := name.trim_space()
+	expr := trimmed_space(name)
 	if const_expr_paren_wraps_whole(expr) {
-		return tc.const_int_value(expr[1..expr.len - 1].trim_space(), seen)
+		return tc.const_int_value(trimmed_space(expr[1..expr.len - 1]), seen)
 	}
 	// Operators are grouped by the same precedence levels as token.left_binding_power:
 	// `+ - | ^` share sum, while `* / % << >> >>> &` share product. Scanning the
@@ -23940,8 +24247,8 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		if idx <= 0 {
 			continue
 		}
-		lhs := expr[..idx].trim_space()
-		rhs := expr[idx + op.len..].trim_space()
+		lhs := trimmed_space(expr[..idx])
+		rhs := trimmed_space(expr[idx + op.len..])
 		if lhs.len == 0 || rhs.len == 0 {
 			continue
 		}
@@ -23955,7 +24262,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 				if lhs_text[0] == `-` {
 					power_sign = -power_sign
 				}
-				lhs_text = lhs_text[1..].trim_space()
+				lhs_text = trimmed_space(lhs_text[1..])
 			}
 			if lhs_text.len == 0 {
 				return none
@@ -23986,7 +24293,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		return if op == '**' && power_sign < 0 { -value } else { value }
 	}
 	if expr.len > 1 && expr[0] in [`+`, `-`] {
-		value := tc.const_int_value_in_module(expr[1..].trim_space(), module_name, seen) or {
+		value := tc.const_int_value_in_module(trimmed_space(expr[1..]), module_name, seen) or {
 			return none
 		}
 		return if expr[0] == `-` { -value } else { value }
@@ -23995,7 +24302,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 }
 
 fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, seen []string) ?int {
-	expr := text.trim_space()
+	expr := trimmed_space(text)
 	if !expr.ends_with(')') {
 		return none
 	}
@@ -24003,7 +24310,7 @@ fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, 
 	if open <= 0 {
 		return none
 	}
-	cast_type_name := expr[..open].trim_space()
+	cast_type_name := trimmed_space(expr[..open])
 	if cast_type_name.len == 0 {
 		return none
 	}
@@ -24011,7 +24318,7 @@ fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, 
 	if !cast_type.is_integer() {
 		return none
 	}
-	inner := expr[open + 1..expr.len - 1].trim_space()
+	inner := trimmed_space(expr[open + 1..expr.len - 1])
 	if inner.len == 0 {
 		return none
 	}
@@ -24019,13 +24326,13 @@ fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, 
 }
 
 fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
-	expr := text.trim_space()
+	expr := trimmed_space(text)
 	dot := expr.last_index_u8(`.`)
 	if dot <= 0 || dot >= expr.len - 1 {
 		return none
 	}
-	enum_name := tc.resolve_enum_name(expr[..dot].trim_space()) or { return none }
-	field := expr[dot + 1..].trim_space()
+	enum_name := tc.resolve_enum_name(trimmed_space(expr[..dot])) or { return none }
+	field := trimmed_space(expr[dot + 1..])
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
 		if item.name == field && item.has_value {
 			return item.value
@@ -24330,7 +24637,7 @@ fn (tc &TypeChecker) interface_method_is_str_requirement(expected_key string) bo
 }
 
 pub fn (tc &TypeChecker) type_has_implicit_str_method(name string) bool {
-	clean := name.trim_space()
+	clean := trimmed_space(name)
 	if clean.len == 0 {
 		return false
 	}
@@ -24384,7 +24691,7 @@ fn (tc &TypeChecker) type_supports_implicit_str(typ Type, mut seen map[string]bo
 }
 
 fn (tc &TypeChecker) type_name_resolves_to_sum_type(name string) bool {
-	mut cur := name.trim_space()
+	mut cur := trimmed_space(name)
 	mut seen := map[string]bool{}
 	for cur.len > 0 {
 		if cur in tc.sum_types {
@@ -24404,7 +24711,7 @@ fn (tc &TypeChecker) type_name_resolves_to_sum_type(name string) bool {
 		if next.len == 0 && !cur.contains('.') {
 			next = tc.type_aliases[tc.qualify_name(cur)] or { '' }
 		}
-		cur = next.trim_space()
+		cur = trimmed_space(next)
 	}
 	return false
 }
@@ -24421,7 +24728,7 @@ fn struct_decl_implements_from_typ(typ string) []string {
 			continue
 		}
 		for iface in part['implements='.len..].split('|') {
-			clean := iface.trim_space()
+			clean := trimmed_space(iface)
 			if clean.len > 0 {
 				out << clean
 			}
@@ -24451,7 +24758,7 @@ fn struct_decl_typ_parts(typ string) []string {
 }
 
 fn marker_type_name(name string) string {
-	mut clean := name.trim_space()
+	mut clean := trimmed_space(name)
 	base, _, ok := generic_type_application_parts(clean)
 	if ok {
 		clean = base
@@ -24467,9 +24774,9 @@ fn interface_marker_matches(name string, target string) bool {
 }
 
 pub fn (tc &TypeChecker) named_type_implements_marker(concrete_name string, target string) bool {
-	mut name := concrete_name.trim_space()
+	mut name := trimmed_space(concrete_name)
 	if name.starts_with('&') {
-		name = name[1..].trim_space()
+		name = trimmed_space(name[1..])
 	}
 	name = marker_type_name(name)
 	mut candidates := [name]
@@ -24838,7 +25145,7 @@ pub fn extend_stable_type_indexes_ref(mut indexes map[string]int, type_names &[]
 	mut names := type_names.clone()
 	names.sort()
 	for raw_name in names {
-		name := raw_name.trim_space()
+		name := trimmed_space(raw_name)
 		if name.len == 0 || name in indexes {
 			continue
 		}
@@ -25066,7 +25373,7 @@ fn generic_type_suffix_for_signature(args []string) string {
 }
 
 fn generic_type_arg_short_for_signature(type_arg string) string {
-	clean := type_arg.trim_space()
+	clean := trimmed_space(type_arg)
 	if clean.starts_with('[]') {
 		return 'Array_${generic_type_arg_short_for_signature(clean[2..])}'
 	}
@@ -25772,7 +26079,7 @@ fn (tc &TypeChecker) interface_field_type(iface_name string, field_name string) 
 
 // struct_field_type supports struct field type handling for TypeChecker.
 fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name string, parsed_name string) string {
-	clean := literal_name.trim_space()
+	clean := trimmed_space(literal_name)
 	if clean.len == 0 {
 		return parsed_name
 	}
@@ -25783,7 +26090,7 @@ fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name string, parsed_n
 		}
 		bracket := clean.index_u8(`[`)
 		if bracket > 0 {
-			base := if parsed_name.len > 0 { parsed_name } else { clean[..bracket].trim_space() }
+			base := if parsed_name.len > 0 { parsed_name } else { trimmed_space(clean[..bracket]) }
 			return base + clean[bracket..]
 		}
 	}
@@ -25937,7 +26244,7 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 				idx = generic_param_index(name)
 			}
 			if idx >= 0 && idx < args.len {
-				return tc.parse_type(args[idx].trim_space())
+				return tc.parse_type(trimmed_space(args[idx]))
 			}
 		}
 		return typ
@@ -26168,6 +26475,23 @@ fn (tc &TypeChecker) receiver_embeds_inner(actual_name string, expected_name str
 	return false
 }
 
+// trimmed_space is an allocation-free fast path for trim_space: type texts on
+// the checker's hot paths are almost always already clean, and builtin trim
+// clones even when there is nothing to trim.
+@[inline]
+fn trimmed_space(s string) string {
+	if s.len == 0 {
+		return s
+	}
+	c0 := s[0]
+	cl := s[s.len - 1]
+	if c0 != ` ` && c0 != `\n` && c0 != `\t` && c0 != `\v` && c0 != `\f` && c0 != `\r` && cl != ` `
+		&& cl != `\n` && cl != `\t` && cl != `\v` && cl != `\f` && cl != `\r` {
+		return s
+	}
+	return s.trim_space()
+}
+
 fn embedded_field_type(field StructField) ?Type {
 	field_type_name := method_type_name(unwrap_pointer(field.typ))
 	if field_type_name.len == 0 {
@@ -26176,18 +26500,29 @@ fn embedded_field_type(field StructField) ?Type {
 	if field.name.len == 0 {
 		return field.typ
 	}
-	mut names := [field_type_name]
-	base_name, _, is_generic := generic_type_application_parts(field_type_name)
-	if is_generic {
-		names << base_name
+	if embedded_name_matches(field.name, field_type_name) {
+		return field.typ
 	}
-	for name in names {
-		short_name := if name.contains('.') { name.all_after_last('.') } else { name }
-		if field.name == name || field.name == short_name {
-			return field.typ
-		}
+	base_name, _, is_generic := generic_type_application_parts(field_type_name)
+	if is_generic && embedded_name_matches(field.name, base_name) {
+		return field.typ
 	}
 	return none
+}
+
+// embedded_name_matches reports whether `field_name` equals `type_name` or its
+// last dotted segment. Field names cannot contain `.`, so a suffix match with a
+// `.` boundary is exactly the old `all_after_last('.')` comparison without the
+// substring allocation (this runs per struct field on very hot lookup paths).
+@[direct_array_access]
+fn embedded_name_matches(field_name string, type_name string) bool {
+	if field_name == type_name {
+		return true
+	}
+	if type_name.len > field_name.len && type_name.ends_with(field_name) {
+		return type_name[type_name.len - field_name.len - 1] == `.`
+	}
+	return false
 }
 
 // method_signature_compatible supports method signature compatible handling for TypeChecker.
@@ -26381,7 +26716,7 @@ fn (tc &TypeChecker) fixed_array_type_name_matches(a string, b string) bool {
 }
 
 fn fixed_array_type_name_may_be(s string) bool {
-	clean := s.trim_space()
+	clean := trimmed_space(s)
 	if clean.len == 0 || clean.starts_with('[]') || clean.starts_with('map[') {
 		return false
 	}
@@ -26401,8 +26736,8 @@ fn fixed_array_type_name_may_be(s string) bool {
 }
 
 fn (tc &TypeChecker) generic_type_base_matches(a string, b string) bool {
-	a_clean := a.trim_space()
-	b_clean := b.trim_space()
+	a_clean := trimmed_space(a)
+	b_clean := trimmed_space(b)
 	if a_clean == b_clean {
 		return true
 	}
@@ -26436,8 +26771,8 @@ fn (tc &TypeChecker) resolve_generic_match_base(base string) string {
 }
 
 fn (tc &TypeChecker) generic_type_arg_matches(a string, b string) bool {
-	a_clean := a.trim_space()
-	b_clean := b.trim_space()
+	a_clean := trimmed_space(a)
+	b_clean := trimmed_space(b)
 	if a_clean == b_clean {
 		return true
 	}
@@ -26541,7 +26876,7 @@ fn (tc &TypeChecker) bare_variant_name_matches(candidate string, declared string
 	if generic_type_application(candidate) {
 		return false
 	}
-	candidate_base := candidate.trim_space()
+	candidate_base := trimmed_space(candidate)
 	declared_base := strip_generic_args_name(declared).trim_space()
 	concrete_base := strip_generic_args_name(concrete).trim_space()
 	candidate_resolved := tc.resolve_generic_match_base(candidate_base)
@@ -26879,10 +27214,25 @@ pub fn (tc &TypeChecker) cached_c_name(name string) string {
 }
 
 // parse_type converts a V type string (from parser) to a structured Type.
-pub fn (tc &TypeChecker) parse_type(typ string) Type {
-	if typ.contains('typeof(') {
-		return tc.parse_type_uncached(typ)
+// type_text_contains_typeof is a fast substring probe for `typeof(`: type
+// texts are overwhelmingly short scalar/container names, so the length
+// early-out plus a first-byte scan beats string.contains (KMP table build and
+// call overhead) on hot paths that must screen every text.
+@[direct_array_access]
+pub fn type_text_contains_typeof(s string) bool {
+	if s.len < 8 {
+		return false
 	}
+	for i := 0; i + 7 <= s.len; i++ {
+		if s[i] == `t` && s[i + 1] == `y` && s[i + 2] == `p` && s[i + 3] == `e` && s[i + 4] == `o`
+			&& s[i + 5] == `f` && s[i + 6] == `(` {
+			return true
+		}
+	}
+	return false
+}
+
+pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
 		mut cache := unsafe { tc.type_cache }
 		if cached := parse_type_cache_get(mut cache, tc.cur_file, tc.cur_module, typ,
@@ -26891,11 +27241,21 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 			cache.parse_hits++
 			return cached
 		}
+		// typeof(...) resolves against expression context, so its result must
+		// never enter the cache. Checking only on the miss path keeps the
+		// substring scan off the ~2M cache hits (typeof text can never hit:
+		// it is never put).
+		if type_text_contains_typeof(typ) {
+			return tc.parse_type_uncached(typ)
+		}
 		cache.parse_misses++
 		_, result := tc.intern_type(tc.parse_type_uncached(typ))
 		parse_type_cache_put(mut cache, tc.cur_file, tc.cur_module, typ,
 			tc.fn_context.generic_params, tc.resolution_type_mode, result)
 		return result
+	}
+	if type_text_contains_typeof(typ) {
+		return tc.parse_type_uncached(typ)
 	}
 	_, result := tc.intern_type(tc.parse_type_uncached(typ))
 	return result
@@ -26906,7 +27266,7 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 // aliases. Source text must continue to use parse_type, where aliases take
 // precedence; this entry point is for semantic names carried between phases.
 pub fn (tc &TypeChecker) parse_canonical_type(typ string) Type {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.starts_with('&') {
 		_, result := tc.intern_type(Type(Pointer{
 			base_type: tc.parse_canonical_type(clean[1..])
@@ -26951,6 +27311,13 @@ pub fn (tc &TypeChecker) parse_canonical_type(typ string) Type {
 		return result
 	}
 	return tc.parse_type(clean)
+}
+
+fn (tc &TypeChecker) probe_intern_type(t Type) ?Type {
+	if isnil(tc.type_interner) {
+		return none
+	}
+	return tc.type_interner.probe(t)
 }
 
 fn (tc &TypeChecker) intern_type(t Type) (TypeId, Type) {
@@ -27165,7 +27532,7 @@ fn parse_type_cache_put(mut cache TypeCache, file string, module_name string, te
 // inside a generic function/method body the parameter still needs the open application so
 // field lookup and generic receiver method resolution can substitute `T`.
 fn (tc &TypeChecker) parse_scope_param_type(typ string) Type {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.starts_with('...') {
 		return Type(Array{
 			elem_type: tc.parse_scope_param_type(clean[3..])
@@ -27178,7 +27545,7 @@ fn (tc &TypeChecker) parse_scope_param_type(typ string) Type {
 }
 
 fn (tc &TypeChecker) parse_open_generic_struct_type(typ string) ?Type {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.len == 0 {
 		return none
 	}
@@ -27239,7 +27606,7 @@ fn (tc &TypeChecker) parse_open_generic_struct_type(typ string) ?Type {
 		bracket_end := find_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
 			elem := tc.parse_open_generic_struct_type(clean[bracket_end + 1..]) or { return none }
-			len_text := clean[1..bracket_end].trim_space()
+			len_text := trimmed_space(clean[1..bracket_end])
 			return Type(ArrayFixed{
 				elem_type: elem
 				len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
@@ -27264,7 +27631,7 @@ fn (tc &TypeChecker) parse_open_generic_struct_type(typ string) ?Type {
 	}
 	mut preserved_args := []string{cap: args.len}
 	for arg in args {
-		trimmed := arg.trim_space()
+		trimmed := trimmed_space(arg)
 		preserved_args << if is_generic_placeholder_type(trimmed) {
 			trimmed.all_after_last('.')
 		} else {
@@ -27302,7 +27669,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if resolved := tc.type_from_typeof_type_text(typ) {
 		return resolved
 	}
-	if typ.trim_space().starts_with('typeof(') {
+	if trimmed_space(typ).starts_with('typeof(') {
 		return unknown_type('unresolved typeof type `${typ}`')
 	}
 	// Preserve open generic struct applications wherever they occur in a signature or
@@ -27400,7 +27767,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if fixed_array_type_name_may_be(typ) && !typ.starts_with('[') {
 		bracket := typ.last_index_u8(`[`)
 		bracket_end := typ.last_index_u8(`]`)
-		len_text := typ[bracket + 1..bracket_end].trim_space()
+		len_text := trimmed_space(typ[bracket + 1..bracket_end])
 		base_text := typ[..bracket]
 		if is_decimal_int_literal(len_text) || base_text.contains('[') {
 			return Type(ArrayFixed{
@@ -27413,7 +27780,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('[') {
 		idx := typ.index_u8(`]`)
 		if idx > 0 {
-			len_text := typ[1..idx].trim_space()
+			len_text := trimmed_space(typ[1..idx])
 			return Type(ArrayFixed{
 				elem_type: tc.parse_type(typ[idx + 1..])
 				len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
@@ -27426,7 +27793,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		parts := split_params(inner)
 		mut tuple_types := []Type{}
 		for p in parts {
-			tuple_types << tc.parse_type(p.trim_space())
+			tuple_types << tc.parse_type(trimmed_space(p))
 		}
 		return Type(MultiReturn{
 			types: tuple_types
@@ -27774,7 +28141,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		bracket := typ.last_index_u8(`[`)
 		bracket_end := typ.last_index_u8(`]`)
 		if bracket >= 0 && bracket_end > bracket {
-			len_text := typ[bracket + 1..bracket_end].trim_space()
+			len_text := trimmed_space(typ[bracket + 1..bracket_end])
 			return Type(ArrayFixed{
 				elem_type: tc.parse_type(typ[..bracket])
 				len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
@@ -27793,18 +28160,18 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 }
 
 fn (tc &TypeChecker) type_from_typeof_type_text(typ string) ?Type {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if !clean.starts_with('typeof(') || !clean.ends_with(')') {
 		return none
 	}
-	inner := clean[7..clean.len - 1].trim_space()
+	inner := trimmed_space(clean[7..clean.len - 1])
 	if inner.len == 0 {
 		return none
 	}
 	if inner.ends_with(']') {
 		open := inner.last_index_u8(`[`)
 		if open > 0 {
-			base_text := inner[..open].trim_space()
+			base_text := trimmed_space(inner[..open])
 			if base_type := tc.type_from_simple_expr_text(base_text) {
 				return tc.resolve_index_base_value_type(unalias_type(base_type))
 			}
@@ -27814,7 +28181,7 @@ fn (tc &TypeChecker) type_from_typeof_type_text(typ string) ?Type {
 }
 
 fn (tc &TypeChecker) type_from_simple_expr_text(expr string) ?Type {
-	clean := expr.trim_space()
+	clean := trimmed_space(expr)
 	if clean.len == 0 {
 		return none
 	}
@@ -28208,7 +28575,7 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	if params_str.len > 0 {
 		param_parts := split_params(params_str)
 		for p in param_parts {
-			trimmed := p.trim_space()
+			trimmed := trimmed_space(p)
 			param_type := normalize_fn_type_param_text(trimmed)
 			params << tc.parse_type(param_type)
 		}
@@ -28224,7 +28591,7 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 }
 
 fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if !clean.starts_with('fn(') && !clean.starts_with('fn (') {
 		return none
 	}
@@ -28249,7 +28616,7 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 	ret_str := clean[params_end + 1..].trim_left(' ')
 	mut params := []string{}
 	mut has_c_abi_param := false
-	if params_str.trim_space().len > 0 {
+	if trimmed_space(params_str).len > 0 {
 		for part in split_params(params_str) {
 			ct, is_c_abi := tc.c_abi_fn_param_type(part)
 			params << ct
@@ -28269,7 +28636,7 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 
 fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text(typ string) ?string {
 	mut seen := map[string]bool{}
-	return tc.c_abi_fn_ptr_type_for_type_text_inner(typ.trim_space(), mut seen)
+	return tc.c_abi_fn_ptr_type_for_type_text_inner(trimmed_space(typ), mut seen)
 }
 
 fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text_inner(typ string, mut seen map[string]bool) ?string {
@@ -28297,7 +28664,7 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text_inner(typ string, mut seen 
 }
 
 fn (tc &TypeChecker) c_abi_fn_param_type(param string) (string, bool) {
-	clean := param.trim_space()
+	clean := trimmed_space(param)
 	param_type := normalize_fn_type_param_text(clean)
 	if c_abi_fn_param_name(clean).starts_with('const_') && param_type.starts_with('&') {
 		base_type := tc.parse_type(param_type[1..])
@@ -28334,16 +28701,16 @@ fn c_abi_alias_c_base_type(t Type) ?Type {
 }
 
 fn c_abi_fn_param_name(param string) string {
-	mut text := param.trim_space()
+	mut text := trimmed_space(param)
 	if text.starts_with('mut ') {
-		text = text[4..].trim_space()
+		text = trimmed_space(text[4..])
 	}
 	space := top_level_space_index(text)
 	if space <= 0 {
 		return ''
 	}
-	head := text[..space].trim_space()
-	tail := text[space + 1..].trim_space()
+	head := trimmed_space(text[..space])
+	tail := trimmed_space(text[space + 1..])
 	if fn_type_param_head_is_name(head, tail) {
 		return head
 	}
@@ -29683,7 +30050,7 @@ fn (tc &TypeChecker) struct_c_name_collides_with_v3_runtime(name string, cname s
 }
 
 fn (tc &TypeChecker) c_generic_struct_arg_name(arg string) string {
-	clean := arg.trim_space()
+	clean := trimmed_space(arg)
 	// `voidptr` round-trips through the type model as `&void`. Keep the source ABI
 	// spelling for generic instance names so materialized structs and methods agree.
 	if clean == '&void' {
@@ -29718,7 +30085,7 @@ fn (tc &TypeChecker) c_generic_struct_arg_name(arg string) string {
 }
 
 fn (tc &TypeChecker) c_generic_struct_fixed_array_arg_name(arg string) ?string {
-	clean := arg.trim_space()
+	clean := trimmed_space(arg)
 	if !clean.starts_with('[') {
 		return none
 	}
@@ -29794,7 +30161,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 	if has_type_args {
 		args_str := type_name[bracket + 1..type_name.len - 1]
 		for a in split_generic_arg_list(args_str) {
-			concrete_args << a.trim_space()
+			concrete_args << trimmed_space(a)
 		}
 	}
 	mut generic_base := ''
@@ -29887,7 +30254,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 	if param_texts := tc.fn_param_type_texts[generic_key] {
 		param_types := tc.fn_param_types[generic_key] or { []Type{} }
 		for i, pt in param_texts {
-			receiver_clean := pt.trim_space().trim_left('&').trim_space()
+			receiver_clean := trimmed_space(pt).trim_left('&').trim_space()
 			receiver_base := if receiver_clean.contains('[') {
 				receiver_clean.all_before('[')
 			} else {
@@ -29932,7 +30299,7 @@ fn generic_method_receiver_params_from_key(key string, fallback []string) []stri
 	}
 	mut params := []string{}
 	for param in split_generic_arg_list(receiver[bracket + 1..receiver.len - 1]) {
-		params << param.trim_space()
+		params << trimmed_space(param)
 	}
 	if params.len != fallback.len {
 		return fallback.clone()
@@ -30014,7 +30381,7 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name string, method str
 	if is_generic {
 		base = parsed_base
 		for arg in parsed_args {
-			concrete_args << arg.trim_space()
+			concrete_args << trimmed_space(arg)
 		}
 	}
 	params := tc.sum_params_for_base(base)
@@ -30057,7 +30424,7 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name string, method str
 }
 
 fn generic_method_receiver_param(type_name string, param_text string) Type {
-	if param_text.trim_space().starts_with('&') {
+	if trimmed_space(param_text).starts_with('&') {
 		return Type(Pointer{
 			base_type: Type(Struct{
 				name: type_name
@@ -30077,7 +30444,7 @@ fn generic_method_receiver_param(type_name string, param_text string) Type {
 // `map[`, `[N]`) recurse into the element type; a bare parameter name is replaced with its
 // argument.
 fn subst_generic_text(typ string, args []string, params []string) string {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.len == 0 || args.len == 0 || params.len != args.len {
 		return clean
 	}
@@ -30150,12 +30517,12 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 		if params_end < clean.len {
 			mut fn_parts := []string{}
 			params_str := clean[params_start..params_end]
-			if params_str.trim_space().len > 0 {
+			if trimmed_space(params_str).len > 0 {
 				for part in split_params(params_str) {
 					fn_parts << subst_generic_text(normalize_fn_type_param_text(part), args, params)
 				}
 			}
-			ret_str := clean[params_end + 1..].trim_space()
+			ret_str := trimmed_space(clean[params_end + 1..])
 			if ret_str.len > 0 {
 				return 'fn(${fn_parts.join(', ')}) ${subst_generic_text(ret_str, args, params)}'
 			}
@@ -30649,23 +31016,23 @@ fn split_params(s string) []string {
 
 // normalize_fn_type_param_text transforms normalize fn type param text data for types.
 fn normalize_fn_type_param_text(param string) string {
-	mut text := param.trim_space()
+	mut text := trimmed_space(param)
 	mut is_mut := false
 	if text.starts_with('mut ') {
 		is_mut = true
-		text = text[4..].trim_space()
+		text = trimmed_space(text[4..])
 	}
 	space := top_level_space_index(text)
 	if space > 0 {
-		head := text[..space].trim_space()
-		tail := text[space + 1..].trim_space()
+		head := trimmed_space(text[..space])
+		tail := trimmed_space(text[space + 1..])
 		if fn_type_param_head_is_name(head, tail) {
 			text = tail
 		}
 	}
 	if text.starts_with('mut ') {
 		is_mut = true
-		text = text[4..].trim_space()
+		text = trimmed_space(text[4..])
 	}
 	if text.len > 0 {
 		for marker in ['[]', '&', 'map[', 'fn(', 'fn ('] {
@@ -30673,8 +31040,8 @@ fn normalize_fn_type_param_text(param string) string {
 			if marker_idx <= 0 {
 				continue
 			}
-			head := text[..marker_idx].trim_space()
-			tail := text[marker_idx..].trim_space()
+			head := trimmed_space(text[..marker_idx])
+			tail := trimmed_space(text[marker_idx..])
 			if fn_type_param_head_is_name(head, tail) {
 				text = tail
 			}

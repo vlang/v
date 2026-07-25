@@ -151,6 +151,38 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	return atomic_s
 }
 
+// tcc_atomic_arg returns the atomic-support argument for a tcc link,
+// preferring a cached precompiled object: assembling atomic.S inside every
+// link costs ~28ms, while the object only changes when the source does.
+fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string) string {
+	atomic_s := tcc_atomic_s_arg(prefs)
+	if atomic_s.len == 0 {
+		return ''
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	signature := modulecache.file_signature(atomic_s)
+	if signature.len == 0 {
+		return atomic_s
+	}
+	object_path := os.join_path(cache_dir, 'atomic_${naming.sanitize(signature)}.o')
+	if os.is_file(object_path) {
+		return object_path
+	}
+	os.mkdir_all(cache_dir) or { return atomic_s }
+	build_path := '${object_path}.tmp.${os.getpid()}'
+	result := cmdexec.run(tcc_path, ['-std=gnu11', tcc_includes, '-c', atomic_s, '-o', build_path])
+	if result.exit_code != 0 || !os.is_file(build_path) {
+		os.rm(build_path) or {}
+		return atomic_s
+	}
+	// Atomic rename: concurrent builds publishing the same signature converge.
+	os.mv(build_path, object_path) or {
+		os.rm(build_path) or {}
+		return atomic_s
+	}
+	return object_path
+}
+
 struct CObjectCacheStats {
 mut:
 	requests                  int
@@ -188,6 +220,27 @@ fn cpp_runtime_link_flag(target pref.Target) string {
 }
 
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+	// Nothing to cache: without object-file or native-source flags the link
+	// plan adds no value, and preparing it costs a compiler-identity probe
+	// (subprocess) plus plan-file signatures on every build.
+	mut has_cacheable_flag := false
+	for flag in flags {
+		clean := flag.trim_space()
+		if c_flag_is_object_file(clean) || clean.ends_with('.mm') {
+			has_cacheable_flag = true
+			break
+		}
+	}
+	if !has_cacheable_flag {
+		mut passthrough := flags.clone()
+		if c_link_flags_use_cpp_language(passthrough) {
+			cpp_runtime := cpp_runtime_link_flag(target)
+			if cpp_runtime !in passthrough {
+				passthrough << cpp_runtime
+			}
+		}
+		return passthrough
+	}
 	support_flags := c_object_compile_support_flags(flags)
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
@@ -2674,16 +2727,88 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	node.set_generic_params(params)
 }
 
-fn promote_scoped_ast_nodes(mut ast flat.FlatAst, base_nodes int, new_end int, owned_base_nodes []int, scope voidptr) {
+// promote_scoped_ast_nodes_flagged is the scoped-node promotion walk with an optional
+// pre-computed scoped-text flag array (one byte per node id): unflagged nodes in
+// the appended range are known not to hold scope-owned text and are skipped.
+fn promote_scoped_ast_nodes_flagged(mut ast flat.FlatAst, base_nodes int, new_end int, owned_base_nodes []int, scope voidptr, flags []u8) {
+	// When the whole-array ownership flags were computed, they cover the logged
+	// base nodes too: unflagged entries hold no scope-owned text and their
+	// promotion would be a no-op.
+	use_flags_for_base := flags.len >= ast.nodes.len
 	for idx in owned_base_nodes {
 		if idx >= 0 && idx < base_nodes && idx < ast.nodes.len {
+			if use_flags_for_base && flags[idx] == 0 {
+				continue
+			}
 			promote_scoped_node(mut ast.nodes[idx], scope)
 		}
 	}
 	limit := if new_end < ast.nodes.len { new_end } else { ast.nodes.len }
+	if flags.len >= limit && base_nodes >= 0 {
+		// Word-scan the flag range: flagged nodes are rare, so loading eight
+		// flags per u64 makes this walk almost free.
+		word_data := unsafe { &u64(flags.data) }
+		mut idx := base_nodes
+		for idx < limit {
+			if idx % 8 == 0 && idx + 8 <= limit && unsafe { word_data[idx / 8] } == 0 {
+				idx += 8
+				continue
+			}
+			if flags[idx] != 0 {
+				promote_scoped_node(mut ast.nodes[idx], scope)
+			}
+			idx++
+		}
+		return
+	}
 	for idx in base_nodes .. limit {
+		if idx < flags.len && flags[idx] == 0 {
+			continue
+		}
 		promote_scoped_node(mut ast.nodes[idx], scope)
 	}
+}
+
+// canonicalize_scoped_node_cached is canonicalize_scoped_node with a pointer
+// probe over the caller's cache arrays: owned texts repeat the same shared
+// string instances heavily, so most content-hash intern lookups are skipped.
+fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr, mut cache_ptrs []voidptr, mut cache_vals []string) {
+	if idx < 0 || idx >= ast.nodes.len {
+		return
+	}
+	mut node := unsafe { &ast.nodes[idx] }
+	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
+		node.value = ast.intern_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
+	}
+	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
+		node.typ = ast.intern_text_ptr_cached(node.typ, mut cache_ptrs, mut cache_vals)
+	}
+	old_params := node.generic_params()
+	if old_params.len == 0 {
+		return
+	}
+	mut needs_params := scoped_value_owned(scope, node.payload)
+		|| scoped_value_owned(scope, old_params.data)
+	if !needs_params {
+		for param in old_params {
+			if param.len > 0 && scoped_value_owned(scope, param.str) {
+				needs_params = true
+				break
+			}
+		}
+	}
+	if !needs_params {
+		return
+	}
+	mut params := []string{cap: old_params.len}
+	for param in old_params {
+		if param.len > 0 && scoped_value_owned(scope, param.str) {
+			params << ast.intern_text_ptr_cached(param, mut cache_ptrs, mut cache_vals)
+		} else {
+			params << param
+		}
+	}
+	node.set_generic_params(params)
 }
 
 fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
@@ -2863,22 +2988,26 @@ fn promote_scoped_monomorph_metadata(mut tc types.TypeChecker) {
 	tc.sum_generic_params = clone_string_list_map(tc.sum_generic_params)
 }
 
-fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, scope voidptr, generated_start int) {
-	for idx in 0 .. tc.resolved_call_names.len {
-		if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-			name := tc.resolved_call_names[idx]
-			if name.len > 0 && scoped_value_owned(scope, name.str) {
-				tc.resolved_call_names[idx] = name.clone()
+fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int) {
+	// The per-id loops write disjoint slots and only allocate clones, so fan
+	// them out over the worker pool; fall back to the serial walk without one.
+	if !transform.promote_scoped_checker_node_caches_parallel(mut tc, a, scope, generated_start) {
+		for idx in 0 .. tc.resolved_call_names.len {
+			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+				name := tc.resolved_call_names[idx]
+				if name.len > 0 && scoped_value_owned(scope, name.str) {
+					tc.resolved_call_names[idx] = name.clone()
+				}
 			}
-		}
-		if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-			name := tc.resolved_fn_value_names[idx]
-			if name.len > 0 && scoped_value_owned(scope, name.str) {
-				tc.resolved_fn_value_names[idx] = name.clone()
+			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
+				name := tc.resolved_fn_value_names[idx]
+				if name.len > 0 && scoped_value_owned(scope, name.str) {
+					tc.resolved_fn_value_names[idx] = name.clone()
+				}
 			}
-		}
-		if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-			tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+			if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+				tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+			}
 		}
 	}
 	// The dense caches are reserved in the parent arena, but an unexpectedly
@@ -2915,19 +3044,19 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, scope voidptr, g
 	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
 }
 
-fn promote_scoped_signatures(mut tc types.TypeChecker, original_names []string) {
+fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool) {
+	// Set difference instead of the former sort-and-merge: only a handful of
+	// signatures are added during transform, while sorting every fn name twice
+	// cost several ms per build.
 	mut added_names := []string{}
-	mut current_names := tc.fn_ret_types.keys()
-	current_names.sort()
-	mut original_idx := 0
-	for name in current_names {
-		for original_idx < original_names.len && original_names[original_idx] < name {
-			original_idx++
-		}
-		if original_idx >= original_names.len || original_names[original_idx] != name {
+	for name, _ in tc.fn_ret_types {
+		if name !in original_names {
 			added_names << name
 		}
 	}
+	// Keep the former sorted processing order: the delete/reinsert below
+	// determines these entries' map iteration order for later phases.
+	added_names.sort()
 	for name in added_names {
 		ret := types.clone_owned_type(tc.fn_ret_types[name] or { continue })
 		params := if values := tc.fn_param_types[name] {
@@ -3248,6 +3377,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 
 // main runs the v3 entry point.
 fn main() {
+	println(1234)
 	args := os.args[1..]
 	if args.len == 0 {
 		eprintln(cli_usage())
@@ -4016,7 +4146,10 @@ fn main() {
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
 		set_diagnostic_files(mut pre_tc, user_files)
+		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
+		eprintln('  [ttime]   ck collect       ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cvsw.restart()
 		pre_tc.diagnose_unknown_calls = true
 		pre_tc.prepare_threads_condition()
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
@@ -4025,6 +4158,7 @@ fn main() {
 		} else {
 			pre_tc.prepare_interface_requirement_indexes()
 		}
+		eprintln('  [ttime]   ck iface idx     ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		mut check_was_parallel := false
 		if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
@@ -4037,8 +4171,10 @@ fn main() {
 		}
 		incremental_uses_generics = incremental_cache_hit
 			&& incremental_changed_functions_use_generics(a, pre_tc, incremental_changed_names)
+		cvsw.restart()
 		pre_tc.prune_inactive_top_level_comptime(mut a)
 		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
+		eprintln('  [ttime]   ck prune+harness ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		if test_harness_errors.len > 0 {
 			for msg in test_harness_errors {
 				eprintln(msg)
@@ -4071,6 +4207,10 @@ fn main() {
 		} else {
 			b.step_parallel('check', check_was_parallel)
 		}
+		// Ownership analysis only exists in `-d ownership` builds and runs
+		// interleaved inside check; report its accumulated time as a dedicated
+		// stage so plain builds visibly spend exactly 0 on it.
+		b.step_measured('ownership', pre_tc.ownership_time_spent_us())
 		b.metric('functions collected', pre_tc.fn_ret_types.len, 'symbols')
 		b.metric('structs collected', pre_tc.structs.len, 'types')
 		b.metric('canonical semantic types', pre_tc.type_count(), 'types')
@@ -4115,14 +4255,22 @@ fn main() {
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a,
 				markused_tc, test_files)
+		} else if building_v {
+			used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
+			uses_generics = false
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
 		}
 		if cache_state.manager.enabled && !generic_cache_hit {
-			mut cache_uses_generics := false
-			used_fns, cache_uses_generics = markused.mark_used_for_cache_with_generic_usage(a,
-				markused_tc, test_files, cache_state.source_body_modules)
-			uses_generics = uses_generics || cache_uses_generics
+			if building_v {
+				used_fns = markused.mark_used_for_cache_without_generic_detection(a, markused_tc,
+					test_files, cache_state.source_body_modules)
+			} else {
+				mut cache_uses_generics := false
+				used_fns, cache_uses_generics = markused.mark_used_for_cache_with_generic_usage(a,
+					markused_tc, test_files, cache_state.source_body_modules)
+				uses_generics = uses_generics || cache_uses_generics
+			}
 		}
 		if scope_prealloc_markused && !generic_cache_hit {
 			prealloc_scope_leave_for_v3(markused_scope)
@@ -4138,12 +4286,12 @@ fn main() {
 		mut transform_was_parallel := false
 		mut transform_errors := []string{}
 		mut incremental_synthesized_helpers := []string{}
-		if !building_v && !cmd_v_build && !uses_generics && ast_contains_sql_expr(a) {
+		if !building_v && !uses_generics && ast_contains_sql_expr(a) {
 			uses_generics = true
 		}
 		// Markused distinguishes reachable generic calls/types from generic templates
 		// that merely came along with an imported module (notably sync and rand).
-		skip_transform_generics = building_v || cmd_v_build || !uses_generics
+		skip_transform_generics = building_v || !uses_generics
 		if incremental_cache_hit {
 			skip_transform_generics = true
 		}
@@ -4162,7 +4310,11 @@ fn main() {
 		} else if scope_prealloc_transform {
 			// Keep the large escaping AST/cache slabs in the compilation arena, while
 			// transformer indexes and per-body temporary state use a stage arena.
-			transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
+			if cache_state.manager.enabled {
+				transform.reserve_parallel_transform_cache_ast(mut a, skip_transform_generics)
+			} else {
+				transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
+			}
 			pre_tc.begin_sparse_transform_node_caches(a.nodes.len)
 			pre_tc.reserve_scoped_transform_metadata(scoped_transform_signature_headroom)
 			base_transform_nodes := a.nodes.len
@@ -4172,50 +4324,88 @@ fn main() {
 			base_type_count := pre_tc.type_count()
 			base_symbol_count := pre_tc.symbol_count()
 			base_text_count := a.text_values.len
-			mut original_signature_names := pre_tc.fn_ret_types.keys()
-			original_signature_names.sort()
+			mut original_signature_names := map[string]bool{}
+			for name, _ in pre_tc.fn_ret_types {
+				original_signature_names[name] = true
+			}
 			transform_scope := prealloc_scope_begin_for_v3()
 			mut scoped_owned_base_nodes := []int{}
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
 			transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				true, building_v || cmd_v_build, transform_scope)
+				true, building_v, transform_scope)
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
+			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
 			retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
 			pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
 				transform_scope)
+			eprintln('  [ttime] promote interners  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			post_sw.restart()
 			if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap
 				&& !scoped_value_owned(transform_scope, a.nodes.data)
 				&& !scoped_value_owned(transform_scope, a.children.data) {
 				a.promote_transform_texts_from(base_text_count, transform_scope)
+				eprintln('  [ttime] promote texts      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				post_sw.restart()
 				// Lowering can rewrite arbitrary pre-existing nodes, including type text
-				// on otherwise non-generic expressions. Scan the small payload fields before
-				// releasing the outer arena; the worker-owned regions are handled below.
-				for idx in 0 .. a.nodes.len {
-					canonicalize_scoped_node(mut a, idx, transform_scope)
-				}
-				if retained_transform_regions.len > 0 {
-					outer_new_end := retained_transform_regions[0].new_start
-					promote_scoped_ast_nodes(mut a, base_transform_nodes, outer_new_end,
-						scoped_owned_base_nodes, transform_scope)
-					// Late lowering can rewrite nodes that live in a retained worker region
-					// while allocating their replacement text in the outer transform arena.
-					// Publish those strings before releasing that arena; the worker-owned
-					// fields in the same regions are canonicalized below from their own scope.
-					for region in retained_transform_regions {
-						canonicalize_scoped_transform_region_from_scope(mut a, region,
-							transform_scope)
-					}
-					last_worker_end := retained_transform_regions.last().new_end
-					promote_scoped_ast_nodes(mut a, last_worker_end, a.nodes.len, []int{},
+				// on otherwise non-generic expressions. Publish every scope-owned
+				// text before releasing the outer arena. Without retained regions
+				// one fused pool pass (ownership check + table-hit reuse + clone)
+				// replaces the serial canonicalize + promote walks.
+				mut fused_text_promote := false
+				if retained_transform_regions.len == 0
+					&& os.getenv('V3_NO_FUSED_TEXT_PROMOTE') == '' {
+					fused_text_promote = transform.promote_scoped_texts_parallel(mut a,
 						transform_scope)
-				} else {
-					// Workers report every rewritten base node. Publish those and the
-					// appended range without rebuilding the text table for the source AST.
-					promote_scoped_ast_nodes(mut a, base_transform_nodes, a.nodes.len,
-						scoped_owned_base_nodes, transform_scope)
-					transform_texts_canonical = true
+					if fused_text_promote {
+						transform_texts_canonical = true
+					}
+				}
+				eprintln('  [ttime] canon nodes        ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${a.nodes.len}, fused: ${fused_text_promote})')
+				post_sw.restart()
+				if !fused_text_promote {
+					mut scoped_text_flags := []u8{len: a.nodes.len}
+					if transform.scan_scoped_text_flags_parallel(a, transform_scope, mut
+						scoped_text_flags)
+					{
+						mut canon_cache_ptrs := unsafe { []voidptr{len: 4096} }
+						mut canon_cache_vals := []string{len: 4096}
+						for idx, flag in scoped_text_flags {
+							if flag != 0 {
+								canonicalize_scoped_node_cached(mut a, idx, transform_scope, mut
+									canon_cache_ptrs, mut canon_cache_vals)
+							}
+						}
+					} else {
+						scoped_text_flags = []u8{}
+						for idx in 0 .. a.nodes.len {
+							canonicalize_scoped_node(mut a, idx, transform_scope)
+						}
+					}
+					if retained_transform_regions.len > 0 {
+						outer_new_end := retained_transform_regions[0].new_start
+						promote_scoped_ast_nodes_flagged(mut a, base_transform_nodes,
+							outer_new_end, scoped_owned_base_nodes, transform_scope,
+							scoped_text_flags)
+						// Late lowering can rewrite nodes that live in a retained worker region
+						// while allocating their replacement text in the outer transform arena.
+						// Publish those strings before releasing that arena; the worker-owned
+						// fields in the same regions are canonicalized below from their own scope.
+						for region in retained_transform_regions {
+							canonicalize_scoped_transform_region_from_scope(mut a, region,
+								transform_scope)
+						}
+						last_worker_end := retained_transform_regions.last().new_end
+						promote_scoped_ast_nodes_flagged(mut a, last_worker_end, a.nodes.len,
+							[]int{}, transform_scope, scoped_text_flags)
+					} else {
+						// Workers report every rewritten base node. Publish those and the
+						// appended range without rebuilding the text table for the source AST.
+						promote_scoped_ast_nodes_flagged(mut a, base_transform_nodes, a.nodes.len,
+							scoped_owned_base_nodes, transform_scope, scoped_text_flags)
+						transform_texts_canonical = true
+					}
 				}
 			} else {
 				clone_flat_ast_storage(mut a)
@@ -4226,12 +4416,20 @@ fn main() {
 				a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
 				a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
 			}
-			promote_scoped_checker_node_caches(mut pre_tc, transform_scope, base_transform_nodes)
+			eprintln('  [ttime] promote ast nodes  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			post_sw.restart()
+			promote_scoped_checker_node_caches(mut pre_tc, a, transform_scope, base_transform_nodes)
+			eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			post_sw.restart()
 			promote_scoped_signatures(mut pre_tc, original_signature_names)
+			eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			post_sw.restart()
 			transform_used_fns = clone_string_bool_map(transform_used_fns)
 			transform_errors = clone_string_list(transform_errors)
 			pre_tc.set_fresh_type_cache(parse_cache_enabled)
 			prealloc_scope_free_for_v3(transform_scope)
+			eprintln('  [ttime] promote checker    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			post_sw.restart()
 			if retained_transform_regions.len > 0 {
 				if p.parsed_v_header_files > 0 {
 					// Header-only warm builds are small enough that transform may not
@@ -4264,10 +4462,11 @@ fn main() {
 			// Type-resolution views can grow their by-file map while the transform arena
 			// is active. Recreate it in the compilation arena before later phases use it.
 			pre_tc.reset_resolution_type_view_cache()
+			eprintln('  [ttime] regions+views      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		} else {
 			transform_used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				false, building_v || cmd_v_build)
+				false, building_v)
 		}
 		if !incremental_cache_hit {
 			used_fns = transform_used_fns.move()
@@ -4280,8 +4479,7 @@ fn main() {
 				incremental_changed_names[name] = true
 			}
 		}
-		if !building_v && !cmd_v_build && !uses_generics
-			&& transformed_used_fns_need_monomorphize(used_fns) {
+		if !building_v && !uses_generics && transformed_used_fns_need_monomorphize(used_fns) {
 			uses_generics = true
 			skip_transform_generics = false
 		}
@@ -4311,7 +4509,7 @@ fn main() {
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 		incremental_needs_monomorphize := incremental_cache_hit && (incremental_uses_generics
 			|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns))
-		if !building_v && !cmd_v_build {
+		if !building_v {
 			if uses_generics && (!incremental_cache_hit || incremental_needs_monomorphize) {
 				if scope_prealloc_stages {
 					// Volt's reachable specialization set settles just below 4x the
@@ -4362,7 +4560,9 @@ fn main() {
 		// The cached C plan and metadata are the only consumers of the specialized
 		// AST and checker state on this path.
 	} else if building_v {
+		mut mono_sw := time.new_stopwatch()
 		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
+		eprintln('  [ttime] erase templates    ${f64(mono_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	} else if uses_generics && (!incremental_cache_hit || incremental_uses_generics
 		|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns)) {
 		mut monomorph_used_fns := map[string]bool{}
@@ -4437,7 +4637,7 @@ fn main() {
 				a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
 				a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
 			}
-			promote_scoped_checker_node_caches(mut pre_tc, monomorph_scope, base_monomorph_nodes)
+			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes)
 			pre_tc.rebuild_scoped_transform_signature_maps()
 			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
 			promote_scoped_monomorph_metadata(mut pre_tc)
@@ -4507,14 +4707,21 @@ fn main() {
 		erase_unreachable_generic_type_templates(mut pre_tc)
 	}
 	pre_tc.clear_c_type_cache()
+	mut mono_tail_sw := time.new_stopwatch()
 	// Transform and monomorphization can synthesize or rewrite payload text.
 	// They run with private/arena-backed worker state; publish only canonical,
 	// compilation-owned strings after all worker merges are complete.
 	// Type annotation can rewrite node.typ after the transform arenas have been
-	// promoted. Preallocated builds must republish those final strings as well.
-	if scope_prealloc_stages || !transform_texts_canonical {
+	// promoted, so preallocated builds must republish those final strings — but
+	// annotation only runs outside -building-v builds. Self-host builds skip
+	// it, and their transform-canonical texts are already final, so this
+	// full-AST walk would be a no-op there.
+	annotation_can_rewrite_texts := !building_v
+	if (scope_prealloc_stages && annotation_can_rewrite_texts) || !transform_texts_canonical {
 		a.intern_node_texts_from(0)
 	}
+	eprintln('  [ttime] mono intern texts  ${f64(mono_tail_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	mono_tail_sw.restart()
 	// The resolution-type view cache memoizes forked type-parse views keyed by file
 	// path. Views (and their keys) built during the scoped check/annotate phases
 	// live in stage arenas whose deferred frees run mid-codegen, so a stale entry
@@ -5014,7 +5221,7 @@ fn main() {
 				'-Werror=implicit-function-declaration']
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', 'out', os.base(tcc_main_file)]
-			atomic_s := tcc_atomic_s_arg(prefs)
+			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
 			if atomic_s.len > 0 {
 				tcc_args << atomic_s
 			}
@@ -5084,7 +5291,7 @@ fn main() {
 				tcc_args << '-shared'
 			}
 			tcc_args << ['-o', 'out', 'src.c']
-			atomic_s := tcc_atomic_s_arg(prefs)
+			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
 			if atomic_s.len > 0 {
 				tcc_args << atomic_s
 			}
@@ -6735,6 +6942,7 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		ins_idx++
 	}
 	a.nodes = new_nodes
+	a.file_node_ids = []int{}
 	for k in 0 .. a.children.len {
 		cid := int(a.children[k])
 		if cid >= 0 {
@@ -6759,6 +6967,72 @@ fn synthetic_index_shift(insertions []SyntheticInsertion, idx int) int {
 }
 
 // resolve_imports resolves resolve imports information for v3 entry point.
+// collect_import_scan_ids returns the node ids the import-resolution loops
+// care about (.file markers/trailers, module_decl, import_decl) for every file
+// pair at or past region_start, in ascending node order. Falls back to the
+// full id range when the parser file index is unusable.
+fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) ([]int, int) {
+	if !file_index_usable_for_imports(a) {
+		mut all := []int{cap: a.nodes.len - region_start}
+		for i in region_start .. a.nodes.len {
+			all << i
+		}
+		return all, pair_cursor
+	}
+	mut cursor := pair_cursor
+	mut ids := []int{cap: 4096}
+	mut last_trailing := region_start - 1
+	for cursor + 1 < a.file_node_ids.len {
+		marker := a.file_node_ids[cursor]
+		if marker < region_start {
+			cursor += 2
+			continue
+		}
+		trailing := a.file_node_ids[cursor + 1]
+		ids << marker
+		tnode := a.nodes[trailing]
+		collect_import_scan_children(a, &tnode, mut ids)
+		ids << trailing
+		if trailing > last_trailing {
+			last_trailing = trailing
+		}
+		cursor += 2
+	}
+	// Synthetic import nodes (implicit sync/embed_file seeds) are appended
+	// after the last parsed file and belong to no trailing .file node; sweep
+	// the short tail so the walk sees exactly what the full scan sees.
+	for i in last_trailing + 1 .. a.nodes.len {
+		if a.nodes[i].kind in [.file, .module_decl, .import_decl] {
+			ids << i
+		}
+	}
+	return ids, cursor
+}
+
+fn collect_import_scan_children(a &flat.FlatAst, node &flat.Node, mut ids []int) {
+	for ci in 0 .. node.children_count {
+		id := int(a.child(node, ci))
+		if id < 0 || id >= a.nodes.len {
+			continue
+		}
+		child := a.nodes[id]
+		match child.kind {
+			.module_decl, .import_decl {
+				ids << id
+			}
+			.comptime_if, .block {
+				collect_import_scan_children(a, &child, mut ids)
+			}
+			else {}
+		}
+	}
+}
+
+fn file_index_usable_for_imports(a &flat.FlatAst) bool {
+	return a.file_node_ids.len > 0 && a.file_node_ids.len % 2 == 0 && !a.file_index_incomplete
+		&& os.getenv('V3_NO_FILE_IDX') == '' && os.getenv('V3_NO_IMPORT_IDX') == ''
+}
+
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
@@ -6823,14 +7097,45 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
 	mut synthetic_sync_added := implicit_imports.has_sync
 	mut synthetic_embed_file_added := implicit_imports.has_embed_import
+	mut ri_collision_ns := u64(0)
+	mut ri_wave_ns := u64(0)
+	mut ri_waves := 0
+	mut pair_cursor := 0
 	for {
+		ri_waves++
+		ri_t0 := time.sys_mono_now()
+		scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
+		pair_cursor = next_pair_cursor
+		if os.getenv('V3_VERIFY_IMPORT_IDX') != '' {
+			mut full := []int{}
+			for i in node_idx .. a.nodes.len {
+				if a.nodes[i].kind in [.file, .module_decl, .import_decl] {
+					full << i
+				}
+			}
+			if full.len != scan_ids.len {
+				eprintln('IMPORT IDX MISMATCH: full ${full.len} fast ${scan_ids.len} region ${node_idx}..${a.nodes.len}')
+				for i in full {
+					if i !in scan_ids {
+						eprintln('  missing id ${i} kind ${a.nodes[i].kind} value ${a.nodes[i].value}')
+					}
+				}
+			} else {
+				for k, fid in full {
+					if scan_ids[k] != fid {
+						eprintln('IMPORT IDX ORDER MISMATCH at ${k}: full ${fid} fast ${scan_ids[k]}')
+						break
+					}
+				}
+			}
+		}
 		// Decide short-name collisions for the whole visible import wave before
 		// mutating any import node or parsing either module. This qualifies both
 		// sides of `a.tast`/`b.tast`, avoiding an order-dependent state where the
 		// first module is called `tast` and that semantic name is later mistaken
 		// for the source alias of the second import.
 		mut scan_file := cur_file
-		for scan_idx in node_idx .. a.nodes.len {
+		for scan_idx in scan_ids {
 			scan_node := a.nodes[scan_idx]
 			if scan_node.kind == .file && scan_node.value.len > 0 {
 				scan_file = scan_node.value
@@ -6858,6 +7163,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				identity_source_dirs[scan_identity] = scan_dir
 			}
 		}
+		ri_collision_ns += time.sys_mono_now() - ri_t0
+		ri_t1 := time.sys_mono_now()
 		// Collect one wave: every not-yet-parsed module imported by the nodes
 		// scanned so far. Parsing appends at the end of the node array and the
 		// scan proceeds in node order, so batching a wave and appending its
@@ -6867,7 +7174,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		mut wave_files := []string{}
 		mut wave_canon := []string{}
 		mut wave_module_file_ends := []int{}
-		for node_idx < a.nodes.len {
+		for wave_scan_i in 0 .. scan_ids.len {
+			node_idx = scan_ids[wave_scan_i]
 			node := a.nodes[node_idx]
 			if node.kind == .file && node.value.len > 0 {
 				cur_file = node.value
@@ -7033,7 +7341,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			node_idx++
 		}
+		// The indexed walk leaves node_idx at the last visited id; the next
+		// wave's region starts where this one's appends begin.
+		node_idx = a.nodes.len
+		ri_wave_ns += time.sys_mono_now() - ri_t1
 		if wave_files.len == 0 {
+			ri_coll_ms := f64(ri_collision_ns) / 1e6
+			ri_wave_ms := f64(ri_wave_ns) / 1e6
+			eprintln('  [ttime]   ri collision   ${ri_coll_ms:7.2f} ms, wave scan ${ri_wave_ms:.2f} ms (waves: ${ri_waves})')
 			break
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut

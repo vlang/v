@@ -5,6 +5,7 @@ import runtime
 import sync
 import time
 import v3.flat
+import v3.types
 import v3.workers
 
 // Parallel function-body transform. Each worker transforms a disjoint set of
@@ -46,6 +47,7 @@ $if !windows {
 		a := unsafe { &SharedChunkArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
+		mut csw := time.new_stopwatch()
 		if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
 			max_batches := if a.is_master {
 				scoped_transform_master_batches
@@ -56,6 +58,13 @@ $if !windows {
 		} else {
 			w.transform_pure_items_serial(*items)
 		}
+		$if v3_ttime ? {
+			mut cost := i64(0)
+			for it in *items {
+				cost += i64(it.cost) + 1
+			}
+			eprintln('  [ttime]     chunk items=${items.len:4} cost=${cost:8} master=${a.is_master} ${f64(csw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 		return unsafe { nil }
 	}
 }
@@ -65,6 +74,402 @@ struct SharedChunkArgs {
 	worker    voidptr // &Transformer
 	items_ptr voidptr // &[]FnWorkItem
 	is_master bool
+}
+
+// ScopedTextScanArgs is the payload for one scoped-text flag-scan worker.
+struct ScopedTextScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	scope voidptr
+	start int
+	end   int
+	flags voidptr // &u8 base of the per-node flag array
+}
+
+// node_has_scoped_text reports whether any text payload of `node` lives in
+// `scope`'s arena, i.e. whether canonicalization/promotion would rewrite it.
+@[inline]
+fn node_has_scoped_text(node &flat.Node, scope voidptr) bool {
+	if node.value.len > 0 && transform_scope_owns(scope, node.value.str) {
+		return true
+	}
+	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
+		return true
+	}
+	if isnil(node.payload) {
+		return false
+	}
+	if transform_scope_owns(scope, node.payload) {
+		return true
+	}
+	params := node.payload.generic_params
+	if params.len == 0 {
+		return false
+	}
+	if transform_scope_owns(scope, params.data) {
+		return true
+	}
+	for param in params {
+		if param.len > 0 && transform_scope_owns(scope, param.str) {
+			return true
+		}
+	}
+	return false
+}
+
+$if !windows {
+	// scoped_text_scan_thread flags this worker's node range. Pure reads plus
+	// byte writes into a disjoint flag range: no allocations, so it is safe to
+	// run on pool threads regardless of their arena state.
+	fn scoped_text_scan_thread(arg voidptr) voidptr {
+		a := unsafe { &ScopedTextScanArgs(arg) }
+		flags := unsafe { &u8(a.flags) }
+		for idx in a.start .. a.end {
+			node := unsafe { &a.a.nodes[idx] }
+			if node_has_scoped_text(node, a.scope) {
+				unsafe {
+					flags[idx] = 1
+				}
+			}
+		}
+		return unsafe { nil }
+	}
+}
+
+// TopLevelKindScanArgs is the payload for one top-level-kind flag-scan worker.
+struct TopLevelKindScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	start int
+	end   int
+	flags voidptr // &u8 base of the per-node flag array (index 0 == node `base`)
+	base  int
+}
+
+$if !windows {
+	// top_level_kind_scan_thread flags file/module nodes and generic-candidate
+	// fn decls in this worker's range. Pure reads plus byte writes into a
+	// disjoint flag range: no allocations, so it is safe on pool threads in any
+	// arena state. Candidate detection uses only the state-free placeholder
+	// prescreen, a strict superset of generic_fn_decl_needs_erasure_scan.
+	fn top_level_kind_scan_thread(arg voidptr) voidptr {
+		a := unsafe { &TopLevelKindScanArgs(arg) }
+		flags := unsafe { &u8(a.flags) }
+		for i in a.start .. a.end {
+			node := unsafe { &a.a.nodes[i] }
+			if node.kind == .file || node.kind == .module_decl {
+				unsafe {
+					flags[i - a.base] = 1
+				}
+			} else if node.kind == .fn_decl && fn_decl_generic_candidate_prescreen(a.a, node) {
+				unsafe {
+					flags[i - a.base] = 1
+				}
+			}
+		}
+		return unsafe { nil }
+	}
+}
+
+// fn_decl_generic_candidate_prescreen is the allocation-free superset filter
+// for generic_fn_decl_needs_erasure_scan: explicit generic params, or a
+// possible placeholder in the signature texts. Fn decls failing it can never
+// need erasure.
+@[inline]
+fn fn_decl_generic_candidate_prescreen(a &flat.FlatAst, node &flat.Node) bool {
+	if !isnil(node.payload) && node.payload.generic_params.len > 0 {
+		return true
+	}
+	if generic_placeholder_prescreen(node.typ) || generic_placeholder_prescreen(node.value) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		child := a.child_node(node, i)
+		if child.kind == .param && generic_placeholder_prescreen(child.typ) {
+			return true
+		}
+	}
+	return false
+}
+
+// scan_top_level_kind_flags_parallel fills `flags` (one byte per node id in
+// [base, base + flags.len)) for file/module/fn-decl nodes, using the shared
+// worker pool. Returns false when no pool is available so the caller can walk
+// the range serially instead.
+fn scan_top_level_kind_flags_parallel(a &flat.FlatAst, base int, mut flags []u8) bool {
+	$if windows {
+		return false
+	} $else {
+		n := flags.len
+		if isnil(a.worker_pool) || n < 65536 || base < 0 || base + n > a.nodes.len {
+			return false
+		}
+		n_jobs := a.worker_pool.size() + 1
+		chunk := (n + n_jobs - 1) / n_jobs
+		mut args := []TopLevelKindScanArgs{cap: n_jobs}
+		for ji in 0 .. n_jobs {
+			start := base + ji * chunk
+			mut end := start + chunk
+			if end > base + n {
+				end = base + n
+			}
+			if start >= end {
+				break
+			}
+			args << TopLevelKindScanArgs{
+				a:     a
+				start: start
+				end:   end
+				flags: flags.data
+				base:  base
+			}
+		}
+		mut tasks := []workers.Task{cap: args.len}
+		for ji in 0 .. args.len {
+			tasks << workers.Task{
+				run:        top_level_kind_scan_thread
+				arg:        unsafe { voidptr(&args[ji]) }
+				force_sync: ji == 0
+			}
+		}
+		a.worker_pool.run(tasks)
+		return true
+	}
+}
+
+// ScopedTextPromoteArgs is the payload for one fused text-promotion worker.
+struct ScopedTextPromoteArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	scope voidptr
+	start int
+	end   int
+}
+
+$if !windows {
+	// scoped_text_promote_thread publishes scope-owned node texts for this
+	// worker's id range: text-table hits reuse the canonical entry (read-only
+	// map probe), misses clone into the worker's persistent arena. Node slot
+	// writes are range-disjoint, so no synchronization is needed.
+	fn scoped_text_promote_thread(arg voidptr) voidptr {
+		a := unsafe { &ScopedTextPromoteArgs(arg) }
+		mut ast := unsafe { &flat.FlatAst(voidptr(a.a)) }
+		for idx in a.start .. a.end {
+			mut node := unsafe { &ast.nodes[idx] }
+			if node.value.len > 0 && transform_scope_owns(a.scope, node.value.str) {
+				node.value = promote_scoped_text_read_only(ast, node.value)
+			}
+			if node.typ.len > 0 && transform_scope_owns(a.scope, node.typ.str) {
+				node.typ = promote_scoped_text_read_only(ast, node.typ)
+			}
+			if isnil(node.payload) {
+				continue
+			}
+			params := node.payload.generic_params
+			if params.len == 0 {
+				continue
+			}
+			mut needs := transform_scope_owns(a.scope, node.payload)
+				|| transform_scope_owns(a.scope, params.data)
+			if !needs {
+				for param in params {
+					if param.len > 0 && transform_scope_owns(a.scope, param.str) {
+						needs = true
+						break
+					}
+				}
+			}
+			if !needs {
+				continue
+			}
+			mut promoted := []string{cap: params.len}
+			for param in params {
+				if param.len > 0 && transform_scope_owns(a.scope, param.str) {
+					promoted << promote_scoped_text_read_only(ast, param)
+				} else {
+					promoted << param
+				}
+			}
+			node.set_generic_params(promoted)
+		}
+		return unsafe { nil }
+	}
+
+	fn promote_scoped_text_read_only(a &flat.FlatAst, value string) string {
+		if id := a.text_ids[value] {
+			return a.text_values[int(id) - 1]
+		}
+		return value.clone()
+	}
+}
+
+// promote_scoped_texts_parallel publishes every transform-scope-owned node
+// text over the shared worker pool, replacing the serial canonicalize +
+// promote pair for builds without retained regions. Returns false when no pool
+// is available so the caller can run the serial walks instead.
+pub fn promote_scoped_texts_parallel(mut a flat.FlatAst, scope voidptr) bool {
+	$if windows {
+		return false
+	} $else {
+		n := a.nodes.len
+		if isnil(a.worker_pool) || n < 65536 {
+			return false
+		}
+		n_jobs := a.worker_pool.size() + 1
+		chunk := (n + n_jobs - 1) / n_jobs
+		mut args := []ScopedTextPromoteArgs{cap: n_jobs}
+		for ji in 0 .. n_jobs {
+			start := ji * chunk
+			mut end := start + chunk
+			if end > n {
+				end = n
+			}
+			if start >= end {
+				break
+			}
+			args << ScopedTextPromoteArgs{
+				a:     a
+				scope: scope
+				start: start
+				end:   end
+			}
+		}
+		mut tasks := []workers.Task{cap: args.len}
+		for ji in 0 .. args.len {
+			tasks << workers.Task{
+				run:        scoped_text_promote_thread
+				arg:        unsafe { voidptr(&args[ji]) }
+				force_sync: ji == 0
+			}
+		}
+		a.worker_pool.run(tasks)
+		return true
+	}
+}
+
+// CheckerCachePromoteArgs is the payload for one checker-cache promote worker.
+struct CheckerCachePromoteArgs {
+	tc              voidptr // &types.TypeChecker
+	scope           voidptr
+	start           int
+	end             int
+	generated_start int
+}
+
+$if !windows {
+	// checker_cache_promote_thread publishes scope-owned resolved-call /
+	// fn-value strings and clones generated-range expression types for this
+	// worker's id range. Slot writes are range-disjoint; clones allocate in the
+	// worker's persistent arena, which is never released.
+	fn checker_cache_promote_thread(arg voidptr) voidptr {
+		a := unsafe { &CheckerCachePromoteArgs(arg) }
+		mut tc := unsafe { &types.TypeChecker(a.tc) }
+		for idx in a.start .. a.end {
+			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+				name := tc.resolved_call_names[idx]
+				if name.len > 0 && transform_scope_owns(a.scope, name.str) {
+					tc.resolved_call_names[idx] = name.clone()
+				}
+			}
+			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
+				name := tc.resolved_fn_value_names[idx]
+				if name.len > 0 && transform_scope_owns(a.scope, name.str) {
+					tc.resolved_fn_value_names[idx] = name.clone()
+				}
+			}
+			if idx >= a.generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
+				&& idx < tc.expr_type_values.len {
+				tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+			}
+		}
+		return unsafe { nil }
+	}
+}
+
+// promote_scoped_checker_node_caches_parallel runs the per-id loops of the
+// checker node-cache promotion over the shared worker pool. Returns false when
+// no pool is available so the caller can run them serially instead.
+pub fn promote_scoped_checker_node_caches_parallel(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int) bool {
+	$if windows {
+		return false
+	} $else {
+		n := tc.resolved_call_names.len
+		if isnil(a.worker_pool) || n < 65536 || os.getenv('V3_NO_PAR_CHECKER_PROMOTE') != '' {
+			return false
+		}
+		n_jobs := a.worker_pool.size() + 1
+		chunk := (n + n_jobs - 1) / n_jobs
+		mut args := []CheckerCachePromoteArgs{cap: n_jobs}
+		for ji in 0 .. n_jobs {
+			start := ji * chunk
+			mut end := start + chunk
+			if end > n {
+				end = n
+			}
+			if start >= end {
+				break
+			}
+			args << CheckerCachePromoteArgs{
+				tc:              voidptr(tc)
+				scope:           scope
+				start:           start
+				end:             end
+				generated_start: generated_start
+			}
+		}
+		mut tasks := []workers.Task{cap: args.len}
+		for ji in 0 .. args.len {
+			tasks << workers.Task{
+				run:        checker_cache_promote_thread
+				arg:        unsafe { voidptr(&args[ji]) }
+				force_sync: ji == 0
+			}
+		}
+		a.worker_pool.run(tasks)
+		return true
+	}
+}
+
+// scan_scoped_text_flags_parallel fills `flags` (one byte per node id in
+// [0, flags.len)) for nodes whose text is owned by `scope`, using the shared
+// worker pool. Returns false when no pool is available so the caller can walk
+// every node serially instead.
+pub fn scan_scoped_text_flags_parallel(a &flat.FlatAst, scope voidptr, mut flags []u8) bool {
+	$if windows {
+		return false
+	} $else {
+		n := flags.len
+		if isnil(a.worker_pool) || n < 65536 {
+			return false
+		}
+		n_jobs := a.worker_pool.size() + 1
+		chunk := (n + n_jobs - 1) / n_jobs
+		mut args := []ScopedTextScanArgs{cap: n_jobs}
+		for ji in 0 .. n_jobs {
+			start := ji * chunk
+			mut end := start + chunk
+			if end > n {
+				end = n
+			}
+			if start >= end {
+				break
+			}
+			args << ScopedTextScanArgs{
+				a:     a
+				scope: scope
+				start: start
+				end:   end
+				flags: flags.data
+			}
+		}
+		mut tasks := []workers.Task{cap: args.len}
+		for ji in 0 .. args.len {
+			tasks << workers.Task{
+				run:        scoped_text_scan_thread
+				arg:        unsafe { voidptr(&args[ji]) }
+				force_sync: ji == 0
+			}
+		}
+		a.worker_pool.run(tasks)
+		return true
+	}
 }
 
 struct MonomorphChunkArgs {
@@ -396,6 +801,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				t.a.nodes.flags.set(.nofree)
 			}
 			t.a.nodes = nodes
+			t.a.file_node_ids = []int{}
 		}
 		if !merge_in_place && t.a.children.data == original_children_data {
 			children := clone_monomorph_child_region(t.a.children, base_children, base_children,
@@ -722,6 +1128,7 @@ fn (mut t Transformer) detach_monomorph_worker_region(base_nodes int, base_child
 		t.a.children.flags.set(.nofree)
 	}
 	t.a.nodes = nodes
+	t.a.file_node_ids = []int{}
 	t.a.children = children
 }
 
@@ -908,17 +1315,40 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	if value.len == 0 {
 		return ''
 	}
+	// Shallow string copies share `.str`, so one batch promotes the same
+	// instance thousands of times: a pointer probe is much cheaper than the
+	// content-hash table lookups below. Only valid within one absorb pass
+	// (absorb_scoped_batch bumps the generation before scope addresses can be
+	// reused).
+	mut cache := t.promote_text_cache
+	use_cache := !isnil(cache) && cache.active
+	mut slot := 0
+	if use_cache {
+		slot = int((u64(voidptr(value.str)) >> 4) & 2047)
+		// The length check guards against distinct strings sharing one base
+		// pointer (unsafe zero-copy slices).
+		if cache.generations[slot] == cache.generation && cache.ptrs[slot] == voidptr(value.str)
+			&& cache.results[slot].len == value.len {
+			return cache.results[slot]
+		}
+	}
 	// Scoped workers only read the compilation text table. Reuse its canonical
 	// strings before adding a worker-local entry; generic specialization clones
 	// otherwise retain another copy of almost every source identifier and type.
+	mut canonical := ''
 	if id := t.a.text_ids[value] {
-		return t.a.text_values[int(id) - 1]
+		canonical = t.a.text_values[int(id) - 1]
+	} else if promoted := t.scoped_promoted_texts[value] {
+		canonical = promoted
+	} else {
+		canonical = value.clone()
+		t.scoped_promoted_texts[canonical] = canonical
 	}
-	if canonical := t.scoped_promoted_texts[value] {
-		return canonical
+	if use_cache {
+		cache.ptrs[slot] = voidptr(value.str)
+		cache.generations[slot] = cache.generation
+		cache.results[slot] = canonical
 	}
-	canonical := value.clone()
-	t.scoped_promoted_texts[canonical] = canonical
 	return canonical
 }
 
@@ -930,6 +1360,7 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 		mut nodes := []flat.Node{cap: t.a.nodes.len + t.a.nodes.len / 4 + 1024}
 		nodes << t.a.nodes
 		t.a.nodes = nodes
+		t.a.file_node_ids = []int{}
 	}
 	if transform_scope_owns(scope, t.a.children.data) {
 		mut children := []flat.NodeId{cap: t.a.children.len + t.a.children.len / 4 + 1024}
@@ -941,6 +1372,10 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 // absorb_scoped_batch publishes one batch's observable state into the helper's
 // result arena before its large scratch arena is released.
 fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
+	t.begin_promote_text_window()
+	defer {
+		t.end_promote_text_window()
+	}
 	if t.skip_generics {
 		// Non-generic workers mutate only newly appended nodes and slots recorded by
 		// the setter log. This avoids a full, growing-AST scan after every batch.
@@ -1242,7 +1677,9 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// Workers need declaration signatures while lowering calls. Snapshot them
 		// before any worker can rewrite a shared-base fn_decl; lazily scanning or
 		// reading declarations inside workers can otherwise observe a torn node.
+		mut prep_sw := time.new_stopwatch()
 		t.prepare_parallel_call_param_types()
+		eprintln('  [ttime]   prep param types ${f64(prep_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		// Clone-free shared-base path: needs the checker's top-level index for
 		// exact per-item subtree ranges, and skip_generics (the generic passes
 		// scan and mutate arbitrary AST regions, which the shared design forbids).
@@ -1373,6 +1810,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.transform_pure_items_serial(items)
 		return false
 	} $else {
+		mut ttsw := time.new_stopwatch()
 		t.tc.freeze_type_cache_for_forks()
 		mut chunks := split_work_items_ex(items, n_jobs, false)
 		chunk_count := chunks.len
@@ -1449,7 +1887,11 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			}
 		}
 		transform_worker_scope_leave(setup_scope)
+		eprintln('  [ttime]   shared setup     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, jobs: ${n_jobs})')
+		ttsw.restart()
 		any_started := t.a.worker_pool.run(tasks)
+		eprintln('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		ttsw.restart()
 		unsafe {
 			t.a.nodes.cap = orig_nodes_cap
 			t.a.nodes.flags.clear(.nogrow)
@@ -1478,12 +1920,19 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		// node numbering). merge_worker treats the region start exactly like a
 		// clone's base offset; compaction always moves content left, so the
 		// copies never collide with unmerged regions.
+		mut merge_used_ms := f64(0)
+		mut merge_core_ms := f64(0)
+		mut mwsw := time.new_stopwatch()
 		for ci in 0 .. thread_count {
 			ww := unsafe { &Transformer(args[ci + 1].worker) }
+			mwsw.restart()
 			t.merge_worker_used_fns(ww)
+			merge_used_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 			deferred_start := t.deferred_base_writes.len
 			merged_node_start := t.a.nodes.len
+			mwsw.restart()
 			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], true)
+			merge_core_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 			if ww.worker_scope != unsafe { nil } && !t.retain_worker_results {
 				t.clone_deferred_worker_writes_from(deferred_start)
 				transform_worker_scope_free(ww.worker_scope)
@@ -1504,6 +1953,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				}
 			}
 		}
+		eprintln('  [ttime]   shared merge     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (used: ${merge_used_ms:.2f}, core: ${merge_core_ms:.2f})')
+		ttsw.restart()
 		if t.retain_worker_results {
 			t.clone_sum_eq_types_owned()
 			t.clone_auto_str_types_owned()
@@ -1525,6 +1976,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		}
 		t.tc.unfreeze_type_cache_after_forks()
 		transform_worker_scope_free(setup_scope)
+		eprintln('  [ttime]   shared tail      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return any_started
 	}
 }

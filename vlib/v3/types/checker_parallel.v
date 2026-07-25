@@ -2,6 +2,7 @@ module types
 
 import os
 import runtime
+import time
 import v3.flat
 import v3.workers
 
@@ -10,7 +11,7 @@ const max_parallel_check_jobs = 26
 const scoped_check_worker_batches = 8
 // Extra share of the total work (in percent of an even bucket) pre-assigned to
 // the master's bucket; see split_check_items.
-const check_master_bias_pct = i64(60)
+const check_master_bias_pct = i64(0)
 
 struct CheckWorkItem {
 	fn_idx   int
@@ -191,8 +192,12 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 		tc.selected_file_called_fns = map[string]bool{}
 		tc.selected_file_worklist = []string{}
+		mut cksw := time.new_stopwatch()
 		tc.check_export_attrs()
+		eprintln('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cksw.restart()
 		items := tc.collect_parallel_check_items()
+		eprintln('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
@@ -301,11 +306,13 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		thread_count := chunk_count - 1
 		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
 		worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
+		rpsw := time.new_stopwatch()
 		mut checker_workers := []voidptr{cap: worker_count}
 		for _ in 0 .. worker_count {
 			w := tc.fork_for_parallel_check()
 			checker_workers << voidptr(w)
 		}
+		eprintln('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
 		mut args := []CheckChunkArgs{cap: chunk_count}
 		for ci in 0 .. chunk_count {
 			mut worker := voidptr(tc)
@@ -337,26 +344,66 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			}
 		}
 		check_worker_scope_leave(setup_scope)
+		rpsw2 := time.new_stopwatch()
 		any_started := ast.worker_pool.run(tasks)
+		eprintln('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
 		if !tc.scope_parallel_check_workers {
 			tc.merge_own_sparse_caches()
 		}
 		tc.parallel_check_sparse = false
 		merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
+		// Promote scope-resident cache payloads across the pool while every
+		// worker scope is still alive; only unknown-type interning stays serial.
+		par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
+		mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
+		mut mg_clone_ns := u64(0)
+		mut mg_merge_ns := u64(0)
+		if par_clone {
+			mg_t0 := time.sys_mono_now()
+			for ci in 0 .. chunk_count {
+				clone_args << CheckCloneChunkArgs{
+					tc:        voidptr(tc)
+					items_ptr: unsafe { voidptr(&chunks[ci]) }
+					miss:      []int{cap: 1024}
+				}
+			}
+			mut ctasks := []workers.Task{cap: chunk_count}
+			for ci in 0 .. chunk_count {
+				ctasks << workers.Task{
+					run:        check_clone_chunk_thread
+					arg:        unsafe { voidptr(&clone_args[ci]) }
+					force_sync: ci == 0
+				}
+			}
+			ast.worker_pool.run(ctasks)
+			mg_clone_ns += time.sys_mono_now() - mg_t0
+		}
 		for ci in merge_start .. chunk_count {
 			worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
 			mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
 			scoped := args[ci].scope != unsafe { nil }
 			if scoped {
-				tc.clone_parallel_worker_node_caches(chunks[ci])
+				mg_t0 := time.sys_mono_now()
+				if par_clone {
+					tc.intern_expr_type_misses(clone_args[ci].miss)
+				} else {
+					tc.clone_parallel_worker_node_caches(chunks[ci])
+				}
+				mg_clone_ns += time.sys_mono_now() - mg_t0
 			}
+			mg_t1 := time.sys_mono_now()
 			tc.merge_parallel_check_worker_scoped(w, scoped)
+			mg_merge_ns += time.sys_mono_now() - mg_t1
 			if scoped {
 				check_worker_scope_free(args[ci].scope)
 			} else {
 				w.free_parallel_check_worker_cache()
 			}
 		}
+		mg_clone_ms := f64(mg_clone_ns) / 1e6
+		mg_merge_ms := f64(mg_merge_ns) / 1e6
+		eprintln('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+		eprintln('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
 		check_worker_scope_free(setup_scope)
 		tc.sort_parallel_check_errors()
 		return any_started
@@ -415,11 +462,11 @@ fn check_job_count(n_runtime_jobs int, n_items int) int {
 fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	mut buckets := [][]CheckWorkItem{len: n, init: []CheckWorkItem{}}
 	mut loads := []i64{len: n}
-	if n > 1 {
-		// The master (bucket 0) runs on a busy performance core while several
-		// workers inevitably land on efficiency cores; measured per-unit it
-		// finishes its even share early and waits for the pool. Give it a proportionally
-		// heavier share by starting it with negative load.
+	if n > 1 && check_master_bias_pct != 0 {
+		// Historical bias: bucket 0 once finished early on this split. Measured
+		// 2026-07-25 the master chunk was instead the pool tail by ~30% (its
+		// span cost undercounts the dense builtin bodies), so the bias is off;
+		// the knob stays for machines where the old premise holds.
 		mut total := i64(0)
 		for it in items {
 			total += i64(it.cost) + 1
@@ -732,8 +779,14 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	// Parallel checker workers may populate this cache concurrently, so each
-	// worker (and each disposable scoped batch) owns its maps.
-	w.visible_mutation_cache = new_visible_mutation_cache()
+	// worker (and each disposable scoped batch) owns mutable result/miss maps while
+	// sharing the declaration index that collect completed before checking starts.
+	w.visible_mutation_cache = &VisibleMutationCache{
+		decls:            tc.visible_mutation_cache.decls
+		decl_misses:      map[string]bool{}
+		results:          map[u64]bool{}
+		decl_index_ready: tc.visible_mutation_cache.decl_index_ready
+	}
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
@@ -754,6 +807,11 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.fn_context = new_function_check_context()
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
+	w.ownership_time_ns = 0
+	if check_memos_enabled() {
+		w.import_info_cache = &ImportInfoCache{}
+		w.qualify_name_cache = &QualifyNameCache{}
+	}
 	$if ownership ? {
 		w.ownership_fork_for_parallel_check(tc)
 	}
@@ -786,6 +844,53 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		w.type_cache.base = unsafe { nil }
 	}
 	return &w
+}
+
+struct CheckCloneChunkArgs {
+	tc        voidptr
+	items_ptr voidptr
+mut:
+	miss []int
+}
+
+// check_clone_chunk_thread promotes one chunk's node-cache payloads out of
+// the (still alive) worker scopes: name clones land in the pool thread's
+// persistent arena, and expr types are rebound via a read-only interner probe.
+// Types the interner does not know yet are recorded and interned serially in
+// chunk order afterwards, so interner ids match the serial merge exactly.
+fn check_clone_chunk_thread(arg voidptr) voidptr {
+	mut a := unsafe { &CheckCloneChunkArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
+	for item in *items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+				tc.resolved_call_names[idx] = tc.resolved_call_names[idx].clone()
+			}
+			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
+				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
+			}
+			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+				if canonical := tc.probe_intern_type(tc.expr_type_values[idx]) {
+					tc.expr_type_values[idx] = canonical
+				} else {
+					a.miss << idx
+				}
+			}
+		}
+	}
+	return unsafe { nil }
+}
+
+fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
+	for idx in indexes {
+		_, canonical := tc.intern_type(clone_owned_type(tc.expr_type_values[idx]))
+		tc.expr_type_values[idx] = canonical
+	}
+}
+
+fn par_check_clone_enabled() bool {
+	return os.getenv('V3_NO_PAR_CK_CLONE') == ''
 }
 
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
@@ -856,6 +961,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		tc.type_cache.c_hits += w.type_cache.c_hits
 		tc.type_cache.c_misses += w.type_cache.c_misses
 	}
+	tc.ownership_time_ns += w.ownership_time_ns
 	$if ownership ? {
 		tc.ownership_merge_parallel_check_worker(w)
 	}

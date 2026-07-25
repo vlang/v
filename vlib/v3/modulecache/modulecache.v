@@ -240,12 +240,10 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		if source.contains('@BUILD_TIMESTAMP') || source.contains('@BUILD_DATE')
-			|| source.contains('@BUILD_TIME') {
+		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
 			uses_build_pseudo = true
 		}
-		if source.contains('@VMODROOT') || source.contains('@VMOD_FILE')
-			|| source.contains('@VROOT') {
+		if source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
 			root, vmod_file := signature_vmod_root(file)
 			vmod_metadata := if vmod_file.len > 0 {
 				file_metadata_signature(vmod_file)
@@ -306,6 +304,41 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		signature:  hash.hex()
 		validation: validation
 	}
+}
+
+fn source_uses_pseudo(source string, names []string) bool {
+	if !source.contains('@') {
+		return false
+	}
+	mut pos := 0
+	for pos < source.len {
+		if source[pos] == `/` && pos + 1 < source.len
+			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
+			pos = skip_signature_space_and_comments(source, pos)
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			pos = skip_signature_quoted_text(source, pos, false)
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if source[pos] != `@` {
+			pos++
+			continue
+		}
+		for name in names {
+			end := pos + name.len
+			if end <= source.len && source[pos..end] == name
+				&& (end == source.len || !signature_name_char(source[end])) {
+				return true
+			}
+		}
+		pos++
+	}
+	return false
 }
 
 fn (m &Manager) source_signature(source_files []string) string {
@@ -663,19 +696,36 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	entry := m.entry(module_name, source_files)
 	if !os.is_file(entry.header) {
+		cache_trace_module_miss(module_name, 'header is missing')
 		return none
 	}
-	stamp := os.read_file(entry.header_stamp) or { return none }
+	stamp := os.read_file(entry.header_stamp) or {
+		cache_trace_module_miss(module_name, 'header stamp is missing')
+		return none
+	}
 	expected := entry_stamp(m.salt, m.source_signature(source_files))
-	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
-	object_stamp := os.read_file(entry.object_stamp) or { return none }
+	source_bodies := header_stamp_source_bodies(stamp, expected) or {
+		cache_trace_module_miss(module_name, 'source signature changed')
+		return none
+	}
+	object_stamp := os.read_file(entry.object_stamp) or {
+		cache_trace_module_miss(module_name, 'object stamp is missing')
+		return none
+	}
 	if !object_stamp_valid_with_metadata_cache(object_stamp, expected, mut dependency_metadata) {
+		cache_trace_module_miss(module_name, 'object dependency changed')
 		return none
 	}
 	return Entry{
 		...entry
 		source_bodies:       source_bodies
 		source_bodies_known: true
+	}
+}
+
+fn cache_trace_module_miss(module_name string, reason string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 module cache miss: module=${module_name} reason=${reason}')
 	}
 }
 
@@ -1123,6 +1173,9 @@ fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, m
 			signature
 		}
 		if current_signature != dependency.signature {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache dependency miss: path=${dependency.path}')
+			}
 			return false
 		}
 	}
@@ -1291,8 +1344,7 @@ pub fn declaration_header(prefix string) string {
 		mut next_pos := prefix.len
 		mut selected := -1
 		for i, section in sections {
-			if relative := prefix[pos..].index(section.begin) {
-				absolute := pos + relative
+			if absolute := c_standalone_marker_index_after(prefix, section.begin, pos) {
 				if absolute < next_pos {
 					next_pos = absolute
 					selected = i
@@ -1310,18 +1362,31 @@ pub fn declaration_header(prefix string) string {
 		}
 		section := sections[selected]
 		body_start := next_pos + section.begin.len
-		relative_end := prefix[body_start..].index(section.end) or {
+		body_end := c_standalone_marker_index_after(prefix, section.end, body_start) or {
 			header, _, _ := c_declaration_header(prefix[next_pos..])
 			out.write_string(header)
 			break
 		}
-		body_end := body_start + relative_end
 		if section.keep {
 			out.write_string(c_native_declaration_directives(prefix[body_start..body_end]))
 		}
 		pos = body_end + section.end.len
 	}
 	return out.str()
+}
+
+fn c_standalone_marker_index_after(source string, marker string, start int) ?int {
+	mut pos := start
+	for pos < source.len {
+		idx := source.index_after(marker, pos) or { return none }
+		end := idx + marker.len
+		if (idx == 0 || source[idx - 1] == `\n`)
+			&& (end == source.len || source[end] in [`\n`, `\r`]) {
+			return idx
+		}
+		pos = end
+	}
+	return none
 }
 
 fn cached_c_string_symbol(value string) string {

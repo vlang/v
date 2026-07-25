@@ -1,5 +1,6 @@
 module transform
 
+import os
 import time
 import v3.flat
 import v3.gen.c.naming
@@ -171,6 +172,8 @@ mut:
 	type_alias_name_cache         &ContextBoolLookupCache  = unsafe { nil }
 	interface_box_param_cache     &BoolLookupCache         = unsafe { nil }
 	alias_receiver_method_cache   &LookupCache             = unsafe { nil }
+	receiver_method_cache         &ReceiverMethodCache     = unsafe { nil }
+	promote_text_cache            &PromoteTextCache        = unsafe { nil }
 	call_variadic_cache           &BoolLookupCache         = unsafe { nil }
 	str_alias_cache               &LookupCache             = unsafe { nil }
 	generic_alias_names           map[string]bool
@@ -279,6 +282,10 @@ mut:
 	generic_call_spec_cache            map[int]GenericCallSpec
 	generic_call_spec_misses           map[int]bool
 	stringify_stack                    []string
+	stringify_depth_cap                int = max_stringify_nesting_depth
+	str_expansion_memo                 map[string]int
+	deferred_str_items                 []FnWorkItem
+	deferred_str_count                 int
 	node_module_map_cache              []string
 	node_file_map_cache                []string
 	node_module_map_nodes              int = -1
@@ -464,6 +471,52 @@ mut:
 	entries map[string]i8 // 1 = unresolved, -1 = resolved
 }
 
+// ReceiverMethodCache memoizes resolve_receiver_method_for_type results. Lives
+// on the heap so `&Transformer` query methods can populate it; keyed by
+// `type\nmethod`, cleared on module switch (candidate construction consults
+// cur_module) and whenever the transformer registers new fn signatures
+// (closure lifting / synthesized helpers can change name resolution).
+struct ReceiverMethodCache {
+mut:
+	module   string
+	fn_count int
+	entries  map[string]string
+	misses   map[string]bool
+}
+
+// PromoteTextCache short-circuits repeated promote_scoped_result_text calls on
+// the SAME string instance (shallow string copies share `.str`, so one batch
+// promotes the same pointer thousands of times). Pointer keys are only valid
+// while the source scope is alive, so the cache only serves lookups inside an
+// explicit window (absorb_scoped_batch) that ends before the scope is freed;
+// outside a window promote falls back to the content-hash tables.
+struct PromoteTextCache {
+mut:
+	active      bool
+	generation  u32 = 1
+	ptrs        [2048]voidptr
+	generations [2048]u32
+	results     [2048]string
+}
+
+// begin_promote_text_window arms the pointer cache for one promotion pass over
+// a still-live scope. end_promote_text_window MUST run before that scope is
+// freed; unpaired promote calls simply bypass the cache.
+@[inline]
+fn (mut t Transformer) begin_promote_text_window() {
+	if !isnil(t.promote_text_cache) {
+		t.promote_text_cache.generation++
+		t.promote_text_cache.active = true
+	}
+}
+
+@[inline]
+fn (mut t Transformer) end_promote_text_window() {
+	if !isnil(t.promote_text_cache) {
+		t.promote_text_cache.active = false
+	}
+}
+
 // StructInfo stores struct info metadata used by transform.
 pub struct StructInfo {
 pub:
@@ -644,6 +697,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 }
 
 fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
+	mut impl_sw := time.new_stopwatch()
 	mut t := new_transformer(mut a, tc, used_fns)
 	t.skip_generics = skip_generics
 	t.building_v = building_v
@@ -654,16 +708,21 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 		t.scoped_base_nodes = t.a.nodes.len
 	}
 	t.prepare()
+	eprintln('  [ttime] new+prepare        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	impl_sw.restart()
 	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
 		reserve_parallel_transform_ast(mut a, skip_generics)
 	}
+	eprintln('  [ttime] reflect+reserve    ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	impl_sw.restart()
 	base_node_count := t.a.nodes.len
 	if scope_parallel_workers {
 		t.scoped_base_nodes = base_node_count
 	}
 	t.transformed_fns = []bool{len: t.a.nodes.len}
 	was_parallel := t.transform_all_dispatch(want_parallel)
+	impl_sw.restart()
 	t.retain_current_worker_scope_all()
 	t.apply_ignored_comptime_for_nodes()
 	// The late-name scan backfills call names that raw-AST markused could not
@@ -676,11 +735,16 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 		t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
 	}
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
+	eprintln('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${late_names.len})')
+	impl_sw.restart()
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
+	eprintln('  [ttime] late bodies        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	impl_sw.restart()
 	t.run_auto_str_synthesis_rounds(base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
 	t.retain_current_worker_scope_all()
+	eprintln('  [ttime] sum_eq+tail        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	mut owned_base_nodes := t.scoped_owned_base_nodes.keys()
 	owned_base_nodes << t.scoped_owned_base_log
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
@@ -706,15 +770,38 @@ fn (mut t Transformer) retain_current_worker_scope_all() {
 // reserve_parallel_transform_ast reserves persistent append regions before a
 // disposable transform arena is entered.
 pub fn reserve_parallel_transform_ast(mut a flat.FlatAst, skip_generics bool) {
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, false)
+}
+
+// reserve_parallel_transform_cache_ast adds overflow headroom for cache population,
+// which transforms every module body rather than just the program-reachable subset.
+pub fn reserve_parallel_transform_cache_ast(mut a flat.FlatAst, skip_generics bool) {
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, true)
+}
+
+fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_generics bool, cache_mode bool) {
 	// The shared-base parallel path partitions this headroom between workers.
 	// Generic lowering needs more headroom than self-host transform because worker
 	// regions cannot grow while their disposable arenas are active.
-	nodes_factor_num, nodes_factor_den := if skip_generics { 2, 1 } else { 3, 1 }
-	children_factor_num, children_factor_den := if skip_generics { 5, 2 } else { 4, 1 }
+	// Self-host growth currently lands at ~1.87x nodes / ~2.24x children of the
+	// parsed size, and the per-chunk cost-proportional slices amplify any local
+	// growth-per-cost outlier, so the 2x / 7:3 factors used to sit within a few
+	// percent of a loud nogrow overflow — one added source file could trip them.
+	nodes_factor_num, nodes_factor_den := if skip_generics {
+		if cache_mode { 5, 2 } else { 9, 4 }
+	} else {
+		3, 1
+	}
+	children_factor_num, children_factor_den := if skip_generics {
+		if cache_mode { 3, 1 } else { 8, 3 }
+	} else {
+		4, 1
+	}
 	nodes_cap := a.nodes.len * nodes_factor_num / nodes_factor_den
 	if nodes_cap > a.nodes.cap {
 		old_nodes := a.nodes
 		a.nodes = []flat.Node{cap: nodes_cap}
+		a.file_node_ids = []int{}
 		a.nodes << old_nodes
 	}
 	children_cap := a.children.len * children_factor_num / children_factor_den
@@ -1156,18 +1243,29 @@ fn local_method_fn_name_needs_module_prefix(name string) bool {
 }
 
 fn (mut t Transformer) prepare() {
+	cap_env := os.getenv('V3_STR_CAP')
+	if cap_env != '' {
+		t.stringify_depth_cap = cap_env.int()
+	}
+	mut psw := time.new_stopwatch()
 	t.collect_types()
+	eprintln('  [ttime]   prep collect_types ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	psw.restart()
 	t.rebuild_embedded_fields_index()
 	t.prepare_runtime_type_indexes()
 	t.rebuild_struct_short_name_index()
 	t.collect_multi_return_fn_ret_types()
 	t.collect_const_suffixes()
+	eprintln('  [ttime]   prep small idx     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	psw.restart()
 	t.collect_alias_methods()
 	t.rebuild_receiver_method_suffix_index()
 	t.rebuild_variadic_suffix_index()
 	t.build_generic_alias_name_index()
 	t.build_local_decl_index()
 	t.build_struct_field_decl_metas_cache()
+	eprintln('  [ttime]   prep suffix+decl   ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	psw.restart()
 	// Enable the alias cache only now that the type maps are fully populated.
 	// During collection those maps are incomplete, so caching there would poison
 	// entries with results computed against a partial view.
@@ -1177,6 +1275,8 @@ fn (mut t Transformer) prepare() {
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
+	t.receiver_method_cache = &ReceiverMethodCache{}
+	t.promote_text_cache = &PromoteTextCache{}
 	t.struct_field_type_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -1557,7 +1657,10 @@ fn (mut t Transformer) add_receiver_method_suffix_index(name string) {
 	t.set_receiver_method_suffix_index(name, name)
 	for i in 0 .. name.len {
 		if name[i] == `.` && i + 1 < name.len {
-			t.set_receiver_method_suffix_index(name[i + 1..], name)
+			// Zero-copy suffix view: map lookups only read it and map inserts
+			// clone their key, so the allocation per suffix is unnecessary.
+			suffix := unsafe { tos(name.str + i + 1, name.len - i - 1) }
+			t.set_receiver_method_suffix_index(suffix, name)
 		}
 	}
 }
@@ -1599,13 +1702,14 @@ fn (mut t Transformer) rebuild_variadic_suffix_index() {
 	for name, is_variadic in t.tc.fn_variadic {
 		mut offset := name.index('.') or { continue }
 		for offset >= 0 && offset + 1 < name.len {
-			suffix := name[offset + 1..]
+			// Zero-copy suffix view (see add_receiver_method_suffix_index).
+			suffix := unsafe { tos(name.str + offset + 1, name.len - offset - 1) }
 			if suffix in t.variadic_suffix_index {
 				t.variadic_suffix_index[suffix] = 2
 			} else {
 				t.variadic_suffix_index[suffix] = if is_variadic { i8(1) } else { i8(-1) }
 			}
-			next := name[offset + 1..].index('.') or { break }
+			next := suffix.index('.') or { break }
 			offset += next + 1
 		}
 	}
@@ -2470,6 +2574,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 				pure_items := t.transform_serial_then_collect_pure(literal_decls)
 				t.prepare_parallel_call_param_types()
 				t.transform_scoped_helper_batches(pure_items, scoped_transform_master_batches)
+				t.transform_deferred_str_items()
 				if !has_entry_main {
 					t.transform_top_level_user_stmts()
 				}
@@ -2482,17 +2587,31 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		return false
 	}
 	has_entry_main := t.has_entry_main()
+	mut ttsw := time.new_stopwatch()
 	// Serial phase: transform consts/globals and every function whose body
 	// contains a function literal (the only construct that lifts new top-level
 	// declarations and mutates the shared TypeChecker). Collect the remaining,
 	// closure-free functions as parallelizable work items.
 	literal_decls := t.collect_literal_fn_decls(t.a.nodes.len)
+	eprintln('  [ttime] literal_decls      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	ttsw.restart()
 	pure_items := t.transform_serial_then_collect_pure(literal_decls)
+	eprintln('  [ttime] serial+collect     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${pure_items.len})')
+	ttsw.restart()
 	base_nodes := t.a.nodes.len
 	base_children := t.a.children.len
 	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
+	eprintln('  [ttime] parallel run       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	ttsw.restart()
+	// Aggregate-interpolating functions were held back from the parallel regions
+	// (their inline autostr expansion overflows cost-proportional worker slots);
+	// lower them now against the freely growable master arena.
+	t.transform_deferred_str_items()
+	eprintln('  [ttime] deferred str       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_str_count})')
+	ttsw.restart()
 	if !has_entry_main {
 		t.transform_top_level_user_stmts()
+		eprintln('  [ttime] top_level_stmts    ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	return was_parallel
 }
@@ -2540,6 +2659,9 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 	mut ti := 0
 	mut prev_tl_any := -1
 	mut prev_decl_end := 0
+	mut const_ms := f64(0)
+	mut lit_ms := f64(0)
+	mut scsw := time.new_stopwatch()
 	for i in 0 .. original_len {
 		for ti < tl.len && tl[ti] < i {
 			prev_tl_any = tl[ti]
@@ -2582,27 +2704,55 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				old_range_hi := t.item_range_hi
 				t.item_range_lo = prev_tl_any + 1
 				t.item_range_hi = i
+				scsw.restart()
 				t.transform_fn_body(i)
+				lit_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 				t.item_range_lo = old_range_lo
 				t.item_range_hi = old_range_hi
 			} else {
-				pure << FnWorkItem{
-					fn_idx:   i
-					range_lo: prev_tl_any + 1
-					file:     t.cur_file
-					module:   t.cur_module
-					cost:     cost
-					rank:     i64(cost) * 1_000_000_000 - i64(i)
+				// Interpolating an auto-str struct/sum expands inline to node counts
+				// wildly out of proportion to parse cost. Estimate that expansion:
+				// a large one would overflow a cost-proportional worker append region
+				// in the shared parallel transform, so defer such functions to a
+				// serial pass over the freely growable master arena; a small one just
+				// folds into this item's cost so its region is sized to fit. The
+				// estimate is 0 for every type v3 self-host interpolates, so its work
+				// items and node numbering are untouched.
+				str_est := t.fn_span_interp_estimate(prev_tl_any + 1, i)
+				if str_est > deferred_str_expansion_threshold {
+					t.deferred_str_items << FnWorkItem{
+						fn_idx:   i
+						range_lo: prev_tl_any + 1
+						file:     t.cur_file
+						module:   t.cur_module
+						cost:     cost
+						rank:     i64(cost) * 1_000_000_000 - i64(i)
+					}
+				} else {
+					adj_cost := cost + str_est
+					pure << FnWorkItem{
+						fn_idx:   i
+						range_lo: prev_tl_any + 1
+						file:     t.cur_file
+						module:   t.cur_module
+						cost:     adj_cost
+						rank:     i64(adj_cost) * 1_000_000_000 - i64(i)
+					}
 				}
 			}
 		} else if kind_id == 65 {
 			prev_decl_end = i
+			scsw.restart()
 			t.transform_const_decl(node)
+			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		} else if kind_id == 64 {
 			prev_decl_end = i
+			scsw.restart()
 			t.transform_global_decl(node)
+			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		}
 	}
+	eprintln('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms')
 	return pure
 }
 
@@ -2648,6 +2798,22 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 	}
 	t.item_range_lo = -1
 	t.item_range_hi = -1
+}
+
+// transform_deferred_str_items lowers the functions held back from the parallel
+// regions because they interpolate struct/sum values (see
+// transform_serial_then_collect_pure). They run serially against the master
+// arena, which grows freely, so their large inline autostr expansion cannot
+// overflow a bounded worker append region. The list is empty unless the program
+// actually interpolates aggregates, so common builds (v3 self-host) skip it.
+fn (mut t Transformer) transform_deferred_str_items() {
+	t.deferred_str_count = t.deferred_str_items.len
+	if t.deferred_str_items.len == 0 {
+		return
+	}
+	items := t.deferred_str_items
+	t.deferred_str_items = []FnWorkItem{}
+	t.transform_pure_items_serial(items)
 }
 
 // clone_ast_base produces a private FlatAst holding an independent copy of the
@@ -2718,6 +2884,8 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
+	w.receiver_method_cache = &ReceiverMethodCache{}
+	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -2833,6 +3001,8 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
+	w.receiver_method_cache = &ReceiverMethodCache{}
+	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -2992,6 +3162,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		monomorph_error_seen:               map[string]bool{}
 		skip_generics:                      t.skip_generics
 		building_v:                         t.building_v
+		stringify_depth_cap:                t.stringify_depth_cap
 		has_spawn_expr:                     t.has_spawn_expr
 		base_write_intercept:               t.base_write_intercept
 		defer_oor_writes:                   t.defer_oor_writes
@@ -3137,16 +3308,16 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		old_len := t.a.children.len
 		unsafe {
 			t.a.children.grow_len(new_children)
-			// vmemmove: under the shared-base path the source region lives in
-			// the same array; compaction copies leftward, which can touch the
-			// source block's tail when regions are exactly packed.
-			vmemmove(&t.a.children[old_len], &w.a.children[base_children],
-				new_children * int(sizeof(flat.NodeId)))
 		}
-		for k in old_len .. t.a.children.len {
-			cid := t.a.children[k]
-			if int(cid) >= base_nodes {
-				t.a.children[k] = flat.NodeId(int(cid) + int(node_shift))
+		// Fused copy+relocate: under the shared-base path compaction copies
+		// leftward within one array, so the forward pass reads ahead of its own
+		// writes; one streamed pass replaces the former memmove + fixup pass.
+		for j in 0 .. new_children {
+			cid := w.a.children[base_children + j]
+			t.a.children[old_len + j] = if int(cid) >= base_nodes {
+				flat.NodeId(int(cid) + int(node_shift))
+			} else {
+				cid
 			}
 		}
 	}
@@ -3158,18 +3329,26 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		nodes_old_len := t.a.nodes.len
 		unsafe {
 			t.a.nodes.grow_len(new_nodes)
-			vmemmove(&t.a.nodes[nodes_old_len], &w.a.nodes[base_nodes],
-				new_nodes * int(sizeof(flat.Node)))
 		}
-		for k in nodes_old_len .. t.a.nodes.len {
-			if clear_node_caches {
-				t.clear_typechecker_node_cache(k)
+		if clear_node_caches {
+			// The merged ids form one contiguous range; clearing it with range
+			// fills beats a branchy per-node clear (this runs for every merged
+			// node of every worker).
+			t.clear_typechecker_node_cache_range(nodes_old_len, t.a.nodes.len)
+		}
+		clone_worker_nodes := w.worker_scope != unsafe { nil } && !t.retain_worker_results
+			&& t.stage_scope == unsafe { nil }
+		// Fused copy+relocate, same leftward-overlap argument as the children
+		// block above.
+		for j in 0 .. new_nodes {
+			node := w.a.nodes[base_nodes + j]
+			k := nodes_old_len + j
+			t.a.nodes[k] = if node.children_start >= base_children {
+				node.with_shifted_children(child_shift)
+			} else {
+				node
 			}
-			if t.a.nodes[k].children_start >= base_children {
-				t.a.nodes[k] = t.a.nodes[k].with_shifted_children(child_shift)
-			}
-			if w.worker_scope != unsafe { nil } && !t.retain_worker_results
-				&& t.stage_scope == unsafe { nil } {
+			if clone_worker_nodes {
 				t.clone_scoped_worker_node(k, w.worker_scope)
 			}
 		}
@@ -3364,6 +3543,66 @@ fn (mut t Transformer) record_refined_node_type(idx int, typ string) {
 		}
 	}
 	t.refined_node_types[idx] = typ
+}
+
+// clear_typechecker_node_cache_range is clear_typechecker_node_cache for a
+// contiguous id range: the bool sets become memsets and the range-level guards
+// replace one branch per node per table.
+fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
+	if isnil(t.tc) || start >= end || start < 0 {
+		return
+	}
+	call_end := if end < t.tc.resolved_call_set.len { end } else { t.tc.resolved_call_set.len }
+	if start < call_end {
+		unsafe {
+			vmemset(&t.tc.resolved_call_set[start], 0, call_end - start)
+		}
+		for k in start .. call_end {
+			t.tc.resolved_call_names[k] = ''
+		}
+	}
+	fn_value_end := if end < t.tc.resolved_fn_value_set.len {
+		end
+	} else {
+		t.tc.resolved_fn_value_set.len
+	}
+	if start < fn_value_end {
+		unsafe {
+			vmemset(&t.tc.resolved_fn_value_set[start], 0, fn_value_end - start)
+		}
+		for k in start .. fn_value_end {
+			t.tc.resolved_fn_value_names[k] = ''
+		}
+	}
+	expr_end := if end < t.tc.expr_type_set.len { end } else { t.tc.expr_type_set.len }
+	if start < expr_end {
+		unsafe {
+			vmemset(&t.tc.expr_type_set[start], 0, expr_end - start)
+		}
+	}
+	stmt_end := if end < t.tc.statement_nodes.len { end } else { t.tc.statement_nodes.len }
+	if start < stmt_end {
+		unsafe {
+			vmemset(&t.tc.statement_nodes[start], 0, stmt_end - start)
+		}
+	}
+	if t.tc.sparse_resolved_call_names.len > 0 || t.tc.sparse_resolved_fn_values.len > 0
+		|| t.tc.sparse_expr_type_values.len > 0 || t.tc.sparse_statement_nodes.len > 0 {
+		for k in start .. end {
+			if t.tc.sparse_resolved_call_names.len > 0 {
+				t.tc.sparse_resolved_call_names.delete(k)
+			}
+			if t.tc.sparse_resolved_fn_values.len > 0 {
+				t.tc.sparse_resolved_fn_values.delete(k)
+			}
+			if t.tc.sparse_expr_type_values.len > 0 {
+				t.tc.sparse_expr_type_values.delete(k)
+			}
+			if t.tc.sparse_statement_nodes.len > 0 {
+				t.tc.sparse_statement_nodes.delete(k)
+			}
+		}
+	}
 }
 
 fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
@@ -14957,9 +15196,9 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 			if expr.value == t.cur_fn_variadic_param && typ.starts_with('[]') {
 				typ = '...' + typ[2..]
 			}
-			if typ.contains('typeof(') {
+			if types.type_text_contains_typeof(typ) {
 				resolved_local := t.var_type(expr.value)
-				if resolved_local.len > 0 && !resolved_local.contains('typeof(') {
+				if resolved_local.len > 0 && !types.type_text_contains_typeof(resolved_local) {
 					typ = resolved_local
 				}
 			}
@@ -14987,7 +15226,7 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 	if typ.len == 0 {
 		typ = 'unknown'
 	}
-	if typ.contains('typeof(') {
+	if types.type_text_contains_typeof(typ) {
 		typ = t.resolve_typeof_type_text(typ)
 	}
 	parsed_type := if !isnil(t.tc) { t.tc.parse_type(typ) } else { types.Type(types.void_) }
@@ -15340,9 +15579,9 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 			if expr.value == t.cur_fn_variadic_param && typ.starts_with('[]') {
 				typ = '...' + typ[2..]
 			}
-			if typ.contains('typeof(') {
+			if types.type_text_contains_typeof(typ) {
 				resolved_local := t.var_type(expr.value)
-				if resolved_local.len > 0 && !resolved_local.contains('typeof(') {
+				if resolved_local.len > 0 && !types.type_text_contains_typeof(resolved_local) {
 					typ = resolved_local
 				}
 			}
@@ -15360,7 +15599,7 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 	if typ.len == 0 {
 		typ = t.resolve_expr_type(expr_id)
 	}
-	if typ.contains('typeof(') {
+	if types.type_text_contains_typeof(typ) {
 		typ = t.resolve_typeof_type_text(typ)
 	}
 	return typ

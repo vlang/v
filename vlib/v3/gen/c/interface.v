@@ -42,6 +42,15 @@ fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bo
 // sum_type_index supports sum type index handling for FlatGen.
 fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 	mut resolved_sum := sum_name
+	if resolved_sum !in g.tc.sum_types && !resolved_sum.contains('.') {
+		// A bare sum name from a foreign-module lowering (auto-stringify
+		// expansions keep the declaring module's spelling): the precomputed
+		// short-name table maps it to the declared qualified sum.
+		short_resolved := g.resolve_sum_name(resolved_sum)
+		if short_resolved in g.tc.sum_types {
+			resolved_sum = short_resolved
+		}
+	}
 	if resolved_sum !in g.tc.sum_types && resolved_sum.contains('.') {
 		// Resolve an import-aliased sum name (`tast.Value` for module `sub.tast`)
 		// exactly first. Use suffix and bare-name fallbacks only when unique.

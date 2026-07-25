@@ -374,10 +374,20 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	if g.decl_types_ready {
 		return
 	}
-	for _, ret in g.tc.fn_ret_types {
+	for name, ret in g.tc.fn_ret_types {
+		// Generic template signatures keep unspecialized placeholder types
+		// (`!&Tls[T]`); their typedefs would reference C types that are never
+		// emitted. Specializations register concrete signatures under their
+		// own suffixed names.
+		if name in g.tc.fn_generic_params {
+			continue
+		}
 		g.collect_declaration_signature_type(ret)
 	}
-	for _, params in g.tc.fn_param_types {
+	for name, params in g.tc.fn_param_types {
+		if name in g.tc.fn_generic_params {
+			continue
+		}
 		for param in params {
 			g.collect_declaration_signature_type(param)
 		}
@@ -409,7 +419,15 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 }
 
 fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
-	if g.type_contains_generic_placeholder(t) {
+	// Erased-template signatures keep their placeholder spellings in the
+	// checker tables even when the program itself uses no generics
+	// (skip_generics); force the placeholder check so an unused template's
+	// `!&Tls[T]` return cannot leave an Optional_..._T typedef referencing a
+	// C type that is never emitted.
+	g.placeholder_check_forced = true
+	skip := g.type_contains_generic_placeholder(t)
+	g.placeholder_check_forced = false
+	if skip {
 		return
 	}
 	g.collect_concrete_optional_typedef_type(t)
@@ -584,6 +602,9 @@ fn type_name_is_unbound_generic_decl(name string, params []string, materialized 
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder(name string) bool {
+	if g.skip_generics && !g.placeholder_check_forced {
+		return false
+	}
 	clean := trimmed_space(name)
 	if clean.len == 0 {
 		return false
@@ -975,9 +996,32 @@ fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
 	if name in g.tc.enum_names {
 		return g.cname(name)
 	}
+	if !name.contains('.') && g.tc.cur_module.len > 0 {
+		qualified := '${g.tc.cur_module}.${name}'
+		if qualified in g.tc.enum_names {
+			return g.cname(qualified)
+		}
+	}
 	short_name := name.all_after_last('.')
 	if short_name in g.tc.enum_names {
 		return g.cname(short_name)
+	}
+	if !name.contains('.') {
+		suffix := '.${name}'
+		mut match_name := ''
+		mut matches := 0
+		for enum_name, _ in g.tc.enum_names {
+			if enum_name.ends_with(suffix) {
+				match_name = enum_name
+				matches++
+				if matches > 1 {
+					break
+				}
+			}
+		}
+		if matches == 1 {
+			return g.cname(match_name)
+		}
 	}
 	return g.cname(name)
 }

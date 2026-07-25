@@ -1,6 +1,8 @@
 module markused
 
 import strings
+import time
+import os
 import v3.flat
 import v3.gen.c.naming
 import v3.types
@@ -10,7 +12,7 @@ const min_eager_markused_bodies = 4096
 
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true)
 	return used
 }
 
@@ -22,7 +24,14 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 // mark_used_with_generic_usage also reports whether reachable code uses a generic
 // function, struct, or sum type and therefore requires monomorphization.
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false)
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true)
+}
+
+// mark_used_without_generic_detection is the self-host variant for inputs whose caller
+// already guarantees that monomorphization is unnecessary.
+pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false)
+	return used
 }
 
 // mark_used_for_tests_with_generic_usage is the test-file-rooted variant of
@@ -32,7 +41,7 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true)
 }
 
 // mark_used_for_cache roots every concrete function in modules being built for the object cache.
@@ -48,7 +57,18 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, source_modules, true)
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true)
+}
+
+// mark_used_for_cache_without_generic_detection is the self-host cache variant for inputs
+// whose caller already guarantees that monomorphization is unnecessary.
+pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker, test_files []string, source_modules map[string]bool) map[string]bool {
+	mut file_map := map[string]bool{}
+	for file in test_files {
+		file_map[file] = true
+	}
+	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false)
+	return used
 }
 
 // reachable_const_exprs returns const initializer expressions referenced by the supplied
@@ -123,7 +143,18 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 	return result
 }
 
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool) (map[string]bool, bool) {
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool) (map[string]bool, bool) {
+	mut mu_sw := time.new_stopwatch()
+	// The runtime-helper detection scan only reads the AST and (forked) checker
+	// caches, so it runs on its own thread under the decl scan + precollect and
+	// its enqueue requests are replayed in scan order at the seeds step below.
+	mut rt_scan := &RtHelpersScanArgs{
+		a:  a
+		tc: tc.fork_for_parallel_transform(a)
+	}
+	rt_scan_parallel := par_markused_seeds_enabled()
+	rt_scan.enabled = rt_scan_parallel
+	rt_scan_thread := spawn markused_rt_helpers_thread(mut rt_scan)
 	mut cur_module := ''
 	mut cur_file := ''
 	mut import_contexts := []map[string]string{cap: 256}
@@ -136,9 +167,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
 	mut generic_type_bases := map[string]bool{}
-	for node in a.nodes {
-		if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
-			generic_type_bases[node.value] = true
+	if detect_generics {
+		for node in a.nodes {
+			if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
+				generic_type_bases[node.value] = true
+			}
 		}
 	}
 
@@ -401,14 +434,25 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		const_decls:             const_decls
 		const_suffixes:          const_name_suffixes
 		import_contexts:         import_contexts
-		selective_alias_targets: markused_selective_alias_targets(tc)
-		iface_param_gate:        markused_interface_param_gate(tc)
+		selective_alias_targets: if detect_generics {
+			markused_selective_alias_targets(tc)
+		} else {
+			map[string][]string{}
+		}
+		iface_param_gate:        if detect_generics {
+			markused_interface_param_gate(tc)
+		} else {
+			map[string]bool{}
+		}
 		generic_type_bases:      generic_type_bases
+		detect_generics:         detect_generics
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap
 	// name-resolution work. Collecting inline used to serialize ~80% of
 	// markused's time inside the BFS loop.
+	eprintln('  [ttime] mu decl scan       ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	mu_sw.restart()
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
 	if body_ids.len >= min_eager_markused_bodies {
@@ -418,8 +462,19 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		body_results = precollect_body_calls(collector, body_ids, body_modules,
 			body_import_contexts)
 	}
+	eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
+	mu_sw.restart()
 	has_entry_main := markused_has_entry_main_indexed(a, tc)
-	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
+	if rt_scan_parallel {
+		rt_scan_thread.wait()
+		for name in rt_scan.queue {
+			// Clone into the master arena: the scan scope is freed right below.
+			enqueue(name.clone(), mut used, mut queue)
+		}
+		markused_worker_scope_free(rt_scan.scope)
+	} else {
+		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
+	}
 	enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
 	// through a wrapper cgen generates later. The checker records them per enclosing
@@ -453,6 +508,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// skipping a repeat performs no fewer markings.
 	mut safe_alias_done := map[string]bool{}
 	mut iface_tail_done := map[string]bool{}
+	eprintln('  [ttime] mu seeds           ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	mu_sw.restart()
 	mut qi := 0
 	for qi < queue.len {
 		name := queue[qi]
@@ -536,7 +593,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				if !valid_symbol_name(callee) {
 					continue
 				}
-				if collector.is_generic_index_overload_call(callee, fn_info.module) {
+				if collector.detect_generics
+					&& collector.is_generic_index_overload_call(callee, fn_info.module) {
 					enqueue(callee, mut used, mut queue)
 					lowered := markused_c_name(callee)
 					if lowered != callee {
@@ -639,7 +697,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			eprintln('  -> added ${new_added.str()} new entries, queue now ${queue.len.str()}')
 		}
 	}
-	if !uses_generics {
+	if collector.detect_generics && !uses_generics {
 		uses_generics = collector.emitted_type_declarations_use_generics()
 	}
 	if trace_markused {
@@ -655,6 +713,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln(suffix_hits.str())
 		eprintln('markused: total used: ${used.len}')
 	}
+	eprintln('  [ttime] mu bfs+tail        ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	return used, uses_generics
 }
 
@@ -1064,7 +1123,7 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 						continue
 					}
 					calls.clear()
-					if uses_generics {
+					if uses_generics || !collector.detect_generics {
 						collector.collect_calls(field, cur_module, imports, '', '', mut calls)
 					} else {
 						uses_generics = collector.collect_calls_with_generic_usage(field,
@@ -1226,7 +1285,7 @@ fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls ma
 			calls.clear()
 			collector.collect_top_level_stmt_calls(child_id, module_name, file_imports, mut
 				local_values, mut local_types, mut calls)
-			if !uses_generics
+			if collector.detect_generics && !uses_generics
 				&& collector.node_tree_uses_generics(child_id, module_name, file_imports) {
 				uses_generics = true
 			}
@@ -1328,6 +1387,36 @@ fn markused_is_top_level_stmt(node flat.Node) bool {
 }
 
 // enqueue supports enqueue handling for markused.
+struct RtHelpersScanArgs {
+	a  &flat.FlatAst
+	tc &types.TypeChecker
+mut:
+	enabled bool
+	queue   []string
+	scope   voidptr
+}
+
+fn markused_rt_helpers_thread(mut args RtHelpersScanArgs) {
+	if !args.enabled {
+		return
+	}
+	// Everything the scan allocates lives in a detached scope: the spawn
+	// wrapper frees the thread's own arena at exit, so results must survive in
+	// a scope the master frees after replaying (see fixed_storage_scan_thread).
+	scope := markused_worker_scope_begin(true)
+	// A fresh local `used` makes enqueue_detected_runtime_helpers collect every
+	// name it would have enqueued (already-seeded names are skipped again when
+	// the master replays the queue through enqueue, which is idempotent).
+	mut used := map[string]bool{}
+	enqueue_detected_runtime_helpers(args.a, args.tc, mut used, mut args.queue)
+	args.scope = scope
+	markused_worker_scope_leave(scope)
+}
+
+fn par_markused_seeds_enabled() bool {
+	return os.getenv('V3_NO_PAR_MU_SEEDS') == ''
+}
+
 fn enqueue(name string, mut used map[string]bool, mut queue []string) bool {
 	if !valid_symbol_name(name) {
 		return false
@@ -1384,6 +1473,9 @@ struct CallCollector {
 	// Includes scoped local declarations, which are intentionally absent from
 	// the checker's top-level generic declaration maps.
 	generic_type_bases map[string]bool
+	// Self-host builds are known not to need monomorphization, so they can omit
+	// generic-only reachability probes while preserving ordinary call collection.
+	detect_generics bool
 }
 
 fn (c &CallCollector) imports(context int) map[string]string {
@@ -3676,13 +3768,13 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 	mut result := BodyCalls{
 		calls:         []string{cap: 32}
 		refs:          []string{cap: 8}
-		uses_generics: c.generic_fn_name_is_known(node.value, cur_module)
+		uses_generics: c.detect_generics && (c.generic_fn_name_is_known(node.value, cur_module)
 			|| c.type_text_uses_generics(node.value, cur_module, imports)
-			|| c.node_uses_generics(node, cur_module, imports)
+			|| c.node_uses_generics(node, cur_module, imports))
 	}
 	result.uses_generics = c.collect_calls_with_locals_and_generics(node, cur_module, imports,
-		receiver_name, receiver_struct, local_values, local_types, visible_local_idents, true,
-		result.uses_generics, mut result.calls)
+		receiver_name, receiver_struct, local_values, local_types, visible_local_idents,
+		c.detect_generics, result.uses_generics, mut result.calls)
 	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values,
 		visible_local_idents, mut result.refs)
 	return result
@@ -3712,6 +3804,7 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		selective_alias_targets: c.selective_alias_targets
 		iface_param_gate:        c.iface_param_gate
 		generic_type_bases:      c.generic_type_bases
+		detect_generics:         c.detect_generics
 	}
 }
 
@@ -3786,9 +3879,8 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					// Enum fields are values even when a method has the same name.
 				} else if c.collect_interface_method_value_selector(child, mut calls) {
 					// handled
-				} else if c.collect_generic_method_value_selector(child, cur_module, imports, mut
-					calls)
-				{
+				} else if c.detect_generics
+					&& c.collect_generic_method_value_selector(child, cur_module, imports, mut calls) {
 					// handled
 				} else if resolved := c.tc.resolved_fn_value_name(child_id) {
 					calls << resolved
@@ -3810,8 +3902,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					&& c.generic_fn_name_is_known(resolved_call, cur_module) {
 					uses_generics = true
 				}
-				c.collect_interface_boxed_generic_methods(child, resolved_call, cur_module,
-					imports, local_values, mut calls)
+				if c.detect_generics {
+					c.collect_interface_boxed_generic_methods(child, resolved_call, cur_module,
+						imports, local_values, mut calls)
+				}
 				c.collect_lowered_join_path_single(child, resolved_call, mut calls)
 				if child.children_count > 0 {
 					callee_id := c.a.child(child, 0)
@@ -3994,8 +4088,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 						}
 					}
 				}
-				c.collect_generic_alias_operator_usage(child, resolved_call, cur_module, imports,
-					local_values, local_types, mut calls)
+				if c.detect_generics {
+					c.collect_generic_alias_operator_usage(child, resolved_call, cur_module,
+						imports, local_values, local_types, mut calls)
+				}
 				c.collect_omitted_params_default_calls(child, resolved_call, cur_module, imports, mut
 					calls)
 			}
@@ -4875,8 +4971,10 @@ fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Nod
 	} else if resolved_call.len > 0 {
 		calls << resolved_call
 	}
-	c.collect_generic_alias_operator_usage(call, resolved_call, cur_module, imports, local_values,
-		local_types, mut calls)
+	if c.detect_generics {
+		c.collect_generic_alias_operator_usage(call, resolved_call, cur_module, imports,
+			local_values, local_types, mut calls)
+	}
 	for ci in 1 .. call.children_count {
 		arg_id := c.a.child(call, ci)
 		if int(arg_id) >= 0 {
@@ -5835,11 +5933,13 @@ fn (c &CallCollector) collect_index_overload_assignment_methods(node &flat.Node,
 			c.collect_index_overload_compound_helpers(receiver, node.op, cur_module, mut calls)
 		}
 	}
-	if receiver := c.generic_index_overload_receiver(base_type, cur_module) {
-		c.collect_index_overload_method(receiver, '[]=', cur_module, mut calls)
-		if node.op != .assign {
-			c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
-			c.collect_index_overload_compound_helpers(receiver, node.op, cur_module, mut calls)
+	if c.detect_generics {
+		if receiver := c.generic_index_overload_receiver(base_type, cur_module) {
+			c.collect_index_overload_method(receiver, '[]=', cur_module, mut calls)
+			if node.op != .assign {
+				c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+				c.collect_index_overload_compound_helpers(receiver, node.op, cur_module, mut calls)
+			}
 		}
 	}
 }
@@ -5870,8 +5970,10 @@ fn (c &CallCollector) collect_index_overload_getter_method(node &flat.Node, cur_
 	for receiver in c.struct_operator_receivers_for_call(base_type, cur_module) {
 		c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
 	}
-	if receiver := c.generic_index_overload_receiver(base_type, cur_module) {
-		c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+	if c.detect_generics {
+		if receiver := c.generic_index_overload_receiver(base_type, cur_module) {
+			c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+		}
 	}
 }
 
@@ -5885,7 +5987,7 @@ fn (c &CallCollector) index_overload_method_name(receiver string, method string,
 	if method_name := c.typed_receiver_method_name(receiver, method, cur_module) {
 		return method_name
 	}
-	if c.receiver_is_generic_struct_application(receiver, cur_module) {
+	if c.detect_generics && c.receiver_is_generic_struct_application(receiver, cur_module) {
 		return '${receiver}.${method}'
 	}
 	return none
