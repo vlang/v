@@ -52,9 +52,9 @@ foreach ($dir in (Get-TestDirs)) {
         $expectSubstr = if ($lines.Count -gt 1) { $lines[1] } else { "" }
 
         $exe = Join-Path $work "$name.exe"
-        & $Tcc $src.FullName @ExtraArgs -o $exe 2>&1 | Out-Null
+        $compileOut = (& $Tcc $src.FullName @ExtraArgs -o $exe 2>&1 | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "FAIL $name (compile error)"
+            Write-Host "FAIL $name (compile error: $compileOut)"
             $failed++
             continue
         }

@@ -54,8 +54,9 @@ for dir in "${dirs[@]}"; do
         expect_substr=$(sed -n '2p' "$expected")
 
         exe="$work/$name.exe"
-        if ! "$tcc" "$src" "${extra_args[@]}" -o "$exe" >/dev/null 2>&1; then
-            echo "FAIL $name (compile error)"
+        compile_out=$("$tcc" "$src" "${extra_args[@]}" -o "$exe" 2>&1)
+        if [ $? -ne 0 ]; then
+            echo "FAIL $name (compile error: $compile_out)"
             failed=$((failed + 1))
             continue
         fi
