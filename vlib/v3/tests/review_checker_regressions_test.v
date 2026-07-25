@@ -178,11 +178,11 @@ fn main() {
 		'cannot use `chan string`')
 }
 
-fn test_optional_parameters_are_required() {
+fn test_trailing_optional_parameters_are_lowered_to_none() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_omitted_optional_parameter',
-		'fn consume(value ?int) {}\n\nfn main() {\n\tconsume()\n}\n',
-		'argument count mismatch for `consume`: expected 1, got 0')
+	out := run_good(v3_bin, 'good_omitted_optional_parameter',
+		'fn consume(value ?int) int {\n\treturn value or { -1 }\n}\n\nfn main() {\n\tprintln(int_str(consume()))\n\tprintln(int_str(consume(7)))\n}\n')
+	assert out == '-1\n7'
 }
 
 fn test_multi_return_arguments_must_consume_the_parameter_tail() {
