@@ -33,8 +33,9 @@ struct ReproImport {
 	source      string   // the reconstructed import statement
 	triggers    []string // the names that make this import needed (alias + selected symbols)
 	side_effect bool     // `import x as _`: always keep, it is imported for its side effects
-	is_local    bool     // the imported module is another parsed user module (not inlinable here)
-	file_id     int      // the file this import belongs to (imports are file-scoped)
+	is_local    bool     // the imported module's source is not uploaded (another parsed user module,
+	// or an installed `.vmodules` package): needs the source-window fallback
+	file_id int // the file this import belongs to (imports are file-scoped)
 }
 
 // ReproHash is a top-level `#include` / `#flag` / ... C-interop directive and the file it is in.
@@ -63,11 +64,16 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		return ''
 	}
 	// modules backed by parsed user files: importing one of these (other than `root_mod`) means
-	// the reproducer would depend on source we do not inline, so it cannot be standalone.
+	// the reproducer would depend on source we do not inline, so it cannot be standalone. Likewise,
+	// modules backed by installed `~/.vmodules` packages are kept out of the upload (no sources, no
+	// version metadata), so importing one also forces the source-window fallback.
 	mut local_mods := map[string]bool{}
+	mut vmodule_mods := map[string]bool{}
 	for pf in v.parsed_files {
 		if is_user_repro_file(pf.path) {
 			local_mods[pf.mod.name] = true
+		} else if pf.path.replace('\\', '/').contains('/.vmodules/') {
+			vmodule_mods[pf.mod.name] = true
 		}
 	}
 	mut decls := []ReproDecl{}
@@ -110,7 +116,8 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 				source:      repro_import_stmt(imp)
 				triggers:    triggers
 				side_effect: imp.alias == '_'
-				is_local:    imp.mod in local_mods && imp.mod != root_mod
+				is_local:    (imp.mod in local_mods && imp.mod != root_mod)
+					|| imp.mod in vmodule_mods
 				file_id:     file_id
 			}
 		}
@@ -163,11 +170,18 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			if stmt is ast.FnDecl && stmt.is_main {
 				main_id = id
 			}
-			// skip_unused roots are kept regardless of references, so a failing helper reached only
-			// from one stays reachable: init/cleanup, `@[markused]`/`@[export]`, and — for a
-			// `-shared` build — every public function (markused roots all of them).
-			if stmt is ast.FnDecl
-				&& (repro_is_markused_root(stmt) || (v.pref.is_shared && stmt.is_pub)) {
+			// skip_unused roots are kept regardless of references, so a failing declaration reached
+			// only from one stays reachable. For functions: init/cleanup, `@[markused]`/`@[export]`,
+			// and — for a `-shared` build — every public function. For other declaration kinds
+			// (consts, globals, structs/interfaces, enums, declared types): those tagged
+			// `@[markused]`, which the mark-used pass also roots (see markused.v).
+			mut is_root := false
+			if stmt is ast.FnDecl {
+				is_root = repro_is_markused_root(stmt) || (v.pref.is_shared && stmt.is_pub)
+			} else {
+				is_root = repro_decl_attrs(stmt).any(it.name == 'markused')
+			}
+			if is_root {
 				extra_seeds << id
 			}
 			if is_root_file && v_line - 1 >= start && v_line - 1 < end {
@@ -283,7 +297,10 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 }
 
 // repro_attr_start returns the first line (0-based) of the declaration at `line_nr`, walking up
-// over any leading `@[...]` attribute lines (which are parsed before the declaration node).
+// over any leading `@[...]` attribute groups (which are parsed before the declaration node). An
+// attribute may span several lines (`@[footer: 'Hello\nWorld']`), so the line directly above a
+// declaration can be an attribute *continuation* rather than one starting with `@[`; balance the
+// `[`/`]` brackets upward to find the line that opens the group instead of checking only prefixes.
 fn repro_attr_start(lines []string, line_nr int) int {
 	mut s := if line_nr < 0 {
 		0
@@ -292,10 +309,43 @@ fn repro_attr_start(lines []string, line_nr int) int {
 	} else {
 		line_nr
 	}
-	for s > 0 && lines[s - 1].trim_space().starts_with('@[') {
-		s--
+	for s > 0 {
+		end := s - 1
+		if !lines[end].trim_space().ends_with(']') {
+			break // the line above the declaration does not close an attribute group
+		}
+		// find the line that opens this group by balancing brackets from `end` upward
+		mut open := end
+		mut bal := 0
+		for open >= 0 {
+			bal += repro_bracket_delta(lines[open])
+			if bal == 0 {
+				break
+			}
+			open--
+		}
+		// only treat it as an attribute group when the balancing line actually opens with `@[`
+		// (this stops a preceding array/const declaration ending in `]` from being swallowed)
+		if open < 0 || bal != 0 || !lines[open].trim_space().starts_with('@[') {
+			break
+		}
+		s = open
 	}
 	return s
+}
+
+// repro_bracket_delta returns the net bracket balance of a line: the count of `[` minus the count
+// of `]`. Used to locate where a possibly multi-line `@[...]` attribute group opens.
+fn repro_bracket_delta(line string) int {
+	mut d := 0
+	for c in line {
+		if c == `[` {
+			d++
+		} else if c == `]` {
+			d--
+		}
+	}
+	return d
 }
 
 // repro_decl_source returns lines `[start, end)` (0-based) joined, with trailing blank lines trimmed.
@@ -397,6 +447,41 @@ fn repro_import_stmt(imp ast.Import) string {
 	return s
 }
 
+// repro_decl_attrs returns the attributes attached to a top-level declaration, for any of the
+// declaration kinds that can carry `@[markused]` and become a mark-used root.
+fn repro_decl_attrs(stmt ast.Stmt) []ast.Attr {
+	match stmt {
+		ast.FnDecl {
+			return stmt.attrs
+		}
+		ast.StructDecl {
+			return stmt.attrs
+		}
+		ast.InterfaceDecl {
+			return stmt.attrs
+		}
+		ast.EnumDecl {
+			return stmt.attrs
+		}
+		ast.ConstDecl {
+			return stmt.attrs
+		}
+		ast.GlobalDecl {
+			return stmt.attrs
+		}
+		ast.TypeDecl {
+			match stmt {
+				ast.AliasTypeDecl { return stmt.attrs }
+				ast.SumTypeDecl { return stmt.attrs }
+				ast.FnTypeDecl { return stmt.attrs }
+			}
+		}
+		else {
+			return []
+		}
+	}
+}
+
 // repro_is_markused_root reports whether a function is a `skip_unused` root that is retained even
 // when nothing references it: an `init`/`cleanup` lifecycle function, or one tagged `@[markused]`
 // or `@[export]`. Such a function must be inlined so any helper it alone reaches stays reachable.
@@ -418,13 +503,30 @@ fn repro_hash_is_local(directive string) bool {
 	}
 	if t.starts_with('#flag') {
 		return t.contains('"') || t.contains('@V') || t.contains('./') || t.contains('../')
-			|| t.contains('-I') || t.contains('-L')
+			|| t.contains('-I') || t.contains('-L') || repro_flag_has_abs_path(t)
 	}
 	if t.starts_with('#pkgconfig') {
 		return false // resolved from installed pkg-config packages, like a system library
 	}
 	// any other directive: be conservative and treat it as a local dependency
 	return t.starts_with('#')
+}
+
+// repro_flag_has_abs_path reports whether a `#flag` directive names a bare absolute path argument
+// (e.g. `#flag /path/to/ffi.a`, or a Windows `C:\...`/`C:/...` path), which points at a file that is
+// absent on the receiver and would fail linking before the original C error is reached.
+fn repro_flag_has_abs_path(directive string) bool {
+	for field in directive.fields() {
+		if field.starts_with('/') {
+			return true
+		}
+		// windows drive-absolute path: `C:\lib\x.a` or `C:/lib/x.a`
+		if field.len >= 3 && field[1] == `:` && (field[2] == `\\` || field[2] == `/`)
+			&& u8(field[0]).is_letter() {
+			return true
+		}
+	}
+	return false
 }
 
 // repro_uses_local_resource reports whether a declaration uses a compile-time construct that reads
@@ -582,29 +684,45 @@ fn repro_import_alias(imp ast.Import) string {
 	return imp.mod.all_after_last('.')
 }
 
-// repro_comptime_decl_names returns the names declared inside a top-level comptime `$if` block
-// (which the parser wraps in an `ExprStmt`), so the whole block is inlined when one is referenced.
-// Returns [] for anything that is not such a block.
+// repro_comptime_decl_names returns the names declared inside a top-level comptime `$if` or
+// `$match` block (which the parser wraps in an `ExprStmt` holding an `IfExpr`/`MatchExpr`), so the
+// whole block is inlined when one of its declarations is referenced. Returns [] for anything else.
 fn repro_comptime_decl_names(stmt ast.Stmt) []string {
 	if stmt is ast.ExprStmt {
 		if stmt.expr is ast.IfExpr {
 			if stmt.expr.is_comptime {
 				mut names := []string{}
 				for branch in stmt.expr.branches {
-					for s in branch.stmts {
-						inner := repro_top_decl_names(s)
-						if inner.len > 0 {
-							names << inner
-						} else {
-							names << repro_comptime_decl_names(s)
-						}
-					}
+					names << repro_comptime_branch_names(branch.stmts)
+				}
+				return names
+			}
+		} else if stmt.expr is ast.MatchExpr {
+			if stmt.expr.is_comptime {
+				mut names := []string{}
+				for branch in stmt.expr.branches {
+					names << repro_comptime_branch_names(branch.stmts)
 				}
 				return names
 			}
 		}
 	}
 	return []
+}
+
+// repro_comptime_branch_names collects the top-level declaration names in a comptime branch body,
+// recursing into any further nested comptime blocks.
+fn repro_comptime_branch_names(stmts []ast.Stmt) []string {
+	mut names := []string{}
+	for s in stmts {
+		inner := repro_top_decl_names(s)
+		if inner.len > 0 {
+			names << inner
+		} else {
+			names << repro_comptime_decl_names(s)
+		}
+	}
+	return names
 }
 
 // repro_top_decl_names returns the top-level names a statement defines, or [] when it is not an

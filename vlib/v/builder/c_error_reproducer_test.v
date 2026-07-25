@@ -354,3 +354,64 @@ fn test_repro_render_excludes_unreferenced_local_import() {
 	out := repro_render('module main', imports, [], decls, [0])
 	assert !out.contains('import foo')
 }
+
+fn test_repro_comptime_decl_names_indexes_match_decls() {
+	// a declaration inside a top-level comptime `$match` is wrapped in an ExprStmt holding a
+	// MatchExpr; its name must be indexed so referencing it keeps the whole block
+	block := ast.ExprStmt{
+		expr: ast.MatchExpr{
+			is_comptime: true
+			branches:    [
+				ast.MatchBranch{
+					stmts: [
+						ast.Stmt(ast.FnDecl{
+							name:  'main.arm_only'
+							scope: unsafe { nil }
+						}),
+					]
+				},
+			]
+		}
+	}
+	names := repro_comptime_decl_names(block)
+	assert 'arm_only' in names
+	// a non-comptime match yields nothing
+	assert repro_comptime_decl_names(ast.ExprStmt{ expr: ast.MatchExpr{} }) == []
+}
+
+fn test_repro_decl_attrs_covers_marked_decl_kinds() {
+	m := [ast.Attr{ name: 'markused' }]
+	assert repro_decl_attrs(ast.ConstDecl{ attrs: m }).any(it.name == 'markused')
+	assert repro_decl_attrs(ast.GlobalDecl{ attrs: m }).any(it.name == 'markused')
+	assert repro_decl_attrs(ast.StructDecl{ attrs: m }).any(it.name == 'markused')
+	assert repro_decl_attrs(ast.InterfaceDecl{ attrs: m }).any(it.name == 'markused')
+	assert repro_decl_attrs(ast.EnumDecl{ attrs: m }).any(it.name == 'markused')
+	assert repro_decl_attrs(ast.TypeDecl(ast.AliasTypeDecl{ attrs: m })).any(it.name == 'markused')
+	// a non-declaration statement carries no attributes
+	assert repro_decl_attrs(ast.ExprStmt{ expr: ast.BoolLiteral{} }) == []
+}
+
+fn test_repro_hash_is_local_rejects_absolute_flag_paths() {
+	// a bare absolute path argument names a file absent on the receiver
+	assert repro_hash_is_local('#flag /path/to/ffi.a')
+	assert repro_hash_is_local('#flag linux /abs/lib/x.o')
+	assert repro_hash_is_local('#flag C:\\libs\\x.a')
+	assert repro_hash_is_local('#flag C:/libs/x.a')
+	// system libraries and platform-only flags stay non-local
+	assert !repro_hash_is_local('#flag -lm')
+	assert !repro_hash_is_local('#flag darwin -framework Cocoa')
+	assert !repro_hash_is_local('#flag windows -DX=1')
+}
+
+fn test_repro_attr_start_walks_over_multiline_attribute() {
+	// `@[footer: 'Hello\nWorld']` spans two lines; the line above the struct is a continuation,
+	// so the walk must balance brackets back to the `@[` opener on line 0
+	lines := ["@[footer: 'Hello", "World']", 'struct Foo {', '\tx int', '}']
+	assert repro_attr_start(lines, 2) == 0
+	// a preceding declaration ending in `]` (a const array) must NOT be swallowed as an attribute
+	lines2 := ['const arr = [1, 2, 3]', 'struct Bar {}']
+	assert repro_attr_start(lines2, 1) == 1
+	// a multi-line array const above the declaration is likewise preserved
+	lines3 := ['const arr = [', '\t1,', '\t2,', ']', 'fn f() {}']
+	assert repro_attr_start(lines3, 4) == 4
+}
