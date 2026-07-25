@@ -19,6 +19,7 @@ fn setup_v3_cache() {
 		return
 	}
 	os.rmdir_all(cache_dir) or {}
+	os.rm(tmp_test_path('post_merge_review_fixes_test')) or {}
 	os.setenv('V3CACHE', cache_dir, true)
 }
 
@@ -3724,8 +3725,8 @@ fn main() {
 	assert out.contains('present: Option(7)'), out
 	assert out.contains('missing: Option(none)'), out
 	assert out.contains("text: Option('hi')"), out
-	assert out.contains('ok: Option(9)'), out
-	assert out.contains('fail: Option(none)'), out
+	assert out.contains('ok: Result(9)'), out
+	assert out.contains('fail: Result(error: nope)'), out
 	assert !out.contains('?int{}'), out
 }
 

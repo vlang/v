@@ -2035,7 +2035,7 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			return g.interface_optional_str_expr(clean.base_type, expr, mut stack)
 		}
 		types.ResultType {
-			return g.interface_optional_str_expr(clean.base_type, expr, mut stack)
+			return g.interface_result_str_expr(clean.base_type, expr, mut stack)
 		}
 		types.Enum {
 			return '${g.enum_autostr_c_name(clean.name)}__autostr(${expr})'
@@ -2118,6 +2118,18 @@ fn (mut g FlatGen) interface_optional_str_expr(base_type types.Type, expr string
 	some := g.interface_str_plus(g.interface_str_plus(g.interface_str_lit('Option('), inner),
 		g.interface_str_lit(')'))
 	return '((${expr}).ok ? ${some} : ${g.interface_str_lit('Option(none)')})'
+}
+
+fn (mut g FlatGen) interface_result_str_expr(base_type types.Type, expr string, mut stack []string) ?string {
+	clean_base := g.interface_unaliased_type(base_type)
+	inner := g.interface_implicit_str_expr(base_type, '(${expr}).value',
+		clean_base is types.String, mut stack) or { g.interface_str_lit('<result value>') }
+	ok := g.interface_str_plus(g.interface_str_plus(g.interface_str_lit('Result('), inner),
+		g.interface_str_lit(')'))
+	error_text := g.interface_str_plus(g.interface_str_lit('error: '), 'IError__str((${expr}).err)')
+	failed := g.interface_str_plus(g.interface_str_plus(g.interface_str_lit('Result('), error_text),
+		g.interface_str_lit(')'))
+	return '((${expr}).ok ? ${ok} : ${failed})'
 }
 
 fn (mut g FlatGen) interface_array_str_expr(arr types.Array, expr string, mut stack []string) ?string {
