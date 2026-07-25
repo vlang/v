@@ -527,6 +527,17 @@ fn handle_privilege_error(err IError) ! {
 	panic(err)
 }
 
+fn windows_extended_path_for_test(path string) string {
+	normalized_path := path.replace('/', '\\')
+	if normalized_path.starts_with('\\\\?\\') {
+		return normalized_path
+	}
+	if normalized_path.starts_with('\\\\') {
+		return '\\\\?\\UNC\\' + normalized_path[2..]
+	}
+	return '\\\\?\\' + normalized_path
+}
+
 fn test_realpath_absolutepath_symlink() ! {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
@@ -645,20 +656,81 @@ fn test_readlink() {
 }
 
 fn test_exists_symlink_dangling() {
-	$if msvc {
-		eprintln('skipping ${@METHOD} on windows + msvc; TODO: investigate why os.lstat/1 behaves differently than for gcc/clang')
-		return
+	target := 'nonexistent'
+	link := 'dangling_symlink'
+	os.rm(link) or {}
+	os.rm(target) or {}
+	defer {
+		os.rm(link) or {}
+		os.rm(target) or {}
 	}
-	os.symlink('nonexistent', 'dangling_symlink') or { handle_privilege_error(err) or { return } }
-	// sanity check that the symlink truly does exist.  the lack of error alone is the check.
-	// (on linux, `.get_filetype() == os.FileType.symbolic_link` is true, but on windows, a dangling symlink is reported as a regular file.)
-	os.lstat('dangling_symlink')!
+	assert !os.exists(target)
+	if _ := os.lstat(target) {
+		assert false, 'os.lstat should fail for a path that does not exist'
+	}
+	os.symlink(target, link) or { handle_privilege_error(err) or { return } }
+	assert os.is_link(link)
+	link_stat := os.lstat(link)!
+	$if windows {
+		assert link_stat.get_filetype() == .regular
+		assert link_stat.nlink == 1
+
+		executable_links := ['dangling_symlink.exe', 'dangling_symlink.com', 'dangling_symlink.bat',
+			'dangling_symlink.cmd']
+		non_executable_link := 'dangling_symlink.txt'
+		wildcard_dir := 'dangling_symlink_patterns'
+		wildcard_link := os.join_path(wildcard_dir, 'only_dangling_link')
+		for executable_link in executable_links {
+			os.rm(executable_link) or {}
+		}
+		os.rm(non_executable_link) or {}
+		os.rmdir_all(wildcard_dir) or {}
+		defer {
+			for executable_link in executable_links {
+				os.rm(executable_link) or {}
+			}
+			os.rm(non_executable_link) or {}
+			os.rmdir_all(wildcard_dir) or {}
+		}
+
+		for executable_link in executable_links {
+			os.symlink(target, executable_link)!
+			executable_stat := os.lstat(executable_link)!
+			assert executable_stat.get_mode().owner.execute, '${executable_link} should be executable'
+		}
+		os.symlink(target, non_executable_link)!
+		assert !os.lstat(non_executable_link)!.get_mode().owner.execute
+
+		os.mkdir(wildcard_dir)!
+		os.symlink(target, wildcard_link)!
+		assert os.ls(wildcard_dir)! == [os.file_name(wildcard_link)]
+		wildcard_question_pattern := os.join_path(wildcard_dir, 'only_dangling_lin?')
+		wildcard_star_pattern := os.join_path(wildcard_dir, 'only_dangling_*')
+		for wildcard_pattern in [wildcard_question_pattern, wildcard_star_pattern] {
+			if wildcard_stat := os.lstat(wildcard_pattern) {
+				assert false, 'os.lstat should reject wildcard path "${wildcard_pattern}", got ${wildcard_stat}'
+			}
+		}
+
+		assert windows_extended_path_for_test(r'C:\fixture\link') == r'\\?\C:\fixture\link'
+		assert windows_extended_path_for_test(r'\\server\share\link') == r'\\?\UNC\server\share\link'
+		assert windows_extended_path_for_test(r'\\?\C:\fixture\link') == r'\\?\C:\fixture\link'
+		extended_exact_path := windows_extended_path_for_test(os.join_path(os.getwd(), link))
+		assert os.lstat(extended_exact_path)!.get_filetype() == .regular
+		extended_question_pattern := windows_extended_path_for_test(os.join_path(os.getwd(),
+			wildcard_question_pattern))
+		if wildcard_stat := os.lstat(extended_question_pattern) {
+			assert false, 'os.lstat should reject extended wildcard path "${extended_question_pattern}", got ${wildcard_stat}'
+		}
+	} $else {
+		assert link_stat.get_filetype() == .symbolic_link
+	}
 	// the exists function says false in this scenario... on linux and linux-like systems.
 	// it says true on windows!
 	$if windows {
-		assert os.exists('dangling_symlink') == true
+		assert os.exists(link) == true
 	} $else {
-		assert os.exists('dangling_symlink') == false
+		assert os.exists(link) == false
 	}
 }
 
