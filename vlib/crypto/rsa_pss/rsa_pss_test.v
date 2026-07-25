@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // A NIST CAVP known-answer test (independent oracle) is intentionally NOT
 // included here yet, for the same reason noted in
 // vlib/crypto/ecdsa/ecdsa_p256_ecdh_test.v: no unverified expected value

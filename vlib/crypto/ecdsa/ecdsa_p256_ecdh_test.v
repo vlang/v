@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 module ecdsa
 
 // These tests cover the P-256 ECDH addition made for net.quic's TLS 1.3

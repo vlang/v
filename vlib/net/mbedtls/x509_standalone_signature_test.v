@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-clang
 module mbedtls
 
 import encoding.base64
