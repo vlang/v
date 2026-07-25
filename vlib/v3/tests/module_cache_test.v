@@ -56,6 +56,45 @@ fn run_module_cache_binary(path string) string {
 	return result.output.trim_space()
 }
 
+fn test_cached_sync_module_uses_preamble_pthread_declarations() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_sync_pthread_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import sync
+
+fn main() {
+	mut m := sync.new_mutex()
+	m.lock()
+	m.unlock()
+	m.destroy()
+	println("V3_CACHE_SYNC_OK")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
+	assert first.exit_code == 0, first.output
+	assert !first.output.contains('check (cached)'), first.output
+	assert run_module_cache_binary(first_output) == 'V3_CACHE_SYNC_OK'
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert second.output.contains('check (cached)'), second.output
+	assert second.output.contains('C module plan (cached)'), second.output
+	assert second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == 'V3_CACHE_SYNC_OK'
+}
+
 fn test_cached_header_preserves_mutable_pointer_parameters() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_mut_pointer_param_${os.getpid()}')
