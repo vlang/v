@@ -495,9 +495,13 @@ fn repro_operator_refs(source string) []string {
 	return ops
 }
 
-// repro_reflection_method_targets returns the type names a declaration reflects over with
-// `<Type>.methods` (as in `$for m in Foo.methods`). Method names never appear as identifier tokens
-// in such a loop, so these targets are used to pull the type's methods into the closure.
+// repro_reflection_method_targets returns the names a declaration reflects over with
+// `<target>.methods`, i.e. the iterables of `$for m in <target>.methods` loops. The target may be a
+// concrete type (`Foo`), a generic parameter (`T`), or a metadata variable from an outer `$for`
+// (`field`, as in the nested `$for field in C.fields { $for m in field.methods {} }` form). Method
+// names never appear as identifier tokens in such a loop, so these targets are used to pull the
+// type's methods into the closure — or, when a target cannot be resolved to an inlined type (a
+// generic parameter or metadata variable), to trigger the source-window fallback.
 fn repro_reflection_method_targets(source string) []string {
 	// method reflection only appears inside a comptime `$for` loop; without one, any `.methods`
 	// is an ordinary member access (`registry.methods()`) and must not drive retention or fallback
@@ -512,13 +516,27 @@ fn repro_reflection_method_targets(source string) []string {
 			after := i + suffix.len
 			// `.methods` must be a whole token (not `.methodsX`) to be reflection
 			if after >= source.len || !is_ident_char(source[after]) {
+				// a following `(` is a runtime call to a method named `methods`, not reflection
+				mut k := after
+				for k < source.len && (source[k] == ` ` || source[k] == `\t`) {
+					k++
+				}
+				is_call := k < source.len && source[k] == `(`
+				// the target identifier immediately before `.methods`
 				mut j := i
 				for j > 0 && is_ident_char(source[j - 1]) {
 					j--
 				}
-				// require a capitalized identifier (a type name or generic parameter), so a runtime
-				// `.methods` member access on a lowercase variable is not mistaken for reflection
-				if j < i && source[j].is_capital() {
+				// only a `$for <var> in <target>.methods` iterable is reflection: require the `in`
+				// keyword right before the target, so an ordinary `obj.methods` member access is
+				// not mistaken for it (this admits lowercase metadata variables like `field`)
+				mut p := j
+				for p > 0 && (source[p - 1] == ` ` || source[p - 1] == `\t`) {
+					p--
+				}
+				preceded_by_in := p >= 2 && source[p - 1] == `n` && source[p - 2] == `i`
+					&& (p == 2 || !is_ident_char(source[p - 3]))
+				if j < i && !is_call && preceded_by_in {
 					targets << source[j..i]
 				}
 			}

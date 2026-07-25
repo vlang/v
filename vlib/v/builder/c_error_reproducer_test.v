@@ -473,15 +473,26 @@ fn test_repro_source_has_toplevel_import() {
 fn test_repro_reflection_method_targets() {
 	t1 := repro_reflection_method_targets('fn f() { \$for m in Foo.methods { } }')
 	assert 'Foo' in t1
-	// a generic parameter target is captured too (it is capitalized)
+	// a generic parameter target is captured too
 	t2 := repro_reflection_method_targets('fn f[T]() { \$for m in T.methods { } }')
 	assert 'T' in t2
+	// a lowercase metadata variable from an outer `$for field in C.fields` is captured (so it can
+	// trigger the fallback, since `field` is not an inlined type)
+	t3 :=
+		repro_reflection_method_targets('\$for field in C.fields { \$for m in field.methods { } }')
+	assert 'field' in t3
 	// `.methods` must be a whole token, so `.methods_count` is not reflection
 	assert repro_reflection_method_targets('\$for x in T.methods_count { }') == []
 	// a runtime member access on a lowercase variable (no `$for`) is not reflection
 	assert repro_reflection_method_targets('fn f(r Registry) { r.methods() }') == []
-	// even with a `$for` present, a lowercase receiver is an ordinary access, not a type reflection
+	// a runtime `.methods()` call inside a `$for` body is a call, not reflection
 	assert repro_reflection_method_targets('\$for i in 0 .. 3 { registry.methods() }') == []
+	// iterating a runtime `.methods()` result is a call, not reflection
+	assert repro_reflection_method_targets('\$for f in T.fields { for x in reg.methods() {} }') == []
+	// an ordinary member access after `:=` (not an `in` iterable) is not reflection
+	assert repro_reflection_method_targets('fn f() { \$for m in Foo.methods {} \n y := obj.methods }') == [
+		'Foo',
+	]
 	// no reflection at all
 	assert repro_reflection_method_targets('fn f() {}') == []
 }
