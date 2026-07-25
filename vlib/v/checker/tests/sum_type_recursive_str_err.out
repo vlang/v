@@ -26,3 +26,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:25:16: error: cannot call `st
       |                   ~~~~~
    26 | }
    27 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:31:14: error: cannot call `str()` method recursively
+   29 |
+   30 | fn (z Baz) str() string {
+   31 |     return (&z).str()
+      |                 ~~~~~
+   32 | }
+   33 |

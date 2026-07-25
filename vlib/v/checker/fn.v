@@ -3597,10 +3597,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		is_same_receiver := if left_expr is ast.Ident {
 			left_expr.name == receiver_name
 		} else if left_expr is ast.PrefixExpr {
-			if left_expr.op == .mul {
-				mut deref_expr := left_expr.right
-				deref_expr = deref_expr.remove_par()
-				deref_expr is ast.Ident && deref_expr.name == receiver_name
+			if left_expr.op in [.mul, .amp] {
+				mut inner_expr := left_expr.right
+				inner_expr = inner_expr.remove_par()
+				inner_expr is ast.Ident && inner_expr.name == receiver_name
 			} else {
 				false
 			}
