@@ -13,7 +13,21 @@ fn (v Val) str() string {
 	return (v).str()
 }
 
+struct Foo {}
+
+fn (f &Foo) str() string {
+	return (*f).str()
+}
+
+struct Bar {}
+
+fn (b &Bar) str() string {
+	return (*(b)).str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
+	println(Foo{})
+	println(Bar{})
 }

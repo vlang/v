@@ -12,3 +12,17 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:13:13: error: cannot call `st
       |                ~~~~~
    14 | }
    15 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:19:14: error: cannot call `str()` method recursively
+   17 |
+   18 | fn (f &Foo) str() string {
+   19 |     return (*f).str()
+      |                 ~~~~~
+   20 | }
+   21 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:25:16: error: cannot call `str()` method recursively
+   23 |
+   24 | fn (b &Bar) str() string {
+   25 |     return (*(b)).str()
+      |                   ~~~~~
+   26 | }
+   27 |
