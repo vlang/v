@@ -3591,13 +3591,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.need_recheck_generic_fns = true
 	}
 	if method_name == 'str' && c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
-		&& c.table.cur_fn.name == 'str' && !c.table.cur_fn.rec_mut
+		&& c.table.cur_fn.name == 'str'
 		&& left_type.idx() == c.table.cur_fn.receiver.typ.idx() {
 		receiver_name := c.table.cur_fn.receiver.name
+		receiver_typ := c.table.cur_fn.receiver.typ
 		mut inner := ast.Expr(left_expr)
 		for {
 			if inner is ast.PrefixExpr && inner.op in [.mul, .amp] {
 				inner = inner.right.remove_par()
+			} else if inner is ast.CastExpr && inner.typ.idx() == receiver_typ.idx() {
+				inner = inner.expr.remove_par()
 			} else {
 				break
 			}

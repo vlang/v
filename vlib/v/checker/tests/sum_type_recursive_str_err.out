@@ -40,3 +40,17 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:37:17: error: cannot call `st
       |                    ~~~~~
    38 | }
    39 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:43:18: error: cannot call `str()` method recursively
+   41 |
+   42 | fn (a Alias) str() string {
+   43 |     return Alias(a).str()
+      |                     ~~~~~
+   44 | }
+   45 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:52:11: error: cannot call `str()` method recursively
+   50 |
+   51 | fn (mut m MutSelf) str() string {
+   52 |     return m.str()
+      |              ~~~~~
+   53 | }
+   54 |

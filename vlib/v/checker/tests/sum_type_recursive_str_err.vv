@@ -37,6 +37,21 @@ fn (q Qux) str() string {
 	return (*(&q)).str()
 }
 
+type Alias = []int
+
+fn (a Alias) str() string {
+	return Alias(a).str()
+}
+
+struct MutSelf {
+mut:
+	x int
+}
+
+fn (mut m MutSelf) str() string {
+	return m.str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -44,4 +59,7 @@ fn main() {
 	println(Bar{})
 	println(Baz{})
 	println(Qux{})
+	println(Alias([1]))
+	mut ms := MutSelf{}
+	println(ms)
 }
