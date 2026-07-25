@@ -16,11 +16,11 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_strerror', '_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort', '_time', '_localtime_r',
 	'_gmtime_r', '_mktime', '_gettimeofday', '_clock', '_clock_gettime_nsec_np',
 	'_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep', '_usleep', '_strftime',
-	'_task_info', '_mach_task_self', '_mach_task_self_', '_rand', '_srand', '_isdigit', '_isspace',
-	'_tolower', '_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname', '_gethostname',
-	'_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock', '_pthread_mutex_unlock',
-	'_pthread_mutex_destroy', '_pthread_self', '_pthread_create', '_pthread_join',
-	'_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
+	'_task_info', '_mach_task_self', '_mach_task_self_', '_proc_pid_rusage', '_rand', '_srand',
+	'_isdigit', '_isspace', '_tolower', '_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname',
+	'_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock',
+	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
+	'_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
 	'_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy',
 	'_pthread_rwlock_init', '_pthread_rwlock_rdlock', '_pthread_rwlock_wrlock',
 	'_pthread_rwlock_tryrdlock', '_pthread_rwlock_trywrlock', '_pthread_rwlock_unlock',
@@ -54,6 +54,8 @@ mut:
 	a                  &flat.FlatAst      = unsafe { nil }
 	tc                 &types.TypeChecker = unsafe { nil }
 	used_fns           map[string]bool
+	used_fn_normalized map[string]bool
+	used_fn_suffixes   map[string]bool
 	cur_module         string
 	cur_func           int
 	cur_func_ret_type  string
@@ -154,6 +156,8 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		a:                  unsafe { a_ }
 		tc:                 unsafe { tc }
 		used_fns:           used_fns
+		used_fn_normalized: map[string]bool{}
+		used_fn_suffixes:   map[string]bool{}
 		vars:               map[string]ValueID{}
 		global_vars:        map[string]ValueID{}
 		var_type_names:     map[string]string{}
@@ -260,6 +264,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	for mname in opts.skip_modules {
 		b.skip_modules[mname] = true
 	}
+	b.prepare_used_fn_lookups()
 	b.m.name = b.main_module_name()
 	b.register_type_aliases()
 	b.register_types()
@@ -308,7 +313,7 @@ fn (mut b Builder) register_types() {
 				field_type_name := native_c_struct_field_type(node.value, f.value) or {
 					qualify_type_ref_name(f.typ, cur_module)
 				}
-				field_type := b.resolve_type_in_module(field_type_name, cur_module)
+				field_type := b.resolve_struct_storage_type(field_type_name, cur_module)
 				field_types << field_type
 				field_names << f.value
 				b.struct_field_types[node.value + '.' + f.value] = field_type_name
@@ -320,7 +325,10 @@ fn (mut b Builder) register_types() {
 			}
 			if abi := native_c_struct_abi(node.value) {
 				field_names = abi.field_names.clone()
-				field_types = abi.field_types.map(b.resolve_type(it))
+				field_types = []TypeID{cap: abi.field_types.len}
+				for field_type in abi.field_types {
+					field_types << b.resolve_struct_storage_type(field_type, cur_module)
+				}
 				for i, name in field_names {
 					b.struct_field_types[node.value + '.' + name] = abi.field_types[i]
 					b.struct_field_types[node.value.all_after('.') + '.' + name] = abi.field_types[i]
@@ -399,12 +407,51 @@ fn (mut b Builder) register_types() {
 	b.register_multi_return_types()
 }
 
+fn (mut b Builder) resolve_struct_storage_type(name string, module_name string) TypeID {
+	if b.is_fixed_array_type_name(name) {
+		elem_name := qualify_type_ref_name(b.fixed_array_elem_type_name(name), module_name)
+		elem_type := b.resolve_type_in_module(elem_name, module_name)
+		return b.m.type_store.get_array(elem_type, b.fixed_array_len_text(name).int())
+	}
+	return b.resolve_type_in_module(name, module_name)
+}
+
 struct NativeCStructAbi {
 	field_names []string
 	field_types []string
 }
 
 fn native_c_struct_abi(struct_name string) ?NativeCStructAbi {
+	if struct_name == 'C.pthread_mutex_t' {
+		return NativeCStructAbi{
+			field_names: ['opaque']
+			field_types: ['[8]u64']
+		}
+	}
+	if struct_name == 'C.pthread_rwlock_t' {
+		return NativeCStructAbi{
+			field_names: ['opaque']
+			field_types: ['[25]u64']
+		}
+	}
+	if struct_name == 'C.pthread_rwlockattr_t' {
+		return NativeCStructAbi{
+			field_names: ['opaque']
+			field_types: ['[3]u64']
+		}
+	}
+	if struct_name == 'C.pthread_cond_t' {
+		return NativeCStructAbi{
+			field_names: ['opaque']
+			field_types: ['[6]u64']
+		}
+	}
+	if struct_name == 'C.pthread_condattr_t' {
+		return NativeCStructAbi{
+			field_names: ['opaque']
+			field_types: ['[2]u64']
+		}
+	}
 	if struct_name == 'C.task_basic_info' {
 		// `task_info` writes the complete macOS mach_task_basic_info ABI value even
 		// though runtime.used_memory exposes only resident_size in its V declaration.
@@ -774,9 +821,12 @@ fn (mut b Builder) register_consts() {
 					continue
 				}
 				expr_id := b.a.child(&field, 0)
-				if cur_module.len > 0 && cur_module != 'main' {
+				if cur_module.len > 0 {
 					b.const_exprs['${cur_module}.${field.value}'] = expr_id
 				} else {
+					b.const_exprs['main.${field.value}'] = expr_id
+				}
+				if cur_module.len == 0 || cur_module == 'main' {
 					b.const_exprs[field.value] = expr_id
 				}
 			}
@@ -1138,6 +1188,7 @@ fn (mut b Builder) register_functions() {
 	b.register_atomic_builtin_stubs()
 	b.register_process_capture_stubs()
 	b.register_file_check_stubs()
+	b.register_modulecache_stubs()
 	b.register_fd_macro_stubs()
 	b.register_signal_macro_stubs()
 	b.register_os_stat_stubs()
@@ -3143,6 +3194,20 @@ fn (mut b Builder) register_file_check_stubs() {
 		func_id := b.register_synthetic_function(name, b.i64_type, p1)
 		b.generate_identity_i64_body(func_id)
 	}
+}
+
+// register_modulecache_stubs makes the C-only metadata helper fall back to content hashing
+// when V3 itself is compiled by the native backend.
+fn (mut b Builder) register_modulecache_stubs() {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_u64 := b.m.type_store.get_ptr(b.u64_type)
+	mut params := []TypeID{cap: 8}
+	params << ptr_i8
+	for _ in 0 .. 7 {
+		params << ptr_u64
+	}
+	func_id := b.register_synthetic_c_function('v3_modulecache_file_metadata', b.i64_type, params)
+	b.generate_const_i64_with_params_body(func_id, params, '0')
 }
 
 // generate_identity_i64_body supports generate identity i64 body handling for Builder.
@@ -5848,6 +5913,28 @@ fn (mut b Builder) checker_return_type(fn_name string, module_name string) ?Type
 	return none
 }
 
+fn (mut b Builder) prepare_used_fn_lookups() {
+	for used_name, _ in b.used_fns {
+		normalized := used_name.replace('__', '.')
+		b.used_fn_normalized[normalized] = true
+		b.add_used_fn_suffixes(used_name)
+		if normalized != used_name {
+			b.add_used_fn_suffixes(normalized)
+		}
+	}
+}
+
+fn (mut b Builder) add_used_fn_suffixes(name string) {
+	mut search_start := 0
+	for {
+		dot := name.index_after('.', search_start) or { break }
+		search_start = dot + 1
+		if search_start < name.len {
+			b.used_fn_suffixes[name[search_start..]] = true
+		}
+	}
+}
+
 // fn_is_used supports fn is used handling for Builder.
 fn (b &Builder) fn_is_used(name string) bool {
 	if name == 'main' {
@@ -5871,26 +5958,24 @@ fn (b &Builder) fn_is_used(name string) bool {
 	if name.contains('__') && name.replace('__', '.') in b.used_fns {
 		return true
 	}
-	if !name.contains('.') {
-		for used_name, _ in b.used_fns {
-			normalized_used := used_name.replace('__', '.')
-			if used_name.ends_with('.${name}') || normalized_used.ends_with('.${name}') {
-				return true
-			}
-		}
+	if !name.contains('.') && name in b.used_fn_suffixes {
+		return true
 	}
-	if name.contains('.') {
-		normalized_name := name.replace('__', '.')
-		used_short_name := normalized_name.all_after_last('.')
-		if used_short_name in b.used_fns {
+	normalized_name := name.replace('__', '.')
+	used_short_name := normalized_name.all_after_last('.')
+	if used_short_name in b.used_fns {
+		return true
+	}
+	if name in b.used_fn_suffixes {
+		return true
+	}
+	mut suffix_start := 0
+	for {
+		dot := normalized_name.index_after('.', suffix_start) or { break }
+		suffix_start = dot + 1
+		if suffix_start < normalized_name.len
+			&& normalized_name[suffix_start..] in b.used_fn_normalized {
 			return true
-		}
-		for used_name, _ in b.used_fns {
-			normalized_used := used_name.replace('__', '.')
-			if used_name.ends_with('.${name}') || normalized_used.ends_with('.${name}')
-				|| normalized_name.ends_with('.${normalized_used}') {
-				return true
-			}
 		}
 	}
 	if name.starts_with('array_') || name.starts_with('string__') || name.starts_with('strings__')
@@ -10975,6 +11060,11 @@ fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
 			elem_ptr := b.emit2(.add, b.m.type_store.get_ptr(b.i32_type), base, offset)
 			return b.emit1(.load, b.i32_type, elem_ptr)
 		}
+		if fixed_type := b.fixed_array_expr_type_name(base_id) {
+			index := b.build_expr(b.a.child(&node, 1))
+			elem_ptr, elem_type := b.build_fixed_array_index_addr(base_id, index, fixed_type)
+			return b.emit1(.load, elem_type, elem_ptr)
+		}
 	}
 	base := b.build_expr(base_id)
 	base_typ := b.value_type(base)
@@ -11114,6 +11204,11 @@ fn (mut b Builder) build_index_addr(id flat.NodeId, node flat.Node) ValueID {
 		offset := b.emit2(.mul, b.i64_type, index, elem_size)
 		return b.emit2(.add, b.m.type_store.get_ptr(b.i32_type), base, offset)
 	}
+	if fixed_type := b.fixed_array_expr_type_name(base_id) {
+		index := b.build_expr(b.a.child(&node, 1))
+		elem_ptr, _ := b.build_fixed_array_index_addr(base_id, index, fixed_type)
+		return elem_ptr
+	}
 	base := b.build_expr(base_id)
 	index := b.build_expr(b.a.child(&node, 1))
 	base_typ := b.value_type(base)
@@ -11144,6 +11239,38 @@ fn (mut b Builder) build_index_addr(id flat.NodeId, node flat.Node) ValueID {
 	elem_ptr := b.emit3(.call, ptr_i8, fn_ref, base, index)
 	elem_type := b.index_elem_type(id, node)
 	return b.emit1(.bitcast, b.m.type_store.get_ptr(elem_type), elem_ptr)
+}
+
+fn (b &Builder) fixed_array_expr_type_name(id flat.NodeId) ?string {
+	type_name := b.checked_expr_type_name(id)
+	if b.is_fixed_array_type_name(type_name) {
+		return type_name
+	}
+	return none
+}
+
+fn (mut b Builder) build_fixed_array_index_addr(base_id flat.NodeId, index ValueID, type_name string) (ValueID, TypeID) {
+	elem_type := b.resolve_type(b.fixed_array_elem_type_name(type_name))
+	elem_size := b.m.type_size(elem_type)
+	offset := if elem_size > 1 {
+		elem_size_const := b.m.get_or_add_const(b.i64_type, '${elem_size}')
+		b.emit2(.mul, b.i64_type, index, elem_size_const)
+	} else {
+		index
+	}
+	base_addr := b.build_lvalue_addr(base_id)
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	raw_base := if b.value_type(base_addr) == ptr_i8 {
+		base_addr
+	} else {
+		b.emit1(.bitcast, ptr_i8, base_addr)
+	}
+	raw_elem := b.emit2(.add, ptr_i8, raw_base, offset)
+	ptr_elem := b.m.type_store.get_ptr(elem_type)
+	if ptr_elem == ptr_i8 {
+		return raw_elem, elem_type
+	}
+	return b.emit1(.bitcast, ptr_elem, raw_elem), elem_type
 }
 
 fn (mut b Builder) build_array_data_index_addr(array_ptr ValueID, index ValueID, elem_type TypeID) ValueID {

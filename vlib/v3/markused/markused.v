@@ -1889,8 +1889,10 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 	if needs_channel_helpers {
 		for helper in ['sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
-			'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st',
-			'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed'] {
+			'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed',
+			'sync.Channel.try_push_priv', 'sync.Channel.closed_error', 'new_channel_st',
+			'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed',
+			'Channel.try_push_priv', 'Channel.closed_error'] {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
@@ -2866,6 +2868,12 @@ fn (c &CallCollector) node_tree_uses_generics(root flat.NodeId, cur_module strin
 fn (c &CallCollector) node_uses_generics(node &flat.Node, cur_module string, imports map[string]string) bool {
 	if c.type_text_uses_generics(node.typ, cur_module, imports) {
 		return true
+	}
+	if node.kind == .string_literal && node.children_count == 1
+		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
+		target := c.a.child_node(node, 0)
+		return c.type_text_uses_generics(target.value, cur_module, imports)
+			|| c.type_text_uses_generics(target.typ, cur_module, imports)
 	}
 	if node.kind !in [.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
 		.is_expr] {

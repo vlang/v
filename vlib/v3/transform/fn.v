@@ -868,6 +868,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		return addr
 	}
 	call_name := t.call_name_for_node(id, node)
+	if call_name == 'json.encode' {
+		return t.transform_cgen_json_encode_call(id, node)
+	}
 	mut params := t.call_param_types_for_node(call_name, node)
 	mut param_type_names := t.call_param_type_names(params)
 	if concrete_params := t.concrete_generic_call_param_types(id, node) {
@@ -1081,6 +1084,30 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			args:     cached_args
 		}
 	}
+	return new_id
+}
+
+fn (mut t Transformer) transform_cgen_json_encode_call(id flat.NodeId, node flat.Node) flat.NodeId {
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	saved_in_call_callee := t.in_call_callee
+	t.in_call_callee = true
+	children << t.transform_expr(t.a.child(&node, 0))
+	t.in_call_callee = saved_in_call_callee
+	for i in 1 .. node.children_count {
+		children << t.transform_expr(t.a.child(&node, i))
+	}
+	start := t.a.children.len
+	t.a.children << children
+	new_id := t.a.add_node(flat.Node{
+		kind:           .call
+		op:             node.op
+		children_start: start
+		children_count: flat.child_count(children.len)
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+	})
+	t.copy_cloned_resolution(id, new_id)
 	return new_id
 }
 
@@ -2148,8 +2175,19 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 	if t.normalize_type_alias(actual_base) != t.normalize_type_alias(expected_base) {
 		return none
 	}
+	arg_node := t.a.nodes[int(arg_id)]
+	if expected_depth == actual_depth + 1 && arg_node.kind == .ident
+		&& t.pointer_value_rvalues[arg_node.value] {
+		storage_type := t.var_type(arg_node.value)
+		if storage_type == param_type {
+			value := t.transform_expr_preserving_pointer_value(arg_id)
+			t.set_node_typ(int(value), storage_type)
+			return value
+		}
+	}
 	mut current := t.transform_expr(arg_id)
 	mut force_materialize := t.expr_is_overloaded_index_result(arg_id)
+		|| t.raw_const_type_name_for_expr(arg_id) != none
 	mut current_type := arg_type
 	mut current_depth := actual_depth
 	for current_depth < expected_depth {
@@ -2356,7 +2394,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 			&& clean_arg_type !in ['voidptr', 'byteptr', 'charptr', 'nil'] {
 			value := t.transform_expr(arg_id)
 			mut addr := flat.empty_node
-			if t.expr_can_take_address(value) {
+			if t.raw_const_type_name_for_expr(arg_id) == none && t.expr_can_take_address(value) {
 				addr = t.make_prefix(.amp, value)
 			} else {
 				tmp_name := t.new_temp('voidptr_arg')
@@ -2468,9 +2506,19 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		&& !t.is_interface_type(param_type) {
 		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
 			arg_type := t.node_type(arg_id)
+			if arg_type == param_type {
+				value := t.transform_expr_preserving_pointer_value(arg_id)
+				t.set_node_typ(int(value), param_type)
+				return value
+			}
 			if arg_type.starts_with('&')
 				&& t.normalize_type_alias(arg_type[1..]) == t.normalize_type_alias(param_type) {
 				value := t.transform_expr_preserving_pointer_value(arg_id)
+				storage_type := t.var_type(arg_node.value)
+				if storage_type == param_type {
+					t.set_node_typ(int(value), storage_type)
+					return value
+				}
 				deref := t.make_prefix(.mul, value)
 				t.set_node_typ(int(deref), param_type)
 				return deref
@@ -3871,6 +3919,11 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 // `${enum}` stringification when the user has not defined a custom `.str()` — V auto-derives
 // one. Mirrors the struct-str qualification so the C name matches cgen's enum_decls naming.
 fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.NodeId {
+	qualified := t.enum_autostr_type_name(typ)
+	return t.make_call_typed('${c_name(qualified)}__autostr', arr1(expr), 'string')
+}
+
+fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	mut qualified := typ
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]
@@ -3881,7 +3934,16 @@ fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.Node
 			qualified = q
 		}
 	}
-	return t.make_call_typed('${c_name(qualified)}__autostr', arr1(expr), 'string')
+	short_name := qualified.all_after_last('.')
+	if qualified !in t.enum_types && short_name in t.enum_types {
+		return short_name
+	}
+	if !isnil(t.tc) && qualified !in t.tc.enum_names {
+		if short_name in t.tc.enum_names {
+			return short_name
+		}
+	}
+	return qualified
 }
 
 // wrap_string_conversion transforms wrap string conversion data for transform.
@@ -4118,6 +4180,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 					t.mark_fn_used_name(str_fn)
 					return t.make_call_typed(str_fn, arr1(expr), 'string')
 				}
+				if t.building_v && t.auto_str_synthesis_type != qualified {
+					return t.request_auto_str_helper(expr, qualified)
+				}
 				if qualified in t.sum_types {
 					return t.lower_sum_str(expr, qualified)
 				}
@@ -4259,9 +4324,9 @@ fn (mut t Transformer) lower_ref_interface_str(expr flat.NodeId, iface_name stri
 }
 
 // lower_ref_str stringifies a `&Struct`/`&SumType` pointer with the same semantics V uses
-// for `.str()` and for map/array elements: when the pointee type defines a custom `str()`,
-// call it (no `&` prefix); otherwise emit `&nil` for a null pointer and `&` + the value's
-// auto str for a live one. `aggregate` is the resolved (non-reference) struct/sum type name.
+// for top-level pointer interpolation: emit `&nil` for a null pointer or `&` plus the
+// pointee's custom/automatic string for a live one. Container elements and struct fields
+// use lower_ref_value_str, which intentionally omits the top-level prefix.
 fn (mut t Transformer) lower_ref_str(expr flat.NodeId, aggregate string) flat.NodeId {
 	if str_fn := t.aggregate_str_method_name(aggregate) {
 		t.mark_fn_used_name(str_fn)
@@ -4297,6 +4362,156 @@ fn (t &Transformer) aggregate_str_method_name(aggregate string) ?string {
 		return v_name_fn
 	}
 	return none
+}
+
+fn auto_str_helper_name(aggregate string) string {
+	return '__v3_autostr_${c_name(aggregate)}'
+}
+
+fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate string) flat.NodeId {
+	helper := auto_str_helper_name(aggregate)
+	if aggregate !in t.auto_str_types {
+		helper_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+		t.auto_str_types[aggregate] = AutoStrRequest{
+			module:        t.cur_module
+			file:          t.cur_file
+			helper_module: helper_module
+		}
+	}
+	t.mark_fn_used_name(helper)
+	return t.make_call_typed(helper, arr1(expr), 'string')
+}
+
+fn (t &Transformer) has_pending_auto_str_helpers() bool {
+	for name, _ in t.auto_str_types {
+		if !t.auto_str_synthesized[name] && auto_str_helper_name(name) !in t.fn_ret_types {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) synthesize_auto_str_helpers() []string {
+	old_module := t.cur_module
+	old_file := t.cur_file
+	old_helper_module := t.auto_str_helper_module
+	old_synthesis_type := t.auto_str_synthesis_type
+	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
+	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	was_log_active := t.used_fns_log_active
+	log_start := t.used_fns_log.len
+	t.used_fns_log_active = true
+	for {
+		mut pending := []string{}
+		for name, _ in t.auto_str_types {
+			if name in t.auto_str_synthesized {
+				continue
+			}
+			if auto_str_helper_name(name) in t.fn_ret_types {
+				t.auto_str_synthesized[name] = true
+				continue
+			}
+			pending << name
+		}
+		if pending.len == 0 {
+			break
+		}
+		pending.sort()
+		for name in pending {
+			t.auto_str_synthesized[name] = true
+			req := t.auto_str_types[name] or { AutoStrRequest{} }
+			t.cur_module = req.module
+			t.cur_file = req.file
+			t.auto_str_helper_module = if req.helper_module.len > 0 {
+				req.helper_module
+			} else {
+				'main'
+			}
+			t.auto_str_synthesis_type = name
+			if !isnil(t.tc) {
+				t.tc.cur_module = req.module
+				t.tc.cur_file = req.file
+			}
+			t.build_auto_str_helper_fn(name)
+		}
+	}
+	mut new_names := []string{}
+	mut seen := map[string]bool{}
+	for i in log_start .. t.used_fns_log.len {
+		name := t.used_fns_log[i]
+		if name.len > 0 && !seen[name] {
+			seen[name] = true
+			new_names << name
+		}
+	}
+	if !was_log_active {
+		t.used_fns_log_active = false
+		t.used_fns_log = t.used_fns_log[..log_start].clone()
+	}
+	t.cur_module = old_module
+	t.cur_file = old_file
+	t.auto_str_helper_module = old_helper_module
+	t.auto_str_synthesis_type = old_synthesis_type
+	if !isnil(t.tc) {
+		t.tc.cur_module = old_tc_module
+		t.tc.cur_file = old_tc_file
+	}
+	return new_names
+}
+
+fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
+	helper := auto_str_helper_name(aggregate)
+	saved_pending := t.pending_stmts
+	saved_vars := t.var_types.clone()
+	saved_fn_name := t.cur_fn_name
+	saved_ret_type := t.cur_fn_ret_type
+	t.pending_stmts = []flat.NodeId{}
+	t.reset_var_types()
+	t.cur_fn_name = helper
+	t.cur_fn_ret_type = 'string'
+	param_name := '__auto_str_value'
+	param := t.a.add_node(flat.Node{
+		kind:  .param
+		value: param_name
+		typ:   aggregate
+	})
+	t.set_var_type(param_name, aggregate)
+	value := t.make_ident(param_name)
+	t.set_node_typ(int(value), aggregate)
+	result := if aggregate in t.sum_types {
+		t.lower_sum_str(value, aggregate)
+	} else {
+		t.lower_struct_str(value, aggregate) or {
+			t.make_string_literal('${struct_string_display_name(aggregate)}{}')
+		}
+	}
+	mut stmts := t.pending_stmts.clone()
+	stmts << t.make_return(result, 'string')
+	t.pending_stmts = saved_pending
+	t.restore_var_types(saved_vars)
+	t.cur_fn_name = saved_fn_name
+	t.cur_fn_ret_type = saved_ret_type
+	t.a.add_node(flat.Node{
+		kind:  .module_decl
+		value: if t.auto_str_helper_module.len > 0 { t.auto_str_helper_module } else { 'main' }
+	})
+	start := t.a.children.len
+	t.a.children << param
+	t.a.children << stmts
+	t.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          helper
+		typ:            'string'
+		children_start: i32(start)
+		children_count: flat.child_count(1 + stmts.len)
+	})
+	t.fn_ret_types[helper] = 'string'
+	t.mark_fn_used_name(helper)
+	if !isnil(t.tc) {
+		t.tc.fn_ret_types[helper] = t.tc.parse_type('string')
+		t.tc.fn_param_types[helper] = [t.tc.parse_type(aggregate)]
+		t.tc.fn_variadic[helper] = false
+	}
 }
 
 fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string) flat.NodeId {
@@ -4747,7 +4962,6 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	if info.fields.len == 0 {
 		return t.make_string_literal('${struct_string_display_name(struct_type)}{}')
 	}
-	is_union := !isnil(t.tc) && (struct_type in t.tc.unions || info.name in t.tc.unions)
 	base := t.stable_transformed_expr_for_reuse(expr, struct_type, 'struct_str')
 	display := struct_string_display_name(struct_type)
 	mut result := t.make_string_literal('${display}{\n')
@@ -4761,7 +4975,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 			t.make_string_literal('${struct_string_display_name(field_type)}{}')
 		} else {
 			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type,
-				field_type, is_union)
+				field_type)
 		}
 		if raw_field_type == 'string' || raw_field_type == 'builtin.string' {
 			field_str = t.string_plus(t.string_plus(t.make_string_literal("'"), field_str),
@@ -4862,7 +5076,7 @@ fn struct_string_display_name(typ string) string {
 // Unlike top-level stringification, V wraps an alias-typed field as `AliasName(value)` even
 // when the alias base is primitive (`d: Duration(42)`), unless the alias defines its own
 // str() method, which is used bare.
-fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string, owner_is_union bool) flat.NodeId {
+fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string) flat.NodeId {
 	mut clean := raw_field_type.trim_space()
 	if clean.starts_with('&') {
 		return t.lower_ref_value_str(expr, field_type, '&nil')
@@ -10314,13 +10528,13 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
-	if t.is_integer_type_name(actual) && t.is_integer_type_name(expected) {
-		return true
-	}
 	if t.is_integer_type_name(expected) {
 		if literal := t.specialized_int_literal(arg_id) {
 			return specialized_int_literal_fits_type(literal, expected)
 		}
+	}
+	if t.is_integer_type_name(actual) && t.is_integer_type_name(expected) {
+		return true
 	}
 	if actual == expected {
 		return true
@@ -11414,6 +11628,12 @@ fn (t &Transformer) receiver_type_text_source_fixed_spelling(type_text string) s
 	clean := type_text.trim_space()
 	if clean.len == 0 || clean.starts_with('[') || !t.is_fixed_array_type(clean) {
 		return clean
+	}
+	if !isnil(t.tc) {
+		parsed := t.tc.parse_type(clean)
+		if parsed is types.ArrayFixed {
+			return types.Type(parsed).name()
+		}
 	}
 	elem, dims := transform_postfix_fixed_array_parts(clean)
 	if elem.len == 0 || dims.len == 0 {

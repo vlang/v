@@ -140,13 +140,13 @@ fn main() {
 	assert generated.contains('(struct native_event*, void*)'), generated
 	assert generated.contains('erased_event_callback_adapter_'), generated
 	assert generated.contains('concrete_event_callback_adapter_'), generated
-	assert generated.contains('const struct native_event* arg0, void* arg1'), generated
+	assert generated.contains('const native_event* arg0, void* arg1'), generated
 	assert generated.contains('erased_event((void*)arg0, arg1);'), generated
-	assert generated.contains('concrete_event((struct native_event*)arg0, arg1);'), generated
+	assert generated.contains('concrete_event((native_event*)arg0, arg1);'), generated
 	assert generated.contains('.cb = erased_event_callback_adapter_'), generated
 	assert generated.contains('desc.cb = erased_event_callback_adapter_'), generated
 	assert generated.contains('concrete.cb = concrete_event_callback_adapter_'), generated
-	assert generated.contains('alias_desc.cb = concrete_event_callback_adapter_'), generated
+	assert generated.contains('alias_desc__local.cb = concrete_event_callback_adapter_'), generated
 	assert generated.contains('.plain = plain_event'), generated
 	assert !generated.contains('.cb = (_fn_ptr'), generated
 	assert !generated.contains('desc.cb = (_fn_ptr'), generated
@@ -266,8 +266,8 @@ fn main() {
 	generated := os.read_file(out + '.c') or { panic(err) }
 	assert generated.contains('(const struct native_event*, void*)'), generated
 	assert generated.contains('late_alias_event_callback_adapter_'), generated
-	assert generated.contains('const struct native_event* arg0, void* arg1'), generated
-	assert generated.contains('late_alias_event((struct native_event*)arg0, arg1);'), generated
+	assert generated.contains('const native_event* arg0, void* arg1'), generated
+	assert generated.contains('late_alias_event((native_event*)arg0, arg1);'), generated
 	assert generated.contains('.cb = late_alias_event_callback_adapter_'), generated
 	assert generated.contains('desc.cb = late_alias_event_callback_adapter_'), generated
 	assert !generated.contains('main__Event*'), generated
@@ -336,8 +336,8 @@ fn main() {
 	assert run.output.trim_space() == '7'
 	generated := os.read_file(out + '.c') or { panic(err) }
 	assert generated.contains('concrete_event_callback_adapter_'), generated
-	assert generated.contains('const struct native_event* arg0, void* arg1'), generated
-	assert generated.contains('concrete_event((struct native_event*)arg0, arg1);'), generated
+	assert generated.contains('const native_event* arg0, void* arg1'), generated
+	assert generated.contains('concrete_event((native_event*)arg0, arg1);'), generated
 	assert generated.contains('desc.cb = concrete_event_callback_adapter_'), generated
 	assert !generated.contains('const gg__Event'), generated
 	assert !generated.contains('desc.cb = concrete_event;'), generated

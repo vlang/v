@@ -696,6 +696,260 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	}
 }
 
+fn ownership_drop_expansion_key(typ types.Type) string {
+	return match typ {
+		types.Struct { 'struct:${typ.name}' }
+		types.Interface { 'interface:${typ.name}' }
+		types.SumType { 'sum:${typ.name}' }
+		else { '' }
+	}
+}
+
+fn (g &FlatGen) ownership_recursive_drop_helper_name(type_name string) string {
+	return '__v3_ownership_drop_${g.cname(type_name)}'
+}
+
+fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
+	g.recursive_drop_helpers.clear()
+	$if !ownership ? {
+		return
+	}
+	mut drop_struct_names := map[string]bool{}
+	for type_name in g.tc.ownership_drop_value_type_names() {
+		mut seen := map[string]bool{}
+		g.ownership_collect_drop_struct_names(g.tc.parse_type(type_name), 0, mut drop_struct_names, mut
+			seen)
+	}
+	mut struct_names := drop_struct_names.keys()
+	struct_names.sort()
+	for name in struct_names {
+		if name.starts_with('C.') || name in g.tc.unions || g.is_generic_struct(name)
+			|| g.skip_builtin_struct(name) || g.resolve_method_name(name, 'drop').len > 0 {
+			continue
+		}
+		target_key := ownership_drop_expansion_key(types.Type(types.Struct{
+			name: name
+		}))
+		mut seen := map[string]bool{}
+		for field in g.tc.struct_fields_for_type(name) {
+			if g.ownership_drop_type_reaches_recursive_struct(field.typ, target_key, false, 0, mut
+				seen)
+			{
+				g.recursive_drop_helpers[target_key] = name
+				break
+			}
+		}
+	}
+}
+
+fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, mut names map[string]bool, mut seen map[string]bool) {
+	if depth > 64 {
+		return
+	}
+	state_key := typ.name()
+	if seen[state_key] {
+		return
+	}
+	seen[state_key] = true
+	defer {
+		seen.delete(state_key)
+	}
+	match typ {
+		types.Alias {
+			g.ownership_collect_drop_struct_names(typ.base_type, depth + 1, mut names, mut seen)
+		}
+		types.OptionType {
+			g.ownership_collect_drop_struct_names(typ.base_type, depth + 1, mut names, mut seen)
+		}
+		types.ResultType {
+			g.ownership_collect_drop_struct_names(typ.base_type, depth + 1, mut names, mut seen)
+		}
+		types.Array {
+			g.ownership_collect_drop_struct_names(typ.elem_type, depth + 1, mut names, mut seen)
+		}
+		types.ArrayFixed {
+			g.ownership_collect_drop_struct_names(typ.elem_type, depth + 1, mut names, mut seen)
+		}
+		types.Map {
+			g.ownership_collect_drop_struct_names(typ.key_type, depth + 1, mut names, mut seen)
+			g.ownership_collect_drop_struct_names(typ.value_type, depth + 1, mut names, mut seen)
+		}
+		types.Struct {
+			if g.resolve_method_name(typ.name, 'drop').len > 0 {
+				return
+			}
+			names[typ.name] = true
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				g.ownership_collect_drop_struct_names(field.typ, depth + 1, mut names, mut seen)
+			}
+		}
+		types.Interface {
+			mut iface_name := typ.name
+			if iface_name !in g.iface_impls {
+				qualified := g.tc.qualify_name(iface_name)
+				if qualified in g.iface_impls {
+					iface_name = qualified
+				}
+			}
+			for concrete in g.iface_impls[iface_name] or { []string{} } {
+				g.ownership_collect_drop_struct_names(g.tc.parse_type(concrete), depth + 1, mut
+					names, mut seen)
+			}
+		}
+		types.SumType {
+			sum_name := g.resolve_sum_name(typ.name)
+			for variant in g.tc.sum_types[sum_name] or { []string{} } {
+				resolved_variant := g.resolve_variant(sum_name, variant)
+				variant_type := select_receive_unalias_type(g.tc.parse_type(resolved_variant))
+				if variant_type is types.Pointer {
+					g.ownership_collect_drop_struct_names(variant_type.base_type, depth + 1, mut
+						names, mut seen)
+				} else {
+					g.ownership_collect_drop_struct_names(variant_type, depth + 1, mut names, mut
+						seen)
+				}
+			}
+		}
+		else {}
+	}
+}
+
+fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ types.Type, target_key string, crossed_dynamic_boundary bool, depth int, mut seen map[string]bool) bool {
+	if depth > 64 {
+		return false
+	}
+	expansion_key := ownership_drop_expansion_key(typ)
+	if crossed_dynamic_boundary && expansion_key == target_key {
+		return true
+	}
+	dynamic_key := if crossed_dynamic_boundary { '1' } else { '0' }
+	state_key := '${typ.name()}\x01${dynamic_key}'
+	if seen[state_key] {
+		return false
+	}
+	seen[state_key] = true
+	defer {
+		seen.delete(state_key)
+	}
+	match typ {
+		types.Alias {
+			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type, target_key,
+				crossed_dynamic_boundary, depth + 1, mut seen)
+		}
+		types.OptionType {
+			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type, target_key,
+				crossed_dynamic_boundary, depth + 1, mut seen)
+		}
+		types.ResultType {
+			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type, target_key,
+				crossed_dynamic_boundary, depth + 1, mut seen)
+		}
+		types.Array {
+			return g.ownership_drop_type_reaches_recursive_struct(typ.elem_type, target_key, true,
+
+				depth + 1, mut seen)
+		}
+		types.ArrayFixed {
+			return g.ownership_drop_type_reaches_recursive_struct(typ.elem_type, target_key,
+				crossed_dynamic_boundary, depth + 1, mut seen)
+		}
+		types.Map {
+			return
+				g.ownership_drop_type_reaches_recursive_struct(typ.key_type, target_key, true, depth + 1, mut seen)
+				|| g.ownership_drop_type_reaches_recursive_struct(typ.value_type, target_key, true, depth + 1, mut seen)
+		}
+		types.Struct {
+			if g.resolve_method_name(typ.name, 'drop').len > 0 {
+				return false
+			}
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				if g.ownership_drop_type_reaches_recursive_struct(field.typ, target_key,
+					crossed_dynamic_boundary, depth + 1, mut seen)
+				{
+					return true
+				}
+			}
+		}
+		types.Interface {
+			mut iface_name := typ.name
+			if iface_name !in g.iface_impls {
+				qualified := g.tc.qualify_name(iface_name)
+				if qualified in g.iface_impls {
+					iface_name = qualified
+				}
+			}
+			for concrete in g.iface_impls[iface_name] or { []string{} } {
+				if g.ownership_drop_type_reaches_recursive_struct(g.tc.parse_type(concrete),
+					target_key, true, depth + 1, mut seen)
+				{
+					return true
+				}
+			}
+		}
+		types.SumType {
+			sum_name := g.resolve_sum_name(typ.name)
+			for variant in g.tc.sum_types[sum_name] or { []string{} } {
+				resolved_variant := g.resolve_variant(sum_name, variant)
+				variant_type := select_receive_unalias_type(g.tc.parse_type(resolved_variant))
+				if variant_type is types.Pointer {
+					if g.ownership_drop_type_reaches_recursive_struct(variant_type.base_type,
+						target_key, true, depth + 1, mut seen)
+					{
+						return true
+					}
+				} else if g.ownership_drop_type_reaches_recursive_struct(variant_type, target_key,
+					true, depth + 1, mut seen)
+				{
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
+	if g.recursive_drop_helpers.len == 0 {
+		return
+	}
+	mut keys := g.recursive_drop_helpers.keys()
+	keys.sort()
+	for key in keys {
+		type_name := g.recursive_drop_helpers[key]
+		helper_name := g.ownership_recursive_drop_helper_name(type_name)
+		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value);')
+	}
+	g.writeln('')
+}
+
+fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
+	if g.recursive_drop_helpers.len == 0 {
+		return
+	}
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	mut keys := g.recursive_drop_helpers.keys()
+	keys.sort()
+	for key in keys {
+		type_name := g.recursive_drop_helpers[key]
+		g.tc.cur_module = g.tc.struct_modules[type_name] or { old_module }
+		g.tc.cur_file = g.tc.struct_files[type_name] or { old_file }
+		helper_name := g.ownership_recursive_drop_helper_name(type_name)
+		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value) {')
+		g.indent++
+		mut expanding := map[string]bool{}
+		g.gen_ownership_drop_value_inner(types.Type(types.Struct{
+			name: type_name
+		}), '*_value', 0, mut expanding)
+		g.indent--
+		g.writeln('}')
+		g.writeln('')
+	}
+	g.tc.cur_module = old_module
+	g.tc.cur_file = old_file
+}
+
 fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
 	mut expanding := map[string]bool{}
 	g.gen_ownership_drop_value_inner(typ, expr, depth, mut expanding)
@@ -705,14 +959,15 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 	if depth > 64 || expr.len == 0 {
 		return
 	}
-	expansion_key := match typ {
-		types.Struct { 'struct:${typ.name}' }
-		types.Interface { 'interface:${typ.name}' }
-		types.SumType { 'sum:${typ.name}' }
-		else { '' }
-	}
+	expansion_key := ownership_drop_expansion_key(typ)
 	if expansion_key.len > 0 {
 		if expanding[expansion_key] {
+			if typ is types.Struct {
+				if type_name := g.recursive_drop_helpers[expansion_key] {
+					helper_name := g.ownership_recursive_drop_helper_name(type_name)
+					g.writeln('${helper_name}(&(${expr}));')
+				}
+			}
 			return
 		}
 		expanding[expansion_key] = true
@@ -4504,7 +4759,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 			}
 			if rhs.kind == .struct_init {
-				init_name := g.struct_init_effective_type_name(rhs)
+				init_name := g.struct_init_effective_type_name(rhs_id, rhs)
 				if init_name.starts_with('&') {
 					pointer_init_type := g.tc.parse_resolution_type(init_name)
 					if pointer_init_type is types.Pointer {
@@ -4515,6 +4770,11 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					if channel_type is types.Channel {
 						v_type = channel_type
 					}
+				} else {
+					resolved_init_type := g.tc.parse_resolution_type(init_name)
+					if resolved_init_type is types.Struct {
+						v_type = resolved_init_type
+					}
 				}
 			}
 			// A bare struct literal always creates a value. Pointer context can leak back
@@ -4522,7 +4782,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			// that contextual pointer here would declare `local` as `T*` but initialize it
 			// with a `T` compound literal.
 			if rhs.kind == .struct_init && v_type is types.Pointer
-				&& !g.struct_init_effective_type_name(rhs).starts_with('&') {
+				&& !g.struct_init_effective_type_name(rhs_id, rhs).starts_with('&') {
 				v_type = types.unwrap_all_pointers(v_type)
 			}
 			if rhs.kind == .lock_expr && v_type !is types.MultiReturn {
@@ -4587,7 +4847,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			v_type = g.optional_source_type_for_expr(rhs_id, v_type)
 			v_type = g.preserve_specialized_alias_decl_type(rhs_id, rhs, v_type)
 			if rhs.kind == .struct_init && v_type is types.Pointer
-				&& !g.struct_init_effective_type_name(rhs).starts_with('&') {
+				&& !g.struct_init_effective_type_name(rhs_id, rhs).starts_with('&') {
 				v_type = types.unwrap_all_pointers(v_type)
 			}
 			if fixed := array_fixed_type(v_type) {
@@ -4606,7 +4866,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			semantic_v_type := cgen_unalias_type(v_type)
 			ct0 := if rhs.kind == .struct_init
-				&& g.struct_init_effective_type_name(rhs).starts_with('chan ') {
+				&& g.struct_init_effective_type_name(rhs_id, rhs).starts_with('chan ') {
 				'chan'
 			} else if semantic_v_type is types.MultiReturn {
 				g.value_c_type(v_type)
@@ -4618,7 +4878,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else if v_type is types.SumType {
 				g.tc.c_type(v_type)
 			} else if rhs.kind == .struct_init {
-				g.struct_init_decl_c_type(rhs, v_type)
+				g.struct_init_decl_c_type(rhs_id, rhs, v_type)
 			} else if semantic_v_type is types.Enum {
 				g.value_c_type(v_type)
 			} else {
@@ -5007,8 +5267,8 @@ fn (g &FlatGen) struct_init_decl_type_is_bare_generic_instance(rhs flat.Node, v_
 	return rhs.value.all_after_last('.') == type_name.all_before('[').all_after_last('.')
 }
 
-fn (mut g FlatGen) struct_init_decl_c_type(rhs flat.Node, v_type types.Type) string {
-	if g.struct_init_effective_type_name(rhs).starts_with('&') && v_type is types.Pointer {
+fn (mut g FlatGen) struct_init_decl_c_type(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type) string {
+	if g.struct_init_effective_type_name(rhs_id, rhs).starts_with('&') && v_type is types.Pointer {
 		return g.value_c_type(v_type)
 	}
 	clean := default_init_unalias_type(types.unwrap_all_pointers(v_type))
@@ -5869,20 +6129,35 @@ fn (mut g FlatGen) decl_lhs_str(id flat.NodeId) string {
 }
 
 fn (g &FlatGen) local_cname(name string) string {
-	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name) {
+	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name)
+		|| g.local_name_shadows_c_typedef(name) {
 		return '${g.cname(name)}__local'
 	}
 	return g.cname(name)
 }
 
 fn (g &FlatGen) local_decl_cname(name string) string {
-	if local_name_shadows_c_runtime(name) {
+	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name) {
 		return '${g.cname(name)}__local'
 	}
-	if _ := g.global_type_for_ident(name) {
+	if g.local_name_needs_global_suffix(name) {
 		return '${g.cname(name)}__local'
 	}
 	return g.cname(name)
+}
+
+fn (g &FlatGen) local_name_needs_global_suffix(name string) bool {
+	if _ := g.global_type_for_ident(name) {
+		module_name := g.global_modules[name] or { g.tc.cur_module }
+		return module_name.len == 0 || module_name in ['main', 'builtin']
+	}
+	return false
+}
+
+fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
+	cname := g.cname(name)
+	return cname in g.inlined_c_typedef_names || cname in g.tc.c_typedef_structs
+		|| 'C.${cname}' in g.tc.c_typedef_structs
 }
 
 fn local_name_shadows_c_runtime(name string) bool {
@@ -5907,7 +6182,7 @@ fn (mut g FlatGen) track_shadowed_global_local(name string, owner types.ScopeBin
 	if name.len == 0 || name == '_' {
 		return
 	}
-	if _ := g.global_type_for_ident(name) {
+	if g.local_name_needs_global_suffix(name) {
 		key := owner.storage_key()
 		if key.len > 0 {
 			g.shadowed_global_locals[key] = true

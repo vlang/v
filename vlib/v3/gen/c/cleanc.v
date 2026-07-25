@@ -152,6 +152,7 @@ mut:
 	ierror_method_emit_names       map[string]bool   // names/lowered names of concrete IError msg/code methods
 	ierror_stack_pointer_aliases   []map[string]bool // scoped local pointer aliases to stack subobjects
 	ierror_owned_pointer_by_owner  map[string]bool   // exact scope binding owner -> local owns its pointer allocation
+	recursive_drop_helpers         map[string]string // expansion key -> concrete struct type name
 	local_pointer_storage_by_owner map[string]bool   // exact scope binding owner -> C storage is already a pointer
 	local_c_type_by_owner          map[string]string // exact scope binding owner -> emitted C declaration type
 	local_mutable_by_owner         map[string]bool
@@ -705,6 +706,7 @@ pub fn FlatGen.new() FlatGen {
 		ierror_method_emit_names:       map[string]bool{}
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		ierror_owned_pointer_by_owner:  map[string]bool{}
+		recursive_drop_helpers:         map[string]string{}
 		local_pointer_storage_by_owner: map[string]bool{}
 		local_c_type_by_owner:          map[string]string{}
 		local_mutable_by_owner:         map[string]bool{}
@@ -1597,6 +1599,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ierror_method_emit_names.clear()
 	g.ierror_stack_pointer_aliases = []map[string]bool{}
 	g.ierror_owned_pointer_by_owner.clear()
+	g.recursive_drop_helpers.clear()
 	g.local_pointer_storage_by_owner.clear()
 	g.local_c_type_by_owner.clear()
 	g.local_mutable_by_owner.clear()
@@ -1716,6 +1719,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info()
+	g.preintern_json_encode_strings()
 	if g.incremental_fn_names.len > 0 {
 		// Cached declarations already contain whole-program typedefs, wrappers,
 		// interface tables and shared-parameter metadata. A body-only update only
@@ -1771,6 +1775,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.preseed_fn_signature_fn_ptr_types()
 		g.preseed_c_extern_fn_ptr_types()
 	}
+	g.precompute_ownership_recursive_drop_helpers()
 	defer_parallel_support := g.scope_parallel_workers && !no_parallel && !g.program_body_only
 		&& g.incremental_fn_names.len == 0
 	mut const_code := if g.program_body_only || defer_parallel_support {
@@ -1813,6 +1818,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.fixed_array_typedefs()
 			g.optional_typedefs()
 			g.forward_decls()
+		}
+		g.gen_ownership_recursive_drop_helpers()
+		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_END */')
 		}
 		g.release_scoped_fn_items()
@@ -1888,6 +1896,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	} else {
 		g.forward_decls()
 	}
+	g.gen_ownership_recursive_drop_helpers()
 	g.release_scoped_fn_items()
 	g.cached_header_forward_decls()
 	g.interface_method_forward_decls()
@@ -1986,6 +1995,7 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
+	g.gen_ownership_recursive_drop_helper_forward_decls()
 }
 
 // write_type_declaration_block writes the precomputed parallel block when available,
@@ -5605,8 +5615,12 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 	mut emitted_includes := map[string]bool{}
 	mut has_mach_headers := false
 	directives := g.ordered_c_directives(false)
+	use_system_libc := g.c_directives_use_system_libc()
 	for i, directive in directives {
 		if !c_contains_preserved_system_include_directive(directive) {
+			continue
+		}
+		if !use_system_libc && c_is_ptrace_system_include_directive(directive) {
 			continue
 		}
 		if directive.contains('<mach/mach.h>') {
@@ -5749,6 +5763,28 @@ fn c_contains_preserved_system_include_directive(directive string) bool {
 		return false
 	}
 	return has_include
+}
+
+fn c_is_ptrace_system_include_directive(directive string) bool {
+	mut has_ptrace_include := false
+	for line in directive.split_into_lines() {
+		clean := trimmed_space(line)
+		if clean.len == 0 {
+			continue
+		}
+		if c_is_preserved_system_include_directive(clean) {
+			if c_directive_arg(clean) != '<sys/ptrace.h>' {
+				return false
+			}
+			has_ptrace_include = true
+			continue
+		}
+		if clean == '#endif' || c_is_liftable_include_context_directive(clean) {
+			continue
+		}
+		return false
+	}
+	return has_ptrace_include
 }
 
 fn (g &FlatGen) visit_c_directive_module(mod string, directives_by_module map[string][]CDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
@@ -8318,8 +8354,9 @@ fn (g &FlatGen) sizeof_global_selector_base(name string) ?string {
 
 // optional_none_type supports optional none type handling for FlatGen.
 fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
-	if g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType {
-		return g.expected_expr_type
+	expected := optional_result_unalias_type(g.expected_expr_type)
+	if expected is types.OptionType || expected is types.ResultType {
+		return expected
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
@@ -9672,7 +9709,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			is_local := if owner := g.tc.cur_scope.lookup_owner(node.value) {
+			is_current_param := g.current_param_type(node.value) != none
+			is_local := if is_current_param {
+				true
+			} else if owner := g.tc.cur_scope.lookup_owner(node.value) {
 				!owner.belongs_to_scope(g.tc.file_scope)
 			} else {
 				false
@@ -9693,9 +9733,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if g.local_storage_is_shared(node.value) {
 				g.write(g.local_cname(node.value))
 				g.write('->val')
+			} else if is_current_param && g.local_name_needs_global_suffix(node.value) {
+				g.write(g.local_decl_cname(node.value))
 			} else if g.local_shadows_global(node.value) {
 				g.write(g.local_cname(node.value))
 			} else if is_local && local_name_shadows_c_runtime(node.value) {
+				g.write(g.local_cname(node.value))
+			} else if is_local && g.local_name_shadows_c_typedef(node.value) {
 				g.write(g.local_cname(node.value))
 			} else if node.value in g.global_modules {
 				mod := g.global_modules[node.value]
@@ -9993,6 +10037,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_expr(inner_id)
 					return
 				}
+			}
+			if node.op == .amp && child.kind == .prefix && child.op == .mul
+				&& child.children_count > 0 {
+				g.gen_expr(g.a.child(&child, 0))
+				return
 			}
 			if node.op == .amp && g.gen_amp_c_string_literal(child_id, child) {
 				return
@@ -10776,7 +10825,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.struct_init {
-			g.gen_struct_init(node)
+			g.gen_struct_init(id)
 		}
 		.if_expr {
 			g.gen_if_expr(node)
@@ -12492,13 +12541,13 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
-	g.writeln('int stat(char* path, struct stat* buf);')
+	g.writeln('int stat(const char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
 	g.writeln('time_t mktime(struct tm* timeptr);')
 	g.writeln('struct tm* localtime(time_t* timer);')
 	g.writeln('int utime(char* filename, struct utimbuf* times);')
-	g.writeln('int stat(char* path, struct stat* buf);')
+	g.writeln('int stat(const char* path, struct stat* buf);')
 	g.writeln('FILE* fopen(const char* path, const char* mode);')
 	g.writeln('FILE* freopen(const char* path, const char* mode, FILE* stream);')
 	g.writeln('int fclose(FILE* stream);')
@@ -14390,6 +14439,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } int visible = v3_string_display_width(s); if (visible >= width) return s; int pad = width - visible; int out_len = s.len + pad; u8* out = malloc_noscan((ptrdiff_t)out_len + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[out_len] = 0; return (string){.str = out, .len = out_len, .is_lit = 0}; }")
 	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'z' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((u32)c); }')
+	g.writeln("static inline string v3_indent_multiline(string s) { int lines = 0; for (int i = 0; i < s.len; ++i) if (s.str[i] == '\\n') ++lines; if (lines == 0) return s; int out_len = s.len + lines * 4; u8* out = malloc_noscan((ptrdiff_t)out_len + 1); int p = 0; for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[p++] = c; if (c == '\\n') { memset(out + p, ' ', 4); p += 4; } } out[p] = 0; return (string){.str = out, .len = out_len, .is_lit = 0}; }")
 	g.writeln('static inline string v3_chan_str(chan ch, string elem) { if (ch == NULL) return string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("(nil)", 5)); string out = string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("{\\n    cap: ", 11)); out = string__plus(out, int__str(ch->cap)); out = string__plus(out, ch->closed != 0 ? v3_c_lit(", closed: true\\n}", 16) : v3_c_lit(", closed: false\\n}", 17)); return out; }')
 	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
 	g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision > 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')

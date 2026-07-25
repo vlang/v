@@ -151,12 +151,21 @@ fn main() {
 
 fn run_v3_unit_tests(cfg Config) {
 	old_vflags := os.getenv('VFLAGS')
+	old_cache_isolation := os.getenv_opt('V3_TEST_ISOLATE_CACHE')
 	os.setenv('VFLAGS', '${old_vflags} -gc none'.trim_space(), true)
+	// Give every test executable a private default module cache while preserving
+	// parallel stages inside the V3 compilers that those tests build.
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
 	run('${host_v_cmd(cfg)} -enable-globals -silent test ${q(cfg.script_dir)}')
 	if old_vflags == '' {
 		os.unsetenv('VFLAGS')
 	} else {
 		os.setenv('VFLAGS', old_vflags, true)
+	}
+	if value := old_cache_isolation {
+		os.setenv('V3_TEST_ISOLATE_CACHE', value, true)
+	} else {
+		os.unsetenv('V3_TEST_ISOLATE_CACHE')
 	}
 }
 

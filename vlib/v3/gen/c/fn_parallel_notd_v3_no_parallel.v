@@ -1237,6 +1237,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		ierror_owned_pointer_by_owner:  map[string]bool{}
+		recursive_drop_helpers:         g.recursive_drop_helpers
 		local_pointer_storage_by_owner: map[string]bool{}
 		local_c_type_by_owner:          map[string]string{}
 		local_raw_type_by_owner:        map[string]string{}
