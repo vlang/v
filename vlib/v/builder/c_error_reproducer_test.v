@@ -43,6 +43,20 @@ fn test_repro_identifiers_skips_nested_literals_in_interpolation() {
 	assert 'word_in_nested_str' !in ids
 }
 
+fn test_repro_identifiers_skips_rune_and_comment_in_interpolation() {
+	// a `}` inside a backtick rune literal must not prematurely close the interpolation scan, so a
+	// reference that follows it still enters the closure
+	ids1 := repro_identifiers("_ := '\${ f(`}`) + helper() }'")
+	assert 'f' in ids1
+	assert 'helper' in ids1
+	// a `}` inside a block comment inside the interpolation likewise
+	ids2 := repro_identifiers("_ := '\${ a /* } */ + helper() }'")
+	assert 'helper' in ids2
+	// a `}` inside a line comment inside the interpolation likewise
+	ids3 := repro_identifiers("_ := '\${ a // }\n + helper() }'")
+	assert 'helper' in ids3
+}
+
 fn test_repro_uses_local_resource() {
 	assert repro_uses_local_resource('const data = \$embed_file("logo.png")')
 	assert repro_uses_local_resource('x := \$tmpl("page.html")')
@@ -386,6 +400,28 @@ fn test_repro_comptime_decl_names_indexes_match_decls() {
 	assert 'arm_only' in names
 	// a non-comptime match yields nothing
 	assert repro_comptime_decl_names(ast.ExprStmt{ expr: ast.MatchExpr{} }) == []
+}
+
+fn test_repro_comptime_decl_names_indexes_solved_block() {
+	// after `comptime.solve_files` hoists an active single branch, a top-level `$if <os>` block
+	// appears as a bare ast.Block; its inner declaration names must still be indexed
+	block := ast.Block{
+		scope: unsafe { nil }
+		stmts: [
+			ast.Stmt(ast.FnDecl{
+				name:  'main.plat_helper'
+				scope: unsafe { nil }
+			}),
+			ast.Stmt(ast.ConstDecl{
+				fields: [ast.ConstField{
+					name: 'main.plat_const'
+				}]
+			}),
+		]
+	}
+	names := repro_comptime_decl_names(block)
+	assert 'plat_helper' in names
+	assert 'plat_const' in names
 }
 
 fn test_repro_decl_attrs_covers_marked_decl_kinds() {

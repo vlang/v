@@ -125,7 +125,13 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		// top-level attributes are parsed before the declaration, so extend each start up over them
 		mut starts := []int{}
 		for stmt in file.stmts {
-			starts << repro_attr_start(lines, ast.Node(stmt).pos().line_nr)
+			mut line_nr := ast.Node(stmt).pos().line_nr
+			if stmt is ast.Block {
+				// a comptime `$if <os>` block that `comptime.solve_files` already hoisted becomes a
+				// bare `ast.Block` with no pos of its own; locate its `$if`/`$match` opener instead
+				line_nr = repro_block_opener_line(stmt, lines)
+			}
+			starts << if line_nr < 0 { -1 } else { repro_attr_start(lines, line_nr) }
 		}
 		for i, stmt in file.stmts {
 			start := starts[i]
@@ -320,6 +326,31 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		return ''
 	}
 	return out
+}
+
+// repro_block_opener_line returns the 0-based source line of the `$if`/`$match` opener of a solved
+// comptime `ast.Block` (whose own pos is unset), found by scanning up from its first inner
+// declaration. Returns -1 when the block is empty or no opener line is found.
+fn repro_block_opener_line(block ast.Block, lines []string) int {
+	mut first := -1
+	for s in block.stmts {
+		ln := ast.Node(s).pos().line_nr
+		if ln >= 0 && (first < 0 || ln < first) {
+			first = ln
+		}
+	}
+	if first < 0 {
+		return -1
+	}
+	mut j := if first < lines.len { first } else { lines.len - 1 }
+	for j >= 0 {
+		t := lines[j].trim_space()
+		if t.starts_with('\$if ') || t.starts_with('\$match ') {
+			return j
+		}
+		j--
+	}
+	return -1
 }
 
 // repro_attr_start returns the first line (0-based) of the declaration at `line_nr`, walking up
@@ -722,16 +753,36 @@ fn scan_string_literal(source string, start int, mut ids []string) int {
 			mut depth := 1
 			for i < source.len && depth > 0 {
 				ci := source[i]
-				if ci == `{` {
-					depth++
+				if ci == `/` && i + 1 < source.len && source[i + 1] == `/` {
+					// a line comment inside the interpolation: skip it so `}` in the comment text
+					// does not close the scan
+					for i < source.len && source[i] != `\n` {
+						i++
+					}
+				} else if ci == `/` && i + 1 < source.len && source[i + 1] == `*` {
+					// a block comment: skip to its `*/`
+					i += 2
+					for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+						i++
+					}
+					i += 2
+				} else if ci == 96 {
+					// a backtick rune literal (e.g. `` `}` ``): skip it so its brace is not counted
 					i++
-				} else if ci == `}` {
-					depth--
+					for i < source.len && source[i] != 96 {
+						i += if source[i] == `\\` { 2 } else { 1 }
+					}
 					i++
 				} else if ci == `'` || ci == `"` {
 					// a nested string inside the interpolation: skip its contents (its own braces
 					// must not be counted) while still collecting its `${...}` identifiers
 					i = scan_string_literal(source, i, mut ids)
+				} else if ci == `{` {
+					depth++
+					i++
+				} else if ci == `}` {
+					depth--
+					i++
 				} else if ci == `_` || ci.is_letter() {
 					st := i
 					for i < source.len && is_ident_char(source[i]) {
@@ -769,9 +820,13 @@ fn repro_import_alias(imp ast.Import) string {
 }
 
 // repro_comptime_decl_names returns the names declared inside a top-level comptime `$if` or
-// `$match` block (which the parser wraps in an `ExprStmt` holding an `IfExpr`/`MatchExpr`), so the
-// whole block is inlined when one of its declarations is referenced. Returns [] for anything else.
+// `$match` block, so the whole block is inlined when one of its declarations is referenced. Such a
+// block appears either as an `ExprStmt` holding an `IfExpr`/`MatchExpr` (unsolved) or, after
+// `comptime.solve_files` hoists an active single branch, as a bare `ast.Block`. Returns [] otherwise.
 fn repro_comptime_decl_names(stmt ast.Stmt) []string {
+	if stmt is ast.Block {
+		return repro_comptime_branch_names(stmt.stmts)
+	}
 	if stmt is ast.ExprStmt {
 		if stmt.expr is ast.IfExpr {
 			if stmt.expr.is_comptime {
