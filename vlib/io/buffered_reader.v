@@ -45,10 +45,6 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 }
 
 fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
-	if buf.len == 0 {
-		return 0
-	}
-
 	read := copy(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
 		return NotExpected{
@@ -63,12 +59,17 @@ fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
 
 // read fufills the Reader interface.
 pub fn (mut r BufferedReader) read(mut buf []u8) !int {
+	if buf.len == 0 {
+		return 0
+	}
+
 	if r.end_of_stream {
 		if r.offset < r.len {
 			return r.copy_unread(mut buf)
 		}
 		return Eof{}
 	}
+
 	// read data out of the buffer if we dont have any
 	if r.needs_fill() {
 		if !r.fill_buffer() {
@@ -116,7 +117,7 @@ pub fn (mut r BufferedReader) peek(n int) ![]u8 {
 	}
 
 	// enough data in buffer, re refill
-	if n <= r.buf.len - r.offset {
+	if n <= r.len - r.offset {
 		return r.buf[r.offset..r.offset + n].clone()
 	}
 
@@ -125,9 +126,9 @@ pub fn (mut r BufferedReader) peek(n int) ![]u8 {
 		return r.buf[r.offset..].clone()
 	}
 
-	// asking for more bytes than buffer can contain
-	if n > r.buf.len {
-		return r.buf[r.offset..].clone()
+	// asking for more bytes than buffer contains after refill
+	if n > r.len {
+		return r.buf[r.offset..r.len].clone()
 	}
 	return r.buf[r.offset..r.offset + n].clone()
 }
