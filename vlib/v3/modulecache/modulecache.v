@@ -318,13 +318,46 @@ fn source_uses_pseudo(source string, names []string) bool {
 			continue
 		}
 		if source[pos] in [`'`, `"`, `\``] {
-			pos = skip_signature_quoted_text(source, pos, false)
+			// Quoted text can itself carry compile-time paths
+			// ($embed_file('@VMODROOT/data'), #include "@VMODROOT/header.h"),
+			// so literals are scanned rather than skipped: missing a real
+			// pseudo would reuse an artifact resolved against the wrong root,
+			// while a stray mention in an inert string only widens
+			// invalidation.
+			end := skip_signature_quoted_text(source, pos, false)
+			if quoted_text_mentions_pseudo(source, pos + 1, end, names) {
+				return true
+			}
+			pos = end
 			continue
 		}
 		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
-			pos = skip_signature_quoted_text(source, pos + 1, true)
+			end := skip_signature_quoted_text(source, pos + 1, true)
+			if quoted_text_mentions_pseudo(source, pos + 2, end, names) {
+				return true
+			}
+			pos = end
 			continue
 		}
+		if source[pos] != `@` {
+			pos++
+			continue
+		}
+		for name in names {
+			end := pos + name.len
+			if end <= source.len && source[pos..end] == name
+				&& (end == source.len || !signature_name_char(source[end])) {
+				return true
+			}
+		}
+		pos++
+	}
+	return false
+}
+
+fn quoted_text_mentions_pseudo(source string, from int, to int, names []string) bool {
+	mut pos := from
+	for pos < to {
 		if source[pos] != `@` {
 			pos++
 			continue

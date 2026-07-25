@@ -3377,7 +3377,6 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 
 // main runs the v3 entry point.
 fn main() {
-	println(1234)
 	args := os.args[1..]
 	if args.len == 0 {
 		eprintln(cli_usage())

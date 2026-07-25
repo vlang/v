@@ -15462,26 +15462,22 @@ fn (mut g FlatGen) global_decls() {
 			g.writeln('#endif')
 			continue
 		}
-		// With -prealloc the arena base block is per-thread (lazily initialized
-		// on first allocation in each thread); a shared pointer would make all
-		// threads bump the same block without synchronization. cc gets real
-		// TLS; tcc implements no _Thread_local, so it gets a pthread-key
-		// emulation behind an lvalue macro. The key setup needs no
-		// synchronization: the first allocation always happens on the main
-		// thread, long before any `spawn`. The helpers use pthread_key_t so they
-		// agree with either the platform pthread header or the headerless fallback.
+		// With -prealloc the arena base block and the block-recycle cache are
+		// per-thread; a shared pointer would make all threads bump the same
+		// block without synchronization. cc gets real TLS; tcc implements no
+		// _Thread_local, so each gets a pthread-key emulation behind an lvalue
+		// macro. The keys are created from a constructor (same pattern as the
+		// shared-storage TLS emulation above), so worker threads can never
+		// race a lazy pthread_key_create - unlike the arena base, the recycle
+		// cache has no first-touch-on-main-thread guarantee.
 		if g.prealloc && name in ['g_memory_block', 'g_prealloc_block_cache'] {
 			cn := g.cname(name)
 			g.writeln('#if defined(__TINYC__)')
-			g.writeln('static pthread_key_t ${cn}_key = 0;')
-			g.writeln('static int ${cn}_key_ready = 0;')
+			g.writeln('static pthread_key_t ${cn}_key;')
+			g.writeln('static void ${cn}_key_init(void) __attribute__((constructor));')
+			g.writeln('static void ${cn}_key_init(void) { pthread_key_create(&${cn}_key, 0); }')
 			g.writeln('static ${ct}* ${cn}_slot(void) {')
-			g.writeln('	void* p;')
-			g.writeln('	if (!${cn}_key_ready) {')
-			g.writeln('		pthread_key_create(&${cn}_key, 0);')
-			g.writeln('		${cn}_key_ready = 1;')
-			g.writeln('	}')
-			g.writeln('	p = pthread_getspecific(${cn}_key);')
+			g.writeln('	void* p = pthread_getspecific(${cn}_key);')
 			g.writeln('	if (p == 0) {')
 			g.writeln('		p = calloc(1, sizeof(${ct}));')
 			g.writeln('		pthread_setspecific(${cn}_key, p);')
