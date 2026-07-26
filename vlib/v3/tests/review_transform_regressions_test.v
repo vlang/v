@@ -1322,6 +1322,22 @@ fn main() {
 		'`$res()` is not supported by the V3 arm64 backend')
 }
 
+fn test_eval_backend_rejects_defer_results_before_execution() {
+	v3_bin := build_v3_review_transform()
+	run_bad_backend(v3_bin, 'eval_defer_result', 'eval', 'fn f() int {
+	defer {
+		assert $res() == 42
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(f()))
+}
+',
+		'`$res()` is not supported by the V3 eval backend')
+}
+
 fn test_thread_handle_equality_uses_platform_comparison() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn answer() int {

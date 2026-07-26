@@ -4702,6 +4702,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		if p.prefs.backend == 'arm64' {
 			p.record_diagnostic('`$res()` is not supported by the V3 arm64 backend', dollar_pos)
 		}
+		if p.prefs.backend == 'eval' {
+			p.record_diagnostic('`$res()` is not supported by the V3 eval backend', dollar_pos)
+		}
 		return p.add_node(flat.Node{
 			kind:  .defer_result
 			value: if defer_index < 0 { '' } else { defer_index.str() }
