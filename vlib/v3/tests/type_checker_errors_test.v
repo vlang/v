@@ -2045,6 +2045,22 @@ fn test_defer_result_review_regressions() {
 	run_bad(v3_bin, 'bad_defer_result_trailing_argument_tokens',
 		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
 		'expected `)` immediately after the `$res` index')
+	run_bad(v3_bin, 'bad_bare_defer_result',
+		'fn f() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n',
+		'expected `(` after `$res`')
+}
+
+fn test_recursive_alias_review_regressions() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_direct_recursive_alias', 'type A = A\n\nfn main() {}\n',
+		'alias `A` forms a recursive cycle')
+	run_bad(v3_bin, 'bad_container_recursive_alias', 'type A = []A\n\nfn main() {}\n',
+		'alias `A` forms a recursive cycle')
+	run_bad(v3_bin, 'bad_cyclic_recursive_aliases', 'type A = B\ntype B = A\n\nfn main() {}\n',
+		'forms a recursive cycle')
+	valid_callback := run_good(v3_bin, 'good_callback_guarded_recursive_alias',
+		'type Handlers = map[string]fn (Handlers)\n\nfn main() {\n\thandlers := Handlers{}\n\tprintln(int_str(handlers.len))\n}\n')
+	assert valid_callback == '0'
 }
 
 fn test_if_guard_rejects_or_handled_value() {

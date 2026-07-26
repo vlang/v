@@ -2828,13 +2828,14 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	ret_ct := g.fn_return_type_name(ret)
 	base_pointer_depth := cgen_type_pointer_depth(base_type)
 	receiver_pointer_depth := cgen_type_pointer_depth(params[0])
-	receiver_is_mut := g.tc.mut_receiver_methods[method_key] || g.tc.mut_receiver_methods[cname]
-	// Escaping immutable pointer-receiver method values copy addressable value
-	// receivers into durable context storage. A method value proven local must keep
-	// borrowing its receiver so mutations made after binding remain observable.
-	// Mutable receivers also borrow stable lvalues; the checker rejects them on escape.
+	// Escaping pointer-receiver method values copy addressable value receivers into
+	// durable context storage. A method value proven local must keep borrowing its
+	// receiver so mutations made after binding remain observable.
+	// Mutable receivers passed as callback arguments are not proven local, so they
+	// also need a durable copy; only the transform's borrow marker keeps a local binding
+	// attached to its original receiver.
 	receiver_value_copy := receiver_pointer_depth > base_pointer_depth
-		&& (!g.expr_is_addressable(base_id) || (!receiver_is_mut && !borrow_receiver))
+		&& (!g.expr_is_addressable(base_id) || !borrow_receiver)
 	ctx_receiver_ct := if receiver_value_copy {
 		g.tc.c_type(types.unwrap_pointer(params[0]))
 	} else {

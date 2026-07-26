@@ -245,6 +245,10 @@ fn test_res_uses_a_dedicated_node_and_rejects_trailing_argument_tokens() {
 	trailing := parse_parser_regression_diagnostics('res_trailing_argument_tokens',
 		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\n')
 	assert trailing.any(it.message.contains('expected `)` immediately after the `$res` index')), '${trailing}'
+
+	bare := parse_parser_regression_diagnostics('res_requires_parentheses',
+		'fn value() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\n')
+	assert bare.any(it.message.contains('expected `(` after `$res`')), '${bare}'
 }
 
 fn test_memory_only_inline_assembly_is_not_treated_as_empty() {

@@ -2121,6 +2121,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	tc.timing_profile('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
+	tc.check_recursive_alias_decls()
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
 	tc.build_const_suffixes()
@@ -5616,6 +5617,158 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				generic_params)
 		}
 	}
+}
+
+fn (mut tc TypeChecker) check_recursive_alias_decls() {
+	mut invalid := []string{}
+	for node_idx in tc.top_level_idx {
+		node := tc.a.nodes[node_idx]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.type_decl {
+				if node.children_count == 0 && node.typ.len > 0
+					&& tc.check_recursive_alias_decl(flat.NodeId(node_idx), node) {
+					invalid << tc.qualify_decl_name(node.value)
+				}
+			}
+			else {}
+		}
+	}
+	// Invalid aliases must not reach interface-index preparation or type lowering,
+	// both of which assume the alias graph is acyclic.
+	for name in invalid {
+		tc.type_aliases[name] = 'void'
+	}
+}
+
+fn (mut tc TypeChecker) check_recursive_alias_decl(node_id flat.NodeId, node flat.Node) bool {
+	start := tc.qualify_decl_name(node.value)
+	if start.len == 0 || start !in tc.type_aliases {
+		return false
+	}
+	mut seen := map[string]bool{}
+	if !tc.unguarded_alias_reaches(start, start, mut seen) {
+		return false
+	}
+	if tc.should_diagnose(node_id) {
+		tc.record_error(.unknown_type, 'alias `${node.value}` forms a recursive cycle', node_id)
+	}
+	return true
+}
+
+fn (tc &TypeChecker) unguarded_alias_reaches(start string, current string, mut seen map[string]bool) bool {
+	if current in seen {
+		return false
+	}
+	seen[current] = true
+	target := tc.type_aliases[current] or { return false }
+	mut names := []string{}
+	collect_unguarded_alias_type_names(target, mut names)
+	for name in names {
+		dependency := tc.alias_dependency_key(name, current) or { continue }
+		if dependency == start {
+			return true
+		}
+		if tc.unguarded_alias_reaches(start, dependency, mut seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) alias_dependency_key(name string, current string) ?string {
+	clean := name.trim_space()
+	if clean.len == 0 {
+		return none
+	}
+	if clean in tc.type_aliases {
+		return clean
+	}
+	if !clean.contains('.') && current.contains('.') {
+		candidate := '${current.all_before_last('.')}.${clean}'
+		if candidate in tc.type_aliases {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn collect_unguarded_alias_type_names(raw string, mut names []string) {
+	mut clean := raw.trim_space()
+	if clean.len == 0 {
+		return
+	}
+	for {
+		if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
+			continue
+		}
+		if clean.starts_with('shared ') || clean.starts_with('atomic ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		if clean.starts_with('chan ') {
+			clean = clean[5..].trim_space()
+			continue
+		}
+		if clean.starts_with('thread ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		break
+	}
+	// A callback introduces an indirection boundary: aliases such as
+	// `type Handlers = map[string]fn (Handlers)` are recursive but finite.
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		return
+	}
+	if clean.starts_with('...') {
+		collect_unguarded_alias_type_names(clean[3..], mut names)
+		return
+	}
+	if clean.starts_with('[]') {
+		collect_unguarded_alias_type_names(clean[2..], mut names)
+		return
+	}
+	if clean.starts_with('map[') {
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			collect_unguarded_alias_type_names(clean[4..bracket_end], mut names)
+			collect_unguarded_alias_type_names(clean[bracket_end + 1..], mut names)
+		}
+		return
+	}
+	if clean.starts_with('[') {
+		bracket_end := find_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			collect_unguarded_alias_type_names(clean[bracket_end + 1..], mut names)
+		}
+		return
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		for part in split_params(clean[1..clean.len - 1]) {
+			collect_unguarded_alias_type_names(part, mut names)
+		}
+		return
+	}
+	base, args, is_generic := generic_type_application_parts(clean)
+	if is_generic {
+		push_type_name_candidate(mut names, base)
+		for arg in args {
+			collect_unguarded_alias_type_names(arg, mut names)
+		}
+		return
+	}
+	push_type_name_candidate(mut names, clean)
 }
 
 fn (tc &TypeChecker) infer_decl_generic_params(node flat.Node) map[string]bool {

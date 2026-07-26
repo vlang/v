@@ -1256,6 +1256,59 @@ fn main() {
 	assert out == '73'
 }
 
+fn test_callback_argument_method_value_keeps_mutable_local_receiver_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+
+struct Holder {
+mut:
+	callback fn () int
+}
+
+fn install(mut holder Holder, callback fn () int) {
+	holder.callback = callback
+}
+
+fn make_callback(mut holder Holder) {
+	mut counter := Counter{
+		value: 40
+	}
+	install(mut holder, counter.next)
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	mut holder := Holder{
+		callback: fn () int {
+			return 0
+		}
+	}
+	make_callback(mut holder)
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(holder.callback()))
+	println(int_str(holder.callback()))
+}
+'
+	out := run_good(v3_bin, 'callback_argument_mutable_local_receiver', source)
+	assert out == '41\n42'
+}
+
 fn test_returned_mut_fixed_array_capture_uses_durable_context_storage() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn make_counter() fn () int {

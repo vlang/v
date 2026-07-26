@@ -4665,7 +4665,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.tok == .name && p.lit == 'res' {
 		p.next()
 		mut defer_index := -1
-		if p.tok == .lpar {
+		if p.tok != .lpar {
+			p.record_diagnostic('expected `(` after `$res`', p.tok_pos)
+		} else {
 			p.next()
 			if p.tok != .rpar && p.tok != .eof {
 				if p.tok == .number {
