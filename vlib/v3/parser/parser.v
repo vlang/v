@@ -8686,7 +8686,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
 	op_start := p.span_start()
 	p.next()
-	lambda_body := p.expr(.lowest)
+	lambda_body := p.lambda_body_expr()
 	lstart := p.add_child(lambda_body)
 	return p.a.add_node(flat.Node{
 		kind:           .lambda_expr
@@ -8708,7 +8708,7 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.check(.pipe)
-	lambda_body := p.expr(.lowest)
+	lambda_body := p.lambda_body_expr()
 	mut ids := lambda_params.clone()
 	ids << lambda_body
 	lstart := p.add_children(ids)
@@ -8718,6 +8718,14 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(op_start)
 	})
+}
+
+fn (mut p Parser) lambda_body_expr() flat.NodeId {
+	outer_defer_depth := p.defer_depth
+	p.defer_depth = 0
+	body := p.expr(.lowest)
+	p.defer_depth = outer_defer_depth
+	return body
 }
 
 fn (mut p Parser) lambda_param_ident() flat.NodeId {

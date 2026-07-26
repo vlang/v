@@ -225,6 +225,13 @@ fn test_res_is_rejected_outside_the_active_defer_body() {
 	nested_fn := parse_parser_regression_diagnostics('res_in_nested_fn_inside_defer',
 		'fn value() int {\n\tdefer {\n\t\tcallback := fn () int {\n\t\t\treturn $res()\n\t\t}\n\t\t_ = callback\n\t}\n\treturn 1\n}\n')
 	assert nested_fn.any(it.message.contains('`res` can only be used in defer blocks')), '${nested_fn}'
+	no_arg_lambda := parse_parser_regression_diagnostics('res_in_no_arg_lambda_inside_defer',
+		'fn consume(callback fn () int) {\n\t_ = callback\n}\n\nfn value() int {\n\tdefer {\n\t\tconsume(|| $res())\n\t}\n\treturn 1\n}\n')
+	assert no_arg_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${no_arg_lambda}'
+
+	pipe_lambda := parse_parser_regression_diagnostics('res_in_pipe_lambda_inside_defer',
+		'fn consume(callback fn (int) int) {\n\t_ = callback\n}\n\nfn value() int {\n\tdefer {\n\t\tconsume(|x| $res())\n\t}\n\treturn 1\n}\n')
+	assert pipe_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${pipe_lambda}'
 }
 
 fn test_memory_only_inline_assembly_is_not_treated_as_empty() {

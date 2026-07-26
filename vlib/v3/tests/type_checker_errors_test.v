@@ -2033,6 +2033,12 @@ fn test_defer_result_review_regressions() {
 	run_bad(v3_bin, 'bad_result_defer_result',
 		'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n',
 		'`res` cannot be used in functions that returns a Result')
+	run_bad(v3_bin, 'bad_unindexed_multi_return_defer_result',
+		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
+		'`res` requires an index of the returned value')
+	run_bad(v3_bin, 'bad_out_of_range_multi_return_defer_result',
+		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
+		'index 2 out of range of 2 return types')
 }
 
 fn test_if_guard_rejects_or_handled_value() {
