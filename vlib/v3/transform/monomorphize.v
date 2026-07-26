@@ -444,15 +444,12 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(node flat.Node, 
 	if t.index_callee_is_value_index(node) {
 		return none
 	}
-	if base.kind != .ident {
-		return none
-	}
 	type_arg_text := t.generic_call_type_args_name(node)
 	if type_arg_text.len == 0 {
 		return none
 	}
 	raw_args := normalize_generic_args(split_generic_args(type_arg_text), module_name)
-	for candidate in t.generic_plain_call_candidates(base.value, module_name) {
+	for candidate in t.explicit_generic_fn_value_decl_candidates(base_id, base, module_name) {
 		decl_key := generic_fn_decl_base_value(candidate)
 		decl := decls[decl_key] or { continue }
 		params := t.generic_fn_param_names(decl.node, decl.module)
@@ -466,6 +463,28 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(node flat.Node, 
 		return decl_key, args
 	}
 	return none
+}
+
+fn (t &Transformer) explicit_generic_fn_value_decl_candidates(base_id flat.NodeId, base flat.Node, module_name string) []string {
+	if base.kind == .ident {
+		return t.generic_plain_call_candidates(base.value, module_name)
+	}
+	if base.kind != .selector || base.children_count == 0 || isnil(t.tc) {
+		return []string{}
+	}
+	qualifier := t.a.child_node(&base, 0)
+	if qualifier.kind != .ident {
+		return []string{}
+	}
+	file_name := t.node_file_or(int(base_id), t.cur_file)
+	imported_module := if mod := t.tc.file_imports[file_import_key(file_name, qualifier.value)] {
+		mod
+	} else if mod := t.tc.imports[qualifier.value] {
+		mod
+	} else {
+		return []string{}
+	}
+	return ['${imported_module}.${base.value}']
 }
 
 fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, args []string) {

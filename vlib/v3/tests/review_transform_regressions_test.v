@@ -672,6 +672,16 @@ fn test_imported_module_generic_function_value_prefers_local_declaration() {
 	assert out == '2\n101'
 }
 
+fn test_imported_selector_generic_function_value_is_specialized() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'selector_generic_function_value', {
+		'v.mod':           "Module { name: 'selector_generic_function_value' }\n"
+		'worker/worker.v': 'module worker\n\npub fn identity[T](value T) T {\n\treturn value\n}\n'
+		'main.v':          'module main\n\nimport worker\n\nfn identity[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\tcallback := worker.identity[int]\n\tlocal := identity[int]\n\tprintln(int_str(callback(42)))\n\tprintln(int_str(local(1)))\n}\n'
+	}, 'main.v')
+	assert out == '42\n101'
+}
+
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
