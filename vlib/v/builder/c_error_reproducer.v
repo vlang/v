@@ -85,6 +85,9 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	mut extra_seeds := []int{} // skip_unused roots (init/cleanup/@[markused]/@[export])
 	mut file_headers := map[int]string{} // per-file `module` header (attributes are per-file)
 	mut start_to_decl := map[string]int{} // '<file_id>:<start line>' -> decl id (solver clone dedup)
+	// the `veb.Result` type index, used to seed veb route actions (functions returning `veb.Result`,
+	// which the mark-used pass roots even though nothing in source calls them); 0 when veb is unused
+	veb_result_idx := v.table.find_type('veb.Result')
 	mut file_id := -1
 	for pf in v.parsed_files {
 		file := pf
@@ -218,14 +221,16 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			}
 			// skip_unused roots are kept regardless of references, so a failing declaration reached
 			// only from one stays reachable. For functions: init/cleanup, `@[markused]`/`@[export]`,
-			// and — for a `-shared` build — every public function. For other declaration kinds
-			// (consts, globals, structs/interfaces, enums, declared types): those tagged
-			// `@[markused]`, which the mark-used pass also roots (see markused.v).
+			// veb hooks and actions, and — for a `-shared` build — every public function. For
+			// other declaration kinds (consts, globals, structs/interfaces, enums, declared
+			// types): those tagged `@[markused]` or `@[export]`, both of which the mark-used pass
+			// roots (see markused/walker.v mark_markused_consts/mark_markused_globals).
 			mut is_root := false
 			if stmt is ast.FnDecl {
-				is_root = repro_is_markused_root(stmt) || (v.pref.is_shared && stmt.is_pub)
+				is_root = repro_is_markused_root(stmt, v.table.veb_res_idx_cache)
+					|| (v.pref.is_shared && stmt.is_pub)
 			} else {
-				is_root = repro_decl_attrs(stmt).any(it.name == 'markused')
+				is_root = repro_decl_attrs(stmt).any(it.name in ['markused', 'export'])
 			}
 			if is_root {
 				extra_seeds << id
@@ -783,7 +788,7 @@ fn repro_decl_attrs(stmt ast.Stmt) []ast.Attr {
 // `runlock` method (the mark-used pass roots all of these — see markused.v), or one tagged
 // `@[markused]`/`@[export]`. Such a function must be inlined so any helper it alone reaches stays
 // reachable when `skip_unused` runs again on the replayed reproducer.
-fn repro_is_markused_root(f ast.FnDecl) bool {
+fn repro_is_markused_root(f ast.FnDecl, veb_res_idx int) bool {
 	short := repro_short_name(f.name)
 	if !f.is_method && short in ['init', 'cleanup'] {
 		return true
@@ -796,6 +801,12 @@ fn repro_is_markused_root(f ast.FnDecl) bool {
 	// the mark-used pass roots every function whose name ends with `before_request`
 	// (markused.v: `k.ends_with('before_request')`), so mirror that suffix match here
 	if short.ends_with('before_request') {
+		return true
+	}
+	// veb route actions are invoked by the router, again without a source-level call: the
+	// mark-used pass roots every function returning `veb.Result`
+	// (walker.v mark_markused_fns), identified by the table's cached type index
+	if veb_res_idx > 0 && int(f.return_type) == veb_res_idx {
 		return true
 	}
 	return f.attrs.any(it.name == 'markused' || it.name == 'export')

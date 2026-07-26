@@ -295,23 +295,46 @@ fn test_repro_is_markused_root() {
 			scope:     unsafe { nil }
 		}
 	}
-	assert repro_is_markused_root(mk('main.init', false, []))
-	assert repro_is_markused_root(mk('main.cleanup', false, []))
-	assert !repro_is_markused_root(mk('main.helper', false, []))
+	assert repro_is_markused_root(mk('main.init', false, []), 0)
+	assert repro_is_markused_root(mk('main.cleanup', false, []), 0)
+	assert !repro_is_markused_root(mk('main.helper', false, []), 0)
 	// `init` as a method is not a lifecycle root
-	assert !repro_is_markused_root(mk('main.Foo.init', true, []))
+	assert !repro_is_markused_root(mk('main.Foo.init', true, []), 0)
 	// `@[export]` / `@[markused]` functions are roots
-	assert repro_is_markused_root(mk('main.exp', false, [ast.Attr{ name: 'export' }]))
-	assert repro_is_markused_root(mk('main.mu', false, [ast.Attr{ name: 'markused' }]))
+	assert repro_is_markused_root(mk('main.exp', false, [ast.Attr{ name: 'export' }]), 0)
+	assert repro_is_markused_root(mk('main.mu', false, [ast.Attr{ name: 'markused' }]), 0)
 	// `lock`/`unlock`/`rlock`/`runlock` methods (shared-type helpers) are roots
-	assert repro_is_markused_root(mk('main.Foo.lock', true, []))
-	assert repro_is_markused_root(mk('main.Foo.unlock', true, []))
-	assert repro_is_markused_root(mk('main.Foo.rlock', true, []))
-	assert repro_is_markused_root(mk('main.Foo.runlock', true, []))
+	assert repro_is_markused_root(mk('main.Foo.lock', true, []), 0)
+	assert repro_is_markused_root(mk('main.Foo.unlock', true, []), 0)
+	assert repro_is_markused_root(mk('main.Foo.rlock', true, []), 0)
+	assert repro_is_markused_root(mk('main.Foo.runlock', true, []), 0)
 	// an ordinary method is not a root
-	assert !repro_is_markused_root(mk('main.Foo.bar', true, []))
+	assert !repro_is_markused_root(mk('main.Foo.bar', true, []), 0)
 	// a plain function named `lock` (not a method) is not a lock helper root
-	assert !repro_is_markused_root(mk('main.lock', false, []))
+	assert !repro_is_markused_root(mk('main.lock', false, []), 0)
+}
+
+fn test_repro_is_markused_root_veb_action() {
+	// a fn returning `veb.Result` (identified by the table's cached type index) is a
+	// router-invoked action: the mark-used pass roots every such function
+	assert repro_is_markused_root(ast.FnDecl{
+		name:        'main.App.index'
+		is_method:   true
+		return_type: ast.idx_to_type(123)
+		scope:       unsafe { nil }
+	}, 123)
+	assert !repro_is_markused_root(ast.FnDecl{
+		name:        'main.App.helper'
+		is_method:   true
+		return_type: ast.idx_to_type(50)
+		scope:       unsafe { nil }
+	}, 123)
+	// no veb in the program: the cache index is unset and roots nothing
+	assert !repro_is_markused_root(ast.FnDecl{
+		name:      'main.App.index'
+		is_method: true
+		scope:     unsafe { nil }
+	}, 0)
 }
 
 fn test_repro_hash_is_local() {
@@ -626,13 +649,16 @@ fn test_repro_uses_local_resource_env() {
 }
 
 fn test_repro_is_markused_root_before_request() {
-	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.before_request', is_method: true })
-	assert repro_is_markused_root(ast.FnDecl{ name: 'main.before_request' })
+	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.before_request', is_method: true }, 0)
+	assert repro_is_markused_root(ast.FnDecl{ name: 'main.before_request' }, 0)
 	// mark-used matches by suffix (`k.ends_with('before_request')`), so a `*_before_request` name
 	// that the original build retains must be seeded too
-	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.admin_before_request', is_method: true })
-	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.App.handle', is_method: true })
-	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.before_request_handler' })
+	assert repro_is_markused_root(ast.FnDecl{
+		name:      'main.App.admin_before_request'
+		is_method: true
+	}, 0)
+	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.App.handle', is_method: true }, 0)
+	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.before_request_handler' }, 0)
 }
 
 fn test_repro_has_comptime_call_allows_spacing() {
