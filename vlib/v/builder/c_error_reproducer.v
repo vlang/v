@@ -710,8 +710,8 @@ fn repro_is_markused_root(f ast.FnDecl) bool {
 	}
 	// veb `before_request` hooks are invoked by the framework without any source-level call;
 	// the mark-used pass roots every function whose name ends with `before_request`
-	// (see markused.v), so mirror that here
-	if short == 'before_request' {
+	// (markused.v: `k.ends_with('before_request')`), so mirror that suffix match here
+	if short.ends_with('before_request') {
 		return true
 	}
 	return f.attrs.any(it.name == 'markused' || it.name == 'export')

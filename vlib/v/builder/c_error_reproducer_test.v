@@ -628,5 +628,9 @@ fn test_repro_uses_local_resource_env() {
 fn test_repro_is_markused_root_before_request() {
 	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.before_request', is_method: true })
 	assert repro_is_markused_root(ast.FnDecl{ name: 'main.before_request' })
+	// mark-used matches by suffix (`k.ends_with('before_request')`), so a `*_before_request` name
+	// that the original build retains must be seeded too
+	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.admin_before_request', is_method: true })
 	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.App.handle', is_method: true })
+	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.before_request_handler' })
 }
