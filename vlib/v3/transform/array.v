@@ -1223,6 +1223,9 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		t.set_node_value(int(push_call), 'shared_array_push:${shared_inner}')
 	}
 	result << t.make_expr_stmt(push_call)
+	if int(id) in t.local_closure_field_cleanups {
+		result << t.make_local_closure_cleanup_defer(value_name)
+	}
 	return result
 }
 
