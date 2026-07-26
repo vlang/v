@@ -170,6 +170,10 @@ fn test_window() {
 		[4, 5, 6]]
 	assert window[int](x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
 	assert window[int]([]int{}, size: 2) == [][]int{}
+	assert window([1, 2, 3], size: 2, step: 0) == [][]int{}
+	assert window([1, 2, 3], size: 2, step: -1) == [][]int{}
+	assert window([1, 2, 3], size: 0) == [][]int{}
+	assert window([1, 2, 3], size: 4) == [][]int{}
 }
 
 /////////////////////////////
