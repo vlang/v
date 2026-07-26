@@ -662,6 +662,16 @@ fn test_same_generic_specialization_name_in_different_modules_keeps_both_bodies(
 	assert out == '1\n12'
 }
 
+fn test_imported_module_generic_function_value_prefers_local_declaration() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_function_value_module_collision', {
+		'v.mod':  "Module { name: 'generic_function_value_module_collision' }\n"
+		'a/a.v':  'module a\n\nfn pick[T](value T) T {\n\treturn value + 1\n}\n\npub fn make_picker() fn (int) int {\n\treturn pick[int]\n}\n'
+		'main.v': 'module main\n\nimport a\n\nfn pick[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\timported := a.make_picker()\n\tlocal := pick[int]\n\tprintln(int_str(imported(1)))\n\tprintln(int_str(local(1)))\n}\n'
+	}, 'main.v')
+	assert out == '2\n101'
+}
+
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
@@ -887,6 +897,38 @@ fn main() {
 	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
 	out := run_good(v3_bin, 'local_bound_method_hot_loop', source)
 	assert out == 'ok'
+}
+
+fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 1
+		}
+		mut callback := first.get
+		callback = second.get
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'reassigned_local_bound_method_hot_loop_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'reassigned_local_bound_method_hot_loop', source)
+	assert out == '1250025000'
 }
 
 fn test_thread_handle_equality_uses_platform_comparison() {

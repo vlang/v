@@ -5059,6 +5059,19 @@ fn (t &Transformer) local_closure_name_escapes(id flat.NodeId, name string, decl
 	if node.kind == .ident {
 		return node.value == name
 	}
+	if node.kind == .assign && node.op == .assign {
+		for i in 0 .. node.children_count {
+			child_id := t.a.child(&node, i)
+			child := t.a.nodes[int(child_id)]
+			if i % 2 == 0 && child.kind == .ident && child.value == name {
+				continue
+			}
+			if t.local_closure_name_escapes(child_id, name, decl_id) {
+				return true
+			}
+		}
+		return false
+	}
 	if node.kind in [.defer_stmt, .spawn_expr] {
 		return t.local_closure_name_mentioned(id, name)
 	}
@@ -8004,11 +8017,40 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			t.invalidate_smartcast_for_lvalue(lhs_id)
 		}
 	}
+	if cleanup_name := t.local_closure_overwrite_name(node) {
+		mut result := []flat.NodeId{}
+		t.drain_pending(mut result)
+		closure_type := t.var_type(cleanup_name)
+		tmp_name := t.new_temp('closure_assign')
+		result << t.make_decl_assign_typed(tmp_name, new_children[1], closure_type)
+		result << t.make_local_closure_destroy_stmt(cleanup_name)
+		result << t.make_assign(new_children[0], t.make_ident(tmp_name))
+		if post_assign := t.fn_value_self_capture_refresh_stmt(node, new_children) {
+			result << post_assign
+		}
+		return result
+	}
 	mut result := t.with_pending_before(new_id)
 	if post_assign := t.fn_value_self_capture_refresh_stmt(node, new_children) {
 		result << post_assign
 	}
 	return result
+}
+
+fn (t &Transformer) local_closure_overwrite_name(node flat.Node) ?string {
+	if node.kind != .assign || node.op != .assign || node.children_count != 2 {
+		return none
+	}
+	lhs := t.a.child_node(&node, 0)
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return none
+	}
+	for _, name in t.local_closure_cleanup_decls {
+		if name == lhs.value {
+			return name
+		}
+	}
+	return none
 }
 
 fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId) {
@@ -10239,6 +10281,18 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 }
 
 fn (mut t Transformer) make_local_closure_cleanup_defer(name string) flat.NodeId {
+	destroy_stmt := t.make_local_closure_destroy_stmt(name)
+	body := t.make_block(arr1(destroy_stmt))
+	start := t.a.children.len
+	t.a.children << body
+	return t.a.add_node(flat.Node{
+		kind:           .defer_stmt
+		children_start: start
+		children_count: 1
+	})
+}
+
+fn (mut t Transformer) make_local_closure_destroy_stmt(name string) flat.NodeId {
 	closure_value := t.make_ident(name)
 	closure_type := t.var_type(name)
 	if closure_type.len > 0 {
@@ -10247,14 +10301,7 @@ fn (mut t Transformer) make_local_closure_cleanup_defer(name string) flat.NodeId
 	closure_ptr := t.make_cast('voidptr', closure_value, 'voidptr')
 	destroy := t.make_call_typed('closure.closure_try_destroy', arr1(closure_ptr), 'void')
 	t.mark_fn_used_name('closure.closure_try_destroy')
-	body := t.make_block(arr1(t.make_expr_stmt(destroy)))
-	start := t.a.children.len
-	t.a.children << body
-	return t.a.add_node(flat.Node{
-		kind:           .defer_stmt
-		children_start: start
-		children_count: 1
-	})
+	return t.make_expr_stmt(destroy)
 }
 
 fn (t &Transformer) concrete_generic_type_refines(current string, refined string) bool {

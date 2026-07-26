@@ -6089,13 +6089,15 @@ fn generic_decl_module_matches_call_module(decl_module string, call_module strin
 
 fn (t &Transformer) generic_plain_call_candidates(name string, module_name string) []string {
 	mut candidates := []string{}
-	candidates << name
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		candidates << '${module_name}.${name}'
 	}
+	candidates << name
 	if !isnil(t.tc) {
 		qname := t.tc.qualify_fn_name(name)
-		candidates << qname
+		if qname !in candidates {
+			candidates << qname
+		}
 	}
 	return candidates
 }
