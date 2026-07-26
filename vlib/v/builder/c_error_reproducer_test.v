@@ -298,8 +298,9 @@ fn test_repro_is_markused_root() {
 	assert repro_is_markused_root(mk('main.init', false, []), 0, false)
 	assert repro_is_markused_root(mk('main.cleanup', false, []), 0, false)
 	assert !repro_is_markused_root(mk('main.helper', false, []), 0, false)
-	// `init` as a method is not a lifecycle root
-	assert !repro_is_markused_root(mk('main.Foo.init', true, []), 0, false)
+	// lifecycle METHODS are roots too: mark-used matches any key ending in `.init`/`.cleanup`
+	assert repro_is_markused_root(mk('main.Foo.init', true, []), 0, false)
+	assert repro_is_markused_root(mk('main.Foo.cleanup', true, []), 0, false)
 	// `@[export]` / `@[markused]` functions are roots
 	assert repro_is_markused_root(mk('main.exp', false, [ast.Attr{ name: 'export' }]), 0, false)
 	assert repro_is_markused_root(mk('main.mu', false, [ast.Attr{ name: 'markused' }]), 0, false)
@@ -841,4 +842,54 @@ fn test_repro_embedded_local_hash() {
 	assert !repro_embedded_local_hash('\$if linux {\n\t#include <sys/epoll.h>\n}')
 	assert !repro_embedded_local_hash('\$if linux {\n\t#flag -lm\n}')
 	assert !repro_embedded_local_hash('fn plain() {}')
+}
+
+fn test_repro_closure_retains_operator_methods_of_used_types() {
+	// `Vec` is used without any source-level `+`: the mark-used finalizer still roots `Vec.+`,
+	// so the closure must retain it (and the helper only it reaches) via the `Vec#op` key
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: 'fn main() {\n\tv := Vec{}\n\tprintln(v)\n}'
+		},
+		ReproDecl{
+			names:  ['Vec']
+			source: 'struct Vec {}'
+		},
+		ReproDecl{
+			names:  ['+']
+			source: 'fn (a Vec) + (b Vec) Vec {\n\treturn op_helper(a, b)\n}'
+		},
+		ReproDecl{
+			names:  ['op_helper']
+			source: 'fn op_helper(a Vec, b Vec) Vec {\n\treturn a\n}'
+		},
+	]
+	mut name_to_decl := map[string][]int{}
+	for i, d in decls {
+		for n in d.names {
+			name_to_decl[n] << i
+		}
+	}
+	name_to_decl['Vec#op'] << 2
+	ordered := repro_closure(decls, name_to_decl, [0]) or {
+		assert false, 'closure returned none'
+		return
+	}
+	assert 2 in ordered // Vec.+, rooted by the used receiver type
+	assert 3 in ordered // reachable only through the operator method
+}
+
+fn test_repro_source_has_hash_directive() {
+	assert repro_source_has_hash_directive('\$if linux {\n\t#flag -DFOO\n}')
+	assert repro_source_has_hash_directive('\$if windows {\n\t#include <windows.h>\n}')
+	assert !repro_source_has_hash_directive('\$if linux {\n\tprintln(1)\n}')
+}
+
+fn test_repro_uses_local_resource_pkgconfig() {
+	// package availability is evaluated on the build machine; replaying elsewhere can select
+	// the opposite branch
+	assert repro_uses_local_resource("\$if \$pkgconfig('openssl') {\n\tx()\n}")
+	// the `#pkgconfig` directive form resolves on the receiver like a system library
+	assert !repro_uses_local_resource('#pkgconfig openssl')
 }

@@ -160,13 +160,24 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 				continue
 			}
 			mut names := repro_top_decl_names(stmt)
+			mut force_seed := false
 			if names.len == 0 {
 				// declarations nested in a top-level comptime `$if` block are wrapped in an
 				// ExprStmt; index them under the whole block so referencing one keeps the block
 				names = repro_comptime_decl_names(stmt)
 			}
 			if names.len == 0 {
-				continue
+				// an active hash-only comptime block declares no symbol, but its `#flag`/
+				// `#include` directives still apply module-wide in the original build; keep the
+				// block verbatim as an always-included declaration (the embedded local-path scan
+				// below still forces the fallback for project-local directives). The synthetic
+				// name starts with `#`, so no identifier token can ever reference it.
+				if repro_is_comptime_block_stmt(stmt) && repro_source_has_hash_directive(source) {
+					names = ['#condhash']
+					force_seed = true
+				} else {
+					continue
+				}
 			}
 			// `-new-generic-solver` (generics.solve_files) removes a generic `fn foo[T]`
 			// declaration and appends concrete clones named `foo_T_int` that keep the original
@@ -214,6 +225,12 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 				recv := repro_short_name(v.table.sym(stmt.receiver.typ).name)
 				if recv != '' {
 					name_to_decl['${recv}#methods'] << id
+					// the mark-used finalizer roots these operator methods whenever their
+					// receiver type is used, even without a source-level use of the operator;
+					// index them under `<Recv>#op` so the closure can do the same
+					if repro_short_name(stmt.name) in ['+', '-', '*', '%', '/', '<', '=='] {
+						name_to_decl['${recv}#op'] << id
+					}
 				}
 			}
 			if stmt is ast.FnDecl && stmt.is_main {
@@ -237,7 +254,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 					is_root = true
 				}
 			}
-			if is_root {
+			if is_root || force_seed {
 				extra_seeds << id
 			}
 			if is_root_file && v_line - 1 >= start && v_line - 1 < end {
@@ -641,6 +658,12 @@ fn repro_closure(decls []ReproDecl, name_to_decl map[string][]int, seeds []int) 
 		for t in repro_reflection_method_targets(decls[id].source) {
 			refs << '${t}#methods'
 		}
+		// the mark-used finalizer roots `+`/`-`/`*`/`%`/`/`/`<`/`==` methods whose receiver
+		// type is used even when the operator never appears in source (walker.v); mirror it by
+		// referencing every retained name's `#op` set (only type names index anything there)
+		for n in decls[id].names {
+			refs << '${n}#op'
+		}
 		for name in refs {
 			for ref in name_to_decl[name] {
 				if ref >= 0 && ref < decls.len && !included[ref] {
@@ -845,7 +868,9 @@ fn repro_decl_attrs(stmt ast.Stmt) []ast.Attr {
 // reachable when `skip_unused` runs again on the replayed reproducer.
 fn repro_is_markused_root(f ast.FnDecl, veb_res_idx int, translated bool) bool {
 	short := repro_short_name(f.name)
-	if !f.is_method && short in ['init', 'cleanup'] {
+	// the mark-used pass roots every function key ending in `.init`/`.cleanup` (markused.v),
+	// which covers plain lifecycle functions and methods like `Foo.init` alike
+	if short in ['init', 'cleanup'] {
 		return true
 	}
 	// lock helpers for `shared` types are rooted by name regardless of references
@@ -937,13 +962,42 @@ fn repro_embedded_local_hash(source string) bool {
 	return false
 }
 
+// repro_is_comptime_block_stmt reports whether a top-level statement is a comptime conditional
+// block: a bare `ast.Block` (an active branch hoisted by comptime.solve_files) or an
+// unsolved comptime `$if`/`$match` expression statement.
+fn repro_is_comptime_block_stmt(stmt ast.Stmt) bool {
+	if stmt is ast.Block {
+		return true
+	}
+	if stmt is ast.ExprStmt {
+		if stmt.expr is ast.IfExpr {
+			return stmt.expr.is_comptime
+		}
+		if stmt.expr is ast.MatchExpr {
+			return stmt.expr.is_comptime
+		}
+	}
+	return false
+}
+
+// repro_source_has_hash_directive reports whether any line of a declaration's copied source is a
+// `#` directive.
+fn repro_source_has_hash_directive(source string) bool {
+	for line in source.split_into_lines() {
+		if line.trim_space().starts_with('#') {
+			return true
+		}
+	}
+	return false
+}
+
 // repro_uses_local_resource reports whether a declaration uses a compile-time construct whose
 // value depends on the build machine and is not carried by the report: a project-local file
 // (`$embed_file`, `$tmpl`, `$res`) or the builder's environment (`$env`, baked in at compile
 // time - replaying it against the receiver's environment can change the generated C and lose
 // the error).
 fn repro_uses_local_resource(source string) bool {
-	for name in ['embed_file', 'tmpl', 'res', 'env', 'veb.html'] {
+	for name in ['embed_file', 'tmpl', 'res', 'env', 'veb.html', 'pkgconfig'] {
 		if repro_has_comptime_call(source, name) {
 			return true
 		}
