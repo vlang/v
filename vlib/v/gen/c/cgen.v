@@ -4099,12 +4099,18 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							inside_assign_context := g.inside_struct_init
 								|| g.inside_assign
 								|| (!g.inside_return && g.inside_match_option)
-							ret_expr_typ := if inside_assign_context {
+							expected_if_option_type := g.unwrap_generic(g.last_if_option_type)
+							has_expected_if_option_type := expected_if_option_type.has_flag(.option)
+							ret_expr_typ := if has_expected_if_option_type {
+								expected_if_option_type
+							} else if inside_assign_context {
 								stmt.typ
 							} else {
 								g.fn_decl.return_type
 							}
-							ret_typ := if inside_assign_context {
+							ret_typ := if has_expected_if_option_type {
+								expected_if_option_type.clear_flag(.option)
+							} else if inside_assign_context {
 								stmt.typ
 							} else {
 								g.fn_decl.return_type.clear_flag(.option)
@@ -8330,6 +8336,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	mut has_embed := false
+	mut last_embed_is_ptr := false
 	if sym.info in [ast.Alias, ast.Struct, ast.Aggregate] {
 		if selector_embed_types.len > 0 && sym.info is ast.Aggregate {
 			// For aggregate types, check per-variant whether the field is
@@ -8339,18 +8346,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			agg_sym := g.table.sym(sym.info.types[g.aggregate_type_idx])
 			if !g.table.struct_has_field(agg_sym, field_name) {
 				has_embed = node.from_embed_types.len > 0
-				g.write_selector_expr_embed_name(node, node.from_embed_types)
+				last_embed_is_ptr = g.write_selector_expr_embed_name(node, node.from_embed_types)
 			}
 		} else if selector_embed_types.len > 0 {
 			has_embed = true
-			g.write_selector_expr_embed_name(node, selector_embed_types)
+			last_embed_is_ptr = g.write_selector_expr_embed_name(node, selector_embed_types)
 		} else if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
 			if sym.info.embeds.len > 0 {
 				mut is_find := false
 				for arr_val in node.generic_from_embed_types {
 					if arr_val.len > 0 {
 						if arr_val[0] == sym.info.embeds[0] {
-							g.write_selector_expr_embed_name(node, arr_val)
+							last_embed_is_ptr = g.write_selector_expr_embed_name(node, arr_val)
 							is_find = true
 							has_embed = true
 							break
@@ -8359,21 +8366,22 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 				if !is_find {
 					has_embed = node.from_embed_types.len > 0
-					g.write_selector_expr_embed_name(node, node.from_embed_types)
+					last_embed_is_ptr = g.write_selector_expr_embed_name(node,
+						node.from_embed_types)
 				}
 			} else {
 				has_embed = node.from_embed_types.len > 0
-				g.write_selector_expr_embed_name(node, node.from_embed_types)
+				last_embed_is_ptr = g.write_selector_expr_embed_name(node, node.from_embed_types)
 			}
 		} else if sym.info is ast.Aggregate {
 			agg_sym := g.table.sym(sym.info.types[g.aggregate_type_idx])
 			if !g.table.struct_has_field(agg_sym, field_name) {
 				has_embed = node.from_embed_types.len > 0
-				g.write_selector_expr_embed_name(node, node.from_embed_types)
+				last_embed_is_ptr = g.write_selector_expr_embed_name(node, node.from_embed_types)
 			}
 		} else {
 			has_embed = node.from_embed_types.len > 0
-			g.write_selector_expr_embed_name(node, node.from_embed_types)
+			last_embed_is_ptr = g.write_selector_expr_embed_name(node, node.from_embed_types)
 		}
 	}
 	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
@@ -8440,7 +8448,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			|| (!opt_ptr_already_deref && unwrapped_expr_type.is_ptr()
 			&& !is_interface_smartcast_lhs && !smartcast_ident_already_dereferenced)
 	}
-	if !has_embed && left_is_ptr {
+	if (!has_embed && left_is_ptr) || (has_embed && last_embed_is_ptr) {
 		g.write('->')
 	} else {
 		g.write('.')
@@ -8645,7 +8653,7 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 	g.nr_closures++
 }
 
-fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types []ast.Type) {
+fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types []ast.Type) bool {
 	mut is_shared := g.type_resolves_to_shared(node.expr_type)
 	mut lhs_expr_type := node.expr_type
 	if node.expr is ast.Ident && node.expr.obj is ast.Var && (node.expr.obj.typ.has_flag(.generic)
@@ -8676,7 +8684,7 @@ fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types
 		is_left_ptr := if i == 0 {
 			(resolved_selector_expr_type.is_ptr() || is_auto_heap) && !is_shared
 		} else {
-			embed_types[i - 1].is_ptr()
+			g.table.fully_unaliased_type(embed_types[i - 1]).is_ptr()
 		}
 		if i == 0 && is_shared {
 			g.write('->val')
@@ -8688,6 +8696,7 @@ fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types
 		}
 		g.write(embed_name)
 	}
+	return embed_types.len > 0 && g.table.fully_unaliased_type(embed_types.last()).is_ptr()
 }
 
 // check_var_scope checks if the variable has its value known from the node position

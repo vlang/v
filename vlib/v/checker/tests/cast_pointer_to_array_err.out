@@ -1,0 +1,14 @@
+vlib/v/checker/tests/cast_pointer_to_array_err.vv:5:8: error: cannot cast pointer type `&int` to array type `[]int`
+    3 |         values := [1, 2, 3]!
+    4 |         p := &values[0]
+    5 |         _ := []int(p)
+      |              ^
+    6 |         _ := [3]int(p)
+    7 |     }
+vlib/v/checker/tests/cast_pointer_to_array_err.vv:6:8: error: cannot cast pointer type `&int` to array type `[3]int`
+    4 |         p := &values[0]
+    5 |         _ := []int(p)
+    6 |         _ := [3]int(p)
+      |              ^
+    7 |     }
+    8 | }
