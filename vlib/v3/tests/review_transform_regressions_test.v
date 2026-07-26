@@ -1322,7 +1322,7 @@ fn main() {
 		'`$res()` is not supported by the V3 arm64 backend')
 }
 
-fn test_eval_backend_rejects_defer_results_before_execution() {
+fn test_eval_backend_rejects_active_defer_results() {
 	v3_bin := build_v3_review_transform()
 	run_bad_backend(v3_bin, 'eval_defer_result', 'eval', 'fn f() int {
 	defer {

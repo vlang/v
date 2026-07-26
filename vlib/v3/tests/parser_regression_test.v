@@ -34,6 +34,16 @@ fn parse_parser_regression_diagnostics(name string, source string) []parser.Diag
 	return p.diagnostics
 }
 
+fn parse_parser_regression_backend_diagnostics(name string, source string, backend string) []parser.Diagnostic {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.backend = backend
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(src)
+	return p.diagnostics
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
@@ -259,6 +269,27 @@ fn test_res_uses_a_dedicated_node_and_rejects_trailing_argument_tokens() {
 	bare := parse_parser_regression_diagnostics('res_requires_parentheses',
 		'fn value() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\n')
 	assert bare.any(it.message.contains('expected `(` after `$res`')), '${bare}'
+}
+
+fn test_defer_result_backend_rejection_is_not_parser_level() {
+	source := 'fn specialized[T]() int {
+	defer {
+		$if T is int {
+			assert $res() == 1
+		}
+	}
+	return 1
+}
+
+fn main() {
+	assert specialized[string]() == 1
+}
+'
+	for backend in ['arm64', 'eval', 'wasm'] {
+		diagnostics := parse_parser_regression_backend_diagnostics('deferred_res_${backend}',
+			source, backend)
+		assert !diagnostics.any(it.message.contains('is not supported by the V3 ${backend} backend')), '${diagnostics}'
+	}
 }
 
 fn test_memory_only_inline_assembly_is_not_treated_as_empty() {

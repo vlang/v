@@ -4699,10 +4699,6 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		if p.defer_depth == 0 {
 			p.record_diagnostic('`res` can only be used in defer blocks', dollar_pos)
 		}
-		if p.prefs.backend in ['arm64', 'eval', 'wasm'] {
-			p.record_diagnostic('`$res()` is not supported by the V3 ${p.prefs.backend} backend',
-				dollar_pos)
-		}
 		return p.add_node(flat.Node{
 			kind:  .defer_result
 			value: if defer_index < 0 { '' } else { defer_index.str() }

@@ -4807,7 +4807,7 @@ fn main() {
 		b.step('monomorphize')
 	}
 	if backend == 'wasm' {
-		if msg := unsupported_power_backend_error(a, &pre_tc, used_fns, backend) {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
 			exit(1)
 		}
@@ -4831,7 +4831,7 @@ fn main() {
 	}
 	mut newly_cached_module_count := 0
 	if backend == 'arm64' {
-		if msg := unsupported_power_backend_error(a, &pre_tc, used_fns, backend) {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
 			exit(1)
 		}
@@ -6515,7 +6515,7 @@ fn print_type_errors(errors []types.TypeError) {
 	}
 }
 
-fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
+fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
 	mut cur_module := ''
 	mut cur_file := ''
 	mut visited := []bool{len: a.nodes.len}
@@ -6542,7 +6542,7 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 		root_ids << flat.NodeId(idx)
 		root_modules << module_name
 		root_files << (a.specialized_fn_files[idx] or { cur_file })
-		if msg := unsupported_power_node_error(a, flat.NodeId(idx), backend, mut visited) {
+		if msg := unsupported_backend_node_error(a, flat.NodeId(idx), backend, mut visited) {
 			return msg
 		}
 	}
@@ -6571,7 +6571,7 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 				root_ids << a.child(field, 0)
 				root_modules << cur_module
 				root_files << cur_file
-				if msg := unsupported_power_node_error(a, a.child(field, 0), backend, mut visited) {
+				if msg := unsupported_backend_node_error(a, a.child(field, 0), backend, mut visited) {
 					return msg
 				}
 			}
@@ -6585,21 +6585,21 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 				root_ids << expr_id
 				root_modules << cur_module
 				root_files << cur_file
-				if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
+				if msg := unsupported_backend_node_error(a, expr_id, backend, mut visited) {
 					return msg
 				}
 			}
 		}
 	}
 	for expr_id in markused.reachable_const_exprs(a, tc, root_ids, root_modules, root_files) {
-		if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
+		if msg := unsupported_backend_node_error(a, expr_id, backend, mut visited) {
 			return msg
 		}
 	}
 	return none
 }
 
-fn unsupported_power_node_error(a &flat.FlatAst, id flat.NodeId, backend string, mut visited []bool) ?string {
+fn unsupported_backend_node_error(a &flat.FlatAst, id flat.NodeId, backend string, mut visited []bool) ?string {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len || visited[idx] {
 		return none
@@ -6619,8 +6619,16 @@ fn unsupported_power_node_error(a &flat.FlatAst, id flat.NodeId, backend string,
 		}
 		return '${location}error: operator `${op}` is not supported by the V3 ${backend} backend'
 	}
+	if node.kind == .defer_result {
+		location := if source_pos := a.source_position(node.pos) {
+			'${source_pos}: '
+		} else {
+			''
+		}
+		return '${location}error: `$res()` is not supported by the V3 ${backend} backend'
+	}
 	for i in 0 .. node.children_count {
-		if msg := unsupported_power_node_error(a, a.child(&node, i), backend, mut visited) {
+		if msg := unsupported_backend_node_error(a, a.child(&node, i), backend, mut visited) {
 			return msg
 		}
 	}
