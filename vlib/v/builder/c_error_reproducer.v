@@ -611,6 +611,14 @@ fn repro_closure(decls []ReproDecl, name_to_decl map[string][]int, seeds []int) 
 		if repro_source_stringifies(decls[id].source, refs) {
 			refs << 'str'
 		}
+		// `for item in Iterator{}` invokes the iterator's `next` method implicitly: the token
+		// scan sees the type but never `next`, and the replayed check then fails on the loop
+		// (or replayed `skip_unused` drops a helper only `next` reaches). Retain every custom
+		// `next` method when a declaration iterates, mirroring the mark-used walker's struct
+		// iteration handling — the same safe over-approximation as `str` above.
+		if repro_source_iterates(decls[id].source) {
+			refs << 'next'
+		}
 		// `$for m in Foo.methods` reflection needs Foo's methods, which are indexed under the
 		// synthetic `Foo#methods` key; add those refs so the whole method set is retained
 		for t in repro_reflection_method_targets(decls[id].source) {
@@ -666,6 +674,31 @@ fn repro_source_stringifies(source string, refs []string) bool {
 		if r in ['println', 'eprintln', 'print', 'eprint', 'dump', 'assert'] {
 			return true
 		}
+	}
+	return false
+}
+
+// repro_source_iterates reports whether a declaration contains a `for ... in ...` loop, whose
+// iterable may be a custom iterator (invoking its `next` method implicitly). Matched on the
+// keyword sequence with identifier boundaries; `$for` comptime loops iterate metadata, not
+// values, so they do not count.
+fn repro_source_iterates(source string) bool {
+	mut i := 0
+	for i + 3 < source.len {
+		if source[i] == `f` && source[i..i + 3] == 'for'
+			&& (i == 0 || (!is_ident_char(source[i - 1]) && source[i - 1] != `$`))
+			&& !is_ident_char(source[i + 3]) {
+			// a `for` header runs to its `{`; an ` in ` inside it marks iteration
+			mut j := i + 3
+			for j < source.len && source[j] != `{` && source[j] != `\n` {
+				if source[j] == ` ` && j + 3 < source.len && source[j + 1] == `i`
+					&& source[j + 2] == `n` && source[j + 3] == ` ` {
+					return true
+				}
+				j++
+			}
+		}
+		i++
 	}
 	return false
 }

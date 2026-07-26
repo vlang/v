@@ -720,3 +720,54 @@ fn test_repro_source_fn_name_multiline_attribute() {
 	src3 := '@[inline]\n@[direct_array_access]\nfn fast() {}'
 	assert repro_source_fn_name(src3) == 'fast'
 }
+
+fn test_repro_source_iterates() {
+	assert repro_source_iterates('fn f() {\n\tfor item in Iterator{} {\n\t\tprintln(item)\n\t}\n}')
+	assert repro_source_iterates('fn f() {\n\tfor i, x in arr {\n\t}\n}')
+	// C-style and condition loops do not iterate a container
+	assert !repro_source_iterates('fn f() {\n\tfor i := 0; i < 3; i++ {\n\t}\n}')
+	assert !repro_source_iterates('fn f() {\n\tfor running {\n\t}\n}')
+	// `$for` iterates compile-time metadata, not values
+	assert !repro_source_iterates('fn f() {\n\t\$for m in Foo.methods {\n\t}\n}')
+	// `informal` must not be mistaken for the `in` keyword, nor `xfor` for `for`
+	assert !repro_source_iterates('fn f() {\n\tfor informal() {\n\t}\n}')
+	assert !repro_source_iterates('fn f() {\n\txfor in y {\n\t}\n}')
+}
+
+fn test_repro_closure_retains_next_for_iteration() {
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: 'fn main() {\n\tfor item in Iter{} {\n\t\tprintln(item)\n\t}\n}'
+		},
+		ReproDecl{
+			names:  ['Iter']
+			source: 'struct Iter {\nmut:\n\ti int\n}'
+		},
+		ReproDecl{
+			names:  ['next']
+			source: 'fn (mut it Iter) next() ?int {\n\treturn iter_helper(it.i)\n}'
+		},
+		ReproDecl{
+			names:  ['iter_helper']
+			source: 'fn iter_helper(i int) ?int {\n\treturn none\n}'
+		},
+		ReproDecl{
+			names:  ['unrelated']
+			source: 'fn unrelated() {}'
+		},
+	]
+	mut name_to_decl := map[string][]int{}
+	for i, d in decls {
+		for n in d.names {
+			name_to_decl[n] << i
+		}
+	}
+	ordered := repro_closure(decls, name_to_decl, [0]) or {
+		assert false, 'closure returned none'
+		return
+	}
+	assert 2 in ordered // Iter.next, invoked only implicitly by the for-in loop
+	assert 3 in ordered // reachable only through next
+	assert 4 !in ordered
+}
