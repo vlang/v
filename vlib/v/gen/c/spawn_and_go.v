@@ -139,9 +139,17 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('${arg_tmp_var}${dot}arg${i + 1} = ')
-		g.expr(arg.expr)
-		g.writeln(';')
+		arg_field := '${arg_tmp_var}${dot}arg${i + 1}'
+		arg_type := g.unwrap_generic(g.recheck_concrete_type(arg.typ))
+		if g.table.final_sym(arg_type).kind == .array_fixed {
+			g.write('memcpy(${arg_field}, ')
+			g.expr(arg.expr)
+			g.writeln(', sizeof(${arg_field}));')
+		} else {
+			g.write('${arg_field} = ')
+			g.expr(arg.expr)
+			g.writeln(';')
+		}
 	}
 	if is_spawn && g.pref.prealloc {
 		g.writeln('${arg_tmp_var}->prealloc_scope = builtin__prealloc_scope_retain_current();')
