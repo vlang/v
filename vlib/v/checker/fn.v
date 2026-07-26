@@ -3166,6 +3166,23 @@ fn record_recursive_str_alias_state(mut state RecursiveStrAliasState, pos int, s
 	state.invalidated = invalidated
 }
 
+fn recursive_str_pos_contains(pos token.Pos, target int) bool {
+	return pos.pos <= target && target <= pos.pos + pos.len
+}
+
+fn merge_recursive_str_branch_states(mut state RecursiveStrAliasState, branch_states []RecursiveStrAliasState) {
+	if branch_states.len == 0 || branch_states.any(!it.invalidated) {
+		return
+	}
+	mut merge_pos := state.pos
+	for branch_state in branch_states {
+		if branch_state.pos > merge_pos {
+			merge_pos = branch_state.pos
+		}
+	}
+	record_recursive_str_alias_state(mut state, merge_pos, ast.empty_expr, true)
+}
+
 fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, decl_pos int, typ ast.Type, call_scope &ast.Scope, cutoff int, mut state RecursiveStrAliasState) {
 	match node {
 		ast.Stmt {
@@ -3209,6 +3226,81 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 				ast.AnonFn, ast.LambdaExpr {
 					return
 				}
+				ast.IfExpr {
+					if node.pos.pos >= cutoff || node.branches.len == 0 {
+						return
+					}
+					mut call_branch_idx := -1
+					for i, branch in node.branches {
+						if recursive_str_scope_dominates(branch.scope, call_scope) {
+							call_branch_idx = i
+							break
+						}
+					}
+					if call_branch_idx >= 0 {
+						for i in 0 .. call_branch_idx + 1 {
+							c.scan_recursive_str_alias_updates(ast.Node(node.branches[i].cond),
+								name, decl_pos, typ, call_scope, cutoff, mut state)
+						}
+						for stmt in node.branches[call_branch_idx].stmts {
+							c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos, typ,
+								call_scope, cutoff, mut state)
+						}
+						return
+					}
+					c.scan_recursive_str_alias_updates(ast.Node(node.branches[0].cond), name,
+						decl_pos, typ, call_scope, cutoff, mut state)
+					if !node.has_else {
+						return
+					}
+					mut branch_states := []RecursiveStrAliasState{cap: node.branches.len}
+					for i, branch in node.branches {
+						mut branch_state := state
+						if i > 0 {
+							c.scan_recursive_str_alias_updates(ast.Node(branch.cond), name,
+								decl_pos, typ, branch.scope, cutoff, mut branch_state)
+						}
+						for stmt in branch.stmts {
+							c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos, typ,
+								branch.scope, cutoff, mut branch_state)
+						}
+						branch_states << branch_state
+					}
+					merge_recursive_str_branch_states(mut state, branch_states)
+					return
+				}
+				ast.MatchExpr {
+					if node.pos.pos >= cutoff || node.branches.len == 0 {
+						return
+					}
+					c.scan_recursive_str_alias_updates(ast.Node(node.cond), name, decl_pos, typ,
+						call_scope, cutoff, mut state)
+					mut call_branch_idx := -1
+					for i, branch in node.branches {
+						if recursive_str_scope_dominates(branch.scope, call_scope) {
+							call_branch_idx = i
+							break
+						}
+					}
+					if call_branch_idx >= 0 {
+						for stmt in node.branches[call_branch_idx].stmts {
+							c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos, typ,
+								call_scope, cutoff, mut state)
+						}
+						return
+					}
+					mut branch_states := []RecursiveStrAliasState{cap: node.branches.len}
+					for branch in node.branches {
+						mut branch_state := state
+						for stmt in branch.stmts {
+							c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos, typ,
+								branch.scope, cutoff, mut branch_state)
+						}
+						branch_states << branch_state
+					}
+					merge_recursive_str_branch_states(mut state, branch_states)
+					return
+				}
 				ast.PostfixExpr {
 					if node.pos.pos < cutoff
 						&& c.expr_mutation_visibility(node.expr, name, typ) != .none {
@@ -3221,6 +3313,15 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 					}
 				}
 				ast.InfixExpr {
+					if node.op in [.and, .logical_or] {
+						c.scan_recursive_str_alias_updates(ast.Node(node.left), name, decl_pos,
+							typ, call_scope, cutoff, mut state)
+						if recursive_str_pos_contains(node.right.pos(), cutoff) {
+							c.scan_recursive_str_alias_updates(ast.Node(node.right), name,
+								decl_pos, typ, call_scope, cutoff, mut state)
+						}
+						return
+					}
 					if node.op == .left_shift && node.pos.pos < cutoff
 						&& c.expr_mutation_visibility(node.left, name, typ) != .none {
 						if scope := recursive_str_expr_var_scope(node.left, name, decl_pos) {
@@ -3232,7 +3333,7 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 					}
 				}
 				ast.CallExpr {
-					if node.pos.pos < cutoff && c.call_has_visible_root_mutation(node, name, typ) {
+					if node.pos.pos < cutoff && c.call_has_root_mutation(node, name, typ, true) {
 						if scope := recursive_str_expr_var_scope(node, name, decl_pos) {
 							if recursive_str_scope_dominates(scope, call_scope) {
 								record_recursive_str_alias_state(mut state, node.pos.pos +

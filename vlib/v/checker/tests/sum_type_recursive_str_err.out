@@ -166,3 +166,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:176:16: error: cannot call `s
       |                      ~~~~~
   177 |     }
   178 |     return ''
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:259:15: error: cannot call `str()` method recursively
+  257 |     mut alias := n
+  258 |     if n.stop || replace_short_circuit(mut alias) {}
+  259 |     return alias.str()
+      |                  ~~~~~
+  260 | }
+  261 |

@@ -243,6 +243,108 @@ fn (f ReassignedOther) str() string {
 	return alias.str()
 }
 
+struct ShortCircuitMutation {
+pub mut:
+	stop bool
+}
+
+fn replace_short_circuit(mut n ShortCircuitMutation) bool {
+	n.stop = true
+	return true
+}
+
+fn (n ShortCircuitMutation) str() string {
+	mut alias := n
+	if n.stop || replace_short_circuit(mut alias) {}
+	return alias.str()
+}
+
+struct ShortCircuitLeftProgress {
+pub mut:
+	stop bool
+}
+
+fn replace_short_circuit_left(mut n ShortCircuitLeftProgress) bool {
+	n.stop = true
+	return true
+}
+
+fn (n ShortCircuitLeftProgress) str() string {
+	mut next := n
+	if replace_short_circuit_left(mut next) || n.stop {}
+	return next.str()
+}
+
+struct ExhaustiveIfProgress {
+mut:
+	remaining int
+}
+
+fn (n ExhaustiveIfProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	if n.remaining % 2 == 0 {
+		next.remaining--
+	} else {
+		next.remaining--
+	}
+	return next.str()
+}
+
+struct ExhaustiveMatchProgress {
+mut:
+	remaining int
+}
+
+fn (n ExhaustiveMatchProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	match n.remaining % 2 {
+		0 { next.remaining-- }
+		else { next.remaining-- }
+	}
+	return next.str()
+}
+
+struct ExhaustiveBoolMatchProgress {
+mut:
+	remaining int
+}
+
+fn (n ExhaustiveBoolMatchProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	match n.remaining % 2 == 0 {
+		true { next.remaining-- }
+		false { next.remaining-- }
+	}
+	return next.str()
+}
+
+struct PrivateMutatorProgress {
+mut:
+	remaining int
+}
+
+fn (mut n PrivateMutatorProgress) decrement() {
+	n.remaining--
+}
+
+fn (n PrivateMutatorProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.decrement()
+	return next.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -285,5 +387,6 @@ fn main() {
 	println(MutableAlias{})
 	println(AsCastAlias{})
 	println(BranchReassigned{})
+	println(ShortCircuitMutation{})
 	println(IfaceExt{ name: 'test' })
 }
