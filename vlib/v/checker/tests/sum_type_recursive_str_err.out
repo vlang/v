@@ -102,3 +102,17 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:111:15: error: cannot call `s
   111 |     return alias.str()
       |                  ~~~~~
   112 | }
+  113 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:117:21: error: cannot call `str()` method recursively
+  115 |
+  116 | fn (f UnsafeDirect) str() string {
+  117 |     return unsafe { f }.str()
+      |                        ~~~~~
+  118 | }
+  119 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:124:15: error: cannot call `str()` method recursively
+  122 | fn (f UnsafeAlias) str() string {
+  123 |     alias := unsafe { f }
+  124 |     return alias.str()
+      |                  ~~~~~
+  125 | }

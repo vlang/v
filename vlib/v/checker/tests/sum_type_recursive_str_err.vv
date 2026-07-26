@@ -111,6 +111,19 @@ fn (f &DerefAlias) str() string {
 	return alias.str()
 }
 
+struct UnsafeDirect {}
+
+fn (f UnsafeDirect) str() string {
+	return unsafe { f }.str()
+}
+
+struct UnsafeAlias {}
+
+fn (f UnsafeAlias) str() string {
+	alias := unsafe { f }
+	return alias.str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -128,4 +141,6 @@ fn main() {
 	println(CondMut{})
 	println(AddrAlias{})
 	println(DerefAlias{})
+	println(UnsafeDirect{})
+	println(UnsafeAlias{})
 }
