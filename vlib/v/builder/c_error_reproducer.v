@@ -708,6 +708,12 @@ fn repro_is_markused_root(f ast.FnDecl) bool {
 	if f.is_method && short in ['lock', 'unlock', 'rlock', 'runlock'] {
 		return true
 	}
+	// veb `before_request` hooks are invoked by the framework without any source-level call;
+	// the mark-used pass roots every function whose name ends with `before_request`
+	// (see markused.v), so mirror that here
+	if short == 'before_request' {
+		return true
+	}
 	return f.attrs.any(it.name == 'markused' || it.name == 'export')
 }
 
@@ -761,11 +767,14 @@ fn repro_source_has_toplevel_import(source string) bool {
 	return false
 }
 
-// repro_uses_local_resource reports whether a declaration uses a compile-time construct that reads
-// a project-local file (`$embed_file`, `$tmpl`, `$res`) which is not uploaded with the reproducer.
+// repro_uses_local_resource reports whether a declaration uses a compile-time construct whose
+// value depends on the build machine and is not carried by the report: a project-local file
+// (`$embed_file`, `$tmpl`, `$res`) or the builder's environment (`$env`, baked in at compile
+// time - replaying it against the receiver's environment can change the generated C and lose
+// the error).
 fn repro_uses_local_resource(source string) bool {
 	return source.contains('\$embed_file(') || source.contains('\$tmpl(')
-		|| source.contains('\$res(')
+		|| source.contains('\$res(') || source.contains('\$env(')
 }
 
 // repro_render assembles the given declaration ids into a single-file source string, headed by

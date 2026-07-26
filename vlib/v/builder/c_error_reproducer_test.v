@@ -619,3 +619,14 @@ fn test_repro_import_collides() {
 	// a name unused outside the importing file cannot collide
 	assert !repro_import_collides('y', 0, included, referenced, binds)
 }
+
+fn test_repro_uses_local_resource_env() {
+	assert repro_uses_local_resource("const build_host = \$env('HOSTNAME')")
+	assert !repro_uses_local_resource("fn f() {\n\tx := os.getenv('HOSTNAME')\n}")
+}
+
+fn test_repro_is_markused_root_before_request() {
+	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.before_request', is_method: true })
+	assert repro_is_markused_root(ast.FnDecl{ name: 'main.before_request' })
+	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.App.handle', is_method: true })
+}
