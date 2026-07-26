@@ -1,6 +1,7 @@
 module builder
 
 import v.ast
+import v.token
 
 fn test_repro_short_name() {
 	assert repro_short_name('main.Foo.bar') == 'bar'
@@ -963,4 +964,56 @@ fn test_repro_fn_in_used_fns() {
 	assert repro_fn_in_used_fns('main.handle_thing', ['main.handle_*'])
 	assert !repro_fn_in_used_fns('main.other', ['main.entry', 'main.handle_*'])
 	assert !repro_fn_in_used_fns('main.entry', [])
+}
+
+fn test_repro_block_opener_line_nested_blocks() {
+	// `$if linux { $if linux { fn helper() {} } }`: both solved blocks have unset positions,
+	// so the outer block must descend into the inner one to find a usable line
+	lines := ['$if linux {', '\t$if linux {', '\t\tfn helper() {}', '\t}', '}']
+	inner := ast.Block{
+		scope: unsafe { nil }
+		stmts: [
+			ast.Stmt(ast.FnDecl{
+				name:  'main.helper'
+				pos:   token.Pos{
+					line_nr: 2
+				}
+				scope: unsafe { nil }
+			}),
+		]
+	}
+	outer := ast.Block{
+		scope: unsafe { nil }
+		stmts: [ast.Stmt(inner)]
+	}
+	assert repro_block_opener_line(outer, lines) == 0
+	// an empty nested chain still reports no opener
+	empty := ast.Block{
+		scope: unsafe { nil }
+		stmts: [
+			ast.Stmt(ast.Block{
+				scope: unsafe { nil }
+			}),
+		]
+	}
+	assert repro_block_opener_line(empty, lines) == -1
+}
+
+fn test_repro_attr_start_over_trivia() {
+	// the parser attaches an attribute group across blank and comment lines
+	lines := ['@[markused]', '', 'fn keep() {}']
+	assert repro_attr_start(lines, 2) == 0
+	lines2 := ['@[export]', '// exported for the C side', 'fn exp() {}']
+	assert repro_attr_start(lines2, 2) == 0
+	// a const array above a blank line is still not swallowed as an attribute
+	lines3 := ['const arr = [1, 2]', '', 'fn f() {}']
+	assert repro_attr_start(lines3, 2) == 2
+}
+
+fn test_repro_hash_is_local_include_delimiter() {
+	// only the first delimiter after the keyword decides; trailing comments do not
+	assert repro_hash_is_local('#include "private.h" // see <API>')
+	assert !repro_hash_is_local('#include <stdio.h> // has "quotes"')
+	assert !repro_hash_is_local('#include   <sys/epoll.h>')
+	assert repro_hash_is_local('#include "local.h"')
 }

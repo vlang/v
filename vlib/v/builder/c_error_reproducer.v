@@ -437,25 +437,49 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 // comptime `ast.Block` (whose own pos is unset), found by scanning up from its first inner
 // declaration. Returns -1 when the block is empty or no opener line is found.
 fn repro_block_opener_line(block ast.Block, lines []string) int {
-	mut first := -1
-	for s in block.stmts {
-		ln := ast.Node(s).pos().line_nr
-		if ln >= 0 && (first < 0 || ln < first) {
-			first = ln
-		}
-	}
+	first, depth := repro_block_first_positioned_line(block)
 	if first < 0 {
 		return -1
 	}
+	// the first positioned statement may sit inside `depth` nested solved blocks: walk up past
+	// their openers to the one that belongs to this block
 	mut j := if first < lines.len { first } else { lines.len - 1 }
+	mut openers := 0
 	for j >= 0 {
 		t := lines[j].trim_space()
 		if t.starts_with('\$if ') || t.starts_with('\$match ') {
-			return j
+			openers++
+			if openers > depth {
+				return j
+			}
 		}
 		j--
 	}
 	return -1
+}
+
+// repro_block_first_positioned_line returns the smallest source line of any statement inside a
+// solved comptime block together with how many nested solved blocks enclose it, descending into
+// nested blocks (whose own pos is unset too: `$if linux { $if linux { fn helper() {} } }` nests
+// one positionless block in another) so the outer block still finds a usable line. Returns
+// (-1, 0) when nothing inside carries a position.
+fn repro_block_first_positioned_line(block ast.Block) (int, int) {
+	mut first := -1
+	mut first_depth := 0
+	for s in block.stmts {
+		mut ln := ast.Node(s).pos().line_nr
+		mut depth := 0
+		if s is ast.Block {
+			inner_ln, inner_depth := repro_block_first_positioned_line(s)
+			ln = inner_ln
+			depth = inner_depth + 1
+		}
+		if ln >= 0 && (first < 0 || ln < first) {
+			first = ln
+			first_depth = depth
+		}
+	}
+	return first, first_depth
 }
 
 // repro_attr_start returns the first line (0-based) of the declaration at `line_nr`, walking up
@@ -472,7 +496,16 @@ fn repro_attr_start(lines []string, line_nr int) int {
 		line_nr
 	}
 	for s > 0 {
-		end := s - 1
+		// the parser skips blank and comment lines between an attribute group and its
+		// declaration, so walk over that trivia before looking for the group's closing `]`
+		mut end := s - 1
+		for end > 0 {
+			t := lines[end].trim_space()
+			if t != '' && !t.starts_with('//') {
+				break
+			}
+			end--
+		}
 		if !lines[end].trim_space().ends_with(']') {
 			break // the line above the declaration does not close an attribute group
 		}
@@ -961,9 +994,19 @@ fn repro_fn_in_used_fns(name string, patterns []string) bool {
 // naming a path or `@V...` root), as opposed to a system header or library.
 fn repro_hash_is_local(directive string) bool {
 	t := directive.trim_space()
-	if t.starts_with('#include') || t.starts_with('#insert') || t.starts_with('#preinclude') {
-		// system headers use `<...>`; a quoted or relative include is project-local
-		return !t.contains('<')
+	for kw in ['#include', '#insert', '#preinclude'] {
+		if !t.starts_with(kw) {
+			continue
+		}
+		// system headers use `<...>`; a quoted or relative include is project-local. Only the
+		// first delimiter after the keyword decides: a trailing comment containing `<`
+		// (`#include "private.h" // see <API>`) must not make a quoted include look like a
+		// system one.
+		mut i := kw.len
+		for i < t.len && (t[i] == ` ` || t[i] == `\t`) {
+			i++
+		}
+		return i >= t.len || t[i] != `<`
 	}
 	if t.starts_with('#flag') {
 		return t.contains('"') || t.contains('@V') || t.contains('./') || t.contains('../')
