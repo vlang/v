@@ -255,7 +255,11 @@ mut:
 	escaping_interface_box_locals map[string]bool
 	// local_closure_cleanup_decls maps source declaration node ids to capturing
 	// closure locals that do not escape their lexical scope.
-	local_closure_cleanup_decls        map[int]string
+	local_closure_cleanup_decls map[int]string
+	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays.
+	// Their storage is moved to the heap so the outer binding and escaped closure
+	// context keep sharing the same durable array.
+	mut_fixed_array_capture_sources    map[string]bool
 	active_specialization_args         []string
 	active_specialization_main_types   map[string]bool
 	generic_specialization_args        map[string][]string
@@ -1122,6 +1126,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		heaped_amp_locals:                map[string]bool{}
 		escaping_interface_box_locals:    map[string]bool{}
 		local_closure_cleanup_decls:      map[int]string{}
+		mut_fixed_array_capture_sources:  map[string]bool{}
 		generic_specialization_args:      map[string][]string{}
 		generic_fn_specs_in_progress:     map[string]bool{}
 		generic_fn_spec_nodes:            map[string]flat.NodeId{}
@@ -3162,6 +3167,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		escaping_amp_sources:               map[string]bool{}
 		heaped_amp_locals:                  map[string]bool{}
 		local_closure_cleanup_decls:        map[int]string{}
+		mut_fixed_array_capture_sources:    map[string]bool{}
 		generic_fn_specs_in_progress:       map[string]bool{}
 		generic_fn_spec_nodes:              map[string]flat.NodeId{}
 		pending_generic_fn_spec_keys:       map[string]bool{}
@@ -4791,6 +4797,7 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	}
 	mut local_stack_added := []string{}
 	for id in body_ids {
+		t.collect_mut_capture_sources(id)
 		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut interface_boxes, mut
 			returned, mut local_stack_names, mut local_stack_added, true)
 	}
@@ -4833,11 +4840,32 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	}
 }
 
+fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .fn_literal {
+		for i in 0 .. node.children_count {
+			capture := t.a.child_node(&node, i)
+			if capture.kind == .ident && capture.is_mut && capture.value.len > 0 {
+				t.mut_fixed_array_capture_sources[capture.value] = true
+			}
+		}
+		// A nested literal's body belongs to the lifted function, not this frame.
+		return
+	}
+	for i in 0 .. node.children_count {
+		t.collect_mut_capture_sources(t.a.child(&node, i))
+	}
+}
+
 fn (mut t Transformer) reset_escaping_amp_state() {
 	t.escaping_amp_ptrs.clear()
 	t.escaping_amp_sources.clear()
 	t.heaped_amp_locals.clear()
 	t.escaping_interface_box_locals.clear()
+	t.mut_fixed_array_capture_sources.clear()
 	// Cleared per function: heaped locals add their names below (in heap_escaping_source_decl);
 	// for-loop element vars set and restore their own entries within the loop body.
 	t.pointer_value_lvalues.clear()
@@ -10010,6 +10038,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	// before the `p := &v` alias is transformed (the source is declared first).
 	if node.children_count == 2 {
 		src := t.a.child_node(&node, 0)
+		if src.kind == .ident && src.value in t.mut_fixed_array_capture_sources
+			&& src.value !in t.heaped_amp_locals && t.is_fixed_array_type(inferred_typ) {
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
 			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)

@@ -1144,7 +1144,15 @@ fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
 		if params.len != args.len {
 			continue
 		}
-		return substitute_generic_type_text_with_params(target, args, params)
+		expanded := substitute_generic_type_text_with_params(target, args, params)
+		if candidate.contains('.') {
+			// Alias targets are written in the alias declaration's module.
+			// Qualify a bare target there before the caller recursively
+			// normalizes it, otherwise `a.Box[T] = Inner[T]` can bind to a
+			// colliding `main.Inner[T]` at the use site.
+			return t.normalize_type_in_module(expanded, candidate.all_before_last('.'))
+		}
+		return expanded
 	}
 	return none
 }

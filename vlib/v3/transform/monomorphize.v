@@ -2485,6 +2485,24 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ string, module_
 	if t.generic_args_have_placeholders(args) {
 		return
 	}
+	alias_name := t.generic_qualified_alias_name(base, module_name)
+	if target := t.tc.type_aliases[alias_name] {
+		params := t.tc.type_alias_generic_params[alias_name] or { []string{} }
+		if params.len == args.len {
+			alias_module := if alias_name.contains('.') {
+				alias_name.all_before_last('.')
+			} else {
+				module_name
+			}
+			expanded := substitute_generic_type_text_with_params(target, args, params)
+			normalized := t.normalize_type_in_module(expanded, alias_module)
+			if normalized != clean {
+				t.collect_generic_struct_spec_from_type(normalized, alias_module, file_name, decls, mut
+					specs)
+				return
+			}
+		}
+	}
 	spec_base := t.generic_struct_spec_base_name(base, module_name, file_name, decls) or { return }
 	scoped_args := t.generic_struct_args_in_scope(args, module_name, file_name)
 	spec_name := '${spec_base}[${scoped_args.join(', ')}]'
@@ -10402,10 +10420,23 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 			return t.substituted_type_belongs_to_main_generic(clean[prefix.len..])
 		}
 	}
+	base, _, ok := generic_app_parts(clean)
+	local_base := if ok { base } else { clean }
+	if !isnil(t.tc) && !local_base.contains('.') && t.cur_module.len > 0
+		&& t.cur_module !in ['main', 'builtin'] && !t.active_specialization_main_types[local_base] {
+		qname := '${t.cur_module}.${local_base}'
+		if qname in t.structs || qname in t.sum_types || qname in t.enum_types
+			|| qname in t.tc.struct_generic_params || qname in t.tc.sum_generic_params {
+			// A bare type written in an imported declaration belongs to that
+			// declaration's module unless it is an active main-module
+			// specialization argument. In particular, an alias target such as
+			// `a.Inner[T]` must not be rebound to a colliding `main.Inner[T]`.
+			return false
+		}
+	}
 	if !clean.contains('.') && (clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
 		return true
 	}
-	base, _, ok := generic_app_parts(clean)
 	if !ok || base.contains('.') || isnil(t.tc) {
 		return false
 	}

@@ -1107,6 +1107,26 @@ fn main() {
 	assert out == '22\n23'
 }
 
+fn test_mut_fixed_array_capture_shares_durable_outer_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut values := [2]int{}
+	update := fn [mut values] () int {
+		values[0]++
+		return values[0]
+	}
+	assert update() == 1
+	assert values[0] == 1
+	values[0] = 41
+	assert update() == 42
+	assert values[0] == 42
+	println("ok")
+}
+'
+	out := run_good(v3_bin, 'mut_fixed_array_capture_shared_storage', source)
+	assert out == 'ok'
+}
+
 fn test_mutable_method_call_rejects_constant_receiver() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'mut_method_constant_receiver', 'struct Counter {

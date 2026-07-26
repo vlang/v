@@ -154,12 +154,59 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['Node'] = ['T']
 	tc.struct_generic_params['json2.Node'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'json2'
+	t.structs['Node'] = StructInfo{
+		name:   'Node'
+		module: 'main'
+	}
+	t.structs['json2.Node'] = StructInfo{
+		name:   'Node'
+		module: 'json2'
+	}
 
 	assert t.resolve_substituted_type_text('Node[json2.ValueInfo]') == 'json2.Node[json2.ValueInfo]'
 	assert t.resolve_substituted_type_text('&Node[json2.ValueInfo]') == '&json2.Node[json2.ValueInfo]'
+	t.active_specialization_main_types['Node'] = true
+	assert t.resolve_substituted_type_text('Node[int]') == 'Node[int]'
+}
+
+fn test_imported_generic_alias_target_uses_declaration_module() {
+	mut a := flat.FlatAst.new()
+	mut inner_decl := flat.Node{
+		kind:  .struct_decl
+		value: 'Inner'
+	}
+	inner_decl.set_generic_params(['T'])
+	inner_id := a.add_node(inner_decl)
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['a.Box'] = 'Inner[T]'
+	tc.type_alias_generic_params['a.Box'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.structs['Inner'] = StructInfo{
+		name:   'Inner'
+		module: 'main'
+	}
+	t.structs['a.Inner'] = StructInfo{
+		name:   'Inner'
+		module: 'a'
+	}
+
+	assert t.normalize_type_alias('a.Box[int]') == 'a.Inner[int]'
+	decls := {
+		'a.Inner': GenericStructDecl{
+			id:     inner_id
+			node:   inner_decl
+			module: 'a'
+			key:    'a.Inner'
+		}
+	}
+	mut specs := map[string]string{}
+	t.collect_generic_struct_spec_from_type('a.Box[int]', 'main', '', decls, mut specs)
+	assert specs['a.Inner[int]'] == 'a.Inner'
 }
 
 fn test_generic_method_decl_matches_embedded_receiver() {

@@ -8965,6 +8965,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_types := map[string]string{}
 	mut context_field_types := map[string]string{}
 	mut capture_by_ref := map[string]bool{}
+	mut capture_from_heap := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -8999,6 +9000,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type.len == 0 || capture_type == 'unknown' {
 					capture_type = 'int'
 				}
+				if child.value in t.heaped_amp_locals && capture_type.starts_with('&')
+					&& t.is_fixed_array_type(capture_type[1..]) {
+					capture_type = capture_type[1..]
+					capture_from_heap[child.value] = true
+				}
 				if t.active_specialization_args.len > 0 {
 					specialized_capture_type := t.subst_type(capture_type,
 						t.active_specialization_args)
@@ -9025,7 +9031,12 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				// value itself in the heap context and expose a pointer alias only
 				// inside the lifted body; storing `&outer_local` would dangle when a
 				// closure is returned and would make separate instances interfere.
-				context_field_types[child.value] = capture_type
+				context_field_types[child.value] = if is_ref_capture
+					&& t.is_fixed_array_type(capture_type) {
+					'&${capture_type}'
+				} else {
+					capture_type
+				}
 				capture_by_ref[child.value] = is_ref_capture
 			}
 		} else {
@@ -9193,7 +9204,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for capture_name in capture_names {
 		context_field_type := context_field_types[capture_name] or { continue }
 		mut value := t.make_ident(capture_name)
-		if capture_by_ref[capture_name] or { false } && context_field_type.starts_with('&') {
+		if capture_from_heap[capture_name] or { false } {
+			t.set_node_typ(int(value), context_field_type)
+		} else if capture_by_ref[capture_name] or { false } && context_field_type.starts_with('&') {
 			value = t.make_prefix(.amp, value)
 			t.set_node_typ(int(value), context_field_type)
 		}
