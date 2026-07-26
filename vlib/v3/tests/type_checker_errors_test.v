@@ -2016,6 +2016,25 @@ fn test_pr_review_codegen_batch_twentynine() {
 	assert fixed_field == '2:2'
 }
 
+fn test_defer_result_review_regressions() {
+	v3_bin := build_v3()
+	prefixed_local := run_good(v3_bin, 'good_defer_result_prefixed_local',
+		'fn f() int {\n\t__v3_defer_result_value := 7\n\treturn __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
+	assert prefixed_local == '7'
+	valid := run_good(v3_bin, 'good_defer_result_value',
+		'fn f() int {\n\tdefer {\n\t\tprintln(int_str($res()))\n\t}\n\treturn 9\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
+	assert valid == '9\n9'
+	indexed := run_good(v3_bin, 'good_indexed_defer_result_value',
+		'fn f() (int, int) {\n\tdefer {\n\t\tprintln(int_str($res(1)))\n\t}\n\treturn 4, 5\n}\nfn main() {\n\ta, b := f()\n\tprintln(int_str(a) + "," + int_str(b))\n}\n')
+	assert indexed == '5\n4,5'
+	run_bad(v3_bin, 'bad_void_defer_result',
+		'fn f() {\n\tdefer {\n\t\t_ := $res()\n\t}\n}\nfn main() {\n\tf()\n}\n',
+		'`res` can only be used in functions that returns something')
+	run_bad(v3_bin, 'bad_result_defer_result',
+		'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n',
+		'`res` cannot be used in functions that returns a Result')
+}
+
 fn test_if_guard_rejects_or_handled_value() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_if_guard_or_handled_value',

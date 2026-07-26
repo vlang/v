@@ -23367,6 +23367,25 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	if node.value.len == 0 || node.value == '_' {
 		return
 	}
+	if _ := defer_result_index(node.value) {
+		ret := tc.fn_context.return_type
+		if ret is Void {
+			if tc.should_diagnose(id) {
+				tc.record_error(.unknown_type,
+					'`res` can only be used in functions that returns something', id)
+			}
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
+		if ret is ResultType {
+			if tc.should_diagnose(id) {
+				tc.record_error(.unknown_type,
+					'`res` cannot be used in functions that returns a Result', id)
+			}
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
+	}
 	if typ := tc.defer_result_type(node.value) {
 		tc.register_synth_type(id, typ)
 		return
@@ -23438,17 +23457,34 @@ fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 	return owner.scope.types[owner.index]
 }
 
-fn (tc &TypeChecker) defer_result_type(name string) ?Type {
-	if !name.starts_with('__v3_defer_result') {
+// defer_result_index returns -1 for the synthetic unindexed `$res()` identifier and the
+// non-negative index for a validated `$res(index)` identifier.
+pub fn defer_result_index(name string) ?int {
+	if name == '__v3_defer_result' {
+		return -1
+	}
+	prefix := '__v3_defer_result:'
+	if !name.starts_with(prefix) {
 		return none
 	}
+	index_text := name[prefix.len..]
+	if index_text.len == 0 || !index_text.bytes().all(it >= `0` && it <= `9`) {
+		return none
+	}
+	return index_text.int()
+}
+
+fn (tc &TypeChecker) defer_result_type(name string) ?Type {
+	idx := defer_result_index(name) or { return none }
 	ret := tc.fn_context.return_type
+	if ret is Void || ret is ResultType {
+		return Type(void_)
+	}
 	if ret is MultiReturn {
-		if !name.starts_with('__v3_defer_result:') {
+		if idx < 0 {
 			return unknown_type('multi-return `\$res` requires an index')
 		}
-		idx := name.all_after(':').int()
-		if idx < 0 || idx >= ret.types.len {
+		if idx >= ret.types.len {
 			return unknown_type('`\$res` index ${idx} is out of range')
 		}
 		return ret.types[idx]

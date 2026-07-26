@@ -9969,8 +9969,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.ident {
-			if node.value.starts_with('__v3_defer_result') {
-				has_index := node.value.starts_with('__v3_defer_result:')
+			if defer_index := types.defer_result_index(node.value) {
+				has_index := defer_index >= 0
 				if g.defer_return_tmp_var.len > 0 {
 					g.write(g.defer_return_tmp_var)
 				} else if has_index {
@@ -9979,7 +9979,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('((${g.value_c_type(g.cur_fn_ret)}){0})')
 				}
 				if has_index {
-					g.write('.arg${node.value.all_after(':')}')
+					g.write('.arg${defer_index}')
 				}
 				return
 			}
