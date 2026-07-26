@@ -2037,7 +2037,21 @@ fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker
 	mut call_callees := map[int]bool{}
 	for node in a.nodes {
 		if node.kind == .call && node.children_count > 0 {
-			call_callees[int(a.child(&node, 0))] = true
+			callee_id := a.child(&node, 0)
+			call_callees[int(callee_id)] = true
+			mut unwrapped_id := callee_id
+			mut was_wrapped := false
+			for int(unwrapped_id) >= 0 && int(unwrapped_id) < a.nodes.len {
+				callee := a.nodes[int(unwrapped_id)]
+				if callee.kind !in [.paren, .cast_expr, .expr_stmt] || callee.children_count != 1 {
+					if was_wrapped && callee.kind == .selector {
+						return true
+					}
+					break
+				}
+				was_wrapped = true
+				unwrapped_id = a.child(&callee, 0)
+			}
 		}
 	}
 	for idx, node in a.nodes {

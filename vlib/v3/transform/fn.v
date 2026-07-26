@@ -985,7 +985,8 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 	}
 	t.in_call_callee = saved_in_call_callee
-	if t.fn_literal_has_runtime_captures(callee_id) {
+	if t.fn_literal_has_runtime_captures(callee_id)
+		|| t.immediate_bound_method_value_allocates_runtime_closure(callee_id) {
 		closure_type := t.node_type(transformed_callee)
 		if closure_type.len > 0 {
 			closure_name := t.new_temp('immediate_closure')

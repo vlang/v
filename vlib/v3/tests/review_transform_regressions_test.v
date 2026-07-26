@@ -931,6 +931,33 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_immediately_invoked_bound_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		value := Value{
+			n: i
+		}
+		total += (value.get)()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
+	out := run_good(v3_bin, 'immediate_bound_method_hot_loop', source)
+	assert out == '1249975000'
+}
+
 fn test_thread_handle_equality_uses_platform_comparison() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn answer() int {
@@ -1178,6 +1205,55 @@ fn main() {
 '
 	out := run_good(v3_bin, 'escaped_pointer_receiver_addressable_local', source)
 	assert out == '11\n22\n44\n55'
+}
+
+fn test_stored_pointer_receiver_method_value_keeps_local_pointee_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Foo {
+	value int
+}
+
+fn (foo &Foo) read() int {
+	return foo.value
+}
+
+struct Holder {
+mut:
+	callback fn () int
+}
+
+fn install(mut holder Holder, value int) {
+	local := Foo{
+		value: value
+	}
+	p := &local
+	holder.callback = p.read
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	mut holder := Holder{
+		callback: fn () int {
+			return 0
+		}
+	}
+	install(mut holder, 73)
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(holder.callback()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'stored_pointer_receiver_local_pointee_c', source)
+	assert !c_source.contains('p = &local;'), c_source
+	out := run_good(v3_bin, 'stored_pointer_receiver_local_pointee', source)
+	assert out == '73'
 }
 
 fn test_returned_mut_fixed_array_capture_uses_durable_context_storage() {

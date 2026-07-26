@@ -236,10 +236,11 @@ mut:
 	// seeded parameter scope. Ident inference should use that scope rather than scan annotations.
 	cloning_generic_fn_depth int
 	// escaping_amp_ptrs holds the names of pointer locals `p` declared as `p := &v`
-	// (v a value local) whose pointer escapes the function (is returned). V semantics
-	// auto-heap such a `v`; v3 otherwise takes the address of a stack local that dies
-	// on return. Recomputed per function (structural pre-pass in transform_fn_body),
-	// consumed when the `p := &v` decl is transformed (RHS rewritten to a heap copy).
+	// (v a value local) whose pointer escapes the function (is returned or retained
+	// in nonlocal storage). V semantics auto-heap such a `v`; v3 otherwise takes the
+	// address of a stack local that dies on return. Recomputed per function (structural
+	// pre-pass in transform_fn_body), consumed when the `p := &v` decl is transformed
+	// (RHS rewritten to a heap copy).
 	escaping_amp_ptrs map[string]bool
 	// escaping_amp_sources holds the source locals `v` of such `p := &v` escapes. A returned
 	// pointer local can collect more than one source through later assignments (`p = &w`);
@@ -4777,11 +4778,11 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 
 // mark_escaping_amp_ptrs runs a structural pre-pass over a function body to find
 // `p := &v`, `r := Interface(&v)` or `r := Interface(p)` declarations whose
-// pointer/interface alias is later returned or retained in a map. Such a `v` is a local value
-// whose address escapes, so it must be heap-copied (V auto-heaps it); the names are recorded in
-// `escaping_amp_ptrs` and consumed by the decl-assign transform. The walk is structural apart
-// from using resolved expression types to distinguish method-value selectors from fields; the
-// source type is checked at rewrite time when `v`'s type is known.
+// pointer/interface alias is later returned or retained in a map/nonlocal field. Such a `v`
+// is a local value whose address escapes, so it must be heap-copied (V auto-heaps it); the names
+// are recorded in `escaping_amp_ptrs` and consumed by the decl-assign transform. The walk is
+// structural apart from using resolved expression types to distinguish method-value selectors
+// from fields; the source type is checked at rewrite time when `v`'s type is known.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
 	mut amp_ptrs := map[string]bool{}
@@ -5035,6 +5036,17 @@ fn (t &Transformer) bound_method_value_allocates_runtime_closure(id flat.NodeId)
 	return node.kind == .selector && node.children_count > 0 && t.tc.expr_is_method_value(id)
 }
 
+fn (t &Transformer) immediate_bound_method_value_allocates_runtime_closure(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind !in [.paren, .cast_expr] || node.children_count != 1 {
+		return false
+	}
+	return t.bound_method_value_allocates_runtime_closure(t.a.child(&node, 0))
+}
+
 fn (t &Transformer) local_closure_name_mentioned(id flat.NodeId, name string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -5222,7 +5234,7 @@ fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, m
 // names in `amp_sources[p]`), (b) plain pointer copies `q := p`/`q = p` into
 // `ptr_aliases[q] = p`, (c) callback aliases `cb := p.method` into
 // `method_value_receivers`, and (d) every ident name appearing inside a return
-// statement or a map value assignment into `returned`.
+// statement, map value assignment, or nonlocal field store into `returned`.
 fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut method_value_receivers map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -5309,10 +5321,13 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
 		lhs_id := t.a.child(&node, 0)
-		if t.escape_index_assign_retains_value(lhs_id) {
+		if t.escape_index_assign_retains_value(lhs_id)
+			|| (node.kind == .selector_assign
+			&& t.escape_selector_assign_retains_value(lhs_id, amp_ptrs, ptr_aliases)) {
 			rhs_id := t.a.child(&node, 1)
-			// A map may retain its value after this stack frame returns. Track pointer aliases
-			// through `returned`, and record direct `&local` values immediately.
+			// A map or caller-owned field may retain its value after this stack frame returns.
+			// Track pointer aliases through `returned`, and record direct `&local` values
+			// immediately.
 			t.collect_return_escape_idents(rhs_id, mut returned)
 			for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source_name] = true
@@ -5324,6 +5339,37 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			method_value_receivers, mut interface_boxes, mut returned, mut local_stack_names, mut
 			local_stack_added, can_clear_interface_boxes)
 	}
+}
+
+fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
+	if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
+		return false
+	}
+	mut root_id := lhs_id
+	for int(root_id) >= 0 && int(root_id) < t.a.nodes.len {
+		root := t.a.nodes[int(root_id)]
+		if root.kind !in [.selector, .index, .paren] || root.children_count == 0 {
+			break
+		}
+		root_id = t.a.child(&root, 0)
+	}
+	if int(root_id) < 0 || int(root_id) >= t.a.nodes.len {
+		return false
+	}
+	root := t.a.nodes[int(root_id)]
+	if root.kind == .ident {
+		if root.value in t.mut_param_values {
+			return true
+		}
+		if _ := t.global_ident_type(root.value) {
+			return true
+		}
+	}
+	root_type := t.normalize_type_alias(t.address_expr_type_name(root_id))
+	if !address_expr_base_is_indirect_storage(root_type) {
+		return false
+	}
+	return !t.escape_address_indirect_base_is_stack_backed(root_id, amp_ptrs, ptr_aliases)
 }
 
 fn (t &Transformer) escape_index_assign_retains_value(lhs_id flat.NodeId) bool {
@@ -5801,11 +5847,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			body_ids << child_id
 		}
 	}
-	if t.cur_fn_ret_type == 'void' {
-		t.reset_escaping_amp_state()
-	} else {
-		t.mark_escaping_amp_ptrs(body_ids)
-	}
+	t.mark_escaping_amp_ptrs(body_ids)
 	for name in source_mut_params {
 		t.pointer_value_lvalues[name] = true
 	}
