@@ -5313,7 +5313,8 @@ fn (mut t Transformer) mark_local_method_value_receiver_borrow(owner_id flat.Nod
 		return
 	}
 	owner := t.a.nodes[int(owner_id)]
-	if owner.kind in [.decl_assign, .assign, .selector_assign] && owner.children_count == 2 {
+	if owner.kind in [.decl_assign, .assign, .selector_assign, .index_assign]
+		&& owner.children_count == 2 {
 		t.mark_local_method_value_receiver_borrows_in_expr(t.a.child(&owner, 1))
 		return
 	}
@@ -5407,8 +5408,8 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 				lhs.value, scope_id, mut field_candidates)
 		}
 	}
-	if statement_position && node.kind in [.assign, .selector_assign] && node.op == .assign
-		&& node.children_count == 2 {
+	if statement_position && node.kind in [.assign, .selector_assign, .index_assign]
+		&& node.op == .assign && node.children_count == 2 {
 		lhs_id := t.a.child(&node, 0)
 		rhs_id := t.a.child(&node, 1)
 		if aggregate_name := t.escape_address_root_name(lhs_id) {
@@ -5419,7 +5420,12 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 		if t.expr_allocates_fresh_runtime_closure(rhs_id) {
 			if aggregate_name := t.escape_address_root_name(lhs_id) {
 				field_key := t.expr_key(lhs_id)
-				if field_key.len > aggregate_name.len && field_key.starts_with('${aggregate_name}.') {
+				lhs := t.a.nodes[int(lhs_id)]
+				index_key_is_static := lhs.kind == .index && lhs.children_count >= 2
+					&& t.a.child_node(&lhs, 1).kind in [.int_literal, .string_literal, .char_literal, .enum_val]
+				if field_key.len > aggregate_name.len
+					&& (field_key.starts_with('${aggregate_name}.')
+					|| (index_key_is_static && field_key.starts_with('${aggregate_name}['))) {
 					field_candidates << LocalClosureFieldCandidate{
 						source_id:       int(id)
 						owner_id:        int(id)
@@ -5883,7 +5889,7 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 				field_key, false, true)
 		}
 	}
-	if node.kind in [.assign, .selector_assign] && node.op == .assign {
+	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign {
 		for i := 0; i < int(node.children_count); i += 2 {
 			lhs_id := t.a.child(&node, i)
 			lhs_key := t.expr_key(lhs_id)

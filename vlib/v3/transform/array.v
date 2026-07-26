@@ -2054,6 +2054,8 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	predicate_id := t.a.child(&node, 1)
 	predicate_node := t.a.nodes[int(predicate_id)]
 	predicate_allocates_closure := t.expr_allocates_fresh_runtime_closure(predicate_id)
+	predicate_is_fn_value := predicate_node.kind != .lambda_expr
+		&& t.call_arg_is_fn_pointer_value(predicate_id, predicate_node)
 	mut predicate_expr_id := predicate_id
 	mut lambda_param := ''
 	mut predicate_fn_name := ''
@@ -2088,7 +2090,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	mut callback_setup := []flat.NodeId{}
 	predicate := if predicate_fn_name.len > 0 {
 		t.make_call_typed(predicate_fn_name, arr1(t.make_ident(elem_name)), 'bool')
-	} else if predicate_node.kind == .fn_literal || predicate_allocates_closure {
+	} else if predicate_is_fn_value || predicate_allocates_closure {
 		fn_value, setup := t.materialize_array_callback(predicate_id, 'filter_callback')
 		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
@@ -2152,6 +2154,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	map_expr_id := t.a.child(&node, 1)
 	map_expr := t.a.nodes[int(map_expr_id)]
 	map_callback_allocates_closure := t.expr_allocates_fresh_runtime_closure(map_expr_id)
+	map_expr_is_fn_value := map_expr.kind != .lambda_expr
+		&& t.call_arg_is_fn_pointer_value(map_expr_id, map_expr)
 	mut map_source_id := map_expr_id
 	mut lambda_param := ''
 	if map_expr.kind == .lambda_expr && map_expr.children_count > 0 {
@@ -2212,7 +2216,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 			map_fn_name = map_expr.value
 			result_elem_type = ret_type
 		}
-	} else if map_expr.kind in [.fn_literal, .lambda_expr] || map_callback_allocates_closure {
+	} else if map_expr_is_fn_value || map_callback_allocates_closure {
 		if ret_type := t.fn_value_return_type_name(map_expr_id) {
 			result_elem_type = ret_type
 		}
@@ -2228,7 +2232,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	mut callback_setup := []flat.NodeId{}
 	mapped_expr := if map_fn_name.len > 0 {
 		t.make_call_typed(map_fn_name, arr1(t.make_ident(elem_name)), result_elem_type)
-	} else if map_expr.kind == .fn_literal || map_callback_allocates_closure {
+	} else if map_expr_is_fn_value || map_callback_allocates_closure {
 		fn_value, setup := t.materialize_array_callback(map_expr_id, 'map_callback')
 		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
@@ -2270,8 +2274,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	if result_elem_type.len == 0 {
 		result_elem_type = elem_type
 	}
-	opaque_mapper := map_fn_name.len > 0 || map_expr.kind == .fn_literal
-		|| map_callback_allocates_closure
+	opaque_mapper := map_fn_name.len > 0 || map_expr_is_fn_value || map_callback_allocates_closure
 	mapper_returns_owned := !isnil(t.tc)
 		&& t.tc.ownership_fn_value_returns_owned(map_expr_id, t.cur_fn_name, t.cur_module)
 	mapped_borrows_elem := (opaque_mapper && !mapper_returns_owned)
@@ -2514,6 +2517,24 @@ fn (t &Transformer) fn_value_return_type_name(id flat.NodeId) ?string {
 		return none
 	}
 	node := t.a.nodes[int(id)]
+	match node.kind {
+		.paren, .cast_expr, .as_expr, .expr_stmt {
+			if node.children_count == 1 {
+				return t.fn_value_return_type_name(t.a.child(&node, 0))
+			}
+		}
+		.block, .match_branch {
+			if node.children_count > 0 {
+				return t.fn_value_return_type_name(t.a.child(&node, node.children_count - 1))
+			}
+		}
+		.if_expr, .match_stmt {
+			if node.children_count > 1 {
+				return t.fn_value_return_type_name(t.a.child(&node, 1))
+			}
+		}
+		else {}
+	}
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
 			if ret := fn_value_return_type_from_type(typ) {

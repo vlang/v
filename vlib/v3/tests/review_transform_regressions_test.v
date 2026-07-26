@@ -1258,6 +1258,42 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_scope_local_callback_array_index_assignments_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn zero() int {
+	return 0
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := [zero]
+		callbacks[0] = counter.read
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_index_assign_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_index_assign_hot_loop', source)
+	assert out == '1250025000'
+}
+
 fn test_scope_local_callback_fixed_array_initializers_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Counter {
@@ -3765,4 +3801,39 @@ fn main() {
 	assert main_body.contains('closure__closure_try_destroy(__map_callback_'), main_body
 	out := run_good(v3_bin, 'array_bound_method_callbacks', source)
 	assert out == '860000'
+}
+
+fn test_array_filter_and_map_invoke_branch_selected_function_values() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn is_even(value int) bool {
+	return value % 2 == 0
+}
+
+fn is_odd(value int) bool {
+	return value % 2 != 0
+}
+
+fn double(value int) int {
+	return value * 2
+}
+
+fn increment(value int) int {
+	return value + 1
+}
+
+fn main() {
+	use_even := true
+	filtered := [1, 2, 3, 4].filter(if use_even { is_even } else { is_odd })
+	mode := 1
+	mapped := [1, 2, 3].map(match mode {
+		1 { double }
+		else { increment }
+	})
+	assert filtered == [2, 4]
+	assert mapped == [2, 4, 6]
+	println(int_str(filtered.len + mapped[2]))
+}
+'
+	out := run_good(v3_bin, 'array_branch_selected_function_values', source)
+	assert out == '8'
 }

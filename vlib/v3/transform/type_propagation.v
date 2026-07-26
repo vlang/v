@@ -1761,10 +1761,8 @@ fn (t &Transformer) array_map_callback_return_type_name(map_expr_id flat.NodeId)
 		} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
 			return ret_type
 		}
-	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
-		if ret_type := t.fn_value_return_type_name(map_expr_id) {
-			return ret_type
-		}
+	} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
+		return ret_type
 	}
 	return none
 }
