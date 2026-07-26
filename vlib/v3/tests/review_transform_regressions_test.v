@@ -2524,6 +2524,49 @@ fn test_string_to_owned_compiles_under_ownership_cgen() {
 	assert out == 'owned'
 }
 
+fn test_owned_value_receiver_method_closure_clones_and_drops_context() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Holder implements IClone {
+	text   string
+	values []int
+}
+
+fn (holder Holder) read() string {
+	return holder.text + ":" + int_str(holder.values[0])
+}
+
+fn make_holder_reader() fn () string {
+	holder := Holder{
+		text:   "owned".to_owned()
+		values: [7]
+	}
+	return holder.read
+}
+
+fn use_callbacks() {
+	holder_cb := make_holder_reader()
+	println(holder_cb())
+	println(holder_cb())
+}
+
+fn main() {
+	use_callbacks()
+}
+'
+	src_path := os.join_path(os.temp_dir(), 'v3_owned_value_receiver_method_closure.v')
+	c_path := os.join_path(os.temp_dir(), 'v3_owned_value_receiver_method_closure.c')
+	os.write_file(src_path, source) or { panic(err) }
+	gen := os.execute('${v3_bin} -nocache -ownership ${src_path} -b c -o ${c_path}')
+	assert gen.exit_code == 0, gen.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.contains('closure__closure_create_with_data_and_drop'), c_source
+	assert c_source.contains('string__free(&((ctx->receiver).text));'), c_source
+	assert c_source.contains('.receiver = __v3_method_receiver_clone_'), c_source
+	assert c_source.contains('Holder__read(__v3_method_receiver_clone_'), c_source
+	out := run_good_with_flags(v3_bin, 'owned_value_receiver_method_closure', '-ownership', source)
+	assert out == 'owned:7\nowned:7'
+}
+
 fn test_generic_interface_method_body_marks_log_debug_dispatch() {
 	v3_bin := build_v3_review_transform_ownership()
 	out := run_good_with_flags(v3_bin, 'generic_interface_log_debug_dispatch', '-ownership',

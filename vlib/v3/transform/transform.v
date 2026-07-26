@@ -15062,6 +15062,59 @@ fn (t &Transformer) selector_base_is_comptime_type_value(id flat.NodeId) bool {
 	return false
 }
 
+fn (mut t Transformer) owned_method_receiver_clone_helper(site flat.NodeId, typ string) string {
+	name := '__v3_method_receiver_clone_${int(site)}'
+	generated_module := t.current_source_module()
+	module_name := if generated_module.len > 0 { generated_module } else { 'main' }
+	qname := if module_name !in ['main', 'builtin'] { '${module_name}.${name}' } else { name }
+	if qname in t.fn_ret_types || name in t.fn_ret_types {
+		return qname
+	}
+	saved_pending := t.pending_stmts
+	saved_vars := t.var_types.clone()
+	saved_fn_name := t.cur_fn_name
+	saved_ret_type := t.cur_fn_ret_type
+	t.pending_stmts = []flat.NodeId{}
+	t.reset_var_types()
+	t.cur_fn_name = qname
+	t.cur_fn_ret_type = typ
+	param_name := '__method_receiver'
+	param_type := 'voidptr'
+	param := t.a.add_node(flat.Node{
+		kind:  .param
+		value: param_name
+		typ:   param_type
+	})
+	t.set_var_type(param_name, param_type)
+	typed_pointer := t.make_cast('&${typ}', t.make_ident(param_name), '&${typ}')
+	source := t.make_prefix(.mul, typed_pointer)
+	t.set_node_typ(int(source), typ)
+	cloned := t.make_compiler_default_clone_value(source, typ, true)
+	mut body := t.pending_stmts.clone()
+	body << t.make_return(cloned, typ)
+	t.pending_stmts = saved_pending
+	t.restore_var_types(saved_vars)
+	t.cur_fn_name = saved_fn_name
+	t.cur_fn_ret_type = saved_ret_type
+	t.add_generated_fn_decl_context(module_name)
+	start := t.a.children.len
+	t.a.children << param
+	t.a.children << body
+	fn_decl := t.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          name
+		typ:            typ
+		children_start: i32(start)
+		children_count: flat.child_count(1 + body.len)
+	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, module_name, t.cur_file)
+	t.fn_ret_types[name] = typ
+	t.fn_ret_types[qname] = typ
+	t.mark_fn_used_name(qname)
+	return qname
+}
+
 // transform_selector_expr transforms transform selector expr data for transform.
 fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
@@ -15241,7 +15294,22 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0)
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
-	new_base := t.transform_selector_base_expr(base_id)
+	mut new_base := t.transform_selector_base_expr(base_id)
+	mut selector_generic_params := node.generic_params().clone()
+	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
+		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
+		method_params := t.call_param_types(method_value_name)
+		if method_params.len > 0 && method_params[0] !is types.Pointer {
+			receiver_type_name := t.node_type(new_base)
+			receiver_type := t.tc.parse_type(receiver_type_name)
+			if t.tc.ownership_type_requires_destruction(receiver_type)
+				&& t.tc.ownership_default_clone_missing_method(receiver_type) == none {
+				clone_helper := t.owned_method_receiver_clone_helper(id, receiver_type_name)
+				selector_generic_params << flat.method_value_clone_receiver_marker_prefix +
+					clone_helper
+			}
+		}
+	}
 	method_name := if t.validating_generic_spec && t.is_fn_pointer_type_name(t.expected_expr_type) {
 		t.resolve_receiver_method_name(new_base, node.value)
 	} else {
@@ -15253,7 +15321,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		// Root that concrete method here so the late-body scan emits its declaration.
 		t.mark_fn_used_name(method_name)
 	}
-	mut changed := new_base != base_id
+	mut changed := new_base != base_id || selector_generic_params != node.generic_params()
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	new_children << new_base
 	for i in 1 .. node.children_count {
@@ -15286,7 +15354,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		pos:            node.pos
 		value:          node.value
 		typ:            sel_typ
-		payload:        flat.node_payload(node.generic_params().clone())
+		payload:        flat.node_payload(selector_generic_params)
 	})
 }
 

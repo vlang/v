@@ -2733,7 +2733,7 @@ fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
 // field access can't represent the bound receiver, so it stores the receiver in a
 // per-instance closure context and yields a wrapper function that invokes the method.
 // Returns false when the selector is an ordinary field access (handled normally).
-fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string, borrow_receiver bool) bool {
+fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string, borrow_receiver bool, clone_receiver_fn string) bool {
 	clean := types.unwrap_all_pointers(base_type)
 	mut receiver_name := ''
 	mut is_interface_receiver := false
@@ -2839,13 +2839,24 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	} else {
 		recv_ct
 	}
+	ctx_receiver_type := if receiver_value_copy {
+		types.unwrap_pointer(params[0])
+	} else {
+		params[0]
+	}
+	ctx_receiver_needs_drop := g.tc.ownership_type_requires_destruction(ctx_receiver_type)
 	// The wrapper has translation-unit scope, so name it from the stable selector
 	// site instead of the function-local temporary counter.
 	idx := int(base_id)
 	ctx_name := '_mvctx_${idx}'
 	wrap_name := '_mvwrap_${idx}'
+	drop_name := '_mvdrop_${idx}'
 	mut wparams := []string{}
-	mut call_args := [if receiver_value_copy { '&ctx->receiver' } else { 'ctx->receiver' }]
+	mut receiver_arg := if receiver_value_copy { '&ctx->receiver' } else { 'ctx->receiver' }
+	if clone_receiver_fn.len > 0 {
+		receiver_arg = '${g.cname(clone_receiver_fn)}(&ctx->receiver)'
+	}
+	mut call_args := [receiver_arg]
 	for i in 1 .. params.len {
 		pt := g.tc.c_type(params[i])
 		wparams << '${pt} a${i}'
@@ -2860,6 +2871,10 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		g.add_spawn_wrapper_def('${ret_ct} ${cname}(${method_param_types.join(', ')});')
 	}
 	g.add_spawn_wrapper_def('typedef struct { ${ctx_receiver_ct} receiver; } ${ctx_name};')
+	if ctx_receiver_needs_drop {
+		drop_body := g.ownership_drop_value_to_string(ctx_receiver_type, 'ctx->receiver')
+		g.add_spawn_wrapper_def('static void ${drop_name}(void* data) { ${ctx_name}* ctx = (${ctx_name}*)data;\n${drop_body}}')
+	}
 	ret_prefix := if ret_ct == 'void' { '' } else { 'return ' }
 	g.add_spawn_wrapper_def('static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ctx_name}* ctx = (${ctx_name}*)closure__g_closure.closure_get_data(); ${ret_prefix}${cname}(${call_args.join(', ')}); }')
 	fnptr_ct := if fnt := fn_type_from(g.expected_expr_type) {
@@ -2867,8 +2882,17 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	} else {
 		'void*'
 	}
-	g.write('(${fnptr_ct})closure__closure_create_with_data((void*)${wrap_name}, (void*)memdup(&(${ctx_name}){.receiver = ')
-	if receiver_value_copy {
+	create_fn := if ctx_receiver_needs_drop {
+		'closure__closure_create_with_data_and_drop'
+	} else {
+		'closure__closure_create_with_data'
+	}
+	g.write('(${fnptr_ct})${create_fn}((void*)${wrap_name}, (void*)memdup(&(${ctx_name}){.receiver = ')
+	if clone_receiver_fn.len > 0 {
+		g.write('${g.cname(clone_receiver_fn)}((void*)&(')
+		g.gen_expr(base_id)
+		g.write('))')
+	} else if receiver_value_copy {
 		// Store the receiver value directly in the context; the wrapper passes its
 		// durable field address instead of retaining `&local`.
 		g.gen_expr(base_id)
@@ -2893,7 +2917,11 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 			g.gen_expr(base_id)
 		}
 	}
-	g.write('}, sizeof(${ctx_name})), true)')
+	g.write('}, sizeof(${ctx_name})), true')
+	if ctx_receiver_needs_drop {
+		g.write(', (void*)${drop_name}')
+	}
+	g.write(')')
 	return true
 }
 

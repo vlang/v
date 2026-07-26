@@ -10639,8 +10639,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			// Enum fields take precedence when a method has the same name. Only a
 			// non-enum selector can be lowered as a bound method value.
+			mut clone_receiver_fn := ''
+			for param in node.generic_params() {
+				if param.starts_with(flat.method_value_clone_receiver_marker_prefix) {
+					clone_receiver_fn =
+						param.all_after(flat.method_value_clone_receiver_marker_prefix)
+					break
+				}
+			}
 			if enum_selector_qbase.len == 0
-				&& g.gen_method_value_closure(base_id, base_type0, node.value, flat.method_value_borrow_receiver_marker in node.generic_params()) {
+				&& g.gen_method_value_closure(base_id, base_type0, node.value, flat.method_value_borrow_receiver_marker in node.generic_params(), clone_receiver_fn) {
 				return
 			}
 			// The expected type belongs to the selected field, not to its base. In
