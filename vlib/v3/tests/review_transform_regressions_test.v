@@ -3437,3 +3437,52 @@ fn test_array_filter_and_map_reuse_capturing_callback_state() {
 ')
 	assert out == '[2, 3]\n[11, 22, 33]'
 }
+
+fn test_array_filter_and_map_hoist_bound_method_callbacks() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Rule {
+	min    int
+	offset int
+mut:
+	calls int
+}
+
+fn (mut rule Rule) accept(value int) bool {
+	rule.calls++
+	return value >= rule.min
+}
+
+fn (mut rule Rule) shift(value int) int {
+	rule.calls++
+	return value + rule.offset
+}
+
+fn main() {
+	mut total := 0
+	for _ in 0 .. 20_000 {
+		rule := Rule{
+			min: 3
+			offset: 10
+		}
+		filtered := [1, 2, 3, 4].filter(rule.accept)
+		mapped := [1, 2, 3].map(rule.shift)
+		assert filtered.len == 2
+		assert filtered[0] == 3
+		assert filtered[1] == 4
+		assert mapped[0] == 11
+		assert mapped[1] == 12
+		assert mapped[2] == 13
+		assert rule.calls == 7
+		total += filtered[0] + filtered[1] + mapped[0] + mapped[1] + mapped[2]
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'array_bound_method_callbacks_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.count('closure__closure_create_with_data(') == 2, main_body
+	assert main_body.contains('closure__closure_try_destroy(__filter_callback_'), main_body
+	assert main_body.contains('closure__closure_try_destroy(__map_callback_'), main_body
+	out := run_good(v3_bin, 'array_bound_method_callbacks', source)
+	assert out == '860000'
+}

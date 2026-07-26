@@ -1975,12 +1975,13 @@ fn (t &Transformer) array_get_base_is_shared_array_ident(base_type string, node 
 	return raw_type.starts_with('shared ')
 }
 
-// materialize_array_fn_literal_callback evaluates a direct filter/map callback once.
-// Capturing literals allocate runtime closure state, which must not be recreated for
-// every loop element.
-fn (mut t Transformer) materialize_array_fn_literal_callback(id flat.NodeId, prefix string) (flat.NodeId, []flat.NodeId) {
+// materialize_array_callback evaluates a direct filter/map callback once.
+// Capturing literals and bound methods allocate runtime closure state, which must
+// not be recreated for every loop element.
+fn (mut t Transformer) materialize_array_callback(id flat.NodeId, prefix string) (flat.NodeId, []flat.NodeId) {
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
+	t.mark_local_method_value_receiver_borrows_in_expr(id)
 	callback := t.transform_expr(id)
 	mut setup := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
@@ -1991,7 +1992,7 @@ fn (mut t Transformer) materialize_array_fn_literal_callback(id flat.NodeId, pre
 	callback_type := t.fn_value_type_name(id) or { t.node_type(callback) }
 	callback_name := t.new_temp(prefix)
 	setup << t.make_decl_assign_typed(callback_name, callback, callback_type)
-	if t.fn_literal_has_runtime_captures(id) {
+	if t.expr_allocates_fresh_runtime_closure(id) {
 		setup << t.make_local_closure_cleanup_defer(callback_name)
 	}
 	callback_ident := t.make_ident(callback_name)
@@ -2052,6 +2053,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
 	predicate_id := t.a.child(&node, 1)
 	predicate_node := t.a.nodes[int(predicate_id)]
+	predicate_allocates_closure := t.expr_allocates_fresh_runtime_closure(predicate_id)
 	mut predicate_expr_id := predicate_id
 	mut lambda_param := ''
 	mut predicate_fn_name := ''
@@ -2086,8 +2088,8 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	mut callback_setup := []flat.NodeId{}
 	predicate := if predicate_fn_name.len > 0 {
 		t.make_call_typed(predicate_fn_name, arr1(t.make_ident(elem_name)), 'bool')
-	} else if predicate_node.kind == .fn_literal {
-		fn_value, setup := t.materialize_array_fn_literal_callback(predicate_id, 'filter_callback')
+	} else if predicate_node.kind == .fn_literal || predicate_allocates_closure {
+		fn_value, setup := t.materialize_array_callback(predicate_id, 'filter_callback')
 		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
 		if fn_value_node.kind == .ident {
@@ -2149,6 +2151,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	elem_type := base_type[2..]
 	map_expr_id := t.a.child(&node, 1)
 	map_expr := t.a.nodes[int(map_expr_id)]
+	map_callback_allocates_closure := t.expr_allocates_fresh_runtime_closure(map_expr_id)
 	mut map_source_id := map_expr_id
 	mut lambda_param := ''
 	if map_expr.kind == .lambda_expr && map_expr.children_count > 0 {
@@ -2209,7 +2212,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 			map_fn_name = map_expr.value
 			result_elem_type = ret_type
 		}
-	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
+	} else if map_expr.kind in [.fn_literal, .lambda_expr] || map_callback_allocates_closure {
 		if ret_type := t.fn_value_return_type_name(map_expr_id) {
 			result_elem_type = ret_type
 		}
@@ -2225,8 +2228,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	mut callback_setup := []flat.NodeId{}
 	mapped_expr := if map_fn_name.len > 0 {
 		t.make_call_typed(map_fn_name, arr1(t.make_ident(elem_name)), result_elem_type)
-	} else if map_expr.kind == .fn_literal {
-		fn_value, setup := t.materialize_array_fn_literal_callback(map_expr_id, 'map_callback')
+	} else if map_expr.kind == .fn_literal || map_callback_allocates_closure {
+		fn_value, setup := t.materialize_array_callback(map_expr_id, 'map_callback')
 		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
 		if fn_value_node.kind == .ident && result_elem_type.len > 0 {
@@ -2268,6 +2271,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		result_elem_type = elem_type
 	}
 	opaque_mapper := map_fn_name.len > 0 || map_expr.kind == .fn_literal
+		|| map_callback_allocates_closure
 	mapper_returns_owned := !isnil(t.tc)
 		&& t.tc.ownership_fn_value_returns_owned(map_expr_id, t.cur_fn_name, t.cur_module)
 	mapped_borrows_elem := (opaque_mapper && !mapper_returns_owned)
