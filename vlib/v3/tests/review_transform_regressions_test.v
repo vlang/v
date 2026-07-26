@@ -872,6 +872,59 @@ fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
 	assert out == 'ok'
 }
 
+fn test_discarded_returned_closures_are_reclaimed_in_hot_loop() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn make_counter() fn () int {
+	mut n := 0
+	return fn [mut n] () int {
+		n++
+		return n
+	}
+}
+
+fn identity(callback fn () int) fn () int {
+	return callback
+}
+
+fn main() {
+	kept := make_counter()
+	_ = identity(kept)
+	assert kept() == 1
+	for _ in 0 .. 50_000 {
+		_ = make_counter()
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'discarded_returned_closure_hot_loop_c', source)
+	assert c_source.contains('closure__closure_generation_snapshot();'), c_source
+	assert c_source.contains('closure__closure_try_destroy_since(__discarded_closure_'), c_source
+
+	out := run_good(v3_bin, 'discarded_returned_closure_hot_loop', source)
+	assert out == 'ok'
+}
+
+fn test_discarded_static_fn_return_does_not_require_closure_runtime() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn answer() int {
+	return 42
+}
+
+fn callback() fn () int {
+	return answer
+}
+
+fn main() {
+	_ = callback()
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'discarded_static_fn_return_c', source)
+	assert !c_source.contains('closure__closure_generation_snapshot();'), c_source
+	out := run_good(v3_bin, 'discarded_static_fn_return', source)
+	assert out == 'ok'
+}
+
 fn test_non_escaping_bound_method_closures_are_reclaimed_in_hot_loop() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {

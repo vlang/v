@@ -7963,6 +7963,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if expanded := t.try_expand_plain_multi_assign(node) {
 		return expanded
 	}
+	if discarded := t.try_lower_discarded_closure_assign(node) {
+		return discarded
+	}
 	t.update_orm_initialized_fields_for_assignment(node)
 	t.update_sql_query_data_aliases_for_assignment(node)
 	if lowered := t.try_lower_sum_shared_field_assign(node) {
@@ -8121,6 +8124,74 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		result << post_assign
 	}
 	return result
+}
+
+fn (mut t Transformer) try_lower_discarded_closure_assign(node flat.Node) ?[]flat.NodeId {
+	if node.kind != .assign || node.op != .assign || node.children_count != 2 {
+		return none
+	}
+	lhs := t.a.child_node(&node, 0)
+	if lhs.kind != .ident || lhs.value != '_' {
+		return none
+	}
+	return t.lower_discarded_closure_value(t.a.child(&node, 1))
+}
+
+fn (mut t Transformer) lower_discarded_closure_value(id flat.NodeId) ?[]flat.NodeId {
+	fn_type := t.discarded_closure_value_type(id) or { return none }
+	if !t.used_fn_contains_name('closure.closure_create_with_data') {
+		return none
+	}
+
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	generation_name := t.new_temp('closure_generation')
+	generation_call := t.make_call_typed('closure.closure_generation_snapshot', []flat.NodeId{},
+		'u64')
+	t.mark_fn_used_name('closure.closure_generation_snapshot')
+	t.set_var_type(generation_name, 'u64')
+	result << t.make_decl_assign_typed(generation_name, generation_call, 'u64')
+
+	closure_value := t.transform_expr_for_type(id, fn_type)
+	t.drain_pending(mut result)
+	closure_name := t.new_temp('discarded_closure')
+	t.set_var_type(closure_name, fn_type)
+	result << t.make_decl_assign_typed(closure_name, closure_value, fn_type)
+	closure_ptr := t.make_cast('voidptr', t.make_ident(closure_name), 'voidptr')
+	generation := t.make_ident(generation_name)
+	t.set_node_typ(int(generation), 'u64')
+	destroy := t.make_call_typed('closure.closure_try_destroy_since', [
+		closure_ptr,
+		generation,
+	], 'void')
+	t.mark_fn_used_name('closure.closure_try_destroy_since')
+	result << t.make_expr_stmt(destroy)
+	return result
+}
+
+fn (t &Transformer) discarded_closure_value_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	if fn_type := t.fn_value_type_name(id) {
+		return fn_type
+	}
+	node := t.a.nodes[int(id)]
+	mut candidates := [
+		node.typ,
+		t.node_type(id),
+		t.resolve_expr_type(id),
+		t.original_expr_type(id),
+	]
+	if node.kind == .call {
+		candidates << t.current_call_return_type(node)
+	}
+	for candidate in candidates {
+		if t.is_fn_pointer_type_name(candidate) {
+			return t.normalize_type_alias(candidate)
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) local_closure_overwrite_name(node flat.Node) ?string {
@@ -11564,6 +11635,9 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	child := t.a.nodes[int(child_id)]
 	if child.kind == .call && t.is_disabled_fn_call(child_id, child) {
 		return []flat.NodeId{}
+	}
+	if discarded := t.lower_discarded_closure_value(child_id) {
+		return discarded
 	}
 	if t.autolock_depth == 0 {
 		if lock_id := t.shared_postfix_autolock_target(child_id) {
