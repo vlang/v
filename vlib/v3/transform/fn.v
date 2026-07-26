@@ -7,11 +7,12 @@ const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 
 // max_stringify_nesting_depth bounds how deeply the inline autostr lowering
 // (structs, sum types) recurses through *distinct* aggregate types before it
-// truncates with `Type{...}` / `Sum(...)`. The per-type circular guards only
-// stop a type repeating on the stack; without this total-depth bound a deeply
-// nested distinct-type graph (e.g. v1's ast.Expr/ast.Stmt sumtypes referencing
-// dozens of node structs) expands combinatorially at every `${x}` site, which
-// blows up node generation (region overflow / effectively unbounded work).
+// defers the remaining expansion to synthesized helpers. The per-type circular
+// guards only stop a type repeating on the stack; without this total-depth
+// bound a deeply nested distinct-type graph (e.g. v1's ast.Expr/ast.Stmt
+// sumtypes referencing dozens of node structs) expands combinatorially at
+// every `${x}` site, which blows up node generation (region overflow /
+// effectively unbounded work).
 // Overridable at runtime with V3_STR_CAP for experiments. Kept low because the
 // expansion is combinatorial in this depth: v1's ast graph is unbounded past ~5.
 const max_stringify_nesting_depth = 3
@@ -5040,8 +5041,9 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	if stack_count >= recurse_limit {
 		return t.make_string_literal('<circular>')
 	}
-	if t.stringify_stack.len >= t.stringify_depth_cap {
-		return t.make_string_literal('${struct_string_display_name(struct_type)}{...}')
+	if t.stringify_stack.len >= t.stringify_depth_cap
+		&& !t.stringify_types_match(t.auto_str_synthesis_type, struct_type) {
+		return t.request_auto_str_helper(expr, struct_type)
 	}
 	t.stringify_stack << struct_type
 	defer {
@@ -5753,8 +5755,9 @@ fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name string) flat.Nod
 	if resolved_sum in t.stringify_stack {
 		return t.make_string_literal('${sum_display}{}')
 	}
-	if t.stringify_stack.len >= t.stringify_depth_cap {
-		return t.make_string_literal('${sum_display}(...)')
+	if t.stringify_stack.len >= t.stringify_depth_cap
+		&& !t.stringify_types_match(t.auto_str_synthesis_type, resolved_sum) {
+		return t.request_auto_str_helper(expr, resolved_sum)
 	}
 	t.stringify_stack << resolved_sum
 	defer {

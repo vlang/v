@@ -330,6 +330,88 @@ fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	assert out == '7'
 }
 
+fn test_auto_str_preserves_distinct_structs_beyond_inline_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'auto_str_distinct_struct_depth', 'struct D {
+	value int
+}
+
+struct C {
+	d D
+}
+
+struct B {
+	c C
+}
+
+struct A {
+	b B
+}
+
+fn main() {
+	value := A{
+		b: B{
+			c: C{
+				d: D{
+					value: 42
+				}
+			}
+		}
+	}
+	println(value)
+}
+')
+	assert out == 'A{
+    b: B{
+        c: C{
+            d: D{
+                value: 42
+            }
+        }
+    }
+}'
+}
+
+fn test_auto_str_preserves_distinct_sum_beyond_inline_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'auto_str_distinct_sum_depth', 'struct Leaf {
+	answer int
+}
+
+struct Other {
+	text string
+}
+
+type Value = Leaf | Other
+
+struct C {
+	value Value
+}
+
+struct B {
+	c C
+}
+
+struct A {
+	b B
+}
+
+fn main() {
+	println(A{
+		b: B{
+			c: C{
+				value: Value(Leaf{
+					answer: 42
+				})
+			}
+		}
+	})
+}
+')
+	assert out.contains('answer: 42'), out
+	assert !out.contains('Value(...)'), out
+}
+
 fn test_interface_fn_field_argument_keeps_parameter_offset_zero() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'interface_fn_field_argument_offset', 'interface Value {
