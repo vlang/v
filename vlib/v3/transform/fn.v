@@ -971,7 +971,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	saved_in_call_callee := t.in_call_callee
 	t.in_call_callee = true
 	callee_id := t.a.children[node.children_start]
-	new_children << (t.const_fn_call_target(callee_id) or {
+	mut transformed_callee := t.const_fn_call_target(callee_id) or {
 		if param_offset == 1 && params.len > 0 {
 			if converted_callee := t.transform_method_callee_receiver_for_param(callee_id,
 				params[0].name())
@@ -983,8 +983,21 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		} else {
 			t.transform_expr(callee_id)
 		}
-	})
+	}
 	t.in_call_callee = saved_in_call_callee
+	if t.fn_literal_has_runtime_captures(callee_id) {
+		closure_type := t.node_type(transformed_callee)
+		if closure_type.len > 0 {
+			closure_name := t.new_temp('immediate_closure')
+			t.set_var_type(closure_name, closure_type)
+			t.pending_stmts << t.make_decl_assign_typed(closure_name, transformed_callee,
+				closure_type)
+			t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
+			transformed_callee = t.make_ident(closure_name)
+			t.set_node_typ(int(transformed_callee), closure_type)
+		}
+	}
+	new_children << transformed_callee
 	mut i := 1
 	mut variadic_tail_supplied := false
 	for i < node.children_count {

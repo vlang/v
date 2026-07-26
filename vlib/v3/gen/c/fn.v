@@ -2733,7 +2733,7 @@ fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
 // field access can't represent the bound receiver, so it stores the receiver in a
 // per-instance closure context and yields a wrapper function that invokes the method.
 // Returns false when the selector is an ordinary field access (handled normally).
-fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string) bool {
+fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string, borrow_receiver bool) bool {
 	clean := types.unwrap_all_pointers(base_type)
 	mut receiver_name := ''
 	mut is_interface_receiver := false
@@ -2829,13 +2829,12 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	base_pointer_depth := cgen_type_pointer_depth(base_type)
 	receiver_pointer_depth := cgen_type_pointer_depth(params[0])
 	receiver_is_mut := g.tc.mut_receiver_methods[method_key] || g.tc.mut_receiver_methods[cname]
-	// An immutable pointer receiver can be copied into the heap closure context even
-	// when its base is addressable. Keeping `&local` would leave an escaping method
-	// value pointing at dead stack storage. Mutable receivers keep borrowing stable
-	// lvalues so in-scope method values still mutate their original receiver; the
-	// checker rejects those method values when they escape.
+	// Escaping immutable pointer-receiver method values copy addressable value
+	// receivers into durable context storage. A method value proven local must keep
+	// borrowing its receiver so mutations made after binding remain observable.
+	// Mutable receivers also borrow stable lvalues; the checker rejects them on escape.
 	receiver_value_copy := receiver_pointer_depth > base_pointer_depth
-		&& (!g.expr_is_addressable(base_id) || !receiver_is_mut)
+		&& (!g.expr_is_addressable(base_id) || (!receiver_is_mut && !borrow_receiver))
 	ctx_receiver_ct := if receiver_value_copy {
 		g.tc.c_type(types.unwrap_pointer(params[0]))
 	} else {

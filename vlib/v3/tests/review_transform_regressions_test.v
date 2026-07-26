@@ -1055,6 +1055,29 @@ fn main() {
 	assert safe == '11\n22'
 }
 
+fn test_local_immutable_pointer_receiver_method_value_borrows_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'local_immutable_pointer_receiver_borrows', 'struct Foo {
+mut:
+	value int
+}
+
+fn (foo &Foo) read() int {
+	return foo.value
+}
+
+fn main() {
+	mut foo := Foo{
+		value: 1
+	}
+	callback := foo.read
+	foo.value = 2
+	println(int_str(callback()))
+}
+')
+	assert out == '2'
+}
+
 fn test_escaping_pointer_receiver_method_value_copies_addressable_local() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Foo {
@@ -1207,6 +1230,31 @@ fn main() {
 	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
 	assert !c_source.contains('memdup(&__esc'), c_source
 	out := run_good(v3_bin, 'local_mut_fixed_array_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_mut_fixed_array_capture_is_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn exercise() int {
+	for i in 0 .. 50_000 {
+		mut values := [i, 0]!
+		value := fn [mut values] () int {
+			values[0]++
+			return values[0]
+		}()
+		assert value == i + 1
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(exercise()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_mut_fixed_array_capture_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
+	assert !c_source.contains('memdup(&__esc'), c_source
+	out := run_good(v3_bin, 'immediate_mut_fixed_array_capture', source)
 	assert out == '42'
 }
 

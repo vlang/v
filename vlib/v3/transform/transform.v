@@ -4867,7 +4867,14 @@ fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 		return
 	}
 	for i in 0 .. node.children_count {
-		t.collect_mut_capture_sources(t.a.child(&node, i))
+		child_id := t.a.child(&node, i)
+		// A capturing literal used as the callee is consumed by this call. It is
+		// materialized as a scoped temporary during call lowering, so its mutable
+		// fixed-array captures can keep borrowing this frame's storage.
+		if node.kind == .call && i == 0 && t.fn_literal_has_runtime_captures(child_id) {
+			continue
+		}
+		t.collect_mut_capture_sources(child_id)
 	}
 }
 
@@ -4904,7 +4911,36 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 		}
 		if !escapes {
 			t.local_closure_cleanup_decls[decl_id] = name
+			t.mark_local_method_value_receiver_borrow(flat.NodeId(decl_id))
 		}
+	}
+}
+
+fn (mut t Transformer) mark_local_method_value_receiver_borrow(decl_id flat.NodeId) {
+	if int(decl_id) < 0 || int(decl_id) >= t.a.nodes.len {
+		return
+	}
+	decl := t.a.nodes[int(decl_id)]
+	if decl.kind != .decl_assign || decl.children_count != 2 {
+		return
+	}
+	mut rhs_id := t.a.child(&decl, 1)
+	for int(rhs_id) >= 0 && int(rhs_id) < t.a.nodes.len {
+		rhs := t.a.nodes[int(rhs_id)]
+		if rhs.kind in [.paren, .cast_expr] && rhs.children_count == 1 {
+			rhs_id = t.a.child(&rhs, 0)
+			continue
+		}
+		if rhs.kind != .selector || rhs.children_count == 0 || isnil(t.tc)
+			|| !t.tc.expr_is_method_value(rhs_id) {
+			return
+		}
+		mut params := rhs.generic_params().clone()
+		if flat.method_value_borrow_receiver_marker !in params {
+			params << flat.method_value_borrow_receiver_marker
+			t.set_node_generic_params(int(rhs_id), params)
+		}
+		return
 	}
 }
 
@@ -13961,6 +13997,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		pos:            node.pos
 		value:          node.value
 		typ:            sel_typ
+		payload:        flat.node_payload(node.generic_params().clone())
 	})
 }
 

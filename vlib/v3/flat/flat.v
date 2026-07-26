@@ -10,6 +10,7 @@ pub type NodeId = int
 pub type TextId = u32
 
 pub const empty_node = NodeId(-1)
+pub const method_value_borrow_receiver_marker = '__v3_method_value_borrow_receiver'
 
 const empty_node_value = Node{}
 
