@@ -6067,15 +6067,16 @@ fn c_flag_args_with_values(raw string, vroot string, source_file string, target 
 // used only when the define is absent. Without this step, spaces inside the macro
 // become bogus linker input files when the expanded flag is split into arguments.
 fn c_expand_default_define_macros(raw string, compile_values map[string]string) ?string {
-	mut result := raw
+	mut result := ''
+	mut cursor := 0
 	for {
-		idx := result.index(r'$d(') or { return result }
+		idx := c_flag_default_define_macro_index(raw, cursor) or { return result + raw[cursor..] }
 		open_idx := idx + 2
-		close_idx := c_flag_macro_close(result, open_idx)
+		close_idx := c_flag_macro_close(raw, open_idx)
 		if close_idx < 0 {
 			return none
 		}
-		inner := result[open_idx + 1..close_idx]
+		inner := raw[open_idx + 1..close_idx]
 		comma_idx := c_flag_top_level_comma(inner)
 		if comma_idx < 0 {
 			return none
@@ -6089,9 +6090,32 @@ fn c_expand_default_define_macros(raw string, compile_values map[string]string) 
 			value = override
 		}
 		value = c_flag_quote_spaced_macro_value(value)
-		result = result[..idx] + value + result[close_idx + 1..]
+		result += raw[cursor..idx] + value
+		cursor = close_idx + 1
 	}
 	return result
+}
+
+fn c_flag_default_define_macro_index(text string, start int) ?int {
+	mut quote := u8(0)
+	for i := start; i + 2 < text.len; i++ {
+		ch := text[i]
+		if ch in [`'`, `"`] {
+			if c_flag_quote_is_escaped(text, i) {
+				continue
+			}
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+			continue
+		}
+		if quote == 0 && ch == `$` && text[i + 1] == `d` && text[i + 2] == `(` {
+			return i
+		}
+	}
+	return none
 }
 
 // c_flag_quote_spaced_macro_value keeps one expanded `$d` value in one argv

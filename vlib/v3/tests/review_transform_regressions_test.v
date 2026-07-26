@@ -1062,6 +1062,42 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_deferred_local_bound_method_closures_remain_scope_owned() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn deferred_read(value int) {
+	mut counter := Counter{
+		value: value
+	}
+	callback := counter.read
+	defer {
+		assert callback() == value + 1
+	}
+	counter.value++
+}
+
+fn main() {
+	for i in 0 .. 50_000 {
+		deferred_read(i)
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'deferred_local_bound_method_c', source)
+	body := c_fn_body(c_source, 'void deferred_read(int value) {')
+	assert body.contains('closure__closure_try_destroy(callback);'), body
+	out := run_good(v3_bin, 'deferred_local_bound_method', source)
+	assert out == 'ok'
+}
+
 fn test_scope_local_callback_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Counter {

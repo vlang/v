@@ -61,6 +61,9 @@ fn test_c_flag_default_define_macros_stay_single_arguments() {
 	assert c_flag_args(r'-DQUOTED=$d("QUOTED", "\"a##b\"") ## source comment', '', '', target) == [
 		'-DQUOTED="a##b"',
 	]
+	assert c_flag_args('-DTEXT=\'"\$d(x)"\'', '', '', target) == [
+		'-DTEXT="$d(x)"',
+	]
 }
 
 fn test_c_flag_default_define_macros_honor_configured_values() {

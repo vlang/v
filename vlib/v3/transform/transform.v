@@ -5839,7 +5839,7 @@ fn (t &Transformer) local_closure_binding_escapes_in_value_context(id flat.NodeI
 			else {}
 		}
 	}
-	if node.kind in [.defer_stmt, .spawn_expr] {
+	if node.kind == .spawn_expr {
 		return t.local_closure_binding_mentioned(id, bound_uses)
 	}
 	if node.kind == .call && node.children_count > 0 {
