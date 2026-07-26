@@ -3215,6 +3215,38 @@ fn recursive_str_ident_var_pos(ident ast.Ident) ?int {
 	return none
 }
 
+fn recursive_str_exprs_are_same_index_value(a ast.Expr, b ast.Expr) bool {
+	left := a.remove_par()
+	right := b.remove_par()
+	match left {
+		ast.Ident, ast.SelectorExpr, ast.IndexExpr {
+			return recursive_str_exprs_are_same_alias_path(left, right)
+		}
+		ast.IntegerLiteral {
+			return right is ast.IntegerLiteral && left.val == right.val
+		}
+		ast.StringLiteral {
+			return right is ast.StringLiteral && left.val == right.val
+		}
+		ast.CharLiteral {
+			return right is ast.CharLiteral && left.val == right.val
+		}
+		ast.BoolLiteral {
+			return right is ast.BoolLiteral && left.val == right.val
+		}
+		ast.EnumVal {
+			return right is ast.EnumVal && left.enum_name == right.enum_name
+				&& left.val == right.val && left.mod == right.mod
+		}
+		ast.PrefixExpr {
+			return right is ast.PrefixExpr && left.op == right.op
+				&& recursive_str_exprs_are_same_index_value(left.right, right.right)
+		}
+		else {}
+	}
+	return false
+}
+
 fn recursive_str_exprs_are_same_alias_path(a ast.Expr, b ast.Expr) bool {
 	left := a.remove_par()
 	right := b.remove_par()
@@ -3233,6 +3265,12 @@ fn recursive_str_exprs_are_same_alias_path(a ast.Expr, b ast.Expr) bool {
 		ast.SelectorExpr {
 			return right is ast.SelectorExpr && left.field_name == right.field_name
 				&& recursive_str_exprs_are_same_alias_path(left.expr, right.expr)
+		}
+		ast.IndexExpr {
+			return right is ast.IndexExpr && !left.is_index_operator && !right.is_index_operator
+				&& (left.is_array || left.is_map || left.is_farray)
+				&& recursive_str_exprs_are_same_alias_path(left.left, right.left)
+				&& recursive_str_exprs_are_same_index_value(left.index, right.index)
 		}
 		else {}
 	}

@@ -771,6 +771,22 @@ fn (n NoOpCompoundAssignment) str() string {
 	return alias.str()
 }
 
+type NoOpIndexedList = []int
+
+fn (x NoOpIndexedList) str() string {
+	mut alias := unsafe { x }
+	alias[0] = alias[0]
+	return alias.str()
+}
+
+type NoOpIndexedMap = map[string]int
+
+fn (x NoOpIndexedMap) str() string {
+	mut alias := unsafe { x }
+	alias['value'] = alias['value']
+	return alias.str()
+}
+
 struct NoOpHelperAssignment {
 mut:
 	remaining int
@@ -887,6 +903,10 @@ fn main() {
 	println(ScalarOnlyAggregateMutation{})
 	println(NoOpFieldAssignment{})
 	println(NoOpCompoundAssignment{})
+	println(NoOpIndexedList([0]))
+	println(NoOpIndexedMap({
+		'value': 0
+	}))
 	println(NoOpHelperAssignment{})
 	println(IfaceExt{ name: 'test' })
 }
