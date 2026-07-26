@@ -1258,6 +1258,69 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_multi_variable_callback_declarations_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		unused, callback := 0, counter.read
+		counter.value++
+		total += unused + callback()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_multi_callback_decl_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'local_multi_callback_decl_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_callback_array_prefix_before_spread_preserves_receiver_identity_and_is_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	other_callbacks := []fn () int{}
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := [counter.read, ...other_callbacks]
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_spread_prefix_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_spread_prefix_hot_loop', source)
+	assert out == '1250025000'
+}
+
 fn test_scope_local_callback_map_initializers_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Counter {
