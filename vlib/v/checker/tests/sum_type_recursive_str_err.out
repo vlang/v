@@ -173,3 +173,31 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:259:15: error: cannot call `s
       |                  ~~~~~
   260 | }
   261 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:359:15: error: cannot call `str()` method recursively
+  357 |         alias = f
+  358 |     }
+  359 |     return alias.str()
+      |                  ~~~~~
+  360 | }
+  361 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:372:15: error: cannot call `str()` method recursively
+  370 |         false { alias = f }
+  371 |     }
+  372 |     return alias.str()
+      |                  ~~~~~
+  373 | }
+  374 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:381:15: error: cannot call `str()` method recursively
+  379 |     x = ReboundSourceList([1])
+  380 |     x[0]--
+  381 |     return alias.str()
+      |                  ~~~~~
+  382 | }
+  383 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:415:15: error: cannot call `str()` method recursively
+  413 |     })
+  414 |     x['value']--
+  415 |     return alias.str()
+      |                  ~~~~~
+  416 | }
+  417 |

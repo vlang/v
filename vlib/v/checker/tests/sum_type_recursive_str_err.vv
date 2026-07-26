@@ -345,6 +345,87 @@ fn (n PrivateMutatorProgress) str() string {
 	return next.str()
 }
 
+struct ExhaustiveIfReceiverAssignment {
+	recurse bool
+}
+
+fn (f ExhaustiveIfReceiverAssignment) str() string {
+	mut alias := ExhaustiveIfReceiverAssignment{}
+	if f.recurse {
+		alias = f
+	} else {
+		alias = f
+	}
+	return alias.str()
+}
+
+struct ExhaustiveMatchReceiverAssignment {
+	recurse bool
+}
+
+fn (f ExhaustiveMatchReceiverAssignment) str() string {
+	mut alias := ExhaustiveMatchReceiverAssignment{}
+	match f.recurse {
+		true { alias = f }
+		false { alias = f }
+	}
+	return alias.str()
+}
+
+type ReboundSourceList = []int
+
+fn (mut x ReboundSourceList) str() string {
+	mut alias := x
+	x = ReboundSourceList([1])
+	x[0]--
+	return alias.str()
+}
+
+type SharedStorageProgress = []int
+
+fn (mut x SharedStorageProgress) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut alias := x
+	x[0]--
+	return alias.str()
+}
+
+type MutatedThenReboundList = []int
+
+fn (mut x MutatedThenReboundList) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut alias := x
+	x[0]--
+	x = MutatedThenReboundList([0])
+	return alias.str()
+}
+
+type ReboundSourceMap = map[string]int
+
+fn (mut x ReboundSourceMap) str() string {
+	mut alias := x
+	x = ReboundSourceMap({
+		'value': 1
+	})
+	x['value']--
+	return alias.str()
+}
+
+type SharedMapStorageProgress = map[string]int
+
+fn (mut x SharedMapStorageProgress) str() string {
+	if x['value'] == 0 {
+		return ''
+	}
+	mut alias := x
+	x['value']--
+	return alias.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -388,5 +469,13 @@ fn main() {
 	println(AsCastAlias{})
 	println(BranchReassigned{})
 	println(ShortCircuitMutation{})
+	println(ExhaustiveIfReceiverAssignment{})
+	println(ExhaustiveMatchReceiverAssignment{})
+	mut rebound_source := ReboundSourceList([0])
+	println(rebound_source)
+	mut rebound_map_source := ReboundSourceMap({
+		'value': 0
+	})
+	println(rebound_map_source)
 	println(IfaceExt{ name: 'test' })
 }
