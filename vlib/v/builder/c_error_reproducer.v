@@ -239,6 +239,15 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	if root_id < 0 || main_id < 0 {
 		return ''
 	}
+	// under -autofree, generated cleanup calls custom `free` methods without any source-level
+	// reference; the mark-used pass retains them (see markused/walker.v), so seed them here too,
+	// or a helper reachable only from a `Foo.free()` is dropped on replay (the recorded build
+	// options include -autofree) and the C error vanishes
+	if v.pref.autofree {
+		for id in name_to_decl['free'] {
+			extra_seeds << id
+		}
+	}
 	// seed from the failing declaration (for its dependencies) and from `main` (so the failing
 	// code stays reachable and the program is runnable); the failing declaration is seeded first
 	mut seeds := [root_id]
@@ -310,6 +319,14 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	if mod_header == '' {
 		mod_header = 'module main'
 	}
+	// which names each file binds through its own imports: a name used in a file that also
+	// imports it is an import reference, not a local binding
+	mut file_binds := map[string]bool{} // key: "<file_id>\x00<name>"
+	for imp in imports {
+		for t in imp.triggers {
+			file_binds['${imp.file_id}\x00${t}'] = true
+		}
+	}
 	mut scoped_imports := []ReproImport{}
 	mut bound := map[string]string{} // binding name -> the import source that provides it
 	for imp in imports {
@@ -331,6 +348,15 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			// a file-scoped import binding (e.g. `import time { Time }`) that clashes with an
 			// inlined declaration of the same name would, when flattened, shadow it module-wide
 			if t != '_' && t in included_names {
+				return ''
+			}
+			// the binding may also collide with a parameter or local variable in a retained
+			// declaration from another contributing file (the checker rejects those as duplicate
+			// import symbols once the import becomes file-visible after flattening). Token-level
+			// scanning cannot tell a local binding from a reference, so any use of the name in a
+			// file that does not import it itself is treated as a collision.
+			if t != '_'
+				&& repro_import_collides(t, imp.file_id, included_files, file_referenced, file_binds) {
 				return ''
 			}
 			bound[t] = imp.source
@@ -599,6 +625,24 @@ fn repro_reflection_method_targets(source string) []string {
 		i++
 	}
 	return targets
+}
+
+// repro_import_collides reports whether an import-bound name is also used in a retained
+// declaration from a contributing file that does not import it itself: after flattening, the
+// import becomes visible there and the checker rejects same-named parameters and locals as
+// duplicate import symbols. Uses of the name in files carrying an equivalent import are ordinary
+// references and do not collide.
+fn repro_import_collides(name string, imp_file_id int, included_files map[int]bool, file_referenced map[string]bool, file_binds map[string]bool) bool {
+	for fid, _ in included_files {
+		if fid == imp_file_id {
+			continue
+		}
+		key := '${fid}\x00${name}'
+		if key in file_referenced && key !in file_binds {
+			return true
+		}
+	}
+	return false
 }
 
 // repro_import_stmt reconstructs a single valid `import` line from the AST, so multi-line, aliased

@@ -598,3 +598,24 @@ fn test_repro_source_stringifies() {
 	assert repro_source_stringifies('fn f() {}', ['assert'])
 	assert !repro_source_stringifies("fn f() {\n\ty := 'plain'\n}", ['f', 'y'])
 }
+
+fn test_repro_import_collides() {
+	included := {
+		0: true
+		1: true
+	}
+	// file 0 imports `x`; file 1 uses `x` as a parameter/local without importing it
+	mut referenced := {
+		'0\x00x': true
+		'1\x00x': true
+	}
+	mut binds := {
+		'0\x00x': true
+	}
+	assert repro_import_collides('x', 0, included, referenced, binds)
+	// once file 1 carries an equivalent import, its uses are references, not bindings
+	binds['1\x00x'] = true
+	assert !repro_import_collides('x', 0, included, referenced, binds)
+	// a name unused outside the importing file cannot collide
+	assert !repro_import_collides('y', 0, included, referenced, binds)
+}
