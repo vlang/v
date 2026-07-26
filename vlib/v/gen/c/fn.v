@@ -2307,9 +2307,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write2(line, '*(${g.base_type(ret_typ)}*)${tmp_res}.data')
 			return
 		}
-	} else if !g.inside_curry_call && node.left is ast.CastExpr && node.name == '' {
-		g.expr(ast.Expr(node.left))
-	} else if !g.inside_curry_call && node.left is ast.SelectorExpr && node.name == '' {
+	} else if !g.inside_curry_call && node.name == ''
+		&& (node.left is ast.CastExpr || node.left is ast.SelectorExpr) {
 		if node.or_block.kind == .absent {
 			g.expr(ast.Expr(node.left))
 		} else {
