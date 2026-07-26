@@ -130,3 +130,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:137:15: error: cannot call `s
   137 |     return alias.str()
       |                  ~~~~~
   138 | }
+  139 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:143:36: error: cannot call `str()` method recursively
+  141 |
+  142 | fn (f AsCastRecv) str() string {
+  143 |     return (Stringer(f) as AsCastRecv).str()
+      |                                       ~~~~~
+  144 | }

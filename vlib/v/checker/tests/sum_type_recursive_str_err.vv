@@ -137,6 +137,12 @@ fn (f DumpAlias) str() string {
 	return alias.str()
 }
 
+struct AsCastRecv {}
+
+fn (f AsCastRecv) str() string {
+	return (Stringer(f) as AsCastRecv).str()
+}
+
 interface Labelled {
 	name string
 }
@@ -174,5 +180,6 @@ fn main() {
 	println(UnsafeAlias{})
 	println(DumpDirect{})
 	println(DumpAlias{})
+	println(AsCastRecv{})
 	println(IfaceExt{ name: 'test' })
 }

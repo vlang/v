@@ -3611,6 +3611,15 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					} else {
 						break
 					}
+				} else if inner is ast.AsCast {
+					as_sym := c.table.sym(inner.typ)
+					if inner.typ.idx() == receiver_typ.idx()
+						|| (as_sym.kind == .interface
+						&& !as_sym.has_method_with_generic_parent('str')) {
+						inner = inner.expr.remove_par()
+					} else {
+						break
+					}
 				} else if inner is ast.UnsafeExpr {
 					inner = inner.expr.remove_par()
 				} else if inner is ast.DumpExpr {
@@ -3638,6 +3647,15 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 							if init_expr.typ.idx() == receiver_typ.idx()
 								|| (cast_sym.kind == .interface
 								&& !cast_sym.has_method_with_generic_parent('str')) {
+								init_expr = init_expr.expr.remove_par()
+							} else {
+								break
+							}
+						} else if init_expr is ast.AsCast {
+							as_sym := c.table.sym(init_expr.typ)
+							if init_expr.typ.idx() == receiver_typ.idx()
+								|| (as_sym.kind == .interface
+								&& !as_sym.has_method_with_generic_parent('str')) {
 								init_expr = init_expr.expr.remove_par()
 							} else {
 								break
