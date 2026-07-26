@@ -9970,13 +9970,20 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.defer_result {
 			defer_index := types.defer_result_index(node) or { -1 }
-			if g.defer_return_tmp_var.len > 0 {
+			has_return_tmp := g.defer_return_tmp_var.len > 0
+			if has_return_tmp {
 				g.write(g.defer_return_tmp_var)
 			} else {
 				g.write('((${g.value_c_type(g.cur_fn_ret)}){0})')
 			}
 			if defer_index >= 0 {
 				g.write('.arg${defer_index}')
+			} else if has_return_tmp {
+				if _ := array_fixed_type(g.cur_fn_ret) {
+					// A fixed-array function returns an ABI wrapper, while `$res()`
+					// exposes the semantic array stored in that wrapper.
+					g.write('.ret_arr')
+				}
 			}
 		}
 		.ident {

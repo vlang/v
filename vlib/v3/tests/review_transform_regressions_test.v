@@ -1013,6 +1013,38 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_conditionally_self_reassigned_bound_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 1
+		}
+		mut callback := first.get
+		callback = if i % 2 == 0 { callback } else { second.get }
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'conditionally_reassigned_bound_method_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'conditionally_reassigned_bound_method', source)
+	assert out == '1250000000'
+}
+
 fn test_immediately_invoked_bound_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {
@@ -1038,6 +1070,40 @@ fn main() {
 	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
 	out := run_good(v3_bin, 'immediate_bound_method_hot_loop', source)
 	assert out == '1249975000'
+}
+
+fn test_fixed_array_defer_results_use_semantic_array_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn fixed_array_result() [2]int {
+	defer {
+		assert $res()[0] == 1
+		assert $res()[1] == 2
+	}
+	return [1, 2]!
+}
+
+fn multi_result() ([2]int, int) {
+	defer {
+		assert $res(0)[0] == 3
+		assert $res(0)[1] == 4
+	}
+	return [3, 4]!, 5
+}
+
+fn main() {
+	array := fixed_array_result()
+	values, n := multi_result()
+	assert array == [1, 2]!
+	assert values == [3, 4]!
+	assert n == 5
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'fixed_array_defer_result_c', source)
+	assert c_source.contains('(_t1.ret_arr)[0]'), c_source
+	assert c_source.contains('(_t1.arg0)[0]'), c_source
+	out := run_good(v3_bin, 'fixed_array_defer_result', source)
+	assert out == 'ok'
 }
 
 fn test_thread_handle_equality_uses_platform_comparison() {

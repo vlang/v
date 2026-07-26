@@ -5258,25 +5258,70 @@ fn (t &Transformer) local_closure_name_mentioned(id flat.NodeId, name string) bo
 }
 
 fn (t &Transformer) local_closure_name_escapes(id flat.NodeId, name string, decl_id flat.NodeId) bool {
+	return t.local_closure_name_escapes_in_value_context(id, name, decl_id, false)
+}
+
+// A callback value that only flows back into its own local remains scope-owned.
+fn (t &Transformer) local_closure_name_escapes_in_value_context(id flat.NodeId, name string, decl_id flat.NodeId, flows_back_to_local bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || id == decl_id {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
-		return node.value == name
+		return node.value == name && !flows_back_to_local
 	}
 	if node.kind == .assign && node.op == .assign {
-		for i in 0 .. node.children_count {
-			child_id := t.a.child(&node, i)
-			child := t.a.nodes[int(child_id)]
-			if i % 2 == 0 && child.kind == .ident && child.value == name {
+		for i := 0; i < int(node.children_count); i += 2 {
+			lhs_id := t.a.child(&node, i)
+			lhs := t.a.nodes[int(lhs_id)]
+			if lhs.kind != .ident || lhs.value != name {
+				if t.local_closure_name_escapes(lhs_id, name, decl_id) {
+					return true
+				}
+			}
+			if i + 1 >= int(node.children_count) {
 				continue
 			}
-			if t.local_closure_name_escapes(child_id, name, decl_id) {
+			rhs_id := t.a.child(&node, i + 1)
+			same_local_target := lhs.kind == .ident && lhs.value == name
+			if t.local_closure_name_escapes_in_value_context(rhs_id, name, decl_id,
+				same_local_target)
+			{
 				return true
 			}
 		}
 		return false
+	}
+	if flows_back_to_local {
+		match node.kind {
+			.paren, .cast_expr, .expr_stmt {
+				if node.children_count == 1 {
+					return t.local_closure_name_escapes_in_value_context(t.a.child(&node, 0), name,
+						decl_id, true)
+				}
+			}
+			.block {
+				for i in 0 .. node.children_count {
+					if t.local_closure_name_escapes_in_value_context(t.a.child(&node, i), name,
+						decl_id, i == int(node.children_count) - 1)
+					{
+						return true
+					}
+				}
+				return false
+			}
+			.if_expr {
+				for i in 0 .. node.children_count {
+					if t.local_closure_name_escapes_in_value_context(t.a.child(&node, i), name,
+						decl_id, i > 0)
+					{
+						return true
+					}
+				}
+				return false
+			}
+			else {}
+		}
 	}
 	if node.kind in [.defer_stmt, .spawn_expr] {
 		return t.local_closure_name_mentioned(id, name)
@@ -8341,7 +8386,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		closure_type := t.var_type(cleanup_name)
 		tmp_name := t.new_temp('closure_assign')
 		result << t.make_decl_assign_typed(tmp_name, new_children[1], closure_type)
-		result << t.make_local_closure_destroy_stmt(cleanup_name)
+		destroy_condition := t.make_infix(.ne, t.make_ident(tmp_name), t.make_ident(cleanup_name))
+		result << t.make_if(destroy_condition,
+			t.make_block(arr1(t.make_local_closure_destroy_stmt(cleanup_name))), t.make_empty())
 		result << t.make_assign(new_children[0], t.make_ident(tmp_name))
 		if post_assign := t.fn_value_self_capture_refresh_stmt(node, new_children) {
 			result << post_assign
