@@ -6,3 +6,12 @@ fn main() {
 		_ := [3]int(p)
 	}
 }
+
+fn preserve_pointer_to_array_reinterpret_casts() {
+	unsafe {
+		dynamic := [1, 2, 3]
+		_ := *&[]int(&dynamic)
+		fixed := [1, 2, 3]!
+		_ := *&[3]int(&fixed)
+	}
+}
