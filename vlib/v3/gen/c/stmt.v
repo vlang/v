@@ -6557,6 +6557,14 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 	if fixed := array_fixed_type(channel_type.elem_type) {
 		src := g.fixed_array_copy_source_string(value_id, types.Type(fixed))
 		g.write('; ${elem_ct} ${value_tmp}; memmove(${value_tmp}, ${src}, sizeof(${value_tmp}))')
+	} else if type_is_optional_result(channel_type.elem_type) {
+		g.write('; ${elem_ct} ${value_tmp} = ')
+		// A `chan ?T`/`chan !T` carries the optional/result container itself, so the
+		// `or` here guards only the channel push (the closed-channel handler emitted
+		// below), not the produced value. Materialize the container as-is — including
+		// a `none` — instead of unwrapping it, which would both mistype `value_tmp`
+		// and misread a `none` value as a send failure.
+		g.gen_expr_with_expected_type(value_id, channel_type.elem_type)
 	} else {
 		g.write('; ${elem_ct} ${value_tmp} = ')
 		// The `or` applies both to producing the value and to pushing it into the

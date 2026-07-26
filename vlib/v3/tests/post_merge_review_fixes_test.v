@@ -2644,10 +2644,9 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 		'argument count mismatch for `fixed.pointers`: expected 1, got 2')
 }
 
-fn test_alias_receiver_method_value_escape_is_rejected() {
+fn test_alias_receiver_method_value_escape_is_supported() {
 	v3_bin := build_v3()
-	err := 'a method value (`obj.method`) cannot escape its call site'
-	run_bad(v3_bin, 'alias_receiver_underlying_method_value_escape', 'struct Runner {
+	underlying := run_good(v3_bin, 'alias_receiver_underlying_method_value_escape', 'struct Runner {
 	n int
 }
 
@@ -2657,14 +2656,20 @@ fn (r Runner) run() int {
 	return r.n
 }
 
-fn bind(r RAlias) fn () int {
+fn make_callback(r RAlias) fn () int {
 	return r.run
 }
 
-fn main() {}
-',
-		err)
-	run_bad(v3_bin, 'alias_receiver_own_method_value_escape', 'struct Runner {
+fn main() {
+	r := RAlias(Runner{
+		n: 41
+	})
+	cb := make_callback(r)
+	println(int_str(cb()))
+}
+')
+	assert underlying == '41'
+	own := run_good(v3_bin, 'alias_receiver_own_method_value_escape', 'struct Runner {
 	n int
 }
 
@@ -2674,13 +2679,50 @@ fn (r RAlias) alias_run() int {
 	return r.n
 }
 
-fn bind(r RAlias) fn () int {
+fn make_callback(r RAlias) fn () int {
 	return r.alias_run
 }
 
-fn main() {}
-',
-		err)
+fn main() {
+	r := RAlias(Runner{
+		n: 42
+	})
+	cb := make_callback(r)
+	println(int_str(cb()))
+}
+')
+	assert own == '42'
+}
+
+fn test_interface_method_value_escape_is_supported() {
+	v3_bin := build_v3()
+	interface_method := run_good(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
+	run() int
+}
+
+struct Job {
+	n int
+}
+
+fn (j Job) run() int {
+	return j.n
+}
+
+struct Holder {
+	cb fn () int
+}
+
+fn main() {
+	r := Runner(Job{
+		n: 1
+	})
+	h := Holder{
+		cb: r.run
+	}
+	println(int_str(h.cb()))
+}
+')
+	assert interface_method == '1'
 }
 
 fn test_map_builtin_method_fallback_checks_arguments() {
@@ -5661,32 +5703,6 @@ fn main() {
 	assert str_out.contains("m: {'a': 3}"), str_out
 	assert str_out.contains('bar: Bar'), str_out
 	assert str_out.contains('x: 7'), str_out
-	run_bad(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
-	run() int
-}
-
-struct Job {
-	n int
-}
-
-fn (j Job) run() int {
-	return j.n
-}
-
-struct Holder {
-	cb fn () int
-}
-
-fn main() {
-	r := Runner(Job{
-		n: 1
-	})
-	_ := Holder{
-		cb: r.run
-	}
-}
-',
-		'cannot escape its call site')
 	run_bad(v3_bin, 'review_voidptr_interface_cast', 'interface Sink {
 	sink()
 }

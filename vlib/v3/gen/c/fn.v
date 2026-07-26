@@ -2744,7 +2744,14 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		is_interface_receiver = true
 	} else if clean is types.Alias {
 		receiver_name = clean.name
-		if alias_method := g.find_alias_method(clean.base_type.name(), method) {
+		base_receiver_name := clean.base_type.name()
+		if g.resolve_method_name(receiver_name, method).len == 0
+			&& g.resolve_method_name(base_receiver_name, method).len > 0 {
+			// A true alias (`type A = S`) inherits methods declared on its
+			// underlying type. Use that declaration's receiver/signature for
+			// the method-value wrapper when the alias has no method of its own.
+			receiver_name = base_receiver_name
+		} else if alias_method := g.find_alias_method(base_receiver_name, method) {
 			receiver_name = alias_method.all_before_last('.')
 		}
 	} else if clean is types.String || clean is types.Primitive || clean is types.Char
@@ -2821,9 +2828,15 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	ret_ct := g.fn_return_type_name(ret)
 	base_pointer_depth := cgen_type_pointer_depth(base_type)
 	receiver_pointer_depth := cgen_type_pointer_depth(params[0])
-	receiver_rvalue_copy := receiver_pointer_depth > base_pointer_depth
-		&& !g.expr_is_addressable(base_id)
-	ctx_receiver_ct := if receiver_rvalue_copy {
+	receiver_is_mut := g.tc.mut_receiver_methods[method_key] || g.tc.mut_receiver_methods[cname]
+	// An immutable pointer receiver can be copied into the heap closure context even
+	// when its base is addressable. Keeping `&local` would leave an escaping method
+	// value pointing at dead stack storage. Mutable receivers keep borrowing stable
+	// lvalues so in-scope method values still mutate their original receiver; the
+	// checker rejects those method values when they escape.
+	receiver_value_copy := receiver_pointer_depth > base_pointer_depth
+		&& (!g.expr_is_addressable(base_id) || !receiver_is_mut)
+	ctx_receiver_ct := if receiver_value_copy {
 		g.tc.c_type(types.unwrap_pointer(params[0]))
 	} else {
 		recv_ct
@@ -2834,7 +2847,7 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	ctx_name := '_mvctx_${idx}'
 	wrap_name := '_mvwrap_${idx}'
 	mut wparams := []string{}
-	mut call_args := [if receiver_rvalue_copy { '&ctx->receiver' } else { 'ctx->receiver' }]
+	mut call_args := [if receiver_value_copy { '&ctx->receiver' } else { 'ctx->receiver' }]
 	for i in 1 .. params.len {
 		pt := g.tc.c_type(params[i])
 		wparams << '${pt} a${i}'
@@ -2857,10 +2870,9 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		'void*'
 	}
 	g.write('(${fnptr_ct})closure__closure_create_with_data((void*)${wrap_name}, (void*)memdup(&(${ctx_name}){.receiver = ')
-	if receiver_rvalue_copy {
-		// Pointer receiver bound to an rvalue base (`Foo{..}.tick`, `make_foo().tick`): taking
-		// `&(rvalue)` captures a temporary that dies before the callback runs. Store the
-		// value directly in the context; the wrapper passes its durable field address.
+	if receiver_value_copy {
+		// Store the receiver value directly in the context; the wrapper passes its
+		// durable field address instead of retaining `&local`.
 		g.gen_expr(base_id)
 	} else {
 		if receiver_pointer_depth > base_pointer_depth {

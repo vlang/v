@@ -236,6 +236,7 @@ mut:
 	compiler_vroot               string
 	compiler_vexe                string
 	target                       pref.Target
+	compile_values               map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
 	output_path                  string
 	output_error                 string
 	c99_mode                     bool
@@ -865,6 +866,12 @@ pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 // set_target sets the canonical code-generation target.
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
+}
+
+// set_compile_values records explicit `-d` values so `$d(...)` inside `#flag`
+// directives resolves configured values over fallbacks.
+pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
+	g.compile_values = values.clone()
 }
 
 // set_cache_split enables stable cache markers and string symbols in generated C.
@@ -2793,7 +2800,8 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			continue
 		}
 		if node.value == 'flag' {
-			flags := c_flag_args(node.typ, g.compiler_vroot, cur_file, g.target)
+			flags := c_flag_args_with_values(node.typ, g.compiler_vroot, cur_file, g.target,
+				g.compile_values)
 			key := flags.join('\x00')
 			if flags.len > 0 && key !in seen_groups {
 				seen_groups[key] = true
@@ -2813,7 +2821,7 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 }
 
 // cache_directive_flags resolves source C flags that affect early C cache keys.
-pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target) []string {
+pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
 	mut result := []string{}
 	mut seen_groups := map[string]bool{}
 	mut cur_file := ''
@@ -2826,7 +2834,7 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target) 
 			continue
 		}
 		flags := if node.value == 'flag' {
-			c_flag_args(node.typ, vroot, cur_file, target)
+			c_flag_args_with_values(node.typ, vroot, cur_file, target, compile_values)
 		} else if node.value == 'pkgconfig' {
 			c_pkgconfig_flags(node.typ)
 		} else {
@@ -6017,9 +6025,16 @@ fn c_include_arg_for_target(raw string, vroot string, source_file string, target
 	return clean
 }
 
+// c_flag_args resolves a `#flag` directive with no explicit `-d` values.
 fn c_flag_args(raw string, vroot string, source_file string, target pref.Target) []string {
+	return c_flag_args_with_values(raw, vroot, source_file, target, map[string]string{})
+}
+
+fn c_flag_args_with_values(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) []string {
 	target_arg := c_directive_arg_for_target(raw.trim_space(), target) or { return []string{} }
-	defaults_expanded := c_expand_default_define_macros(target_arg) or { return []string{} }
+	defaults_expanded := c_expand_default_define_macros(target_arg, compile_values) or {
+		return []string{}
+	}
 	without_comment := c_flag_strip_hash_comment(defaults_expanded)
 	clean := c_expand_existing_path_macros(without_comment, vroot, source_file) or {
 		return []string{}
@@ -6047,10 +6062,11 @@ fn c_flag_args(raw string, vroot string, source_file string, target pref.Target)
 	return resolved
 }
 
-// c_expand_default_define_macros resolves the fallback arm of `$d(name, fallback)`
-// inside a C flag. Without this step, spaces inside the macro become bogus
-// linker input files when the expanded flag is split into arguments.
-fn c_expand_default_define_macros(raw string) ?string {
+// c_expand_default_define_macros resolves `$d(name, fallback)` inside a C flag.
+// A matching explicit `-d name[=value]` override wins; the fallback arm is
+// used only when the define is absent. Without this step, spaces inside the macro
+// become bogus linker input files when the expanded flag is split into arguments.
+fn c_expand_default_define_macros(raw string, compile_values map[string]string) ?string {
 	mut result := raw
 	for {
 		idx := result.index(r'$d(') or { return result }
@@ -6064,14 +6080,26 @@ fn c_expand_default_define_macros(raw string) ?string {
 		if comma_idx < 0 {
 			return none
 		}
-		mut fallback := inner[comma_idx + 1..].trim_space()
-		if fallback.len >= 2 && fallback[0] in [`'`, `"`]
-			&& fallback[fallback.len - 1] == fallback[0] {
-			fallback = fallback[1..fallback.len - 1]
+		name := c_flag_define_name(inner[..comma_idx])
+		mut value := inner[comma_idx + 1..].trim_space()
+		if value.len >= 2 && value[0] in [`'`, `"`] && value[value.len - 1] == value[0] {
+			value = value[1..value.len - 1]
 		}
-		result = result[..idx] + fallback + result[close_idx + 1..]
+		if override := compile_values[name] {
+			value = override
+		}
+		result = result[..idx] + value + result[close_idx + 1..]
 	}
 	return result
+}
+
+// c_flag_define_name unwraps the quoted name arm of a `$d(name, fallback)` macro.
+fn c_flag_define_name(raw string) string {
+	mut name := raw.trim_space()
+	if name.len >= 2 && name[0] in [`'`, `"`] && name[name.len - 1] == name[0] {
+		name = name[1..name.len - 1]
+	}
+	return name.trim_space()
 }
 
 fn c_flag_macro_close(text string, open_idx int) int {
@@ -11942,9 +11970,11 @@ fn (mut g FlatGen) gen_thread_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_i
 	g.gen_expr(lhs_id)
 	g.write('; __v_thread ${rhs_name} = ')
 	g.gen_expr(rhs_id)
-	g.write('; memcmp(&${lhs_name}, &${rhs_name}, sizeof(__v_thread)) ')
-	g.write(if node.op == .eq { '==' } else { '!=' })
-	g.write(' 0; })')
+	g.write('; ')
+	if node.op == .ne {
+		g.write('!')
+	}
+	g.write('__v_thread_equal(${lhs_name}, ${rhs_name}); })')
 	return true
 }
 
@@ -12449,12 +12479,14 @@ fn (mut g FlatGen) system_libc_preamble() {
 		'pthread_condattr_destroy',
 		'pthread_condattr_init',
 		'pthread_condattr_setpshared',
+		'pthread_equal',
 		'pthread_self',
 	])
 	g.collect_preserved_c_structs(c_preserved_system_include_struct_names('<mach/mach_time.h>'))
 	g.collect_preserved_c_structs(['__stat64', 'kevent', 'sigaction'])
 	g.writeln('#ifdef _WIN32')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
 	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; void* result; } __v_windows_thread_context;')
 	g.writeln('static const size_t __v_thread_stack_size = 8388608;')
@@ -12479,6 +12511,7 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('}')
 	g.writeln('#else')
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
 	g.writeln('static const size_t __v_thread_stack_size = 8388608;')
 	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
@@ -12730,6 +12763,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_setstacksize(pthread_attr_t* attr, size_t stacksize);')
+	g.writeln('int pthread_equal(pthread_t t1, pthread_t t2);')
 	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
 	g.writeln('int pthread_mutex_lock(void* mutex);')
 	g.writeln('int pthread_mutex_unlock(void* mutex);')
@@ -12758,6 +12792,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
 	g.writeln('int fflush(FILE* stream);')
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
 	// The spawned-thread stack defaults to 8 MiB but is overridable at C compile
 	// time (e.g. `-DV_THREAD_STACK_SIZE=...`) so it is a tunable default rather

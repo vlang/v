@@ -252,7 +252,10 @@ mut:
 	// escaping_interface_box_locals holds interface locals boxed from stack-backed pointer
 	// sources and later returned. The box can alias the stack value while in scope, but its
 	// `_object` needs a heap copy before the interface value leaves the frame.
-	escaping_interface_box_locals      map[string]bool
+	escaping_interface_box_locals map[string]bool
+	// local_closure_cleanup_decls maps source declaration node ids to capturing
+	// closure locals that do not escape their lexical scope.
+	local_closure_cleanup_decls        map[int]string
 	active_specialization_args         []string
 	active_specialization_main_types   map[string]bool
 	generic_specialization_args        map[string][]string
@@ -1118,6 +1121,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		escaping_amp_sources:             map[string]bool{}
 		heaped_amp_locals:                map[string]bool{}
 		escaping_interface_box_locals:    map[string]bool{}
+		local_closure_cleanup_decls:      map[int]string{}
 		generic_specialization_args:      map[string][]string{}
 		generic_fn_specs_in_progress:     map[string]bool{}
 		generic_fn_spec_nodes:            map[string]flat.NodeId{}
@@ -3157,6 +3161,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		escaping_amp_ptrs:                  map[string]bool{}
 		escaping_amp_sources:               map[string]bool{}
 		heaped_amp_locals:                  map[string]bool{}
+		local_closure_cleanup_decls:        map[int]string{}
 		generic_fn_specs_in_progress:       map[string]bool{}
 		generic_fn_spec_nodes:              map[string]flat.NodeId{}
 		pending_generic_fn_spec_keys:       map[string]bool{}
@@ -4840,6 +4845,156 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 	t.addr_lvalue_pointer_locals.clear()
 }
 
+fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) {
+	t.local_closure_cleanup_decls.clear()
+	mut candidates := map[int]string{}
+	mut declaration_counts := map[string]int{}
+	for id in body_ids {
+		t.collect_local_closure_cleanup_candidates(id, true, mut candidates, mut declaration_counts)
+	}
+	for decl_id, name in candidates {
+		if declaration_counts[name] != 1 {
+			continue
+		}
+		mut escapes := false
+		for body_id in body_ids {
+			if t.local_closure_name_escapes(body_id, name, flat.NodeId(decl_id)) {
+				escapes = true
+				break
+			}
+		}
+		if !escapes {
+			t.local_closure_cleanup_decls[decl_id] = name
+		}
+	}
+}
+
+fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, statement_position bool, mut candidates map[int]string, mut declaration_counts map[string]int) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .fn_literal {
+		return
+	}
+	if statement_position && node.kind == .decl_assign && node.children_count == 2 {
+		lhs := t.a.child_node(&node, 0)
+		rhs_id := t.a.child(&node, 1)
+		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+			declaration_counts[lhs.value] = (declaration_counts[lhs.value] or { 0 }) + 1
+			if t.fn_literal_has_runtime_captures(rhs_id)
+				&& !t.fn_literal_captures_name(rhs_id, lhs.value) {
+				candidates[int(id)] = lhs.value
+			}
+		}
+	}
+	match node.kind {
+		.block {
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_cleanup_candidates(t.a.child(&node, i), true, mut
+					candidates, mut declaration_counts)
+			}
+		}
+		.for_stmt {
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_cleanup_candidates(t.a.child(&node, i), i >= 3, mut
+					candidates, mut declaration_counts)
+			}
+		}
+		.for_in_stmt {
+			body_start := if node.value.int() >= 0 && node.value.int() <= node.children_count {
+				node.value.int()
+			} else {
+				2
+			}
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_cleanup_candidates(t.a.child(&node, i), i >= body_start, mut
+					candidates, mut declaration_counts)
+			}
+		}
+		.match_branch {
+			condition_count := if node.value == 'else' { 0 } else { node.value.int() }
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_cleanup_candidates(t.a.child(&node, i),
+					i >= condition_count, mut candidates, mut declaration_counts)
+			}
+		}
+		else {
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_cleanup_candidates(t.a.child(&node, i), false, mut
+					candidates, mut declaration_counts)
+			}
+		}
+	}
+}
+
+fn (t &Transformer) fn_literal_has_runtime_captures(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
+		return t.fn_literal_has_runtime_captures(t.a.child(&node, 0))
+	}
+	if node.kind != .fn_literal {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child := t.a.child_node(&node, i)
+		if child.kind == .ident && child.value.len > 0 && child.value !in t.active_generic_params {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) local_closure_name_mentioned(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value == name {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.local_closure_name_mentioned(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) local_closure_name_escapes(id flat.NodeId, name string, decl_id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || id == decl_id {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind in [.defer_stmt, .spawn_expr] {
+		return t.local_closure_name_mentioned(id, name)
+	}
+	if node.kind == .call && node.children_count > 0 {
+		callee_id := t.a.child(&node, 0)
+		callee := t.a.nodes[int(callee_id)]
+		if callee.kind == .ident && callee.value == name {
+			for i in 1 .. node.children_count {
+				if t.local_closure_name_escapes(t.a.child(&node, i), name, decl_id) {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.local_closure_name_escapes(t.a.child(&node, i), name, decl_id) {
+			return true
+		}
+	}
+	return false
+}
+
 fn add_escape_amp_source(mut amp_sources map[string][]string, ptr_name string, source_name string) {
 	mut sources := amp_sources[ptr_name]
 	if source_name !in sources {
@@ -5528,6 +5683,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	for name in source_pointer_value_params {
 		t.pointer_value_rvalues[name] = true
 	}
+	t.mark_local_closure_cleanup_decls(body_ids)
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	start := t.a.children.len
@@ -8668,6 +8824,13 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 	if rhs_type.len == 0 || rhs_type == 'unknown' {
 		rhs_type = t.normalize_type_alias(t.resolve_expr_type(rhs_id))
 	}
+	if rhs_node.kind == .ident && t.pointer_value_rvalues[rhs_node.value]
+		&& rhs_type.starts_with('&') {
+		// Both locals may have been auto-heaped because their addresses escape.
+		// Their source-level type is still the pointee value, so `v = w` copies
+		// `*w` into `*v`; only an explicit pointer RHS such as `&other` rebinds.
+		rhs_type = rhs_type[1..]
+	}
 	// A pointer-valued RHS rebinds the local pointer (`p = &other`); only a
 	// value RHS writes through it (`p = value`). Let the regular assignment path
 	// handle pointer rebinding so its lvalue remains `p` instead of `*p`.
@@ -9945,7 +10108,30 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		value:          node.value
 		typ:            if inferred_typ.len > 0 { inferred_typ } else { node.typ }
 	})
-	return t.with_pending_before(new_id)
+	mut result := t.with_pending_before(new_id)
+	if cleanup_name := t.local_closure_cleanup_decls[int(id)] {
+		result << t.make_local_closure_cleanup_defer(cleanup_name)
+	}
+	return result
+}
+
+fn (mut t Transformer) make_local_closure_cleanup_defer(name string) flat.NodeId {
+	closure_value := t.make_ident(name)
+	closure_type := t.var_type(name)
+	if closure_type.len > 0 {
+		t.set_node_typ(int(closure_value), closure_type)
+	}
+	closure_ptr := t.make_cast('voidptr', closure_value, 'voidptr')
+	destroy := t.make_call_typed('closure.closure_try_destroy', arr1(closure_ptr), 'void')
+	t.mark_fn_used_name('closure.closure_try_destroy')
+	body := t.make_block(arr1(t.make_expr_stmt(destroy)))
+	start := t.a.children.len
+	t.a.children << body
+	return t.a.add_node(flat.Node{
+		kind:           .defer_stmt
+		children_start: start
+		children_count: 1
+	})
 }
 
 fn (t &Transformer) concrete_generic_type_refines(current string, refined string) bool {

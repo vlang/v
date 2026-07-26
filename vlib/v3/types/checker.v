@@ -343,6 +343,7 @@ mut:
 	method_value_locals               map[string]bool
 	method_value_local_owners         map[string][]ScopeBindingOwner
 	method_value_local_depth          map[string]int
+	method_value_stack_mut_owners     map[string]bool
 	fn_value_variadic_locals          map[string]bool
 	fn_value_variadic_local_owners    map[string][]ScopeBindingOwner
 	fn_value_variadic_local_depth     map[string]int
@@ -363,6 +364,7 @@ fn new_function_check_context() FunctionCheckContext {
 		method_value_locals:               map[string]bool{}
 		method_value_local_owners:         map[string][]ScopeBindingOwner{}
 		method_value_local_depth:          map[string]int{}
+		method_value_stack_mut_owners:     map[string]bool{}
 		fn_value_variadic_locals:          map[string]bool{}
 		fn_value_variadic_local_owners:    map[string][]ScopeBindingOwner{}
 		fn_value_variadic_local_depth:     map[string]int{}
@@ -381,6 +383,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		method_value_locals:               src.method_value_locals.clone()
 		method_value_local_owners:         clone_scope_binding_owner_map(src.method_value_local_owners)
 		method_value_local_depth:          src.method_value_local_depth.clone()
+		method_value_stack_mut_owners:     src.method_value_stack_mut_owners.clone()
 		fn_value_variadic_locals:          src.fn_value_variadic_locals.clone()
 		fn_value_variadic_local_owners:    src.fn_value_variadic_local_owners.clone()
 		fn_value_variadic_local_depth:     src.fn_value_variadic_local_depth.clone()
@@ -502,9 +505,8 @@ pub mut:
 	// only when their enclosing function is reachable.
 	method_values_by_fn map[int][]string // enclosing fn node id -> method-value `Type.method` keys
 	// Local variables bound to a method value (`cb := c.report`) in the current function.
-	// Such an alias shares the same per-site static receiver slot as the bare selector, so it
-	// escapes (and corrupts other live callbacks) just like `return c.report`; the escape
-	// checks below treat a reference to one of these locals as a method value. Reset per fn.
+	// Escape checks use these aliases to retain the lifetime hazard of mutable methods
+	// borrowing addressable stack receivers. Reset per function.
 	method_value_locals map[string]bool
 	// Scope depth at which each method-value local was marked, so a reassignment to a
 	// non-method value only clears the marker when it dominates later uses (same-or-shallower
@@ -10664,6 +10666,8 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	tc.fn_context.method_value_local_owners =
 		clone_scope_binding_owner_map(saved_fn_context.method_value_local_owners)
 	tc.fn_context.method_value_local_depth = saved_fn_context.method_value_local_depth.clone()
+	tc.fn_context.method_value_stack_mut_owners =
+		saved_fn_context.method_value_stack_mut_owners.clone()
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(id, node)
 	}
@@ -10707,6 +10711,8 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	tc.fn_context.method_value_local_owners =
 		clone_scope_binding_owner_map(saved_fn_context.method_value_local_owners)
 	tc.fn_context.method_value_local_depth = saved_fn_context.method_value_local_depth.clone()
+	tc.fn_context.method_value_stack_mut_owners =
+		saved_fn_context.method_value_stack_mut_owners.clone()
 	$if ownership ? {
 		tc.ownership_begin_lambda_expr(id, node)
 	}
@@ -11201,8 +11207,7 @@ fn clone_scope_binding_owner_map(src map[string][]ScopeBindingOwner) map[string]
 }
 
 // track_method_value_local records (or clears) a local variable bound to a method value, so a
-// later `return cb` / `arr << cb` aliasing the same per-site static receiver is rejected as an
-// escape just like the bare `return c.report`.
+// later `return cb` / `arr << cb` retains any stack-backed mutable-receiver lifetime hazard.
 fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat.NodeId) {
 	if int(lhs_id) < 0 {
 		return
@@ -11215,6 +11220,14 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 		tc.fn_context.method_value_locals[lhs.value] = true
 		tc.fn_context.method_value_local_depth[lhs.value] = tc.cur_scope_depth()
 		tc.mark_method_value_local_owner(lhs.value)
+		if tc.method_value_has_stack_mut_receiver(rhs_id) {
+			if owner := tc.cur_scope.lookup_owner(lhs.value) {
+				owner_key := owner.storage_key()
+				if owner_key.len > 0 {
+					tc.fn_context.method_value_stack_mut_owners[owner_key] = true
+				}
+			}
+		}
 	} else if lhs.value in tc.fn_context.method_value_locals {
 		// Reassigned to a non-method-value. Only clear the marker when this reassignment
 		// dominates later uses — at the same or a shallower scope than where the local was
@@ -11261,6 +11274,8 @@ fn (mut tc TypeChecker) unmark_current_method_value_local_owner(name string) {
 	for existing in owners {
 		if existing.storage_key() != owner_key {
 			keep << existing
+		} else {
+			tc.fn_context.method_value_stack_mut_owners.delete(owner_key)
 		}
 	}
 	if keep.len == 0 {
@@ -11284,12 +11299,36 @@ fn (tc &TypeChecker) current_binding_is_method_value_local(name string) bool {
 		// Fn literals can be checked after their body has been lifted away from the
 		// lexical scope that declared the captured alias. If there is no nearer
 		// binding, keep treating the tracked name as the outer method-value local so
-		// `return fn () { return cb }()` is rejected before it reaches cgen.
+		// mutable-receiver escape checks can still follow it.
 		return true
 	}
 	current_key := current_owner.storage_key()
 	for owner in owners {
 		if current_key.len > 0 && owner.storage_key() == current_key {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) current_method_value_local_has_stack_mut_receiver(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	owners := tc.fn_context.method_value_local_owners[name] or { return false }
+	if tc.cur_scope != unsafe { nil } {
+		if current_owner := tc.cur_scope.lookup_owner(name) {
+			current_key := current_owner.storage_key()
+			if current_key.len > 0 {
+				return tc.fn_context.method_value_stack_mut_owners[current_key]
+			}
+		}
+	}
+	// A lifted nested literal can be checked without the outer lexical scope that
+	// owns a captured method-value alias. Conservatively retain its mutable-receiver
+	// marker.
+	for owner in owners {
+		if tc.fn_context.method_value_stack_mut_owners[owner.storage_key()] {
 			return true
 		}
 	}
@@ -13269,9 +13308,9 @@ fn (tc &TypeChecker) index_overload_key_types_match(left Type, right Type) bool 
 
 // check_return validates check return state for types.
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
-	// A returned method value escapes the function, where its per-site static receiver
-	// can't keep multiple returned callbacks distinct (a factory `fn bind(c) fn () int {
-	// return c.report }`); reject it rather than emitting invalid C.
+	// A returned method value escapes the function. Per-instance closure contexts make
+	// value receivers safe, but mutable methods borrowing addressable stack receivers
+	// remain invalid and are rejected below.
 	// Returned fn literals with ordinary captures need a real closure environment too.
 	// V3 only supports the narrow returned case of an explicit `mut` capture of a
 	// pointer/reference value, where the lifted fn can keep using the pointee.
@@ -16805,6 +16844,28 @@ fn (tc &TypeChecker) expr_root_is_mutable_lvalue(id flat.NodeId) bool {
 	}
 }
 
+fn (tc &TypeChecker) expr_root_constant_name(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			qname := tc.qualify_name(node.value)
+			if qname in tc.const_types || node.value in tc.const_types {
+				return node.value
+			}
+		}
+		.index, .selector, .paren {
+			if node.children_count > 0 {
+				return tc.expr_root_constant_name(tc.a.child(&node, 0))
+			}
+		}
+		else {}
+	}
+	return none
+}
+
 fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
 	if name.len == 0 {
 		return false
@@ -16830,13 +16891,6 @@ fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
 		if owner := tc.cur_scope.lookup_owner(qname) {
 			return tc.binding_owner_is_global(owner)
 		}
-	}
-	// V permits a mut-receiver method on a struct constant (the C backend passes
-	// its address, as it does for global storage). A nearer immutable local has
-	// already returned false above, so this does not let a local shadow inherit
-	// the constant's mutability.
-	if qname in tc.const_types || name in tc.const_types {
-		return true
 	}
 	return false
 }
@@ -17792,8 +17846,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if tc.unsafe_depth == 0 && tc.mut_receiver_methods[info.name]
 			&& tc.mut_receiver_call_requires_mutable_lvalue(info, recv_id)
 			&& !tc.mut_receiver_expr_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
-			tc.record_error(.call_arg_mismatch,
-				'method `${fn_node.value}` requires a mutable receiver', id)
+			if const_name := tc.expr_root_constant_name(recv_id) {
+				tc.record_error(.call_arg_mismatch, 'cannot modify constant `${const_name}`', id)
+			} else {
+				tc.record_error(.call_arg_mismatch,
+					'method `${fn_node.value}` requires a mutable receiver', id)
+			}
 		}
 		if !receiver_matches {
 			tc.type_mismatch(.call_arg_mismatch,
@@ -22388,8 +22446,8 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
-	// A local bound to a method value (`cb := c.report`) carries the same escape hazard as the
-	// bare selector, so a reference to it counts as a method value here too.
+	// A local bound to a method value (`cb := c.report`) must remain identifiable so
+	// mutable-receiver escape checks can follow aliases of the bare selector.
 	if node.kind == .ident {
 		return tc.current_binding_is_method_value_local(node.value)
 	}
@@ -22412,6 +22470,14 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		if _ := tc.resolve_generic_struct_method(sname, node.value) {
 			return true
 		}
+	} else if clean is Alias {
+		underlying := unalias_type(clean)
+		if underlying is Struct && tc.struct_field_type(underlying.name, node.value) != none {
+			return false
+		}
+		if _ := tc.alias_method_value_decl_key(clean, node.value) {
+			return true
+		}
 	} else if clean is Interface {
 		iname := clean.name
 		if tc.interface_field_type(iname, node.value) != none {
@@ -22427,11 +22493,73 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	return false
 }
 
-// reject_stored_method_value is retained as the semantic hook for method-value
-// assignments. Per-instance closure contexts make storing and returning them valid.
+fn (tc &TypeChecker) alias_method_value_decl_key(alias Alias, method string) ?string {
+	for receiver in [Type(alias), alias.base_type] {
+		for candidate in receiver_method_name_candidates(receiver, method, tc.cur_module) {
+			if candidate in tc.fn_param_types || candidate in tc.fn_ret_types {
+				return candidate
+			}
+		}
+		type_name := resolve_type_name_for_method(receiver)
+		if type_name.len > 0 {
+			if info := tc.resolve_generic_struct_method(type_name, method) {
+				return info.name
+			}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) method_value_has_stack_mut_receiver(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count == 1 {
+		return tc.method_value_has_stack_mut_receiver(tc.a.child(&node, 0))
+	}
+	if node.kind == .ident {
+		return tc.current_method_value_local_has_stack_mut_receiver(node.value)
+	}
+	if node.kind != .selector || node.children_count == 0 || !tc.expr_is_method_value(id) {
+		return false
+	}
+	base_id := tc.a.child(&node, 0)
+	base_type := tc.cached_expr_type(base_id) or { tc.resolve_type(base_id) }
+	// A pointer receiver already has caller-managed storage. A non-addressable
+	// rvalue is copied into the per-instance closure context by cgen.
+	if tc.type_is_pointer_receiver(base_type) || !tc.expr_can_take_address(base_id)
+		|| tc.expr_root_is_global_binding(base_id) {
+		return false
+	}
+	clean := unwrap_all_pointers(base_type)
+	type_name := resolve_type_name_for_method(clean)
+	if type_name.len == 0 {
+		return false
+	}
+	if info := tc.resolve_generic_struct_method(type_name, node.value) {
+		if tc.mut_receiver_methods[info.name] {
+			return true
+		}
+	}
+	for method_name in receiver_method_name_candidates(clean, node.value, tc.cur_module) {
+		if tc.mut_receiver_methods[method_name] {
+			return true
+		}
+	}
+	return false
+}
+
+// reject_stored_method_value rejects the remaining unsafe method-value escape:
+// a mutable pointer receiver bound to addressable stack storage. Cgen must borrow
+// that local for in-scope calls, but the borrow would dangle after a return/store.
+// Per-instance contexts make value receivers, pointer receivers, and copied
+// non-addressable rvalues safe to store.
 fn (mut tc TypeChecker) reject_stored_method_value(id flat.NodeId) {
-	_ = tc
-	_ = id
+	if tc.method_value_has_stack_mut_receiver(id) && tc.should_diagnose(id) {
+		tc.record_error(.assignment_mismatch,
+			'a method value with a mutable local receiver cannot escape its call site', id)
+	}
 }
 
 fn (tc &TypeChecker) stored_method_value_matches_voidptr_callback(id flat.NodeId, expected Type) bool {
@@ -22655,6 +22783,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				if concrete_mkey != mkey {
 					tc.method_values_by_fn[tc.fn_context.node_id] << concrete_mkey
 				}
+			}
+		}
+	} else if clean_recv is Alias {
+		underlying := unalias_type(clean_recv)
+		has_field := underlying is Struct
+			&& tc.struct_field_type(underlying.name, node.value) != none
+		if !has_field && tc.fn_context.node_id >= 0 {
+			if mkey := tc.alias_method_value_decl_key(clean_recv, node.value) {
+				tc.method_values_by_fn[tc.fn_context.node_id] << mkey
 			}
 		}
 	} else if clean_recv is Interface {

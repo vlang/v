@@ -9025,12 +9025,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				// value itself in the heap context and expose a pointer alias only
 				// inside the lifted body; storing `&outer_local` would dangle when a
 				// closure is returned and would make separate instances interfere.
-				context_field_types[child.value] = if is_ref_capture
-					&& t.is_fixed_array_type(capture_type) {
-					'&${capture_type}'
-				} else {
-					capture_type
-				}
+				context_field_types[child.value] = capture_type
 				capture_by_ref[child.value] = is_ref_capture
 			}
 		} else {
@@ -9051,6 +9046,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	saved_vars := t.var_types.clone()
 	saved_fn_value_locals := t.fn_value_locals.clone()
 	saved_mut_param_values := t.mut_param_values.clone()
+	saved_local_closure_cleanup_decls := t.local_closure_cleanup_decls.clone()
 	t.cur_fn_name = name
 	t.cur_fn_ret_type = ret_type
 	t.reset_var_types()
@@ -9115,6 +9111,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	}
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
+	t.mark_local_closure_cleanup_decls(lifted_body)
 	new_body := t.transform_stmts(lifted_body)
 	t.pending_stmts = outer_pending
 	for capture_name in capture_names {
@@ -9134,6 +9131,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.restore_var_types(saved_vars)
 	t.fn_value_locals = saved_fn_value_locals.clone()
 	t.mut_param_values = saved_mut_param_values.clone()
+	t.local_closure_cleanup_decls = saved_local_closure_cleanup_decls.clone()
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
 	mut all_ids := []flat.NodeId{cap: param_ids.len + new_body.len}

@@ -3393,6 +3393,14 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 }
 
+fn record_compile_value(mut values map[string]string, define string) {
+	name := define.all_before('=').trim_space()
+	if name.len == 0 {
+		return
+	}
+	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -3431,6 +3439,7 @@ fn main() {
 	mut all_backends := false
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
+	mut compile_values := map[string]string{}
 	mut user_c_flags := []string{}
 	mut should_run := false
 	mut is_test_command := false
@@ -3519,10 +3528,14 @@ fn main() {
 			compile_backends << args[i + 1]
 			i += 2
 		} else if args[i] == '-d' && i + 1 < args.len {
-			user_defines << args[i + 1]
+			define := args[i + 1]
+			user_defines << define
+			record_compile_value(mut compile_values, define)
 			i += 2
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
-			user_defines << args[i][2..]
+			define := args[i][2..]
+			user_defines << define
+			record_compile_value(mut compile_values, define)
 			i++
 		} else if args[i] == '-gc' && i + 1 < args.len {
 			gc_mode = args[i + 1]
@@ -3763,6 +3776,7 @@ fn main() {
 	prefs.backend = backend
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
+	prefs.compile_values = compile_values.clone()
 	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
@@ -3997,7 +4011,8 @@ fn main() {
 	mut generated_monomorph_specs := []transform.MonomorphCacheSpec{}
 	mut cache_c_flags := user_c_flags.clone()
 	if backend == 'c' && cache_state.manager.enabled {
-		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target)
+		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
+			prefs.compile_values)
 	}
 	use_macos_dev_program_cache := backend == 'c' && cache_state.manager.enabled && !is_prod
 		&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
@@ -4909,6 +4924,7 @@ fn main() {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
+			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
@@ -4943,6 +4959,7 @@ fn main() {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
+			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
@@ -6848,8 +6865,11 @@ mut:
 	has_sync         bool
 	needs_embed      bool
 	has_embed_import bool
+	needs_closure    bool
 	has_closure      bool
 }
+
+const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
 fn seed_implicit_imports(mut a flat.FlatAst) {
 	start := a.nodes.len
@@ -6861,10 +6881,10 @@ fn seed_implicit_imports(mut a flat.FlatAst) {
 	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
 	}
-	// Bound method values and escaped fn literals are materialized during transform,
-	// after import resolution. Keep the small closure runtime available for those
-	// generated calls; markused still removes it from programs that do not use it.
-	if !scan.has_closure {
+	// Bound method values and captured fn literals are materialized during transform,
+	// after import resolution. Seed the runtime only when parsed syntax can need it;
+	// unconditional insertion conflicts with user modules whose source alias is `closure`.
+	if scan.needs_closure && !scan.has_closure {
 		a.add_node(closure_import_node())
 	}
 	a.intern_node_texts_from(start)
@@ -6890,7 +6910,10 @@ fn closure_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'builtin.closure'
-		typ:   'closure'
+		// This node is appended in the last user file's scope. A compiler-private
+		// alias prevents it from overwriting a user import named `closure`; generated
+		// runtime calls already use the resolved `closure.*` declaration keys.
+		typ: closure_runtime_import_alias
 	}
 }
 
@@ -6924,6 +6947,13 @@ fn cache_bundle_import_file(builtin_dir string) string {
 }
 
 fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
+	mut call_callees := map[int]bool{}
+	for i in scan.node_idx .. end_node {
+		node := a.nodes[i]
+		if node.kind == .call && node.children_count > 0 {
+			call_callees[int(a.child(&node, 0))] = true
+		}
+	}
 	for i in scan.node_idx .. end_node {
 		node := a.nodes[i]
 		if node.kind == .import_decl {
@@ -6948,6 +6978,23 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		if !scan.needs_embed && node.kind == .struct_init
 			&& node.value == 'embed_file.EmbedFileData' {
 			scan.needs_embed = true
+		}
+		// Builtin is parsed before `user_code_start` and contains ordinary selector
+		// values that must not force the closure runtime into every program.
+		if !scan.needs_closure && i >= a.user_code_start {
+			if node.kind == .fn_literal {
+				for child_idx in 0 .. node.children_count {
+					if a.child_node(&node, child_idx).kind == .ident {
+						scan.needs_closure = true
+						break
+					}
+				}
+			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees {
+				// A selector used as a value may be a bound method. Type information is
+				// unavailable during import discovery, so conservatively load the runtime;
+				// ordinary method calls are excluded by the callee set above.
+				scan.needs_closure = true
+			}
 		}
 	}
 	scan.node_idx = end_node
@@ -7156,7 +7203,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut cur_file := first_file
 	mut cur_module := 'main'
 	mut node_idx := 0
-	// The implicit sync/embed_file seeds are global-once: the serial loop added
+	// The implicit sync/embed_file/closure seeds are global-once: the serial loop added
 	// each at the first module that needed it and never again. These flags carry
 	// that "already seeded" state across module boundaries and waves. Within a
 	// wave the synthetic nodes are only spliced in after every boundary has been
@@ -7166,6 +7213,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
 	mut synthetic_sync_added := implicit_imports.has_sync
 	mut synthetic_embed_file_added := implicit_imports.has_embed_import
+	mut synthetic_closure_added := implicit_imports.has_closure
 	mut ri_collision_ns := u64(0)
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
@@ -7468,6 +7516,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					node: embed_file_import_node()
 				}
 				synthetic_embed_file_added = true
+			}
+			if !synthetic_closure_added && implicit_imports.needs_closure
+				&& !implicit_imports.has_closure {
+				insertions << SyntheticInsertion{
+					pos:  region_end
+					node: closure_import_node()
+				}
+				synthetic_closure_added = true
 			}
 			module_start = module_file_end
 		}

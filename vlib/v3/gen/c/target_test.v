@@ -51,6 +51,32 @@ fn test_c_flag_default_define_macros_stay_single_arguments() {
 	]
 }
 
+fn test_c_flag_default_define_macros_honor_configured_values() {
+	target := pref.host_target()
+	// A matching `-d name=value` override wins over the `$d(...)` fallback.
+	assert c_flag_args_with_values("-DNUMBER=\$d('N', 1234 )", '', '', target, {
+		'N': '42'
+	}) == [
+		'-DNUMBER=42',
+	]
+	// Only the configured define is substituted; the other keeps its fallback.
+	assert c_flag_args_with_values("-DMIXED=\$d('A1', 'mixed' )_\$d('A2', 4 )", '', '', target, {
+		'A2': '9'
+	}) == [
+		'-DMIXED=mixed_9',
+	]
+	// A bare `-d name` has the configured value `true`, matching v.pref semantics.
+	assert c_flag_args_with_values("-DVALUE=\$d('enabled', false)", '', '', target, {
+		'enabled': 'true'
+	}) == [
+		'-DVALUE=true',
+	]
+	// An absent define also falls back.
+	assert c_flag_args_with_values("-DNUMBER=\$d('N', 1234 )", '', '', target, map[string]string{}) == [
+		'-DNUMBER=1234',
+	]
+}
+
 fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	empty := map[string]bool{}

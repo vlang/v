@@ -218,6 +218,24 @@ fn test_dollar_prefixed_pseudo_functions_are_rejected() {
 	assert diagnostics[4].message.contains('`$dump` is not supported'), '${diagnostics}'
 }
 
+fn test_res_is_rejected_outside_the_active_defer_body() {
+	outside := parse_parser_regression_diagnostics('res_outside_defer',
+		'fn value() int {\n\treturn $res()\n}\n')
+	assert outside.any(it.message.contains('`res` can only be used in defer blocks')), '${outside}'
+	nested_fn := parse_parser_regression_diagnostics('res_in_nested_fn_inside_defer',
+		'fn value() int {\n\tdefer {\n\t\tcallback := fn () int {\n\t\t\treturn $res()\n\t\t}\n\t\t_ = callback\n\t}\n\treturn 1\n}\n')
+	assert nested_fn.any(it.message.contains('`res` can only be used in defer blocks')), '${nested_fn}'
+}
+
+fn test_memory_only_inline_assembly_is_not_treated_as_empty() {
+	barrier := parse_parser_regression_diagnostics('asm_memory_barrier',
+		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t\t;\n\t\t;\n\t\tmemory\n\t}\n}\n')
+	assert barrier.any(it.message.contains('inline assembly is not supported')), '${barrier}'
+	empty := parse_parser_regression_diagnostics('asm_truly_empty',
+		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t}\n}\n')
+	assert !empty.any(it.message.contains('inline assembly is not supported')), '${empty}'
+}
+
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {
 	a := parse_parser_regression_source('c_pointer_cast_selector', 'module main
 

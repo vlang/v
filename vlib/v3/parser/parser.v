@@ -61,6 +61,7 @@ mut:
 	veb_tmpl_counter      int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
 	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
 	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
+	defer_depth           int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
 	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
 	comptime_const_values map[string]string
@@ -4604,21 +4605,29 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.peek() == .key_for {
 		return p.parse_comptime_if()
 	}
+	dollar_pos := p.tok_pos
 	p.next() // skip $
 	match p.tok {
 		.key_typeof {
+			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
 			return p.typeof_expr()
 		}
 		.key_sizeof {
+			p.record_diagnostic('`$sizeof` is not supported; use `sizeof(...)` instead', dollar_pos)
 			return p.sizeof_expr()
 		}
 		.key_isreftype {
+			p.record_diagnostic('`$isreftype` is not supported; use `isreftype(...)` instead',
+				dollar_pos)
 			return p.isreftype_expr()
 		}
 		.key_offsetof {
+			p.record_diagnostic('`$__offsetof` is not supported; use `__offsetof(...)` instead',
+				dollar_pos)
 			return p.offsetof_expr()
 		}
 		.key_dump {
+			p.record_diagnostic('`$dump` is not supported; use `dump(...)` instead', dollar_pos)
 			return p.dump_expr()
 		}
 		else {}
@@ -4665,6 +4674,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 				p.next()
 			}
 			p.check(.rpar)
+		}
+		if p.defer_depth == 0 {
+			p.record_diagnostic('`res` can only be used in defer blocks', dollar_pos)
 		}
 		return p.add_val(.ident, value)
 	}
@@ -6661,7 +6673,9 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 		}
 		p.check(.rpar)
 	}
+	p.defer_depth++
 	body := p.block_stmt()
+	p.defer_depth--
 	dstart := p.add_child(body)
 	return p.add_node(flat.Node{
 		kind:           .defer_stmt
@@ -6714,9 +6728,9 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	for p.tok == .name {
 		p.next()
 	}
-	// Consume the asm block. Empty blocks (including the assembly grammar's
-	// `memory` clobber marker) have no backend work and are portable no-ops, so
-	// accept them even when the selected backend does not implement assembly.
+	// Consume the asm block. A truly empty block has no backend work and is a
+	// portable no-op. A `memory` clobber is not empty: it is a compiler barrier,
+	// so keep diagnosing it until the selected V3 backend can emit that barrier.
 	mut is_empty := true
 	if p.tok == .lcbr {
 		mut depth := 1
@@ -6730,7 +6744,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 					p.next()
 					break
 				}
-			} else if depth == 1 && p.tok != .semicolon && !(p.tok == .name && p.lit == 'memory') {
+			} else if depth == 1 && p.tok != .semicolon {
 				is_empty = false
 			}
 			p.next()
@@ -9637,6 +9651,8 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	// body
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
+		outer_defer_depth := p.defer_depth
+		p.defer_depth = 0
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
@@ -9672,6 +9688,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
+		p.defer_depth = outer_defer_depth
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}
 	for id in capture_ids {

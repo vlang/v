@@ -56,7 +56,7 @@ fn test_global_and_local_pointer_receivers_can_mutate_their_pointees() {
 	assert tc.mut_receiver_expr_is_mutable_lvalue(g_id)
 }
 
-fn test_const_mut_receiver_is_mutable_but_local_shadow_is_not() {
+fn test_const_mut_receiver_is_immutable() {
 	mut a := flat.FlatAst.new()
 	value_id := a.add_val(.ident, 'value')
 	mut tc := TypeChecker.new(&a)
@@ -64,7 +64,7 @@ fn test_const_mut_receiver_is_mutable_but_local_shadow_is_not() {
 		name: 'S'
 	})
 	tc.cur_scope = new_scope(tc.file_scope)
-	assert tc.mut_receiver_expr_is_mutable_lvalue(value_id)
+	assert !tc.mut_receiver_expr_is_mutable_lvalue(value_id)
 
 	tc.cur_scope.insert('value', Type(Struct{
 		name: 'S'

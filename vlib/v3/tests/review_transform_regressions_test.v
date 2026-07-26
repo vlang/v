@@ -843,6 +843,290 @@ fn test_mut_pointer_capture_is_not_over_dereferenced() {
 	assert out == '5'
 }
 
+fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	for i in 0 .. 50_000 {
+		value := i
+		callback := fn [value] () int {
+			return value
+		}
+		assert callback() == value
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_closure_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'local_closure_hot_loop', source)
+	assert out == 'ok'
+}
+
+fn test_thread_handle_equality_uses_platform_comparison() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn answer() int {
+	return 42
+}
+
+fn main() {
+	thread := spawn answer()
+	copy := thread
+	assert thread == copy
+	assert !(thread != copy)
+	println(int_str(thread.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'thread_handle_equality_c', source)
+	assert c_source.contains('pthread_equal(a.handle, b.handle) != 0'), c_source
+	assert c_source.contains('return a.handle == b.handle;'), c_source
+	assert !c_source.contains('memcmp(&__thread_'), c_source
+	out := run_good(v3_bin, 'thread_handle_equality', source)
+	assert out == '42'
+}
+
+fn test_c_flag_d_macro_uses_cli_override() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'c_flag_d_override', '-d N=42', "module main
+
+#flag -DCNUMBER=$d('N', 1234)
+
+fn main() {
+	println(int_str(int(C.CNUMBER)))
+}
+")
+	assert out == '42'
+}
+
+fn test_synthetic_closure_runtime_import_preserves_user_alias() {
+	v3_bin := build_v3_review_transform()
+	aliased := run_good_project(v3_bin, 'closure_runtime_user_alias', {
+		'main.v':                    'module main
+
+import app.callbacks as closure
+
+fn main() {
+	value := 3
+	callback := fn [value] () int {
+		return value
+	}
+	println(int_str(closure.answer() + callback()))
+}
+'
+		'app/callbacks/callbacks.v': 'module callbacks
+
+pub fn answer() int {
+	return 39
+}
+'
+	}, 'main.v')
+	assert aliased == '42'
+	natural := run_good_project(v3_bin, 'closure_runtime_natural_alias', {
+		'main.v':                'module main
+
+import app.closure
+
+fn main() {
+	println(int_str(closure.answer()))
+}
+'
+		'app/closure/closure.v': 'module closure
+
+pub fn answer() int {
+	return 42
+}
+'
+	}, 'main.v')
+	assert natural == '42'
+	imported_capture := run_good_project(v3_bin, 'closure_runtime_imported_capture', {
+		'main.v':              'module main
+
+import app.worker
+
+fn main() {
+	println(int_str(worker.answer()))
+}
+'
+		'app/worker/worker.v': 'module worker
+
+pub fn answer() int {
+	value := 42
+	callback := fn [value] () int {
+		return value
+	}
+	return callback()
+}
+'
+	}, 'main.v')
+	assert imported_capture == '42'
+}
+
+fn test_escaping_mut_method_value_rejects_stack_receiver() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+'
+	run_bad(v3_bin, 'mut_method_value_stack_receiver_direct', source +
+		'fn make() fn () int {
+	mut counter := Counter{}
+	return counter.next
+}
+
+fn main() {
+	_ = make()
+}
+',
+		'mutable local receiver cannot escape')
+	run_bad(v3_bin, 'mut_method_value_stack_receiver_alias', source +
+		'fn make() fn () int {
+	mut counter := Counter{}
+	callback := counter.next
+	return callback
+}
+
+fn main() {
+	_ = make()
+}
+',
+		'mutable local receiver cannot escape')
+	in_scope := run_good(v3_bin, 'mut_method_value_in_scope_borrows_receiver', source +
+		'fn main() {
+	mut counter := Counter{}
+	callback := counter.next
+	println(int_str(callback()))
+	println(int_str(counter.value))
+}
+')
+	assert in_scope == '1\n1'
+	safe := run_good(v3_bin, 'value_method_value_escape', 'struct ValueCounter {
+	value int
+}
+
+fn (counter ValueCounter) current() int {
+	return counter.value
+}
+
+fn make(value int) fn () int {
+	return ValueCounter{
+		value: value
+	}.current
+}
+
+fn main() {
+	first := make(11)
+	second := make(22)
+	println(int_str(first()))
+	println(int_str(second()))
+}
+')
+	assert safe == '11\n22'
+}
+
+fn test_escaping_pointer_receiver_method_value_copies_addressable_local() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Foo {
+mut:
+	value int
+}
+
+fn (foo &Foo) read() int {
+	return foo.value
+}
+
+fn make(value int) fn () int {
+	foo := Foo{
+		value: value
+	}
+	return foo.read
+}
+
+fn make_from_pointer(foo &Foo) fn () int {
+	return foo.read
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	first := make(11)
+	second := make(22)
+	mut durable := &Foo{
+		value: 33
+	}
+	third := make_from_pointer(durable)
+	durable.value = 44
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(first()))
+	println(int_str(second()))
+	println(int_str(third()))
+}
+'
+	out := run_good(v3_bin, 'escaped_pointer_receiver_addressable_local', source)
+	assert out == '11\n22\n44'
+}
+
+fn test_returned_mut_fixed_array_capture_uses_durable_context_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn make_counter() fn () int {
+	mut values := [1, 20]!
+	return fn [mut values] () int {
+		values[0]++
+		return values[0] + values[1]
+	}
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	callback := make_counter()
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(callback()))
+	println(int_str(callback()))
+}
+'
+	out := run_good(v3_bin, 'returned_mut_fixed_array_capture', source)
+	assert out == '22\n23'
+}
+
+fn test_mutable_method_call_rejects_constant_receiver() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'mut_method_constant_receiver', 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) increment() {
+	counter.value++
+}
+
+const counter = Counter{}
+
+fn main() {
+	counter.increment()
+}
+',
+		'cannot modify constant `counter`')
+}
+
 fn test_mut_value_capture_in_call_under_selector_base() {
 	v3_bin := build_v3_review_transform()
 	// A `[mut s]` value capture used as a call argument nested inside a selector base
