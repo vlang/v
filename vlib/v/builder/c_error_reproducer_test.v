@@ -825,3 +825,20 @@ fn test_repro_closure_retains_json_hooks_for_encode() {
 	assert 3 in ordered // reachable only through the hook
 	assert 4 !in ordered
 }
+
+fn test_repro_uses_local_resource_veb_html() {
+	// `$veb.html()` resolves and reads a project-local template at parse time
+	assert repro_uses_local_resource('fn (mut app App) page() veb.Result {\n\treturn \$veb.html()\n}')
+	assert repro_uses_local_resource("return \$veb.html ('views/index.html')")
+	assert !repro_uses_local_resource("s := 'mentions veb.html in text'")
+}
+
+fn test_repro_embedded_local_hash() {
+	// a retained comptime block can embed its own directive; local ones cannot be satisfied
+	assert repro_embedded_local_hash('\$if linux {\n\t#include "private.h"\n}')
+	assert repro_embedded_local_hash('\$if freebsd {\n\t#flag ./local.o\n}')
+	// system headers and libraries embedded in a block are uploadable as-is
+	assert !repro_embedded_local_hash('\$if linux {\n\t#include <sys/epoll.h>\n}')
+	assert !repro_embedded_local_hash('\$if linux {\n\t#flag -lm\n}')
+	assert !repro_embedded_local_hash('fn plain() {}')
+}

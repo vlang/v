@@ -302,6 +302,12 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		if repro_source_has_toplevel_import(decls[id].source) {
 			return ''
 		}
+		// a retained top-level comptime block can likewise embed its own `#` directive; a
+		// project-local one (`#include "private.h"`, `#flag ./local.o`) references a file that
+		// is not uploaded, so the flattened program cannot be standalone
+		if repro_embedded_local_hash(decls[id].source) {
+			return ''
+		}
 		reflection_targets << repro_reflection_method_targets(decls[id].source)
 		for n in decls[id].names {
 			included_names[n] = true
@@ -376,18 +382,20 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		}
 		scoped_imports << imp
 	}
-	// hash directives are file-scoped too. A project-local dependency (`#include "private.h"`, a
-	// path/`@V...`-based `#flag`, ...) references a file we do not upload, so fall back instead of
-	// emitting a directive the receiver cannot satisfy.
+	// hash directives are module-wide: the original build applies `#flag`/`#include`/... from
+	// every parsed file of the module, whether or not any of that file's declarations are
+	// retained (a hash-only `.c.v` companion file is common), so all of them are kept. A
+	// project-local dependency (`#include "private.h"`, a path/`@V...`-based `#flag`, ...)
+	// references a file we do not upload, so fall back instead of emitting a directive the
+	// receiver cannot satisfy.
 	mut scoped_hashes := []string{}
 	for h in hashes {
-		if h.file_id !in included_files {
-			continue
-		}
 		if repro_hash_is_local(h.source) {
 			return ''
 		}
-		scoped_hashes << h.source
+		if h.source !in scoped_hashes {
+			scoped_hashes << h.source
+		}
 	}
 	// every declaration in the closure is required, so an over-budget reproducer is dropped whole
 	// (the caller then falls back to a source window) rather than emitting a partial program
@@ -914,13 +922,28 @@ fn repro_source_has_toplevel_import(source string) bool {
 	return false
 }
 
+// repro_embedded_local_hash reports whether a declaration's copied source embeds a
+// project-local `#` directive. Ordinary top-level hash statements are separate declarations and
+// never appear inside another declaration's source, so any `#` line here comes from a retained
+// comptime `$if`/`$match` block (they are uploaded verbatim, which is fine for system headers
+// and libraries, but a local path cannot be satisfied on the receiver).
+fn repro_embedded_local_hash(source string) bool {
+	for line in source.split_into_lines() {
+		t := line.trim_space()
+		if t.starts_with('#') && repro_hash_is_local(t) {
+			return true
+		}
+	}
+	return false
+}
+
 // repro_uses_local_resource reports whether a declaration uses a compile-time construct whose
 // value depends on the build machine and is not carried by the report: a project-local file
 // (`$embed_file`, `$tmpl`, `$res`) or the builder's environment (`$env`, baked in at compile
 // time - replaying it against the receiver's environment can change the generated C and lose
 // the error).
 fn repro_uses_local_resource(source string) bool {
-	for name in ['embed_file', 'tmpl', 'res', 'env'] {
+	for name in ['embed_file', 'tmpl', 'res', 'env', 'veb.html'] {
 		if repro_has_comptime_call(source, name) {
 			return true
 		}
