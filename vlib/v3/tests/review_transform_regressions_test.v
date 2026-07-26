@@ -1196,6 +1196,82 @@ fn main() {
 	assert out == '1249975000'
 }
 
+fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+mut:
+	n int
+}
+
+fn (value &Value) read() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 10_000 {
+		if i >= 0 {
+			mut first := Value{
+				n: i
+			}
+			callback := first.read
+			first.n += 10
+			total += callback()
+		}
+		if i < 10_000 {
+			mut second := Value{
+				n: i + 1
+			}
+			callback := second.read
+			second.n += 20
+			total += callback()
+		}
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'disjoint_same_name_closure_bindings_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'disjoint_same_name_closure_bindings', source)
+	assert out == '100300000'
+}
+
+fn test_branch_produced_immediate_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value &Value) read() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 20_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 100
+		}
+		keep := i % 2 == 0
+		total += (if keep { first.read } else { second.read })()
+		total += (match keep {
+			true { first.read }
+			else { second.read }
+		})()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'branch_immediate_method_closures_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.count('closure__closure_try_destroy(') >= 2, main_body
+	out := run_good(v3_bin, 'branch_immediate_method_closures', source)
+	assert out == '401980000'
+}
+
 fn test_fixed_array_defer_results_use_semantic_array_storage() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn fixed_array_result() [2]int {

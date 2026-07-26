@@ -971,6 +971,16 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	saved_in_call_callee := t.in_call_callee
 	t.in_call_callee = true
 	callee_id := t.a.children[node.children_start]
+	immediate_bound_method := t.immediate_bound_method_value_allocates_runtime_closure(callee_id)
+	mut immediate_closure_type := ''
+	if immediate_bound_method {
+		immediate_closure_type = t.fresh_runtime_closure_type(callee_id) or { '' }
+		if immediate_closure_type.len > 0 {
+			// If/match callback branches otherwise retain the bound method's return
+			// type on their value temporary instead of the callback type.
+			t.set_fresh_runtime_closure_expr_type(callee_id, immediate_closure_type)
+		}
+	}
 	mut transformed_callee := t.const_fn_call_target(callee_id) or {
 		if param_offset == 1 && params.len > 0 {
 			if converted_callee := t.transform_method_callee_receiver_for_param(callee_id,
@@ -985,10 +995,18 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 	}
 	t.in_call_callee = saved_in_call_callee
-	if t.fn_literal_has_runtime_captures(callee_id)
-		|| t.immediate_bound_method_value_allocates_runtime_closure(callee_id) {
-		closure_type := t.node_type(transformed_callee)
+	if t.fn_literal_has_runtime_captures(callee_id) || immediate_bound_method {
+		closure_type := if immediate_closure_type.len > 0 {
+			immediate_closure_type
+		} else {
+			t.fresh_runtime_closure_type(callee_id) or { t.node_type(transformed_callee) }
+		}
 		if closure_type.len > 0 {
+			t.set_node_typ(int(transformed_callee), closure_type)
+			if immediate_bound_method {
+				t.mark_fn_used_name('closure.closure_create_with_data')
+				t.mark_fresh_runtime_closure_methods_used(callee_id)
+			}
 			closure_name := t.new_temp('immediate_closure')
 			t.set_var_type(closure_name, closure_type)
 			t.pending_stmts << t.make_decl_assign_typed(closure_name, transformed_callee,
@@ -9072,6 +9090,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	saved_fn_value_locals := t.fn_value_locals.clone()
 	saved_mut_param_values := t.mut_param_values.clone()
 	saved_local_closure_cleanup_decls := t.local_closure_cleanup_decls.clone()
+	saved_local_closure_cleanup_assigns := t.local_closure_cleanup_assigns.clone()
 	t.cur_fn_name = name
 	t.cur_fn_ret_type = ret_type
 	t.reset_var_types()
@@ -9157,6 +9176,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.fn_value_locals = saved_fn_value_locals.clone()
 	t.mut_param_values = saved_mut_param_values.clone()
 	t.local_closure_cleanup_decls = saved_local_closure_cleanup_decls.clone()
+	t.local_closure_cleanup_assigns = saved_local_closure_cleanup_assigns.clone()
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
 	mut all_ids := []flat.NodeId{cap: param_ids.len + new_body.len}
