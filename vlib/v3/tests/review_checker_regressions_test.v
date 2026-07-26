@@ -252,6 +252,12 @@ fn test_reject_narrowed_interface_method_parameters() {
 	run_bad(v3_bin, 'bad_narrowed_interface_method_param',
 		'interface Eq {\n\teq(other Eq) bool\n}\n\ninterface Ord {\n\tEq\n\tlt(other Ord) bool\n}\n\nstruct Int {}\n\nfn (Int) eq(other Ord) bool {\n\t_ = other\n\treturn true\n}\n\nfn (Int) lt(other Ord) bool {\n\t_ = other\n\treturn false\n}\n\nfn main() {\n\t_ := Eq(Int{})\n}\n',
 		'type `Int` does not implement interface `Eq`')
+	run_bad(v3_bin, 'bad_narrowed_interface_method_param_implementer',
+		'interface Base {\n\tbase() int\n}\n\ninterface Narrow {\n\tBase\n\tnarrow() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct BaseOnly {}\n\nfn (b BaseOnly) base() int {\n\treturn 1\n}\n\nstruct Service {}\n\nfn (s Service) base() int {\n\treturn 2\n}\n\nfn (s Service) narrow() int {\n\treturn 3\n}\n\nfn (s Service) handle(value Narrow) int {\n\treturn value.narrow()\n}\n\nfn invoke(handler Handler, value Base) int {\n\treturn handler.handle(value)\n}\n\nfn main() {\n\tprintln(invoke(Handler(Service{}), Base(BaseOnly{})))\n}\n',
+		'type `Service` does not implement interface `Handler`')
+	out := run_good(v3_bin, 'good_exact_interface_method_param',
+		'interface Base {\n\tbase() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct Value {}\n\nfn (v Value) base() int {\n\treturn 7\n}\n\nstruct Service {}\n\nfn (s Service) handle(value Base) int {\n\treturn value.base()\n}\n\nfn main() {\n\tprintln(Handler(Service{}).handle(Base(Value{})))\n}\n')
+	assert out == '7'
 }
 
 fn test_implicit_str_sum_does_not_satisfy_interface() {

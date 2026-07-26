@@ -24967,7 +24967,7 @@ pub fn (tc &TypeChecker) interface_implements_interface(actual_name string, expe
 			'${expected}.${method}'
 		}
 		if actual_key !in tc.fn_param_types
-			|| !tc.method_signature_compatible(actual_key, expected_key, actual, actual) {
+			|| !tc.method_signature_compatible(actual_key, expected_key) {
 			return false
 		}
 	}
@@ -25027,22 +25027,19 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 			'${iface_name}.${method}'
 		}
 		if concrete_key := tc.concrete_method_signature_key(concrete_name, method) {
-			if !tc.method_signature_compatible(concrete_key, expected_key, iface_name,
-				concrete_name) {
+			if !tc.method_signature_compatible(concrete_key, expected_key) {
 				return false
 			}
 			continue
 		}
 		if info := tc.resolve_generic_struct_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible(info, expected_key, iface_name,
-				concrete_name) {
+			if !tc.method_call_info_signature_compatible(info, expected_key) {
 				return false
 			}
 			continue
 		}
 		if info := tc.resolve_generic_sum_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible(info, expected_key, iface_name,
-				concrete_name) {
+			if !tc.method_call_info_signature_compatible(info, expected_key) {
 				return false
 			}
 			continue
@@ -26976,15 +26973,14 @@ fn embedded_name_matches(field_name string, type_name string) bool {
 }
 
 // method_signature_compatible supports method signature compatible handling for TypeChecker.
-fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key string, implemented_interface string, implementer string) bool {
+fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key string) bool {
 	actual_params := tc.fn_param_types[actual_key] or { return false }
 	expected_params := tc.fn_param_types[expected_key] or { return false }
 	if actual_params.len != expected_params.len {
 		return false
 	}
 	for i in 1 .. actual_params.len {
-		if !tc.method_param_signature_compatible(actual_params[i], expected_params[i],
-			implemented_interface, implementer) {
+		if !tc.method_param_signature_compatible(actual_params[i], expected_params[i]) {
 			return false
 		}
 	}
@@ -26993,14 +26989,13 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 	return tc.type_compatible(actual_ret, expected_ret)
 }
 
-fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string, implemented_interface string, implementer string) bool {
+fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string) bool {
 	expected_params := tc.fn_param_types[expected_key] or { return false }
 	if actual.params.len != expected_params.len {
 		return false
 	}
 	for i in 1 .. actual.params.len {
-		if !tc.method_param_signature_compatible(actual.params[i], expected_params[i],
-			implemented_interface, implementer) {
+		if !tc.method_param_signature_compatible(actual.params[i], expected_params[i]) {
 			return false
 		}
 	}
@@ -27008,50 +27003,18 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 	return tc.type_compatible(actual.return_type, expected_ret)
 }
 
-fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type, implemented_interface string, implementer string) bool {
+fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {
 	if type_pointer_depth(actual) != type_pointer_depth(expected) {
 		return false
 	}
 	if actual_iface := tc.method_param_interface_name(actual) {
 		expected_iface := tc.method_param_interface_name(expected) or { return false }
-		if actual_iface == expected_iface {
-			return true
-		}
-		if tc.interface_metadata_name(implemented_interface) != actual_iface {
-			implements_actual := if tc.interface_metadata_name(implementer) in tc.interface_names {
-				tc.interface_implements_interface(implementer, actual_iface)
-			} else {
-				tc.named_type_implements_interface(implementer, actual_iface)
-			}
-			if !implements_actual {
-				return false
-			}
-		}
-		mut seen := map[string]bool{}
-		return tc.interface_directly_or_transitively_embeds(actual_iface, expected_iface, mut seen)
+		return actual_iface == expected_iface
 	}
 	if _ := tc.method_param_interface_name(expected) {
 		return false
 	}
 	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
-}
-
-fn (tc &TypeChecker) interface_directly_or_transitively_embeds(actual string, expected string, mut seen map[string]bool) bool {
-	name := tc.interface_metadata_name(actual)
-	target := tc.interface_metadata_name(expected)
-	if name == target {
-		return true
-	}
-	if seen[name] {
-		return false
-	}
-	seen[name] = true
-	for embed in tc.interface_embeds[name] or { []string{} } {
-		if tc.interface_directly_or_transitively_embeds(embed, target, mut seen) {
-			return true
-		}
-	}
-	return false
 }
 
 fn (tc &TypeChecker) method_param_interface_name(typ Type) ?string {
