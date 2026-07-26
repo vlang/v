@@ -388,6 +388,11 @@ fn (mut c Checker) assign_stmt_aliases_mutable_state(node ast.AssignStmt, root_n
 }
 
 fn (mut c Checker) type_may_share_mutable_storage(typ ast.Type) bool {
+	mut seen := map[int]bool{}
+	return c.type_may_share_mutable_storage_seen(typ, mut seen)
+}
+
+fn (mut c Checker) type_may_share_mutable_storage_seen(typ ast.Type, mut seen map[int]bool) bool {
 	if typ == 0 || typ == ast.no_type {
 		return false
 	}
@@ -395,5 +400,54 @@ fn (mut c Checker) type_may_share_mutable_storage(typ ast.Type) bool {
 	if unwrapped.is_any_kind_of_pointer() || unwrapped.has_flag(.shared_f) {
 		return true
 	}
-	return c.table.final_sym(unwrapped).kind in [.array, .map, .chan, .interface, .thread, .function]
+	sym := c.table.final_sym(unwrapped)
+	if sym.kind in [.array, .map, .chan, .interface, .thread, .function] {
+		return true
+	}
+	if unwrapped.idx() in seen {
+		return false
+	}
+	seen[unwrapped.idx()] = true
+	match sym.info {
+		ast.Struct {
+			for field in sym.info.fields {
+				if c.type_may_share_mutable_storage_seen(field.typ, mut seen) {
+					return true
+				}
+			}
+			for embed in sym.info.embeds {
+				if c.type_may_share_mutable_storage_seen(embed, mut seen) {
+					return true
+				}
+			}
+		}
+		ast.ArrayFixed {
+			return c.type_may_share_mutable_storage_seen(sym.info.elem_type, mut seen)
+		}
+		ast.SumType {
+			for variant in sym.info.variants {
+				if c.type_may_share_mutable_storage_seen(variant, mut seen) {
+					return true
+				}
+			}
+		}
+		ast.Aggregate {
+			for aggregate_type in sym.info.types {
+				if c.type_may_share_mutable_storage_seen(aggregate_type, mut seen) {
+					return true
+				}
+			}
+		}
+		ast.GenericInst {
+			for concrete_type in sym.info.concrete_types {
+				if c.type_may_share_mutable_storage_seen(concrete_type, mut seen) {
+					return true
+				}
+			}
+			return c.type_may_share_mutable_storage_seen(ast.new_type(sym.info.parent_idx), mut
+				seen)
+		}
+		else {}
+	}
+	return false
 }

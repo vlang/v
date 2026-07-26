@@ -481,6 +481,79 @@ fn (n ReachableMatchBranchProgress) str() string {
 	return next.str()
 }
 
+struct NoElseReceiverAssignment {
+	recurse bool
+}
+
+fn (f NoElseReceiverAssignment) str() string {
+	if !f.recurse {
+		return ''
+	}
+	mut alias := NoElseReceiverAssignment{}
+	if f.recurse {
+		alias = f
+	}
+	return alias.str()
+}
+
+struct ConditionalMutatorNoProgress {
+mut:
+	remaining int
+}
+
+fn (mut n ConditionalMutatorNoProgress) maybe_decrement() {
+	if n.remaining > 1 {
+		n.remaining--
+	}
+}
+
+fn (n ConditionalMutatorNoProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.maybe_decrement()
+	return next.str()
+}
+
+struct ExhaustiveMutatorCallProgress {
+mut:
+	remaining int
+}
+
+fn (mut n ExhaustiveMutatorCallProgress) decrement() {
+	if n.remaining % 2 == 0 {
+		n.remaining--
+	} else {
+		n.remaining--
+	}
+}
+
+fn (n ExhaustiveMutatorCallProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.decrement()
+	return next.str()
+}
+
+struct NestedSharedStorageProgress {
+mut:
+	items []int
+}
+
+@[unsafe]
+fn (n NestedSharedStorageProgress) str() string {
+	if n.items.len == 0 || n.items[0] == 0 {
+		return ''
+	}
+	mut source := n
+	alias := source
+	source.items[0]--
+	return alias.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -533,5 +606,7 @@ fn main() {
 	})
 	println(rebound_map_source)
 	println(SelectedComptimeReceiverAssignment{})
+	println(NoElseReceiverAssignment{ recurse: true })
+	println(ConditionalMutatorNoProgress{ remaining: 1 })
 	println(IfaceExt{ name: 'test' })
 }

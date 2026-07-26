@@ -208,3 +208,17 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:436:15: error: cannot call `s
       |                  ~~~~~
   437 | }
   438 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:496:15: error: cannot call `str()` method recursively
+  494 |         alias = f
+  495 |     }
+  496 |     return alias.str()
+      |                  ~~~~~
+  497 | }
+  498 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:516:14: error: cannot call `str()` method recursively
+  514 |     mut next := n
+  515 |     next.maybe_decrement()
+  516 |     return next.str()
+      |                 ~~~~~
+  517 | }
+  518 |
