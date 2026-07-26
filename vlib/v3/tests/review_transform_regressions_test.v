@@ -1612,7 +1612,7 @@ fn main() {
 }
 '
 	c_source := gen_c_from_source(v3_bin, 'local_callback_map_initializer_hot_loop_c', source)
-	assert c_source.contains('closure__closure_try_destroy(__map_closure_'), c_source
+	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
 	out := run_good(v3_bin, 'local_callback_map_initializer_hot_loop', source)
 	assert out == '1250025000'
 }
@@ -1649,6 +1649,86 @@ fn main() {
 	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
 	assert c_source.contains('.receiver = &(counter)'), c_source
 	out := run_good(v3_bin, 'local_computed_key_callback_map_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_dynamic_callback_map_index_assignments_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn zero() int {
+	return 0
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := {
+			"read": zero
+		}
+		key := "read"
+		callbacks[key] = counter.read
+		counter.value++
+		total += callbacks["read"]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_dynamic_callback_map_index_assign_hot_loop_c',
+		source)
+	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
+	out := run_good(v3_bin, 'local_dynamic_callback_map_index_assign_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_callback_map_initializer_captures_each_overwritten_entry_for_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut first := Counter{
+			value: i
+		}
+		mut second := Counter{
+			value: i
+		}
+		key := "read"
+		callbacks := {
+			"read": first.read
+			key:    second.read
+		}
+		first.value += 10
+		second.value++
+		total += callbacks["read"]()
+		assert first.value == i + 10
+		assert second.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'overwritten_callback_map_entries_hot_loop_c', source)
+	assert c_source.count('closure__closure_try_destroy(__map_val_') == 2, c_source
+	out := run_good(v3_bin, 'overwritten_callback_map_entries_hot_loop', source)
 	assert out == '1250025000'
 }
 

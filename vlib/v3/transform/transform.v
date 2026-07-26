@@ -8995,7 +8995,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if lowered := t.try_lower_map_index_selector_assign(node) {
 		return lowered
 	}
-	if lowered := t.try_lower_map_index_assign(node) {
+	if lowered := t.try_lower_map_index_assign(id, node) {
 		return lowered
 	}
 	// string `s += x` on a plain ident -> `s = string__plus(s, x)` (only when detectable as string)
@@ -11523,13 +11523,13 @@ fn (mut t Transformer) append_local_closure_initializer_cleanups_for_value(base 
 				continue
 			}
 			value_id := t.a.child(&node, i + 1)
-			key := t.transform_expr_for_type(key_id, key_type)
-			elem := t.make_index(base, key, value_type)
 			if int(value_id) in t.local_closure_field_cleanups {
-				t.append_local_closure_aggregate_value_cleanup(elem, value_type, 'map_closure', mut
-					result)
+				// Map lowering already retained the per-entry value temporary before
+				// map__set can overwrite this key.
 				continue
 			}
+			key := t.transform_expr_for_type(key_id, key_type)
+			elem := t.make_index(base, key, value_type)
 			t.append_local_closure_initializer_cleanups_for_value(elem, value_id, value_type, mut
 				result)
 		}
