@@ -84,6 +84,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	mut main_id := -1
 	mut extra_seeds := []int{} // skip_unused roots (init/cleanup/@[markused]/@[export])
 	mut file_headers := map[int]string{} // per-file `module` header (attributes are per-file)
+	mut start_to_decl := map[string]int{} // '<file_id>:<start line>' -> decl id (solver clone dedup)
 	mut file_id := -1
 	for pf in v.parsed_files {
 		file := pf
@@ -164,14 +165,44 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			if names.len == 0 {
 				continue
 			}
-			id := decls.len
-			decls << ReproDecl{
-				names:   names
-				source:  source
-				file_id: file_id
+			// `-new-generic-solver` (generics.solve_files) removes a generic `fn foo[T]`
+			// declaration and appends concrete clones named `foo_T_int` that keep the original
+			// position. The copied source and its call sites still say `foo`, so also index the
+			// name the source text itself declares.
+			if stmt is ast.FnDecl {
+				src_name := repro_source_fn_name(source)
+				if src_name != '' && src_name !in names {
+					names << src_name
+				}
 			}
-			for n in names {
-				name_to_decl[n] << id
+			// ... and collapse clones sharing one source range into a single declaration:
+			// emitting the same copied source once per concrete instantiation would not compile
+			start_key := '${file_id}:${start}'
+			mut id := -1
+			if prev := start_to_decl[start_key] {
+				id = prev
+				mut merged_names := decls[id].names.clone()
+				for n in names {
+					if n !in merged_names {
+						merged_names << n
+						name_to_decl[n] << id
+					}
+				}
+				decls[id] = ReproDecl{
+					...decls[id]
+					names: merged_names
+				}
+			} else {
+				id = decls.len
+				start_to_decl[start_key] = id
+				decls << ReproDecl{
+					names:   names
+					source:  source
+					file_id: file_id
+				}
+				for n in names {
+					name_to_decl[n] << id
+				}
 			}
 			// index instance methods under a synthetic `<ReceiverType>#methods` key too, so a
 			// declaration that reflects over `<Type>.methods` (`$for m in Foo.methods`) can pull in
@@ -451,6 +482,15 @@ fn repro_closure(decls []ReproDecl, name_to_decl map[string][]int, seeds []int) 
 		// overloaded operators are indexed under their punctuation method name (`+`, `[]`, ...),
 		// which is not an identifier token, so add the operator methods a declaration may use
 		refs << repro_operator_refs(decls[id].source)
+		// string interpolation and the print/dump/assert family invoke custom `str` methods
+		// implicitly: the token scan sees `Foo` in `'\${Foo{}}'` but never the method name, and
+		// replaying with the default `skip_unused` would then drop `Foo.str` (and anything only
+		// it reaches), making the C error vanish. Retain every custom `str` method instead —
+		// a safe over-approximation, mirroring the mark-used walker, which roots string methods
+		// for interpolation.
+		if repro_source_stringifies(decls[id].source, refs) {
+			refs << 'str'
+		}
 		// `$for m in Foo.methods` reflection needs Foo's methods, which are indexed under the
 		// synthetic `Foo#methods` key; add those refs so the whole method set is retained
 		for t in repro_reflection_method_targets(decls[id].source) {
@@ -493,6 +533,21 @@ fn repro_operator_refs(source string) []string {
 		}
 	}
 	return ops
+}
+
+// repro_source_stringifies reports whether a declaration may implicitly invoke `str` methods:
+// it interpolates values into a string, or calls one of the print/dump functions (whose
+// arguments are stringified), or asserts (failure messages stringify the operands).
+fn repro_source_stringifies(source string, refs []string) bool {
+	if source.contains('\${') {
+		return true
+	}
+	for r in refs {
+		if r in ['println', 'eprintln', 'print', 'eprint', 'dump', 'assert'] {
+			return true
+		}
+	}
+	return false
 }
 
 // repro_reflection_method_targets returns the names a declaration reflects over with
@@ -821,6 +876,62 @@ fn scan_string_literal(source string, start int, mut ids []string) int {
 @[inline]
 fn is_ident_char(c u8) bool {
 	return c == `_` || c.is_letter() || c.is_digit()
+}
+
+// repro_source_fn_name parses the function name out of a declaration's copied source text. The
+// AST name can differ from the source when a pass rewrites declarations in place — notably
+// `-new-generic-solver`, whose concrete clones are named `foo_T_int` while the copied source and
+// every call site still say `foo` — so the closure indexes the source-level name as well.
+// Returns '' when the declaration has no source-visible plain name (operator overloads), or when
+// no `fn` line is found.
+fn repro_source_fn_name(source string) string {
+	for line in source.split_into_lines() {
+		t := line.trim_space()
+		if t == '' || t.starts_with('@[') || t.starts_with('//') {
+			continue
+		}
+		mut rest := t
+		if rest.starts_with('pub ') {
+			rest = rest['pub '.len..].trim_space()
+		}
+		if !rest.starts_with('fn ') && !rest.starts_with('fn(') {
+			return ''
+		}
+		mut i := 2
+		for i < rest.len && (rest[i] == ` ` || rest[i] == `\t`) {
+			i++
+		}
+		// skip a method's parenthesized receiver
+		if i < rest.len && rest[i] == `(` {
+			for i < rest.len && rest[i] != `)` {
+				i++
+			}
+			i++
+			for i < rest.len && (rest[i] == ` ` || rest[i] == `\t`) {
+				i++
+			}
+		}
+		// the name: an identifier, possibly dotted (`C.puts`, `JS.alert`); keep the last segment
+		// to match how AST names are indexed (repro_short_name)
+		mut last := ''
+		for {
+			name_start := i
+			for i < rest.len && is_ident_char(rest[i]) {
+				i++
+			}
+			if i == name_start {
+				return ''
+			}
+			last = rest[name_start..i]
+			if i < rest.len && rest[i] == `.` {
+				i++
+				continue
+			}
+			break
+		}
+		return last
+	}
+	return ''
 }
 
 // repro_short_name returns the last, unqualified component of a possibly module-qualified name

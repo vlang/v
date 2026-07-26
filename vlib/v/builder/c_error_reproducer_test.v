@@ -537,3 +537,64 @@ fn test_repro_closure_retains_reflected_methods() {
 	assert 3 in order // Foo.bar retained via `.methods` reflection
 	assert 4 !in order
 }
+
+fn test_repro_source_fn_name() {
+	assert repro_source_fn_name('fn compare(a int, b int) int {\n\treturn 0\n}') == 'compare'
+	assert repro_source_fn_name('pub fn max[T](a T, b T) T {\n\treturn a\n}') == 'max'
+	assert repro_source_fn_name('@[inline]\nfn (mut f Foo) grow[T](x T) {\n}') == 'grow'
+	assert repro_source_fn_name('fn C.puts(s &char) int') == 'puts'
+	// operator overloads have no source-visible plain name
+	assert repro_source_fn_name('fn (a Vec) + (b Vec) Vec {\n\treturn a\n}') == ''
+	assert repro_source_fn_name('struct NotAFn {}') == ''
+}
+
+fn test_repro_closure_retains_str_methods_for_stringification() {
+	// `println('${Foo{}}')` only mentions `Foo` as a token: the implicit `Foo.str` call (and the
+	// helper only it reaches) must still be retained, or replaying with default `skip_unused`
+	// drops them and the C error vanishes
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: "fn main() {\n\tprintln('\${Foo{}}')\n}"
+		},
+		ReproDecl{
+			names:  ['Foo']
+			source: 'struct Foo {}'
+		},
+		ReproDecl{
+			names:  ['str']
+			source: 'fn (f Foo) str() string {\n\treturn str_helper()\n}'
+		},
+		ReproDecl{
+			names:  ['str_helper']
+			source: "fn str_helper() string {\n\treturn 'foo'\n}"
+		},
+		ReproDecl{
+			names:  ['unrelated']
+			source: 'fn unrelated() {}'
+		},
+	]
+	mut name_to_decl := map[string][]int{}
+	for i, d in decls {
+		for n in d.names {
+			name_to_decl[n] << i
+		}
+	}
+	ordered := repro_closure(decls, name_to_decl, [0]) or {
+		assert false
+		return
+	}
+	assert 0 in ordered
+	assert 1 in ordered
+	assert 2 in ordered // Foo.str, referenced only implicitly by the interpolation
+	assert 3 in ordered // reachable only through Foo.str
+	assert 4 !in ordered
+}
+
+fn test_repro_source_stringifies() {
+	assert repro_source_stringifies("fn f() {\n\tprintln('\${x}')\n}", [])
+	assert repro_source_stringifies('fn f() {}', ['println'])
+	assert repro_source_stringifies('fn f() {}', ['dump'])
+	assert repro_source_stringifies('fn f() {}', ['assert'])
+	assert !repro_source_stringifies("fn f() {\n\ty := 'plain'\n}", ['f', 'y'])
+}
