@@ -760,6 +760,17 @@ fn (n NoOpFieldAssignment) str() string {
 	return alias.str()
 }
 
+struct NoOpCompoundAssignment {
+mut:
+	remaining int
+}
+
+fn (n NoOpCompoundAssignment) str() string {
+	mut alias := n
+	alias.remaining += 0
+	return alias.str()
+}
+
 struct NoOpHelperAssignment {
 mut:
 	remaining int
@@ -772,6 +783,42 @@ fn (mut n NoOpHelperAssignment) keep() {
 fn (n NoOpHelperAssignment) str() string {
 	mut alias := n
 	alias.keep()
+	return alias.str()
+}
+
+struct DeferredHelperProgress {
+mut:
+	remaining int
+}
+
+fn (mut n DeferredHelperProgress) decrement() {
+	defer {
+		n.remaining--
+	}
+}
+
+fn (n DeferredHelperProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut alias := n
+	alias.decrement()
+	return alias.str()
+}
+
+type TerminatingRebindSharedProgress = []int
+
+fn (x TerminatingRebindSharedProgress) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut source := unsafe { x }
+	alias := source
+	if source[0] == 1 {
+		source = TerminatingRebindSharedProgress([])
+		return ''
+	}
+	source[0]--
 	return alias.str()
 }
 
@@ -839,6 +886,7 @@ fn main() {
 	println(ConditionalMatchReceiverSource{})
 	println(ScalarOnlyAggregateMutation{})
 	println(NoOpFieldAssignment{})
+	println(NoOpCompoundAssignment{})
 	println(NoOpHelperAssignment{})
 	println(IfaceExt{ name: 'test' })
 }
