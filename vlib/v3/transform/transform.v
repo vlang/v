@@ -253,7 +253,7 @@ mut:
 	// sources and later returned. The box can alias the stack value while in scope, but its
 	// `_object` needs a heap copy before the interface value leaves the frame.
 	escaping_interface_box_locals map[string]bool
-	// local_closure_cleanup_decls maps source declaration node ids to capturing
+	// local_closure_cleanup_decls maps source declaration node ids to runtime
 	// closure locals that do not escape their lexical scope.
 	local_closure_cleanup_decls map[int]string
 	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays.
@@ -4919,8 +4919,9 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 		rhs_id := t.a.child(&node, 1)
 		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 			declaration_counts[lhs.value] = (declaration_counts[lhs.value] or { 0 }) + 1
-			if t.fn_literal_has_runtime_captures(rhs_id)
-				&& !t.fn_literal_captures_name(rhs_id, lhs.value) {
+			capturing_literal := t.fn_literal_has_runtime_captures(rhs_id)
+			if (capturing_literal && !t.fn_literal_captures_name(rhs_id, lhs.value))
+				|| t.bound_method_value_allocates_runtime_closure(rhs_id) {
 				candidates[int(id)] = lhs.value
 			}
 		}
@@ -4983,6 +4984,17 @@ fn (t &Transformer) fn_literal_has_runtime_captures(id flat.NodeId) bool {
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) bound_method_value_allocates_runtime_closure(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || isnil(t.tc) {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
+		return t.bound_method_value_allocates_runtime_closure(t.a.child(&node, 0))
+	}
+	return node.kind == .selector && node.children_count > 0 && t.tc.expr_is_method_value(id)
 }
 
 fn (t &Transformer) local_closure_name_mentioned(id flat.NodeId, name string) bool {

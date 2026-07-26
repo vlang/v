@@ -22441,7 +22441,7 @@ fn (tc &TypeChecker) source_struct_field_decls(struct_name string) []SourceStruc
 // expr_is_method_value reports whether `id` is a selector that resolves to a *method
 // value* — a struct/interface method used as a value (`obj.draw`), not a field access or a method
 // call. cgen backs such values with per-instance closure contexts.
-fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
+pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
 	}

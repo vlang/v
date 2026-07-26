@@ -862,6 +862,33 @@ fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
 	assert out == 'ok'
 }
 
+fn test_non_escaping_bound_method_closures_are_reclaimed_in_hot_loop() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	for i in 0 .. 50_000 {
+		value := Value{
+			n: i
+		}
+		callback := value.get
+		assert callback() == i
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_bound_method_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'local_bound_method_hot_loop', source)
+	assert out == 'ok'
+}
+
 fn test_thread_handle_equality_uses_platform_comparison() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn answer() int {
