@@ -3519,6 +3519,13 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 			if node is ast.FnDecl {
 				return
 			}
+			if node is ast.Block {
+				for stmt in node.stmts {
+					c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos, typ,
+						node.scope, cutoff, mut state)
+				}
+				return
+			}
 			if node is ast.AssignStmt {
 				for right in node.right {
 					c.scan_recursive_str_alias_updates(ast.Node(right), name, decl_pos, typ,
@@ -3554,6 +3561,16 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 		ast.Expr {
 			match node {
 				ast.AnonFn, ast.LambdaExpr {
+					return
+				}
+				ast.UnsafeExpr {
+					unsafe_scope := if node.expr is ast.IfExpr || node.expr is ast.MatchExpr {
+						call_scope
+					} else {
+						recursive_str_expr_var_scope(node.expr, name, decl_pos) or { call_scope }
+					}
+					c.scan_recursive_str_alias_updates(ast.Node(node.expr), name, decl_pos, typ,
+						unsafe_scope, cutoff, mut state)
 					return
 				}
 				ast.IfExpr {
@@ -3628,6 +3645,8 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						}
 					}
 					if call_branch_idx >= 0 {
+						c.scan_recursive_str_alias_updates(ast.Node(node.cond), name, decl_pos,
+							typ, call_scope, cutoff, mut state)
 						for stmt in node.branches[call_branch_idx].stmts {
 							c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos, typ,
 								call_scope, cutoff, mut state)

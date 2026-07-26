@@ -538,6 +538,43 @@ fn (n ExhaustiveMutatorCallProgress) str() string {
 	return next.str()
 }
 
+struct UnconditionalUnsafeBlockProgress {
+mut:
+	remaining int
+}
+
+fn (n UnconditionalUnsafeBlockProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	unsafe {
+		next.remaining--
+	}
+	return next.str()
+}
+
+struct MatchSubjectProgress {
+mut:
+	remaining int
+}
+
+fn decrement_match_subject(mut n MatchSubjectProgress) int {
+	n.remaining--
+	return n.remaining
+}
+
+fn (n MatchSubjectProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	match decrement_match_subject(mut next) {
+		0 { return '' }
+		else { return next.str() }
+	}
+}
+
 struct NestedSharedStorageProgress {
 mut:
 	items []int
