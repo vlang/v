@@ -3071,10 +3071,11 @@ struct RecursiveStrAliasSource {
 
 struct RecursiveStrAliasState {
 mut:
-	source           ast.Expr = ast.empty_expr
-	pos              int      = -1
-	invalidated      bool
-	possible_sources []RecursiveStrAliasSource
+	source                 ast.Expr = ast.empty_expr
+	pos                    int      = -1
+	invalidated            bool
+	shared_storage_mutated bool
+	possible_sources       []RecursiveStrAliasSource
 }
 
 fn (c &Checker) recursive_str_receiver_type_matches(typ ast.Type, receiver_typ ast.Type) bool {
@@ -3163,13 +3164,16 @@ fn recursive_str_expr_var_scope(expr ast.Expr, name string, decl_pos int) ?&ast.
 	return none
 }
 
-fn record_recursive_str_alias_state(mut state RecursiveStrAliasState, pos int, source ast.Expr, invalidated bool) {
+fn record_recursive_str_alias_state(mut state RecursiveStrAliasState, pos int, source ast.Expr, invalidated bool, shared_storage_mutated bool) {
 	if pos <= state.pos {
 		return
 	}
+	previous_shared_mutation := state.invalidated && state.shared_storage_mutated
 	state.pos = pos
 	state.source = source
 	state.invalidated = invalidated
+	state.shared_storage_mutated = invalidated
+		&& (previous_shared_mutation || shared_storage_mutated)
 	state.possible_sources = []
 }
 
@@ -3224,17 +3228,21 @@ fn (c &Checker) merge_recursive_str_branch_states(mut state RecursiveStrAliasSta
 	}
 	if sources.len == 0 {
 		mut merge_pos := state.pos
+		mut shared_storage_mutated := true
 		for branch_state in branch_states {
 			if branch_state.pos > merge_pos {
 				merge_pos = branch_state.pos
 			}
+			shared_storage_mutated = shared_storage_mutated && branch_state.shared_storage_mutated
 		}
-		record_recursive_str_alias_state(mut state, merge_pos, ast.empty_expr, true)
+		record_recursive_str_alias_state(mut state, merge_pos, ast.empty_expr, true,
+			shared_storage_mutated)
 		return
 	}
 	state.source = sources[0].source
 	state.pos = sources[0].pos
 	state.invalidated = false
+	state.shared_storage_mutated = false
 	state.possible_sources = sources[1..].clone()
 }
 
@@ -3513,6 +3521,115 @@ fn (mut c Checker) recursive_str_call_guarantees_root_mutation(node ast.CallExpr
 	return false
 }
 
+fn (mut c Checker) recursive_str_type_is_direct_shared_storage(typ ast.Type) bool {
+	if typ == 0 || typ == ast.no_type {
+		return false
+	}
+	unwrapped := c.unwrap_generic(typ)
+	if unwrapped.is_any_kind_of_pointer() || unwrapped.has_flag(.shared_f) {
+		return true
+	}
+	return c.table.final_sym(unwrapped).kind in [.array, .map, .chan, .interface, .thread, .function]
+}
+
+fn (mut c Checker) recursive_str_expr_path_has_shared_storage(expr ast.Expr, name string, decl_pos int, typ ast.Type) bool {
+	mut current := expr
+	current = current.remove_par()
+	match current {
+		ast.Ident {
+			return recursive_str_ident_is_var(current, name, decl_pos)
+				&& c.recursive_str_type_is_direct_shared_storage(typ)
+		}
+		ast.SelectorExpr {
+			if c.recursive_str_expr_path_has_shared_storage(current.expr, name, decl_pos, typ) {
+				return true
+			}
+			return recursive_str_expr_var_scope(current, name, decl_pos) != none
+				&& c.recursive_str_type_is_direct_shared_storage(current.typ)
+		}
+		ast.IndexExpr {
+			if c.recursive_str_expr_path_has_shared_storage(current.left, name, decl_pos, typ) {
+				return true
+			}
+			return recursive_str_expr_var_scope(current, name, decl_pos) != none
+				&& (c.recursive_str_type_is_direct_shared_storage(current.left_type)
+				|| c.recursive_str_type_is_direct_shared_storage(current.typ))
+		}
+		ast.PrefixExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.right, name, decl_pos, typ)
+		}
+		ast.PostfixExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.expr, name, decl_pos, typ)
+		}
+		ast.CastExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.expr, name, decl_pos, typ)
+		}
+		ast.AsCast {
+			return c.recursive_str_expr_path_has_shared_storage(current.expr, name, decl_pos, typ)
+		}
+		ast.UnsafeExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.expr, name, decl_pos, typ)
+		}
+		ast.DumpExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.expr, name, decl_pos, typ)
+		}
+		else {}
+	}
+	return false
+}
+
+fn (mut c Checker) recursive_str_mutation_reaches_shared_storage(expr ast.Expr, name string, decl_pos int, typ ast.Type) bool {
+	mut current := expr
+	current = current.remove_par()
+	match current {
+		ast.SelectorExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.expr, name, decl_pos, typ)
+		}
+		ast.IndexExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.left, name, decl_pos, typ)
+		}
+		ast.PrefixExpr {
+			return c.recursive_str_expr_path_has_shared_storage(current.right, name, decl_pos, typ)
+		}
+		ast.PostfixExpr {
+			return c.recursive_str_mutation_reaches_shared_storage(current.expr, name, decl_pos,
+				typ)
+		}
+		ast.CastExpr {
+			return c.recursive_str_mutation_reaches_shared_storage(current.expr, name, decl_pos,
+				typ)
+		}
+		ast.AsCast {
+			return c.recursive_str_mutation_reaches_shared_storage(current.expr, name, decl_pos,
+				typ)
+		}
+		ast.UnsafeExpr {
+			return c.recursive_str_mutation_reaches_shared_storage(current.expr, name, decl_pos,
+				typ)
+		}
+		ast.DumpExpr {
+			return c.recursive_str_mutation_reaches_shared_storage(current.expr, name, decl_pos,
+				typ)
+		}
+		else {}
+	}
+	return false
+}
+
+fn (mut c Checker) recursive_str_call_mutation_reaches_shared_storage(node ast.CallExpr, name string, decl_pos int, typ ast.Type) bool {
+	if node.is_method && c.expr_mutation_visibility(node.left, name, typ) != .none
+		&& c.recursive_str_expr_path_has_shared_storage(node.left, name, decl_pos, typ) {
+		return true
+	}
+	for arg in node.args {
+		if arg.is_mut && c.expr_mutation_visibility(arg.expr, name, typ) != .none
+			&& c.recursive_str_expr_path_has_shared_storage(arg.expr, name, decl_pos, typ) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, decl_pos int, typ ast.Type, call_scope &ast.Scope, cutoff int, mut state RecursiveStrAliasState) {
 	match node {
 		ast.Stmt {
@@ -3545,14 +3662,15 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						&& recursive_str_ident_is_var(reduced_left, name, decl_pos) {
 						if node.op in [.assign, .decl_assign] && i < node.right.len {
 							record_recursive_str_alias_state(mut state, update_pos, node.right[i],
-								false)
+								false, false)
 						} else {
 							record_recursive_str_alias_state(mut state, update_pos, ast.empty_expr,
-								true)
+								true, false)
 						}
 					} else if c.expr_mutation_visibility(left, name, typ) != .none {
 						record_recursive_str_alias_state(mut state, update_pos, ast.empty_expr,
-							true)
+							true, c.recursive_str_mutation_reaches_shared_storage(left, name,
+							decl_pos, typ))
 					}
 				}
 				return
@@ -3693,7 +3811,8 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						if scope := recursive_str_expr_var_scope(node.expr, name, decl_pos) {
 							if recursive_str_scope_dominates(scope, call_scope) {
 								record_recursive_str_alias_state(mut state, node.pos.pos +
-									node.pos.len, ast.empty_expr, true)
+									node.pos.len, ast.empty_expr, true, c.recursive_str_mutation_reaches_shared_storage(node.expr,
+									name, decl_pos, typ))
 							}
 						}
 					}
@@ -3713,7 +3832,8 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						if scope := recursive_str_expr_var_scope(node.left, name, decl_pos) {
 							if recursive_str_scope_dominates(scope, call_scope) {
 								record_recursive_str_alias_state(mut state, node.pos.pos +
-									node.pos.len, ast.empty_expr, true)
+									node.pos.len, ast.empty_expr, true, c.recursive_str_mutation_reaches_shared_storage(node.left,
+									name, decl_pos, typ))
 							}
 						}
 					}
@@ -3725,7 +3845,8 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						if scope := recursive_str_expr_var_scope(node, name, decl_pos) {
 							if recursive_str_scope_dominates(scope, call_scope) {
 								record_recursive_str_alias_state(mut state, node.pos.pos +
-									node.pos.len, ast.empty_expr, true)
+									node.pos.len, ast.empty_expr, true, c.recursive_str_call_mutation_reaches_shared_storage(node,
+									name, decl_pos, typ))
 							}
 						}
 					}
@@ -3812,11 +3933,55 @@ fn (mut c Checker) recursive_str_shared_source_was_mutated(expr ast.Expr, receiv
 	state := c.recursive_str_alias_state_before(ident.name, call, storage_cutoff) or {
 		return false
 	}
-	return state.invalidated && state.pos > start
+	return state.invalidated && state.shared_storage_mutated && state.pos > start
+}
+
+fn recursive_str_branch_result(stmts []ast.Stmt) ?ast.Expr {
+	if stmts.len == 0 {
+		return none
+	}
+	last_stmt := stmts.last()
+	if last_stmt is ast.ExprStmt {
+		return last_stmt.expr
+	}
+	return none
 }
 
 fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiver_name string, receiver_typ ast.Type, call ast.CallExpr, cutoff int, mut seen map[string]bool) bool {
 	inner := c.unwrap_recursive_str_receiver(expr, receiver_typ)
+	match inner {
+		ast.IfExpr {
+			for branch in inner.branches {
+				if inner.is_comptime && !c.is_active_comptime_branch(branch.id) {
+					continue
+				}
+				result := recursive_str_branch_result(branch.stmts) or { continue }
+				mut branch_seen := seen.clone()
+				if c.recursive_str_expr_resolves_to_receiver(result, receiver_name, receiver_typ,
+					call, cutoff, mut branch_seen)
+				{
+					return true
+				}
+			}
+			return false
+		}
+		ast.MatchExpr {
+			for branch in inner.branches {
+				if inner.is_comptime && !c.is_active_comptime_branch(branch.id) {
+					continue
+				}
+				result := recursive_str_branch_result(branch.stmts) or { continue }
+				mut branch_seen := seen.clone()
+				if c.recursive_str_expr_resolves_to_receiver(result, receiver_name, receiver_typ,
+					call, cutoff, mut branch_seen)
+				{
+					return true
+				}
+			}
+			return false
+		}
+		else {}
+	}
 	if inner !is ast.Ident {
 		return false
 	}

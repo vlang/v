@@ -591,6 +591,41 @@ fn (n NestedSharedStorageProgress) str() string {
 	return alias.str()
 }
 
+struct ConditionalIfReceiverSource {
+	flag bool
+}
+
+fn (f ConditionalIfReceiverSource) str() string {
+	alias := if f.flag { f } else { f }
+	return alias.str()
+}
+
+struct ConditionalMatchReceiverSource {
+	flag bool
+}
+
+fn (f ConditionalMatchReceiverSource) str() string {
+	alias := match f.flag {
+		true { f }
+		false { f }
+	}
+	return alias.str()
+}
+
+struct ScalarOnlyAggregateMutation {
+mut:
+	counter int
+	items   []int
+}
+
+@[unsafe]
+fn (s ScalarOnlyAggregateMutation) str() string {
+	mut source := s
+	alias := source
+	source.counter--
+	return alias.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -645,5 +680,8 @@ fn main() {
 	println(SelectedComptimeReceiverAssignment{})
 	println(NoElseReceiverAssignment{ recurse: true })
 	println(ConditionalMutatorNoProgress{ remaining: 1 })
+	println(ConditionalIfReceiverSource{})
+	println(ConditionalMatchReceiverSource{})
+	println(ScalarOnlyAggregateMutation{})
 	println(IfaceExt{ name: 'test' })
 }

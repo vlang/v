@@ -222,3 +222,24 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:516:14: error: cannot call `s
       |                 ~~~~~
   517 | }
   518 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:600:15: error: cannot call `str()` method recursively
+  598 | fn (f ConditionalIfReceiverSource) str() string {
+  599 |     alias := if f.flag { f } else { f }
+  600 |     return alias.str()
+      |                  ~~~~~
+  601 | }
+  602 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:612:15: error: cannot call `str()` method recursively
+  610 |         false { f }
+  611 |     }
+  612 |     return alias.str()
+      |                  ~~~~~
+  613 | }
+  614 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:626:15: error: cannot call `str()` method recursively
+  624 |     alias := source
+  625 |     source.counter--
+  626 |     return alias.str()
+      |                  ~~~~~
+  627 | }
+  628 |
