@@ -4624,6 +4624,52 @@ fn (mut g FlatGen) gen_map_mutation_call_with_loop_copyback_guard(node flat.Node
 	return true
 }
 
+fn (g &FlatGen) owned_capture_context_type(data_id flat.NodeId) ?types.Type {
+	mut current := data_id
+	for _ in 0 .. 8 {
+		if int(current) < 0 || int(current) >= g.a.nodes.len {
+			return none
+		}
+		node := g.a.nodes[int(current)]
+		if node.kind in [.cast_expr, .paren] && node.children_count == 1 {
+			current = g.a.child(&node, 0)
+			continue
+		}
+		if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+			context_type := types.unwrap_pointer(g.tc.resolve_type(g.a.child(&node, 0)))
+			if context_type is types.Struct && context_type.name.ends_with('_Ctx')
+				&& g.tc.ownership_type_requires_destruction(context_type) {
+				return context_type
+			}
+		}
+		return none
+	}
+	return none
+}
+
+fn (mut g FlatGen) gen_owned_capture_closure_create(id flat.NodeId, node flat.Node, fn_name string, target_name string, resolved_target_name string) bool {
+	if node.children_count != 4
+		|| !(fn_name in ['closure.closure_create_with_data', 'closure__closure_create_with_data']
+		|| target_name in ['closure.closure_create_with_data', 'closure__closure_create_with_data']
+		|| resolved_target_name in ['closure.closure_create_with_data', 'closure__closure_create_with_data']) {
+		return false
+	}
+	context_type := g.owned_capture_context_type(g.a.child(&node, 2)) or { return false }
+	context_ct := g.tc.c_type(context_type)
+	drop_name := '_flctxdrop_${int(id)}'
+	drop_body := g.ownership_drop_value_to_string(context_type, '*ctx')
+	g.add_spawn_wrapper_def('static void ${drop_name}(void* data) { ${context_ct}* ctx = (${context_ct}*)data;\n${drop_body}}')
+	g.write('closure__closure_create_with_data_and_drop(')
+	for i in 1 .. node.children_count {
+		if i > 1 {
+			g.write(', ')
+		}
+		g.gen_expr(g.a.child(&node, i))
+	}
+	g.write(', (void*)${drop_name})')
+	return true
+}
+
 // gen_call emits call output for c.
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	mut fn_node := g.a.child_node(&node, 0)
@@ -4692,6 +4738,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	if g.gen_owned_capture_closure_create(id, node, fn_name, target_name, resolved_target_name) {
+		return
+	}
 	// Generic templates are transformed before their concrete type arguments are
 	// known. A builtin print call can therefore reach cgen with an unconverted `T`
 	// argument that monomorphization has since made concrete. Stringify that final

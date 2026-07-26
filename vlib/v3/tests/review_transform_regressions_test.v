@@ -2567,6 +2567,40 @@ fn main() {
 	assert out == 'owned:7\nowned:7'
 }
 
+fn test_owned_fn_literal_capture_context_has_type_aware_drop() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'fn exercise() int {
+	mut total := 0
+	for i in 0 .. 10 {
+		text := ("item" + int_str(i)).to_owned()
+		values := [i]
+		callback := fn [text, values] () int {
+			return text.len + values[0]
+		}
+		total += callback()
+	}
+	return total
+}
+
+fn main() {
+	println(int_str(exercise()))
+}
+'
+	src_path := os.join_path(os.temp_dir(), 'v3_owned_fn_literal_capture_context.v')
+	c_path := os.join_path(os.temp_dir(), 'v3_owned_fn_literal_capture_context.c')
+	os.write_file(src_path, source) or { panic(err) }
+	gen := os.execute('${v3_bin} -nocache -ownership -gc none ${src_path} -b c -o ${c_path}')
+	assert gen.exit_code == 0, gen.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.contains('static void _flctxdrop_'), c_source
+	assert c_source.contains('closure__closure_create_with_data_and_drop'), c_source
+	assert c_source.contains('string__free(&((*ctx).text));'), c_source
+	assert c_source.contains('array__free(&((*ctx).values));'), c_source
+	out := run_good_with_flags(v3_bin, 'owned_fn_literal_capture_context', '-ownership -gc none',
+		source)
+	assert out == '95'
+}
+
 fn test_generic_interface_method_body_marks_log_debug_dispatch() {
 	v3_bin := build_v3_review_transform_ownership()
 	out := run_good_with_flags(v3_bin, 'generic_interface_log_debug_dispatch', '-ownership',
