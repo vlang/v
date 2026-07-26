@@ -5480,6 +5480,11 @@ fn (mut t Transformer) collect_local_closure_initializer_field_candidates(decl_i
 		return
 	}
 	init := t.a.nodes[int(init_id)]
+	if init.kind == .postfix && init.op == .not && init.children_count == 1 {
+		t.collect_local_closure_initializer_field_candidates(decl_id, owner_id,
+			t.a.child(&init, 0), aggregate_name, field_prefix, scope_id, mut field_candidates)
+		return
+	}
 	if init.kind == .array_literal {
 		for i in 0 .. init.children_count {
 			value := t.a.child_node(&init, i)
@@ -11329,8 +11334,14 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 }
 
 fn (mut t Transformer) append_local_closure_initializer_cleanups(name string, rhs_id flat.NodeId, aggregate_type string, mut result []flat.NodeId) {
-	if aggregate_type.starts_with('[]') && aggregate_type.len > 2 {
-		elem_type := aggregate_type[2..]
+	elem_type := if aggregate_type.starts_with('[]') && aggregate_type.len > 2 {
+		aggregate_type[2..]
+	} else if t.is_fixed_array_type(aggregate_type) {
+		fixed_array_elem_type(aggregate_type)
+	} else {
+		''
+	}
+	if elem_type.len > 0 {
 		for index in t.local_closure_array_initializer_cleanup_indices(rhs_id) {
 			closure_name := t.new_temp('array_closure')
 			t.set_var_type(closure_name, elem_type)
@@ -11358,7 +11369,8 @@ fn (t &Transformer) local_closure_array_initializer_cleanup_indices(id flat.Node
 		return []int{}
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count == 1 {
+	if (node.kind in [.paren, .cast_expr, .as_expr] || (node.kind == .postfix && node.op == .not))
+		&& node.children_count == 1 {
 		return t.local_closure_array_initializer_cleanup_indices(t.a.child(&node, 0))
 	}
 	if node.kind != .array_literal {
