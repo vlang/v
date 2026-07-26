@@ -12178,11 +12178,7 @@ fn (mut g FlatGen) gen_array_value_arg(id flat.NodeId, typ types.Type, fallback 
 	node := g.a.nodes[int(id)]
 	semantic_array_in_pointer_storage := typ is types.Array && node.kind == .ident
 		&& g.local_storage_is_pointer(node.value)
-	semantic_array_deref_in_pointer_storage := typ is types.Array && node.kind == .prefix
-		&& node.op == .mul && node.children_count > 0 && g.a.child_node(&node, 0).kind == .ident
-		&& g.local_storage_is_pointer(g.a.child_node(&node, 0).value)
-	if typ is types.Pointer || semantic_array_in_pointer_storage
-		|| semantic_array_deref_in_pointer_storage {
+	if typ is types.Pointer || semantic_array_in_pointer_storage {
 		g.write('*')
 	}
 	if node.kind == .array_literal {

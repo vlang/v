@@ -792,6 +792,22 @@ fn test_array_equality_uses_semantic_element_comparison() {
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
 }
 
+fn test_explicitly_dereferenced_array_equality_is_not_double_dereferenced() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	values := [1, 2, 3]
+	p := &values
+	assert *p == values
+	assert values == *p
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'explicit_array_deref_equality_c', source)
+	assert !c_source.contains('**p'), c_source
+	out := run_good(v3_bin, 'explicit_array_deref_equality', source)
+	assert out == 'ok'
+}
+
 fn test_array_map_fn_value_uses_callback_return_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'array_map_fn_value_return_type',
