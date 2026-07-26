@@ -15468,15 +15468,13 @@ fn (mut g FlatGen) global_decls() {
 			g.writeln('#endif')
 			continue
 		}
-		// With -prealloc the arena base block and the block-recycle cache are
-		// per-thread; a shared pointer would make all threads bump the same
-		// block without synchronization. cc gets real TLS; tcc implements no
-		// _Thread_local, so each gets a pthread-key emulation behind an lvalue
-		// macro. The keys are created from a constructor (same pattern as the
-		// shared-storage TLS emulation above), so worker threads can never
-		// race a lazy pthread_key_create - unlike the arena base, the recycle
-		// cache has no first-touch-on-main-thread guarantee.
-		if g.prealloc && name in ['g_memory_block', 'g_prealloc_block_cache'] {
+		// With -prealloc the arena base block is per-thread; a shared pointer
+		// would make all threads bump the same block without synchronization.
+		// The block-recycle cache hangs off this TLS root, keeping bootstrap
+		// compilers that only know about g_memory_block safe as well.
+		// cc gets real TLS; tcc implements no _Thread_local, so it gets a
+		// pthread-key emulation behind an lvalue macro.
+		if g.prealloc && name == 'g_memory_block' {
 			cn := g.cname(name)
 			g.writeln('#if defined(__TINYC__)')
 			g.writeln('static pthread_key_t ${cn}_key;')
