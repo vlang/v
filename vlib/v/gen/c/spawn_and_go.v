@@ -11,30 +11,16 @@ enum SpawnGoMode {
 	go_
 }
 
-fn (mut g Gen) write_spawn_arg_option_or_result_type(typ ast.Type, insert_pos int) {
+fn (mut g Gen) mark_spawn_arg_option_or_result_type(typ ast.Type) {
 	if typ.has_flag(.option) {
-		styp, base := g.option_type_name(typ)
-		lock g.done_options {
-			if base !in g.done_options {
-				g.done_options << base
-				wrapper_text := g.type_definitions.after(insert_pos).clone()
-				g.type_definitions.go_back_to(insert_pos)
-				g.typedefs.writeln('typedef struct ${styp} ${styp};')
-				g.type_definitions.writeln('${g.option_type_text(styp, base)};')
-				g.type_definitions.write_string(wrapper_text)
-			}
+		_, base := g.option_type_name(typ)
+		if base !in g.spawn_arg_options {
+			g.spawn_arg_options << base
 		}
 	} else if typ.has_flag(.result) {
-		styp, base := g.result_type_name(typ)
-		lock g.done_results {
-			if base !in g.done_results {
-				g.done_results << base
-				wrapper_text := g.type_definitions.after(insert_pos).clone()
-				g.type_definitions.go_back_to(insert_pos)
-				g.typedefs.writeln('typedef struct ${styp} ${styp};')
-				g.type_definitions.writeln('${g.result_type_text(styp, base)};')
-				g.type_definitions.write_string(wrapper_text)
-			}
+		_, base := g.result_type_name(typ)
+		if base !in g.spawn_arg_results {
+			g.spawn_arg_results << base
 		}
 	}
 }
@@ -283,7 +269,6 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 	}
 	if should_register {
-		wrapper_start_pos := g.type_definitions.len
 		g.type_definitions.writeln('\ntypedef struct ${wrapper_struct_name} {')
 		mut fn_var := ''
 		mut wrapper_return_type := call_ret_type
@@ -401,7 +386,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					arg_sym.info.func.params.map(it.typ), 'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
-				g.write_spawn_arg_option_or_result_type(arg_typ, wrapper_start_pos)
+				g.mark_spawn_arg_option_or_result_type(arg_typ)
 				styp := g.styp(arg_typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}

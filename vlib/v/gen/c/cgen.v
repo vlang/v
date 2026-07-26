@@ -126,9 +126,11 @@ mut:
 	options_pos_forward                  int               // insertion point to forward
 	options_forward                      []string          // to forward
 	options                              map[string]string // to avoid duplicates
+	spawn_arg_options                    []string          // option payloads needed by spawn wrappers
 	emitted_extern_sig_typedefs          map[int]bool      // type idx → already-emitted forward typedef (for C extern decls)
 	results_forward                      []string          // to forward
 	results                              map[string]string // to avoid duplicates
+	spawn_arg_results                    []string          // result payloads needed by spawn wrappers
 	done_options                         shared []string   // to avoid duplicates
 	done_results                         shared []string   // to avoid duplicates
 	array_typedefs                       []string          // to avoid duplicate array typedefs
@@ -474,6 +476,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
+	file_type_definitions_pos := global_g.type_definitions.len
 	if !pref_.no_parallel {
 		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
@@ -532,6 +535,16 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			}
 			for k, v in g.results {
 				global_g.results[k] = v
+			}
+			for base in g.spawn_arg_options {
+				if base !in global_g.spawn_arg_options {
+					global_g.spawn_arg_options << base
+				}
+			}
+			for base in g.spawn_arg_results {
+				if base !in global_g.spawn_arg_results {
+					global_g.spawn_arg_results << base
+				}
 			}
 			for k, v in g.as_cast_type_names {
 				global_g.as_cast_type_names[k] = v
@@ -642,6 +655,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.gen_map_key_fns()
 	global_g.gen_free_methods()
 	global_g.register_iface_return_types()
+	global_g.write_spawn_arg_option_or_result_types(file_type_definitions_pos)
 	global_g.write_results()
 	global_g.write_options()
 	global_g.write_late_array_typedefs()
@@ -2039,6 +2053,36 @@ fn (mut g Gen) register_result(t ast.Type) string {
 		g.results[base] = styp
 	}
 	return styp
+}
+
+fn (mut g Gen) write_spawn_arg_option_or_result_types(insert_pos int) {
+	if g.spawn_arg_options.len == 0 && g.spawn_arg_results.len == 0 {
+		return
+	}
+	tail := g.type_definitions.cut_to(insert_pos)
+	for base in g.spawn_arg_options {
+		if styp := g.options[base] {
+			lock g.done_options {
+				if base !in g.done_options {
+					g.done_options << base
+					g.typedefs.writeln('typedef struct ${styp} ${styp};')
+					g.type_definitions.writeln('${g.option_type_text(styp, base)};')
+				}
+			}
+		}
+	}
+	for base in g.spawn_arg_results {
+		if styp := g.results[base] {
+			lock g.done_results {
+				if base !in g.done_results {
+					g.done_results << base
+					g.typedefs.writeln('typedef struct ${styp} ${styp};')
+					g.type_definitions.writeln('${g.result_type_text(styp, base)};')
+				}
+			}
+		}
+	}
+	g.type_definitions.write_string(tail)
 }
 
 fn (mut g Gen) write_options() {
