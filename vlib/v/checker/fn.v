@@ -3610,6 +3610,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 				} else if inner is ast.UnsafeExpr {
 					inner = inner.expr.remove_par()
+				} else if inner is ast.DumpExpr {
+					inner = inner.expr.remove_par()
 				} else {
 					break
 				}
@@ -3637,6 +3639,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 								break
 							}
 						} else if init_expr is ast.UnsafeExpr {
+							init_expr = init_expr.expr.remove_par()
+						} else if init_expr is ast.DumpExpr {
 							init_expr = init_expr.expr.remove_par()
 						} else {
 							break

@@ -124,6 +124,19 @@ fn (f UnsafeAlias) str() string {
 	return alias.str()
 }
 
+struct DumpDirect {}
+
+fn (f DumpDirect) str() string {
+	return dump(f).str()
+}
+
+struct DumpAlias {}
+
+fn (f DumpAlias) str() string {
+	alias := dump(f)
+	return alias.str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -143,4 +156,6 @@ fn main() {
 	println(DerefAlias{})
 	println(UnsafeDirect{})
 	println(UnsafeAlias{})
+	println(DumpDirect{})
+	println(DumpAlias{})
 }

@@ -116,3 +116,17 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:124:15: error: cannot call `s
   124 |     return alias.str()
       |                  ~~~~~
   125 | }
+  126 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:130:16: error: cannot call `str()` method recursively
+  128 |
+  129 | fn (f DumpDirect) str() string {
+  130 |     return dump(f).str()
+      |                    ~~~~~
+  131 | }
+  132 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:137:15: error: cannot call `str()` method recursively
+  135 | fn (f DumpAlias) str() string {
+  136 |     alias := dump(f)
+  137 |     return alias.str()
+      |                  ~~~~~
+  138 | }
