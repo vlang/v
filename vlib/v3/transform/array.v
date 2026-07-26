@@ -1975,6 +1975,32 @@ fn (t &Transformer) array_get_base_is_shared_array_ident(base_type string, node 
 	return raw_type.starts_with('shared ')
 }
 
+// materialize_array_fn_literal_callback evaluates a direct filter/map callback once.
+// Capturing literals allocate runtime closure state, which must not be recreated for
+// every loop element.
+fn (mut t Transformer) materialize_array_fn_literal_callback(id flat.NodeId, prefix string) (flat.NodeId, []flat.NodeId) {
+	saved_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	callback := t.transform_expr(id)
+	mut setup := t.pending_stmts.clone()
+	t.pending_stmts = saved_pending
+	callback_node := t.a.nodes[int(callback)]
+	if callback_node.kind == .ident {
+		return callback, setup
+	}
+	callback_type := t.fn_value_type_name(id) or { t.node_type(callback) }
+	callback_name := t.new_temp(prefix)
+	setup << t.make_decl_assign_typed(callback_name, callback, callback_type)
+	if t.fn_literal_has_runtime_captures(id) {
+		setup << t.make_local_closure_cleanup_defer(callback_name)
+	}
+	callback_ident := t.make_ident(callback_name)
+	if callback_type.len > 0 {
+		t.set_node_typ(int(callback_ident), callback_type)
+	}
+	return callback_ident, setup
+}
+
 // lower_array_filter_call builds lower array filter call data for transform.
 fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node, base_type string) ?flat.NodeId {
 	if node.children_count < 2 || !base_type.starts_with('[]') {
@@ -2057,10 +2083,12 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	}
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
+	mut callback_setup := []flat.NodeId{}
 	predicate := if predicate_fn_name.len > 0 {
 		t.make_call_typed(predicate_fn_name, arr1(t.make_ident(elem_name)), 'bool')
 	} else if predicate_node.kind == .fn_literal {
-		fn_value := t.transform_expr(predicate_id)
+		fn_value, setup := t.materialize_array_fn_literal_callback(predicate_id, 'filter_callback')
+		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
 		if fn_value_node.kind == .ident {
 			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), 'bool')
@@ -2076,6 +2104,9 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 		t.set_var_type(elem_name, old_elem)
 	} else {
 		t.unset_var_type(elem_name)
+	}
+	for stmt in callback_setup {
+		prefix << stmt
 	}
 	mut loop_body := []flat.NodeId{}
 	loop_body << elem_decl
@@ -2191,10 +2222,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	has_bound_method_array := bound_method_info.receiver_type.len > 0
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
+	mut callback_setup := []flat.NodeId{}
 	mapped_expr := if map_fn_name.len > 0 {
 		t.make_call_typed(map_fn_name, arr1(t.make_ident(elem_name)), result_elem_type)
 	} else if map_expr.kind == .fn_literal {
-		fn_value := t.transform_expr(map_expr_id)
+		fn_value, setup := t.materialize_array_fn_literal_callback(map_expr_id, 'map_callback')
+		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
 		if fn_value_node.kind == .ident && result_elem_type.len > 0 {
 			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), result_elem_type)
@@ -2256,6 +2289,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	base := t.stable_expr_for_reuse(base_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
+	for stmt in callback_setup {
+		prefix << stmt
+	}
 	out_name := t.new_temp('map')
 	idx_name := t.new_temp('map_idx')
 	prefix << t.make_decl_assign_typed(out_name, t.make_array_new_call(result_elem_type,

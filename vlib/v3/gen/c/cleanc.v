@@ -6088,9 +6088,19 @@ fn c_expand_default_define_macros(raw string, compile_values map[string]string) 
 		if override := compile_values[name] {
 			value = override
 		}
+		value = c_flag_quote_spaced_macro_value(value)
 		result = result[..idx] + value + result[close_idx + 1..]
 	}
 	return result
+}
+
+// c_flag_quote_spaced_macro_value keeps one expanded `$d` value in one argv
+// element when the value contains whitespace.
+fn c_flag_quote_spaced_macro_value(value string) string {
+	if !value.contains_any(' \t\r\n') {
+		return value
+	}
+	return '"${value.replace('\\', '\\\\').replace('"', '\\"')}"'
 }
 
 // c_flag_define_name unwraps the quoted name arm of a `$d(name, fallback)` macro.

@@ -52,6 +52,9 @@ fn test_c_flag_default_define_macros_stay_single_arguments() {
 	assert c_flag_args(r'-DJSON=$d("JSON", "\"value\"")', '', '', target) == [
 		'-DJSON="value"',
 	]
+	assert c_flag_args("-DMESSAGE=\$d('MSG', 'hello world')", '', '', target) == [
+		'-DMESSAGE=hello world',
+	]
 }
 
 fn test_c_flag_default_define_macros_honor_configured_values() {
@@ -77,6 +80,11 @@ fn test_c_flag_default_define_macros_honor_configured_values() {
 	// An absent define also falls back.
 	assert c_flag_args_with_values("-DNUMBER=\$d('N', 1234 )", '', '', target, map[string]string{}) == [
 		'-DNUMBER=1234',
+	]
+	assert c_flag_args_with_values("-DMESSAGE=\$d('MSG', 'fallback')", '', '', target, {
+		'MSG': 'configured value'
+	}) == [
+		'-DMESSAGE=configured value',
 	]
 }
 

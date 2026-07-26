@@ -3360,3 +3360,23 @@ fn test_moved_module_alias_uses_target_module_identity() {
 	}, 'main.v')
 	assert out == '42'
 }
+
+fn test_array_filter_and_map_reuse_capturing_callback_state() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_filter_map_capturing_callback_state', 'fn main() {
+	mut filter_calls := 0
+	filtered := [1, 2, 3].filter(fn [mut filter_calls] (value int) bool {
+		filter_calls++
+		return filter_calls > 1
+	})
+	mut map_calls := 0
+	mapped := [10, 20, 30].map(fn [mut map_calls] (value int) int {
+		map_calls++
+		return value + map_calls
+	})
+	println(filtered)
+	println(mapped)
+}
+')
+	assert out == '[2, 3]\n[11, 22, 33]'
+}
