@@ -4952,6 +4952,42 @@ fn (t &Transformer) expr_allocates_fresh_runtime_closure(id flat.NodeId) bool {
 		|| t.bound_method_value_allocates_runtime_closure(id)
 }
 
+fn (t &Transformer) fresh_runtime_closure_expr_captures_name(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.paren, .cast_expr, .expr_stmt {
+			return node.children_count == 1
+				&& t.fresh_runtime_closure_expr_captures_name(t.a.child(&node, 0), name)
+		}
+		.block, .match_branch {
+			return node.children_count > 0
+				&& t.fresh_runtime_closure_expr_captures_name(t.a.child(&node, node.children_count - 1), name)
+		}
+		.if_expr {
+			for i in 1 .. node.children_count {
+				if t.fresh_runtime_closure_expr_captures_name(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		.match_stmt {
+			for i in 1 .. node.children_count {
+				if t.fresh_runtime_closure_expr_captures_name(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return t.fn_literal_captures_name(id, name)
+		}
+	}
+}
+
 fn (t &Transformer) fresh_runtime_closure_type(id flat.NodeId) ?string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
@@ -5394,9 +5430,8 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 				continue
 			}
-			capturing_literal := t.fn_literal_has_runtime_captures(rhs_id)
-			if (capturing_literal && !t.fn_literal_captures_name(rhs_id, lhs.value))
-				|| t.bound_method_value_allocates_runtime_closure(rhs_id) {
+			if t.expr_allocates_fresh_runtime_closure(rhs_id)
+				&& !t.fresh_runtime_closure_expr_captures_name(rhs_id, lhs.value) {
 				candidates << LocalClosureDeclCandidate{
 					source_id: int(rhs_id)
 					decl_id:   int(id)
@@ -5445,20 +5480,9 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 			lhs_id := t.a.child(&append, 0)
 			rhs_id := t.a.child(&append, 1)
 			lhs_type := t.clean_array_append_lhs_type(t.lvalue_type(lhs_id))
-			if lhs_type.starts_with('[]') && t.expr_allocates_fresh_runtime_closure(rhs_id) {
-				if aggregate_name := t.escape_address_root_name(lhs_id) {
-					field_prefix := t.expr_key(lhs_id)
-					if field_prefix.len > 0 {
-						field_candidates << LocalClosureFieldCandidate{
-							source_id:       int(append_id)
-							owner_id:        int(id)
-							decl_id:         -1
-							aggregate_name:  aggregate_name
-							aggregate_scope: int(scope_id)
-							field_key:       '${field_prefix}[*]'
-						}
-					}
-				}
+			if lhs_type.starts_with('[]') {
+				t.collect_local_closure_append_candidates(append_id, id, lhs_id, rhs_id, scope_id, mut
+					field_candidates)
 			}
 		}
 	}
@@ -5502,6 +5526,52 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 					candidates, mut field_candidates)
 			}
 		}
+	}
+}
+
+fn (mut t Transformer) collect_local_closure_append_candidates(append_id flat.NodeId, owner_id flat.NodeId, lhs_id flat.NodeId, rhs_id flat.NodeId, scope_id flat.NodeId, mut field_candidates []LocalClosureFieldCandidate) {
+	aggregate_name := t.escape_address_root_name(lhs_id) or { return }
+	field_prefix := t.expr_key(lhs_id)
+	if field_prefix.len == 0 {
+		return
+	}
+	t.collect_local_closure_append_value_candidates(owner_id, rhs_id, append_id, aggregate_name,
+		'${field_prefix}[*]', scope_id, mut field_candidates)
+}
+
+fn (mut t Transformer) collect_local_closure_append_value_candidates(owner_id flat.NodeId, value_id flat.NodeId, cleanup_source_id flat.NodeId, aggregate_name string, field_key string, scope_id flat.NodeId, mut field_candidates []LocalClosureFieldCandidate) {
+	if int(value_id) < 0 || int(value_id) >= t.a.nodes.len {
+		return
+	}
+	value := t.a.nodes[int(value_id)]
+	if (value.kind in [.paren, .cast_expr, .as_expr] || (value.kind == .postfix
+		&& value.op == .not)) && value.children_count == 1 {
+		t.collect_local_closure_append_value_candidates(owner_id, t.a.child(&value, 0),
+			cleanup_source_id, aggregate_name, field_key, scope_id, mut field_candidates)
+		return
+	}
+	if value.kind == .array_literal {
+		for i in 0 .. value.children_count {
+			elem_id := t.a.child(&value, i)
+			elem := t.a.nodes[int(elem_id)]
+			if elem.kind == .prefix && elem.value == '...' {
+				return
+			}
+			t.collect_local_closure_append_value_candidates(owner_id, elem_id, elem_id,
+				aggregate_name, field_key, scope_id, mut field_candidates)
+		}
+		return
+	}
+	if !t.expr_allocates_fresh_runtime_closure(value_id) {
+		return
+	}
+	field_candidates << LocalClosureFieldCandidate{
+		source_id:       int(cleanup_source_id)
+		owner_id:        int(owner_id)
+		decl_id:         -1
+		aggregate_name:  aggregate_name
+		aggregate_scope: int(scope_id)
+		field_key:       field_key
 	}
 }
 

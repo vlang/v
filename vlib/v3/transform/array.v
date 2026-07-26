@@ -1201,6 +1201,16 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		rhs_type = t.node_type(rhs)
 		push_many = t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	}
+	mut bulk_cleanup_name := ''
+	mut bulk_cleanup_type := ''
+	if push_many && t.expr_contains_local_closure_field_cleanup(rhs_id) {
+		bulk_cleanup_name = t.new_temp('append_closures')
+		bulk_cleanup_type = if rhs_type.len > 0 { rhs_type } else { array_type }
+		t.set_var_type(bulk_cleanup_name, bulk_cleanup_type)
+		result << t.make_decl_assign_typed(bulk_cleanup_name, rhs, bulk_cleanup_type)
+		rhs = t.make_ident(bulk_cleanup_name)
+		t.set_node_typ(int(rhs), bulk_cleanup_type)
+	}
 
 	lhs_addr := t.runtime_addr(lhs, lhs_type)
 	if push_many {
@@ -1212,6 +1222,12 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		}
 		t.drain_pending(mut result)
 		result << t.make_expr_stmt(call)
+		if bulk_cleanup_name.len > 0 {
+			base := t.make_ident(bulk_cleanup_name)
+			t.set_node_typ(int(base), bulk_cleanup_type)
+			t.append_local_closure_initializer_cleanups_for_value(base, rhs_id, bulk_cleanup_type, mut
+				result)
+		}
 		return result
 	}
 	value_name := t.new_temp('arr_val')
@@ -1227,6 +1243,25 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		result << t.make_local_closure_cleanup_defer(value_name)
 	}
 	return result
+}
+
+fn (t &Transformer) expr_contains_local_closure_field_cleanup(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	if int(id) in t.local_closure_field_cleanups {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if t.expr_contains_local_closure_field_cleanup(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // normalize_array_append_add_rhs restores the append-specific grouping of

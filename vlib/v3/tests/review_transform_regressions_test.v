@@ -908,6 +908,49 @@ fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
 	assert out == 'ok'
 }
 
+fn test_branch_selected_local_method_closures_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn exercise(flag bool) int {
+	mut first := Counter{
+		value: 1
+	}
+	mut second := Counter{
+		value: 10
+	}
+	callback_if := if flag { first.read } else { second.read }
+	callback_match := match flag {
+		true { first.read }
+		else { second.read }
+	}
+	first.value = 2
+	second.value = 20
+	return callback_if() + callback_match()
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		total += exercise(i % 2 == 0)
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'branch_selected_local_method_closures_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback_if);'), c_source
+	assert c_source.contains('closure__closure_try_destroy(callback_match);'), c_source
+	out := run_good(v3_bin, 'branch_selected_local_method_closures', source)
+	assert out == '1100000'
+}
+
 fn test_discarded_returned_closures_are_reclaimed_in_hot_loop() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn make_counter() fn () int {
@@ -1359,6 +1402,38 @@ fn main() {
 	c_source := gen_c_from_source(v3_bin, 'local_callback_array_append_hot_loop_c', source)
 	assert c_source.contains('closure__closure_try_destroy(__arr_val_'), c_source
 	out := run_good(v3_bin, 'local_callback_array_append_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_bulk_callback_array_appends_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := []fn () int{}
+		callbacks << [counter.read]
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_bulk_callback_array_append_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_bulk_callback_array_append_hot_loop', source)
 	assert out == '1250025000'
 }
 
