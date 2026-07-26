@@ -4,4 +4,16 @@ fn main() {
 	for file in os.ls('.') {
 		println(file)
 	}
+	for _, value in maybe_values(true) {
+		println(value)
+	}
+}
+
+fn maybe_values(ok bool) ?map[string]int {
+	if ok {
+		return {
+			'one': 1
+		}
+	}
+	return none
 }

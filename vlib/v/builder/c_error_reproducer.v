@@ -1139,10 +1139,10 @@ fn repro_uses_local_resource(source string) bool {
 // V tokenizes the call, so whitespace between the name and its `(` is valid
 // (`$embed_file ('asset.bin')`) and an exact-substring check would miss it.
 fn repro_has_comptime_call(source string, name string) bool {
-	pat := '\$' + name
+	pat := '$' + name
 	mut i := 0
 	for i + pat.len <= source.len {
-		if source[i] != `\$` || source[i..i + pat.len] != pat {
+		if source[i] != `$` || source[i..i + pat.len] != pat {
 			i++
 			continue
 		}
