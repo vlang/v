@@ -3622,7 +3622,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					seen[resolved_name] = true
 					v := node.scope.find_var(resolved_name) or { break }
-					if v.is_mut {
+					if v.is_mut && v.is_changed {
 						break
 					}
 					if v.expr is ast.Ident {
