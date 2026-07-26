@@ -218,6 +218,29 @@ fn test_cached_source_signatures_revalidate_changed_inputs() {
 	if _ := second_build_manager.valid_header('actual_build', [actual_build_source]) {
 		assert false, 'actual build pseudo-variable changes must invalidate cached signatures'
 	}
+
+	interpolated_build_source := os.join_path(root, 'interpolated_build.v')
+	write_module_cache_file(root, 'interpolated_build.v',
+		"module interpolated_build\n\npub const marker = 'built \${@BUILD_TIMESTAMP}'\n")
+	first_build_manager.write_header('interpolated_build', [interpolated_build_source],
+		'module interpolated_build\n') or { panic(err) }
+	if _ := second_build_manager.valid_header('interpolated_build', [
+		interpolated_build_source,
+	])
+	{
+		assert false, 'interpolated build pseudo-variable changes must invalidate cached signatures'
+	}
+
+	interpolated_root_source := os.join_path(root, 'interpolated_root', 'root.v')
+	write_module_cache_file(root, 'interpolated_root/root.v',
+		"module interpolated_root\n\npub const marker = 'root \${@VMODROOT}'\n")
+	manager.write_header('interpolated_root', [interpolated_root_source],
+		'module interpolated_root\n') or { panic(err) }
+	write_module_cache_file(root, 'interpolated_root/v.mod',
+		"Module {\n\tname: 'interpolated_root'\n}\n")
+	if _ := manager.valid_header('interpolated_root', [interpolated_root_source]) {
+		assert false, 'interpolated root pseudo-variable changes must invalidate cached signatures'
+	}
 }
 
 fn test_cached_object_accepts_recorded_dependency_superset() {

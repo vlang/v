@@ -43,4 +43,16 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	build := ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']
 	assert !source_uses_pseudo("module m\n\npub const marker = '@BUILD_DATE'", build)
 	assert source_uses_pseudo('module m\n\npub const marker = @BUILD_DATE', build)
+	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${@BUILD_TIMESTAMP}'", build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'literal @BUILD_TIMESTAMP ${1}'",
+		build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built \${@BUILD_TIMESTAMP}'", build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = r'built ${@BUILD_TIMESTAMP}'", build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${/* @BUILD_TIMESTAMP */ 1}'",
+		build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${'@BUILD_TIMESTAMP'}'",
+		build)
+	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${if ok { @BUILD_TIMESTAMP } else { 0 }}'",
+		build)
+	assert source_uses_pseudo(r"module m\n\npub const root = 'root ${@VMODROOT}'", roots)
 }

@@ -317,7 +317,15 @@ fn source_uses_pseudo(source string, names []string) bool {
 			pos = skip_signature_space_and_comments(source, pos)
 			continue
 		}
-		if source[pos] in [`'`, `"`, `\``] {
+		if source[pos] in [`'`, `"`] {
+			found, next_pos := signature_quoted_interpolation_mentions_pseudo(source, pos, names)
+			if found {
+				return true
+			}
+			pos = next_pos
+			continue
+		}
+		if source[pos] == `\`` {
 			pos = skip_signature_quoted_text(source, pos, false)
 			continue
 		}
@@ -370,6 +378,63 @@ fn source_uses_pseudo(source string, names []string) bool {
 		pos++
 	}
 	return false
+}
+
+fn signature_quoted_interpolation_mentions_pseudo(source string, quote_pos int, names []string) (bool, int) {
+	quote := source[quote_pos]
+	mut pos := quote_pos + 1
+	for pos < source.len {
+		if source[pos] == `\\` && pos + 1 < source.len {
+			pos += 2
+			continue
+		}
+		if source[pos] == quote {
+			return false, pos + 1
+		}
+		if source[pos] != `$` || pos + 1 >= source.len || source[pos + 1] != `{` {
+			pos++
+			continue
+		}
+		expr_end, ok := signature_interpolation_expr_end(source, pos + 2)
+		if !ok {
+			return false, source.len
+		}
+		if source_uses_pseudo(source[pos + 2..expr_end], names) {
+			return true, expr_end + 1
+		}
+		pos = expr_end + 1
+	}
+	return false, source.len
+}
+
+fn signature_interpolation_expr_end(source string, start int) (int, bool) {
+	mut pos := start
+	mut depth := 1
+	for pos < source.len {
+		if source[pos] == `/` && pos + 1 < source.len
+			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
+			pos = skip_signature_space_and_comments(source, pos)
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			pos = skip_signature_quoted_text(source, pos, false)
+			continue
+		}
+		if source[pos] == `{` {
+			depth++
+		} else if source[pos] == `}` {
+			depth--
+			if depth == 0 {
+				return pos, true
+			}
+		}
+		pos++
+	}
+	return source.len, false
 }
 
 fn signature_directive_mentions_pseudo(source string, start int, names []string) (bool, int) {
