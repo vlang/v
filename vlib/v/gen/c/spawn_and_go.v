@@ -141,7 +141,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	for i, arg in expr.args {
 		arg_field := '${arg_tmp_var}${dot}arg${i + 1}'
 		arg_type := g.unwrap_generic(g.recheck_concrete_type(arg.typ))
-		if g.table.final_sym(arg_type).kind == .array_fixed {
+		if !arg_type.is_ptr() && g.table.final_sym(arg_type).kind == .array_fixed {
 			g.write('memcpy(${arg_field}, ')
 			g.expr(arg.expr)
 			g.writeln(', sizeof(${arg_field}));')
