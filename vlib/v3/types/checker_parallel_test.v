@@ -6,6 +6,29 @@ import v3.flat
 import v3.parser
 import v3.pref
 
+fn test_fast_file_index_collects_translated_module_attribute() {
+	old_no_file_idx := os.getenv_opt('V3_NO_FILE_IDX')
+	os.unsetenv('V3_NO_FILE_IDX')
+	defer {
+		if value := old_no_file_idx {
+			os.setenv('V3_NO_FILE_IDX', value, true)
+		}
+	}
+	path := os.join_path(os.vtmp_dir(), 'v3_translated_file_index_${os.getpid()}.v')
+	os.write_file(path, '@[translated]\nmodule main\n\nfn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert file_index_usable(a)
+
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.translated_files[path]
+}
+
 fn test_parallel_checker_dependencies_are_private_and_merged() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

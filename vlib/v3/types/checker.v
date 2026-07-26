@@ -1492,8 +1492,19 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 		tnode := a.nodes[trailing]
 		mut idx_module := ''
 		for ci in 0 .. tnode.children_count {
-			idx_module = tc.collect_index_child(a, int(a.child(&tnode, ci)), idx_file, idx_module,
-				inactive)
+			decl_idx := int(a.child(&tnode, ci))
+			idx_module = tc.collect_index_child(a, decl_idx, idx_file, idx_module, inactive)
+			// apply_decl_attrs emits module attributes as the node immediately
+			// following the module declaration, outside the trailing file node's
+			// declaration children.
+			attr_idx := decl_idx + 1
+			if decl_idx >= 0 && decl_idx < a.nodes.len && a.nodes[decl_idx].kind == .module_decl
+				&& attr_idx < trailing {
+				attr_node := a.nodes[attr_idx]
+				if attr_node.kind == .directive && attr_node.value == '@attributes:${decl_idx}' {
+					idx_module = tc.collect_index_child(a, attr_idx, idx_file, idx_module, inactive)
+				}
+			}
 		}
 		tc.top_level_idx << trailing
 	}
