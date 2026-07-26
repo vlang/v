@@ -1982,22 +1982,34 @@ fn (mut t Transformer) materialize_array_callback(id flat.NodeId, prefix string)
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	t.mark_local_method_value_receiver_borrows_in_expr(id)
-	callback := t.transform_expr(id)
+	callback_type := t.fresh_runtime_closure_type(id) or { t.fn_value_type_name(id) or { '' } }
+	callback := if callback_type.len > 0 {
+		t.transform_expr_for_type(id, callback_type)
+	} else {
+		t.transform_expr(id)
+	}
 	mut setup := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
 	callback_node := t.a.nodes[int(callback)]
 	if callback_node.kind == .ident {
+		if t.expr_allocates_fresh_runtime_closure(id) {
+			setup << t.make_local_closure_cleanup_defer(callback_node.value)
+		}
 		return callback, setup
 	}
-	callback_type := t.fn_value_type_name(id) or { t.node_type(callback) }
+	resolved_callback_type := if callback_type.len > 0 {
+		callback_type
+	} else {
+		t.node_type(callback)
+	}
 	callback_name := t.new_temp(prefix)
-	setup << t.make_decl_assign_typed(callback_name, callback, callback_type)
+	setup << t.make_decl_assign_typed(callback_name, callback, resolved_callback_type)
 	if t.expr_allocates_fresh_runtime_closure(id) {
 		setup << t.make_local_closure_cleanup_defer(callback_name)
 	}
 	callback_ident := t.make_ident(callback_name)
-	if callback_type.len > 0 {
-		t.set_node_typ(int(callback_ident), callback_type)
+	if resolved_callback_type.len > 0 {
+		t.set_node_typ(int(callback_ident), resolved_callback_type)
 	}
 	return callback_ident, setup
 }

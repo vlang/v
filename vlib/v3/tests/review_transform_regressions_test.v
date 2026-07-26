@@ -3837,3 +3837,89 @@ fn main() {
 	out := run_good(v3_bin, 'array_branch_selected_function_values', source)
 	assert out == '8'
 }
+
+fn test_array_filter_and_map_reclaim_branch_selected_bound_methods() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Rule {
+	min    int
+	offset int
+mut:
+	calls int
+}
+
+fn (mut rule Rule) accept(value int) bool {
+	rule.calls++
+	return value >= rule.min
+}
+
+fn (mut rule Rule) shift(value int) int {
+	rule.calls++
+	return value + rule.offset
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 20_000 {
+		first := Rule{
+			min: 3
+			offset: 10
+		}
+		second := Rule{
+			min: 2
+			offset: 20
+		}
+		use_first := i % 2 == 0
+		filtered := [1, 2, 3, 4].filter(if use_first { first.accept } else { second.accept })
+		mapped := [1, 2, 3].map(match use_first {
+			true { first.shift }
+			else { second.shift }
+		})
+		assert first.calls + second.calls == 7
+		total += filtered.len + mapped[0]
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'array_branch_bound_method_callbacks_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.count('closure__closure_try_destroy(') >= 2, main_body
+	out := run_good(v3_bin, 'array_branch_bound_method_callbacks', source)
+	assert out == '370000'
+}
+
+fn test_nested_callback_array_fields_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callbacks []fn () int
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		holder := Holder{
+			callbacks: [counter.read]
+		}
+		counter.value++
+		total += holder.callbacks[0]()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'nested_callback_array_field_hot_loop_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('closure__closure_try_destroy(__array_closure_'), main_body
+	out := run_good(v3_bin, 'nested_callback_array_field_hot_loop', source)
+	assert out == '1250025000'
+}

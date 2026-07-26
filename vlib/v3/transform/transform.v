@@ -10486,6 +10486,9 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 	if actual_result_type.len == 0 || actual_result_type == 'void' {
 		actual_result_type = target_type
 	}
+	if t.is_fn_pointer_type_name(target_type) {
+		actual_result_type = target_type
+	}
 	if t.sum_target_accepts_variant_type(target_type, actual_result_type) {
 		actual_result_type = target_type
 	}
@@ -11340,6 +11343,21 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 }
 
 fn (mut t Transformer) append_local_closure_initializer_cleanups(name string, rhs_id flat.NodeId, aggregate_type string, mut result []flat.NodeId) {
+	t.append_local_closure_initializer_cleanups_for_value(t.make_ident(name), rhs_id,
+		aggregate_type, mut result)
+}
+
+fn (mut t Transformer) append_local_closure_initializer_cleanups_for_value(base flat.NodeId, rhs_id flat.NodeId, aggregate_type string, mut result []flat.NodeId) {
+	if int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(rhs_id)]
+	if (node.kind in [.paren, .cast_expr, .as_expr] || (node.kind == .postfix && node.op == .not))
+		&& node.children_count == 1 {
+		t.append_local_closure_initializer_cleanups_for_value(base, t.a.child(&node, 0),
+			aggregate_type, mut result)
+		return
+	}
 	elem_type := if aggregate_type.starts_with('[]') && aggregate_type.len > 2 {
 		aggregate_type[2..]
 	} else if t.is_fixed_array_type(aggregate_type) {
@@ -11347,68 +11365,104 @@ fn (mut t Transformer) append_local_closure_initializer_cleanups(name string, rh
 	} else {
 		''
 	}
-	if elem_type.len > 0 {
-		for index in t.local_closure_array_initializer_cleanup_indices(rhs_id) {
-			closure_name := t.new_temp('array_closure')
-			t.set_var_type(closure_name, elem_type)
-			elem := t.make_index(t.make_ident(name), t.make_int_literal(index), elem_type)
-			result << t.make_decl_assign_typed(closure_name, elem, elem_type)
-			result << t.make_local_closure_cleanup_defer(closure_name)
+	if elem_type.len > 0 && node.kind == .array_literal {
+		for index in 0 .. node.children_count {
+			value_id := t.a.child(&node, index)
+			value := t.a.nodes[int(value_id)]
+			if value.kind == .prefix && value.value == '...' {
+				return
+			}
+			elem := t.make_index(base, t.make_int_literal(index), elem_type)
+			if int(value_id) in t.local_closure_field_cleanups {
+				t.append_local_closure_aggregate_value_cleanup(elem, elem_type, 'array_closure', mut
+					result)
+				continue
+			}
+			t.append_local_closure_initializer_cleanups_for_value(elem, value_id, elem_type, mut
+				result)
 		}
+		return
 	}
 	map_type := t.clean_map_type(aggregate_type)
-	if map_type.starts_with('map[') {
+	if map_type.starts_with('map[') && node.kind == .map_init {
 		key_type, value_type := t.map_type_parts(map_type)
-		for key_id in t.local_closure_map_initializer_cleanup_keys(rhs_id) {
-			closure_name := t.new_temp('map_closure')
-			t.set_var_type(closure_name, value_type)
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			key_id := t.a.child(&node, i)
+			key_node := t.a.nodes[int(key_id)]
+			if key_node.kind == .prefix && key_node.value == '...' {
+				return
+			}
+			if key_node.kind !in [.int_literal, .string_literal, .char_literal, .enum_val] {
+				continue
+			}
+			value_id := t.a.child(&node, i + 1)
 			key := t.transform_expr_for_type(key_id, key_type)
-			elem := t.make_index(t.make_ident(name), key, value_type)
-			result << t.make_decl_assign_typed(closure_name, elem, value_type)
-			result << t.make_local_closure_cleanup_defer(closure_name)
+			elem := t.make_index(base, key, value_type)
+			if int(value_id) in t.local_closure_field_cleanups {
+				t.append_local_closure_aggregate_value_cleanup(elem, value_type, 'map_closure', mut
+					result)
+				continue
+			}
+			t.append_local_closure_initializer_cleanups_for_value(elem, value_id, value_type, mut
+				result)
 		}
+		return
 	}
-}
-
-fn (t &Transformer) local_closure_array_initializer_cleanup_indices(id flat.NodeId) []int {
-	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return []int{}
+	if node.kind != .struct_init {
+		return
 	}
-	node := t.a.nodes[int(id)]
-	if (node.kind in [.paren, .cast_expr, .as_expr] || (node.kind == .postfix && node.op == .not))
-		&& node.children_count == 1 {
-		return t.local_closure_array_initializer_cleanup_indices(t.a.child(&node, 0))
-	}
-	if node.kind != .array_literal {
-		return []int{}
-	}
-	mut indices := []int{}
+	info := t.lookup_struct_info(node.value) or { StructInfo{} }
 	for i in 0 .. node.children_count {
-		if int(t.a.child(&node, i)) in t.local_closure_field_cleanups {
-			indices << i
+		field_id := t.a.child(&node, i)
+		field := t.a.nodes[int(field_id)]
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
 		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len == 0 {
+			continue
+		}
+		// Direct callback fields are materialized and cleaned while transforming the
+		// struct initializer. Descend only when the owned callback is nested in the
+		// field's aggregate value.
+		if int(field_id) in t.local_closure_field_cleanups {
+			continue
+		}
+		mut target_field_name := field_name
+		mut field_type := t.lookup_struct_field_type(aggregate_type, field_name) or { '' }
+		if field_type.len == 0 {
+			field_type = t.lookup_struct_field_type(node.value, field_name) or { '' }
+		}
+		if field_type.len == 0 {
+			for info_field in info.fields {
+				if info_field.name == field_name || (info_field.name.contains('.')
+					&& info_field.name.all_after_last('.') == field_name) {
+					target_field_name = info_field.name
+					field_type = info_field.typ
+					break
+				}
+			}
+		}
+		if field_type.len == 0 {
+			continue
+		}
+		field_value := t.make_selector(base, target_field_name, field_type)
+		t.append_local_closure_initializer_cleanups_for_value(field_value, t.a.child(&field, 0),
+			field_type, mut result)
 	}
-	return indices
 }
 
-fn (t &Transformer) local_closure_map_initializer_cleanup_keys(id flat.NodeId) []flat.NodeId {
-	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return []flat.NodeId{}
-	}
-	node := t.a.nodes[int(id)]
-	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count == 1 {
-		return t.local_closure_map_initializer_cleanup_keys(t.a.child(&node, 0))
-	}
-	if node.kind != .map_init {
-		return []flat.NodeId{}
-	}
-	mut keys := []flat.NodeId{}
-	for i := 0; i + 1 < int(node.children_count); i += 2 {
-		if int(t.a.child(&node, i + 1)) in t.local_closure_field_cleanups {
-			keys << t.a.child(&node, i)
-		}
-	}
-	return keys
+fn (mut t Transformer) append_local_closure_aggregate_value_cleanup(value flat.NodeId, typ string, prefix string, mut result []flat.NodeId) {
+	closure_name := t.new_temp(prefix)
+	t.set_var_type(closure_name, typ)
+	result << t.make_decl_assign_typed(closure_name, value, typ)
+	result << t.make_local_closure_cleanup_defer(closure_name)
 }
 
 fn (mut t Transformer) make_local_closure_cleanup_defer(name string) flat.NodeId {
