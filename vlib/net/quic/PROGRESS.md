@@ -204,7 +204,7 @@ The largest, highest-risk phase. Sub-phases, in build order:
         the test now asserts acceptance at that boundary instead.
   - [x] mbedTLS X.509 chain validation, standalone (no `mbedtls_ssl_context`,
         same discipline as Phase 0). New `net.mbedtls` public API
-        (`x509_standalone.v`: `build_certificate_chain`/
+        (`x509_standalone.c.v`: `build_certificate_chain`/
         `verify_certificate_chain`/`free_certificate_chain`) rather than
         `net.quic` reimplementing C bindings itself — matches how
         `net.http`'s TLS clients already depend on `net.mbedtls` instead
@@ -258,7 +258,7 @@ The largest, highest-risk phase. Sub-phases, in build order:
         `MBEDTLS_PRIVATE`-wrapped, but the surrounding struct is still kept
         opaque on the V side, so the shim is the one place that touches the
         real field, resolved by the real C compiler. `net.mbedtls`
-        (`x509_standalone.v`) gained `get_leaf_public_key`/
+        (`x509_standalone.c.v`) gained `get_leaf_public_key`/
         `verify_ecdsa_signature`/`verify_rsa_pss_signature`; `net.quic`
         (`tls13_certificate_chain.v`) gained
         `VerifiedCertificateChain.verify_certificate_verify_signature`,

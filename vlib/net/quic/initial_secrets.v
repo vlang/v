@@ -67,14 +67,33 @@ pub fn hkdf_expand_label(secret []u8, label string, context []u8, length int) ![
 // secrets (RFC 9001 §5.2) from a connection's client-chosen Destination
 // Connection ID.
 //
-// Callers MUST key this off the connection's ORIGINAL client DCID
-// (`original_dcid`), never the current wire DCID — a Retry (RFC 9000
-// §17.2.5) causes the client to switch to a new DCID for subsequent
-// packets, but Initial secrets are derived once, from the DCID the client
-// chose before any Retry occurred, and are not re-derived afterward. This
-// function itself is DCID-agnostic (it derives from whatever `client_dcid`
-// it's given); the original-vs-current distinction is the caller's
-// responsibility until Phase 9's `QuicConn` tracks both fields explicitly.
+// Callers MUST key this off whatever DCID the client is CURRENTLY using on
+// the wire for its Initial packets ("client_dst_connection_id" in RFC
+// 9001 §5.2's own terms) -- NOT a fixed "original" value retained across
+// the connection's whole lifetime. RFC 9001 §5.2 is explicit: "The
+// secrets used for constructing subsequent Initial packets change when a
+// server sends a Retry packet to use the connection ID value selected by
+// the server." Concretely: before any Retry, `client_dcid` is whatever
+// DCID the client itself randomly chose for its first Initial packet;
+// after a Retry, the client switches its wire DCID to the Retry packet's
+// Source Connection ID (RFC 9000 §17.2.5), and Initial secrets MUST be
+// RE-DERIVED from that new value -- a server deriving its own Initial
+// keys from the DCID it actually received would otherwise compute
+// different keys than a client still using its pre-Retry secrets,
+// making every post-Retry Initial packet undecryptable to a conforming
+// peer. This is a previously-incorrect claim in this doc comment itself
+// (Codex finding, vlang/v#27680 pullrequestreview-4781706846), verified
+// against the RFC 9001 §5.2 text directly, not just re-derived from
+// memory.
+//
+// Do NOT confuse this with the SEPARATE, unrelated
+// `original_destination_connection_id` transport parameter (RFC 9000
+// §7.3) -- that is purely an anti-tampering AUTHENTICATION value the
+// server echoes back for the client to verify, carrying no bearing on
+// which secrets protect which packets. This function itself is
+// DCID-agnostic (it derives from whatever `client_dcid` it's given); it
+// is the caller's responsibility (Phase 9's `QuicConn`) to track the
+// CURRENT wire DCID and call this again whenever a Retry changes it.
 pub fn derive_initial_secrets(client_dcid []u8) !InitialSecrets {
 	initial_secret := hkdf.extract(sha256_hash, client_dcid, initial_salt[..])!
 	client_secret := hkdf_expand_label(initial_secret, 'client in', []u8{}, sha256.size)!

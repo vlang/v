@@ -7,6 +7,12 @@ const ext_supported_groups = u16(10)
 const ext_signature_algorithms = u16(13)
 const ext_supported_versions = u16(43)
 const ext_key_share = u16(51)
+// RFC 7301 §3.1 — registered separately from RFC 8446's own ExtensionType
+// list. RFC 9001 §8.1 makes this MANDATORY for QUIC: there is no other
+// application-protocol negotiation mechanism, so a server that supports no
+// protocol this client offers MUST fail the handshake with a fatal
+// no_application_protocol alert rather than silently falling back.
+const ext_alpn = u16(16)
 // RFC 9001 §8.2 — not in RFC 8446's own ExtensionType list, registered
 // separately for QUIC-TLS.
 const ext_quic_transport_parameters = u16(0x39)
@@ -128,6 +134,61 @@ fn encode_quic_transport_parameters_extension(params QuicTransportParameters) ![
 	return encode_extension(ext_quic_transport_parameters, encoded)
 }
 
+// encode_alpn_extension implements RFC 7301 §3.1's ProtocolNameList: a
+// 2-byte list-length prefix, then each protocol as a 1-byte length prefix
+// followed by its bytes. `protocols` must be non-empty (RFC 7301 §3.1:
+// "the list of protocols MUST NOT be empty") and each entry must fit in a
+// single byte length (RFC 7301 §3.1's own <1..255> bound on ProtocolName).
+fn encode_alpn_extension(protocols []string) ![]u8 {
+	if protocols.len == 0 {
+		return error('quic: ALPN protocol list must not be empty')
+	}
+	mut list := []u8{}
+	for p in protocols {
+		name_bytes := p.bytes()
+		if name_bytes.len == 0 || name_bytes.len > 0xff {
+			return error('quic: ALPN protocol name length ${name_bytes.len} out of range (1..255)')
+		}
+		list << u8(name_bytes.len)
+		list << name_bytes
+	}
+	if list.len > 0xffff {
+		return error('quic: ALPN protocol list too large: ${list.len} bytes')
+	}
+	mut data := []u8{}
+	data << u8(list.len >> 8)
+	data << u8(list.len)
+	data << list
+	return encode_extension(ext_alpn, data)
+}
+
+// decode_alpn_response parses a SERVER's ALPN extension_data (RFC 7301
+// §3.2), returning the single protocol it selected. RFC 7301 §3.2: "the
+// server SHALL include only one protocol name in the ProtocolNameList" --
+// enforced here (zero or 2+ entries is a decode error, not "pick the
+// first").
+fn decode_alpn_response(data []u8) !string {
+	if data.len < 2 {
+		return error('quic: ALPN extension_data too short: need at least 2 bytes, have ${data.len}')
+	}
+	list_len := int((u32(data[0]) << 8) | u32(data[1]))
+	if 2 + list_len != data.len {
+		return error('quic: ALPN list_length ${list_len} does not match extension_data length ${data.len - 2}')
+	}
+	list := data[2..]
+	if list.len == 0 {
+		return error('quic: ALPN ProtocolNameList must not be empty')
+	}
+	name_len := int(list[0])
+	if 1 + name_len != list.len {
+		return error('quic: server ALPN response must contain exactly one protocol name, got trailing data after a ${name_len}-byte entry')
+	}
+	if name_len == 0 {
+		return error('quic: ALPN protocol name must not be empty')
+	}
+	return list[1..].bytestr()
+}
+
 // ClientHelloParams is everything build_client_hello needs beyond what's
 // fixed by v1's scope decisions (single cipher suite, single named group,
 // a fixed signature_algorithms list).
@@ -137,12 +198,20 @@ pub:
 	server_name          string
 	ecdhe_public_key     []u8 // Phase 1 PublicKey.uncompressed_bytes() output, 65 bytes for P-256
 	transport_parameters QuicTransportParameters
+	// Application-layer protocols this client is willing to speak, most
+	// preferred first (RFC 7301 §3.1) -- MANDATORY for QUIC (RFC 9001
+	// §8.1: there is no fallback protocol-negotiation mechanism). v1's
+	// only real caller offers exactly `['h3']`, but this stays a list
+	// (not a fixed single constant) to match RFC 7301's own wire shape
+	// and leave room for a future h3+h2-fallback list without another
+	// signature change.
+	alpn_protocols []string
 }
 
 // build_client_hello constructs a complete TLS 1.3 ClientHello handshake
 // message (RFC 8446 §4.1.2), framed via encode_handshake_message. Sends
-// exactly six extensions: server_name, supported_versions,
-// supported_groups, signature_algorithms, key_share, and
+// exactly seven extensions: server_name, supported_versions,
+// supported_groups, signature_algorithms, alpn, key_share, and
 // quic_transport_parameters (RFC 9001 §8.2) — order doesn't matter per
 // RFC 8446 §4.2 ("extensions MAY appear in any order") except that
 // pre_shared_key would have to be last, and v1 never sends one (no 0-RTT/
@@ -150,6 +219,9 @@ pub:
 pub fn build_client_hello(p ClientHelloParams) ![]u8 {
 	if p.random.len != 32 {
 		return error('quic: ClientHello random must be exactly 32 bytes, got ${p.random.len}')
+	}
+	if p.alpn_protocols.len == 0 {
+		return error('quic: ClientHello must offer at least one ALPN protocol (RFC 9001 §8.1: mandatory for QUIC)')
 	}
 	// RFC 9000 §18.2: "A client MUST NOT include any server-only
 	// transport parameter." `QuicTransportParameters` itself doesn't
@@ -198,6 +270,7 @@ pub fn build_client_hello(p ClientHelloParams) ![]u8 {
 	extensions << encode_supported_versions_extension()!
 	extensions << encode_supported_groups_extension()!
 	extensions << encode_signature_algorithms_extension()!
+	extensions << encode_alpn_extension(p.alpn_protocols)!
 	extensions << encode_key_share_extension(named_group_secp256r1, p.ecdhe_public_key)!
 	extensions << encode_quic_transport_parameters_extension(p.transport_parameters)!
 

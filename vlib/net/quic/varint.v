@@ -68,9 +68,19 @@ pub fn encode_varint(value u64) ![]u8 {
 
 // decode_varint decodes a QUIC variable-length integer from the start of
 // `buf`, returning the decoded value and the number of bytes consumed.
-// Rejects non-minimal encodings (RFC 9000 §16 requires the smallest possible
-// encoding; accepting longer-than-necessary forms is a canonicalization
-// hazard) and truncated input.
+// Accepts all four legal length classes for a decoded value, even when a
+// shorter class could have encoded the same value: RFC 9000 §16 lets an
+// encoder choose any of the four length classes a value fits in (encoders
+// SHOULD use the smallest, matching this file's own encode_varint, which
+// always does), but does not require -- and real, otherwise-conforming
+// peers are not guaranteed -- a minimal encoding on the wire. A previous
+// version of this function rejected non-minimal encodings outright
+// (Codex finding, vlang/v#27680 pullrequestreview-4781706846); that
+// treated a spec-legal encoding as a parse error, wrongly failing the
+// handshake for a compliant peer that (for whatever reason) chose a
+// longer-than-minimal form for a value used anywhere a varint appears --
+// packet lengths, tokens, transport parameters, ACK ranges, and more.
+// Truncated input is still rejected.
 pub fn decode_varint(buf []u8) !(u64, int) {
 	if buf.len == 0 {
 		return error('cannot decode varint from empty buffer')
@@ -89,12 +99,6 @@ pub fn decode_varint(buf []u8) !(u64, int) {
 	mut value := u64(buf[0] & 0x3F)
 	for i in 1 .. n {
 		value = (value << 8) | u64(buf[i])
-	}
-	// Reject non-minimal encodings: the decoded value must require exactly
-	// the length class it was encoded with, not a shorter one.
-	minimal_len := varint_len(value)!
-	if minimal_len != n {
-		return error('non-minimal varint encoding: value ${value} was encoded in ${n} bytes, minimal is ${minimal_len}')
 	}
 	return value, n
 }

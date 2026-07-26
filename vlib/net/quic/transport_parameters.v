@@ -34,6 +34,17 @@ const max_ack_delay_upper_bound = u64(0x4000) // 2^14; values >= this are invali
 const min_active_connection_id_limit = u64(2)
 const min_max_udp_payload_size = u64(1200)
 
+// max_initial_max_streams is RFC 9000 §4.6's own stated limit: "If a max
+// streams transport parameter or MAX_STREAMS frame is received with a
+// value greater than this [2^60], this would allow a maximum stream ID
+// that cannot be expressed as a variable-length integer... an endpoint
+// MUST treat receipt of ... a value that would allow this limit to be
+// exceeded as a connection error of type TRANSPORT_PARAMETER_ERROR". A
+// stream count is multiplied by 4 (2 bits of type/initiator encoded into
+// every stream ID) to derive the largest permitted stream ID, so a count
+// above 2^60 could produce an ID outside the 62-bit varint space, or wrap.
+const max_initial_max_streams = u64(1) << 60
+
 // PreferredAddress is the server-only preferred_address transport
 // parameter's value (RFC 9000 §18.2, Figure 22). Never sent by a client;
 // `encode_transport_parameters` doesn't reject a client accidentally
@@ -186,6 +197,12 @@ pub fn encode_transport_parameters(p QuicTransportParameters) ![]u8 {
 		out << encode_bytes_tlv(param_stateless_reset_token, v)!
 	}
 	if v := p.max_udp_payload_size {
+		// Mirrors decode_transport_parameters' own bound (RFC 9000 §18.2):
+		// values below 1200 are invalid, and encoding one anyway would
+		// silently produce a handshake a conforming peer must terminate.
+		if v < min_max_udp_payload_size {
+			return error('quic: max_udp_payload_size ${v} is invalid: values below ${min_max_udp_payload_size} are invalid')
+		}
 		out << encode_varint_tlv(param_max_udp_payload_size, v)!
 	}
 	if v := p.initial_max_data {
@@ -201,15 +218,27 @@ pub fn encode_transport_parameters(p QuicTransportParameters) ![]u8 {
 		out << encode_varint_tlv(param_initial_max_stream_data_uni, v)!
 	}
 	if v := p.initial_max_streams_bidi {
+		if v > max_initial_max_streams {
+			return error('quic: initial_max_streams_bidi ${v} exceeds the ${max_initial_max_streams} (2^60) limit')
+		}
 		out << encode_varint_tlv(param_initial_max_streams_bidi, v)!
 	}
 	if v := p.initial_max_streams_uni {
+		if v > max_initial_max_streams {
+			return error('quic: initial_max_streams_uni ${v} exceeds the ${max_initial_max_streams} (2^60) limit')
+		}
 		out << encode_varint_tlv(param_initial_max_streams_uni, v)!
 	}
 	if v := p.ack_delay_exponent {
+		if v > max_ack_delay_exponent {
+			return error('quic: ack_delay_exponent ${v} is invalid: values above ${max_ack_delay_exponent} are invalid')
+		}
 		out << encode_varint_tlv(param_ack_delay_exponent, v)!
 	}
 	if v := p.max_ack_delay {
+		if v >= max_ack_delay_upper_bound {
+			return error('quic: max_ack_delay ${v} is invalid: values of ${max_ack_delay_upper_bound} (2^14) or greater are invalid')
+		}
 		out << encode_varint_tlv(param_max_ack_delay, v)!
 	}
 	if p.disable_active_migration {
@@ -220,6 +249,9 @@ pub fn encode_transport_parameters(p QuicTransportParameters) ![]u8 {
 		out << encode_bytes_tlv(param_preferred_address, encoded)!
 	}
 	if v := p.active_connection_id_limit {
+		if v < min_active_connection_id_limit {
+			return error('quic: active_connection_id_limit ${v} is invalid: MUST be at least ${min_active_connection_id_limit}')
+		}
 		out << encode_varint_tlv(param_active_connection_id_limit, v)!
 	}
 	if v := p.initial_source_connection_id {
@@ -313,10 +345,18 @@ pub fn decode_transport_parameters(buf []u8) !QuicTransportParameters {
 				params.initial_max_stream_data_uni = decode_varint_tlv_value(id, value)!
 			}
 			param_initial_max_streams_bidi {
-				params.initial_max_streams_bidi = decode_varint_tlv_value(id, value)!
+				v := decode_varint_tlv_value(id, value)!
+				if v > max_initial_max_streams {
+					return error('quic: initial_max_streams_bidi ${v} exceeds the ${max_initial_max_streams} (2^60) limit')
+				}
+				params.initial_max_streams_bidi = v
 			}
 			param_initial_max_streams_uni {
-				params.initial_max_streams_uni = decode_varint_tlv_value(id, value)!
+				v := decode_varint_tlv_value(id, value)!
+				if v > max_initial_max_streams {
+					return error('quic: initial_max_streams_uni ${v} exceeds the ${max_initial_max_streams} (2^60) limit')
+				}
+				params.initial_max_streams_uni = v
 			}
 			param_ack_delay_exponent {
 				v := decode_varint_tlv_value(id, value)!

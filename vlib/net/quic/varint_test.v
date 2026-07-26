@@ -40,17 +40,29 @@ fn test_varint_rejects_truncated_buffer() {
 	assert false, 'expected an error for a truncated buffer'
 }
 
-fn test_varint_rejects_non_minimal_encoding() {
-	// Bytes [0x40, 0x05] use the 2-byte length class (top bits `01`) to
-	// encode the value 5 — but 5 fits in the 1-byte class (max 0x3F), so its
-	// minimal encoding is a single byte (0x05). This 2-byte form must be
-	// rejected as non-minimal.
-	non_minimal := [u8(0x40), 0x05]
-	decode_varint(non_minimal) or {
-		assert err.msg().contains('non-minimal')
-		return
-	}
-	assert false, 'expected an error for a non-minimally-encoded varint'
+// test_varint_accepts_non_minimal_encoding is a regression test for a
+// Codex finding (vlang/v#27680 pullrequestreview-4781706846):
+// decode_varint used to reject a value encoded in a longer-than-minimal
+// length class, even though RFC 9000 §16 permits any of the 4 classes a
+// value fits in -- only the ENCODER is expected to prefer the minimal
+// form (encode_varint always does; see the round-trip test below), not
+// the decoder to reject anything else. Exercises all 3 non-minimal
+// classes for the same value (5, whose minimal encoding is 1 byte).
+fn test_varint_accepts_non_minimal_encoding() {
+	// 2-byte class (top bits `01`): 0x40, 0x05.
+	value2, consumed2 := decode_varint([u8(0x40), 0x05])!
+	assert value2 == 5
+	assert consumed2 == 2
+
+	// 4-byte class (top bits `10`): 0x80, 0x00, 0x00, 0x05.
+	value4, consumed4 := decode_varint([u8(0x80), 0x00, 0x00, 0x05])!
+	assert value4 == 5
+	assert consumed4 == 4
+
+	// 8-byte class (top bits `11`): 0xC0 followed by 7 zero bytes then 0x05.
+	value8, consumed8 := decode_varint([u8(0xC0), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05])!
+	assert value8 == 5
+	assert consumed8 == 8
 }
 
 fn test_varint_empty_buffer_errors() {

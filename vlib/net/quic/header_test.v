@@ -100,6 +100,66 @@ fn test_long_header_rejects_truncated_buffer() {
 	assert false, 'expected an error for a truncated long header'
 }
 
+// The three tests below are regression tests for Codex findings on
+// vlang/v#27680 (pullrequestreview-4781706846): QUIC v1's own 20-byte
+// connection-ID limit (RFC 9000 §17.2) wasn't enforced on either the
+// encode or parse path (only the wire format's own 255-byte length-field
+// limit was), and long-header packet-type decoding applied v1's bit
+// mapping unconditionally regardless of the version field.
+
+fn test_encode_long_header_rejects_v1_cid_over_20_bytes() {
+	h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    []u8{len: 21, init: 0xAB}
+		scid:    []u8{len: 4}
+		length:  1200
+	}
+	encode_long_header(h, 0, 3) or {
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a QUIC v1 DCID longer than 20 bytes'
+}
+
+fn test_parse_long_header_rejects_v1_cid_over_20_bytes() {
+	// Hand-build a long header with a 21-byte dcid_len byte -- the wire
+	// format itself has no problem with this (up to 255), only QUIC v1's
+	// own protocol limit does.
+	mut buf := []u8{}
+	buf << u8(0x80 | 0x40) // long header, Initial type bits = 00
+	buf << u8(quic_v1 >> 24)
+	buf << u8(quic_v1 >> 16)
+	buf << u8(quic_v1 >> 8)
+	buf << u8(quic_v1)
+	buf << u8(21) // dcid_len
+	buf << []u8{len: 21, init: 0xCD}
+	buf << u8(0) // scid_len
+	parse_long_header(buf) or {
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a v1 dcid_len of 21 bytes'
+}
+
+fn test_parse_long_header_rejects_unsupported_version() {
+	mut buf := []u8{}
+	buf << u8(0x80 | 0x40)
+	// A hypothetical QUIC v2 (0x6b3343cf is the actual registered v2
+	// value, RFC 9369 -- any nonzero, non-v1 value proves the point).
+	buf << u8(0x6b)
+	buf << u8(0x33)
+	buf << u8(0x43)
+	buf << u8(0xcf)
+	buf << u8(0) // dcid_len
+	buf << u8(0) // scid_len
+	parse_long_header(buf) or {
+		assert err.msg().contains('unsupported')
+		return
+	}
+	assert false, 'expected an error for a non-v1 version'
+}
+
 fn test_short_header_round_trip_and_zero_length_dcid() {
 	// Zero-length DCID short header: 1 byte total before the (still
 	// protected) packet number.
@@ -114,6 +174,34 @@ fn test_short_header_round_trip_and_zero_length_dcid() {
 	parsed2, consumed2 := parse_short_header(buf2, dcid.len)!
 	assert consumed2 == 1 + dcid.len
 	assert parsed2.dcid == dcid
+}
+
+// test_short_header_decodes_spin_bit_and_key_phase is a regression test
+// for a Codex finding (vlang/v#27680 pullrequestreview-4781706846):
+// parse_short_header used to always return spin_bit/key_phase as false,
+// regardless of the actual wire bits -- a caller relying on key_phase to
+// select updated 1-RTT keys after a peer-initiated key update (RFC 9001
+// §6) could never detect the rotation.
+fn test_short_header_decodes_spin_bit_and_key_phase() {
+	// 0x40 = Fixed Bit only (spin=0, key_phase=0) -- the baseline.
+	parsed_off, _ := parse_short_header([u8(0x40)], 0)!
+	assert parsed_off.spin_bit == false
+	assert parsed_off.key_phase == false
+
+	// 0x40 | 0x20 (spin bit) | 0x04 (key phase) -- both set.
+	parsed_on, _ := parse_short_header([u8(0x40 | 0x20 | 0x04)], 0)!
+	assert parsed_on.spin_bit == true
+	assert parsed_on.key_phase == true
+
+	// Spin bit alone.
+	parsed_spin_only, _ := parse_short_header([u8(0x40 | 0x20)], 0)!
+	assert parsed_spin_only.spin_bit == true
+	assert parsed_spin_only.key_phase == false
+
+	// Key phase alone.
+	parsed_kp_only, _ := parse_short_header([u8(0x40 | 0x04)], 0)!
+	assert parsed_kp_only.spin_bit == false
+	assert parsed_kp_only.key_phase == true
 }
 
 fn test_short_header_rejects_long_header_bytes() {

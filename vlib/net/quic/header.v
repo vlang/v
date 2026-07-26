@@ -16,6 +16,15 @@ module quic
 
 pub const quic_v1 = u32(0x0000_0001)
 
+// quic_v1_max_cid_len is RFC 9000 §17.2's own connection-ID length limit
+// for this version: "In QUIC version 1, this value MUST NOT exceed 20
+// bytes." Enforced on both the encode and parse paths for long headers --
+// the wire format's own length field allows up to 255 bytes (a single
+// byte), which is NOT the same thing as this version's own protocol
+// limit; a peer sending 21-255 is spec-violating even though the wire
+// format itself has no problem representing it.
+pub const quic_v1_max_cid_len = 20
+
 pub enum HeaderForm {
 	short
 	long
@@ -94,12 +103,27 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	if version == 0 {
 		return error('version 0 indicates a Version Negotiation packet; use parse_version_negotiation instead')
 	}
+	// peek_long_header_type's bit mapping (initial/zero_rtt/handshake/retry)
+	// is QUIC v1-SPECIFIC (RFC 9000 §17.2) -- QUIC v2 (RFC 9369 §3.2)
+	// deliberately assigns different meanings to the same two bits, so
+	// interpreting them under the v1 mapping for any other version would
+	// silently misclassify the packet (e.g. a v2 Initial read as v1's
+	// zero_rtt), steering the caller toward the wrong packet-number space
+	// and keys. v2 (and any other future version) is out of this client's
+	// scope entirely, so any non-v1 nonzero version is rejected outright
+	// here rather than guessed at.
+	if version != quic_v1 {
+		return error('unsupported QUIC version 0x${version:08x}: only QUIC v1 (0x00000001) is supported')
+	}
 
 	typ := peek_long_header_type(buf[0])!
 
 	mut offset := 5
 	dcid_len := int(buf[offset])
 	offset += 1
+	if dcid_len > quic_v1_max_cid_len {
+		return error('long header dcid_len ${dcid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte connection-ID limit')
+	}
 	if offset + dcid_len > buf.len {
 		return error('truncated long header: dcid_len ${dcid_len} exceeds remaining buffer')
 	}
@@ -111,6 +135,9 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	}
 	scid_len := int(buf[offset])
 	offset += 1
+	if scid_len > quic_v1_max_cid_len {
+		return error('long header scid_len ${scid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte connection-ID limit')
+	}
 	if offset + scid_len > buf.len {
 		return error('truncated long header: scid_len ${scid_len} exceeds remaining buffer')
 	}
@@ -180,6 +207,15 @@ pub fn encode_long_header(h QuicLongHeader, reserved_bits u8, pn_length_bits u8)
 	if h.dcid.len > 255 || h.scid.len > 255 {
 		return error('connection IDs longer than 255 bytes cannot be encoded')
 	}
+	// The 255-byte check above is only the WIRE FORMAT's own limit (a
+	// single length byte) -- QUIC v1 additionally limits connection IDs to
+	// 20 bytes (RFC 9000 §17.2). A caller supplying 21-255 bytes for a v1
+	// header would otherwise get a successfully-encoded packet that a
+	// conforming v1 peer must reject.
+	if h.version == quic_v1
+		&& (h.dcid.len > quic_v1_max_cid_len || h.scid.len > quic_v1_max_cid_len) {
+		return error('QUIC v1 connection IDs must not exceed ${quic_v1_max_cid_len} bytes')
+	}
 
 	type_bits := match h.typ {
 		.initial { u8(0) }
@@ -245,8 +281,16 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 		return error('truncated short header: need ${1 + dcid_len} bytes, have ${buf.len}')
 	}
 	dcid := buf[1..1 + dcid_len].clone()
+	// RFC 9000 §17.3.1 short header first-byte layout (MSB to LSB):
+	// Header Form(1)=0, Fixed Bit(1)=1, Spin Bit(1), Reserved(2, still
+	// protected), Key Phase(1), Packet Number Length(2, still protected).
+	// Both bits are only meaningful post-header-protection-removal (see
+	// this struct's own doc comment) -- callers must not call this before
+	// that step, same caveat as reserved/pn-length bits.
 	return QuicShortHeader{
-		dcid: dcid
+		spin_bit:  buf[0] & 0x20 != 0
+		key_phase: buf[0] & 0x04 != 0
+		dcid:      dcid
 	}, 1 + dcid_len
 }
 

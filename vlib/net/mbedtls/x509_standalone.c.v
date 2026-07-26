@@ -155,20 +155,22 @@ pub fn verify_rsa_pss_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, 
 
 // verify_certificate_chain validates `chain` (from build_certificate_chain)
 // against `ca_bundle_pem`, one or more trusted CA certificates concatenated
-// in PEM format. This mirrors SSLConnectConfig.verify's existing contract
-// in this same module: the caller supplies the trust anchor explicitly —
-// there is no OS trust-store lookup anywhere in this codebase today, for
-// any TLS client (HTTP/1.1, HTTP/2, or this QUIC path).
+// in PEM format, AND that `hostname` matches the leaf certificate's
+// SAN/CN. This mirrors SSLConnectConfig.verify's existing contract in this
+// same module: the caller supplies the trust anchor explicitly — there is
+// no OS trust-store lookup anywhere in this codebase today, for any TLS
+// client (HTTP/1.1, HTTP/2, or this QUIC path).
 //
-// Hostname verification (matching the leaf certificate's SAN/CN against
-// the name the client actually connected to) is deliberately NOT done
-// here — it needs the SNI hostname the caller sent, which this function
-// has no way to know. net.quic's caller must do that check itself using
-// the returned success/failure plus its own hostname, mirroring how
-// mbedtls_x509_crt_verify's own `cn` parameter would normally be supplied
-// inside a full SSL handshake (which this standalone call deliberately
-// isn't).
-pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string) ! {
+// `hostname` is passed straight through as mbedtls_x509_crt_verify's `cn`
+// parameter — mbedTLS itself does the SAN/CN matching (DNS names and IP
+// addresses fully supported per its own doc comment), the same mechanism
+// mbedtls_ssl_set_hostname wires into a full SSL handshake's verification,
+// which this standalone call deliberately bypasses. An empty `hostname`
+// is intentionally NOT special-cased into "skip the check" (passing nil to
+// mbedTLS): it is passed through as an empty C string, which cannot match
+// any real certificate's SAN/CN, so a caller that forgets to supply a real
+// hostname fails closed instead of silently disabling verification.
+pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string, hostname string) ! {
 	mut ca_chain := C.mbedtls_x509_crt{}
 	C.mbedtls_x509_crt_init(&ca_chain)
 	defer {
@@ -199,7 +201,7 @@ pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string)
 	}
 
 	mut flags := u32(0)
-	verify_ret := C.mbedtls_x509_crt_verify(chain, &ca_chain, unsafe { nil }, unsafe { nil },
+	verify_ret := C.mbedtls_x509_crt_verify(chain, &ca_chain, unsafe { nil }, &char(hostname.str),
 		&flags, unsafe { nil }, unsafe { nil })
 	if verify_ret != 0 {
 		return error_with_code('net.mbedtls: certificate chain verification failed, mbedtls ret: ${verify_ret}, flags: 0x${flags:x}',

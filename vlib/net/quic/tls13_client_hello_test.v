@@ -87,11 +87,31 @@ fn test_build_client_hello_rejects_wrong_random_length() {
 	assert false, 'expected an error for a random value that is not 32 bytes'
 }
 
+// test_build_client_hello_rejects_empty_alpn_protocols is a regression test
+// for a Codex finding (vlang/v#27680 pullrequestreview-4781706846): the
+// ClientHello never advertised ALPN at all, so a real HTTP/3 server would
+// terminate the handshake with no_application_protocol. RFC 9001 §8.1 makes
+// ALPN mandatory for QUIC (no fallback protocol-negotiation mechanism), so
+// an empty offered-protocols list must be rejected here rather than
+// silently producing an ALPN-less ClientHello.
+fn test_build_client_hello_rejects_empty_alpn_protocols() {
+	build_client_hello(ClientHelloParams{
+		random:           []u8{len: 32}
+		server_name:      'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+	}) or {
+		assert err.msg().contains('ALPN')
+		return
+	}
+	assert false, 'expected an error for an empty ALPN protocol list'
+}
+
 fn test_build_client_hello_rejects_original_destination_connection_id() {
 	p := ClientHelloParams{
 		random:               []u8{len: 32}
 		server_name:          'example.com'
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			original_destination_connection_id: [u8(1), 2, 3]
 		}
@@ -108,6 +128,7 @@ fn test_build_client_hello_rejects_stateless_reset_token() {
 		random:               []u8{len: 32}
 		server_name:          'example.com'
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			stateless_reset_token: []u8{len: 16}
 		}
@@ -124,6 +145,7 @@ fn test_build_client_hello_rejects_preferred_address() {
 		random:               []u8{len: 32}
 		server_name:          'example.com'
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			preferred_address: PreferredAddress{
 				connection_id:         [u8(1), 2, 3]
@@ -143,6 +165,7 @@ fn test_build_client_hello_rejects_retry_source_connection_id() {
 		random:               []u8{len: 32}
 		server_name:          'example.com'
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			retry_source_connection_id: [u8(1), 2, 3]
 		}
@@ -175,6 +198,7 @@ fn test_build_client_hello_structure() {
 		random:               random
 		server_name:          'example.com'
 		ecdhe_public_key:     ecdhe_public_key
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
@@ -209,10 +233,14 @@ fn test_build_client_hello_structure() {
 	assert cursor + extensions_len == body.len
 
 	mut seen_types := []u16{}
+	mut alpn_data := []u8{}
 	mut ext_cursor := cursor
 	for ext_cursor < body.len {
 		typ := (u16(body[ext_cursor]) << 8) | u16(body[ext_cursor + 1])
 		length := int((u32(body[ext_cursor + 2]) << 8) | u32(body[ext_cursor + 3]))
+		if typ == ext_alpn {
+			alpn_data = body[ext_cursor + 4..ext_cursor + 4 + length].clone()
+		}
 		ext_cursor += 4 + length
 		seen_types << typ
 	}
@@ -222,7 +250,17 @@ fn test_build_client_hello_structure() {
 		ext_supported_versions,
 		ext_supported_groups,
 		ext_signature_algorithms,
+		ext_alpn,
 		ext_key_share,
 		ext_quic_transport_parameters,
 	]
+
+	// RFC 7301 §3.1 ProtocolNameList: 2-byte list length, then a 1-byte
+	// length + bytes per protocol name -- verify the wire bytes, not just
+	// that SOME data is present under the right extension type.
+	assert alpn_data.len == 5
+	list_len := (u32(alpn_data[0]) << 8) | u32(alpn_data[1])
+	assert list_len == 3
+	assert alpn_data[2] == 2 // protocol name length
+	assert alpn_data[3..5].bytestr() == 'h3'
 }

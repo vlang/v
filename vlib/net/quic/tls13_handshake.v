@@ -14,6 +14,14 @@ pub enum TlsAlert {
 	illegal_parameter  = 47
 	decode_error       = 50
 	decrypt_error      = 51
+	// RFC 7301 §3.2 (registered separately from RFC 8446's own alert
+	// registry): the fatal alert a server sends when it supports none of
+	// the client's offered ALPN protocols. This client's own ALPN check
+	// in process_encrypted_extensions raises the same alert when the
+	// SERVER'S selection isn't one this client actually offered, or ALPN
+	// is missing entirely -- RFC 9001 §8.1 makes ALPN mandatory for QUIC,
+	// so either case means no application protocol was agreed.
+	no_application_protocol = 120
 }
 
 // tls_alert_to_quic_error implements RFC 9001 §4.8: "If TLS produces an
@@ -34,6 +42,22 @@ pub fn tls_alert_to_quic_error(alert TlsAlert) u64 {
 // failure path in this file goes through this, never a bare `error(...)`.
 fn handshake_error(alert TlsAlert, msg string) IError {
 	return error_with_code(msg, int(tls_alert_to_quic_error(alert)))
+}
+
+// quic_error_transport_parameter is RFC 9000 §20.1's TRANSPORT_PARAMETER_ERROR.
+const quic_error_transport_parameter = u64(0x08)
+
+// transport_parameter_error builds an IError carrying QUIC's own
+// TRANSPORT_PARAMETER_ERROR (0x08) -- a QUIC-native transport error code,
+// NOT a TLS alert, so it deliberately does not go through handshake_error/
+// tls_alert_to_quic_error's 0x100+alert mapping. RFC 9000 §18.2/§7.3
+// require this exact code whenever a peer's transport parameters are
+// structurally invalid (out-of-range values, duplicates) or fail the
+// connection-ID authentication checks in process_encrypted_extensions --
+// routing these through a TLS decode_error alert instead (0x100+50=0x132)
+// would report the wrong CONNECTION_CLOSE code to a conforming peer.
+fn transport_parameter_error(msg string) IError {
+	return error_with_code(msg, int(quic_error_transport_parameter))
 }
 
 // ClientHandshakeState tracks which handshake message this client is
@@ -61,6 +85,7 @@ pub:
 	server_name          string
 	transport_parameters QuicTransportParameters // this client's own offered set
 	ca_bundle_pem        string                  // trust anchor for the server's certificate chain
+	alpn_protocols       []string                // offered application protocols, most preferred first (RFC 7301 §3.1) -- e.g. ['h3']
 }
 
 // Tls13ClientHandshake drives a single QUIC-scoped TLS 1.3 client
@@ -104,9 +129,19 @@ mut:
 	got_hello_retry_request bool
 	ecdhe_private           ecdsa.PrivateKey
 	ca_bundle_pem           string
-	handshake_secrets       HandshakeSecrets
-	application_secrets     ApplicationSecrets
-	verified_chain          &VerifiedCertificateChain = unsafe { nil }
+	// The SNI hostname this client sent in its own ClientHello -- retained
+	// so process_certificate_or_request can pass it to
+	// verify_server_certificate_chain for SAN/CN matching (RFC 6066 §3);
+	// without this, chain-of-trust verification alone says nothing about
+	// which host the certificate is actually FOR.
+	server_name string
+	// Mirrors ClientHandshakeParams.alpn_protocols -- retained so
+	// process_encrypted_extensions can check the server's ALPN selection
+	// (RFC 7301 §3.2) is actually one this client offered.
+	alpn_protocols      []string
+	handshake_secrets   HandshakeSecrets
+	application_secrets ApplicationSecrets
+	verified_chain      &VerifiedCertificateChain = unsafe { nil }
 	// Transcript-Hash(ClientHello...Certificate) -- RFC 8446 §4.4.3's
 	// "Transcript-Hash(Handshake Context, Certificate)" input to
 	// certificate_verify_signed_content. Computed when Certificate is
@@ -204,6 +239,7 @@ pub fn Tls13ClientHandshake.start(p ClientHandshakeParams) !(&Tls13ClientHandsha
 		server_name:          p.server_name
 		ecdhe_public_key:     ecdhe_public_bytes
 		transport_parameters: p.transport_parameters
+		alpn_protocols:       p.alpn_protocols
 	}) or {
 		ecdhe_private.free()
 		return handshake_error(.handshake_failure,
@@ -211,10 +247,12 @@ pub fn Tls13ClientHandshake.start(p ClientHandshakeParams) !(&Tls13ClientHandsha
 	}
 
 	mut h := &Tls13ClientHandshake{
-		state:         .wait_server_hello
-		transcript:    client_hello.clone()
-		ecdhe_private: ecdhe_private
-		ca_bundle_pem: p.ca_bundle_pem
+		state:          .wait_server_hello
+		transcript:     client_hello.clone()
+		ecdhe_private:  ecdhe_private
+		ca_bundle_pem:  p.ca_bundle_pem
+		server_name:    p.server_name
+		alpn_protocols: p.alpn_protocols
 	}
 	return h, client_hello
 }
@@ -307,14 +345,22 @@ pub fn (mut h Tls13ClientHandshake) process_server_hello(msg HandshakeMessage, f
 
 // process_encrypted_extensions handles EncryptedExtensions (RFC 8446
 // §4.3.1), the first message protected under the Handshake-level keys.
+//
 // `peer_initial_scid` is the Source Connection ID this client actually
 // observed on the server's first Initial/Handshake packet -- RFC 9001
 // §8.2 requires the `initial_source_connection_id` transport parameter to
 // match it exactly, a check this function does since it is the first
-// point that parameter's value is available; the SCID itself comes from
-// Phase 4/9 (packet headers, QuicConn), not yet built, so callers must
-// supply it explicitly until then.
-pub fn (mut h Tls13ClientHandshake) process_encrypted_extensions(msg HandshakeMessage, framed_message []u8, peer_initial_scid []u8) ! {
+// point that parameter's value is available.
+//
+// `original_dcid` is the Destination Connection ID THIS CLIENT chose for
+// its own very first Initial packet, and `retry_scid` is the Retry
+// packet's Source Connection ID if (and only if) a Retry occurred (RFC
+// 9000 §7.3, the anti-tampering check: these two transport parameters
+// let the client detect an off-path attacker that injected a spoofed
+// Retry or otherwise interfered with connection establishment). All
+// three values come from Phase 4/9 (packet headers, QuicConn), not yet
+// built, so callers must supply them explicitly until then.
+pub fn (mut h Tls13ClientHandshake) process_encrypted_extensions(msg HandshakeMessage, framed_message []u8, peer_initial_scid []u8, original_dcid []u8, retry_scid ?[]u8) ! {
 	if h.state != .wait_encrypted_extensions {
 		return handshake_error(.unexpected_message,
 			'quic: received EncryptedExtensions while in state ${h.state}')
@@ -326,22 +372,61 @@ pub fn (mut h Tls13ClientHandshake) process_encrypted_extensions(msg HandshakeMe
 	extensions := parse_encrypted_extensions(msg.body) or {
 		return handshake_error(.decode_error, err.msg())
 	}
+
+	// RFC 9001 §8.1: ALPN is mandatory for QUIC (no fallback protocol-
+	// negotiation mechanism), so a missing extension is treated the same
+	// as an explicit mismatch -- both mean no application protocol was
+	// agreed.
+	alpn_ext := find_extension(extensions, ext_alpn) or {
+		return handshake_error(.no_application_protocol,
+			'quic: EncryptedExtensions missing mandatory alpn extension')
+	}
+	selected_protocol := decode_alpn_response(alpn_ext.data) or {
+		return handshake_error(.decode_error, 'quic: malformed alpn extension: ${err.msg()}')
+	}
+	if selected_protocol !in h.alpn_protocols {
+		return handshake_error(.no_application_protocol,
+			'quic: server selected ALPN protocol "${selected_protocol}" which this client did not offer')
+	}
+
 	tp_ext := find_extension(extensions, ext_quic_transport_parameters) or {
 		return handshake_error(.handshake_failure,
 			'quic: EncryptedExtensions missing mandatory quic_transport_parameters extension')
 	}
+	// RFC 9000 §18.2/§7.3: an invalid or authentication-failing transport
+	// parameter is a TRANSPORT_PARAMETER_ERROR (0x08), never a TLS decode
+	// alert -- this applies uniformly to every failure below, not just
+	// the new connection-ID checks, since decode_transport_parameters
+	// itself already enforces several RFC 9000 §18.2 bounds internally.
 	peer_params := decode_transport_parameters(tp_ext.data) or {
-		return handshake_error(.decode_error,
-			'quic: malformed quic_transport_parameters: ${err.msg()}')
+		return transport_parameter_error('quic: malformed quic_transport_parameters: ${err.msg()}')
 	}
 	scid := peer_params.initial_source_connection_id or {
-		return handshake_error(.handshake_failure,
-			'quic: peer transport parameters missing mandatory initial_source_connection_id')
+		return transport_parameter_error('quic: peer transport parameters missing mandatory initial_source_connection_id')
 	}
 
 	if scid != peer_initial_scid {
-		return handshake_error(.handshake_failure,
-			'quic: initial_source_connection_id in transport parameters does not match the packet header SCID')
+		return transport_parameter_error('quic: initial_source_connection_id in transport parameters does not match the packet header SCID')
+	}
+
+	orig_dcid := peer_params.original_destination_connection_id or {
+		return transport_parameter_error('quic: peer transport parameters missing mandatory original_destination_connection_id')
+	}
+
+	if orig_dcid != original_dcid {
+		return transport_parameter_error("quic: original_destination_connection_id in transport parameters does not match this client's actual first Initial DCID")
+	}
+
+	if expected_retry_scid := retry_scid {
+		peer_retry_scid := peer_params.retry_source_connection_id or {
+			return transport_parameter_error('quic: a Retry occurred but peer transport parameters are missing mandatory retry_source_connection_id')
+		}
+
+		if peer_retry_scid != expected_retry_scid {
+			return transport_parameter_error("quic: retry_source_connection_id in transport parameters does not match the Retry packet's SCID")
+		}
+	} else if peer_params.retry_source_connection_id != none {
+		return transport_parameter_error('quic: peer transport parameters include retry_source_connection_id but no Retry occurred')
 	}
 
 	h.accumulate(framed_message)
@@ -384,7 +469,7 @@ pub fn (mut h Tls13ClientHandshake) process_certificate_or_request(msg Handshake
 		return handshake_error(.illegal_parameter,
 			'quic: Certificate certificate_request_context must be empty for server authentication, got ${parsed.certificate_request_context.len} bytes')
 	}
-	verified := verify_server_certificate_chain(parsed, h.ca_bundle_pem) or {
+	verified := verify_server_certificate_chain(parsed, h.ca_bundle_pem, h.server_name) or {
 		return handshake_error(.bad_certificate, err.msg())
 	}
 

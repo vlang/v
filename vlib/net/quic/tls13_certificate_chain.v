@@ -33,21 +33,20 @@ pub fn (mut c VerifiedCertificateChain) free() {
 // trusted CA certificates in PEM format — the caller's trust anchor,
 // mirroring this codebase's existing
 // net.mbedtls.SSLConnectConfig.verify contract, since there is no OS
-// trust-store lookup anywhere in this codebase for any TLS client).
-//
-// Hostname verification (matching the leaf certificate against the SNI
-// name the client actually sent) is deliberately NOT done here — see
-// net.mbedtls.verify_certificate_chain's own doc comment for why it can't
-// do this itself; the caller must do it using the leaf certificate this
-// function's result makes available (once Phase 2c's signature
-// verification, still pending, extracts and exposes it).
-pub fn verify_server_certificate_chain(parsed ParsedCertificate, ca_bundle_pem string) !&VerifiedCertificateChain {
+// trust-store lookup anywhere in this codebase for any TLS client) AND
+// that `hostname` (the SNI name this client actually sent) matches the
+// leaf certificate's SAN/CN — see net.mbedtls.verify_certificate_chain's
+// own doc comment for the mechanism. Without this, any otherwise-trusted
+// certificate for an unrelated host would be accepted (hostname
+// impersonation), since chain-of-trust alone says nothing about which
+// host the certificate is actually FOR.
+pub fn verify_server_certificate_chain(parsed ParsedCertificate, ca_bundle_pem string, hostname string) !&VerifiedCertificateChain {
 	mut der_certs := [][]u8{cap: parsed.certificate_list.len}
 	for entry in parsed.certificate_list {
 		der_certs << entry.cert_data
 	}
 	chain := mbedtls.build_certificate_chain(der_certs)!
-	mbedtls.verify_certificate_chain(chain, ca_bundle_pem) or {
+	mbedtls.verify_certificate_chain(chain, ca_bundle_pem, hostname) or {
 		mbedtls.free_certificate_chain(chain)
 		return err
 	}

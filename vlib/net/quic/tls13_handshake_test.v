@@ -62,7 +62,7 @@ fn fake_server_sign_certificate_verify(signed_content []u8) ![]u8 {
 		}
 	}
 	// pk_type 6 = MBEDTLS_PK_RSASSA_PSS, md_alg 9 = MBEDTLS_MD_SHA256 --
-	// the same numeric values net.mbedtls/x509_standalone.v's
+	// the same numeric values net.mbedtls/x509_standalone.c.v's
 	// verify_rsa_pss_signature uses on the verify side (pk.h/md.h,
 	// confirmed there, not re-derived here).
 	mut sig := []u8{len: 600}
@@ -147,9 +147,29 @@ fn build_fake_server_hello(server_random []u8, key_exchange []u8) ![]u8 {
 }
 
 fn build_fake_encrypted_extensions(server_transport_params QuicTransportParameters) ![]u8 {
+	return build_fake_encrypted_extensions_with_alpn(server_transport_params, 'h3')
+}
+
+// build_fake_encrypted_extensions_with_alpn additionally encodes the
+// server's ALPN selection (RFC 7301 §3.2's single-entry ProtocolNameList),
+// needed by every test that drives a real client through
+// process_encrypted_extensions now that ALPN is mandatory (RFC 9001 §8.1).
+fn build_fake_encrypted_extensions_with_alpn(server_transport_params QuicTransportParameters, selected_alpn_protocol string) ![]u8 {
 	encoded_tp := encode_transport_parameters(server_transport_params)!
 	tp_ext := encode_extension(ext_quic_transport_parameters, encoded_tp)!
+
+	name_bytes := selected_alpn_protocol.bytes()
+	mut alpn_list := []u8{}
+	alpn_list << u8(name_bytes.len)
+	alpn_list << name_bytes
+	mut alpn_data := []u8{}
+	alpn_data << u8(alpn_list.len >> 8)
+	alpn_data << u8(alpn_list.len)
+	alpn_data << alpn_list
+	alpn_ext := encode_extension(ext_alpn, alpn_data)!
+
 	mut extensions := []u8{}
+	extensions << alpn_ext
 	extensions << tp_ext
 	mut body := []u8{}
 	body << u8(extensions.len >> 8)
@@ -210,7 +230,25 @@ struct FakeServerHandshake {
 // same-module white-box technique, not a shortcut around anything this
 // file itself is responsible for proving (chain-trust verification is
 // already covered by tls13_certificate_chain_test.v).
-fn drive_to_certificate(client_random []u8, server_initial_scid []u8) !(&Tls13ClientHandshake, FakeServerHandshake, string) {
+// client_original_dcid is the fixed test value used throughout this
+// file's fake-server flow for the client's own original
+// destination_connection_id (the DCID the client chose for its very first
+// Initial packet) -- distinct from server_initial_scid (the SERVER's own
+// source connection ID) and from ClientHandshakeParams' own
+// initial_source_connection_id transport parameter (the CLIENT's SCID).
+// None of these three IDs are the same concept; reusing similar-looking
+// dummy byte values for them in earlier tests is exactly the kind of thing
+// that makes it easy to conflate what they each authenticate, so this one
+// gets a visibly distinct value.
+const client_original_dcid = [u8(0xde), 0xad, 0xbe, 0xef]
+
+// drive_to_wait_encrypted_extensions drives a real client handshake through
+// ClientHello and ServerHello only, leaving it in state .wait_encrypted_extensions
+// -- the common prefix every EncryptedExtensions-focused test (including
+// drive_to_certificate below) needs, factored out so ALPN/connection-ID
+// authentication tests can supply their own deliberately-defective
+// EncryptedExtensions without duplicating the ServerHello dance.
+fn drive_to_wait_encrypted_extensions(client_random []u8) !(&Tls13ClientHandshake, FakeServerHandshake) {
 	server_pub, server_priv := ecdsa.generate_key(nid: .prime256v1)!
 	defer {
 		server_pub.free()
@@ -226,6 +264,7 @@ fn drive_to_certificate(client_random []u8, server_initial_scid []u8) !(&Tls13Cl
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
 		ca_bundle_pem:        handshake_test_cert_pem
+		alpn_protocols:       ['h3']
 	})!
 
 	client_key_exchange := extract_client_hello_key_exchange(client_hello)!
@@ -244,26 +283,28 @@ fn drive_to_certificate(client_random []u8, server_initial_scid []u8) !(&Tls13Cl
 	server_handshake_secrets := derive_handshake_secrets(early_secret, server_shared_secret,
 		ch_sh_hash)!
 
-	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
-		initial_source_connection_id: server_initial_scid
-	})!
-	ee_msg, _ := parse_handshake_message(ee_framed)!
-	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid)!
-
-	cert_framed := build_fake_certificate(server_der)!
-	cert_msg, _ := parse_handshake_message(cert_framed)!
-	h.process_certificate_or_request(cert_msg, cert_framed) or {
-		return h, FakeServerHandshake{
-			priv_key:          server_priv
-			handshake_secrets: server_handshake_secrets
-			certificate_der:   server_der
-		}, err.msg()
-	}
 	return h, FakeServerHandshake{
 		priv_key:          server_priv
 		handshake_secrets: server_handshake_secrets
 		certificate_der:   server_der
-	}, ''
+	}
+}
+
+fn drive_to_certificate(client_random []u8, server_initial_scid []u8) !(&Tls13ClientHandshake, FakeServerHandshake, string) {
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
+
+	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
+		initial_source_connection_id:       server_initial_scid
+		original_destination_connection_id: client_original_dcid.clone()
+	})!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid, client_original_dcid,
+		none)!
+
+	cert_framed := build_fake_certificate(server.certificate_der)!
+	cert_msg, _ := parse_handshake_message(cert_framed)!
+	h.process_certificate_or_request(cert_msg, cert_framed) or { return h, server, err.msg() }
+	return h, server, ''
 }
 
 fn concat_bytes(a []u8, b []u8) []u8 {
@@ -271,6 +312,124 @@ fn concat_bytes(a []u8, b []u8) []u8 {
 	out << a
 	out << b
 	return out
+}
+
+// The four tests below are regression tests for Codex findings on
+// vlang/v#27680 (pullrequestreview-4781706846): process_encrypted_extensions
+// previously never checked ALPN at all, and never validated
+// original_destination_connection_id/retry_source_connection_id (RFC 9000
+// §7.3's anti-tampering authentication). Each drives a real client through
+// ServerHello via drive_to_wait_encrypted_extensions, then supplies a
+// deliberately-defective EncryptedExtensions and asserts BOTH the specific
+// rejection reason AND the QUIC CONNECTION_CLOSE error code a conforming
+// peer would need to see.
+
+fn test_process_encrypted_extensions_rejects_unoffered_alpn_selection() {
+	client_random := []u8{len: 32, init: 0x71}
+	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	defer {
+		h.free()
+	}
+	server_initial_scid := [u8(1), 1, 1, 1]
+	// The server selects "h2" -- a real protocol, just not one this client
+	// offered (['h3']) -- distinguishing "malformed ALPN" from "valid but
+	// unoffered selection".
+	ee_framed := build_fake_encrypted_extensions_with_alpn(QuicTransportParameters{
+		initial_source_connection_id:       server_initial_scid
+		original_destination_connection_id: client_original_dcid.clone()
+	}, 'h2')!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid, client_original_dcid,
+		none) or {
+		assert err.msg().contains('h2')
+		assert err.code() == int(tls_alert_to_quic_error(.no_application_protocol))
+		return
+	}
+	assert false, 'expected an error for a server ALPN selection this client did not offer'
+}
+
+fn test_process_encrypted_extensions_rejects_missing_alpn() {
+	client_random := []u8{len: 32, init: 0x72}
+	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	defer {
+		h.free()
+	}
+	server_initial_scid := [u8(2), 2, 2, 2]
+	// build_fake_encrypted_extensions (not the _with_alpn variant with an
+	// explicit selection) never encodes an alpn extension at all -- RFC
+	// 9001 §8.1 makes ALPN mandatory for QUIC, so a missing extension must
+	// be rejected the same as an explicit mismatch, not silently ignored.
+	encoded_tp := encode_transport_parameters(QuicTransportParameters{
+		initial_source_connection_id:       server_initial_scid
+		original_destination_connection_id: client_original_dcid.clone()
+	})!
+	tp_ext := encode_extension(ext_quic_transport_parameters, encoded_tp)!
+	mut body := []u8{}
+	body << u8(tp_ext.len >> 8)
+	body << u8(tp_ext.len)
+	body << tp_ext
+	ee_framed := encode_handshake_message(.encrypted_extensions, body)!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid, client_original_dcid,
+		none) or {
+		assert err.msg().contains('alpn')
+		assert err.code() == int(tls_alert_to_quic_error(.no_application_protocol))
+		return
+	}
+	assert false, 'expected an error for EncryptedExtensions missing the alpn extension'
+}
+
+fn test_process_encrypted_extensions_rejects_original_dcid_mismatch() {
+	client_random := []u8{len: 32, init: 0x73}
+	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	defer {
+		h.free()
+	}
+	server_initial_scid := [u8(3), 3, 3, 3]
+	// The peer's transport parameters authenticate a DIFFERENT
+	// original_destination_connection_id than the one this client actually
+	// used -- exactly the tampering RFC 9000 §7.3 exists to catch (e.g. an
+	// off-path attacker's injected/altered Retry).
+	wrong_original_dcid := [u8(0xff), 0xff, 0xff, 0xff]
+	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
+		initial_source_connection_id:       server_initial_scid
+		original_destination_connection_id: wrong_original_dcid
+	})!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid, client_original_dcid,
+		none) or {
+		assert err.msg().contains('original_destination_connection_id')
+		assert err.code() == int(quic_error_transport_parameter)
+		return
+	}
+	assert false, 'expected an error for a mismatched original_destination_connection_id'
+}
+
+fn test_process_encrypted_extensions_rejects_unexpected_retry_source_connection_id() {
+	client_random := []u8{len: 32, init: 0x74}
+	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	defer {
+		h.free()
+	}
+	server_initial_scid := [u8(4), 4, 4, 4]
+	// The peer's transport parameters include retry_source_connection_id
+	// even though this client never observed a Retry (retry_scid: none
+	// below) -- RFC 9000 §7.3: "if [retry_source_connection_id] is
+	// provided when no Retry packet was received, the client MUST treat
+	// this as a connection error".
+	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
+		initial_source_connection_id:       server_initial_scid
+		original_destination_connection_id: client_original_dcid.clone()
+		retry_source_connection_id:         [u8(9), 9, 9, 9]
+	})!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid, client_original_dcid,
+		none) or {
+		assert err.msg().contains('retry_source_connection_id')
+		assert err.code() == int(quic_error_transport_parameter)
+		return
+	}
+	assert false, 'expected an error for an unexpected retry_source_connection_id with no Retry'
 }
 
 // test_handshake_reaches_certificate_and_reports_the_known_trust_gap drives
@@ -368,9 +527,10 @@ fn test_handshake_certificate_verify_and_finished_with_real_cryptography() {
 // a second HelloRetryRequest is fatal, not just unusual.
 fn test_second_hello_retry_request_rejected() {
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:        []u8{len: 32, init: 0x33}
-		server_name:   'example.com'
-		ca_bundle_pem: handshake_test_cert_pem
+		random:         []u8{len: 32, init: 0x33}
+		server_name:    'example.com'
+		ca_bundle_pem:  handshake_test_cert_pem
+		alpn_protocols: ['h3']
 	})!
 	defer {
 		h.free()
@@ -486,9 +646,10 @@ fn test_certificate_rejects_nonempty_request_context() {
 
 fn test_process_server_hello_rejects_unoffered_cipher_suite() {
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:        []u8{len: 32, init: 0x55}
-		server_name:   'example.com'
-		ca_bundle_pem: handshake_test_cert_pem
+		random:         []u8{len: 32, init: 0x55}
+		server_name:    'example.com'
+		ca_bundle_pem:  handshake_test_cert_pem
+		alpn_protocols: ['h3']
 	})!
 	defer {
 		h.free()
@@ -576,9 +737,10 @@ fn test_process_finished_rejects_bad_verify_data() {
 // process abort, not a clean test failure.
 fn test_free_is_idempotent() {
 	mut h, _ := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:        []u8{len: 32, init: 0x11}
-		server_name:   'example.com'
-		ca_bundle_pem: ''
+		random:         []u8{len: 32, init: 0x11}
+		server_name:    'example.com'
+		ca_bundle_pem:  ''
+		alpn_protocols: ['h3']
 	})!
 	h.free()
 	h.free() // must not double-free

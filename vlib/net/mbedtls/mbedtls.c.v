@@ -260,7 +260,7 @@ mut:
 
 // mbedtls_pk_verify_ext verifies a signature with an explicit signature
 // type (inc. RSASSA-PSS) and optional type-specific options -- see
-// x509_standalone.v's verify_ecdsa_signature/verify_rsa_pss_signature for
+// x509_standalone.c.v's verify_ecdsa_signature/verify_rsa_pss_signature for
 // the two call shapes this codebase actually uses.
 fn C.mbedtls_pk_verify_ext(i32, voidptr, &C.mbedtls_pk_context, i32, &u8, usize, &u8, usize) i32
 

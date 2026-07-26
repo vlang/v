@@ -1,6 +1,7 @@
 module mbedtls
 
 import encoding.base64
+import strconv
 
 // Duplicated locally (rather than referenced from x509_standalone_test.v)
 // deliberately -- V's single-file test compilation only pulls in regular
@@ -33,11 +34,38 @@ fn test_build_certificate_chain_single_cert_then_verify_fails_not_a_ca() {
 	// build_certificate_chain's parsed chain behaves identically to a
 	// directly-constructed one -- the wrapper isn't silently producing a
 	// differently-shaped chain.
-	verify_certificate_chain(chain, standalone_test_cert_local) or {
+	verify_certificate_chain(chain, standalone_test_cert_local, 'localhost') or {
 		assert err.msg().contains('verification failed')
 		return
 	}
 	assert false, 'expected verification to fail: standalone_test_cert has no CA:TRUE basic constraint'
+}
+
+// test_verify_certificate_chain_rejects_hostname_mismatch proves the
+// hostname (`cn`) actually gets checked: even setting aside the
+// not-a-CA/not-trusted failure above (which alone would make ANY
+// hostname argument look like it "worked", since the call fails either
+// way), a hostname that does not match the leaf's CN must surface
+// MBEDTLS_X509_BADCERT_CN_MISMATCH (0x04) in the reported flags --
+// proving mbedtls_x509_crt_verify's `cn` parameter is actually wired to
+// the caller-supplied hostname now, not silently nil.
+fn test_verify_certificate_chain_rejects_hostname_mismatch() {
+	der := pem_to_der(standalone_test_cert_local)
+	chain := build_certificate_chain([der])!
+	defer {
+		free_certificate_chain(chain)
+	}
+	verify_certificate_chain(chain, standalone_test_cert_local, 'not-the-right-host.invalid') or {
+		assert err.msg().contains('flags: 0x')
+		flags_hex := err.msg().all_after('flags: 0x')
+		flags := strconv.parse_uint(flags_hex, 16, 32) or {
+			assert false, 'could not parse flags from error message: ${err.msg()}'
+			return
+		}
+		assert u32(flags) & 0x04 != 0, 'expected MBEDTLS_X509_BADCERT_CN_MISMATCH (0x04) in flags 0x${flags:x}'
+		return
+	}
+	assert false, 'expected verification to fail: hostname does not match the certificate CN (localhost)'
 }
 
 fn test_build_certificate_chain_rejects_empty_list() {
@@ -59,7 +87,7 @@ fn test_verify_certificate_chain_rejects_unparseable_ca_bundle() {
 	defer {
 		free_certificate_chain(chain)
 	}
-	verify_certificate_chain(chain, 'not a real PEM bundle') or {
+	verify_certificate_chain(chain, 'not a real PEM bundle', 'localhost') or {
 		assert err.msg().contains('failed to parse CA bundle')
 		return
 	}

@@ -238,6 +238,92 @@ fn test_decode_transport_parameters_accepts_active_connection_id_limit_boundary_
 	assert decoded.active_connection_id_limit? == 2
 }
 
+// test_decode_transport_parameters_rejects_initial_max_streams_bidi_above_2_pow_60
+// is a regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4781706846): RFC 9000 §4.6 requires
+// TRANSPORT_PARAMETER_ERROR for a stream count above 2^60 (a stream ID is
+// the count times 4, so anything larger risks exceeding or wrapping the
+// 62-bit varint space) -- previously entirely unchecked.
+fn test_decode_transport_parameters_rejects_initial_max_streams_bidi_above_2_pow_60() {
+	buf := encode_varint_tlv(param_initial_max_streams_bidi, max_initial_max_streams + 1)!
+	decode_transport_parameters(buf) or {
+		assert err.msg().contains('initial_max_streams_bidi')
+		return
+	}
+	assert false, 'expected an error for initial_max_streams_bidi above 2^60'
+}
+
+fn test_decode_transport_parameters_accepts_initial_max_streams_bidi_boundary_2_pow_60() {
+	buf := encode_varint_tlv(param_initial_max_streams_bidi, max_initial_max_streams)!
+	decoded := decode_transport_parameters(buf)!
+	assert decoded.initial_max_streams_bidi? == max_initial_max_streams
+}
+
+fn test_decode_transport_parameters_rejects_initial_max_streams_uni_above_2_pow_60() {
+	buf := encode_varint_tlv(param_initial_max_streams_uni, max_initial_max_streams + 1)!
+	decode_transport_parameters(buf) or {
+		assert err.msg().contains('initial_max_streams_uni')
+		return
+	}
+	assert false, 'expected an error for initial_max_streams_uni above 2^60'
+}
+
+// The four tests below are regression tests for a Codex finding (vlang/v#27680
+// pullrequestreview-4781706846): encode_transport_parameters didn't mirror
+// ANY of decode_transport_parameters' own RFC 9000 §18.2 bounds checks, so a
+// caller configuration error (e.g. max_udp_payload_size below 1200) silently
+// produced an invalid ClientHello instead of failing at encode time.
+
+fn test_encode_transport_parameters_rejects_max_udp_payload_size_below_1200() {
+	encode_transport_parameters(QuicTransportParameters{
+		max_udp_payload_size: 1199
+	}) or {
+		assert err.msg().contains('max_udp_payload_size')
+		return
+	}
+	assert false, 'expected an error for encoding max_udp_payload_size below 1200'
+}
+
+fn test_encode_transport_parameters_rejects_ack_delay_exponent_above_20() {
+	encode_transport_parameters(QuicTransportParameters{
+		ack_delay_exponent: 21
+	}) or {
+		assert err.msg().contains('ack_delay_exponent')
+		return
+	}
+	assert false, 'expected an error for encoding ack_delay_exponent above 20'
+}
+
+fn test_encode_transport_parameters_rejects_max_ack_delay_at_2_pow_14() {
+	encode_transport_parameters(QuicTransportParameters{
+		max_ack_delay: 0x4000
+	}) or {
+		assert err.msg().contains('max_ack_delay')
+		return
+	}
+	assert false, 'expected an error for encoding max_ack_delay >= 2^14'
+}
+
+fn test_encode_transport_parameters_rejects_active_connection_id_limit_below_2() {
+	encode_transport_parameters(QuicTransportParameters{
+		active_connection_id_limit: 1
+	}) or {
+		assert err.msg().contains('active_connection_id_limit')
+		return
+	}
+	assert false, 'expected an error for encoding active_connection_id_limit below 2'
+}
+
+fn test_encode_transport_parameters_rejects_initial_max_streams_bidi_above_2_pow_60() {
+	encode_transport_parameters(QuicTransportParameters{
+		initial_max_streams_bidi: max_initial_max_streams + 1
+	}) or {
+		assert err.msg().contains('initial_max_streams_bidi')
+		return
+	}
+	assert false, 'expected an error for encoding initial_max_streams_bidi above 2^60'
+}
+
 fn test_decode_transport_parameters_rejects_wrong_stateless_reset_token_length() {
 	buf := encode_bytes_tlv(param_stateless_reset_token, []u8{len: 15})!
 	decode_transport_parameters(buf) or {

@@ -33,7 +33,7 @@ fn test_verify_server_certificate_chain_end_to_end() {
 		]
 	}
 
-	verify_server_certificate_chain(parsed, chain_test_cert_pem) or {
+	verify_server_certificate_chain(parsed, chain_test_cert_pem, 'localhost') or {
 		assert err.msg().contains('verification failed')
 		return
 	}
@@ -50,7 +50,7 @@ fn test_verify_server_certificate_chain_rejects_malformed_der() {
 			},
 		]
 	}
-	verify_server_certificate_chain(parsed, chain_test_cert_pem) or { return }
+	verify_server_certificate_chain(parsed, chain_test_cert_pem, 'localhost') or { return }
 	assert false, 'expected an error for malformed DER data'
 }
 
@@ -65,7 +65,7 @@ fn test_verify_server_certificate_chain_rejects_malformed_der() {
 // drive a genuine successful chain verification end-to-end yet.
 //
 // Like the DER-length exact-size requirement in
-// net.mbedtls/x509_standalone.v, this is verified by REASONING, not by
+// net.mbedtls/x509_standalone.c.v, this is verified by REASONING, not by
 // this test's pass/fail status: empirically, removing the `c.chain =
 // unsafe { nil }` line and calling free() twice on this platform's
 // allocator still passes cleanly (no crash) -- a double-free of a
