@@ -242,6 +242,16 @@ fn test_res_uses_a_dedicated_node_and_rejects_trailing_argument_tokens() {
 	assert result_nodes[0].value == '0'
 	assert !valid.nodes.any(it.kind == .ident && it.value == '__v3_defer_result')
 
+	max_index := parse_parser_regression_source('res_max_int_index',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(2147483647)\n\t}\n\treturn 1, 2\n}\n')
+	max_index_nodes := max_index.nodes.filter(it.kind == .defer_result)
+	assert max_index_nodes.len == 1, '${max_index_nodes}'
+	assert max_index_nodes[0].value == '2147483647'
+
+	overflow := parse_parser_regression_diagnostics('res_index_overflows_int',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(4294967296)\n\t}\n\treturn 1, 2\n}\n')
+	assert overflow.any(it.message.contains('`res` index must be a non-negative integer literal')), '${overflow}'
+
 	trailing := parse_parser_regression_diagnostics('res_trailing_argument_tokens',
 		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\n')
 	assert trailing.any(it.message.contains('expected `)` immediately after the `$res` index')), '${trailing}'

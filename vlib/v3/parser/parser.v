@@ -4767,7 +4767,7 @@ fn defer_result_index_literal(value string) ?int {
 		return none
 	}
 	parsed := strconv.common_parse_int(value.replace('_', ''), 0, 64, true, true) or { return none }
-	if parsed < 0 {
+	if parsed < 0 || parsed > i64(max_i32) {
 		return none
 	}
 	return int(parsed)
