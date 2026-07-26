@@ -6108,6 +6108,9 @@ fn c_flag_macro_close(text string, open_idx int) int {
 	for i := open_idx + 1; i < text.len; i++ {
 		ch := text[i]
 		if ch in [`'`, `"`] {
+			if c_flag_quote_is_escaped(text, i) {
+				continue
+			}
 			if quote == 0 {
 				quote = ch
 			} else if quote == ch {
@@ -6135,6 +6138,9 @@ fn c_flag_top_level_comma(text string) int {
 	mut depth := 0
 	for i, ch in text {
 		if ch in [`'`, `"`] {
+			if c_flag_quote_is_escaped(text, i) {
+				continue
+			}
 			if quote == 0 {
 				quote = ch
 			} else if quote == ch {
@@ -6154,6 +6160,16 @@ fn c_flag_top_level_comma(text string) int {
 		}
 	}
 	return -1
+}
+
+fn c_flag_quote_is_escaped(text string, quote_idx int) bool {
+	mut slash_count := 0
+	mut i := quote_idx - 1
+	for i >= 0 && text[i] == `\\` {
+		slash_count++
+		i--
+	}
+	return slash_count % 2 == 1
 }
 
 fn c_flag_strip_hash_comment(raw string) string {

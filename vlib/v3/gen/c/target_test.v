@@ -49,6 +49,9 @@ fn test_c_flag_default_define_macros_stay_single_arguments() {
 	assert c_flag_args("-DMIXED=\$d('A1', 'mixed' )_\$d('A2', 4 ) ##", '', '', target) == [
 		'-DMIXED=mixed_4',
 	]
+	assert c_flag_args(r'-DJSON=$d("JSON", "\"value\"")', '', '', target) == [
+		'-DJSON="value"',
+	]
 }
 
 fn test_c_flag_default_define_macros_honor_configured_values() {
