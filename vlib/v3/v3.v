@@ -6881,9 +6881,10 @@ fn seed_implicit_imports(mut a flat.FlatAst) {
 	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
 	}
-	// Bound method values and captured fn literals are materialized during transform,
-	// after import resolution. Seed the runtime only when parsed syntax can need it;
-	// unconditional insertion conflicts with user modules whose source alias is `closure`.
+	// Bound method values, lambdas, and captured fn literals are materialized during
+	// transform, after import resolution. Seed the runtime only when parsed syntax can
+	// need it; unconditional insertion conflicts with user modules whose source alias is
+	// `closure`.
 	if scan.needs_closure && !scan.has_closure {
 		a.add_node(closure_import_node())
 	}
@@ -6982,7 +6983,11 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		// Builtin is parsed before `user_code_start` and contains ordinary selector
 		// values that must not force the closure runtime into every program.
 		if !scan.needs_closure && i >= a.user_code_start {
-			if node.kind == .fn_literal {
+			if node.kind == .lambda_expr {
+				// Lambda captures are inferred during transform, after imports have
+				// already been resolved, so conservatively seed their possible runtime.
+				scan.needs_closure = true
+			} else if node.kind == .fn_literal {
 				for child_idx in 0 .. node.children_count {
 					if a.child_node(&node, child_idx).kind == .ident {
 						scan.needs_closure = true

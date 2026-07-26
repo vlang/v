@@ -23385,23 +23385,12 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
-		if ret is MultiReturn {
-			if idx < 0 {
-				msg := '`res` requires an index of the returned value'
-				if tc.should_diagnose(id) {
-					tc.record_error(.unknown_type, msg, id)
-				}
-				tc.register_synth_type(id, unknown_type(msg))
-				return
+		if msg := defer_result_index_error_message(ret, idx) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.unknown_type, msg, id)
 			}
-			if idx >= ret.types.len {
-				msg := 'index ${idx} out of range of ${ret.types.len} return types'
-				if tc.should_diagnose(id) {
-					tc.record_error(.unknown_type, msg, id)
-				}
-				tc.register_synth_type(id, unknown_type(msg))
-				return
-			}
+			tc.register_synth_type(id, unknown_type(msg))
+			return
 		}
 	}
 	if typ := tc.defer_result_type(node.value) {
@@ -23492,19 +23481,32 @@ pub fn defer_result_index(name string) ?int {
 	return index_text.int()
 }
 
+fn defer_result_index_error_message(ret Type, idx int) ?string {
+	if ret is MultiReturn {
+		if idx < 0 {
+			return '`res` requires an index of the returned value'
+		}
+		if idx >= ret.types.len {
+			return 'index ${idx} out of range of ${ret.types.len} return types'
+		}
+		return none
+	}
+	if idx >= 0 {
+		return '`res` index can only be used with multi-return functions'
+	}
+	return none
+}
+
 fn (tc &TypeChecker) defer_result_type(name string) ?Type {
 	idx := defer_result_index(name) or { return none }
 	ret := tc.fn_context.return_type
 	if ret is Void || ret is ResultType {
 		return Type(void_)
 	}
+	if msg := defer_result_index_error_message(ret, idx) {
+		return unknown_type(msg)
+	}
 	if ret is MultiReturn {
-		if idx < 0 {
-			return unknown_type('`res` requires an index of the returned value')
-		}
-		if idx >= ret.types.len {
-			return unknown_type('index ${idx} out of range of ${ret.types.len} return types')
-		}
 		return ret.types[idx]
 	}
 	return ret

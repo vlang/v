@@ -2048,7 +2048,13 @@ fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker
 			}
 		}
 	}
-	for node in a.nodes {
+	for idx, node in a.nodes {
+		if idx >= a.user_code_start && node.kind == .lambda_expr {
+			// Lambda captures are inferred during transform, after markused has run.
+			// Conservatively keep the runtime reachable for source/import lambdas, while
+			// ignoring implementation lambdas parsed as part of builtin itself.
+			return true
+		}
 		if node.kind != .fn_literal {
 			continue
 		}

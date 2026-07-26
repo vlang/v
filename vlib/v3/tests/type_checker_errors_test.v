@@ -2039,6 +2039,9 @@ fn test_defer_result_review_regressions() {
 	run_bad(v3_bin, 'bad_out_of_range_multi_return_defer_result',
 		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
 		'index 2 out of range of 2 return types')
+	run_bad(v3_bin, 'bad_indexed_scalar_defer_result',
+		'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n',
+		'`res` index can only be used with multi-return functions')
 }
 
 fn test_if_guard_rejects_or_handled_value() {

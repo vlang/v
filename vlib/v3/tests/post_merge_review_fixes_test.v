@@ -4220,6 +4220,9 @@ fn test_interface_is_unqualified_local_uses_exact_impl_id() {
 
 fn test_callback_lambda_lift_preserves_outer_captures() {
 	v3_bin := build_v3()
+	no_arg_out := run_good(v3_bin, 'callback_no_arg_lambda_lift_preserves_capture',
+		'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n')
+	assert no_arg_out == '42'
 	out := run_good(v3_bin, 'callback_lambda_lift_preserves_capture',
 		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n')
 	assert out == '12'
