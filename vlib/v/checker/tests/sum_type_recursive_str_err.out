@@ -145,3 +145,24 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:151:15: error: cannot call `s
       |                  ~~~~~
   152 | }
   153 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:158:15: error: cannot call `str()` method recursively
+  156 | fn (f MutableAlias) str() string {
+  157 |     mut alias := f
+  158 |     return alias.str()
+      |                  ~~~~~
+  159 | }
+  160 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:165:15: error: cannot call `str()` method recursively
+  163 | fn (f AsCastAlias) str() string {
+  164 |     alias := Stringer(f) as AsCastAlias
+  165 |     return alias.str()
+      |                  ~~~~~
+  166 | }
+  167 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:176:16: error: cannot call `str()` method recursively
+  174 |     if f.recurse {
+  175 |         alias = f
+  176 |         return alias.str()
+      |                      ~~~~~
+  177 |     }
+  178 |     return ''

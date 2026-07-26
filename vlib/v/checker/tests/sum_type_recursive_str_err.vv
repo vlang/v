@@ -151,6 +151,98 @@ fn (f Reassigned) str() string {
 	return alias.str()
 }
 
+struct MutableAlias {}
+
+fn (f MutableAlias) str() string {
+	mut alias := f
+	return alias.str()
+}
+
+struct AsCastAlias {}
+
+fn (f AsCastAlias) str() string {
+	alias := Stringer(f) as AsCastAlias
+	return alias.str()
+}
+
+struct BranchReassigned {
+	recurse bool
+}
+
+fn (f BranchReassigned) str() string {
+	mut alias := BranchReassigned{}
+	if f.recurse {
+		alias = f
+		return alias.str()
+	}
+	return ''
+}
+
+struct Progressing {
+mut:
+	remaining int
+}
+
+fn (mut n Progressing) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	n.remaining--
+	return n.str()
+}
+
+struct AliasProgress {
+mut:
+	remaining int
+}
+
+fn (n AliasProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.remaining--
+	return next.str()
+}
+
+struct BranchProgress {
+mut:
+	remaining int
+}
+
+fn (n BranchProgress) str() string {
+	if n.remaining > 0 {
+		mut next := n
+		next.remaining--
+		return next.str()
+	}
+	return ''
+}
+
+struct NewValueProgress {
+mut:
+	remaining int
+}
+
+fn (n NewValueProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := NewValueProgress{
+		remaining: n.remaining
+	}
+	next.remaining--
+	return next.str()
+}
+
+struct ReassignedOther {}
+
+fn (f ReassignedOther) str() string {
+	mut alias := f
+	alias = ReassignedOther{}
+	return alias.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -190,5 +282,8 @@ fn main() {
 	println(DumpAlias{})
 	println(AsCastRecv{})
 	println(Reassigned{})
+	println(MutableAlias{})
+	println(AsCastAlias{})
+	println(BranchReassigned{})
 	println(IfaceExt{ name: 'test' })
 }

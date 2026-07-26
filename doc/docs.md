@@ -3600,10 +3600,10 @@ red := Color{
 println(red)
 ```
 
-**Note:** Calling `.str()` on the receiver inside a custom `str()` method is
-not allowed because it causes infinite recursion. Use string interpolation of
-the individual fields instead, or for type aliases, cast to the underlying type
-first:
+**Note:** Calling `.str()` on an unchanged receiver, or an unchanged alias of it,
+inside a custom `str()` method is not allowed because it causes infinite recursion.
+Use string interpolation of the individual fields instead, or for type aliases,
+cast to the underlying type first:
 
 ```v failcompile
 struct Color {

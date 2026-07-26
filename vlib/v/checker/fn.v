@@ -3064,6 +3064,243 @@ fn (mut c Checker) lower_fixed_array_call_arg_to_array(mut arg ast.CallArg, expe
 	return arg.typ
 }
 
+struct RecursiveStrAliasState {
+mut:
+	source      ast.Expr = ast.empty_expr
+	pos         int      = -1
+	invalidated bool
+}
+
+fn (c &Checker) recursive_str_receiver_type_matches(typ ast.Type, receiver_typ ast.Type) bool {
+	sym := c.table.sym(typ)
+	return typ.idx() == receiver_typ.idx()
+		|| (sym.kind == .interface && !sym.has_method_with_generic_parent('str'))
+}
+
+fn (c &Checker) unwrap_recursive_str_receiver(expr ast.Expr, receiver_typ ast.Type) ast.Expr {
+	mut inner := expr.remove_par()
+	for {
+		if inner is ast.PrefixExpr && inner.op in [.mul, .amp] {
+			inner = inner.right.remove_par()
+		} else if inner is ast.CastExpr
+			&& c.recursive_str_receiver_type_matches(inner.typ, receiver_typ) {
+			inner = inner.expr.remove_par()
+		} else if inner is ast.AsCast
+			&& c.recursive_str_receiver_type_matches(inner.typ, receiver_typ) {
+			inner = inner.expr.remove_par()
+		} else if inner is ast.UnsafeExpr {
+			inner = inner.expr.remove_par()
+		} else if inner is ast.DumpExpr {
+			inner = inner.expr.remove_par()
+		} else {
+			break
+		}
+	}
+	return inner
+}
+
+fn recursive_str_scope_dominates(parent &ast.Scope, child &ast.Scope) bool {
+	if parent == unsafe { nil } || child == unsafe { nil } {
+		return false
+	}
+	for scope := unsafe { child }; scope != unsafe { nil }; scope = scope.parent {
+		if scope == parent {
+			return true
+		}
+		if scope.parent == unsafe { nil } || scope.detached_from_parent {
+			break
+		}
+	}
+	return false
+}
+
+fn recursive_str_ident_is_var(ident ast.Ident, name string, decl_pos int) bool {
+	if ident.name != name {
+		return false
+	}
+	if ident.obj is ast.Var {
+		return ident.obj.pos.pos == decl_pos
+	}
+	if v := ident.scope.find_var(name) {
+		return v.pos.pos == decl_pos
+	}
+	return false
+}
+
+fn recursive_str_expr_var_scope(expr ast.Expr, name string, decl_pos int) ?&ast.Scope {
+	match expr {
+		ast.Ident {
+			if recursive_str_ident_is_var(expr, name, decl_pos) {
+				return expr.scope
+			}
+		}
+		ast.AnonFn, ast.LambdaExpr {
+			return none
+		}
+		else {}
+	}
+	for child in ast.Node(expr).children() {
+		match child {
+			ast.Expr {
+				if scope := recursive_str_expr_var_scope(child, name, decl_pos) {
+					return scope
+				}
+			}
+			ast.CallArg {
+				if scope := recursive_str_expr_var_scope(child.expr, name, decl_pos) {
+					return scope
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn record_recursive_str_alias_state(mut state RecursiveStrAliasState, pos int, source ast.Expr, invalidated bool) {
+	if pos <= state.pos {
+		return
+	}
+	state.pos = pos
+	state.source = source
+	state.invalidated = invalidated
+}
+
+fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, decl_pos int, typ ast.Type, call_scope &ast.Scope, cutoff int, mut state RecursiveStrAliasState) {
+	match node {
+		ast.Stmt {
+			if node is ast.FnDecl {
+				return
+			}
+			if node is ast.AssignStmt {
+				for right in node.right {
+					c.scan_recursive_str_alias_updates(ast.Node(right), name, decl_pos, typ,
+						call_scope, cutoff, mut state)
+				}
+				update_pos := node.pos.pos + node.pos.len
+				if update_pos >= cutoff {
+					return
+				}
+				for i, left in node.left {
+					scope := recursive_str_expr_var_scope(left, name, decl_pos) or { continue }
+					if !recursive_str_scope_dominates(scope, call_scope) {
+						continue
+					}
+					mut reduced_left := left.remove_par()
+					if reduced_left is ast.Ident
+						&& recursive_str_ident_is_var(reduced_left, name, decl_pos) {
+						if node.op in [.assign, .decl_assign] && i < node.right.len {
+							record_recursive_str_alias_state(mut state, update_pos, node.right[i],
+								false)
+						} else {
+							record_recursive_str_alias_state(mut state, update_pos, ast.empty_expr,
+								true)
+						}
+					} else if c.expr_mutation_visibility(left, name, typ) != .none {
+						record_recursive_str_alias_state(mut state, update_pos, ast.empty_expr,
+							true)
+					}
+				}
+				return
+			}
+		}
+		ast.Expr {
+			match node {
+				ast.AnonFn, ast.LambdaExpr {
+					return
+				}
+				ast.PostfixExpr {
+					if node.pos.pos < cutoff
+						&& c.expr_mutation_visibility(node.expr, name, typ) != .none {
+						if scope := recursive_str_expr_var_scope(node.expr, name, decl_pos) {
+							if recursive_str_scope_dominates(scope, call_scope) {
+								record_recursive_str_alias_state(mut state, node.pos.pos +
+									node.pos.len, ast.empty_expr, true)
+							}
+						}
+					}
+				}
+				ast.InfixExpr {
+					if node.op == .left_shift && node.pos.pos < cutoff
+						&& c.expr_mutation_visibility(node.left, name, typ) != .none {
+						if scope := recursive_str_expr_var_scope(node.left, name, decl_pos) {
+							if recursive_str_scope_dominates(scope, call_scope) {
+								record_recursive_str_alias_state(mut state, node.pos.pos +
+									node.pos.len, ast.empty_expr, true)
+							}
+						}
+					}
+				}
+				ast.CallExpr {
+					if node.pos.pos < cutoff && c.call_has_visible_root_mutation(node, name, typ) {
+						if scope := recursive_str_expr_var_scope(node, name, decl_pos) {
+							if recursive_str_scope_dominates(scope, call_scope) {
+								record_recursive_str_alias_state(mut state, node.pos.pos +
+									node.pos.len, ast.empty_expr, true)
+							}
+						}
+					}
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+	for child in node.children() {
+		c.scan_recursive_str_alias_updates(child, name, decl_pos, typ, call_scope, cutoff, mut
+			state)
+	}
+}
+
+fn (mut c Checker) recursive_str_alias_state_before(name string, call ast.CallExpr, cutoff int) ?RecursiveStrAliasState {
+	v := call.scope.find_var(name)?
+	if v.pos.pos >= cutoff {
+		return none
+	}
+	mut state := RecursiveStrAliasState{
+		source: v.expr
+		pos:    v.pos.pos
+	}
+	for stmt in c.table.cur_fn.stmts {
+		c.scan_recursive_str_alias_updates(ast.Node(stmt), name, v.pos.pos, v.typ, call.scope,
+			cutoff, mut state)
+	}
+	return state
+}
+
+fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiver_name string, receiver_typ ast.Type, call ast.CallExpr, cutoff int, mut seen map[string]bool) bool {
+	inner := c.unwrap_recursive_str_receiver(expr, receiver_typ)
+	if inner !is ast.Ident {
+		return false
+	}
+	ident := inner as ast.Ident
+	seen_key := '${ident.name}:${cutoff}'
+	if seen_key in seen {
+		return false
+	}
+	seen[seen_key] = true
+	state := c.recursive_str_alias_state_before(ident.name, call, cutoff) or { return false }
+	if state.invalidated {
+		return false
+	}
+	if state.source is ast.EmptyExpr || state.source is ast.NodeError {
+		return ident.name == receiver_name
+	}
+	v := call.scope.find_var(ident.name) or { return false }
+	mut source_cutoff := state.pos
+	if c.type_may_share_mutable_storage(v.typ) {
+		source_cutoff = cutoff
+	}
+	source_inner := c.unwrap_recursive_str_receiver(state.source, receiver_typ)
+	if source_inner is ast.Ident {
+		if source_inner.name == ident.name {
+			source_cutoff = state.pos
+		}
+	}
+	return c.recursive_str_expr_resolves_to_receiver(state.source, receiver_name, receiver_typ,
+		call, source_cutoff, mut seen)
+}
+
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
 	node.concrete_types = node.raw_concrete_types.clone()
@@ -3594,91 +3831,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& c.table.cur_fn.name == 'str' {
 		receiver_name := c.table.cur_fn.receiver.name
 		receiver_typ := c.table.cur_fn.receiver.typ
-		is_receiver_type := left_type.idx() == receiver_typ.idx()
-				|| (c.table.sym(left_type).kind == .interface
-				&& !c.table.sym(left_type).has_method_with_generic_parent('str'))
-		if is_receiver_type {
-			mut inner := ast.Expr(left_expr)
-			for {
-				if inner is ast.PrefixExpr && inner.op in [.mul, .amp] {
-					inner = inner.right.remove_par()
-				} else if inner is ast.CastExpr {
-					cast_sym := c.table.sym(inner.typ)
-					if inner.typ.idx() == receiver_typ.idx()
-						|| (cast_sym.kind == .interface
-						&& !cast_sym.has_method_with_generic_parent('str')) {
-						inner = inner.expr.remove_par()
-					} else {
-						break
-					}
-				} else if inner is ast.AsCast {
-					as_sym := c.table.sym(inner.typ)
-					if inner.typ.idx() == receiver_typ.idx()
-						|| (as_sym.kind == .interface
-						&& !as_sym.has_method_with_generic_parent('str')) {
-						inner = inner.expr.remove_par()
-					} else {
-						break
-					}
-				} else if inner is ast.UnsafeExpr {
-					inner = inner.expr.remove_par()
-				} else if inner is ast.DumpExpr {
-					inner = inner.expr.remove_par()
-				} else {
-					break
-				}
-			}
-			mut resolved_name := ''
-			if inner is ast.Ident {
-				resolved_name = inner.name
-				mut seen := map[string]bool{}
-				for resolved_name != receiver_name {
-					if resolved_name in seen {
-						break
-					}
-					seen[resolved_name] = true
-					v := node.scope.find_var(resolved_name) or { break }
-					mut init_expr := v.expr.remove_par()
-					for {
-						if init_expr is ast.PrefixExpr && init_expr.op in [.mul, .amp] {
-							init_expr = init_expr.right.remove_par()
-						} else if init_expr is ast.CastExpr {
-							cast_sym := c.table.sym(init_expr.typ)
-							if init_expr.typ.idx() == receiver_typ.idx()
-								|| (cast_sym.kind == .interface
-								&& !cast_sym.has_method_with_generic_parent('str')) {
-								init_expr = init_expr.expr.remove_par()
-							} else {
-								break
-							}
-						} else if init_expr is ast.AsCast {
-							as_sym := c.table.sym(init_expr.typ)
-							if init_expr.typ.idx() == receiver_typ.idx()
-								|| (as_sym.kind == .interface
-								&& !as_sym.has_method_with_generic_parent('str')) {
-								init_expr = init_expr.expr.remove_par()
-							} else {
-								break
-							}
-						} else if init_expr is ast.UnsafeExpr {
-							init_expr = init_expr.expr.remove_par()
-						} else if init_expr is ast.DumpExpr {
-							init_expr = init_expr.expr.remove_par()
-						} else {
-							break
-						}
-					}
-					if init_expr is ast.Ident {
-						resolved_name = init_expr.name
-					} else if v.is_mut && v.is_changed
-						&& v.typ.idx() == receiver_typ.idx() {
-						resolved_name = receiver_name
-					} else {
-						break
-					}
-				}
-			}
-			if resolved_name == receiver_name {
+		if c.recursive_str_receiver_type_matches(left_type, receiver_typ) {
+			mut seen := map[string]bool{}
+			if c.recursive_str_expr_resolves_to_receiver(left_expr, receiver_name, receiver_typ,
+				node, node.pos.pos, mut seen)
+			{
 				c.error('cannot call `str()` method recursively', node.pos)
 			}
 		}
