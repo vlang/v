@@ -1145,6 +1145,71 @@ fn main() {
 	assert out == '22\n23'
 }
 
+fn test_void_installer_mut_fixed_array_capture_uses_durable_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Holder {
+mut:
+	callback fn () int
+}
+
+fn install(mut holder Holder) {
+	mut values := [1, 20]!
+	holder.callback = fn [mut values] () int {
+		values[0]++
+		return values[0] + values[1]
+	}
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	mut holder := Holder{
+		callback: fn () int {
+			return 0
+		}
+	}
+	install(mut holder)
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(holder.callback()))
+	println(int_str(holder.callback()))
+}
+'
+	out := run_good(v3_bin, 'void_installer_mut_fixed_array_capture', source)
+	assert out == '22\n23'
+}
+
+fn test_local_mut_fixed_array_capture_is_not_heap_promoted() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn exercise() int {
+	for i in 0 .. 50_000 {
+		mut values := [i, 0]!
+		callback := fn [mut values] () int {
+			values[0]++
+			return values[0]
+		}
+		assert callback() == i + 1
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(exercise()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_mut_fixed_array_capture_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	assert !c_source.contains('memdup(&__esc'), c_source
+	out := run_good(v3_bin, 'local_mut_fixed_array_capture', source)
+	assert out == '42'
+}
+
 fn test_mut_fixed_array_capture_shares_durable_outer_storage() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {

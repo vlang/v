@@ -256,9 +256,9 @@ mut:
 	// local_closure_cleanup_decls maps source declaration node ids to runtime
 	// closure locals that do not escape their lexical scope.
 	local_closure_cleanup_decls map[int]string
-	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays.
-	// Their storage is moved to the heap so the outer binding and escaped closure
-	// context keep sharing the same durable array.
+	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays by
+	// closures that are not proven local. Their storage is moved to the heap so the outer
+	// binding and escaped closure context keep sharing the same durable array.
 	mut_fixed_array_capture_sources    map[string]bool
 	active_specialization_args         []string
 	active_specialization_main_types   map[string]bool
@@ -4798,7 +4798,6 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	}
 	mut local_stack_added := []string{}
 	for id in body_ids {
-		t.collect_mut_capture_sources(id)
 		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
 			method_value_receivers, mut interface_boxes, mut returned, mut local_stack_names, mut
 			local_stack_added, true)
@@ -4851,6 +4850,9 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 
 fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	if int(id) in t.local_closure_cleanup_decls {
 		return
 	}
 	node := t.a.nodes[int(id)]
@@ -5762,6 +5764,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		t.pointer_value_rvalues[name] = true
 	}
 	t.mark_local_closure_cleanup_decls(body_ids)
+	for id in body_ids {
+		t.collect_mut_capture_sources(id)
+	}
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	start := t.a.children.len
