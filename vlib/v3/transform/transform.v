@@ -708,13 +708,13 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 		t.scoped_base_nodes = t.a.nodes.len
 	}
 	t.prepare()
-	eprintln('  [ttime] new+prepare        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime] new+prepare        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	impl_sw.restart()
 	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
 		reserve_parallel_transform_ast(mut a, skip_generics)
 	}
-	eprintln('  [ttime] reflect+reserve    ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime] reflect+reserve    ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	impl_sw.restart()
 	base_node_count := t.a.nodes.len
 	if scope_parallel_workers {
@@ -735,16 +735,16 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 		t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
 	}
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
-	eprintln('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${late_names.len})')
+	t.timing_profile('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${late_names.len})')
 	impl_sw.restart()
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
-	eprintln('  [ttime] late bodies        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime] late bodies        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	impl_sw.restart()
 	t.run_auto_str_synthesis_rounds(base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
 	t.retain_current_worker_scope_all()
-	eprintln('  [ttime] sum_eq+tail        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime] sum_eq+tail        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	mut owned_base_nodes := t.scoped_owned_base_nodes.keys()
 	owned_base_nodes << t.scoped_owned_base_log
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
@@ -977,6 +977,10 @@ fn newly_used_fn_names(before map[string]bool, after map[string]bool) []string {
 }
 
 fn (t &Transformer) monomorph_profile(message string) {
+	t.timing_profile(message)
+}
+
+fn (t &Transformer) timing_profile(message string) {
 	if !isnil(t.tc) && t.tc.verbose {
 		eprintln(message)
 	}
@@ -1249,14 +1253,14 @@ fn (mut t Transformer) prepare() {
 	}
 	mut psw := time.new_stopwatch()
 	t.collect_types()
-	eprintln('  [ttime]   prep collect_types ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime]   prep collect_types ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	psw.restart()
 	t.rebuild_embedded_fields_index()
 	t.prepare_runtime_type_indexes()
 	t.rebuild_struct_short_name_index()
 	t.collect_multi_return_fn_ret_types()
 	t.collect_const_suffixes()
-	eprintln('  [ttime]   prep small idx     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime]   prep small idx     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	psw.restart()
 	t.collect_alias_methods()
 	t.rebuild_receiver_method_suffix_index()
@@ -1264,7 +1268,7 @@ fn (mut t Transformer) prepare() {
 	t.build_generic_alias_name_index()
 	t.build_local_decl_index()
 	t.build_struct_field_decl_metas_cache()
-	eprintln('  [ttime]   prep suffix+decl   ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime]   prep suffix+decl   ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	psw.restart()
 	// Enable the alias cache only now that the type maps are fully populated.
 	// During collection those maps are incomplete, so caching there would poison
@@ -2593,25 +2597,25 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	// declarations and mutates the shared TypeChecker). Collect the remaining,
 	// closure-free functions as parallelizable work items.
 	literal_decls := t.collect_literal_fn_decls(t.a.nodes.len)
-	eprintln('  [ttime] literal_decls      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime] literal_decls      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ttsw.restart()
 	pure_items := t.transform_serial_then_collect_pure(literal_decls)
-	eprintln('  [ttime] serial+collect     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${pure_items.len})')
+	t.timing_profile('  [ttime] serial+collect     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${pure_items.len})')
 	ttsw.restart()
 	base_nodes := t.a.nodes.len
 	base_children := t.a.children.len
 	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
-	eprintln('  [ttime] parallel run       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime] parallel run       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ttsw.restart()
 	// Aggregate-interpolating functions were held back from the parallel regions
 	// (their inline autostr expansion overflows cost-proportional worker slots);
 	// lower them now against the freely growable master arena.
 	t.transform_deferred_str_items()
-	eprintln('  [ttime] deferred str       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_str_count})')
+	t.timing_profile('  [ttime] deferred str       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_str_count})')
 	ttsw.restart()
 	if !has_entry_main {
 		t.transform_top_level_user_stmts()
-		eprintln('  [ttime] top_level_stmts    ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		t.timing_profile('  [ttime] top_level_stmts    ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	return was_parallel
 }
@@ -2752,7 +2756,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		}
 	}
-	eprintln('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms')
+	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms')
 	return pure
 }
 

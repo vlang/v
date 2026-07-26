@@ -117,7 +117,7 @@ $if !windows {
 		w.precompute_concrete_optional_abi_fns()
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
-		eprintln('  [ttime]     cg fs scan     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.timing_profile('  [ttime]     cg fs scan     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return unsafe { nil }
 	}
 
@@ -234,7 +234,7 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 		}
 		rfsw := time.new_stopwatch()
 		g.a.worker_pool.run(tasks)
-		eprintln('  [ttime]     cg refine pool ${f64(rfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]     cg refine pool ${f64(rfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		for arg in args {
 			for name, used in arg.refs {
 				if used {
@@ -249,7 +249,7 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 				n_cands += arg.cands.len
 			}
 			g.replay_prep_candidates(args)
-			eprintln('  [ttime]     cg replay      ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (cands: ${n_cands})')
+			g.timing_profile('  [ttime]     cg replay      ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (cands: ${n_cands})')
 			g.prep_costs_pending = false
 		}
 		g.prep_externs_pending = false
@@ -296,7 +296,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		selection_scope := cgen_worker_scope_begin(true)
 		master_tc := g.tc
 		g.tc = g.clone_parallel_type_checker()
-		eprintln('  [ttime]       pm clone tc  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]       pm clone tc  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		pmsw.restart()
 		// Fuse body-local function-pointer discovery into the item cost walk so
 		// parallel type declarations see every typedef before their task starts.
@@ -307,12 +307,12 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 				g.intern_string(node.value)
 			}
 		}
-		eprintln('  [ttime]       pm str walk  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]       pm str walk  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		pmsw.restart()
 		g.want_parallel_prep = true
 		items := g.ensure_fn_gen_items()
 		g.want_parallel_prep = false
-		eprintln('  [ttime]       pm items     ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${items.len})')
+		g.timing_profile('  [ttime]       pm items     ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${items.len})')
 		pmsw.restart()
 		if _ := g.ierror_interface_name() {
 			g.intern_string('')
@@ -348,7 +348,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		g.generic_app_cache = clone_generic_app_cache(g.generic_app_cache)
 		cgen_worker_scope_free(selection_scope)
 		n_items = g.fn_gen_items.len
-		eprintln('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	} else {
 		g.want_parallel_prep = true
 		n_items = g.ensure_fn_gen_items().len
@@ -820,10 +820,10 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					}
 				}
 				g.parallel_used = g.a.worker_pool.run(tasks)
-				eprintln('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
+				g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
 				dsw.restart()
 				_ = type_decls_thread.wait()
-				eprintln('  [ttime]   cg decls wait    ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				g.timing_profile('  [ttime]   cg decls wait    ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
 			// The declaration thread disables the master's caches while body
 			// workers use their private copies. Restore them for synthetic output.
@@ -843,7 +843,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				}
 			}
 			g.replay_ordered_parallel_wrapper_defs(ordered_wrapper_defs)
-			eprintln('  [ttime]   cg merge         ${f64(msw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			g.timing_profile('  [ttime]   cg merge         ${f64(msw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			for output in ordered_chunk_outputs {
 				if output.len > 0 {
 					g.fn_segs << output
@@ -2099,13 +2099,13 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			mut psw := time.new_stopwatch()
 			fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
 			g.prepare_pre_dispatch_master()
-			eprintln('  [ttime]     cg prep master ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			g.timing_profile('  [ttime]     cg prep master ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			psw.restart()
 			g.refine_fn_item_costs(no_parallel, true)
-			eprintln('  [ttime]     cg cost refine ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			g.timing_profile('  [ttime]     cg cost refine ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			psw.restart()
 			_ = fixed_storage_thread.wait()
-			eprintln('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			g.timing_profile('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		g.publish_fixed_storage_scan(mut fs_worker)
 		if g.parallel_prepared && !g.prep_externs_pending {

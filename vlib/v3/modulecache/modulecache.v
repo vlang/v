@@ -318,26 +318,43 @@ fn source_uses_pseudo(source string, names []string) bool {
 			continue
 		}
 		if source[pos] in [`'`, `"`, `\``] {
-			// Quoted text can itself carry compile-time paths
-			// ($embed_file('@VMODROOT/data'), #include "@VMODROOT/header.h"),
-			// so literals are scanned rather than skipped: missing a real
-			// pseudo would reuse an artifact resolved against the wrong root,
-			// while a stray mention in an inert string only widens
-			// invalidation.
-			end := skip_signature_quoted_text(source, pos, false)
-			if quoted_text_mentions_pseudo(source, pos + 1, end, names) {
-				return true
-			}
-			pos = end
+			pos = skip_signature_quoted_text(source, pos, false)
 			continue
 		}
 		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
-			end := skip_signature_quoted_text(source, pos + 1, true)
-			if quoted_text_mentions_pseudo(source, pos + 2, end, names) {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if source[pos] == `#` {
+			found, next_pos := signature_directive_mentions_pseudo(source, pos, names)
+			if found {
 				return true
 			}
-			pos = end
+			pos = next_pos
 			continue
+		}
+		if source[pos] == `$` {
+			mut matched_path_call := false
+			for fn_name in ['embed_file', 'tmpl', 'res'] {
+				name_start := pos + 1
+				name_end := name_start + fn_name.len
+				if name_end > source.len || source[name_start..name_end] != fn_name
+					|| (name_end < source.len && signature_name_char(source[name_end])) {
+					continue
+				}
+				value, next_pos, ok := signature_string_call_arg(source, name_end)
+				if ok {
+					if quoted_text_mentions_pseudo(value, 0, value.len, names) {
+						return true
+					}
+					pos = next_pos
+					matched_path_call = true
+				}
+				break
+			}
+			if matched_path_call {
+				continue
+			}
 		}
 		if source[pos] != `@` {
 			pos++
@@ -353,6 +370,69 @@ fn source_uses_pseudo(source string, names []string) bool {
 		pos++
 	}
 	return false
+}
+
+fn signature_directive_mentions_pseudo(source string, start int, names []string) (bool, int) {
+	mut pos := start
+	for pos < source.len && source[pos] in [`#`, ` `, `\t`] {
+		pos++
+	}
+	name_start := pos
+	for pos < source.len && signature_name_char(source[pos]) {
+		pos++
+	}
+	directive := source[name_start..pos]
+	scan_quoted := directive in ['include', 'insert', 'flag']
+	for pos < source.len && source[pos] != `\n` {
+		if pos + 1 < source.len && source[pos] == `/` && source[pos + 1] == `/` {
+			for pos < source.len && source[pos] != `\n` {
+				pos++
+			}
+			return false, pos
+		}
+		if pos + 1 < source.len && source[pos] == `/` && source[pos + 1] == `*` {
+			pos += 2
+			mut crossed_line := false
+			for pos + 1 < source.len && !(source[pos] == `*` && source[pos + 1] == `/`) {
+				if source[pos] == `\n` {
+					crossed_line = true
+				}
+				pos++
+			}
+			pos = if pos + 1 < source.len { pos + 2 } else { source.len }
+			if crossed_line {
+				return false, pos
+			}
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			end := skip_signature_quoted_text(source, pos, false)
+			if scan_quoted && quoted_text_mentions_pseudo(source, pos + 1, end, names) {
+				return true, end
+			}
+			pos = end
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			end := skip_signature_quoted_text(source, pos + 1, true)
+			if scan_quoted && quoted_text_mentions_pseudo(source, pos + 2, end, names) {
+				return true, end
+			}
+			pos = end
+			continue
+		}
+		if source[pos] == `@` {
+			for name in names {
+				end := pos + name.len
+				if end <= source.len && source[pos..end] == name
+					&& (end == source.len || !signature_name_char(source[end])) {
+					return true, pos
+				}
+			}
+		}
+		pos++
+	}
+	return false, pos
 }
 
 fn quoted_text_mentions_pseudo(source string, from int, to int, names []string) bool {

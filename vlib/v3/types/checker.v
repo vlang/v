@@ -592,6 +592,12 @@ mut:
 	symbols                  &SymbolInterner          = unsafe { nil }
 }
 
+fn (tc &TypeChecker) timing_profile(message string) {
+	if tc.verbose {
+		eprintln(message)
+	}
+}
+
 // enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
 // checker helpers. Ownership checking keeps its existing long-lived workers.
 pub fn (mut tc TypeChecker) enable_scoped_parallel_workers() {
@@ -1586,7 +1592,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	if file_index_usable(a) {
 		tc.collect_top_level_idx_fast(a, inactive_comptime_nodes)
 		tc.top_level_idx_nodes_len = a.nodes.len
-		eprintln('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (fast)')
+		tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (fast)')
 		tc.collect_after_index(a)
 		return
 	}
@@ -1639,7 +1645,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		}
 	}
 	tc.top_level_idx_nodes_len = a.nodes.len
-	eprintln('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	tc.collect_after_index(a)
 }
 
@@ -1782,7 +1788,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.type_cache.c_name_entries.clear()
 	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
-	eprintln('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
 	// The native backend does not yet preserve large aggregate arguments reliably
@@ -2064,12 +2070,12 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			else {}
 		}
 	}
-	eprintln('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.timing_profile('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
 	tc.build_const_suffixes()
-	eprintln('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !isnil(tc.visible_mutation_cache) {
 		mut visible_mutation_cache := tc.visible_mutation_cache
 		visible_mutation_cache.decl_index_ready = true

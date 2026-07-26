@@ -63,7 +63,7 @@ $if !windows {
 			for it in *items {
 				cost += i64(it.cost) + 1
 			}
-			eprintln('  [ttime]     chunk items=${items.len:4} cost=${cost:8} master=${a.is_master} ${f64(csw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			w.timing_profile('  [ttime]     chunk items=${items.len:4} cost=${cost:8} master=${a.is_master} ${f64(csw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		return unsafe { nil }
 	}
@@ -1679,7 +1679,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// reading declarations inside workers can otherwise observe a torn node.
 		mut prep_sw := time.new_stopwatch()
 		t.prepare_parallel_call_param_types()
-		eprintln('  [ttime]   prep param types ${f64(prep_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		t.timing_profile('  [ttime]   prep param types ${f64(prep_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		// Clone-free shared-base path: needs the checker's top-level index for
 		// exact per-item subtree ranges, and skip_generics (the generic passes
 		// scan and mutate arbitrary AST regions, which the shared design forbids).
@@ -1887,10 +1887,10 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			}
 		}
 		transform_worker_scope_leave(setup_scope)
-		eprintln('  [ttime]   shared setup     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, jobs: ${n_jobs})')
+		t.timing_profile('  [ttime]   shared setup     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, jobs: ${n_jobs})')
 		ttsw.restart()
 		any_started := t.a.worker_pool.run(tasks)
-		eprintln('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		t.timing_profile('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		ttsw.restart()
 		unsafe {
 			t.a.nodes.cap = orig_nodes_cap
@@ -1953,7 +1953,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				}
 			}
 		}
-		eprintln('  [ttime]   shared merge     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (used: ${merge_used_ms:.2f}, core: ${merge_core_ms:.2f})')
+		t.timing_profile('  [ttime]   shared merge     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (used: ${merge_used_ms:.2f}, core: ${merge_core_ms:.2f})')
 		ttsw.restart()
 		if t.retain_worker_results {
 			t.clone_sum_eq_types_owned()
@@ -1976,7 +1976,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		}
 		t.tc.unfreeze_type_cache_after_forks()
 		transform_worker_scope_free(setup_scope)
-		eprintln('  [ttime]   shared tail      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		t.timing_profile('  [ttime]   shared tail      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return any_started
 	}
 }

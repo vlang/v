@@ -4147,8 +4147,10 @@ fn main() {
 		set_diagnostic_files(mut pre_tc, user_files)
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
-		eprintln('  [ttime]   ck collect       ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		cvsw.restart()
+		if verbose {
+			eprintln('  [ttime]   ck collect       ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			cvsw.restart()
+		}
 		pre_tc.diagnose_unknown_calls = true
 		pre_tc.prepare_threads_condition()
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
@@ -4157,7 +4159,9 @@ fn main() {
 		} else {
 			pre_tc.prepare_interface_requirement_indexes()
 		}
-		eprintln('  [ttime]   ck iface idx     ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		if verbose {
+			eprintln('  [ttime]   ck iface idx     ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 		mut check_was_parallel := false
 		if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
@@ -4170,10 +4174,14 @@ fn main() {
 		}
 		incremental_uses_generics = incremental_cache_hit
 			&& incremental_changed_functions_use_generics(a, pre_tc, incremental_changed_names)
-		cvsw.restart()
+		if verbose {
+			cvsw.restart()
+		}
 		pre_tc.prune_inactive_top_level_comptime(mut a)
 		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
-		eprintln('  [ttime]   ck prune+harness ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		if verbose {
+			eprintln('  [ttime]   ck prune+harness ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 		if test_harness_errors.len > 0 {
 			for msg in test_harness_errors {
 				eprintln(msg)
@@ -4339,14 +4347,18 @@ fn main() {
 			retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
 			pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
 				transform_scope)
-			eprintln('  [ttime] promote interners  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-			post_sw.restart()
+			if verbose {
+				eprintln('  [ttime] promote interners  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				post_sw.restart()
+			}
 			if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap
 				&& !scoped_value_owned(transform_scope, a.nodes.data)
 				&& !scoped_value_owned(transform_scope, a.children.data) {
 				a.promote_transform_texts_from(base_text_count, transform_scope)
-				eprintln('  [ttime] promote texts      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-				post_sw.restart()
+				if verbose {
+					eprintln('  [ttime] promote texts      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+					post_sw.restart()
+				}
 				// Lowering can rewrite arbitrary pre-existing nodes, including type text
 				// on otherwise non-generic expressions. Publish every scope-owned
 				// text before releasing the outer arena. Without retained regions
@@ -4361,8 +4373,10 @@ fn main() {
 						transform_texts_canonical = true
 					}
 				}
-				eprintln('  [ttime] canon nodes        ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${a.nodes.len}, fused: ${fused_text_promote})')
-				post_sw.restart()
+				if verbose {
+					eprintln('  [ttime] canon nodes        ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${a.nodes.len}, fused: ${fused_text_promote})')
+					post_sw.restart()
+				}
 				if !fused_text_promote {
 					mut scoped_text_flags := []u8{len: a.nodes.len}
 					if transform.scan_scoped_text_flags_parallel(a, transform_scope, mut
@@ -4415,20 +4429,28 @@ fn main() {
 				a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
 				a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
 			}
-			eprintln('  [ttime] promote ast nodes  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-			post_sw.restart()
+			if verbose {
+				eprintln('  [ttime] promote ast nodes  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				post_sw.restart()
+			}
 			promote_scoped_checker_node_caches(mut pre_tc, a, transform_scope, base_transform_nodes)
-			eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-			post_sw.restart()
+			if verbose {
+				eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				post_sw.restart()
+			}
 			promote_scoped_signatures(mut pre_tc, original_signature_names)
-			eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-			post_sw.restart()
+			if verbose {
+				eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				post_sw.restart()
+			}
 			transform_used_fns = clone_string_bool_map(transform_used_fns)
 			transform_errors = clone_string_list(transform_errors)
 			pre_tc.set_fresh_type_cache(parse_cache_enabled)
 			prealloc_scope_free_for_v3(transform_scope)
-			eprintln('  [ttime] promote checker    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-			post_sw.restart()
+			if verbose {
+				eprintln('  [ttime] promote checker    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				post_sw.restart()
+			}
 			if retained_transform_regions.len > 0 {
 				if p.parsed_v_header_files > 0 {
 					// Header-only warm builds are small enough that transform may not
@@ -4461,7 +4483,9 @@ fn main() {
 			// Type-resolution views can grow their by-file map while the transform arena
 			// is active. Recreate it in the compilation arena before later phases use it.
 			pre_tc.reset_resolution_type_view_cache()
-			eprintln('  [ttime] regions+views      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			if verbose {
+				eprintln('  [ttime] regions+views      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			}
 		} else {
 			transform_used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
@@ -4561,7 +4585,9 @@ fn main() {
 	} else if building_v {
 		mut mono_sw := time.new_stopwatch()
 		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
-		eprintln('  [ttime] erase templates    ${f64(mono_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		if verbose {
+			eprintln('  [ttime] erase templates    ${f64(mono_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 	} else if uses_generics && (!incremental_cache_hit || incremental_uses_generics
 		|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns)) {
 		mut monomorph_used_fns := map[string]bool{}
@@ -4719,8 +4745,10 @@ fn main() {
 	if (scope_prealloc_stages && annotation_can_rewrite_texts) || !transform_texts_canonical {
 		a.intern_node_texts_from(0)
 	}
-	eprintln('  [ttime] mono intern texts  ${f64(mono_tail_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	mono_tail_sw.restart()
+	if verbose {
+		eprintln('  [ttime] mono intern texts  ${f64(mono_tail_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		mono_tail_sw.restart()
+	}
 	// The resolution-type view cache memoizes forked type-parse views keyed by file
 	// path. Views (and their keys) built during the scoped check/annotate phases
 	// live in stage arenas whose deferred frees run mid-codegen, so a stale entry
@@ -7345,9 +7373,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		node_idx = a.nodes.len
 		ri_wave_ns += time.sys_mono_now() - ri_t1
 		if wave_files.len == 0 {
-			ri_coll_ms := f64(ri_collision_ns) / 1e6
-			ri_wave_ms := f64(ri_wave_ns) / 1e6
-			eprintln('  [ttime]   ri collision   ${ri_coll_ms:7.2f} ms, wave scan ${ri_wave_ms:.2f} ms (waves: ${ri_waves})')
+			if prefs.verbose {
+				ri_coll_ms := f64(ri_collision_ns) / 1e6
+				ri_wave_ms := f64(ri_wave_ns) / 1e6
+				eprintln('  [ttime]   ri collision   ${ri_coll_ms:7.2f} ms, wave scan ${ri_wave_ms:.2f} ms (waves: ${ri_waves})')
+			}
 			break
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut

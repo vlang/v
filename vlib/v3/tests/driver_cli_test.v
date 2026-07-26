@@ -253,6 +253,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output
+	assert !c_compile.output.contains('[ttime]'), c_compile.output
 	$if macos {
 		rss_index := c_compile.output.index('MB RSS') or { -1 }
 		footprint_index := c_compile.output.index('MB physical footprint') or { -1 }
@@ -262,6 +263,10 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
+	verbose_output := os.join_path(root, 'hello_verbose.c')
+	verbose_compile := cmdexec.run(v3_bin, ['-nocache', '-v', '-o', verbose_output, source])
+	assert verbose_compile.exit_code == 0, verbose_compile.output
+	assert verbose_compile.output.contains('[ttime]'), verbose_compile.output
 	compat_output := os.join_path(root, 'hello_compat')
 	compat_compile := cmdexec.run(v3_bin, ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
 		'-g', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])

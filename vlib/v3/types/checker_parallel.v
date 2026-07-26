@@ -194,10 +194,10 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.selected_file_worklist = []string{}
 		mut cksw := time.new_stopwatch()
 		tc.check_export_attrs()
-		eprintln('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cksw.restart()
 		items := tc.collect_parallel_check_items()
-		eprintln('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
+		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
@@ -312,7 +312,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			w := tc.fork_for_parallel_check()
 			checker_workers << voidptr(w)
 		}
-		eprintln('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
+		tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
 		mut args := []CheckChunkArgs{cap: chunk_count}
 		for ci in 0 .. chunk_count {
 			mut worker := voidptr(tc)
@@ -346,7 +346,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		check_worker_scope_leave(setup_scope)
 		rpsw2 := time.new_stopwatch()
 		any_started := ast.worker_pool.run(tasks)
-		eprintln('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
+		tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
 		if !tc.scope_parallel_check_workers {
 			tc.merge_own_sparse_caches()
 		}
@@ -402,8 +402,8 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		}
 		mg_clone_ms := f64(mg_clone_ns) / 1e6
 		mg_merge_ms := f64(mg_merge_ns) / 1e6
-		eprintln('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
-		eprintln('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
+		tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+		tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
 		check_worker_scope_free(setup_scope)
 		tc.sort_parallel_check_errors()
 		return any_started

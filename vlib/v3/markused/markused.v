@@ -451,8 +451,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// threads when available): the BFS below then only does the cheap
 	// name-resolution work. Collecting inline used to serialize ~80% of
 	// markused's time inside the BFS loop.
-	eprintln('  [ttime] mu decl scan       ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	mu_sw.restart()
+	if tc.verbose {
+		eprintln('  [ttime] mu decl scan       ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		mu_sw.restart()
+	}
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
 	if body_ids.len >= min_eager_markused_bodies {
@@ -462,8 +464,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		body_results = precollect_body_calls(collector, body_ids, body_modules,
 			body_import_contexts)
 	}
-	eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
-	mu_sw.restart()
+	if tc.verbose {
+		eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
+		mu_sw.restart()
+	}
 	has_entry_main := markused_has_entry_main_indexed(a, tc)
 	if rt_scan_parallel {
 		rt_scan_thread.wait()
@@ -508,8 +512,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// skipping a repeat performs no fewer markings.
 	mut safe_alias_done := map[string]bool{}
 	mut iface_tail_done := map[string]bool{}
-	eprintln('  [ttime] mu seeds           ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	mu_sw.restart()
+	if tc.verbose {
+		eprintln('  [ttime] mu seeds           ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		mu_sw.restart()
+	}
 	mut qi := 0
 	for qi < queue.len {
 		name := queue[qi]
@@ -713,7 +719,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln(suffix_hits.str())
 		eprintln('markused: total used: ${used.len}')
 	}
-	eprintln('  [ttime] mu bfs+tail        ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	if tc.verbose {
+		eprintln('  [ttime] mu bfs+tail        ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	}
 	return used, uses_generics
 }
 

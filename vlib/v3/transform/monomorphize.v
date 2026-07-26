@@ -573,10 +573,10 @@ fn (mut t Transformer) seed_generic_specialization_args(decls map[string]Generic
 pub fn erase_generic_templates(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
 	mut sw := time.new_stopwatch()
 	mut t := new_transformer(mut a, tc, used_fns)
-	eprintln('  [ttime]   erase new_transformer ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.timing_profile('  [ttime]   erase new_transformer ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	sw.restart()
 	decls := t.collect_generic_fn_decls_for_erasure()
-	eprintln('  [ttime]   erase collect         ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (decls: ${decls.len})')
+	t.timing_profile('  [ttime]   erase collect         ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (decls: ${decls.len})')
 	sw.restart()
 	if decls.len != 0 {
 		keep := t.building_v_type_erased_generic_keep_set(decls)
@@ -588,7 +588,7 @@ pub fn erase_generic_templates(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 			erased[key] = decl
 		}
 		t.erase_generic_fn_decls(erased)
-		eprintln('  [ttime]   erase apply           ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (erased: ${decls.len - keep.len})')
+		t.timing_profile('  [ttime]   erase apply           ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (erased: ${decls.len - keep.len})')
 	}
 	return t.used_fns
 }
@@ -605,7 +605,7 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 	mut scan_sw := time.new_stopwatch()
 	mut flags := []u8{len: t.a.nodes.len}
 	if scan_top_level_kind_flags_parallel(t.a, 0, mut flags) {
-		eprintln('  [ttime]     collect scan        ${f64(scan_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		t.timing_profile('  [ttime]     collect scan        ${f64(scan_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		scan_sw.restart()
 		// Word-scan the flag array: flagged nodes are rare, so loading eight
 		// flags per u64 makes the master walk almost free.
@@ -629,7 +629,7 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 					cur_file, cur_module)
 			}
 		}
-		eprintln('  [ttime]     collect flag walk   ${f64(scan_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		t.timing_profile('  [ttime]     collect flag walk   ${f64(scan_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return decls
 	}
 	for i in 0 .. t.a.nodes.len {

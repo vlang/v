@@ -380,6 +380,12 @@ pub fn (g &FlatGen) was_parallel() bool {
 	return g.parallel_used
 }
 
+fn (g &FlatGen) timing_profile(message string) {
+	if !isnil(g.tc) && g.tc.verbose {
+		eprintln(message)
+	}
+}
+
 pub fn (g &FlatGen) c_flags() []string {
 	return g.c_flags.clone()
 }
@@ -1746,7 +1752,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info()
 	g.preintern_json_encode_strings()
-	eprintln('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	if g.incremental_fn_names.len > 0 {
 		// Cached declarations already contain whole-program typedefs, wrappers,
@@ -1762,7 +1768,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// interface implementers first so that late-lowered dispatch targets are not
 		// pruned before their concrete method bodies are emitted.
 		g.collect_interface_impls()
-		eprintln('  [ttime]   cg iface impls   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]   cg iface impls   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		// Struct field defaults are emitted from their declarations when an otherwise
 		// unrelated function initializes the struct. Parallel function pre-scanning only
@@ -1779,10 +1785,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// its embedded-fields map must be populated even when the worker-fork prep
 		// runs its own copy; do it before any helper thread can observe `g`.
 		g.precompute_embedded_fields()
-		eprintln('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		parallel_prep_done := g.run_pre_dispatch_parallel(no_parallel)
-		eprintln('  [ttime]   cg predispatch   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]   cg predispatch   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if !parallel_prep_done {
 			g.collect_fixed_storage_consts()
@@ -1797,12 +1803,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		if !g.skip_generics {
 			g.precompute_generic_method_candidate_index()
 		}
-		eprintln('  [ttime]     wr shared+sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]     wr shared+sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		// Decide fixed-array return wrappers before generating function bodies, so
 		// signatures, returns and call sites all agree on the wrapped types.
 		g.populate_fixed_array_ret_wrappers()
-		eprintln('  [ttime]     wr fixed ret   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]     wr fixed ret   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		// Seed declaration-owned function-pointer types before parallel type
 		// generation starts. The pre-dispatch item walk adds body-local types
@@ -1812,14 +1818,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.preseed_struct_fn_ptr_types()
 		g.preseed_sum_fn_ptr_types()
 		g.preseed_global_fn_ptr_types()
-		eprintln('  [ttime]     wr struct/sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]     wr struct/sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		g.preseed_fn_signature_fn_ptr_types()
-		eprintln('  [ttime]     wr fn sigs     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]     wr fn sigs     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		g.preseed_c_extern_fn_ptr_types()
 		g.preseed_sig_type_seen = unsafe { nil }
-		eprintln('  [ttime]   cg wrappers      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sig+extern)')
+		g.timing_profile('  [ttime]   cg wrappers      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sig+extern)')
 		cgsw.restart()
 	}
 	g.precompute_ownership_recursive_drop_helpers()
@@ -1830,14 +1836,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	} else {
 		g.precompute_consts()
 	}
-	eprintln('  [ttime] cg precompute      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	g.timing_profile('  [ttime] cg precompute      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	orig_sb := g.sb
 	orig_line_start := g.line_start
 	g.sb = strings.new_builder(4096)
 	g.line_start = true
 	g.gen_fns_dispatch(no_parallel)
-	eprintln('  [ttime] cg fns dispatch    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	g.timing_profile('  [ttime] cg fns dispatch    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	if defer_parallel_support {
 		if g.parallel_support_ready {
@@ -1857,7 +1863,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { g.sb.free() }
 	g.sb = orig_sb
 	g.line_start = orig_line_start
-	eprintln('  [ttime] cg fn_code copy    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (len: ${fn_code.len})')
+	g.timing_profile('  [ttime] cg fn_code copy    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (len: ${fn_code.len})')
 	cgsw.restart()
 	if g.program_body_only {
 		unsafe { const_code.free() }
@@ -1978,7 +1984,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.cache_split {
 		g.interface_method_stubs()
 	}
-	eprintln('  [ttime] cg postamble       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sb: ${g.sb.len})')
+	g.timing_profile('  [ttime] cg postamble       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sb: ${g.sb.len})')
 	cgsw.restart()
 	if !g.cache_split && g.output_path.len > 0 && (g.fn_segs.len > 0 || fn_code.len > 0) {
 		mut prefix := unsafe { g.sb.reuse_as_plain_u8_array() }
@@ -1988,7 +1994,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		if g.output_error.len == 0 {
 			g.append_function_output(g.output_path, fn_code)
 		}
-		eprintln('  [ttime] cg write out       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime] cg write out       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return ''
 	}
 	if g.fn_segs.len > 0 {
@@ -2619,7 +2625,7 @@ fn (mut g FlatGen) collect_gen_info() {
 	ci_reg_ms := f64(ci_reg_ns) / 1e6
 	ci_ret_ms := f64(ci_ret_ns) / 1e6
 	ci_ptypes_ms := f64(ci_ptypes_ns) / 1e6
-	eprintln('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
+	g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
 }
 
 fn (mut g FlatGen) reserve_collect_gen_info_maps() {

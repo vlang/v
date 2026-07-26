@@ -123,6 +123,12 @@ fn parser_worker_scope_free(scope voidptr) {
 	}
 }
 
+fn (p &Parser) timing_profile(message string) {
+	if p.prefs.verbose {
+		eprintln(message)
+	}
+}
+
 // parse_files_dispatch parses paths in order, appending to p.a exactly like a
 // serial parse_into loop, across worker threads when there is enough work.
 // Returns each file's first node id in p.a and whether threads were used.
@@ -226,7 +232,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 		ppsw := time.new_stopwatch()
 		p.a.worker_pool.run(prepass_tasks)
-		eprintln('  [ttime]   pp prepass pool  ${f64(ppsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		p.timing_profile('  [ttime]   pp prepass pool  ${f64(ppsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		for ci in 1 .. n_chunks {
 			if args[ci].scope != unsafe { nil } {
 				prepass_chunks[ci].decls =
@@ -267,7 +273,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 		ppsw2 := time.new_stopwatch()
 		any_started := p.a.worker_pool.run(tasks)
-		eprintln('  [ttime]   pp parse pool    ${f64(ppsw2.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		p.timing_profile('  [ttime]   pp parse pool    ${f64(ppsw2.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		// Merge each helper in fixed chunk order (input file order),
 		// so node numbering stays deterministic and byte-identical to serial.
 		ppsw3 := time.new_stopwatch()
@@ -280,9 +286,9 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 				parser_worker_scope_free(args[ci + 1].scope)
 			}
 		}
-		eprintln('  [ttime]   pp merge         ${f64(ppsw3.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		p.timing_profile('  [ttime]   pp merge         ${f64(ppsw3.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		p.next_file_id = dispatch_file_id_start + paths.len
-		eprintln('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len})')
+		p.timing_profile('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len})')
 		return starts, any_started
 	}
 }
