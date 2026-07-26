@@ -57,6 +57,16 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
+fn run_bad_backend(v3_bin string, name string, backend string, src string, expected string) {
+	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	result := os.execute('${v3_bin} -nocache -b ${backend} ${bad_src} -o ${bad_bin}')
+	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
+	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
+	assert !result.output.contains('build_expr: unsupported expr kind'), '${name}: reached SSA lowering\n${result.output}'
+}
+
 fn run_good(v3_bin string, name string, src string) string {
 	return run_good_with_flags(v3_bin, name, '', src)
 }
@@ -1130,6 +1140,22 @@ fn main() {
 	assert c_source.contains('(_t1.arg0)[0]'), c_source
 	out := run_good(v3_bin, 'fixed_array_defer_result', source)
 	assert out == 'ok'
+}
+
+fn test_arm64_backend_rejects_defer_results_before_ssa() {
+	v3_bin := build_v3_review_transform()
+	run_bad_backend(v3_bin, 'arm64_defer_result', 'arm64', 'fn f() int {
+	defer {
+		assert $res() == 42
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(f()))
+}
+',
+		'`$res()` is not supported by the V3 arm64 backend')
 }
 
 fn test_thread_handle_equality_uses_platform_comparison() {
