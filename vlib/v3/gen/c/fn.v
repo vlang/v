@@ -9737,7 +9737,14 @@ fn (g &FlatGen) callback_c_fn_name(name string) string {
 		return g.test_user_main_c_name()
 	}
 	if name.starts_with('main.') {
-		return g.cname(name.all_after_last('.'))
+		fn_name := name.all_after_last('.')
+		if shadow_name := g.main_runtime_shadow_fn_c_name('main', fn_name) {
+			return shadow_name
+		}
+		return g.cname(fn_name)
+	}
+	if shadow_name := g.main_runtime_shadow_fn_c_name(g.tc.cur_module, name) {
+		return shadow_name
 	}
 	return g.cname(name)
 }

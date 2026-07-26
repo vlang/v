@@ -504,6 +504,25 @@ fn main() {
 	assert out == '49'
 }
 
+fn test_main_runtime_shadowed_fn_values_use_declaration_symbol() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'fn_value_main_runtime_shadow_accept', 'fn accept(value int) int {
+	return value + 1
+}
+
+fn consume(callback fn (int) int) int {
+	return callback(41)
+}
+
+fn main() {
+	callback := accept
+	println(consume(callback))
+	println(consume(accept))
+}
+')
+	assert out == '42\n42'
+}
+
 fn test_const_generic_fn_factory_value_call_uses_const_storage() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'const_generic_fn_factory_value_call', '
