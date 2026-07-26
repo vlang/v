@@ -2050,6 +2050,16 @@ fn test_defer_result_review_regressions() {
 		'expected `(` after `$res`')
 }
 
+fn test_defer_result_requires_function_exit_defer() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nested_block_defer_result',
+		'fn f() int {\n\t{\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n',
+		'`res` can only be used in function-exit defer blocks')
+	run_bad(v3_bin, 'bad_loop_defer_result',
+		'fn f() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n',
+		'`res` can only be used in function-exit defer blocks')
+}
+
 fn test_recursive_alias_review_regressions() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_direct_recursive_alias', 'type A = A\n\nfn main() {}\n',

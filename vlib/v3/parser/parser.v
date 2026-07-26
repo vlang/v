@@ -63,6 +63,8 @@ mut:
 	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
 	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
 	defer_depth           int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
+	defer_result_allowed  bool     // true when the active defer is guaranteed to run during function return
+	nested_block_depth    int      // lexical block depth below the current function body's outer scope
 	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
 	comptime_const_values map[string]string
@@ -233,6 +235,9 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.peek_end = 0
 	p.cur_module = ''
 	p.cur_fn = ''
+	p.defer_depth = 0
+	p.defer_result_allowed = false
+	p.nested_block_depth = 0
 	p.has_peek = false
 	p.pending_flag = false
 	p.pending_params = false
@@ -1042,9 +1047,15 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		prev_fn := p.cur_fn
 		prev_struct := p.cur_struct
 		prev_method_is_static := p.cur_method_is_static
+		outer_defer_depth := p.defer_depth
+		outer_defer_result_allowed := p.defer_result_allowed
+		outer_nested_block_depth := p.nested_block_depth
 		p.cur_fn = name
 		p.cur_struct = method_receiver_type_name(receiver_type).all_after_last('.')
 		p.cur_method_is_static = false
+		p.defer_depth = 0
+		p.defer_result_allowed = false
+		p.nested_block_depth = 0
 		p.push_local_type_scope(name)
 		p.begin_comptime_value_scope()
 		p.begin_local_binding_scope()
@@ -1087,6 +1098,9 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		p.cur_fn = prev_fn
 		p.cur_struct = prev_struct
 		p.cur_method_is_static = prev_method_is_static
+		p.defer_depth = outer_defer_depth
+		p.defer_result_allowed = outer_defer_result_allowed
+		p.nested_block_depth = outer_nested_block_depth
 	}
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
@@ -1185,6 +1199,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	prev_fn := p.cur_fn
 	prev_struct := p.cur_struct
 	prev_method_is_static := p.cur_method_is_static
+	outer_defer_depth := p.defer_depth
+	outer_defer_result_allowed := p.defer_result_allowed
+	outer_nested_block_depth := p.nested_block_depth
 	p.cur_fn = name
 	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
 	p.cur_struct = if is_method {
@@ -1193,6 +1210,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		''
 	}
 	p.cur_method_is_static = is_method && receiver_name.len == 0
+	p.defer_depth = 0
+	p.defer_result_allowed = false
+	p.nested_block_depth = 0
 	p.push_local_type_scope(name)
 	p.begin_comptime_value_scope()
 	// The parameters (and receiver) are the function body's outermost local bindings.
@@ -1230,6 +1250,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.cur_fn = prev_fn
 	p.cur_struct = prev_struct
 	p.cur_method_is_static = prev_method_is_static
+	p.defer_depth = outer_defer_depth
+	p.defer_result_allowed = outer_defer_result_allowed
+	p.nested_block_depth = outer_nested_block_depth
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
 	for id in param_ids {
@@ -4698,6 +4721,8 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		}
 		if p.defer_depth == 0 {
 			p.record_diagnostic('`res` can only be used in defer blocks', dollar_pos)
+		} else if !p.defer_result_allowed {
+			p.record_diagnostic('`res` can only be used in function-exit defer blocks', dollar_pos)
 		}
 		return p.add_node(flat.Node{
 			kind:  .defer_result
@@ -6077,6 +6102,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 
 	branch_block_start := p.tok_pos
 	p.check(.lcbr)
+	p.nested_block_depth++
 	block_scope := p.block_local_type_scope(branch_block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
@@ -6104,6 +6130,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
 	}
+	p.nested_block_depth--
 
 	bstart := p.add_children(branch_ids)
 	return p.add_node(flat.Node{
@@ -6144,6 +6171,7 @@ fn (mut p Parser) unsafe_block_stmt() flat.NodeId {
 fn (mut p Parser) parse_block_body() []flat.NodeId {
 	block_start := p.tok_pos
 	p.check(.lcbr)
+	p.nested_block_depth++
 	block_scope := p.block_local_type_scope(block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
@@ -6166,6 +6194,7 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
 	}
+	p.nested_block_depth--
 	return ids
 }
 
@@ -6725,9 +6754,13 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 		}
 		p.check(.rpar)
 	}
+	outer_defer_result_allowed := p.defer_result_allowed
+	p.defer_result_allowed = outer_defer_result_allowed || mode == 'function'
+		|| (p.defer_depth == 0 && p.nested_block_depth == 0)
 	p.defer_depth++
 	body := p.block_stmt()
 	p.defer_depth--
+	p.defer_result_allowed = outer_defer_result_allowed
 	dstart := p.add_child(body)
 	return p.add_node(flat.Node{
 		kind:           .defer_stmt
@@ -8774,9 +8807,15 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 
 fn (mut p Parser) lambda_body_expr() flat.NodeId {
 	outer_defer_depth := p.defer_depth
+	outer_defer_result_allowed := p.defer_result_allowed
+	outer_nested_block_depth := p.nested_block_depth
 	p.defer_depth = 0
+	p.defer_result_allowed = false
+	p.nested_block_depth = 0
 	body := p.expr(.lowest)
 	p.defer_depth = outer_defer_depth
+	p.defer_result_allowed = outer_defer_result_allowed
+	p.nested_block_depth = outer_nested_block_depth
 	return body
 }
 
@@ -9712,7 +9751,11 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
 		outer_defer_depth := p.defer_depth
+		outer_defer_result_allowed := p.defer_result_allowed
+		outer_nested_block_depth := p.nested_block_depth
 		p.defer_depth = 0
+		p.defer_result_allowed = false
+		p.nested_block_depth = 0
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
@@ -9749,6 +9792,8 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 		p.defer_depth = outer_defer_depth
+		p.defer_result_allowed = outer_defer_result_allowed
+		p.nested_block_depth = outer_nested_block_depth
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}
 	for id in capture_ids {

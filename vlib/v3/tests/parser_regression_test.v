@@ -244,6 +244,24 @@ fn test_res_is_rejected_outside_the_active_defer_body() {
 	assert pipe_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${pipe_lambda}'
 }
 
+fn test_res_is_restricted_to_function_exit_defers() {
+	nested_block := parse_parser_regression_diagnostics('res_in_nested_scoped_defer',
+		'fn value() int {\n\t{\n\t\tdefer {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert nested_block.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${nested_block}'
+
+	loop := parse_parser_regression_diagnostics('res_in_loop_scoped_defer',
+		'fn value() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert loop.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${loop}'
+
+	direct := parse_parser_regression_diagnostics('res_in_direct_scoped_defer',
+		'fn value() int {\n\tdefer {\n\t\tprintln($res())\n\t}\n\treturn 7\n}\n')
+	assert !direct.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${direct}'
+
+	explicit_function := parse_parser_regression_diagnostics('res_in_explicit_function_defer',
+		'fn value() int {\n\t{\n\t\tdefer(fn) {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert !explicit_function.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${explicit_function}'
+}
+
 fn test_res_uses_a_dedicated_node_and_rejects_trailing_argument_tokens() {
 	valid := parse_parser_regression_source('res_dedicated_node',
 		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1, 2\n}\n')
