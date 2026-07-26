@@ -3201,17 +3201,34 @@ fn (c &Checker) recursive_str_sources_are_equivalent(a ast.Expr, b ast.Expr, typ
 	return left_pos.pos == right_pos.pos && left_pos.len == right_pos.len
 }
 
-fn recursive_str_exprs_are_same_alias_path(a ast.Expr, b ast.Expr, name string, decl_pos int) bool {
+fn recursive_str_ident_var_pos(ident ast.Ident) ?int {
+	if ident.obj is ast.Var {
+		return ident.obj.pos.pos
+	}
+	if variable := ident.scope.find_var(ident.name) {
+		return variable.pos.pos
+	}
+	return none
+}
+
+fn recursive_str_exprs_are_same_alias_path(a ast.Expr, b ast.Expr) bool {
 	left := a.remove_par()
 	right := b.remove_par()
 	match left {
 		ast.Ident {
-			return right is ast.Ident && recursive_str_ident_is_var(left, name, decl_pos)
-				&& recursive_str_ident_is_var(right, name, decl_pos)
+			if right is ast.Ident {
+				if left.name != right.name {
+					return false
+				}
+				left_pos := recursive_str_ident_var_pos(left) or { return false }
+				right_pos := recursive_str_ident_var_pos(right) or { return false }
+				return left_pos == right_pos
+			}
+			return false
 		}
 		ast.SelectorExpr {
 			return right is ast.SelectorExpr && left.field_name == right.field_name
-				&& recursive_str_exprs_are_same_alias_path(left.expr, right.expr, name, decl_pos)
+				&& recursive_str_exprs_are_same_alias_path(left.expr, right.expr)
 		}
 		else {}
 	}
@@ -3377,7 +3394,11 @@ fn (mut c Checker) recursive_str_stmt_mutation_flow(stmt ast.Stmt, root_name str
 					return RecursiveStrMutationFlow{}
 				}
 			}
-			for left in stmt.left {
+			for i, left in stmt.left {
+				if stmt.op == .assign && i < stmt.right.len
+					&& recursive_str_exprs_are_same_alias_path(left, stmt.right[i]) {
+					continue
+				}
 				if is_root_mutation(c.expr_mutation_visibility(left, root_name, root_type), true) {
 					return RecursiveStrMutationFlow{}
 				}
@@ -3675,7 +3696,7 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						continue
 					}
 					if node.op == .assign && i < node.right.len
-						&& recursive_str_exprs_are_same_alias_path(left, node.right[i], name, decl_pos) {
+						&& recursive_str_exprs_are_same_alias_path(left, node.right[i]) {
 						continue
 					}
 					mut reduced_left := left.remove_par()

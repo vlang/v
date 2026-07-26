@@ -692,6 +692,21 @@ fn (n NoOpFieldAssignment) str() string {
 	return alias.str()
 }
 
+struct NoOpHelperAssignment {
+mut:
+	remaining int
+}
+
+fn (mut n NoOpHelperAssignment) keep() {
+	n.remaining = n.remaining
+}
+
+fn (n NoOpHelperAssignment) str() string {
+	mut alias := n
+	alias.keep()
+	return alias.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -750,5 +765,6 @@ fn main() {
 	println(ConditionalMatchReceiverSource{})
 	println(ScalarOnlyAggregateMutation{})
 	println(NoOpFieldAssignment{})
+	println(NoOpHelperAssignment{})
 	println(IfaceExt{ name: 'test' })
 }
