@@ -634,3 +634,50 @@ fn test_repro_is_markused_root_before_request() {
 	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.App.handle', is_method: true })
 	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.before_request_handler' })
 }
+
+fn test_repro_has_comptime_call_allows_spacing() {
+	assert repro_has_comptime_call("x := \$embed_file ('asset.bin')", 'embed_file')
+	assert repro_has_comptime_call("x := \$env\t('HOME')", 'env')
+	assert repro_uses_local_resource("t := \$tmpl ('page.html')")
+	assert repro_uses_local_resource("r := \$res ('icon')")
+	// `$reserve(` must not be mistaken for `$res`
+	assert !repro_has_comptime_call('x := \$reserve(3)', 'res')
+	// `$env` without a call is not the compile-time function
+	assert !repro_has_comptime_call('// mentions \$env only', 'env')
+}
+
+fn test_repro_uses_machine_pseudo() {
+	assert repro_uses_machine_pseudo('const here = @FILE')
+	assert repro_uses_machine_pseudo('fn f() int {\n\treturn @LINE.int()\n}')
+	assert repro_uses_machine_pseudo("const root = @VMODROOT + '/data'")
+	assert repro_uses_machine_pseudo('const built = @BUILD_TIMESTAMP')
+	// identifier boundary: not a pseudo variable
+	assert !repro_uses_machine_pseudo("const mail = 'bob@FILEserver.example'")
+	// stable pseudos survive the verbatim flatten and recorded build options
+	assert !repro_uses_machine_pseudo('fn f() {\n\tprintln(@FN)\n\tprintln(@OS)\n}')
+}
+
+fn test_repro_bracket_delta_skips_strings_and_comments() {
+	assert repro_bracket_delta('@[footer:eval]') == 0
+	assert repro_bracket_delta("@[footer: 'Hello\\nWorld]']") == 0
+	assert repro_bracket_delta("@[deprecated: 'use y[0]']") == 0
+	assert repro_bracket_delta('@[unsafe] // note]') == 0
+	assert repro_bracket_delta('x := arr[') == 1
+	assert repro_bracket_delta(']') == -1
+}
+
+fn test_repro_attr_start_with_bracket_in_attr_string() {
+	lines := [
+		'module main',
+		'',
+		"@[footer: 'Hello\\nWorld]']",
+		'struct Config {}',
+	]
+	assert repro_attr_start(lines, 3) == 2
+	// the combined case: the attribute string spans source lines AND contains brackets
+	lines2 := ["@[cfg: 'a[b", "c']", 'fn f() {}']
+	assert repro_attr_start(lines2, 2) == 0
+	// an unrelated attribute above ordinary code is still not treated as this group's opener
+	lines3 := ['@[inline]', 'fn a() {}', 'const c = [', '1,', ']', 'fn b() {}']
+	assert repro_attr_start(lines3, 5) == 5
+}

@@ -278,8 +278,11 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		fid := decls[id].file_id
 		included_files[fid] = true
 		// a retained declaration using a compile-time resource (`$embed_file`/`$tmpl`/`$res`)
-		// needs a project-local file we do not upload, so the reproducer cannot be standalone
-		if repro_uses_local_resource(decls[id].source) {
+		// needs a project-local file we do not upload, so the reproducer cannot be standalone;
+		// a machine- or layout-dependent pseudo variable (`@FILE`, `@LINE`, `@VMODROOT`, ...)
+		// would likewise evaluate differently in the flattened replay
+		if repro_uses_local_resource(decls[id].source)
+			|| repro_uses_machine_pseudo(decls[id].source) {
 			return ''
 		}
 		// a retained top-level comptime block (`$if`/`$match`) that carries its own conditional
@@ -428,19 +431,8 @@ fn repro_attr_start(lines []string, line_nr int) int {
 		if !lines[end].trim_space().ends_with(']') {
 			break // the line above the declaration does not close an attribute group
 		}
-		// find the line that opens this group by balancing brackets from `end` upward
-		mut open := end
-		mut bal := 0
-		for open >= 0 {
-			bal += repro_bracket_delta(lines[open])
-			if bal == 0 {
-				break
-			}
-			open--
-		}
-		// only treat it as an attribute group when the balancing line actually opens with `@[`
-		// (this stops a preceding array/const declaration ending in `]` from being swallowed)
-		if open < 0 || bal != 0 || !lines[open].trim_space().starts_with('@[') {
+		open := repro_attr_open_line(lines, end)
+		if open < 0 {
 			break
 		}
 		s = open
@@ -448,16 +440,108 @@ fn repro_attr_start(lines []string, line_nr int) int {
 	return s
 }
 
-// repro_bracket_delta returns the net bracket balance of a line: the count of `[` minus the count
-// of `]`. Used to locate where a possibly multi-line `@[...]` attribute group opens.
+// repro_attr_open_line locates the line that opens the attribute group closing on line `end`, or
+// -1 when the closing bracket does not belong to an attribute. The per-line bracket balance walk
+// resolves single-line and stacked attributes (and stops a preceding const array ending in `]`
+// from being swallowed); an attribute string spanning source lines defeats per-line balances, so
+// the nearest `@[` line above is then verified by a forward scan of the joined candidate text.
+fn repro_attr_open_line(lines []string, end int) int {
+	mut open := end
+	mut bal := 0
+	for open >= 0 {
+		bal += repro_bracket_delta(lines[open])
+		if bal == 0 {
+			break
+		}
+		open--
+	}
+	if open >= 0 && bal == 0 && lines[open].trim_space().starts_with('@[') {
+		return open
+	}
+	mut cand := end
+	for cand >= 0 && end - cand < 16 {
+		if lines[cand].trim_space().starts_with('@[') {
+			if repro_attr_group_spans(lines[cand..end + 1].join('\n')) {
+				return cand
+			}
+			break
+		}
+		cand--
+	}
+	return -1
+}
+
+// repro_attr_group_spans reports whether `text` is one uninterrupted `@[...]` attribute group:
+// it opens with `@[`, its structural bracket depth only returns to zero at the very end, and
+// string literals (which may span lines and contain brackets) are skipped. Ordinary code between
+// an unrelated attribute above and the closing line fails this scan, because the earlier
+// attribute's own `]` returns the depth to zero early.
+fn repro_attr_group_spans(text string) bool {
+	t := text.trim_space()
+	if !t.starts_with('@[') {
+		return false
+	}
+	mut i := 0
+	mut depth := 0
+	for i < t.len {
+		c := t[i]
+		if c == `'` || c == `"` {
+			i++
+			for i < t.len && t[i] != c {
+				i += if t[i] == `\\` { 2 } else { 1 }
+			}
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < t.len && t[i + 1] == `/` {
+			for i < t.len && t[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				// the group must end here (only whitespace may follow)
+				return t[i + 1..].trim_space() == ''
+			}
+			if depth < 0 {
+				return false
+			}
+		}
+		i++
+	}
+	return false
+}
+
+// repro_bracket_delta returns the net structural bracket balance of a line: the count of `[`
+// minus the count of `]`, ignoring brackets inside string literals (an attribute value like
+// `@[footer: 'World]']` must not skew the balance) and after a `//` comment. Used to locate
+// where a possibly multi-line `@[...]` attribute group opens.
 fn repro_bracket_delta(line string) int {
 	mut d := 0
-	for c in line {
+	mut i := 0
+	for i < line.len {
+		c := line[i]
+		if c == `'` || c == `"` {
+			i++
+			for i < line.len && line[i] != c {
+				i += if line[i] == `\\` { 2 } else { 1 }
+			}
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < line.len && line[i + 1] == `/` {
+			break
+		}
 		if c == `[` {
 			d++
 		} else if c == `]` {
 			d--
 		}
+		i++
 	}
 	return d
 }
@@ -773,8 +857,72 @@ fn repro_source_has_toplevel_import(source string) bool {
 // time - replaying it against the receiver's environment can change the generated C and lose
 // the error).
 fn repro_uses_local_resource(source string) bool {
-	return source.contains('\$embed_file(') || source.contains('\$tmpl(')
-		|| source.contains('\$res(') || source.contains('\$env(')
+	for name in ['embed_file', 'tmpl', 'res', 'env'] {
+		if repro_has_comptime_call(source, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// repro_has_comptime_call reports whether `source` calls the compile-time function `$<name>`.
+// V tokenizes the call, so whitespace between the name and its `(` is valid
+// (`$embed_file ('asset.bin')`) and an exact-substring check would miss it.
+fn repro_has_comptime_call(source string, name string) bool {
+	pat := '\$' + name
+	mut i := 0
+	for i + pat.len <= source.len {
+		if source[i] != `\$` || source[i..i + pat.len] != pat {
+			i++
+			continue
+		}
+		mut j := i + pat.len
+		// the name must end here: `$reserve(` must not match `$res`
+		if j < source.len && is_ident_char(source[j]) {
+			i++
+			continue
+		}
+		for j < source.len && (source[j] == ` ` || source[j] == `\t`) {
+			j++
+		}
+		if j < source.len && source[j] == `(` {
+			return true
+		}
+		i++
+	}
+	return false
+}
+
+// Pseudo variables whose compile-time value depends on the file layout, the project root or the
+// builder installation: flattening the declarations into one uploaded file changes path and line
+// values, and replaying on another machine changes the root/hash/build values, so retained code
+// using one can generate different C and lose the error. (`@FN`/`@METHOD`/`@MOD`/`@STRUCT` and
+// `@COLUMN` survive the verbatim flatten, and `@OS`/`@PLATFORM`/`@BACKEND`/`@CCOMPILER` are
+// reproducible from the recorded build options, so those stay allowed.)
+const c_error_repro_machine_pseudos = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@VEXE', '@FILE_LINE',
+	'@FILE', '@DIR', '@LINE', '@LOCATION', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@VMODHASH',
+	'@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP']
+
+// repro_uses_machine_pseudo reports whether a declaration uses one of the machine- or
+// layout-dependent pseudo variables above. Occurrences are matched with an identifier boundary,
+// so `bob@FILEserver` inside a string does not count, while a real `@FILE` token does; a stray
+// mention in a plain string only causes a harmless fallback.
+fn repro_uses_machine_pseudo(source string) bool {
+	mut i := 0
+	for i < source.len {
+		if source[i] != `@` {
+			i++
+			continue
+		}
+		for p in c_error_repro_machine_pseudos {
+			if i + p.len <= source.len && source[i..i + p.len] == p
+				&& (i + p.len == source.len || !is_ident_char(source[i + p.len])) {
+				return true
+			}
+		}
+		i++
+	}
+	return false
 }
 
 // repro_render assembles the given declaration ids into a single-file source string, headed by
