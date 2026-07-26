@@ -1338,6 +1338,8 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		|| t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type))))
 	for i := start_i; i + 1 < node.children_count; i += 2 {
 		key_id := t.a.child(&node, i)
+		key_node := t.a.nodes[int(key_id)]
+		key_is_static := key_node.kind in [.int_literal, .string_literal, .char_literal, .enum_val]
 		key_name := t.new_temp('map_key')
 		value_name := t.new_temp('map_val')
 		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
@@ -1367,6 +1369,9 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		call := t.make_call_typed('map__set', arr3(t.make_prefix(.amp, t.make_ident(tmp_name)), t.make_prefix(.amp,
 			t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void')
 		t.pending_stmts << t.make_expr_stmt(call)
+		if !key_is_static && int(value_id) in t.local_closure_field_cleanups {
+			t.pending_stmts << t.make_local_closure_cleanup_defer(value_name)
+		}
 		if needs_entry_cleanup {
 			mut cleanup_stmts := []flat.NodeId{}
 			t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut

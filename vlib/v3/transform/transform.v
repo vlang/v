@@ -5454,13 +5454,19 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 		}
 		if t.expr_allocates_fresh_runtime_closure(rhs_id) {
 			if aggregate_name := t.escape_address_root_name(lhs_id) {
-				field_key := t.expr_key(lhs_id)
+				mut field_key := t.expr_key(lhs_id)
 				lhs := t.a.nodes[int(lhs_id)]
 				index_key_is_static := lhs.kind == .index && lhs.children_count >= 2
 					&& t.a.child_node(&lhs, 1).kind in [.int_literal, .string_literal, .char_literal, .enum_val]
+				if lhs.kind == .index && !index_key_is_static && lhs.children_count > 0 {
+					base_key := t.expr_key(t.a.child(&lhs, 0))
+					if base_key.len > 0 {
+						field_key = '${base_key}[*]'
+					}
+				}
 				if field_key.len > aggregate_name.len
 					&& (field_key.starts_with('${aggregate_name}.')
-					|| (index_key_is_static && field_key.starts_with('${aggregate_name}['))) {
+					|| (lhs.kind == .index && field_key.starts_with('${aggregate_name}['))) {
 					field_candidates << LocalClosureFieldCandidate{
 						source_id:       int(id)
 						owner_id:        int(id)
@@ -5619,15 +5625,16 @@ fn (mut t Transformer) collect_local_closure_initializer_field_candidates(decl_i
 			if key.kind == .prefix && key.value == '...' {
 				return
 			}
-			if key.kind !in [.int_literal, .string_literal, .char_literal, .enum_val] {
-				continue
-			}
-			key_part := t.expr_key_part(key_id)
-			if key_part.len == 0 {
-				continue
-			}
 			value_id := t.a.child(&init, i + 1)
-			value_key := '${field_prefix}[${key_part}]'
+			key_is_static := key.kind in [.int_literal, .string_literal, .char_literal, .enum_val]
+			mut value_key := '${field_prefix}[*]'
+			if key_is_static {
+				key_part := t.expr_key_part(key_id)
+				if key_part.len == 0 {
+					continue
+				}
+				value_key = '${field_prefix}[${key_part}]'
+			}
 			if t.expr_allocates_fresh_runtime_closure(value_id) {
 				field_candidates << LocalClosureFieldCandidate{
 					source_id:       int(value_id)
@@ -5639,8 +5646,10 @@ fn (mut t Transformer) collect_local_closure_initializer_field_candidates(decl_i
 				}
 				continue
 			}
-			t.collect_local_closure_initializer_field_candidates(decl_id, owner_id, value_id,
-				aggregate_name, value_key, scope_id, mut field_candidates)
+			if key_is_static {
+				t.collect_local_closure_initializer_field_candidates(decl_id, owner_id, value_id,
+					aggregate_name, value_key, scope_id, mut field_candidates)
+			}
 		}
 		return
 	}
