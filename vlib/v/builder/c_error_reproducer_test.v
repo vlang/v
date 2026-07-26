@@ -295,23 +295,23 @@ fn test_repro_is_markused_root() {
 			scope:     unsafe { nil }
 		}
 	}
-	assert repro_is_markused_root(mk('main.init', false, []), 0)
-	assert repro_is_markused_root(mk('main.cleanup', false, []), 0)
-	assert !repro_is_markused_root(mk('main.helper', false, []), 0)
+	assert repro_is_markused_root(mk('main.init', false, []), 0, false)
+	assert repro_is_markused_root(mk('main.cleanup', false, []), 0, false)
+	assert !repro_is_markused_root(mk('main.helper', false, []), 0, false)
 	// `init` as a method is not a lifecycle root
-	assert !repro_is_markused_root(mk('main.Foo.init', true, []), 0)
+	assert !repro_is_markused_root(mk('main.Foo.init', true, []), 0, false)
 	// `@[export]` / `@[markused]` functions are roots
-	assert repro_is_markused_root(mk('main.exp', false, [ast.Attr{ name: 'export' }]), 0)
-	assert repro_is_markused_root(mk('main.mu', false, [ast.Attr{ name: 'markused' }]), 0)
+	assert repro_is_markused_root(mk('main.exp', false, [ast.Attr{ name: 'export' }]), 0, false)
+	assert repro_is_markused_root(mk('main.mu', false, [ast.Attr{ name: 'markused' }]), 0, false)
 	// `lock`/`unlock`/`rlock`/`runlock` methods (shared-type helpers) are roots
-	assert repro_is_markused_root(mk('main.Foo.lock', true, []), 0)
-	assert repro_is_markused_root(mk('main.Foo.unlock', true, []), 0)
-	assert repro_is_markused_root(mk('main.Foo.rlock', true, []), 0)
-	assert repro_is_markused_root(mk('main.Foo.runlock', true, []), 0)
+	assert repro_is_markused_root(mk('main.Foo.lock', true, []), 0, false)
+	assert repro_is_markused_root(mk('main.Foo.unlock', true, []), 0, false)
+	assert repro_is_markused_root(mk('main.Foo.rlock', true, []), 0, false)
+	assert repro_is_markused_root(mk('main.Foo.runlock', true, []), 0, false)
 	// an ordinary method is not a root
-	assert !repro_is_markused_root(mk('main.Foo.bar', true, []), 0)
+	assert !repro_is_markused_root(mk('main.Foo.bar', true, []), 0, false)
 	// a plain function named `lock` (not a method) is not a lock helper root
-	assert !repro_is_markused_root(mk('main.lock', false, []), 0)
+	assert !repro_is_markused_root(mk('main.lock', false, []), 0, false)
 }
 
 fn test_repro_is_markused_root_veb_action() {
@@ -322,19 +322,19 @@ fn test_repro_is_markused_root_veb_action() {
 		is_method:   true
 		return_type: ast.idx_to_type(123)
 		scope:       unsafe { nil }
-	}, 123)
+	}, 123, false)
 	assert !repro_is_markused_root(ast.FnDecl{
 		name:        'main.App.helper'
 		is_method:   true
 		return_type: ast.idx_to_type(50)
 		scope:       unsafe { nil }
-	}, 123)
+	}, 123, false)
 	// no veb in the program: the cache index is unset and roots nothing
 	assert !repro_is_markused_root(ast.FnDecl{
 		name:      'main.App.index'
 		is_method: true
 		scope:     unsafe { nil }
-	}, 0)
+	}, 0, false)
 }
 
 fn test_repro_hash_is_local() {
@@ -649,16 +649,17 @@ fn test_repro_uses_local_resource_env() {
 }
 
 fn test_repro_is_markused_root_before_request() {
-	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.before_request', is_method: true }, 0)
-	assert repro_is_markused_root(ast.FnDecl{ name: 'main.before_request' }, 0)
+	assert repro_is_markused_root(ast.FnDecl{ name: 'main.App.before_request', is_method: true },
+		0, false)
+	assert repro_is_markused_root(ast.FnDecl{ name: 'main.before_request' }, 0, false)
 	// mark-used matches by suffix (`k.ends_with('before_request')`), so a `*_before_request` name
 	// that the original build retains must be seeded too
 	assert repro_is_markused_root(ast.FnDecl{
 		name:      'main.App.admin_before_request'
 		is_method: true
-	}, 0)
-	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.App.handle', is_method: true }, 0)
-	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.before_request_handler' }, 0)
+	}, 0, false)
+	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.App.handle', is_method: true }, 0, false)
+	assert !repro_is_markused_root(ast.FnDecl{ name: 'main.before_request_handler' }, 0, false)
 }
 
 fn test_repro_has_comptime_call_allows_spacing() {
@@ -769,5 +770,58 @@ fn test_repro_closure_retains_next_for_iteration() {
 	}
 	assert 2 in ordered // Iter.next, invoked only implicitly by the for-in loop
 	assert 3 in ordered // reachable only through next
+	assert 4 !in ordered
+}
+
+fn test_repro_is_markused_root_translated_c_attr() {
+	// a -translated build roots every function carrying a `c` attribute
+	assert repro_is_markused_root(ast.FnDecl{
+		name:  'main.wrapped'
+		attrs: [ast.Attr{ name: 'c', arg: 'real_name' }]
+		scope: unsafe { nil }
+	}, 0, true)
+	// without -translated the attribute alone is not a root
+	assert !repro_is_markused_root(ast.FnDecl{
+		name:  'main.wrapped'
+		attrs: [ast.Attr{ name: 'c', arg: 'real_name' }]
+		scope: unsafe { nil }
+	}, 0, false)
+}
+
+fn test_repro_closure_retains_json_hooks_for_encode() {
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: 'fn main() {\n\tprintln(json2.encode(Foo{}))\n}'
+		},
+		ReproDecl{
+			names:  ['Foo']
+			source: 'struct Foo {}'
+		},
+		ReproDecl{
+			names:  ['to_json']
+			source: 'fn (f Foo) to_json() string {\n\treturn json_helper()\n}'
+		},
+		ReproDecl{
+			names:  ['json_helper']
+			source: "fn json_helper() string {\n\treturn '{}'\n}"
+		},
+		ReproDecl{
+			names:  ['unrelated']
+			source: 'fn unrelated() {}'
+		},
+	]
+	mut name_to_decl := map[string][]int{}
+	for i, d in decls {
+		for n in d.names {
+			name_to_decl[n] << i
+		}
+	}
+	ordered := repro_closure(decls, name_to_decl, [0]) or {
+		assert false, 'closure returned none'
+		return
+	}
+	assert 2 in ordered // Foo.to_json, selected only implicitly by json2.encode
+	assert 3 in ordered // reachable only through the hook
 	assert 4 !in ordered
 }

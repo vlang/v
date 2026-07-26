@@ -227,7 +227,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			// roots (see markused/walker.v mark_markused_consts/mark_markused_globals).
 			mut is_root := false
 			if stmt is ast.FnDecl {
-				is_root = repro_is_markused_root(stmt, int(veb_result_idx))
+				is_root = repro_is_markused_root(stmt, int(veb_result_idx), v.pref.translated)
 					|| (v.pref.is_shared && stmt.is_pub)
 			} else {
 				is_root = repro_decl_attrs(stmt).any(it.name in ['markused', 'export'])
@@ -619,6 +619,15 @@ fn repro_closure(decls []ReproDecl, name_to_decl map[string][]int, seeds []int) 
 		if repro_source_iterates(decls[id].source) {
 			refs << 'next'
 		}
+		// json2.encode invokes a user type's `to_json`/`json_str` hook implicitly when the type
+		// implements the JsonEncoder/Encodable interface: the token scan sees the type and
+		// `encode` but never the hook name, and replaying without the hook selects ordinary
+		// field encoding (dropping a helper only the hook reaches). Retain the hooks whenever a
+		// declaration references `encode`, mirroring the mark-used walker.
+		if 'encode' in refs {
+			refs << 'to_json'
+			refs << 'json_str'
+		}
 		// `$for m in Foo.methods` reflection needs Foo's methods, which are indexed under the
 		// synthetic `Foo#methods` key; add those refs so the whole method set is retained
 		for t in repro_reflection_method_targets(decls[id].source) {
@@ -826,7 +835,7 @@ fn repro_decl_attrs(stmt ast.Stmt) []ast.Attr {
 // `runlock` method (the mark-used pass roots all of these — see markused.v), or one tagged
 // `@[markused]`/`@[export]`. Such a function must be inlined so any helper it alone reaches stays
 // reachable when `skip_unused` runs again on the replayed reproducer.
-fn repro_is_markused_root(f ast.FnDecl, veb_res_idx int) bool {
+fn repro_is_markused_root(f ast.FnDecl, veb_res_idx int, translated bool) bool {
 	short := repro_short_name(f.name)
 	if !f.is_method && short in ['init', 'cleanup'] {
 		return true
@@ -845,6 +854,11 @@ fn repro_is_markused_root(f ast.FnDecl, veb_res_idx int) bool {
 	// mark-used pass roots every function returning `veb.Result`
 	// (walker.v mark_markused_fns), identified by the table's cached type index
 	if veb_res_idx > 0 && int(f.return_type) == veb_res_idx {
+		return true
+	}
+	// a -translated build roots every function carrying a `c` attribute (markused.v), so a
+	// helper called only from one must stay reachable in the replay
+	if translated && f.attrs.any(it.name == 'c') {
 		return true
 	}
 	return f.attrs.any(it.name == 'markused' || it.name == 'export')
