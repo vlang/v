@@ -4204,6 +4204,7 @@ pub fn (tc &TypeChecker) iterator_for_in_next_call_info(typ Type) ?CallInfo {
 	return none
 }
 
+// iterator_for_in_next_call_info_text returns the specialized `next` call metadata for an iterator type.
 pub fn (tc &TypeChecker) iterator_for_in_next_call_info_text(type_text string) ?CallInfo {
 	info := tc.iterator_for_in_next_call_info(tc.parse_type(type_text)) or { return none }
 	return tc.specialize_generic_interface_method(type_text.trim_left('&'), info)
