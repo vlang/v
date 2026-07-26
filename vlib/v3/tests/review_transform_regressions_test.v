@@ -1216,6 +1216,48 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_scope_local_callback_array_initializers_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn make_callbacks(value int) []fn () int {
+	mut counter := Counter{
+		value: value
+	}
+	callbacks := [counter.read]
+	counter.value++
+	return callbacks
+}
+
+fn main() {
+	escaped := make_callbacks(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := [counter.read]
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	assert escaped[0]() == 78
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_initializer_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_initializer_hot_loop', source)
+	assert out == '1250025000'
+}
+
 fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {

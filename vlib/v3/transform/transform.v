@@ -270,9 +270,9 @@ mut:
 	// scope-owned closure binding they overwrite. Identifier spelling alone is
 	// insufficient because disjoint lexical scopes may reuse the same name.
 	local_closure_cleanup_assigns map[int]string
-	// local_closure_field_cleanups contains assignments and initializer fields that create a
-	// fresh closure in a field of a non-escaping lexical local. Their generated temporary owns
-	// the allocation until that lexical scope exits.
+	// local_closure_field_cleanups contains assignments and aggregate initializer values that
+	// create a fresh closure in a non-escaping lexical local. Their generated temporary owns the
+	// allocation until that lexical scope exits.
 	local_closure_field_cleanups map[int]bool
 	// exclusive_closure_return_fns contains source functions proven to return a newly
 	// allocated closure without storing, passing, or otherwise aliasing that closure.
@@ -5292,14 +5292,11 @@ fn (mut t Transformer) mark_local_method_value_receiver_borrow(owner_id flat.Nod
 		return
 	}
 	owner := t.a.nodes[int(owner_id)]
-	if owner.kind == .field_init && owner.children_count == 1 {
-		t.mark_local_method_value_receiver_borrows_in_expr(t.a.child(&owner, 0))
+	if owner.kind in [.decl_assign, .assign, .selector_assign] && owner.children_count == 2 {
+		t.mark_local_method_value_receiver_borrows_in_expr(t.a.child(&owner, 1))
 		return
 	}
-	if owner.kind !in [.decl_assign, .assign, .selector_assign] || owner.children_count != 2 {
-		return
-	}
-	t.mark_local_method_value_receiver_borrows_in_expr(t.a.child(&owner, 1))
+	t.mark_local_method_value_receiver_borrows_in_expr(owner_id)
 }
 
 fn (mut t Transformer) mark_local_method_value_receiver_borrows_in_expr(id flat.NodeId) {
@@ -5453,6 +5450,34 @@ fn (mut t Transformer) collect_local_closure_initializer_field_candidates(decl_i
 		return
 	}
 	init := t.a.nodes[int(init_id)]
+	if init.kind == .array_literal {
+		for i in 0 .. init.children_count {
+			value := t.a.child_node(&init, i)
+			if value.kind == .prefix && value.value == '...' {
+				// A spread makes following runtime indices data-dependent. Keep this
+				// conservative until aggregate paths can represent dynamic slots.
+				return
+			}
+		}
+		for i in 0 .. init.children_count {
+			value_id := t.a.child(&init, i)
+			value_key := '${field_prefix}[${i}]'
+			if t.expr_allocates_fresh_runtime_closure(value_id) {
+				field_candidates << LocalClosureFieldCandidate{
+					source_id:       int(value_id)
+					owner_id:        int(owner_id)
+					decl_id:         int(decl_id)
+					aggregate_name:  aggregate_name
+					aggregate_scope: int(scope_id)
+					field_key:       value_key
+				}
+				continue
+			}
+			t.collect_local_closure_initializer_field_candidates(decl_id, owner_id, value_id,
+				aggregate_name, value_key, scope_id, mut field_candidates)
+		}
+		return
+	}
 	if init.kind != .struct_init {
 		return
 	}
@@ -5777,14 +5802,15 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 	if node.kind == .ident {
 		return int(id) in bound_uses && !aggregate_is_selector_base && !field_is_scope_owned
 	}
-	if node.kind == .selector && node.children_count > 0 {
+	if node.kind in [.selector, .index] && node.children_count > 0 {
 		base_id := t.a.child(&node, 0)
 		if t.local_closure_binding_mentioned(base_id, bound_uses) {
 			key := t.expr_key(id)
 			if key == field_key && !field_is_scope_owned {
 				return true
 			}
-			if key.len > 0 && field_key.starts_with('${key}.') && !aggregate_is_selector_base {
+			if key.len > 0 && (field_key.starts_with('${key}.') || field_key.starts_with('${key}['))
+				&& !aggregate_is_selector_base {
 				return true
 			}
 			return t.local_closure_field_binding_escapes_in_context(base_id, bound_uses, decl_id,
@@ -11228,7 +11254,45 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if cleanup_name := t.local_closure_cleanup_decls[int(id)] {
 		result << t.make_local_closure_cleanup_defer(cleanup_name)
 	}
+	if node.children_count == 2 {
+		lhs := t.a.child_node(&node, 0)
+		rhs_id := t.a.child(&node, 1)
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			array_type := if inferred_typ.len > 0 { inferred_typ } else { t.node_type(rhs_id) }
+			if array_type.starts_with('[]') && array_type.len > 2 {
+				elem_type := array_type[2..]
+				for index in t.local_closure_array_initializer_cleanup_indices(rhs_id) {
+					closure_name := t.new_temp('array_closure')
+					t.set_var_type(closure_name, elem_type)
+					elem := t.make_index(t.make_ident(lhs.value), t.make_int_literal(index),
+						elem_type)
+					result << t.make_decl_assign_typed(closure_name, elem, elem_type)
+					result << t.make_local_closure_cleanup_defer(closure_name)
+				}
+			}
+		}
+	}
 	return result
+}
+
+fn (t &Transformer) local_closure_array_initializer_cleanup_indices(id flat.NodeId) []int {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return []int{}
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count == 1 {
+		return t.local_closure_array_initializer_cleanup_indices(t.a.child(&node, 0))
+	}
+	if node.kind != .array_literal {
+		return []int{}
+	}
+	mut indices := []int{}
+	for i in 0 .. node.children_count {
+		if int(t.a.child(&node, i)) in t.local_closure_field_cleanups {
+			indices << i
+		}
+	}
+	return indices
 }
 
 fn (mut t Transformer) make_local_closure_cleanup_defer(name string) flat.NodeId {
