@@ -127,12 +127,6 @@ pub fn c_name(name string) string {
 	if name == 'exit' {
 		return 'v_exit'
 	}
-	if is_plain_identifier(name) {
-		if name in reserved_words || name in libc_collisions || is_string_literal_symbol(name) {
-			return 'v_${name}'
-		}
-		return name
-	}
 	n := sanitize(name)
 	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
 		if name.contains('@') {
@@ -158,6 +152,37 @@ fn is_string_literal_symbol(name string) bool {
 // sanitize converts a V symbol or type spelling into a C identifier spelling
 // without applying reserved-word or libc collision prefixes.
 pub fn sanitize(name string) string {
+	mut dot_count := 0
+	for i in 0 .. name.len {
+		c := name[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+			continue
+		}
+		if c != `.` {
+			return sanitize_complex(name)
+		}
+		dot_count++
+	}
+	if dot_count == 0 {
+		return name
+	}
+	mut out := []u8{len: name.len + dot_count}
+	mut dst := 0
+	for i in 0 .. name.len {
+		c := name[i]
+		if c == `.` {
+			out[dst] = `_`
+			out[dst + 1] = `_`
+			dst += 2
+		} else {
+			out[dst] = c
+			dst++
+		}
+	}
+	return out.bytestr()
+}
+
+fn sanitize_complex(name string) string {
 	mut b := strings.new_builder(name.len + 8)
 	mut i := 0
 	for i < name.len {

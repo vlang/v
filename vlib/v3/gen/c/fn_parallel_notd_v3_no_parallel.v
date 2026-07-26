@@ -3,7 +3,9 @@ module c
 import os
 import runtime
 import strings
+import time
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 import v3.workers
 
@@ -24,8 +26,10 @@ $if !windows {
 		items_ptr voidptr
 		start     int
 		end       int
+		g         voidptr // &FlatGen, non-nil in fused prep mode (read-only access)
 	mut:
-		refs map[string]bool
+		refs  map[string]bool
+		cands []FlatCgenPrepCandidate
 	}
 
 	struct FlatCgenDynamicArgs {
@@ -39,6 +43,32 @@ $if !windows {
 		mut a := unsafe { &FlatCgenCostArgs(arg) }
 		mut items := unsafe { &[]FlatFnGenItem(a.items_ptr) }
 		mut stack := []flat.NodeId{cap: 256}
+		if !isnil(a.g) {
+			// Fused prep mode: also collect the fn-ptr preseed candidates the
+			// master replays in order after the join (see refine_fn_item_costs).
+			g := unsafe { &FlatGen(a.g) }
+			mut text_cache := &PrepTypTextCache{}
+			mut type_seen := &PreseedTypeSeen{}
+			mut cur_file := ''
+			mut cur_module := ''
+			for idx in a.start .. a.end {
+				unsafe {
+					item_file := items[idx].file
+					item_module := items[idx].module
+					if item_file != cur_file || item_module != cur_module {
+						cur_file = item_file
+						cur_module = item_module
+						text_cache.generation++
+					}
+					cost, needs_prelude_scan := exact_flat_fn_gen_item_cost_and_prep(g,
+						items[idx].node_id, mut a.refs, mut stack, mut a.cands, item_module,
+						item_file, mut text_cache, mut type_seen)
+					items[idx].cost = cost
+					items[idx].skip_prelude_scan = !needs_prelude_scan
+				}
+			}
+			return unsafe { nil }
+		}
 		for idx in a.start .. a.end {
 			unsafe {
 				cost, needs_prelude_scan := exact_flat_fn_gen_item_cost(a.a, items[idx].node_id, mut
@@ -80,12 +110,14 @@ $if !windows {
 	// fn work items and pre-seeds the parallel tables.
 	fn fixed_storage_scan_thread(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
+		fssw := time.new_stopwatch()
 		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.collect_fixed_storage_consts()
 		w.precompute_param_type_index()
 		w.precompute_concrete_optional_abi_fns()
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
+		w.timing_profile('  [ttime]     cg fs scan     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return unsafe { nil }
 	}
 
@@ -121,18 +153,65 @@ $if !windows {
 	}
 }
 
+// finish_pending_item_prep_serial is the fallback for the work item selection
+// defers to the parallel exact-cost pass (C-extern refs, and in parallel-prep
+// mode also costs and fn-ptr preseeds): when that pass cannot run, do the
+// deferred work serially like the former fused prep walk did.
+fn (mut g FlatGen) finish_pending_item_prep_serial() {
+	if !g.prep_externs_pending && !g.prep_costs_pending {
+		return
+	}
+	mut stack := []flat.NodeId{cap: 256}
+	if g.prep_costs_pending {
+		g.prep_costs_pending = false
+		// The selection-scope-allocated caches are gone by now; walk with
+		// fresh ones.
+		g.prep_typ_text_cache = &PrepTypTextCache{}
+		g.preseed_type_seen = &PreseedTypeSeen{}
+		mut type_text_cache := map[string]bool{}
+		for i in 0 .. g.fn_gen_items.len {
+			item := g.fn_gen_items[i]
+			if item.file != g.tc.cur_file || item.module != g.tc.cur_module {
+				type_text_cache.clear()
+				if !isnil(g.prep_typ_text_cache) {
+					g.prep_typ_text_cache.generation++
+				}
+			}
+			g.tc.cur_file = item.file
+			g.tc.cur_module = item.module
+			g.fn_gen_items[i].cost = g.fn_item_cost_and_prep(item.node_id, mut stack, mut
+				type_text_cache)
+		}
+	}
+	if g.prep_externs_pending {
+		g.prep_externs_pending = false
+		items := g.fn_gen_items
+		for item in items {
+			_ = g.fn_item_cost_and_c_extern_prep(item.node_id, mut stack)
+		}
+	}
+}
+
 fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 	if no_parallel || g.fn_gen_items.len < min_flat_cgen_parallel_items {
+		g.finish_pending_item_prep_serial()
 		return
 	}
 	$if windows {
+		g.finish_pending_item_prep_serial()
 		return
 	} $else {
 		if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 {
+			g.finish_pending_item_prep_serial()
 			return
 		}
 		available_jobs := g.a.worker_pool.size() + 1 - if reserve_worker { 1 } else { 0 }
 		n_jobs := flat_cgen_job_count(available_jobs, g.fn_gen_items.len)
+		fused := g.prep_costs_pending
+		mut prep_g := unsafe { nil }
+		if fused {
+			prep_g = voidptr(g)
+		}
 		mut args := []FlatCgenCostArgs{cap: n_jobs}
 		mut tasks := []workers.Task{cap: n_jobs}
 		for job in 0 .. n_jobs {
@@ -143,6 +222,7 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 				items_ptr: unsafe { voidptr(&g.fn_gen_items) }
 				start:     start
 				end:       end
+				g:         prep_g
 			}
 		}
 		for job in 0 .. n_jobs {
@@ -152,11 +232,57 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 				force_sync: job == 0
 			}
 		}
+		rfsw := time.new_stopwatch()
 		g.a.worker_pool.run(tasks)
+		g.timing_profile('  [ttime]     cg refine pool ${f64(rfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		for arg in args {
 			for name, used in arg.refs {
 				if used {
 					g.c_extern_refs[name] = true
+				}
+			}
+		}
+		if fused {
+			rpsw := time.new_stopwatch()
+			mut n_cands := 0
+			for arg in args {
+				n_cands += arg.cands.len
+			}
+			g.replay_prep_candidates(args)
+			g.timing_profile('  [ttime]     cg replay      ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (cands: ${n_cands})')
+			g.prep_costs_pending = false
+		}
+		g.prep_externs_pending = false
+	}
+}
+
+// replay_prep_candidates applies the fn-ptr preseeds collected by the parallel
+// prep workers, in source order, so registrations land exactly as the former
+// serial walk produced them.
+fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
+	mut type_text_cache := map[string]bool{}
+	// Fresh local dedup cache: g.preseed_type_seen was allocated inside the
+	// (already freed) selection scope and must not be touched here.
+	mut replay_seen := &PreseedTypeSeen{}
+	for arg in args {
+		for cand in arg.cands {
+			if cand.file != g.tc.cur_file || cand.module != g.tc.cur_module {
+				type_text_cache.clear()
+				g.tc.cur_file = cand.file
+				g.tc.cur_module = cand.module
+			}
+			if cand.is_expr {
+				w0, w1, slot := preseed_type_words(cand.typ)
+				if !replay_seen.seen[slot] || replay_seen.w0[slot] != w0
+					|| replay_seen.w1[slot] != w1 {
+					replay_seen.w0[slot] = w0
+					replay_seen.w1[slot] = w1
+					replay_seen.seen[slot] = true
+					g.preseed_parallel_fn_ptr_type(cand.typ)
+				}
+			} else {
+				if g.should_preseed_parallel_type_text_cached(cand.text, mut type_text_cache) {
+					g.preseed_parallel_fn_ptr_type(g.tc.parse_type(cand.text))
 				}
 			}
 		}
@@ -166,20 +292,28 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	mut n_items := 0
 	if g.scope_parallel_workers {
+		mut pmsw := time.new_stopwatch()
 		selection_scope := cgen_worker_scope_begin(true)
 		master_tc := g.tc
 		g.tc = g.clone_parallel_type_checker()
+		g.timing_profile('  [ttime]       pm clone tc  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		pmsw.restart()
 		// Fuse body-local function-pointer discovery into the item cost walk so
 		// parallel type declarations see every typedef before their task starts.
 		// The globally numbered string table must also be complete before output.
-		for node in g.a.nodes {
+		for i in 0 .. g.a.nodes.len {
+			node := unsafe { &g.a.nodes[i] }
 			if node.kind == .string_literal {
 				g.intern_string(node.value)
 			}
 		}
+		g.timing_profile('  [ttime]       pm str walk  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		pmsw.restart()
 		g.want_parallel_prep = true
 		items := g.ensure_fn_gen_items()
 		g.want_parallel_prep = false
+		g.timing_profile('  [ttime]       pm items     ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${items.len})')
+		pmsw.restart()
 		if _ := g.ierror_interface_name() {
 			g.intern_string('')
 		}
@@ -214,6 +348,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		g.generic_app_cache = clone_generic_app_cache(g.generic_app_cache)
 		cgen_worker_scope_free(selection_scope)
 		n_items = g.fn_gen_items.len
+		g.timing_profile('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	} else {
 		g.want_parallel_prep = true
 		n_items = g.ensure_fn_gen_items().len
@@ -655,6 +790,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				// Long-lived workers pull small source-contiguous chunks from a shared
 				// queue. This balances expression-cost and scheduler variation without
 				// rebuilding the generator caches for every chunk.
+				mut dsw := time.new_stopwatch()
 				ordered_chunk_outputs = []string{len: chunk_count}
 				ordered_wrapper_defs = []ParallelChunkWrapperDefs{len: chunk_count}
 				chunk_queue := chan int{cap: chunk_count}
@@ -684,10 +820,14 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					}
 				}
 				g.parallel_used = g.a.worker_pool.run(tasks)
+				g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
+				dsw.restart()
 				_ = type_decls_thread.wait()
+				g.timing_profile('  [ttime]   cg decls wait    ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
 			// The declaration thread disables the master's caches while body
 			// workers use their private copies. Restore them for synthetic output.
+			mut msw := time.new_stopwatch()
 			g.reset_context_lookup_caches()
 			for worker_ptr in cgen_workers {
 				mut w := unsafe { &FlatGen(worker_ptr) }
@@ -703,6 +843,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				}
 			}
 			g.replay_ordered_parallel_wrapper_defs(ordered_wrapper_defs)
+			g.timing_profile('  [ttime]   cg merge         ${f64(msw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			for output in ordered_chunk_outputs {
 				if output.len > 0 {
 					g.fn_segs << output
@@ -938,19 +1079,23 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		if idx < 0 || idx >= g.a.nodes.len {
 			continue
 		}
-		node := g.a.nodes[idx]
+		node := unsafe { &g.a.nodes[idx] }
 		cost++
-		if node.kind == .string_literal {
-			g.intern_string(node.value)
-		}
-		if node.kind == .selector {
-			g.collect_c_extern_ref_from_node(node)
-		}
-		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
+		// String literals were already interned by the whole-AST literal walk in
+		// prepare_pre_dispatch_master, and C-extern refs are re-collected by the
+		// parallel exact-cost pass that always follows this prep (with a serial
+		// fallback, see refine_fn_item_costs). Keep this walk preseed-only.
+		if node.typ.len > 0
+			&& g.should_preseed_parallel_type_text_ptr_cached(node.typ, mut type_text_cache) {
 			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
 		}
 		if expr_type := g.parallel_cached_expr_type(current_id, node) {
-			g.preseed_parallel_fn_ptr_type(expr_type)
+			// Checker-cached expression types repeat the same ~1K canonical
+			// values across hundreds of thousands of nodes; traverse each
+			// distinct value once instead of per node.
+			if g.preseed_type_first_seen(expr_type) {
+				g.preseed_parallel_fn_ptr_type(expr_type)
+			}
 		}
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := g.a.children[node.children_start + i]
@@ -972,7 +1117,7 @@ fn (mut g FlatGen) fn_item_cost_and_c_extern_prep(node_id flat.NodeId, mut stack
 		if idx < 0 || idx >= g.a.nodes.len {
 			continue
 		}
-		node := g.a.nodes[idx]
+		node := unsafe { &g.a.nodes[idx] }
 		cost++
 		if node.kind == .selector {
 			g.collect_c_extern_ref_from_node(node)
@@ -1028,12 +1173,13 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 		if idx < 0 || idx >= g.a.nodes.len {
 			continue
 		}
-		node := g.a.nodes[idx]
+		node := unsafe { &g.a.nodes[idx] }
 		if node.kind == .string_literal {
 			g.intern_string(node.value)
 		}
 		g.collect_c_extern_ref_from_node(node)
-		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
+		if node.typ.len > 0
+			&& g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
 			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
 		}
 		if expr_type := g.parallel_cached_expr_type(current_id, node) {
@@ -1048,7 +1194,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 	}
 }
 
-fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node flat.Node) ?types.Type {
+fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?types.Type {
 	idx := int(id)
 	if idx < 0 {
 		return none
@@ -1077,6 +1223,173 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node flat.Node) ?types
 		}
 	}
 	return none
+}
+
+// FlatCgenPrepCandidate is one deferred fn-ptr preseed action discovered by a
+// parallel prep worker, replayed by the master in source order so the typedef
+// registration order matches the former serial walk exactly.
+struct FlatCgenPrepCandidate {
+	is_expr bool
+	text    string // node.typ text (is_expr == false)
+	module  string
+	file    string
+	typ     types.Type // checker-cached expr type (is_expr == true)
+}
+
+// exact_flat_fn_gen_item_cost_and_prep is exact_flat_fn_gen_item_cost plus the
+// candidate collection of the former serial fused prep walk: distinct type
+// texts and distinct cached expression types, in encounter order. All FlatGen
+// and checker access is read-only (nothing writes the dense expr caches during
+// cgen; every remember_expr_type caller is a mut check-phase path).
+fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, mut c_extern_refs map[string]bool, mut stack []flat.NodeId, mut cands []FlatCgenPrepCandidate, item_module string, item_file string, mut text_cache PrepTypTextCache, mut type_seen PreseedTypeSeen) (int, bool) {
+	a := g.a
+	mut cost := 0
+	mut needs_prelude_scan := false
+	stack.clear()
+	stack << node_id
+	for stack.len > 0 {
+		id := stack.pop()
+		idx := int(id)
+		if idx < 0 || idx >= a.nodes.len {
+			continue
+		}
+		node := unsafe { &a.nodes[idx] }
+		cost += flat_cgen_node_cost(node.kind)
+		if node.kind == .lock_expr || node.kind == .label_stmt
+			|| (node.kind == .defer_stmt && node.value == 'function') {
+			needs_prelude_scan = true
+		}
+		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
+			base_id := a.children[node.children_start]
+			if int(base_id) >= 0 {
+				base := unsafe { &a.nodes[int(base_id)] }
+				if base.kind == .ident && base.value == 'C' {
+					raw_name := 'C.${node.value}'
+					raw_cfn := naming.c_name(raw_name)
+					c_extern_refs[raw_name] = true
+					c_extern_refs[raw_cfn] = true
+					c_extern_refs[c_winapi_wide_export_name(raw_cfn)] = true
+				}
+			}
+		}
+		if node.typ.len > 0 {
+			slot := int((u64(voidptr(node.typ.str)) >> 4) & 4095)
+			if text_cache.gens[slot] != text_cache.generation
+				|| text_cache.ptrs[slot] != voidptr(node.typ.str)
+				|| text_cache.lens[slot] != node.typ.len {
+				text_cache.ptrs[slot] = voidptr(node.typ.str)
+				text_cache.gens[slot] = text_cache.generation
+				text_cache.lens[slot] = node.typ.len
+				cands << FlatCgenPrepCandidate{
+					text:   node.typ
+					module: item_module
+					file:   item_file
+				}
+			}
+		}
+		if expr_type := g.parallel_cached_expr_type(id, node) {
+			w0, w1, slot := preseed_type_words(expr_type)
+			if !type_seen.seen[slot] || type_seen.w0[slot] != w0 || type_seen.w1[slot] != w1 {
+				type_seen.w0[slot] = w0
+				type_seen.w1[slot] = w1
+				type_seen.seen[slot] = true
+				cands << FlatCgenPrepCandidate{
+					is_expr: true
+					module:  item_module
+					file:    item_file
+					typ:     expr_type
+				}
+			}
+		}
+		for i := node.children_count - 1; i >= 0; i-- {
+			child_id := a.children[node.children_start + i]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
+	}
+	return cost, needs_prelude_scan
+}
+
+@[inline]
+fn preseed_type_words(typ &types.Type) (u64, u64, int) {
+	words := unsafe { &u64(voidptr(typ)) }
+	w0 := unsafe { words[0] }
+	w1 := unsafe { words[1] }
+	return w0, w1, int(((w0 >> 4) ^ w1) & 4095)
+}
+
+// par_cgen_prep_enabled gates the parallel fused item prep, so a single binary
+// can A/B or disable it (`V3_NO_PAR_CGEN_PREP=1`).
+fn par_cgen_prep_enabled() bool {
+	return os.getenv('V3_NO_PAR_CGEN_PREP') == ''
+}
+
+// PreseedTypeSeen dedups fn-ptr preseed traversals of checker-cached
+// expression types during the fused prep walk. Keys are the opaque 16-byte
+// Type value (variant box pointer + tag): identical bytes always denote the
+// same type, so a hit safely skips the traversal; collisions just evict. The
+// cache lives only for one item-selection walk, within the selection scope
+// that owns any non-canonical type values it may reference.
+struct PreseedTypeSeen {
+mut:
+	w0   [4096]u64
+	w1   [4096]u64
+	seen [4096]bool
+}
+
+// preseed_type_first_seen reports whether this exact type value has not been
+// preseeded yet during the current prep walk, recording it as seen.
+fn (mut g FlatGen) preseed_type_first_seen(typ &types.Type) bool {
+	mut cache := g.preseed_type_seen
+	if isnil(cache) {
+		return true
+	}
+	words := unsafe { &u64(voidptr(typ)) }
+	w0 := unsafe { words[0] }
+	w1 := unsafe { words[1] }
+	slot := int(((w0 >> 4) ^ w1) & 4095)
+	if cache.seen[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
+		return false
+	}
+	cache.w0[slot] = w0
+	cache.w1[slot] = w1
+	cache.seen[slot] = true
+	return true
+}
+
+// PrepTypTextCache short-circuits repeated preseed verdicts for the SAME type
+// text instance during the fused item prep walk: node.typ strings are shared
+// instances, so a pointer probe replaces most content-hash map lookups. The
+// generation is bumped whenever the file/module context changes (verdicts
+// depend on qualify_name), matching the map cache's clear.
+struct PrepTypTextCache {
+mut:
+	generation u32 = 1
+	ptrs       [4096]voidptr
+	gens       [4096]u32
+	lens       [4096]int
+	verdicts   [4096]bool
+}
+
+fn (mut g FlatGen) should_preseed_parallel_type_text_ptr_cached(typ string, mut cache map[string]bool) bool {
+	mut tcache := g.prep_typ_text_cache
+	if isnil(tcache) {
+		return g.should_preseed_parallel_type_text_cached(typ, mut cache)
+	}
+	slot := int((u64(voidptr(typ.str)) >> 4) & 4095)
+	// Same pointer + same length + live generation means same text in the same
+	// context (the length guards unsafe zero-copy slices sharing a base).
+	if tcache.gens[slot] == tcache.generation && tcache.ptrs[slot] == voidptr(typ.str)
+		&& tcache.lens[slot] == typ.len {
+		return tcache.verdicts[slot]
+	}
+	verdict := g.should_preseed_parallel_type_text_cached(typ, mut cache)
+	tcache.ptrs[slot] = voidptr(typ.str)
+	tcache.gens[slot] = tcache.generation
+	tcache.lens[slot] = typ.len
+	tcache.verdicts[slot] = verdict
+	return verdict
 }
 
 fn (g &FlatGen) should_preseed_parallel_type_text_cached(typ string, mut cache map[string]bool) bool {
@@ -1255,6 +1568,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		has_builtins:                   g.has_builtins
 		cache_split:                    g.cache_split
+		skip_generics:                  g.skip_generics
 		tmp_count:                      (worker_id + 1) * 100_000
 		line_start:                     true
 		modules:                        g.modules
@@ -1356,6 +1670,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		enum_selector_cache:         &ContextStringLookupCache{}
 		enum_method_cache:           &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
+		struct_decl_pref_cache:      &StructDeclPrefCache{}
 		embedded_fields_by_type:     g.embedded_fields_by_type
 		param_types_by_short:        g.param_types_by_short
 		generic_method_candidates:   g.generic_method_candidates
@@ -1781,12 +2096,24 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			// Item selection only reads the AST and immutable checker tables, so let
 			// its exact-cost pass use the otherwise-idle pool while the independent
 			// fixed-storage scan finishes on a helper thread.
+			mut psw := time.new_stopwatch()
 			fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
 			g.prepare_pre_dispatch_master()
+			g.timing_profile('  [ttime]     cg prep master ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			psw.restart()
 			g.refine_fn_item_costs(no_parallel, true)
+			g.timing_profile('  [ttime]     cg cost refine ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			psw.restart()
 			_ = fixed_storage_thread.wait()
+			g.timing_profile('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		g.publish_fixed_storage_scan(mut fs_worker)
+		if g.parallel_prepared && !g.prep_externs_pending {
+			// Item-body and top-level C-extern refs are fully collected (fused
+			// prep + exact-cost pass or its serial fallback); the pre-dispatch
+			// preseed can reuse them instead of re-walking every selected body.
+			g.c_extern_refs_ready = true
+		}
 		return true
 	}
 }

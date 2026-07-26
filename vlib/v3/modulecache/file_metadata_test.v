@@ -3,7 +3,7 @@ module modulecache
 import os
 
 fn test_file_metadata_helper_uses_generated_u64_abi() {
-	header_path := os.join_path(@VEXEROOT, 'vlib', 'v3', 'modulecache', 'file_metadata.h')
+	header_path := os.join_path(@VEXEROOT, 'vlib', 'v3', 'modulecache', 'file_metadata.c')
 	header := os.read_file(header_path) or { panic(err) }
 	signature := 'static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inode,
 	u64 *size, u64 *mtime_seconds, u64 *mtime_nanoseconds,

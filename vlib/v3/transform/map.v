@@ -52,6 +52,36 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 			}
 		}
 	}
+	// A bare alias spelling from a foreign-module expansion (auto-stringified
+	// fields keep their declaring module's spelling): resolve it through the
+	// checker alias table like wrap_string_conversion does, and store keys as
+	// the scalar base so the declared C type never names the unresolvable
+	// alias. The transform's own struct mirror holds first-wins bare aliases
+	// for unrelated modules, so only a checker-declared struct blocks this.
+	if !isnil(t.tc) && !clean.contains('.') && clean !in t.tc.structs {
+		mut alias_target := t.tc.type_aliases[clean] or { '' }
+		if alias_target.len == 0 {
+			suffix := '.${clean}'
+			mut matches := 0
+			for aname, target in t.tc.type_aliases {
+				if aname.ends_with(suffix) {
+					alias_target = target
+					matches++
+					if matches > 1 {
+						alias_target = ''
+						break
+					}
+				}
+			}
+		}
+		if alias_target.len > 0 {
+			base := t.normalize_type_alias(alias_target).trim_space()
+			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
+				'u32', 'u64', 'rune', 'char', 'string'] {
+				return base
+			}
+		}
+	}
 	return none
 }
 

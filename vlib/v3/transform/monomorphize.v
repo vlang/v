@@ -571,8 +571,13 @@ fn (mut t Transformer) seed_generic_specialization_args(decls map[string]Generic
 }
 
 pub fn erase_generic_templates(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
+	mut sw := time.new_stopwatch()
 	mut t := new_transformer(mut a, tc, used_fns)
+	t.timing_profile('  [ttime]   erase new_transformer ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	sw.restart()
 	decls := t.collect_generic_fn_decls_for_erasure()
+	t.timing_profile('  [ttime]   erase collect         ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (decls: ${decls.len})')
+	sw.restart()
 	if decls.len != 0 {
 		keep := t.building_v_type_erased_generic_keep_set(decls)
 		mut erased := map[string]GenericFnDecl{}
@@ -583,6 +588,7 @@ pub fn erase_generic_templates(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 			erased[key] = decl
 		}
 		t.erase_generic_fn_decls(erased)
+		t.timing_profile('  [ttime]   erase apply           ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (erased: ${decls.len - keep.len})')
 	}
 	return t.used_fns
 }
@@ -591,32 +597,82 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 	mut decls := map[string]GenericFnDecl{}
 	mut cur_file := ''
 	mut cur_module := ''
-	for i, node in t.a.nodes {
-		match node.kind {
-			.file {
-				cur_file = node.value
-				cur_module = t.tc.file_modules[cur_file] or { '' }
+	// The walk is cache-miss bound (one 72-byte node header per check) and the
+	// per-decl candidate analysis is state-free, so fan both out over the
+	// worker pool: workers flag file/module markers and prescreen-positive fn
+	// decls, and only those nodes are visited here, in ascending order like the
+	// serial walk. Prescreen-negative fn decls can never need erasure.
+	mut scan_sw := time.new_stopwatch()
+	mut flags := []u8{len: t.a.nodes.len}
+	if scan_top_level_kind_flags_parallel(t.a, 0, mut flags) {
+		t.timing_profile('  [ttime]     collect scan        ${f64(scan_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		scan_sw.restart()
+		// Word-scan the flag array: flagged nodes are rare, so loading eight
+		// flags per u64 makes the master walk almost free.
+		words := flags.len / 8
+		word_data := unsafe { &u64(flags.data) }
+		for wi in 0 .. words {
+			if unsafe { word_data[wi] } == 0 {
+				continue
 			}
-			.module_decl {
-				cur_module = node.value
-			}
-			.fn_decl {
-				if !t.generic_fn_decl_needs_erasure_scan(node, cur_module) {
-					continue
+			base_i := wi * 8
+			for bi in 0 .. 8 {
+				if flags[base_i + bi] != 0 {
+					cur_file, cur_module = t.collect_generic_fn_decl_for_erasure_at(base_i + bi, mut
+						decls, cur_file, cur_module)
 				}
-				key := t.generic_fn_decl_key(node, cur_module)
-				decls[key] = GenericFnDecl{
-					id:     flat.NodeId(i)
-					node:   node
-					file:   cur_file
-					module: cur_module
-					key:    key
-				}
 			}
-			else {}
 		}
+		for i in words * 8 .. flags.len {
+			if flags[i] != 0 {
+				cur_file, cur_module = t.collect_generic_fn_decl_for_erasure_at(i, mut decls,
+					cur_file, cur_module)
+			}
+		}
+		t.timing_profile('  [ttime]     collect flag walk   ${f64(scan_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		return decls
+	}
+	for i in 0 .. t.a.nodes.len {
+		kind := unsafe { t.a.nodes[i].kind }
+		if kind != .file && kind != .module_decl && kind != .fn_decl {
+			continue
+		}
+		cur_file, cur_module = t.collect_generic_fn_decl_for_erasure_at(i, mut decls, cur_file,
+			cur_module)
 	}
 	return decls
+}
+
+// collect_generic_fn_decl_for_erasure_at visits one node of the erasure scan
+// and returns the (file, module) context the scan holds after it.
+fn (mut t Transformer) collect_generic_fn_decl_for_erasure_at(i int, mut decls map[string]GenericFnDecl, cur_file string, cur_module string) (string, string) {
+	node := unsafe { &t.a.nodes[i] }
+	match node.kind {
+		.file {
+			new_file := node.value
+			return new_file, t.tc.file_modules[new_file] or { '' }
+		}
+		.module_decl {
+			return cur_file, node.value
+		}
+		.fn_decl {
+			if !t.generic_fn_decl_needs_erasure_scan(*node, cur_module) {
+				return cur_file, cur_module
+			}
+			key := t.generic_fn_decl_key(*node, cur_module)
+			decls[key] = GenericFnDecl{
+				id:     flat.NodeId(i)
+				node:   *node
+				file:   cur_file
+				module: cur_module
+				key:    key
+			}
+			return cur_file, cur_module
+		}
+		else {
+			return cur_file, cur_module
+		}
+	}
 }
 
 fn (mut t Transformer) building_v_type_erased_generic_keep_set(decls map[string]GenericFnDecl) map[string]bool {
@@ -8946,8 +9002,41 @@ fn (mut t Transformer) node_subtree_has_generic_placeholder(id flat.NodeId, modu
 	return false
 }
 
+// generic_placeholder_prescreen reports whether `text` can possibly hold a
+// single-capital-letter type component (`T`, `os.T`, `[]T`, `map[K]V`, ...) or
+// the word `generic`. Every text type_text_has_generic_placeholder flags
+// contains an isolated capital letter (each detection path ends in
+// is_generic_fn_placeholder_name on a component whose neighbours in the
+// original text are non-identifier characters), so texts failing this byte
+// scan skip the full recursive analysis.
+@[direct_array_access]
+fn generic_placeholder_prescreen(text string) bool {
+	for i in 0 .. text.len {
+		c := text[i]
+		if c >= `A` && c <= `Z` {
+			prev_ident := i > 0 && is_placeholder_ident_char(text[i - 1])
+			next_ident := i + 1 < text.len && is_placeholder_ident_char(text[i + 1])
+			if !prev_ident && !next_ident {
+				return true
+			}
+		} else if c == `g` && i + 7 <= text.len && text[i + 1] == `e` && text[i + 2] == `n`
+			&& text[i + 3] == `e` && text[i + 4] == `r` && text[i + 5] == `i` && text[i + 6] == `c` {
+			return true
+		}
+	}
+	return false
+}
+
+@[inline]
+fn is_placeholder_ident_char(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`
+}
+
 fn (mut t Transformer) type_text_has_generic_placeholder(typ string, module_name string) bool {
 	if t.skip_generics {
+		return false
+	}
+	if !generic_placeholder_prescreen(typ) {
 		return false
 	}
 	clean := typ.trim_space()

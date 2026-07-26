@@ -859,6 +859,13 @@ fn (t &Transformer) unique_qualified_struct_for_short(name string) ?string {
 	if isnil(t.tc) || name.len == 0 || name.contains('.') {
 		return none
 	}
+	if t.struct_short_name_index_ready {
+		qualified := t.struct_short_name_index[name] or { return none }
+		if qualified != struct_short_name_ambiguous && !qualified.contains('[') {
+			return qualified
+		}
+		return none
+	}
 	mut found := ''
 	for sname, _ in t.tc.structs {
 		// Match a module-qualified struct whose short name equals `name`, excluding

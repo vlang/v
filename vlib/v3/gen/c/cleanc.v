@@ -2,6 +2,7 @@ module c
 
 import os
 import strings
+import time
 import v3.cmdexec
 import v3.flat
 import v3.gen.c.naming
@@ -239,6 +240,7 @@ mut:
 	output_error                 string
 	c99_mode                     bool
 	skip_generics                bool
+	placeholder_check_forced     bool
 	cur_fn_name                  string
 	current_decl_is_mut          bool
 	direct_array_access          bool
@@ -316,9 +318,23 @@ mut:
 	generic_app_cache              &GenericAppCache = unsafe { nil }
 	want_parallel_prep             bool
 	want_parallel_c_extern_prep    bool
-	cache_split                    bool
-	program_body_only              bool
-	cached_support_identifiers     map[string]bool
+	// Set while selected items' C-extern refs still have to be collected: the
+	// fused prep walk defers them to the parallel exact-cost pass, which falls
+	// back to a serial top-up when it cannot run.
+	prep_externs_pending bool
+	prep_costs_pending   bool
+	prep_typ_text_cache  &PrepTypTextCache = unsafe { nil }
+	preseed_type_seen    &PreseedTypeSeen  = unsafe { nil }
+	// Separate seen-cache for the declaration preseed family
+	// (preseed_fn_ptr_type has optional-typedef side effects the body-walk
+	// preseed does not); armed only for the contiguous pre-dispatch preseed
+	// block, while no arena scope can be freed and reused.
+	preseed_sig_type_seen      &PreseedTypeSeen     = unsafe { nil }
+	struct_decl_pref_cache     &StructDeclPrefCache = unsafe { nil }
+	unused_param_seen          &UnusedParamSeen     = unsafe { nil }
+	cache_split                bool
+	program_body_only          bool
+	cached_support_identifiers map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -362,6 +378,12 @@ struct CInlineHeader {
 // was_parallel reports whether the last fn codegen actually ran across threads.
 pub fn (g &FlatGen) was_parallel() bool {
 	return g.parallel_used
+}
+
+fn (g &FlatGen) timing_profile(message string) {
+	if !isnil(g.tc) && g.tc.verbose {
+		eprintln(message)
+	}
 }
 
 pub fn (g &FlatGen) c_flags() []string {
@@ -1715,11 +1737,23 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.tc.a == unsafe { nil } {
 		g.tc.collect(a)
 	}
+	mut cgsw := time.new_stopwatch()
 	g.tc.precompute_source_error_embed_index()
+	if g.skip_generics {
+		// The declared-type tables are static for the whole generic-free cgen
+		// phase, so qualify_name is memoizable per (module, file) context.
+		// Worker forks receive their own instances (fork_for_parallel_codegen).
+		g.tc.qualify_name_cache = &types.QualifyNameCache{}
+	}
+	defer {
+		g.tc.qualify_name_cache = unsafe { nil }
+	}
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info()
 	g.preintern_json_encode_strings()
+	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	cgsw.restart()
 	if g.incremental_fn_names.len > 0 {
 		// Cached declarations already contain whole-program typedefs, wrappers,
 		// interface tables and shared-parameter metadata. A body-only update only
@@ -1734,6 +1768,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// interface implementers first so that late-lowered dispatch targets are not
 		// pruned before their concrete method bodies are emitted.
 		g.collect_interface_impls()
+		g.timing_profile('  [ttime]   cg iface impls   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cgsw.restart()
 		// Struct field defaults are emitted from their declarations when an otherwise
 		// unrelated function initializes the struct. Parallel function pre-scanning only
 		// visits that function body, so seed literals from defaults before workers fork.
@@ -1749,7 +1785,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// its embedded-fields map must be populated even when the worker-fork prep
 		// runs its own copy; do it before any helper thread can observe `g`.
 		g.precompute_embedded_fields()
+		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cgsw.restart()
 		parallel_prep_done := g.run_pre_dispatch_parallel(no_parallel)
+		g.timing_profile('  [ttime]   cg predispatch   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cgsw.restart()
 		if !parallel_prep_done {
 			g.collect_fixed_storage_consts()
 			g.precompute_param_type_index()
@@ -1763,17 +1803,30 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		if !g.skip_generics {
 			g.precompute_generic_method_candidate_index()
 		}
+		g.timing_profile('  [ttime]     wr shared+sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cgsw.restart()
 		// Decide fixed-array return wrappers before generating function bodies, so
 		// signatures, returns and call sites all agree on the wrapped types.
 		g.populate_fixed_array_ret_wrappers()
+		g.timing_profile('  [ttime]     wr fixed ret   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cgsw.restart()
 		// Seed declaration-owned function-pointer types before parallel type
 		// generation starts. The pre-dispatch item walk adds body-local types
-		// before the declaration task is launched.
+		// before the declaration task is launched. Declaration types repeat the
+		// same canonical values heavily; dedup whole traversals for this block.
+		g.preseed_sig_type_seen = &PreseedTypeSeen{}
 		g.preseed_struct_fn_ptr_types()
 		g.preseed_sum_fn_ptr_types()
 		g.preseed_global_fn_ptr_types()
+		g.timing_profile('  [ttime]     wr struct/sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cgsw.restart()
 		g.preseed_fn_signature_fn_ptr_types()
+		g.timing_profile('  [ttime]     wr fn sigs     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cgsw.restart()
 		g.preseed_c_extern_fn_ptr_types()
+		g.preseed_sig_type_seen = unsafe { nil }
+		g.timing_profile('  [ttime]   cg wrappers      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sig+extern)')
+		cgsw.restart()
 	}
 	g.precompute_ownership_recursive_drop_helpers()
 	defer_parallel_support := g.scope_parallel_workers && !no_parallel && !g.program_body_only
@@ -1783,11 +1836,15 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	} else {
 		g.precompute_consts()
 	}
+	g.timing_profile('  [ttime] cg precompute      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	cgsw.restart()
 	orig_sb := g.sb
 	orig_line_start := g.line_start
 	g.sb = strings.new_builder(4096)
 	g.line_start = true
 	g.gen_fns_dispatch(no_parallel)
+	g.timing_profile('  [ttime] cg fns dispatch    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	cgsw.restart()
 	if defer_parallel_support {
 		if g.parallel_support_ready {
 			const_code = g.parallel_const_code
@@ -1806,6 +1863,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { g.sb.free() }
 	g.sb = orig_sb
 	g.line_start = orig_line_start
+	g.timing_profile('  [ttime] cg fn_code copy    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (len: ${fn_code.len})')
+	cgsw.restart()
 	if g.program_body_only {
 		unsafe { const_code.free() }
 		g.sb.ensure_cap(fn_code.len + 262_144)
@@ -1925,6 +1984,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.cache_split {
 		g.interface_method_stubs()
 	}
+	g.timing_profile('  [ttime] cg postamble       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sb: ${g.sb.len})')
+	cgsw.restart()
 	if !g.cache_split && g.output_path.len > 0 && (g.fn_segs.len > 0 || fn_code.len > 0) {
 		mut prefix := unsafe { g.sb.reuse_as_plain_u8_array() }
 		os.write_file_array(g.output_path, prefix) or { g.output_error = err.msg() }
@@ -1933,6 +1994,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		if g.output_error.len == 0 {
 			g.append_function_output(g.output_path, fn_code)
 		}
+		g.timing_profile('  [ttime] cg write out       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return ''
 	}
 	if g.fn_segs.len > 0 {
@@ -2207,13 +2269,27 @@ fn node_kind_id(node flat.Node) int {
 }
 
 // collect_gen_info updates collect gen info state for c.
+// UnusedParamSeen tracks param type texts already preseeded for unused fn
+// declarations within the current module (see preseed_unused_fn_ptr_param_types).
+struct UnusedParamSeen {
+mut:
+	module string
+	texts  map[string]bool
+}
+
 fn (mut g FlatGen) collect_gen_info() {
+	g.unused_param_seen = &UnusedParamSeen{}
 	g.reserve_collect_gen_info_maps()
 	if g.incremental_fn_names.len == 0 {
 		g.collect_c_flags_from_directives()
 	}
 	g.c_flags << g.initial_c_flags
 	g.use_system_stdint = g.translation_unit_uses_inttypes()
+	cisw := time.new_stopwatch()
+	mut ci_fn_ns := u64(0)
+	mut ci_reg_ns := u64(0)
+	mut ci_ret_ns := u64(0)
+	mut ci_ptypes_ns := u64(0)
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut seen_import_in_file := false
@@ -2249,14 +2325,17 @@ fn (mut g FlatGen) collect_gen_info() {
 			continue
 		}
 		if kind_id == 61 {
+			ci_t0 := time.sys_mono_now()
 			full_name := qualify_name_in_module(cur_module, node.value)
 			if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module) {
 				if g.incremental_fn_names.len == 0 {
 					g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
 				}
+				ci_fn_ns += time.sys_mono_now() - ci_t0
 				continue
 			}
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
+			ci_p0 := time.sys_mono_now()
 			typed_params := g.fn_node_param_types(node, cur_module)
 			param_cap := if node.children_count < 64 { int(node.children_count) } else { 64 }
 			mut ptypes := []types.Type{cap: param_cap}
@@ -2324,6 +2403,7 @@ fn (mut g FlatGen) collect_gen_info() {
 					}
 				}
 			}
+			ci_ptypes_ns += time.sys_mono_now() - ci_p0
 			ptypes = g.fn_param_types_with_implicit_veb_ctx(node, ptypes)
 			if shared_params.len > 0 {
 				shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
@@ -2345,9 +2425,12 @@ fn (mut g FlatGen) collect_gen_info() {
 				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
 				nonshared_fn_node_indexes << node_idx
 			}
+			ci_r0 := time.sys_mono_now()
 			return_type := g.fn_node_return_type(node, cur_module)
+			ci_ret_ns += time.sys_mono_now() - ci_r0
 			g.register_fn_decl_signature_type(node.value, full_name, ptypes, shared_params,
 				decl_is_variadic, first_param_is_mut, return_type)
+			ci_reg_ns += time.sys_mono_now() - ci_r0
 			// Module-level `init()` functions run once at startup. Collect their C
 			// names so _vinit can invoke them (V semantics).
 			is_builtin_init := cur_module == 'builtin' && node.value == 'builtin_init'
@@ -2359,6 +2442,7 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 				g.module_init_fn_modules[init_cname] = cur_module
 			}
+			ci_fn_ns += time.sys_mono_now() - ci_t0
 			continue
 		}
 		if g.incremental_fn_names.len > 0 && node.kind == .directive {
@@ -2533,7 +2617,15 @@ fn (mut g FlatGen) collect_gen_info() {
 	}
 	g.modules['strings'] = 'strings'
 	g.materialize_objective_cpp_sources()
+	ccio_sw := time.new_stopwatch()
 	g.collect_const_init_order_from_files()
+	ci_total_ms := f64(cisw.elapsed().microseconds()) / 1000.0
+	ci_fn_ms := f64(ci_fn_ns) / 1e6
+	ccio_ms := f64(ccio_sw.elapsed().microseconds()) / 1000.0
+	ci_reg_ms := f64(ci_reg_ns) / 1e6
+	ci_ret_ms := f64(ci_ret_ns) / 1e6
+	ci_ptypes_ms := f64(ci_ptypes_ns) / 1e6
+	g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
 }
 
 fn (mut g FlatGen) reserve_collect_gen_info_maps() {
@@ -2630,6 +2722,27 @@ fn (mut g FlatGen) cached_shared_alias_pointer_type_from_text(raw string) ?types
 }
 
 fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name string, file string) {
+	// Unused declarations repeat the same few param type texts; when every
+	// param text of this fn was already preseeded within this module, the
+	// whole typed-param resolution below is a no-op.
+	if !isnil(g.unused_param_seen) {
+		mut seen := g.unused_param_seen
+		if seen.module != module_name {
+			seen.module = module_name
+			seen.texts.clear()
+		}
+		mut all_seen := true
+		for i in 0 .. node.children_count {
+			child := g.a.child_node(&node, i)
+			if node_kind_id(child) == 75 && child.typ !in seen.texts {
+				all_seen = false
+				break
+			}
+		}
+		if all_seen {
+			return
+		}
+	}
 	g.tc.cur_module = module_name
 	g.tc.cur_file = file
 	typed_params := g.fn_node_param_types(node, module_name)
@@ -2638,6 +2751,9 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 		child := g.a.child_node(&node, i)
 		if node_kind_id(child) != 75 {
 			continue
+		}
+		if !isnil(g.unused_param_seen) {
+			g.unused_param_seen.texts[child.typ] = true
 		}
 		raw_type := if param_idx < typed_params.len {
 			typed_params[param_idx]
@@ -7120,7 +7236,8 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 	}
 	if !expected_is_shared_alias && expected !is types.Pointer && expected !is types.Void
 		&& expected !is types.OptionType && expected !is types.ResultType && actual is types.Pointer
-		&& g.type_names_match(actual.base_type, expected) && !(node.kind == .ident
+		&& (g.type_names_match(actual.base_type, expected)
+		|| g.type_names_match(actual.base_type, semantic_expected)) && !(node.kind == .ident
 		&& g.local_storage_is_shared(node.value)) && !(node.kind == .char_literal
 		&& node.value.starts_with('c:')) {
 		needs_paren := node.kind !in [.ident, .selector, .call, .index]
@@ -15351,34 +15468,31 @@ fn (mut g FlatGen) global_decls() {
 			g.writeln('#endif')
 			continue
 		}
-		// With -prealloc the arena base block is per-thread (lazily initialized
-		// on first allocation in each thread); a shared pointer would make all
-		// threads bump the same block without synchronization. cc gets real
-		// TLS; tcc implements no _Thread_local, so it gets a pthread-key
-		// emulation behind an lvalue macro. The key setup needs no
-		// synchronization: the first allocation always happens on the main
-		// thread, long before any `spawn`. The helpers use pthread_key_t so they
-		// agree with either the platform pthread header or the headerless fallback.
-		if g.prealloc && name == 'g_memory_block' {
+		// With -prealloc the arena base block and the block-recycle cache are
+		// per-thread; a shared pointer would make all threads bump the same
+		// block without synchronization. cc gets real TLS; tcc implements no
+		// _Thread_local, so each gets a pthread-key emulation behind an lvalue
+		// macro. The keys are created from a constructor (same pattern as the
+		// shared-storage TLS emulation above), so worker threads can never
+		// race a lazy pthread_key_create - unlike the arena base, the recycle
+		// cache has no first-touch-on-main-thread guarantee.
+		if g.prealloc && name in ['g_memory_block', 'g_prealloc_block_cache'] {
+			cn := g.cname(name)
 			g.writeln('#if defined(__TINYC__)')
-			g.writeln('static pthread_key_t g_memory_block_key = 0;')
-			g.writeln('static int g_memory_block_key_ready = 0;')
-			g.writeln('static ${ct}* g_memory_block_slot(void) {')
-			g.writeln('	void* p;')
-			g.writeln('	if (!g_memory_block_key_ready) {')
-			g.writeln('		pthread_key_create(&g_memory_block_key, 0);')
-			g.writeln('		g_memory_block_key_ready = 1;')
-			g.writeln('	}')
-			g.writeln('	p = pthread_getspecific(g_memory_block_key);')
+			g.writeln('static pthread_key_t ${cn}_key;')
+			g.writeln('static void ${cn}_key_init(void) __attribute__((constructor));')
+			g.writeln('static void ${cn}_key_init(void) { pthread_key_create(&${cn}_key, 0); }')
+			g.writeln('static ${ct}* ${cn}_slot(void) {')
+			g.writeln('	void* p = pthread_getspecific(${cn}_key);')
 			g.writeln('	if (p == 0) {')
 			g.writeln('		p = calloc(1, sizeof(${ct}));')
-			g.writeln('		pthread_setspecific(g_memory_block_key, p);')
+			g.writeln('		pthread_setspecific(${cn}_key, p);')
 			g.writeln('	}')
 			g.writeln('	return (${ct}*)p;')
 			g.writeln('}')
-			g.writeln('#define g_memory_block (*g_memory_block_slot())')
+			g.writeln('#define ${cn} (*${cn}_slot())')
 			g.writeln('#else')
-			g.writeln('_Thread_local ${ct} ${g.cname(name)}${init};')
+			g.writeln('_Thread_local ${ct} ${cn}${init};')
 			g.writeln('#endif')
 			continue
 		}

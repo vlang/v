@@ -357,7 +357,8 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		return
 	}
 	effective_type := default_init_unalias_type(types.unwrap_pointer(g.tc.parse_type(init_value)))
-	if effective_type !is types.Struct && g.gen_lowered_sum_init(node) {
+	if (effective_type !is types.Struct || g.struct_init_is_lowered_sum_literal(node))
+		&& g.gen_lowered_sum_init(node) {
 		return
 	}
 	mut name := g.struct_init_c_type_name(init_value)
@@ -1033,6 +1034,22 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	}
 	g.write('}')
 	return true
+}
+
+// struct_init_is_lowered_sum_literal recognizes a transform-made sum literal
+// (exactly a `typ` index field plus one variant payload field) whose sum name
+// kept a foreign module's bare spelling: such a name parses as a plain struct,
+// which would otherwise skip the sum-init route and drop the variant boxing.
+fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
+	if node.children_count != 2 || node.value.len == 0 || node.value.contains('.') {
+		return false
+	}
+	first := g.a.child_node(&node, 0)
+	if first.value != 'typ' {
+		return false
+	}
+	resolved := g.resolve_sum_name(node.value)
+	return resolved != node.value && resolved in g.tc.sum_types && node.value !in g.tc.structs
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
@@ -2155,6 +2172,9 @@ mut:
 }
 
 fn (g &FlatGen) shared_generic_app_parts(typ string) (string, []string, bool) {
+	if g.skip_generics {
+		return '', []string{}, false
+	}
 	// Most queried type names are not generic. Avoid hashing and retaining a
 	// negative cache entry when a single byte scan can reject them.
 	if typ.index_u8(`[`) <= 0 || typ.starts_with('fn(') || typ.starts_with('fn (') {
@@ -3209,6 +3229,9 @@ fn (g &FlatGen) struct_init_value_c_type(typ types.Type) string {
 }
 
 fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if node.typ.len > 0 {
 		candidate := g.tc.parse_type(node.typ)
 		base := default_init_unalias_type(types.unwrap_all_pointers(candidate))
@@ -3258,6 +3281,9 @@ fn (g &FlatGen) generic_struct_init_instance_name(type_name string) ?string {
 // Returns none when the literal is already specialized, the base is not a generic struct,
 // or the expected type is not a matching concrete instance.
 fn (g &FlatGen) generic_struct_init_instance_type(type_name string) ?types.Type {
+	if g.skip_generics {
+		return none
+	}
 	if type_name.contains('[') {
 		return none
 	}
@@ -3594,7 +3620,41 @@ fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 	return g.find_struct_decl_fallback(type_name)
 }
 
+// StructDeclPrefCache memoizes find_struct_decl_preferred per module context.
+// The struct declaration tables are immutable during codegen; each worker owns
+// a private instance (new_parallel_worker_config).
+struct StructDeclPrefCache {
+mut:
+	module  string
+	entries map[string]StructDeclInfo
+	misses  map[string]bool
+}
+
 fn (g &FlatGen) find_struct_decl_preferred(type_name string) ?StructDeclInfo {
+	mut cache := g.struct_decl_pref_cache
+	if isnil(cache) {
+		return g.find_struct_decl_preferred_uncached(type_name)
+	}
+	if cache.module != g.tc.cur_module {
+		cache.module = g.tc.cur_module
+		cache.entries.clear()
+		cache.misses.clear()
+	}
+	if cached := cache.entries[type_name] {
+		return cached
+	}
+	if cache.misses[type_name] {
+		return none
+	}
+	if info := g.find_struct_decl_preferred_uncached(type_name) {
+		cache.entries[type_name] = info
+		return info
+	}
+	cache.misses[type_name] = true
+	return none
+}
+
+fn (g &FlatGen) find_struct_decl_preferred_uncached(type_name string) ?StructDeclInfo {
 	short_name := if type_name.contains('.') { type_name.all_after_last('.') } else { type_name }
 	preferred_name := if !type_name.contains('.') && g.tc.cur_module.len > 0
 		&& g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
@@ -5506,6 +5566,22 @@ fn (mut g FlatGen) preseed_sum_fn_ptr_types() {
 }
 
 fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
+	// Whole-traversal dedup: identical 16-byte type values always denote the
+	// same type, and a repeat traversal re-registers nothing new. Armed only
+	// during the pre-dispatch declaration preseed block (see gen_with_used_options).
+	if !isnil(g.preseed_sig_type_seen) {
+		mut cache := g.preseed_sig_type_seen
+		words := unsafe { &u64(voidptr(&typ)) }
+		w0 := unsafe { words[0] }
+		w1 := unsafe { words[1] }
+		slot := int(((w0 >> 4) ^ w1) & 4095)
+		if cache.seen[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
+			return
+		}
+		cache.w0[slot] = w0
+		cache.w1[slot] = w1
+		cache.seen[slot] = true
+	}
 	if typ is types.Alias {
 		g.preseed_fn_ptr_type(typ.base_type)
 		return

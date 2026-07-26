@@ -115,7 +115,7 @@ fn decl_type_is_usable(typ string) bool {
 	if typ.len == 0 || typ in ['unknown', 'array', 'map'] || typ.contains('unknown') {
 		return false
 	}
-	if typ.contains('typeof(') {
+	if types.type_text_contains_typeof(typ) {
 		return false
 	}
 	clean := typ.replace(' ', '')
@@ -129,7 +129,7 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
 	}
 	if typ := t.tc.expr_type(id) {
 		mut name := t.normalize_type_alias(typ.name())
-		if name.contains('typeof(') {
+		if types.type_text_contains_typeof(name) {
 			name = t.normalize_type_alias(t.tc.resolve_type(id).name())
 		}
 		if decl_type_is_usable(name) && name != 'void' {
@@ -1484,7 +1484,7 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 				return checked
 			}
 		}
-		if resolved.contains('typeof(') && !isnil(t.tc) {
+		if types.type_text_contains_typeof(resolved) && !isnil(t.tc) {
 			if typ := t.tc.expr_type(id) {
 				name := t.normalize_type_alias(typ.name())
 				if decl_type_is_usable(name) {
@@ -1575,7 +1575,7 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		if typ := t.tc.expr_type(id) {
 			name = typ.name()
 		}
-		if name.contains('typeof(') {
+		if types.type_text_contains_typeof(name) {
 			name = t.tc.resolve_type(id).name()
 		}
 		if name.len == 0 || name == 'unknown' {

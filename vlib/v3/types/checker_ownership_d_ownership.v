@@ -1,5 +1,6 @@
 module types
 
+import time
 import v3.flat
 import v3.gen.c.naming
 
@@ -602,6 +603,10 @@ fn ownership_merge_drop_entries(existing []OwnershipDropEntry, extra []Ownership
 }
 
 fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
+	own_time_sw := time.new_stopwatch()
+	defer {
+		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
+	}
 	if tc.ownership == unsafe { nil } || w.ownership == unsafe { nil } {
 		return
 	}
@@ -4553,6 +4558,10 @@ fn (tc &TypeChecker) ownership_prescan_has_owned_descendant(prefix string, owned
 }
 
 fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
+	own_time_sw := time.new_stopwatch()
+	defer {
+		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
+	}
 	if tc.ownership_checks_suppressed() {
 		return
 	}
@@ -4608,6 +4617,10 @@ fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
 }
 
 fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Node) {
+	own_time_sw := time.new_stopwatch()
+	defer {
+		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
+	}
 	if tc.ownership_checks_suppressed() {
 		return
 	}
@@ -4710,6 +4723,10 @@ fn ownership_lambda_name(cur_fn string, id flat.NodeId) string {
 }
 
 fn (mut tc TypeChecker) ownership_begin_lambda_expr(id flat.NodeId, node flat.Node) {
+	own_time_sw := time.new_stopwatch()
+	defer {
+		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
+	}
 	if tc.ownership_checks_suppressed() {
 		return
 	}
@@ -5017,6 +5034,10 @@ fn (mut tc TypeChecker) ownership_note_lambda_local_binding(id flat.NodeId, mut 
 }
 
 fn (mut tc TypeChecker) ownership_end_fn() {
+	own_time_sw := time.new_stopwatch()
+	defer {
+		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
+	}
 	if tc.ownership_checks_suppressed() {
 		return
 	}

@@ -260,12 +260,16 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
 	// File marker before content so import resolver can track source files
-	p.add_node(flat.Node{
+	marker_id := p.add_node(flat.Node{
 		kind:  .file
 		value: path
 	})
+	p.a.file_node_ids << int(marker_id)
 	src := read_source_file_raw(path) or {
 		p.record_diagnostic('error reading source: ${err.msg()}', 0)
+		// The trailing .file node is never added: the (marker, trailing)
+		// pairing in file_node_ids is broken for this AST.
+		p.a.file_index_incomplete = true
 		return
 	}
 	// Scanner token strings are zero-copy views into the source. The AST owns
@@ -320,12 +324,13 @@ pub fn (mut p Parser) parse_into(path string) {
 		}
 	}
 	start := p.add_children(ids)
-	p.add_node(flat.Node{
+	trailing_id := p.add_node(flat.Node{
 		kind:           .file
 		value:          path
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
+	p.a.file_node_ids << int(trailing_id)
 	p.collect_scanner_diagnostics()
 }
 

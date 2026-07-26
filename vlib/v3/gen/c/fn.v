@@ -185,6 +185,17 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut items := []FlatFnGenItem{cap: candidates.len}
 	mut prep_stack := []flat.NodeId{cap: 256}
 	mut prep_type_text_cache := map[string]bool{}
+	// In parallel-prep mode the exact-cost pass (or its serial fallback) also
+	// computes costs and fn-ptr preseeds after selection; see refine_fn_item_costs.
+	par_prep := prep && par_cgen_prep_enabled()
+	if prep {
+		// The prep walk no longer collects per-body C-extern refs; the exact-cost
+		// pass that follows it does (or its serial fallback).
+		g.prep_externs_pending = true
+		g.prep_costs_pending = par_prep
+		g.prep_typ_text_cache = &PrepTypTextCache{}
+		g.preseed_type_seen = &PreseedTypeSeen{}
+	}
 	for candidate in candidates {
 		if preferred_idx := preferred_fns[candidate.preferred_name] {
 			if preferred_idx != int(candidate.item.node_id) {
@@ -197,9 +208,14 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			continue
 		}
 		g.emitted_fns[qfn] = true
-		cost := if prep {
+		cost := if par_prep {
+			0
+		} else if prep {
 			if item.file != g.tc.cur_file || item.module != g.tc.cur_module {
 				prep_type_text_cache.clear()
+				if !isnil(g.prep_typ_text_cache) {
+					g.prep_typ_text_cache.generation++
+				}
 			}
 			g.tc.cur_file = item.file
 			g.tc.cur_module = item.module
@@ -282,7 +298,7 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, mut c_exter
 		if idx < 0 || idx >= a.nodes.len {
 			continue
 		}
-		node := a.nodes[idx]
+		node := unsafe { &a.nodes[idx] }
 		cost += flat_cgen_node_cost(node.kind)
 		if node.kind == .lock_expr || node.kind == .label_stmt
 			|| (node.kind == .defer_stmt && node.value == 'function') {
@@ -291,7 +307,7 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, mut c_exter
 		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
 			base_id := a.children[node.children_start]
 			if int(base_id) >= 0 {
-				base := a.nodes[int(base_id)]
+				base := unsafe { &a.nodes[int(base_id)] }
 				if base.kind == .ident && base.value == 'C' {
 					raw_name := 'C.${node.value}'
 					raw_cfn := naming.c_name(raw_name)
@@ -1047,6 +1063,9 @@ fn (mut g FlatGen) direct_call_name_for_call_node(id flat.NodeId, node flat.Node
 }
 
 fn (g &FlatGen) exact_specialized_generic_call_name(name string) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if name !in g.tc.specialized_generic_fns {
 		return none
 	}
@@ -1060,6 +1079,9 @@ fn (g &FlatGen) exact_specialized_generic_call_name(name string) ?string {
 }
 
 fn (g &FlatGen) flattened_generic_method_short_alias(name string) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if !name.contains('.') {
 		return none
 	}
@@ -1765,6 +1787,9 @@ fn (g &FlatGen) receiver_param_method_candidate_score(name string) int {
 }
 
 fn (g &FlatGen) specialized_generic_method_name_for_call_with_arg_count(id flat.NodeId, method_name string, arg_count int) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if !method_name.contains('.') {
 		return none
 	}
@@ -1808,6 +1833,9 @@ fn (g &FlatGen) specialized_generic_method_name_for_call_with_arg_count(id flat.
 }
 
 fn (g &FlatGen) specialized_generic_method_name_for_call_args(node flat.Node, method_name string, arg_count int) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if !method_name.contains('.') {
 		return none
 	}
@@ -8527,6 +8555,9 @@ fn (g &FlatGen) call_uses_concrete_optional_params(name string) bool {
 }
 
 fn (g &FlatGen) name_uses_specialized_generic_abi(name string) bool {
+	if g.skip_generics {
+		return false
+	}
 	if name.contains('[') && name.contains(']') {
 		return true
 	}
@@ -8540,6 +8571,9 @@ fn (g &FlatGen) name_uses_specialized_generic_abi(name string) bool {
 }
 
 fn (g &FlatGen) call_callee_uses_specialized_generic_abi(callee_id flat.NodeId) bool {
+	if g.skip_generics {
+		return false
+	}
 	if int(callee_id) < 0 || int(callee_id) >= g.a.nodes.len {
 		return false
 	}
@@ -10062,6 +10096,9 @@ fn fn_type_is_pointer(t types.Type) bool {
 }
 
 fn (mut g FlatGen) specialized_generic_plain_fn_name_for_call(id flat.NodeId, node flat.Node, name string) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if name.len == 0 || name.contains('[') || node.children_count == 0 {
 		return none
 	}
@@ -10078,6 +10115,9 @@ fn (mut g FlatGen) specialized_generic_plain_fn_name_for_call(id flat.NodeId, no
 }
 
 fn (mut g FlatGen) inferred_generic_plain_fn_name_for_call(id flat.NodeId, node flat.Node, name string) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if name.len == 0 || name.contains('[') || node.children_count == 0 {
 		return none
 	}
@@ -10124,6 +10164,9 @@ fn (mut g FlatGen) inferred_generic_plain_fn_name_for_call(id flat.NodeId, node 
 }
 
 fn (g &FlatGen) existing_specialized_generic_plain_fn_name(name string) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if !g.resolved_name_is_generic_plain(name) {
 		return none
 	}
@@ -10148,6 +10191,9 @@ fn (g &FlatGen) existing_specialized_generic_plain_fn_name(name string) ?string 
 }
 
 fn (mut g FlatGen) specialized_generic_plain_fn_name_for_explicit_call(id flat.NodeId, fn_node flat.Node, name string) ?string {
+	if g.skip_generics {
+		return none
+	}
 	if name.len == 0 || name.contains('[') {
 		return none
 	}
@@ -12803,11 +12849,11 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mu
 	}
 }
 
-fn (mut g FlatGen) collect_c_extern_ref_from_node(node flat.Node) {
+fn (mut g FlatGen) collect_c_extern_ref_from_node(node &flat.Node) {
 	g.collect_c_extern_ref_from_node_into(node, mut g.c_extern_refs)
 }
 
-fn (g &FlatGen) collect_c_extern_ref_from_node_into(node flat.Node, mut refs map[string]bool) {
+fn (g &FlatGen) collect_c_extern_ref_from_node_into(node &flat.Node, mut refs map[string]bool) {
 	if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
 		base_id := g.a.child(node, 0)
 		if int(base_id) >= 0 {
@@ -13944,6 +13990,9 @@ fn (g &FlatGen) matching_fn_param_types(name string, explicit_params int) ?[]typ
 }
 
 fn (g &FlatGen) generic_receiver_method_call_info(name string) ?types.CallInfo {
+	if g.skip_generics {
+		return none
+	}
 	if !name.contains('.') {
 		return none
 	}

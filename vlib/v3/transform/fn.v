@@ -5,6 +5,32 @@ import v3.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 
+// max_stringify_nesting_depth bounds how deeply the inline autostr lowering
+// (structs, sum types) recurses through *distinct* aggregate types before it
+// defers the remaining expansion to synthesized helpers. The per-type circular
+// guards only stop a type repeating on the stack; without this total-depth
+// bound a deeply nested distinct-type graph (e.g. v1's ast.Expr/ast.Stmt
+// sumtypes referencing dozens of node structs) expands combinatorially at
+// every `${x}` site, which blows up node generation (region overflow /
+// effectively unbounded work).
+// Overridable at runtime with V3_STR_CAP for experiments. Kept low because the
+// expansion is combinatorial in this depth: v1's ast graph is unbounded past ~5.
+const max_stringify_nesting_depth = 3
+
+// deferred_str_expansion_threshold is the estimated inline-autostr node count
+// above which a function is lowered serially (against the growable master arena)
+// instead of inside a bounded parallel worker region. It is 0: any function that
+// inline-expands an auto-str struct/sum is deferred, because that expansion is a
+// poor fit for a cost-proportional region and hard to size precisely. Functions
+// with only scalar / custom-str() interps estimate to 0 and stay parallel — this
+// is every function during v3 self-host, whose parallel path is thus unchanged.
+const deferred_str_expansion_threshold = 0
+
+// unresolved_interp_expansion_estimate is charged for an interpolation part whose
+// value type cannot be resolved at collection time, forcing the function onto the
+// serial deferred path in case the transform expands it inline.
+const unresolved_interp_expansion_estimate = 1000
+
 // resolve_call_name resolves the function name from a .call node.
 // child[0] is the function expression: .ident for plain calls, .selector for method calls.
 fn (t &Transformer) resolve_call_name(node flat.Node) string {
@@ -292,7 +318,38 @@ fn (t &Transformer) resolve_collection_receiver_method_name(base_id flat.NodeId,
 }
 
 // resolve_receiver_method_for_type resolves resolve_receiver_method_for_type logic in transform.
+// Hot: called for every method call lowered during body transforms, with heavy
+// repetition of (receiver type, method) pairs. The uncached resolution below
+// scans struct tables and builds many candidate strings, so memoize per
+// (module, type, method); the cache clears when the fn table grows (closure
+// lifting / str-method synthesis can change what resolves).
 fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, method string) ?string {
+	if !isnil(t.receiver_method_cache) {
+		mut cache := t.receiver_method_cache
+		if cache.module != t.cur_module || cache.fn_count != t.fn_ret_types.len {
+			cache.module = t.cur_module
+			cache.fn_count = t.fn_ret_types.len
+			cache.entries.clear()
+			cache.misses.clear()
+		}
+		cache_key := '${receiver_type}\n${method}'
+		if cached := cache.entries[cache_key] {
+			return cached
+		}
+		if cache.misses[cache_key] {
+			return none
+		}
+		if resolved := t.resolve_receiver_method_for_type_uncached(receiver_type, method) {
+			cache.entries[cache_key] = resolved
+			return resolved
+		}
+		cache.misses[cache_key] = true
+		return none
+	}
+	return t.resolve_receiver_method_for_type_uncached(receiver_type, method)
+}
+
+fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type string, method string) ?string {
 	mut clean_type := receiver_type
 	if clean_type.starts_with('&') {
 		clean_type = clean_type[1..]
@@ -3927,11 +3984,40 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	mut qualified := typ
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]
-	} else if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
+	} else if !typ.contains('.') {
 		q := '${t.cur_module}.${typ}'
-		if q in t.enum_types {
+		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& q in t.enum_types {
 			qualified = q
+		} else if fields := t.enum_types[typ] {
+			// A bare name in a foreign-module expansion (auto-stringified struct
+			// fields keep their declaring module's spelling): the bare alias entry
+			// shares its field-array backing with the declaring qualified entry,
+			// which recovers the exact declared name cgen used for the helper.
+			suffix := '.${typ}'
+			for k, v in t.enum_types {
+				if k.ends_with(suffix) && v.data == fields.data {
+					qualified = k
+					break
+				}
+			}
+		} else {
+			// No bare alias (shadowed): fall back to a unique qualified suffix.
+			suffix := '.${typ}'
+			mut match_name := ''
+			mut matches := 0
+			for k, _ in t.enum_types {
+				if k.ends_with(suffix) {
+					match_name = k
+					matches++
+					if matches > 1 {
+						break
+					}
+				}
+			}
+			if matches == 1 {
+				qualified = match_name
+			}
 		}
 	}
 	short_name := qualified.all_after_last('.')
@@ -4955,6 +5041,10 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	if stack_count >= recurse_limit {
 		return t.make_string_literal('<circular>')
 	}
+	if t.stringify_stack.len >= t.stringify_depth_cap
+		&& !t.stringify_types_match(t.auto_str_synthesis_type, struct_type) {
+		return t.request_auto_str_helper(expr, struct_type)
+	}
 	t.stringify_stack << struct_type
 	defer {
 		t.stringify_stack.delete_last()
@@ -5191,6 +5281,140 @@ fn (mut t Transformer) lower_multi_return_str(expr flat.NodeId, multi types.Mult
 		result = t.string_plus(result, item_str)
 	}
 	return t.string_plus(result, t.make_string_literal(')'))
+}
+
+// stringify_expansion_estimate returns an upper bound on the number of AST nodes
+// the inline autostr lowering emits when interpolating a value of `typ`, at the
+// configured nesting cap. It mirrors the lowering's shape: a scalar or a type
+// with a custom str() method is a bounded leaf (0 — its lowering is a single
+// call/conversion and never recurses), whereas an auto-generated struct/sum str
+// recurses into fields/variants. The bound ignores the per-type circular guard,
+// so it only ever over-counts, and it is memoized by (aggregate, depth) so it
+// stays cheap even on richly cross-referential graphs like v1's ast package.
+// The estimate is 0 for every type v3 self-host interpolates, so self-host cost
+// and node numbering are unchanged.
+fn (mut t Transformer) stringify_expansion_estimate(typ string) int {
+	return t.stringify_expansion_estimate_at(typ, t.stringify_depth_cap)
+}
+
+fn (mut t Transformer) stringify_expansion_estimate_at(typ string, depth_left int) int {
+	mut clean := typ.trim_space()
+	for {
+		mut stripped := false
+		for prefix in ['mut ', 'shared ', 'atomic ', '...', '?', '!', '[]', '&'] {
+			if clean.starts_with(prefix) {
+				clean = clean[prefix.len..].trim_space()
+				stripped = true
+				break
+			}
+		}
+		if !stripped {
+			break
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end > 3 && bracket_end < clean.len - 1 {
+			return t.stringify_expansion_estimate_at(clean[4..bracket_end], depth_left) +
+				t.stringify_expansion_estimate_at(clean[bracket_end + 1..], depth_left)
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 0 && bracket_end < clean.len - 1 {
+			return t.stringify_expansion_estimate_at(clean[bracket_end + 1..], depth_left)
+		}
+	}
+	agg := t.stringify_aggregate_type_name(clean) or { return 0 }
+	resolved_sum := t.resolve_sum_name(agg)
+	is_sum := resolved_sum in t.sum_types
+	// A struct with a custom/generated str() method that survives markused lowers
+	// to a bounded call, not an inline expansion. Sum types get no such shortcut:
+	// interpolating a sum value inside a smartcast branch lowers the *variant's*
+	// value directly, which bypasses the sum's own str() and inline-expands the
+	// variant struct (this is exactly how v1's `match expr { ... }` bodies blow
+	// up on ast.Expr). A str method that markused will prune also falls back to
+	// inline expansion, so require the method to still be reachable.
+	if !is_sum {
+		if str_fn := t.aggregate_str_method_name(agg) {
+			if !t.has_used_fn_filter() || t.used_fn_contains_name(str_fn)
+				|| t.used_fn_contains_name(c_name(str_fn)) {
+				return 0
+			}
+		}
+	}
+	if depth_left <= 0 {
+		return 1
+	}
+	key := '${agg}|${depth_left}'
+	if cached := t.str_expansion_memo[key] {
+		return cached
+	}
+	// Provisional memo entry so a self-referential type at the same depth does not
+	// recurse forever (fields always descend at depth_left-1, so this is belt-and-
+	// suspenders against odd alias cycles).
+	t.str_expansion_memo[key] = 0
+	mut total := 6
+	if variants := t.sum_types[resolved_sum] {
+		for variant in variants {
+			total += 10 + t.stringify_expansion_estimate_at(variant, depth_left - 1)
+		}
+	} else if info := t.lookup_struct_info(agg) {
+		for field in info.fields {
+			field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+			if field_type.len == 0 {
+				continue
+			}
+			total += 8 + t.stringify_expansion_estimate_at(field_type, depth_left - 1)
+		}
+	}
+	t.str_expansion_memo[key] = total
+	return total
+}
+
+// fn_span_interp_estimate sums the inline autostr expansion estimate over every
+// string-interpolation part in a function's parsed subtree [lo, hi). It is 0
+// unless the function interpolates an auto-str struct/sum, in which case the
+// return value approximates how many nodes the lowering will emit for those
+// interps — used to size the function's parallel append region (or defer it).
+// A part whose value type cannot be resolved at collection time is treated as
+// heavy: the transform can still resolve it to an aggregate (e.g. through a
+// smartcast or a method return) and inline-expand it, which must not land in a
+// bounded worker region. Scalar / str-method interps resolve cleanly to 0, so
+// v3 self-host — whose interps are all scalars — defers nothing.
+fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
+	mut est := 0
+	for idx in lo .. hi {
+		if idx < 0 || idx >= t.a.nodes.len {
+			continue
+		}
+		node := t.a.nodes[idx]
+		if node.kind != .string_interp {
+			continue
+		}
+		for ci in 0 .. int(node.children_count) {
+			part_id := t.a.child(&node, ci)
+			mut expr_id := part_id
+			part := t.a.nodes[int(part_id)]
+			if part.kind == .directive && part.value == 'string_interp_format'
+				&& part.children_count > 0 {
+				expr_id = t.a.child(&part, 0)
+			}
+			part_expr := t.a.nodes[int(expr_id)]
+			// Literal segments of the interpolation are always plain strings.
+			if part_expr.kind in [.string_literal, .int_literal, .float_literal, .bool_literal,
+				.char_literal] {
+				continue
+			}
+			typ := t.reliable_stringify_type(expr_id)
+			if typ.len == 0 {
+				est += unresolved_interp_expansion_estimate
+			} else {
+				est += t.stringify_expansion_estimate(typ)
+			}
+		}
+	}
+	return est
 }
 
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
@@ -5530,6 +5754,10 @@ fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name string) flat.Nod
 	}
 	if resolved_sum in t.stringify_stack {
 		return t.make_string_literal('${sum_display}{}')
+	}
+	if t.stringify_stack.len >= t.stringify_depth_cap
+		&& !t.stringify_types_match(t.auto_str_synthesis_type, resolved_sum) {
+		return t.request_auto_str_helper(expr, resolved_sum)
 	}
 	t.stringify_stack << resolved_sum
 	defer {

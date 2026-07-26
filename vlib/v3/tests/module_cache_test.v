@@ -194,6 +194,53 @@ fn test_cached_source_signatures_revalidate_changed_inputs() {
 	if _ := manager.valid_header('vmod', [vmod_source]) {
 		assert false, 'a newly discovered v.mod must invalidate cached signatures'
 	}
+
+	quoted_build_source := os.join_path(root, 'quoted_build.v')
+	write_module_cache_file(root, 'quoted_build.v',
+		"module quoted_build\n\npub const marker = '@BUILD_DATE'\n")
+	first_build_manager := modulecache.new_manager(root, 'quoted-build-pseudo', true, 'first')
+	second_build_manager := modulecache.new_manager(root, 'quoted-build-pseudo', true, 'second')
+	assert first_build_manager.ensure_dir()
+	first_build_manager.write_header('quoted_build', [quoted_build_source], 'module quoted_build\n') or {
+		panic(err)
+	}
+	_ := second_build_manager.valid_header('quoted_build', [quoted_build_source]) or {
+		assert false, 'pseudo-variable text inside a string must not invalidate cached signatures'
+		return
+	}
+
+	actual_build_source := os.join_path(root, 'actual_build.v')
+	write_module_cache_file(root, 'actual_build.v',
+		'module actual_build\n\npub const marker = @BUILD_DATE\n')
+	first_build_manager.write_header('actual_build', [actual_build_source], 'module actual_build\n') or {
+		panic(err)
+	}
+	if _ := second_build_manager.valid_header('actual_build', [actual_build_source]) {
+		assert false, 'actual build pseudo-variable changes must invalidate cached signatures'
+	}
+
+	interpolated_build_source := os.join_path(root, 'interpolated_build.v')
+	write_module_cache_file(root, 'interpolated_build.v',
+		"module interpolated_build\n\npub const marker = 'built \${@BUILD_TIMESTAMP}'\n")
+	first_build_manager.write_header('interpolated_build', [interpolated_build_source],
+		'module interpolated_build\n') or { panic(err) }
+	if _ := second_build_manager.valid_header('interpolated_build', [
+		interpolated_build_source,
+	])
+	{
+		assert false, 'interpolated build pseudo-variable changes must invalidate cached signatures'
+	}
+
+	interpolated_root_source := os.join_path(root, 'interpolated_root', 'root.v')
+	write_module_cache_file(root, 'interpolated_root/root.v',
+		"module interpolated_root\n\npub const marker = 'root \${@VMODROOT}'\n")
+	manager.write_header('interpolated_root', [interpolated_root_source],
+		'module interpolated_root\n') or { panic(err) }
+	write_module_cache_file(root, 'interpolated_root/v.mod',
+		"Module {\n\tname: 'interpolated_root'\n}\n")
+	if _ := manager.valid_header('interpolated_root', [interpolated_root_source]) {
+		assert false, 'interpolated root pseudo-variable changes must invalidate cached signatures'
+	}
 }
 
 fn test_cached_object_accepts_recorded_dependency_superset() {
@@ -415,6 +462,18 @@ fn test_module_cache_split_ignores_module_marker_text() {
 	assert 'fake' !in split.modules
 	assert split.modules['main'].contains('"/* V3CACHE_MODULE fake */"')
 	assert split.modules['main'].contains('int main(void)')
+}
+
+fn test_module_cache_declaration_header_ignores_directive_marker_text() {
+	prefix := 'static string marker = {"/* V3CACHE_LATE_DIRECTIVES_BEGIN */", 35, 1};
+/* V3CACHE_LATE_DIRECTIVES_BEGIN */
+#include <stdint.h>
+/* V3CACHE_LATE_DIRECTIVES_END */
+int cached_value = 1;
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('static string marker = {"/* V3CACHE_LATE_DIRECTIVES_BEGIN */", 35, 1};')
+	assert header.contains('extern int cached_value;')
 }
 
 fn test_module_cache_declaration_header_preserves_preprocessor_after_comment() {

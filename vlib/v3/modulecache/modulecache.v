@@ -240,12 +240,10 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		if source.contains('@BUILD_TIMESTAMP') || source.contains('@BUILD_DATE')
-			|| source.contains('@BUILD_TIME') {
+		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
 			uses_build_pseudo = true
 		}
-		if source.contains('@VMODROOT') || source.contains('@VMOD_FILE')
-			|| source.contains('@VROOT') {
+		if source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
 			root, vmod_file := signature_vmod_root(file)
 			vmod_metadata := if vmod_file.len > 0 {
 				file_metadata_signature(vmod_file)
@@ -306,6 +304,219 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		signature:  hash.hex()
 		validation: validation
 	}
+}
+
+fn source_uses_pseudo(source string, names []string) bool {
+	if !source.contains('@') {
+		return false
+	}
+	mut pos := 0
+	for pos < source.len {
+		if source[pos] == `/` && pos + 1 < source.len
+			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
+			pos = skip_signature_space_and_comments(source, pos)
+			continue
+		}
+		if source[pos] in [`'`, `"`] {
+			found, next_pos := signature_quoted_interpolation_mentions_pseudo(source, pos, names)
+			if found {
+				return true
+			}
+			pos = next_pos
+			continue
+		}
+		if source[pos] == `\`` {
+			pos = skip_signature_quoted_text(source, pos, false)
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if source[pos] == `#` {
+			found, next_pos := signature_directive_mentions_pseudo(source, pos, names)
+			if found {
+				return true
+			}
+			pos = next_pos
+			continue
+		}
+		if source[pos] == `$` {
+			mut matched_path_call := false
+			for fn_name in ['embed_file', 'tmpl', 'res'] {
+				name_start := pos + 1
+				name_end := name_start + fn_name.len
+				if name_end > source.len || source[name_start..name_end] != fn_name
+					|| (name_end < source.len && signature_name_char(source[name_end])) {
+					continue
+				}
+				value, next_pos, ok := signature_string_call_arg(source, name_end)
+				if ok {
+					if quoted_text_mentions_pseudo(value, 0, value.len, names) {
+						return true
+					}
+					pos = next_pos
+					matched_path_call = true
+				}
+				break
+			}
+			if matched_path_call {
+				continue
+			}
+		}
+		if source[pos] != `@` {
+			pos++
+			continue
+		}
+		for name in names {
+			end := pos + name.len
+			if end <= source.len && source[pos..end] == name
+				&& (end == source.len || !signature_name_char(source[end])) {
+				return true
+			}
+		}
+		pos++
+	}
+	return false
+}
+
+fn signature_quoted_interpolation_mentions_pseudo(source string, quote_pos int, names []string) (bool, int) {
+	quote := source[quote_pos]
+	mut pos := quote_pos + 1
+	for pos < source.len {
+		if source[pos] == `\\` && pos + 1 < source.len {
+			pos += 2
+			continue
+		}
+		if source[pos] == quote {
+			return false, pos + 1
+		}
+		if source[pos] != `$` || pos + 1 >= source.len || source[pos + 1] != `{` {
+			pos++
+			continue
+		}
+		expr_end, ok := signature_interpolation_expr_end(source, pos + 2)
+		if !ok {
+			return false, source.len
+		}
+		if source_uses_pseudo(source[pos + 2..expr_end], names) {
+			return true, expr_end + 1
+		}
+		pos = expr_end + 1
+	}
+	return false, source.len
+}
+
+fn signature_interpolation_expr_end(source string, start int) (int, bool) {
+	mut pos := start
+	mut depth := 1
+	for pos < source.len {
+		if source[pos] == `/` && pos + 1 < source.len
+			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
+			pos = skip_signature_space_and_comments(source, pos)
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			pos = skip_signature_quoted_text(source, pos, false)
+			continue
+		}
+		if source[pos] == `{` {
+			depth++
+		} else if source[pos] == `}` {
+			depth--
+			if depth == 0 {
+				return pos, true
+			}
+		}
+		pos++
+	}
+	return source.len, false
+}
+
+fn signature_directive_mentions_pseudo(source string, start int, names []string) (bool, int) {
+	mut pos := start
+	for pos < source.len && source[pos] in [`#`, ` `, `\t`] {
+		pos++
+	}
+	name_start := pos
+	for pos < source.len && signature_name_char(source[pos]) {
+		pos++
+	}
+	directive := source[name_start..pos]
+	scan_quoted := directive in ['include', 'insert', 'flag']
+	for pos < source.len && source[pos] != `\n` {
+		if pos + 1 < source.len && source[pos] == `/` && source[pos + 1] == `/` {
+			for pos < source.len && source[pos] != `\n` {
+				pos++
+			}
+			return false, pos
+		}
+		if pos + 1 < source.len && source[pos] == `/` && source[pos + 1] == `*` {
+			pos += 2
+			mut crossed_line := false
+			for pos + 1 < source.len && !(source[pos] == `*` && source[pos + 1] == `/`) {
+				if source[pos] == `\n` {
+					crossed_line = true
+				}
+				pos++
+			}
+			pos = if pos + 1 < source.len { pos + 2 } else { source.len }
+			if crossed_line {
+				return false, pos
+			}
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			end := skip_signature_quoted_text(source, pos, false)
+			if scan_quoted && quoted_text_mentions_pseudo(source, pos + 1, end, names) {
+				return true, end
+			}
+			pos = end
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			end := skip_signature_quoted_text(source, pos + 1, true)
+			if scan_quoted && quoted_text_mentions_pseudo(source, pos + 2, end, names) {
+				return true, end
+			}
+			pos = end
+			continue
+		}
+		if source[pos] == `@` {
+			for name in names {
+				end := pos + name.len
+				if end <= source.len && source[pos..end] == name
+					&& (end == source.len || !signature_name_char(source[end])) {
+					return true, pos
+				}
+			}
+		}
+		pos++
+	}
+	return false, pos
+}
+
+fn quoted_text_mentions_pseudo(source string, from int, to int, names []string) bool {
+	mut pos := from
+	for pos < to {
+		if source[pos] != `@` {
+			pos++
+			continue
+		}
+		for name in names {
+			end := pos + name.len
+			if end <= source.len && source[pos..end] == name
+				&& (end == source.len || !signature_name_char(source[end])) {
+				return true
+			}
+		}
+		pos++
+	}
+	return false
 }
 
 fn (m &Manager) source_signature(source_files []string) string {
@@ -663,19 +874,36 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	entry := m.entry(module_name, source_files)
 	if !os.is_file(entry.header) {
+		cache_trace_module_miss(module_name, 'header is missing')
 		return none
 	}
-	stamp := os.read_file(entry.header_stamp) or { return none }
+	stamp := os.read_file(entry.header_stamp) or {
+		cache_trace_module_miss(module_name, 'header stamp is missing')
+		return none
+	}
 	expected := entry_stamp(m.salt, m.source_signature(source_files))
-	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
-	object_stamp := os.read_file(entry.object_stamp) or { return none }
+	source_bodies := header_stamp_source_bodies(stamp, expected) or {
+		cache_trace_module_miss(module_name, 'source signature changed')
+		return none
+	}
+	object_stamp := os.read_file(entry.object_stamp) or {
+		cache_trace_module_miss(module_name, 'object stamp is missing')
+		return none
+	}
 	if !object_stamp_valid_with_metadata_cache(object_stamp, expected, mut dependency_metadata) {
+		cache_trace_module_miss(module_name, 'object dependency changed')
 		return none
 	}
 	return Entry{
 		...entry
 		source_bodies:       source_bodies
 		source_bodies_known: true
+	}
+}
+
+fn cache_trace_module_miss(module_name string, reason string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 module cache miss: module=${module_name} reason=${reason}')
 	}
 }
 
@@ -1123,6 +1351,9 @@ fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, m
 			signature
 		}
 		if current_signature != dependency.signature {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache dependency miss: path=${dependency.path}')
+			}
 			return false
 		}
 	}
@@ -1291,8 +1522,7 @@ pub fn declaration_header(prefix string) string {
 		mut next_pos := prefix.len
 		mut selected := -1
 		for i, section in sections {
-			if relative := prefix[pos..].index(section.begin) {
-				absolute := pos + relative
+			if absolute := c_standalone_marker_index_after(prefix, section.begin, pos) {
 				if absolute < next_pos {
 					next_pos = absolute
 					selected = i
@@ -1310,18 +1540,31 @@ pub fn declaration_header(prefix string) string {
 		}
 		section := sections[selected]
 		body_start := next_pos + section.begin.len
-		relative_end := prefix[body_start..].index(section.end) or {
+		body_end := c_standalone_marker_index_after(prefix, section.end, body_start) or {
 			header, _, _ := c_declaration_header(prefix[next_pos..])
 			out.write_string(header)
 			break
 		}
-		body_end := body_start + relative_end
 		if section.keep {
 			out.write_string(c_native_declaration_directives(prefix[body_start..body_end]))
 		}
 		pos = body_end + section.end.len
 	}
 	return out.str()
+}
+
+fn c_standalone_marker_index_after(source string, marker string, start int) ?int {
+	mut pos := start
+	for pos < source.len {
+		idx := source.index_after(marker, pos) or { return none }
+		end := idx + marker.len
+		if (idx == 0 || source[idx - 1] == `\n`)
+			&& (end == source.len || source[end] in [`\n`, `\r`]) {
+			return idx
+		}
+		pos = end
+	}
+	return none
 }
 
 fn cached_c_string_symbol(value string) string {

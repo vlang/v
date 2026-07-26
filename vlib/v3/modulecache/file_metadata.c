@@ -1,6 +1,3 @@
-#ifndef V3_MODULECACHE_FILE_METADATA_H
-#define V3_MODULECACHE_FILE_METADATA_H
-
 #include <stdint.h>
 
 #if defined(__APPLE__) || defined(__linux__)
@@ -43,6 +40,4 @@ static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inod
 	(void)ctime_nanoseconds;
 	return 0;
 }
-#endif
-
 #endif

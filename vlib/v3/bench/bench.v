@@ -97,6 +97,16 @@ pub fn (b &Bench) current_step_time_us() i64 {
 	return b.step_sw.elapsed().microseconds()
 }
 
+// step_measured records a pipeline step whose duration was accumulated
+// externally, inside the wall time of the surrounding steps (used for work
+// interleaved with another stage, e.g. the ownership checker inside check).
+// It does not restart the step stopwatch, so the enclosing stages still
+// account for their full wall time.
+pub fn (mut b Bench) step_measured(name string, elapsed_us i64) {
+	allocations := current_allocation_stats()
+	b.report_step(name, false, elapsed_us, 0, 0, allocations.enabled)
+}
+
 // step_parallel records a pipeline step, appending "(parallel)" to its name
 // when the step actually ran across threads.
 pub fn (mut b Bench) step_parallel(name string, parallel bool) {
