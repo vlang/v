@@ -75,20 +75,20 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:77:11: error: cannot call `st
       |              ~~~~~
    78 | }
    79 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:83:15: error: cannot call `str()` method recursively
-   81 | fn (f ParenInit) str() string {
-   82 |     alias := (f)
-   83 |     return alias.str()
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:84:15: error: cannot call `str()` method recursively
+   82 | fn (f ParenInit) str() string {
+   83 |     alias := (f)
+   84 |     return alias.str()
       |                  ~~~~~
-   84 | }
-   85 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:94:14: error: cannot call `str()` method recursively
-   92 |         next.remaining--
-   93 |     }
-   94 |     return next.str()
+   85 | }
+   86 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:97:14: error: cannot call `str()` method recursively
+   95 |         next.remaining--
+   96 |     }
+   97 |     return next.str()
       |                 ~~~~~
-   95 | }
-   96 |
+   98 | }
+   99 |
 vlib/v/checker/tests/sum_type_recursive_str_err.vv:104:15: error: cannot call `str()` method recursively
   102 | fn (f AddrAlias) str() string {
   103 |     alias := &f
@@ -103,11 +103,11 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:111:15: error: cannot call `s
       |                  ~~~~~
   112 | }
   113 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:117:21: error: cannot call `str()` method recursively
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:117:22: error: cannot call `str()` method recursively
   115 |
   116 | fn (f UnsafeDirect) str() string {
   117 |     return unsafe { f }.str()
-      |                        ~~~~~
+      |                         ~~~~~
   118 | }
   119 |
 vlib/v/checker/tests/sum_type_recursive_str_err.vv:124:15: error: cannot call `str()` method recursively
@@ -117,7 +117,7 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:124:15: error: cannot call `s
       |                  ~~~~~
   125 | }
   126 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:130:16: error: cannot call `str()` method recursively
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:130:17: error: cannot call `str()` method recursively
   128 |
   129 | fn (f DumpDirect) str() string {
   130 |     return dump(f).str()
@@ -131,9 +131,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:137:15: error: cannot call `s
       |                  ~~~~~
   138 | }
   139 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:143:36: error: cannot call `str()` method recursively
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:143:37: error: cannot call `str()` method recursively
   141 |
   142 | fn (f AsCastRecv) str() string {
   143 |     return (Stringer(f) as AsCastRecv).str()
-      |                                       ~~~~~
+      |                                        ~~~~~
   144 | }
+  145 |
