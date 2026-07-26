@@ -3595,7 +3595,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		receiver_name := c.table.cur_fn.receiver.name
 		receiver_typ := c.table.cur_fn.receiver.typ
 		is_receiver_type := left_type.idx() == receiver_typ.idx()
-			|| c.table.sym(left_type).kind == .interface
+				|| (c.table.sym(left_type).kind == .interface
+				&& !c.table.sym(left_type).has_method_with_generic_parent('str'))
 		if is_receiver_type {
 			mut inner := ast.Expr(left_expr)
 			for {
@@ -3603,7 +3604,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					inner = inner.right.remove_par()
 				} else if inner is ast.CastExpr {
 					cast_sym := c.table.sym(inner.typ)
-					if inner.typ.idx() == receiver_typ.idx() || cast_sym.kind == .interface {
+					if inner.typ.idx() == receiver_typ.idx()
+						|| (cast_sym.kind == .interface
+						&& !cast_sym.has_method_with_generic_parent('str')) {
 						inner = inner.expr.remove_par()
 					} else {
 						break
@@ -3633,7 +3636,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 						} else if init_expr is ast.CastExpr {
 							cast_sym := c.table.sym(init_expr.typ)
 							if init_expr.typ.idx() == receiver_typ.idx()
-								|| cast_sym.kind == .interface {
+								|| (cast_sym.kind == .interface
+								&& !cast_sym.has_method_with_generic_parent('str')) {
 								init_expr = init_expr.expr.remove_par()
 							} else {
 								break

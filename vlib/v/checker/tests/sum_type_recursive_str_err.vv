@@ -137,6 +137,22 @@ fn (f DumpAlias) str() string {
 	return alias.str()
 }
 
+interface Labelled {
+	name string
+}
+
+fn (l Labelled) str() string {
+	return 'Labelled(${l.name})'
+}
+
+struct IfaceExt {
+	name string
+}
+
+fn (f IfaceExt) str() string {
+	return Labelled(f).str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -158,4 +174,5 @@ fn main() {
 	println(UnsafeAlias{})
 	println(DumpDirect{})
 	println(DumpAlias{})
+	println(IfaceExt{ name: 'test' })
 }
