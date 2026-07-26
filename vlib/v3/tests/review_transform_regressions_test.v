@@ -1309,6 +1309,32 @@ fn main() {
 	assert out == '41\n42'
 }
 
+fn test_callback_argument_method_value_preserves_mutable_receiver_identity() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+
+fn invoke(callback fn () int) int {
+	return callback()
+}
+
+fn main() {
+	mut counter := Counter{}
+	println(int_str(invoke(counter.next)))
+	println(int_str(counter.value))
+}
+'
+	out := run_good(v3_bin, 'callback_argument_mutable_receiver_identity', source)
+	assert out == '1\n1'
+}
+
 fn test_returned_mut_fixed_array_capture_uses_durable_context_storage() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn make_counter() fn () int {

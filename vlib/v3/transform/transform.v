@@ -5182,6 +5182,44 @@ fn (t &Transformer) escape_method_value_receiver(id flat.NodeId) ?string {
 	return t.escape_address_root_name(t.a.child(&node, 0))
 }
 
+fn (t &Transformer) method_value_has_pointer_receiver(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || isnil(t.tc) {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
+		return t.method_value_has_pointer_receiver(t.a.child(&node, 0))
+	}
+	if node.kind != .selector || node.children_count == 0 || !t.tc.expr_is_method_value(id) {
+		return false
+	}
+	base_id := t.a.child(&node, 0)
+	method_name := t.resolve_receiver_method_name(base_id, node.value)
+	if params := t.tc.fn_param_types[method_name] {
+		return params.len > 0 && params[0] is types.Pointer
+	}
+	return t.tc.mut_receiver_methods[method_name]
+}
+
+fn (mut t Transformer) mark_callback_method_value_receiver_escape(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
+	if !t.method_value_has_pointer_receiver(id) {
+		return
+	}
+	receiver := t.escape_method_value_receiver(id) or { return }
+	mut sources := escape_alias_sources(receiver, amp_sources, ptr_aliases)
+	if sources.len == 0 && receiver in local_stack_names {
+		sources = [receiver]
+	}
+	for source in sources {
+		if source in local_stack_names {
+			// A callee may retain a callback argument. Move the original receiver,
+			// rather than a closure-private copy, so synchronous calls and escaped
+			// callbacks observe the same mutable object.
+			t.escaping_amp_sources[source] = true
+		}
+	}
+}
+
 fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string) {
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return
@@ -5316,6 +5354,12 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
 			t.collect_return_escape_idents(t.a.child(&node, i), mut returned)
+		}
+	}
+	if node.kind == .call && node.children_count > 1 {
+		for i in 1 .. node.children_count {
+			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources,
+				ptr_aliases, local_stack_names)
 		}
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign

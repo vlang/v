@@ -2828,12 +2828,10 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	ret_ct := g.fn_return_type_name(ret)
 	base_pointer_depth := cgen_type_pointer_depth(base_type)
 	receiver_pointer_depth := cgen_type_pointer_depth(params[0])
-	// Escaping pointer-receiver method values copy addressable value receivers into
-	// durable context storage. A method value proven local must keep borrowing its
-	// receiver so mutations made after binding remain observable.
-	// Mutable receivers passed as callback arguments are not proven local, so they
-	// also need a durable copy; only the transform's borrow marker keeps a local binding
-	// attached to its original receiver.
+	// Pointer-receiver method values still backed by addressable stack values need
+	// durable context storage. The transform heap-promotes callback-argument locals,
+	// so those arrive here as pointers and preserve receiver identity. A method value
+	// proven local uses the borrow marker for the same identity-preserving behavior.
 	receiver_value_copy := receiver_pointer_depth > base_pointer_depth
 		&& (!g.expr_is_addressable(base_id) || !borrow_receiver)
 	ctx_receiver_ct := if receiver_value_copy {
