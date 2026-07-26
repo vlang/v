@@ -3201,6 +3201,23 @@ fn (c &Checker) recursive_str_sources_are_equivalent(a ast.Expr, b ast.Expr, typ
 	return left_pos.pos == right_pos.pos && left_pos.len == right_pos.len
 }
 
+fn recursive_str_exprs_are_same_alias_path(a ast.Expr, b ast.Expr, name string, decl_pos int) bool {
+	left := a.remove_par()
+	right := b.remove_par()
+	match left {
+		ast.Ident {
+			return right is ast.Ident && recursive_str_ident_is_var(left, name, decl_pos)
+				&& recursive_str_ident_is_var(right, name, decl_pos)
+		}
+		ast.SelectorExpr {
+			return right is ast.SelectorExpr && left.field_name == right.field_name
+				&& recursive_str_exprs_are_same_alias_path(left.expr, right.expr, name, decl_pos)
+		}
+		else {}
+	}
+	return false
+}
+
 fn (c &Checker) merge_recursive_str_branch_states(mut state RecursiveStrAliasState, branch_states []RecursiveStrAliasState, typ ast.Type) {
 	if branch_states.len == 0 {
 		return
@@ -3657,6 +3674,10 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 					if !recursive_str_scope_dominates(scope, call_scope) {
 						continue
 					}
+					if node.op == .assign && i < node.right.len
+						&& recursive_str_exprs_are_same_alias_path(left, node.right[i], name, decl_pos) {
+						continue
+					}
 					mut reduced_left := left.remove_par()
 					if reduced_left is ast.Ident
 						&& recursive_str_ident_is_var(reduced_left, name, decl_pos) {
@@ -3898,8 +3919,8 @@ fn find_recursive_str_binding_reassignment(node ast.Node, name string, decl_pos 
 	return earliest
 }
 
-fn (mut c Checker) recursive_str_alias_state_before(name string, call ast.CallExpr, cutoff int) ?RecursiveStrAliasState {
-	v := call.scope.find_var(name)?
+fn (mut c Checker) recursive_str_alias_state_before(name string, resolution_scope &ast.Scope, cutoff int) ?RecursiveStrAliasState {
+	v := resolution_scope.find_var(name)?
 	if v.pos.pos >= cutoff {
 		return none
 	}
@@ -3908,19 +3929,19 @@ fn (mut c Checker) recursive_str_alias_state_before(name string, call ast.CallEx
 		pos:    v.pos.pos
 	}
 	for stmt in c.table.cur_fn.stmts {
-		c.scan_recursive_str_alias_updates(ast.Node(stmt), name, v.pos.pos, v.typ, call.scope,
-			cutoff, mut state)
+		c.scan_recursive_str_alias_updates(ast.Node(stmt), name, v.pos.pos, v.typ,
+			resolution_scope, cutoff, mut state)
 	}
 	return state
 }
 
-fn (mut c Checker) recursive_str_shared_source_was_mutated(expr ast.Expr, receiver_typ ast.Type, call ast.CallExpr, start int, cutoff int) bool {
+fn (mut c Checker) recursive_str_shared_source_was_mutated(expr ast.Expr, receiver_typ ast.Type, resolution_scope &ast.Scope, start int, cutoff int) bool {
 	inner := c.unwrap_recursive_str_receiver(expr, receiver_typ)
 	if inner !is ast.Ident {
 		return false
 	}
 	ident := inner as ast.Ident
-	v := call.scope.find_var(ident.name) or { return false }
+	v := resolution_scope.find_var(ident.name) or { return false }
 	if !c.type_may_share_mutable_storage(v.typ) {
 		return false
 	}
@@ -3930,7 +3951,7 @@ fn (mut c Checker) recursive_str_shared_source_was_mutated(expr ast.Expr, receiv
 		storage_cutoff = find_recursive_str_binding_reassignment(ast.Node(stmt), ident.name,
 			v.pos.pos, start, cutoff, storage_cutoff)
 	}
-	state := c.recursive_str_alias_state_before(ident.name, call, storage_cutoff) or {
+	state := c.recursive_str_alias_state_before(ident.name, resolution_scope, storage_cutoff) or {
 		return false
 	}
 	return state.invalidated && state.shared_storage_mutated && state.pos > start
@@ -3947,7 +3968,7 @@ fn recursive_str_branch_result(stmts []ast.Stmt) ?ast.Expr {
 	return none
 }
 
-fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiver_name string, receiver_typ ast.Type, call ast.CallExpr, cutoff int, mut seen map[string]bool) bool {
+fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiver_name string, receiver_typ ast.Type, resolution_scope &ast.Scope, cutoff int, mut seen map[string]bool) bool {
 	inner := c.unwrap_recursive_str_receiver(expr, receiver_typ)
 	match inner {
 		ast.IfExpr {
@@ -3958,7 +3979,7 @@ fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiv
 				result := recursive_str_branch_result(branch.stmts) or { continue }
 				mut branch_seen := seen.clone()
 				if c.recursive_str_expr_resolves_to_receiver(result, receiver_name, receiver_typ,
-					call, cutoff, mut branch_seen)
+					branch.scope, result.pos().pos, mut branch_seen)
 				{
 					return true
 				}
@@ -3973,7 +3994,7 @@ fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiv
 				result := recursive_str_branch_result(branch.stmts) or { continue }
 				mut branch_seen := seen.clone()
 				if c.recursive_str_expr_resolves_to_receiver(result, receiver_name, receiver_typ,
-					call, cutoff, mut branch_seen)
+					branch.scope, result.pos().pos, mut branch_seen)
 				{
 					return true
 				}
@@ -3991,11 +4012,13 @@ fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiv
 		return false
 	}
 	seen[seen_key] = true
-	state := c.recursive_str_alias_state_before(ident.name, call, cutoff) or { return false }
+	state := c.recursive_str_alias_state_before(ident.name, resolution_scope, cutoff) or {
+		return false
+	}
 	if state.invalidated {
 		return false
 	}
-	v := call.scope.find_var(ident.name) or { return false }
+	v := resolution_scope.find_var(ident.name) or { return false }
 	mut sources := [
 		RecursiveStrAliasSource{
 			source: state.source
@@ -4011,12 +4034,12 @@ fn (mut c Checker) recursive_str_expr_resolves_to_receiver(expr ast.Expr, receiv
 			continue
 		}
 		if c.type_may_share_mutable_storage(v.typ)
-			&& c.recursive_str_shared_source_was_mutated(source.source, receiver_typ, call, source.pos, cutoff) {
+			&& c.recursive_str_shared_source_was_mutated(source.source, receiver_typ, resolution_scope, source.pos, cutoff) {
 			continue
 		}
 		mut source_seen := seen.clone()
 		if c.recursive_str_expr_resolves_to_receiver(source.source, receiver_name, receiver_typ,
-			call, source.pos, mut source_seen)
+			resolution_scope, source.pos, mut source_seen)
 		{
 			return true
 		}
@@ -4557,7 +4580,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if c.recursive_str_receiver_type_matches(left_type, receiver_typ) {
 			mut seen := map[string]bool{}
 			if c.recursive_str_expr_resolves_to_receiver(left_expr, receiver_name, receiver_typ,
-				node, node.pos.pos, mut seen)
+				node.scope, node.pos.pos, mut seen)
 			{
 				c.error('cannot call `str()` method recursively', node.pos)
 			}

@@ -626,6 +626,72 @@ fn (s ScalarOnlyAggregateMutation) str() string {
 	return alias.str()
 }
 
+struct ConditionalInitializerProgress {
+mut:
+	remaining int
+}
+
+fn (n ConditionalInitializerProgress) str() string {
+	mut source := n
+	alias := if source.remaining > 0 {
+		source.remaining--
+		source
+	} else {
+		return ''
+	}
+	return alias.str()
+}
+
+struct MatchInitializerProgress {
+mut:
+	remaining int
+}
+
+fn (n MatchInitializerProgress) str() string {
+	mut source := n
+	alias := match source.remaining {
+		0 {
+			return ''
+		}
+		else {
+			source.remaining--
+			source
+		}
+	}
+	return alias.str()
+}
+
+struct ConditionalMixedInitializerProgress {
+	take_copy bool
+mut:
+	remaining int
+}
+
+fn (n ConditionalMixedInitializerProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut source := n
+	alias := if n.take_copy {
+		source.remaining--
+		source
+	} else {
+		ConditionalMixedInitializerProgress{}
+	}
+	return alias.str()
+}
+
+struct NoOpFieldAssignment {
+mut:
+	remaining int
+}
+
+fn (n NoOpFieldAssignment) str() string {
+	mut alias := n
+	alias.remaining = alias.remaining
+	return alias.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -683,5 +749,6 @@ fn main() {
 	println(ConditionalIfReceiverSource{})
 	println(ConditionalMatchReceiverSource{})
 	println(ScalarOnlyAggregateMutation{})
+	println(NoOpFieldAssignment{})
 	println(IfaceExt{ name: 'test' })
 }
