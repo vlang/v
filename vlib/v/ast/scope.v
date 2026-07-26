@@ -206,6 +206,21 @@ pub fn (mut s Scope) update_var_type(name string, typ Type) {
 	}
 }
 
+pub fn (s &Scope) mark_var_as_changed(name string) {
+	for sc := unsafe { s }; true; sc = sc.parent {
+		if name in sc.objects {
+			mut obj := unsafe { sc.objects[name] }
+			if mut obj is Var {
+				obj.is_changed = true
+			}
+			return
+		}
+		if sc.dont_lookup_parent() {
+			break
+		}
+	}
+}
+
 pub fn (mut s Scope) update_ct_var_kind(name string, kind ComptimeVarKind) {
 	mut obj := unsafe { s.objects[name] }
 	if mut obj is Var {

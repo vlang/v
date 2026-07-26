@@ -1793,10 +1793,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				}
 				expr.obj.is_changed = true
 				if expr.scope != unsafe { nil } {
-					mut scope_obj := unsafe { expr.scope.objects[expr.name] }
-					if mut scope_obj is ast.Var {
-						scope_obj.is_changed = true
-					}
+					expr.scope.mark_var_as_changed(expr.name)
 				}
 				if expr.obj.typ.share() == .shared_t {
 					if expr.name !in c.locked_names {
