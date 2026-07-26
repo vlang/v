@@ -5478,6 +5478,38 @@ fn (mut t Transformer) collect_local_closure_initializer_field_candidates(decl_i
 		}
 		return
 	}
+	if init.kind == .map_init {
+		for i := 0; i + 1 < int(init.children_count); i += 2 {
+			key_id := t.a.child(&init, i)
+			key := t.a.nodes[int(key_id)]
+			if key.kind == .prefix && key.value == '...' {
+				return
+			}
+			if key.kind !in [.int_literal, .string_literal, .char_literal, .enum_val] {
+				continue
+			}
+			key_part := t.expr_key_part(key_id)
+			if key_part.len == 0 {
+				continue
+			}
+			value_id := t.a.child(&init, i + 1)
+			value_key := '${field_prefix}[${key_part}]'
+			if t.expr_allocates_fresh_runtime_closure(value_id) {
+				field_candidates << LocalClosureFieldCandidate{
+					source_id:       int(value_id)
+					owner_id:        int(owner_id)
+					decl_id:         int(decl_id)
+					aggregate_name:  aggregate_name
+					aggregate_scope: int(scope_id)
+					field_key:       value_key
+				}
+				continue
+			}
+			t.collect_local_closure_initializer_field_candidates(decl_id, owner_id, value_id,
+				aggregate_name, value_key, scope_id, mut field_candidates)
+		}
+		return
+	}
 	if init.kind != .struct_init {
 		return
 	}
@@ -5821,8 +5853,9 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 		for i := 0; i < int(node.children_count); i += 2 {
 			lhs_id := t.a.child(&node, i)
 			lhs_key := t.expr_key(lhs_id)
-			lhs_is_owned_field := lhs_key == field_key
-				|| (lhs_key.len > 0 && field_key.starts_with('${lhs_key}.'))
+			lhs_is_owned_field := lhs_key == field_key || (lhs_key.len > 0
+				&& (field_key.starts_with('${lhs_key}.')
+				|| field_key.starts_with('${lhs_key}[')))
 			if t.local_closure_field_binding_escapes_in_context(lhs_id, bound_uses, decl_id,
 				field_key, lhs_is_owned_field, false)
 			{
@@ -11258,15 +11291,27 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		lhs := t.a.child_node(&node, 0)
 		rhs_id := t.a.child(&node, 1)
 		if lhs.kind == .ident && lhs.value.len > 0 {
-			array_type := if inferred_typ.len > 0 { inferred_typ } else { t.node_type(rhs_id) }
-			if array_type.starts_with('[]') && array_type.len > 2 {
-				elem_type := array_type[2..]
+			aggregate_type := if inferred_typ.len > 0 { inferred_typ } else { t.node_type(rhs_id) }
+			if aggregate_type.starts_with('[]') && aggregate_type.len > 2 {
+				elem_type := aggregate_type[2..]
 				for index in t.local_closure_array_initializer_cleanup_indices(rhs_id) {
 					closure_name := t.new_temp('array_closure')
 					t.set_var_type(closure_name, elem_type)
 					elem := t.make_index(t.make_ident(lhs.value), t.make_int_literal(index),
 						elem_type)
 					result << t.make_decl_assign_typed(closure_name, elem, elem_type)
+					result << t.make_local_closure_cleanup_defer(closure_name)
+				}
+			}
+			map_type := t.clean_map_type(aggregate_type)
+			if map_type.starts_with('map[') {
+				key_type, value_type := t.map_type_parts(map_type)
+				for key_id in t.local_closure_map_initializer_cleanup_keys(rhs_id) {
+					closure_name := t.new_temp('map_closure')
+					t.set_var_type(closure_name, value_type)
+					key := t.transform_expr_for_type(key_id, key_type)
+					elem := t.make_index(t.make_ident(lhs.value), key, value_type)
+					result << t.make_decl_assign_typed(closure_name, elem, value_type)
 					result << t.make_local_closure_cleanup_defer(closure_name)
 				}
 			}
@@ -11293,6 +11338,26 @@ fn (t &Transformer) local_closure_array_initializer_cleanup_indices(id flat.Node
 		}
 	}
 	return indices
+}
+
+fn (t &Transformer) local_closure_map_initializer_cleanup_keys(id flat.NodeId) []flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return []flat.NodeId{}
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count == 1 {
+		return t.local_closure_map_initializer_cleanup_keys(t.a.child(&node, 0))
+	}
+	if node.kind != .map_init {
+		return []flat.NodeId{}
+	}
+	mut keys := []flat.NodeId{}
+	for i := 0; i + 1 < int(node.children_count); i += 2 {
+		if int(t.a.child(&node, i + 1)) in t.local_closure_field_cleanups {
+			keys << t.a.child(&node, i)
+		}
+	}
+	return keys
 }
 
 fn (mut t Transformer) make_local_closure_cleanup_defer(name string) flat.NodeId {
