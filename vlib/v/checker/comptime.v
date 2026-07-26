@@ -1067,37 +1067,49 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
 }
 
+// raw_int_bits returns the raw 64-bit pattern of any integer-typed ComptTimeConstValue,
+// unlike val.i64()/val.u64() it never rejects a value just because it doesn't
+// independently fit as signed/unsigned - e.g. a `u64` value bigger than max_i64 is
+// bit-reinterpreted rather than rejected, matching real cast/arithmetic semantics.
+fn raw_int_bits(val ast.ComptTimeConstValue) ?i64 {
+	return match val {
+		i8, i16, i32 { i64(val) }
+		i64 { val }
+		u8, u16, u32, u64 { i64(val) }
+		else { none }
+	}
+}
+
+// wrap_comptime_int truncates a raw 64-bit comptime arithmetic result down to the
+// width and signedness of `typ`, matching the wraparound semantics of a real
+// narrowing cast/assignment in generated code (e.g. `u8(255) + u8(1)` wraps to `0`,
+// instead of being treated as an unbounded `256`).
+fn (c &Checker) wrap_comptime_int(raw i64, typ ast.Type) ast.ComptTimeConstValue {
+	size, _ := c.table.type_size(typ)
+	signed := typ.is_signed()
+	match size {
+		1 { return if signed { i8(raw) } else { u8(raw) } }
+		2 { return if signed { i16(raw) } else { u16(raw) } }
+		4 { return if signed { i32(raw) } else { u32(raw) } }
+		else { return if signed { raw } else { u64(raw) } }
+	}
+}
+
 fn (mut c Checker) eval_comptime_const_cast_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
 	cast_typ := c.table.fully_unaliased_type(typ).clear_flags()
-	if cast_typ == ast.i8_type {
-		return value.i8() or { return none }
+	if cast_typ.is_pure_int() {
+		// A numeric cast always truncates/reinterprets bits, matching the generated
+		// code - it never rejects an out-of-range value. For example `u64(min_i64)`
+		// must reinterpret to `9223372036854775808`, not fail just because the value
+		// is negative and therefore doesn't "fit" as unsigned.
+		if raw := value.i64() {
+			return c.wrap_comptime_int(raw, cast_typ)
+		}
+		if raw := value.u64() {
+			return c.wrap_comptime_int(i64(raw), cast_typ)
+		}
+		return none
 	}
-	if cast_typ == ast.i16_type {
-		return value.i16() or { return none }
-	}
-	if cast_typ == ast.i32_type {
-		return value.i32() or { return none }
-	}
-	if cast_typ == ast.i64_type {
-		return value.i64() or { return none }
-	}
-	if cast_typ == ast.int_type {
-		return value.i64() or { return none }
-	}
-	//
-	if cast_typ == ast.u8_type {
-		return value.u8() or { return none }
-	}
-	if cast_typ == ast.u16_type {
-		return value.u16() or { return none }
-	}
-	if cast_typ == ast.u32_type {
-		return value.u32() or { return none }
-	}
-	if cast_typ == ast.u64_type {
-		return value.u64() or { return none }
-	}
-	//
 	if cast_typ == ast.f32_type {
 		return value.f32() or { return none }
 	}
@@ -1240,97 +1252,163 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 						return none
 					}
 				}
-			} else if left is f32 || left is f64 || right is f32 || right is f64 {
-				// Float arithmetic must be checked before the generic integer fallbacks below,
-				// since ComptTimeConstValue.i64() truncates floats (e.g. `1.5.i64() == 1`)
-				// instead of rejecting them.
-				if left_f := left.f64() {
-					if right_f := right.f64() {
+			} else {
+				// Use the already defined promoted type for this expression, to decide how
+				// to fold the operation. This makes narrow integer types wrap the same way
+				// the generated code does (e.g. `u8(255) + u8(1)` wraps to `0`) and lets
+				// mixed int/float combinations (e.g. `i32(1) + f32(1.5)`) be handled
+				// without enumerating every possible pair of types.
+				promoted_type := c.table.fully_unaliased_type(expr.promoted_type).clear_flags()
+				if promoted_type.is_pure_float() {
+					left_f := left.f64()
+					right_f := right.f64()
+
+					if _likely_(left_f != none && right_f != none) {
+						mut result := f64(0)
+
 						match expr.op {
 							.plus {
-								return left_f + right_f
+								result = left_f + right_f
 							}
 							.minus {
-								return left_f - right_f
+								result = left_f - right_f
 							}
 							.mul {
-								return left_f * right_f
+								result = left_f * right_f
 							}
 							.div {
 								if _unlikely_(right_f == 0) {
 									return none
 								} else {
-									return left_f / right_f
+									result = left_f / right_f
 								}
 							}
 							else {
 								return none
 							}
 						}
+
+						// Round to f32 precision when that's the promoted type, to
+						// match the intermediate rounding of the generated code.
+						return if promoted_type == ast.f32_type {
+							f64(f32(result))
+						} else {
+							result
+						}
 					}
-				}
-			} else if left is u64 && right is u64 {
-				match expr.op {
-					.plus { return left + right }
-					.minus { return left - right }
-					.mul { return left * right }
-					.div { return if _unlikely_(right == 0) { none } else { left / right } }
-					.mod { return if _unlikely_(right == 0) { none } else { left % right } }
-					.xor { return left ^ right }
-					.pipe { return left | right }
-					.amp { return left & right }
-					.left_shift { return left << right }
-					.right_shift { return left >> right }
-					.unsigned_right_shift { return left >>> right }
-					else { return none }
-				}
-			} else if left is u64 && right is i64 {
-				match expr.op {
-					.plus { return i64(left) + i64(right) }
-					.minus { return i64(left) - i64(right) }
-					.mul { return i64(left) * i64(right) }
-					.div { return if _unlikely_(right == 0) { none } else { i64(left) / i64(right) } }
-					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % i64(right) } }
-					.xor { return i64(left) ^ i64(right) }
-					.pipe { return i64(left) | i64(right) }
-					.amp { return i64(left) & i64(right) }
-					.left_shift { return i64(u64(left) << i64(right)) }
-					.right_shift { return i64(u64(left) >> i64(right)) }
-					.unsigned_right_shift { return i64(u64(left) >>> i64(right)) }
-					else { return none }
-				}
-			} else if left is i64 && right is u64 {
-				match expr.op {
-					.plus { return i64(left) + i64(right) }
-					.minus { return i64(left) - i64(right) }
-					.mul { return i64(left) * i64(right) }
-					.div { return if _unlikely_(right == 0) { none } else { i64(left) / i64(right) } }
-					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % i64(right) } }
-					.xor { return i64(left) ^ i64(right) }
-					.pipe { return i64(left) | i64(right) }
-					.amp { return i64(left) & i64(right) }
-					.left_shift { return i64(u64(left) << i64(right)) }
-					.right_shift { return i64(u64(left) >> i64(right)) }
-					.unsigned_right_shift { return i64(u64(left) >>> i64(right)) }
-					else { return none }
-				}
-			}
-			// Generic fallback for combinations of integer types that both fit in i64
-			else if left_i := left.i64() {
-				if right_i := right.i64() {
-					match expr.op {
-						.plus { return left_i + right_i }
-						.minus { return left_i - right_i }
-						.mul { return left_i * right_i }
-						.div { return if _unlikely_(right_i == 0) { none } else { left_i / right_i } }
-						.mod { return if _unlikely_(right_i == 0) { none } else { left_i % right_i } }
-						.xor { return left_i ^ right_i }
-						.pipe { return left_i | right_i }
-						.amp { return left_i & right_i }
-						.left_shift { return i64(u64(left_i) << right_i) }
-						.right_shift { return i64(u64(left_i) >> right_i) }
-						.unsigned_right_shift { return i64(u64(left_i) >>> right_i) }
-						else { return none }
+				} else if promoted_type.is_pure_int() {
+					// Get the raw 64-bit pattern of each operand without rejecting values
+					// that don't independently fit as signed/unsigned (unlike left.i64()/
+					// left.u64()), so mixing e.g. a huge u64 literal with a negative i64
+					// still folds correctly (both are valid 64-bit patterns).
+					left_raw := raw_int_bits(left)
+					right_raw := raw_int_bits(right)
+
+					if _likely_(left_raw != none && right_raw != none) {
+						mut result := i64(0)
+
+						if promoted_type.is_signed() {
+							match expr.op {
+								.plus {
+									result = left_raw + right_raw
+								}
+								.minus {
+									result = left_raw - right_raw
+								}
+								.mul {
+									result = left_raw * right_raw
+								}
+								.div {
+									if _unlikely_(right_raw == 0) {
+										return none
+									} else {
+										result = left_raw / right_raw
+									}
+								}
+								.mod {
+									if _unlikely_(right_raw == 0) {
+										return none
+									} else {
+										result = left_raw % right_raw
+									}
+								}
+								.xor {
+									result = left_raw ^ right_raw
+								}
+								.pipe {
+									result = left_raw | right_raw
+								}
+								.amp {
+									result = left_raw & right_raw
+								}
+								.left_shift {
+									result = i64(u64(left_raw) << right_raw)
+								}
+								.right_shift {
+									result = i64(u64(left_raw) >> right_raw)
+								}
+								.unsigned_right_shift {
+									result = i64(u64(left_raw) >>> right_raw)
+								}
+								else {
+									return none
+								}
+							}
+						} else {
+							// Unsigned division/modulo/shifts differ from signed ones;
+							// the bitwise ops give the same result either way.
+							left_u := u64(left_raw)
+							right_u := u64(right_raw)
+
+							match expr.op {
+								.plus {
+									result = i64(left_u + right_u)
+								}
+								.minus {
+									result = i64(left_u - right_u)
+								}
+								.mul {
+									result = i64(left_u * right_u)
+								}
+								.div {
+									if _unlikely_(right_u == 0) {
+										return none
+									} else {
+										result = i64(left_u / right_u)
+									}
+								}
+								.mod {
+									if _unlikely_(right_u == 0) {
+										return none
+									} else {
+										result = i64(left_u % right_u)
+									}
+								}
+								.xor {
+									result = i64(left_u ^ right_u)
+								}
+								.pipe {
+									result = i64(left_u | right_u)
+								}
+								.amp {
+									result = i64(left_u & right_u)
+								}
+								.left_shift {
+									result = i64(left_u << right_u)
+								}
+								.right_shift {
+									result = i64(left_u >> right_u)
+								}
+								.unsigned_right_shift {
+									result = i64(left_u >>> right_u)
+								}
+								else {
+									return none
+								}
+							}
+						}
+
+						return c.wrap_comptime_int(result, promoted_type)
 					}
 				}
 			}

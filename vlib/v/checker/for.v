@@ -100,33 +100,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 
 		range_error := c.errors.map(it.pos.line_nr).any(it == node.pos.line_nr)
-		// Check for empty ranges with comptime constant integer bounds
 		if !range_error {
-			low_val := c.eval_comptime_const_expr(node.cond, 0)
-			high_val := c.eval_comptime_const_expr(node.high, 0)
-
-			if low_val != none && high_val != none {
-				low_i := low_val.i64()
-				high_i := high_val.i64()
-
-				if low_i != none && high_i != none {
-					if low_i >= high_i {
-						c.error('empty range: `${low_i} .. ${high_i}` will never execute',
-							cond_pos.extend(high_pos))
-					}
-				} else {
-					// Fall back to an unsigned comparison for literals that overflow i64
-					low_u := low_val.u64()
-					high_u := high_val.u64()
-
-					if low_u != none && high_u != none {
-						if low_u >= high_u {
-							c.error('empty range: `${low_u} .. ${high_u}` will never execute',
-								cond_pos.extend(high_pos))
-						}
-					}
-				}
-			}
+			c.check_for_empty_range(node.cond, node.high)
 		}
 
 		if high_type in [ast.int_type, ast.int_literal_type] {
@@ -399,5 +374,33 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.in_for_count--
 	if c.smartcast_mut_pos != token.Pos{} {
 		c.smartcast_mut_pos = token.Pos{}
+	}
+}
+
+// Check for empty range with comptime constant integer bounds
+fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr) {
+	if low_val := c.eval_comptime_const_expr(low, 0) {
+		if high_val := c.eval_comptime_const_expr(high, 0) {
+			low_i := low_val.i64()
+			high_i := high_val.i64()
+
+			if low_i != none && high_i != none {
+				if low_i >= high_i {
+					c.error('empty range: `${low_i} .. ${high_i}` will never execute',
+						low.pos().extend(high.pos()))
+				}
+			} else {
+				// Fall back to an unsigned comparison for literals that overflow i64
+				low_u := low_val.u64()
+				high_u := high_val.u64()
+
+				if low_u != none && high_u != none {
+					if low_u >= high_u {
+						c.error('empty range: `${low_u} .. ${high_u}` will never execute',
+							low.pos().extend(high.pos()))
+					}
+				}
+			}
+		}
 	}
 }

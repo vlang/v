@@ -39,3 +39,10 @@ vlib/v/checker/tests/for_in_empty_range_float_err.vv:22:11: error: empty range: 
       |              ~~~~~~~~~~~~~~~~~
    23 |         println(i)
    24 |     }
+vlib/v/checker/tests/for_in_empty_range_float_err.vv:26:11: error: empty range: `4 .. 0` will never execute
+   24 |     }
+   25 | 
+   26 |     for i in 4 .. u8(256.5) + int(0.5) {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~
+   27 |         println(i)
+   28 |     }

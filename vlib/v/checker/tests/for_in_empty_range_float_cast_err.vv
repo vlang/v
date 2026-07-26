@@ -22,4 +22,8 @@ fn main() {
 	for i in 5 .. int(2.5) + 1 {
 		println(i)
 	}
+
+	for i in 4 .. u8(256.5) + int(0.5) {
+		println(i)
+	}
 }
