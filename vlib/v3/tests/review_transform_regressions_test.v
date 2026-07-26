@@ -940,6 +940,51 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_discarded_branch_fresh_closure_returns_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn make_if(flag bool) fn () int {
+	x := 41
+	return if flag {
+		fn [x] () int {
+			return x + 1
+		}
+	} else {
+		fn [x] () int {
+			return x + 2
+		}
+	}
+}
+
+fn make_match(flag bool) fn () int {
+	x := 40
+	return match flag {
+		true {
+			fn [x] () int {
+				return x + 2
+			}
+		}
+		else {
+			fn [x] () int {
+				return x + 3
+			}
+		}
+	}
+}
+
+fn main() {
+	for i in 0 .. 50_000 {
+		_ = make_if(i % 2 == 0)
+		_ = make_match(i % 2 == 0)
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'discarded_branch_fresh_closure_returns_c', source)
+	assert c_source.count('closure__closure_try_destroy(__discarded_closure_') == 2, c_source
+	out := run_good(v3_bin, 'discarded_branch_fresh_closure_returns', source)
+	assert out == 'ok'
+}
+
 fn test_discarded_returned_closure_with_retained_alias_is_not_destroyed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Holder {
@@ -1079,6 +1124,49 @@ fn main() {
 	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
 	out := run_good(v3_bin, 'conditionally_reassigned_bound_method', source)
 	assert out == '1250000000'
+}
+
+fn test_match_self_reassigned_bound_method_closures_remain_scope_owned() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut first := Counter{
+			value: i
+		}
+		other := Counter{
+			value: i + 1
+		}
+		keep := i % 2 == 0
+		mut callback := first.read
+		callback = match keep {
+			true { callback }
+			else { other.read }
+		}
+		first.value += 10
+		if keep {
+			assert callback() == i + 10
+		} else {
+			assert callback() == i + 1
+		}
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'match_self_reassigned_bound_method_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'match_self_reassigned_bound_method', source)
+	assert out == '1250250000'
 }
 
 fn test_immediately_invoked_bound_method_closures_are_reclaimed() {

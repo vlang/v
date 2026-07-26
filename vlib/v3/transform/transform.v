@@ -4873,8 +4873,47 @@ fn (t &Transformer) expr_allocates_fresh_runtime_closure(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
-		return t.expr_allocates_fresh_runtime_closure(t.a.child(&node, 0))
+	match node.kind {
+		.paren, .cast_expr, .expr_stmt {
+			if node.children_count == 1 {
+				return t.expr_allocates_fresh_runtime_closure(t.a.child(&node, 0))
+			}
+		}
+		.block {
+			return node.children_count > 0
+				&& t.expr_allocates_fresh_runtime_closure(t.a.child(&node, node.children_count - 1))
+		}
+		.if_expr {
+			if node.children_count < 3 {
+				return false
+			}
+			for i in 1 .. node.children_count {
+				if !t.expr_allocates_fresh_runtime_closure(t.a.child(&node, i)) {
+					return false
+				}
+			}
+			return true
+		}
+		.match_stmt {
+			if node.children_count < 2 {
+				return false
+			}
+			for i in 1 .. node.children_count {
+				branch_id := t.a.child(&node, i)
+				branch := t.a.nodes[int(branch_id)]
+				if branch.kind != .match_branch
+					|| !t.expr_allocates_fresh_runtime_closure(branch_id) {
+					return false
+				}
+			}
+			return true
+		}
+		.match_branch {
+			body_start := if node.value == 'else' { 0 } else { t.count_conds(node) }
+			return node.children_count > body_start
+				&& t.expr_allocates_fresh_runtime_closure(t.a.child(&node, node.children_count - 1))
+		}
+		else {}
 	}
 	return t.fn_literal_has_runtime_captures(id)
 		|| t.bound_method_value_allocates_runtime_closure(id)
@@ -5314,6 +5353,28 @@ fn (t &Transformer) local_closure_name_escapes_in_value_context(id flat.NodeId, 
 				for i in 0 .. node.children_count {
 					if t.local_closure_name_escapes_in_value_context(t.a.child(&node, i), name,
 						decl_id, i > 0)
+					{
+						return true
+					}
+				}
+				return false
+			}
+			.match_stmt {
+				for i in 0 .. node.children_count {
+					if t.local_closure_name_escapes_in_value_context(t.a.child(&node, i), name,
+						decl_id, i > 0)
+					{
+						return true
+					}
+				}
+				return false
+			}
+			.match_branch {
+				body_start := if node.value == 'else' { 0 } else { t.count_conds(node) }
+				for i in 0 .. node.children_count {
+					is_tail_value := i >= body_start && i == int(node.children_count) - 1
+					if t.local_closure_name_escapes_in_value_context(t.a.child(&node, i), name,
+						decl_id, is_tail_value)
 					{
 						return true
 					}
