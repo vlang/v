@@ -426,6 +426,74 @@ fn (mut x SharedMapStorageProgress) str() string {
 	return alias.str()
 }
 
+type HelperReboundSourceList = []int
+
+fn rebind_list_source(mut source HelperReboundSourceList) {
+	source = HelperReboundSourceList([1])
+}
+
+fn (x HelperReboundSourceList) str() string {
+	mut source := unsafe { x }
+	alias := source
+	rebind_list_source(mut source)
+	return alias.str()
+}
+
+type HelperReboundSourceMap = map[string]int
+
+fn rebind_map_source(mut source HelperReboundSourceMap) {
+	source = HelperReboundSourceMap({
+		'value': 1
+	})
+}
+
+fn (x HelperReboundSourceMap) str() string {
+	mut source := unsafe { x }
+	alias := source
+	rebind_map_source(mut source)
+	return alias.str()
+}
+
+type HelperSharedStorageProgress = []int
+
+fn decrement_list_storage(mut source HelperSharedStorageProgress) {
+	source[0]--
+}
+
+fn (x HelperSharedStorageProgress) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut source := unsafe { x }
+	alias := source
+	decrement_list_storage(mut source)
+	return alias.str()
+}
+
+type ConditionalSharedStorageProgress = []int
+
+fn (x ConditionalSharedStorageProgress) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut source := unsafe { x }
+	alias := if source.len > 0 { source } else { source }
+	source[0]--
+	return alias.str()
+}
+
+type ConditionalSharedMapStorageProgress = map[string]int
+
+fn (x ConditionalSharedMapStorageProgress) str() string {
+	if x['value'] == 0 {
+		return ''
+	}
+	mut source := unsafe { x }
+	alias := if source['value'] > 0 { source } else { source }
+	source['value']--
+	return alias.str()
+}
+
 struct SelectedComptimeReceiverAssignment {}
 
 fn (f SelectedComptimeReceiverAssignment) str() string {
@@ -758,6 +826,12 @@ fn main() {
 		'value': 0
 	})
 	println(rebound_map_source)
+	helper_rebound_source := HelperReboundSourceList([0])
+	println(helper_rebound_source)
+	helper_rebound_map_source := HelperReboundSourceMap({
+		'value': 0
+	})
+	println(helper_rebound_map_source)
 	println(SelectedComptimeReceiverAssignment{})
 	println(NoElseReceiverAssignment{ recurse: true })
 	println(ConditionalMutatorNoProgress{ remaining: 1 })

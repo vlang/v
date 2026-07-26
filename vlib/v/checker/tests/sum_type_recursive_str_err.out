@@ -201,59 +201,73 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:415:15: error: cannot call `s
       |                  ~~~~~
   416 | }
   417 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:436:15: error: cannot call `str()` method recursively
-  434 |         alias = f
-  435 |     }
-  436 |     return alias.str()
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:439:15: error: cannot call `str()` method recursively
+  437 |     alias := source
+  438 |     rebind_list_source(mut source)
+  439 |     return alias.str()
       |                  ~~~~~
-  437 | }
-  438 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:496:15: error: cannot call `str()` method recursively
-  494 |         alias = f
-  495 |     }
-  496 |     return alias.str()
+  440 | }
+  441 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:454:15: error: cannot call `str()` method recursively
+  452 |     alias := source
+  453 |     rebind_map_source(mut source)
+  454 |     return alias.str()
       |                  ~~~~~
-  497 | }
-  498 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:516:14: error: cannot call `str()` method recursively
-  514 |     mut next := n
-  515 |     next.maybe_decrement()
-  516 |     return next.str()
+  455 | }
+  456 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:504:15: error: cannot call `str()` method recursively
+  502 |         alias = f
+  503 |     }
+  504 |     return alias.str()
+      |                  ~~~~~
+  505 | }
+  506 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:564:15: error: cannot call `str()` method recursively
+  562 |         alias = f
+  563 |     }
+  564 |     return alias.str()
+      |                  ~~~~~
+  565 | }
+  566 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:584:14: error: cannot call `str()` method recursively
+  582 |     mut next := n
+  583 |     next.maybe_decrement()
+  584 |     return next.str()
       |                 ~~~~~
-  517 | }
-  518 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:600:15: error: cannot call `str()` method recursively
-  598 | fn (f ConditionalIfReceiverSource) str() string {
-  599 |     alias := if f.flag { f } else { f }
-  600 |     return alias.str()
+  585 | }
+  586 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:668:15: error: cannot call `str()` method recursively
+  666 | fn (f ConditionalIfReceiverSource) str() string {
+  667 |     alias := if f.flag { f } else { f }
+  668 |     return alias.str()
       |                  ~~~~~
-  601 | }
-  602 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:612:15: error: cannot call `str()` method recursively
-  610 |         false { f }
-  611 |     }
-  612 |     return alias.str()
+  669 | }
+  670 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:680:15: error: cannot call `str()` method recursively
+  678 |         false { f }
+  679 |     }
+  680 |     return alias.str()
       |                  ~~~~~
-  613 | }
-  614 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:626:15: error: cannot call `str()` method recursively
-  624 |     alias := source
-  625 |     source.counter--
-  626 |     return alias.str()
+  681 | }
+  682 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:694:15: error: cannot call `str()` method recursively
+  692 |     alias := source
+  693 |     source.counter--
+  694 |     return alias.str()
       |                  ~~~~~
-  627 | }
-  628 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:692:15: error: cannot call `str()` method recursively
-  690 |     mut alias := n
-  691 |     alias.remaining = alias.remaining
-  692 |     return alias.str()
+  695 | }
+  696 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:760:15: error: cannot call `str()` method recursively
+  758 |     mut alias := n
+  759 |     alias.remaining = alias.remaining
+  760 |     return alias.str()
       |                  ~~~~~
-  693 | }
-  694 |
-vlib/v/checker/tests/sum_type_recursive_str_err.vv:707:15: error: cannot call `str()` method recursively
-  705 |     mut alias := n
-  706 |     alias.keep()
-  707 |     return alias.str()
+  761 | }
+  762 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:775:15: error: cannot call `str()` method recursively
+  773 |     mut alias := n
+  774 |     alias.keep()
+  775 |     return alias.str()
       |                  ~~~~~
-  708 | }
-  709 |
+  776 | }
+  777 |
