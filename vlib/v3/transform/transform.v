@@ -93,7 +93,8 @@ pub:
 }
 
 struct LocalClosureFieldCandidate {
-	assign_id       int
+	source_id       int
+	decl_id         int
 	aggregate_name  string
 	aggregate_scope int
 	field_key       string
@@ -268,9 +269,9 @@ mut:
 	// scope-owned closure binding they overwrite. Identifier spelling alone is
 	// insufficient because disjoint lexical scopes may reuse the same name.
 	local_closure_cleanup_assigns map[int]string
-	// local_closure_field_cleanups contains selector assignments that create a fresh
-	// closure in a field of a non-escaping lexical local. Their generated temporary owns the
-	// allocation until that lexical scope exits.
+	// local_closure_field_cleanups contains assignments and initializer fields that create a
+	// fresh closure in a field of a non-escaping lexical local. Their generated temporary owns
+	// the allocation until that lexical scope exits.
 	local_closure_field_cleanups map[int]bool
 	// exclusive_closure_return_fns contains source functions proven to return a newly
 	// allocated closure without storing, passing, or otherwise aliasing that closure.
@@ -5257,7 +5258,11 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 	for candidate in field_candidates {
 		mut bound_uses := map[int]bool{}
 		mut bound_assigns := map[int]bool{}
-		decl_id := t.local_closure_binding_decl_in_scope(body_ids, candidate) or { continue }
+		decl_id := if candidate.decl_id >= 0 {
+			flat.NodeId(candidate.decl_id)
+		} else {
+			t.local_closure_binding_decl_in_scope(body_ids, candidate) or { continue }
+		}
 		if candidate.aggregate_scope < 0 {
 			t.collect_local_closure_binding_uses(body_ids, candidate.aggregate_name, decl_id,
 				false, mut bound_uses, mut bound_assigns)
@@ -5275,8 +5280,8 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 			}
 		}
 		if !escapes {
-			t.local_closure_field_cleanups[candidate.assign_id] = true
-			t.mark_local_method_value_receiver_borrow(flat.NodeId(candidate.assign_id))
+			t.local_closure_field_cleanups[candidate.source_id] = true
+			t.mark_local_method_value_receiver_borrow(flat.NodeId(candidate.source_id))
 		}
 	}
 }
@@ -5286,6 +5291,10 @@ fn (mut t Transformer) mark_local_method_value_receiver_borrow(owner_id flat.Nod
 		return
 	}
 	owner := t.a.nodes[int(owner_id)]
+	if owner.kind == .field_init && owner.children_count == 1 {
+		t.mark_local_method_value_receiver_borrows_in_expr(t.a.child(&owner, 0))
+		return
+	}
 	if owner.kind !in [.decl_assign, .assign, .selector_assign] || owner.children_count != 2 {
 		return
 	}
@@ -5327,7 +5336,7 @@ fn (t &Transformer) local_closure_binding_decl_in_scope(body_ids []flat.NodeId, 
 		if int(id) < 0 || int(id) >= t.a.nodes.len {
 			continue
 		}
-		if int(id) == candidate.assign_id {
+		if int(id) == candidate.source_id {
 			if int(decl_id) >= 0 {
 				return decl_id
 			}
@@ -5365,6 +5374,8 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 				candidates[int(id)] = lhs.value
 				candidate_scopes[int(id)] = int(scope_id)
 			}
+			t.collect_local_closure_initializer_field_candidates(id, rhs_id, lhs.value, lhs.value,
+				scope_id, mut field_candidates)
 		}
 	}
 	if statement_position && node.kind in [.assign, .selector_assign] && node.op == .assign
@@ -5376,7 +5387,8 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 				field_key := t.expr_key(lhs_id)
 				if field_key.len > aggregate_name.len && field_key.starts_with('${aggregate_name}.') {
 					field_candidates << LocalClosureFieldCandidate{
-						assign_id:       int(id)
+						source_id:       int(id)
+						decl_id:         -1
 						aggregate_name:  aggregate_name
 						aggregate_scope: int(scope_id)
 						field_key:       field_key
@@ -5426,6 +5438,51 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 					candidates, mut candidate_scopes, mut field_candidates)
 			}
 		}
+	}
+}
+
+fn (mut t Transformer) collect_local_closure_initializer_field_candidates(decl_id flat.NodeId, init_id flat.NodeId, aggregate_name string, field_prefix string, scope_id flat.NodeId, mut field_candidates []LocalClosureFieldCandidate) {
+	if int(init_id) < 0 || int(init_id) >= t.a.nodes.len {
+		return
+	}
+	init := t.a.nodes[int(init_id)]
+	if init.kind != .struct_init {
+		return
+	}
+	info := t.lookup_struct_info(init.value) or { StructInfo{} }
+	for i in 0 .. init.children_count {
+		field_id := t.a.child(&init, i)
+		if int(field_id) < 0 || int(field_id) >= t.a.nodes.len {
+			continue
+		}
+		field := t.a.nodes[int(field_id)]
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len == 0 {
+			continue
+		}
+		field_key := '${field_prefix}.${field_name}'
+		value_id := t.a.child(&field, 0)
+		if t.expr_allocates_fresh_runtime_closure(value_id) {
+			field_candidates << LocalClosureFieldCandidate{
+				source_id:       int(field_id)
+				decl_id:         int(decl_id)
+				aggregate_name:  aggregate_name
+				aggregate_scope: int(scope_id)
+				field_key:       field_key
+			}
+			continue
+		}
+		t.collect_local_closure_initializer_field_candidates(decl_id, value_id, aggregate_name,
+			field_key, scope_id, mut field_candidates)
 	}
 }
 

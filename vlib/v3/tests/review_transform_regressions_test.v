@@ -1119,6 +1119,58 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_scope_local_callback_initializer_fields_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callback fn () int
+}
+
+fn make_holder(value int) Holder {
+	mut counter := Counter{
+		value: value
+	}
+	holder := Holder{
+		callback: counter.read
+	}
+	return holder
+}
+
+fn main() {
+	escaped := make_holder(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		holder := Holder{
+			callback: counter.read
+		}
+		counter.value++
+		total += holder.callback()
+		assert counter.value == i + 1
+	}
+	assert escaped.callback() == 77
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_initializer_field_hot_loop_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('closure__closure_try_destroy(__field_closure_'), main_body
+	make_body := c_fn_body(c_source, 'main__Holder main__make_holder(')
+	assert !make_body.contains('__field_closure_'), make_body
+	out := run_good(v3_bin, 'local_callback_initializer_field_hot_loop', source)
+	assert out == '1250025000'
+}
+
 fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {
