@@ -143,6 +143,14 @@ fn (f AsCastRecv) str() string {
 	return (Stringer(f) as AsCastRecv).str()
 }
 
+struct Reassigned {}
+
+fn (f Reassigned) str() string {
+	mut alias := Reassigned{}
+	alias = f
+	return alias.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -181,5 +189,6 @@ fn main() {
 	println(DumpDirect{})
 	println(DumpAlias{})
 	println(AsCastRecv{})
+	println(Reassigned{})
 	println(IfaceExt{ name: 'test' })
 }

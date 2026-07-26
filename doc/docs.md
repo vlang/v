@@ -3606,6 +3606,12 @@ the individual fields instead, or for type aliases, cast to the underlying type
 first:
 
 ```v failcompile
+struct Color {
+	r int
+	g int
+	b int
+}
+
 fn (c Color) str() string {
 	return c.str() // error: cannot call `str()` method recursively
 }

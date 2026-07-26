@@ -3670,6 +3670,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					if init_expr is ast.Ident {
 						resolved_name = init_expr.name
+					} else if v.is_mut && v.is_changed
+						&& v.typ.idx() == receiver_typ.idx() {
+						resolved_name = receiver_name
 					} else {
 						break
 					}

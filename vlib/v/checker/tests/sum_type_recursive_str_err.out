@@ -138,3 +138,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:143:37: error: cannot call `s
       |                                        ~~~~~
   144 | }
   145 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:151:15: error: cannot call `str()` method recursively
+  149 |     mut alias := Reassigned{}
+  150 |     alias = f
+  151 |     return alias.str()
+      |                  ~~~~~
+  152 | }
+  153 |
