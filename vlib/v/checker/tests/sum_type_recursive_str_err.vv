@@ -69,6 +69,14 @@ fn (f ViaIface) str() string {
 	return Stringer(f).str()
 }
 
+struct MultiHop {}
+
+fn (f MultiHop) str() string {
+	a := f
+	b := a
+	return b.str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -81,4 +89,5 @@ fn main() {
 	println(ms)
 	println(AliasedRecv{})
 	println(ViaIface{})
+	println(MultiHop{})
 }

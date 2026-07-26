@@ -68,3 +68,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:69:21: error: cannot call `st
       |                        ~~~~~
    70 | }
    71 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:77:11: error: cannot call `str()` method recursively
+   75 |     a := f
+   76 |     b := a
+   77 |     return b.str()
+      |              ~~~~~
+   78 | }
+   79 |

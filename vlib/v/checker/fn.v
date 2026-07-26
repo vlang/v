@@ -3615,11 +3615,17 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			mut resolved_name := ''
 			if inner is ast.Ident {
 				resolved_name = inner.name
-				if resolved_name != receiver_name {
-					if v := node.scope.find_var(resolved_name) {
-						if v.expr is ast.Ident && v.expr.name == receiver_name {
-							resolved_name = receiver_name
-						}
+				mut seen := map[string]bool{}
+				for resolved_name != receiver_name {
+					if resolved_name in seen {
+						break
+					}
+					seen[resolved_name] = true
+					v := node.scope.find_var(resolved_name) or { break }
+					if v.expr is ast.Ident {
+						resolved_name = v.expr.name
+					} else {
+						break
 					}
 				}
 			}
