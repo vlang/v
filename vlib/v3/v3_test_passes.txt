@@ -1736,6 +1736,7 @@ vlib/v/tests/generics/generic_array_test.v
 vlib/v/tests/generics/generic_arrays_sum_test.v
 vlib/v/tests/generics/generic_as_cast_on_map_test.v
 vlib/v/tests/generics/generic_call_mixing_args_test.v
+vlib/v/tests/generics/generic_chan_pop_via_if_guard_test.v
 vlib/v/tests/generics/generic_chan_test.v
 vlib/v/tests/generics/generic_comparison_for_conditional_assign_test.v
 vlib/v/tests/generics/generic_complex_sumtype_test.v
@@ -1743,6 +1744,7 @@ vlib/v/tests/generics/generic_comptime_arg_test.v
 vlib/v/tests/generics/generic_comptime_map_test.v
 vlib/v/tests/generics/generic_comptime_test.v
 vlib/v/tests/generics/generic_default_expression_in_or_block_test.v
+vlib/v/tests/generics/generic_different_type_test.v
 vlib/v/tests/generics/generic_dump_test.v
 vlib/v/tests/generics/generic_empty_interface_to_multi_struct_test.v
 vlib/v/tests/generics/generic_empty_interface_to_struct_test.v
@@ -1970,6 +1972,7 @@ vlib/v/tests/generics/generics_with_reference_generic_args_test.v
 vlib/v/tests/generics/generics_with_variadic_generic_args_test.v
 vlib/v/tests/generics/infer_generic_array_type_in_nested_call_test.v
 vlib/v/tests/generics/lamda_param_and_ret_test.v
+vlib/v/tests/generics/mixed_generic_and_concrete_fn_type_factories_regression_test.v
 vlib/v/tests/generics/modules/simplemodule/importing_test.v
 vlib/v/tests/generics/multiple_generic_resolve_test.v
 vlib/v/tests/generics/struct_generic_map_index_test.v
@@ -2707,6 +2710,7 @@ vlib/v/tests/testdata/tests_returning_options_failing_test.v
 vlib/v/tests/tmpl_dot_var_test.v
 vlib/v/tests/tmpl_escape_test.v
 vlib/v/tests/tmpl_if_cond_test.v
+vlib/v/tests/tmpl_in_return_match_expr_test.v
 vlib/v/tests/tmpl_return_result_test.v
 vlib/v/tests/tmpl_script_tag_interpolation_test.v
 vlib/v/tests/tmpl_test.v
