@@ -231,6 +231,11 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 					|| (v.pref.is_shared && stmt.is_pub)
 			} else {
 				is_root = repro_decl_attrs(stmt).any(it.name in ['markused', 'export'])
+				// a -shared build also retains every public constant and walks its initializer
+				// (markused.v), so a helper called only from one must stay reachable
+				if !is_root && v.pref.is_shared && stmt is ast.ConstDecl && stmt.is_pub {
+					is_root = true
+				}
 			}
 			if is_root {
 				extra_seeds << id
@@ -1097,53 +1102,86 @@ fn is_ident_char(c u8) bool {
 // Returns '' when the declaration has no source-visible plain name (operator overloads), or when
 // no `fn` line is found.
 fn repro_source_fn_name(source string) string {
-	for line in source.split_into_lines() {
-		t := line.trim_space()
-		if t == '' || t.starts_with('@[') || t.starts_with('//') {
+	// skip leading whitespace, comments and attribute groups; attributes are scanned as bracket
+	// groups with string-aware depth, so a multiline value (`@[footer: 'Hello\nWorld']`) is
+	// skipped whole instead of its continuation line being mistaken for the declaration
+	mut i := 0
+	for i < source.len {
+		c := source[i]
+		if c == ` ` || c == `\t` || c == `\n` || c == `\r` {
+			i++
 			continue
 		}
-		mut rest := t
-		if rest.starts_with('pub ') {
-			rest = rest['pub '.len..].trim_space()
+		if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			continue
 		}
-		if !rest.starts_with('fn ') && !rest.starts_with('fn(') {
+		if c == `@` && i + 1 < source.len && source[i + 1] == `[` {
+			i += 2
+			mut depth := 1
+			for i < source.len && depth > 0 {
+				ch := source[i]
+				if ch == `'` || ch == `"` {
+					i++
+					for i < source.len && source[i] != ch {
+						i += if source[i] == `\\` { 2 } else { 1 }
+					}
+					i++
+					continue
+				}
+				if ch == `[` {
+					depth++
+				} else if ch == `]` {
+					depth--
+				}
+				i++
+			}
+			continue
+		}
+		break
+	}
+	mut rest := source[i..]
+	if rest.starts_with('pub ') {
+		rest = rest['pub '.len..].trim_left(' \t')
+	}
+	if !rest.starts_with('fn ') && !rest.starts_with('fn(') {
+		return ''
+	}
+	mut j := 2
+	for j < rest.len && (rest[j] == ` ` || rest[j] == `\t`) {
+		j++
+	}
+	// skip a method's parenthesized receiver
+	if j < rest.len && rest[j] == `(` {
+		for j < rest.len && rest[j] != `)` {
+			j++
+		}
+		j++
+		for j < rest.len && (rest[j] == ` ` || rest[j] == `\t`) {
+			j++
+		}
+	}
+	// the name: an identifier, possibly dotted (`C.puts`, `JS.alert`); keep the last segment
+	// to match how AST names are indexed (repro_short_name)
+	mut last := ''
+	for {
+		name_start := j
+		for j < rest.len && is_ident_char(rest[j]) {
+			j++
+		}
+		if j == name_start {
 			return ''
 		}
-		mut i := 2
-		for i < rest.len && (rest[i] == ` ` || rest[i] == `\t`) {
-			i++
+		last = rest[name_start..j]
+		if j < rest.len && rest[j] == `.` {
+			j++
+			continue
 		}
-		// skip a method's parenthesized receiver
-		if i < rest.len && rest[i] == `(` {
-			for i < rest.len && rest[i] != `)` {
-				i++
-			}
-			i++
-			for i < rest.len && (rest[i] == ` ` || rest[i] == `\t`) {
-				i++
-			}
-		}
-		// the name: an identifier, possibly dotted (`C.puts`, `JS.alert`); keep the last segment
-		// to match how AST names are indexed (repro_short_name)
-		mut last := ''
-		for {
-			name_start := i
-			for i < rest.len && is_ident_char(rest[i]) {
-				i++
-			}
-			if i == name_start {
-				return ''
-			}
-			last = rest[name_start..i]
-			if i < rest.len && rest[i] == `.` {
-				i++
-				continue
-			}
-			break
-		}
-		return last
+		break
 	}
-	return ''
+	return last
 }
 
 // repro_short_name returns the last, unqualified component of a possibly module-qualified name

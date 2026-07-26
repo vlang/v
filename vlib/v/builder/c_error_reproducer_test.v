@@ -707,3 +707,16 @@ fn test_repro_attr_start_with_bracket_in_attr_string() {
 	lines3 := ['@[inline]', 'fn a() {}', 'const c = [', '1,', ']', 'fn b() {}']
 	assert repro_attr_start(lines3, 5) == 5
 }
+
+fn test_repro_source_fn_name_multiline_attribute() {
+	// a multiline attribute value must be skipped whole: its continuation line is not the
+	// declaration line, and the generic fn behind it must still be indexed under `pick`
+	src := "@[footer: 'Hello\nWorld']\npub fn pick[T](a T, b T) T {\n\treturn a\n}"
+	assert repro_source_fn_name(src) == 'pick'
+	// a bracket inside the attribute string must not derail the group scan either
+	src2 := "@[cfg: 'a[b\nc]']\nfn choose(a int) int {\n\treturn a\n}"
+	assert repro_source_fn_name(src2) == 'choose'
+	// stacked single-line attributes still skip correctly
+	src3 := '@[inline]\n@[direct_array_access]\nfn fast() {}'
+	assert repro_source_fn_name(src3) == 'fast'
+}
