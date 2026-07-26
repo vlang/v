@@ -11,6 +11,34 @@ enum SpawnGoMode {
 	go_
 }
 
+fn (mut g Gen) write_spawn_arg_option_or_result_type(typ ast.Type, insert_pos int) {
+	if typ.has_flag(.option) {
+		styp, base := g.option_type_name(typ)
+		lock g.done_options {
+			if base !in g.done_options {
+				g.done_options << base
+				wrapper_text := g.type_definitions.after(insert_pos).clone()
+				g.type_definitions.go_back_to(insert_pos)
+				g.typedefs.writeln('typedef struct ${styp} ${styp};')
+				g.type_definitions.writeln('${g.option_type_text(styp, base)};')
+				g.type_definitions.write_string(wrapper_text)
+			}
+		}
+	} else if typ.has_flag(.result) {
+		styp, base := g.result_type_name(typ)
+		lock g.done_results {
+			if base !in g.done_results {
+				g.done_results << base
+				wrapper_text := g.type_definitions.after(insert_pos).clone()
+				g.type_definitions.go_back_to(insert_pos)
+				g.typedefs.writeln('typedef struct ${styp} ${styp};')
+				g.type_definitions.writeln('${g.result_type_text(styp, base)};')
+				g.type_definitions.write_string(wrapper_text)
+			}
+		}
+	}
+}
+
 fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	if node.call_expr.should_be_skipped {
 		return
@@ -141,13 +169,21 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	for i, arg in expr.args {
 		arg_field := '${arg_tmp_var}${dot}arg${i + 1}'
 		arg_type := g.unwrap_generic(g.recheck_concrete_type(arg.typ))
-		if !arg_type.is_ptr() && g.table.final_sym(arg_type).kind == .array_fixed {
+		if !arg_type.is_ptr() && !arg_type.has_option_or_result()
+			&& g.table.final_sym(arg_type).kind == .array_fixed {
 			g.write('memcpy(${arg_field}, ')
 			g.expr(arg.expr)
 			g.writeln(', sizeof(${arg_field}));')
 		} else {
 			g.write('${arg_field} = ')
-			g.expr(arg.expr)
+			if arg_type.has_option_or_result() {
+				old_inside_opt_or_res := g.inside_opt_or_res
+				g.inside_opt_or_res = true
+				g.expr(arg.expr)
+				g.inside_opt_or_res = old_inside_opt_or_res
+			} else {
+				g.expr(arg.expr)
+			}
 			g.writeln(';')
 		}
 	}
@@ -247,6 +283,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 	}
 	if should_register {
+		wrapper_start_pos := g.type_definitions.len
 		g.type_definitions.writeln('\ntypedef struct ${wrapper_struct_name} {')
 		mut fn_var := ''
 		mut wrapper_return_type := call_ret_type
@@ -364,6 +401,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					arg_sym.info.func.params.map(it.typ), 'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
+				g.write_spawn_arg_option_or_result_type(arg_typ, wrapper_start_pos)
 				styp := g.styp(arg_typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
