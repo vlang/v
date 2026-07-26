@@ -9398,6 +9398,10 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_ident(id, node)
 		return
 	}
+	if node.kind == .defer_result {
+		tc.check_defer_result(id, node)
+		return
+	}
 	if node.kind == .cast_expr {
 		tc.check_cast_expr(id, node)
 		return
@@ -23367,36 +23371,6 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	if node.value.len == 0 || node.value == '_' {
 		return
 	}
-	if idx := defer_result_index(node.value) {
-		ret := tc.fn_context.return_type
-		if ret is Void {
-			if tc.should_diagnose(id) {
-				tc.record_error(.unknown_type,
-					'`res` can only be used in functions that returns something', id)
-			}
-			tc.register_synth_type(id, Type(void_))
-			return
-		}
-		if ret is ResultType {
-			if tc.should_diagnose(id) {
-				tc.record_error(.unknown_type,
-					'`res` cannot be used in functions that returns a Result', id)
-			}
-			tc.register_synth_type(id, Type(void_))
-			return
-		}
-		if msg := defer_result_index_error_message(ret, idx) {
-			if tc.should_diagnose(id) {
-				tc.record_error(.unknown_type, msg, id)
-			}
-			tc.register_synth_type(id, unknown_type(msg))
-			return
-		}
-	}
-	if typ := tc.defer_result_type(node.value) {
-		tc.register_synth_type(id, typ)
-		return
-	}
 	$if ownership ? {
 		tc.ownership_check_ident(id, node)
 	}
@@ -23453,6 +23427,43 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	}
 }
 
+fn (mut tc TypeChecker) check_defer_result(id flat.NodeId, node flat.Node) {
+	idx := defer_result_index(node) or {
+		if tc.should_diagnose(id) {
+			tc.record_error(.unknown_type, 'invalid `res` expression', id)
+		}
+		tc.register_synth_type(id, unknown_type('invalid `res` expression'))
+		return
+	}
+	ret := tc.fn_context.return_type
+	if ret is Void {
+		if tc.should_diagnose(id) {
+			tc.record_error(.unknown_type,
+				'`res` can only be used in functions that returns something', id)
+		}
+		tc.register_synth_type(id, Type(void_))
+		return
+	}
+	if ret is ResultType {
+		if tc.should_diagnose(id) {
+			tc.record_error(.unknown_type,
+				'`res` cannot be used in functions that returns a Result', id)
+		}
+		tc.register_synth_type(id, Type(void_))
+		return
+	}
+	if msg := defer_result_index_error_message(ret, idx) {
+		if tc.should_diagnose(id) {
+			tc.record_error(.unknown_type, msg, id)
+		}
+		tc.register_synth_type(id, unknown_type(msg))
+		return
+	}
+	tc.register_synth_type(id, tc.defer_result_type(node) or {
+		unknown_type('invalid `res` expression')
+	})
+}
+
 fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 	owner := tc.cur_scope.lookup_owner(name) or { return none }
 	if owner.belongs_to_scope(tc.file_scope) {
@@ -23464,21 +23475,19 @@ fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 	return owner.scope.types[owner.index]
 }
 
-// defer_result_index returns -1 for the synthetic unindexed `$res()` identifier and the
-// non-negative index for a validated `$res(index)` identifier.
-pub fn defer_result_index(name string) ?int {
-	if name == '__v3_defer_result' {
+// defer_result_index returns -1 for an unindexed `$res()` node and the non-negative
+// index for a `$res(index)` node.
+pub fn defer_result_index(node flat.Node) ?int {
+	if node.kind != .defer_result {
+		return none
+	}
+	if node.value.len == 0 {
 		return -1
 	}
-	prefix := '__v3_defer_result:'
-	if !name.starts_with(prefix) {
+	if !node.value.bytes().all(it >= `0` && it <= `9`) {
 		return none
 	}
-	index_text := name[prefix.len..]
-	if index_text.len == 0 || !index_text.bytes().all(it >= `0` && it <= `9`) {
-		return none
-	}
-	return index_text.int()
+	return node.value.int()
 }
 
 fn defer_result_index_error_message(ret Type, idx int) ?string {
@@ -23497,8 +23506,8 @@ fn defer_result_index_error_message(ret Type, idx int) ?string {
 	return none
 }
 
-fn (tc &TypeChecker) defer_result_type(name string) ?Type {
-	idx := defer_result_index(name) or { return none }
+fn (tc &TypeChecker) defer_result_type(node flat.Node) ?Type {
+	idx := defer_result_index(node) or { return none }
 	ret := tc.fn_context.return_type
 	if ret is Void || ret is ResultType {
 		return Type(void_)
@@ -29412,10 +29421,10 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		.enum_val {
 			return Type(int_)
 		}
+		.defer_result {
+			return tc.defer_result_type(node) or { unknown_type('invalid `res` expression') }
+		}
 		.ident {
-			if typ := tc.defer_result_type(node.value) {
-				return typ
-			}
 			if is_bare_generic_param(node.value) {
 				return unknown_type('generic placeholder `${node.value}`')
 			}

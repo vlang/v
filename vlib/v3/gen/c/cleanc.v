@@ -9968,21 +9968,18 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write('0')
 			}
 		}
-		.ident {
-			if defer_index := types.defer_result_index(node.value) {
-				has_index := defer_index >= 0
-				if g.defer_return_tmp_var.len > 0 {
-					g.write(g.defer_return_tmp_var)
-				} else if has_index {
-					g.write('((${g.value_c_type(g.cur_fn_ret)}){0})')
-				} else {
-					g.write('((${g.value_c_type(g.cur_fn_ret)}){0})')
-				}
-				if has_index {
-					g.write('.arg${defer_index}')
-				}
-				return
+		.defer_result {
+			defer_index := types.defer_result_index(node) or { -1 }
+			if g.defer_return_tmp_var.len > 0 {
+				g.write(g.defer_return_tmp_var)
+			} else {
+				g.write('((${g.value_c_type(g.cur_fn_ret)}){0})')
 			}
+			if defer_index >= 0 {
+				g.write('.arg${defer_index}')
+			}
+		}
+		.ident {
 			if c_fn_name := g.test_user_main_fn_value_c_name(id, node) {
 				g.write(c_fn_name)
 				return

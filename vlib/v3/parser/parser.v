@@ -1,6 +1,7 @@
 module parser
 
 import os
+import strconv
 import strings
 import v3.cmdexec
 import v3.flat
@@ -4663,22 +4664,44 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	}
 	if p.tok == .name && p.lit == 'res' {
 		p.next()
-		mut value := '__v3_defer_result'
+		mut defer_index := -1
 		if p.tok == .lpar {
 			p.next()
 			if p.tok != .rpar && p.tok != .eof {
-				value += ':' + p.lit
-				p.next()
+				if p.tok == .number {
+					index_pos := p.tok_pos
+					index_text := p.lit
+					p.next()
+					if parsed_index := defer_result_index_literal(index_text) {
+						defer_index = parsed_index
+					} else {
+						p.record_diagnostic('`res` index must be a non-negative integer literal',
+							index_pos)
+					}
+					if p.tok != .rpar {
+						p.record_diagnostic('expected `)` immediately after the `$res` index',
+							p.tok_pos)
+						p.skip_defer_result_arguments()
+					} else {
+						p.next()
+					}
+				} else {
+					p.record_diagnostic('`res` index must be a non-negative integer literal',
+						p.tok_pos)
+					p.skip_defer_result_arguments()
+				}
+			} else {
+				p.check(.rpar)
 			}
-			for p.tok != .rpar && p.tok != .eof {
-				p.next()
-			}
-			p.check(.rpar)
 		}
 		if p.defer_depth == 0 {
 			p.record_diagnostic('`res` can only be used in defer blocks', dollar_pos)
 		}
-		return p.add_val(.ident, value)
+		return p.add_node(flat.Node{
+			kind:  .defer_result
+			value: if defer_index < 0 { '' } else { defer_index.str() }
+			pos:   p.span_to(dollar_pos)
+		})
 	}
 	if p.tok == .name && p.lit == 'env' {
 		// $env('NAME') evaluates an environment variable at compile time and
@@ -4735,6 +4758,33 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+fn defer_result_index_literal(value string) ?int {
+	if is_float_number_literal(value) {
+		return none
+	}
+	parsed := strconv.common_parse_int(value.replace('_', ''), 0, 64, true, true) or { return none }
+	if parsed < 0 {
+		return none
+	}
+	return int(parsed)
+}
+
+fn (mut p Parser) skip_defer_result_arguments() {
+	mut nested_parens := 0
+	for p.tok != .eof {
+		if p.tok == .lpar {
+			nested_parens++
+		} else if p.tok == .rpar {
+			if nested_parens == 0 {
+				p.next()
+				return
+			}
+			nested_parens--
+		}
+		p.next()
+	}
 }
 
 fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {

@@ -234,6 +234,19 @@ fn test_res_is_rejected_outside_the_active_defer_body() {
 	assert pipe_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${pipe_lambda}'
 }
 
+fn test_res_uses_a_dedicated_node_and_rejects_trailing_argument_tokens() {
+	valid := parse_parser_regression_source('res_dedicated_node',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1, 2\n}\n')
+	result_nodes := valid.nodes.filter(it.kind == .defer_result)
+	assert result_nodes.len == 1, '${result_nodes}'
+	assert result_nodes[0].value == '0'
+	assert !valid.nodes.any(it.kind == .ident && it.value == '__v3_defer_result')
+
+	trailing := parse_parser_regression_diagnostics('res_trailing_argument_tokens',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\n')
+	assert trailing.any(it.message.contains('expected `)` immediately after the `$res` index')), '${trailing}'
+}
+
 fn test_memory_only_inline_assembly_is_not_treated_as_empty() {
 	barrier := parse_parser_regression_diagnostics('asm_memory_barrier',
 		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t\t;\n\t\t;\n\t\tmemory\n\t}\n}\n')

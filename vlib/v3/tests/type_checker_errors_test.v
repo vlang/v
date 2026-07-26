@@ -2019,8 +2019,8 @@ fn test_pr_review_codegen_batch_twentynine() {
 fn test_defer_result_review_regressions() {
 	v3_bin := build_v3()
 	prefixed_local := run_good(v3_bin, 'good_defer_result_prefixed_local',
-		'fn f() int {\n\t__v3_defer_result_value := 7\n\treturn __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
-	assert prefixed_local == '7'
+		'fn f() int {\n\t__v3_defer_result := 7\n\t__v3_defer_result_value := 8\n\treturn __v3_defer_result + __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
+	assert prefixed_local == '15'
 	valid := run_good(v3_bin, 'good_defer_result_value',
 		'fn f() int {\n\tdefer {\n\t\tprintln(int_str($res()))\n\t}\n\treturn 9\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
 	assert valid == '9\n9'
@@ -2042,6 +2042,9 @@ fn test_defer_result_review_regressions() {
 	run_bad(v3_bin, 'bad_indexed_scalar_defer_result',
 		'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n',
 		'`res` index can only be used with multi-return functions')
+	run_bad(v3_bin, 'bad_defer_result_trailing_argument_tokens',
+		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
+		'expected `)` immediately after the `$res` index')
 }
 
 fn test_if_guard_rejects_or_handled_value() {

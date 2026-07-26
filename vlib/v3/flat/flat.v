@@ -103,6 +103,9 @@ pub enum NodeKind as u8 {
 	// by parse_comptime_expr and fully expanded (into builder statements) by
 	// parse_block_body at parse time, so it never reaches later phases.
 	veb_template
+	// A `$res()` / `$res(index)` expression. This must remain distinct from
+	// `.ident` so user-spellable names cannot be reinterpreted as defer results.
+	defer_result
 }
 
 // Op lists op values used by flat.
