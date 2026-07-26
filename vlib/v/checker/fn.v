@@ -3622,7 +3622,22 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					seen[resolved_name] = true
 					v := node.scope.find_var(resolved_name) or { break }
-					init_expr := v.expr.remove_par()
+					mut init_expr := v.expr.remove_par()
+					for {
+						if init_expr is ast.PrefixExpr && init_expr.op in [.mul, .amp] {
+							init_expr = init_expr.right.remove_par()
+						} else if init_expr is ast.CastExpr {
+							cast_sym := c.table.sym(init_expr.typ)
+							if init_expr.typ.idx() == receiver_typ.idx()
+								|| cast_sym.kind == .interface {
+								init_expr = init_expr.expr.remove_par()
+							} else {
+								break
+							}
+						} else {
+							break
+						}
+					}
 					if init_expr is ast.Ident {
 						resolved_name = init_expr.name
 					} else {

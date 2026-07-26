@@ -88,3 +88,17 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:94:14: error: cannot call `st
    94 |     return next.str()
       |                 ~~~~~
    95 | }
+   96 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:104:15: error: cannot call `str()` method recursively
+  102 | fn (f AddrAlias) str() string {
+  103 |     alias := &f
+  104 |     return alias.str()
+      |                  ~~~~~
+  105 | }
+  106 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:111:15: error: cannot call `str()` method recursively
+  109 | fn (f &DerefAlias) str() string {
+  110 |     alias := *f
+  111 |     return alias.str()
+      |                  ~~~~~
+  112 | }

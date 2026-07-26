@@ -97,6 +97,20 @@ fn (n CondMut) str() string {
 	return next.str()
 }
 
+struct AddrAlias {}
+
+fn (f AddrAlias) str() string {
+	alias := &f
+	return alias.str()
+}
+
+struct DerefAlias {}
+
+fn (f &DerefAlias) str() string {
+	alias := *f
+	return alias.str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -112,4 +126,6 @@ fn main() {
 	println(MultiHop{})
 	println(ParenInit{})
 	println(CondMut{})
+	println(AddrAlias{})
+	println(DerefAlias{})
 }
