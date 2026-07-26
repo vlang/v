@@ -3591,23 +3591,41 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.need_recheck_generic_fns = true
 	}
 	if method_name == 'str' && c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
-		&& c.table.cur_fn.name == 'str'
-		&& left_type.idx() == c.table.cur_fn.receiver.typ.idx() {
+		&& c.table.cur_fn.name == 'str' {
 		receiver_name := c.table.cur_fn.receiver.name
 		receiver_typ := c.table.cur_fn.receiver.typ
-		mut inner := ast.Expr(left_expr)
-		for {
-			if inner is ast.PrefixExpr && inner.op in [.mul, .amp] {
-				inner = inner.right.remove_par()
-			} else if inner is ast.CastExpr && inner.typ.idx() == receiver_typ.idx() {
-				inner = inner.expr.remove_par()
-			} else {
-				break
+		is_receiver_type := left_type.idx() == receiver_typ.idx()
+			|| c.table.sym(left_type).kind == .interface
+		if is_receiver_type {
+			mut inner := ast.Expr(left_expr)
+			for {
+				if inner is ast.PrefixExpr && inner.op in [.mul, .amp] {
+					inner = inner.right.remove_par()
+				} else if inner is ast.CastExpr {
+					cast_sym := c.table.sym(inner.typ)
+					if inner.typ.idx() == receiver_typ.idx() || cast_sym.kind == .interface {
+						inner = inner.expr.remove_par()
+					} else {
+						break
+					}
+				} else {
+					break
+				}
 			}
-		}
-		is_same_receiver := inner is ast.Ident && inner.name == receiver_name
-		if is_same_receiver {
-			c.error('cannot call `str()` method recursively', node.pos)
+			mut resolved_name := ''
+			if inner is ast.Ident {
+				resolved_name = inner.name
+				if resolved_name != receiver_name {
+					if v := node.scope.find_var(resolved_name) {
+						if v.expr is ast.Ident && v.expr.name == receiver_name {
+							resolved_name = receiver_name
+						}
+					}
+				}
+			}
+			if resolved_name == receiver_name {
+				c.error('cannot call `str()` method recursively', node.pos)
+			}
 		}
 	}
 	node.is_noreturn = method.is_noreturn

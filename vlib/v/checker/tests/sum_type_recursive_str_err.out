@@ -54,3 +54,17 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:52:11: error: cannot call `st
       |              ~~~~~
    53 | }
    54 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:59:15: error: cannot call `str()` method recursively
+   57 | fn (f AliasedRecv) str() string {
+   58 |     alias := f
+   59 |     return alias.str()
+      |                  ~~~~~
+   60 | }
+   61 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:69:21: error: cannot call `str()` method recursively
+   67 |
+   68 | fn (f ViaIface) str() string {
+   69 |     return Stringer(f).str()
+      |                        ~~~~~
+   70 | }
+   71 |

@@ -3600,6 +3600,17 @@ red := Color{
 println(red)
 ```
 
+**Note:** Calling `.str()` on the receiver inside a custom `str()` method is
+not allowed because it causes infinite recursion. Use string interpolation of
+the individual fields instead, or for type aliases, cast to the underlying type
+first:
+
+```v failcompile
+fn (c Color) str() string {
+	return c.str() // error: cannot call `str()` method recursively
+}
+```
+
 ### Dumping expressions at runtime
 
 You can dump/trace the value of any V expression using `dump(expr)`.

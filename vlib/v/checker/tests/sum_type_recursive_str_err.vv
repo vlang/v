@@ -52,6 +52,23 @@ fn (mut m MutSelf) str() string {
 	return m.str()
 }
 
+struct AliasedRecv {}
+
+fn (f AliasedRecv) str() string {
+	alias := f
+	return alias.str()
+}
+
+interface Stringer {
+	str() string
+}
+
+struct ViaIface {}
+
+fn (f ViaIface) str() string {
+	return Stringer(f).str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -62,4 +79,6 @@ fn main() {
 	println(Alias([1]))
 	mut ms := MutSelf{}
 	println(ms)
+	println(AliasedRecv{})
+	println(ViaIface{})
 }
