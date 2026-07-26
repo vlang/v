@@ -3278,6 +3278,23 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						}
 						return
 					}
+					if node.is_comptime {
+						mut branch_states := []RecursiveStrAliasState{cap: 1}
+						for branch in node.branches {
+							if !c.is_active_comptime_branch(branch.id)
+								|| c.has_top_return(branch.stmts) {
+								continue
+							}
+							mut branch_state := state
+							for stmt in branch.stmts {
+								c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos,
+									typ, branch.scope, cutoff, mut branch_state)
+							}
+							branch_states << branch_state
+						}
+						c.merge_recursive_str_branch_states(mut state, branch_states, typ)
+						return
+					}
 					c.scan_recursive_str_alias_updates(ast.Node(node.branches[0].cond), name,
 						decl_pos, typ, call_scope, cutoff, mut state)
 					if !node.has_else {
@@ -3285,6 +3302,9 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 					}
 					mut branch_states := []RecursiveStrAliasState{cap: node.branches.len}
 					for i, branch in node.branches {
+						if c.has_top_return(branch.stmts) {
+							continue
+						}
 						mut branch_state := state
 						if i > 0 {
 							c.scan_recursive_str_alias_updates(ast.Node(branch.cond), name,
@@ -3303,8 +3323,6 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 					if node.pos.pos >= cutoff || node.branches.len == 0 {
 						return
 					}
-					c.scan_recursive_str_alias_updates(ast.Node(node.cond), name, decl_pos, typ,
-						call_scope, cutoff, mut state)
 					mut call_branch_idx := -1
 					for i, branch in node.branches {
 						if recursive_str_scope_dominates(branch.scope, call_scope) {
@@ -3319,8 +3337,30 @@ fn (mut c Checker) scan_recursive_str_alias_updates(node ast.Node, name string, 
 						}
 						return
 					}
+					if node.is_comptime {
+						mut branch_states := []RecursiveStrAliasState{cap: 1}
+						for branch in node.branches {
+							if !c.is_active_comptime_branch(branch.id)
+								|| c.has_top_return(branch.stmts) {
+								continue
+							}
+							mut branch_state := state
+							for stmt in branch.stmts {
+								c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos,
+									typ, branch.scope, cutoff, mut branch_state)
+							}
+							branch_states << branch_state
+						}
+						c.merge_recursive_str_branch_states(mut state, branch_states, typ)
+						return
+					}
+					c.scan_recursive_str_alias_updates(ast.Node(node.cond), name, decl_pos, typ,
+						call_scope, cutoff, mut state)
 					mut branch_states := []RecursiveStrAliasState{cap: node.branches.len}
 					for branch in node.branches {
+						if c.has_top_return(branch.stmts) {
+							continue
+						}
 						mut branch_state := state
 						for stmt in branch.stmts {
 							c.scan_recursive_str_alias_updates(ast.Node(stmt), name, decl_pos, typ,

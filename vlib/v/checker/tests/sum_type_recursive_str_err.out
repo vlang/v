@@ -201,3 +201,10 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:415:15: error: cannot call `s
       |                  ~~~~~
   416 | }
   417 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:436:15: error: cannot call `str()` method recursively
+  434 |         alias = f
+  435 |     }
+  436 |     return alias.str()
+      |                  ~~~~~
+  437 | }
+  438 |

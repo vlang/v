@@ -426,6 +426,61 @@ fn (mut x SharedMapStorageProgress) str() string {
 	return alias.str()
 }
 
+struct SelectedComptimeReceiverAssignment {}
+
+fn (f SelectedComptimeReceiverAssignment) str() string {
+	mut alias := SelectedComptimeReceiverAssignment{}
+	$if true {
+		alias = f
+	}
+	return alias.str()
+}
+
+struct SelectedComptimeProgress {
+mut:
+	remaining int
+}
+
+fn (n SelectedComptimeProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	$if true {
+		next.remaining--
+	}
+	return next.str()
+}
+
+struct ReachableIfBranchProgress {
+mut:
+	remaining int
+}
+
+fn (n ReachableIfBranchProgress) str() string {
+	mut next := n
+	if n.remaining > 0 {
+		next.remaining--
+	} else {
+		return ''
+	}
+	return next.str()
+}
+
+struct ReachableMatchBranchProgress {
+mut:
+	remaining int
+}
+
+fn (n ReachableMatchBranchProgress) str() string {
+	mut next := n
+	match n.remaining {
+		0 { return '' }
+		else { next.remaining-- }
+	}
+	return next.str()
+}
+
 interface Labelled {
 	name string
 }
@@ -477,5 +532,6 @@ fn main() {
 		'value': 0
 	})
 	println(rebound_map_source)
+	println(SelectedComptimeReceiverAssignment{})
 	println(IfaceExt{ name: 'test' })
 }
