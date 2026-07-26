@@ -77,6 +77,26 @@ fn (f MultiHop) str() string {
 	return b.str()
 }
 
+struct ParenInit {}
+
+fn (f ParenInit) str() string {
+	alias := (f)
+	return alias.str()
+}
+
+struct CondMut {
+mut:
+	remaining int
+}
+
+fn (n CondMut) str() string {
+	mut next := n
+	if n.remaining > 1 {
+		next.remaining--
+	}
+	return next.str()
+}
+
 fn main() {
 	println(Num(u16(0)))
 	println(Val(0))
@@ -90,4 +110,6 @@ fn main() {
 	println(AliasedRecv{})
 	println(ViaIface{})
 	println(MultiHop{})
+	println(ParenInit{})
+	println(CondMut{})
 }

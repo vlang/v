@@ -75,3 +75,16 @@ vlib/v/checker/tests/sum_type_recursive_str_err.vv:77:11: error: cannot call `st
       |              ~~~~~
    78 | }
    79 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:83:15: error: cannot call `str()` method recursively
+   81 | fn (f ParenInit) str() string {
+   82 |     alias := (f)
+   83 |     return alias.str()
+      |                  ~~~~~
+   84 | }
+   85 |
+vlib/v/checker/tests/sum_type_recursive_str_err.vv:94:14: error: cannot call `str()` method recursively
+   92 |         next.remaining--
+   93 |     }
+   94 |     return next.str()
+      |                 ~~~~~
+   95 | }
