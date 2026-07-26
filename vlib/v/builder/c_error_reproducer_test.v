@@ -1017,3 +1017,48 @@ fn test_repro_hash_is_local_include_delimiter() {
 	assert !repro_hash_is_local('#include   <sys/epoll.h>')
 	assert repro_hash_is_local('#include "local.h"')
 }
+
+fn test_repro_closure_retains_json_decode_hooks() {
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: "fn main() {\n\tf := json2.decode[Foo]('{}') or { Foo{} }\n\tprintln(f)\n}"
+		},
+		ReproDecl{
+			names:  ['Foo']
+			source: 'struct Foo {}'
+		},
+		ReproDecl{
+			names:  ['from_json_string']
+			source: 'fn (mut f Foo) from_json_string(raw string) ! {\n\tdecode_helper(raw)!\n}'
+		},
+		ReproDecl{
+			names:  ['decode_helper']
+			source: 'fn decode_helper(raw string) ! {\n}'
+		},
+	]
+	mut name_to_decl := map[string][]int{}
+	for i, d in decls {
+		for n in d.names {
+			name_to_decl[n] << i
+		}
+	}
+	ordered := repro_closure(decls, name_to_decl, [0]) or {
+		assert false, 'closure returned none'
+		return
+	}
+	assert 2 in ordered // Foo.from_json_string, selected implicitly by the decoder
+	assert 3 in ordered // reachable only through the hook
+}
+
+fn test_repro_flag_has_bare_file() {
+	assert repro_flag_has_bare_file('#flag helper.o')
+	assert repro_flag_has_bare_file('#flag linux extra.a')
+	assert !repro_flag_has_bare_file('#flag -lssl')
+	assert !repro_flag_has_bare_file('#flag windows -lgdi32')
+	assert !repro_flag_has_bare_file('#flag -DVERSION=1.2')
+	// locality classification end to end
+	assert repro_hash_is_local('#flag -include config.h')
+	assert repro_hash_is_local('#flag helper.o')
+	assert !repro_hash_is_local('#flag -lm')
+}

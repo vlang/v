@@ -696,6 +696,16 @@ fn repro_closure(decls []ReproDecl, name_to_decl map[string][]int, seeds []int) 
 			refs << 'to_json'
 			refs << 'json_str'
 		}
+		// the json2 decoders likewise invoke a local type's decoding hooks implicitly
+		// (from_json_string/_number/_boolean/_null); retain them when a decode API is
+		// referenced, or the replay stops recognizing the decoder interface (or drops a
+		// helper only a hook reaches)
+		if 'decode' in refs || 'raw_decode' in refs {
+			refs << 'from_json_string'
+			refs << 'from_json_number'
+			refs << 'from_json_boolean'
+			refs << 'from_json_null'
+		}
 		// `$for m in Foo.methods` reflection needs Foo's methods, which are indexed under the
 		// synthetic `Foo#methods` key; add those refs so the whole method set is retained
 		for t in repro_reflection_method_targets(decls[id].source) {
@@ -1010,7 +1020,8 @@ fn repro_hash_is_local(directive string) bool {
 	}
 	if t.starts_with('#flag') {
 		return t.contains('"') || t.contains('@V') || t.contains('./') || t.contains('../')
-			|| t.contains('-I') || t.contains('-L') || repro_flag_has_abs_path(t)
+			|| t.contains('-I') || t.contains('-L') || t.contains('-include')
+			|| repro_flag_has_abs_path(t) || repro_flag_has_bare_file(t)
 	}
 	if t.starts_with('#pkgconfig') {
 		return false // resolved from installed pkg-config packages, like a system library
@@ -1030,6 +1041,23 @@ fn repro_flag_has_abs_path(directive string) bool {
 		// windows drive-absolute path: `C:\lib\x.a` or `C:/lib/x.a`
 		if field.len >= 3 && field[1] == `:` && (field[2] == `\\` || field[2] == `/`)
 			&& u8(field[0]).is_letter() {
+			return true
+		}
+	}
+	return false
+}
+
+// repro_flag_has_bare_file reports whether a `#flag` directive names a bare relative file
+// argument (`#flag helper.o`, `#flag -include config.h`'s header is caught by the `-include`
+// check): a non-option field containing a `.` is a filename, which the receiver does not have.
+// Platform prefixes (`linux`, `windows`, ...) carry no dot and option fields start with `-`.
+fn repro_flag_has_bare_file(directive string) bool {
+	fields := directive.fields()
+	for field in fields[1..] {
+		if field.starts_with('-') || field.starts_with('$') || field.starts_with('@') {
+			continue
+		}
+		if field.contains('.') {
 			return true
 		}
 	}
