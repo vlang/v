@@ -31,6 +31,7 @@ struct ReproDecl {
 // (including multi-line ones) as a single valid line.
 struct ReproImport {
 	source      string   // the reconstructed import statement
+	mod         string   // the imported module (imports of one module must merge after flattening)
 	triggers    []string // the names that make this import needed (alias + selected symbols)
 	side_effect bool     // `import x as _`: always keep, it is imported for its side effects
 	is_local    bool     // the imported module's source is not uploaded (another parsed user module,
@@ -76,6 +77,9 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			vmodule_mods[pf.mod.name] = true
 		}
 	}
+	// `-d used_fns=main.entry,glob*` explicitly roots functions in the mark-used pass, and the
+	// report replays the recorded define, so those functions must be seeded here too
+	used_fns_patterns := v.pref.compile_values['used_fns'].split_any(',').filter(it != '')
 	mut decls := []ReproDecl{}
 	mut name_to_decl := map[string][]int{}
 	mut imports := []ReproImport{}
@@ -118,6 +122,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			}
 			imports << ReproImport{
 				source:      repro_import_stmt(imp)
+				mod:         imp.mod
 				triggers:    triggers
 				side_effect: imp.alias == '_'
 				is_local:    (imp.mod in local_mods && imp.mod != root_mod)
@@ -246,6 +251,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			if stmt is ast.FnDecl {
 				is_root = repro_is_markused_root(stmt, int(veb_result_idx), v.pref.translated)
 					|| (v.pref.is_shared && stmt.is_pub)
+					|| repro_fn_in_used_fns(stmt.name, used_fns_patterns)
 			} else {
 				is_root = repro_decl_attrs(stmt).any(it.name in ['markused', 'export'])
 				// a -shared build also retains every public constant and walks its initializer
@@ -399,6 +405,10 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		}
 		scoped_imports << imp
 	}
+	// imports are file-scoped in the original program, but the flattened file has one scope: two
+	// import statements naming the same module are rejected by the checker as a duplicate import
+	// even when their trigger names differ (`import log` + `import log as _`)
+	scoped_imports = repro_merge_module_imports(scoped_imports) or { return '' }
 	// hash directives are module-wide: the original build applies `#flag`/`#include`/... from
 	// every parsed file of the module, whether or not any of that file's declarations are
 	// retained (a hash-only `.c.v` companion file is common), so all of them are kept. A
@@ -812,6 +822,39 @@ fn repro_import_collides(name string, imp_file_id int, included_files map[int]bo
 	return false
 }
 
+// repro_merge_module_imports collapses retained imports of the same module into one statement:
+// exact duplicates are dropped, and a side-effect-only import (`import x as _`) is subsumed by
+// any other import of the module (importing it at all runs its initializers). Returns none when
+// two genuinely different forms of one module remain (`import log` + `import log as l`), which
+// one flattened file cannot express.
+fn repro_merge_module_imports(imports []ReproImport) ?[]ReproImport {
+	mut primary := map[string]string{} // module -> its non-side-effect import statement
+	for imp in imports {
+		if !imp.side_effect {
+			if existing := primary[imp.mod] {
+				if existing != imp.source {
+					return none
+				}
+			} else {
+				primary[imp.mod] = imp.source
+			}
+		}
+	}
+	mut merged := []ReproImport{}
+	mut seen := map[string]bool{}
+	for imp in imports {
+		if imp.side_effect && imp.mod in primary {
+			continue
+		}
+		if imp.source in seen {
+			continue
+		}
+		seen[imp.source] = true
+		merged << imp
+	}
+	return merged
+}
+
 // repro_import_stmt reconstructs a single valid `import` line from the AST, so multi-line, aliased
 // and selective imports (including the combined `import x as y { Sym }` form) survive as one
 // syntactically complete statement.
@@ -895,6 +938,22 @@ fn repro_is_markused_root(f ast.FnDecl, veb_res_idx int, translated bool) bool {
 		return true
 	}
 	return f.attrs.any(it.name == 'markused' || it.name == 'export')
+}
+
+// repro_fn_in_used_fns reports whether a function's qualified name is selected by the
+// `-d used_fns=...` define, matching exactly like the mark-used pass: literal names compare
+// against the full key, and patterns containing `*` glob-match it.
+fn repro_fn_in_used_fns(name string, patterns []string) bool {
+	for p in patterns {
+		if p.contains('*') {
+			if name.match_glob(p) {
+				return true
+			}
+		} else if name == p {
+			return true
+		}
+	}
+	return false
 }
 
 // repro_hash_is_local reports whether a `#`-directive depends on a project-local file or path that

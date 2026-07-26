@@ -893,3 +893,74 @@ fn test_repro_uses_local_resource_pkgconfig() {
 	// the `#pkgconfig` directive form resolves on the receiver like a system library
 	assert !repro_uses_local_resource('#pkgconfig openssl')
 }
+
+fn test_repro_merge_module_imports() {
+	// a side-effect import is subsumed by a real import of the same module
+	merged := repro_merge_module_imports([
+		ReproImport{
+			source: 'import log'
+			mod:    'log'
+		},
+		ReproImport{
+			source:      'import log as _'
+			mod:         'log'
+			side_effect: true
+		},
+	]) or {
+		assert false, 'merge unexpectedly failed'
+		return
+	}
+	assert merged.map(it.source) == ['import log']
+	// exact duplicates collapse
+	dup := repro_merge_module_imports([
+		ReproImport{
+			source: 'import os'
+			mod:    'os'
+		},
+		ReproImport{
+			source: 'import os'
+			mod:    'os'
+		},
+	]) or {
+		assert false, 'merge unexpectedly failed'
+		return
+	}
+	assert dup.len == 1
+	// side-effect imports with no real counterpart stay
+	side := repro_merge_module_imports([
+		ReproImport{
+			source:      'import sqlite as _'
+			mod:         'sqlite'
+			side_effect: true
+		},
+	]) or {
+		assert false, 'merge unexpectedly failed'
+		return
+	}
+	assert side.map(it.source) == ['import sqlite as _']
+	// genuinely different forms of one module cannot be flattened
+	mut conflicted := false
+	if _ := repro_merge_module_imports([
+		ReproImport{
+			source: 'import log'
+			mod:    'log'
+		},
+		ReproImport{
+			source: 'import log as l'
+			mod:    'log'
+		},
+	])
+	{
+		conflicted = false
+	} else {
+		conflicted = true
+	}
+	assert conflicted
+}
+
+fn test_repro_fn_in_used_fns() {
+	assert repro_fn_in_used_fns('main.entry', ['main.entry'])
+	assert repro_fn_in_used_fns('main.handle_thing', ['main.handle_*'])
+	assert !repro_fn_in_used_fns('main.other', ['main.entry', 'main.handle_*'])
+	assert !repro_fn_in_used_fns('main.entry', [])
+}
