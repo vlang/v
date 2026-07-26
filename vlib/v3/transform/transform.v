@@ -257,6 +257,11 @@ mut:
 	// local_closure_cleanup_decls maps source declaration node ids to runtime
 	// closure locals that do not escape their lexical scope.
 	local_closure_cleanup_decls map[int]string
+	// exclusive_closure_return_fns contains source functions proven to return a newly
+	// allocated closure without storing, passing, or otherwise aliasing that closure.
+	// Discarded call results may be reclaimed only for functions in this frozen pre-pass map.
+	exclusive_closure_return_fns   map[string]bool
+	exclusive_closure_returns_done bool
 	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays by
 	// closures that are not proven local. Their storage is moved to the heap so the outer
 	// binding and escaped closure context keep sharing the same durable array.
@@ -665,6 +670,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 	mut t := new_transformer(mut a, tc, selected)
 	t.skip_generics = true
 	t.prepare()
+	t.collect_exclusive_closure_return_fns()
 	base_node_count := t.a.nodes.len
 	t.transformed_fns = []bool{len: t.a.nodes.len}
 	for i in 0 .. t.a.nodes.len {
@@ -1127,6 +1133,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		heaped_amp_locals:                map[string]bool{}
 		escaping_interface_box_locals:    map[string]bool{}
 		local_closure_cleanup_decls:      map[int]string{}
+		exclusive_closure_return_fns:     map[string]bool{}
 		mut_fixed_array_capture_sources:  map[string]bool{}
 		generic_specialization_args:      map[string][]string{}
 		generic_fn_specs_in_progress:     map[string]bool{}
@@ -2561,6 +2568,7 @@ struct DeferredBaseWrite {
 // enough work, with closure-free function bodies transformed across threads.
 // Returns whether function bodies were actually transformed in parallel.
 fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
+	t.collect_exclusive_closure_return_fns()
 	// Every forked worker checker otherwise lazily rebuilds the source-error
 	// embedding index by rescanning all struct declarations; build it once in
 	// the master cache so forks inherit it through the frozen base.
@@ -3168,6 +3176,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		escaping_amp_sources:               map[string]bool{}
 		heaped_amp_locals:                  map[string]bool{}
 		local_closure_cleanup_decls:        map[int]string{}
+		exclusive_closure_return_fns:       t.exclusive_closure_return_fns
+		exclusive_closure_returns_done:     t.exclusive_closure_returns_done
 		mut_fixed_array_capture_sources:    map[string]bool{}
 		generic_fn_specs_in_progress:       map[string]bool{}
 		generic_fn_spec_nodes:              map[string]flat.NodeId{}
@@ -4743,6 +4753,177 @@ fn (t &Transformer) heapable_value_type(typ string) bool {
 	return typ.len > 0 && !typ.starts_with('&') && !typ.starts_with('[]')
 		&& !typ.starts_with('map[') && !typ.starts_with('?') && !typ.starts_with('!')
 		&& !typ.starts_with('[') && typ != 'unknown' && typ != 'void'
+}
+
+fn (mut t Transformer) collect_exclusive_closure_return_fns() {
+	if t.exclusive_closure_returns_done {
+		return
+	}
+	t.exclusive_closure_returns_done = true
+	t.exclusive_closure_return_fns.clear()
+	mut module_name := ''
+	for idx in 0 .. t.a.nodes.len {
+		node := t.a.nodes[idx]
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .fn_decl || node.generic_params().len > 0
+			|| !t.fn_decl_exclusively_returns_fresh_closure(node) {
+			continue
+		}
+		qname := if module_name in ['', 'main', 'builtin']
+			|| node.value.starts_with('${module_name}.') {
+			node.value
+		} else {
+			'${module_name}.${node.value}'
+		}
+		t.exclusive_closure_return_fns[qname] = true
+		if module_name in ['main', 'builtin'] && !node.value.contains('.') {
+			t.exclusive_closure_return_fns['${module_name}.${node.value}'] = true
+		}
+	}
+}
+
+fn (t &Transformer) fn_decl_exclusively_returns_fresh_closure(node flat.Node) bool {
+	mut body_ids := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if t.a.nodes[int(child_id)].kind != .param {
+			body_ids << child_id
+		}
+	}
+	mut candidate_decls := map[string]int{}
+	mut binding_counts := map[string]int{}
+	for i in 0 .. node.children_count {
+		t.collect_fresh_closure_return_candidates(t.a.child(&node, i), mut candidate_decls, mut
+			binding_counts)
+	}
+	mut return_exprs := []flat.NodeId{}
+	for id in body_ids {
+		t.collect_outer_return_exprs(id, mut return_exprs)
+	}
+	if return_exprs.len == 0 {
+		return false
+	}
+	for return_id in return_exprs {
+		if t.expr_allocates_fresh_runtime_closure(return_id) {
+			continue
+		}
+		name := t.wrapped_ident_name(return_id) or { return false }
+		decl_id := candidate_decls[name] or { return false }
+		if binding_counts[name] != 1
+			|| !t.closure_return_candidate_is_unaliased(body_ids, name, flat.NodeId(decl_id)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) collect_fresh_closure_return_candidates(id flat.NodeId, mut candidates map[string]int, mut binding_counts map[string]int) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return
+	}
+	if node.kind == .param && node.value.len > 0 {
+		binding_counts[node.value] = (binding_counts[node.value] or { 0 }) + 1
+		return
+	}
+	if node.kind == .decl_assign && node.children_count == 2 {
+		lhs := t.a.child_node(&node, 0)
+		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+			binding_counts[lhs.value] = (binding_counts[lhs.value] or { 0 }) + 1
+			if t.expr_allocates_fresh_runtime_closure(t.a.child(&node, 1)) {
+				candidates[lhs.value] = int(id)
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		t.collect_fresh_closure_return_candidates(t.a.child(&node, i), mut candidates, mut
+			binding_counts)
+	}
+}
+
+fn (t &Transformer) collect_outer_return_exprs(id flat.NodeId, mut return_exprs []flat.NodeId) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return
+	}
+	if node.kind == .return_stmt {
+		if node.children_count != 1 {
+			return_exprs << flat.NodeId(-1)
+			return
+		}
+		return_exprs << t.a.child(&node, 0)
+		return
+	}
+	for i in 0 .. node.children_count {
+		t.collect_outer_return_exprs(t.a.child(&node, i), mut return_exprs)
+	}
+}
+
+fn (t &Transformer) expr_allocates_fresh_runtime_closure(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
+		return t.expr_allocates_fresh_runtime_closure(t.a.child(&node, 0))
+	}
+	return t.fn_literal_has_runtime_captures(id)
+		|| t.bound_method_value_allocates_runtime_closure(id)
+}
+
+fn (t &Transformer) wrapped_ident_name(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value.len > 0 {
+		return node.value
+	}
+	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
+		return t.wrapped_ident_name(t.a.child(&node, 0))
+	}
+	return none
+}
+
+fn (t &Transformer) closure_return_candidate_is_unaliased(body_ids []flat.NodeId, name string, decl_id flat.NodeId) bool {
+	for id in body_ids {
+		if !t.closure_return_candidate_use_is_safe(id, name, decl_id) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) closure_return_candidate_use_is_safe(id flat.NodeId, name string, decl_id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || id == decl_id {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .return_stmt && node.children_count == 1 {
+		if returned_name := t.wrapped_ident_name(t.a.child(&node, 0)) {
+			if returned_name == name {
+				return true
+			}
+		}
+	}
+	if node.kind == .ident && node.value == name {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if !t.closure_return_candidate_use_is_safe(t.a.child(&node, i), name, decl_id) {
+			return false
+		}
+	}
+	return true
 }
 
 // heap_escaping_source_decl rewrites `mut v := <init>` (where `&v` escapes) into a heap
@@ -8190,31 +8371,37 @@ fn (mut t Transformer) lower_discarded_closure_value(id flat.NodeId) ?[]flat.Nod
 	if !t.used_fn_contains_name('closure.closure_create_with_data') {
 		return none
 	}
+	if !t.discarded_closure_value_is_exclusive(id) {
+		return none
+	}
 
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	generation_name := t.new_temp('closure_generation')
-	generation_call := t.make_call_typed('closure.closure_generation_snapshot', []flat.NodeId{},
-		'u64')
-	t.mark_fn_used_name('closure.closure_generation_snapshot')
-	t.set_var_type(generation_name, 'u64')
-	result << t.make_decl_assign_typed(generation_name, generation_call, 'u64')
-
 	closure_value := t.transform_expr_for_type(id, fn_type)
 	t.drain_pending(mut result)
 	closure_name := t.new_temp('discarded_closure')
 	t.set_var_type(closure_name, fn_type)
 	result << t.make_decl_assign_typed(closure_name, closure_value, fn_type)
-	closure_ptr := t.make_cast('voidptr', t.make_ident(closure_name), 'voidptr')
-	generation := t.make_ident(generation_name)
-	t.set_node_typ(int(generation), 'u64')
-	destroy := t.make_call_typed('closure.closure_try_destroy_since', [
-		closure_ptr,
-		generation,
-	], 'void')
-	t.mark_fn_used_name('closure.closure_try_destroy_since')
-	result << t.make_expr_stmt(destroy)
+	result << t.make_local_closure_destroy_stmt(closure_name)
 	return result
+}
+
+fn (t &Transformer) discarded_closure_value_is_exclusive(id flat.NodeId) bool {
+	if t.expr_allocates_fresh_runtime_closure(id) {
+		return true
+	}
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
+		return t.discarded_closure_value_is_exclusive(t.a.child(&node, 0))
+	}
+	if node.kind != .call {
+		return false
+	}
+	name := t.call_name_for_node(id, node)
+	return t.exclusive_closure_return_fns[name]
 }
 
 fn (t &Transformer) discarded_closure_value_type(id flat.NodeId) ?string {

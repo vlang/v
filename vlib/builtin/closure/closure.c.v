@@ -19,10 +19,9 @@ mut:
 
 struct ClosureLiveInfo {
 mut:
-	ctx            voidptr
-	owns_data      bool
-	generation     u64
-	creator_thread u64
+	ctx        voidptr
+	owns_data  bool
+	generation u64
 }
 
 struct ClosureLifetimeRecord {
@@ -358,10 +357,9 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool) {
 	g_closure.next_generation++
 	g_closure.live[exec_ptr] = ClosureLiveInfo{
-		ctx:            data
-		owns_data:      owns_data
-		generation:     g_closure.next_generation
-		creator_thread: closure_current_thread_id_platform()
+		ctx:        data
+		owns_data:  owns_data
+		generation: g_closure.next_generation
 	}
 }
 
@@ -870,34 +868,5 @@ fn closure_try_destroy(closure voidptr) {
 	exec_ptr := closure_exec_ptr(closure)
 	closure_mtx_lock_platform()
 	closure_release_no_lock(exec_ptr, 0)
-	closure_mtx_unlock_platform()
-}
-
-// closure_generation_snapshot returns the newest managed-closure generation.
-// The compiler uses it to distinguish newly allocated discarded callbacks from
-// borrowed callbacks that were already live before an expression was evaluated.
-fn closure_generation_snapshot() u64 {
-	closure_ensure_initialized()
-	closure_mtx_lock_platform()
-	generation := g_closure.next_generation
-	closure_mtx_unlock_platform()
-	return generation
-}
-
-// closure_try_destroy_since releases closure only when it was allocated after generation.
-fn closure_try_destroy_since(closure voidptr, generation u64) {
-	if isnil(closure) {
-		return
-	}
-	closure_ensure_initialized()
-	exec_ptr := closure_exec_ptr(closure)
-	closure_mtx_lock_platform()
-	info := g_closure.live[exec_ptr] or {
-		closure_mtx_unlock_platform()
-		return
-	}
-	if info.generation > generation && info.creator_thread == closure_current_thread_id_platform() {
-		closure_release_no_lock(exec_ptr, info.generation)
-	}
 	closure_mtx_unlock_platform()
 }

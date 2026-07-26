@@ -482,8 +482,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	if markused_program_needs_closure_runtime(a, tc) {
 		enqueue('closure.closure_create_with_data', mut used, mut queue)
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
-		enqueue('closure.closure_generation_snapshot', mut used, mut queue)
-		enqueue('closure.closure_try_destroy_since', mut used, mut queue)
 	}
 	enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
