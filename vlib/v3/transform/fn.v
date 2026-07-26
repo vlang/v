@@ -9091,6 +9091,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	saved_mut_param_values := t.mut_param_values.clone()
 	saved_local_closure_cleanup_decls := t.local_closure_cleanup_decls.clone()
 	saved_local_closure_cleanup_assigns := t.local_closure_cleanup_assigns.clone()
+	saved_local_closure_field_cleanups := t.local_closure_field_cleanups.clone()
 	t.cur_fn_name = name
 	t.cur_fn_ret_type = ret_type
 	t.reset_var_types()
@@ -9177,6 +9178,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.mut_param_values = saved_mut_param_values.clone()
 	t.local_closure_cleanup_decls = saved_local_closure_cleanup_decls.clone()
 	t.local_closure_cleanup_assigns = saved_local_closure_cleanup_assigns.clone()
+	t.local_closure_field_cleanups = saved_local_closure_field_cleanups.clone()
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
 	mut all_ids := []flat.NodeId{cap: param_ids.len + new_body.len}
