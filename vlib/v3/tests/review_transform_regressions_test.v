@@ -1581,6 +1581,49 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	assert out == '2'
 }
 
+fn test_returned_closure_alias_heap_promotes_captured_pointer_source() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+mut:
+	n int
+}
+
+fn make(initial int) fn () int {
+	mut value := Value{
+		n: initial
+	}
+	p := &value
+	cb := fn [p] () int {
+		return p.n
+	}
+	value.n++
+	return cb
+}
+
+fn overwrite_stack(seed int) {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = seed + i
+	}
+}
+
+fn main() {
+	first := make(10)
+	second := make(20)
+	for i in 0 .. 100 {
+		overwrite_stack(i)
+	}
+	println(int_str(first()))
+	println(int_str(second()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'returned_closure_alias_pointer_capture_c', source)
+	body := c_fn_body(c_source, ' make(int initial) {')
+	assert body.contains('Value* value = (Value*)memdup'), body
+	out := run_good(v3_bin, 'returned_closure_alias_pointer_capture', source)
+	assert out == '11\n21'
+}
+
 fn test_heap_escaping_amp_reassignment_moves_current_source() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'heap_escaping_amp_reassign_source',
