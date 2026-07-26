@@ -227,7 +227,7 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 			// roots (see markused/walker.v mark_markused_consts/mark_markused_globals).
 			mut is_root := false
 			if stmt is ast.FnDecl {
-				is_root = repro_is_markused_root(stmt, v.table.veb_res_idx_cache)
+				is_root = repro_is_markused_root(stmt, int(veb_result_idx))
 					|| (v.pref.is_shared && stmt.is_pub)
 			} else {
 				is_root = repro_decl_attrs(stmt).any(it.name in ['markused', 'export'])
