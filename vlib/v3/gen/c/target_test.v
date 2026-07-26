@@ -55,6 +55,12 @@ fn test_c_flag_default_define_macros_stay_single_arguments() {
 	assert c_flag_args("-DMESSAGE=\$d('MSG', 'hello world')", '', '', target) == [
 		'-DMESSAGE=hello world',
 	]
+	assert c_flag_args("-DPASTE=\$d('PASTE', 'a##b') ## source comment", '', '', target) == [
+		'-DPASTE=a##b',
+	]
+	assert c_flag_args(r'-DQUOTED=$d("QUOTED", "\"a##b\"") ## source comment', '', '', target) == [
+		'-DQUOTED="a##b"',
+	]
 }
 
 fn test_c_flag_default_define_macros_honor_configured_values() {
@@ -85,6 +91,12 @@ fn test_c_flag_default_define_macros_honor_configured_values() {
 		'MSG': 'configured value'
 	}) == [
 		'-DMESSAGE=configured value',
+	]
+	assert c_flag_args_with_values("-DPASTE=\$d('PASTE', 'fallback') ## source comment", '', '',
+		target, {
+		'PASTE': 'a##b'
+	}) == [
+		'-DPASTE=a##b',
 	]
 }
 

@@ -6032,11 +6032,11 @@ fn c_flag_args(raw string, vroot string, source_file string, target pref.Target)
 
 fn c_flag_args_with_values(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) []string {
 	target_arg := c_directive_arg_for_target(raw.trim_space(), target) or { return []string{} }
-	defaults_expanded := c_expand_default_define_macros(target_arg, compile_values) or {
+	without_comment := c_flag_strip_hash_comment(target_arg)
+	defaults_expanded := c_expand_default_define_macros(without_comment, compile_values) or {
 		return []string{}
 	}
-	without_comment := c_flag_strip_hash_comment(defaults_expanded)
-	clean := c_expand_existing_path_macros(without_comment, vroot, source_file) or {
+	clean := c_expand_existing_path_macros(defaults_expanded, vroot, source_file) or {
 		return []string{}
 	}
 	args := cmdexec.split_args(clean) or { return []string{} }
@@ -6187,6 +6187,9 @@ fn c_flag_strip_hash_comment(raw string) string {
 	for i := 0; i + 1 < raw.len; i++ {
 		ch := raw[i]
 		if ch in [`'`, `"`] {
+			if c_flag_quote_is_escaped(raw, i) {
+				continue
+			}
 			if quote == 0 {
 				quote = ch
 			} else if quote == ch {
