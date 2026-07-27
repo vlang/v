@@ -1231,6 +1231,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						exp_typ_str := c.table.type_to_str(exp_type)
 						c.error('cannot assign to field `${field_info.name}`: expected a pointer `${exp_typ_str}`, but got `${got_typ_str}`',
 							init_field.pos)
+					} else if !c.inside_unsafe && type_sym.language == .v && !(c.file.is_translated
+						|| c.pref.translated) && !exp_type.is_any_kind_of_pointer()
+						&& got_type.is_any_kind_of_pointer() && !exp_type_is_option
+						&& exp_final_sym.kind !in [.interface, .array, .function, .map]
+						&& init_field.expr.is_reference() {
+						got_typ_str := c.table.type_to_str(got_type)
+						exp_typ_str := c.table.type_to_str(exp_type)
+						c.error('cannot assign to field `${field_info.name}`: expected `${exp_typ_str}`, but got `${got_typ_str}`',
+							init_field.pos.extend(node.pos))
 					}
 				}
 				node.init_fields[i].typ = got_type

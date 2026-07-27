@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_init_non_ptr_field_assign_ref_err.vv:14:3: error: cannot assign to field `arr`: expected `Arr`, but got `&Arr`
+   12 |     o := Original{}
+   13 |     _ := Copy{
+   14 |         arr: &o.arr
+      |         ~~~~~~~~~~~
+   15 |     }
+   16 | }
