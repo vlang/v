@@ -22460,9 +22460,13 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 						actual = semantic_mut_param
 					}
 				}
-				if !tc.expr_compatible(value_id, actual, expected)
+				pointer_to_value_fixed_array := actual is Pointer
+					&& unalias_type(actual.base_type) is ArrayFixed
+					&& unalias_type(expected) is ArrayFixed
+				if pointer_to_value_fixed_array
+					|| (!tc.expr_compatible(value_id, actual, expected)
 					&& !tc.method_value_matches_voidptr_callback(value_id, actual, expected)
-					&& !tc.pointer_value_compatible(actual, expected) {
+					&& !tc.pointer_value_compatible(actual, expected)) {
 					tc.type_mismatch(.assignment_mismatch,
 						'cannot initialize field `${field.value}` with `${actual.name()}`; expected `${expected.name()}`',
 						field_id)
