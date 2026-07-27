@@ -1671,7 +1671,13 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		}
 		if base_type is types.Pointer {
 			ptr_type := base_type
-			if ptr_type.base_type is types.Void {
+			mut expected_type := ptr_type.base_type
+			if fixed := array_fixed_type(ptr_type.base_type) {
+				g.write('(*')
+				g.gen_expr(base_id)
+				g.write(')')
+				expected_type = fixed.elem_type
+			} else if ptr_type.base_type is types.Void {
 				g.write('((u8*)')
 				g.gen_expr(base_id)
 				g.write(')')
@@ -1683,7 +1689,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			g.write('[')
 			g.gen_expr(g.a.child(&lhs, 1))
 			g.write('] ${g.op_str(node.op)} ')
-			g.gen_expr_with_expected_type(g.a.child(&node, 1), ptr_type.base_type)
+			g.gen_expr_with_expected_type(g.a.child(&node, 1), expected_type)
 			g.writeln(';')
 			return
 		}
