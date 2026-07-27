@@ -14,6 +14,14 @@ fn test_is_diagnostic_fixture_dir_restricts_dispatch_to_diagnostic_suites() {
 	os.write_file(os.join_path(checker_dir, 'sample_test.vv'), 'fn main() {}\n') or { panic(err) }
 	os.write_file(os.join_path(checker_dir, 'sample_test.out'), '') or { panic(err) }
 	assert is_diagnostic_fixture_dir(checker_dir)
+	os.write_file(os.join_path(checker_dir, 'var_duplicate_const.vv'), 'fn main() {}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(checker_dir, 'var_duplicate_const.out'), 'unstable output\n') or {
+		panic(err)
+	}
+	assert is_comparable_fixture(checker_dir, 'sample_test.vv')
+	assert !is_comparable_fixture(checker_dir, 'var_duplicate_const.vv')
 
 	runtime_dir := os.join_path(root, 'vlib', 'v', 'gen', 'c', 'testdata')
 	os.mkdir_all(runtime_dir) or { panic(err) }

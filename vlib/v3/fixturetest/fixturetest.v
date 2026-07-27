@@ -7,6 +7,8 @@ const max_reported_mismatches = 20
 const max_parallel_fixtures = 1
 const diagnostic_fixture_suffixes = ['/vlib/v/checker/tests', '/vlib/v/parser/tests',
 	'/vlib/v/scanner/tests']
+// Keep aligned with the unconditional skip_files exclusions in v/compiler_errors_test.v.
+const unstable_diagnostic_fixture_names = ['var_duplicate_const.vv']
 
 struct FixtureResult {
 	index     int
@@ -26,8 +28,7 @@ pub fn is_diagnostic_fixture_dir(path string) bool {
 	if files.any(is_standard_test_file(it)) {
 		return false
 	}
-	return files.any(it.ends_with('.vv')
-		&& os.is_file(os.join_path(path, it.all_before_last('.vv') + '.out')))
+	return files.any(is_comparable_fixture(path, it))
 }
 
 fn is_standard_test_file(file string) bool {
@@ -44,6 +45,11 @@ fn is_standard_test_file(file string) bool {
 	return base.contains('.') && base.all_before_last('.').ends_with('_test')
 }
 
+fn is_comparable_fixture(dir string, name string) bool {
+	return name !in unstable_diagnostic_fixture_names && name.ends_with('.vv')
+		&& os.is_file(os.join_path(dir, name.all_before_last('.vv') + '.out'))
+}
+
 // run compares every `.vv` compiler invocation with its adjacent `.out` file.
 pub fn run(vexe string, dir string) int {
 	fixture_dir := os.real_path(dir)
@@ -52,8 +58,7 @@ pub fn run(vexe string, dir string) int {
 		eprintln('failed to list fixture directory `${dir}`: ${err}')
 		return 1
 	}
-	names = names.filter(it.ends_with('.vv')
-		&& os.is_file(os.join_path(dir, it.all_before_last('.vv') + '.out')))
+	names = names.filter(is_comparable_fixture(dir, it))
 	names.sort()
 	filter := os.getenv('VTEST_ONLY')
 	if filter.len > 0 {
