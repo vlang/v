@@ -15,6 +15,7 @@ pub enum Mode {
 pub struct Diagnostic {
 pub:
 	offset  int
+	end     int
 	message string
 }
 
@@ -27,16 +28,17 @@ mut:
 	file        &token.File = unsafe { nil }
 	insert_semi bool
 pub mut:
-	src                 string
-	offset              int
-	pos                 int
-	lit                 string
-	in_str_incomplete   bool
-	in_str_inter        bool
-	in_str_inter_format bool
-	str_inter_cbr_depth int
-	str_quote           u8
-	diagnostics         []Diagnostic
+	src                                 string
+	offset                              int
+	pos                                 int
+	lit                                 string
+	in_str_incomplete                   bool
+	in_str_inter                        bool
+	in_str_inter_format                 bool
+	str_inter_cbr_depth                 int
+	str_quote                           u8
+	diagnostics                         []Diagnostic
+	reported_number_prefixed_identifier bool
 }
 
 // peek_byte supports peek byte handling for Scanner.
@@ -72,6 +74,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.str_inter_cbr_depth = 0
 	s.str_quote = 0
 	s.diagnostics = []Diagnostic{}
+	s.reported_number_prefixed_identifier = false
 	s.file = unsafe { file }
 	s.src = src
 }
@@ -79,6 +82,15 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 fn (mut s Scanner) error(message string, offset int) {
 	s.diagnostics << Diagnostic{
 		offset:  offset
+		end:     offset + 1
+		message: message
+	}
+}
+
+fn (mut s Scanner) error_span(message string, start int, end int) {
+	s.diagnostics << Diagnostic{
+		offset:  start
+		end:     end
 		message: message
 	}
 }
@@ -725,9 +737,52 @@ fn (mut s Scanner) number() {
 	}
 	if !s.in_str_inter_format && !s.is_interpolation_format_number() && s.offset < s.src.len
 		&& s.src[s.offset].is_letter() {
-		s.error('this number has unsuitable digit `${s.src[s.offset].ascii_str()}`', s.offset)
+		invalid_digit_offset := s.offset
+		invalid_digit := s.src[s.offset]
 		s.consume_invalid_numeric_suffix()
+		invalid_ident := s.number_prefixed_identifier_name(s.pos, s.offset)
+		if invalid_ident.len > 0 {
+			if !s.reported_number_prefixed_identifier {
+				s.error_span('identifier name `${invalid_ident}` cannot start with a number',
+					s.pos, s.offset)
+				s.reported_number_prefixed_identifier = true
+			}
+		} else {
+			s.error('this number has unsuitable digit `${invalid_digit.ascii_str()}`',
+				invalid_digit_offset)
+		}
 	}
+}
+
+fn (s &Scanner) number_prefixed_identifier_name(start int, end int) string {
+	if end <= start || !s.src[start].is_digit() {
+		return ''
+	}
+	mut ident_start := start
+	for ident_start < end && (s.src[ident_start].is_digit() || s.src[ident_start] == `_`) {
+		ident_start++
+	}
+	if ident_start >= end || !s.src[ident_start].is_letter() {
+		return ''
+	}
+	for i in ident_start .. end {
+		if !s.src[i].is_alnum() && s.src[i] != `_` {
+			return ''
+		}
+	}
+	if s.next_non_space_char(end) !in [`:`, `=`, `,`, `)`, `]`, `}`, `.`, `;`, 0] {
+		return ''
+	}
+	return s.source_lit(start, end)
+}
+
+fn (s &Scanner) next_non_space_char(start int) u8 {
+	for i in start .. s.src.len {
+		if s.src[i] !in [` `, `\t`, `\r`, `\n`] {
+			return s.src[i]
+		}
+	}
+	return 0
 }
 
 fn (s &Scanner) is_interpolation_format_number() bool {
@@ -737,6 +792,12 @@ fn (s &Scanner) is_interpolation_format_number() bool {
 	mut index := s.pos - 1
 	for index >= 0 && s.src[index] in [` `, `\t`] {
 		index--
+	}
+	if index >= 0 && s.src[index] in [`+`, `-`] {
+		index--
+		for index >= 0 && s.src[index] in [` `, `\t`] {
+			index--
+		}
 	}
 	return index >= 0 && s.src[index] == `:`
 }

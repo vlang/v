@@ -3690,6 +3690,9 @@ fn main() {
 	// guarantees that a serial diagnostic run cannot retain a pointer into a
 	// released stage scope.
 	scope_prealloc_stages := should_scope_prealloc_stages() && !current_no_parallel
+	// Function checking still creates substantial short-lived state in serial
+	// mode for large import graphs. Scope each function independently there too.
+	scope_prealloc_check := should_scope_prealloc_stages()
 	scope_prealloc_cgen := should_scope_prealloc_cgen() && !current_no_parallel
 	// The selective transform promotion path is designed around worker-owned
 	// results outside the disposable stage arena.
@@ -3810,6 +3813,7 @@ fn main() {
 	prefs.is_prod = is_prod
 	prefs.is_debug = is_debug
 	prefs.verbose = verbose
+	prefs.supports_inline_asm = is_checker_fixture
 	host_target := pref.host_target()
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
@@ -4209,6 +4213,7 @@ fn main() {
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
 	pre_tc.enable_globals = enable_globals_compat
+	pre_tc.checker_fixture_mode = is_checker_fixture
 	mut used_fns := map[string]bool{}
 	mut incremental_stage_used_fns := map[string]bool{}
 	mut uses_generics := false
@@ -4216,7 +4221,7 @@ fn main() {
 	mut transform_texts_canonical := cgen_cache_hit
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
-		if scope_prealloc_stages {
+		if scope_prealloc_check {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
@@ -4249,7 +4254,22 @@ fn main() {
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
 		}
 		pre_tc.check_main_module_requirement(is_shared)
+		if incremental_cache_hit {
+			b.step('check (incremental)')
+		} else {
+			b.step_parallel('check', check_was_parallel)
+		}
 		if pre_tc.errors.len > 0 {
+			if is_checker_fixture {
+				fixture_used_fns, fixture_uses_generics := markused.mark_used_with_generic_usage(a,
+					&pre_tc)
+				has_invalid_comptime_struct_update :=
+					pre_tc.errors.any(it.msg == 'cannot use struct update syntax in compile time expressions')
+				if fixture_uses_generics && !has_invalid_comptime_struct_update {
+					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc,
+						fixture_used_fns, false)
+				}
+			}
 			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			pre_tc.notices.clear()
 		}
@@ -4292,11 +4312,6 @@ fn main() {
 			if invalidate_changed_cache_dependents(mut cache_state) {
 				restart_v3_after_cache_invalidation()
 			}
-		}
-		if incremental_cache_hit {
-			b.step('check (incremental)')
-		} else {
-			b.step_parallel('check', check_was_parallel)
 		}
 		// Ownership analysis only exists in `-d ownership` builds and runs
 		// interleaved inside check; report its accumulated time as a dedicated
@@ -6687,9 +6702,21 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		eprintln(v3errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
 		print_type_diagnostic_details(notice.details)
 	}
-	max_errors := if all_errors || type_errors.len < 20 { type_errors.len } else { 20 }
+	source_errors := reorder_chained_generic_inference_errors(a, type_errors)
+	mut ordered_errors := []types.TypeError{cap: source_errors.len}
+	for err in source_errors {
+		if !is_bare_generic_fntype_decl_error(err) {
+			ordered_errors << err
+		}
+	}
+	for err in source_errors {
+		if is_bare_generic_fntype_decl_error(err) {
+			ordered_errors << err
+		}
+	}
+	max_errors := if all_errors || ordered_errors.len < 20 { ordered_errors.len } else { 20 }
 	for ei in 0 .. max_errors {
-		err := type_errors[ei]
+		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
 		eprintln(v3errors.formatted_error(severity, err.msg, a, err.node, err.pos))
 		print_type_diagnostic_details(err.details)
@@ -6697,6 +6724,61 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	if !all_errors && type_errors.len > 20 {
 		eprintln('... and ${type_errors.len - 20} more errors')
 	}
+}
+
+fn reorder_chained_generic_inference_errors(a &flat.FlatAst, errors []types.TypeError) []types.TypeError {
+	mut paired_struct := map[int]bool{}
+	mut paired_call := map[int]bool{}
+	for struct_index, struct_error in errors {
+		if !struct_error.msg.starts_with('could not infer generic type `')
+			|| !struct_error.msg.contains(' in generic struct `') {
+			continue
+		}
+		for call_index, call_error in errors {
+			if !call_error.msg.starts_with('could not infer generic type `')
+				|| !call_error.msg.contains(' in call to `')
+				|| !type_diagnostics_share_source_line(a, struct_error, call_error) {
+				continue
+			}
+			paired_struct[struct_index] = true
+			paired_call[call_index] = true
+		}
+	}
+	if paired_struct.len == 0 {
+		return errors.clone()
+	}
+	mut ordered := []types.TypeError{cap: errors.len}
+	for struct_index, struct_error in errors {
+		if !paired_struct[struct_index] {
+			continue
+		}
+		ordered << struct_error
+		for call_index, call_error in errors {
+			if paired_call[call_index]
+				&& type_diagnostics_share_source_line(a, struct_error, call_error) {
+				ordered << call_error
+			}
+		}
+	}
+	for index, err in errors {
+		if !paired_struct[index] && !paired_call[index] {
+			ordered << err
+		}
+	}
+	return ordered
+}
+
+fn type_diagnostics_share_source_line(a &flat.FlatAst, left types.TypeError, right types.TypeError) bool {
+	if left.pos.id != right.pos.id {
+		return false
+	}
+	file := a.source_files[left.pos.id] or { return false }
+	return file.position(left.pos).line == file.position(right.pos).line
+}
+
+fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
+	return err.msg.starts_with('generic function `')
+		&& err.msg.contains(' in fn declaration must specify the generic type names')
 }
 
 fn print_type_diagnostic_details(details []string) {

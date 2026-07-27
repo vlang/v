@@ -36,6 +36,14 @@ pub fn run(vexe string, dir string) int {
 	if filter.len > 0 {
 		names = names.filter(it.contains(filter) || os.join_path(dir, it).contains(filter))
 	}
+	start_at := os.getenv('VTEST_START_AT').int()
+	if start_at >= names.len && names.len > 0 {
+		eprintln('VTEST_START_AT ${start_at} is outside the ${names.len} matching fixtures')
+		return 1
+	}
+	if start_at > 0 {
+		names = names[start_at..].clone()
+	}
 	if names.len == 0 {
 		eprintln('no comparable `.vv`/`.out` fixtures found in `${dir}`')
 		return 1
@@ -55,7 +63,11 @@ pub fn run(vexe string, dir string) int {
 		paths << path
 		expected_outputs << clean_output(expected)
 	}
-	mut exit_codes := []int{len: paths.len, init: -1}
+	max_failures := os.getenv('VTEST_MAX_FAILURES').int()
+	mut failures := 0
+	mut abnormal_exits := 0
+	mut abnormal_paths := []string{}
+	mut completed := 0
 	mut batch_start := 0
 	for batch_start < paths.len {
 		batch_end := int_min(batch_start + max_parallel_fixtures, paths.len)
@@ -64,40 +76,42 @@ pub fn run(vexe string, dir string) int {
 			threads << spawn run_fixture(vexe, repo_root, paths[index], index)
 		}
 		for result in threads.wait() {
-			exit_codes[result.index] = result.exit_code
+			index := result.index
+			path := paths[index]
+			result_path := fixture_output_path(index)
+			found_raw := os.read_file(result_path) or { '' }
+			os.rm(result_path) or {}
+			found := clean_output(found_raw)
+			exit_code := result.exit_code
+			mismatch := expected_outputs[index] != found
+			abnormal := exit_code !in [0, 1]
+			completed++
+			if !mismatch && !abnormal {
+				continue
+			}
+			failures++
+			if abnormal {
+				abnormal_exits++
+				abnormal_paths << '${path} (${exit_code})'
+			}
+			eprintln('FAIL ${path} (exit ${exit_code})')
+			if failures <= max_reported_mismatches {
+				eprintln('--- expected')
+				eprintln(expected_outputs[index])
+				eprintln('--- found')
+				eprintln(found)
+				eprintln('---')
+			}
 		}
 		batch_start = batch_end
-	}
-	mut failures := 0
-	mut abnormal_exits := 0
-	mut abnormal_paths := []string{}
-	for index, path in paths {
-		result_path := fixture_output_path(index)
-		found_raw := os.read_file(result_path) or { '' }
-		os.rm(result_path) or {}
-		found := clean_output(found_raw)
-		exit_code := exit_codes[index]
-		mismatch := expected_outputs[index] != found
-		abnormal := exit_code !in [0, 1]
-		if !mismatch && !abnormal {
-			continue
-		}
-		failures++
-		if abnormal {
-			abnormal_exits++
-			abnormal_paths << '${path} (${exit_code})'
-		}
-		eprintln('FAIL ${path} (exit ${exit_code})')
-		if failures <= max_reported_mismatches {
-			eprintln('--- expected')
-			eprintln(expected_outputs[index])
-			eprintln('--- found')
-			eprintln(found)
-			eprintln('---')
+		if max_failures > 0 && failures >= max_failures {
+			break
 		}
 	}
-	passed := paths.len - failures
-	println('checker fixtures: ${passed}/${paths.len} passed, ${failures} failed, ${abnormal_exits} abnormal exits')
+	passed := completed - failures
+	not_run := paths.len - completed
+	not_run_suffix := if not_run > 0 { ', ${not_run} not run' } else { '' }
+	println('checker fixtures: ${passed}/${completed} passed, ${failures} failed, ${abnormal_exits} abnormal exits${not_run_suffix}')
 	if abnormal_paths.len > 0 {
 		eprintln('abnormal fixture exits: ${abnormal_paths.join(', ')}')
 	}

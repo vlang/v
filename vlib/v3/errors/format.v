@@ -1,5 +1,6 @@
 module errors
 
+import encoding.utf8.east_asian
 import os
 import strings
 import v3.flat
@@ -44,15 +45,15 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 		line := lines[line_number - 1]
 		result.writeln('${line_number:5d} | ${line.replace('\t', '    ')}')
 		if line_number == position.line {
-			start_column := int_max(0, int_min(position.column - 1, line.len))
 			line_start := file.line_start(position.line)
+			start_byte := int_max(0, int_min(pos.offset - line_start, line.len))
 			span_end := int_max(pos.offset + 1, pos.end)
-			end_column := int_max(start_column + 1, int_min(span_end - line_start, line.len))
+			end_byte := int_min(line.len, int_max(start_byte + 1, int_min(span_end - line_start,
+				line.len)))
 			mut pointer := strings.new_builder(line.len + 8)
-			for i := 0; i < start_column; i++ {
-				pointer.write_u8(if line[i] == `\t` { `\t` } else { ` ` })
-			}
-			underline_len := int_max(1, end_column - start_column)
+			prefix := line[..start_byte].replace('\t', '    ')
+			pointer.write_string(' '.repeat(diagnostic_display_width(prefix)))
+			underline_len := int_max(1, diagnostic_display_width(line[start_byte..end_byte]))
 			pointer.write_string(if underline_len > 1 {
 				'~'.repeat(underline_len)
 			} else {
@@ -62,6 +63,67 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 		}
 	}
 	return result.str().trim_right('\n')
+}
+
+fn diagnostic_display_width(text string) int {
+	mut width := 0
+	mut valid_start := 0
+	mut i := 0
+	for i < text.len {
+		sequence_len := valid_utf8_sequence_len(text, i)
+		if sequence_len > 0 {
+			i += sequence_len
+			continue
+		}
+		if valid_start < i {
+			width += east_asian.display_width(text[valid_start..i], 1)
+		}
+		width++
+		i++
+		valid_start = i
+	}
+	if valid_start < text.len {
+		width += east_asian.display_width(text[valid_start..], 1)
+	}
+	return width
+}
+
+fn valid_utf8_sequence_len(text string, index int) int {
+	first := text[index]
+	if first < 0x80 {
+		return 1
+	}
+	mut length := 0
+	mut second_min := u8(0x80)
+	mut second_max := u8(0xbf)
+	if first >= 0xc2 && first <= 0xdf {
+		length = 2
+	} else if first >= 0xe0 && first <= 0xef {
+		length = 3
+		if first == 0xe0 {
+			second_min = 0xa0
+		} else if first == 0xed {
+			second_max = 0x9f
+		}
+	} else if first >= 0xf0 && first <= 0xf4 {
+		length = 4
+		if first == 0xf0 {
+			second_min = 0x90
+		} else if first == 0xf4 {
+			second_max = 0x8f
+		}
+	} else {
+		return 0
+	}
+	if index + length > text.len || text[index + 1] < second_min || text[index + 1] > second_max {
+		return 0
+	}
+	for i in index + 2 .. index + length {
+		if text[i] < 0x80 || text[i] > 0xbf {
+			return 0
+		}
+	}
+	return length
 }
 
 fn relative_error_path(path string) string {
