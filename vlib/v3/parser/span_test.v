@@ -24,6 +24,24 @@ fn span_text(src string, node flat.Node) string {
 	return src[node.pos.offset..node.pos.end]
 }
 
+fn test_statement_map_literals_accept_compound_keys() {
+	ast, _ := parse_span_source('statement_map_compound_keys', "fn make_key() string {
+	return 'key'
+}
+
+fn main() {
+	{make_key(): 1}
+	{('key'): 2}
+	{
+		make_key(): 3
+	}
+}
+")
+	map_inits := ast.nodes.filter(it.kind == .map_init)
+	assert map_inits.len == 3
+	assert map_inits.all(it.children_count == 2)
+}
+
 // Literal nodes must carry their own span, not the span of the token that
 // happens to follow them after p.next().
 fn test_literal_nodes_span_their_own_source() {

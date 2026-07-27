@@ -5671,14 +5671,61 @@ fn (mut p Parser) current_lcbr_looks_map_literal() bool {
 	if look.scan() != .lcbr {
 		return false
 	}
-	mut first := look.scan()
-	for first == .semicolon || first == .comma {
-		first = look.scan()
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut brace_depth := 0
+	mut saw_key_token := false
+	for {
+		tok := look.scan()
+		at_key_level := paren_depth == 0 && bracket_depth == 0 && brace_depth == 0
+		if at_key_level && tok !in [.comma, .semicolon] {
+			saw_key_token = true
+		}
+		match tok {
+			.lpar {
+				paren_depth++
+			}
+			.rpar {
+				if paren_depth == 0 {
+					return false
+				}
+				paren_depth--
+			}
+			.lsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				if bracket_depth == 0 {
+					return false
+				}
+				bracket_depth--
+			}
+			.lcbr {
+				brace_depth++
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return false
+				}
+				brace_depth--
+			}
+			.colon {
+				if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+					return true
+				}
+			}
+			.comma, .semicolon {
+				if at_key_level && saw_key_token {
+					return false
+				}
+			}
+			.eof {
+				return false
+			}
+			else {}
+		}
 	}
-	if first == .rcbr || first == .eof {
-		return false
-	}
-	return look.scan() == .colon
+	return false
 }
 
 fn (mut p Parser) mark_node_mut(id flat.NodeId) {
