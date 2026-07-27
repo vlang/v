@@ -76,6 +76,7 @@ pub fn run(vexe string, dir string) int {
 	os.setenv('VTEST_RUNNER', 'normal', true)
 	mut paths := []string{cap: names.len}
 	mut expected_outputs := []string{cap: names.len}
+	mut expected_exit_codes := []int{cap: names.len}
 	for name in names {
 		absolute_path := os.join_path(fixture_dir, name)
 		path := repo_relative_path(repo_root, absolute_path)
@@ -85,7 +86,9 @@ pub fn run(vexe string, dir string) int {
 			return 1
 		}
 		paths << path
-		expected_outputs << clean_output(expected)
+		cleaned_expected := clean_output(expected)
+		expected_outputs << cleaned_expected
+		expected_exit_codes << expected_fixture_exit_code(cleaned_expected)
 	}
 	max_failures := os.getenv('VTEST_MAX_FAILURES').int()
 	mut failures := 0
@@ -107,10 +110,10 @@ pub fn run(vexe string, dir string) int {
 			os.rm(result_path) or {}
 			found := clean_output(found_raw)
 			exit_code := result.exit_code
-			mismatch := expected_outputs[index] != found
 			abnormal := exit_code !in [0, 1]
 			completed++
-			if !mismatch && !abnormal {
+			if fixture_result_matches(expected_outputs[index], found, expected_exit_codes[index], exit_code)
+				&& !abnormal {
 				continue
 			}
 			failures++
@@ -118,7 +121,7 @@ pub fn run(vexe string, dir string) int {
 				abnormal_exits++
 				abnormal_paths << '${path} (${exit_code})'
 			}
-			eprintln('FAIL ${path} (exit ${exit_code})')
+			eprintln('FAIL ${path} (exit ${exit_code}, expected ${expected_exit_codes[index]})')
 			if failures <= max_reported_mismatches {
 				eprintln('--- expected')
 				eprintln(expected_outputs[index])
@@ -212,4 +215,23 @@ fn clean_output(input string) string {
 	output = output.replace(' \n', '\n')
 	output = output.replace('\r\n', '\n')
 	return output.trim('\n')
+}
+
+fn expected_fixture_exit_code(output string) int {
+	for line in output.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.contains('|') {
+			continue
+		}
+		for severity in ['error:', 'builder error:', 'cgen error:'] {
+			if trimmed.starts_with(severity) || trimmed.contains(': ${severity}') {
+				return 1
+			}
+		}
+	}
+	return 0
+}
+
+fn fixture_result_matches(expected_output string, found_output string, expected_exit_code int, actual_exit_code int) bool {
+	return expected_output == found_output && expected_exit_code == actual_exit_code
 }
