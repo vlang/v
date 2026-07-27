@@ -64,7 +64,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --quiet https://repo.or.cz/tinycc.git /tmp/tinycc-ref
+          for attempt in 1 2 3; do
+            if git clone --quiet https://repo.or.cz/tinycc.git /tmp/tinycc-ref; then
+              break
+            fi
+            rm -rf /tmp/tinycc-ref
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
           git -C /tmp/tinycc-ref checkout --quiet "$TCC_COMMIT"
           hash="$(git -C /tmp/tinycc-ref rev-parse HEAD)"
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
@@ -112,12 +121,23 @@ jobs:
         shell: bash
         env:
           BUILD_CMD: TCC_COMMIT=${{ env.TCC_COMMIT }} TCC_FOLDER=thirdparty/tcc bash ${{ matrix.script }}
+          TCC_REPO: /tmp/tinycc-ref
         run: |
           set -euo pipefail
           TCC_FOLDER=thirdparty/tcc bash "${{ matrix.script }}"
           test "$(cat thirdparty/tcc/build_source_hash.txt)" = "${{ steps.tinycc.outputs.hash }}"
           thirdparty/tcc/tcc.exe --version
           thirdparty/tcc/tcc.exe -v -v
+          cat > /tmp/tcc-stdatomic-smoke.c <<'EOF'
+          #include <stdatomic.h>
+          int main(void) {
+              atomic_int value = ATOMIC_VAR_INIT(0);
+              atomic_store(&value, 1);
+              return atomic_load(&value) == 1 ? 0 : 1;
+          }
+          EOF
+          thirdparty/tcc/tcc.exe /tmp/tcc-stdatomic-smoke.c -o /tmp/tcc-stdatomic-smoke
+          /tmp/tcc-stdatomic-smoke
 
       - name: Upload TCC bundle artifact
         if: steps.rebuild.outputs.skip != 'true'
@@ -182,7 +202,16 @@ jobs:
           git config --global user.email vlang-bot@users.noreply.github.com
           git config --global --add safe.directory "$PWD"
 
-          git clone --quiet https://repo.or.cz/tinycc.git /tmp/tinycc-ref
+          for attempt in 1 2 3; do
+            if git clone --quiet https://repo.or.cz/tinycc.git /tmp/tinycc-ref; then
+              break
+            fi
+            rm -rf /tmp/tinycc-ref
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
           git -C /tmp/tinycc-ref checkout --quiet "$TCC_COMMIT"
           tinycc_hash="$(git -C /tmp/tinycc-ref rev-parse HEAD)"
           echo "TinyCC $TCC_COMMIT resolves to $tinycc_hash"
@@ -206,10 +235,20 @@ jobs:
           fi
 
           BUILD_CMD="TCC_COMMIT=$TCC_COMMIT TCC_FOLDER=thirdparty/tcc CC=${{ matrix.cc }} bash ${{ matrix.script }}" \
-            TCC_FOLDER=thirdparty/tcc CC="${{ matrix.cc }}" bash "${{ matrix.script }}"
+            TCC_REPO=/tmp/tinycc-ref TCC_FOLDER=thirdparty/tcc CC="${{ matrix.cc }}" bash "${{ matrix.script }}"
           test "$(cat thirdparty/tcc/build_source_hash.txt)" = "$tinycc_hash"
           thirdparty/tcc/tcc.exe --version
           thirdparty/tcc/tcc.exe -v -v
+          cat > /tmp/tcc-stdatomic-smoke.c <<'EOF'
+          #include <stdatomic.h>
+          int main(void) {
+              atomic_int value = ATOMIC_VAR_INIT(0);
+              atomic_store(&value, 1);
+              return atomic_load(&value) == 1 ? 0 : 1;
+          }
+          EOF
+          thirdparty/tcc/tcc.exe /tmp/tcc-stdatomic-smoke.c -o /tmp/tcc-stdatomic-smoke
+          /tmp/tcc-stdatomic-smoke
 
           if [ "$PUBLISH" = 'true' ]; then
             git -C thirdparty/tcc push origin HEAD:${{ matrix.branch }}

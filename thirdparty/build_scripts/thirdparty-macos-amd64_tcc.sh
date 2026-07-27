@@ -35,6 +35,7 @@ export CURRENT_SCRIPT_PATH=$(realpath "$0")
 
 export TCC_COMMIT="${TCC_COMMIT:-mob}"
 export TCC_FOLDER="${TCC_FOLDER:-thirdparty/tcc.$TCC_COMMIT}"
+export TCC_REPO="${TCC_REPO:-https://repo.or.cz/tinycc.git}"
 export CC="${CC:-clang}"
 
 echo " BUILD_CMD: \`$BUILD_CMD\`"
@@ -50,7 +51,7 @@ rsync -a thirdparty/tcc/ thirdparty/tcc.original/
 
 pushd .
 
-git clone https://repo.or.cz/tinycc.git
+git clone "$TCC_REPO" tinycc
 
 cd tinycc
 
@@ -88,7 +89,11 @@ popd
 rsync -a --delete tinycc/$TCC_FOLDER/*                $TCC_FOLDER/
 rsync -a          thirdparty/tcc.original/.git/       $TCC_FOLDER/.git/
 rsync -a          thirdparty/tcc.original/lib/libgc*  $TCC_FOLDER/lib/
-rsync -a          thirdparty/tcc.original/lib/build*  $TCC_FOLDER/lib/
+for build_file in thirdparty/tcc.original/lib/build*; do
+  if test -e "$build_file"; then
+    rsync -a "$build_file" "$TCC_FOLDER/lib/"
+  fi
+done
 rsync -a          thirdparty/tcc.original/README.md   $TCC_FOLDER/README.md
 rsync -a          $CURRENT_SCRIPT_PATH                $TCC_FOLDER/build.sh
 mv                $TCC_FOLDER/tcc                     $TCC_FOLDER/tcc.exe
