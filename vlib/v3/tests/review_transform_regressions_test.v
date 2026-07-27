@@ -1141,6 +1141,50 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_locally_aliased_bound_method_closures_remain_scope_owned_until_the_alias_escapes() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn make_callback(value int) fn () int {
+	mut counter := Counter{
+		value: value
+	}
+	callback := counter.read
+	alias := callback
+	counter.value++
+	return alias
+}
+
+fn main() {
+	escaped := make_callback(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callback := counter.read
+		alias := callback
+		counter.value++
+		total += alias()
+		assert counter.value == i + 1
+	}
+	assert escaped() == 78
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'locally_aliased_bound_method_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'locally_aliased_bound_method_hot_loop', source)
+	assert out == '1250025000'
+}
+
 fn test_scope_local_callback_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Counter {
@@ -1729,6 +1773,46 @@ fn main() {
 	c_source := gen_c_from_source(v3_bin, 'overwritten_callback_map_entries_hot_loop_c', source)
 	assert c_source.count('closure__closure_try_destroy(__map_val_') == 2, c_source
 	out := run_good(v3_bin, 'overwritten_callback_map_entries_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_computed_key_map_nested_callbacks_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callback fn () int
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		key := "read"
+		callbacks := {
+			key: Holder{
+				callback: counter.read
+			}
+		}
+		counter.value++
+		total += callbacks["read"].callback()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'computed_key_nested_callback_map_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	out := run_good(v3_bin, 'computed_key_nested_callback_map_hot_loop', source)
 	assert out == '1250025000'
 }
 

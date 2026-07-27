@@ -5293,6 +5293,7 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 			t.collect_local_closure_binding_uses_in_scope(scope_id, candidate.name, decl_id, false, mut
 				bound_uses, mut bound_assigns)
 		}
+		t.collect_local_closure_alias_binding_uses(body_ids, scope_id, mut bound_uses)
 		mut escapes := false
 		for body_id in body_ids {
 			if t.local_closure_binding_escapes(body_id, bound_uses, decl_id) {
@@ -5646,10 +5647,8 @@ fn (mut t Transformer) collect_local_closure_initializer_field_candidates(decl_i
 				}
 				continue
 			}
-			if key_is_static {
-				t.collect_local_closure_initializer_field_candidates(decl_id, owner_id, value_id,
-					aggregate_name, value_key, scope_id, mut field_candidates)
-			}
+			t.collect_local_closure_initializer_field_candidates(decl_id, owner_id, value_id,
+				aggregate_name, value_key, scope_id, mut field_candidates)
 		}
 		return
 	}
@@ -5791,6 +5790,108 @@ fn (t &Transformer) collect_local_closure_binding_uses_in_expr(id flat.NodeId, n
 	}
 }
 
+fn (t &Transformer) collect_local_closure_alias_binding_uses(body_ids []flat.NodeId, scope_id flat.NodeId, mut bound_uses map[int]bool) {
+	mut ids := body_ids.clone()
+	if int(scope_id) >= 0 {
+		scope := t.a.nodes[int(scope_id)]
+		ids = []flat.NodeId{cap: int(scope.children_count)}
+		for i in 0 .. scope.children_count {
+			ids << t.a.child(&scope, i)
+		}
+	}
+	for id in ids {
+		t.collect_local_closure_alias_binding_uses_in_node(id, true, scope_id, ids, mut bound_uses)
+	}
+}
+
+fn (t &Transformer) collect_local_closure_alias_binding_uses_in_node(id flat.NodeId, statement_position bool, scope_id flat.NodeId, root_ids []flat.NodeId, mut bound_uses map[int]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return
+	}
+	if statement_position && node.kind == .decl_assign && node.children_count >= 2 {
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
+		pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
+		for i in 0 .. pair_count {
+			lhs_id := t.multi_assign_lhs_id(node, i)
+			lhs := t.a.nodes[int(lhs_id)]
+			rhs_id := t.multi_assign_rhs_id(node, i)
+			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_'
+				|| !t.local_closure_alias_source_is_bound(rhs_id, bound_uses) {
+				continue
+			}
+			bound_uses[int(lhs_id)] = true
+			mut alias_assigns := map[int]bool{}
+			if int(scope_id) < 0 {
+				t.collect_local_closure_binding_uses(root_ids, lhs.value, id, false, mut
+					bound_uses, mut alias_assigns)
+			} else {
+				t.collect_local_closure_binding_uses_in_scope(scope_id, lhs.value, id, false, mut
+					bound_uses, mut alias_assigns)
+			}
+		}
+	}
+	match node.kind {
+		.block {
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_alias_binding_uses_in_node(t.a.child(&node, i), true, id,
+					root_ids, mut bound_uses)
+			}
+		}
+		.for_stmt {
+			for i in 0 .. node.children_count {
+				child_scope := if i >= 3 { id } else { scope_id }
+				t.collect_local_closure_alias_binding_uses_in_node(t.a.child(&node, i), i >= 3,
+					child_scope, root_ids, mut bound_uses)
+			}
+		}
+		.for_in_stmt {
+			body_start := if node.value.int() >= 0 && node.value.int() <= node.children_count {
+				node.value.int()
+			} else {
+				2
+			}
+			for i in 0 .. node.children_count {
+				child_scope := if i >= body_start { id } else { scope_id }
+				t.collect_local_closure_alias_binding_uses_in_node(t.a.child(&node, i),
+					i >= body_start, child_scope, root_ids, mut bound_uses)
+			}
+		}
+		.match_branch {
+			condition_count := if node.value == 'else' { 0 } else { node.value.int() }
+			for i in 0 .. node.children_count {
+				child_scope := if i >= condition_count { id } else { scope_id }
+				t.collect_local_closure_alias_binding_uses_in_node(t.a.child(&node, i),
+					i >= condition_count, child_scope, root_ids, mut bound_uses)
+			}
+		}
+		else {
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_alias_binding_uses_in_node(t.a.child(&node, i), false,
+					scope_id, root_ids, mut bound_uses)
+			}
+		}
+	}
+}
+
+fn (t &Transformer) local_closure_alias_source_is_bound(id flat.NodeId, bound_uses map[int]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return int(id) in bound_uses
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count == 1 {
+		return t.local_closure_alias_source_is_bound(t.a.child(&node, 0), bound_uses)
+	}
+	return false
+}
+
 fn (t &Transformer) fn_literal_has_runtime_captures(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -5867,6 +5968,21 @@ fn (t &Transformer) local_closure_binding_escapes_in_value_context(id flat.NodeI
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
 		return int(id) in bound_uses && !flows_back_to_local
+	}
+	if node.kind == .decl_assign {
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
+		pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
+		for i in 0 .. pair_count {
+			lhs_id := t.multi_assign_lhs_id(node, i)
+			rhs_id := t.multi_assign_rhs_id(node, i)
+			if t.local_closure_binding_escapes_in_value_context(rhs_id, bound_uses, decl_id,
+				int(lhs_id) in bound_uses)
+			{
+				return true
+			}
+		}
+		return false
 	}
 	if node.kind == .assign && node.op == .assign {
 		for i := 0; i < int(node.children_count); i += 2 {
@@ -6060,11 +6176,28 @@ fn local_closure_field_key_matches(field_key string, key string) bool {
 	if field_key == key {
 		return true
 	}
-	if !field_key.ends_with('[*]') {
+	wildcard_index := field_key.index('[*]') or { return false }
+	prefix := field_key[..wildcard_index]
+	if !key.starts_with(prefix) || prefix.len >= key.len || key[prefix.len] != `[` {
 		return false
 	}
-	base := field_key[..field_key.len - 3]
-	return key.len > base.len + 2 && key.starts_with('${base}[') && key.ends_with(']')
+	mut depth := 0
+	mut close_index := -1
+	for i := prefix.len; i < key.len; i++ {
+		if key[i] == `[` {
+			depth++
+		} else if key[i] == `]` {
+			depth--
+			if depth == 0 {
+				close_index = i
+				break
+			}
+		}
+	}
+	if close_index < 0 {
+		return false
+	}
+	return local_closure_field_key_matches(field_key[wildcard_index + 3..], key[close_index + 1..])
 }
 
 fn add_escape_amp_source(mut amp_sources map[string][]string, ptr_name string, source_name string) {
