@@ -645,6 +645,7 @@ pub mut:
 	reject_unlowered_map_mutation bool
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
+	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
 	multiple_module_import_lines  map[u64]bool
 	source_texts_by_file          map[string]string
@@ -949,6 +950,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unlowered_map_mutation:      tc.reject_unlowered_map_mutation
 		reject_unsupported_generics:        tc.reject_unsupported_generics
 		checker_fixture_mode:               tc.checker_fixture_mode
+		suppress_dump_output:               tc.suppress_dump_output
 		diagnostic_files:                   tc.diagnostic_files
 		multiple_module_import_lines:       tc.multiple_module_import_lines
 		source_texts_by_file:               tc.source_texts_by_file

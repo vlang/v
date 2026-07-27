@@ -4214,6 +4214,7 @@ fn main() {
 	mut pre_tc := types.TypeChecker.new(a)
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
 	mut incremental_stage_used_fns := map[string]bool{}
 	mut uses_generics := false

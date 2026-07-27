@@ -7859,6 +7859,43 @@ fn dump_relative_source_path(path string) string {
 	return path.replace('\\', '/')
 }
 
+fn dump_pointer_depth(typ string) int {
+	mut depth := 0
+	for depth < typ.len && typ[depth] == `&` {
+		depth++
+	}
+	return depth
+}
+
+fn (mut t Transformer) dump_value_string(expr flat.NodeId, typ string) flat.NodeId {
+	if !typ.starts_with('&') || t.is_fixed_array_type(typ) {
+		return t.wrap_string_conversion(expr, typ)
+	}
+	elem_type := typ[1..]
+	ptr_name := t.new_temp('dump_ptr')
+	text_name := t.new_temp('dump_ptr_text')
+	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, typ)
+	t.set_var_type(ptr_name, typ)
+	nil_text := '&'.repeat(dump_pointer_depth(typ)) + 'nil'
+	t.pending_stmts << t.make_decl_assign_typed(text_name, t.make_string_literal(nil_text),
+		'string')
+
+	saved := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value := t.make_prefix(.mul, t.make_ident(ptr_name))
+	t.set_node_typ(int(value), elem_type)
+	value_text := t.dump_value_string(value, elem_type)
+	mut then_body := []flat.NodeId{}
+	t.drain_pending(mut then_body)
+	t.pending_stmts = saved
+	t.unset_var_type(ptr_name)
+	then_body << t.make_assign(t.make_ident(text_name), t.string_plus(t.make_string_literal('&'),
+		value_text))
+	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
+	return t.make_ident(text_name)
+}
+
 fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return t.make_empty()
@@ -7871,8 +7908,11 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	child := t.transform_expr(child_id)
 	temp_name := t.new_temp('dump')
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
+	if !isnil(t.tc) && t.tc.suppress_dump_output {
+		return t.make_ident(temp_name)
+	}
 	value := t.make_ident(temp_name)
-	value_text := t.wrap_string_conversion(value, typ)
+	value_text := t.dump_value_string(value, typ)
 	mut path := t.cur_file
 	mut line := 0
 	if file := t.a.source_files[node.pos.id] {
