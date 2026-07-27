@@ -4,7 +4,7 @@ import os
 import runtime
 import time
 
-const default_memory_limit_kb = i64(10) * 1024 * 1024
+const default_memory_limit_kb = i64(2) * 1024 * 1024
 const memory_monitor_interval = 100 * time.millisecond
 
 // Step represents step data used by bench.
@@ -49,6 +49,7 @@ mut:
 	last_allocation_count u64
 	last_allocated_bytes  u64
 	memory_limit_kb       i64
+	quiet                 bool
 }
 
 // new creates a new value for bench.
@@ -66,6 +67,11 @@ pub fn new() Bench {
 // disable_memory_limit disables the compiler memory safety limit.
 pub fn (mut b Bench) disable_memory_limit() {
 	b.memory_limit_kb = 0
+}
+
+// set_quiet suppresses benchmark output while retaining timing and memory checks.
+pub fn (mut b Bench) set_quiet() {
+	b.quiet = true
 }
 
 // start_memory_monitor starts the compiler memory safety watchdog.
@@ -174,7 +180,9 @@ fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocat
 	} else {
 		''
 	}
-	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
+	if !b.quiet {
+		println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
+	}
 	b.steps << Step{
 		name:             label
 		time_us:          elapsed_us
@@ -221,7 +229,10 @@ pub fn (mut b Bench) metric(name string, value i64, unit string) {
 }
 
 // metric_items prints a structural counter and a one-line list of its items immediately.
-pub fn (_ &Bench) metric_items(name string, value i64, unit string, items_label string, items []string) {
+pub fn (b &Bench) metric_items(name string, value i64, unit string, items_label string, items []string) {
+	if b.quiet {
+		return
+	}
 	metric := Metric{
 		name:  name
 		value: value
@@ -239,6 +250,9 @@ fn print_metric(metric Metric) {
 
 // print_report updates print report state for Bench.
 pub fn (b &Bench) print_report() {
+	if b.quiet {
+		return
+	}
 	total_ms := f64(b.total_sw.elapsed().microseconds()) / 1000.0
 	println('  ${'total':-20s} ${total_ms:8.2f} ms')
 	if b.metrics.len > 0 {

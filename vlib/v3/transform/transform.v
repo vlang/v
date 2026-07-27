@@ -9922,6 +9922,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		pos:            node.pos
 		value:          node.value
 		typ:            if inferred_typ.len > 0 { inferred_typ } else { node.typ }
+		is_mut:         node.is_mut
 	})
 	return t.with_pending_before(new_id)
 }

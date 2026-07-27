@@ -3,9 +3,10 @@ module token
 // Pos represents pos data used by token.
 pub struct Pos {
 pub:
-	offset int
-	end    int
-	id     int
+	offset          int
+	end             int
+	id              int
+	reported_column int
 }
 
 // new_pos creates a source position from a stable file id and byte offset.
@@ -24,6 +25,14 @@ pub fn new_span(file_id int, start int, end int) Pos {
 		id:     file_id
 		offset: start
 		end:    if end < start { start } else { end }
+	}
+}
+
+// with_reported_column overrides the one-based column shown in a diagnostic header.
+pub fn (p Pos) with_reported_column(column int) Pos {
+	return Pos{
+		...p
+		reported_column: column
 	}
 }
 

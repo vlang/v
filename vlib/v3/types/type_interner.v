@@ -324,7 +324,7 @@ fn semantic_types_equal(a Type, b Type) bool {
 				return false
 			}
 			bb := b as Channel
-			return semantic_types_equal(a.elem_type, bb.elem_type)
+			return a.is_mut == bb.is_mut && semantic_types_equal(a.elem_type, bb.elem_type)
 		}
 		Map {
 			if b !is Map {

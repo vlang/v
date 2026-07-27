@@ -482,6 +482,13 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .question
 		}
 		else {
+			if c >= 0x80 {
+				end := int_min(s.pos + utf8_char_len(c), s.src.len)
+				character := s.source_lit(s.pos, end)
+				s.offset = end
+				s.error('invalid character `${character}`', s.pos)
+				return .unknown
+			}
 			s.error('unknown character `${c.ascii_str()}`', s.pos)
 			return .unknown
 		}
@@ -587,6 +594,7 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 				s.offset = s.src.len
 				return
 			}
+			s.check_string_escape(s.offset)
 			s.offset += 2
 			continue
 		} else if c == `\n` {
@@ -619,6 +627,24 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 	s.error('unterminated string literal', s.pos)
 }
 
+fn (mut s Scanner) check_string_escape(backslash_offset int) {
+	escape_offset := backslash_offset + 1
+	escape := s.src[escape_offset]
+	digits, message := match escape {
+		`x` { 2, r'`\x` used without two following hex digits' }
+		`u` { 4, r'`\u` incomplete 16 bit unicode character value' }
+		`U` { 8, r'`\U` incomplete 32 bit unicode character value' }
+		else { return }
+	}
+	for i in 0 .. digits {
+		index := escape_offset + 1 + i
+		if index >= s.src.len || !s.src[index].is_hex_digit() {
+			s.error(message, escape_offset)
+			return
+		}
+	}
+}
+
 @[direct_array_access]
 fn (mut s Scanner) number() {
 	if s.offset + 1 < s.src.len && s.src[s.offset] == `0` {
@@ -626,34 +652,50 @@ fn (mut s Scanner) number() {
 		if c == `b` || c == `B` {
 			s.offset += 2
 			if s.consume_digits(2) == 0 {
-				s.error('binary literal requires at least one digit', s.pos)
+				s.error('number part of this binary is not provided', s.pos + 1)
+			} else if s.offset < s.src.len && s.src[s.offset].is_alnum() {
+				s.error('this binary number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
+					s.offset)
+				s.consume_invalid_numeric_suffix()
 			}
 			return
 		} else if c == `x` || c == `X` {
 			s.offset += 2
 			if s.consume_digits(16) == 0 {
-				s.error('hexadecimal literal requires at least one digit', s.pos)
+				s.error('number part of this hexadecimal is not provided', s.pos + 1)
+			} else if s.offset < s.src.len && s.src[s.offset].is_alnum() {
+				s.error('this hexadecimal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
+					s.offset)
+				s.consume_invalid_numeric_suffix()
 			}
 			return
 		} else if c == `o` || c == `O` {
 			s.offset += 2
 			if s.consume_digits(8) == 0 {
-				s.error('octal literal requires at least one digit', s.pos)
+				s.error('number part of this octal is not provided', s.pos + 1)
+			} else if s.offset < s.src.len && s.src[s.offset].is_alnum() {
+				s.error('this octal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
+					s.offset)
+				s.consume_invalid_numeric_suffix()
 			}
 			return
 		}
 	}
 	s.consume_digits(10)
+	mut has_fraction := false
 	if s.offset < s.src.len && s.src[s.offset] == `.` && s.peek_byte(1) != `.` {
 		next := s.peek_byte(1)
 		if (next >= `0` && next <= `9`) || next == `e` || next == `E` {
+			has_fraction = true
 			s.offset++
 			if next >= `0` && next <= `9` {
 				s.consume_digits(10)
 			}
 		}
 	}
+	mut has_exponent := false
 	if s.offset < s.src.len && (s.src[s.offset] == `e` || s.src[s.offset] == `E`) {
+		has_exponent = true
 		exponent_pos := s.offset
 		s.offset++
 		if s.offset < s.src.len && (s.src[s.offset] == `+` || s.src[s.offset] == `-`) {
@@ -664,8 +706,44 @@ fn (mut s Scanner) number() {
 				s.offset = exponent_pos
 				return
 			}
-			s.error('exponent requires at least one digit', exponent_pos)
+			s.error('exponent has no digits', exponent_pos)
 		}
+	}
+	if s.offset < s.src.len && s.src[s.offset] == `.` && s.peek_byte(1).is_digit() {
+		message := if has_exponent {
+			'exponential part should be integer'
+		} else if has_fraction {
+			'too many decimal points in number'
+		} else {
+			''
+		}
+		if message.len > 0 {
+			s.error(message, s.offset)
+			s.offset++
+			s.consume_digits(10)
+		}
+	}
+	if !s.in_str_inter_format && !s.is_interpolation_format_number() && s.offset < s.src.len
+		&& s.src[s.offset].is_letter() {
+		s.error('this number has unsuitable digit `${s.src[s.offset].ascii_str()}`', s.offset)
+		s.consume_invalid_numeric_suffix()
+	}
+}
+
+fn (s &Scanner) is_interpolation_format_number() bool {
+	if !s.in_str_inter || s.pos <= 0 {
+		return false
+	}
+	mut index := s.pos - 1
+	for index >= 0 && s.src[index] in [` `, `\t`] {
+		index--
+	}
+	return index >= 0 && s.src[index] == `:`
+}
+
+fn (mut s Scanner) consume_invalid_numeric_suffix() {
+	for s.offset < s.src.len && (s.src[s.offset].is_alnum() || s.src[s.offset] == `_`) {
+		s.offset++
 	}
 }
 

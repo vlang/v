@@ -62,10 +62,10 @@ fn test_unterminated_nested_comment_is_diagnosed() {
 fn test_malformed_numeric_literals_are_lexical_diagnostics() {
 	diagnostics := scan_source_diagnostics('0x 0b 0o 1e 1e+ 1__2 1_')
 	messages := diagnostics.map(it.message)
-	assert messages.any(it.contains('hexadecimal literal requires')), messages.str()
-	assert messages.any(it.contains('binary literal requires')), messages.str()
-	assert messages.any(it.contains('octal literal requires')), messages.str()
-	assert messages.any(it.contains('exponent requires')), messages.str()
+	assert messages.any(it.contains('number part of this hexadecimal is not provided')), messages.str()
+	assert messages.any(it.contains('number part of this binary is not provided')), messages.str()
+	assert messages.any(it.contains('number part of this octal is not provided')), messages.str()
+	assert messages.any(it.contains('exponent has no digits')), messages.str()
 	assert messages.any(it.contains('separators must occur between digits')), messages.str()
 	assert messages.any(it.contains('cannot end with a separator')), messages.str()
 }

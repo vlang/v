@@ -17,6 +17,20 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	if node.kind == .index {
 		base_id := g.a.child(&node, 0)
 		base_type := g.usable_expr_type(base_id)
+		base := g.a.nodes[int(base_id)]
+		if base.kind == .prefix && base.op == .mul && base.children_count > 0 {
+			child_id := g.a.child(&base, 0)
+			child := g.a.nodes[int(child_id)]
+			child_type := g.usable_expr_type(child_id)
+			if child.kind == .ident && child_type is types.Pointer
+				&& g.current_param_is_mut(child.value) {
+				g.gen_expr(child_id)
+				g.write('[')
+				g.gen_expr(g.a.child(&node, 1))
+				g.write(']')
+				return
+			}
+		}
 		if base_type is types.Map {
 			c_key := g.map_key_temp_c_type(base_type.key_type)
 			c_val := g.tc.c_type(base_type.value_type)
@@ -27,6 +41,14 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 			g.write('}, ')
 			g.gen_default_value_addr_for_type(base_type.value_type)
 			g.write('))')
+			return
+		}
+		if base_type is types.Pointer && base_type.base_type !is types.Array {
+			g.write('(')
+			g.gen_expr(base_id)
+			g.write(')[')
+			g.gen_expr(g.a.child(&node, 1))
+			g.write(']')
 			return
 		}
 	}
@@ -5949,7 +5971,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				if g.assign_lhs_needs_deref(g.a.child(&node, i), lhs_type, rhs_type, node.op) {
 					g.write('*')
 				}
-				g.gen_expr(g.a.child(&node, i))
+				gen_expr_lvalue(mut g, g.a.child(&node, i))
 				g.write(' ${g.op_str(node.op)} ')
 				rhs_expected_type := g.assign_rhs_expected_type(lhs_id, lhs_type)
 				if _ := fn_type_from(rhs_expected_type) {
