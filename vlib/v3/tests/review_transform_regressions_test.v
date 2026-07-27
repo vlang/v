@@ -1381,6 +1381,49 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_locally_extracted_callback_array_fields_remain_scope_owned() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn make_callback(value int) fn () int {
+	counter := Counter{
+		value: value
+	}
+	callbacks := [counter.read]
+	callback := callbacks[0]
+	return callback
+}
+
+fn main() {
+	escaped := make_callback(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := [counter.read]
+		callback := callbacks[0]
+		counter.value++
+		total += callback()
+		assert counter.value == i + 1
+	}
+	assert escaped() == 77
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_field_alias_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_field_alias_hot_loop', source)
+	assert out == '1250025000'
+}
+
 fn test_scope_local_callback_array_index_assignments_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Counter {
@@ -2482,6 +2525,39 @@ fn main() {
 }
 '
 	out := run_good(v3_bin, 'callback_argument_mutable_receiver_identity', source)
+	assert out == '1\n1'
+}
+
+fn test_callback_aggregate_argument_preserves_pointer_receiver_identity() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callback fn () int
+}
+
+fn invoke(holder Holder, mut counter Counter) int {
+	counter.value++
+	return holder.callback()
+}
+
+fn main() {
+	mut counter := Counter{}
+	value := invoke(Holder{
+		callback: counter.read
+	}, mut counter)
+	println(int_str(value))
+	println(int_str(counter.value))
+}
+'
+	out := run_good(v3_bin, 'callback_aggregate_argument_receiver_identity', source)
 	assert out == '1\n1'
 }
 

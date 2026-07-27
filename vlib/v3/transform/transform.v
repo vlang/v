@@ -5329,13 +5329,20 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 			t.collect_local_closure_binding_uses_in_scope(flat.NodeId(candidate.aggregate_scope),
 				candidate.aggregate_name, decl_id, false, mut bound_uses, mut bound_assigns)
 		}
+		mut scope_owned_field_reads := map[int]bool{}
+		aliases_escape := t.collect_scope_owned_local_closure_field_aliases(body_ids, bound_uses,
+			candidate.field_key, mut scope_owned_field_reads)
 		mut escapes := false
-		for body_id in body_ids {
-			if t.local_closure_field_binding_escapes(body_id, bound_uses, decl_id,
-				candidate.field_key)
-			{
-				escapes = true
-				break
+		if aliases_escape {
+			escapes = true
+		} else {
+			for body_id in body_ids {
+				if t.local_closure_field_binding_escapes(body_id, bound_uses, decl_id,
+					candidate.field_key, scope_owned_field_reads)
+				{
+					escapes = true
+					break
+				}
 			}
 		}
 		if !escapes {
@@ -5892,6 +5899,120 @@ fn (t &Transformer) local_closure_alias_source_is_bound(id flat.NodeId, bound_us
 	return false
 }
 
+fn (t &Transformer) collect_scope_owned_local_closure_field_aliases(body_ids []flat.NodeId, aggregate_uses map[int]bool, field_key string, mut scope_owned_reads map[int]bool) bool {
+	mut aliases := []LocalClosureDeclCandidate{}
+	for id in body_ids {
+		t.collect_local_closure_field_alias_candidates(id, true, flat.NodeId(-1), aggregate_uses,
+			field_key, mut aliases)
+	}
+	for alias in aliases {
+		mut alias_uses := map[int]bool{}
+		mut alias_assigns := map[int]bool{}
+		decl_id := flat.NodeId(alias.decl_id)
+		scope_id := flat.NodeId(alias.scope_id)
+		if alias.scope_id < 0 {
+			t.collect_local_closure_binding_uses(body_ids, alias.name, decl_id, false, mut
+				alias_uses, mut alias_assigns)
+		} else {
+			t.collect_local_closure_binding_uses_in_scope(scope_id, alias.name, decl_id, false, mut
+				alias_uses, mut alias_assigns)
+		}
+		t.collect_local_closure_alias_binding_uses(body_ids, scope_id, mut alias_uses)
+		for body_id in body_ids {
+			if t.local_closure_binding_escapes(body_id, alias_uses, decl_id) {
+				return true
+			}
+		}
+		scope_owned_reads[alias.source_id] = true
+	}
+	return false
+}
+
+fn (t &Transformer) collect_local_closure_field_alias_candidates(id flat.NodeId, statement_position bool, scope_id flat.NodeId, aggregate_uses map[int]bool, field_key string, mut aliases []LocalClosureDeclCandidate) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return
+	}
+	if statement_position && node.kind == .decl_assign && node.children_count >= 2 {
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
+		pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
+		for i in 0 .. pair_count {
+			lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
+			rhs_id := t.multi_assign_rhs_id(node, i)
+			if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_'
+				&& t.local_closure_field_alias_source_matches(rhs_id, aggregate_uses, field_key) {
+				aliases << LocalClosureDeclCandidate{
+					source_id: int(rhs_id)
+					decl_id:   int(id)
+					scope_id:  int(scope_id)
+					name:      lhs.value
+				}
+			}
+		}
+	}
+	match node.kind {
+		.block {
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_field_alias_candidates(t.a.child(&node, i), true, id,
+					aggregate_uses, field_key, mut aliases)
+			}
+		}
+		.for_stmt {
+			for i in 0 .. node.children_count {
+				child_scope := if i >= 3 { id } else { scope_id }
+				t.collect_local_closure_field_alias_candidates(t.a.child(&node, i), i >= 3,
+					child_scope, aggregate_uses, field_key, mut aliases)
+			}
+		}
+		.for_in_stmt {
+			body_start := if node.value.int() >= 0 && node.value.int() <= node.children_count {
+				node.value.int()
+			} else {
+				2
+			}
+			for i in 0 .. node.children_count {
+				child_scope := if i >= body_start { id } else { scope_id }
+				t.collect_local_closure_field_alias_candidates(t.a.child(&node, i),
+					i >= body_start, child_scope, aggregate_uses, field_key, mut aliases)
+			}
+		}
+		.match_branch {
+			condition_count := if node.value == 'else' { 0 } else { node.value.int() }
+			for i in 0 .. node.children_count {
+				child_scope := if i >= condition_count { id } else { scope_id }
+				t.collect_local_closure_field_alias_candidates(t.a.child(&node, i),
+					i >= condition_count, child_scope, aggregate_uses, field_key, mut aliases)
+			}
+		}
+		else {
+			for i in 0 .. node.children_count {
+				t.collect_local_closure_field_alias_candidates(t.a.child(&node, i), false,
+					scope_id, aggregate_uses, field_key, mut aliases)
+			}
+		}
+	}
+}
+
+fn (t &Transformer) local_closure_field_alias_source_matches(id flat.NodeId, aggregate_uses map[int]bool, field_key string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .expr_stmt] && node.children_count == 1 {
+		return t.local_closure_field_alias_source_matches(t.a.child(&node, 0), aggregate_uses,
+			field_key)
+	}
+	if node.kind !in [.selector, .index] || node.children_count == 0
+		|| !t.local_closure_binding_mentioned(t.a.child(&node, 0), aggregate_uses) {
+		return false
+	}
+	return local_closure_field_key_matches(field_key, t.expr_key(id))
+}
+
 fn (t &Transformer) fn_literal_has_runtime_captures(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -6080,13 +6201,16 @@ fn (t &Transformer) local_closure_binding_escapes_in_value_context(id flat.NodeI
 	return false
 }
 
-fn (t &Transformer) local_closure_field_binding_escapes(id flat.NodeId, bound_uses map[int]bool, decl_id flat.NodeId, field_key string) bool {
+fn (t &Transformer) local_closure_field_binding_escapes(id flat.NodeId, bound_uses map[int]bool, decl_id flat.NodeId, field_key string, scope_owned_reads map[int]bool) bool {
 	return t.local_closure_field_binding_escapes_in_context(id, bound_uses, decl_id, field_key,
-		false, false)
+		false, false, scope_owned_reads)
 }
 
-fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeId, bound_uses map[int]bool, decl_id flat.NodeId, field_key string, field_is_scope_owned bool, aggregate_is_selector_base bool) bool {
+fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeId, bound_uses map[int]bool, decl_id flat.NodeId, field_key string, field_is_scope_owned bool, aggregate_is_selector_base bool, scope_owned_reads map[int]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || id == decl_id {
+		return false
+	}
+	if int(id) in scope_owned_reads {
 		return false
 	}
 	node := t.a.nodes[int(id)]
@@ -6105,7 +6229,7 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 				return true
 			}
 			return t.local_closure_field_binding_escapes_in_context(base_id, bound_uses, decl_id,
-				field_key, false, true)
+				field_key, false, true, scope_owned_reads)
 		}
 	}
 	if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
@@ -6113,12 +6237,12 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 		lhs_key := t.expr_key(lhs_id)
 		if field_key == '${lhs_key}[*]' {
 			if t.local_closure_field_binding_escapes_in_context(lhs_id, bound_uses, decl_id,
-				field_key, true, true)
+				field_key, true, true, scope_owned_reads)
 			{
 				return true
 			}
 			return t.local_closure_field_binding_escapes_in_context(t.a.child(&node, 1),
-				bound_uses, decl_id, field_key, false, false)
+				bound_uses, decl_id, field_key, false, false, scope_owned_reads)
 		}
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign {
@@ -6129,12 +6253,12 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 				|| (lhs_key.len > 0 && (field_key.starts_with('${lhs_key}.')
 				|| field_key.starts_with('${lhs_key}[')))
 			if t.local_closure_field_binding_escapes_in_context(lhs_id, bound_uses, decl_id,
-				field_key, lhs_is_owned_field, false)
+				field_key, lhs_is_owned_field, false, scope_owned_reads)
 			{
 				return true
 			}
 			if i + 1 < int(node.children_count)
-				&& t.local_closure_field_binding_escapes_in_context(t.a.child(&node, i + 1), bound_uses, decl_id, field_key, false, false) {
+				&& t.local_closure_field_binding_escapes_in_context(t.a.child(&node, i + 1), bound_uses, decl_id, field_key, false, false, scope_owned_reads) {
 				return true
 			}
 		}
@@ -6149,13 +6273,13 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 			return true
 		}
 		if t.local_closure_field_binding_escapes_in_context(callee_id, bound_uses, decl_id,
-			field_key, callee_is_owned_field, false)
+			field_key, callee_is_owned_field, false, scope_owned_reads)
 		{
 			return true
 		}
 		for i in 1 .. node.children_count {
 			if t.local_closure_field_binding_escapes_in_context(t.a.child(&node, i), bound_uses,
-				decl_id, field_key, false, false)
+				decl_id, field_key, false, false, scope_owned_reads)
 			{
 				return true
 			}
@@ -6164,7 +6288,7 @@ fn (t &Transformer) local_closure_field_binding_escapes_in_context(id flat.NodeI
 	}
 	for i in 0 .. node.children_count {
 		if t.local_closure_field_binding_escapes_in_context(t.a.child(&node, i), bound_uses,
-			decl_id, field_key, false, false)
+			decl_id, field_key, false, false, scope_owned_reads)
 		{
 			return true
 		}
@@ -6295,20 +6419,34 @@ fn (t &Transformer) method_value_has_pointer_receiver(id flat.NodeId) bool {
 }
 
 fn (mut t Transformer) mark_callback_method_value_receiver_escape(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
-	if !t.method_value_has_pointer_receiver(id) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
-	receiver := t.escape_method_value_receiver(id) or { return }
-	mut sources := escape_alias_sources(receiver, amp_sources, ptr_aliases)
-	if sources.len == 0 && receiver in local_stack_names {
-		sources = [receiver]
+	if t.method_value_has_pointer_receiver(id) {
+		receiver := t.escape_method_value_receiver(id) or { return }
+		mut sources := escape_alias_sources(receiver, amp_sources, ptr_aliases)
+		if sources.len == 0 && receiver in local_stack_names {
+			sources = [receiver]
+		}
+		for source in sources {
+			if source in local_stack_names {
+				// A callee may retain a callback argument. Move the original receiver,
+				// rather than a closure-private copy, so synchronous calls and escaped
+				// callbacks observe the same mutable object.
+				t.escaping_amp_sources[source] = true
+			}
+		}
+		return
 	}
-	for source in sources {
-		if source in local_stack_names {
-			// A callee may retain a callback argument. Move the original receiver,
-			// rather than a closure-private copy, so synchronous calls and escaped
-			// callbacks observe the same mutable object.
-			t.escaping_amp_sources[source] = true
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return
+	}
+	if node.kind in [.field_init, .paren, .cast_expr, .as_expr, .struct_init, .array_literal,
+		.array_init, .map_init, .if_expr, .match_stmt, .match_branch] {
+		for i in 0 .. node.children_count {
+			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources,
+				ptr_aliases, local_stack_names)
 		}
 	}
 }
