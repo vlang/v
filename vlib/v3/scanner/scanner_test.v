@@ -53,13 +53,16 @@ fn test_all_number_prefixed_identifiers_are_reported() {
 	scanner.init(file, source)
 
 	for scanner.scan() != .eof {}
-	assert scanner.diagnostics.len == 2
+	assert scanner.diagnostics.len == 3
 	assert scanner.diagnostics[0].message == 'identifier name `3a` cannot start with a number'
 	assert scanner.diagnostics[1].message == 'identifier name `4b` cannot start with a number'
+	assert scanner.diagnostics[2].message == 'identifier name `3a` cannot start with a number'
 	assert scanner.diagnostics[0].offset == 0
 	assert scanner.diagnostics[0].end == 2
 	assert scanner.diagnostics[1].offset == 8
 	assert scanner.diagnostics[1].end == 10
+	assert scanner.diagnostics[2].offset == 24
+	assert scanner.diagnostics[2].end == 26
 }
 
 fn test_malformed_exponent_suffixes_are_unsuitable_digits() {

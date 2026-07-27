@@ -749,9 +749,7 @@ fn (mut s Scanner) number() {
 				invalid_digit_offset)
 		} else if invalid_ident.len > 0 {
 			message := 'identifier name `${invalid_ident}` cannot start with a number'
-			if !s.diagnostics.any(it.message == message) {
-				s.error_span(message, s.pos, s.offset)
-			}
+			s.error_span(message, s.pos, s.offset)
 		} else {
 			s.error('this number has unsuitable digit `${invalid_digit.ascii_str()}`',
 				invalid_digit_offset)
