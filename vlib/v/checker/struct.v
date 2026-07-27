@@ -1157,7 +1157,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						}
 					}
 				} else if c.table.final_sym(exp_type).kind == .array_fixed && got_type.is_ptr()
-					&& !exp_type.is_any_kind_of_pointer() {
+					&& !exp_type.is_any_kind_of_pointer() && !init_field.expr.is_auto_deref_var() {
 					c.error('cannot assign to field `${field_info.name}`: ${c.expected_msg(got_type,
 						exp_type)}', init_field.pos)
 				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
