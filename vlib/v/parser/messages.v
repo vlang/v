@@ -232,3 +232,7 @@ fn (mut p Parser) chan_type_error() {
 	p.error_with_pos('`chan` has no type specified. Use `chan Type` instead of `chan`',
 		p.prev_tok.pos())
 }
+
+fn (mut p Parser) map_type_error() {
+	p.error_with_pos('cannot init `map` without key and value definition', p.prev_tok.pos())
+}

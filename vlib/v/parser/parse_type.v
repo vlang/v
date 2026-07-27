@@ -145,6 +145,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			p.chan_type_error()
 			return 0
 		}
+		if elem_type == ast.map_type {
+			p.map_type_error()
+			return 0
+		}
 		// has been explicitly resolved, but size is 0
 		if fixed_size <= 0 && !size_unresolved {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
@@ -170,6 +174,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	}
 	if elem_type == ast.chan_type {
 		p.chan_type_error()
+		return 0
+	}
+	if elem_type == ast.map_type {
+		p.map_type_error()
 		return 0
 	}
 	if elem_type.idx() == ast.thread_type_idx {
