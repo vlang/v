@@ -121,12 +121,11 @@ pub fn (mut r BufferedReader) peek(n int) ![]u8 {
 		return error('cannot peek a negative number of bytes')
 	}
 
-	if r.end_of_stream {
-		return Eof{}
-	}
+	if r.needs_fill() { // has no unread bytes
+		if r.end_of_stream {
+			return Eof{}
+		}
 
-	// refill buffer if no more bytes in buffer
-	if r.needs_fill() {
 		if !r.fill_buffer() {
 			return Eof{}
 		}
@@ -200,7 +199,7 @@ pub fn (r BufferedReader) end_of_stream() bool {
 // With the default delimiter `\n`, both `\n` and `\r\n` line endings are
 // accepted, and neither terminator byte is included in the returned string.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
-	if r.end_of_stream {
+	if r.end_of_stream && r.offset == r.len {
 		return Eof{}
 	}
 	mut line := []u8{}

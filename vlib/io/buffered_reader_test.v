@@ -1,6 +1,7 @@
 module io
 
 import rand
+import arrays
 
 struct ArrayReader {
 	a []u8
@@ -204,6 +205,38 @@ fn test_peek_refills_buffer() {
 	for i := 0; i < read; i++ {
 		assert data[i] == res[i]
 	}
+}
+
+fn test_read_hadnles_eof_with_unread_data() {
+	data := rand.bytes(8)!
+	mut br := new_one_byte_buffered_reader(data, 16)
+	mut p := br.peek(10)!
+	assert p.len == 8
+
+	p = br.peek(8)!
+	assert p.len == 8
+
+	mut res := []u8{len: 10}
+	mut read := br.read(mut res)!
+	assert read == 8
+
+	br.read(mut res) or { assert err is Eof }
+}
+
+fn test_read_line_hadnles_eof_with_unread_data() {
+	b := rand.bytes(8)!
+	data := arrays.concat(b, `\n`)
+	mut br := new_one_byte_buffered_reader(data, 16)
+	mut p := br.peek(10)!
+	assert p.len == 9
+
+	p = br.peek(9)!
+	assert p.len == 9
+
+	line := br.read_line()!
+	assert line.len == 8
+
+	br.read_line() or { assert err is Eof }
 }
 
 // https://github.com/vlang/v/pull/27928#issuecomment-5079703057
