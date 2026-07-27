@@ -67,3 +67,35 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 	assert compact.contains('take_int(6)'), generated
 	assert compact.count('bump(0)') == 1, generated
 }
+
+fn test_dump_expr_writes_to_stderr() {
+	v3_bin := dump_expr_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}.v')
+	source := [
+		'module main',
+		'',
+		'fn main() {',
+		'	value := dump(3)',
+		'	println(int_str(value + 4))',
+		'}',
+	].join('\n')
+	os.write_file(src, source) or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+
+	mut process := os.new_process(bin)
+	process.set_redirect_stdio()
+	process.wait()
+	stdout := process.stdout_slurp().trim_space()
+	stderr := process.stderr_slurp().trim_space()
+	exit_code := process.code
+	process.close()
+	assert exit_code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	assert stdout == '7', stdout
+	assert stderr.len > 0
+
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	compact := dump_expr_compact_c(generated)
+	assert compact.contains('eprintln(string__plus('), generated
+}

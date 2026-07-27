@@ -7882,7 +7882,7 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	expr_text := if node.value.len > 0 { node.value } else { 'dump expression' }
 	prefix := t.make_string_literal('[${dump_relative_source_path(path)}:${line}] ${expr_text}: ')
 	message := t.string_plus(prefix, value_text)
-	t.pending_stmts << t.make_expr_stmt(t.make_call('println', arr1(message)))
+	t.pending_stmts << t.make_expr_stmt(t.make_call('eprintln', arr1(message)))
 	return t.make_ident(temp_name)
 }
 
