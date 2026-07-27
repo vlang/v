@@ -137,6 +137,10 @@ $if prod && opt_size ? {
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/error.h>
 #include <mbedtls/threading.h>
+// oid.h isn't pulled in transitively by ssl.h/x509_crt.h -- needed for
+// MBEDTLS_OID_SERVER_AUTH/MBEDTLS_OID_SIZE, used by the cert-usage shim
+// below (mbedtls_helpers.h).
+#include <mbedtls/oid.h>
 #insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_helpers.h"
 #insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_threading.h"
 

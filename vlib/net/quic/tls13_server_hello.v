@@ -254,16 +254,37 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 	}
 }
 
+// encrypted_extensions_allowed is the intersection of RFC 8446 §4.2's own
+// per-message applicability table (only server_name, max_fragment_length,
+// supported_groups, use_srtp, heartbeat, alpn, client_certificate_type,
+// server_certificate_type, and early_data may EVER appear in
+// EncryptedExtensions -- key_share/supported_versions/signature_algorithms
+// are ClientHello/ServerHello/HRR-only and are illegal here regardless of
+// what was offered) and what this client's own ClientHello actually
+// offers (tls13_client_hello.v's build_client_hello): server_name,
+// supported_groups, and alpn. quic_transport_parameters is added on top --
+// RFC 9001 §8.2 mandates it here, and RFC 8446's own table doesn't cover
+// it (registered separately for QUIC-TLS). early_data is deliberately
+// excluded even though this client never offers it (0-RTT is out of
+// scope) -- kept out of this list rather than silently absent from BOTH
+// axes, so its rejection below is explicit and testable.
+const encrypted_extensions_allowed = [ext_server_name, ext_supported_groups, ext_alpn,
+	ext_quic_transport_parameters]
+
 // parse_encrypted_extensions parses an EncryptedExtensions handshake
 // message BODY (RFC 8446 §4.3.1: just a length-prefixed extension list,
-// nothing else). Checking WHICH extensions are forbidden here vs.
-// expected (the plan's "must check EncryptedExtensions for the presence
-// of any forbidden extensions" edge case) needs the full set of what v1
-// actually offered, which is Phase 2c's still-pending state machine's
-// job; this function rejects the one case that's unconditionally wrong
-// regardless of what was offered: early_data, since 0-RTT is Phase 14,
-// out of committed scope, so v1's ClientHello never offers it and a
-// server sending it back is a protocol violation on its own.
+// nothing else), then rejects any extension outside
+// `encrypted_extensions_allowed` -- RFC 8446 §4.2: "Implementations MUST
+// NOT send extension responses if the remote endpoint did not send the
+// corresponding extension requests... Upon receiving such an extension,
+// an endpoint MUST abort the handshake with an 'unsupported_extension'
+// alert." Previously only early_data was checked (a Codex finding,
+// vlang/v#27680 pullrequestreview-4783410111, pointed out that other
+// EE-illegal extensions like key_share/supported_versions passed through
+// unrejected); early_data keeps its own explicit message for a clearer
+// diagnostic, but both routes now carry the same `unsupported_extension`
+// QUIC CONNECTION_CLOSE code via `error_with_code`, not a generic
+// `error()` a caller would otherwise remap to `decode_error`.
 pub fn parse_encrypted_extensions(body []u8) ![]TlsExtension {
 	if body.len < 2 {
 		return error('quic: truncated EncryptedExtensions: need at least 2 bytes, have ${body.len}')
@@ -274,7 +295,14 @@ pub fn parse_encrypted_extensions(body []u8) ![]TlsExtension {
 	}
 	extensions := parse_extension_list(body[2..])!
 	if _ := find_extension(extensions, ext_early_data) {
-		return error('quic: EncryptedExtensions must not contain early_data (0-RTT is not offered)')
+		return error_with_code('quic: EncryptedExtensions must not contain early_data (0-RTT is not offered)',
+			int(tls_alert_to_quic_error(.unsupported_extension)))
+	}
+	for e in extensions {
+		if e.typ !in encrypted_extensions_allowed {
+			return error_with_code('quic: EncryptedExtensions contains extension 0x${e.typ:04x}, which this client did not offer or which RFC 8446 §4.2 does not permit here',
+				int(tls_alert_to_quic_error(.unsupported_extension)))
+		}
 	}
 	return extensions
 }

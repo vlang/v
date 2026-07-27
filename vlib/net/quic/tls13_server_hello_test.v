@@ -319,6 +319,27 @@ fn test_parse_encrypted_extensions_rejects_early_data() {
 	assert false, 'expected an error for a forbidden early_data extension'
 }
 
+// test_parse_encrypted_extensions_rejects_key_share is a regression test for
+// a Codex finding (vlang/v#27680 pullrequestreview-4783410111):
+// parse_encrypted_extensions only ever rejected early_data, so an
+// EncryptedExtensions carrying key_share or supported_versions -- both
+// ClientHello/ServerHello/HelloRetryRequest-only per RFC 8446 §4.2's own
+// per-message table, illegal in EncryptedExtensions regardless of what was
+// offered -- passed through unrejected.
+fn test_parse_encrypted_extensions_rejects_key_share() {
+	ext := encode_extension(ext_key_share, [u8(0), 0x17, 0, 0]) or { panic(err) }
+	mut body := []u8{}
+	body << u8(ext.len >> 8)
+	body << u8(ext.len)
+	body << ext
+	parse_encrypted_extensions(body) or {
+		assert err.msg().contains('0x0033') // ext_key_share == 0x33
+		assert err.code() == int(tls_alert_to_quic_error(.unsupported_extension))
+		return
+	}
+	assert false, 'expected an error for a key_share extension in EncryptedExtensions'
+}
+
 fn test_parse_encrypted_extensions_rejects_length_mismatch() {
 	parse_encrypted_extensions([u8(0x00), 0x05]) or {
 		assert err.msg().contains('does not match')

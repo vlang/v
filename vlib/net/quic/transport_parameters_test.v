@@ -138,6 +138,120 @@ fn test_decode_preferred_address_rejects_zero_length_connection_id() {
 	assert false, 'expected an error for a zero-length connection ID on the wire'
 }
 
+// test_encode_preferred_address_rejects_v1_cid_over_20_bytes and its decode
+// counterpart are regression tests for a Codex finding (vlang/v#27680
+// pullrequestreview-4783410111): a 21-255 byte connection_id passes the
+// wire format's own 255-byte length-byte limit (already checked, see
+// test_encode_preferred_address_rejects_overlong_connection_id above) but
+// still violates QUIC v1's OWN, separate 20-byte connection-ID limit (RFC
+// 9000 §17.2) -- the same limit header.v's dcid/scid already enforce.
+fn test_encode_preferred_address_rejects_v1_cid_over_20_bytes() {
+	pa := PreferredAddress{
+		connection_id:         []u8{len: 21, init: 0xAB}
+		stateless_reset_token: []u8{len: 16}
+	}
+	encode_preferred_address(pa) or {
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a connection_id longer than 20 bytes (QUIC v1 limit)'
+}
+
+fn test_decode_preferred_address_rejects_v1_cid_over_20_bytes() {
+	mut buf := []u8{len: 25}
+	buf[24] = u8(21)
+	buf << []u8{len: 21, init: 0xCD}
+	buf << []u8{len: 16}
+	decode_preferred_address(buf) or {
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a 21-byte connection ID on the wire (QUIC v1 limit)'
+}
+
+// The following six tests are regression tests for a gap this session's
+// QUIC conformance-matrix sibling sweep found (not Codex, which only
+// reported the preferred_address instance above): initial_source_
+// connection_id/original_destination_connection_id/retry_source_
+// connection_id are ALSO QUIC v1 connection IDs (each is defined as an
+// echo of a wire DCID/SCID field already bound by the same 20-byte limit
+// when it first appeared on the wire, RFC 9000 §7.3), but none of them had
+// ever gotten this check on either direction.
+fn test_encode_transport_parameters_rejects_initial_source_connection_id_over_20_bytes() {
+	params := QuicTransportParameters{
+		initial_source_connection_id: []u8{len: 21, init: 0xAB}
+	}
+	encode_transport_parameters(params) or {
+		assert err.msg().contains('initial_source_connection_id')
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a 21-byte initial_source_connection_id'
+}
+
+fn test_decode_transport_parameters_rejects_initial_source_connection_id_over_20_bytes() {
+	mut buf := []u8{}
+	buf << encode_varint(param_initial_source_connection_id)!
+	buf << encode_varint(21)!
+	buf << []u8{len: 21, init: 0xAB}
+	decode_transport_parameters(buf) or {
+		assert err.msg().contains('initial_source_connection_id')
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a 21-byte initial_source_connection_id'
+}
+
+fn test_encode_transport_parameters_rejects_original_destination_connection_id_over_20_bytes() {
+	params := QuicTransportParameters{
+		original_destination_connection_id: []u8{len: 21, init: 0xAB}
+	}
+	encode_transport_parameters(params) or {
+		assert err.msg().contains('original_destination_connection_id')
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a 21-byte original_destination_connection_id'
+}
+
+fn test_decode_transport_parameters_rejects_original_destination_connection_id_over_20_bytes() {
+	mut buf := []u8{}
+	buf << encode_varint(param_original_destination_connection_id)!
+	buf << encode_varint(21)!
+	buf << []u8{len: 21, init: 0xAB}
+	decode_transport_parameters(buf) or {
+		assert err.msg().contains('original_destination_connection_id')
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a 21-byte original_destination_connection_id'
+}
+
+fn test_encode_transport_parameters_rejects_retry_source_connection_id_over_20_bytes() {
+	params := QuicTransportParameters{
+		retry_source_connection_id: []u8{len: 21, init: 0xAB}
+	}
+	encode_transport_parameters(params) or {
+		assert err.msg().contains('retry_source_connection_id')
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a 21-byte retry_source_connection_id'
+}
+
+fn test_decode_transport_parameters_rejects_retry_source_connection_id_over_20_bytes() {
+	mut buf := []u8{}
+	buf << encode_varint(param_retry_source_connection_id)!
+	buf << encode_varint(21)!
+	buf << []u8{len: 21, init: 0xAB}
+	decode_transport_parameters(buf) or {
+		assert err.msg().contains('retry_source_connection_id')
+		assert err.msg().contains('20')
+		return
+	}
+	assert false, 'expected an error for a 21-byte retry_source_connection_id'
+}
+
 fn test_decode_transport_parameters_ignores_unknown_ids() {
 	// RFC 9000 §18.1's own grease pattern: 31*N+27. Use N=0 (id=27) and
 	// N=1 (id=58), each with an arbitrary 2-byte value, interleaved with a

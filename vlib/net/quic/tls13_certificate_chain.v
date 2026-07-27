@@ -50,6 +50,14 @@ pub fn verify_server_certificate_chain(parsed ParsedCertificate, ca_bundle_pem s
 		mbedtls.free_certificate_chain(chain)
 		return err
 	}
+	// Chain-of-trust and hostname alone say nothing about whether this
+	// certificate was actually ISSUED for TLS server authentication -- see
+	// check_server_cert_usage's own doc comment for the missing-check this
+	// closes (Codex P1, vlang/v#27680 pullrequestreview-4783410111).
+	mbedtls.check_server_cert_usage(chain) or {
+		mbedtls.free_certificate_chain(chain)
+		return err
+	}
 	return &VerifiedCertificateChain{
 		chain: chain
 	}
@@ -83,6 +91,16 @@ pub fn (c &VerifiedCertificateChain) verify_certificate_verify_signature(cv Pars
 	pk := mbedtls.get_leaf_public_key(c.chain)
 	match cv.algorithm {
 		sig_scheme_ecdsa_secp256r1_sha256 {
+			// mbedtls_pk_verify_ext (inside verify_ecdsa_signature) only
+			// confirms the key is SOME EC key -- it never checks WHICH
+			// curve. ecdsa_secp256r1_sha256 (RFC 8446 §4.2.3) specifically
+			// claims P-256; a certificate whose actual key is P-384/P-521/
+			// any other curve must be rejected under this scheme name even
+			// though its signature would verify correctly on ITS OWN curve
+			// (Codex P2, vlang/v#27680 pullrequestreview-4783410111).
+			if !mbedtls.public_key_curve_is_secp256r1(pk) {
+				return error('quic: CertificateVerify algorithm ecdsa_secp256r1_sha256 requires a P-256 certificate key, but the leaf key is a different curve')
+			}
 			hash := sha256.sum256(signed_content)
 			mbedtls.verify_ecdsa_signature(pk, .sha256, hash, cv.signature)!
 		}

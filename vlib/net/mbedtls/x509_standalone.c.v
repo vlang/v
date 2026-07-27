@@ -107,6 +107,29 @@ pub fn get_leaf_public_key(chain &C.mbedtls_x509_crt) &C.mbedtls_pk_context {
 	return C.v_mbedtls_x509_crt_get_pk(chain)
 }
 
+fn C.v_mbedtls_pk_ec_group_id(pk &C.mbedtls_pk_context) int
+
+// ecp_group_id_secp256r1 is MBEDTLS_ECP_DP_SECP256R1's enum value (ecp.h):
+// MBEDTLS_ECP_DP_NONE=0, SECP192R1=1, SECP224R1=2, SECP256R1=3 -- confirmed
+// directly against the vendored header's enum declaration order, not
+// assumed, since C doesn't otherwise guarantee an unlisted enum's numeric
+// value stays stable across versions.
+const ecp_group_id_secp256r1 = 3
+
+// public_key_curve_is_secp256r1 reports whether `pk` is an EC key on the
+// secp256r1 (P-256, aka prime256v1/NIST P-256) curve specifically --
+// distinct from merely being *an* EC key, which mbedtls_pk_verify_ext alone
+// confirms. A TLS 1.3 SignatureScheme like ecdsa_secp256r1_sha256 names one
+// exact curve (RFC 8446 §4.2.3); a certificate whose EC key is actually
+// P-384/P-521/any other curve must not be accepted under that scheme name,
+// even though the signature math itself would verify correctly for a
+// genuine signature made with that OTHER curve's key (this isn't a broken-
+// crypto scenario, it's a protocol-identity mismatch between the claimed
+// scheme and the actual key).
+pub fn public_key_curve_is_secp256r1(pk &C.mbedtls_pk_context) bool {
+	return C.v_mbedtls_pk_ec_group_id(pk) == ecp_group_id_secp256r1
+}
+
 // verify_ecdsa_signature checks an ECDSA signature over `hash` -- a digest
 // the CALLER has already computed using the algorithm `md_alg` names; this
 // function does not hash `hash` itself. `pk` may be an MBEDTLS_PK_ECKEY
@@ -206,5 +229,29 @@ pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string,
 	if verify_ret != 0 {
 		return error_with_code('net.mbedtls: certificate chain verification failed, mbedtls ret: ${verify_ret}, flags: 0x${flags:x}',
 			verify_ret)
+	}
+}
+
+fn C.v_mbedtls_check_server_cert_usage(crt &C.mbedtls_x509_crt) int
+
+// check_server_cert_usage verifies `chain`'s LEAF certificate is actually
+// usable as a TLS server signing key: its keyUsage extension (if present)
+// permits digitalSignature, and its extendedKeyUsage extension (if
+// present) permits serverAuth. mbedtls_x509_crt_verify (verify_certificate_chain
+// above) only checks chain-of-trust and hostname/SAN -- a real TLS
+// handshake separately enforces this via mbedtls_ssl_check_cert_usage,
+// which this standalone (never-constructs-an-SSL-context) call path has no
+// equivalent for otherwise. Without this, a certificate that chains to a
+// trusted CA and matches the hostname, but was issued restricted to a
+// DIFFERENT purpose (e.g. clientAuth-only EKU, or a KeyUsage lacking
+// digitalSignature), would still be accepted as a QUIC/TLS 1.3 server
+// certificate (Codex P1, vlang/v#27680 pullrequestreview-4783410111).
+// `chain` must be the HEAD node of a chain built by build_certificate_chain
+// (the leaf), same precondition as get_leaf_public_key.
+pub fn check_server_cert_usage(chain &C.mbedtls_x509_crt) ! {
+	ret := C.v_mbedtls_check_server_cert_usage(chain)
+	if ret != 0 {
+		return error_with_code('net.mbedtls: leaf certificate is not usable as a TLS server signing key (missing digitalSignature KeyUsage or serverAuth ExtendedKeyUsage), mbedtls ret: ${ret}',
+			ret)
 	}
 }

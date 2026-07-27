@@ -225,6 +225,20 @@ pub fn encode_long_header(h QuicLongHeader, reserved_bits u8, pn_length_bits u8)
 		&& (h.dcid.len > quic_v1_max_cid_len || h.scid.len > quic_v1_max_cid_len) {
 		return error('QUIC v1 connection IDs must not exceed ${quic_v1_max_cid_len} bytes')
 	}
+	// type_bits below is QUIC v1's OWN packet-type bit mapping (RFC 9000
+	// §17.2) -- QUIC v2 (RFC 9369 §3.2) deliberately assigns DIFFERENT
+	// meanings to the same two bits, the identical asymmetry
+	// parse_long_header already guards against on the decode side. Without
+	// this check, a caller constructing a non-v1 QuicLongHeader (nothing in
+	// the type system prevents it) would silently get a packet whose type
+	// bits mean something else entirely under that version -- e.g. a v2
+	// `.initial` header emitted with v1's `00` bits, which v2 defines as
+	// Retry. This encoder has no v2-aware mapping to fall back to, so
+	// erroring is correct, not merely defensive (Codex P2, vlang/v#27680
+	// pullrequestreview-4783410111).
+	if h.version != quic_v1 {
+		return error('unsupported QUIC version 0x${h.version:08x}: encode_long_header only supports QUIC v1 (0x00000001)')
+	}
 
 	type_bits := match h.typ {
 		.initial { u8(0) }
@@ -362,6 +376,17 @@ pub fn parse_version_negotiation(buf []u8) !QuicVersionNegotiation {
 	remaining := buf.len - offset
 	if remaining % 4 != 0 {
 		return error('version negotiation packet has a non-multiple-of-4 remaining length (${remaining})')
+	}
+	// RFC 9000 §17.2.1: a Version Negotiation packet exists specifically to
+	// advertise the versions the server supports. Zero entries (remaining
+	// == 0, which trivially passes the multiple-of-4 check above) leaves
+	// nothing for the client to negotiate to and is not a meaningful
+	// negotiation offer -- accepting it would force every caller to
+	// separately distinguish "no versions" from "a real, unusable VN
+	// packet" instead of this parser rejecting the malformed case outright
+	// (Codex P2, vlang/v#27680 pullrequestreview-4783410111).
+	if remaining == 0 {
+		return error('version negotiation packet lists no supported versions')
 	}
 	mut versions := []u32{}
 	for i := offset; i < buf.len; i += 4 {

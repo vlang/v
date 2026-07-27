@@ -197,6 +197,30 @@ fn test_parse_long_header_rejects_unsupported_version() {
 	assert false, 'expected an error for a non-v1 version'
 }
 
+// test_encode_long_header_rejects_unsupported_version is a regression test
+// for a Codex finding (vlang/v#27680 pullrequestreview-4783410111):
+// encode_long_header's v1-CID-length check was correctly gated on
+// `h.version == quic_v1`, but nothing stopped the function from going on to
+// encode `h.typ` using v1's OWN packet-type bit mapping regardless of
+// `h.version` -- a non-v1 header (e.g. QUIC v2, RFC 9369 §3.2) would get
+// silently mis-encoded (v2 assigns different meanings to the same two
+// bits), even though parse_long_header already rejects any non-v1 version
+// outright (test_parse_long_header_rejects_unsupported_version above).
+fn test_encode_long_header_rejects_unsupported_version() {
+	h := QuicLongHeader{
+		typ:     .initial
+		version: u32(0x6b3343cf) // QUIC v2's registered version value
+		dcid:    [u8(1), 2, 3, 4]
+		scid:    [u8(5), 6, 7, 8]
+		length:  10
+	}
+	encode_long_header(h, 0, 0) or {
+		assert err.msg().contains('unsupported')
+		return
+	}
+	assert false, 'expected an error for encoding a non-v1 long header'
+}
+
 fn test_short_header_round_trip_and_zero_length_dcid() {
 	// Zero-length DCID short header: 1 byte total before the (still
 	// protected) packet number.
@@ -293,6 +317,28 @@ fn test_version_negotiation_rejects_nonzero_version() {
 		return
 	}
 	assert false, 'expected an error for a non-zero version field'
+}
+
+// test_version_negotiation_rejects_empty_versions_list is a regression test
+// for a Codex finding (vlang/v#27680 pullrequestreview-4783410111): a VN
+// packet with nothing after the SCID has `remaining == 0`, which trivially
+// passes the `remaining % 4 != 0` check, so parse_version_negotiation
+// returned a QuicVersionNegotiation with an empty `versions` list instead of
+// rejecting it. A VN packet exists specifically to advertise the versions
+// the server supports; one listing zero is not a meaningful negotiation
+// offer.
+fn test_version_negotiation_rejects_empty_versions_list() {
+	mut buf := []u8{}
+	buf << u8(0x80)
+	buf << [u8(0), 0, 0, 0]
+	buf << u8(0) // dcid_len = 0
+	buf << u8(0) // scid_len = 0
+	// no versions follow
+	parse_version_negotiation(buf) or {
+		assert err.msg().contains('no supported versions')
+		return
+	}
+	assert false, 'expected an error for a version negotiation packet with no versions listed'
 }
 
 fn test_long_header_lists_v1_only_and_matches_constant() {

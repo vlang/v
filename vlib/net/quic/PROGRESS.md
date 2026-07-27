@@ -64,8 +64,16 @@ The largest, highest-risk phase. Sub-phases, in build order:
       `server_initial_secret`, plus chained `quic key`/`quic iv`/`quic hp`
       derivations, obtained from the raw RFC text directly, not
       re-summarized) — exact match, not just internal self-consistency.
-      Edge case: keyed off the **original** client DCID, even after a Retry
-      switches the wire DCID — covered by
+      Edge case: `derive_initial_secrets` is DCID-agnostic and MUST be
+      RE-DERIVED from the CURRENT wire DCID whenever it changes — after a
+      Retry, that means the Retry packet's Source Connection ID, not the
+      client's original DCID (RFC 9001 §5.2: "The secrets used for
+      constructing subsequent Initial packets change when a server sends a
+      Retry packet"). This doc previously stated the opposite (keyed off
+      the original DCID forever); corrected after a Codex finding
+      (vlang/v#27680 pullrequestreview-4783410111) caught this file still
+      contradicting the already-corrected `initial_secrets.v` doc comment —
+      covered by
       `test_derive_initial_secrets_is_sensitive_to_which_dcid_is_passed`
       (full `original_dcid`/`current_dcid` tracking still lands in Phase 9's
       `QuicConn`; this sub-phase's test only proves the derivation itself is

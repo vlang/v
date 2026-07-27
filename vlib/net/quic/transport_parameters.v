@@ -77,6 +77,15 @@ pub fn encode_preferred_address(pa PreferredAddress) ![]u8 {
 	if pa.connection_id.len > 255 {
 		return error('quic: preferred_address connection_id must not exceed 255 bytes, got ${pa.connection_id.len}')
 	}
+	// RFC 9000 §17.2's own v1 connection-ID limit applies to every v1
+	// connection ID, not just the ones on long-header packets --
+	// preferred_address's connection_id is used as a real connection ID by
+	// a client that migrates to it, same as header.v's dcid/scid (Codex
+	// P2, vlang/v#27680 pullrequestreview-4783410111). Checked in addition
+	// to, not instead of, the 255-byte wire-format limit above.
+	if pa.connection_id.len > quic_v1_max_cid_len {
+		return error('quic: preferred_address connection_id must not exceed ${quic_v1_max_cid_len} bytes (QUIC v1 limit), got ${pa.connection_id.len}')
+	}
 	if pa.stateless_reset_token.len != 16 {
 		return error('quic: preferred_address stateless_reset_token must be exactly 16 bytes, got ${pa.stateless_reset_token.len}')
 	}
@@ -118,6 +127,14 @@ pub fn decode_preferred_address(buf []u8) !PreferredAddress {
 	}
 	if cid_len == 0 {
 		return error('quic: preferred_address must not have a zero-length connection ID')
+	}
+	// RFC 9000 §17.2's v1 20-byte connection-ID limit applies here too (see
+	// encode_preferred_address's identical check) -- the wire format's own
+	// single-byte length field allows up to 255, which is not the same
+	// limit. A peer sending 21-255 bytes here is spec-invalid even though
+	// nothing about THIS TLV's own encoding would fail to round-trip it.
+	if cid_len > quic_v1_max_cid_len {
+		return error('quic: preferred_address connection_id ${cid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
 	}
 	return PreferredAddress{
 		ipv4_address:          ipv4_address
@@ -194,6 +211,9 @@ fn encode_bytes_tlv(id u64, value []u8) ![]u8 {
 pub fn encode_transport_parameters(p QuicTransportParameters) ![]u8 {
 	mut out := []u8{}
 	if v := p.original_destination_connection_id {
+		if v.len > quic_v1_max_cid_len {
+			return error('quic: original_destination_connection_id must not exceed ${quic_v1_max_cid_len} bytes (QUIC v1 limit), got ${v.len}')
+		}
 		out << encode_bytes_tlv(param_original_destination_connection_id, v)!
 	}
 	if v := p.max_idle_timeout {
@@ -264,9 +284,15 @@ pub fn encode_transport_parameters(p QuicTransportParameters) ![]u8 {
 		out << encode_varint_tlv(param_active_connection_id_limit, v)!
 	}
 	if v := p.initial_source_connection_id {
+		if v.len > quic_v1_max_cid_len {
+			return error('quic: initial_source_connection_id must not exceed ${quic_v1_max_cid_len} bytes (QUIC v1 limit), got ${v.len}')
+		}
 		out << encode_bytes_tlv(param_initial_source_connection_id, v)!
 	}
 	if v := p.retry_source_connection_id {
+		if v.len > quic_v1_max_cid_len {
+			return error('quic: retry_source_connection_id must not exceed ${quic_v1_max_cid_len} bytes (QUIC v1 limit), got ${v.len}')
+		}
 		out << encode_bytes_tlv(param_retry_source_connection_id, v)!
 	}
 	return out
@@ -323,6 +349,9 @@ pub fn decode_transport_parameters(buf []u8) !QuicTransportParameters {
 
 		match id {
 			param_original_destination_connection_id {
+				if value.len > quic_v1_max_cid_len {
+					return error('quic: original_destination_connection_id ${value.len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
+				}
 				params.original_destination_connection_id = value.clone()
 			}
 			param_max_idle_timeout {
@@ -398,9 +427,15 @@ pub fn decode_transport_parameters(buf []u8) !QuicTransportParameters {
 				params.active_connection_id_limit = v
 			}
 			param_initial_source_connection_id {
+				if value.len > quic_v1_max_cid_len {
+					return error('quic: initial_source_connection_id ${value.len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
+				}
 				params.initial_source_connection_id = value.clone()
 			}
 			param_retry_source_connection_id {
+				if value.len > quic_v1_max_cid_len {
+					return error('quic: retry_source_connection_id ${value.len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
+				}
 				params.retry_source_connection_id = value.clone()
 			}
 			else {

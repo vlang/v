@@ -22,6 +22,14 @@ pub enum TlsAlert {
 	// is missing entirely -- RFC 9001 §8.1 makes ALPN mandatory for QUIC,
 	// so either case means no application protocol was agreed.
 	no_application_protocol = 120
+	// RFC 8446 §4.2: "Implementations MUST NOT send extension responses if
+	// the remote endpoint did not send the corresponding extension
+	// requests... Upon receiving such an extension, an endpoint MUST abort
+	// the handshake with an 'unsupported_extension' alert." Used by
+	// parse_encrypted_extensions for any extension outside the small set
+	// this client can legitimately receive there (IANA TLS Alert registry
+	// value 110, confirmed directly, not assumed).
+	unsupported_extension = 110
 }
 
 // tls_alert_to_quic_error implements RFC 9001 §4.8: "If TLS produces an
@@ -370,6 +378,15 @@ pub fn (mut h Tls13ClientHandshake) process_encrypted_extensions(msg HandshakeMe
 			'quic: expected EncryptedExtensions, got ${msg.typ}')
 	}
 	extensions := parse_encrypted_extensions(msg.body) or {
+		// parse_encrypted_extensions carries its own specific QUIC error
+		// code (via error_with_code) for the "extension not permitted
+		// here" class of failure (RFC 8446 §4.2's unsupported_extension
+		// alert) -- only a genuine structural parse failure (a plain
+		// error(), which defaults to code 0) should be remapped to the
+		// generic decode_error alert here.
+		if err.code() != 0 {
+			return err
+		}
 		return handshake_error(.decode_error, err.msg())
 	}
 
