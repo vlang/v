@@ -7522,6 +7522,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut forced_full_module_paths := map[string]bool{}
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
+	mut unresolved_modules := map[string]bool{}
 	mut cached_header_source_contexts := map[string]string{}
 	bundle_import_file := cache_bundle_import_file(prefs.get_vlib_module_path('builtin'))
 	if builtin_sources := cache_state.module_sources['builtin'] {
@@ -7665,6 +7666,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
+			if unresolved_modules[mod_name] {
+				a.missing_imports[node_idx] = mod_name
+			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
 					set_node_value_canonical(mut a, node_idx, module_identity)
@@ -7711,6 +7715,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			if !mod_dir_exists && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
+				unresolved_modules[mod_name] = true
 			}
 			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
 				node_idx++
