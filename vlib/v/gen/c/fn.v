@@ -4475,7 +4475,8 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 					unwrapped_rec_type =
 						g.unwrap_generic(g.type_resolver.get_type(ast.Expr(node.left)))
 				} else {
-					unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+					unwrapped_rec_type = g.unwrap_generic(g.exposed_smartcast_type(node.left.obj.orig_type,
+						node.left.obj.smartcasts.last(), node.left.obj.is_mut))
 					cast_sym := g.table.sym(unwrapped_rec_type)
 					if cast_sym.info is ast.Aggregate {
 						unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
@@ -4640,6 +4641,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 		else {}
+	}
+	if node.left is ast.Ident && node.left.obj is ast.Var && node.left.obj.smartcasts.len > 0
+		&& node.left.obj.orig_type != 0
+		&& g.table.final_sym(g.unwrap_generic(node.left.obj.orig_type)).kind == .interface {
+		left_type = g.unwrap_generic(g.exposed_smartcast_type(node.left.obj.orig_type,
+			node.left.obj.smartcasts.last(), node.left.obj.is_mut))
 	}
 
 	if left_type == g.unwrap_generic(node.left_type) {

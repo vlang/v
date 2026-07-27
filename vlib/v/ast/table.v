@@ -269,7 +269,20 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 }
 
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
-	if f.return_type != func.return_type {
+	f_return_type := t.fully_unaliased_type(f.return_type)
+	func_return_type := t.fully_unaliased_type(func.return_type)
+	f_return_sym := t.sym(f_return_type)
+	func_return_sym := t.sym(func_return_type)
+	mut same_return_type := f_return_type == func_return_type
+	if !same_return_type && f_return_type.nr_muls() == func_return_type.nr_muls()
+		&& f_return_type.has_flag(.option) == func_return_type.has_flag(.option)
+		&& f_return_type.has_flag(.result) == func_return_type.has_flag(.result)
+		&& f_return_sym.info is FnType {
+		if func_return_sym.info is FnType {
+			same_return_type = t.fn_type_source_signature(f_return_sym.info.func) == t.fn_type_source_signature(func_return_sym.info.func)
+		}
+	}
+	if !same_return_type {
 		s := t.type_to_str(f.return_type)
 		return 'expected return type `${s}`'
 	}
