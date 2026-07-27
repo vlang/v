@@ -1066,15 +1066,15 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch',
 		'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'bad_option_if_error_branch',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n",
-		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'bad_option_const_if_error_branch',
-		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n",
-		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'bad_option_return_error',
-		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n",
-		'cannot return `IError` as `?int`')
+	option_if_error := run_good(v3_bin, 'good_option_if_error_branch',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n")
+	assert option_if_error == ''
+	option_const_if_error := run_good(v3_bin, 'good_option_const_if_error_branch',
+		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n")
+	assert option_const_if_error == ''
+	option_return_error := run_good(v3_bin, 'good_option_return_error',
+		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n")
+	assert option_return_error == ''
 }
 
 fn test_multi_return_if_tail_infers_common_type() {
@@ -1556,17 +1556,15 @@ fn test_pr_review_codegen_batch_ten() {
 // Regression tests for the eleventh PR-review batch (vlang/v#27557).
 fn test_pr_review_codegen_batch_eleven() {
 	v3_bin := build_v3()
-	// A method value is backed by a per-evaluation-site static receiver, so storing it in
-	// an array (where several instances from one site would share that slot and every
-	// callback would use the last receiver) is rejected with a clear error instead of
-	// reaching cgen and emitting an undefined helper. Append form:
-	run_bad(v3_bin, 'bad_method_value_array_append',
-		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tmut cbs := []fn () int{}\n\tfor i in 0 .. 3 {\n\t\tc := Counter{\n\t\t\tid: i * 10\n\t\t}\n\t\tcbs << c.report\n\t}\n\tprintln(int_str(cbs.len))\n}\n',
-		'cannot escape its call site')
-	// Array-literal form is rejected too.
-	run_bad(v3_bin, 'bad_method_value_array_literal',
-		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\ta := Counter{\n\t\tid: 1\n\t}\n\tb := Counter{\n\t\tid: 2\n\t}\n\tcbs := [a.report, b.report]\n\tprintln(int_str(cbs.len))\n}\n',
-		'cannot escape its call site')
+	// Each stored method value owns a per-instance receiver context, so callbacks
+	// appended from the same evaluation site keep distinct receivers.
+	appended := run_good(v3_bin, 'good_method_value_array_append',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tmut cbs := []fn () int{}\n\tfor i in 0 .. 3 {\n\t\tc := Counter{\n\t\t\tid: i * 10\n\t\t}\n\t\tcbs << c.report\n\t}\n\tprintln(int_str(cbs[0]()) + "," + int_str(cbs[1]()) + "," + int_str(cbs[2]()))\n}\n')
+	assert appended == '0,10,20'
+	// Array literals retain their bound receivers too.
+	literal := run_good(v3_bin, 'good_method_value_array_literal',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\ta := Counter{\n\t\tid: 1\n\t}\n\tb := Counter{\n\t\tid: 2\n\t}\n\tcbs := [a.report, b.report]\n\tprintln(int_str(cbs[0]()) + "," + int_str(cbs[1]()))\n}\n')
+	assert literal == '1,2'
 	// The supported single-use forms still work: a method value passed directly as a
 	// callback argument, and an `arr << int` append / `int << int` shift are not flagged.
 	imm := run_good(v3_bin, 'good_method_value_immediate_after_guard',
@@ -1638,15 +1636,14 @@ fn test_pr_review_codegen_batch_fourteen() {
 	named_cb := run_good(v3_bin, 'good_generic_fn_named_callback_param',
 		'fn run[T](cb fn (x T) int, v T) int {\n\treturn cb(v)\n}\nfn inc(x int) int {\n\treturn x + 1\n}\nfn main() {\n\tprintln(int_str(run(inc, 4)))\n}\n')
 	assert named_cb == '5'
-	// A method value that escapes its call site is rejected: returned from a factory, stored
-	// in a struct field, or put in a map (the per-site static receiver can't keep several
-	// instances distinct). Immediately-passed callbacks and local bindings still work.
-	run_bad(v3_bin, 'bad_method_value_return_escape',
-		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn bind(c Counter) fn () int {\n\treturn c.report\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
-		'cannot escape its call site')
-	run_bad(v3_bin, 'bad_method_value_struct_field_escape',
-		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\t_ := Engine{\n\t\tcb: Counter{\n\t\t\tid: 1\n\t\t}.report\n\t}\n}\n',
-		'cannot escape its call site')
+	// Escaped method values carry durable receiver contexts when returned from
+	// factories or stored in struct fields.
+	returned := run_good(v3_bin, 'good_method_value_return_escape',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn make_callback(c Counter) fn () int {\n\treturn c.report\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n')
+	assert returned == '1'
+	stored := run_good(v3_bin, 'good_method_value_struct_field_escape',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\te := Engine{\n\t\tcb: Counter{\n\t\t\tid: 2\n\t\t}.report\n\t}\n\tprintln(int_str(e.cb()))\n}\n')
+	assert stored == '2'
 }
 
 fn test_pr_review_codegen_batch_fifteen() {
@@ -1706,16 +1703,14 @@ fn test_pr_review_codegen_batch_seventeen() {
 
 fn test_pr_review_codegen_batch_eighteen() {
 	v3_bin := build_v3()
-	// A method value bound to a local (`cb := c.report`) shares the same per-site static receiver
-	// as the bare selector, so aliasing it out — returned from a factory or appended to an array —
-	// escapes just like `return c.report` and is rejected, not only the direct selector form.
+	// A method-value local retains its receiver when returned or appended to an array.
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
-	run_bad(v3_bin, 'bad_method_value_local_return_escape', mv +
-		'fn bind(c Counter) fn () int {\n\tcb := c.report\n\treturn cb\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
-		'cannot escape its call site')
-	run_bad(v3_bin, 'bad_method_value_local_append_escape', mv +
-		'fn collect(c Counter) []fn () int {\n\tmut arr := []fn () int{}\n\tcb := c.report\n\tarr << cb\n\treturn arr\n}\nfn main() {\n\t_ := collect(Counter{\n\t\tid: 1\n\t})\n}\n',
-		'cannot escape its call site')
+	returned := run_good(v3_bin, 'good_method_value_local_return_escape', mv +
+		'fn make_callback(c Counter) fn () int {\n\tcb := c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n')
+	assert returned == '1'
+	appended := run_good(v3_bin, 'good_method_value_local_append_escape', mv +
+		'fn collect(c Counter) []fn () int {\n\tmut arr := []fn () int{}\n\tcb := c.report\n\tarr << cb\n\treturn arr\n}\nfn main() {\n\tarr := collect(Counter{\n\t\tid: 2\n\t})\n\tprintln(int_str(arr[0]()))\n}\n')
+	assert appended == '2'
 	// A method-value local passed straight to a callback parameter does not escape and stays valid.
 	direct := run_good(v3_bin, 'good_method_value_local_direct_use', mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tcb := c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
@@ -1754,37 +1749,36 @@ fn test_pr_review_codegen_batch_nineteen() {
 fn test_pr_review_codegen_batch_twenty() {
 	v3_bin := build_v3()
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
-	// Storing a method value into a struct field is an escape: the per-site static receiver slot
-	// is overwritten on the next evaluation, so previously-stored callbacks lose their receiver.
-	run_bad(v3_bin, 'bad_method_value_struct_field_assign', mv +
-		'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n',
-		'cannot escape its call site')
-	// Same hazard storing into an array element.
-	run_bad(v3_bin, 'bad_method_value_index_assign', mv +
-		'fn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n',
-		'cannot escape its call site')
-	// A method value assigned to a local with `=` is still tracked, so a later escape is caught.
-	run_bad(v3_bin, 'bad_method_value_local_eq_then_return_escape', mv +
-		'fn dummy() int {\n\treturn 0\n}\nfn bind(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
-		'cannot escape its call site')
+	// Struct fields, array elements, and reassigned callback locals retain the
+	// per-instance context when the method value escapes.
+	field := run_good(v3_bin, 'good_method_value_struct_field_assign', mv +
+		'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n')
+	assert field == '5'
+	indexed := run_good(v3_bin, 'good_method_value_index_assign', mv +
+		'fn main() {\n\tc := Counter{\n\t\tid: 6\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n')
+	assert indexed == '6'
+	reassigned := run_good(v3_bin, 'good_method_value_local_eq_then_return_escape', mv +
+		'fn dummy() int {\n\treturn 0\n}\nfn make_callback(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 7\n\t})\n\tprintln(int_str(cb()))\n}\n')
+	assert reassigned == '7'
 	// Assigning a method value to a local (including reassignment) and passing it straight to a
 	// callback parameter does not escape, so it stays valid.
 	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
 	assert ok == '7'
 	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
-	run_bad(v3_bin, 'bad_interface_method_value_struct_field_escape', iface_mv +
-		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\t_ := Holder{\n\t\tcb: r.run\n\t}\n}\n',
-		'cannot escape its call site')
-	run_bad(v3_bin, 'bad_interface_method_value_struct_field_assign', iface_mv +
-		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n',
-		'cannot escape its call site')
+	iface_field := run_good(v3_bin, 'good_interface_method_value_struct_field_escape', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 8\n\t})\n\th := Holder{\n\t\tcb: r.run\n\t}\n\tprintln(int_str(h.cb()))\n}\n')
+	assert iface_field == '8'
+	iface_assign := run_good(v3_bin, 'good_interface_method_value_struct_field_assign', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 9\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n')
+	assert iface_assign == '9'
 	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
 	assert iface_ok == '7'
-	run_bad(v3_bin, 'bad_interface_method_value_captured_alias_return', iface_mv +
-		'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\t_ := escape(Runner(Job{\n\t\tid: 9\n\t}))\n}\n',
-		'cannot escape its call site')
+	iface_nested := run_good(v3_bin, 'good_interface_method_value_captured_alias_return',
+		iface_mv +
+		'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn [cb] () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\tcb := escape(Runner(Job{\n\t\tid: 10\n\t}))\n\tprintln(int_str(cb()))\n}\n')
+	assert iface_nested == '10'
 	iface_fn_literal_shadow := run_good(v3_bin,
 		'good_interface_method_value_fn_literal_shadow_scoped', iface_mv +
 		'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tcb := r.run\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
@@ -1866,12 +1860,11 @@ fn test_pr_review_codegen_batch_twentythree() {
 	heap2 := run_good(v3_bin, 'good_heaped_local_whole_value_assign',
 		"struct Box {\nmut:\n\tx int\n}\nfn split() (&Box, &Box) {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tmut w := Box{\n\t\tx: 2\n\t}\n\tp := &v\n\tq := &w\n\tv = w\n\tw.x = 100\n\treturn p, q\n}\nfn main() {\n\ta, b := split()\n\tprintln(int_str(a.x) + ',' + int_str(b.x))\n}\n")
 	assert heap2 == '2,100'
-	// A method value bound to a local and reassigned only on one branch still escapes on the
-	// other path, so returning it is rejected (the marker survives a non-dominating reassignment).
+	// A method value returned through the branch that does not replace it keeps its receiver.
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 0\n}\n'
-	run_bad(v3_bin, 'bad_method_value_conditional_reassign_escape', mv +
-		'fn build_cb(c Counter, cond bool) fn () int {\n\tmut cb := c.report\n\tif cond {\n\t\tcb = plain\n\t}\n\treturn cb\n}\nfn main() {\n\t_ := build_cb(Counter{\n\t\tid: 1\n\t}, false)\n}\n',
-		'cannot escape its call site')
+	conditional := run_good(v3_bin, 'good_method_value_conditional_reassign_escape', mv +
+		'fn build_cb(c Counter, cond bool) fn () int {\n\tmut cb := c.report\n\tif cond {\n\t\tcb = plain\n\t}\n\treturn cb\n}\nfn main() {\n\tmethod_cb := build_cb(Counter{\n\t\tid: 1\n\t}, false)\n\tplain_cb := build_cb(Counter{\n\t\tid: 2\n\t}, true)\n\tprintln(int_str(method_cb()))\n\tprintln(int_str(plain_cb()))\n}\n')
+	assert conditional == '1\n0'
 	// An unconditional reassignment to a non-method value dominates the later use, so the marker
 	// is cleared and the (now plain) callback is accepted.
 	uncond := run_good(v3_bin, 'good_method_value_unconditional_reassign', mv +
@@ -2021,6 +2014,63 @@ fn test_pr_review_codegen_batch_twentynine() {
 	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',
 		'const n = 2\nstruct S {\n\tFoo [n]int\n}\nfn main() {\n\ts := S{\n\t\tFoo: [1, 2]!\n\t}\n\tprintln(int_str(s.Foo.len) + ":" + int_str(s.Foo[1]))\n}\n')
 	assert fixed_field == '2:2'
+}
+
+fn test_defer_result_review_regressions() {
+	v3_bin := build_v3()
+	prefixed_local := run_good(v3_bin, 'good_defer_result_prefixed_local',
+		'fn f() int {\n\t__v3_defer_result := 7\n\t__v3_defer_result_value := 8\n\treturn __v3_defer_result + __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
+	assert prefixed_local == '15'
+	valid := run_good(v3_bin, 'good_defer_result_value',
+		'fn f() int {\n\tdefer {\n\t\tprintln(int_str($res()))\n\t}\n\treturn 9\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
+	assert valid == '9\n9'
+	indexed := run_good(v3_bin, 'good_indexed_defer_result_value',
+		'fn f() (int, int) {\n\tdefer {\n\t\tprintln(int_str($res(1)))\n\t}\n\treturn 4, 5\n}\nfn main() {\n\ta, b := f()\n\tprintln(int_str(a) + "," + int_str(b))\n}\n')
+	assert indexed == '5\n4,5'
+	run_bad(v3_bin, 'bad_void_defer_result',
+		'fn f() {\n\tdefer {\n\t\t_ := $res()\n\t}\n}\nfn main() {\n\tf()\n}\n',
+		'`res` can only be used in functions that returns something')
+	run_bad(v3_bin, 'bad_result_defer_result',
+		'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n',
+		'`res` cannot be used in functions that returns a Result')
+	run_bad(v3_bin, 'bad_unindexed_multi_return_defer_result',
+		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
+		'`res` requires an index of the returned value')
+	run_bad(v3_bin, 'bad_out_of_range_multi_return_defer_result',
+		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
+		'index 2 out of range of 2 return types')
+	run_bad(v3_bin, 'bad_indexed_scalar_defer_result',
+		'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n',
+		'`res` index can only be used with multi-return functions')
+	run_bad(v3_bin, 'bad_defer_result_trailing_argument_tokens',
+		'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n',
+		'expected `)` immediately after the `$res` index')
+	run_bad(v3_bin, 'bad_bare_defer_result',
+		'fn f() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n',
+		'expected `(` after `$res`')
+}
+
+fn test_defer_result_requires_function_exit_defer() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nested_block_defer_result',
+		'fn f() int {\n\t{\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n',
+		'`res` can only be used in function-exit defer blocks')
+	run_bad(v3_bin, 'bad_loop_defer_result',
+		'fn f() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n',
+		'`res` can only be used in function-exit defer blocks')
+}
+
+fn test_recursive_alias_review_regressions() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_direct_recursive_alias', 'type A = A\n\nfn main() {}\n',
+		'alias `A` forms a recursive cycle')
+	run_bad(v3_bin, 'bad_container_recursive_alias', 'type A = []A\n\nfn main() {}\n',
+		'alias `A` forms a recursive cycle')
+	run_bad(v3_bin, 'bad_cyclic_recursive_aliases', 'type A = B\ntype B = A\n\nfn main() {}\n',
+		'forms a recursive cycle')
+	valid_callback := run_good(v3_bin, 'good_callback_guarded_recursive_alias',
+		'type Handlers = map[string]fn (Handlers)\n\nfn main() {\n\thandlers := Handlers{}\n\tprintln(int_str(handlers.len))\n}\n')
+	assert valid_callback == '0'
 }
 
 fn test_if_guard_rejects_or_handled_value() {

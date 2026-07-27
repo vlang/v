@@ -40,7 +40,6 @@ const prealloc_scope_block_size = 256 * 1024
 const prealloc_default_align = sizeof(voidptr) * 2
 
 __global g_memory_block &VMemoryBlock
-__global g_prealloc_block_cache &VPreallocBlockCache
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
 
@@ -92,12 +91,13 @@ pub fn prealloc_stats_snapshot() PreallocStats {
 @[heap]
 struct VMemoryBlock {
 mut:
-	current        &u8             = 0 // 8
-	stop           &u8             = 0 // 8
-	start          &u8             = 0 // 8
-	previous       &VMemoryBlock   = 0 // 8
-	next           &VMemoryBlock   = 0 // 8
-	scope          &VPreallocScope = 0
+	current        &u8                  = 0 // 8
+	stop           &u8                  = 0 // 8
+	start          &u8                  = 0 // 8
+	previous       &VMemoryBlock        = 0 // 8
+	next           &VMemoryBlock        = 0 // 8
+	scope          &VPreallocScope      = 0
+	recycle_cache  &VPreallocBlockCache = 0
 	min_block_size isize
 	is_scope       bool
 	mmap_allocated bool
@@ -245,6 +245,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 	if unsafe { prev != 0 } {
 		prev.next = v
 		v.is_scope = prev.is_scope
+		v.recycle_cache = prev.recycle_cache
 	}
 	effective_min_block_size := if min_block_size > 0 {
 		min_block_size
@@ -281,7 +282,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 				$if !prealloc_no_recycle ? {
 					if prealloc_recyclable_block_size(block_size) {
 						unsafe {
-							mut cache := g_prealloc_block_cache
+							mut cache := v.recycle_cache
 							if cache != 0 {
 								for ci := 0; ci < cache.count; ci++ {
 									if cache.sizes[ci] == block_size {
@@ -351,6 +352,8 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 			// thread-local, new threads start with a null pointer and need
 			// their own arena.
 			mb = vmemory_block_new(nil, isize(prealloc_block_size), 0)
+			mb.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
+			vmemory_abort_on_nil(mb.recycle_cache, sizeof(VPreallocBlockCache))
 			g_memory_block = mb
 		}
 		$if prealloc_trace_malloc ? {
@@ -428,13 +431,9 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 				$if !prealloc_no_recycle ? {
 					if prealloc_recyclable_block_size(isize(size)) {
 						unsafe {
-							mut cache := g_prealloc_block_cache
-							if cache == 0 {
-								cache = &VPreallocBlockCache(C.calloc(1,
-									sizeof(VPreallocBlockCache)))
-								if cache != 0 {
-									g_prealloc_block_cache = cache
-								}
+							mut cache := &VPreallocBlockCache(nil)
+							if g_memory_block != 0 {
+								cache = g_memory_block.recycle_cache
 							}
 							if cache != 0 && cache.count < 64
 								&& cache.bytes + isize(size) <= isize(prealloc_scope_block_size) * 64 {
@@ -495,7 +494,10 @@ fn prealloc_vinit() {
 		C.fprintf(C.stderr, c'prealloc_vinit started\n')
 	}
 	unsafe {
-		g_memory_block = vmemory_block_new(nil, isize(prealloc_block_size), 0)
+		mut root := vmemory_block_new(nil, isize(prealloc_block_size), 0)
+		root.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
+		vmemory_abort_on_nil(root.recycle_cache, sizeof(VPreallocBlockCache))
+		g_memory_block = root
 		at_exit(prealloc_vcleanup) or {}
 	}
 }

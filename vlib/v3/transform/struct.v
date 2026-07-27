@@ -115,6 +115,18 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
 			}
 			t.drain_pending(mut prelude)
+			if int(child_id) in t.local_closure_field_cleanups {
+				mut closure_type := field_type
+				if closure_type.len == 0 {
+					closure_type = t.node_type(new_val)
+				}
+				closure_name := t.new_temp('field_closure')
+				t.set_var_type(closure_name, closure_type)
+				prelude << t.make_decl_assign_typed(closure_name, new_val, closure_type)
+				prelude << t.make_local_closure_cleanup_defer(closure_name)
+				new_val = t.make_ident(closure_name)
+				t.set_node_typ(int(new_val), closure_type)
+			}
 			fi_start := t.a.children.len
 			t.a.children << new_val
 			new_field := t.a.add_node(flat.Node{

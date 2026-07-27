@@ -284,7 +284,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			} else if sym.kind == .aggregate&& (sym.info as ast.Aggregate).types.all(c.table.type_kind(it) in [.array, .array_fixed, .string, .map]) {
 				value_type = c.table.value_type((sym.info as ast.Aggregate).types[0])
 			}
-			if value_type == ast.void_type || typ.has_flag(.result) {
+			cannot_index_option_map_expr := !is_comptime && typ.has_flag(.option)
+				&& sym.kind == .map && node.cond !is ast.Ident
+			if value_type == ast.void_type || typ.has_flag(.result) || cannot_index_option_map_expr {
 				if typ != ast.void_type {
 					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.pos())
 				}

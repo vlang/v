@@ -7,19 +7,20 @@ import v3.cmdexec
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose      bool
-	output_file  string
-	target       Target = host_target()
-	user_defines []string
-	backend      string = 'c'
-	c99          bool
-	vroot        string = detect_vroot()
-	vexe         string = detect_vexe()
-	selfhost     bool
-	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
-	is_prod      bool
-	is_debug     bool
-	is_test      bool // at least one compatible user test file is being compiled
+	verbose        bool
+	output_file    string
+	target         Target = host_target()
+	user_defines   []string
+	compile_values map[string]string
+	backend        string = 'c'
+	c99            bool
+	vroot          string = detect_vroot()
+	vexe           string = detect_vexe()
+	selfhost       bool
+	building_v     bool // compiling the V compiler itself: no generics, skip monomorphization
+	is_prod        bool
+	is_debug       bool
+	is_test        bool // at least one compatible user test file is being compiled
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm bool

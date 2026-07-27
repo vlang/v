@@ -567,6 +567,13 @@ fn (mut g FlatGen) gen_return_cleanup() {
 	g.gen_current_return_ownership_drops()
 }
 
+fn (mut g FlatGen) gen_return_cleanup_with_result(tmp string) {
+	old_tmp := g.defer_return_tmp_var
+	g.defer_return_tmp_var = tmp
+	g.gen_return_cleanup()
+	g.defer_return_tmp_var = old_tmp
+}
+
 fn (mut g FlatGen) gen_current_return_ownership_drops() {
 	g.gen_ownership_drops(g.cur_return_drops)
 }
@@ -975,6 +982,21 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
 	mut expanding := map[string]bool{}
 	g.gen_ownership_drop_value_inner(typ, expr, depth, mut expanding)
+}
+
+fn (mut g FlatGen) ownership_drop_value_to_string(typ types.Type, expr string) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	orig_indent := g.indent
+	g.sb = strings.new_builder(128)
+	g.line_start = true
+	g.indent = 1
+	g.gen_ownership_drop_value(typ, expr, 0)
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	g.indent = orig_indent
+	return result
 }
 
 fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, depth int, mut expanding map[string]bool) {
@@ -2844,7 +2866,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		tmp := g.tmp_name()
 		g.gen_return_expr_loop_control_copybacks()
 		g.gen_assoc_return_tmp(ret_node, tmp)
-		g.gen_return_cleanup()
+		g.gen_return_cleanup_with_result(tmp)
 		g.writeln('return ${tmp};')
 		return
 	}
@@ -2855,7 +2877,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		g.write('${wrapper} ${tmp} = ')
 		g.gen_fixed_array_return_wrap(ret_fixed, ret_id)
 		g.writeln(';')
-		g.gen_return_cleanup()
+		g.gen_return_cleanup_with_result(tmp)
 		g.writeln('return ${tmp};')
 		return
 	}
@@ -2865,7 +2887,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		if g.multi_return_types_have_fixed_array(ret_types) {
 			g.gen_return_expr_loop_control_copybacks()
 			tmp := g.gen_multi_return_temp(ct, ret_types, node)
-			g.gen_return_cleanup()
+			g.gen_return_cleanup_with_result(tmp)
 			g.writeln('return ${tmp};')
 			return
 		}
@@ -2874,7 +2896,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 	tmp := g.tmp_name()
 	g.gen_return_expr_loop_control_copybacks()
 	g.writeln('${ct} ${tmp} = ${expr};')
-	g.gen_return_cleanup()
+	g.gen_return_cleanup_with_result(tmp)
 	g.writeln('return ${tmp};')
 }
 
@@ -4067,6 +4089,14 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 					}
 				}
 			}
+			if base_type is types.String {
+				if typ := g.usable_struct_field_type('string', node.value) {
+					return typ
+				}
+				if typ := g.checker_struct_field_type('string', node.value) {
+					return typ
+				}
+			}
 			if typ := g.sum_shared_field_type(base_type0, node.value) {
 				return typ
 			}
@@ -4830,6 +4860,18 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				v_type = types.Type(types.Pointer{
 					base_type: g.usable_expr_type(g.a.child(&rhs, 0))
 				})
+			}
+			if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
+				child_id := g.a.child(&rhs, 0)
+				child := g.a.node(child_id)
+				if child.kind == .struct_init {
+					child_type := g.usable_expr_type(child_id)
+					if child_type !is types.Unknown && child_type !is types.Void {
+						v_type = types.Type(types.Pointer{
+							base_type: types.unwrap_all_pointers(child_type)
+						})
+					}
+				}
 			}
 			if fixed := g.to_fixed_size_call_fixed_type(rhs_id) {
 				v_type = types.Type(fixed)
@@ -6560,9 +6602,20 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 	if fixed := array_fixed_type(channel_type.elem_type) {
 		src := g.fixed_array_copy_source_string(value_id, types.Type(fixed))
 		g.write('; ${elem_ct} ${value_tmp}; memmove(${value_tmp}, ${src}, sizeof(${value_tmp}))')
+	} else if type_is_optional_result(channel_type.elem_type) {
+		g.write('; ${elem_ct} ${value_tmp} = ')
+		// A `chan ?T`/`chan !T` carries the optional/result container itself, so the
+		// `or` here guards only the channel push (the closed-channel handler emitted
+		// below), not the produced value. Materialize the container as-is — including
+		// a `none` — instead of unwrapping it, which would both mistype `value_tmp`
+		// and misread a `none` value as a send failure.
+		g.gen_expr_with_expected_type(value_id, channel_type.elem_type)
 	} else {
 		g.write('; ${elem_ct} ${value_tmp} = ')
-		g.gen_expr_with_expected_type(value_id, channel_type.elem_type)
+		// The `or` applies both to producing the value and to pushing it into the
+		// channel. Unwrap an optional/result source before trying the push; the
+		// same handler is emitted again below for a closed channel.
+		g.gen_or_expr(or_node)
 	}
 	g.write('; if (sync__Channel__try_push_priv(${channel_tmp}, &${value_tmp}, false) == 2) { IError err = sync__Channel__closed_error(${channel_tmp}); (void)err; ')
 	g.push_scope()
