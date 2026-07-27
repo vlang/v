@@ -207,7 +207,7 @@ fn test_peek_refills_buffer() {
 	}
 }
 
-fn test_read_hadnles_eof_with_unread_data() {
+fn test_read_handles_eof_with_unread_data() {
 	data := rand.bytes(8)!
 	mut br := new_one_byte_buffered_reader(data, 16)
 	mut p := br.peek(10)!
@@ -223,7 +223,7 @@ fn test_read_hadnles_eof_with_unread_data() {
 	br.read(mut res) or { assert err is Eof }
 }
 
-fn test_read_line_hadnles_eof_with_unread_data() {
+fn test_read_line_handles_eof_with_unread_data() {
 	b := rand.bytes(8)!
 	data := arrays.concat(b, `\n`)
 	mut br := new_one_byte_buffered_reader(data, 16)
@@ -234,7 +234,7 @@ fn test_read_line_hadnles_eof_with_unread_data() {
 	assert p.len == 9
 
 	line := br.read_line()!
-	assert line.len == 8
+	assert line.len == 8 // read_line return doesn't include \n
 
 	br.read_line() or { assert err is Eof }
 }
