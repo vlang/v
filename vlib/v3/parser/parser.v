@@ -5675,11 +5675,17 @@ fn (mut p Parser) current_lcbr_looks_map_literal() bool {
 	mut bracket_depth := 0
 	mut brace_depth := 0
 	mut saw_key_token := false
+	mut first_key_token := token.Token.eof
+	mut key_token_count := 0
 	for {
 		tok := look.scan()
 		at_key_level := paren_depth == 0 && bracket_depth == 0 && brace_depth == 0
-		if at_key_level && tok !in [.comma, .semicolon] {
+		if at_key_level && tok !in [.colon, .comma, .semicolon] {
+			if !saw_key_token {
+				first_key_token = tok
+			}
 			saw_key_token = true
+			key_token_count++
 		}
 		match tok {
 			.lpar {
@@ -5711,7 +5717,7 @@ fn (mut p Parser) current_lcbr_looks_map_literal() bool {
 			}
 			.colon {
 				if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
-					return true
+					return first_key_token != .name || key_token_count != 1
 				}
 			}
 			.comma, .semicolon {

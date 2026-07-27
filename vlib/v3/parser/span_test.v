@@ -42,6 +42,19 @@ fn main() {
 	assert map_inits.all(it.children_count == 2)
 }
 
+fn test_standalone_block_preserves_leading_label() {
+	ast, _ := parse_span_source('standalone_block_label', "fn main() {
+	{
+		retry: println('x')
+	}
+}
+")
+	labels := ast.nodes.filter(it.kind == .label_stmt)
+	assert labels.len == 1
+	assert labels[0].value == 'retry'
+	assert ast.nodes.all(it.kind != .map_init)
+}
+
 // Literal nodes must carry their own span, not the span of the token that
 // happens to follow them after p.next().
 fn test_literal_nodes_span_their_own_source() {
