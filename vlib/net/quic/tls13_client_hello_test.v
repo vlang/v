@@ -106,6 +106,27 @@ fn test_build_client_hello_rejects_empty_alpn_protocols() {
 	assert false, 'expected an error for an empty ALPN protocol list'
 }
 
+// test_build_client_hello_rejects_missing_initial_source_connection_id is a
+// regression test for a gap this session's QUIC conformance-matrix audit
+// found (not a Codex report): build_client_hello validated that four
+// server-only transport parameters were ABSENT from the client's own
+// ClientHello, but never validated that initial_source_connection_id --
+// mandatory on BOTH sides per RFC 9000 §7.3 -- was actually PRESENT. Every
+// ClientHello this code could produce omitted it, which a conforming server
+// MUST treat as TRANSPORT_PARAMETER_ERROR.
+fn test_build_client_hello_rejects_missing_initial_source_connection_id() {
+	build_client_hello(ClientHelloParams{
+		random:           []u8{len: 32}
+		server_name:      'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		alpn_protocols:   ['h3']
+	}) or {
+		assert err.msg().contains('initial_source_connection_id')
+		return
+	}
+	assert false, 'expected an error for a ClientHello missing initial_source_connection_id'
+}
+
 fn test_build_client_hello_rejects_original_destination_connection_id() {
 	p := ClientHelloParams{
 		random:               []u8{len: 32}
@@ -113,6 +134,7 @@ fn test_build_client_hello_rejects_original_destination_connection_id() {
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
 		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id:       [u8(1), 2, 3, 4]
 			original_destination_connection_id: [u8(1), 2, 3]
 		}
 	}
@@ -130,7 +152,8 @@ fn test_build_client_hello_rejects_stateless_reset_token() {
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
 		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
-			stateless_reset_token: []u8{len: 16}
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+			stateless_reset_token:        []u8{len: 16}
 		}
 	}
 	build_client_hello(p) or {
@@ -147,7 +170,8 @@ fn test_build_client_hello_rejects_preferred_address() {
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
 		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
-			preferred_address: PreferredAddress{
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+			preferred_address:            PreferredAddress{
 				connection_id:         [u8(1), 2, 3]
 				stateless_reset_token: []u8{len: 16}
 			}
@@ -167,7 +191,8 @@ fn test_build_client_hello_rejects_retry_source_connection_id() {
 		ecdhe_public_key:     []u8{len: 65, init: 0x04}
 		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
-			retry_source_connection_id: [u8(1), 2, 3]
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+			retry_source_connection_id:   [u8(1), 2, 3]
 		}
 	}
 	build_client_hello(p) or {

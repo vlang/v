@@ -68,6 +68,15 @@ pub fn encode_preferred_address(pa PreferredAddress) ![]u8 {
 	if pa.connection_id.len == 0 {
 		return error('quic: preferred_address must not have a zero-length connection ID')
 	}
+	// The connection ID length below is encoded as a single byte -- a
+	// caller supplying more than 255 bytes would otherwise silently wrap
+	// (u8(256) == 0), encoding a length byte that doesn't match the actual
+	// connection_id bytes appended right after and desyncing the whole
+	// structure for any decoder. Reject before narrowing, matching
+	// encode_long_header's identical 255-byte wire-format check.
+	if pa.connection_id.len > 255 {
+		return error('quic: preferred_address connection_id must not exceed 255 bytes, got ${pa.connection_id.len}')
+	}
 	if pa.stateless_reset_token.len != 16 {
 		return error('quic: preferred_address stateless_reset_token must be exactly 16 bytes, got ${pa.stateless_reset_token.len}')
 	}

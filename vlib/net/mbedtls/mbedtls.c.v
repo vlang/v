@@ -269,7 +269,7 @@ fn C.mbedtls_pk_verify_ext(i32, voidptr, &C.mbedtls_pk_context, i32, &u8, usize,
 // is rejected outright, see tls13_certificate.v). Bound now, alongside
 // verify_ext, because Phase 13's server role will eventually need it for the
 // server's own CertificateVerify signing, and because
-// x509_standalone_chain_test.v's round-trip test needs genuine RSA-PSS
+// x509_standalone_signature_test.v's round-trip test needs genuine RSA-PSS
 // signatures to validate verify_rsa_pss_signature against real cryptography,
 // not just reasoning about C-binding parameter marshaling.
 fn C.mbedtls_pk_sign_ext(i32, &C.mbedtls_pk_context, i32, &u8, usize, &u8, usize, &usize, fn (voidptr, &u8, usize) int, voidptr) i32

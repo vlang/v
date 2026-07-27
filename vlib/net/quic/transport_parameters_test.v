@@ -108,6 +108,24 @@ fn test_encode_preferred_address_rejects_zero_length_connection_id() {
 	assert false, 'expected an error for a zero-length connection ID'
 }
 
+// test_encode_preferred_address_rejects_overlong_connection_id is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4782360314): a connection_id longer than 255 bytes
+// wrapped the u8-encoded length byte (u8(256) == 0) while still appending
+// the full connection_id, producing wire bytes that mismatch their own
+// declared length.
+fn test_encode_preferred_address_rejects_overlong_connection_id() {
+	pa := PreferredAddress{
+		connection_id:         []u8{len: 256, init: 0xAB}
+		stateless_reset_token: []u8{len: 16}
+	}
+	encode_preferred_address(pa) or {
+		assert err.msg().contains('255')
+		return
+	}
+	assert false, 'expected an error for a connection_id longer than 255 bytes'
+}
+
 fn test_decode_preferred_address_rejects_zero_length_connection_id() {
 	// Hand-built wire bytes: 25-byte fixed prefix with cid_len=0, then a
 	// 16-byte stateless reset token and nothing else.

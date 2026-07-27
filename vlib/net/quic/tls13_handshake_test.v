@@ -527,10 +527,13 @@ fn test_handshake_certificate_verify_and_finished_with_real_cryptography() {
 // a second HelloRetryRequest is fatal, not just unusual.
 fn test_second_hello_retry_request_rejected() {
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:         []u8{len: 32, init: 0x33}
-		server_name:    'example.com'
-		ca_bundle_pem:  handshake_test_cert_pem
-		alpn_protocols: ['h3']
+		random:               []u8{len: 32, init: 0x33}
+		server_name:          'example.com'
+		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+		}
+		ca_bundle_pem:        handshake_test_cert_pem
+		alpn_protocols:       ['h3']
 	})!
 	defer {
 		h.free()
@@ -646,10 +649,13 @@ fn test_certificate_rejects_nonempty_request_context() {
 
 fn test_process_server_hello_rejects_unoffered_cipher_suite() {
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:         []u8{len: 32, init: 0x55}
-		server_name:    'example.com'
-		ca_bundle_pem:  handshake_test_cert_pem
-		alpn_protocols: ['h3']
+		random:               []u8{len: 32, init: 0x55}
+		server_name:          'example.com'
+		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+		}
+		ca_bundle_pem:        handshake_test_cert_pem
+		alpn_protocols:       ['h3']
 	})!
 	defer {
 		h.free()
@@ -737,10 +743,13 @@ fn test_process_finished_rejects_bad_verify_data() {
 // process abort, not a clean test failure.
 fn test_free_is_idempotent() {
 	mut h, _ := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:         []u8{len: 32, init: 0x11}
-		server_name:    'example.com'
-		ca_bundle_pem:  ''
-		alpn_protocols: ['h3']
+		random:               []u8{len: 32, init: 0x11}
+		server_name:          'example.com'
+		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+		}
+		ca_bundle_pem:        ''
+		alpn_protocols:       ['h3']
 	})!
 	h.free()
 	h.free() // must not double-free

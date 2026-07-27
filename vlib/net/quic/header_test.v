@@ -100,6 +100,43 @@ fn test_long_header_rejects_truncated_buffer() {
 	assert false, 'expected an error for a truncated long header'
 }
 
+// test_long_header_rejects_clear_fixed_bit and
+// test_short_header_rejects_clear_fixed_bit are regression tests for a
+// Codex finding (vlang/v#27680 pullrequestreview-4782360314): RFC 9000
+// §17.2/§17.3.1's Fixed Bit (0x40) was never checked on either header
+// parser -- "Packets containing a zero value for this bit are not valid
+// packets in this version and MUST be discarded." A packet with Header
+// Form set but Fixed Bit clear was silently parsed as a normal long/short
+// header instead of being rejected outright.
+fn test_long_header_rejects_clear_fixed_bit() {
+	// Header Form set (0x80), Fixed Bit CLEAR, type bits = 00 (initial),
+	// otherwise a well-formed v1 header.
+	mut buf := []u8{}
+	buf << u8(0x80)
+	buf << u8(0)
+	buf << u8(0)
+	buf << u8(0)
+	buf << u8(1) // version = quic_v1
+	buf << u8(0) // dcid_len
+	buf << u8(0) // scid_len
+	buf << u8(0) // token_len varint
+	buf << u8(0) // length varint
+	parse_long_header(buf) or {
+		assert err.msg().contains('Fixed Bit')
+		return
+	}
+	assert false, 'expected an error for a long header with the Fixed Bit clear'
+}
+
+fn test_short_header_rejects_clear_fixed_bit() {
+	// Header Form clear (0), Fixed Bit ALSO clear -- 0x00.
+	parse_short_header([u8(0x00)], 0) or {
+		assert err.msg().contains('Fixed Bit')
+		return
+	}
+	assert false, 'expected an error for a short header with the Fixed Bit clear'
+}
+
 // The three tests below are regression tests for Codex findings on
 // vlang/v#27680 (pullrequestreview-4781706846): QUIC v1's own 20-byte
 // connection-ID limit (RFC 9000 §17.2) wasn't enforced on either the

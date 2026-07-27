@@ -220,23 +220,22 @@ const skip_on_ubuntu_musl = [
 	'do_not_remove',
 	'vlib/arrays/parallel/parallel_test.v',
 	'vlib/builtin/js/array_test.js.v',
-	// crypto.ecdsa/crypto.rsa_pss (and net.quic, which imports both -- added
-	// for https://github.com/vlang/v/issues/27675) need Ubuntu's system
+	// crypto.ecdsa (and net.quic, which imports it -- added for
+	// https://github.com/vlang/v/issues/27675) needs Ubuntu's system
 	// OpenSSL dev headers, which are built against glibc. Fixing the -I
-	// flag (ecdsa.c.v/rsa_pss.c.v were pointing one directory too deep,
-	// `.../openssl` instead of `.../include` -- masked everywhere else by
-	// /usr/include being on every other compiler's implicit default search
-	// path, which musl-gcc's -nostdinc removes) only gets past the
-	// __has_include() check; the actual headers then transitively pull in
-	// glibc's own <stdio.h>/<time.h>/<limits.h>, which conflict at the
-	// type level with musl's parallel headers already active via
-	// musl-gcc's own -isystem wrapper (confirmed directly: __gnuc_va_list/
-	// __time64_t undefined, va_list/__BYTE_ORDER redefined incompatibly).
-	// Same root cause as the pg/sqlite entry below -- a glibc-targeted dev
-	// package is not usable from a musl-gcc build without a musl-native
-	// OpenSSL. Add any NEW net.quic/crypto.rsa_pss test file here too.
+	// flag (ecdsa.c.v was pointing one directory too deep, `.../openssl`
+	// instead of `.../include` -- masked everywhere else by /usr/include
+	// being on every other compiler's implicit default search path, which
+	// musl-gcc's -nostdinc removes) only gets past the __has_include()
+	// check; the actual headers then transitively pull in glibc's own
+	// <stdio.h>/<time.h>/<limits.h>, which conflict at the type level
+	// with musl's parallel headers already active via musl-gcc's own
+	// -isystem wrapper (confirmed directly: __gnuc_va_list/__time64_t
+	// undefined, va_list/__BYTE_ORDER redefined incompatibly). Same root
+	// cause as the pg/sqlite entry below -- a glibc-targeted dev package
+	// is not usable from a musl-gcc build without a musl-native OpenSSL.
+	// Add any NEW net.quic/crypto.ecdsa test file here too.
 	'vlib/crypto/ecdsa/ecdsa_p256_ecdh_test.v',
-	'vlib/crypto/rsa_pss/rsa_pss_test.v',
 	'vlib/net/quic/header_test.v',
 	'vlib/net/quic/initial_secrets_test.v',
 	'vlib/net/quic/packet_number_test.v',

@@ -223,6 +223,20 @@ pub fn build_client_hello(p ClientHelloParams) ![]u8 {
 	if p.alpn_protocols.len == 0 {
 		return error('quic: ClientHello must offer at least one ALPN protocol (RFC 9001 §8.1: mandatory for QUIC)')
 	}
+	// RFC 9000 §7.3: "Each endpoint includes the initial_source_connection_id
+	// transport parameter... An endpoint MUST treat absence of the
+	// initial_source_connection_id transport parameter from either endpoint
+	// ... as a connection error of type TRANSPORT_PARAMETER_ERROR." This is
+	// the client's OWN outgoing parameter (its own SCID choice, always
+	// available at ClientHello-construction time -- unlike the peer-side
+	// checks in process_encrypted_extensions, which need Phase 4/9 packet
+	// state that doesn't exist yet), so there is no reason to defer
+	// enforcing it here the way the server-only-field checks below cannot
+	// be deferred either.
+	if p.transport_parameters.initial_source_connection_id == none {
+		return error('quic: ClientHello transport parameters must include initial_source_connection_id (RFC 9000 §7.3)')
+	}
+
 	// RFC 9000 §18.2: "A client MUST NOT include any server-only
 	// transport parameter." `QuicTransportParameters` itself doesn't
 	// enforce this (it's designed to represent either side's parameter

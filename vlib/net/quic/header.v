@@ -103,6 +103,15 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	if version == 0 {
 		return error('version 0 indicates a Version Negotiation packet; use parse_version_negotiation instead')
 	}
+	// RFC 9000 §17.2: "the next bit (0x40) of byte 0 is set to 1, unless the
+	// packet is a Version Negotiation packet. Packets containing a zero
+	// value for this bit are not valid packets in this version and MUST be
+	// discarded." Version Negotiation is excluded above already (version==0
+	// returns before reaching here), so every packet past this point MUST
+	// have the Fixed Bit set.
+	if buf[0] & 0x40 == 0 {
+		return error('long header Fixed Bit is clear: not a valid QUIC packet')
+	}
 	// peek_long_header_type's bit mapping (initial/zero_rtt/handshake/retry)
 	// is QUIC v1-SPECIFIC (RFC 9000 §17.2) -- QUIC v2 (RFC 9369 §3.2)
 	// deliberately assigns different meanings to the same two bits, so
@@ -276,6 +285,15 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 	}
 	if buf[0] & 0x80 != 0 {
 		return error('not a short header packet (top bit set)')
+	}
+	// RFC 9000 §17.3.1: "The next bit (0x40) of byte 0 is set to 1. Packets
+	// containing a zero value for this bit are not valid packets in this
+	// version and MUST be discarded." Unlike the reserved/key-phase/pn-length
+	// bits, the Fixed Bit is never protected by header protection -- it's
+	// always readable in cleartext, regardless of this function's
+	// post-header-protection-removal calling convention.
+	if buf[0] & 0x40 == 0 {
+		return error('short header Fixed Bit is clear: not a valid QUIC packet')
 	}
 	if buf.len < 1 + dcid_len {
 		return error('truncated short header: need ${1 + dcid_len} bytes, have ${buf.len}')
