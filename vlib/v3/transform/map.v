@@ -622,7 +622,7 @@ fn (t &Transformer) map_optional_value_base_type(typ string) string {
 }
 
 // try_lower_map_index_assign supports try lower map index assign handling for Transformer.
-fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId {
+fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.kind !in [.assign, .index_assign] || node.children_count < 2 {
 		return none
 	}
@@ -670,6 +670,9 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 		t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
 			result)
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
+		if int(id) in t.local_closure_field_cleanups {
+			result << t.make_local_closure_cleanup_defer(value_name)
+		}
 		t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
 		return result
 	}
@@ -1367,6 +1370,9 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		call := t.make_call_typed('map__set', arr3(t.make_prefix(.amp, t.make_ident(tmp_name)), t.make_prefix(.amp,
 			t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void')
 		t.pending_stmts << t.make_expr_stmt(call)
+		if int(value_id) in t.local_closure_field_cleanups {
+			t.pending_stmts << t.make_local_closure_cleanup_defer(value_name)
+		}
 		if needs_entry_cleanup {
 			mut cleanup_stmts := []flat.NodeId{}
 			t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut

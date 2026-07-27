@@ -2974,18 +2974,36 @@ fn clone_string_list_map(values map[string][]string) map[string][]string {
 	return cloned
 }
 
-fn promote_scoped_monomorph_metadata(mut tc types.TypeChecker) {
-	// Specialization records the source context for every generated function.
-	// These maps can grow inside the disposable monomorph arena, so move both
-	// their storage and string payloads before releasing that arena.
+fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
+	// Transform and specialization can grow these maps inside a disposable arena,
+	// so move both their storage and string payloads before releasing that arena.
 	tc.fn_type_files = clone_string_string_map(tc.fn_type_files)
 	tc.fn_type_modules = clone_string_string_map(tc.fn_type_modules)
 	tc.structs = clone_struct_field_map(tc.structs)
 	tc.struct_modules = clone_string_string_map(tc.struct_modules)
+	tc.struct_files = clone_string_string_map(tc.struct_files)
+	tc.soa_structs = clone_string_bool_map(tc.soa_structs)
+	tc.declared_type_scope_keys = clone_string_bool_map(tc.declared_type_scope_keys)
+	tc.struct_error_embeds_shadow_builtin =
+		clone_string_bool_map(tc.struct_error_embeds_shadow_builtin)
+	tc.struct_generic_params = clone_string_list_map(tc.struct_generic_params)
+	tc.struct_implements = clone_string_list_map(tc.struct_implements)
+	tc.struct_shared_fields = clone_string_bool_map(tc.struct_shared_fields)
+	tc.struct_field_c_abi_fns = clone_string_string_map(tc.struct_field_c_abi_fns)
 	tc.unions = clone_string_bool_map(tc.unions)
 	tc.params_structs = clone_string_bool_map(tc.params_structs)
+	tc.c_typedef_structs = clone_string_bool_map(tc.c_typedef_structs)
+	tc.type_alias_generic_params = clone_string_list_map(tc.type_alias_generic_params)
+	tc.type_alias_c_abi_fns = clone_string_string_map(tc.type_alias_c_abi_fns)
 	tc.sum_types = clone_string_list_map(tc.sum_types)
 	tc.sum_generic_params = clone_string_list_map(tc.sum_generic_params)
+	tc.enum_names = clone_string_bool_map(tc.enum_names)
+	tc.enum_fields = clone_string_list_map(tc.enum_fields)
+	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
+	tc.interface_names = clone_string_bool_map(tc.interface_names)
+	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
+	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
+	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
 }
 
 fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int) {
@@ -3375,6 +3393,14 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 }
 
+fn record_compile_value(mut values map[string]string, define string) {
+	name := define.all_before('=').trim_space()
+	if name.len == 0 {
+		return
+	}
+	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -3413,6 +3439,7 @@ fn main() {
 	mut all_backends := false
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
+	mut compile_values := map[string]string{}
 	mut user_c_flags := []string{}
 	mut should_run := false
 	mut is_test_command := false
@@ -3501,10 +3528,14 @@ fn main() {
 			compile_backends << args[i + 1]
 			i += 2
 		} else if args[i] == '-d' && i + 1 < args.len {
-			user_defines << args[i + 1]
+			define := args[i + 1]
+			user_defines << define
+			record_compile_value(mut compile_values, define)
 			i += 2
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
-			user_defines << args[i][2..]
+			define := args[i][2..]
+			user_defines << define
+			record_compile_value(mut compile_values, define)
 			i++
 		} else if args[i] == '-gc' && i + 1 < args.len {
 			gc_mode = args[i + 1]
@@ -3745,6 +3776,7 @@ fn main() {
 	prefs.backend = backend
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
+	prefs.compile_values = compile_values.clone()
 	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
@@ -3979,7 +4011,8 @@ fn main() {
 	mut generated_monomorph_specs := []transform.MonomorphCacheSpec{}
 	mut cache_c_flags := user_c_flags.clone()
 	if backend == 'c' && cache_state.manager.enabled {
-		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target)
+		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
+			prefs.compile_values)
 	}
 	use_macos_dev_program_cache := backend == 'c' && cache_state.manager.enabled && !is_prod
 		&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
@@ -4443,6 +4476,12 @@ fn main() {
 				eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 				post_sw.restart()
 			}
+			promote_scoped_type_metadata(mut pre_tc)
+			// Transform type lookups can canonicalize alias keys/targets while the
+			// disposable arena is active. Re-own the table before releasing that arena;
+			// interface snapshotting below iterates every alias, including otherwise
+			// unreachable callback aliases.
+			pre_tc.type_aliases = clone_string_string_map(pre_tc.type_aliases)
 			transform_used_fns = clone_string_bool_map(transform_used_fns)
 			transform_errors = clone_string_list(transform_errors)
 			pre_tc.set_fresh_type_cache(parse_cache_enabled)
@@ -4665,7 +4704,7 @@ fn main() {
 			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes)
 			pre_tc.rebuild_scoped_transform_signature_maps()
 			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
-			promote_scoped_monomorph_metadata(mut pre_tc)
+			promote_scoped_type_metadata(mut pre_tc)
 			monomorph_used_fns = clone_string_bool_map(monomorph_used_fns)
 			monomorph_errors = clone_string_list(monomorph_errors)
 			generated_monomorph_specs = clone_monomorph_cache_specs(generated_monomorph_specs)
@@ -4768,7 +4807,7 @@ fn main() {
 		b.step('monomorphize')
 	}
 	if backend == 'wasm' {
-		if msg := unsupported_power_backend_error(a, &pre_tc, used_fns, backend) {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
 			exit(1)
 		}
@@ -4792,7 +4831,7 @@ fn main() {
 	}
 	mut newly_cached_module_count := 0
 	if backend == 'arm64' {
-		if msg := unsupported_power_backend_error(a, &pre_tc, used_fns, backend) {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
 			exit(1)
 		}
@@ -4885,6 +4924,7 @@ fn main() {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
+			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
@@ -4919,6 +4959,7 @@ fn main() {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
+			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
@@ -6239,7 +6280,8 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	if module_name.len > 0 {
 		for file in all_files {
 			declared_module := declared_module_in_file(file)
-			if declared_module != module_name {
+			if declared_module != module_name && !(declared_module in ['', 'main']
+				&& module_name in ['', 'main']) {
 				continue
 			}
 			files << file
@@ -6473,7 +6515,7 @@ fn print_type_errors(errors []types.TypeError) {
 	}
 }
 
-fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
+fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
 	mut cur_module := ''
 	mut cur_file := ''
 	mut visited := []bool{len: a.nodes.len}
@@ -6500,7 +6542,7 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 		root_ids << flat.NodeId(idx)
 		root_modules << module_name
 		root_files << (a.specialized_fn_files[idx] or { cur_file })
-		if msg := unsupported_power_node_error(a, flat.NodeId(idx), backend, mut visited) {
+		if msg := unsupported_backend_node_error(a, flat.NodeId(idx), backend, mut visited) {
 			return msg
 		}
 	}
@@ -6529,7 +6571,7 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 				root_ids << a.child(field, 0)
 				root_modules << cur_module
 				root_files << cur_file
-				if msg := unsupported_power_node_error(a, a.child(field, 0), backend, mut visited) {
+				if msg := unsupported_backend_node_error(a, a.child(field, 0), backend, mut visited) {
 					return msg
 				}
 			}
@@ -6543,21 +6585,21 @@ fn unsupported_power_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_
 				root_ids << expr_id
 				root_modules << cur_module
 				root_files << cur_file
-				if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
+				if msg := unsupported_backend_node_error(a, expr_id, backend, mut visited) {
 					return msg
 				}
 			}
 		}
 	}
 	for expr_id in markused.reachable_const_exprs(a, tc, root_ids, root_modules, root_files) {
-		if msg := unsupported_power_node_error(a, expr_id, backend, mut visited) {
+		if msg := unsupported_backend_node_error(a, expr_id, backend, mut visited) {
 			return msg
 		}
 	}
 	return none
 }
 
-fn unsupported_power_node_error(a &flat.FlatAst, id flat.NodeId, backend string, mut visited []bool) ?string {
+fn unsupported_backend_node_error(a &flat.FlatAst, id flat.NodeId, backend string, mut visited []bool) ?string {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len || visited[idx] {
 		return none
@@ -6577,8 +6619,16 @@ fn unsupported_power_node_error(a &flat.FlatAst, id flat.NodeId, backend string,
 		}
 		return '${location}error: operator `${op}` is not supported by the V3 ${backend} backend'
 	}
+	if node.kind == .defer_result {
+		location := if source_pos := a.source_position(node.pos) {
+			'${source_pos}: '
+		} else {
+			''
+		}
+		return '${location}error: `$res()` is not supported by the V3 ${backend} backend'
+	}
 	for i in 0 .. node.children_count {
-		if msg := unsupported_power_node_error(a, a.child(&node, i), backend, mut visited) {
+		if msg := unsupported_backend_node_error(a, a.child(&node, i), backend, mut visited) {
 			return msg
 		}
 	}
@@ -6823,7 +6873,11 @@ mut:
 	has_sync         bool
 	needs_embed      bool
 	has_embed_import bool
+	needs_closure    bool
+	has_closure      bool
 }
+
+const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
 fn seed_implicit_imports(mut a flat.FlatAst) {
 	start := a.nodes.len
@@ -6834,6 +6888,13 @@ fn seed_implicit_imports(mut a flat.FlatAst) {
 	}
 	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
+	}
+	// Bound method values, lambdas, and captured fn literals are materialized during
+	// transform, after import resolution. Seed the runtime only when parsed syntax can
+	// need it; unconditional insertion conflicts with user modules whose source alias is
+	// `closure`.
+	if scan.needs_closure && !scan.has_closure {
+		a.add_node(closure_import_node())
 	}
 	a.intern_node_texts_from(start)
 }
@@ -6851,6 +6912,17 @@ fn embed_file_import_node() flat.Node {
 		kind:  .import_decl
 		value: 'v.embed_file'
 		typ:   'embed_file'
+	}
+}
+
+fn closure_import_node() flat.Node {
+	return flat.Node{
+		kind:  .import_decl
+		value: 'builtin.closure'
+		// This node is appended in the last user file's scope. A compiler-private
+		// alias prevents it from overwriting a user import named `closure`; generated
+		// runtime calls already use the resolved `closure.*` declaration keys.
+		typ: closure_runtime_import_alias
 	}
 }
 
@@ -6884,6 +6956,13 @@ fn cache_bundle_import_file(builtin_dir string) string {
 }
 
 fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
+	mut call_callees := map[int]bool{}
+	for i in scan.node_idx .. end_node {
+		node := a.nodes[i]
+		if node.kind == .call && node.children_count > 0 {
+			call_callees[int(a.child(&node, 0))] = true
+		}
+	}
 	for i in scan.node_idx .. end_node {
 		node := a.nodes[i]
 		if node.kind == .import_decl {
@@ -6891,6 +6970,8 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				scan.has_sync = true
 			} else if node.value == 'v.embed_file' {
 				scan.has_embed_import = true
+			} else if node.value == 'builtin.closure' {
+				scan.has_closure = true
 			}
 		}
 		if !scan.needs_sync {
@@ -6906,6 +6987,27 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		if !scan.needs_embed && node.kind == .struct_init
 			&& node.value == 'embed_file.EmbedFileData' {
 			scan.needs_embed = true
+		}
+		// Builtin is parsed before `user_code_start` and contains ordinary selector
+		// values that must not force the closure runtime into every program.
+		if !scan.needs_closure && i >= a.user_code_start {
+			if node.kind == .lambda_expr {
+				// Lambda captures are inferred during transform, after imports have
+				// already been resolved, so conservatively seed their possible runtime.
+				scan.needs_closure = true
+			} else if node.kind == .fn_literal {
+				for child_idx in 0 .. node.children_count {
+					if a.child_node(&node, child_idx).kind == .ident {
+						scan.needs_closure = true
+						break
+					}
+				}
+			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees {
+				// A selector used as a value may be a bound method. Type information is
+				// unavailable during import discovery, so conservatively load the runtime;
+				// ordinary method calls are excluded by the callee set above.
+				scan.needs_closure = true
+			}
 		}
 	}
 	scan.node_idx = end_node
@@ -7114,7 +7216,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut cur_file := first_file
 	mut cur_module := 'main'
 	mut node_idx := 0
-	// The implicit sync/embed_file seeds are global-once: the serial loop added
+	// The implicit sync/embed_file/closure seeds are global-once: the serial loop added
 	// each at the first module that needed it and never again. These flags carry
 	// that "already seeded" state across module boundaries and waves. Within a
 	// wave the synthetic nodes are only spliced in after every boundary has been
@@ -7124,6 +7226,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
 	mut synthetic_sync_added := implicit_imports.has_sync
 	mut synthetic_embed_file_added := implicit_imports.has_embed_import
+	mut synthetic_closure_added := implicit_imports.has_closure
 	mut ri_collision_ns := u64(0)
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
@@ -7426,6 +7529,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					node: embed_file_import_node()
 				}
 				synthetic_embed_file_added = true
+			}
+			if !synthetic_closure_added && implicit_imports.needs_closure
+				&& !implicit_imports.has_closure {
+				insertions << SyntheticInsertion{
+					pos:  region_end
+					node: closure_import_node()
+				}
+				synthetic_closure_added = true
 			}
 			module_start = module_file_end
 		}

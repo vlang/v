@@ -55,3 +55,19 @@ fn test_global_and_local_pointer_receivers_can_mutate_their_pointees() {
 	}))
 	assert tc.mut_receiver_expr_is_mutable_lvalue(g_id)
 }
+
+fn test_const_mut_receiver_is_immutable() {
+	mut a := flat.FlatAst.new()
+	value_id := a.add_val(.ident, 'value')
+	mut tc := TypeChecker.new(&a)
+	tc.const_types['value'] = Type(Struct{
+		name: 'S'
+	})
+	tc.cur_scope = new_scope(tc.file_scope)
+	assert !tc.mut_receiver_expr_is_mutable_lvalue(value_id)
+
+	tc.cur_scope.insert('value', Type(Struct{
+		name: 'S'
+	}))
+	assert !tc.mut_receiver_expr_is_mutable_lvalue(value_id)
+}

@@ -811,6 +811,7 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 
 const c_main_runtime_shadow_fn_names = {
 	'new_map': true
+	'accept':  true
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
@@ -2729,22 +2730,10 @@ fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
 
 // gen_method_value_closure handles a method used as a *value* (e.g. `game.draw`
 // passed where a `fn ()` callback is expected) rather than called. A plain struct
-// field access can't represent the bound receiver, so it binds the receiver into a
-// per-site context global and yields a wrapper function that invokes the method on
-// it. Returns false when the selector is an ordinary field access (handled normally).
-//
-// LIMITATION: the captured receiver lives in a single per-site global, so it is
-// only valid while no later evaluation of the *same* selector site overwrites it.
-// That covers the supported cases — passing/storing a method value and invoking it
-// before the site is re-evaluated (immediate callbacks, a single stored callback).
-// It does NOT support keeping several live method values from one site with
-// different receivers (e.g. building an array of `obj.method` in a loop): they all
-// share the global and would observe the last-bound receiver. A correct general
-// form needs a real per-closure captured environment, which the v3 backend has no
-// ABI for yet (anonymous fns are lifted without true capture). Such escaping method
-// values should be reworked (e.g. capture into an explicit struct + free fn) until
-// closure support lands.
-fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string) bool {
+// field access can't represent the bound receiver, so it stores the receiver in a
+// per-instance closure context and yields a wrapper function that invokes the method.
+// Returns false when the selector is an ordinary field access (handled normally).
+fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string, borrow_receiver bool, clone_receiver_fn string) bool {
 	clean := types.unwrap_all_pointers(base_type)
 	mut receiver_name := ''
 	mut is_interface_receiver := false
@@ -2755,11 +2744,18 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		is_interface_receiver = true
 	} else if clean is types.Alias {
 		receiver_name = clean.name
-		if alias_method := g.find_alias_method(clean.base_type.name(), method) {
+		base_receiver_name := clean.base_type.name()
+		if g.resolve_method_name(receiver_name, method).len == 0
+			&& g.resolve_method_name(base_receiver_name, method).len > 0 {
+			// A true alias (`type A = S`) inherits methods declared on its
+			// underlying type. Use that declaration's receiver/signature for
+			// the method-value wrapper when the alias has no method of its own.
+			receiver_name = base_receiver_name
+		} else if alias_method := g.find_alias_method(base_receiver_name, method) {
 			receiver_name = alias_method.all_before_last('.')
 		}
-	} else if method == 'str'
-		&& (clean is types.Primitive || clean is types.Char || clean is types.Rune) {
+	} else if clean is types.String || clean is types.Primitive || clean is types.Char
+		|| clean is types.Rune {
 		receiver_name = clean.name()
 	} else {
 		alias_method := g.find_alias_method(clean.name(), method) or { return false }
@@ -2830,13 +2826,37 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	// fn-pointer typedef): an option/result is `Optional_T`, a fixed array its
 	// `_v_ret_*` wrapper — not the bare `c_type` (`Optional`/`Array_fixed_*`).
 	ret_ct := g.fn_return_type_name(ret)
+	base_pointer_depth := cgen_type_pointer_depth(base_type)
+	receiver_pointer_depth := cgen_type_pointer_depth(params[0])
+	// Pointer-receiver method values still backed by addressable stack values need
+	// durable context storage. The transform heap-promotes callback-argument locals,
+	// so those arrive here as pointers and preserve receiver identity. A method value
+	// proven local uses the borrow marker for the same identity-preserving behavior.
+	receiver_value_copy := receiver_pointer_depth > base_pointer_depth
+		&& (!g.expr_is_addressable(base_id) || !borrow_receiver)
+	ctx_receiver_ct := if receiver_value_copy {
+		g.tc.c_type(types.unwrap_pointer(params[0]))
+	} else {
+		recv_ct
+	}
+	ctx_receiver_type := if receiver_value_copy {
+		types.unwrap_pointer(params[0])
+	} else {
+		params[0]
+	}
+	ctx_receiver_needs_drop := g.tc.ownership_type_requires_destruction(ctx_receiver_type)
 	// The wrapper has translation-unit scope, so name it from the stable selector
 	// site instead of the function-local temporary counter.
 	idx := int(base_id)
 	ctx_name := '_mvctx_${idx}'
 	wrap_name := '_mvwrap_${idx}'
+	drop_name := '_mvdrop_${idx}'
 	mut wparams := []string{}
-	mut call_args := [ctx_name]
+	mut receiver_arg := if receiver_value_copy { '&ctx->receiver' } else { 'ctx->receiver' }
+	if clone_receiver_fn.len > 0 {
+		receiver_arg = '${g.cname(clone_receiver_fn)}(&ctx->receiver)'
+	}
+	mut call_args := [receiver_arg]
 	for i in 1 .. params.len {
 		pt := g.tc.c_type(params[i])
 		wparams << '${pt} a${i}'
@@ -2850,23 +2870,46 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		}
 		g.add_spawn_wrapper_def('${ret_ct} ${cname}(${method_param_types.join(', ')});')
 	}
-	g.add_spawn_wrapper_def('static ${recv_ct} ${ctx_name};')
+	g.add_spawn_wrapper_def('typedef struct { ${ctx_receiver_ct} receiver; } ${ctx_name};')
+	if ctx_receiver_needs_drop {
+		drop_body := g.ownership_drop_value_to_string(ctx_receiver_type, 'ctx->receiver')
+		g.add_spawn_wrapper_def('static void ${drop_name}(void* data) { ${ctx_name}* ctx = (${ctx_name}*)data;\n${drop_body}}')
+	}
 	ret_prefix := if ret_ct == 'void' { '' } else { 'return ' }
-	g.add_spawn_wrapper_def('static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ret_prefix}${cname}(${call_args.join(', ')}); }')
-	base_pointer_depth := cgen_type_pointer_depth(base_type)
-	receiver_pointer_depth := cgen_type_pointer_depth(params[0])
-	// Set the context global to the receiver, then yield the wrapper as the value.
-	if receiver_pointer_depth > base_pointer_depth && !g.expr_is_addressable(base_id) {
-		// Pointer receiver bound to an rvalue base (`Foo{..}.tick`, `make_foo().tick`): taking
-		// `&(rvalue)` captures a temporary that dies with the enclosing statement expression,
-		// before the callback runs. Copy the receiver into a durable static slot and point at it.
-		val_ct := g.tc.c_type(types.unwrap_pointer(params[0]))
-		g.add_spawn_wrapper_def('static ${val_ct} ${ctx_name}_recv;')
-		g.write('({ ${ctx_name}_recv = ')
-		g.gen_expr(base_id)
-		g.write('; ${ctx_name} = &${ctx_name}_recv')
+	g.add_spawn_wrapper_def('static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ctx_name}* ctx = (${ctx_name}*)closure__g_closure.closure_get_data(); ${ret_prefix}${cname}(${call_args.join(', ')}); }')
+	fnptr_ct := if fnt := fn_type_from(g.expected_expr_type) {
+		g.value_c_type(fnt)
 	} else {
-		g.write('({ ${ctx_name} = ')
+		'void*'
+	}
+	create_fn := if ctx_receiver_needs_drop {
+		'closure__closure_create_with_data_and_drop'
+	} else {
+		'closure__closure_create_with_data'
+	}
+	g.write('(${fnptr_ct})${create_fn}((void*)${wrap_name}, (void*)memdup(&(${ctx_name}){.receiver = ')
+	if clone_receiver_fn.len > 0 {
+		clone_fn_cname := g.cname(clone_receiver_fn)
+		if g.expr_is_addressable(base_id) {
+			g.write('${clone_fn_cname}((void*)&(')
+			g.gen_expr(base_id)
+			g.write('))')
+		} else {
+			tmp := g.tmp_count
+			g.tmp_count++
+			receiver_tmp := '__method_receiver_${tmp}'
+			clone_tmp := '__method_receiver_clone_${tmp}'
+			g.write('({${ctx_receiver_ct} ${receiver_tmp} = ')
+			g.gen_expr(base_id)
+			g.write('; ${ctx_receiver_ct} ${clone_tmp} = ${clone_fn_cname}((void*)&${receiver_tmp}); ')
+			g.write(g.ownership_drop_value_to_string(ctx_receiver_type, receiver_tmp))
+			g.write('${clone_tmp};})')
+		}
+	} else if receiver_value_copy {
+		// Store the receiver value directly in the context; the wrapper passes its
+		// durable field address instead of retaining `&local`.
+		g.gen_expr(base_id)
+	} else {
 		if receiver_pointer_depth > base_pointer_depth {
 			for _ in base_pointer_depth .. receiver_pointer_depth {
 				g.write('&(')
@@ -2887,18 +2930,11 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 			g.gen_expr(base_id)
 		}
 	}
-	// Yield the wrapper as the callback value. A V `fn (...) ...` parameter is a
-	// `_fn_ptr_*` typedef and needs the wrapper cast to that function-pointer type; only
-	// a C / `voidptr` callback slot gets the object-pointer `(void*)` cast (which strict
-	// C rejects for function pointers). `fn_type_from` is alias-aware, so a method value
-	// passed through a `type Cb = fn ()` parameter (an `Alias`, not a bare `FnType`) is
-	// recognised too and cast to the function-pointer typedef rather than `(void*)`.
-	if fnt := fn_type_from(g.expected_expr_type) {
-		fnptr_ct := g.value_c_type(fnt)
-		g.write('; (${fnptr_ct})${wrap_name}; })')
-	} else {
-		g.write('; (void*)${wrap_name}; })')
+	g.write('}, sizeof(${ctx_name})), true')
+	if ctx_receiver_needs_drop {
+		g.write(', (void*)${drop_name}')
 	}
+	g.write(')')
 	return true
 }
 
@@ -2946,12 +2982,15 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 				return
 			}
 		}
-		cfn := if looked_up !is types.Void && fn_type_from(looked_up) != none {
+		mut cfn := if looked_up !is types.Void && fn_type_from(looked_up) != none {
 			g.cname(fn_node.value)
 		} else if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
 			g.direct_call_name_for_call(call_id, call_key)
 		} else {
 			g.cname(fn_node.value)
+		}
+		if shadow_name := g.main_runtime_shadow_call_c_name(call_node, fn_node) {
+			cfn = shadow_name
 		}
 		if call_node.children_count == 1 {
 			if g.spawn_fn_literal_captures(cfn).len > 0 {
@@ -4598,6 +4637,52 @@ fn (mut g FlatGen) gen_map_mutation_call_with_loop_copyback_guard(node flat.Node
 	return true
 }
 
+fn (g &FlatGen) owned_capture_context_type(data_id flat.NodeId) ?types.Type {
+	mut current := data_id
+	for _ in 0 .. 8 {
+		if int(current) < 0 || int(current) >= g.a.nodes.len {
+			return none
+		}
+		node := g.a.nodes[int(current)]
+		if node.kind in [.cast_expr, .paren] && node.children_count == 1 {
+			current = g.a.child(&node, 0)
+			continue
+		}
+		if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+			context_type := types.unwrap_pointer(g.tc.resolve_type(g.a.child(&node, 0)))
+			if context_type is types.Struct && context_type.name.ends_with('_Ctx')
+				&& g.tc.ownership_type_requires_destruction(context_type) {
+				return context_type
+			}
+		}
+		return none
+	}
+	return none
+}
+
+fn (mut g FlatGen) gen_owned_capture_closure_create(id flat.NodeId, node flat.Node, fn_name string, target_name string, resolved_target_name string) bool {
+	if node.children_count != 4
+		|| !(fn_name in ['closure.closure_create_with_data', 'closure__closure_create_with_data']
+		|| target_name in ['closure.closure_create_with_data', 'closure__closure_create_with_data']
+		|| resolved_target_name in ['closure.closure_create_with_data', 'closure__closure_create_with_data']) {
+		return false
+	}
+	context_type := g.owned_capture_context_type(g.a.child(&node, 2)) or { return false }
+	context_ct := g.tc.c_type(context_type)
+	drop_name := '_flctxdrop_${int(id)}'
+	drop_body := g.ownership_drop_value_to_string(context_type, '*ctx')
+	g.add_spawn_wrapper_def('static void ${drop_name}(void* data) { ${context_ct}* ctx = (${context_ct}*)data;\n${drop_body}}')
+	g.write('closure__closure_create_with_data_and_drop(')
+	for i in 1 .. node.children_count {
+		if i > 1 {
+			g.write(', ')
+		}
+		g.gen_expr(g.a.child(&node, i))
+	}
+	g.write(', (void*)${drop_name})')
+	return true
+}
+
 // gen_call emits call output for c.
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	mut fn_node := g.a.child_node(&node, 0)
@@ -4606,6 +4691,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		target_name
 	} else {
 		fn_node.value
+	}
+	if fn_node.kind == .ident && fn_name == '__v3_closure_current_data' {
+		g.write('closure__g_closure.closure_get_data()')
+		return
 	}
 	if fn_node.kind == .ident && fn_name.starts_with('fn_ptr:') && node.children_count == 2 {
 		g.write('(${g.resolve_fn_ptr_type(fn_name)})(')
@@ -4662,6 +4751,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	if g.gen_owned_capture_closure_create(id, node, fn_name, target_name, resolved_target_name) {
+		return
+	}
 	// Generic templates are transformed before their concrete type arguments are
 	// known. A builtin print call can therefore reach cgen with an unconverted `T`
 	// argument that monomorphization has since made concrete. Stringify that final
@@ -5914,22 +6006,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							continue
 						}
 						if num_call_args > param_types.len {
-							c_elem := g.tc.c_type(variadic_type.elem_type)
-							count := num_call_args - variadic_idx
-							g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
-							is_voidptr_variadic := variadic_elem_is_voidptr(variadic_type.elem_type)
-							for j in i .. node.children_count {
-								if j > i {
-									g.write(', ')
-								}
-								if is_voidptr_variadic {
-									g.gen_voidptr_variadic_arg(g.a.child(&node, j))
-								} else {
-									g.gen_expr_with_expected_type(g.a.child(&node, j),
-										variadic_type.elem_type)
-								}
-							}
-							g.write('})')
+							g.gen_variadic_array_args(node, i, variadic_type.elem_type)
 							break
 						}
 						arg_type := g.tc.resolve_type(arg_id)
@@ -9748,7 +9825,14 @@ fn (g &FlatGen) callback_c_fn_name(name string) string {
 		return g.test_user_main_c_name()
 	}
 	if name.starts_with('main.') {
-		return g.cname(name.all_after_last('.'))
+		fn_name := name.all_after_last('.')
+		if shadow_name := g.main_runtime_shadow_fn_c_name('main', fn_name) {
+			return shadow_name
+		}
+		return g.cname(fn_name)
+	}
+	if shadow_name := g.main_runtime_shadow_fn_c_name(g.tc.cur_module, name) {
+		return shadow_name
 	}
 	return g.cname(name)
 }
@@ -9770,6 +9854,9 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		base_type = expected.base_type
 	} else {
 		return false
+	}
+	if g.gen_current_mut_param_value_read(arg_id, cgen_unalias_type(expected)) {
+		return true
 	}
 	if g.expr_is_optional_literal(arg_id, expected) {
 		collapsed := g.collapsed_optional_literal(arg_id, expected)
@@ -11570,21 +11657,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		if is_variadic && arg_idx == variadic_idx {
 			variadic_type := param_types[variadic_idx]
 			if variadic_type is types.Array {
-				c_elem := g.tc.c_type(variadic_type.elem_type)
-				count := num_args - variadic_idx
-				g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
-				is_voidptr_variadic := variadic_elem_is_voidptr(variadic_type.elem_type)
-				for j in i .. node.children_count {
-					if j > i {
-						g.write(', ')
-					}
-					if is_voidptr_variadic {
-						g.gen_voidptr_variadic_arg(g.a.child(&node, j))
-					} else {
-						g.gen_expr_with_expected_type(g.a.child(&node, j), variadic_type.elem_type)
-					}
-				}
-				g.write('})')
+				g.gen_variadic_array_args(node, i, variadic_type.elem_type)
 			}
 			break
 		}
@@ -11741,6 +11814,48 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			emitted_defaults++
 		}
 	}
+}
+
+fn (mut g FlatGen) gen_variadic_array_args(node flat.Node, start int, elem_type types.Type) {
+	mut count := 0
+	mut saw_short_struct := false
+	for i in start .. node.children_count {
+		arg := g.a.child_node(&node, i)
+		if arg.kind == .field_init {
+			if !saw_short_struct {
+				count++
+				saw_short_struct = true
+			}
+		} else {
+			count++
+		}
+	}
+	c_elem := g.tc.c_type(elem_type)
+	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
+	mut emitted := 0
+	for i in start .. node.children_count {
+		arg_id := g.a.child(&node, i)
+		arg := g.a.nodes[int(arg_id)]
+		if arg.kind == .field_init {
+			if saw_short_struct {
+				if emitted > 0 {
+					g.write(', ')
+				}
+				g.gen_params_struct_arg(elem_type, node, i)
+			}
+			break
+		}
+		if emitted > 0 {
+			g.write(', ')
+		}
+		if variadic_elem_is_voidptr(elem_type) {
+			g.gen_voidptr_variadic_arg(arg_id)
+		} else {
+			g.gen_expr_with_expected_type(arg_id, elem_type)
+		}
+		emitted++
+	}
+	g.write('})')
 }
 
 fn (g &FlatGen) call_callee_is_module_selector(node flat.Node) bool {
@@ -14135,6 +14250,9 @@ fn (mut g FlatGen) concrete_optional_type_name(t types.Type) string {
 	mut inner_ct := g.value_c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
+	}
+	if inner_ct == 'int' {
+		return 'Optional'
 	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := 'Optional_${safe_name}'

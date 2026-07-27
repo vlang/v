@@ -38,6 +38,84 @@ fn test_c_directive_targets_use_requested_platform() {
 	assert c_include_arg_for_target('windows <windows.h>', '', '', target) == ''
 }
 
+fn test_c_flag_default_define_macros_stay_single_arguments() {
+	target := pref.host_target()
+	assert c_flag_args("-DNUMBER=\$d('N', 1234 ) ##", '', '', target) == [
+		'-DNUMBER=1234',
+	]
+	assert c_flag_args('-DFNAME=\$d(\'A1\', \'"check_d\')\$d(\'A2\',\'flags_fn"\')', '', '', target) == [
+		'-DFNAME=check_dflags_fn',
+	]
+	assert c_flag_args("-DMIXED=\$d('A1', 'mixed' )_\$d('A2', 4 ) ##", '', '', target) == [
+		'-DMIXED=mixed_4',
+	]
+	assert c_flag_args(r'-DJSON=$d("JSON", "\"value\"")', '', '', target) == [
+		'-DJSON="value"',
+	]
+	assert c_flag_args("-DMESSAGE=\$d('MSG', 'hello world')", '', '', target) == [
+		'-DMESSAGE=hello world',
+	]
+	assert c_flag_args("-DPASTE=\$d('PASTE', 'a##b') ## source comment", '', '', target) == [
+		'-DPASTE=a##b',
+	]
+	assert c_flag_args(r'-DQUOTED=$d("QUOTED", "\"a##b\"") ## source comment', '', '', target) == [
+		'-DQUOTED="a##b"',
+	]
+	assert c_flag_args('-DTEXT=\'"\$d(x)"\'', '', '', target) == [
+		'-DTEXT="$d(x)"',
+	]
+	assert c_flag_args('-DNAME=\$d(\'name\', \'a"b\')', '', '', target) == [
+		'-DNAME=a"b',
+	]
+}
+
+fn test_c_flag_default_define_macros_honor_configured_values() {
+	target := pref.host_target()
+	// A matching `-d name=value` override wins over the `$d(...)` fallback.
+	assert c_flag_args_with_values("-DNUMBER=\$d('N', 1234 )", '', '', target, {
+		'N': '42'
+	}) == [
+		'-DNUMBER=42',
+	]
+	// Only the configured define is substituted; the other keeps its fallback.
+	assert c_flag_args_with_values("-DMIXED=\$d('A1', 'mixed' )_\$d('A2', 4 )", '', '', target, {
+		'A2': '9'
+	}) == [
+		'-DMIXED=mixed_9',
+	]
+	// A bare `-d name` has the configured value `true`, matching v.pref semantics.
+	assert c_flag_args_with_values("-DVALUE=\$d('enabled', false)", '', '', target, {
+		'enabled': 'true'
+	}) == [
+		'-DVALUE=true',
+	]
+	// An absent define also falls back.
+	assert c_flag_args_with_values("-DNUMBER=\$d('N', 1234 )", '', '', target, map[string]string{}) == [
+		'-DNUMBER=1234',
+	]
+	assert c_flag_args_with_values("-DMESSAGE=\$d('MSG', 'fallback')", '', '', target, {
+		'MSG': 'configured value'
+	}) == [
+		'-DMESSAGE=configured value',
+	]
+	assert c_flag_args_with_values("-DPASTE=\$d('PASTE', 'fallback') ## source comment", '', '',
+		target, {
+		'PASTE': 'a##b'
+	}) == [
+		'-DPASTE=a##b',
+	]
+	assert c_flag_args_with_values("-DNAME=\$d('name', 'fallback')", '', '', target, {
+		'name': 'a"b'
+	}) == [
+		'-DNAME=a"b',
+	]
+	assert c_flag_args_with_values("-DPATH=\$d('path', 'fallback')", '', '', target, {
+		'path': r'a\b'
+	}) == [
+		r'-DPATH=a\b',
+	]
+}
+
 fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	empty := map[string]bool{}

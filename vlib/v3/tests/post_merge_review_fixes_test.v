@@ -2270,9 +2270,9 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context',
 		'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'if_error_branch_rejected_for_option_payload',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n",
-		'if-expression branch type mismatch')
+	option_error_out := run_good(v3_bin, 'if_error_branch_allowed_for_option_payload',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n")
+	assert option_error_out == ''
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
 		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
 		'if-expression branch type mismatch')
@@ -2644,10 +2644,9 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 		'argument count mismatch for `fixed.pointers`: expected 1, got 2')
 }
 
-fn test_alias_receiver_method_value_escape_is_rejected() {
+fn test_alias_receiver_method_value_escape_is_supported() {
 	v3_bin := build_v3()
-	err := 'a method value (`obj.method`) cannot escape its call site'
-	run_bad(v3_bin, 'alias_receiver_underlying_method_value_escape', 'struct Runner {
+	underlying := run_good(v3_bin, 'alias_receiver_underlying_method_value_escape', 'struct Runner {
 	n int
 }
 
@@ -2657,14 +2656,20 @@ fn (r Runner) run() int {
 	return r.n
 }
 
-fn bind(r RAlias) fn () int {
+fn make_callback(r RAlias) fn () int {
 	return r.run
 }
 
-fn main() {}
-',
-		err)
-	run_bad(v3_bin, 'alias_receiver_own_method_value_escape', 'struct Runner {
+fn main() {
+	r := RAlias(Runner{
+		n: 41
+	})
+	cb := make_callback(r)
+	println(int_str(cb()))
+}
+')
+	assert underlying == '41'
+	own := run_good(v3_bin, 'alias_receiver_own_method_value_escape', 'struct Runner {
 	n int
 }
 
@@ -2674,13 +2679,50 @@ fn (r RAlias) alias_run() int {
 	return r.n
 }
 
-fn bind(r RAlias) fn () int {
+fn make_callback(r RAlias) fn () int {
 	return r.alias_run
 }
 
-fn main() {}
-',
-		err)
+fn main() {
+	r := RAlias(Runner{
+		n: 42
+	})
+	cb := make_callback(r)
+	println(int_str(cb()))
+}
+')
+	assert own == '42'
+}
+
+fn test_interface_method_value_escape_is_supported() {
+	v3_bin := build_v3()
+	interface_method := run_good(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
+	run() int
+}
+
+struct Job {
+	n int
+}
+
+fn (j Job) run() int {
+	return j.n
+}
+
+struct Holder {
+	cb fn () int
+}
+
+fn main() {
+	r := Runner(Job{
+		n: 1
+	})
+	h := Holder{
+		cb: r.run
+	}
+	println(int_str(h.cb()))
+}
+')
+	assert interface_method == '1'
 }
 
 fn test_map_builtin_method_fallback_checks_arguments() {
@@ -4178,6 +4220,9 @@ fn test_interface_is_unqualified_local_uses_exact_impl_id() {
 
 fn test_callback_lambda_lift_preserves_outer_captures() {
 	v3_bin := build_v3()
+	no_arg_out := run_good(v3_bin, 'callback_no_arg_lambda_lift_preserves_capture',
+		'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n')
+	assert no_arg_out == '42'
 	out := run_good(v3_bin, 'callback_lambda_lift_preserves_capture',
 		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n')
 	assert out == '12'
@@ -5661,32 +5706,6 @@ fn main() {
 	assert str_out.contains("m: {'a': 3}"), str_out
 	assert str_out.contains('bar: Bar'), str_out
 	assert str_out.contains('x: 7'), str_out
-	run_bad(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
-	run() int
-}
-
-struct Job {
-	n int
-}
-
-fn (j Job) run() int {
-	return j.n
-}
-
-struct Holder {
-	cb fn () int
-}
-
-fn main() {
-	r := Runner(Job{
-		n: 1
-	})
-	_ := Holder{
-		cb: r.run
-	}
-}
-',
-		'cannot escape its call site')
 	run_bad(v3_bin, 'review_voidptr_interface_cast', 'interface Sink {
 	sink()
 }

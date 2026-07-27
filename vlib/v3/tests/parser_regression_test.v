@@ -34,6 +34,16 @@ fn parse_parser_regression_diagnostics(name string, source string) []parser.Diag
 	return p.diagnostics
 }
 
+fn parse_parser_regression_backend_diagnostics(name string, source string, backend string) []parser.Diagnostic {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.backend = backend
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(src)
+	return p.diagnostics
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
@@ -216,6 +226,97 @@ fn test_dollar_prefixed_pseudo_functions_are_rejected() {
 	assert diagnostics[2].message.contains('`$isreftype` is not supported'), '${diagnostics}'
 	assert diagnostics[3].message.contains('`$__offsetof` is not supported'), '${diagnostics}'
 	assert diagnostics[4].message.contains('`$dump` is not supported'), '${diagnostics}'
+}
+
+fn test_res_is_rejected_outside_the_active_defer_body() {
+	outside := parse_parser_regression_diagnostics('res_outside_defer',
+		'fn value() int {\n\treturn $res()\n}\n')
+	assert outside.any(it.message.contains('`res` can only be used in defer blocks')), '${outside}'
+	nested_fn := parse_parser_regression_diagnostics('res_in_nested_fn_inside_defer',
+		'fn value() int {\n\tdefer {\n\t\tcallback := fn () int {\n\t\t\treturn $res()\n\t\t}\n\t\t_ = callback\n\t}\n\treturn 1\n}\n')
+	assert nested_fn.any(it.message.contains('`res` can only be used in defer blocks')), '${nested_fn}'
+	no_arg_lambda := parse_parser_regression_diagnostics('res_in_no_arg_lambda_inside_defer',
+		'fn consume(callback fn () int) {\n\t_ = callback\n}\n\nfn value() int {\n\tdefer {\n\t\tconsume(|| $res())\n\t}\n\treturn 1\n}\n')
+	assert no_arg_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${no_arg_lambda}'
+
+	pipe_lambda := parse_parser_regression_diagnostics('res_in_pipe_lambda_inside_defer',
+		'fn consume(callback fn (int) int) {\n\t_ = callback\n}\n\nfn value() int {\n\tdefer {\n\t\tconsume(|x| $res())\n\t}\n\treturn 1\n}\n')
+	assert pipe_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${pipe_lambda}'
+}
+
+fn test_res_is_restricted_to_function_exit_defers() {
+	nested_block := parse_parser_regression_diagnostics('res_in_nested_scoped_defer',
+		'fn value() int {\n\t{\n\t\tdefer {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert nested_block.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${nested_block}'
+
+	loop := parse_parser_regression_diagnostics('res_in_loop_scoped_defer',
+		'fn value() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert loop.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${loop}'
+
+	direct := parse_parser_regression_diagnostics('res_in_direct_scoped_defer',
+		'fn value() int {\n\tdefer {\n\t\tprintln($res())\n\t}\n\treturn 7\n}\n')
+	assert !direct.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${direct}'
+
+	explicit_function := parse_parser_regression_diagnostics('res_in_explicit_function_defer',
+		'fn value() int {\n\t{\n\t\tdefer(fn) {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert !explicit_function.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${explicit_function}'
+}
+
+fn test_res_uses_a_dedicated_node_and_rejects_trailing_argument_tokens() {
+	valid := parse_parser_regression_source('res_dedicated_node',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1, 2\n}\n')
+	result_nodes := valid.nodes.filter(it.kind == .defer_result)
+	assert result_nodes.len == 1, '${result_nodes}'
+	assert result_nodes[0].value == '0'
+	assert !valid.nodes.any(it.kind == .ident && it.value == '__v3_defer_result')
+
+	max_index := parse_parser_regression_source('res_max_int_index',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(2147483647)\n\t}\n\treturn 1, 2\n}\n')
+	max_index_nodes := max_index.nodes.filter(it.kind == .defer_result)
+	assert max_index_nodes.len == 1, '${max_index_nodes}'
+	assert max_index_nodes[0].value == '2147483647'
+
+	overflow := parse_parser_regression_diagnostics('res_index_overflows_int',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(4294967296)\n\t}\n\treturn 1, 2\n}\n')
+	assert overflow.any(it.message.contains('`res` index must be a non-negative integer literal')), '${overflow}'
+
+	trailing := parse_parser_regression_diagnostics('res_trailing_argument_tokens',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\n')
+	assert trailing.any(it.message.contains('expected `)` immediately after the `$res` index')), '${trailing}'
+
+	bare := parse_parser_regression_diagnostics('res_requires_parentheses',
+		'fn value() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\n')
+	assert bare.any(it.message.contains('expected `(` after `$res`')), '${bare}'
+}
+
+fn test_defer_result_backend_rejection_is_not_parser_level() {
+	source := 'fn specialized[T]() int {
+	defer {
+		$if T is int {
+			assert $res() == 1
+		}
+	}
+	return 1
+}
+
+fn main() {
+	assert specialized[string]() == 1
+}
+'
+	for backend in ['arm64', 'eval', 'wasm'] {
+		diagnostics := parse_parser_regression_backend_diagnostics('deferred_res_${backend}',
+			source, backend)
+		assert !diagnostics.any(it.message.contains('is not supported by the V3 ${backend} backend')), '${diagnostics}'
+	}
+}
+
+fn test_memory_only_inline_assembly_is_not_treated_as_empty() {
+	barrier := parse_parser_regression_diagnostics('asm_memory_barrier',
+		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t\t;\n\t\t;\n\t\tmemory\n\t}\n}\n')
+	assert barrier.any(it.message.contains('inline assembly is not supported')), '${barrier}'
+	empty := parse_parser_regression_diagnostics('asm_truly_empty',
+		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t}\n}\n')
+	assert !empty.any(it.message.contains('inline assembly is not supported')), '${empty}'
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {

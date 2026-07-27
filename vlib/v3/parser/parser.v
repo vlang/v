@@ -1,6 +1,7 @@
 module parser
 
 import os
+import strconv
 import strings
 import v3.cmdexec
 import v3.flat
@@ -61,6 +62,9 @@ mut:
 	veb_tmpl_counter      int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
 	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
 	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
+	defer_depth           int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
+	defer_result_allowed  bool     // true when the active defer is guaranteed to run during function return
+	nested_block_depth    int      // lexical block depth below the current function body's outer scope
 	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
 	comptime_const_values map[string]string
@@ -231,6 +235,9 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.peek_end = 0
 	p.cur_module = ''
 	p.cur_fn = ''
+	p.defer_depth = 0
+	p.defer_result_allowed = false
+	p.nested_block_depth = 0
 	p.has_peek = false
 	p.pending_flag = false
 	p.pending_params = false
@@ -1040,9 +1047,15 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		prev_fn := p.cur_fn
 		prev_struct := p.cur_struct
 		prev_method_is_static := p.cur_method_is_static
+		outer_defer_depth := p.defer_depth
+		outer_defer_result_allowed := p.defer_result_allowed
+		outer_nested_block_depth := p.nested_block_depth
 		p.cur_fn = name
 		p.cur_struct = method_receiver_type_name(receiver_type).all_after_last('.')
 		p.cur_method_is_static = false
+		p.defer_depth = 0
+		p.defer_result_allowed = false
+		p.nested_block_depth = 0
 		p.push_local_type_scope(name)
 		p.begin_comptime_value_scope()
 		p.begin_local_binding_scope()
@@ -1085,6 +1098,9 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		p.cur_fn = prev_fn
 		p.cur_struct = prev_struct
 		p.cur_method_is_static = prev_method_is_static
+		p.defer_depth = outer_defer_depth
+		p.defer_result_allowed = outer_defer_result_allowed
+		p.nested_block_depth = outer_nested_block_depth
 	}
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
@@ -1183,6 +1199,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	prev_fn := p.cur_fn
 	prev_struct := p.cur_struct
 	prev_method_is_static := p.cur_method_is_static
+	outer_defer_depth := p.defer_depth
+	outer_defer_result_allowed := p.defer_result_allowed
+	outer_nested_block_depth := p.nested_block_depth
 	p.cur_fn = name
 	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
 	p.cur_struct = if is_method {
@@ -1191,6 +1210,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		''
 	}
 	p.cur_method_is_static = is_method && receiver_name.len == 0
+	p.defer_depth = 0
+	p.defer_result_allowed = false
+	p.nested_block_depth = 0
 	p.push_local_type_scope(name)
 	p.begin_comptime_value_scope()
 	// The parameters (and receiver) are the function body's outermost local bindings.
@@ -1228,6 +1250,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.cur_fn = prev_fn
 	p.cur_struct = prev_struct
 	p.cur_method_is_static = prev_method_is_static
+	p.defer_depth = outer_defer_depth
+	p.defer_result_allowed = outer_defer_result_allowed
+	p.nested_block_depth = outer_nested_block_depth
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
 	for id in param_ids {
@@ -4662,10 +4687,48 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	}
 	if p.tok == .name && p.lit == 'res' {
 		p.next()
-		if p.tok == .lpar {
-			p.skip_parens()
+		mut defer_index := -1
+		if p.tok != .lpar {
+			p.record_diagnostic('expected `(` after `$res`', p.tok_pos)
+		} else {
+			p.next()
+			if p.tok != .rpar && p.tok != .eof {
+				if p.tok == .number {
+					index_pos := p.tok_pos
+					index_text := p.lit
+					p.next()
+					if parsed_index := defer_result_index_literal(index_text) {
+						defer_index = parsed_index
+					} else {
+						p.record_diagnostic('`res` index must be a non-negative integer literal',
+							index_pos)
+					}
+					if p.tok != .rpar {
+						p.record_diagnostic('expected `)` immediately after the `$res` index',
+							p.tok_pos)
+						p.skip_defer_result_arguments()
+					} else {
+						p.next()
+					}
+				} else {
+					p.record_diagnostic('`res` index must be a non-negative integer literal',
+						p.tok_pos)
+					p.skip_defer_result_arguments()
+				}
+			} else {
+				p.check(.rpar)
+			}
 		}
-		return p.add_val_id(3, 'false')
+		if p.defer_depth == 0 {
+			p.record_diagnostic('`res` can only be used in defer blocks', dollar_pos)
+		} else if !p.defer_result_allowed {
+			p.record_diagnostic('`res` can only be used in function-exit defer blocks', dollar_pos)
+		}
+		return p.add_node(flat.Node{
+			kind:  .defer_result
+			value: if defer_index < 0 { '' } else { defer_index.str() }
+			pos:   p.span_to(dollar_pos)
+		})
 	}
 	if p.tok == .name && p.lit == 'env' {
 		// $env('NAME') evaluates an environment variable at compile time and
@@ -4722,6 +4785,33 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+fn defer_result_index_literal(value string) ?int {
+	if is_float_number_literal(value) {
+		return none
+	}
+	parsed := strconv.common_parse_int(value.replace('_', ''), 0, 64, true, true) or { return none }
+	if parsed < 0 || parsed > i64(max_i32) {
+		return none
+	}
+	return int(parsed)
+}
+
+fn (mut p Parser) skip_defer_result_arguments() {
+	mut nested_parens := 0
+	for p.tok != .eof {
+		if p.tok == .lpar {
+			nested_parens++
+		} else if p.tok == .rpar {
+			if nested_parens == 0 {
+				p.next()
+				return
+			}
+			nested_parens--
+		}
+		p.next()
+	}
 }
 
 fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
@@ -5869,6 +5959,10 @@ fn (mut p Parser) control_header_expr(min_bp token.BindingPower) flat.NodeId {
 }
 
 fn (mut p Parser) match_branch_cond() flat.NodeId {
+	if p.tok == .question {
+		name := p.parse_type_name()
+		return p.match_type_pattern_node(name)
+	}
 	if p.tok == .lsbr && p.peek() == .rsbr {
 		typ := p.parse_type_name()
 		elem_type := if typ.starts_with('[]') { typ[2..] } else { typ }
@@ -6008,6 +6102,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 
 	branch_block_start := p.tok_pos
 	p.check(.lcbr)
+	p.nested_block_depth++
 	block_scope := p.block_local_type_scope(branch_block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
@@ -6035,6 +6130,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
 	}
+	p.nested_block_depth--
 
 	bstart := p.add_children(branch_ids)
 	return p.add_node(flat.Node{
@@ -6075,6 +6171,7 @@ fn (mut p Parser) unsafe_block_stmt() flat.NodeId {
 fn (mut p Parser) parse_block_body() []flat.NodeId {
 	block_start := p.tok_pos
 	p.check(.lcbr)
+	p.nested_block_depth++
 	block_scope := p.block_local_type_scope(block_start)
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
@@ -6097,6 +6194,7 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
 	}
+	p.nested_block_depth--
 	return ids
 }
 
@@ -6656,7 +6754,13 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 		}
 		p.check(.rpar)
 	}
+	outer_defer_result_allowed := p.defer_result_allowed
+	p.defer_result_allowed = outer_defer_result_allowed || mode == 'function'
+		|| (p.defer_depth == 0 && p.nested_block_depth == 0)
+	p.defer_depth++
 	body := p.block_stmt()
+	p.defer_depth--
+	p.defer_result_allowed = outer_defer_result_allowed
 	dstart := p.add_child(body)
 	return p.add_node(flat.Node{
 		kind:           .defer_stmt
@@ -6700,23 +6804,41 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	asm_pos := p.tok_pos
 	p.next() // skip 'asm'
 	// consume optional volatile keyword
-	if p.tok == .name && p.lit == 'volatile' {
+	if p.tok == .key_volatile || (p.tok == .name && p.lit == 'volatile') {
 		p.next()
 	}
 	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
 	// The C backend intentionally ignores the block and uses the source fallback, so the
 	// architecture token must be consumed with the block instead of becoming stray statements.
-	if p.tok == .name {
+	for p.tok == .name {
 		p.next()
 	}
-	// consume the asm block
+	// Consume the asm block. A truly empty block has no backend work and is a
+	// portable no-op. A `memory` clobber is not empty: it is a compiler barrier,
+	// so keep diagnosing it until the selected V3 backend can emit that barrier.
+	mut is_empty := true
 	if p.tok == .lcbr {
-		p.skip_block()
+		mut depth := 1
+		p.next()
+		for depth > 0 && p.tok != .eof {
+			if p.tok == .lcbr {
+				depth++
+			} else if p.tok == .rcbr {
+				depth--
+				if depth == 0 {
+					p.next()
+					break
+				}
+			} else if depth == 1 && p.tok != .semicolon {
+				is_empty = false
+			}
+			p.next()
+		}
 	}
 	if p.tok == .semicolon {
 		p.next()
 	}
-	if !p.prefs.supports_inline_asm {
+	if !p.prefs.supports_inline_asm && !is_empty {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	return p.add(flat.NodeKind.asm_stmt)
@@ -8649,7 +8771,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
 	op_start := p.span_start()
 	p.next()
-	lambda_body := p.expr(.lowest)
+	lambda_body := p.lambda_body_expr()
 	lstart := p.add_child(lambda_body)
 	return p.a.add_node(flat.Node{
 		kind:           .lambda_expr
@@ -8671,7 +8793,7 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.check(.pipe)
-	lambda_body := p.expr(.lowest)
+	lambda_body := p.lambda_body_expr()
 	mut ids := lambda_params.clone()
 	ids << lambda_body
 	lstart := p.add_children(ids)
@@ -8681,6 +8803,20 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(op_start)
 	})
+}
+
+fn (mut p Parser) lambda_body_expr() flat.NodeId {
+	outer_defer_depth := p.defer_depth
+	outer_defer_result_allowed := p.defer_result_allowed
+	outer_nested_block_depth := p.nested_block_depth
+	p.defer_depth = 0
+	p.defer_result_allowed = false
+	p.nested_block_depth = 0
+	body := p.expr(.lowest)
+	p.defer_depth = outer_defer_depth
+	p.defer_result_allowed = outer_defer_result_allowed
+	p.nested_block_depth = outer_nested_block_depth
+	return body
 }
 
 fn (mut p Parser) lambda_param_ident() flat.NodeId {
@@ -9614,6 +9750,12 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	// body
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
+		outer_defer_depth := p.defer_depth
+		outer_defer_result_allowed := p.defer_result_allowed
+		outer_nested_block_depth := p.nested_block_depth
+		p.defer_depth = 0
+		p.defer_result_allowed = false
+		p.nested_block_depth = 0
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
@@ -9649,6 +9791,9 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
+		p.defer_depth = outer_defer_depth
+		p.defer_result_allowed = outer_defer_result_allowed
+		p.nested_block_depth = outer_nested_block_depth
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}
 	for id in capture_ids {

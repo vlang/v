@@ -10,6 +10,8 @@ pub type NodeId = int
 pub type TextId = u32
 
 pub const empty_node = NodeId(-1)
+pub const method_value_borrow_receiver_marker = '__v3_method_value_borrow_receiver'
+pub const method_value_clone_receiver_marker_prefix = '__v3_method_value_clone_receiver:'
 
 const empty_node_value = Node{}
 
@@ -102,6 +104,9 @@ pub enum NodeKind as u8 {
 	// by parse_comptime_expr and fully expanded (into builder statements) by
 	// parse_block_body at parse time, so it never reaches later phases.
 	veb_template
+	// A `$res()` / `$res(index)` expression. This must remain distinct from
+	// `.ident` so user-spellable names cannot be reinterpreted as defer results.
+	defer_result
 }
 
 // Op lists op values used by flat.
