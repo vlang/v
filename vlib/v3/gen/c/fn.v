@@ -2889,9 +2889,22 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	}
 	g.write('(${fnptr_ct})${create_fn}((void*)${wrap_name}, (void*)memdup(&(${ctx_name}){.receiver = ')
 	if clone_receiver_fn.len > 0 {
-		g.write('${g.cname(clone_receiver_fn)}((void*)&(')
-		g.gen_expr(base_id)
-		g.write('))')
+		clone_fn_cname := g.cname(clone_receiver_fn)
+		if g.expr_is_addressable(base_id) {
+			g.write('${clone_fn_cname}((void*)&(')
+			g.gen_expr(base_id)
+			g.write('))')
+		} else {
+			tmp := g.tmp_count
+			g.tmp_count++
+			receiver_tmp := '__method_receiver_${tmp}'
+			clone_tmp := '__method_receiver_clone_${tmp}'
+			g.write('({${ctx_receiver_ct} ${receiver_tmp} = ')
+			g.gen_expr(base_id)
+			g.write('; ${ctx_receiver_ct} ${clone_tmp} = ${clone_fn_cname}((void*)&${receiver_tmp}); ')
+			g.write(g.ownership_drop_value_to_string(ctx_receiver_type, receiver_tmp))
+			g.write('${clone_tmp};})')
+		}
 	} else if receiver_value_copy {
 		// Store the receiver value directly in the context; the wrapper passes its
 		// durable field address instead of retaining `&local`.

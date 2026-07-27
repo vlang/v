@@ -24321,9 +24321,6 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	if actual is FnType && expected is FnType {
 		return tc.fn_value_signature_compatible(Type(actual), Type(expected))
 	}
-	if expected is FnType && fn_param_is_voidptr_type(actual) {
-		return true
-	}
 	if (actual.name().contains('[') || expected.name().contains('['))
 		&& tc.generic_type_name_matches(actual.name(), expected.name()) {
 		return true

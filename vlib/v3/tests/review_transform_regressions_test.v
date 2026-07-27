@@ -2880,6 +2880,44 @@ fn main() {
 	assert out == 'owned:7\nowned:7'
 }
 
+fn test_owned_rvalue_method_receiver_is_materialized_before_cloning() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Holder implements IClone {
+	text   string
+	values []int
+}
+
+fn (holder Holder) read() string {
+	return holder.text + ":" + int_str(holder.values[0])
+}
+
+fn make_holder() Holder {
+	return Holder{
+		text:   "owned".to_owned()
+		values: [7]
+	}
+}
+
+fn main() {
+	callback := make_holder().read
+	println(callback())
+	println(callback())
+}
+'
+	src_path := os.join_path(os.temp_dir(), 'v3_owned_rvalue_method_receiver.v')
+	c_path := os.join_path(os.temp_dir(), 'v3_owned_rvalue_method_receiver.c')
+	os.write_file(src_path, source) or { panic(err) }
+	gen := os.execute('${v3_bin} -nocache -ownership ${src_path} -b c -o ${c_path}')
+	assert gen.exit_code == 0, gen.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('((void*)&__method_receiver_'), main_body
+	assert main_body.contains('string__free(&((__method_receiver_'), main_body
+	assert !main_body.contains('&(make_holder())'), main_body
+	out := run_good_with_flags(v3_bin, 'owned_rvalue_method_receiver', '-ownership', source)
+	assert out == 'owned:7\nowned:7'
+}
+
 fn test_owned_fn_literal_capture_context_has_type_aware_drop() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'fn exercise() int {

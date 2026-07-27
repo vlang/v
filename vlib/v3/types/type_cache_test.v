@@ -174,6 +174,15 @@ fn test_fn_type_with_spaced_empty_parameter_list_has_no_void_parameter() {
 	assert Type(fn_typ).name() == 'fn() int'
 }
 
+fn test_voidptr_is_not_implicitly_compatible_with_callback_type() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+
+	void_pointer := tc.parse_type('voidptr')
+	callback := tc.parse_type('fn ()')
+	assert !tc.type_compatible(void_pointer, callback)
+}
+
 fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
