@@ -268,6 +268,15 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	return sig
 }
 
+fn fn_type_calling_convention(f &Fn) string {
+	for attr in f.attrs {
+		if attr.name == 'callconv' {
+			return attr.arg
+		}
+	}
+	return ''
+}
+
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	f_return_type := t.fully_unaliased_type(f.return_type)
 	func_return_type := t.fully_unaliased_type(func.return_type)
@@ -279,7 +288,9 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 		&& f_return_type.has_flag(.result) == func_return_type.has_flag(.result)
 		&& f_return_sym.info is FnType {
 		if func_return_sym.info is FnType {
-			same_return_type = t.fn_type_source_signature(f_return_sym.info.func) == t.fn_type_source_signature(func_return_sym.info.func)
+			same_return_type =
+				t.fn_type_source_signature(f_return_sym.info.func) == t.fn_type_source_signature(func_return_sym.info.func)
+				&& fn_type_calling_convention(f_return_sym.info.func) == fn_type_calling_convention(func_return_sym.info.func)
 		}
 	}
 	if !same_return_type {
