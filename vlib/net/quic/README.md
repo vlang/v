@@ -15,21 +15,29 @@ patch is required for this.
 
 ## OpenSSL dependency: hard, not opt-out
 
-TLS 1.3 signature verification for `net.quic` needs P-256 ECDH (for the
-`secp256r1` `key_share` group) and RSA-PSS (for the `rsa_pss_rsae_*` signature
-schemes), neither of which exist anywhere in V today. Both are added as new
-OpenSSL bindings (`vlib/crypto/ecdsa/ecdsa.c.v`, new `vlib/crypto/rsa_pss/`),
-following the same `-lcrypto` linkage `crypto.ecdsa` already uses for ECDSA
-sign/verify.
+TLS 1.3 key exchange for `net.quic` needs P-256 ECDH (for the `secp256r1`
+`key_share` group), which didn't exist anywhere in V before this. It's added
+as a new OpenSSL binding (`vlib/crypto/ecdsa/ecdsa.c.v`), following the same
+`-lcrypto` linkage `crypto.ecdsa` already uses for ECDSA sign/verify.
 
 This was a candidate for a `-d no_openssl_quic` opt-out flag (falling back to
 Ed25519-only cert chain support), but is **not needed**: Windows CI
 (`windows_ci_gcc.yml`) already builds and runs `vlib/crypto/ecdsa/ecdsa_test.v`
 against OpenSSL today, with explicit OpenSSL diagnostics steps beforehand. So
 the exact dependency `net.quic` needs is already proven to build and pass on
-Linux, macOS, and Windows. **Decision: P-256 ECDH and RSA-PSS are a hard
-dependency of `net.quic`.** No opt-out build flag, no reduced-interop fallback
-mode.
+Linux, macOS, and Windows. **Decision: P-256 ECDH is a hard dependency of
+`net.quic`.** No opt-out build flag, no reduced-interop fallback mode.
+
+CertificateVerify signature verification (ECDSA and RSA-PSS) and certificate
+chain-of-trust validation (including RSA-PKCS1v1.5-signed certificates, still
+common among real-world CAs — `net.quic` advertises this via the
+`signature_algorithms_cert` extension, RFC 8446 §4.2.3) are both handled
+through mbedTLS's already-vendored, already-bound C functions
+(`mbedtls_pk_verify_ext`, `mbedtls_x509_crt_verify`) — no OpenSSL dependency
+for either. (An earlier draft of this file added a separate
+`vlib/crypto/rsa_pss/` OpenSSL module for RSA-PSS specifically; it was removed
+as unused dead code once the mbedTLS path above was confirmed to cover the
+same need.)
 
 ## mbedTLS X.509-only usage (no `mbedtls_ssl_context`)
 

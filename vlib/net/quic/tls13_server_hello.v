@@ -165,6 +165,32 @@ pub type ServerHelloMessage = ParsedHelloRetryRequest | ParsedServerHello
 // legacy_session_id_echo needs no caller-supplied state either: Phase 2c's
 // build_client_hello never sends a session ID, so a non-empty echo is
 // unconditionally wrong on its own.
+// server_hello_allowed / hello_retry_request_allowed are RFC 8446 §4.2's own
+// per-message applicability table restricted to a REAL ServerHello vs. a
+// HelloRetryRequest respectively -- the two variants share a wire type but
+// not an allowed-extension set (cookie is HRR-only; neither ever carries
+// alpn/quic_transport_parameters/server_name, which are EncryptedExtensions-
+// only). `pre_shared_key` is never included in EITHER: this client offers no
+// PSK (0-RTT/resumption is out of scope), so RFC 8446 §4.2's own "MUST NOT
+// send an extension response the client didn't request" rule makes it
+// illegal here regardless of the per-message table, the same as any other
+// unsolicited extension.
+const server_hello_allowed = [ext_supported_versions, ext_key_share]
+const hello_retry_request_allowed = [ext_supported_versions, ext_key_share, ext_cookie]
+
+// reject_unsolicited_extensions returns an error (carrying RFC 8446 §4.2's
+// unsupported_extension QUIC error code via error_with_code, matching
+// parse_encrypted_extensions's identical convention) for the first
+// extension in `extensions` not present in `allowed`.
+fn reject_unsolicited_extensions(extensions []TlsExtension, allowed []u16, context string) ! {
+	for e in extensions {
+		if e.typ !in allowed {
+			return error_with_code('quic: ${context} contains extension 0x${e.typ:04x}, which this client did not offer or which RFC 8446 §4.2 does not permit here',
+				int(tls_alert_to_quic_error(.unsupported_extension)))
+		}
+	}
+}
+
 pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 	if body.len < 2 + 32 + 1 {
 		return error('quic: truncated ServerHello: need at least 35 bytes for the fixed prefix, have ${body.len}')
@@ -204,6 +230,7 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 	}
 
 	if random == hello_retry_request_random[..] {
+		reject_unsolicited_extensions(extensions, hello_retry_request_allowed, 'HelloRetryRequest')!
 		ks_ext := find_extension(extensions, ext_key_share) or {
 			return error('quic: HelloRetryRequest missing mandatory key_share extension')
 		}
@@ -227,6 +254,7 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 		}
 	}
 
+	reject_unsolicited_extensions(extensions, server_hello_allowed, 'ServerHello')!
 	ks_ext := find_extension(extensions, ext_key_share) or {
 		return error('quic: ServerHello missing mandatory key_share extension')
 	}

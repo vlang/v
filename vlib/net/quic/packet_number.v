@@ -12,6 +12,13 @@ module quic
 // packet_number_space.v, added in a later phase), never as one connection-wide
 // value.
 
+// max_packet_number is RFC 9000 §12.3's own stated limit: "if any packet
+// number is exhausted, ... MUST close the connection" -- packet numbers are
+// 62-bit unsigned values, so 2^62-1 is the largest one a sender may ever
+// use; a sender reaching this limit must stop sending in this space
+// (typically by closing the connection or migrating), not keep counting.
+pub const max_packet_number = (u64(1) << 62) - 1
+
 // encode_packet_number picks the smallest encoding (1, 2, 3, or 4 bytes) for
 // `full_pn` such that it can be unambiguously reconstructed given
 // `largest_acked` (the largest packet number acknowledged so far in this
@@ -21,7 +28,18 @@ module quic
 // Per RFC 9000 §17.1, the sender MUST use a packet number encoding that can
 // represent more than twice as large a range as the difference between the
 // packet number being sent and the largest acknowledged packet.
-pub fn encode_packet_number(full_pn u64, largest_acked ?u64) ([]u8, int) {
+//
+// Rejects `full_pn > max_packet_number` (RFC 9000 §12.3) rather than
+// silently truncating it -- an un-checked caller could otherwise reach here
+// with an exhausted counter and get back a corrupted, wrapped-around
+// encoding (e.g. 2^62 truncates to a 4-byte field of all zeros) instead of
+// the caller finding out its connection needs to stop sending. Also guards
+// the `(num_unacked + 1) * 2` sizing arithmetic below, which would itself
+// overflow for `num_unacked` values near `u64` max.
+pub fn encode_packet_number(full_pn u64, largest_acked ?u64) !([]u8, int) {
+	if full_pn > max_packet_number {
+		return error('quic: packet number ${full_pn} exceeds the maximum ${max_packet_number} (2^62-1, RFC 9000 §12.3): this packet number space is exhausted')
+	}
 	// If nothing has been acknowledged yet, use the full 4-byte encoding —
 	// there's no acked packet number to bound the ambiguity window against.
 	num_unacked := if la := largest_acked {

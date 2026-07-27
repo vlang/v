@@ -347,3 +347,36 @@ fn test_parse_encrypted_extensions_rejects_length_mismatch() {
 	}
 	assert false, 'expected an error for an extensions length not matching the body'
 }
+
+// test_parse_server_hello_rejects_unsolicited_alpn and
+// test_parse_server_hello_hello_retry_request_rejects_unsolicited_extension
+// are regression tests for a Codex finding (vlang/v#27680
+// pullrequestreview-4791164664): parse_server_hello had no extension
+// allowlist at all -- alpn (EncryptedExtensions-only per RFC 8446 §4.2's
+// per-message table) or any other extension this client didn't request
+// passed through both the real-ServerHello and HelloRetryRequest branches
+// silently ignored, instead of the mandatory unsupported_extension abort
+// (RFC 8446 §4.2).
+fn test_parse_server_hello_rejects_unsolicited_alpn() {
+	ks_ext := build_test_key_share_server_entry(named_group_secp256r1, []u8{len: 65, init: 0x04})
+	alpn_ext := encode_extension(ext_alpn, [u8(0), 3, 2, u8(`h`), u8(`3`)]) or { panic(err) }
+	body := build_test_server_hello([]u8{len: 32}, ks_ext, alpn_ext)
+	parse_server_hello(body) or {
+		assert err.msg().contains('0x0010') // ext_alpn == 0x10
+		assert err.code() == int(tls_alert_to_quic_error(.unsupported_extension))
+		return
+	}
+	assert false, 'expected an error for an unsolicited alpn extension in ServerHello'
+}
+
+fn test_parse_server_hello_hello_retry_request_rejects_unsolicited_extension() {
+	ks_ext := encode_extension(ext_key_share, [u8(0x00), 0x17]) or { panic(err) }
+	alpn_ext := encode_extension(ext_alpn, [u8(0), 3, 2, u8(`h`), u8(`3`)]) or { panic(err) }
+	body := build_test_server_hello(hello_retry_request_random[..].clone(), ks_ext, alpn_ext)
+	parse_server_hello(body) or {
+		assert err.msg().contains('HelloRetryRequest')
+		assert err.code() == int(tls_alert_to_quic_error(.unsupported_extension))
+		return
+	}
+	assert false, 'expected an error for an unsolicited alpn extension in HelloRetryRequest'
+}

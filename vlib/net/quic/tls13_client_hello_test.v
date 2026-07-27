@@ -45,6 +45,25 @@ fn test_encode_signature_algorithms_extension_wire_format() {
 		0x08, 0x06]
 }
 
+// test_encode_signature_algorithms_cert_extension_wire_format is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4791164664): the ClientHello never advertised
+// signature_algorithms_cert, so a server whose certificate chain is signed
+// with a common RSA-PKCS1v1.5 algorithm (still very common among real-world
+// CAs) had no matching entry to select against and could refuse the chain
+// entirely, even though this client's own certificate-chain verification
+// (mbedTLS's generic X.509 verifier) already supports validating such
+// signatures -- CertificateVerify itself (signature_algorithms, unchanged)
+// stays strict and never accepts RSA-PKCS1v1.5.
+fn test_encode_signature_algorithms_cert_extension_wire_format() {
+	got := encode_signature_algorithms_cert_extension()!
+	// type=0032 (IANA registry value 50), ext_data_len=0010 (2+14),
+	// list_len=000e (7 schemes x 2 bytes): the 4 existing schemes plus the
+	// 3 new rsa_pkcs1_* ones.
+	assert got == [u8(0x00), 0x32, 0x00, 0x10, 0x00, 0x0e, 0x04, 0x03, 0x08, 0x04, 0x08, 0x05,
+		0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x06, 0x01]
+}
+
 fn test_encode_key_share_extension_wire_format() {
 	key_exchange := []u8{len: 65, init: 0x42}
 	got := encode_key_share_extension(named_group_secp256r1, key_exchange)!
@@ -275,6 +294,7 @@ fn test_build_client_hello_structure() {
 		ext_supported_versions,
 		ext_supported_groups,
 		ext_signature_algorithms,
+		ext_signature_algorithms_cert,
 		ext_alpn,
 		ext_key_share,
 		ext_quic_transport_parameters,

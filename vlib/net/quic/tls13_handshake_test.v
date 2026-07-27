@@ -379,6 +379,95 @@ fn test_process_encrypted_extensions_rejects_missing_alpn() {
 	assert false, 'expected an error for EncryptedExtensions missing the alpn extension'
 }
 
+// test_process_encrypted_extensions_rejects_missing_quic_transport_parameters
+// is a regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4791164664): a missing quic_transport_parameters
+// extension was mapped through the generic `handshake_failure` alert
+// instead of RFC 9001 §8.2's specifically-mandated `missing_extension`
+// alert (-> QUIC error 0x016d).
+fn test_process_encrypted_extensions_rejects_missing_quic_transport_parameters() {
+	client_random := []u8{len: 32, init: 0x73}
+	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	defer {
+		h.free()
+	}
+	server_initial_scid := [u8(3), 3, 3, 3]
+	name_bytes := 'h3'.bytes()
+	mut alpn_list := []u8{}
+	alpn_list << u8(name_bytes.len)
+	alpn_list << name_bytes
+	mut alpn_data := []u8{}
+	alpn_data << u8(alpn_list.len >> 8)
+	alpn_data << u8(alpn_list.len)
+	alpn_data << alpn_list
+	alpn_ext := encode_extension(ext_alpn, alpn_data)!
+	mut body := []u8{}
+	body << u8(alpn_ext.len >> 8)
+	body << u8(alpn_ext.len)
+	body << alpn_ext
+	ee_framed := encode_handshake_message(.encrypted_extensions, body)!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid, client_original_dcid,
+		none) or {
+		assert err.msg().contains('quic_transport_parameters')
+		assert err.code() == int(tls_alert_to_quic_error(.missing_extension))
+		return
+	}
+	assert false, 'expected an error for EncryptedExtensions missing the quic_transport_parameters extension'
+}
+
+// test_process_encrypted_extensions_rejects_stateless_reset_token_with_zero_length_scid
+// is a regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4791164664): a server using a zero-length connection ID
+// has no connection ID for a stateless_reset_token to authenticate a future
+// use of -- decode_transport_parameters/decode_preferred_address parse each
+// field independently and can't see this cross-field inconsistency; only
+// process_encrypted_extensions, which holds peer_initial_scid, can.
+fn test_process_encrypted_extensions_rejects_stateless_reset_token_with_zero_length_scid() {
+	client_random := []u8{len: 32, init: 0x74}
+	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	defer {
+		h.free()
+	}
+	zero_length_scid := []u8{}
+	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
+		initial_source_connection_id:       zero_length_scid
+		original_destination_connection_id: client_original_dcid.clone()
+		stateless_reset_token:              []u8{len: 16, init: 0xAB}
+	})!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, zero_length_scid, client_original_dcid, none) or {
+		assert err.msg().contains('stateless_reset_token')
+		assert err.msg().contains('zero-length')
+		return
+	}
+	assert false, 'expected an error for stateless_reset_token combined with a zero-length server connection ID'
+}
+
+fn test_process_encrypted_extensions_rejects_preferred_address_with_zero_length_scid() {
+	client_random := []u8{len: 32, init: 0x75}
+	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	defer {
+		h.free()
+	}
+	zero_length_scid := []u8{}
+	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
+		initial_source_connection_id:       zero_length_scid
+		original_destination_connection_id: client_original_dcid.clone()
+		preferred_address:                  PreferredAddress{
+			connection_id:         [u8(1), 2, 3, 4]
+			stateless_reset_token: []u8{len: 16, init: 0xCD}
+		}
+	})!
+	ee_msg, _ := parse_handshake_message(ee_framed)!
+	h.process_encrypted_extensions(ee_msg, ee_framed, zero_length_scid, client_original_dcid, none) or {
+		assert err.msg().contains('preferred_address')
+		assert err.msg().contains('zero-length')
+		return
+	}
+	assert false, 'expected an error for preferred_address combined with a zero-length server connection ID'
+}
+
 fn test_process_encrypted_extensions_rejects_original_dcid_mismatch() {
 	client_random := []u8{len: 32, init: 0x73}
 	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!

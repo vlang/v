@@ -7,6 +7,15 @@ const ext_supported_groups = u16(10)
 const ext_signature_algorithms = u16(13)
 const ext_supported_versions = u16(43)
 const ext_key_share = u16(51)
+// RFC 8446 §4.2.3 -- IANA TLS ExtensionType registry value 50, confirmed
+// directly. Distinct from `signature_algorithms`: when present, THIS
+// extension's list governs which signature algorithms the client accepts
+// for signatures appearing in CERTIFICATES (chain-of-trust signing), while
+// `signature_algorithms` governs CertificateVerify (the live handshake
+// signature). Sending both lets this client stay strict about
+// CertificateVerify (no legacy RSA-PKCS1) while being permissive about
+// what's actually a very common real-world certificate-signing algorithm.
+const ext_signature_algorithms_cert = u16(50)
 // RFC 7301 §3.1 — registered separately from RFC 8446's own ExtensionType
 // list. RFC 9001 §8.1 makes this MANDATORY for QUIC: there is no other
 // application-protocol negotiation mechanism, so a server that supports no
@@ -29,6 +38,23 @@ const sig_scheme_ecdsa_secp256r1_sha256 = u16(0x0403)
 const sig_scheme_rsa_pss_rsae_sha256 = u16(0x0804)
 const sig_scheme_rsa_pss_rsae_sha384 = u16(0x0805)
 const sig_scheme_rsa_pss_rsae_sha512 = u16(0x0806)
+
+// RFC 8446 §4.2.3: "These values refer solely to signatures which appear in
+// certificates ... and are not defined for use in signed TLS handshake
+// messages, although they MAY appear in 'signature_algorithms' and
+// 'signature_algorithms_cert' for backward compatibility." Never offered in
+// `signature_algorithms` (this client's CertificateVerify validation stays
+// strict) -- only in `signature_algorithms_cert`, since a very large
+// fraction of real-world CA-issued certificates are still RSA-PKCS1v1.5
+// signed and mbedTLS's own generic X.509 chain verifier
+// (verify_certificate_chain) already supports validating them; without
+// advertising these, a compliant server whose chain uses one of these
+// algorithms has no signature_algorithms_cert entry to select against and
+// cannot offer that chain at all (Codex P1, vlang/v#27680
+// pullrequestreview-4791164664).
+const sig_scheme_rsa_pkcs1_sha256 = u16(0x0401)
+const sig_scheme_rsa_pkcs1_sha384 = u16(0x0501)
+const sig_scheme_rsa_pkcs1_sha512 = u16(0x0601)
 
 const tls_version_1_3 = u16(0x0304)
 
@@ -82,6 +108,30 @@ fn encode_signature_algorithms_extension() ![]u8 {
 	data << u8(list.len)
 	data << list
 	return encode_extension(ext_signature_algorithms, data)
+}
+
+// encode_signature_algorithms_cert_extension advertises a BROADER scheme
+// list than encode_signature_algorithms_extension -- everything this client
+// can validate for a CERTIFICATE's own signature via mbedTLS's generic
+// X.509 chain verifier (which supports RSA-PKCS1v1.5 in addition to
+// everything signature_algorithms already lists), even though CertificateVerify
+// itself stays restricted to the narrower live-handshake-signature set. See
+// this file's own sig_scheme_rsa_pkcs1_* doc comment for why these two lists
+// deliberately differ.
+fn encode_signature_algorithms_cert_extension() ![]u8 {
+	schemes := [sig_scheme_ecdsa_secp256r1_sha256, sig_scheme_rsa_pss_rsae_sha256,
+		sig_scheme_rsa_pss_rsae_sha384, sig_scheme_rsa_pss_rsae_sha512, sig_scheme_rsa_pkcs1_sha256,
+		sig_scheme_rsa_pkcs1_sha384, sig_scheme_rsa_pkcs1_sha512]
+	mut list := []u8{}
+	for s in schemes {
+		list << u8(s >> 8)
+		list << u8(s)
+	}
+	mut data := []u8{}
+	data << u8(list.len >> 8)
+	data << u8(list.len)
+	data << list
+	return encode_extension(ext_signature_algorithms_cert, data)
 }
 
 // encode_key_share_extension wraps a single KeyShareEntry (RFC 8446
@@ -210,12 +260,12 @@ pub:
 
 // build_client_hello constructs a complete TLS 1.3 ClientHello handshake
 // message (RFC 8446 §4.1.2), framed via encode_handshake_message. Sends
-// exactly seven extensions: server_name, supported_versions,
-// supported_groups, signature_algorithms, alpn, key_share, and
-// quic_transport_parameters (RFC 9001 §8.2) — order doesn't matter per
-// RFC 8446 §4.2 ("extensions MAY appear in any order") except that
-// pre_shared_key would have to be last, and v1 never sends one (no 0-RTT/
-// resumption, Phase 14).
+// exactly eight extensions: server_name, supported_versions,
+// supported_groups, signature_algorithms, signature_algorithms_cert, alpn,
+// key_share, and quic_transport_parameters (RFC 9001 §8.2) — order doesn't
+// matter per RFC 8446 §4.2 ("extensions MAY appear in any order") except
+// that pre_shared_key would have to be last, and v1 never sends one (no
+// 0-RTT/resumption, Phase 14).
 pub fn build_client_hello(p ClientHelloParams) ![]u8 {
 	if p.random.len != 32 {
 		return error('quic: ClientHello random must be exactly 32 bytes, got ${p.random.len}')
@@ -284,6 +334,7 @@ pub fn build_client_hello(p ClientHelloParams) ![]u8 {
 	extensions << encode_supported_versions_extension()!
 	extensions << encode_supported_groups_extension()!
 	extensions << encode_signature_algorithms_extension()!
+	extensions << encode_signature_algorithms_cert_extension()!
 	extensions << encode_alpn_extension(p.alpn_protocols)!
 	extensions << encode_key_share_extension(named_group_secp256r1, p.ecdhe_public_key)!
 	extensions << encode_quic_transport_parameters_extension(p.transport_parameters)!

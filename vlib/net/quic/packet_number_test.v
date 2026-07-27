@@ -22,19 +22,19 @@ fn test_packet_number_encode_length_selection() {
 	// RFC 9000 §17.1: the encoding must represent more than twice the gap
 	// between the packet being sent and the largest acknowledged packet.
 	// full_pn - largest_acked = 1 (gap 0..1 window) -> fits in 1 byte.
-	_, len1 := encode_packet_number(101, u64(100))
+	_, len1 := encode_packet_number(101, u64(100))!
 	assert len1 == 1
 
 	// A gap large enough to need the 2-byte class.
-	_, len2 := encode_packet_number(100 + 200, u64(100))
+	_, len2 := encode_packet_number(100 + 200, u64(100))!
 	assert len2 == 2
 
 	// A gap large enough to need the 3-byte class.
-	_, len3 := encode_packet_number(100 + 100000, u64(100))
+	_, len3 := encode_packet_number(100 + 100000, u64(100))!
 	assert len3 == 3
 
 	// No prior ack at all: full 4-byte encoding.
-	_, len4 := encode_packet_number(5, none)
+	_, len4 := encode_packet_number(5, none)!
 	assert len4 == 4
 }
 
@@ -50,7 +50,7 @@ fn test_packet_number_round_trip_across_length_boundaries() {
 	for c in cases {
 		largest_acked := c[0]
 		full_pn := c[1]
-		encoded, n := encode_packet_number(full_pn, largest_acked)
+		encoded, n := encode_packet_number(full_pn, largest_acked)!
 		assert encoded.len == n
 		truncated := bytes_to_u64(encoded)
 		decoded := decode_packet_number(truncated, n, largest_acked)!
@@ -64,10 +64,30 @@ fn test_packet_number_reordered_arrival_reconstructs_correctly() {
 	// not be forced upward to look larger than largest_pn.
 	largest_pn := u64(1000)
 	earlier_full_pn := u64(990)
-	encoded, n := encode_packet_number(earlier_full_pn, u64(950))
+	encoded, n := encode_packet_number(earlier_full_pn, u64(950))!
 	truncated := bytes_to_u64(encoded)
 	decoded := decode_packet_number(truncated, n, largest_pn)!
 	assert decoded == earlier_full_pn
+}
+
+// test_packet_number_encode_rejects_exhausted_number is a regression test
+// for a Codex finding (vlang/v#27680 pullrequestreview-4791164664):
+// encode_packet_number was infallible and silently truncated any full_pn,
+// including values at or above 2^62 (RFC 9000 §12.3's packet number space
+// limit) -- 2^62 truncates to a 4-byte field of all zeros instead of being
+// rejected, corrupting the packet instead of telling the caller this space
+// is exhausted.
+fn test_packet_number_encode_rejects_exhausted_number() {
+	encode_packet_number(max_packet_number + 1, none) or {
+		assert err.msg().contains('exceeds the maximum')
+		return
+	}
+	assert false, 'expected an error for a packet number above 2^62-1'
+}
+
+fn test_packet_number_encode_accepts_boundary_max_packet_number() {
+	_, n := encode_packet_number(max_packet_number, none)!
+	assert n == 4
 }
 
 fn test_packet_number_invalid_length_rejected() {

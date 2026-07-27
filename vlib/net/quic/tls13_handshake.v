@@ -30,6 +30,13 @@ pub enum TlsAlert {
 	// this client can legitimately receive there (IANA TLS Alert registry
 	// value 110, confirmed directly, not assumed).
 	unsupported_extension = 110
+	// RFC 9001 §8.2: "endpoints that receive ClientHello or
+	// EncryptedExtensions messages without the quic_transport_parameters
+	// extension MUST close the connection with an error of type 0x016d
+	// (equivalent to a fatal TLS missing_extension alert)" -- 0x016d =
+	// 0x100 + 0x6d (109), confirmed against the IANA TLS Alert registry
+	// directly, not assumed.
+	missing_extension = 109
 }
 
 // tls_alert_to_quic_error implements RFC 9001 §4.8: "If TLS produces an
@@ -281,7 +288,17 @@ pub fn (mut h Tls13ClientHandshake) process_server_hello(msg HandshakeMessage, f
 		return handshake_error(.unexpected_message,
 			'quic: expected ServerHello or HelloRetryRequest, got ${msg.typ}')
 	}
-	parsed := parse_server_hello(msg.body) or { return handshake_error(.decode_error, err.msg()) }
+	parsed := parse_server_hello(msg.body) or {
+		// Same convention as process_encrypted_extensions's identical fix:
+		// parse_server_hello carries its own specific QUIC error code (via
+		// error_with_code) for the unsolicited-extension class of failure;
+		// only a genuine structural parse failure (plain error(), code 0)
+		// should be remapped to the generic decode_error alert here.
+		if err.code() != 0 {
+			return err
+		}
+		return handshake_error(.decode_error, err.msg())
+	}
 
 	match parsed {
 		ParsedHelloRetryRequest {
@@ -407,7 +424,10 @@ pub fn (mut h Tls13ClientHandshake) process_encrypted_extensions(msg HandshakeMe
 	}
 
 	tp_ext := find_extension(extensions, ext_quic_transport_parameters) or {
-		return handshake_error(.handshake_failure,
+		// RFC 9001 §8.2 mandates the specific missing_extension alert
+		// (-> QUIC error 0x016d) for this exact case, not a generic
+		// handshake_failure (Codex P2, pullrequestreview-4791164664).
+		return handshake_error(.missing_extension,
 			'quic: EncryptedExtensions missing mandatory quic_transport_parameters extension')
 	}
 	// RFC 9000 §18.2/§7.3: an invalid or authentication-failing transport
@@ -424,6 +444,25 @@ pub fn (mut h Tls13ClientHandshake) process_encrypted_extensions(msg HandshakeMe
 
 	if scid != peer_initial_scid {
 		return transport_parameter_error('quic: initial_source_connection_id in transport parameters does not match the packet header SCID')
+	}
+
+	// A server using a zero-length connection ID has no connection ID for
+	// stateless_reset_token or preferred_address's new connection ID to be
+	// ANYTHING to do with -- both parameters presuppose the server issues
+	// real, routable connection IDs (a stateless reset token authenticates
+	// a specific future CID; preferred_address supplies a brand new one),
+	// which is contradictory with having chosen not to have one at all.
+	// decode_transport_parameters/decode_preferred_address parse each field
+	// independently and can't see this cross-field inconsistency; only the
+	// caller holding peer_initial_scid can (Codex P2, pullrequestreview-
+	// 4791164664).
+	if peer_initial_scid.len == 0 {
+		if peer_params.stateless_reset_token != none {
+			return transport_parameter_error('quic: peer transport parameters include stateless_reset_token but the server is using a zero-length connection ID')
+		}
+		if peer_params.preferred_address != none {
+			return transport_parameter_error('quic: peer transport parameters include preferred_address but the server is using a zero-length connection ID')
+		}
 	}
 
 	orig_dcid := peer_params.original_destination_connection_id or {
