@@ -274,7 +274,7 @@ fn fn_type_calling_convention(f &Fn) string {
 			return attr.arg
 		}
 	}
-	return ''
+	return 'cdecl'
 }
 
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
