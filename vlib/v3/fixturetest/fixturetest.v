@@ -46,8 +46,8 @@ fn is_standard_test_file(file string) bool {
 
 // run compares every `.vv` compiler invocation with its adjacent `.out` file.
 pub fn run(vexe string, dir string) int {
-	repo_root := find_repo_root(os.dir(os.real_path(vexe))) or { os.getwd() }
 	fixture_dir := os.real_path(dir)
+	repo_root := fixture_repo_root(vexe, fixture_dir)
 	mut names := os.ls(dir) or {
 		eprintln('failed to list fixture directory `${dir}`: ${err}')
 		return 1
@@ -143,6 +143,12 @@ pub fn run(vexe string, dir string) int {
 		eprintln('${failures - max_reported_mismatches} additional mismatch details were not shown')
 	}
 	return if failures == 0 { 0 } else { 1 }
+}
+
+fn fixture_repo_root(vexe string, fixture_dir string) string {
+	return find_repo_root(os.dir(os.real_path(vexe))) or {
+		find_repo_root(fixture_dir) or { os.getwd() }
+	}
 }
 
 fn name_matches_filters(name string, path string, filters []string) bool {
