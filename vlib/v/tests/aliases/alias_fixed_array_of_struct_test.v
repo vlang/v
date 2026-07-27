@@ -40,6 +40,11 @@ fn test_fixed_array_alias_of_empty_struct() {
 	assert nested[0].len == 2
 }
 
+fn test_direct_fixed_array_alias_of_empty_struct_init() {
+	fixed := EmptyFixed{}
+	assert fixed.len == 2
+}
+
 fn test_nested_fixed_array_alias_in_struct_init() {
 	v_box := Box{}
 	assert v_box.len == 2
