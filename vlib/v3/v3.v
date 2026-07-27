@@ -14,8 +14,13 @@ import v3.types
 $if !skip_eval ? {
 	import v3.eval
 }
+$if !skip_amd64 ? {
+	import v3.gen.amd64
+}
 $if !skip_arm64 ? {
 	import v3.gen.arm64
+}
+$if !skip_ssa ? {
 	import v3.ssa
 	import v3.ssa.optimize
 }
@@ -252,6 +257,39 @@ fn with_shared_library_postfix(path string) string {
 		return path
 	}
 	return path + postfix
+}
+
+fn amd64_object_suffix(target_os string) !string {
+	return match pref.normalized_os(target_os) {
+		'linux', 'macos' { '.o' }
+		'windows' { '.obj' }
+		else { error('target OS `${target_os}` is unsupported') }
+	}
+}
+
+fn validate_amd64_request(target_os string, should_run bool, is_test_command bool, is_shared bool) ! {
+	$if !amd64 {
+		return error('host architecture is not AMD64')
+	}
+	normalized_os := pref.normalized_os(target_os)
+	if normalized_os !in ['linux', 'macos', 'windows'] {
+		return error('target OS `${target_os}` normalizes to unsupported `${normalized_os}`')
+	}
+	if should_run {
+		return error('run mode is unsupported; AMD64 emits relocatable objects only')
+	}
+	if is_test_command {
+		return error('test mode is unsupported; AMD64 emits relocatable objects only')
+	}
+	if is_shared {
+		return error('shared output is unsupported; AMD64 emits relocatable objects only')
+	}
+}
+
+fn validate_amd64_test_files(test_files []string) ! {
+	if test_files.len > 0 {
+		return error('test inputs are unsupported; AMD64 emits relocatable objects only')
+	}
 }
 
 // should_scope_prealloc_selfhost reports whether self-host stages need disposable arenas.
@@ -693,7 +731,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-os target] [-c99] [-d flag]')
+		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|amd64|arm64|eval] [-os target] [-c99] [-d flag]')
 		exit(1)
 	}
 
@@ -853,10 +891,30 @@ fn main() {
 	if no_prealloc {
 		user_defines = user_defines.filter(it != 'prealloc')
 	}
+	if backend == 'amd64' {
+		$if !skip_amd64 ? {
+			validate_amd64_request(target_os, should_run, is_test_command, is_shared) or {
+				eprintln('amd64 preflight error: ${err.msg()}')
+				exit(1)
+			}
+		} $else {
+			eprintln('amd64 routing error: backend is not included in this compiler')
+			exit(1)
+		}
+	}
 
 	mut bin_file := ''
 	mut c_only := false
-	if output_file == '' {
+	if backend == 'amd64' {
+		if output_file == '' {
+			suffix := amd64_object_suffix(target_os) or {
+				eprintln('amd64 routing error: ${err.msg()}')
+				exit(1)
+			}
+			output_file = default_bin_file_for_input(input_file) + suffix
+		}
+		bin_file = output_file
+	} else if output_file == '' {
 		bin_file = default_bin_file_for_input(input_file)
 		if is_shared {
 			bin_file = with_shared_library_postfix(bin_file)
@@ -876,10 +934,9 @@ fn main() {
 		}
 		output_file = bin_file + '.c'
 	}
-
 	// Decide which backend modules to compile into the output. By default only the C
-	// backend is built; the arm64/wasm/eval backends (and the whole SSA pipeline that the
-	// arm64 backend pulls in: v3.ssa + v3.ssa.optimize) are skipped entirely. When compiling
+	// backend is built; the native/wasm/eval backends (and the SSA pipeline shared by the
+	// arm64 and amd64 backends) are skipped entirely. When compiling
 	// the V compiler itself this avoids parsing/checking/transforming/cgen-ing ~30k lines of
 	// unused backend code, which measurably speeds up the self-host build. The `skip_*`
 	// defines drive two things in lock-step: `$if !skip_* ?` gates in main() make the parser
@@ -887,29 +944,43 @@ fn main() {
 	// resolve_imports skips parsing the corresponding module directories.
 	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
 	// in; the active `-b` target backend is always force-included.
+	mut include_amd64 := all_backends
 	mut include_arm64 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
 		for name in cb.split(',') {
 			match name.trim_space() {
+				'amd64' { include_amd64 = true }
 				'arm64', 'aarch64' { include_arm64 = true }
 				'wasm', 'wasm32' { include_wasm = true }
 				'eval' { include_eval = true }
-				// 'c' is always built; there is no native amd64 backend in v3 yet.
+				// 'c' is always built. AMD64 intentionally has no alias.
 				else {}
 			}
 		}
 	}
 	match backend {
+		'amd64' { include_amd64 = true }
 		'arm64' { include_arm64 = true }
 		'wasm' { include_wasm = true }
 		'eval' { include_eval = true }
 		else {}
 	}
 
+	include_ssa := include_arm64 || include_amd64
+
+	// Backend skip defines are derived here; explicit inclusion always wins.
+	user_defines = user_defines.filter(it !in ['skip_amd64', 'skip_arm64', 'skip_ssa', 'skip_wasm',
+		'skip_eval'])
+	if !include_amd64 {
+		user_defines << 'skip_amd64'
+	}
 	if !include_arm64 {
 		user_defines << 'skip_arm64'
+	}
+	if !include_ssa {
+		user_defines << 'skip_ssa'
 	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
@@ -978,9 +1049,15 @@ fn main() {
 		user_files << input_file
 	}
 	prefs.is_test = user_files.any(pref.is_test_file_for_target(it, backend, prefs.target_os))
+	test_files := test_input_files(user_files, backend, prefs.target_os)
+	if backend == 'amd64' {
+		validate_amd64_test_files(test_files) or {
+			eprintln('amd64 preflight error: ${err.msg()}')
+			exit(1)
+		}
+	}
 	_, user_parse_parallel := p.parse_files_dispatch(user_files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || user_parse_parallel
-	test_files := test_input_files(user_files, backend, prefs.target_os)
 
 	seed_implicit_imports(mut a)
 
@@ -1138,23 +1215,80 @@ fn main() {
 	}
 	b.step('monomorphize')
 
-	if backend == 'arm64' {
-		$if !skip_arm64 ? {
-			// SSA + ARM64 native backend
-			mut m := ssa.build_with_used(a, used_fns, pre_tc)
-			b.step('ssa build')
+	if backend == 'amd64' {
+		$if !skip_amd64 ? {
+			$if !skip_ssa ? {
+				mut m := ssa.build_with_used(a, used_fns, pre_tc)
+				b.step('amd64 ssa build')
 
-			if is_prod {
-				optimize.optimize(mut m)
-				b.step('optimize')
+				if is_prod {
+					optimize.optimize(mut m)
+					b.step('amd64 optimize')
+				}
+
+				profile := match prefs.normalized_target_os() {
+					'linux' {
+						amd64.TargetProfile.linux_x86_64_sysv_elf
+					}
+					'macos' {
+						amd64.TargetProfile.macos_x86_64_sysv_macho
+					}
+					'windows' {
+						amd64.TargetProfile.windows_x86_64_microsoft_abi_coff
+					}
+					else {
+						eprintln('amd64 preflight error: normalized target OS changed after validation')
+						exit(1)
+					}
+				}
+
+				g := amd64.Gen.new(profile, m) or {
+					eprintln('amd64 SSA lowering error: ${err.msg()}')
+					exit(1)
+				}
+				object_bytes := g.gen() or {
+					eprintln('amd64 generation error: ${err.msg()}')
+					exit(1)
+				}
+				b.step('amd64 gen')
+				amd64.publish_object(output_file, object_bytes) or {
+					eprintln('amd64 publication error: ${err.msg()}')
+					exit(1)
+				}
+				b.step('amd64 object')
+			} $else {
+				eprintln('amd64 routing error: SSA is not included in this compiler')
+				exit(1)
 			}
+		} $else {
+			eprintln('amd64 routing error: backend is not included in this compiler')
+			exit(1)
+		}
+	} else if backend == 'arm64' {
+		$if !skip_arm64 ? {
+			$if !skip_ssa ? {
+				// SSA + ARM64 native backend
+				mut m := ssa.build_with_used(a, used_fns, pre_tc)
+				b.step('ssa build')
 
-			mut g := arm64.Gen.new(m)
-			g.gen()
-			b.step('arm64 gen')
+				if is_prod {
+					optimize.optimize(mut m)
+					b.step('optimize')
+				}
 
-			g.write_and_link(bin_file)
-			b.step('link')
+				mut g := arm64.Gen.new(m)
+				g.gen()
+				b.step('arm64 gen')
+
+				g.write_and_link(bin_file)
+				b.step('link')
+			} $else {
+				eprintln('arm64 routing error: SSA is not included in this compiler')
+				exit(1)
+			}
+		} $else {
+			eprintln('arm64 routing error: backend is not included in this compiler')
+			exit(1)
 		}
 	} else {
 		// C backend (default)
@@ -1726,12 +1860,16 @@ fn path_is_in_dir(path string, dir string) bool {
 
 // skipped_backend_modules lists the importable backend module names that the current
 // configuration excludes (driven by the same `skip_*` defines that gate the dispatch in
-// main()). The arm64 backend is the only consumer of the SSA pipeline, so skipping it also
-// skips v3.ssa and v3.ssa.optimize.
+// main()). The native backends and their shared SSA pipeline are pruned independently.
 fn skipped_backend_modules(prefs &pref.Preferences) []string {
 	mut skipped := []string{}
+	if 'skip_amd64' in prefs.user_defines {
+		skipped << 'v3.gen.amd64'
+	}
 	if 'skip_arm64' in prefs.user_defines {
 		skipped << 'v3.gen.arm64'
+	}
+	if 'skip_ssa' in prefs.user_defines {
 		skipped << 'v3.ssa'
 		skipped << 'v3.ssa.optimize'
 	}
@@ -1900,8 +2038,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
 	// references their symbols. Pre-seeding parsed_modules makes the loop below treat
 	// them as already handled, so neither v3.v's top-level imports nor any transitive
-	// import pulls them in. Skipping the arm64 group (v3.gen.arm64 + the v3.ssa SSA
-	// pipeline) and the wasm/eval backends avoids ~30k lines of work when self-hosting.
+	// import pulls them in. Skipping the native backends, their shared SSA pipeline, and
+	// the wasm/eval backends avoids that work when self-hosting.
 	for skipped in skipped_backend_modules(prefs) {
 		parsed_modules[skipped] = true
 	}

@@ -3,11 +3,11 @@
 Clean rewrite of the V compiler. Reuses v2's scanner, uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
-markused pass for dead-code elimination, recursive import resolution, and three
-backends: a direct flat-AST-to-C backend, a native ARM64 backend via SSA IR with
-a built-in linker, and a direct flat-AST-to-WebAssembly backend. With `-prod`,
-the ARM64 backend runs SSA optimization, MIR lowering, and instruction
-selection.
+markused pass for dead-code elimination, recursive import resolution, and
+backends including a direct flat-AST-to-C backend, a native ARM64 backend via
+SSA IR with a built-in linker, an experimental AMD64 backend via SSA IR for
+relocatable objects, and a direct flat-AST-to-WebAssembly backend. With `-prod`,
+both SSA backends run SSA optimization.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
@@ -63,10 +63,23 @@ repeats until no new imports are found.
 ```
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
   -> check -> transform -> annotate types -> markused -> gen C -> cc
-                                          \-> SSA build -> ARM64 gen -> link
-                                          |            \-> optimize -> MIR -> insel (-prod)
+                                          |-> SSA build -> AMD64 gen -> .o/.obj
+                                          |-> SSA build -> ARM64 gen -> link
                                           \-> gen WASM -> .wasm
 ```
+
+The AMD64 backend is selected with `-b amd64`. The running compiler must already
+include the AMD64 backend and shared SSA pipeline. When building the compiler,
+`-compile-backend amd64` retains both, while `-all-backends` retains all optional
+backends. On AMD64 hosts, the route emits only Linux ELF64, macOS Mach-O 64, or
+Windows AMD64 COFF relocatable objects for its bounded SSA subset. It does not
+support `run`, `test`, test-file input, shared output, linking, startup/runtime
+construction, or end-to-end executable activation.
+
+The generic V3 route calls `amd64.Gen.new`. The frame-aware manual
+`amd64.Gen.new_with_scalar_abi_memory_frames` constructor remains backend-local,
+and its generic-pipeline use is `UPSTREAM_STANDBY`. See the
+[AMD64 backend README](gen/amd64/README.md) for the exact bounded contract.
 
 The WebAssembly backend (`-b wasm`) walks the flat AST directly, like the C
 backend, since WASM's structured control flow (`block`/`loop`/`if`/`br`) maps
@@ -124,7 +137,7 @@ struct/global type info for its own type-dependent rewrites.
 The markused pass performs reachability analysis from `main`, building a call
 graph and BFS-walking to find all used functions. Method calls are resolved to
 `Type.method` names using the type checker, reducing false positives from
-syntactic matching. Both backends skip codegen for unreachable functions.
+syntactic matching. The code generators skip codegen for unreachable functions.
 
 The ARM64 backend builds SSA IR from the flat AST, generates native ARM64
 machine code, and links a Mach-O executable directly. The entire path from
