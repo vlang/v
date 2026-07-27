@@ -64,6 +64,9 @@ fn test_c_flag_default_define_macros_stay_single_arguments() {
 	assert c_flag_args('-DTEXT=\'"\$d(x)"\'', '', '', target) == [
 		'-DTEXT="$d(x)"',
 	]
+	assert c_flag_args('-DNAME=\$d(\'name\', \'a"b\')', '', '', target) == [
+		'-DNAME=a"b',
+	]
 }
 
 fn test_c_flag_default_define_macros_honor_configured_values() {
@@ -100,6 +103,16 @@ fn test_c_flag_default_define_macros_honor_configured_values() {
 		'PASTE': 'a##b'
 	}) == [
 		'-DPASTE=a##b',
+	]
+	assert c_flag_args_with_values("-DNAME=\$d('name', 'fallback')", '', '', target, {
+		'name': 'a"b'
+	}) == [
+		'-DNAME=a"b',
+	]
+	assert c_flag_args_with_values("-DPATH=\$d('path', 'fallback')", '', '', target, {
+		'path': r'a\b'
+	}) == [
+		r'-DPATH=a\b',
 	]
 }
 

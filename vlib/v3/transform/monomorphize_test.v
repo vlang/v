@@ -3,6 +3,28 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
+	mut a := flat.FlatAst.new()
+	base_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'id'
+	})
+	index_id := a.add_node(flat.Node{
+		kind: .index
+	})
+	mut tc := types.TypeChecker.new(&a)
+	file_name := '/tmp/main.v'
+	tc.file_selective_imports[file_import_key(file_name, 'id')] = ['lib.id']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.node_file_map_cache = []string{len: a.nodes.len}
+	t.node_file_map_cache[int(index_id)] = file_name
+
+	candidates := t.explicit_generic_fn_value_decl_candidates(index_id, base_id,
+		a.nodes[int(base_id)], 'main')
+	assert candidates[0] == 'lib.id'
+	assert 'id' in candidates
+}
+
 fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	mut a := flat.FlatAst.new()
 	mut values_alias := flat.Node{

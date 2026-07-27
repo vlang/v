@@ -6089,7 +6089,7 @@ fn c_expand_default_define_macros(raw string, compile_values map[string]string) 
 		if override := compile_values[name] {
 			value = override
 		}
-		value = c_flag_quote_spaced_macro_value(value)
+		value = c_flag_quote_macro_value(value)
 		result += raw[cursor..idx] + value
 		cursor = close_idx + 1
 	}
@@ -6118,13 +6118,32 @@ fn c_flag_default_define_macro_index(text string, start int) ?int {
 	return none
 }
 
-// c_flag_quote_spaced_macro_value keeps one expanded `$d` value in one argv
-// element when the value contains whitespace.
-fn c_flag_quote_spaced_macro_value(value string) string {
-	if !value.contains_any(' \t\r\n') {
+// c_flag_quote_macro_value keeps one expanded `$d` value in one argv element
+// when the value contains whitespace or shell-tokenizer metacharacters.
+fn c_flag_quote_macro_value(value string) string {
+	if !c_flag_macro_value_needs_quote(value) {
 		return value
 	}
 	return '"${value.replace('\\', '\\\\').replace('"', '\\"')}"'
+}
+
+fn c_flag_macro_value_needs_quote(value string) bool {
+	if value.contains_any(' \t\r\n') {
+		return true
+	}
+	for i := 0; i < value.len; i++ {
+		if value[i] == `\\` {
+			if i + 1 >= value.len || value[i + 1] !in [`'`, `"`] {
+				return true
+			}
+			i++
+			continue
+		}
+		if value[i] in [`'`, `"`] && i > 0 && i + 1 < value.len {
+			return true
+		}
+	}
+	return false
 }
 
 // c_flag_define_name unwraps the quoted name arm of a `$d(name, fallback)` macro.
