@@ -50,7 +50,7 @@ pub struct PublicKey {
 
 // algo. 1: ML-DSA.KeyGen (s. 5.1)
 pub fn PrivateKey.generate(kind Kind) !PrivateKey {
-	return new_private_key(slice_to_32(rand.read(32)!), kind.params())
+	return new_private_key(slice_to_32(rand.bytes(32)!), kind.params())
 }
 
 pub fn PrivateKey.from_seed(seed []u8, kind Kind) !PrivateKey {
@@ -115,7 +115,7 @@ pub fn (sk &PrivateKey) sign(msg []u8, opts SignerOpts) ![]u8 {
 	if opts.deterministic {
 		return sign_internal(sk, mu, [32]u8{})
 	}
-	return sign_internal(sk, mu, slice_to_32(rand.read(32)!))
+	return sign_internal(sk, mu, slice_to_32(rand.bytes(32)!))
 }
 
 // sign_mu signs a precomputed mu value with explicit randomness.
@@ -273,7 +273,7 @@ fn new_private_key_from_bytes(sk []u8, p Params) !PrivateKey {
 	t1_hat := compute_t1_hat(t1)
 
 	// use random bytes for seed since the semi-expanded format doesn't contain it
-	seed := slice_to_32(rand.read(32)!)
+	seed := slice_to_32(rand.bytes(32)!)
 
 	return PrivateKey{
 		seed: seed

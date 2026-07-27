@@ -3140,7 +3140,7 @@ fn main() {
 
 fn test_ownership_veb_implicit_context_arg_moves() {
 	v3_bin := ownership_build_v3()
-	fail := run_ownership_check(v3_bin, 'veb_implicit_ctx_arg_move', '
+	fail := run_ownership_check_with_module(v3_bin, 'veb_implicit_ctx_arg_move', '
 import veb
 
 pub struct Context {
@@ -3165,6 +3165,13 @@ fn main() {
 	app := &App{}
 	_ = app
 }
+',
+		'veb', '
+module veb
+
+pub struct Context {}
+
+pub struct Result {}
 ')
 	assert fail.exit_code != 0
 	assert fail.output.contains('use of moved value: `s`'), fail.output

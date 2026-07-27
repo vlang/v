@@ -55,6 +55,10 @@ enum ExampleRunMode {
 
 fn main() {
 	self_check_gui_smoke_timeout_status()
+	isolated_vtmp := setup_isolated_vtmp()
+	defer {
+		os.rmdir_all(isolated_vtmp) or {}
+	}
 	cfg := parse_config()
 	os.chdir(cfg.repo_root) or { fail('failed to enter ${cfg.repo_root}: ${err}') }
 
@@ -83,7 +87,7 @@ fn main() {
 	])
 
 	section(1, 'V3 unit tests')
-	run('${host_v_cmd(cfg)} -silent test ${q(cfg.script_dir)}')
+	run_v3_unit_tests(cfg)
 
 	section(2, 'Build v3')
 	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
@@ -143,6 +147,36 @@ fn main() {
 
 	println('')
 	println('=== ALL TESTS PASSED ===')
+}
+
+fn run_v3_unit_tests(cfg Config) {
+	old_vflags := os.getenv('VFLAGS')
+	old_cache_isolation := os.getenv_opt('V3_TEST_ISOLATE_CACHE')
+	os.setenv('VFLAGS', '${old_vflags} -gc none'.trim_space(), true)
+	// Give every test executable a private default module cache while preserving
+	// parallel stages inside the V3 compilers that those tests build.
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	run('${host_v_cmd(cfg)} -enable-globals -silent test ${q(cfg.script_dir)}')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	if value := old_cache_isolation {
+		os.setenv('V3_TEST_ISOLATE_CACHE', value, true)
+	} else {
+		os.unsetenv('V3_TEST_ISOLATE_CACHE')
+	}
+}
+
+fn setup_isolated_vtmp() string {
+	path := os.join_path(os.temp_dir(), '${temp_prefix}_vtmp_${os.getpid()}')
+	if os.exists(path) {
+		os.rmdir_all(path) or { fail('failed to reset isolated VTMP ${path}: ${err}') }
+	}
+	os.mkdir_all(path) or { fail('failed to create isolated VTMP ${path}: ${err}') }
+	os.setenv('VTMP', path, true)
+	return path
 }
 
 fn parse_config() Config {

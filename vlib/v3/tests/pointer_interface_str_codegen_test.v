@@ -13,7 +13,7 @@ fn tmp_pointer_interface_str_path(name string) string {
 fn build_v3_pointer_interface_str() string {
 	v3_bin := tmp_pointer_interface_str_path('pointer_interface_str')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.execute('${os.quoted_path(vexe)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -35,7 +35,7 @@ fn test_pointer_to_interface_stringification_uses_pointer_path() {
 	assert run.output.trim_space() == 'true'
 }
 
-fn test_explicit_pointer_str_keeps_reference_prefix() {
+fn test_explicit_pointer_str_prefixes_value_receiver_method_result() {
 	v3_bin := build_v3_pointer_interface_str()
 	src_path := '${tmp_pointer_interface_str_path('explicit_source')}.v'
 	bin_path := tmp_pointer_interface_str_path('explicit_bin')
@@ -95,7 +95,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(os.quoted_path(bin_path))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ptr:9\n&ptr:9'
+	assert run.output.trim_space() == '&ptr:9\nptr:9'
 }
 
 fn test_custom_pointer_interpolation_guards_nil() {

@@ -1,0 +1,16 @@
+import json
+
+struct User {
+	name string
+}
+
+// A `for`/`$for` loop binder (or an if-guard/lambda binder) named `json2` shadows the
+// migrated module qualifier: rewriting the call to `json2.encode(...)` inside the loop body
+// would bind it to the loop variable instead of the module. These binders live on the loop
+// node, not as a `:=` assignment, so the collision scan inspects them too. The file is kept
+// on legacy json.
+fn run(users []User) {
+	for json2 in users {
+		println(json.encode(json2))
+	}
+}

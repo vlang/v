@@ -1,0 +1,13 @@
+import json
+import json2 as _
+
+struct User {
+	name string
+}
+
+// `import json2 as _` only silences unused-import warnings; `_` is not a usable
+// qualifier and a second `import json2` would be a duplicate import, so there is no
+// way to emit valid `json2.x` calls. The file's json usage is left unmigrated.
+fn main() {
+	println(json.encode(User{ name: 'bob' }))
+}

@@ -11,20 +11,7 @@
 #include <X11/keysym.h>
 #include <X11/XKBlib.h>
 #include <X11/Xutil.h>
-#include <EGL/egl.h>
-
-#ifndef EGL_CONTEXT_MAJOR_VERSION
-#define EGL_CONTEXT_MAJOR_VERSION 0x3098
-#endif
-#ifndef EGL_CONTEXT_MINOR_VERSION
-#define EGL_CONTEXT_MINOR_VERSION 0x30FB
-#endif
-#ifndef EGL_CONTEXT_OPENGL_PROFILE_MASK
-#define EGL_CONTEXT_OPENGL_PROFILE_MASK 0x30FD
-#endif
-#ifndef EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT
-#define EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT 0x00000001
-#endif
+#include "linux_egl_native_helpers.h"
 
 #ifndef MWM_HINTS_DECORATIONS
 #define MWM_HINTS_DECORATIONS (1L << 1)
@@ -340,8 +327,29 @@ static inline XIM v_multiwindow_x11_open_im(Display *display) {
 
 static inline void v_multiwindow_x11_close_im(XIM im) {
 	if (im != NULL) {
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+		&& defined(V_MULTIWINDOW_NATIVE_EGL_RELEASE_ORACLE_HELPERS_H)
+		uint64_t identity = (uint64_t)(uintptr_t)im;
+#endif
 		XCloseIM(im);
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+		&& defined(V_MULTIWINDOW_NATIVE_EGL_RELEASE_ORACLE_HELPERS_H)
+		v_multiwindow_test_x11_im_closed(identity);
+#endif
 	}
+}
+
+static inline int v_multiwindow_x11_close_display(Display *display) {
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+	&& defined(V_MULTIWINDOW_NATIVE_EGL_RELEASE_ORACLE_HELPERS_H)
+	uint64_t identity = (uint64_t)(uintptr_t)display;
+#endif
+	int result = XCloseDisplay(display);
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+	&& defined(V_MULTIWINDOW_NATIVE_EGL_RELEASE_ORACLE_HELPERS_H)
+	v_multiwindow_test_x11_display_closed(identity);
+#endif
+	return result;
 }
 
 static inline XIC v_multiwindow_x11_create_ic(XIM im, unsigned long window) {
@@ -924,59 +932,6 @@ static inline int v_multiwindow_x11_get_window_size(Display *display, unsigned l
 	return 1;
 }
 
-static inline void *v_multiwindow_x11_egl_get_display(Display *display) {
-	return (void *)eglGetDisplay((EGLNativeDisplayType)display);
-}
-
-static inline int v_multiwindow_x11_egl_initialize(void *egl_display) {
-	return eglInitialize((EGLDisplay)egl_display, NULL, NULL) == EGL_TRUE ? 1 : 0;
-}
-
-static inline int v_multiwindow_x11_egl_bind_opengl_api(void) {
-	return eglBindAPI(EGL_OPENGL_API) == EGL_TRUE ? 1 : 0;
-}
-
-static inline int v_multiwindow_x11_egl_choose_config(void *egl_display, void **out_config, int *out_visual_id) {
-	const EGLint attrs[] = {
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-		EGL_RED_SIZE, 8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE, 8,
-		EGL_ALPHA_SIZE, 8,
-		EGL_DEPTH_SIZE, 24,
-		EGL_STENCIL_SIZE, 8,
-		EGL_NONE
-	};
-	EGLConfig config = NULL;
-	EGLint config_count = 0;
-	EGLint visual_id = 0;
-	if (eglChooseConfig((EGLDisplay)egl_display, attrs, &config, 1, &config_count) != EGL_TRUE || config_count == 0) {
-		return 0;
-	}
-	if (eglGetConfigAttrib((EGLDisplay)egl_display, config, EGL_NATIVE_VISUAL_ID, &visual_id) != EGL_TRUE || visual_id == 0) {
-		return 0;
-	}
-	*out_config = (void *)config;
-	*out_visual_id = (int)visual_id;
-	return 1;
-}
-
-static inline void *v_multiwindow_x11_egl_create_context(void *egl_display, void *egl_config) {
-	const EGLint core_attrs[] = {
-		EGL_CONTEXT_MAJOR_VERSION, 3,
-		EGL_CONTEXT_MINOR_VERSION, 3,
-		EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
-		EGL_NONE
-	};
-	EGLContext context = eglCreateContext((EGLDisplay)egl_display, (EGLConfig)egl_config, EGL_NO_CONTEXT, core_attrs);
-	if (context == EGL_NO_CONTEXT) {
-		const EGLint fallback_attrs[] = { EGL_NONE };
-		context = eglCreateContext((EGLDisplay)egl_display, (EGLConfig)egl_config, EGL_NO_CONTEXT, fallback_attrs);
-	}
-	return context == EGL_NO_CONTEXT ? NULL : (void *)context;
-}
-
 static inline unsigned long v_multiwindow_x11_create_egl_window(Display *display, unsigned long root, int screen, int native_visual_id, int width, int height, unsigned long *out_colormap) {
 	XVisualInfo template_info;
 	XVisualInfo *visual_info = NULL;
@@ -1010,39 +965,16 @@ static inline unsigned long v_multiwindow_x11_create_egl_window(Display *display
 	return window;
 }
 
-static inline void *v_multiwindow_x11_egl_create_window_surface(void *egl_display, void *egl_config, unsigned long window) {
-	EGLSurface surface = eglCreateWindowSurface((EGLDisplay)egl_display, (EGLConfig)egl_config, (EGLNativeWindowType)window, NULL);
-	return surface == EGL_NO_SURFACE ? NULL : (void *)surface;
-}
-
-static inline int v_multiwindow_x11_egl_make_current(void *egl_display, void *egl_surface, void *egl_context) {
-	return eglMakeCurrent((EGLDisplay)egl_display, (EGLSurface)egl_surface, (EGLSurface)egl_surface, (EGLContext)egl_context) == EGL_TRUE ? 1 : 0;
-}
-
-static inline void v_multiwindow_x11_egl_clear_current(void *egl_display) {
-	eglMakeCurrent((EGLDisplay)egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-}
-
-static inline int v_multiwindow_x11_egl_swap_buffers(void *egl_display, void *egl_surface) {
-	return eglSwapBuffers((EGLDisplay)egl_display, (EGLSurface)egl_surface) == EGL_TRUE ? 1 : 0;
-}
-
-static inline void v_multiwindow_x11_egl_destroy_surface(void *egl_display, void *egl_surface) {
-	if (egl_surface != NULL) {
-		eglDestroySurface((EGLDisplay)egl_display, (EGLSurface)egl_surface);
+static inline int v_multiwindow_x11_render_snapshot(Display *display, unsigned long window, int *out_width, int *out_height, int *out_viewable) {
+	XWindowAttributes attrs;
+	memset(&attrs, 0, sizeof(attrs));
+	if (display == NULL || !XGetWindowAttributes(display, (Window)window, &attrs)) {
+		return 0;
 	}
-}
-
-static inline void v_multiwindow_x11_egl_destroy_context(void *egl_display, void *egl_context) {
-	if (egl_context != NULL) {
-		eglDestroyContext((EGLDisplay)egl_display, (EGLContext)egl_context);
-	}
-}
-
-static inline void v_multiwindow_x11_egl_terminate(void *egl_display) {
-	if (egl_display != NULL) {
-		eglTerminate((EGLDisplay)egl_display);
-	}
+	*out_width = attrs.width;
+	*out_height = attrs.height;
+	*out_viewable = attrs.map_state == IsViewable ? 1 : 0;
+	return 1;
 }
 
 #endif

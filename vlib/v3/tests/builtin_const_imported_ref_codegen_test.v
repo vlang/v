@@ -33,7 +33,8 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_builtin_const_imported_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	// This test inspects the imported implementation in the monolithic C output.
+	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

@@ -13,6 +13,11 @@ to create a destination buffer of the correct size to receive the decrypted data
 
 The implementations here are loosely based on [Go's crypto package](https://pkg.go.dev/crypto).
 
+Use `crypto.rand.bytes(n)` to allocate `n` cryptographically secure random bytes, or
+`crypto.rand.read(mut buffer)` to fill an existing buffer. Both APIs use the operating
+system's cryptographically secure random source and can return an error. The separate
+`rand` module provides faster, seedable pseudorandom generators for non-security-sensitive uses.
+
 ## Examples
 
 ### AES
@@ -52,7 +57,7 @@ fn main() {
 import crypto.hmac
 import crypto.sha256
 import encoding.base64
-import json
+import json2
 import time
 
 struct JwtHeader {
@@ -80,9 +85,11 @@ fn main() {
 }
 
 fn make_token(secret string) string {
-	header := base64.url_encode(json.encode(JwtHeader{'HS256', 'JWT'}).bytes())
-	payload :=
-		base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
+	header :=
+		base64.url_encode(json2.encode(JwtHeader{'HS256', 'JWT'}, escape_unicode: true).bytes())
+	payload := base64.url_encode(json2.encode(JwtPayload{'1234567890', 'John Doe', 1516239022},
+		escape_unicode: true
+	).bytes())
 	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
 		sha256.sum, sha256.block_size))
 	jwt := '${header}.${payload}.${signature}'
@@ -99,7 +106,7 @@ fn auth_verify(secret string, token string) bool {
 
 fn decode_payload(token string) !JwtPayload {
 	token_split := token.split('.')
-	payload := json.decode(JwtPayload, base64.url_decode_str(token_split[1]))!
+	payload := json2.decode[JwtPayload](base64.url_decode_str(token_split[1]))!
 	return payload
 }
 ```

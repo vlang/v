@@ -1378,6 +1378,7 @@ fn (mut e Eval) assignment_value(op flat.Op, lhs_id flat.NodeId, rhs_id flat.Nod
 		.plus_assign { e.apply_infix(.plus, left, rhs)! }
 		.minus_assign { e.apply_infix(.minus, left, rhs)! }
 		.mul_assign { e.apply_infix(.mul, left, rhs)! }
+		.power_assign { e.apply_infix(.power, left, rhs)! }
 		.div_assign { e.apply_infix(.div, left, rhs)! }
 		.mod_assign { e.apply_infix(.mod, left, rhs)! }
 		.amp_assign { e.apply_infix(.amp, left, rhs)! }
@@ -1416,6 +1417,7 @@ fn (mut e Eval) apply_assignment_op(op flat.Op, left Value, rhs Value) !Value {
 		.plus_assign { e.apply_infix(.plus, left, rhs)! }
 		.minus_assign { e.apply_infix(.minus, left, rhs)! }
 		.mul_assign { e.apply_infix(.mul, left, rhs)! }
+		.power_assign { e.apply_infix(.power, left, rhs)! }
 		.div_assign { e.apply_infix(.div, left, rhs)! }
 		.mod_assign { e.apply_infix(.mod, left, rhs)! }
 		.amp_assign { e.apply_infix(.amp, left, rhs)! }
@@ -2479,6 +2481,9 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return TypeValue{
 				name: e.runtime_type_name(value)
 			}
+		}
+		.defer_result {
+			return error('`$res()` is not supported by the V3 eval backend')
 		}
 		.fn_literal {
 			return Value(e.eval_fn_literal(id, node)!)
@@ -4284,7 +4289,7 @@ fn (mut e Eval) eval_or_expr(node &flat.Node) !Value {
 fn (mut e Eval) eval_or_expr_flow(node &flat.Node) !FlowSignal {
 	left_id := e.child(node, 0)
 	left_node := e.node(left_id)
-	if left_node.kind == .index {
+	if left_node.kind == .index && left_node.value != 'range' {
 		container_signal := e.eval_expr_flow(e.child(left_node, 0))!
 		if container_signal.kind != .normal {
 			return container_signal
@@ -4302,6 +4307,19 @@ fn (mut e Eval) eval_or_expr_flow(node &flat.Node) !FlowSignal {
 			}
 			return e.eval_or_failure(node, container.default_value)
 		}
+		index_signal := e.eval_expr_flow(e.child(left_node, 1))!
+		if index_signal.kind != .normal {
+			return index_signal
+		}
+		index := flow_value(index_signal)
+		if !e.value_is_truthy(index) {
+			return e.eval_or_failure(node, index)
+		}
+		value := e.index_value(container, e.unwrap_option_like(index))!
+		if e.value_is_truthy(value) {
+			return value_flow(e.unwrap_option_like(value))
+		}
+		return e.eval_or_failure(node, value)
 	}
 	left_signal := e.eval_expr_flow(left_id)!
 	if left_signal.kind != .normal {
@@ -4986,6 +5004,7 @@ fn infix_operator_symbol(op flat.Op) ?string {
 		.plus { '+' }
 		.minus { '-' }
 		.mul { '*' }
+		.power { '**' }
 		.div { '/' }
 		.mod { '%' }
 		.eq { '==' }
@@ -5153,6 +5172,12 @@ fn (mut e Eval) apply_infix(op flat.Op, left Value, right Value) !Value {
 			}
 			return Value(e.value_as_int(left)! * e.value_as_int(right)!)
 		}
+		.power {
+			if left is f64 || right is f64 {
+				return Value(e.value_as_f64(left)! ** e.value_as_f64(right)!)
+			}
+			return Value(eval_integer_power(e.value_as_int(left)!, e.value_as_int(right)!))
+		}
 		.div {
 			if left is f64 || right is f64 {
 				return Value(e.value_as_f64(left)! / e.value_as_f64(right)!)
@@ -5206,6 +5231,30 @@ fn (mut e Eval) apply_infix(op flat.Op, left Value, right Value) !Value {
 			return error('v3.eval: unsupported infix operator `${op}`')
 		}
 	}
+}
+
+@[ignore_overflow]
+fn eval_integer_power(base i64, exponent i64) i64 {
+	if exponent < 0 {
+		if base == 0 {
+			return -1
+		}
+		if base != 1 && base != -1 {
+			return 0
+		}
+		return if exponent & 1 != 0 { base } else { 1 }
+	}
+	mut value := i64(1)
+	mut power := base
+	mut remaining := exponent
+	for remaining > 0 {
+		if remaining & 1 != 0 {
+			value *= power
+		}
+		power *= power
+		remaining >>= 1
+	}
+	return value
 }
 
 fn (e &Eval) value_in(left Value, right Value) bool {
@@ -5772,6 +5821,9 @@ fn (e &Eval) cast_value_in_module(value Value, type_name string, module_name str
 		return e.enum_value(name, source)
 	}
 	if name.starts_with('?') {
+		if source is VoidValue {
+			return source
+		}
 		inner_type := name[1..]
 		data := if inner_type.len > 0 {
 			e.adapt_value_to_type_name(source, inner_type)

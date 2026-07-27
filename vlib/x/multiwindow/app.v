@@ -7,15 +7,43 @@ import x.executor
 @[heap]
 pub struct App {
 mut:
-	config          Config
-	status          AppStatus = .running
-	backend         Backend
-	windows         []WindowSlot
-	events          []QueuedEvent
-	frame_count     u64
-	owner_thread_id u64
-	state_mutex     &sync.Mutex        = sync.new_mutex()
-	owner           &executor.Executor = unsafe { nil }
+	config                      Config
+	instance_id                 u64
+	status                      AppStatus = .running
+	stopping                    bool
+	backend                     Backend
+	windows                     []WindowSlot
+	events                      []QueuedEvent
+	event_deliveries            map[u64]EventDeliveryState
+	next_event_delivery_token   u64 = 1
+	event_dispatch_events       []QueuedEvent
+	event_dispatch_active       bool
+	event_dispatch_index        int
+	event_delivery_terminal     bool
+	teardown_acceptance_order   []WindowId
+	window_finished             map[string]bool
+	window_terminal             map[string]string
+	frame_count                 u64
+	deferred_poll_error         string
+	deferred_poll_error_active  bool
+	deferred_poll_barrier_token u64
+	backend_event_terminal      string
+	render_runtime              RenderRuntimeState
+	render_bridge               voidptr
+	owner_thread_id             u64
+	admission_open              bool = true
+	admission_epoch             u64  = 1
+	owner_callback_depth        int
+	next_stop_serial            u64 = 1
+	stop_serial                 u64
+	stop_prepared               bool
+	stop_terminal               string
+	pending_stop_errors         []string
+	stop_native_retry_passes    u8
+	internal_fault              InternalFaultPlan
+	state_mutex                 &sync.Mutex        = sync.new_mutex()
+	fault_mutex                 &sync.Mutex        = sync.new_mutex()
+	owner                       &executor.Executor = unsafe { nil }
 }
 
 // new_app creates a low-level multi-window App with the mock backend by default.
@@ -23,21 +51,36 @@ pub fn new_app(config Config) !&App {
 	if config.queue_size <= 0 {
 		return error(err_queue_size_invalid)
 	}
+	instance_id := allocate_app_instance_id()!
 	mut backend := new_backend(config.backend, config.require_renderer)!
 	mut app := &App{
-		config:          config
-		status:          .running
-		backend:         backend
-		owner_thread_id: sync.thread_id()
-		state_mutex:     sync.new_mutex()
+		config:           config
+		instance_id:      instance_id
+		status:           .running
+		backend:          backend
+		owner_thread_id:  sync.thread_id()
+		state_mutex:      sync.new_mutex()
+		fault_mutex:      sync.new_mutex()
+		window_finished:  map[string]bool{}
+		window_terminal:  map[string]string{}
+		event_deliveries: map[u64]EventDeliveryState{}
 	}
-	app.backend.start(config.require_renderer)!
-	mut owner := executor.new(queue_size: config.queue_size) or {
-		app.backend.stop() or {}
+	app_lifetime_token := app.take_native_app_lifetime_token()!
+	trace_token := app.begin_renderer_fault_trace_attempt()!
+	app.backend.bind_app_native_operations(instance_id, app_lifetime_token, trace_token)!
+	mut owner := executor.new(queue_size: config.queue_size)!
+	app.owner = owner
+	app.backend.start(config.require_renderer) or {
+		app.owner.stop()
 		return err
 	}
-	app.owner = owner
 	return app
+}
+
+// instance_id is process-monotonic and never reused. It stamps every handle,
+// scheduler lease and accepted owner wrapper belonging to this App.
+pub fn (app &App) instance_id() u64 {
+	return app.instance_id
 }
 
 // status reports the application lifecycle state.
@@ -57,43 +100,86 @@ pub fn (app &App) capabilities() Capabilities {
 pub fn (mut app App) create_window(config WindowConfig) !WindowId {
 	app.assert_owner_thread()!
 	validate_window_config(config)!
+	if app.config.require_renderer && config.sample_count != 1 {
+		return error(err_render_sample_count_unsupported)
+	}
 	app.state_mutex.lock()
-	defer {
+	app.ensure_running_locked() or {
 		app.state_mutex.unlock()
+		return err
 	}
-	app.ensure_running_locked()!
-	id := app.allocate_window_id()
-	actual_size := app.backend.create_window(id, config)!
+	app.ensure_event_admission_open_locked() or {
+		app.state_mutex.unlock()
+		return err
+	}
+	if app.render_bridge != unsafe { nil } && config.sample_count != 1 {
+		app.state_mutex.unlock()
+		return error(err_render_sample_count_unsupported)
+	}
+	id := app.allocate_window_id_locked() or {
+		app.state_mutex.unlock()
+		return err
+	}
+	created_delivery_token := app.reserve_event_delivery_tokens_locked(1) or {
+		app.state_mutex.unlock()
+		return err
+	}
+	app.state_mutex.unlock()
+	actual_size := app.backend.create_window(id, config) or {
+		app.state_mutex.lock()
+		if id.slot >= 0 && id.slot < app.windows.len && app.windows[id.slot].id == id {
+			app.windows[id.slot].status = .invalid
+		}
+		app.state_mutex.unlock()
+		return err
+	}
+	app.state_mutex.lock()
+	if app.status != .running || app.stopping {
+		app.state_mutex.unlock()
+		app.backend.finish_window_teardown(id) or {}
+		return error(err_app_stopped)
+	}
+	native_teardown_serial := app.take_destroy_serial_locked() or {
+		app.windows[id.slot].status = .invalid
+		app.state_mutex.unlock()
+		app.backend.finish_window_teardown(id) or {}
+		return err
+	}
 	app.windows[id.slot] = WindowSlot{
-		id:     id
-		config: window_config_with_size(config, actual_size.width, actual_size.height)
-		status: .alive
+		id:                     id
+		config:                 window_config_with_size(config, actual_size.width,
+			actual_size.height)
+		status:                 .alive
+		native_teardown_serial: native_teardown_serial
 	}
-	app.events << queued_lifecycle_event(Event{
+	app.register_render_window_locked(id, config, actual_size) or {
+		app.windows[id.slot].status = .invalid
+		app.state_mutex.unlock()
+		app.backend.finish_window_teardown(id) or {}
+		return err
+	}
+	app.enqueue_reserved_event_locked(queued_lifecycle_event(Event{
 		kind:      .window_created
 		window_id: id
 		width:     actual_size.width
 		height:    actual_size.height
-	})
+	}), created_delivery_token)
+	app.state_mutex.unlock()
 	return id
 }
 
 // destroy_window destroys one live window. The app remains alive when any window,
 // including the last one, is destroyed.
 pub fn (mut app App) destroy_window(id WindowId) ! {
-	app.assert_owner_thread()!
-	app.state_mutex.lock()
-	defer {
-		app.state_mutex.unlock()
+	if app.window_destroy_finished(id) {
+		return app.return_window_terminal(id)
 	}
-	app.ensure_running_locked()!
-	index := app.live_window_index(id)!
-	app.backend.destroy_window(id)!
-	app.windows[index].status = .destroyed
-	app.events << queued_lifecycle_event(Event{
-		kind:      .window_destroyed
-		window_id: id
-	})
+	ticket := app.prepare_window_destroy(id)!
+	app.seal_window_destroy(ticket) or {
+		app.rollback_window_destroy(ticket) or {}
+		return err
+	}
+	app.finish_window_destroy(ticket, []string{})!
 }
 
 // set_window_title updates the native title and then the authoritative App state.
@@ -118,16 +204,20 @@ pub fn (mut app App) resize_window(id WindowId, width int, height int) ! {
 		app.state_mutex.unlock()
 	}
 	app.ensure_running_locked()!
+	app.ensure_event_admission_open_locked()!
 	index := app.live_window_index(id)!
+	delivery_token := app.reserve_event_delivery_tokens_locked(1)!
 	actual_size := app.backend.resize_window(id, width, height)!
 	app.windows[index].config = window_config_with_size(app.windows[index].config,
 		actual_size.width, actual_size.height)
-	app.events << queued_lifecycle_event(Event{
+	app.apply_unavailable_backend_observation_locked(index, id, actual_size.width,
+		actual_size.height, 0, 0, .resize_pending)
+	app.enqueue_reserved_event_locked(queued_lifecycle_event(Event{
 		kind:      .window_resized
 		window_id: id
 		width:     actual_size.width
 		height:    actual_size.height
-	})
+	}), delivery_token)
 }
 
 // set_window_cursor updates the native hover cursor for a live window when the
@@ -224,11 +314,11 @@ pub fn (app &App) window_exists(id WindowId) bool {
 	defer {
 		app.state_mutex.unlock()
 	}
-	if id.slot < 0 || id.slot >= app.windows.len {
+	if id.app_instance != app.instance_id || id.slot < 0 || id.slot >= app.windows.len {
 		return false
 	}
 	slot := app.windows[id.slot]
-	return slot.status == .alive && slot.id.generation == id.generation
+	return slot.status == .alive && slot.id == id && slot.destroy_stage in [.none, .prepared]
 }
 
 // window_status returns the lifecycle status for a valid generation.
@@ -237,11 +327,14 @@ pub fn (app &App) window_status(id WindowId) !WindowStatus {
 	defer {
 		app.state_mutex.unlock()
 	}
+	if id.app_instance != app.instance_id {
+		return error(err_app_identity_mismatch)
+	}
 	if id.slot < 0 || id.slot >= app.windows.len {
 		return error(err_window_not_found)
 	}
 	slot := app.windows[id.slot]
-	if slot.id.generation != id.generation {
+	if slot.id != id {
 		return error(err_stale_window)
 	}
 	return slot.status
@@ -254,7 +347,10 @@ pub fn (mut app App) drain_events() ![]Event {
 	defer {
 		app.state_mutex.unlock()
 	}
-	return app.drain_lifecycle_events_locked()
+	if app.event_dispatch_active {
+		return error(err_event_dispatch_active)
+	}
+	return app.drain_lifecycle_events_locked()!
 }
 
 // drain_input_events returns and clears pending input events without consuming
@@ -265,7 +361,10 @@ pub fn (mut app App) drain_input_events() ![]InputEvent {
 	defer {
 		app.state_mutex.unlock()
 	}
-	return app.drain_input_events_locked()
+	if app.event_dispatch_active {
+		return error(err_event_dispatch_active)
+	}
+	return app.drain_input_events_locked()!
 }
 
 // drain_queued_events returns and clears pending lifecycle/input events in the
@@ -276,8 +375,29 @@ pub fn (mut app App) drain_queued_events() ![]QueuedEvent {
 	defer {
 		app.state_mutex.unlock()
 	}
-	events := app.events.clone()
-	app.events.clear()
+	if app.event_dispatch_active {
+		return error(err_event_dispatch_active)
+	}
+	mut drain_count := 0
+	for event in app.events {
+		if app.queued_event_blocked_by_teardown_locked(event) {
+			break
+		}
+		drain_count++
+	}
+	internal_events := app.events[..drain_count].clone()
+	for event in internal_events {
+		app.validate_queued_delivery_locked(event)!
+	}
+	for event in internal_events {
+		app.complete_queued_delivery_locked(event)
+	}
+	app.events = app.events[drain_count..].clone()
+	app.release_terminal_delivery_storage_locked()
+	mut events := []QueuedEvent{cap: internal_events.len}
+	for event in internal_events {
+		events << queued_event_without_delivery_token(event)
+	}
 	return events
 }
 
@@ -285,110 +405,216 @@ pub fn (mut app App) drain_queued_events() ![]QueuedEvent {
 pub fn (mut app App) poll_events() !int {
 	app.assert_owner_thread()!
 	app.state_mutex.lock()
+	if app.event_dispatch_active {
+		app.state_mutex.unlock()
+		return 0
+	}
+	if app.deferred_poll_error_active {
+		if app.delivery_barrier_pending_locked(app.deferred_poll_barrier_token) {
+			app.state_mutex.unlock()
+			return 0
+		}
+		deferred_error := app.take_deferred_poll_error_locked()
+		app.state_mutex.unlock()
+		return error(deferred_error)
+	}
+	app.ensure_running_locked() or {
+		app.state_mutex.unlock()
+		return err
+	}
+	frame_count := next_nonwrapping_u64(app.frame_count) or {
+		app.render_runtime.renderer_terminal = err_render_renderer_failed
+		app.state_mutex.unlock()
+		return error(err_render_renderer_failed)
+	}
+	app.state_mutex.unlock()
+	events := app.backend.poll_queued_events()!
+
+	// Apply observations in native order while Backend retains the batch. This
+	// makes all state preceding a destruction part of its terminal snapshot.
+	acceptance := app.accept_backend_event_batch(events, frame_count)!
+	app.state_mutex.lock()
+	running := app.status == .running && !app.stopping
+	app.state_mutex.unlock()
+	if acceptance.delivery_error != '' {
+		return acceptance.accepted
+	}
+	if !running {
+		return error(err_app_stopped)
+	}
+
+	// Event acceptance is durable before the fallible backend snapshot query.
+	// In particular, a native-destroyed slot cannot disappear if metrics fail.
+	render_updates := app.backend.render_updates() or {
+		app.mark_renderer_terminal(err.msg())
+		app.state_mutex.lock()
+		app.defer_poll_error_locked(acceptance.barrier_token, err.msg())
+		app.state_mutex.unlock()
+		return acceptance.accepted
+	}
+	app.state_mutex.lock()
 	defer {
 		app.state_mutex.unlock()
 	}
-	app.ensure_running_locked()!
-	app.frame_count++
-	frame_count := app.frame_count
-	events := app.backend.poll_queued_events()!
-	mut accepted := 0
-	for event in events {
-		match event.kind {
-			.lifecycle {
-				if app.accept_lifecycle_event_locked(event.lifecycle) {
-					accepted++
-				}
-			}
-			.input {
-				if app.accept_input_event_locked(event.input, frame_count) {
-					accepted++
-				}
-			}
-		}
+	if app.status != .running || app.stopping {
+		return error(err_app_stopped)
 	}
-	return accepted
+	for update in render_updates {
+		app.apply_backend_render_update_locked(update)
+	}
+	return acceptance.accepted
 }
 
-fn (mut app App) drain_lifecycle_events_locked() []Event {
+fn (mut app App) drain_lifecycle_events_locked() ![]Event {
 	mut lifecycle_events := []Event{cap: app.events.len}
+	mut delivered_events := []QueuedEvent{cap: app.events.len}
 	mut remaining_events := []QueuedEvent{cap: app.events.len}
+	mut blocked := false
 	for event in app.events {
+		if blocked || app.queued_event_blocked_by_teardown_locked(event) {
+			blocked = true
+			remaining_events << event
+			continue
+		}
 		match event.kind {
 			.lifecycle {
 				lifecycle_events << event.lifecycle
+				delivered_events << event
 			}
 			.input {
 				remaining_events << event
 			}
 		}
 	}
+	for event in delivered_events {
+		app.validate_queued_delivery_locked(event)!
+	}
+	for event in delivered_events {
+		app.complete_queued_delivery_locked(event)
+	}
 	app.events = remaining_events
+	app.release_terminal_delivery_storage_locked()
 	return lifecycle_events
 }
 
-fn (mut app App) drain_input_events_locked() []InputEvent {
+fn (mut app App) drain_input_events_locked() ![]InputEvent {
 	mut input_events := []InputEvent{cap: app.events.len}
+	mut delivered_events := []QueuedEvent{cap: app.events.len}
 	mut remaining_events := []QueuedEvent{cap: app.events.len}
+	mut blocked := false
 	for event in app.events {
+		if blocked || app.queued_event_blocked_by_teardown_locked(event) {
+			blocked = true
+			remaining_events << event
+			continue
+		}
 		match event.kind {
 			.lifecycle {
 				remaining_events << event
 			}
 			.input {
 				input_events << event.input
+				delivered_events << event
 			}
 		}
 	}
+	for event in delivered_events {
+		app.validate_queued_delivery_locked(event)!
+	}
+	for event in delivered_events {
+		app.complete_queued_delivery_locked(event)
+	}
 	app.events = remaining_events
+	app.release_terminal_delivery_storage_locked()
 	return input_events
 }
 
-fn (mut app App) accept_lifecycle_event_locked(event Event) bool {
+fn (app &App) queued_event_blocked_by_teardown_locked(event QueuedEvent) bool {
+	if event.kind != .lifecycle || event.lifecycle.kind != .window_destroyed {
+		return false
+	}
+	id := event.lifecycle.window_id
+	if id.app_instance != app.instance_id || id.slot < 0 || id.slot >= app.windows.len {
+		return false
+	}
+	slot := app.windows[id.slot]
+	return slot.id == id && slot.destroy_event_queued && !slot.destroy_event_ready
+}
+
+fn (app &App) backend_event_generation_valid_locked(event QueuedEvent) bool {
+	id := if event.kind == .lifecycle {
+		event.lifecycle.window_id
+	} else {
+		event.input.window_id
+	}
+	if id.app_instance != app.instance_id || id.slot < 0 || id.slot >= app.windows.len {
+		return false
+	}
+	slot := app.windows[id.slot]
+	return slot.id == id && slot.status == .alive && slot.destroy_stage in [.none, .prepared]
+}
+
+fn (app &App) backend_window_generation_present_locked(id WindowId) bool {
+	if id.app_instance != app.instance_id || id.slot < 0 || id.slot >= app.windows.len {
+		return false
+	}
+	slot := app.windows[id.slot]
+	return slot.id == id && slot.status == .alive
+}
+
+fn (mut app App) accept_lifecycle_event_locked(event Event, generation_valid bool, delivery_token u64) bool {
 	match event.kind {
 		.window_close_requested {
-			app.live_window_index(event.window_id) or { return false }
-			app.events << queued_lifecycle_event(event)
+			if !generation_valid || !app.backend_window_generation_present_locked(event.window_id) {
+				return false
+			}
+			app.enqueue_reserved_event_locked(queued_lifecycle_event(event), delivery_token)
 			return true
 		}
 		.window_destroyed {
-			if app.mark_destroyed_from_backend_locked(event.window_id) {
-				app.events << queued_lifecycle_event(event)
-				return true
-			}
-			return false
+			return app.queue_backend_teardown_event_locked(event.window_id, delivery_token)
 		}
 		.window_resized {
-			if event.width <= 0 || event.height <= 0 {
+			if !generation_valid || event.width <= 0 || event.height <= 0
+				|| !app.backend_window_generation_present_locked(event.window_id) {
 				return false
 			}
-			index := app.live_window_index(event.window_id) or { return false }
+			index := event.window_id.slot
 			app.windows[index].config = window_config_with_size(app.windows[index].config,
 				event.width, event.height)
-			app.events << queued_lifecycle_event(event)
+			app.apply_unavailable_backend_observation_locked(index, event.window_id, event.width,
+				event.height, 0, 0, .resize_pending)
+			app.enqueue_reserved_event_locked(queued_lifecycle_event(event), delivery_token)
 			return true
 		}
 		else {
-			app.events << queued_lifecycle_event(event)
+			if !generation_valid || !app.backend_window_generation_present_locked(event.window_id) {
+				return false
+			}
+			app.enqueue_reserved_event_locked(queued_lifecycle_event(event), delivery_token)
 			return true
 		}
 	}
 }
 
-fn (mut app App) accept_input_event_locked(event InputEvent, frame_count u64) bool {
+fn (mut app App) accept_input_event_locked(event InputEvent, frame_count u64, generation_valid bool, delivery_token u64) bool {
+	if !generation_valid || !app.backend_window_generation_present_locked(event.window_id) {
+		return false
+	}
 	input_event := input_event_with_frame_count(event, frame_count)
 	if input_event.kind == .resized {
 		if input_event.window_width <= 0 || input_event.window_height <= 0 {
 			return false
 		}
-		index := app.live_window_index(input_event.window_id) or { return false }
+		index := input_event.window_id.slot
 		app.windows[index].config = window_config_with_size(app.windows[index].config,
 			input_event.window_width, input_event.window_height)
-		app.events << queued_input_event(input_event)
+		app.apply_backend_input_observation_locked(index, input_event)
+		app.enqueue_reserved_event_locked(queued_input_event(input_event), delivery_token)
 		return true
 	}
-	app.live_window_index(input_event.window_id) or { return false }
-	app.events << queued_input_event(input_event)
+	app.apply_backend_input_observation_locked(input_event.window_id.slot, input_event)
+	app.enqueue_reserved_event_locked(queued_input_event(input_event), delivery_token)
 	return true
 }
 
@@ -431,6 +657,7 @@ $if test {
 			app.state_mutex.unlock()
 		}
 		app.ensure_running_locked()!
+		app.ensure_event_admission_open_locked()!
 		app.live_window_index(id)!
 		if app.backend.kind != .mock {
 			return error(err_capability_unsupported)
@@ -450,6 +677,7 @@ $if test {
 			app.state_mutex.unlock()
 		}
 		app.ensure_running_locked()!
+		app.ensure_event_admission_open_locked()!
 		app.live_window_index(event.window_id)!
 		if app.backend.kind != .mock {
 			return error(err_capability_unsupported)
@@ -466,6 +694,7 @@ $if test {
 			app.state_mutex.unlock()
 		}
 		app.ensure_running_locked()!
+		app.ensure_event_admission_open_locked()!
 		if app.backend.kind != .mock {
 			return error(err_capability_unsupported)
 		}
@@ -484,6 +713,7 @@ $if test {
 			app.state_mutex.unlock()
 		}
 		app.ensure_running_locked()!
+		app.ensure_event_admission_open_locked()!
 		if app.backend.kind != .mock {
 			return error(err_capability_unsupported)
 		}
@@ -503,12 +733,29 @@ pub fn (mut app App) try_post(f AppJobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)
 	}
-	app.ensure_running()!
+	app.state_mutex.lock()
+	if app.status != .running || app.stopping || !app.admission_open {
+		app.state_mutex.unlock()
+		return error(err_app_stopped)
+	}
+	app_instance := app.instance_id
+	admission_epoch := app.admission_epoch
 	app_ptr := unsafe { voidptr(&app) }
-	app.owner.try_post(fn [app_ptr, f] () ! {
+	app.owner.try_post(fn [app_ptr, app_instance, admission_epoch, f] () ! {
 		mut queued_app := unsafe { &App(app_ptr) }
+		if !queued_app.accepted_wrapper_is_current(app_instance, admission_epoch) {
+			return
+		}
+		queued_app.begin_owner_callback()
+		defer {
+			queued_app.end_owner_callback()
+		}
 		f(mut queued_app)!
-	}) or { return wrap_executor_error(err) }
+	}) or {
+		app.state_mutex.unlock()
+		return wrap_executor_error(err)
+	}
+	app.state_mutex.unlock()
 }
 
 // drain_pending executes up to max_jobs queued owner callbacks while the app is running.
@@ -522,13 +769,22 @@ pub fn (mut app App) drain_pending(max_jobs int) !int {
 	}
 	mut ran := 0
 	for ran < max_jobs {
-		app.ensure_running()!
-		drained := app.owner.drain_pending(1) or { return wrap_executor_error(err) }
+		app.ensure_running() or {
+			_ = app.drain_cancelled_wrappers()
+			return err
+		}
+		drained := app.owner.drain_pending(1) or {
+			if app.status() != .running {
+				_ = app.drain_cancelled_wrappers()
+			}
+			return wrap_executor_error(err)
+		}
 		if drained == 0 {
 			return ran
 		}
 		ran += drained
 		if app.status() != .running {
+			_ = app.drain_cancelled_wrappers()
 			return error(err_app_stopped)
 		}
 	}
@@ -540,27 +796,62 @@ pub fn (mut app App) drain_pending(max_jobs int) !int {
 // to run them after stop().
 pub fn (mut app App) stop() ! {
 	app.assert_owner_thread()!
-	app.state_mutex.lock()
-	defer {
-		app.state_mutex.unlock()
-	}
 	if app.status == .stopped {
-		app.owner.stop()
+		return app.return_stop_terminal()
+	}
+	app.state_mutex.lock()
+	native_retry := app.stop_native_retry_passes > 0
+	app.state_mutex.unlock()
+	ticket := app.prepare_stop()!
+	if native_retry {
+		app.finish_stop(ticket, []string{})!
 		return
 	}
-	for i, slot in app.windows {
-		if slot.status == .alive {
-			app.backend.destroy_window(slot.id)!
-			app.windows[i].status = .destroyed
-			app.events << queued_lifecycle_event(Event{
-				kind:      .window_destroyed
-				window_id: slot.id
-			})
+	mut errors := []string{}
+	for destroy_ticket in app.prepared_window_tickets_for_stop() {
+		app.seal_window_destroy(destroy_ticket) or {
+			errors << err.msg()
+			app.rollback_window_destroy(destroy_ticket) or { errors << err.msg() }
+			continue
 		}
+		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
 	}
-	app.status = .stopped
-	app.backend.stop()!
-	app.owner.stop()
+	for destroy_ticket in app.sealed_window_tickets_for_stop() {
+		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
+	}
+	ids := app.live_window_ids_for_stop()
+	for id in ids {
+		mut destroy_ticket := app.prepare_window_destroy_for_stop(id) or {
+			errors << err.msg()
+			continue
+		}
+		mut sealed := false
+		for attempt in 0 .. 2 {
+			app.seal_window_destroy(destroy_ticket) or {
+				errors << err.msg()
+				app.rollback_window_destroy(destroy_ticket) or { errors << err.msg() }
+				if attempt == 1 {
+					break
+				}
+				destroy_ticket = app.prepare_window_destroy_for_stop(id) or {
+					errors << err.msg()
+					break
+				}
+				continue
+			}
+			sealed = true
+			break
+		}
+		if !sealed {
+			continue
+		}
+		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
+	}
+	for destroy_ticket in app.seal_remaining_windows_terminal_for_stop() {
+		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
+	}
+	app.shutdown_render_bridge_for_stop() or { errors << err.msg() }
+	app.finish_stop(ticket, errors)!
 }
 
 fn (app &App) assert_owner_thread() ! {
@@ -572,14 +863,23 @@ fn (app &App) assert_owner_thread() ! {
 fn (app &App) ensure_running() ! {
 	app.state_mutex.lock()
 	status := app.status
+	stopping := app.stopping
+	admission_open := app.admission_open
+	backend_event_terminal := app.backend_event_terminal
 	app.state_mutex.unlock()
-	if status != .running {
+	if backend_event_terminal != '' {
+		return error(backend_event_terminal)
+	}
+	if status != .running || stopping || !admission_open {
 		return error(err_app_stopped)
 	}
 }
 
 fn (app &App) ensure_running_locked() ! {
-	if app.status != .running {
+	if app.backend_event_terminal != '' {
+		return error(app.backend_event_terminal)
+	}
+	if app.status != .running || app.stopping || !app.admission_open {
 		return error(err_app_stopped)
 	}
 }
@@ -588,6 +888,9 @@ fn validate_window_config(config WindowConfig) ! {
 	validate_window_size(config.width, config.height)!
 	if config.min_width < 0 || config.min_height < 0 {
 		return error(err_invalid_window_size)
+	}
+	if config.sample_count <= 0 {
+		return error(err_render_sample_count_invalid)
 	}
 }
 
@@ -599,31 +902,37 @@ fn validate_window_size(width int, height int) ! {
 
 fn window_config_with_title(config WindowConfig, title string) WindowConfig {
 	return WindowConfig{
-		title:      title
-		width:      config.width
-		height:     config.height
-		min_width:  config.min_width
-		min_height: config.min_height
-		resizable:  config.resizable
-		visible:    config.visible
-		high_dpi:   config.high_dpi
-		borderless: config.borderless
-		fullscreen: config.fullscreen
+		title:           title
+		width:           config.width
+		height:          config.height
+		min_width:       config.min_width
+		min_height:      config.min_height
+		resizable:       config.resizable
+		visible:         config.visible
+		high_dpi:        config.high_dpi
+		borderless:      config.borderless
+		fullscreen:      config.fullscreen
+		sample_count:    config.sample_count
+		redraw_mode:     config.redraw_mode
+		render_workload: config.render_workload
 	}
 }
 
 fn window_config_with_size(config WindowConfig, width int, height int) WindowConfig {
 	return WindowConfig{
-		title:      config.title
-		width:      width
-		height:     height
-		min_width:  config.min_width
-		min_height: config.min_height
-		resizable:  config.resizable
-		visible:    config.visible
-		high_dpi:   config.high_dpi
-		borderless: config.borderless
-		fullscreen: config.fullscreen
+		title:           config.title
+		width:           width
+		height:          height
+		min_width:       config.min_width
+		min_height:      config.min_height
+		resizable:       config.resizable
+		visible:         config.visible
+		high_dpi:        config.high_dpi
+		borderless:      config.borderless
+		fullscreen:      config.fullscreen
+		sample_count:    config.sample_count
+		redraw_mode:     config.redraw_mode
+		render_workload: config.render_workload
 	}
 }
 
@@ -646,19 +955,25 @@ fn window_info_from_slot(slot WindowSlot, native_decorations bool) WindowInfo {
 	}
 }
 
-fn (mut app App) allocate_window_id() WindowId {
+fn (mut app App) allocate_window_id_locked() !WindowId {
 	for i, slot in app.windows {
-		if slot.status != .alive {
+		if slot.status != .alive && !slot.generation_exhausted {
+			if slot.id.generation == u32(0xffffffff) {
+				app.windows[i].generation_exhausted = true
+				continue
+			}
 			generation := slot.id.generation + 1
 			return WindowId{
-				slot:       i
-				generation: generation
+				app_instance: app.instance_id
+				slot:         i
+				generation:   generation
 			}
 		}
 	}
 	id := WindowId{
-		slot:       app.windows.len
-		generation: 1
+		app_instance: app.instance_id
+		slot:         app.windows.len
+		generation:   1
 	}
 	app.windows << WindowSlot{
 		id:     id
@@ -668,29 +983,20 @@ fn (mut app App) allocate_window_id() WindowId {
 }
 
 fn (app &App) live_window_index(id WindowId) !int {
+	if id.app_instance != app.instance_id {
+		return error(err_app_identity_mismatch)
+	}
 	if id.slot < 0 || id.slot >= app.windows.len {
 		return error(err_window_not_found)
 	}
 	slot := app.windows[id.slot]
-	if slot.id.generation != id.generation {
+	if slot.id != id {
 		return error(err_stale_window)
 	}
-	if slot.status != .alive {
+	if slot.status != .alive || slot.destroy_stage !in [.none, .prepared] {
 		return error(err_stale_window)
 	}
 	return id.slot
-}
-
-fn (mut app App) mark_destroyed_from_backend_locked(id WindowId) bool {
-	if id.slot < 0 || id.slot >= app.windows.len {
-		return false
-	}
-	slot := app.windows[id.slot]
-	if slot.id.generation != id.generation || slot.status != .alive {
-		return false
-	}
-	app.windows[id.slot].status = .destroyed
-	return true
 }
 
 fn wrap_executor_error(err IError) IError {

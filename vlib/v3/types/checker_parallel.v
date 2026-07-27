@@ -1,13 +1,17 @@
 module types
 
+import os
 import runtime
+import time
 import v3.flat
+import v3.workers
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
+const scoped_check_worker_batches = 8
 // Extra share of the total work (in percent of an even bucket) pre-assigned to
 // the master's bucket; see split_check_items.
-const check_master_bias_pct = i64(60)
+const check_master_bias_pct = i64(0)
 
 struct CheckWorkItem {
 	fn_idx   int
@@ -20,25 +24,88 @@ struct CheckWorkItem {
 
 $if !windows {
 	struct CheckChunkArgs {
-		worker    voidptr
-		items_ptr voidptr
+		worker        voidptr
+		items_ptr     voidptr
+		scope_enabled bool
+	mut:
+		scope voidptr
 	}
 
-	@[typedef]
-	struct C.pthread_t {}
-
-	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-	fn C.pthread_attr_init(attr voidptr) int
-	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-	fn C.pthread_attr_destroy(attr voidptr) int
-
 	fn check_chunk_thread(arg voidptr) voidptr {
-		a := unsafe { &CheckChunkArgs(arg) }
+		mut a := unsafe { &CheckChunkArgs(arg) }
+		a.scope = check_worker_scope_begin(a.scope_enabled)
 		mut w := unsafe { &TypeChecker(a.worker) }
 		items := unsafe { &[]CheckWorkItem(a.items_ptr) }
-		w.check_fn_items_serial(*items)
+		if a.scope_enabled {
+			w.check_scoped_batches(*items)
+		} else {
+			w.check_fn_items_serial(*items)
+		}
+		check_worker_scope_leave(a.scope)
 		return unsafe { nil }
+	}
+}
+
+// check_scoped_batches bounds each worker's temporary type-resolution state.
+// The receiver is a result accumulator; every batch uses a fresh checker fork,
+// then promotes only observable cache entries and diagnostics before its arena
+// is released.
+fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem) {
+	if items.len == 0 {
+		return
+	}
+	n_batches := if items.len < scoped_check_worker_batches {
+		items.len
+	} else {
+		scoped_check_worker_batches
+	}
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += i64(item.cost) + 1
+	}
+	mut start := 0
+	mut consumed_cost := i64(0)
+	for batch_idx in 0 .. n_batches {
+		mut end := start
+		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
+		for end < items.len
+			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
+			consumed_cost += i64(items[end].cost) + 1
+			end++
+		}
+		scratch_scope := check_worker_scope_begin(true)
+		mut batch := tc.fork_for_parallel_check()
+		batch.check_fn_items_serial(items[start..end])
+		check_worker_scope_leave(scratch_scope)
+		tc.clone_parallel_worker_node_caches(items[start..end])
+		tc.merge_parallel_check_worker_scoped(batch, true)
+		check_worker_scope_free(scratch_scope)
+		start = end
+	}
+}
+
+fn check_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn check_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn check_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
 	}
 }
 
@@ -46,6 +113,10 @@ $if !windows {
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	if !want_parallel {
+		if tc.scope_parallel_check_workers {
+			tc.check_semantics_scoped_serial()
+			return false
+		}
 		tc.check_semantics()
 		return false
 	}
@@ -55,6 +126,54 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	} $else {
 		return tc.check_semantics_parallel()
 	}
+}
+
+// check_semantics_scoped_serial keeps a no-parallel preallocated check bounded
+// without starting helper threads. Each function batch publishes only its
+// diagnostics and node caches before its disposable arena is released.
+fn (mut tc TypeChecker) check_semantics_scoped_serial() {
+	tc.resolution_type_mode = false
+	tc.install_type_cache_overlay()
+	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+	tc.selected_file_called_fns = map[string]bool{}
+	tc.selected_file_worklist = []string{}
+	tc.check_export_attrs()
+	items := tc.collect_parallel_check_items()
+	final_file := tc.cur_file
+	final_module := tc.cur_module
+	tc.check_scoped_batches(items)
+	tc.cur_file = final_file
+	tc.cur_module = final_module
+	if tc.defer_ierror_gating {
+		if tc.pending_ierror_errors.len > 0 {
+			tc.collect_selected_file_called_fns()
+		}
+		if tc.filter_pending_ierror_errors() {
+			tc.sort_parallel_check_errors()
+		}
+		tc.defer_ierror_gating = false
+	}
+	tc.restore_type_cache_base()
+	tc.resolution_type_mode = true
+}
+
+// check_semantics_selected validates declarations and only the named function
+// bodies. It is used by the function-level incremental compiler after it has
+// proven that every top-level declaration is unchanged.
+pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
+	tc.resolution_type_mode = false
+	tc.check_export_attrs()
+	items := tc.collect_parallel_check_items()
+	mut selected_items := []CheckWorkItem{cap: selected.len}
+	for item in items {
+		node := tc.a.nodes[item.fn_idx]
+		qname := checker_qualified_fn_name(item.module, node.value)
+		if selected[qname] || selected[node.value] {
+			selected_items << item
+		}
+	}
+	tc.check_fn_items_serial(selected_items)
+	tc.resolution_type_mode = true
 }
 
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
@@ -73,8 +192,12 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 		tc.selected_file_called_fns = map[string]bool{}
 		tc.selected_file_worklist = []string{}
+		mut cksw := time.new_stopwatch()
 		tc.check_export_attrs()
+		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cksw.restart()
 		items := tc.collect_parallel_check_items()
+		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
@@ -169,7 +292,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		tc.check_fn_items_serial(items)
 		return false
 	} $else {
-		n_jobs := check_job_count(runtime.nr_jobs(), items.len)
+		mut ast := unsafe { tc.a }
+		if isnil(ast.worker_pool) {
+			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
+		}
+		n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
 		if items.len < min_parallel_check_items || n_jobs <= 1 {
 			tc.check_fn_items_serial(items)
 			return false
@@ -177,48 +304,109 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		mut chunks := split_check_items(items, n_jobs)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
-		mut workers := []voidptr{cap: thread_count}
-		for _ in 0 .. thread_count {
+		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
+		worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
+		rpsw := time.new_stopwatch()
+		mut checker_workers := []voidptr{cap: worker_count}
+		for _ in 0 .. worker_count {
 			w := tc.fork_for_parallel_check()
-			workers << voidptr(w)
+			checker_workers << voidptr(w)
 		}
-		mut args := []CheckChunkArgs{cap: thread_count}
-		for ci in 0 .. thread_count {
+		tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
+		mut args := []CheckChunkArgs{cap: chunk_count}
+		for ci in 0 .. chunk_count {
+			mut worker := voidptr(tc)
+			if tc.scope_parallel_check_workers {
+				worker = checker_workers[ci]
+			} else if ci > 0 {
+				worker = checker_workers[ci - 1]
+			}
 			args << CheckChunkArgs{
-				worker:    workers[ci]
-				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
+				worker:        worker
+				items_ptr:     unsafe { voidptr(&chunks[ci]) }
+				scope_enabled: tc.scope_parallel_check_workers
 			}
 		}
-
-		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-		for ci in 0 .. thread_count {
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, check_chunk_thread,
-				unsafe { voidptr(&args[ci]) })
-		}
-		C.pthread_attr_destroy(attr)
 		// The master checks its own chunk under the same range discipline as the
 		// workers: in-range cache writes go straight into the shared arrays (the
 		// master owns those slots), out-of-range ones into its sparse maps, which
 		// are replayed first after join so that worker merges overwrite them in
 		// the same order the old serial flow did.
-		tc.parallel_check_sparse = true
-		tc.check_fn_items_serial(chunks[0])
-		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+		tc.parallel_check_sparse = !tc.scope_parallel_check_workers
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		mut tasks := []workers.Task{cap: chunk_count}
+		for ci in 0 .. chunk_count {
+			helper_idx := ci - 1
+			tasks << workers.Task{
+				run:        check_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
+				force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
+			}
 		}
-		tc.merge_own_sparse_caches()
+		check_worker_scope_leave(setup_scope)
+		rpsw2 := time.new_stopwatch()
+		any_started := ast.worker_pool.run(tasks)
+		tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
+		if !tc.scope_parallel_check_workers {
+			tc.merge_own_sparse_caches()
+		}
 		tc.parallel_check_sparse = false
-		for ci in 0 .. thread_count {
-			mut w := unsafe { &TypeChecker(workers[ci]) }
-			tc.merge_parallel_check_worker(w)
-			w.free_parallel_check_worker_cache()
+		merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
+		// Promote scope-resident cache payloads across the pool while every
+		// worker scope is still alive; only unknown-type interning stays serial.
+		par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
+		mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
+		mut mg_clone_ns := u64(0)
+		mut mg_merge_ns := u64(0)
+		if par_clone {
+			mg_t0 := time.sys_mono_now()
+			for ci in 0 .. chunk_count {
+				clone_args << CheckCloneChunkArgs{
+					tc:        voidptr(tc)
+					items_ptr: unsafe { voidptr(&chunks[ci]) }
+					miss:      []int{cap: 1024}
+				}
+			}
+			mut ctasks := []workers.Task{cap: chunk_count}
+			for ci in 0 .. chunk_count {
+				ctasks << workers.Task{
+					run:        check_clone_chunk_thread
+					arg:        unsafe { voidptr(&clone_args[ci]) }
+					force_sync: ci == 0
+				}
+			}
+			ast.worker_pool.run(ctasks)
+			mg_clone_ns += time.sys_mono_now() - mg_t0
 		}
+		for ci in merge_start .. chunk_count {
+			worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
+			mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
+			scoped := args[ci].scope != unsafe { nil }
+			if scoped {
+				mg_t0 := time.sys_mono_now()
+				if par_clone {
+					tc.intern_expr_type_misses(clone_args[ci].miss)
+				} else {
+					tc.clone_parallel_worker_node_caches(chunks[ci])
+				}
+				mg_clone_ns += time.sys_mono_now() - mg_t0
+			}
+			mg_t1 := time.sys_mono_now()
+			tc.merge_parallel_check_worker_scoped(w, scoped)
+			mg_merge_ns += time.sys_mono_now() - mg_t1
+			if scoped {
+				check_worker_scope_free(args[ci].scope)
+			} else {
+				w.free_parallel_check_worker_cache()
+			}
+		}
+		mg_clone_ms := f64(mg_clone_ns) / 1e6
+		mg_merge_ms := f64(mg_merge_ns) / 1e6
+		tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+		tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
+		check_worker_scope_free(setup_scope)
 		tc.sort_parallel_check_errors()
-		return true
+		return any_started
 	}
 }
 
@@ -274,12 +462,11 @@ fn check_job_count(n_runtime_jobs int, n_items int) int {
 fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	mut buckets := [][]CheckWorkItem{len: n, init: []CheckWorkItem{}}
 	mut loads := []i64{len: n}
-	if n > 1 {
-		// The master (bucket 0) runs on a busy performance core while several
-		// workers inevitably land on efficiency cores (plus the called-fns
-		// collector occupying another); measured per-unit it finishes its even
-		// share early and idles in pthread_join. Give it a proportionally
-		// heavier share by starting it with negative load.
+	if n > 1 && check_master_bias_pct != 0 {
+		// Historical bias: bucket 0 once finished early on this split. Measured
+		// 2026-07-25 the master chunk was instead the pool tail by ~30% (its
+		// span cost undercounts the dense builtin bodies), so the bias is off;
+		// the knob stays for machines where the old premise holds.
 		mut total := i64(0)
 		for it in items {
 			total += i64(it.cost) + 1
@@ -343,19 +530,20 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
-	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
-	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
-	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
-	tc.cur_fn_mut_param_base_types = map[string]Type{}
-	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	saved_fn_context := tc.fn_context
+	tc.fn_context = new_function_check_context()
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
+	tc.fn_context.return_type = tc.cur_fn_ret_type
+	tc.fn_context.node_id = fn_idx
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
 	tc.method_value_local_depth = map[string]int{}
+	tc.capturing_fn_literal_locals = map[string]bool{}
+	tc.capturing_fn_literal_local_depth = map[string]int{}
+	tc.capturing_fn_literal_return_unsupported = map[string]bool{}
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
 	}
@@ -373,23 +561,132 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if generic_params.len == 0 || qname in tc.selected_file_called_fns {
 		tc.check_fn_body(node)
 	}
-	tc.cur_fn_node_id = -1
+	tc.fn_context.node_id = -1
 	is_disabled_stub := node.value in tc.a.disabled_fns
-	if tc.cur_fn_ret_type !is Unknown && !type_allows_implicit_return(tc.cur_fn_ret_type)
-		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
+	// A terminal propagation whose payload still contains a generic placeholder
+	// and return control flow guarded by a generic `$if` are lowered against the
+	// concrete specialization. Keep those narrow deferrals without suppressing
+	// ordinary generic fallthrough.
+	has_deferred_generic_return := generic_params.len > 0
+		&& tc.fn_has_deferred_generic_return(node, generic_params)
+	if tc.fn_context.return_type !is Unknown
+		&& !type_allows_implicit_return(tc.fn_context.return_type)
+		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.record_error(.return_mismatch,
-			'missing return at end of function `${node.value}`; expected `${tc.cur_fn_ret_type.name()}`',
+			'missing return at end of function `${node.value}`; expected `${tc.fn_context.return_type.name()}`',
 			flat.NodeId(fn_idx))
 	}
 	tc.pop_scope()
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
-	tc.cur_fn_ret_type = Type(void_)
-	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
-	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
-	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
+	tc.fn_context = saved_fn_context
+}
+
+fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+	mut last_stmt := flat.empty_node
+	for i := int(node.children_count) - 1; i >= 0; i-- {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .param {
+			continue
+		}
+		last_stmt = child_id
+		break
+	}
+	if last_stmt == flat.empty_node {
+		return false
+	}
+	if tc.stmt_is_generic_comptime_return(last_stmt, generic_params) {
+		return true
+	}
+	mode := if tc.fn_context.return_type is ResultType {
+		'!'
+	} else if tc.fn_context.return_type is OptionType {
+		'?'
+	} else {
+		return false
+	}
+	if !type_contains_unknown(tc.fn_context.return_type) {
+		return false
+	}
+	return tc.stmt_is_terminal_void_propagation(last_stmt, mode)
+}
+
+fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[string]bool) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .comptime_if
+		|| !comptime_condition_references_generic_param(node.value, generic_params) {
+		return false
+	}
+	// A returning branch only makes completeness specialization-dependent. The
+	// monomorphizer rechecks the selected, pruned branch before emitting it.
+	for i in 0 .. node.children_count {
+		if tc.generic_comptime_branch_terminates(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) generic_comptime_branch_terminates(id flat.NodeId) bool {
+	if tc.stmt_definitely_returns(id) {
+		return true
+	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				if tc.generic_comptime_branch_terminates(tc.a.child(&node, i)) {
+					return true
+				}
+			}
+		}
+		.expr_stmt, .paren, .call {
+			return tc.expr_never_returns_resolving(id)
+		}
+		else {}
+	}
+	return false
+}
+
+fn comptime_condition_references_generic_param(cond string, generic_params map[string]bool) bool {
+	for param, _ in generic_params {
+		mut offset := 0
+		for offset + param.len <= cond.len {
+			if cond[offset..offset + param.len] == param {
+				before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+				after := offset + param.len
+				after_ok := after >= cond.len || !comptime_cond_name_char(cond[after])
+				if before_ok && after_ok {
+					return true
+				}
+			}
+			offset++
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) stmt_is_terminal_void_propagation(id flat.NodeId, mode string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .or_expr {
+		return node.value == mode && tc.resolve_type(id) is Void
+	}
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return tc.stmt_is_terminal_void_propagation(tc.a.child(&node, 0), mode)
+	}
+	return false
 }
 
 // prewarm_shared_type_cache forces the lazily-built type_cache indexes that
@@ -416,6 +713,10 @@ fn (mut tc TypeChecker) install_type_cache_overlay() {
 		base:          tc.type_cache
 		parse_enabled: tc.type_cache.parse_enabled
 	}
+	if !isnil(tc.resolution_type_views) {
+		// Cached parse views still point at the cache that is now the shared base.
+		tc.reset_resolution_type_view_cache()
+	}
 }
 
 // restore_type_cache_base folds the master's private overlay back into the
@@ -430,6 +731,10 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 		return
 	}
 	mut base := overlay.base
+	base.parse_hits += overlay.parse_hits
+	base.parse_misses += overlay.parse_misses
+	base.c_hits += overlay.c_hits
+	base.c_misses += overlay.c_misses
 	for k, v in overlay.parse_entries {
 		base.parse_entries[k] = v
 	}
@@ -444,6 +749,9 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 	}
 	for k, v in overlay.ierror_compat_entries {
 		base.ierror_compat_entries[k] = v
+	}
+	for k, v in overlay.interface_impl_entries {
+		base.interface_impl_entries[k] = v
 	}
 	if overlay.source_error_embed_indexed && !base.source_error_embed_indexed {
 		base.source_error_embed_entries = overlay.source_error_embed_entries.move()
@@ -463,16 +771,23 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 		base.local_fn_decl_last_module = overlay.local_fn_decl_last_module
 	}
 	tc.type_cache = base
+	if !isnil(tc.resolution_type_views) {
+		tc.reset_resolution_type_view_cache()
+	}
 }
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
-	mut w := *tc
-	w.file_scope = new_scope(tc.file_scope)
-	w.cur_scope = w.file_scope
-	w.scope_pool = []&Scope{}
-	w.scope_pool_index = 0
-	w.errors = []TypeError{}
-	w.pending_ierror_errors = []PendingIerrorError{}
+	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Parallel checker workers may populate this cache concurrently, so each
+	// worker (and each disposable scoped batch) owns mutable result/miss maps while
+	// sharing the declaration index that collect completed before checking starts.
+	w.visible_mutation_cache = &VisibleMutationCache{
+		decls:            tc.visible_mutation_cache.decls
+		decl_misses:      map[string]bool{}
+		results:          map[u64]bool{}
+		decl_index_ready: tc.visible_mutation_cache.decl_index_ready
+	}
+	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
@@ -489,15 +804,14 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_expr_type_values = map[int]Type{}
 	w.sparse_checking_nodes = map[int]bool{}
 	w.method_values_by_fn = map[int][]string{}
-	w.method_value_locals = map[string]bool{}
-	w.method_value_local_depth = map[string]int{}
-	w.cur_fn_mut_param_base_types = map[string]Type{}
-	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	w.fn_context = new_function_check_context()
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
-	w.cur_fn_ret_type = Type(void_)
-	w.cur_fn_node_id = -1
+	w.ownership_time_ns = 0
+	if check_memos_enabled() {
+		w.import_info_cache = &ImportInfoCache{}
+		w.qualify_name_cache = &QualifyNameCache{}
+	}
 	$if ownership ? {
 		w.ownership_fork_for_parallel_check(tc)
 	}
@@ -514,49 +828,203 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		} else {
 			false
 		}
-		parse_entries:              map[string]Type{}
-		c_entries:                  map[string]string{}
+		parse_entries:              map[u64]ParseTypeCacheEntry{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
+	if tc.scope_parallel_check_workers {
+		// Shared interner growth from a helper arena would leave compilation-wide
+		// tables pointing into freed storage. Scoped helpers therefore intern into
+		// private tables and promote their compact results during merge.
+		w.type_interner = new_type_interner()
+		w.symbols = new_symbol_interner()
+		w.type_cache.base = unsafe { nil }
+	}
 	return &w
 }
 
+struct CheckCloneChunkArgs {
+	tc        voidptr
+	items_ptr voidptr
+mut:
+	miss []int
+}
+
+// check_clone_chunk_thread promotes one chunk's node-cache payloads out of
+// the (still alive) worker scopes: name clones land in the pool thread's
+// persistent arena, and expr types are rebound via a read-only interner probe.
+// Types the interner does not know yet are recorded and interned serially in
+// chunk order afterwards, so interner ids match the serial merge exactly.
+fn check_clone_chunk_thread(arg voidptr) voidptr {
+	mut a := unsafe { &CheckCloneChunkArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
+	for item in *items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+				tc.resolved_call_names[idx] = tc.resolved_call_names[idx].clone()
+			}
+			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
+				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
+			}
+			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+				if canonical := tc.probe_intern_type(tc.expr_type_values[idx]) {
+					tc.expr_type_values[idx] = canonical
+				} else {
+					a.miss << idx
+				}
+			}
+		}
+	}
+	return unsafe { nil }
+}
+
+fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
+	for idx in indexes {
+		_, canonical := tc.intern_type(clone_owned_type(tc.expr_type_values[idx]))
+		tc.expr_type_values[idx] = canonical
+	}
+}
+
+fn par_check_clone_enabled() bool {
+	return os.getenv('V3_NO_PAR_CK_CLONE') == ''
+}
+
+fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
+	for item in items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+				tc.resolved_call_names[idx] = tc.resolved_call_names[idx].clone()
+			}
+			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
+				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
+			}
+			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+				_, canonical := tc.intern_type(clone_owned_type(tc.expr_type_values[idx]))
+				tc.expr_type_values[idx] = canonical
+			}
+		}
+	}
+}
+
+fn clone_parallel_type_error(err TypeError) TypeError {
+	return TypeError{
+		msg:        err.msg.clone()
+		kind:       err.kind
+		node:       err.node
+		file:       err.file.clone()
+		node_kind:  err.node_kind.clone()
+		node_value: err.node_value.clone()
+		node_pos:   err.node_pos.clone()
+	}
+}
+
+fn clone_parallel_call_info(info CallInfo) CallInfo {
+	return CallInfo{
+		name:                 info.name.clone()
+		params:               clone_owned_types(info.params)
+		shared_params:        info.shared_params.clone()
+		return_type:          clone_owned_type(info.return_type)
+		has_receiver:         info.has_receiver
+		is_variadic:          info.is_variadic
+		is_c_variadic:        info.is_c_variadic
+		params_known:         info.params_known
+		has_implicit_veb_ctx: info.has_implicit_veb_ctx
+		arg_offset:           info.arg_offset
+	}
+}
+
 fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
-	tc.errors << w.errors
-	tc.pending_ierror_errors << w.pending_ierror_errors
+	tc.merge_parallel_check_worker_scoped(w, false)
+}
+
+fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
+	for err in w.errors {
+		tc.errors << if scoped { clone_parallel_type_error(err) } else { err }
+	}
+	for pending in w.pending_ierror_errors {
+		tc.pending_ierror_errors << if scoped {
+			PendingIerrorError{
+				err:      clone_parallel_type_error(pending.err)
+				fn_qname: pending.fn_qname.clone()
+			}
+		} else {
+			pending
+		}
+	}
+	if !isnil(tc.type_cache) && !isnil(w.type_cache) {
+		tc.type_cache.parse_hits += w.type_cache.parse_hits
+		tc.type_cache.parse_misses += w.type_cache.parse_misses
+		tc.type_cache.c_hits += w.type_cache.c_hits
+		tc.type_cache.c_misses += w.type_cache.c_misses
+	}
+	tc.ownership_time_ns += w.ownership_time_ns
 	$if ownership ? {
 		tc.ownership_merge_parallel_check_worker(w)
 	}
 	for idx, name in w.sparse_resolved_call_names {
-		tc.resolved_call_names[idx] = name
+		tc.resolved_call_names[idx] = if scoped { name.clone() } else { name }
 		tc.resolved_call_set[idx] = true
 	}
 	for idx, name in w.sparse_resolved_fn_values {
-		tc.resolved_fn_value_names[idx] = name
+		tc.resolved_fn_value_names[idx] = if scoped { name.clone() } else { name }
 		tc.resolved_fn_value_set[idx] = true
 	}
 	for idx, _ in w.sparse_statement_nodes {
 		tc.statement_nodes[idx] = true
 	}
 	for idx, typ in w.sparse_expr_type_values {
-		tc.expr_type_values[idx] = typ
+		if scoped {
+			_, canonical := tc.intern_type(clone_owned_type(typ))
+			tc.expr_type_values[idx] = canonical
+		} else {
+			tc.expr_type_values[idx] = typ
+		}
 		tc.expr_type_set[idx] = true
+	}
+	for fn_idx, dependencies in w.direct_dependencies_by_fn {
+		mut merged := tc.direct_dependencies_by_fn[fn_idx] or { []SymbolId{} }
+		for dependency in dependencies {
+			owned_dependency := if scoped {
+				id, _ := tc.intern_symbol(w.symbol_name(dependency))
+				id
+			} else {
+				dependency
+			}
+			if owned_dependency !in merged {
+				merged << owned_dependency
+			}
+		}
+		if merged.len > 0 {
+			tc.direct_dependencies_by_fn[fn_idx] = merged
+		}
 	}
 	for fn_idx, values in w.method_values_by_fn {
 		if values.len == 0 {
 			continue
 		}
 		if fn_idx in tc.method_values_by_fn {
-			tc.method_values_by_fn[fn_idx] << values
+			for value in values {
+				tc.method_values_by_fn[fn_idx] << if scoped { value.clone() } else { value }
+			}
 		} else {
-			tc.method_values_by_fn[fn_idx] = values.clone()
+			mut owned_values := []string{cap: values.len}
+			for value in values {
+				owned_values << if scoped { value.clone() } else { value }
+			}
+			tc.method_values_by_fn[fn_idx] = owned_values
 		}
 	}
 	for key, info in w.generic_method_value_info {
-		tc.generic_method_value_info[key] = info
+		owned_key := if scoped { key.clone() } else { key }
+		tc.generic_method_value_info[owned_key] = if scoped {
+			clone_parallel_call_info(info)
+		} else {
+			info
+		}
 	}
 }
 
@@ -569,6 +1037,7 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			cache.struct_field_entries.free()
 			cache.struct_field_misses.free()
 			cache.ierror_compat_entries.free()
+			cache.interface_impl_entries.free()
 			cache.source_error_embed_entries.free()
 		}
 	}

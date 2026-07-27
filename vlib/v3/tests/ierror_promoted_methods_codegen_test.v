@@ -263,7 +263,8 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	// The assertions below inspect implementation bodies in monolithic C output.
+	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -318,14 +319,15 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	// The assertions below inspect implementation bodies in monolithic C output.
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
 	assert c_code.contains('string dead__DeadErr__msg(dead__DeadErr err)'), c_code
 	assert c_code.contains('string dead__Helper__text(dead__Helper h)'), c_code
-	assert c_code.contains('return dead__Helper__text((dead__Helper){});'), c_code
+	assert c_code.contains('return dead__Helper__text((dead__Helper){0});'), c_code
 	assert !c_code.contains('dead__unrelated_dead_fn'), c_code
 
 	run := os.execute(bin)

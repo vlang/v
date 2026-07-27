@@ -1,0 +1,5 @@
+Name: split-link-pairs-root-74
+Description: Root public split linker pair fixture
+Version: 1.0.0
+Requires: split-link-pairs-a-74 split-link-pairs-b-74
+Libs: -L /issue74/root-search -l issue74_root

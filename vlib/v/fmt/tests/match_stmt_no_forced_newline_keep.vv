@@ -1,0 +1,43 @@
+// https://github.com/vlang/v/issues/27787
+// vfmt must not force an empty line after `match`/`$match` statements
+const x = $match @OS {
+	'linux' {
+		'linux'
+	}
+	$else {
+		'not_linux'
+	}
+}
+
+fn foo(a int) (string, string) {
+	first := match a {
+		0 { 'a' }
+		1 { 'b' }
+		2 { 'c' }
+		else { '' }
+	}
+	second := $match @OS {
+		'linux' {
+			'linux'
+		}
+		$else {
+			'not_linux'
+		}
+	}
+	return first, second
+}
+
+fn bar(a int) string {
+	mut res := ''
+	match a {
+		0 { res = 'a' }
+		else { res = 'b' }
+	}
+	res += match a {
+		0 { 'x' }
+		else { 'y' }
+	}
+
+	// an intentional empty line before this comment is preserved
+	return res
+}

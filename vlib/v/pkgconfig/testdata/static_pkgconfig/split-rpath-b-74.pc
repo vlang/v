@@ -1,0 +1,4 @@
+Name: split-rpath-b-74
+Description: Second split GNU rpath operand
+Version: 1.0.0
+Libs: -Wl,-rpath -Wl,/issue74/split-rpath-b

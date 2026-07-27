@@ -279,11 +279,15 @@ static void vgc_init_size_tables(void) {
 // Get size class for a given allocation size
 static inline uint8_t vgc_size_class(uint32_t size) {
     if (size == 0) return 0;
+    // The lookup tables are filled so that entry i holds the class for a request of
+    // (i+1)*8 bytes (resp. 1024+(i+1)*128). The bucket index for `size` is therefore
+    // ceil(size/8)-1 == (size-1)>>3, not ceil(size/8). Using (size+7)>>3 read one
+    // bucket too high and handed out a size class one larger than necessary.
     if (size <= 1024) {
-        return vgc_s2c8[(size + 7) >> 3];
+        return vgc_s2c8[(size - 1) >> 3];
     }
     if (size <= 32768) {
-        return vgc_s2c128[(size - 1024 + 127) >> 7];
+        return vgc_s2c128[(size - 1025) >> 7];
     }
     return 0; // large allocation
 }

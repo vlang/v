@@ -46,6 +46,10 @@ fn (mut backend MockBackend) create_window(id WindowId, config WindowConfig) !Wi
 }
 
 fn (mut backend MockBackend) destroy_window(id WindowId) ! {
+	backend.finish_window_teardown(id)!
+}
+
+fn (mut backend MockBackend) finish_window_teardown(id WindowId) ! {
 	index := backend.window_record_index(id) or { return error(err_window_not_found) }
 	backend.windows.delete(index)
 }
@@ -67,23 +71,6 @@ fn (mut backend MockBackend) set_window_cursor(id WindowId, shape CursorShape) !
 	_ = shape
 	backend.window_record_index(id) or { return error(err_window_not_found) }
 	return error(err_capability_unsupported)
-}
-
-fn (mut backend MockBackend) poll_events() ![]Event {
-	mut lifecycle_events := []Event{cap: backend.pending_events.len}
-	mut remaining_events := []QueuedEvent{cap: backend.pending_events.len}
-	for event in backend.pending_events {
-		match event.kind {
-			.lifecycle {
-				lifecycle_events << event.lifecycle
-			}
-			.input {
-				remaining_events << event
-			}
-		}
-	}
-	backend.pending_events = remaining_events
-	return lifecycle_events
 }
 
 fn (mut backend MockBackend) poll_queued_events() ![]QueuedEvent {

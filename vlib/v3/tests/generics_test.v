@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generics_test')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -437,4 +438,15 @@ fn main() {
 }
 ')
 	assert selector_convert_out == 'ok'
+
+	explicit_multi_arg_out := run_generic_exec(v3_bin, 'explicit_generic_call_keeps_runtime_args', '
+fn second[T](a T, b T) T {
+	return b
+}
+
+fn main() {
+	println(second[int](1, 2))
+}
+')
+	assert explicit_multi_arg_out == '2'
 }

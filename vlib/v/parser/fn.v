@@ -76,7 +76,9 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
 	}
 	p.check(.lpar)
+	lpar_line := p.prev_tok.pos().line_nr
 	args := p.call_args()
+	args_trailing_comma := p.call_args_trailing_comma
 	if p.tok.kind != .rpar && !p.pref.is_vls {
 		mut params := []ast.Param{}
 		fn_info, has_fn_info := table_fn_lookup(p.table, fn_name)
@@ -138,27 +140,47 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	comments := p.eat_comments(same_line: true)
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
-		name:               fn_name
-		name_pos:           first_pos
-		args:               args
-		mod:                p.mod
-		kind:               p.call_kind(fn_name)
-		pos:                pos
-		language:           language
-		concrete_types:     concrete_types
-		concrete_list_pos:  concrete_list_pos
-		raw_concrete_types: concrete_types
-		or_block:           ast.OrExpr{
+		name:                   fn_name
+		name_pos:               first_pos
+		args:                   args
+		args_start_on_new_line: call_args_are_multiline(lpar_line, args_trailing_comma, args)
+		mod:                    p.mod
+		kind:                   p.call_kind(fn_name)
+		pos:                    pos
+		language:               language
+		concrete_types:         concrete_types
+		concrete_list_pos:      concrete_list_pos
+		raw_concrete_types:     concrete_types
+		or_block:               ast.OrExpr{
 			stmts: or_stmts
 			kind:  or_kind
 			pos:   or_pos
 			scope: or_scope
 		}
-		scope:              p.scope
-		comments:           comments
-		is_return_used:     p.expecting_value
-		is_static_method:   is_static_type_method
+		scope:                  p.scope
+		comments:               comments
+		is_return_used:         p.expecting_value
+		is_static_method:       is_static_type_method
 	}
+}
+
+// call_args_are_multiline reports whether the user asked for the call's arguments to
+// be kept expanded: the argument list begins on a line after the opening `(` (which
+// is on lpar_line) and ends with a trailing comma before `)`, e.g.
+//
+// 	f(
+// 		a,
+// 		b,
+// 	)
+//
+// vfmt then preserves the multi-line layout, keeping the source line grouping of the
+// arguments (like gofmt), with a trailing comma (see Fmt.call_args and #27909). The
+// trailing comma is the explicit opt-in: vfmt never emits one otherwise, so this
+// leaves every existing call untouched. A long single argument merely wrapped across
+// lines (e.g. `panic('...' + long_expr)`) has no trailing comma and is
+// collapsed/wrapped as before.
+fn call_args_are_multiline(lpar_line int, has_trailing_comma bool, args []ast.CallArg) bool {
+	return has_trailing_comma && args.len > 0 && args[0].pos.line_nr > lpar_line
 }
 
 fn min_required_call_args(params []ast.Param) int {
@@ -474,9 +496,11 @@ fn (mut p Parser) call_args() []ast.CallArg {
 	defer {
 		p.inside_call_args = prev_inside_call_args
 	}
+	mut trailing_comma := false
 	mut args := []ast.CallArg{}
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .eof {
+			p.call_args_trailing_comma = trailing_comma
 			return args
 		}
 		is_shared := p.tok.kind == .key_shared
@@ -532,7 +556,10 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			continue
 		}
 		p.next()
+		// a comma directly before `)` is a trailing comma: `f(a, b,)`
+		trailing_comma = p.tok.kind == .rpar
 	}
+	p.call_args_trailing_comma = trailing_comma
 	return args
 }
 

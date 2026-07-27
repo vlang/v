@@ -51,9 +51,19 @@ pub mut:
 // Global profiler state singleton
 __global profiler_state = &ProfilerState{}
 
-// init_profiler_state initializes the global profiler state
-// Must be called before using the profiler
+// profiler_init_once guards init_profiler_state so that concurrent or repeated
+// callers cannot replace the mutex and state out from under an in-flight
+// allocation. The first caller wins; the rest are no-ops.
+__global profiler_init_once = sync.new_once()
+
+// init_profiler_state initializes the global profiler state exactly once.
+// Must be called before using the profiler. Safe to call from multiple threads
+// and more than once.
 pub fn init_profiler_state() {
+	profiler_init_once.do(do_init_profiler_state)
+}
+
+fn do_init_profiler_state() {
 	profiler_state.mu = sync.new_mutex()
 	profiler_state.enabled = false
 	profiler_state.current_frame = 0

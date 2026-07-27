@@ -233,6 +233,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
+	compact_c_code := c_code.replace(' ', '').replace('\t', '')
 	assert c_code.contains('m.value.name ='), c_code
 	assert c_code.contains('holder.opt.value.name ='), c_code
 	assert c_code.contains('.opt = (Optional_Inner){.ok = true, .value = inner}')
@@ -249,7 +250,7 @@ fn main() {
 	assert c_code.contains('if (!m.ok)'), c_code
 	assert c_code.contains('if (!holder.opt.ok)'), c_code
 	assert c_code.contains('if (!outer.ok)'), c_code
-	assert c_code.contains('.err = h->res.err') || c_code.contains('.err = h.res.err'), c_code
+	assert compact_c_code.contains('.err=h->res.err') || compact_c_code.contains('.err=h.res.err'), c_code
 	assert c_code.contains('IError err = holder.opt.err')
 		|| c_code.contains('IError err = holder->opt.err'), c_code
 	assert c_code.contains('IError err = h->res.err') || c_code.contains('IError err = h.res.err'), c_code

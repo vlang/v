@@ -20,5 +20,11 @@ pub fn (err ReadError) msg() string {
 // but instead pseudo random ones, from a pseudo random generator
 // that can be seeded, and that is usually faster.
 pub fn bytes(bytes_needed int) ![]u8 {
-	return read(bytes_needed)
+	if bytes_needed < 0 {
+		return error('can not read < 0 random bytes')
+	}
+
+	mut buffer := []u8{len: bytes_needed}
+	read(mut buffer)!
+	return buffer
 }

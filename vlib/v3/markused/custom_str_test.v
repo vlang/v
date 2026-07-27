@@ -67,7 +67,9 @@ fn parse_checked_prelude_user_source(name string, prelude_rel string, prelude_so
 // build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
-	build := os.execute('${custom_str_vexe} -o ${v3_bin} ${custom_str_v3_src}')
+	// v3.v guards against being built with a garbage collector (see the `$if gcboehm`
+	// `$compile_error` blocks at its top), so this sub-build must pass `-gc none`.
+	build := os.execute('${custom_str_vexe} -gc none -o ${v3_bin} ${custom_str_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -277,6 +279,27 @@ fn main() {
 	assert used['int__str']
 }
 
+fn test_channel_send_or_seeds_transform_helpers() {
+	main_src := '
+module main
+
+import support
+
+fn main() {
+	mut ch := chan int{cap: support.capacity}
+	ch <- 7 or { return }
+}
+'
+	mut a, mut tc := parse_checked_two_file_source('channel_send_or_helpers', main_src,
+		'support/support.v', 'module support\n\npub const capacity = 1\n')
+	mut used := mark_used(a, tc)
+	assert used['sync.Channel.try_push_priv']
+	assert used['sync.Channel.closed_error']
+	used = transform.transform_with_used(mut a, tc, used)
+	assert used['sync__Channel__try_push_priv']
+	assert used['sync__Channel__closed_error']
+}
+
 // test_optional_struct_zero_seeds_imported_default_helper validates this v3 regression case.
 fn test_optional_struct_zero_seeds_imported_default_helper() {
 	a, tc := parse_checked_two_file_source('imported_struct_default_or',
@@ -327,7 +350,7 @@ fn test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_trans
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('colors__Color__str(')
+	assert c_code.contains('colors__Color_str(')
 }
 
 // test_imported_operator_infix_lowers_after_used_filter_transform
@@ -380,7 +403,7 @@ fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_fil
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('colors__Color__str(')
+	assert c_code.contains('colors__Color_str(')
 }
 
 // test_imported_enum_print_compile_keeps_str_method validates this v3 regression case.

@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_struct_redeclaration_${os.getpid()}_${rand.ulid()}')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -96,4 +97,13 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert !shared_header_good.output.contains('cannot redeclare C struct `C.cJSON`'), shared_header_good.output
 
 	assert !shared_header_good.output.contains('C compilation failed'), shared_header_good.output
+
+	cached_termios_good := run_v3_project(v3_bin, 'module_cache_termios_shims', {
+		'v.mod':                   'Module { name: "cached_termios_shims" }\n'
+		'term/term_cached.vh':     'module term\n\nstruct C.termios {\n\tc_iflag int\n}\n'
+		'term/termios/termios.vh': 'module termios\n\nstruct C.termios {\n\tc_iflag usize\n\tc_ispeed usize\n}\n'
+		'main.v':                  'module main\n\nimport term\nimport term.termios\n\nfn main() {}\n'
+	})
+	assert cached_termios_good.exit_code == 0, cached_termios_good.output
+	assert !cached_termios_good.output.contains('cannot redeclare C struct `C.termios`'), cached_termios_good.output
 }

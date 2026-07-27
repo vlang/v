@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module rand
 
-// read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ![]u8 {
-	return error('rand.read is not implemented on this platform')
+// read fills `buffer` with random bytes from the OS.
+pub fn read(mut buffer []u8) ! {
+	return error('crypto.rand.read is not implemented on this platform')
 }

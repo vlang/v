@@ -762,13 +762,28 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 
 	$for field in T.fields {
 		$if !field.is_embed {
-			field_info := field_infos[i]
-			mut write_field := true
+			if !field.attrs.contains('skip') {
+				field_info := field_infos[i]
+				mut write_field := true
 
-			$if field.typ is $shared {
-				shared field_value := unsafe { val.$(field.name) }
-				rlock field_value {
-					write_field = struct_field_should_encode(field_info, field_value)
+				$if field.typ is $shared {
+					shared field_value := unsafe { val.$(field.name) }
+					rlock field_value {
+						write_field = struct_field_should_encode(field_info, field_value)
+
+						if write_field {
+							if field_info.key_name in old_used_keys {
+								is_first = encoder.encode_object_key(is_first, prefix +
+									field_info.key_name)
+							} else {
+								is_first = encoder.encode_object_key(is_first, field_info.key_name)
+								used_keys << field_info.key_name
+							}
+							encoder.encode_struct_field_value(field_value)
+						}
+					}
+				} $else {
+					write_field = struct_field_should_encode(field_info, val.$(field.name))
 
 					if write_field {
 						if field_info.key_name in old_used_keys {
@@ -778,20 +793,8 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 							is_first = encoder.encode_object_key(is_first, field_info.key_name)
 							used_keys << field_info.key_name
 						}
-						encoder.encode_struct_field_value(field_value)
+						encoder.encode_struct_field_value(val.$(field.name))
 					}
-				}
-			} $else {
-				write_field = struct_field_should_encode(field_info, val.$(field.name))
-
-				if write_field {
-					if field_info.key_name in old_used_keys {
-						is_first = encoder.encode_object_key(is_first, prefix + field_info.key_name)
-					} else {
-						is_first = encoder.encode_object_key(is_first, field_info.key_name)
-						used_keys << field_info.key_name
-					}
-					encoder.encode_struct_field_value(val.$(field.name))
 				}
 			}
 		}
@@ -847,12 +850,30 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 					used_keys, child_reserved_keys, new_prefix)
 			}
 		} $else {
-			field_info := field_infos[i]
-			mut write_field := true
-			$if field.typ is $shared {
-				shared field_value := unsafe { val.$(field.name) }
-				rlock field_value {
-					write_field = struct_field_should_encode(field_info, field_value)
+			if !field.attrs.contains('skip') {
+				field_info := field_infos[i]
+				mut write_field := true
+				$if field.typ is $shared {
+					shared field_value := unsafe { val.$(field.name) }
+					rlock field_value {
+						write_field = struct_field_should_encode(field_info, field_value)
+						if write_field {
+							should_prefix := field_info.key_name in used_keys
+								|| field_info.key_name in reserved_keys
+							json_key := if should_prefix {
+								prefix + field_info.key_name
+							} else {
+								field_info.key_name
+							}
+							is_first = encoder.encode_object_key(is_first, json_key)
+							if !should_prefix {
+								used_keys << field_info.key_name
+							}
+							encoder.encode_struct_field_value(field_value)
+						}
+					}
+				} $else {
+					write_field = struct_field_should_encode(field_info, val.$(field.name))
 					if write_field {
 						should_prefix := field_info.key_name in used_keys
 							|| field_info.key_name in reserved_keys
@@ -865,24 +886,8 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 						if !should_prefix {
 							used_keys << field_info.key_name
 						}
-						encoder.encode_struct_field_value(field_value)
+						encoder.encode_struct_field_value(val.$(field.name))
 					}
-				}
-			} $else {
-				write_field = struct_field_should_encode(field_info, val.$(field.name))
-				if write_field {
-					should_prefix := field_info.key_name in used_keys
-						|| field_info.key_name in reserved_keys
-					json_key := if should_prefix {
-						prefix + field_info.key_name
-					} else {
-						field_info.key_name
-					}
-					is_first = encoder.encode_object_key(is_first, json_key)
-					if !should_prefix {
-						used_keys << field_info.key_name
-					}
-					encoder.encode_struct_field_value(val.$(field.name))
 				}
 			}
 		}

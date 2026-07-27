@@ -1,8 +1,10 @@
 module fasthttp
 
 const empty_space = u8(` `)
+const tab_char = u8(0x09)
 const cr_char = u8(0x0d)
 const lf_char = u8(0x0a)
+const colon_char = u8(`:`)
 
 // libc memchr is AVX2-accelerated via glibc IFUNC
 @[inline]
@@ -404,6 +406,400 @@ fn parse_content_length_from_buf(buf &u8, header_end int) int {
 				return val
 			}
 		}
+	}
+	return -1
+}
+
+// ---- request framing -------------------------------------------------------
+//
+// The read loop needs to know not just *whether* a full request has arrived
+// (`has_complete_body`), but exactly *where* it ends, so a single recv holding
+// several pipelined requests can be split into individual messages and answered
+// in one batched write. That decision is a PURE function of the bytes received
+// so far, kept here so it can be unit-tested by feeding growing prefixes
+// (split-point fuzzing) without any sockets. Ported from vanilla's
+// `request_parser` framing layer.
+
+// Framing sentinels returned by frame_request_length_lim_idx (the no-Result
+// twin). Distinct from -1 (incomplete) and any real length (>= 0); the Result
+// wrapper maps each to its HTTP status code.
+const frame_err_malformed = -400
+const frame_err_body = -413 // body exceeds the configured max_body
+const frame_err_header = -431 // header block exceeds the configured max_header
+
+// frame_request_length inspects the bytes received so far and returns:
+//   -1          -> incomplete; read more bytes
+//   total >= 0  -> a complete message occupying exactly `total` bytes is present
+// It errors only on genuinely malformed framing (map to 400). Body length comes
+// from Content-Length, or from chunked decoding (Transfer-Encoding), or is zero.
+pub fn frame_request_length(buf []u8) !int {
+	return frame_request_length_lim(buf, 0, 0)
+}
+
+// frame_request_length_lim is frame_request_length with optional size limits
+// (0 = unlimited, zero-cost). When a limit is exceeded it returns an error whose
+// `.code()` is the HTTP status to send: 431 (header fields too large) or 413
+// (payload too large). Other malformed framing carries code 400. Thin Result
+// wrapper over the no-Result hot-path twin frame_request_length_lim_idx: cold
+// callers (tests, decode) keep this API, while the per-request drain loop calls
+// the twin directly to skip the !int boxing.
+pub fn frame_request_length_lim(buf []u8, max_header int, max_body int) !int {
+	r := frame_request_length_lim_idx(buf, max_header, max_body)
+	if r == frame_err_body {
+		return error_with_code('body exceeds ${max_body} bytes', 413)
+	}
+	if r == frame_err_header {
+		return error_with_code('header fields exceed ${max_header} bytes', 431)
+	}
+	if r == frame_err_malformed {
+		return error_with_code('malformed request framing', 400)
+	}
+	return r // >= 0 complete, or -1 incomplete
+}
+
+// frame_request_length_lim_idx is the no-Result hot-path twin of
+// frame_request_length_lim: it returns a plain int and never constructs a Result,
+// so the per-request success path skips the !int boxing. Returns a length >= 0
+// (complete — exactly that many bytes), -1 (incomplete — wait for more bytes), or
+// a frame_err_* sentinel that the Result wrapper maps to 400 / 413 / 431.
+@[direct_array_access]
+pub fn frame_request_length_lim_idx(buf []u8, max_header int, max_body int) int {
+	if buf.len < 4 {
+		return -1
+	}
+	// End of the request line (first LF). Headers start right after it.
+	rl := find_byte(&buf[0], buf.len, lf_char)
+	if rl < 0 {
+		return -1
+	}
+	mut pos := rl + 1
+
+	// ONE pass over the header lines: locate the blank-line terminator AND detect
+	// Content-Length / Transfer-Encoding as we go (a single walk with a cheap
+	// per-line reject beats two separate header scans).
+	mut content_length := -1
+	mut chunked := false
+	for {
+		// Cap the head size so a hostile peer can't grow it without bound.
+		if max_header > 0 && pos > max_header {
+			return frame_err_header
+		}
+		if pos >= buf.len {
+			return -1
+		}
+		// Blank line (CRLF or bare LF) => end of header section.
+		blank := blank_line_end(buf, pos)
+		if blank == frame_need_more {
+			return -1
+		}
+		if blank >= 0 {
+			body_start := blank
+			if chunked {
+				// Cold path: map the chunked framer's Result to a sentinel.
+				return frame_chunked_total(buf, body_start, max_body) or {
+					if err.code() == 413 {
+						frame_err_body
+					} else {
+						frame_err_malformed
+					}
+				}
+			}
+			if content_length >= 0 {
+				total := body_start + content_length
+				return if buf.len >= total { total } else { -1 }
+			}
+			return body_start
+		}
+		line_lf := find_byte(&buf[pos], buf.len - pos, lf_char)
+		if line_lf < 0 {
+			return -1
+		}
+		line_start := pos
+		line_len := header_line_content_len(buf, line_start, line_lf)
+		pos = line_start + line_lf + 1
+
+		// Cheap checks: both reject at byte 0 for the vast majority of headers.
+		if v := line_header_value(buf, line_start, line_len, 'Content-Length') {
+			content_length = parse_content_length(buf, v) or { return frame_err_malformed }
+			// Reject an over-large body from the declared length, BEFORE buffering it.
+			if max_body > 0 && content_length > max_body {
+				return frame_err_body
+			}
+		} else if v := line_header_value(buf, line_start, line_len, 'Transfer-Encoding') {
+			if ci_contains(buf, v, 'chunked') {
+				chunked = true
+			}
+		}
+	}
+	return -1
+}
+
+// frame_expected_total returns the full HTTP/1.1 message length (headers + body)
+// as soon as it is determinable from the bytes buffered so far: the header
+// section must be complete AND the body length known via Content-Length. Returns
+// -1 when not yet determinable — headers incomplete, a chunked body (length
+// unknown until the terminator), or no Content-Length at all.
+//
+// This is a pure sizing HINT for the read loop: it lets a large upload grow its
+// recv buffer to the exact message size in ONE allocation instead of doubling
+// toward it. The authoritative framing and limit checks stay in
+// frame_request_length_lim, which the read loop still runs once the bytes arrive.
+@[direct_array_access]
+pub fn frame_expected_total(buf []u8) int {
+	if buf.len < 4 {
+		return -1
+	}
+	rl := find_byte(&buf[0], buf.len, lf_char)
+	if rl < 0 {
+		return -1
+	}
+	mut pos := rl + 1
+	mut content_length := -1
+	for {
+		if pos >= buf.len {
+			return -1
+		}
+		blank := blank_line_end(buf, pos)
+		if blank == frame_need_more {
+			return -1
+		}
+		if blank >= 0 {
+			if content_length >= 0 {
+				return blank + content_length
+			}
+			return -1 // chunked or bodyless — nothing to pre-size against
+		}
+		line_lf := find_byte(&buf[pos], buf.len - pos, lf_char)
+		if line_lf < 0 {
+			return -1
+		}
+		line_start := pos
+		line_len := header_line_content_len(buf, line_start, line_lf)
+		pos = line_start + line_lf + 1
+		if v := line_header_value(buf, line_start, line_len, 'Content-Length') {
+			content_length = parse_content_length(buf, v) or { return -1 }
+		}
+	}
+	return -1
+}
+
+// frame_head_len returns the byte offset where the body begins — the length of
+// the request head (request line + header section + the terminating CRLFCRLF) —
+// or -1 if the head is not yet complete in `buf`.
+@[direct_array_access]
+pub fn frame_head_len(buf []u8) int {
+	if buf.len < 4 {
+		return -1
+	}
+	rl := find_byte(&buf[0], buf.len, lf_char)
+	if rl < 0 {
+		return -1
+	}
+	mut pos := rl + 1
+	for {
+		if pos >= buf.len {
+			return -1
+		}
+		blank := blank_line_end(buf, pos)
+		if blank == frame_need_more {
+			return -1
+		}
+		if blank >= 0 {
+			return blank // body start
+		}
+		line_lf := find_byte(&buf[pos], buf.len - pos, lf_char)
+		if line_lf < 0 {
+			return -1
+		}
+		pos = pos + line_lf + 1
+	}
+	return -1
+}
+
+// blank_line_end classifies the bytes at `pos` as a header-section terminator.
+// Returns the offset just past the blank line (CRLF or a bare LF), -1 when `pos`
+// is not a blank line, or frame_need_more when more bytes are needed to decide.
+// Bare LF is accepted for the same lenient behavior as has_complete_body, so the
+// framer and the body-completeness check never disagree (a smuggling gap).
+@[direct_array_access; inline]
+fn blank_line_end(buf []u8, pos int) int {
+	if buf[pos] == lf_char {
+		return pos + 1
+	}
+	if buf[pos] == cr_char {
+		if pos + 1 >= buf.len {
+			return frame_need_more
+		}
+		if buf[pos + 1] == lf_char {
+			return pos + 2
+		}
+	}
+	return -1
+}
+
+const frame_need_more = -2
+
+// header_line_content_len returns the length of a header line's content — the
+// bytes before its terminator — given the LF offset `line_lf` relative to
+// `line_start`. It drops a preceding CR only when one is actually present, so a
+// bare-LF line is measured correctly (not one byte short).
+@[direct_array_access; inline]
+fn header_line_content_len(buf []u8, line_start int, line_lf int) int {
+	if line_lf > 0 && buf[line_start + line_lf - 1] == cr_char {
+		return line_lf - 1
+	}
+	return line_lf
+}
+
+// line_header_value returns the value Slice if a header line (line_len bytes
+// before CRLF, starting at line_start) has the case-insensitive name `name`
+// immediately followed by ':'. Used by the single-pass framer.
+@[direct_array_access; inline]
+fn line_header_value(buf []u8, line_start int, line_len int, name string) ?Slice {
+	if name.len + 1 > line_len {
+		return none
+	}
+	if !ascii_ci_eq(&buf[line_start], name.str, name.len)
+		|| buf[line_start + name.len] != colon_char {
+		return none
+	}
+	mut line_end := line_start + line_len
+	mut v := line_start + name.len + 1
+	// Trim optional whitespace (space or tab) around the value (RFC 9110 OWS).
+	for v < line_end && (buf[v] == empty_space || buf[v] == tab_char) {
+		v++
+	}
+	for line_end > v && (buf[line_end - 1] == empty_space || buf[line_end - 1] == tab_char) {
+		line_end--
+	}
+	return Slice{
+		start: v
+		len:   line_end - v
+	}
+}
+
+// parse_content_length parses the decimal digits of a Content-Length value Slice.
+fn parse_content_length(buf []u8, s Slice) !int {
+	if s.len == 0 {
+		return error('empty Content-Length')
+	}
+	mut n := 0
+	for i in s.start .. s.start + s.len {
+		c := buf[i]
+		if c < `0` || c > `9` {
+			return error('non-digit in Content-Length')
+		}
+		digit := int(c - `0`)
+		if n > (max_int - digit) / 10 {
+			return error('Content-Length overflow')
+		}
+		n = n * 10 + digit
+	}
+	return n
+}
+
+// ascii_ci_eq compares `len` bytes case-insensitively (ASCII only — HTTP header
+// names are ASCII per RFC 9110 §5.1). No allocation, no lowercase copy: fold each
+// byte inline. Kept tight because it runs on the header hot path.
+@[direct_array_access; inline]
+fn ascii_ci_eq(a &u8, b &u8, len int) bool {
+	unsafe {
+		for i in 0 .. len {
+			x := a[i] ^ b[i]
+			if x != 0 {
+				// The ONLY acceptable difference is the ASCII case bit (0x20) on a
+				// letter — everything else is a mismatch.
+				if x != 0x20 {
+					return false
+				}
+				c := a[i] | 0x20
+				if c < `a` || c > `z` {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// ci_contains reports whether the value slice contains `needle` (ASCII, CI).
+fn ci_contains(buf []u8, val Slice, needle string) bool {
+	if needle.len > val.len {
+		return false
+	}
+	last := val.start + val.len - needle.len
+	for i := val.start; i <= last; i++ {
+		if ascii_ci_eq(&buf[i], needle.str, needle.len) {
+			return true
+		}
+	}
+	return false
+}
+
+// frame_chunked_total walks chunk-size lines from body_start and returns the
+// total message length once the terminating zero-length chunk + CRLF is present,
+// -1 if more bytes are needed, or an error on malformed chunk framing.
+@[direct_array_access]
+fn frame_chunked_total(buf []u8, body_start int, max_body int) !int {
+	// Bound the buffered chunked payload (the total length isn't known up front).
+	if max_body > 0 && buf.len - body_start > max_body {
+		return error_with_code('body exceeds ${max_body} bytes', 413)
+	}
+	mut pos := body_start
+	for {
+		if pos >= buf.len {
+			return -1
+		}
+		line_lf := find_byte(&buf[pos], buf.len - pos, lf_char)
+		if line_lf < 0 {
+			return -1
+		}
+		size_end := pos + line_lf // index of LF
+		mut size := 0
+		mut j := pos
+		for j < size_end && buf[j] != cr_char {
+			c := buf[j]
+			if c == `;` {
+				break // chunk extensions: ignore the rest of the size line
+			}
+			d := chunked_hex_digit_value(c)
+			if d < 0 {
+				return error_with_code('invalid chunk size', 400)
+			}
+			if size > (max_int - d) / 16 {
+				return error_with_code('chunk size overflow', 400)
+			}
+			size = size * 16 + d
+			j++
+		}
+		data_start := size_end + 1
+		if size == 0 {
+			// Terminating chunk: consume optional trailer field lines up to the
+			// blank line (CRLF or bare LF) that ends the message.
+			mut tpos := data_start
+			for {
+				if tpos >= buf.len {
+					return -1
+				}
+				tblank := blank_line_end(buf, tpos)
+				if tblank == frame_need_more {
+					return -1
+				}
+				if tblank >= 0 {
+					return tblank
+				}
+				tlf := find_byte(&buf[tpos], buf.len - tpos, lf_char)
+				if tlf < 0 {
+					return -1
+				}
+				tpos = tpos + tlf + 1
+			}
+		}
+		next := data_start + size + 2 // data + trailing CRLF
+		if next > buf.len {
+			return -1
+		}
+		pos = next
 	}
 	return -1
 }

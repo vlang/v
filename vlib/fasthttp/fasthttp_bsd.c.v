@@ -143,6 +143,7 @@ mut:
 	file_pos      i64
 	should_close  bool
 	request_arena voidptr
+	worker_state  voidptr // this worker thread's make_state value (nil if unset)
 }
 
 fn (mut c Conn) free_write_buf() {
@@ -170,11 +171,13 @@ pub mut:
 	socket_fd               int = -1
 	poll_fd                 int = -1 // kqueue fd
 	user_data               voidptr
-	request_handler         fn (HttpRequest) !HttpResponse @[required]
-	running                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	shutting_down           &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	stopped                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
-	active_requests         &stdatomic.AtomicVal[int]  = stdatomic.new_atomic(0)
+	request_handler         fn (HttpRequest) !HttpResponse = unsafe { nil }
+	append_handler          AppendHandler                  = unsafe { nil }
+	make_state              fn () voidptr                  = unsafe { nil }
+	running                 &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	shutting_down           &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	stopped                 &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(true)
+	active_requests         &stdatomic.AtomicVal[int]      = stdatomic.new_atomic(0)
 mut:
 	poll_fds []int    = []int{len: bsd_thread_pool_size, cap: bsd_thread_pool_size, init: -1}
 	threads  []thread = []thread{len: bsd_thread_pool_size, cap: bsd_thread_pool_size}
@@ -182,6 +185,14 @@ mut:
 
 // new_server creates and initializes a new Server instance.
 pub fn new_server(config ServerConfig) !&Server {
+	has_handler := config.handler != unsafe { nil }
+	has_append := config.append_handler != unsafe { nil }
+	if !has_handler && !has_append {
+		return error('a handler is required: set exactly one of `handler` or `append_handler`')
+	}
+	if has_handler && has_append {
+		return error('set only one of `handler` or `append_handler`, not both')
+	}
 	mut server := &Server{
 		family:                  config.family
 		port:                    config.port
@@ -189,6 +200,8 @@ pub fn new_server(config ServerConfig) !&Server {
 		timeout_in_seconds:      config.timeout_in_seconds
 		user_data:               config.user_data
 		request_handler:         config.handler
+		append_handler:          config.append_handler
+		make_state:              config.make_state
 		running:                 stdatomic.new_atomic(false)
 		shutting_down:           stdatomic.new_atomic(false)
 		stopped:                 stdatomic.new_atomic(true)
@@ -337,9 +350,14 @@ fn complete_response(server &Server, kq int, c_ptr voidptr, mut clients map[int]
 // sends the response (or handles takeover/sendfile).
 fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
+	// The append handler manages its own -prealloc scope (it writes into a buffer
+	// it owns); only the legacy return-a-response path uses the reactor arena.
+	using_append := server.append_handler != unsafe { nil }
 	mut request_arena := voidptr(unsafe { nil })
 	$if prealloc {
-		request_arena = unsafe { prealloc_scope_begin() }
+		if !using_append {
+			request_arena = unsafe { prealloc_scope_begin() }
+		}
 	}
 
 	mut req_buf := c.get_full_request_data()
@@ -348,29 +366,60 @@ fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]vo
 		c.read_extra = []u8{}
 	}
 
+	// Frame the request to its exact declared length (RFC 9112 §6), mirroring the
+	// Linux reactor's `buf_view(read_buf, pos, total)`: the body is trimmed to
+	// Content-Length so `decoded.body` sees exactly the declared bytes, not any
+	// surplus the peer sent (which would otherwise be mis-attributed to this
+	// request — a request-smuggling gap). BSD serves one request per read, so a
+	// trailing pipelined request is dropped; a valid `total` here is <= req_buf.len
+	// because has_complete_body already gated on it. On a framing sentinel (< 0)
+	// the buffer is left intact and decode_http_request handles the error path.
+	frame_total := frame_request_length_lim_idx(req_buf, server.max_request_buffer_size, 0)
+	if frame_total >= 0 && frame_total < req_buf.len {
+		// Reslice in place (no copy): req_buf is a freshly-owned buffer and only its
+		// prefix is handed to decode_http_request, so trimming the length is safe.
+		req_buf = unsafe { req_buf[..frame_total] }
+	}
+
 	mut decoded := decode_http_request(req_buf) or {
 		send_bad_request(c.fd)
 		end_request_arena_current_thread(request_arena)
 		close_conn(server, kq, c_ptr, mut clients)
 		return
 	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
-	}
 	server.begin_request()
 	c.request_active = true
 	decoded.client_conn_fd = c.fd
 	decoded.client_conn_handle = usize(c.fd)
 	decoded.user_data = server.user_data
+	decoded.worker_state = c.worker_state
 
-	mut resp := server.request_handler(decoded) or {
-		send_bad_request(c.fd)
-		end_request_arena_current_thread(request_arena)
-		close_conn(server, kq, c_ptr, mut clients)
-		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
+	mut resp := if using_append {
+		// Zero-copy contract: the handler appends its response into `out` and
+		// signals connection handling through `ctl`; wrap that into the existing
+		// response-sending path (BSD serves one request per read, no batching).
+		// NOTE: `out` is a fresh per-request buffer here. Under the default GC it is
+		// reclaimed after the send; under -prealloc the append path opens no request
+		// scope, so this buffer is not reclaimed per request (known limitation —
+		// unlike the Linux backend, kqueue does not yet reuse a persistent per-
+		// connection write buffer). Use the classic handler with -prealloc on BSD.
+		mut out := []u8{}
+		mut ctl := ResponseControl{}
+		step := server.append_handler(decoded, mut out, c.worker_state, mut ctl)
+		HttpResponse{
+			content:       out
+			content_owned: true
+			takeover_mode: ctl.takeover_mode
+			should_close:  ctl.should_close || step != .done
+			file_path:     ctl.file_path
+		}
+	} else {
+		server.request_handler(decoded) or {
+			send_bad_request(c.fd)
+			end_request_arena_current_thread(request_arena)
+			close_conn(server, kq, c_ptr, mut clients)
+			return
+		}
 	}
 	resp.attach_request_arena_if_empty(request_arena)
 
@@ -564,7 +613,7 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 	process_request(server, kq, c_ptr, mut clients)
 }
 
-fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
+fn accept_clients(kq int, listen_fd int, worker_state voidptr, mut clients map[int]voidptr) {
 	for _ in 0 .. accept_batch_size {
 		client_fd := C.accept(listen_fd, unsafe { nil }, unsafe { nil })
 		if client_fd < 0 {
@@ -584,9 +633,10 @@ fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
 			C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(int))
 		}
 		mut c := &Conn{
-			fd:        client_fd
-			user_data: unsafe { nil }
-			file_fd:   -1
+			fd:           client_fd
+			user_data:    unsafe { nil }
+			file_fd:      -1
+			worker_state: worker_state
 		}
 		if add_event(kq, u64(client_fd), i16(C.EVFILT_READ),
 			u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c) < 0 {
@@ -664,6 +714,11 @@ fn create_server_socket(server Server) !int {
 fn process_events(server &Server, kq int, listen_fd int) {
 	mut events := [kqueue_max_events]C.kevent{}
 	mut clients := map[int]voidptr{}
+	// Build this worker thread's lock-free per-worker state exactly once.
+	mut worker_state := voidptr(unsafe { nil })
+	if server.make_state != unsafe { nil } {
+		worker_state = server.make_state()
+	}
 	for {
 		if server.is_shutting_down() && server.active_request_count() == 0 {
 			close_all_conns(server, kq, mut clients)
@@ -705,7 +760,7 @@ fn process_events(server &Server, kq int, listen_fd int) {
 				if server.is_shutting_down() {
 					continue
 				}
-				accept_clients(kq, listen_fd, mut clients)
+				accept_clients(kq, listen_fd, worker_state, mut clients)
 				continue
 			}
 

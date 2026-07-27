@@ -1,0 +1,22 @@
+module main
+
+import json
+
+// A selective `json2` import inside a top-level `$if` branch is not deduped against
+// the plain `import json2` the migration would add (different formatted strings), so
+// the checker would report `json2` as already imported. The file is left unmigrated.
+$if linux {
+	import json2 { Any }
+
+	fn any_of(s string) Any {
+		return Any(s)
+	}
+}
+
+fn to_json(x int) string {
+	return json.encode(x)
+}
+
+fn main() {
+	println(to_json(1))
+}

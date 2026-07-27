@@ -1,0 +1,63 @@
+name: 'Setup V'
+description: 'Build the V compiler and optionally symlink or inspect it'
+
+inputs:
+  make-args:
+    description: 'Arguments passed to make when building V'
+    required: false
+    default: '-j4'
+  symlink:
+    description: 'Run ./v symlink after building V'
+    required: false
+    default: 'true'
+  doctor:
+    description: 'Run ./v doctor after building V'
+    required: false
+    default: 'false'
+  version:
+    description: 'Run ./v version after building V'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build V
+      shell: bash
+      env:
+        MAKE_ARGS: ${{ inputs.make-args }}
+        RUN_DOCTOR: ${{ inputs.doctor }}
+        RUN_SYMLINK: ${{ inputs.symlink }}
+        RUN_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        validate_bool_input() {
+          name="$1"
+          value="$2"
+          case "$value" in
+            true|false) ;;
+            *) echo "$name must be true or false" >&2; exit 1 ;;
+          esac
+        }
+
+        validate_bool_input symlink "$RUN_SYMLINK"
+        validate_bool_input doctor "$RUN_DOCTOR"
+        validate_bool_input version "$RUN_VERSION"
+
+        if [ -n "$MAKE_ARGS" ]; then
+          read -r -a make_args <<< "$MAKE_ARGS"
+          make "${make_args[@]}"
+        else
+          make
+        fi
+
+        if [ "$RUN_SYMLINK" = true ]; then
+          ./v symlink
+        fi
+        if [ "$RUN_DOCTOR" = true ]; then
+          ./v doctor
+        fi
+        if [ "$RUN_VERSION" = true ]; then
+          ./v version
+        fi

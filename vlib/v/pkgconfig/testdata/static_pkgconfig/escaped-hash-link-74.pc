@@ -1,0 +1,4 @@
+Name: escaped-hash-link-74
+Description: Escaped hash and normal comment fixture
+Version: 1.0.0
+Libs: -L /issue74/escaped\#hash -lescaped # -lcommented

@@ -640,7 +640,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	short_syntax_infers_anon_from_generic_param := node.is_short_syntax && node.typ == ast.void_type
 		&& c.expected_type != ast.void_type && c.expected_type.has_flag(.generic)
 		&& short_syntax_expected_type_sym.kind == .any
-		&& !short_syntax_expected_type_sym.is_builtin()
 	is_comptime_type_struct_init := !node.is_short_syntax && node.typ_expr !is ast.EmptyExpr
 		&& c.struct_init_uses_comptime_type_accessor(node.typ_expr)
 	should_resolve_typ_expr := node.typ == ast.void_type

@@ -4,6 +4,7 @@ import net
 
 #include <errno.h>
 #include <fcntl.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <sys/sendfile.h>
@@ -42,6 +43,10 @@ fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout 
 fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
 
 fn C.fstat(fd i32, buf &C.stat) i32
+
+fn C.open(pathname &u8, flags i32, mode int) i32
+
+fn C.memmove(dest voidptr, src voidptr, n usize) voidptr
 
 @[typedef]
 union C.epoll_data_t {

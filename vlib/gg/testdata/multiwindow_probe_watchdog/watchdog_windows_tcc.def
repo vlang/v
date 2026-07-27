@@ -1,0 +1,7 @@
+LIBRARY kernel32.dll
+EXPORTS
+CreateJobObjectW
+SetInformationJobObject
+AssignProcessToJobObject
+TerminateJobObject
+QueryInformationJobObject

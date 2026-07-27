@@ -24,6 +24,12 @@ pub enum WindowStatus {
 	destroyed
 }
 
+// RenderRedrawMode controls low-level frame eligibility for one window.
+pub enum RenderRedrawMode {
+	on_demand
+	continuous
+}
+
 // EventKind describes core window lifecycle events emitted by the backend.
 pub enum EventKind {
 	window_created
@@ -105,14 +111,21 @@ pub enum CursorShape {
 
 // WindowId is an opaque generation-checked handle to a window.
 pub struct WindowId {
-	slot       int
-	generation u32
+	app_instance u64
+	slot         int
+	generation   u32
 }
 
 // str returns a diagnostic representation of a WindowId without exposing its
 // fields as public mutable state.
 pub fn (id WindowId) str() string {
-	return 'WindowId(${id.slot}:${id.generation})'
+	return 'WindowId(${id.app_instance}:${id.slot}:${id.generation})'
+}
+
+// app_instance_for_gg exposes immutable identity data needed by the gg facade
+// to reject foreign handles before any local slot lookup.
+pub fn (id WindowId) app_instance_for_gg() u64 {
+	return id.app_instance
 }
 
 // Config configures a multi-window App.
@@ -128,16 +141,21 @@ pub:
 @[params]
 pub struct WindowConfig {
 pub:
-	title      string = 'V Window'
-	width      int    = 800
-	height     int    = 600
-	min_width  int
-	min_height int
-	resizable  bool = true
-	visible    bool = true
-	high_dpi   bool = true
-	borderless bool
-	fullscreen bool
+	title        string = 'V Window'
+	width        int    = 800
+	height       int    = 600
+	min_width    int
+	min_height   int
+	resizable    bool = true
+	visible      bool = true
+	high_dpi     bool = true
+	borderless   bool
+	fullscreen   bool
+	sample_count int              = 1
+	redraw_mode  RenderRedrawMode = .on_demand
+	// render_workload is set by the gg facade. A window without work is never
+	// claimed merely because it was exposed or marked dirty.
+	render_workload bool
 }
 
 struct WindowSize {
@@ -239,6 +257,7 @@ pub:
 
 // QueuedEvent preserves backend ordering between lifecycle and input events.
 pub struct QueuedEvent {
+	delivery_token u64
 pub:
 	kind      QueuedEventKind
 	lifecycle Event
@@ -261,14 +280,43 @@ fn queued_input_event(event InputEvent) QueuedEvent {
 	}
 }
 
+fn queued_event_with_delivery_token(event QueuedEvent, delivery_token u64) QueuedEvent {
+	return QueuedEvent{
+		delivery_token: delivery_token
+		kind:           event.kind
+		lifecycle:      event.lifecycle
+		input:          event.input
+	}
+}
+
+fn queued_event_without_delivery_token(event QueuedEvent) QueuedEvent {
+	return QueuedEvent{
+		kind:      event.kind
+		lifecycle: event.lifecycle
+		input:     event.input
+	}
+}
+
 // AppJobFn is executed later by the owner queue while App is being pumped.
 pub type AppJobFn = fn (mut app App) !
 
 struct WindowSlot {
 mut:
-	id     WindowId
-	config WindowConfig
-	status WindowStatus
+	id                      WindowId
+	config                  WindowConfig
+	status                  WindowStatus
+	generation_exhausted    bool
+	destroy_stage           WindowDestroyStage
+	destroy_serial          u64
+	native_teardown_serial  u64
+	destroy_terminal        string
+	destroy_event_emitted   bool
+	backend_destroyed       bool
+	teardown_sequence       u64
+	teardown_snapshot       RenderWindowSnapshot
+	teardown_notice_pending bool
+	destroy_event_queued    bool
+	destroy_event_ready     bool
 }
 
 fn window_size_for_config(config WindowConfig, width int, height int) WindowSize {

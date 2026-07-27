@@ -81,6 +81,11 @@ pub enum CompilerType {
 	cplusplus
 }
 
+pub enum PkgConfigMode {
+	dynamic
+	static_
+}
+
 pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
 @[heap; minify]
@@ -163,8 +168,9 @@ pub mut:
 	use_os_system_to_run   bool // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
 	macosx_version_min     string = '0' // relevant only for macos and ios targets
 	// TODO: Convert this into a []string
-	cflags  string // Additional options which will be passed to the C compiler *before* other options.
-	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
+	cflags         string        // Additional options which will be passed to the C compiler *before* other options.
+	ldflags        string        // Additional options which will be passed to the C compiler *after* everything else.
+	pkgconfig_mode PkgConfigMode // Static only for an exact `-static` C compiler argument on GNU-compatible compilers.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.

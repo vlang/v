@@ -1,0 +1,5 @@
+Name: oracle-duplicate-left-74
+Description: Left public duplicate-fragment provider
+Version: 1.0.0
+Libs: -loracle_duplicate_shared -loracle_duplicate_left
+Cflags: -DORACLE_DUPLICATE_SHARED -DORACLE_DUPLICATE_LEFT

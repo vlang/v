@@ -9,7 +9,7 @@ const hello_src = os.join_path(tests_dir, 'hello.v')
 // test_c_output_path_only_writes_c_file validates this v3 regression case.
 fn test_c_output_path_only_writes_c_file() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_output_only_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	c_out := os.join_path(os.temp_dir(), 'v3_output_only.c')

@@ -1,0 +1,7 @@
+Name: static-public-74
+Description: Synthetic public dependency for static pkg-config regression coverage
+Version: 1.0.0
+Libs: -lissue74_public
+Libs.private: -lissue74_public_private
+Cflags: -DISSUE74_PUBLIC
+Cflags.private: -DISSUE74_PUBLIC_PRIVATE

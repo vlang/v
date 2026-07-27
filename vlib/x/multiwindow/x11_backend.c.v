@@ -5,6 +5,9 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 }
 
 $if linux && x_multiwindow_x11 ? {
+	$if test {
+		#flag linux -DV_MULTIWINDOW_NATIVE_PROOF_TEST
+	}
 	#flag linux -lX11
 	#flag linux -lEGL
 	#flag linux -lGL
@@ -37,10 +40,7 @@ const x11_property_new_value = 0
 const x11_prop_mode_replace = 0
 const x11_normal_state = 1
 const x11_iconic_state = 3
-const x11_modifier_shift = u32(1)
 const x11_modifier_ctrl = u32(2)
-const x11_modifier_alt = u32(4)
-const x11_modifier_super = u32(8)
 const x11_key_v = 86
 const x11_xdnd_version = 5
 const x11_xdnd_max_payload_bytes = 1024 * 1024
@@ -141,7 +141,6 @@ $if linux && x_multiwindow_x11 ? {
 
 	fn C.XInitThreads() int
 	fn C.XOpenDisplay(name &char) &C.Display
-	fn C.XCloseDisplay(display &C.Display) int
 	fn C.XDefaultScreen(display &C.Display) int
 	fn C.XDefaultRootWindow(display &C.Display) X11NativeWindow
 	fn C.XStoreName(display &C.Display, window X11NativeWindow, name &char) int
@@ -186,6 +185,7 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_button_modifier_bit(mouse_button int) int
 	fn C.v_multiwindow_x11_open_im(display &C.Display) voidptr
 	fn C.v_multiwindow_x11_close_im(im voidptr)
+	fn C.v_multiwindow_x11_close_display(display &C.Display) int
 	fn C.v_multiwindow_x11_create_ic(im voidptr, window X11NativeWindow) voidptr
 	fn C.v_multiwindow_x11_destroy_ic(ic voidptr)
 	fn C.v_multiwindow_x11_set_ic_focus(ic voidptr)
@@ -196,78 +196,128 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_create_cursor_for_shape(display &C.Display, shape int) X11NativeCursor
 	fn C.v_multiwindow_x11_apply_config_hints(display &C.Display, window X11NativeWindow, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int) int
 	fn C.v_multiwindow_x11_get_window_size(display &C.Display, window X11NativeWindow, out_width &int, out_height &int) int
-	fn C.v_multiwindow_x11_egl_get_display(display &C.Display) voidptr
-	fn C.v_multiwindow_x11_egl_initialize(egl_display voidptr) int
-	fn C.v_multiwindow_x11_egl_bind_opengl_api() int
-	fn C.v_multiwindow_x11_egl_choose_config(egl_display voidptr, out_config &voidptr, out_visual_id &int) int
-	fn C.v_multiwindow_x11_egl_create_context(egl_display voidptr, egl_config voidptr) voidptr
 	fn C.v_multiwindow_x11_create_egl_window(display &C.Display, root X11NativeWindow, screen int, native_visual_id int, width int, height int, out_colormap &X11NativeColormap) X11NativeWindow
-	fn C.v_multiwindow_x11_egl_create_window_surface(egl_display voidptr, egl_config voidptr, window X11NativeWindow) voidptr
-	fn C.v_multiwindow_x11_egl_make_current(egl_display voidptr, egl_surface voidptr, egl_context voidptr) int
-	fn C.v_multiwindow_x11_egl_clear_current(egl_display voidptr)
-	fn C.v_multiwindow_x11_egl_swap_buffers(egl_display voidptr, egl_surface voidptr) int
-	fn C.v_multiwindow_x11_egl_destroy_surface(egl_display voidptr, egl_surface voidptr)
-	fn C.v_multiwindow_x11_egl_destroy_context(egl_display voidptr, egl_context voidptr)
-	fn C.v_multiwindow_x11_egl_terminate(egl_display voidptr)
 }
 
 struct X11WindowRecord {
-	id          WindowId
-	window      X11NativeWindow
-	colormap    X11NativeColormap
-	xic         voidptr
-	egl_surface voidptr
+	id WindowId
 mut:
-	cursor          X11NativeCursor
-	config          WindowConfig
-	cursor_shape    CursorShape
-	width           int
-	height          int
-	mouse_x         f32
-	mouse_y         f32
-	mouse_dx        f32
-	mouse_dy        f32
-	mouse_pos_valid bool
-	mouse_buttons   u8
-	key_repeat      [256]bool
-	window_state    int
+	window                   X11NativeWindow
+	colormap                 X11NativeColormap
+	xic                      voidptr
+	egl_surface              voidptr
+	egl_surface_ticket       u64
+	cursor                   X11NativeCursor
+	config                   WindowConfig
+	cursor_shape             CursorShape
+	width                    int
+	height                   int
+	mouse_x                  f32
+	mouse_y                  f32
+	mouse_dx                 f32
+	mouse_dy                 f32
+	mouse_pos_valid          bool
+	mouse_buttons            u8
+	key_repeat               [256]bool
+	window_state             int
+	native_destroyed         bool
+	render_target_generation u64 = 1
 }
 
 struct X11Backend {
 mut:
-	display          &C.Display = unsafe { nil }
-	screen           int
-	root             X11NativeWindow
-	wm_protocols     X11NativeAtom
-	wm_delete_window X11NativeAtom
-	wm_state         X11NativeAtom
-	xdnd_aware       X11NativeAtom
-	xdnd_enter       X11NativeAtom
-	xdnd_position    X11NativeAtom
-	xdnd_status      X11NativeAtom
-	xdnd_action_copy X11NativeAtom
-	xdnd_drop        X11NativeAtom
-	xdnd_leave       X11NativeAtom
-	xdnd_finished    X11NativeAtom
-	xdnd_selection   X11NativeAtom
-	xdnd_type_list   X11NativeAtom
-	text_uri_list    X11NativeAtom
-	xdnd_source      X11NativeWindow
-	xdnd_target      X11NativeWindow
-	xdnd_format      X11NativeAtom
-	xdnd_version     X11NativeLong
-	xim              voidptr
-	egl_display      voidptr
-	egl_config       voidptr
-	egl_context      voidptr
-	native_visual_id int
-	started          bool
-	windows          []X11WindowRecord
-	keycodes         [256]int
+	native_operations             &NativeOperationAuthority = unsafe { nil }
+	display                       &C.Display                = unsafe { nil }
+	screen                        int
+	root                          X11NativeWindow
+	wm_protocols                  X11NativeAtom
+	wm_delete_window              X11NativeAtom
+	wm_state                      X11NativeAtom
+	xdnd_aware                    X11NativeAtom
+	xdnd_enter                    X11NativeAtom
+	xdnd_position                 X11NativeAtom
+	xdnd_status                   X11NativeAtom
+	xdnd_action_copy              X11NativeAtom
+	xdnd_drop                     X11NativeAtom
+	xdnd_leave                    X11NativeAtom
+	xdnd_finished                 X11NativeAtom
+	xdnd_selection                X11NativeAtom
+	xdnd_type_list                X11NativeAtom
+	text_uri_list                 X11NativeAtom
+	xdnd_source                   X11NativeWindow
+	xdnd_target                   X11NativeWindow
+	xdnd_format                   X11NativeAtom
+	xdnd_version                  X11NativeLong
+	xim                           voidptr
+	egl_display                   voidptr
+	egl_config                    voidptr
+	egl_context                   voidptr
+	egl_context_ticket            u64
+	anchor_surface                voidptr
+	anchor_surface_ticket         u64
+	egl_display_ticket            u64
+	egl_thread_ticket             u64
+	anchor_generation             u64 = 1
+	egl_binding                   EglBindingIdentity
+	egl_bad_current_recovery_used bool
+	render_sequence               u64
+	render_health                 NativeRendererHealth
+	native_visual_id              int
+	started                       bool
+	pending_window                X11WindowRecord
+	windows                       []X11WindowRecord
+	keycodes                      [256]int
 }
 
 fn new_x11_backend() X11Backend {
 	return X11Backend{}
+}
+
+fn (record &X11WindowRecord) retains_native_ownership() bool {
+	return record.window != X11NativeWindow(0) || record.colormap != X11NativeColormap(0)
+		|| record.xic != unsafe { nil } || record.cursor != X11NativeCursor(0)
+		|| record.egl_surface != unsafe { nil } || record.egl_surface_ticket != 0
+}
+
+fn (backend &X11Backend) retains_native_ownership_except_display() bool {
+	mut live_tickets := false
+	if backend.native_operations != unsafe { nil } {
+		live_tickets = backend.native_operations.has_live_lifetime_tickets()
+	}
+	return backend.xim != unsafe { nil } || backend.windows.len != 0
+		|| backend.pending_window.retains_native_ownership()
+		|| backend.egl_display != unsafe { nil } || backend.egl_config != unsafe { nil }
+		|| backend.egl_context != unsafe { nil } || backend.anchor_surface != unsafe { nil }
+		|| backend.egl_binding.surface != unsafe { nil } || backend.egl_context_ticket != 0
+		|| backend.anchor_surface_ticket != 0 || backend.egl_display_ticket != 0
+		|| backend.egl_thread_ticket != 0 || live_tickets
+}
+
+fn (backend &X11Backend) retains_native_ownership() bool {
+	return backend.display != unsafe { nil } || backend.retains_native_ownership_except_display()
+}
+
+fn (backend &X11Backend) retains_egl_ownership() bool {
+	if backend.native_operations != unsafe { nil }
+		&& backend.native_operations.has_live_lifetime_tickets() {
+		return true
+	}
+	if backend.egl_display != unsafe { nil } || backend.egl_config != unsafe { nil }
+		|| backend.egl_context != unsafe { nil } || backend.anchor_surface != unsafe { nil }
+		|| backend.egl_context_ticket != 0 || backend.anchor_surface_ticket != 0
+		|| backend.egl_display_ticket != 0 || backend.egl_thread_ticket != 0 {
+		return true
+	}
+	if backend.pending_window.egl_surface != unsafe { nil }
+		|| backend.pending_window.egl_surface_ticket != 0 {
+		return true
+	}
+	for record in backend.windows {
+		if record.egl_surface != unsafe { nil } || record.egl_surface_ticket != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 fn (backend &X11Backend) ensure_supported() ! {
@@ -300,10 +350,72 @@ fn (backend &X11Backend) capabilities() Capabilities {
 	}
 }
 
+fn (backend &X11Backend) start_attempt_closed() bool {
+	return !backend.started && !backend.retains_native_ownership()
+}
+
+fn (mut backend X11Backend) close_start_attempt() string {
+	mut close_error := ''
+	backend.stop() or { close_error = err.msg() }
+	if !backend.start_attempt_closed() {
+		close_error = merge_backend_errors(close_error, err_render_native_renderer_unavailable)
+	}
+	return close_error
+}
+
+fn (mut backend X11Backend) probe_renderer_capabilities() !Capabilities {
+	$if linux && x_multiwindow_x11 ? {
+		if !backend.start_attempt_closed() {
+			close_error := backend.close_start_attempt()
+			if close_error != '' {
+				return error(close_error)
+			}
+		}
+		if backend.render_health.blocks_graphics() || backend.native_operations == unsafe { nil } {
+			return error(err_render_native_renderer_unavailable)
+		}
+		display := C.XOpenDisplay(unsafe { nil })
+		if display == unsafe { nil } {
+			return error(err_x11_open_display_failed)
+		}
+		backend.display = display
+		backend.init_renderer() or {
+			probe_error := err.msg()
+			close_error := backend.close_start_attempt()
+			return error(merge_backend_errors(probe_error, close_error))
+		}
+		caps := backend.capabilities()
+		close_error := backend.close_start_attempt()
+		if close_error != '' {
+			return error(close_error)
+		}
+		if !backend.start_attempt_closed() {
+			return error(err_render_native_renderer_unavailable)
+		}
+		return caps
+	} $else {
+		return error(err_backend_unsupported)
+	}
+}
+
 fn (mut backend X11Backend) start(require_renderer bool) ! {
 	$if linux && x_multiwindow_x11 ? {
 		if backend.started {
 			return
+		}
+		if backend.retains_native_ownership() {
+			mut cleanup_error := ''
+			backend.stop() or { cleanup_error = err.msg() }
+			if backend.retains_native_ownership() {
+				return error(merge_backend_errors(cleanup_error,
+					err_render_native_renderer_unavailable))
+			}
+			if cleanup_error != '' {
+				return error(cleanup_error)
+			}
+		}
+		if backend.render_health.blocks_graphics() {
+			return error(err_render_native_renderer_unavailable)
 		}
 		C.XInitThreads()
 		display := C.XOpenDisplay(unsafe { nil })
@@ -332,13 +444,10 @@ fn (mut backend X11Backend) start(require_renderer bool) ! {
 		C.v_multiwindow_x11_enable_detectable_auto_repeat(display)
 		if require_renderer {
 			backend.init_renderer() or {
-				if backend.xim != unsafe { nil } {
-					C.v_multiwindow_x11_close_im(backend.xim)
-					backend.xim = unsafe { nil }
-				}
-				C.XCloseDisplay(display)
-				backend.display = unsafe { nil }
-				return err
+				start_error := err.msg()
+				mut cleanup_error := ''
+				backend.stop() or { cleanup_error = err.msg() }
+				return error(merge_backend_errors(start_error, cleanup_error))
 			}
 		}
 		backend.started = true
@@ -349,10 +458,40 @@ fn (mut backend X11Backend) start(require_renderer bool) ! {
 	}
 }
 
+fn (mut backend X11Backend) cleanup_pending_window_once() string {
+	if !backend.pending_window.retains_native_ownership() {
+		backend.pending_window = X11WindowRecord{}
+		return ''
+	}
+	mut cleanup_error := ''
+	mut record := &backend.pending_window
+	destroy_native := !record.native_destroyed
+	backend.release_window_record_resources(mut record, destroy_native) or {
+		cleanup_error = err.msg()
+	}
+	if !backend.pending_window.retains_native_ownership() {
+		backend.pending_window = X11WindowRecord{}
+	}
+	return cleanup_error
+}
+
+fn (mut backend X11Backend) rollback_pending_window_creation(original_error string) string {
+	cleanup_error := backend.cleanup_pending_window_once()
+	return merge_backend_errors(original_error, cleanup_error)
+}
+
 fn (mut backend X11Backend) create_window(id WindowId, config WindowConfig) !WindowSize {
 	$if linux && x_multiwindow_x11 ? {
 		if !backend.started || backend.display == unsafe { nil } {
 			return error(err_x11_open_display_failed)
+		}
+		pending_cleanup_error := backend.cleanup_pending_window_once()
+		if backend.pending_window.retains_native_ownership() {
+			return error(merge_backend_errors(pending_cleanup_error,
+				err_render_native_renderer_unavailable))
+		}
+		if pending_cleanup_error != '' {
+			return error(pending_cleanup_error)
 		}
 		mut colormap := X11NativeColormap(0)
 		renderer_ready := backend.renderer_ready()
@@ -363,106 +502,62 @@ fn (mut backend X11Backend) create_window(id WindowId, config WindowConfig) !Win
 		} else {
 			created := C.XCreateSimpleWindow(backend.display, backend.root, 0, 0,
 				u32(actual_size.width), u32(actual_size.height), 0, 0, 0)
-			if created != X11NativeWindow(0) {
-				C.XSelectInput(backend.display, created, C.v_multiwindow_x11_event_mask())
-			}
 			created
 		}
 		if window == X11NativeWindow(0) {
 			return error(err_x11_create_window_failed)
 		}
-		mut egl_surface := voidptr(unsafe { nil })
-		if renderer_ready {
-			egl_surface = C.v_multiwindow_x11_egl_create_window_surface(backend.egl_display,
-				backend.egl_config, window)
+		backend.pending_window = X11WindowRecord{
+			id:       id
+			window:   window
+			colormap: colormap
+			config:   window_config_with_size(config, actual_size.width, actual_size.height)
+			width:    actual_size.width
+			height:   actual_size.height
 		}
-		if renderer_ready && egl_surface == unsafe { nil } {
-			backend.destroy_native_window(window, colormap) or {
-				return error(err_x11_egl_surface_failed)
-			}
-			return error(err_x11_egl_surface_failed)
+		if !renderer_ready {
+			C.XSelectInput(backend.display, backend.pending_window.window,
+				C.v_multiwindow_x11_event_mask())
 		}
-		C.XStoreName(backend.display, window, &char(config.title.str))
+		C.XStoreName(backend.display, backend.pending_window.window, &char(config.title.str))
 		if backend.wm_protocols != X11NativeAtom(0) && backend.wm_delete_window != X11NativeAtom(0) {
 			protocols := [backend.wm_delete_window]
-			if C.XSetWMProtocols(backend.display, window, &protocols[0], 1) == 0 {
-				backend.release_window_resources(X11WindowRecord{
-					id:          id
-					window:      window
-					colormap:    colormap
-					egl_surface: egl_surface
-					config:      window_config_with_size(config, actual_size.width,
-						actual_size.height)
-					width:       actual_size.width
-					height:      actual_size.height
-				}, true) or {}
-				return error(err_x11_set_wm_protocols_failed)
+			if C.XSetWMProtocols(backend.display, backend.pending_window.window, &protocols[0], 1) == 0 {
+				return error(backend.rollback_pending_window_creation(err_x11_set_wm_protocols_failed))
 			}
 		}
-		if C.v_multiwindow_x11_apply_config_hints(backend.display, window, actual_size.width,
-			actual_size.height, config.min_width, config.min_height,
+		if C.v_multiwindow_x11_apply_config_hints(backend.display, backend.pending_window.window,
+			actual_size.width, actual_size.height, config.min_width, config.min_height,
 			x11_bool_to_int(config.resizable), x11_bool_to_int(config.borderless),
 			x11_bool_to_int(config.fullscreen)) == 0 {
-			backend.release_window_resources(X11WindowRecord{
-				id:          id
-				window:      window
-				colormap:    colormap
-				egl_surface: egl_surface
-				config:      window_config_with_size(config, actual_size.width, actual_size.height)
-				width:       actual_size.width
-				height:      actual_size.height
-			}, true) or {}
-			return error(err_x11_create_window_failed)
+			return error(backend.rollback_pending_window_creation(err_x11_create_window_failed))
 		}
-		backend.announce_xdnd_for_window(window)
-		xic := C.v_multiwindow_x11_create_ic(backend.xim, window)
+		backend.announce_xdnd_for_window(backend.pending_window.window)
+		backend.pending_window.xic = C.v_multiwindow_x11_create_ic(backend.xim,
+			backend.pending_window.window)
 		if config.visible {
-			C.XMapWindow(backend.display, window)
+			C.XMapWindow(backend.display, backend.pending_window.window)
 		}
 		if C.XSync(backend.display, 0) == 0 {
-			backend.release_window_resources(X11WindowRecord{
-				id:          id
-				window:      window
-				colormap:    colormap
-				xic:         xic
-				egl_surface: egl_surface
-				config:      window_config_with_size(config, actual_size.width, actual_size.height)
-				width:       actual_size.width
-				height:      actual_size.height
-			}, true) or {}
-			return error(err_x11_create_window_failed)
+			return error(backend.rollback_pending_window_creation(err_x11_create_window_failed))
 		}
 		mut actual_width := 0
 		mut actual_height := 0
-		if C.v_multiwindow_x11_get_window_size(backend.display, window, &actual_width,
-			&actual_height) == 0 {
-			backend.release_window_resources(X11WindowRecord{
-				id:          id
-				window:      window
-				colormap:    colormap
-				xic:         xic
-				egl_surface: egl_surface
-				config:      window_config_with_size(config, actual_size.width, actual_size.height)
-				width:       actual_size.width
-				height:      actual_size.height
-			}, true) or {}
-			return error(err_x11_create_window_failed)
+		if C.v_multiwindow_x11_get_window_size(backend.display, backend.pending_window.window,
+			&actual_width, &actual_height) == 0 {
+			return error(backend.rollback_pending_window_creation(err_x11_create_window_failed))
 		}
 		actual_size = WindowSize{
 			width:  actual_width
 			height: actual_height
 		}
-		backend.windows << X11WindowRecord{
-			id:           id
-			window:       window
-			colormap:     colormap
-			xic:          xic
-			egl_surface:  egl_surface
-			config:       window_config_with_size(config, actual_size.width, actual_size.height)
-			width:        actual_size.width
-			height:       actual_size.height
-			window_state: backend.window_state(window)
-		}
+		backend.pending_window.config = window_config_with_size(config, actual_size.width,
+			actual_size.height)
+		backend.pending_window.width = actual_size.width
+		backend.pending_window.height = actual_size.height
+		backend.pending_window.window_state = backend.window_state(backend.pending_window.window)
+		backend.windows << backend.pending_window
+		backend.pending_window = X11WindowRecord{}
 		return actual_size
 	} $else {
 		_ = id
@@ -472,10 +567,15 @@ fn (mut backend X11Backend) create_window(id WindowId, config WindowConfig) !Win
 }
 
 fn (mut backend X11Backend) destroy_window(id WindowId) ! {
+	backend.finish_window_teardown(id)!
+}
+
+fn (mut backend X11Backend) finish_window_teardown(id WindowId) ! {
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
-		record := backend.windows[index]
-		backend.release_window_resources(record, true)!
+		mut record := &backend.windows[index]
+		destroy_native := !record.native_destroyed
+		backend.release_window_record_resources(mut record, destroy_native)!
 		backend.windows.delete(index)
 		return
 	} $else {
@@ -534,6 +634,8 @@ fn (mut backend X11Backend) resize_window(id WindowId, width int, height int) !W
 		}
 		backend.windows[index].width = actual_size.width
 		backend.windows[index].height = actual_size.height
+		backend.windows[index].render_target_generation =
+			next_backend_target_generation(backend.windows[index].render_target_generation)!
 		backend.windows[index].config = window_config_with_size(backend.windows[index].config,
 			actual_size.width, actual_size.height)
 		return actual_size
@@ -580,17 +682,6 @@ fn (mut backend X11Backend) set_window_cursor(id WindowId, shape CursorShape) ! 
 	}
 }
 
-fn (mut backend X11Backend) poll_events() ![]Event {
-	queued_events := backend.poll_queued_events()!
-	mut events := []Event{cap: queued_events.len}
-	for event in queued_events {
-		if event.kind == .lifecycle {
-			events << event.lifecycle
-		}
-	}
-	return events
-}
-
 fn (mut backend X11Backend) poll_queued_events() ![]QueuedEvent {
 	mut events := []QueuedEvent{}
 	$if linux && x_multiwindow_x11 ? {
@@ -631,6 +722,8 @@ fn (mut backend X11Backend) poll_queued_events() ![]QueuedEvent {
 						id := backend.windows[index].id
 						backend.windows[index].width = width
 						backend.windows[index].height = height
+						backend.windows[index].render_target_generation =
+							exhaust_backend_target_generation(backend.windows[index].render_target_generation)
 						record := backend.windows[index]
 						events << queued_lifecycle_event(Event{
 							kind:      .window_resized
@@ -644,7 +737,9 @@ fn (mut backend X11Backend) poll_queued_events() ![]QueuedEvent {
 				}
 				x11_destroy_notify {
 					native_window := unsafe { event.xdestroywindow.window }
-					id := backend.remove_native_window(native_window) or { continue }
+					index := backend.window_record_index_for_native(native_window) or { continue }
+					id := backend.windows[index].id
+					backend.windows[index].native_destroyed = true
 					events << queued_lifecycle_event(Event{
 						kind:      .window_destroyed
 						window_id: id
@@ -1211,25 +1306,57 @@ fn x11_signed_16(value u32) int {
 
 fn (mut backend X11Backend) stop() ! {
 	$if linux && x_multiwindow_x11 ? {
-		if !backend.started {
-			return
-		}
-		for backend.windows.len > 0 {
-			record := backend.windows[0]
-			backend.destroy_window(record.id)!
-		}
+		mut cleanup_error := ''
 		backend.shutdown_renderer()
-		if backend.xim != unsafe { nil } {
+		if !backend.retains_egl_ownership() {
+			pending_cleanup_error := backend.cleanup_pending_window_once()
+			cleanup_error = merge_backend_errors(cleanup_error, pending_cleanup_error)
+			mut index := backend.windows.len
+			for index > 0 {
+				index--
+				mut record := &backend.windows[index]
+				destroy_native := !record.native_destroyed
+				backend.release_window_record_resources(mut record, destroy_native) or {
+					cleanup_error = merge_backend_errors(cleanup_error, err.msg())
+				}
+				if !record.retains_native_ownership() {
+					backend.windows.delete(index)
+				}
+			}
+		} else {
+			cleanup_error = merge_backend_errors(cleanup_error,
+				err_render_native_renderer_unavailable)
+		}
+		if !backend.retains_egl_ownership() && backend.windows.len == 0
+			&& !backend.pending_window.retains_native_ownership() && backend.xim != unsafe { nil } {
 			C.v_multiwindow_x11_close_im(backend.xim)
 			backend.xim = unsafe { nil }
 		}
-		if backend.display != unsafe { nil } {
-			if C.XCloseDisplay(backend.display) != 0 {
-				return error(err_x11_close_display_failed)
+		if !backend.retains_egl_ownership() && backend.xim == unsafe { nil }
+			&& backend.windows.len == 0 && !backend.pending_window.retains_native_ownership()
+			&& backend.display != unsafe { nil } {
+			close_result := C.v_multiwindow_x11_close_display(backend.display)
+			backend.display = unsafe { nil }
+			for i in 0 .. backend.windows.len {
+				backend.windows[i].window = X11NativeWindow(0)
+				backend.windows[i].colormap = X11NativeColormap(0)
+				backend.windows[i].cursor = X11NativeCursor(0)
+				backend.windows[i].xic = unsafe { nil }
+			}
+			backend.windows.clear()
+			backend.pending_window = X11WindowRecord{}
+			if close_result != 0 {
+				cleanup_error = merge_backend_errors(cleanup_error, err_x11_close_display_failed)
 			}
 		}
-		backend.display = unsafe { nil }
 		backend.started = false
+		if backend.retains_native_ownership() {
+			cleanup_error = merge_backend_errors(cleanup_error,
+				err_render_native_renderer_unavailable)
+		}
+		if cleanup_error != '' {
+			return error(cleanup_error)
+		}
 		return
 	} $else {
 		return error(err_backend_unsupported)
@@ -1263,20 +1390,11 @@ fn (backend &X11Backend) window_id_for_native(window X11NativeWindow) ?WindowId 
 	return none
 }
 
-fn (mut backend X11Backend) remove_native_window(window X11NativeWindow) ?WindowId {
-	for i, record in backend.windows {
-		if record.window == window {
-			backend.release_window_resources(record, false) or {}
-			backend.windows.delete(i)
-			return record.id
-		}
-	}
-	return none
-}
-
 fn (backend &X11Backend) renderer_ready() bool {
 	return backend.egl_display != unsafe { nil } && backend.egl_config != unsafe { nil }
-		&& backend.egl_context != unsafe { nil }
+		&& backend.egl_context != unsafe { nil } && backend.egl_display_ticket != 0
+		&& backend.egl_context_ticket != 0 && backend.egl_thread_ticket != 0
+		&& backend.render_health == .ready
 }
 
 fn (mut backend X11Backend) init_renderer() ! {
@@ -1284,32 +1402,166 @@ fn (mut backend X11Backend) init_renderer() ! {
 		if backend.renderer_ready() {
 			return
 		}
-		egl_display := C.v_multiwindow_x11_egl_get_display(backend.display)
-		if egl_display == unsafe { nil } {
+		if backend.render_health.blocks_graphics() {
+			return error(err_render_native_renderer_unavailable)
+		}
+		if backend.native_operations == unsafe { nil } {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			return error(err_render_native_renderer_unavailable)
+		}
+		seed := NativeOperationSeed{
+			call_site: .renderer_start
+			scope:     .renderer
+		}
+		mut ordinals := backend.native_operations.reserve_renderer_attempt_ordinals(14) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			return error(err_render_native_renderer_unavailable)
+		}
+		mut cleanup_ordinals := backend.native_operations.reserve_app_lifetime_ordinals(3) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			return error(err_render_native_renderer_unavailable)
+		}
+		lifetime := backend.native_operations.reserve_linux_egl_renderer_lifetime_tickets(mut cleanup_ordinals, seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			return error(err_render_native_renderer_unavailable)
+		}
+		backend.egl_display_ticket = lifetime.display
+		backend.egl_context_ticket = lifetime.context
+		backend.egl_thread_ticket = lifetime.thread
+		mut raw := C.VMultiwindowNativePrimitive{}
+		display_seed := seed.with_target_identity(native_identity(backend.display))
+		display_context := ordinals.materialize(backend.native_operations, .egl, .display_acquire,
+			display_seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		C.v_multiwindow_linux_egl_get_display(u64(usize(backend.display)), &raw)
+		backend.native_operations.bind_linux_egl_thread_lifetime_ticket(backend.egl_thread_ticket)
+		actual_display := raw.handle
+		if actual_display != 0 {
+			backend.egl_display = native_pointer(actual_display)
+		}
+		display_result := backend.accept_egl_result(display_context, mut ordinals, display_seed,
+			raw, .none)
+		if actual_display == 0 {
+			backend.native_operations.burn_lifetime_ticket(backend.egl_display_ticket)
+			backend.native_operations.burn_lifetime_ticket(backend.egl_context_ticket)
+			backend.egl_display_ticket = 0
+			backend.egl_context_ticket = 0
+		}
+		if !display_result.succeeded() {
+			backend.release_egl_lifetime()
 			return error(err_x11_egl_display_failed)
 		}
-		if C.v_multiwindow_x11_egl_initialize(egl_display) == 0 {
+		initialize_seed := seed.with_target_identity(actual_display)
+		initialize_context := ordinals.materialize(backend.native_operations, .egl,
+			.display_initialize, initialize_seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		C.v_multiwindow_linux_egl_initialize(actual_display, &raw)
+		if raw.return_value == 1 {
+			backend.native_operations.bind_lifetime_ticket(backend.egl_display_ticket,
+				actual_display, 0)
+		}
+		initialize_result := backend.accept_egl_result(initialize_context, mut ordinals,
+			initialize_seed, raw, .none)
+		if raw.return_value != 1
+			&& backend.native_operations.burn_lifetime_ticket(backend.egl_display_ticket) {
+			backend.egl_display_ticket = 0
+		}
+		if !initialize_result.succeeded() {
+			backend.release_egl_lifetime()
 			return error(err_x11_egl_display_failed)
 		}
-		if C.v_multiwindow_x11_egl_bind_opengl_api() == 0 {
-			C.v_multiwindow_x11_egl_terminate(egl_display)
+		extensions_context := ordinals.materialize(backend.native_operations, .egl, .display_query,
+			initialize_seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		C.v_multiwindow_linux_egl_query_extensions(actual_display, &raw)
+		extensions_result := backend.accept_egl_context_requirements(extensions_context, mut
+			ordinals, initialize_seed, raw, initialize_result)
+		if !extensions_result.succeeded() {
+			backend.release_egl_lifetime()
 			return error(err_x11_egl_context_failed)
 		}
-		mut egl_config := voidptr(unsafe { nil })
-		mut native_visual_id := 0
-		if C.v_multiwindow_x11_egl_choose_config(egl_display, &egl_config, &native_visual_id) == 0 {
-			C.v_multiwindow_x11_egl_terminate(egl_display)
+		bind_seed := seed.without_target_identity()
+		bind_context := ordinals.materialize(backend.native_operations, .egl, .api_bind, bind_seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		C.v_multiwindow_linux_egl_bind_opengl_api(&raw)
+		bind_result := backend.accept_egl_result(bind_context, mut ordinals, bind_seed, raw, .none)
+		if !bind_result.succeeded() {
+			backend.release_egl_lifetime()
+			return error(err_x11_egl_context_failed)
+		}
+		config_context := ordinals.materialize(backend.native_operations, .egl, .config_choose,
+			initialize_seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		C.v_multiwindow_linux_egl_choose_config(actual_display, &raw)
+		actual_config := raw.handle
+		config_result := backend.accept_egl_result(config_context, mut ordinals, initialize_seed,
+			raw, .none)
+		if !config_result.succeeded() {
+			backend.release_egl_lifetime()
 			return error(err_x11_egl_config_failed)
 		}
-		egl_context := C.v_multiwindow_x11_egl_create_context(egl_display, egl_config)
-		if egl_context == unsafe { nil } {
-			C.v_multiwindow_x11_egl_terminate(egl_display)
+		config_seed := seed.with_target_identity(actual_config)
+		visual_context := ordinals.materialize(backend.native_operations, .egl, .config_visual,
+			config_seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		C.v_multiwindow_linux_egl_get_native_visual(actual_display, actual_config, &raw)
+		actual_visual := raw.selected_value
+		visual_result := backend.accept_egl_result(visual_context, mut ordinals, config_seed, raw,
+			.none)
+		if !visual_result.succeeded() {
+			backend.release_egl_lifetime()
+			return error(err_x11_egl_config_failed)
+		}
+		context_context := ordinals.materialize(backend.native_operations, .egl, .context_create,
+			config_seed) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		C.v_multiwindow_linux_egl_create_context(actual_display, actual_config, &raw)
+		actual_context := native_pointer(raw.handle)
+		if actual_context != unsafe { nil } {
+			backend.egl_context = actual_context
+			backend.native_operations.bind_lifetime_ticket(backend.egl_context_ticket,
+				native_identity(actual_context), actual_display)
+		}
+		context_result := backend.accept_egl_result(context_context, mut ordinals, config_seed,
+			raw, .none)
+		if actual_context == unsafe { nil }
+			&& backend.native_operations.burn_lifetime_ticket(backend.egl_context_ticket) {
+			backend.egl_context_ticket = 0
+		}
+		if !context_result.succeeded() {
+			backend.release_egl_lifetime()
 			return error(err_x11_egl_context_failed)
 		}
-		backend.egl_display = egl_display
-		backend.egl_config = egl_config
-		backend.egl_context = egl_context
-		backend.native_visual_id = native_visual_id
+		backend.egl_config = native_pointer(actual_config)
+		backend.native_visual_id = int(actual_visual)
+		if backend.render_health.blocks_graphics() {
+			backend.release_egl_lifetime()
+			return error(err_render_native_renderer_unavailable)
+		}
+		backend.egl_binding = EglBindingIdentity{}
+		backend.egl_bad_current_recovery_used = false
+		backend.render_health = .ready
 		return
 	} $else {
 		return error(err_backend_unsupported)
@@ -1317,19 +1569,176 @@ fn (mut backend X11Backend) init_renderer() ! {
 }
 
 fn (mut backend X11Backend) shutdown_renderer() {
-	$if linux && x_multiwindow_x11 ? {
-		if backend.egl_display != unsafe { nil } {
-			C.v_multiwindow_x11_egl_clear_current(backend.egl_display)
-			if backend.egl_context != unsafe { nil } {
-				C.v_multiwindow_x11_egl_destroy_context(backend.egl_display, backend.egl_context)
-			}
-			C.v_multiwindow_x11_egl_terminate(backend.egl_display)
-		}
-		backend.egl_display = unsafe { nil }
-		backend.egl_config = unsafe { nil }
-		backend.egl_context = unsafe { nil }
-		backend.native_visual_id = 0
+	backend.release_egl_lifetime()
+	backend.native_visual_id = 0
+	if !backend.render_health.blocks_graphics() {
+		backend.render_health = .abandoned
 	}
+}
+
+$if linux && x_multiwindow_x11 ? {
+	fn (mut backend X11Backend) accept_egl_result(context NativeOperationContext, mut ordinals NativeOrdinalRange, seed NativeOperationSeed, raw C.VMultiwindowNativePrimitive, validation NativeLocalValidation) NativeRenderResult {
+		capture := backend.native_operations.capture_egl_call(context, mut ordinals, seed, raw) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			return backend.record_egl_result(native_render_outcome(.egl, context.operation,
+				.renderer, .renderer_unavailable, 0, 0, err_render_native_renderer_unavailable))
+		}
+		mut result := backend.native_operations.accept_egl(context, capture, validation)
+		result = backend.record_egl_result(result)
+		return result
+	}
+
+	fn (mut backend X11Backend) accept_egl_context_requirements(context NativeOperationContext, mut ordinals NativeOrdinalRange, seed NativeOperationSeed, raw C.VMultiwindowNativePrimitive, initialize NativeRenderResult) NativeRenderResult {
+		capture := backend.native_operations.capture_egl_call(context, mut ordinals, seed, raw) or {
+			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+			return backend.record_egl_result(native_render_outcome(.egl, context.operation,
+				.renderer, .renderer_unavailable, 0, 0, err_render_native_renderer_unavailable))
+		}
+		result := backend.native_operations.accept_egl_context_requirements(context, capture,
+			initialize)
+		return backend.record_egl_result(result)
+	}
+}
+
+fn (mut backend X11Backend) accept_egl_query(context NativeOperationContext, raw C.VMultiwindowNativePrimitive, validation NativeLocalValidation) NativeRenderResult {
+	capture := backend.native_operations.capture_call(context, raw)
+	result := backend.native_operations.accept_egl(context, capture, validation)
+	return backend.record_egl_result(result)
+}
+
+fn (mut backend X11Backend) accept_egl_binding_query(context NativeOperationContext, raw C.VMultiwindowNativePrimitive, draw NativeRenderResult, read NativeRenderResult, expected EglBindingIdentity) NativeRenderResult {
+	capture := backend.native_operations.capture_call(context, raw)
+	result := backend.native_operations.accept_egl_binding_context(context, capture, draw, read,
+		native_identity(expected.surface), native_identity(expected.surface),
+		native_identity(backend.egl_context))
+	return backend.record_egl_result(result)
+}
+
+$if linux && x_multiwindow_x11 ? {
+	fn (mut backend X11Backend) release_egl_surface_ticket(ticket_id u64, surface voidptr) NativeLifetimeReleaseAttempt {
+		if ticket_id == 0 || surface == unsafe { nil }
+			|| backend.native_operations == unsafe { nil } {
+			return NativeLifetimeReleaseAttempt{}
+		}
+		return backend.native_operations.release_linux_egl_lifetime_ticket(ticket_id, .egl_surface,
+			native_identity(surface), native_identity(backend.egl_display), backend.render_health)
+	}
+}
+
+fn (mut backend X11Backend) record_egl_result(result NativeRenderResult) NativeRenderResult {
+	backend.render_health = renderer_health_after_result(backend.render_health, result)
+	backend.native_operations.record_health_latch(result.context, backend.render_health)
+	if result.domain == .egl && result.native_code == i64(0x3008) {
+		backend.native_operations.abandon_egl_display_lifetime(native_identity(backend.egl_display))
+		backend.egl_binding = EglBindingIdentity{}
+	}
+	return result
+}
+
+fn (mut backend X11Backend) abandon_renderer_ownership() {
+	backend.release_egl_lifetime()
+	backend.native_visual_id = 0
+	if !backend.render_health.blocks_graphics() {
+		backend.render_health = .abandoned
+	}
+}
+
+fn (mut backend X11Backend) release_egl_lifetime() {
+	if backend.native_operations == unsafe { nil } {
+		return
+	}
+	$if linux && x_multiwindow_x11 ? {
+		if backend.native_operations != unsafe { nil } {
+			mut children_terminal := true
+			for i in 0 .. backend.windows.len {
+				surface := backend.windows[i].egl_surface
+				if surface != unsafe { nil } {
+					release := backend.release_egl_surface_ticket(backend.windows[i].egl_surface_ticket,
+						surface)
+					if release.terminal {
+						backend.windows[i].egl_surface = unsafe { nil }
+						backend.windows[i].egl_surface_ticket = 0
+					} else {
+						children_terminal = false
+					}
+				}
+			}
+			pending_surface := backend.pending_window.egl_surface
+			if pending_surface != unsafe { nil } {
+				release := backend.release_egl_surface_ticket(backend.pending_window.egl_surface_ticket,
+					pending_surface)
+				if release.terminal {
+					backend.pending_window.egl_surface = unsafe { nil }
+					backend.pending_window.egl_surface_ticket = 0
+				} else {
+					children_terminal = false
+				}
+			}
+			if backend.anchor_surface != unsafe { nil } {
+				release := backend.release_egl_surface_ticket(backend.anchor_surface_ticket,
+					backend.anchor_surface)
+				if release.terminal {
+					backend.anchor_surface = unsafe { nil }
+					backend.anchor_surface_ticket = 0
+				} else {
+					children_terminal = false
+				}
+			}
+			if !children_terminal {
+				return
+			}
+			display_identity := native_identity(backend.egl_display)
+			if backend.egl_context != unsafe { nil } {
+				release := backend.native_operations.release_linux_egl_lifetime_ticket(backend.egl_context_ticket,
+					.egl_context, native_identity(backend.egl_context), display_identity,
+					backend.render_health)
+				if release.terminal {
+					backend.egl_context = unsafe { nil }
+					backend.egl_context_ticket = 0
+				} else {
+					return
+				}
+			} else if backend.native_operations.burn_lifetime_ticket(backend.egl_context_ticket) {
+				backend.egl_context_ticket = 0
+			}
+			if backend.egl_display != unsafe { nil } {
+				if backend.egl_display_ticket == 0 {
+					backend.egl_display = unsafe { nil }
+				} else if backend.native_operations.burn_lifetime_ticket(backend.egl_display_ticket) {
+					backend.egl_display = unsafe { nil }
+					backend.egl_display_ticket = 0
+				} else {
+					release := backend.native_operations.release_linux_egl_lifetime_ticket(backend.egl_display_ticket,
+						.egl_display, display_identity, display_identity, backend.render_health)
+					if release.terminal {
+						backend.egl_display = unsafe { nil }
+						backend.egl_display_ticket = 0
+					} else {
+						return
+					}
+				}
+			} else if backend.native_operations.burn_lifetime_ticket(backend.egl_display_ticket) {
+				backend.egl_display_ticket = 0
+			}
+			thread_release := backend.native_operations.release_linux_egl_thread_lifetime_ticket(backend.egl_thread_ticket,
+				backend.render_health)
+			if thread_release.terminal {
+				backend.egl_thread_ticket = 0
+			} else {
+				return
+			}
+		}
+	}
+	if backend.egl_display_ticket == 0 && backend.egl_context_ticket == 0
+		&& backend.egl_thread_ticket == 0 && backend.anchor_surface_ticket == 0 {
+		backend.egl_config = unsafe { nil }
+	}
+	backend.egl_binding = EglBindingIdentity{}
+}
+
+fn (mut backend X11Backend) accept_native_render_window_loss(id WindowId) {
+	index := backend.window_record_index(id) or { return }
+	backend.windows[index].native_destroyed = true
 }
 
 $if gg_multiwindow ? || x_multiwindow_render ? {
@@ -1337,7 +1746,18 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		$if linux && x_multiwindow_x11 ? {
 			index := backend.window_record_index(id) or { return error(err_window_not_found) }
 			record := backend.windows[index]
-			backend.make_current(record)!
+			seed := NativeOperationSeed{
+				presence_mask:     native_context_has_window | native_context_has_target_generation | native_context_has_target_identity
+				call_site:         .renderer_start
+				scope:             .window_target
+				window:            record.id
+				target_generation: record.render_target_generation
+				target_identity:   native_identity(record.egl_surface)
+			}
+			outcome := backend.make_current(index, .window_target, seed)
+			if !outcome.succeeded() {
+				return native_render_error(outcome)
+			}
 			return gfx.Environment{
 				defaults: gfx.EnvironmentDefaults{
 					color_format: .rgba8
@@ -1351,52 +1771,276 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		}
 	}
 
-	fn (mut backend X11Backend) begin_render(id WindowId) !RenderFrame {
+	fn (mut backend X11Backend) begin_render(id WindowId, candidate RenderWindowSnapshot, native_attempt NativeTargetAttempt) BackendFrameAttempt {
 		$if linux && x_multiwindow_x11 ? {
-			index := backend.window_record_index(id) or { return error(err_window_not_found) }
+			index := backend.window_record_index(id) or {
+				return BackendFrameAttempt{
+					outcome: native_render_outcome(.none, .window_surface_create, .window_target,
+						.operation_failed, 0, 0, err_window_not_found)
+				}
+			}
+			seed := NativeOperationSeed{
+				presence_mask:      native_context_window_target_fields
+				call_site:          .window_prepare
+				scope:              .window_target
+				window:             id
+				target_generation:  candidate.target.target_identity
+				batch_epoch:        native_attempt.batch_epoch
+				window_lease_epoch: native_attempt.window_lease_epoch
+				target_lease_epoch: native_attempt.target_lease_epoch
+			}
+			preparation := backend.ensure_window_render_surface(index, seed)
+			if !preparation.succeeded() {
+				return BackendFrameAttempt{
+					outcome: preparation
+				}
+			}
 			record := backend.windows[index]
-			backend.make_current(record)!
-			return RenderFrame{
-				window_id: id
-				swapchain: backend.swapchain_for_record(record)
+			if candidate.window != id
+				|| candidate.target.target_identity != record.render_target_generation
+				|| candidate.metrics.framebuffer_width != record.width
+				|| candidate.metrics.framebuffer_height != record.height
+				|| candidate.target.color_format != int(gfx.PixelFormat.rgba8)
+				|| candidate.target.depth_format != int(gfx.PixelFormat.depth_stencil)
+				|| candidate.target.sample_count != 1 {
+				return BackendFrameAttempt{
+					outcome: native_render_outcome(.none, .window_surface_create, .window_target,
+						.target_lost, 0, 0, err_render_target_stale)
+				}
+			}
+			return BackendFrameAttempt{
+				frame:   RenderFrame{
+					window_id:          id
+					batch_epoch:        native_attempt.batch_epoch
+					window_lease_epoch: native_attempt.window_lease_epoch
+					target_lease_epoch: native_attempt.target_lease_epoch
+					metrics:            candidate.metrics
+					target:             candidate.target
+					swapchain:          backend.swapchain_for_record(record)
+				}
+				outcome: preparation
 			}
 		} $else {
 			_ = id
-			return error(err_backend_unsupported)
+			_ = candidate
+			_ = native_attempt
+			return BackendFrameAttempt{
+				outcome: native_render_outcome(.egl, .window_surface_create, .renderer,
+					.renderer_unavailable, 0, 0, err_backend_unsupported)
+			}
 		}
 	}
 
-	fn (mut backend X11Backend) end_render(frame RenderFrame) ! {
+	fn (mut backend X11Backend) end_render(frame RenderFrame) BackendFinalizeAttempt {
 		$if linux && x_multiwindow_x11 ? {
 			index := backend.window_record_index(frame.window_id) or {
-				return error(err_window_not_found)
+				return BackendFinalizeAttempt{
+					status:  .not_presented
+					outcome: native_render_outcome(.none, .swap_buffers, .window_target,
+						.operation_failed, 0, 0, err_window_not_found)
+				}
 			}
 			record := backend.windows[index]
-			backend.make_current(record)!
-			if C.v_multiwindow_x11_egl_swap_buffers(backend.egl_display, record.egl_surface) == 0 {
-				return error(err_x11_egl_swap_buffers_failed)
+			seed :=
+				native_seed_for_frame(frame, .window_finalize).with_target_identity(native_identity(record.egl_surface))
+			binding := backend.make_current(index, .window_target, seed)
+			if !binding.succeeded() {
+				return BackendFinalizeAttempt{
+					status:  .not_presented
+					outcome: binding
+				}
 			}
-			return
+			mut ordinals := backend.native_operations.reserve_ordinals(2) or {
+				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+				return BackendFinalizeAttempt{
+					status:  .not_presented
+					outcome: native_render_outcome(.egl, .swap_buffers, .renderer,
+						.renderer_unavailable, 0, 0, err_render_native_renderer_unavailable)
+				}
+			}
+			context := ordinals.materialize(backend.native_operations, .egl, .swap_buffers, seed) or {
+				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+				return BackendFinalizeAttempt{
+					status:  .not_presented
+					outcome: native_render_outcome(.egl, .swap_buffers, .renderer,
+						.renderer_unavailable, 0, 0, err_render_native_renderer_unavailable)
+				}
+			}
+			mut raw := C.VMultiwindowNativePrimitive{}
+			C.v_multiwindow_linux_egl_swap_buffers(native_identity(backend.egl_display),
+				native_identity(record.egl_surface), &raw)
+			result := backend.accept_egl_result(context, mut ordinals, seed, raw, .none)
+			if !result.succeeded() {
+				failure := result
+				desired := egl_window_binding(record.id, record.render_target_generation,
+					record.egl_surface)
+				outcome := backend.handle_window_egl_failure(index, failure, desired)
+				return BackendFinalizeAttempt{
+					status:  .not_presented
+					outcome: outcome
+				}
+			}
+			return BackendFinalizeAttempt{
+				status:  .submitted
+				outcome: result
+			}
 		} $else {
 			_ = frame
-			return error(err_backend_unsupported)
+			return BackendFinalizeAttempt{
+				status:  .not_presented
+				outcome: native_render_outcome(.egl, .swap_buffers, .renderer,
+					.renderer_unavailable, 0, 0, err_backend_unsupported)
+			}
 		}
 	}
 
-	fn (mut backend X11Backend) make_current(record X11WindowRecord) ! {
+	fn (mut backend X11Backend) make_current(index int, scope NativeRenderScope, boundary_seed NativeOperationSeed) NativeRenderResult {
 		$if linux && x_multiwindow_x11 ? {
+			if backend.render_health.blocks_graphics() {
+				disposition := if backend.render_health == .lost {
+					NativeRenderDisposition.renderer_lost
+				} else {
+					NativeRenderDisposition.renderer_unavailable
+				}
+				return backend.record_egl_result(native_render_outcome(.egl, .make_current,
+					.renderer, disposition, 0, 0, err_render_native_renderer_lost))
+			}
+			record := backend.windows[index]
 			if !backend.renderer_ready() || record.egl_surface == unsafe { nil } {
-				return error(err_renderer_unsupported)
+				return backend.record_egl_result(native_render_outcome(.egl, .make_current,
+					.window_target, .target_lost, 0, 0, err_render_target_lost))
 			}
-			if C.v_multiwindow_x11_egl_make_current(backend.egl_display, record.egl_surface,
-				backend.egl_context) == 0 {
-				return error(err_x11_egl_make_current_failed)
+			desired := egl_window_binding(record.id, record.render_target_generation,
+				record.egl_surface)
+			seed := NativeOperationSeed{
+				...boundary_seed
+				presence_mask:     boundary_seed.presence_mask | native_context_has_window | native_context_has_target_generation | native_context_has_target_identity
+				scope:             scope
+				window:            record.id
+				target_generation: record.render_target_generation
+				target_identity:   native_identity(record.egl_surface)
 			}
-			return
+			result := backend.bind_egl_identity(desired, seed)
+			if !result.succeeded() {
+				return backend.handle_window_egl_failure(index, result, desired)
+			}
+			return result
 		} $else {
-			_ = record
-			return error(err_backend_unsupported)
+			_ = index
+			_ = scope
+			return native_render_outcome(.egl, .make_current, .renderer, .renderer_unavailable, 0,
+				0, err_backend_unsupported)
 		}
+	}
+
+	fn (mut backend X11Backend) ensure_window_render_surface(index int, boundary_seed NativeOperationSeed) NativeRenderResult {
+		$if linux && x_multiwindow_x11 ? {
+			if backend.render_health.blocks_graphics() {
+				disposition := if backend.render_health == .lost {
+					NativeRenderDisposition.renderer_lost
+				} else {
+					NativeRenderDisposition.renderer_unavailable
+				}
+				return backend.record_egl_result(native_render_outcome(.egl,
+					.window_surface_create, .renderer, disposition, 0, 0,
+					err_render_native_renderer_lost))
+			}
+			mut record := &backend.windows[index]
+			if record.native_destroyed {
+				return backend.record_egl_result(native_render_outcome(.egl,
+					.window_surface_create, .window_target, .native_window_lost, 0, 0,
+					err_render_native_window_lost))
+			}
+			if record.egl_surface != unsafe { nil } {
+				return native_render_ok(.egl, .window_surface_create, .window_target)
+			}
+			seed := NativeOperationSeed{
+				...boundary_seed
+				presence_mask:     boundary_seed.presence_mask | native_context_has_window | native_context_has_target_generation | native_context_has_target_identity
+				call_site:         .window_prepare
+				scope:             .window_target
+				window:            record.id
+				target_generation: record.render_target_generation
+				target_identity:   u64(record.window)
+			}
+			mut ordinals := backend.native_operations.reserve_renderer_attempt_ordinals(2) or {
+				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+				return backend.record_egl_result(native_render_outcome(.egl,
+					.window_surface_create, .renderer, .renderer_unavailable, 0, 0,
+					err_render_native_renderer_unavailable))
+			}
+			mut cleanup_ordinals := backend.native_operations.reserve_app_lifetime_ordinals(1) or {
+				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+				return backend.record_egl_result(native_render_outcome(.egl,
+					.window_surface_create, .renderer, .renderer_unavailable, 0, 0,
+					err_render_native_renderer_unavailable))
+			}
+			cleanup_ticket := backend.native_operations.reserve_linux_egl_lifetime_ticket(mut cleanup_ordinals,
+				.egl_surface, seed.without_target_identity()) or {
+				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+				return backend.record_egl_result(native_render_outcome(.egl,
+					.window_surface_create, .renderer, .renderer_unavailable, 0, 0,
+					err_render_native_renderer_unavailable))
+			}
+			mut raw := C.VMultiwindowNativePrimitive{}
+			context := ordinals.materialize(backend.native_operations, .egl,
+				.window_surface_create, seed) or {
+				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
+				backend.native_operations.burn_lifetime_ticket(cleanup_ticket)
+				return backend.record_egl_result(native_render_outcome(.egl,
+					.window_surface_create, .renderer, .renderer_unavailable, 0, 0,
+					err_render_native_renderer_unavailable))
+			}
+			C.v_multiwindow_linux_egl_create_window_surface(native_identity(backend.egl_display),
+				native_identity(backend.egl_config), u64(record.window), &raw)
+			actual_surface := native_pointer(raw.handle)
+			if actual_surface != unsafe { nil } {
+				record.egl_surface = actual_surface
+				record.egl_surface_ticket = cleanup_ticket
+				backend.native_operations.bind_lifetime_ticket(cleanup_ticket,
+					native_identity(actual_surface), native_identity(backend.egl_display))
+			}
+			result := backend.accept_egl_result(context, mut ordinals, seed, raw, .none)
+			if actual_surface == unsafe { nil } {
+				backend.native_operations.burn_lifetime_ticket(cleanup_ticket)
+			}
+			if !result.succeeded() {
+				release := backend.release_egl_surface_ticket(cleanup_ticket, actual_surface)
+				if release.terminal {
+					record.egl_surface = unsafe { nil }
+					record.egl_surface_ticket = 0
+				}
+				return backend.handle_window_egl_failure(index, result, egl_window_binding(record.id,
+					record.render_target_generation, unsafe { nil }))
+			}
+			return result
+		} $else {
+			_ = index
+			return native_render_outcome(.egl, .window_surface_create, .renderer,
+				.renderer_unavailable, 0, 0, err_backend_unsupported)
+		}
+	}
+
+	fn (mut backend X11Backend) handle_window_egl_failure(index int, result NativeRenderResult, desired EglBindingIdentity) NativeRenderResult {
+		if index < 0 || index >= backend.windows.len {
+			return native_render_outcome(.none, result.operation, .window_target,
+				.operation_failed, result.native_code, 0, err_window_not_found)
+		}
+		mut record := &backend.windows[index]
+		if result.disposition == .target_lost || result.disposition == .native_window_lost {
+			if desired.surface != unsafe { nil } {
+				$if linux && x_multiwindow_x11 ? {
+					backend.invalidate_egl_binding(desired)
+				}
+			} else {
+				record.render_target_generation =
+					exhaust_backend_target_generation(record.render_target_generation)
+			}
+		}
+		if result.disposition == .native_window_lost {
+			record.native_destroyed = true
+		}
+		return result
 	}
 
 	fn (backend &X11Backend) swapchain_for_record(record X11WindowRecord) gfx.Swapchain {
@@ -1432,46 +2076,48 @@ fn (mut backend X11Backend) free_cursor_for_record(index int) {
 }
 
 fn (mut backend X11Backend) release_window_resources(record X11WindowRecord, destroy_native bool) ! {
+	mut owned_record := record
+	backend.release_window_record_resources(mut &owned_record, destroy_native)!
+}
+
+fn (mut backend X11Backend) release_window_record_resources(mut record &X11WindowRecord, destroy_native bool) ! {
 	$if linux && x_multiwindow_x11 ? {
-		if backend.egl_display != unsafe { nil } && record.egl_surface != unsafe { nil } {
-			C.v_multiwindow_x11_egl_clear_current(backend.egl_display)
-			C.v_multiwindow_x11_egl_destroy_surface(backend.egl_display, record.egl_surface)
+		if record.egl_surface != unsafe { nil } {
+			release := backend.release_egl_surface_ticket(record.egl_surface_ticket,
+				record.egl_surface)
+			if !release.terminal {
+				return error(err_render_native_renderer_unavailable)
+			}
+			record.egl_surface = unsafe { nil }
+			record.egl_surface_ticket = 0
 		}
 		if backend.display != unsafe { nil } && record.cursor != X11NativeCursor(0) {
 			C.XFreeCursor(backend.display, record.cursor)
 		}
-		if record.xic != unsafe { nil } {
+		record.cursor = X11NativeCursor(0)
+		if backend.display != unsafe { nil } && record.xic != unsafe { nil } {
 			C.v_multiwindow_x11_destroy_ic(record.xic)
 		}
-		if destroy_native {
-			backend.destroy_native_window(record.window, record.colormap)!
-		} else if backend.display != unsafe { nil } && record.colormap != X11NativeColormap(0) {
+		record.xic = unsafe { nil }
+		if destroy_native && backend.display != unsafe { nil }
+			&& record.window != X11NativeWindow(0) {
+			C.XDestroyWindow(backend.display, record.window)
+			record.window = X11NativeWindow(0)
+		}
+		if !destroy_native || backend.display == unsafe { nil } {
+			record.window = X11NativeWindow(0)
+		}
+		if backend.display != unsafe { nil } && record.colormap != X11NativeColormap(0) {
 			C.XFreeColormap(backend.display, record.colormap)
+		}
+		record.colormap = X11NativeColormap(0)
+		if backend.display != unsafe { nil } {
 			C.XFlush(backend.display)
 		}
 		return
 	} $else {
 		_ = record
 		_ = destroy_native
-		return error(err_backend_unsupported)
-	}
-}
-
-fn (mut backend X11Backend) destroy_native_window(window X11NativeWindow, colormap X11NativeColormap) ! {
-	$if linux && x_multiwindow_x11 ? {
-		if backend.started && backend.display != unsafe { nil } {
-			if C.XDestroyWindow(backend.display, window) == 0 {
-				return error(err_x11_destroy_window_failed)
-			}
-			if colormap != X11NativeColormap(0) {
-				C.XFreeColormap(backend.display, colormap)
-			}
-			C.XFlush(backend.display)
-		}
-		return
-	} $else {
-		_ = window
-		_ = colormap
 		return error(err_backend_unsupported)
 	}
 }

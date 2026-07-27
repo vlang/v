@@ -9,7 +9,12 @@
 module main
 
 import gg
+import os
+import sokol.gfx
+import time
 
+const unattended_environment = 'VGG_MULTIWINDOW_EXAMPLE_UNATTENDED'
+const unattended_render_timeout = 10 * time.second
 const visible_last_event_limit = 4
 const visible_title_limit = 220
 const visual_margin = 18
@@ -30,6 +35,7 @@ mut:
 	live               bool
 	width              int
 	height             int
+	created            bool
 	lifecycle          int
 	inputs             int
 	key                int
@@ -49,12 +55,15 @@ mut:
 
 struct EventState {
 	mock        bool
+	unattended  bool
 	input_limit int = 12
 mut:
-	caps           gg.Capabilities
-	resized        int
-	printed_inputs int
-	windows        []WindowDashboard
+	caps                  gg.Capabilities
+	resized               int
+	printed_inputs        int
+	unattended_close_sent bool
+	render_signaled       map[string]bool
+	windows               []WindowDashboard
 }
 
 fn main() {
@@ -71,14 +80,59 @@ fn new_app_prefer_renderer() !&gg.App {
 	}
 }
 
+fn requested_unattended_backend() !string {
+	backend := os.getenv(unattended_environment)
+	if backend == '' {
+		return ''
+	}
+	if backend !in ['mock', 'x11', 'wayland', 'appkit', 'win32'] {
+		return error('${unattended_environment} must select mock, x11, wayland, appkit, or win32')
+	}
+	return backend
+}
+
 fn run_example() ! {
 	mut app := new_app_prefer_renderer()!
-	defer {
-		app.stop() or {}
+	mut failures := []string{}
+	mut cleanup_needed := false
+	run_example_session(mut app) or {
+		failures << err.msg()
+		cleanup_needed = true
 	}
+	live_windows := app.window_ids() or {
+		failures << 'cleanup inspection failed: ${err.msg()}'
+		cleanup_needed = true
+		[]gg.WindowId{}
+	}
+	if live_windows.len > 0 {
+		cleanup_needed = true
+	}
+	if cleanup_needed {
+		app.stop() or { failures << 'cleanup failed: ${err.msg()}' }
+	}
+	remaining_windows := app.window_ids() or {
+		failures << 'cleanup validation failed: ${err.msg()}'
+		[]gg.WindowId{}
+	}
+	if remaining_windows.len > 0 {
+		failures << 'cleanup incomplete: ${remaining_windows.len} live window(s) remain'
+	}
+	if failures.len > 0 {
+		return error(failures.join('; '))
+	}
+	println('{"example":"multiwindow","status":"PASS","cleanup":"complete"}')
+}
 
+fn run_example_session(mut app gg.App) ! {
+	unattended_backend := requested_unattended_backend()!
 	mut caps := app.capabilities()
+	if unattended_backend != '' && '${caps.backend}' != unattended_backend {
+		return error('unattended multi-window example expected backend `${unattended_backend}`, got `${caps.backend}`')
+	}
 	println('gg multi-window backend: ${caps.backend}')
+	if unattended_backend != '' {
+		println('unattended lifecycle enabled for backend: ${unattended_backend}')
+	}
 	print_capability_families(caps)
 	if caps.mock {
 		println('render dashboard fallback: explicit swapchain unavailable')
@@ -94,25 +148,51 @@ fn run_example() ! {
 		println('input logging enabled for key/mouse/focus/scroll/drop/touch events; first 12 events will be printed')
 	}
 
-	main_window := app.create_window(
-		title:  'GG Multi-Window'
-		width:  640
-		height: 360
-	)!
-	tools_window := app.create_window(
-		title:  'Tools'
-		width:  320
-		height: 240
-	)!
+	mut state := &EventState{
+		mock:       caps.mock
+		unattended: unattended_backend != ''
+		caps:       caps
+	}
+	frames := chan string{cap: 2}
+	main_window := if caps.explicit_swapchain {
+		app.create_window(
+			title:       'GG Multi-Window'
+			width:       640
+			height:      360
+			redraw_mode: .continuous
+			frame_fn:    fn [frames, mut state] (mut window gg.WindowContext) ! {
+				state.draw_window(mut window, frames)!
+			}
+		)!
+	} else {
+		app.create_window(
+			title:  'GG Multi-Window'
+			width:  640
+			height: 360
+		)!
+	}
+	tools_window := if caps.explicit_swapchain {
+		app.create_window(
+			title:       'Tools'
+			width:       320
+			height:      240
+			redraw_mode: .continuous
+			frame_fn:    fn [frames, mut state] (mut window gg.WindowContext) ! {
+				state.draw_window(mut window, frames)!
+			}
+		)!
+	} else {
+		app.create_window(
+			title:  'Tools'
+			width:  320
+			height: 240
+		)!
+	}
 
 	app.set_window_title(tools_window, 'Tools - updated')!
 	resize_or_ignore_unsupported(mut app, main_window, 720, 420)!
 	resize_or_ignore_unsupported(mut app, tools_window, 360, 260)!
 
-	mut state := &EventState{
-		mock: caps.mock
-		caps: caps
-	}
 	state.track_window(main_window, 'Main', 720, 420)
 	state.track_window(tools_window, 'Tools', 360, 260)
 	state.sync_runtime(mut app)!
@@ -125,28 +205,69 @@ fn run_example() ! {
 		println('  ${info.title}: ${info.width}x${info.height} native_decorations=${info.native_decorations}')
 	}
 
-	if caps.explicit_swapchain {
-		app.run(
-			frame_fn: fn [mut state] (mut app gg.App) ! {
-				state.draw(mut app)!
-			}
-			event_fn: fn [mut state] (event gg.WindowEvent, mut app gg.App) ! {
-				handle_window_event(event, mut app, mut state)!
-			}
-			input_fn: fn [mut state] (event gg.WindowInputEvent, mut app gg.App) ! {
-				handle_input_event(event, mut app, mut state)!
-			}
-		)!
-	} else {
-		app.run(
-			event_fn: fn [mut state] (event gg.WindowEvent, mut app gg.App) ! {
-				handle_window_event(event, mut app, mut state)!
-			}
-			input_fn: fn [mut state] (event gg.WindowInputEvent, mut app gg.App) ! {
-				handle_input_event(event, mut app, mut state)!
-			}
-		)!
+	if state.unattended && caps.explicit_swapchain {
+		driver_result := chan string{cap: 1}
+		driver := spawn drive_unattended_render(mut app, frames, [
+			main_window.str(),
+			tools_window.str(),
+		], driver_result)
+		mut run_error := ''
+		run_example_event_loop(mut app, mut state) or { run_error = err.msg() }
+		driver.wait()
+		driver_error := <-driver_result
+		if run_error != '' {
+			return error('unattended render owner loop: ${run_error}')
+		}
+		if driver_error != '' {
+			return error('unattended render driver: ${driver_error}')
+		}
+		return
 	}
+	run_example_event_loop(mut app, mut state)!
+}
+
+fn run_example_event_loop(mut app gg.App, mut state EventState) ! {
+	app.run(
+		event_fn: fn [mut state] (event gg.WindowEvent, mut app gg.App) ! {
+			handle_window_event(event, mut app, mut state)!
+		}
+		input_fn: fn [mut state] (event gg.WindowInputEvent, mut app gg.App) ! {
+			handle_input_event(event, mut app, mut state)!
+		}
+	)!
+}
+
+fn drive_unattended_render(mut app gg.App, frames chan string, expected []string, result chan string) {
+	mut seen := map[string]bool{}
+	for seen.len < expected.len {
+		select {
+			window := <-frames {
+				if window in expected {
+					seen[window] = true
+				}
+			}
+			unattended_render_timeout {
+				post_unattended_render_stop(mut app) or {
+					result <- ('render barrier timeout; stop admission failed: ' + err.msg())
+					return
+				}
+				result <- ('render barrier timeout with ' + seen.len.str() + '/' +
+					expected.len.str() + ' windows rendered')
+				return
+			}
+		}
+	}
+	post_unattended_render_stop(mut app) or {
+		result <- ('stop admission failed: ' + err.msg())
+		return
+	}
+	result <- ''
+}
+
+fn post_unattended_render_stop(mut app gg.App) ! {
+	app.post(fn (mut app gg.App) ! {
+		app.stop()!
+	})!
 }
 
 fn print_capability_families(caps gg.Capabilities) {
@@ -176,11 +297,12 @@ fn handle_window_event(event gg.WindowEvent, mut app gg.App, mut state EventStat
 	match event.kind {
 		.window_created {
 			println('window created: ${event.window}')
+			state.schedule_unattended_close(mut app)!
 		}
 		.window_resized {
 			state.resized++
 			println('window resized: ${event.window} -> ${event.width}x${event.height}')
-			if state.mock && state.resized >= 2 {
+			if state.mock && !state.unattended && state.resized >= 2 {
 				app.stop()!
 			}
 		}
@@ -197,6 +319,23 @@ fn handle_window_event(event gg.WindowEvent, mut app gg.App, mut state EventStat
 			}
 		}
 	}
+}
+
+fn (mut state EventState) schedule_unattended_close(mut app gg.App) ! {
+	if !state.unattended || state.caps.explicit_swapchain || state.unattended_close_sent {
+		return
+	}
+	for dashboard in state.windows {
+		if !dashboard.created {
+			return
+		}
+	}
+	state.unattended_close_sent = true
+	app.post(fn (mut app gg.App) ! {
+		for window in app.window_ids()! {
+			app.destroy_window(window)!
+		}
+	})!
 }
 
 fn handle_input_event(event gg.WindowInputEvent, mut app gg.App, mut state EventState) ! {
@@ -299,6 +438,7 @@ fn (mut state EventState) note_lifecycle(event gg.WindowEvent) {
 	match event.kind {
 		.window_created {
 			dashboard.live = true
+			dashboard.created = true
 			dashboard.width = event.width
 			dashboard.height = event.height
 			dashboard.add_last_event('created ${event.width}x${event.height}', 'window')
@@ -468,22 +608,68 @@ fn truncate_title(title string) string {
 	return title[..visible_title_limit] + '...'
 }
 
-fn (mut state EventState) draw(mut app gg.App) ! {
+fn (mut state EventState) draw_window(mut window gg.WindowContext, frames chan string) ! {
+	info := window.frame_info()
+	id := info.window
+	index := state.window_index(id) or {
+		return error('missing dashboard state for render window ${id}')
+	}
+	dashboard := state.windows[index]
+	if !dashboard.live {
+		return
+	}
+	width := max_int(1, info.metrics.framebuffer_size.width)
+	height := max_int(1, info.metrics.framebuffer_size.height)
 	caps := state.caps
-	for dashboard in state.windows {
-		if !dashboard.live || !app.window_exists(dashboard.id) {
-			continue
-		}
-		app.draw_window(dashboard.id, fn [dashboard, caps] (mut window gg.WindowContext) ! {
-			draw_window_dashboard(mut window, dashboard, caps)
-		})!
+	background := dashboard_background(caps)
+	action := gfx.create_clear_pass_action(background.r, background.g, background.b, background.a)
+	window.with_swapchain_sgl(action, fn [dashboard, caps, width, height] (mut drawing gg.WindowSglContext) ! {
+		drawing.defaults()
+		drawing.matrix_mode_projection()
+		drawing.load_identity()
+		drawing.ortho(0, f32(width), f32(height), 0, -1, 1)
+		draw_window_dashboard(mut drawing, dashboard, caps, width, height)
+	})!
+	key := id.str()
+	if !state.render_signaled[key] {
+		state.render_signaled[key] = true
+		frames <- key
 	}
 }
 
-fn draw_window_dashboard(mut window gg.WindowContext, dashboard WindowDashboard, caps gg.Capabilities) {
-	size := window.size()
-	width := max_int(220, size.width)
-	height := max_int(180, size.height)
+fn draw_rect_filled(mut window gg.WindowSglContext, x f32, y f32, width f32, height f32, color gg.Color) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	window.c4b(color.r, color.g, color.b, color.a)
+	window.begin_quads()
+	window.v2f(x, y)
+	window.v2f(x + width, y)
+	window.v2f(x + width, y + height)
+	window.v2f(x, y + height)
+	window.end()
+}
+
+fn draw_rect_empty(mut window gg.WindowSglContext, x f32, y f32, width f32, height f32, color gg.Color) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	window.c4b(color.r, color.g, color.b, color.a)
+	window.begin_lines()
+	window.v2f(x, y)
+	window.v2f(x + width, y)
+	window.v2f(x + width, y)
+	window.v2f(x + width, y + height)
+	window.v2f(x + width, y + height)
+	window.v2f(x, y + height)
+	window.v2f(x, y + height)
+	window.v2f(x, y)
+	window.end()
+}
+
+fn draw_window_dashboard(mut window gg.WindowSglContext, dashboard WindowDashboard, caps gg.Capabilities, framebuffer_width int, framebuffer_height int) {
+	width := max_int(220, framebuffer_width)
+	height := max_int(180, framebuffer_height)
 	inner_width := max_int(64, width - 2 * visual_margin)
 	client_chrome := client_chrome_enabled(caps, dashboard.native_decorations)
 	content_top := if client_chrome {
@@ -491,15 +677,15 @@ fn draw_window_dashboard(mut window gg.WindowContext, dashboard WindowDashboard,
 	} else {
 		0
 	}
-	window.draw_rect_filled(0, 0, f32(width), f32(height), dashboard_background(caps))
+	draw_rect_filled(mut window, 0, 0, f32(width), f32(height), dashboard_background(caps))
 	draw_client_chrome_zones(mut window, dashboard, caps, width, height)
 	if client_chrome {
-		window.draw_rect_empty(f32(client_chrome_frame_thickness + 6), f32(content_top + 6), f32(
+		draw_rect_empty(mut window, f32(client_chrome_frame_thickness + 6), f32(content_top + 6), f32(
 			width - 2 * client_chrome_frame_thickness - 12), f32(height - content_top -
 			client_chrome_frame_thickness - 12), gg.rgb(88, 101, 118))
 	} else {
-		window.draw_rect_filled(0, 0, f32(width), 10, backend_color(caps))
-		window.draw_rect_empty(8, 8, f32(width - 16), f32(height - 16), gg.rgb(96, 116, 142))
+		draw_rect_filled(mut window, 0, 0, f32(width), 10, backend_color(caps))
+		draw_rect_empty(mut window, 8, 8, f32(width - 16), f32(height - 16), gg.rgb(96, 116, 142))
 	}
 
 	draw_lifecycle_panel(mut window, dashboard, caps, width, height, content_top)
@@ -508,7 +694,7 @@ fn draw_window_dashboard(mut window gg.WindowContext, dashboard WindowDashboard,
 	draw_last_event_strip(mut window, dashboard, visual_margin, height - 54, inner_width)
 }
 
-fn draw_client_chrome_zones(mut window gg.WindowContext, dashboard WindowDashboard, caps gg.Capabilities, width int, height int) {
+fn draw_client_chrome_zones(mut window gg.WindowSglContext, dashboard WindowDashboard, caps gg.Capabilities, width int, height int) {
 	if !client_chrome_enabled(caps, dashboard.native_decorations) {
 		return
 	}
@@ -516,15 +702,16 @@ fn draw_client_chrome_zones(mut window gg.WindowContext, dashboard WindowDashboa
 	frame := client_chrome_frame_thickness
 	inner_width := max_int(0, width - 2 * frame)
 	inner_height := max_int(0, height - titlebar - frame)
-	window.draw_rect_filled(0, 0, f32(width), f32(height), gg.rgb(44, 50, 60))
-	window.draw_rect_filled(f32(frame), f32(titlebar), f32(inner_width), f32(inner_height),
+	draw_rect_filled(mut window, 0, 0, f32(width), f32(height), gg.rgb(44, 50, 60))
+	draw_rect_filled(mut window, f32(frame), f32(titlebar), f32(inner_width), f32(inner_height),
 		dashboard_background(caps))
-	window.draw_rect_filled(f32(frame), f32(frame), f32(inner_width), f32(titlebar - frame), gg.rgb(48,
+	draw_rect_filled(mut window, f32(frame), f32(frame), f32(inner_width), f32(titlebar - frame), gg.rgb(48,
 		56, 68))
-	window.draw_rect_filled(f32(frame), f32(frame), f32(inner_width), 1, gg.rgb(89, 101, 118))
-	window.draw_rect_filled(f32(frame), f32(titlebar - 1), f32(inner_width), 1, gg.rgb(24, 30, 38))
-	window.draw_rect_empty(0, 0, f32(width), f32(height), gg.rgb(20, 25, 32))
-	window.draw_rect_empty(1, 1, f32(width - 2), f32(height - 2), gg.rgb(82, 94, 110))
+	draw_rect_filled(mut window, f32(frame), f32(frame), f32(inner_width), 1, gg.rgb(89, 101, 118))
+	draw_rect_filled(mut window, f32(frame), f32(titlebar - 1), f32(inner_width), 1, gg.rgb(24, 30,
+		38))
+	draw_rect_empty(mut window, 0, 0, f32(width), f32(height), gg.rgb(20, 25, 32))
+	draw_rect_empty(mut window, 1, 1, f32(width - 2), f32(height - 2), gg.rgb(82, 94, 110))
 	draw_client_chrome_title(mut window, dashboard.label, width)
 	draw_client_chrome_titlebar_separators(mut window, width)
 	draw_client_chrome_minimize_button(mut window, width)
@@ -532,56 +719,57 @@ fn draw_client_chrome_zones(mut window gg.WindowContext, dashboard WindowDashboa
 	draw_client_chrome_close_button(mut window, width)
 }
 
-fn draw_client_chrome_minimize_button(mut window gg.WindowContext, width int) {
+fn draw_client_chrome_minimize_button(mut window gg.WindowSglContext, width int) {
 	x := window_control_button_x(width, 2)
 	y := close_button_y()
 	size := f32(client_chrome_close_button_size)
 	draw_client_chrome_control_button(mut window, x, y, gg.rgb(68, 78, 92), gg.rgb(126, 140, 158))
-	window.draw_rect_filled(x + 5, y + size - 6, size - 10, 2, gg.rgb(218, 224, 232))
+	draw_rect_filled(mut window, x + 5, y + size - 6, size - 10, 2, gg.rgb(218, 224, 232))
 }
 
-fn draw_client_chrome_maximize_button(mut window gg.WindowContext, width int) {
+fn draw_client_chrome_maximize_button(mut window gg.WindowSglContext, width int) {
 	x := window_control_button_x(width, 1)
 	y := close_button_y()
 	draw_client_chrome_control_button(mut window, x, y, gg.rgb(68, 78, 92), gg.rgb(126, 140, 158))
-	window.draw_rect_empty(x + 5, y + 5, 8, 8, gg.rgb(218, 224, 232))
-	window.draw_rect_filled(x + 6, y + 5, 6, 1, gg.rgb(218, 224, 232))
+	draw_rect_empty(mut window, x + 5, y + 5, 8, 8, gg.rgb(218, 224, 232))
+	draw_rect_filled(mut window, x + 6, y + 5, 6, 1, gg.rgb(218, 224, 232))
 }
 
-fn draw_client_chrome_close_button(mut window gg.WindowContext, width int) {
+fn draw_client_chrome_close_button(mut window gg.WindowSglContext, width int) {
 	x := close_button_x(width)
 	y := close_button_y()
 	size := f32(client_chrome_close_button_size)
 	draw_client_chrome_control_button(mut window, x, y, gg.rgb(178, 71, 72), gg.rgb(234, 150, 145))
 	for offset in 0 .. 5 {
 		step := f32(offset * 2)
-		window.draw_rect_filled(x + 5 + step, y + 5 + step, 2, 2, gg.rgb(250, 236, 232))
-		window.draw_rect_filled(x + 5 + step, y + size - 7 - step, 2, 2, gg.rgb(250, 236, 232))
+		draw_rect_filled(mut window, x + 5 + step, y + 5 + step, 2, 2, gg.rgb(250, 236, 232))
+		draw_rect_filled(mut window, x + 5 + step, y + size - 7 - step, 2, 2, gg.rgb(250, 236, 232))
 	}
 }
 
-fn draw_client_chrome_control_button(mut window gg.WindowContext, x f32, y f32, fill gg.Color, border gg.Color) {
+fn draw_client_chrome_control_button(mut window gg.WindowSglContext, x f32, y f32, fill gg.Color, border gg.Color) {
 	size := f32(client_chrome_close_button_size)
-	window.draw_rect_filled(x, y, size, size, fill)
-	window.draw_rect_empty(x, y, size, size, border)
+	draw_rect_filled(mut window, x, y, size, size, fill)
+	draw_rect_empty(mut window, x, y, size, size, border)
 }
 
-fn draw_client_chrome_titlebar_separators(mut window gg.WindowContext, width int) {
+fn draw_client_chrome_titlebar_separators(mut window gg.WindowSglContext, width int) {
 	frame := client_chrome_frame_thickness
 	inner_width := max_int(0, width - 2 * frame)
 	titlebar := client_chrome_titlebar_height
 	separator_x := int(window_control_button_x(width, 2)) - client_chrome_control_gap
-	window.draw_rect_filled(f32(frame), f32(titlebar), f32(inner_width), 1, gg.rgb(14, 18, 24))
-	window.draw_rect_filled(f32(frame), f32(titlebar + 1), f32(inner_width), 1, gg.rgb(77, 88, 104))
+	draw_rect_filled(mut window, f32(frame), f32(titlebar), f32(inner_width), 1, gg.rgb(14, 18, 24))
+	draw_rect_filled(mut window, f32(frame), f32(titlebar + 1), f32(inner_width), 1, gg.rgb(77, 88,
+		104))
 	if separator_x > frame + 80 {
-		window.draw_rect_filled(f32(separator_x), f32(frame + 6), 1, f32(titlebar - frame - 12), gg.rgb(28,
-			34, 43))
-		window.draw_rect_filled(f32(separator_x + 1), f32(frame + 6), 1,
-			f32(titlebar - frame - 12), gg.rgb(83, 94, 110))
+		draw_rect_filled(mut window, f32(separator_x), f32(frame + 6), 1,
+			f32(titlebar - frame - 12), gg.rgb(28, 34, 43))
+		draw_rect_filled(mut window, f32(separator_x + 1), f32(frame + 6), 1, f32(titlebar - frame -
+			12), gg.rgb(83, 94, 110))
 	}
 }
 
-fn draw_client_chrome_title(mut window gg.WindowContext, title string, width int) {
+fn draw_client_chrome_title(mut window gg.WindowSglContext, title string, width int) {
 	x := client_chrome_frame_thickness + 14
 	y := (client_chrome_titlebar_height - 7 * client_chrome_title_text_scale) / 2
 	max_width := int(window_control_button_x(width, 2)) - x - 18
@@ -589,7 +777,7 @@ fn draw_client_chrome_title(mut window gg.WindowContext, title string, width int
 		235, 240))
 }
 
-fn draw_tiny_text(mut window gg.WindowContext, text string, x int, y int, max_width int, scale int, color gg.Color) {
+fn draw_tiny_text(mut window gg.WindowSglContext, text string, x int, y int, max_width int, scale int, color gg.Color) {
 	if max_width <= 0 || scale <= 0 {
 		return
 	}
@@ -608,7 +796,7 @@ fn draw_tiny_text(mut window gg.WindowContext, text string, x int, y int, max_wi
 		for row, bits in glyph {
 			for col in 0 .. bits.len {
 				if bits[col] == `1` {
-					window.draw_rect_filled(f32(cursor_x + col * scale), f32(y + row * scale),
+					draw_rect_filled(mut window, f32(cursor_x + col * scale), f32(y + row * scale),
 						f32(scale), f32(scale), color)
 				}
 			}
@@ -660,7 +848,7 @@ fn tiny_title_glyph(ch u8) []string {
 	}
 }
 
-fn draw_lifecycle_panel(mut window gg.WindowContext, dashboard WindowDashboard, caps gg.Capabilities, width int, height int, content_top int) {
+fn draw_lifecycle_panel(mut window gg.WindowSglContext, dashboard WindowDashboard, caps gg.Capabilities, width int, height int, content_top int) {
 	status_color := if dashboard.live { gg.rgb(82, 196, 126) } else { gg.rgb(196, 82, 82) }
 	activity_color := if dashboard.last_families.len == 0 {
 		gg.rgb(78, 88, 104)
@@ -668,19 +856,20 @@ fn draw_lifecycle_panel(mut window gg.WindowContext, dashboard WindowDashboard, 
 		event_family_color(dashboard.last_families[dashboard.last_families.len - 1])
 	}
 	panel_y := content_top + 20
-	window.draw_rect_filled(visual_margin, panel_y, 46, 8, status_color)
+	draw_rect_filled(mut window, visual_margin, panel_y, 46, 8, status_color)
 	if client_chrome_enabled(caps, dashboard.native_decorations) {
-		window.draw_rect_filled(f32(width - 54), f32(panel_y), 34, 34, activity_color)
-		window.draw_rect_empty(f32(width - 56), f32(panel_y - 2), 38, 38, gg.rgb(176, 188, 204))
+		draw_rect_filled(mut window, f32(width - 54), f32(panel_y), 34, 34, activity_color)
+		draw_rect_empty(mut window, f32(width - 56), f32(panel_y - 2), 38, 38,
+			gg.rgb(176, 188, 204))
 	} else {
-		window.draw_rect_filled(visual_margin + 56, panel_y, 72, 8, gg.rgb(78, 88, 104))
-		window.draw_rect_empty(visual_margin + 56, panel_y, 72, 8, gg.rgb(122, 135, 152))
+		draw_rect_filled(mut window, visual_margin + 56, panel_y, 72, 8, gg.rgb(78, 88, 104))
+		draw_rect_empty(mut window, visual_margin + 56, panel_y, 72, 8, gg.rgb(122, 135, 152))
 	}
-	window.draw_rect_filled(visual_margin, f32(height - 20), f32(max_int(8, min_int(width - 2 * visual_margin,
+	draw_rect_filled(mut window, visual_margin, f32(height - 20), f32(max_int(8, min_int(width - 2 * visual_margin,
 		dashboard.width / 5))), 4, status_color)
 }
 
-fn draw_capability_badges(mut window gg.WindowContext, caps gg.Capabilities, x int, y int) {
+fn draw_capability_badges(mut window gg.WindowSglContext, caps gg.Capabilities, x int, y int) {
 	mut badge_x := x
 	draw_capability_badge(mut window, badge_x, y, caps.native, gg.rgb(46, 180, 125))
 	badge_x += visual_badge_size + 8
@@ -699,14 +888,14 @@ fn draw_capability_badges(mut window gg.WindowContext, caps gg.Capabilities, x i
 	draw_capability_badge(mut window, badge_x, y, caps.touch_events, gg.rgb(255, 137, 196))
 }
 
-fn draw_capability_badge(mut window gg.WindowContext, x int, y int, enabled bool, color gg.Color) {
+fn draw_capability_badge(mut window gg.WindowSglContext, x int, y int, enabled bool, color gg.Color) {
 	fill := if enabled { color } else { gg.rgb(42, 48, 58) }
 	border := if enabled { gg.rgb(220, 230, 240) } else { gg.rgb(80, 88, 100) }
-	window.draw_rect_filled(f32(x), f32(y), visual_badge_size, visual_badge_size, fill)
-	window.draw_rect_empty(f32(x), f32(y), visual_badge_size, visual_badge_size, border)
+	draw_rect_filled(mut window, f32(x), f32(y), visual_badge_size, visual_badge_size, fill)
+	draw_rect_empty(mut window, f32(x), f32(y), visual_badge_size, visual_badge_size, border)
 }
 
-fn draw_counter_bars(mut window gg.WindowContext, dashboard WindowDashboard, x int, y int, width int) {
+fn draw_counter_bars(mut window gg.WindowSglContext, dashboard WindowDashboard, x int, y int, width int) {
 	max_value := dashboard.max_counter()
 	mut row_y := y
 	draw_counter_bar(mut window, x, row_y, width, dashboard.lifecycle, max_value,
@@ -728,19 +917,21 @@ fn draw_counter_bars(mut window gg.WindowContext, dashboard WindowDashboard, x i
 		event_family_color('text'))
 }
 
-fn draw_counter_bar(mut window gg.WindowContext, x int, y int, width int, value int, max_value int, color gg.Color) {
-	window.draw_rect_filled(f32(x), f32(y), f32(width), visual_counter_height, gg.rgb(38, 45, 56))
+fn draw_counter_bar(mut window gg.WindowSglContext, x int, y int, width int, value int, max_value int, color gg.Color) {
+	draw_rect_filled(mut window, f32(x), f32(y), f32(width), visual_counter_height, gg.rgb(38, 45,
+		56))
 	if value <= 0 {
-		window.draw_rect_empty(f32(x), f32(y), f32(width), visual_counter_height,
-			gg.rgb(64, 73, 88))
+		draw_rect_empty(mut window, f32(x), f32(y), f32(width), visual_counter_height, gg.rgb(64,
+			73, 88))
 		return
 	}
 	bar_width := scaled_width(value, max_value, width)
-	window.draw_rect_filled(f32(x), f32(y), f32(bar_width), visual_counter_height, color)
-	window.draw_rect_empty(f32(x), f32(y), f32(width), visual_counter_height, gg.rgb(132, 148, 168))
+	draw_rect_filled(mut window, f32(x), f32(y), f32(bar_width), visual_counter_height, color)
+	draw_rect_empty(mut window, f32(x), f32(y), f32(width), visual_counter_height, gg.rgb(132, 148,
+		168))
 }
 
-fn draw_last_event_strip(mut window gg.WindowContext, dashboard WindowDashboard, x int, y int, width int) {
+fn draw_last_event_strip(mut window gg.WindowSglContext, dashboard WindowDashboard, x int, y int, width int) {
 	slot_width := max_int(18, width / visible_last_event_limit)
 	for slot in 0 .. visible_last_event_limit {
 		family := if slot < dashboard.last_families.len {
@@ -750,8 +941,9 @@ fn draw_last_event_strip(mut window gg.WindowContext, dashboard WindowDashboard,
 		}
 		color := event_family_color(family)
 		slot_x := x + slot * slot_width
-		window.draw_rect_filled(f32(slot_x), f32(y), f32(slot_width - 6), 22, color)
-		window.draw_rect_empty(f32(slot_x), f32(y), f32(slot_width - 6), 22, gg.rgb(156, 170, 188))
+		draw_rect_filled(mut window, f32(slot_x), f32(y), f32(slot_width - 6), 22, color)
+		draw_rect_empty(mut window, f32(slot_x), f32(y), f32(slot_width - 6), 22, gg.rgb(156, 170,
+			188))
 	}
 }
 

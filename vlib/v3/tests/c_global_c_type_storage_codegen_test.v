@@ -75,7 +75,7 @@ fn main() {
 	_ := raw_object(logger)
 }
 ')
-	assert c_code.contains('void* pobject = ((struct log__Logger*)logger)->_object;')
+	assert c_code.contains('void* pobject = ((log__Logger*)logger)->_object;')
 	assert !c_code.contains('void** pobject')
 	assert !c_code.contains('__addr_')
 }
@@ -147,6 +147,7 @@ fn main() {
 ')
 	assert c_code.contains('._object = read_from'), c_code
 	assert c_code.contains('(Reader){._typ = '), c_code
+	assert !c_code.contains('._object = &read_from'), c_code
 	assert !c_code.contains('FileReader** __iface_src_'), c_code
 }
 
@@ -296,6 +297,20 @@ fn main() {
 	assert c_code.contains('set_stream_unbuffered(stdout);'), c_code
 	assert !c_code.contains('C__stdout'), c_code
 	assert !c_code.contains('\nFILE* stdout'), c_code
+}
+
+fn test_empty_c_struct_initializer_uses_portable_zero_value() {
+	c_code := gen_c_for_c_global_source('empty_c_struct_initializer', 'struct C.NativeDesc {
+	value int
+}
+
+fn main() {
+	desc := C.NativeDesc{}
+	_ = desc
+}
+')
+	assert c_code.contains('NativeDesc desc = (NativeDesc){0};'), c_code
+	assert !c_code.contains('(NativeDesc){}'), c_code
 }
 
 fn test_module_v_owned_global_with_c_struct_type_gets_qualified_storage() {

@@ -43,7 +43,8 @@ fn test_unsafe_nil_contextually_matches_fn_fields() {
 }
 
 fn main() {
-	_ := S{}
+	mut value := S{}
+	value.f = unsafe { nil }
 	println(int_str(1))
 }
 ')
@@ -74,6 +75,18 @@ fn main() {
 }
 ',
 		'cannot initialize field `f` with `&void`; expected `fn(int) !void`')
+	run_bad(v3_bin, 'fn_field_assignment_rejects_voidptr_variable', 'struct S {
+	mut:
+		f fn (int) !
+}
+
+fn main() {
+	mut value := S{}
+	v := unsafe { nil }
+	value.f = v
+}
+',
+		'cannot assign `&void` to `fn(int) !void`')
 	run_bad(v3_bin, 'fn_field_rejects_non_nil_unsafe_pointer', 'struct S {
 	f fn (int) !
 }

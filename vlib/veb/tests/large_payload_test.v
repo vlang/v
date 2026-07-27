@@ -108,8 +108,14 @@ fn test_smaller_content_length() {
 		data:   data
 	})!
 
-	assert x.status() == .bad_request
-	assert x.body == 'Mismatch of body length and Content-Length header'
+	// The fasthttp backend frames requests by their exact declared length
+	// (RFC 9112 §6): the body is exactly Content-Length bytes and any surplus
+	// bytes begin the next request on the connection. So the handler sees the
+	// first 5 bytes ('12345') and echoes them back with 200 OK, instead of the
+	// whole 9-byte payload. Trimming to Content-Length also closes the classic
+	// request-smuggling gap where a longer body was absorbed into one request.
+	assert x.status() == .ok
+	assert x.body == '12345'
 }
 
 fn test_sendfile() {

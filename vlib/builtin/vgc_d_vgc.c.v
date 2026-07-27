@@ -52,8 +52,14 @@ const vgc_page_size = 8192
 const vgc_max_small_size = u32(32768) // objects > this are "large"
 const vgc_num_classes = 68
 const vgc_num_span_classes = 136 // 68 * 2 (scan + noscan variants)
-const vgc_arena_size = usize(64) * 1024 * 1024 // 64MB per arena
-const vgc_pages_per_arena = vgc_arena_size / vgc_page_size
+// These MUST stay compile-time integer constants (no `usize()` cast, no division by
+// another const). Otherwise V emits them as runtime globals initialized inside
+// `_vinit()`, and the allocations that run earlier in `_vinit()` (const strings, etc.)
+// see them as 0: arenas get sized to a single page instead of 64MB, and
+// `vgc_pages_per_arena == 0` makes span registration a no-op, so `vgc_find_span()`
+// returns nil forever for those objects (breaking realloc and GC marking).
+const vgc_arena_size = 64 * 1024 * 1024 // 64MB per arena
+const vgc_pages_per_arena = 64 * 1024 * 1024 / 8192 // vgc_arena_size / vgc_page_size = 8192
 const vgc_max_arenas = 64
 const vgc_max_threads = 64
 const vgc_tiny_size = 16 // tiny allocator threshold (no-pointer objects < 16 bytes)
@@ -164,6 +170,10 @@ mut:
 	// Free spans (completely empty, reusable by page count)
 	free_spans_lock u32
 	free_spans      [32]&VGC_Span // free spans indexed by npages (1..31, 0=unused)
+	// Free large spans (npages >= 32): single list, matched by exact page count.
+	// Shares free_spans_lock. Without this, large objects are never reclaimed,
+	// leaking both physical memory and arena address space.
+	free_large &VGC_Span = unsafe { nil }
 	// Per-thread caches
 	caches     [64]VGC_Cache
 	ncaches    int
@@ -196,10 +206,22 @@ mut:
 	gc_percent int // like Go's GOGC, default 100
 }
 
-// Global heap instance
+// Global heap instance.
+// @[cinit] forces the initializer into C static (load-time) initialization instead
+// of `_vinit()`. Without it, `_vinit()` runs *after* `vgc_init()` (see cmain.v) and
+// re-assigns `vgc_heap = VGC_Heap{}`, wiping out `gc_enabled`/`next_gc` and every span
+// allocated during const initialization. The result is that the GC stays disabled and
+// the heap grows without bound.
+
+@[cinit]
 __global vgc_heap = VGC_Heap{}
-// Fast bounds check for pointer validation
+// Fast bounds check for pointer validation. Also @[cinit]: otherwise `_vinit()` resets
+// these to 0 after the first arena has already been mapped during const init.
+
+@[cinit]
 __global vgc_arena_lo = usize(0)
+
+@[cinit]
 __global vgc_arena_hi = usize(0)
 
 // ============================================================
@@ -290,7 +312,33 @@ fn vgc_refresh_stack_range_for_sp(cache_idx int, sp usize) {
 
 // Try to get a recycled span from the free list
 fn vgc_get_free_span(npages u32) &VGC_Span {
-	if npages == 0 || npages >= 32 {
+	if npages == 0 {
+		return unsafe { nil }
+	}
+	// Large spans: walk the dedicated list looking for an exact page-count match.
+	if npages >= 32 {
+		C.vgc_mutex_lock(&vgc_heap.free_spans_lock)
+		mut prev := unsafe { &VGC_Span(nil) }
+		mut span := vgc_heap.free_large
+		for span != unsafe { nil } {
+			if span.npages == npages {
+				unsafe {
+					if prev != nil {
+						prev.next = span.next
+					} else {
+						vgc_heap.free_large = span.next
+					}
+					span.next = nil
+					span.prev = nil
+					span.in_use = true
+				}
+				C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
+				return span
+			}
+			prev = span
+			span = span.next
+		}
+		C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
 		return unsafe { nil }
 	}
 	C.vgc_mutex_lock(&vgc_heap.free_spans_lock)
@@ -312,7 +360,7 @@ fn vgc_get_free_span(npages u32) &VGC_Span {
 // Return a fully-empty span to the free list for reuse
 fn vgc_put_free_span(mut span VGC_Span) {
 	npages := span.npages
-	if npages == 0 || npages >= 32 {
+	if npages == 0 {
 		return
 	}
 	// Free bitmaps before zeroing nelems
@@ -331,13 +379,25 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	span.nelems = 0
 	span.alloc_count = 0
 	span.free_index = 0
+	span.noscan = false
+	span.has_ptrmap = false
+	span.ptrmap = 0
+	span.ptr_words = 0
 	// Decommit pages to return physical memory to OS
 	page_bytes := usize(npages) * vgc_page_size
 	C.vgc_os_decommit(voidptr(span.base), page_bytes)
 	C.vgc_mutex_lock(&vgc_heap.free_spans_lock)
-	unsafe {
-		span.next = vgc_heap.free_spans[npages]
-		vgc_heap.free_spans[npages] = span
+	if npages >= 32 {
+		// Large span: keep on the dedicated list, matched by exact page count.
+		unsafe {
+			span.next = vgc_heap.free_large
+			vgc_heap.free_large = span
+		}
+	} else {
+		unsafe {
+			span.next = vgc_heap.free_spans[npages]
+			vgc_heap.free_spans[npages] = span
+		}
 	}
 	C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
 }
@@ -742,8 +802,12 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 				return ptr
 			}
 		}
-		// Allocate a new tiny block
-		span_class := int(class_idx) * 2 + 1 // noscan
+		// Allocate a new tiny block. The block is always vgc_tiny_size bytes (objects
+		// are packed into it up to that offset), so it must come from the size class
+		// that fits vgc_tiny_size - NOT the class for `n`, which may be smaller and
+		// would let packing overflow the slot into the next object.
+		tiny_class := C.vgc_size_class(u32(vgc_tiny_size))
+		span_class := int(tiny_class) * 2 + 1 // noscan
 		span := vgc_cache_get_span(cache_idx, span_class)
 		if span != unsafe { nil } {
 			ptr := unsafe { vgc_span_alloc_obj(mut span) }
@@ -872,6 +936,13 @@ fn vgc_free(ptr voidptr) {
 	if span.elem_size == 0 {
 		return
 	}
+	// Never eagerly free noscan objects. The tiny allocator packs several sub-16-byte
+	// noscan objects (e.g. short map key strings) into one slot that shares a single
+	// alloc bit, so clearing it here would mark still-live neighbours as free and let
+	// the next allocation overwrite them. GC marking reclaims dead noscan objects safely.
+	if span.noscan {
+		return
+	}
 	obj_idx := u32((usize(ptr) - span.base) / usize(span.elem_size))
 	if obj_idx < span.nelems && span.alloc_bits != unsafe { nil } {
 		if C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
@@ -937,17 +1008,22 @@ fn vgc_memdup_noscan(src voidptr, n isize) voidptr {
 
 fn vgc_find_span(ptr voidptr) &VGC_Span {
 	addr := usize(ptr)
-	arena_idx := C.vgc_addr_to_arena(addr)
-	if arena_idx < 0 || arena_idx >= vgc_heap.narenas {
+	// Fast reject: most probed words are not heap pointers at all.
+	if addr < vgc_arena_lo || addr >= vgc_arena_hi {
 		return unsafe { nil }
 	}
-	a := unsafe { &vgc_heap.arenas[arena_idx] }
-	if addr < a.base || addr >= a.base + a.size {
-		return unsafe { nil }
-	}
-	page_idx := (addr - a.base) / vgc_page_size
-	if page_idx < vgc_pages_per_arena {
-		return a.page_span[page_idx]
+	// Locate the owning arena by direct scan. narenas is small (<= 64) and this is
+	// always correct, unlike the address map which fails for high mmap addresses
+	// (idx >= VGC_ADDR_MAP_SIZE) and for arenas that share one map slot.
+	for i in 0 .. vgc_heap.narenas {
+		a := unsafe { &vgc_heap.arenas[i] }
+		if addr >= a.base && addr < a.base + a.size {
+			page_idx := (addr - a.base) / vgc_page_size
+			if page_idx < vgc_pages_per_arena {
+				return a.page_span[page_idx]
+			}
+			return unsafe { nil }
+		}
 	}
 	return unsafe { nil }
 }
@@ -967,12 +1043,13 @@ fn vgc_is_heap_ptr(addr usize) bool {
 	if addr < vgc_arena_lo || addr >= vgc_arena_hi {
 		return false
 	}
-	arena_idx := C.vgc_addr_to_arena(addr)
-	if arena_idx < 0 || arena_idx >= vgc_heap.narenas {
-		return false
+	for i in 0 .. vgc_heap.narenas {
+		a := unsafe { &vgc_heap.arenas[i] }
+		if addr >= a.base && addr < a.base + a.used {
+			return true
+		}
 	}
-	a := unsafe { &vgc_heap.arenas[arena_idx] }
-	return addr >= a.base && addr < a.base + a.used
+	return false
 }
 
 // Safepoint: called when GC needs threads to stop

@@ -1,0 +1,11 @@
+struct Bar[T] {
+	val T
+}
+
+fn is_zero[T](val T) bool {
+	return val == $zero(Bar[T])
+}
+
+fn main() {
+	assert !is_zero(Bar[int]{42})
+}

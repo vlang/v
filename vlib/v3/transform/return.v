@@ -148,17 +148,74 @@ fn (mut t Transformer) return_values_from_ids(ids []flat.NodeId) []flat.NodeId {
 	return vals
 }
 
-// return_expr_is_err supports return expr is err handling for Transformer.
-fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
-	if int(id) < 0 {
+fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind != .ident || node.value != 'err' {
+	actual_type := t.return_ierror_expr_type(id)
+	if actual_type.len == 0 {
 		return false
 	}
-	typ := node.typ
-	return typ == 'IError' || typ.ends_with('.IError')
+	// Explicit error construction and the active implicit `err` binding denote
+	// failure. Other IError-compatible values can instead be successful payloads
+	// when the surrounding result expects their type (for example `!IError`).
+	if t.is_error_call(node)
+		|| (node.kind == .ident && node.value == 'err' && t.implicit_err_binding_active()) {
+		return true
+	}
+	if payload_type.len == 0 || payload_type == 'unknown' || payload_type.contains('unknown') {
+		return true
+	}
+	return !t.resolved_receiver_arg_compatible(id, actual_type, payload_type)
+}
+
+fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	primary_type := match node.kind {
+		.struct_init, .cast_expr, .as_expr {
+			node.value
+		}
+		.ident {
+			t.var_type(node.value)
+		}
+		.call {
+			t.get_call_return_type(id, node)
+		}
+		else {
+			''
+		}
+	}
+	if typ := t.return_ierror_type_candidate(primary_type) {
+		return typ
+	}
+	for typ in [node.typ, t.raw_checker_node_type(id), t.original_expr_type(id),
+		t.node_type(id)] {
+		if candidate := t.return_ierror_type_candidate(typ) {
+			return candidate
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) return_ierror_type_candidate(typ string) ?string {
+	if typ.len == 0 || typ == 'unknown' || typ.contains('unknown') {
+		return none
+	}
+	if t.is_ierror_type(typ) {
+		return typ
+	}
+	if !t.is_type_alias_name(t.trim_pointer_type(typ)) {
+		return none
+	}
+	resolved := t.alias_str_resolved_base_type(typ)
+	if resolved != typ && t.is_ierror_type(resolved) {
+		return resolved
+	}
+	return none
 }
 
 fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {
@@ -249,7 +306,8 @@ fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.
 	}
 	mut needs_conversion := false
 	for i, actual_type in actual_types {
-		if actual_type.name() != expected_types[i].name() {
+		if actual_type.name() != expected_types[i].name()
+			&& t.forwarded_slot_conversion_supported(actual_type, expected_types[i]) {
 			needs_conversion = true
 			break
 		}
@@ -304,7 +362,8 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 	actual_types := t.multi_return_types_for_expr(value_id, expected_types.len) or { return none }
 	mut needs_conversion := false
 	for i, actual_type in actual_types {
-		if actual_type.name() != expected_types[i].name() {
+		if actual_type.name() != expected_types[i].name()
+			&& t.forwarded_slot_conversion_supported(actual_type, expected_types[i]) {
 			needs_conversion = true
 			break
 		}
@@ -328,6 +387,9 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 }
 
 fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, actual types.Type, expected types.Type) flat.NodeId {
+	if !t.forwarded_slot_conversion_supported(actual, expected) {
+		return t.transform_expr(value_id)
+	}
 	actual_base := forwarded_return_unalias_type(actual)
 	expected_base := forwarded_return_unalias_type(expected)
 	if actual_base is types.OptionType && expected_base is types.OptionType
@@ -361,7 +423,81 @@ fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, act
 		|| actual_base.value_type.name() != expected_base.value_type.name()) {
 		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base)
 	}
+	if expected_base is types.SumType
+		&& t.sum_target_accepts_variant_type(expected_base.name, actual_base.name()) {
+		return t.wrap_sum_value(value_id, expected_base.name)
+	}
 	return t.transform_expr_for_type(value_id, expected.name())
+}
+
+fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expected types.Type) bool {
+	if forwarded_return_type_is_unresolved(actual) || forwarded_return_type_is_unresolved(expected) {
+		return false
+	}
+	actual_base := forwarded_return_unalias_type(actual)
+	expected_base := forwarded_return_unalias_type(expected)
+	if actual_base.name() == expected_base.name() {
+		return false
+	}
+	if actual_base.is_integer() && expected_base.is_integer() {
+		return true
+	}
+	if expected_base is types.Interface {
+		return true
+	}
+	if expected_base is types.SumType {
+		return t.sum_target_accepts_variant_type(expected_base.name, actual_base.name())
+			|| t.sum_target_accepts_variant_type(expected_base.name, actual.name())
+	}
+	if actual_base is types.OptionType && expected_base is types.OptionType {
+		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+	}
+	if actual_base is types.ResultType && expected_base is types.ResultType {
+		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+	}
+	if expected_base is types.Array {
+		if actual_base is types.Array {
+			return t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type)
+		}
+		if actual_base is types.ArrayFixed {
+			return t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type)
+		}
+	}
+	if actual_base is types.ArrayFixed && expected_base is types.ArrayFixed {
+		return t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
+	}
+	if actual_base is types.Map && expected_base is types.Map {
+		return t.forwarded_slot_conversion_supported(actual_base.key_type, expected_base.key_type)
+			|| t.forwarded_slot_conversion_supported(actual_base.value_type, expected_base.value_type)
+	}
+	return false
+}
+
+fn forwarded_return_type_is_unresolved(typ types.Type) bool {
+	base := forwarded_return_unalias_type(typ)
+	name := base.name().trim_space()
+	if name == 'unknown' || name.ends_with('.unknown') || is_generic_placeholder_type_name(name) {
+		return true
+	}
+	if base is types.OptionType {
+		return forwarded_return_type_is_unresolved(base.base_type)
+	}
+	if base is types.ResultType {
+		return forwarded_return_type_is_unresolved(base.base_type)
+	}
+	if base is types.Array {
+		return forwarded_return_type_is_unresolved(base.elem_type)
+	}
+	if base is types.ArrayFixed {
+		return forwarded_return_type_is_unresolved(base.elem_type)
+	}
+	if base is types.Map {
+		return forwarded_return_type_is_unresolved(base.key_type)
+			|| forwarded_return_type_is_unresolved(base.value_type)
+	}
+	return false
 }
 
 fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, actual_type types.Type, actual_payload types.Type, expected_type types.Type, expected_wrapper types.Type, expected_payload types.Type) flat.NodeId {
@@ -749,13 +885,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	} else {
 		tail_expr
 	}
-	// Convert a fixed-array branch value (e.g. a fixed-array const) to a dynamic
-	// array when the function returns `[]T`, matching a plain `return <expr>`.
-	ret_val := if converted := t.fixed_array_return_value(actual_tail) {
-		converted
-	} else {
-		t.wrap_sum_return_expr(actual_tail)
-	}
+	ret_val := t.transform_return_child(actual_tail, 0, 1)
 	t.drain_pending(mut all)
 	all << t.make_transformed_return(ret_val, ret_typ, source_return_id)
 	return t.make_block(all)
@@ -843,6 +973,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	is_id := t.a.add_node(flat.Node{
 		kind:           .is_expr
 		value:          variant_name
+		typ:            'match_exact'
 		children_start: is_start
 		children_count: 1
 	})

@@ -2,15 +2,44 @@ module multiwindow
 
 import os
 
+const err_backend_event_sequence_exhausted = 'multiwindow: native event sequence exhausted'
+
 struct Backend {
 mut:
-	kind                       BackendKind
-	allow_mock_render_fallback bool
-	mock                       MockBackend
-	x11                        X11Backend
-	wayland                    WaylandBackend
-	appkit                     AppKitBackend
-	win32                      Win32Backend
+	kind                            BackendKind
+	allow_mock_render_fallback      bool
+	native_operations               NativeOperationAuthority
+	teardown_notices                []BackendTeardownNotice
+	pending_delivery                []QueuedEvent
+	pending_delivery_active         bool
+	pending_delivery_teardown_count int
+	pending_delivery_error          string
+	mock                            MockBackend
+	x11                             X11Backend
+	wayland                         WaylandBackend
+	appkit                          AppKitBackend
+	win32                           Win32Backend
+}
+
+fn (mut backend Backend) publish_native_operation_authority() {
+	unsafe {
+		authority := &backend.native_operations
+		backend.x11.native_operations = authority
+		backend.wayland.native_operations = authority
+		backend.appkit.native_operations = authority
+		backend.win32.native_operations = authority
+	}
+}
+
+fn (mut backend Backend) bind_app_native_operations(app_identity u64, app_lifetime_token u64, initial_renderer_attempt_token u64) ! {
+	backend.native_operations.bind_app_lifetime(app_identity, app_lifetime_token)!
+	backend.native_operations.advance_renderer_attempt(app_identity, initial_renderer_attempt_token)!
+	backend.publish_native_operation_authority()
+}
+
+fn (mut backend Backend) advance_renderer_native_operations(app_identity u64, renderer_attempt_token u64) ! {
+	backend.native_operations.advance_renderer_attempt(app_identity, renderer_attempt_token)!
+	backend.publish_native_operation_authority()
 }
 
 fn new_backend(kind BackendKind, require_renderer bool) !Backend {
@@ -179,6 +208,26 @@ fn (mut backend Backend) capabilities_for_renderer_requirement(require_renderer 
 	if !multiwindow_render_enabled() {
 		return error(err_renderer_unsupported)
 	}
+	probe_identity := allocate_app_instance_id()!
+	backend.bind_app_native_operations(probe_identity, 1, 2)!
+	return match backend.kind {
+		.auto {
+			error(err_backend_unsupported)
+		}
+		.mock {
+			if backend.allow_mock_render_fallback {
+				backend.mock.capabilities()
+			} else {
+				error(err_renderer_unsupported)
+			}
+		}
+		.x11, .wayland, .appkit, .win32 {
+			backend.probe_renderer_capabilities()!
+		}
+	}
+}
+
+fn (mut backend Backend) probe_renderer_capabilities() !Capabilities {
 	return match backend.kind {
 		.auto {
 			error(err_backend_unsupported)
@@ -191,28 +240,16 @@ fn (mut backend Backend) capabilities_for_renderer_requirement(require_renderer 
 			}
 		}
 		.x11 {
-			backend.x11.start(true)!
-			caps := backend.x11.capabilities()
-			backend.x11.stop()!
-			caps
+			backend.x11.probe_renderer_capabilities()!
 		}
 		.wayland {
-			backend.wayland.start(true)!
-			caps := backend.wayland.capabilities()
-			backend.wayland.stop()!
-			caps
+			backend.wayland.probe_renderer_capabilities()!
 		}
 		.appkit {
-			backend.appkit.start(true)!
-			caps := backend.appkit.capabilities()
-			backend.appkit.stop()!
-			caps
+			backend.appkit.probe_renderer_capabilities()!
 		}
 		.win32 {
-			backend.win32.start(true)!
-			caps := backend.win32.capabilities()
-			backend.win32.stop()!
-			caps
+			backend.win32.probe_renderer_capabilities()!
 		}
 	}
 }
@@ -229,7 +266,22 @@ fn (backend &Backend) ensure_supported() ! {
 }
 
 fn (mut backend Backend) start(require_renderer bool) ! {
+	backend.start_attempt(require_renderer) or {
+		start_error := err.msg()
+		close_error := backend.close_start_attempt()
+		return error(merge_backend_errors(start_error, close_error))
+	}
+}
+
+fn (mut backend Backend) start_attempt(require_renderer bool) ! {
 	backend.ensure_supported()!
+	if backend.kind != .mock && !backend.native_operations.owner_thread_is_current() {
+		return error(err_owner_thread_required)
+	}
+	if backend.kind == .appkit {
+		backend.appkit.prevalidate_start_attempt()!
+	}
+	backend.ensure_event_sequence_available()!
 	if require_renderer && !multiwindow_render_enabled() {
 		return error(err_renderer_unsupported)
 	}
@@ -256,35 +308,55 @@ fn (mut backend Backend) start(require_renderer bool) ! {
 			backend.win32.start(require_renderer)!
 		}
 	}
+
+	if backend.kind != .appkit && backend.kind != .win32 {
+		backend.ensure_event_sequence_available()!
+	}
 }
 
 fn (mut backend Backend) create_window(id WindowId, config WindowConfig) !WindowSize {
+	backend.ensure_event_sequence_available()!
 	caps := backend.capabilities()
 	if !caps.multi_window {
 		return error(err_capability_unsupported)
 	}
-	match backend.kind {
+	size := match backend.kind {
 		.auto { return error(err_backend_unsupported) }
-		.mock { return backend.mock.create_window(id, config)! }
-		.x11 { return backend.x11.create_window(id, config)! }
-		.wayland { return backend.wayland.create_window(id, config)! }
-		.appkit { return backend.appkit.create_window(id, config)! }
-		.win32 { return backend.win32.create_window(id, config)! }
+		.mock { backend.mock.create_window(id, config)! }
+		.x11 { backend.x11.create_window(id, config)! }
+		.wayland { backend.wayland.create_window(id, config)! }
+		.appkit { backend.appkit.create_window(id, config)! }
+		.win32 { backend.win32.create_window(id, config)! }
 	}
+
+	backend.ensure_event_sequence_available()!
+	return size
 }
 
 fn (mut backend Backend) destroy_window(id WindowId) ! {
+	backend.finish_window_teardown(id)!
+}
+
+fn (mut backend Backend) finish_window_teardown(id WindowId) ! {
+	mut operation_error := ''
 	match backend.kind {
 		.auto { return error(err_backend_unsupported) }
-		.mock { backend.mock.destroy_window(id)! }
-		.x11 { backend.x11.destroy_window(id)! }
-		.wayland { backend.wayland.destroy_window(id)! }
-		.appkit { backend.appkit.destroy_window(id)! }
-		.win32 { backend.win32.destroy_window(id)! }
+		.mock { backend.mock.finish_window_teardown(id) or { operation_error = err.msg() } }
+		.x11 { backend.x11.finish_window_teardown(id) or { operation_error = err.msg() } }
+		.wayland { backend.wayland.finish_window_teardown(id) or { operation_error = err.msg() } }
+		.appkit { backend.appkit.finish_window_teardown(id) or { operation_error = err.msg() } }
+		.win32 { backend.win32.finish_window_teardown(id) or { operation_error = err.msg() } }
+	}
+
+	sequence_error := backend.event_sequence_terminal_error()
+	terminal := merge_backend_errors(operation_error, sequence_error)
+	if terminal != '' {
+		return error(terminal)
 	}
 }
 
 fn (mut backend Backend) set_window_title(id WindowId, title string) ! {
+	backend.ensure_event_sequence_available()!
 	match backend.kind {
 		.auto { return error(err_backend_unsupported) }
 		.mock { backend.mock.set_window_title(id, title)! }
@@ -293,17 +365,23 @@ fn (mut backend Backend) set_window_title(id WindowId, title string) ! {
 		.appkit { backend.appkit.set_window_title(id, title)! }
 		.win32 { backend.win32.set_window_title(id, title)! }
 	}
+
+	backend.ensure_event_sequence_available()!
 }
 
 fn (mut backend Backend) resize_window(id WindowId, width int, height int) !WindowSize {
-	match backend.kind {
+	backend.ensure_event_sequence_available()!
+	size := match backend.kind {
 		.auto { return error(err_backend_unsupported) }
-		.mock { return backend.mock.resize_window(id, width, height)! }
-		.x11 { return backend.x11.resize_window(id, width, height)! }
-		.wayland { return backend.wayland.resize_window(id, width, height)! }
-		.appkit { return backend.appkit.resize_window(id, width, height)! }
-		.win32 { return backend.win32.resize_window(id, width, height)! }
+		.mock { backend.mock.resize_window(id, width, height)! }
+		.x11 { backend.x11.resize_window(id, width, height)! }
+		.wayland { backend.wayland.resize_window(id, width, height)! }
+		.appkit { backend.appkit.resize_window(id, width, height)! }
+		.win32 { backend.win32.resize_window(id, width, height)! }
 	}
+
+	backend.ensure_event_sequence_available()!
+	return size
 }
 
 fn (backend &Backend) window_native_decorations(id WindowId, config WindowConfig) !bool {
@@ -321,6 +399,7 @@ fn (backend &Backend) window_native_decorations(id WindowId, config WindowConfig
 }
 
 fn (mut backend Backend) set_window_cursor(id WindowId, shape CursorShape) ! {
+	backend.ensure_event_sequence_available()!
 	match backend.kind {
 		.auto { return error(err_backend_unsupported) }
 		.mock { backend.mock.set_window_cursor(id, shape)! }
@@ -329,61 +408,142 @@ fn (mut backend Backend) set_window_cursor(id WindowId, shape CursorShape) ! {
 		.appkit { backend.appkit.set_window_cursor(id, shape)! }
 		.win32 { backend.win32.set_window_cursor(id, shape)! }
 	}
+
+	backend.ensure_event_sequence_available()!
 }
 
 fn (mut backend Backend) begin_window_move(id WindowId) ! {
+	backend.ensure_event_sequence_available()!
 	match backend.kind {
 		.wayland { backend.wayland.begin_window_move(id)! }
 		.auto { return error(err_backend_unsupported) }
 		else { return error(err_capability_unsupported) }
 	}
+
+	backend.ensure_event_sequence_available()!
 }
 
 fn (mut backend Backend) begin_window_resize(id WindowId, edge WindowResizeEdge) ! {
+	backend.ensure_event_sequence_available()!
 	match backend.kind {
 		.wayland { backend.wayland.begin_window_resize(id, edge)! }
 		.auto { return error(err_backend_unsupported) }
 		else { return error(err_capability_unsupported) }
 	}
-}
 
-fn (mut backend Backend) poll_events() ![]Event {
-	match backend.kind {
-		.auto { return error(err_backend_unsupported) }
-		.mock { return backend.mock.poll_events()! }
-		.x11 { return backend.x11.poll_events()! }
-		.wayland { return backend.wayland.poll_events()! }
-		.appkit { return backend.appkit.poll_events()! }
-		.win32 { return backend.win32.poll_events()! }
-	}
+	backend.ensure_event_sequence_available()!
 }
 
 fn (mut backend Backend) poll_queued_events() ![]QueuedEvent {
-	match backend.kind {
+	if backend.pending_delivery_active {
+		if backend.kind != .appkit {
+			backend.pending_delivery_error = merge_backend_errors(backend.pending_delivery_error,
+				backend.event_sequence_terminal_error())
+		}
+		return backend.pending_delivery.clone()
+	}
+	mut events := match backend.kind {
+		.auto {
+			return error(err_backend_unsupported)
+		}
 		.mock {
-			return backend.mock.poll_queued_events()!
+			backend.mock.poll_queued_events()!
 		}
 		.x11 {
-			return backend.x11.poll_queued_events()!
+			backend.x11.poll_queued_events()!
 		}
 		.wayland {
-			return backend.wayland.poll_queued_events()!
+			backend.wayland.poll_queued_events()!
 		}
 		.appkit {
-			return backend.appkit.poll_queued_events()!
+			backend.appkit.poll_queued_events()!
 		}
 		.win32 {
-			return backend.win32.poll_queued_events()!
-		}
-		else {
-			events := backend.poll_events()!
-			mut queued_events := []QueuedEvent{cap: events.len}
-			for event in events {
-				queued_events << queued_lifecycle_event(event)
-			}
-			return queued_events
+			backend.win32.poll_queued_events()!
 		}
 	}
+
+	deferred_error := match backend.kind {
+		.wayland { backend.wayland.take_poll_error() }
+		.appkit { backend.appkit.take_poll_error() }
+		.win32 { backend.win32.take_poll_error() }
+		else { '' }
+	}
+
+	teardown_count := backend.teardown_notices.len
+	for notice in backend.teardown_notices {
+		events << queued_lifecycle_event(Event{
+			kind:      .window_destroyed
+			window_id: notice.window
+		})
+	}
+	backend.pending_delivery = events.clone()
+	backend.pending_delivery_active = true
+	backend.pending_delivery_teardown_count = teardown_count
+	backend.pending_delivery_error = deferred_error
+	return events
+}
+
+fn (mut backend Backend) event_sequence_terminal_error() string {
+	return match backend.kind {
+		.wayland { backend.wayland.event_sequence_terminal_error() }
+		.appkit { backend.appkit.event_sequence_terminal_error() }
+		.win32 { backend.win32.event_sequence_terminal_error() }
+		else { '' }
+	}
+}
+
+fn (mut backend Backend) ensure_event_sequence_available() ! {
+	terminal_error := backend.event_sequence_terminal_error()
+	if terminal_error != '' {
+		return error(terminal_error)
+	}
+}
+
+fn merge_backend_errors(first string, second string) string {
+	if first == '' {
+		return second
+	}
+	if second == '' || second == first {
+		return first
+	}
+	return '${first}; ${second}'
+}
+
+// acknowledge_queued_events releases only the batch durably applied by App.
+// Native callbacks or teardown records appended after that batch remain queued.
+fn (mut backend Backend) acknowledge_queued_events() string {
+	if !backend.pending_delivery_active {
+		return ''
+	}
+	deferred_error := backend.pending_delivery_error
+	count := backend.pending_delivery_teardown_count
+	if count > 0 {
+		if count >= backend.teardown_notices.len {
+			backend.teardown_notices.clear()
+		} else {
+			backend.teardown_notices = backend.teardown_notices[count..].clone()
+		}
+	}
+	backend.pending_delivery.clear()
+	backend.pending_delivery_active = false
+	backend.pending_delivery_teardown_count = 0
+	backend.pending_delivery_error = ''
+	return deferred_error
+}
+
+// retained_delivery_error_for_stop observes errors without releasing a batch
+// which has not yet been promoted into App delivery storage.
+fn (mut backend Backend) retained_delivery_error_for_stop() string {
+	deferred_error := backend.pending_delivery_error
+	platform_error := match backend.kind {
+		.wayland { backend.wayland.take_poll_error() }
+		.appkit { backend.appkit.take_poll_error() }
+		.win32 { backend.win32.take_poll_error() }
+		else { '' }
+	}
+
+	return merge_backend_errors(deferred_error, platform_error)
 }
 
 fn (mut backend Backend) stop() ! {
@@ -394,5 +554,60 @@ fn (mut backend Backend) stop() ! {
 		.wayland { backend.wayland.stop()! }
 		.appkit { backend.appkit.stop()! }
 		.win32 { backend.win32.stop()! }
+	}
+}
+
+fn (mut backend Backend) close_start_attempt() string {
+	return backend.close_start_attempt_once()
+}
+
+// Each branch closes the resources its platform start attempt can acquire before
+// returning diagnostics to Backend.start or the capability probe.
+fn (mut backend Backend) close_start_attempt_once() string {
+	mut close_error := ''
+	match backend.kind {
+		.auto {
+			close_error = err_backend_unsupported
+		}
+		.mock {
+			backend.mock.stop() or { close_error = merge_backend_errors(close_error, err.msg()) }
+		}
+		.x11 {
+			close_error = backend.x11.close_start_attempt()
+		}
+		.wayland {
+			close_error = backend.wayland.close_start_attempt()
+		}
+		.appkit {
+			close_error = backend.appkit.close_start_attempt()
+		}
+		.win32 {
+			close_error = backend.win32.close_start_attempt()
+		}
+	}
+
+	return close_error
+}
+
+fn (backend &Backend) start_attempt_closed() bool {
+	platform_closed := match backend.kind {
+		.auto { true }
+		.mock { backend.mock.windows.len == 0 && backend.mock.pending_events.len == 0 }
+		.x11 { backend.x11.start_attempt_closed() }
+		.wayland { backend.wayland.start_attempt_closed() }
+		.appkit { backend.appkit.start_attempt_closed() }
+		.win32 { backend.win32.start_attempt_closed() }
+	}
+
+	return platform_closed && !backend.native_operations.has_live_lifetime_tickets()
+}
+
+fn (backend &Backend) retains_native_ownership_for_stop() bool {
+	return match backend.kind {
+		.x11 { backend.x11.retains_native_ownership() }
+		.wayland { backend.wayland.retains_native_ownership() }
+		.appkit { backend.appkit.retains_native_ownership() }
+		.win32 { backend.win32.retains_native_ownership() }
+		else { false }
 	}
 }

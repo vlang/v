@@ -57,13 +57,17 @@ pub fn profiler_is_enabled() bool {
 // frame_end signals the end of a frame and collects frame data
 // Call this at the end of each game/application frame
 pub fn frame_end() {
-	if profiler_state.mu == unsafe { nil } || !profiler_state.enabled {
+	if profiler_state.mu == unsafe { nil } {
 		return
 	}
 
 	profiler_state.mu.lock()
 	defer {
 		profiler_state.mu.unlock()
+	}
+	// Read `enabled` under the lock to avoid racing enable/disable.
+	if !profiler_state.enabled {
+		return
 	}
 
 	// Finalize current frame's live bytes

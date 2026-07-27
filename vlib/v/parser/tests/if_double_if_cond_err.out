@@ -1,0 +1,7 @@
+vlib/v/parser/tests/if_double_if_cond_err.vv:6:12: error: the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?
+    4 |     if x == 1 {
+    5 |         commands << 'a'
+    6 |     } else if if x == 2 {
+      |               ~~
+    7 |         commands << 'b'
+    8 |     }

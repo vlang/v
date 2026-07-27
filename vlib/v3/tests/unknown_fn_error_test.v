@@ -8,7 +8,7 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 // test_unknown_function_stops_in_type_checker validates this v3 regression case.
 fn test_unknown_function_stops_in_type_checker() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_unknown_fn_error_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0
 
 	bad_src := os.join_path(os.temp_dir(), 'v3_unknown_fn_error_input.v')

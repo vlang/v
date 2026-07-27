@@ -4489,22 +4489,54 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				// (for example Linux OpenSSL headers when targeting Windows).
 				return
 			}
-			args := if node.main.contains('--') {
-				node.main.split(' ')
+			raw_args := node.main.split(' ')
+			mut parsed := pkgconfig.main(raw_args) or {
+				c.error(err.msg(), node.pos)
+				return
+			}
+			static_mode := c.pref.pkgconfig_mode == .static_ || parsed.link_mode() == .static_
+			if !static_mode {
+				args := if node.main.contains('--') {
+					raw_args
+				} else {
+					'--cflags --libs ${node.main}'.split(' ')
+				}
+				mut m := pkgconfig.main(args) or {
+					c.error(err.msg(), node.pos)
+					return
+				}
+				cflags := m.run() or {
+					c.error(err.msg(), node.pos)
+					return
+				}
+				c.table.parse_cflag_with_link_segment(cflags, c.mod, c.pref.compile_defines_all) or {
+					c.error(err.msg(), node.pos)
+					return
+				}
 			} else {
-				'--cflags --libs ${node.main}'.split(' ')
-			}
-			mut m := pkgconfig.main(args) or {
-				c.error(err.msg(), node.pos)
-				return
-			}
-			cflags := m.run() or {
-				c.error(err.msg(), node.pos)
-				return
-			}
-			c.table.parse_cflag(cflags, c.mod, c.pref.compile_defines_all) or {
-				c.error(err.msg(), node.pos)
-				return
+				if c.pref.pkgconfig_mode == .static_ {
+					parsed.force_static()
+				}
+				if !parsed.has_actions {
+					parsed.apply_default_actions()
+				}
+				result := parsed.run_result() or {
+					c.error(err.msg(), node.pos)
+					return
+				}
+				if result.cflags.len > 0 {
+					c.table.parse_cflag(result.cflags.join(' '), c.mod, c.pref.compile_defines_all) or {
+						c.error(err.msg(), node.pos)
+						return
+					}
+				}
+				if result.link_flags.len > 0 {
+					c.table.parse_pkgconfig_link_flags(result.link_flags, c.mod,
+						c.pref.compile_defines_all) or {
+						c.error(err.msg(), node.pos)
+						return
+					}
+				}
 			}
 		}
 		'flag' {
@@ -4514,7 +4546,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				c.error('no argument(s) provided for #flag', node.pos)
 			}
 			flag = c.resolve_pseudo_variables(flag, node.pos) or { return }
-			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
+			c.table.parse_cflag_with_link_segment(flag, c.mod, c.pref.compile_defines_all) or {
 				c.error(err.msg(), node.pos)
 			}
 		}
@@ -5456,6 +5488,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		&& to_type.flags() == from_type.flags() {
 		// type alias, and flags are same, e.g. option, result, nr_muls...
 		return node.typ
+	}
+
+	unaliased_from_type := c.table.fully_unaliased_type(from_type)
+	unaliased_to_type := c.table.fully_unaliased_type(to_type)
+	if unaliased_from_type.is_any_kind_of_pointer() && !unaliased_to_type.is_any_kind_of_pointer()
+		&& final_to_sym.kind in [.array, .array_fixed] {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast pointer type `${ft}` to array type `${tt}`', node.pos)
 	}
 
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()

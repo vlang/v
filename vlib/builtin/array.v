@@ -495,6 +495,11 @@ fn (a array) needs_unique_shrink() bool {
 	return a.flags.has(.is_slice) || a.buffer_has_slices()
 }
 
+@[inline]
+fn (a array) is_slice_view() bool {
+	return a.flags.has(.is_slice)
+}
+
 // insert inserts a value in the array at index `i` and increases
 // the index of subsequent elements by 1.
 //

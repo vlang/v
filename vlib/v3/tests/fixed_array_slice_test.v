@@ -9,7 +9,7 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 // side-effecting bound expressions are not run multiple times in the generated C.
 fn test_fixed_array_slice_evaluates_bounds_once() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_slice_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	src := '

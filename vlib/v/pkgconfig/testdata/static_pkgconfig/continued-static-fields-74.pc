@@ -1,0 +1,14 @@
+continued_libs=-lissue74_cont_var_a \
+    -lissue74_cont_var_b
+odd_backslashes=left\\\
+    right
+even_backslashes=left\\
+# An even trailing pair is data, not a continuation marker.
+
+Name: continued-static-fields-74
+Description: Static physical-line continuation fixture
+Version: 1.0.0
+Libs: -L/issue74/continued -lissue74_cont_public_a \
+    -lissue74_cont_public_b ${continued_libs}
+Libs.private: -lissue74_cont_private_a \
+    -lissue74_cont_private_b

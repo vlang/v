@@ -1,0 +1,6 @@
+linkflags=-lissue74_expanded_a -lissue74_expanded_b
+
+Name: expanded-link-flags-74
+Description: Expanded static linker flag list fixture
+Version: 1.0.0
+Libs: ${linkflags}

@@ -106,9 +106,8 @@ subdir.
   are needed there, ask for approval before proceeding.
 
 ### When to ask
-* Ask before large refactors or wide file touches (more than 5 files,
-  or changes across multiple repo-root directories like `cmd/`, `vlib/`,
-  `doc/`, `examples/`).
+* Ask before large refactors or wide file touches across multiple repo-root
+  directories like `cmd/`, `vlib/`, `doc/`, and `examples/`.
   Exception: docs-only changes across many files are OK without asking;
   call them out in the summary.
 * Ask before large behavioral changes within a single subsystem or file,

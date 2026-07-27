@@ -87,10 +87,12 @@ const libc_collisions = {
 	'open':     true
 	'pipe':     true
 	'pow':      true
+	'printf':   true
 	'read':     true
 	'realpath': true
 	'rint':     true
 	'scalb':    true
+	'send':     true
 	'setenv':   true
 	'signal':   true
 	'snprintf': true
@@ -101,6 +103,7 @@ const libc_collisions = {
 	'strncpy':  true
 	'strrchr':  true
 	'strstr':   true
+	'wait':     true
 	'y0':       true
 	'y1':       true
 	'yn':       true
@@ -124,14 +127,8 @@ pub fn c_name(name string) string {
 	if name == 'exit' {
 		return 'v_exit'
 	}
-	if is_plain_identifier(name) {
-		if name in reserved_words || name in libc_collisions {
-			return 'v_${name}'
-		}
-		return name
-	}
 	n := sanitize(name)
-	if n in reserved_words || n in libc_collisions {
+	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
 		if name.contains('@') {
 			return '_v_${n}'
 		}
@@ -140,9 +137,52 @@ pub fn c_name(name string) string {
 	return n
 }
 
+fn is_string_literal_symbol(name string) bool {
+	if name.len <= 5 || !name.starts_with('_str_') {
+		return false
+	}
+	for i in 5 .. name.len {
+		if name[i] < `0` || name[i] > `9` {
+			return false
+		}
+	}
+	return true
+}
+
 // sanitize converts a V symbol or type spelling into a C identifier spelling
 // without applying reserved-word or libc collision prefixes.
 pub fn sanitize(name string) string {
+	mut dot_count := 0
+	for i in 0 .. name.len {
+		c := name[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+			continue
+		}
+		if c != `.` {
+			return sanitize_complex(name)
+		}
+		dot_count++
+	}
+	if dot_count == 0 {
+		return name
+	}
+	mut out := []u8{len: name.len + dot_count}
+	mut dst := 0
+	for i in 0 .. name.len {
+		c := name[i]
+		if c == `.` {
+			out[dst] = `_`
+			out[dst + 1] = `_`
+			dst += 2
+		} else {
+			out[dst] = c
+			dst++
+		}
+	}
+	return out.bytestr()
+}
+
+fn sanitize_complex(name string) string {
 	mut b := strings.new_builder(name.len + 8)
 	mut i := 0
 	for i < name.len {
@@ -160,6 +200,16 @@ pub fn sanitize(name string) string {
 		} else if c == `.` {
 			if i + 1 < name.len {
 				next := name[i + 1]
+				if next == `[` && i + 2 < name.len && name[i + 2] == `]` {
+					if i + 3 < name.len && name[i + 3] == `=` {
+						b.write_string('__op_index_set')
+						i += 4
+						continue
+					}
+					b.write_string('__op_index')
+					i += 3
+					continue
+				}
 				if next == `-` {
 					b.write_string('__minus')
 					i += 2
@@ -247,12 +297,19 @@ pub fn sanitize(name string) string {
 			b.write_string('__')
 		} else if c == `&` {
 			b.write_string('ptr')
+		} else if c == `?` {
+			b.write_string('Optional_')
+		} else if c == `!` {
+			b.write_string('Result_')
 		} else if c == `@` {
 			b.write_string('_v_')
 		} else if c == `,` || c == ` ` {
 			b.write_u8(`_`)
-		} else {
+		} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+			|| (c >= `0` && c <= `9`) || c == `_` {
 			b.write_u8(c)
+		} else {
+			b.write_u8(`_`)
 		}
 		i++
 	}
@@ -304,4 +361,13 @@ pub fn type_name_part(s string) string {
 		}
 	}
 	return b.bytestr()
+}
+
+// fn_ptr_type_name returns the stable C typedef name for an encoded function-pointer signature.
+pub fn fn_ptr_type_name(encoded string) string {
+	mut hash := u64(1469598103934665603)
+	for c in encoded.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_fn_ptr_${hash.hex()}'
 }

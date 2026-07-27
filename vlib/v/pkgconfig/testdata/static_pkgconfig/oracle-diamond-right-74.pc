@@ -1,0 +1,6 @@
+Name: oracle-diamond-right-74
+Description: Right public diamond consumer
+Version: 1.0.0
+Requires: oracle-diamond-common-74
+Libs: -loracle_diamond_right
+Cflags: -DORACLE_DIAMOND_RIGHT

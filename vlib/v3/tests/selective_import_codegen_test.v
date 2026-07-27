@@ -6,7 +6,17 @@ const selective_import_v3_dir = os.dir(selective_import_tests_dir)
 const selective_import_vlib_dir = os.dir(selective_import_v3_dir)
 const selective_import_v3_src = os.join_path(selective_import_v3_dir, 'v3.v')
 
+fn selective_import_setup_v3_cache() {
+	cache_dir := os.join_path(os.temp_dir(), 'v3_selective_import_cache_${os.getpid()}')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
+
 fn selective_import_build_v3() string {
+	selective_import_setup_v3_cache()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
@@ -64,7 +74,7 @@ fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -84,7 +94,7 @@ fn selective_import_compile_bad_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_bad_root(v3_bin string, name string, root string) string {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	return compile.output
@@ -937,10 +947,79 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == 'on'
-	assert generated.contains('return mode == 7;'), generated
-	assert generated.contains('is_on(7)'), generated
-	assert !generated.contains('return mode == 70;'), generated
-	assert !generated.contains('is_on(70)'), generated
+	assert generated.contains('return mode == geometry__Mode__on;'), generated
+	assert generated.contains('is_on(geometry__Mode__on)'), generated
+	assert !generated.contains('return mode == pixels__Mode__on;'), generated
+	assert !generated.contains('is_on(pixels__Mode__on)'), generated
+}
+
+fn test_selective_import_enum_from_uses_selected_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_from', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn main() {
+	mode := Mode.from(8) or { panic(err) }
+	println(mode)
+	string_mode := Mode.from("on") or { panic(err) }
+	println(string_mode)
+}
+',
+		selective_import_type_collision_modules())
+	assert output == 'off\non'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_module_qualified_enum_from_uses_imported_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'qualified_enum_from', 'module main
+
+import colors
+
+fn main() {
+	numeric := colors.Color.from(1) or { panic(err) }
+	println(numeric)
+	text := colors.Color.from("red") or { panic(err) }
+	println(text)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+'
+	})
+	assert output == 'blue\nred'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_selective_imported_enum_alias_from_string() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_alias_from_string', 'module main
+
+import colors { Hue }
+
+fn main() {
+	value := Hue.from("blue") or { panic(err) }
+	println(value)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+
+pub type Hue = Color
+'
+	})
+	assert output == 'blue'
+	assert !generated.contains('unknown__from'), generated
 }
 
 fn test_selective_import_resolves_flag_enum_collision() {

@@ -9,8 +9,9 @@ enum GfxRenderOwner {
 
 struct GfxRenderOwnerState {
 mut:
-	kind  GfxRenderOwner
-	token voidptr
+	kind     GfxRenderOwner
+	token    voidptr
+	poisoned bool
 }
 
 __global gg_gfx_render_owner = GfxRenderOwnerState{}
@@ -18,6 +19,9 @@ __global gg_gfx_render_owner = GfxRenderOwnerState{}
 fn gg_claim_gfx_render_owner(owner GfxRenderOwner, token voidptr) ! {
 	if owner == .none {
 		return
+	}
+	if gg_gfx_render_owner.poisoned {
+		return error(err_multiwindow_render_device_lost)
 	}
 	if gg_gfx_render_owner.kind == owner && gg_gfx_render_owner.token == token {
 		return
@@ -36,7 +40,14 @@ fn gg_release_gfx_render_owner(owner GfxRenderOwner, token voidptr) {
 		return
 	}
 	if gg_gfx_render_owner.kind == owner && gg_gfx_render_owner.token == token {
-		gg_gfx_render_owner = GfxRenderOwnerState{}
+		gg_gfx_render_owner.kind = .none
+		gg_gfx_render_owner.token = unsafe { nil }
+	}
+}
+
+fn gg_poison_gfx_render_owner(owner GfxRenderOwner, token voidptr) {
+	if gg_gfx_render_owner.kind == owner && gg_gfx_render_owner.token == token {
+		gg_gfx_render_owner.poisoned = true
 	}
 }
 

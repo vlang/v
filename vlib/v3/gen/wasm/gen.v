@@ -239,7 +239,7 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 				if i < g.a.user_code_start {
 					continue
 				}
-				if node.generic_params.len > 0 || node.value == '' {
+				if node.generic_params().len > 0 || node.value == '' {
 					continue
 				}
 				// Prefer the import path (distinguishes same-leaf modules); fall
@@ -2609,11 +2609,15 @@ fn compound_to_op(op flat.Op) flat.Op {
 		.left_shift_assign { flat.Op.left_shift }
 		.right_shift_assign { flat.Op.right_shift }
 		.right_shift_unsigned_assign { flat.Op.right_shift_unsigned }
+		.power_assign { panic('power assignment reached the V3 wasm backend') }
 		else { flat.Op.plus }
 	}
 }
 
 fn arith_op(op flat.Op, w WType, signed bool) u8 {
+	if op == .power {
+		panic('power expression reached the V3 wasm backend')
+	}
 	match w {
 		.i64 {
 			return match op {

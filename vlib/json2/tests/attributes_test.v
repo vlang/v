@@ -148,3 +148,12 @@ fn test_required_attribute() {
 	assert has_error, '`required` attribute not working. It should have failed'
 	has_error = false
 }
+
+fn test_required_skipped_attribute_with_escaped_key() {
+	assert json.decode[StruWithRequiredAttribute](r'{"name":"hola","a":2,"\u0073kip_and_required":"hola","b":3}')! == StruWithRequiredAttribute{
+		a:                 2
+		name:              'hola'
+		skip_and_required: none
+		b:                 3
+	}
+}

@@ -1361,7 +1361,7 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 	if right_type.is_ptr() && g.table.final_sym(right_type.deref()).kind == .interface {
 		right_type = right_type.deref()
 	}
-	mut left_sym := g.table.final_sym(left_type)
+	left_sym := g.table.final_sym(left_type)
 	right_sym := g.table.final_sym(right_type)
 
 	mut info := left_sym.info as ast.Interface
@@ -1374,7 +1374,6 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 			info.conversions[right_type] = c
 			c
 		}
-		left_sym.info = info
 		if common_variants.len == 0 {
 			g.write('false')
 			return

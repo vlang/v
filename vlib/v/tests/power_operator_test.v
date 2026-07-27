@@ -21,6 +21,8 @@ fn test_power_operator_with_ints() {
 	assert 2 ** 3 == 8
 	assert 2 ** 3 ** 2 == 512
 	assert -2 ** 2 == -4
+	assert +2 ** 2 == 4
+	assert ~2 ** 2 == -5
 	assert (-2) ** 2 == 4
 }
 

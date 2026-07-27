@@ -1,0 +1,35 @@
+vlib/v/checker/tests/cast_pointer_to_array_err.vv:5:8: error: cannot cast pointer type `&int` to array type `[]int`
+    3 |         values := [1, 2, 3]!
+    4 |         p := &values[0]
+    5 |         _ := []int(p)
+      |              ^
+    6 |         _ := [3]int(p)
+    7 |     }
+vlib/v/checker/tests/cast_pointer_to_array_err.vv:6:8: error: cannot cast pointer type `&int` to array type `[3]int`
+    4 |         p := &values[0]
+    5 |         _ := []int(p)
+    6 |         _ := [3]int(p)
+      |              ^
+    7 |     }
+    8 | }
+vlib/v/checker/tests/cast_pointer_to_array_err.vv:13:8: error: cannot cast pointer type `&u8` to array type `[]int`
+   11 |     unsafe {
+   12 |         byte_value := u8(1)
+   13 |         _ := []int(&byte_value)
+      |              ^
+   14 |         value := 1
+   15 |         p := &value
+vlib/v/checker/tests/cast_pointer_to_array_err.vv:17:8: error: cannot cast pointer type `&&int` to array type `[]int`
+   15 |         p := &value
+   16 |         pp := &p
+   17 |         _ := []int(pp)
+      |              ^
+   18 |         raw := voidptr(p)
+   19 |         _ := []int(raw)
+vlib/v/checker/tests/cast_pointer_to_array_err.vv:19:8: error: cannot cast pointer type `voidptr` to array type `[]int`
+   17 |         _ := []int(pp)
+   18 |         raw := voidptr(p)
+   19 |         _ := []int(raw)
+      |              ^
+   20 |     }
+   21 | }

@@ -19,7 +19,7 @@ fn has_non_runtime_include(c_code string) bool {
 // test_prod_flag_before_input_uses_optimized_c_compile validates this v3 regression case.
 fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_flag_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
@@ -36,7 +36,7 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 // test_c99_flag_uses_c99_c_compile_mode validates this v3 regression case.
 fn test_c99_flag_uses_c99_c_compile_mode() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_flag_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
@@ -54,7 +54,7 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 // test_c99_flag_emits_linux_feature_macros_in_headerless_preamble validates this v3 regression case.
 fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	out_c := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello.c')
@@ -76,7 +76,7 @@ fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 // test_c99_flag_uses_headerless_stdatomic_fallback validates this v3 regression case.
 fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_swap.v')
@@ -98,7 +98,7 @@ fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 // test_c99_flag_system_stdatomic_include_is_headerless validates this v3 regression case.
 fn test_c99_flag_system_stdatomic_include_is_headerless() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic.v')

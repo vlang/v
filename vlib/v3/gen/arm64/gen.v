@@ -7,11 +7,17 @@ pub struct Gen {
 mut:
 	m                    &ssa.Module  = unsafe { nil }
 	macho                &MachOObject = unsafe { nil }
-	stack_offsets        []int
-	alloca_offsets       []int
-	alloca_sizes         []int
+	stack_offsets        []i32
+	alloca_offsets       []i32
+	alloca_sizes         []i32
+	slot_value_indices   []int
+	slot_value_base      int
+	slot_value_count     int
 	stack_size           int
-	block_offsets        []int
+	block_offsets        []i32
+	block_offset_indices []int
+	block_offset_base    int
+	block_offset_count   int
 	pending_jmps         []PendingJmp
 	fn_offsets           map[string]int
 	string_cache         map[string]int
@@ -28,15 +34,17 @@ struct PendingJmp {
 // new creates a Gen value for arm64.
 pub fn Gen.new(m &ssa.Module) &Gen {
 	return &Gen{
-		m:              m
-		macho:          MachOObject.new()
-		stack_offsets:  []int{}
-		alloca_offsets: []int{}
-		alloca_sizes:   []int{}
-		block_offsets:  []int{}
-		pending_jmps:   []PendingJmp{}
-		fn_offsets:     map[string]int{}
-		string_cache:   map[string]int{}
+		m:                    m
+		macho:                MachOObject.new()
+		stack_offsets:        []i32{}
+		alloca_offsets:       []i32{}
+		alloca_sizes:         []i32{}
+		slot_value_indices:   []int{}
+		block_offsets:        []i32{}
+		block_offset_indices: []int{}
+		pending_jmps:         []PendingJmp{}
+		fn_offsets:           map[string]int{}
+		string_cache:         map[string]int{}
 	}
 }
 
@@ -56,78 +64,159 @@ pub fn (mut g Gen) write_and_link(output string) {
 }
 
 // reset_value_slots updates reset value slots state for arm64.
-fn (mut g Gen) reset_value_slots() {
-	n := g.m.values.len
-	if g.stack_offsets.len != n {
-		g.stack_offsets = []int{len: n}
-		g.alloca_offsets = []int{len: n}
-		g.alloca_sizes = []int{len: n}
+fn (mut g Gen) reset_value_slots(func &ssa.Function) {
+	for idx in g.slot_value_indices {
+		g.stack_offsets[idx] = 0
+		g.alloca_offsets[idx] = 0
+		g.alloca_sizes[idx] = 0
+	}
+	g.slot_value_indices.clear()
+	mut min_id := g.m.values.len
+	mut max_id := 0
+	for _, val_id in func.params {
+		min_id = arm64_min_int(min_id, int(val_id))
+		max_id = arm64_max_int(max_id, int(val_id))
+	}
+	for blk_id in func.blocks {
+		for val_id in g.m.blocks[blk_id].instrs {
+			min_id = arm64_min_int(min_id, int(val_id))
+			max_id = arm64_max_int(max_id, int(val_id))
+			val := g.m.values[val_id]
+			if val.kind == .instruction {
+				instr := g.m.instrs[val.index]
+				if instr.op == .assign && instr.operands.len > 0 {
+					target := int(instr.operands[0])
+					min_id = arm64_min_int(min_id, target)
+					max_id = arm64_max_int(max_id, target)
+				}
+			}
+		}
+	}
+	if max_id <= 0 || min_id > max_id {
+		g.slot_value_base = 0
+		g.slot_value_count = 0
 		return
 	}
-	for i in 0 .. n {
-		g.stack_offsets[i] = 0
-		g.alloca_offsets[i] = 0
-		g.alloca_sizes[i] = 0
+	g.slot_value_base = min_id
+	g.slot_value_count = max_id - min_id + 1
+	if g.stack_offsets.len < g.slot_value_count {
+		new_len := arm64_max_int(g.slot_value_count, arm64_max_int(64, g.stack_offsets.len * 2))
+		g.stack_offsets = []i32{len: new_len}
+		g.alloca_offsets = []i32{len: new_len}
+		g.alloca_sizes = []i32{len: new_len}
 	}
 }
 
-fn (mut g Gen) reset_block_offsets() {
-	n := g.m.blocks.len
-	if g.block_offsets.len != n {
-		g.block_offsets = []int{len: n, init: -1}
+fn (mut g Gen) reset_block_offsets(func &ssa.Function) {
+	for idx in g.block_offset_indices {
+		g.block_offsets[idx] = 0
+	}
+	g.block_offset_indices.clear()
+	if func.blocks.len == 0 {
+		g.block_offset_base = 0
+		g.block_offset_count = 0
 		return
 	}
-	for i in 0 .. n {
-		g.block_offsets[i] = -1
+	mut min_id := int(func.blocks[0])
+	mut max_id := min_id
+	for blk_id in func.blocks[1..] {
+		min_id = arm64_min_int(min_id, int(blk_id))
+		max_id = arm64_max_int(max_id, int(blk_id))
 	}
+	g.block_offset_base = min_id
+	g.block_offset_count = max_id - min_id + 1
+	if g.block_offsets.len < g.block_offset_count {
+		new_len := arm64_max_int(g.block_offset_count, arm64_max_int(16, g.block_offsets.len * 2))
+		g.block_offsets = []i32{len: new_len}
+	}
+}
+
+fn (g &Gen) value_slot_index(val_id int) ?int {
+	idx := val_id - g.slot_value_base
+	if idx >= 0 && idx < g.slot_value_count {
+		return idx
+	}
+	return none
 }
 
 // set_stack_slot updates set stack slot state for arm64.
 fn (mut g Gen) set_stack_slot(val_id int, off int) {
-	if val_id > 0 && val_id < g.stack_offsets.len {
-		g.stack_offsets[val_id] = off
+	idx := g.value_slot_index(val_id) or { return }
+	if g.stack_offsets[idx] == 0 && g.alloca_offsets[idx] == 0 {
+		g.slot_value_indices << idx
 	}
+	g.stack_offsets[idx] = i32(off)
 }
 
 // stack_slot supports stack slot handling for Gen.
 fn (g &Gen) stack_slot(val_id int) ?int {
-	if val_id > 0 && val_id < g.stack_offsets.len {
-		off := g.stack_offsets[val_id]
-		if off != 0 {
-			return off
-		}
+	idx := g.value_slot_index(val_id) or { return none }
+	off := g.stack_offsets[idx]
+	if off != 0 {
+		return int(off)
 	}
 	return none
 }
 
 // set_alloca_slot updates set alloca slot state for arm64.
 fn (mut g Gen) set_alloca_slot(val_id int, off int, size int) {
-	if val_id > 0 && val_id < g.alloca_offsets.len {
-		g.alloca_offsets[val_id] = off
-		g.alloca_sizes[val_id] = size
+	idx := g.value_slot_index(val_id) or { return }
+	if g.stack_offsets[idx] == 0 && g.alloca_offsets[idx] == 0 {
+		g.slot_value_indices << idx
 	}
+	g.alloca_offsets[idx] = i32(off)
+	g.alloca_sizes[idx] = i32(size)
 }
 
 // alloca_slot supports alloca slot handling for Gen.
 fn (g &Gen) alloca_slot(val_id int) ?int {
-	if val_id > 0 && val_id < g.alloca_offsets.len {
-		off := g.alloca_offsets[val_id]
-		if off != 0 {
-			return off
-		}
+	idx := g.value_slot_index(val_id) or { return none }
+	off := g.alloca_offsets[idx]
+	if off != 0 {
+		return int(off)
 	}
 	return none
 }
 
 // alloca_byte_size supports alloca byte size handling for Gen.
 fn (g &Gen) alloca_byte_size(val_id int) ?int {
-	if val_id > 0 && val_id < g.alloca_sizes.len {
-		size := g.alloca_sizes[val_id]
-		if size != 0 {
-			return size
-		}
+	idx := g.value_slot_index(val_id) or { return none }
+	size := g.alloca_sizes[idx]
+	if size != 0 {
+		return int(size)
 	}
 	return none
+}
+
+fn (mut g Gen) set_block_offset(blk_id int, offset int) {
+	idx := blk_id - g.block_offset_base
+	if idx < 0 || idx >= g.block_offset_count {
+		return
+	}
+	if g.block_offsets[idx] == 0 {
+		g.block_offset_indices << idx
+	}
+	g.block_offsets[idx] = i32(offset + 1)
+}
+
+fn (g &Gen) block_offset(blk_id int) ?int {
+	idx := blk_id - g.block_offset_base
+	if idx < 0 || idx >= g.block_offset_count {
+		return none
+	}
+	encoded := g.block_offsets[idx]
+	if encoded == 0 {
+		return none
+	}
+	return int(encoded) - 1
+}
+
+fn arm64_min_int(a int, b int) int {
+	return if a < b { a } else { b }
+}
+
+fn arm64_max_int(a int, b int) int {
+	return if a > b { a } else { b }
 }
 
 // gen_pre_pass emits pre pass output for arm64.
@@ -180,10 +269,10 @@ fn (mut g Gen) gen_func(func_idx int) {
 		return
 	}
 
-	g.reset_value_slots()
+	g.reset_value_slots(&func)
 	g.pending_jmps.clear()
 
-	g.reset_block_offsets()
+	g.reset_block_offsets(&func)
 
 	// Frame layout (all at negative offsets from fp):
 	// fp + 0: saved fp
@@ -214,6 +303,12 @@ fn (mut g Gen) gen_func(func_idx int) {
 				continue
 			}
 			instr := g.m.instrs[val.index]
+			if instr.op == .assign {
+				if instr.operands.len > 0 {
+					slot_offset = g.reserve_value_stack_slot(instr.operands[0], slot_offset)
+				}
+				continue
+			}
 			if instr.op == .alloca {
 				ptr_type := g.m.type_store.types[val.typ]
 				elem_size := g.m.type_size(ptr_type.elem_type)
@@ -238,16 +333,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 				slot_offset += 8
 			} else if instr.op != .store && instr.op != .ret && instr.op != .br && instr.op != .jmp
 				&& instr.op != .unreachable {
-				result_size := g.m.type_size(val.typ)
-				alloc_size := if result_size > 8 && val.typ > 0
-					&& val.typ < g.m.type_store.types.len
-					&& g.m.type_store.types[val.typ].kind == .struct_t {
-					(result_size + 7) & ~7
-				} else {
-					8
-				}
-				slot_offset += alloc_size
-				g.set_stack_slot(val_id, -slot_offset)
+				slot_offset = g.reserve_value_stack_slot(val_id, slot_offset)
 			}
 		}
 	}
@@ -326,7 +412,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 
 	// Generate blocks
 	for blk_id in func.blocks {
-		g.block_offsets[blk_id] = g.macho.text_data.len
+		g.set_block_offset(blk_id, g.macho.text_data.len)
 		g.resolve_pending_jmps(blk_id)
 		blk := g.m.blocks[blk_id]
 		for val_id in blk.instrs {
@@ -335,6 +421,28 @@ fn (mut g Gen) gen_func(func_idx int) {
 	}
 
 	g.resolve_all_pending()
+}
+
+// reserve_value_stack_slot allocates one result slot, preserving an existing
+// slot when several predecessor copies define the same lowered phi result.
+fn (mut g Gen) reserve_value_stack_slot(val_id int, current_offset int) int {
+	if _ := g.stack_slot(val_id) {
+		return current_offset
+	}
+	if val_id <= 0 || val_id >= g.m.values.len {
+		return current_offset
+	}
+	val := g.m.values[val_id]
+	result_size := g.m.type_size(val.typ)
+	alloc_size := if result_size > 8 && val.typ > 0 && val.typ < g.m.type_store.types.len
+		&& g.m.type_store.types[val.typ].kind == .struct_t {
+		(result_size + 7) & ~7
+	} else {
+		8
+	}
+	new_offset := current_offset + alloc_size
+	g.set_stack_slot(val_id, -new_offset)
+	return new_offset
 }
 
 // is_large_struct_type reports whether is large struct type applies in arm64.
@@ -1310,6 +1418,12 @@ fn (mut g Gen) emit_value_address(val_id int, reg int) bool {
 				return true
 			}
 		}
+		.phi_result {
+			if off := g.stack_slot(val_id) {
+				g.emit_lea_fp(reg, off)
+				return true
+			}
+		}
 		.argument {
 			if off := g.stack_slot(val_id) {
 				g.emit_lea_fp(reg, off)
@@ -1373,6 +1487,14 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 					return reg
 				}
 			}
+			if off := g.stack_slot(val_id) {
+				g.emit_load_fp(reg, off)
+				return reg
+			}
+			g.emit_mov_imm(reg, 0)
+			return reg
+		}
+		.phi_result {
 			if off := g.stack_slot(val_id) {
 				g.emit_load_fp(reg, off)
 				return reg
@@ -1479,8 +1601,7 @@ fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string) {
 
 // emit_branch_to_block converts emit branch to block data for arm64.
 fn (mut g Gen) emit_branch_to_block(blk_id int) {
-	if blk_id >= 0 && blk_id < g.block_offsets.len && g.block_offsets[blk_id] >= 0 {
-		target := g.block_offsets[blk_id]
+	if target := g.block_offset(blk_id) {
 		offset := (target - g.macho.text_data.len) / 4
 		g.emit32(asm_b(i32(offset)))
 	} else {
@@ -1582,9 +1703,8 @@ fn (mut g Gen) resolve_pending_jmps(blk_id int) {
 // resolve_all_pending resolves resolve all pending information for arm64.
 fn (mut g Gen) resolve_all_pending() {
 	for pj in g.pending_jmps {
-		if pj.block_id >= 0 && pj.block_id < g.block_offsets.len
-			&& g.block_offsets[pj.block_id] >= 0 {
-			offset := (g.block_offsets[pj.block_id] - pj.text_pos) / 4
+		if target := g.block_offset(pj.block_id) {
+			offset := (target - pj.text_pos) / 4
 			g.patch_branch(pj.text_pos, offset)
 		}
 	}

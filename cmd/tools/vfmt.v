@@ -16,18 +16,19 @@ import v.parser
 import v.help
 
 struct FormatOptions {
-	is_l       bool
-	is_c       bool // Note: This refers to the '-c' fmt flag, NOT the C backend
-	is_w       bool
-	is_diff    bool
-	is_verbose bool
-	is_debug   bool
-	is_noerror bool
-	is_verify  bool // exit(1) if the file is not vfmt'ed
-	is_worker  bool // true *only* in the worker processes. Note: workers can crash.
-	is_backup  bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
-	in_process bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
-	is_new_int bool // Forcefully cast the `int` type in @[translated] modules or in the definition of `C.func` to the `i32` type.
+	is_l             bool
+	is_c             bool // Note: This refers to the '-c' fmt flag, NOT the C backend
+	is_w             bool
+	is_diff          bool
+	is_verbose       bool
+	is_debug         bool
+	is_noerror       bool
+	is_verify        bool // exit(1) if the file is not vfmt'ed
+	is_worker        bool // true *only* in the worker processes. Note: workers can crash.
+	is_backup        bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
+	in_process       bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
+	is_new_int       bool // Forcefully cast the `int` type in @[translated] modules or in the definition of `C.func` to the `i32` type.
+	no_migrate_json2 bool // opt out of the default rewrite of deprecated `json` usage to `json2` (`-no-migrate-json2`)
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
@@ -35,8 +36,8 @@ mut:
 const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
-const vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int', '-noerror',
-	'-verbose', '--verbose', '-verify', '-w']
+const vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int',
+	'-no-migrate-json2', '-noerror', '-verbose', '--verbose', '-verify', '-w']
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
@@ -47,18 +48,19 @@ fn main() {
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := util.join_env_vflags_and_os_args()
 	mut foptions := FormatOptions{
-		is_c:       '-c' in args
-		is_l:       '-l' in args
-		is_w:       '-w' in args
-		is_diff:    '-diff' in args
-		is_verbose: '-verbose' in args || '--verbose' in args
-		is_worker:  '-worker' in args
-		is_debug:   '-debug' in args
-		is_noerror: '-noerror' in args
-		is_verify:  '-verify' in args
-		is_backup:  '-backup' in args
-		in_process: '-inprocess' in args
-		is_new_int: '-new_int' in args
+		is_c:             '-c' in args
+		is_l:             '-l' in args
+		is_w:             '-w' in args
+		is_diff:          '-diff' in args
+		is_verbose:       '-verbose' in args || '--verbose' in args
+		is_worker:        '-worker' in args
+		is_debug:         '-debug' in args
+		is_noerror:       '-noerror' in args
+		is_verify:        '-verify' in args
+		is_backup:        '-backup' in args
+		in_process:       '-inprocess' in args
+		is_new_int:       '-new_int' in args
+		no_migrate_json2: '-no-migrate-json2' in args
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -209,6 +211,17 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
+// should_migrate_json2 reports whether the deprecated `json`->`json2` migration should run
+// for `file`. It is on by default, but skipped for tests (`_test.v`) and vfmt fixtures
+// (`.vv`) — which legitimately exercise the legacy module — and when `-no-migrate-json2` is
+// passed.
+fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
+	if foptions.no_migrate_json2 {
+		return false
+	}
+	return !file.ends_with('_test.v') && !file.ends_with('.vv')
+}
+
 fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) !string {
 	mut table := ast.new_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
@@ -216,7 +229,9 @@ fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences,
 		return error('the file contains parser errors')
 	}
 	table.new_int = foptions.is_new_int
-	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
+	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
+		migrate_json2: foptions.should_migrate_json2(file)
+	)
 	return formated_content
 }
 
@@ -239,7 +254,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 	}
 	// checker.new_checker(table, prefs).check(file_ast)
 	table.new_int = foptions.is_new_int
-	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
+		migrate_json2: foptions.should_migrate_json2(file)
+	)
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
 	eprintln('${formatted_file_token}${vfmt_output_path}')
@@ -257,7 +274,8 @@ fn (foptions &FormatOptions) format_pipe() {
 	// checker.new_checker(table, prefs).check(file_ast)
 	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		source_text: input_text
+		source_text:   input_text
+		migrate_json2: !foptions.no_migrate_json2
 	)
 	print(formatted_content)
 	flush_stdout()

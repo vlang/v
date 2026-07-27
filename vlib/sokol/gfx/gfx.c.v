@@ -146,6 +146,11 @@ pub fn query_buffer_overflow(buf Buffer) bool {
 	return C.sg_query_buffer_overflow(buf)
 }
 
+@[inline]
+pub fn query_buffer_will_overflow(buf Buffer, size usize) bool {
+	return C.sg_query_buffer_will_overflow(buf, size)
+}
+
 // rendering functions
 
 // begin_pass begins a rendering pass.
@@ -235,6 +240,11 @@ pub fn query_image_state(img Image) ResourceState {
 }
 
 @[inline]
+pub fn query_sampler_state(smp Sampler) ResourceState {
+	return ResourceState(C.sg_query_sampler_state(smp))
+}
+
+@[inline]
 pub fn query_shader_state(shd Shader) ResourceState {
 	return ResourceState(C.sg_query_shader_state(shd))
 }
@@ -263,6 +273,11 @@ pub fn query_image_info(img Image) ImageInfo {
 }
 
 @[inline]
+pub fn query_sampler_info(smp Sampler) SamplerInfo {
+	return C.sg_query_sampler_info(smp)
+}
+
+@[inline]
 pub fn query_shader_info(shd Shader) ShaderInfo {
 	return C.sg_query_shader_info(shd)
 }
@@ -279,32 +294,100 @@ pub fn query_attachments_info(atts Attachments) AttachmentsInfo {
 	return C.sg_query_attachments_info(atts)
 }
 
-// get resource creation desc struct with their default values replaced
+// Resource descriptors returned here contain Sokol-owned diagnostic pointers
+// and must be treated as borrowed snapshots.
 @[inline]
-pub fn query_buffer_defaults(desc &Buffer) BufferDesc {
-	return C.sg_query_buffer_defaults(unsafe { &BufferDesc(voidptr(desc)) })
+pub fn query_buffer_desc(buf Buffer) BufferDesc {
+	return C.sg_query_buffer_desc(buf)
 }
 
 @[inline]
-pub fn query_image_defaults(desc &Image) ImageDesc {
-	return C.sg_query_image_defaults(unsafe { &ImageDesc(voidptr(desc)) })
+pub fn query_image_desc(img Image) ImageDesc {
+	return C.sg_query_image_desc(img)
 }
 
 @[inline]
-pub fn query_shader_defaults(desc &Shader) ShaderDesc {
-	return C.sg_query_shader_defaults(unsafe { &ShaderDesc(voidptr(desc)) })
+pub fn query_sampler_desc(smp Sampler) SamplerDesc {
+	return C.sg_query_sampler_desc(smp)
 }
 
 @[inline]
-pub fn query_pipeline_defaults(desc &Pipeline) PipelineDesc {
-	return C.sg_query_pipeline_defaults(unsafe { &PipelineDesc(voidptr(desc)) })
+pub fn query_shader_desc(shd Shader) ShaderDesc {
+	return C.sg_query_shader_desc(shd)
+}
+
+@[inline]
+pub fn query_pipeline_desc(pip Pipeline) PipelineDesc {
+	return C.sg_query_pipeline_desc(pip)
+}
+
+@[inline]
+pub fn query_attachments_desc(atts Attachments) AttachmentsDesc {
+	return C.sg_query_attachments_desc(atts)
+}
+
+// Get the creation descriptor for a buffer handle with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_buffer_defaults(buf &Buffer) BufferDesc {
+	desc := query_buffer_desc(*buf)
+	return query_buffer_desc_defaults(&desc)
+}
+
+// Get a buffer creation descriptor with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_buffer_desc_defaults(desc &BufferDesc) BufferDesc {
+	return C.sg_query_buffer_defaults(desc)
+}
+
+// Get the creation descriptor for an image handle with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_image_defaults(img &Image) ImageDesc {
+	desc := query_image_desc(*img)
+	return query_image_desc_defaults(&desc)
+}
+
+// Get an image creation descriptor with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_image_desc_defaults(desc &ImageDesc) ImageDesc {
+	return C.sg_query_image_defaults(desc)
+}
+
+@[inline]
+pub fn query_sampler_defaults(desc &SamplerDesc) SamplerDesc {
+	return C.sg_query_sampler_defaults(desc)
+}
+
+// Get the creation descriptor for a shader handle with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_shader_defaults(shd &Shader) ShaderDesc {
+	desc := query_shader_desc(*shd)
+	return query_shader_desc_defaults(&desc)
+}
+
+// Get a shader creation descriptor with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_shader_desc_defaults(desc &ShaderDesc) ShaderDesc {
+	return C.sg_query_shader_defaults(desc)
+}
+
+// Get the creation descriptor for a pipeline handle with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_pipeline_defaults(pip &Pipeline) PipelineDesc {
+	desc := query_pipeline_desc(*pip)
+	return query_pipeline_desc_defaults(&desc)
+}
+
+// Get a pipeline creation descriptor with pinned-Sokol defaults applied.
+@[inline]
+pub fn query_pipeline_desc_defaults(desc &PipelineDesc) PipelineDesc {
+	return C.sg_query_pipeline_defaults(desc)
 }
 
 // query_attachments_defaults returns `AttachmentsDesc` with default values replaced.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
 pub fn query_attachments_defaults(desc &AttachmentsDesc) AttachmentsDesc {
-	return C.sg_query_attachments_defaults(unsafe { &AttachmentsDesc(voidptr(desc)) })
+	return C.sg_query_attachments_defaults(desc)
 }
 
 // frame stats

@@ -554,6 +554,52 @@ fn test_orm_table_gen() {
 	], sql_type_from_v, false) or { panic(err) }
 	assert mult_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, /* test */UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
 
+	references_query := orm.orm_table_gen(.default, table, '"', true, 0, [
+		orm.TableField{
+			name:  'id'
+			typ:   typeof[int]().idx
+			attrs: [
+				VAttribute{
+					name: 'primary'
+				},
+			]
+		},
+		orm.TableField{
+			name:  'member_id'
+			typ:   typeof[int]().idx
+			attrs: [
+				VAttribute{
+					name:    'references'
+					has_arg: true
+					arg:     'Members(id)'
+					kind:    .string
+				},
+			]
+		},
+		orm.TableField{
+			name:  'owner_id'
+			typ:   typeof[int]().idx
+			attrs: [
+				VAttribute{
+					name:    'references'
+					has_arg: true
+					arg:     'Owners'
+					kind:    .string
+				},
+			]
+		},
+		orm.TableField{
+			name:  'color_id'
+			typ:   typeof[int]().idx
+			attrs: [
+				VAttribute{
+					name: 'references'
+				},
+			]
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert references_query == 'CREATE TABLE IF NOT EXISTS "test_table" ("id" INT NOT NULL, "member_id" INT REFERENCES "Members"("id"), "owner_id" INT REFERENCES "Owners"("id"), "color_id" INT REFERENCES "color"("id"), PRIMARY KEY("id"));'
+
 	table_with_unique := orm.Table{
 		name:  'test_table'
 		attrs: [

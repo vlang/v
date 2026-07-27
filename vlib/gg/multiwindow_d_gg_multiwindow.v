@@ -12,6 +12,7 @@ const err_multiwindow_nil_job = 'gg.multiwindow: job function is nil'
 const err_multiwindow_nil_run_fn = 'gg.multiwindow: frame or event function is required'
 const err_multiwindow_nil_draw_fn = 'gg.multiwindow: draw function is nil'
 const err_multiwindow_window_not_found = 'gg.multiwindow: window does not exist'
+const err_multiwindow_app_identity_mismatch = 'gg.multiwindow: handle belongs to a different app instance'
 const err_multiwindow_renderer_unsupported = 'gg.multiwindow: renderer is not supported by the selected backend'
 const err_multiwindow_app_not_initialized = 'gg.multiwindow: App is not initialized; use gg.new_app()'
 const err_multiwindow_owner_thread_required = 'multiwindow: operation requires the owner thread'
@@ -71,7 +72,8 @@ pub enum WindowCursorShape {
 
 // WindowId identifies a window managed by gg.App.
 pub struct WindowId {
-	core multiwindow.WindowId
+	app_instance u64
+	core         multiwindow.WindowId
 }
 
 // str returns a diagnostic representation of a WindowId.
@@ -92,16 +94,24 @@ pub:
 @[params]
 pub struct WindowConfig {
 pub:
-	title      string = 'A GG Window'
-	width      int    = 800
-	height     int    = 600
-	min_width  int
-	min_height int
-	resizable  bool = true
-	visible    bool = true
-	high_dpi   bool = true
-	borderless bool
-	fullscreen bool
+	title        string = 'A GG Window'
+	width        int    = 800
+	height       int    = 600
+	min_width    int
+	min_height   int
+	resizable    bool = true
+	visible      bool = true
+	high_dpi     bool = true
+	borderless   bool
+	fullscreen   bool
+	clear_color  Color = Color{
+		a: 0
+	}
+	sample_count int              = 1
+	redraw_mode  WindowRedrawMode = .on_demand
+	init_fn      WindowInitFn     = unsafe { nil }
+	frame_fn     WindowFrameFn    = unsafe { nil }
+	cleanup_fn   WindowCleanupFn  = unsafe { nil }
 }
 
 // WindowInfo is a snapshot of a live gg.App window.
@@ -189,20 +199,14 @@ pub type WindowDrawFn = fn (mut window WindowContext) !
 @[params]
 pub struct RunConfig {
 pub:
-	frame_fn         AppFrameFn = unsafe { nil }
-	event_fn         AppEventFn = unsafe { nil }
-	input_fn         AppInputFn = unsafe { nil }
-	max_pending_jobs int        = 64
-}
-
-// WindowContext is the public draw target for one gg.App window.
-pub struct WindowContext {
-	id                 WindowId
-	app                &App = unsafe { nil }
-	capabilities       Capabilities
-	framebuffer_width  int
-	framebuffer_height int
-	sgl_context        sgl.Context
+	frame_fn                AppFrameFn           = unsafe { nil }
+	event_fn                AppEventFn           = unsafe { nil }
+	input_fn                AppInputFn           = unsafe { nil }
+	app_resource_init_fn    AppResourceInitFn    = unsafe { nil }
+	app_resource_frame_fn   AppResourceFrameFn   = unsafe { nil }
+	app_resource_cleanup_fn AppResourceCleanupFn = unsafe { nil }
+	readback_fn             WindowReadbackFn     = unsafe { nil }
+	max_pending_jobs        int                  = 64
 }
 
 // App is the additive multi-window facade for gg users.
@@ -214,21 +218,41 @@ pub struct App {
 pub:
 	config AppConfig
 mut:
-	core                 &multiwindow.App = unsafe { nil }
-	owner_thread_id      u64
-	gfx_started          bool
-	render_owner_claimed bool
-	render_environment   gfx.Environment
-	sgl_contexts         map[string]sgl.Context
+	core                      &multiwindow.App = unsafe { nil }
+	app_instance              u64
+	owner_thread_id           u64
+	gfx_started               bool
+	sgl_initialized           bool
+	render_owner_claimed      bool
+	sgl_contexts              map[string]sgl.Context
+	sgl_context_targets       map[string]WindowRenderTargetInfo
+	window_sgl_targets        map[string]string
+	deferred_sgl_targets      map[string]u64
+	render_runtime            &MultiWindowRenderRuntime = unsafe { nil }
+	legacy_render_mode        bool
+	app_frame_active          bool
+	active_render_snapshots   map[string]multiwindow.RenderWindowSnapshot
+	active_drawn_windows      map[string]bool
+	active_batch_epoch        u64
+	active_batch_lease        multiwindow.RenderBatchLease
+	renderer_terminal_failure bool
+	terminal_error            string
+	failed_init_windows       []WindowId
 }
 
 // new_app creates a gg multi-window application.
 pub fn new_app(config AppConfig) !&App {
 	mut core := multiwindow.new_app(config.to_core())!
 	return &App{
-		config:          config
-		core:            core
-		owner_thread_id: sync.thread_id()
+		config:               config
+		core:                 core
+		app_instance:         core.instance_id()
+		owner_thread_id:      sync.thread_id()
+		render_runtime:       new_multiwindow_render_runtime(core.instance_id())
+		sgl_contexts:         map[string]sgl.Context{}
+		sgl_context_targets:  map[string]WindowRenderTargetInfo{}
+		window_sgl_targets:   map[string]string{}
+		deferred_sgl_targets: map[string]u64{}
 	}
 }
 
@@ -247,10 +271,25 @@ pub fn capabilities_for_backend_with_renderer(backend MultiWindowBackend) !Capab
 // create_window creates a window managed by this app.
 pub fn (mut app App) create_window(config WindowConfig) !WindowId {
 	app.ensure_initialized()!
-	id := app.core.create_window(config.to_core())!
-	return WindowId{
-		core: id
+	app.assert_owner_thread()!
+	if config.sample_count != 1 && (app.config.require_renderer
+		|| config.init_fn != unsafe { nil } || config.frame_fn != unsafe { nil }) {
+		return error(err_multiwindow_render_sample_count_unsupported)
 	}
+	app.core.ensure_event_admission_for_gg()!
+	if config.init_fn != unsafe { nil } || config.frame_fn != unsafe { nil } {
+		app.ensure_render_initialized()!
+	}
+	id := app.core.create_window(config.to_core_with_workload(app.legacy_render_mode))!
+	window_id := WindowId{
+		app_instance: app.app_instance
+		core:         id
+	}
+	app.render_runtime.register_window(window_id, config) or {
+		app.core.destroy_window(id) or {}
+		return err
+	}
+	return window_id
 }
 
 // set_window_title updates a live window title.
@@ -311,24 +350,9 @@ pub fn (app &App) window_infos() ![]WindowInfo {
 	return infos
 }
 
-// window_context returns the public render target wrapper for a live window.
-pub fn (mut app App) window_context(id WindowId) !WindowContext {
-	app.ensure_initialized()!
-	if !app.window_exists(id) {
-		return error(err_multiwindow_window_not_found)
-	}
-	return WindowContext{
-		id:           id
-		app:          app
-		capabilities: app.capabilities()
-	}
-}
-
 // destroy_window destroys a live window.
 pub fn (mut app App) destroy_window(id WindowId) ! {
-	app.ensure_initialized()!
-	app.core.destroy_window(id.core)!
-	app.discard_window_sgl_context(id)
+	app.destroy_window_managed(id, .requested)!
 }
 
 // window_exists reports whether id still refers to a live window.
@@ -354,9 +378,6 @@ pub fn (mut app App) drain_events() ![]WindowEvent {
 	mut events := []WindowEvent{cap: core_events.len}
 	for event in core_events {
 		window_event := window_event_from_core(event)
-		if window_event.kind == .window_destroyed {
-			app.discard_window_sgl_context(window_event.window)
-		}
 		events << window_event
 	}
 	return events
@@ -376,7 +397,9 @@ pub fn (mut app App) drain_input_events() ![]WindowInputEvent {
 // poll_events lets the backend route native lifecycle/input events into the gg.App queue.
 pub fn (mut app App) poll_events() !int {
 	app.ensure_initialized()!
-	return app.core.poll_events()!
+	count := app.core.poll_events()!
+	app.consume_backend_teardowns()!
+	return count
 }
 
 // post submits a short callback to be executed when owner-side work is drained.
@@ -406,78 +429,7 @@ pub fn (mut app App) drain_pending(max_jobs int) !int {
 // run starts the multi-window owner loop. event_fn can drive lifecycle-only
 // apps without a renderer; frame_fn/draw_window require explicit swapchains.
 pub fn (mut app App) run(config RunConfig) ! {
-	app.ensure_initialized()!
-	has_frame_fn := config.frame_fn != unsafe { nil }
-	has_event_fn := config.event_fn != unsafe { nil }
-	has_input_fn := config.input_fn != unsafe { nil }
-	if !has_frame_fn && !has_event_fn && !has_input_fn {
-		return error(err_multiwindow_nil_run_fn)
-	}
-	renderer_available := app.capabilities().explicit_swapchain
-	if has_frame_fn && !renderer_available {
-		return error(err_multiwindow_renderer_unsupported)
-	}
-	if has_frame_fn {
-		app.ensure_render_owner()!
-	}
-	defer {
-		app.shutdown_renderer()
-	}
-	for app.core.status() == .running {
-		polled_events := app.poll_events()!
-		mut drained_jobs := 0
-		if config.max_pending_jobs > 0 {
-			drained_jobs = app.core.drain_pending(config.max_pending_jobs) or {
-				if app.core.status() != .running {
-					break
-				}
-				return err
-			}
-		}
-		if app.core.status() != .running {
-			break
-		}
-		dispatched_events := app.dispatch_run_events(config.event_fn, config.input_fn)!
-		if app.core.status() != .running {
-			break
-		}
-		if has_frame_fn {
-			config.frame_fn(mut app)!
-		} else if polled_events == 0 && drained_jobs == 0 && dispatched_events == 0 {
-			time.sleep(multiwindow_event_idle_sleep)
-		}
-	}
-}
-
-fn (mut app App) dispatch_run_events(event_fn AppEventFn, input_fn AppInputFn) !int {
-	events := app.core.drain_queued_events()!
-	mut dispatched := 0
-	for event in events {
-		match event.kind {
-			.lifecycle {
-				window_event := window_event_from_core(event.lifecycle)
-				if window_event.kind == .window_destroyed {
-					app.discard_window_sgl_context(window_event.window)
-				}
-				if event_fn != unsafe { nil } {
-					event_fn(window_event, mut app)!
-				} else {
-					app.dispatch_lifecycle_without_event_callback(window_event)!
-				}
-			}
-			.input {
-				if input_fn != unsafe { nil } {
-					input_fn(window_input_event_from_core(event.input), mut app)!
-				}
-			}
-		}
-
-		dispatched++
-		if app.core.status() != .running {
-			return dispatched
-		}
-	}
-	return dispatched
+	app.run_managed(config)!
 }
 
 fn (mut app App) dispatch_lifecycle_without_event_callback(event WindowEvent) ! {
@@ -503,44 +455,18 @@ fn (mut app App) stop_if_no_windows() ! {
 
 // draw_window renders one live window through its WindowContext.
 pub fn (mut app App) draw_window(id WindowId, draw WindowDrawFn) ! {
-	if draw == unsafe { nil } {
-		return error(err_multiwindow_nil_draw_fn)
-	}
-	app.ensure_initialized()!
-	app.ensure_render_initialized(id)!
-	frame := app.core.begin_render(id.core)!
-	mut context := app.window_context_for_frame(id, frame)
-	sgl.set_context(context.sgl_context)
-	sgl.defaults()
-	sgl.matrix_mode_projection()
-	sgl.ortho(0.0, f32(context.framebuffer_width), f32(context.framebuffer_height), 0.0, -1.0, 1.0)
-	draw(mut context) or {
-		app.discard_window_sgl_context(id)
-		app.core.abort_render(frame) or {}
-		return err
-	}
-	pass := gfx.Pass{
-		action:    gfx.create_clear_pass_action(0.0, 0.0, 0.0, 1.0)
-		swapchain: frame.swapchain
-	}
-	gfx.begin_pass(pass)
-	sgl.context_draw(context.sgl_context)
-	gfx.end_pass()
-	gfx.commit()
-	app.core.end_render(frame)!
+	app.draw_window_managed(id, draw)!
 }
 
 // stop shuts down the app and destroys live windows.
 pub fn (mut app App) stop() ! {
-	app.ensure_initialized()!
-	app.assert_owner_thread()!
-	app.shutdown_renderer()
-	app.core.stop()!
+	app.stop_managed()!
 }
 
 // window_id returns the id routed to this draw context.
 pub fn (context &WindowContext) window_id() WindowId {
-	return context.id
+	context.validate_managed_or_panic()
+	return context.info.window
 }
 
 // exists reports whether this context still targets a live window.
@@ -548,23 +474,28 @@ pub fn (context &WindowContext) exists() bool {
 	if context.app == unsafe { nil } {
 		return false
 	}
-	return context.app.window_exists(context.id)
+	context.app.render_runtime.validate_frame_lease(context.info.window, context.lease_epoch) or {
+		return false
+	}
+	return context.app.window_exists(context.info.window)
 }
 
 // capabilities reports the app backend capabilities captured for this context.
 pub fn (context &WindowContext) capabilities() Capabilities {
-	return context.capabilities
+	context.validate_managed_or_panic()
+	return context.compatibility_capabilities
 }
 
 // framebuffer_size returns the current render target size in pixels.
 pub fn (context &WindowContext) framebuffer_size() Size {
+	context.validate_managed_or_panic()
 	return Size{
-		width:  context.framebuffer_width
-		height: context.framebuffer_height
+		width:  context.info.metrics.framebuffer_size.width
+		height: context.info.metrics.framebuffer_size.height
 	}
 }
 
-// size returns the current draw size. Logical scaling will be added with native DPI routing.
+// size permanently preserves the compatibility framebuffer-pixel contract.
 pub fn (context &WindowContext) size() Size {
 	return context.framebuffer_size()
 }
@@ -572,7 +503,12 @@ pub fn (context &WindowContext) size() Size {
 // draw_rect_filled draws a filled rectangle into this window's current draw frame.
 // Coordinates are in window framebuffer pixels with top-left origin.
 pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, color Color) {
-	sgl.set_context(context.sgl_context)
+	if context.app == unsafe { nil } {
+		panic(err_multiwindow_render_stale_lease)
+	}
+	mut managed := context.app.render_runtime.active_sgl_context(context.app, context.info.window,
+		context.lease_epoch) or { panic(err.msg()) }
+	managed.activate_sgl_managed_or_panic()
 	sgl.c4b(color.r, color.g, color.b, color.a)
 	sgl.begin_quads()
 	sgl.v2f(x, y)
@@ -585,7 +521,12 @@ pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, col
 // draw_rect_empty draws a one-pixel outline rectangle into this window's current draw frame.
 // Coordinates are in window framebuffer pixels with top-left origin.
 pub fn (context &WindowContext) draw_rect_empty(x f32, y f32, w f32, h f32, color Color) {
-	sgl.set_context(context.sgl_context)
+	if context.app == unsafe { nil } {
+		panic(err_multiwindow_render_stale_lease)
+	}
+	mut managed := context.app.render_runtime.active_sgl_context(context.app, context.info.window,
+		context.lease_epoch) or { panic(err.msg()) }
+	managed.activate_sgl_managed_or_panic()
 	sgl.c4b(color.r, color.g, color.b, color.a)
 	sgl.begin_lines()
 	sgl.v2f(x, y)
@@ -604,7 +545,14 @@ fn (mut app App) wrap_job(f AppJobFn) multiwindow.AppJobFn {
 	return fn [app_ptr, f] (mut core_app multiwindow.App) ! {
 		_ = core_app
 		mut facade_app := unsafe { &App(app_ptr) }
-		f(mut facade_app)!
+		facade_app.render_runtime.begin_user_callback()
+		mut callback_error := IError(none)
+		f(mut facade_app) or { callback_error = err }
+		facade_app.render_runtime.end_user_callback()
+		facade_app.flush_deferred_transitions()!
+		if callback_error !is none {
+			return callback_error
+		}
 	}
 }
 
@@ -624,74 +572,316 @@ fn (mut app App) ensure_render_owner() ! {
 	app.render_owner_claimed = true
 }
 
-fn (mut app App) ensure_render_initialized(id WindowId) ! {
+fn (mut app App) latch_renderer_terminal_failure() {
+	app.renderer_terminal_failure = true
+}
+
+fn (mut app App) latch_renderer_terminal_failure_if_unusable() {
+	if app.gfx_started && !app.core.renderer_is_usable() {
+		app.latch_renderer_terminal_failure()
+	}
+}
+
+fn (mut app App) ensure_render_initialized() ! {
 	app.ensure_initialized()!
 	app.ensure_explicit_swapchain()!
+	app.render_runtime.validate_backend_sample_counts(1)!
 	app.ensure_render_owner()!
 	if app.gfx_started {
 		return
 	}
-	app.render_environment = app.core.render_environment(id.core) or {
+	renderer_info := app.core.start_renderer(multiwindow.RendererConfig{
+		image_pool_size:       2048
+		pipeline_pool_size:    512
+		attachments_pool_size: 512
+	}) or {
+		app.latch_renderer_terminal_failure()
 		app.release_render_owner()
 		return err
 	}
-	mut desc := gfx.Desc{
-		environment:     app.render_environment
-		image_pool_size: 1000
+	if !app.core.renderer_device_available_for_gg() {
+		app.latch_renderer_terminal_failure()
+		gg_poison_gfx_render_owner(.multiwindow_app, app.owner_token())
+		app.core.abandon_renderer_for_gg() or {
+			app.release_render_owner()
+			return error('${err_multiwindow_render_cleanup_failed}: ${err.msg()}')
+		}
+		app.release_render_owner()
+		return error(err_multiwindow_render_backend_unavailable)
 	}
-	gfx.setup(&desc)
 	sgl_desc := sgl.Desc{
 		context_pool_size: 64
-		color_format:      app.render_environment.defaults.color_format
-		depth_format:      app.render_environment.defaults.depth_format
-		sample_count:      app.render_environment.defaults.sample_count
+		color_format:      unsafe { gfx.PixelFormat(renderer_info.color_format) }
+		depth_format:      unsafe { gfx.PixelFormat(renderer_info.depth_format) }
+		sample_count:      renderer_info.sample_count
 	}
-	sgl.setup(&sgl_desc)
+	mut setup_errors := []string{}
+	if !app.core.renderer_device_available_for_gg() {
+		setup_errors << err_multiwindow_render_backend_unavailable
+	} else if message := app.render_runtime.take_internal_fault(.renderer_sgl_setup) {
+		setup_errors << message
+	} else {
+		sgl.setup(&sgl_desc)
+		app.sgl_initialized = true
+		if !app.core.renderer_device_available_for_gg() {
+			setup_errors << err_multiwindow_render_backend_unavailable
+		} else if sgl.error() != .no_error {
+			setup_errors << err_multiwindow_render_resource_failed
+		}
+	}
+	if setup_errors.len > 0 {
+		app.latch_renderer_terminal_failure()
+		mut device_available := app.core.renderer_device_available_for_gg()
+		if device_available {
+			app.core.prepare_renderer_shutdown_for_gg() or {
+				setup_errors << err.msg()
+				device_available = false
+			}
+			if device_available {
+				device_available = app.core.renderer_device_available_for_gg()
+			}
+		}
+		if device_available {
+			if app.sgl_initialized {
+				sgl.shutdown()
+				app.sgl_initialized = false
+			}
+			app.core.shutdown_renderer() or { setup_errors << err.msg() }
+		} else {
+			app.sgl_initialized = false
+			gg_poison_gfx_render_owner(.multiwindow_app, app.owner_token())
+			app.core.abandon_renderer_for_gg() or { setup_errors << err.msg() }
+		}
+		app.release_render_owner()
+		return error('${err_multiwindow_render_cleanup_failed}: ${setup_errors.join('; ')}')
+	}
 	app.gfx_started = true
 }
 
-fn (mut app App) window_context_for_frame(id WindowId, frame multiwindow.RenderFrame) WindowContext {
-	key := id.str()
+fn (mut app App) ensure_sgl_context(key string, target WindowRenderTargetInfo) !sgl.Context {
+	if !app.gfx_started || !app.core.renderer_is_usable() {
+		return error(err_multiwindow_render_backend_unavailable)
+	}
+	if key in app.sgl_contexts {
+		if key !in app.sgl_context_targets || app.sgl_context_targets[key] != target {
+			return error(err_multiwindow_render_backend_unavailable)
+		}
+		return app.sgl_contexts[key]
+	}
 	if key !in app.sgl_contexts {
-		app.sgl_contexts[key] = sgl.make_context(&sgl.ContextDesc{
-			color_format: app.render_environment.defaults.color_format
-			depth_format: app.render_environment.defaults.depth_format
-			sample_count: app.render_environment.defaults.sample_count
+		previous := sgl.get_context()
+		app.note_managed_gpu_work(app.active_batch_epoch)!
+		created := sgl.make_context(&sgl.ContextDesc{
+			color_format: target.color_format
+			depth_format: target.depth_format
+			sample_count: target.sample_count
 		})
+		if !app.core.renderer_device_available_for_gg() {
+			return error(err_multiwindow_render_backend_unavailable)
+		}
+		if sgl.context_error(created) != .no_error {
+			sgl.destroy_context(created)
+			sgl.set_context(previous)
+			return error(err_multiwindow_render_resource_failed)
+		}
+		sgl.set_context(previous)
+		app.sgl_contexts[key] = created
+		app.sgl_context_targets[key] = target
 	}
-	return WindowContext{
-		id:                 id
-		app:                app
-		capabilities:       app.capabilities()
-		framebuffer_width:  frame.swapchain.width
-		framebuffer_height: frame.swapchain.height
-		sgl_context:        app.sgl_contexts[key]
+	return app.sgl_contexts[key]
+}
+
+fn (mut app App) ensure_window_sgl_context(id WindowId, key string, target WindowRenderTargetInfo, batch u64) !sgl.Context {
+	context := app.ensure_sgl_context(key, target)!
+	window_key := id.str()
+	if window_key in app.window_sgl_targets {
+		previous := app.window_sgl_targets[window_key]
+		if previous != '' && previous != key {
+			app.defer_sgl_target_retirement(previous, batch)
+		}
 	}
+	app.window_sgl_targets[window_key] = key
+	return context
+}
+
+fn (mut app App) defer_sgl_target_retirement(key string, batch u64) {
+	if key == '' || batch == 0 {
+		return
+	}
+	if key !in app.deferred_sgl_targets || batch < app.deferred_sgl_targets[key] {
+		app.deferred_sgl_targets[key] = batch
+	}
+}
+
+fn (mut app App) defer_attachment_sgl_target_retirement(key MultiWindowResourceKey, target_identity u64, batch u64) {
+	marker := ':offscreen:${key.app_instance}:${key.slot}:${key.generation}:${target_identity}:'
+	for target_key, _ in app.sgl_contexts {
+		if target_key.contains(marker) {
+			app.defer_sgl_target_retirement(target_key, batch)
+		}
+	}
+}
+
+fn (mut app App) flush_deferred_sgl_targets(completed_batch u64, force bool) {
+	mut keys := []string{}
+	for key, batch in app.deferred_sgl_targets {
+		if force || batch <= completed_batch {
+			keys << key
+		}
+	}
+	for key in keys {
+		app.discard_sgl_context_key(key)
+		app.deferred_sgl_targets.delete(key)
+	}
+}
+
+fn (app &App) managed_sgl_context(key string) !sgl.Context {
+	if !app.gfx_started || !app.core.renderer_is_usable() {
+		return error(err_multiwindow_render_backend_unavailable)
+	}
+	if key !in app.sgl_contexts {
+		return error(err_multiwindow_render_backend_unavailable)
+	}
+	return app.sgl_contexts[key]
 }
 
 fn (mut app App) discard_window_sgl_context(id WindowId) {
-	key := id.str()
+	prefix := '${app.app_instance}:${id.str()}:'
+	mut keys := []string{}
+	for key, _ in app.sgl_contexts {
+		if key.starts_with(prefix) {
+			keys << key
+		}
+	}
+	for key in keys {
+		app.discard_sgl_context_key(key)
+		app.deferred_sgl_targets.delete(key)
+	}
+	app.window_sgl_targets.delete(id.str())
+}
+
+fn (app &App) has_window_sgl_context(id WindowId) bool {
+	prefix := '${app.app_instance}:${id.str()}:'
+	for key, _ in app.sgl_contexts {
+		if key.starts_with(prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut app App) discard_sgl_context_key(key string) {
 	if key !in app.sgl_contexts {
 		return
 	}
-	if !app.gfx_started {
-		app.sgl_contexts.delete(key)
-		return
-	}
 	context := app.sgl_contexts[key]
-	sgl.set_context(sgl.default_context())
-	sgl.destroy_context(context)
+	mut sokol_available := app.gfx_started && app.core.renderer_device_available_for_gg()
+	if sokol_available {
+		for {
+			materialization := app.render_runtime.take_sgl_materialization_for_target(key) or {
+				break
+			}
+			if !app.core.renderer_device_available_for_gg() {
+				sokol_available = false
+				break
+			}
+			sgl.destroy_pipeline(materialization.pipeline)
+		}
+	}
+	if sokol_available {
+		sokol_available = app.core.renderer_device_available_for_gg()
+	}
+	if sokol_available {
+		previous := sgl.get_context()
+		sgl.set_context(sgl.default_context())
+		sgl.destroy_context(context)
+		if previous != context {
+			sgl.set_context(previous)
+		}
+	}
+	if !sokol_available {
+		app.render_runtime.abandon_sgl_materializations_for_target(key)
+	}
 	app.sgl_contexts.delete(key)
+	app.sgl_context_targets.delete(key)
 }
 
-fn (mut app App) shutdown_renderer() {
-	app.sgl_contexts.clear()
+fn (mut app App) shutdown_renderer() ! {
+	mut errors := []string{}
 	if app.gfx_started {
-		sgl.shutdown()
-		gfx.shutdown()
+		mut device_available := app.core.renderer_device_available_for_gg()
+		if !device_available {
+			app.record_multiwindow_lifecycle_milestone(.core_renderer_device_unavailable)
+		}
+		if device_available {
+			app.record_multiwindow_lifecycle_milestone(.prepare_enter)
+			mut prepare_failed := false
+			app.core.prepare_renderer_shutdown_for_gg() or {
+				prepare_failed = true
+				errors << err.msg()
+				device_available = false
+			}
+			app.record_multiwindow_lifecycle_milestone(if prepare_failed {
+				.prepare_failed
+			} else {
+				.prepare_complete
+			})
+			if device_available {
+				device_available = app.core.renderer_device_available_for_gg()
+			}
+		}
+		if device_available {
+			// The backend anchor is current for the complete global shutdown.
+			// sgl_shutdown owns all managed SGL contexts and precedes gfx shutdown.
+			if app.sgl_initialized {
+				app.record_multiwindow_lifecycle_milestone(.sgl_shutdown_enter)
+				sgl.shutdown()
+				app.sgl_initialized = false
+				app.record_multiwindow_lifecycle_milestone(.sgl_shutdown_complete)
+			}
+			app.record_multiwindow_lifecycle_milestone(.core_renderer_shutdown_enter)
+			mut renderer_shutdown_failed := false
+			app.core.shutdown_renderer() or {
+				renderer_shutdown_failed = true
+				errors << err.msg()
+			}
+			app.record_multiwindow_lifecycle_milestone(if renderer_shutdown_failed {
+				.core_renderer_shutdown_failed
+			} else {
+				.core_renderer_shutdown_complete
+			})
+		} else {
+			app.sgl_initialized = false
+			gg_poison_gfx_render_owner(.multiwindow_app, app.owner_token())
+			app.record_multiwindow_lifecycle_milestone(.abandon_enter)
+			mut abandon_failed := false
+			app.core.abandon_renderer_for_gg() or {
+				abandon_failed = true
+				errors << err.msg()
+			}
+			app.record_multiwindow_lifecycle_milestone(if abandon_failed {
+				.abandon_failed
+			} else {
+				.abandon_complete
+			})
+		}
+		app.sgl_contexts.clear()
+		app.sgl_context_targets.clear()
+		app.window_sgl_targets.clear()
+		app.deferred_sgl_targets.clear()
 		app.gfx_started = false
+	} else {
+		app.record_multiwindow_lifecycle_milestone(.renderer_not_started)
+		app.sgl_initialized = false
+		app.sgl_contexts.clear()
+		app.sgl_context_targets.clear()
+		app.window_sgl_targets.clear()
+		app.deferred_sgl_targets.clear()
 	}
 	app.release_render_owner()
+	if errors.len > 0 {
+		return error('${err_multiwindow_render_cleanup_failed}: ${errors.join('; ')}')
+	}
 }
 
 fn (mut app App) owner_token() voidptr {
@@ -752,17 +942,32 @@ fn backend_from_core(backend multiwindow.BackendKind) MultiWindowBackend {
 }
 
 fn (config WindowConfig) to_core() multiwindow.WindowConfig {
+	return config.to_core_with_workload(false)
+}
+
+fn (config WindowConfig) to_core_with_workload(legacy_render_mode bool) multiwindow.WindowConfig {
 	return multiwindow.WindowConfig{
-		title:      config.title
-		width:      config.width
-		height:     config.height
-		min_width:  config.min_width
-		min_height: config.min_height
-		resizable:  config.resizable
-		visible:    config.visible
-		high_dpi:   config.high_dpi
-		borderless: config.borderless
-		fullscreen: config.fullscreen
+		title:           config.title
+		width:           config.width
+		height:          config.height
+		min_width:       config.min_width
+		min_height:      config.min_height
+		resizable:       config.resizable
+		visible:         config.visible
+		high_dpi:        config.high_dpi
+		borderless:      config.borderless
+		fullscreen:      config.fullscreen
+		sample_count:    config.sample_count
+		redraw_mode:     redraw_mode_to_core(config.redraw_mode)
+		render_workload: config.init_fn != unsafe { nil } || config.frame_fn != unsafe { nil }
+			|| legacy_render_mode
+	}
+}
+
+fn redraw_mode_to_core(mode WindowRedrawMode) multiwindow.RenderRedrawMode {
+	return match mode {
+		.on_demand { .on_demand }
+		.continuous { .continuous }
 	}
 }
 
@@ -796,7 +1001,8 @@ fn capabilities_from_core(caps multiwindow.Capabilities) Capabilities {
 
 fn window_id_from_core(id multiwindow.WindowId) WindowId {
 	return WindowId{
-		core: id
+		app_instance: id.app_instance_for_gg()
+		core:         id
 	}
 }
 

@@ -56,7 +56,9 @@ pub enum WindowCursorShape {
 }
 
 // WindowId identifies a window managed by gg.App.
-pub struct WindowId {}
+pub struct WindowId {
+	app_instance u64
+}
 
 // str returns a diagnostic representation of a WindowId.
 pub fn (id WindowId) str() string {
@@ -77,16 +79,24 @@ pub:
 @[params]
 pub struct WindowConfig {
 pub:
-	title      string = 'A GG Window'
-	width      int    = 800
-	height     int    = 600
-	min_width  int
-	min_height int
-	resizable  bool = true
-	visible    bool = true
-	high_dpi   bool = true
-	borderless bool
-	fullscreen bool
+	title        string = 'A GG Window'
+	width        int    = 800
+	height       int    = 600
+	min_width    int
+	min_height   int
+	resizable    bool = true
+	visible      bool = true
+	high_dpi     bool = true
+	borderless   bool
+	fullscreen   bool
+	clear_color  Color = Color{
+		a: 0
+	}
+	sample_count int              = 1
+	redraw_mode  WindowRedrawMode = .on_demand
+	init_fn      WindowInitFn     = unsafe { nil }
+	frame_fn     WindowFrameFn    = unsafe { nil }
+	cleanup_fn   WindowCleanupFn  = unsafe { nil }
 }
 
 // WindowInfo is a snapshot of a live gg.App window.
@@ -174,14 +184,15 @@ pub type WindowDrawFn = fn (mut window WindowContext) !
 @[params]
 pub struct RunConfig {
 pub:
-	frame_fn         AppFrameFn = unsafe { nil }
-	event_fn         AppEventFn = unsafe { nil }
-	input_fn         AppInputFn = unsafe { nil }
-	max_pending_jobs int        = 64
+	frame_fn                AppFrameFn           = unsafe { nil }
+	event_fn                AppEventFn           = unsafe { nil }
+	input_fn                AppInputFn           = unsafe { nil }
+	app_resource_init_fn    AppResourceInitFn    = unsafe { nil }
+	app_resource_frame_fn   AppResourceFrameFn   = unsafe { nil }
+	app_resource_cleanup_fn AppResourceCleanupFn = unsafe { nil }
+	readback_fn             WindowReadbackFn     = unsafe { nil }
+	max_pending_jobs        int                  = 64
 }
-
-// WindowContext is the public draw target for one gg.App window.
-pub struct WindowContext {}
 
 // App is the additive multi-window facade for gg users.
 //
@@ -277,13 +288,6 @@ pub fn (app &App) window_infos() ![]WindowInfo {
 	return error(err_multiwindow_not_enabled)
 }
 
-// window_context returns the public render target wrapper for a live window.
-pub fn (mut app App) window_context(id WindowId) !WindowContext {
-	_ = app
-	_ = id
-	return error(err_multiwindow_not_enabled)
-}
-
 // destroy_window destroys a live window.
 pub fn (mut app App) destroy_window(id WindowId) ! {
 	_ = app
@@ -369,7 +373,7 @@ pub fn (mut app App) stop() ! {
 // window_id returns the id routed to this draw context.
 pub fn (context &WindowContext) window_id() WindowId {
 	_ = context
-	return WindowId{}
+	panic(err_multiwindow_not_enabled)
 }
 
 // exists reports whether this context still targets a live window.
@@ -381,13 +385,13 @@ pub fn (context &WindowContext) exists() bool {
 // capabilities reports the app backend capabilities captured for this context.
 pub fn (context &WindowContext) capabilities() Capabilities {
 	_ = context
-	return Capabilities{}
+	panic(err_multiwindow_not_enabled)
 }
 
 // framebuffer_size returns the current render target size in pixels.
 pub fn (context &WindowContext) framebuffer_size() Size {
 	_ = context
-	return Size{}
+	panic(err_multiwindow_not_enabled)
 }
 
 // size returns the current draw size. Logical scaling will be added with native DPI routing.
@@ -403,6 +407,7 @@ pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, col
 	_ = w
 	_ = h
 	_ = color
+	panic(err_multiwindow_not_enabled)
 }
 
 // draw_rect_empty is available when compiling with `-d gg_multiwindow`.
@@ -413,4 +418,5 @@ pub fn (context &WindowContext) draw_rect_empty(x f32, y f32, w f32, h f32, colo
 	_ = w
 	_ = h
 	_ = color
+	panic(err_multiwindow_not_enabled)
 }

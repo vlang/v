@@ -39,14 +39,13 @@ fn build_selfhost_prune_v3() string {
 		}
 	}
 	build :=
-		os.execute('${os.quoted_path(vexe)} -path ${os.quoted_path(vlib_dir)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path(vlib_dir)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
 	assert build.exit_code == 0, build.output
 	completed = true
 	return v3_bin
 }
 
-fn selfhost_default_smoke_to_c(v3_bin string) string {
-	name := 'default'
+fn selfhost_executable_to_c(v3_bin string, name string, flags string) string {
 	out_bin := os.join_path(os.temp_dir(), 'v3_selfhost_backend_prune_${name}_${os.getpid()}')
 	out_c := out_bin + '.c'
 	out_v3cc := out_bin + '.v3cc'
@@ -58,7 +57,7 @@ fn selfhost_default_smoke_to_c(v3_bin string) string {
 		cleanup_selfhost_prune_file(out_c)
 		cleanup_selfhost_prune_file(out_bin)
 	}
-	cmd := '${os.quoted_path(v3_bin)} --no-parallel -selfhost -o ${os.quoted_path(out_bin)} ${os.quoted_path(v3_src)}'
+	cmd := '${os.quoted_path(v3_bin)} --no-parallel -selfhost ${flags} -o ${os.quoted_path(out_bin)} ${os.quoted_path(v3_src)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, res.output
 	assert os.is_file(out_bin) && !os.is_link(out_bin), 'missing compiled smoke `${out_bin}`'
@@ -133,7 +132,7 @@ fn assert_selfhost_backend_set(c_src string, want_amd64 bool, want_arm64 bool, w
 	}
 	want_ssa := want_amd64 || want_arm64
 	if want_ssa {
-		assert c_src.contains('ssa__build_with_used'), 'missing SSA builder marker'
+		assert c_src.contains('ssa__build_with_options'), 'missing SSA builder marker'
 		assert c_src.contains('optimize__optimize'), 'missing SSA optimizer marker'
 	} else {
 		assert !c_source_has_identifier_prefix(c_src, 'ssa__'), 'SSA module prefix survived pruning'
@@ -146,7 +145,7 @@ fn test_selfhost_default_prunes_optional_backends() {
 	defer {
 		cleanup_selfhost_prune_file(v3_bin)
 	}
-	c_src := selfhost_default_smoke_to_c(v3_bin)
+	c_src := selfhost_executable_to_c(v3_bin, 'default', '')
 	assert_selfhost_backend_set(c_src, false, false, false, false)
 	assert c_src.contains('bool lhs_is_arr = false;'), 'array equality fallback should use an explicit presence flag'
 	assert c_src.contains('bool lhs_is_fixed = false;'), 'fixed-array equality fallback should use an explicit presence flag'
@@ -190,6 +189,6 @@ fn test_selfhost_compile_backend_wasm_opts_wasm_back_in() {
 	defer {
 		cleanup_selfhost_prune_file(v3_bin)
 	}
-	c_src := selfhost_pruning_to_c(v3_bin, 'wasm', '-compile-backend wasm')
+	c_src := selfhost_executable_to_c(v3_bin, 'wasm', '-compile-backend wasm')
 	assert_selfhost_backend_set(c_src, false, false, true, false)
 }
