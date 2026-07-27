@@ -220,7 +220,7 @@ fn clean_output(input string) string {
 fn expected_fixture_exit_code(output string) int {
 	for line in output.split_into_lines() {
 		trimmed := line.trim_space()
-		if trimmed.contains('|') {
+		if is_fixture_source_gutter(trimmed) {
 			continue
 		}
 		for severity in ['error:', 'builder error:', 'cgen error:'] {
@@ -230,6 +230,15 @@ fn expected_fixture_exit_code(output string) int {
 		}
 	}
 	return 0
+}
+
+fn is_fixture_source_gutter(line string) bool {
+	pipe_index := line.index('|') or { return false }
+	mut prefix := line[..pipe_index].trim_space()
+	if prefix.starts_with('>') {
+		prefix = prefix[1..].trim_space()
+	}
+	return prefix.len == 0 || prefix.bytes().all(it.is_digit())
 }
 
 fn fixture_result_matches(expected_output string, found_output string, expected_exit_code int, actual_exit_code int) bool {

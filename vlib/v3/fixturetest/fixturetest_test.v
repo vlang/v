@@ -55,6 +55,7 @@ fn test_expected_fixture_exit_code_follows_diagnostic_severity() {
 	assert expected_fixture_exit_code('sample.vv:1:1: builder error: missing module') == 1
 	assert expected_fixture_exit_code('sample.vv:1:1: cgen error: invalid expression') == 1
 	assert expected_fixture_exit_code("    1 | println(': error: source text')") == 0
+	assert expected_fixture_exit_code('sample.vv:1:1: error: cannot use `(i8 | i16 | int | i64)` as type `SimpleInt`') == 1
 }
 
 fn test_fixture_result_requires_expected_exit_code() {
