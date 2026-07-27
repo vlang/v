@@ -6727,8 +6727,8 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 }
 
 fn reorder_chained_generic_inference_errors(a &flat.FlatAst, errors []types.TypeError) []types.TypeError {
-	mut paired_struct := map[int]bool{}
-	mut paired_call := map[int]bool{}
+	mut paired_call_by_struct := map[int]int{}
+	mut paired_calls := map[int]bool{}
 	for struct_index, struct_error in errors {
 		if !struct_error.msg.starts_with('could not infer generic type `')
 			|| !struct_error.msg.contains(' in generic struct `') {
@@ -6736,44 +6736,52 @@ fn reorder_chained_generic_inference_errors(a &flat.FlatAst, errors []types.Type
 		}
 		for call_index, call_error in errors {
 			if !call_error.msg.starts_with('could not infer generic type `')
-				|| !call_error.msg.contains(' in call to `')
-				|| !type_diagnostics_share_source_line(a, struct_error, call_error) {
+				|| !call_error.msg.contains(' in call to `') || paired_calls[call_index]
+				|| !type_diagnostic_call_uses_struct_receiver(a, call_error.node, struct_error.node) {
 				continue
 			}
-			paired_struct[struct_index] = true
-			paired_call[call_index] = true
+			paired_call_by_struct[struct_index] = call_index
+			paired_calls[call_index] = true
+			break
 		}
 	}
-	if paired_struct.len == 0 {
+	if paired_call_by_struct.len == 0 {
 		return errors.clone()
 	}
 	mut ordered := []types.TypeError{cap: errors.len}
 	for struct_index, struct_error in errors {
-		if !paired_struct[struct_index] {
-			continue
-		}
-		ordered << struct_error
-		for call_index, call_error in errors {
-			if paired_call[call_index]
-				&& type_diagnostics_share_source_line(a, struct_error, call_error) {
-				ordered << call_error
-			}
+		if call_index := paired_call_by_struct[struct_index] {
+			ordered << struct_error
+			ordered << errors[call_index]
 		}
 	}
 	for index, err in errors {
-		if !paired_struct[index] && !paired_call[index] {
+		if index !in paired_call_by_struct && !paired_calls[index] {
 			ordered << err
 		}
 	}
 	return ordered
 }
 
-fn type_diagnostics_share_source_line(a &flat.FlatAst, left types.TypeError, right types.TypeError) bool {
-	if left.pos.id != right.pos.id {
+fn type_diagnostic_call_uses_struct_receiver(a &flat.FlatAst, call_id flat.NodeId, struct_id flat.NodeId) bool {
+	call_index := int(call_id)
+	if call_index < 0 || call_index >= a.nodes.len {
 		return false
 	}
-	file := a.source_files[left.pos.id] or { return false }
-	return file.position(left.pos).line == file.position(right.pos).line
+	call := a.nodes[call_index]
+	if call.kind != .call || call.children_count == 0 {
+		return false
+	}
+	mut callee_id := a.child(&call, 0)
+	mut callee := a.node(callee_id)
+	if callee.kind == .index && callee.children_count > 0 {
+		callee_id = a.child(callee, 0)
+		callee = a.node(callee_id)
+	}
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	return a.child(callee, 0) == struct_id
 }
 
 fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
