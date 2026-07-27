@@ -7908,21 +7908,21 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	child := t.transform_expr(child_id)
 	temp_name := t.new_temp('dump')
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
-	if !isnil(t.tc) && t.tc.suppress_dump_output {
-		return t.make_ident(temp_name)
+	if isnil(t.tc) || !t.tc.suppress_dump_output {
+		value := t.make_ident(temp_name)
+		value_text := t.dump_value_string(value, typ)
+		mut path := t.cur_file
+		mut line := 0
+		if file := t.a.source_files[node.pos.id] {
+			path = file.name
+			line = file.position(node.pos).line
+		}
+		expr_text := if node.value.len > 0 { node.value } else { 'dump expression' }
+		prefix :=
+			t.make_string_literal('[${dump_relative_source_path(path)}:${line}] ${expr_text}: ')
+		message := t.string_plus(prefix, value_text)
+		t.pending_stmts << t.make_expr_stmt(t.make_call('eprintln', arr1(message)))
 	}
-	value := t.make_ident(temp_name)
-	value_text := t.dump_value_string(value, typ)
-	mut path := t.cur_file
-	mut line := 0
-	if file := t.a.source_files[node.pos.id] {
-		path = file.name
-		line = file.position(node.pos).line
-	}
-	expr_text := if node.value.len > 0 { node.value } else { 'dump expression' }
-	prefix := t.make_string_literal('[${dump_relative_source_path(path)}:${line}] ${expr_text}: ')
-	message := t.string_plus(prefix, value_text)
-	t.pending_stmts << t.make_expr_stmt(t.make_call('eprintln', arr1(message)))
 	return t.make_ident(temp_name)
 }
 
