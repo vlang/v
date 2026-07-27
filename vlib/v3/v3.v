@@ -3632,7 +3632,7 @@ fn main() {
 		eprintln('no input file')
 		exit(1)
 	}
-	if is_test_command && fixturetest.is_fixture_dir(input_file) {
+	if is_test_command && fixturetest.is_diagnostic_fixture_dir(input_file) {
 		exit(fixturetest.run(os.executable(), input_file))
 	}
 	maybe_delegate_v3_to_vvmrc(input_file, verbose)

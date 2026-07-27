@@ -5,15 +5,21 @@ import v3.cmdexec
 
 const max_reported_mismatches = 20
 const max_parallel_fixtures = 1
+const diagnostic_fixture_suffixes = ['/vlib/v/checker/tests', '/vlib/v/parser/tests',
+	'/vlib/v/scanner/tests']
 
 struct FixtureResult {
 	index     int
 	exit_code int
 }
 
-// is_fixture_dir reports whether path contains standalone v1-style `.vv`/`.out` fixtures.
-pub fn is_fixture_dir(path string) bool {
+// is_diagnostic_fixture_dir reports whether path is a known diagnostic `.vv`/`.out` suite.
+pub fn is_diagnostic_fixture_dir(path string) bool {
 	if !os.is_dir(path) {
+		return false
+	}
+	normalized := os.real_path(path).replace('\\', '/').trim_right('/')
+	if !diagnostic_fixture_suffixes.any(normalized.ends_with(it)) {
 		return false
 	}
 	files := os.ls(path) or { return false }
