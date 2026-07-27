@@ -28,17 +28,16 @@ mut:
 	file        &token.File = unsafe { nil }
 	insert_semi bool
 pub mut:
-	src                                 string
-	offset                              int
-	pos                                 int
-	lit                                 string
-	in_str_incomplete                   bool
-	in_str_inter                        bool
-	in_str_inter_format                 bool
-	str_inter_cbr_depth                 int
-	str_quote                           u8
-	diagnostics                         []Diagnostic
-	reported_number_prefixed_identifier bool
+	src                 string
+	offset              int
+	pos                 int
+	lit                 string
+	in_str_incomplete   bool
+	in_str_inter        bool
+	in_str_inter_format bool
+	str_inter_cbr_depth int
+	str_quote           u8
+	diagnostics         []Diagnostic
 }
 
 // peek_byte supports peek byte handling for Scanner.
@@ -74,7 +73,6 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.str_inter_cbr_depth = 0
 	s.str_quote = 0
 	s.diagnostics = []Diagnostic{}
-	s.reported_number_prefixed_identifier = false
 	s.file = unsafe { file }
 	s.src = src
 }
@@ -745,10 +743,9 @@ fn (mut s Scanner) number() {
 		s.consume_invalid_numeric_suffix()
 		invalid_ident := s.number_prefixed_identifier_name(s.pos, s.offset)
 		if invalid_ident.len > 0 {
-			if !s.reported_number_prefixed_identifier {
-				s.error_span('identifier name `${invalid_ident}` cannot start with a number',
-					s.pos, s.offset)
-				s.reported_number_prefixed_identifier = true
+			message := 'identifier name `${invalid_ident}` cannot start with a number'
+			if !s.diagnostics.any(it.message == message) {
+				s.error_span(message, s.pos, s.offset)
 			}
 		} else {
 			s.error('this number has unsuitable digit `${invalid_digit.ascii_str()}`',
