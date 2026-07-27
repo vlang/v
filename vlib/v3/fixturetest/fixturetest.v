@@ -11,14 +11,31 @@ struct FixtureResult {
 	exit_code int
 }
 
-// is_fixture_dir reports whether path contains v1-style `.vv`/`.out` fixtures.
+// is_fixture_dir reports whether path contains standalone v1-style `.vv`/`.out` fixtures.
 pub fn is_fixture_dir(path string) bool {
 	if !os.is_dir(path) {
 		return false
 	}
 	files := os.ls(path) or { return false }
+	if files.any(is_standard_test_file(it)) {
+		return false
+	}
 	return files.any(it.ends_with('.vv')
 		&& os.is_file(os.join_path(path, it.all_before_last('.vv') + '.out')))
+}
+
+fn is_standard_test_file(file string) bool {
+	if file.contains('_d_test.') || file.contains('_notd_test.') {
+		return false
+	}
+	if file.ends_with('_test.v') {
+		return true
+	}
+	if !file.ends_with('.v') {
+		return false
+	}
+	base := file[..file.len - 2]
+	return base.contains('.') && base.all_before_last('.').ends_with('_test')
 }
 
 // run compares every `.vv` compiler invocation with its adjacent `.out` file.
