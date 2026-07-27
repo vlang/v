@@ -524,7 +524,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 
 	if !initialized && !is_generic_default {
-		if nr_fields > 0 {
+		if sym.kind == .array_fixed && sym.is_empty_struct_array() {
+			// A fixed array of empty structs has no elements to zero-init in C
+			g.write('E_STRUCT')
+		} else if nr_fields > 0 {
 			g.write('0')
 		} else {
 			g.write('E_STRUCT')
