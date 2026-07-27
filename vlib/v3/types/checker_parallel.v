@@ -124,7 +124,11 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 		return false
 	}
 	if !want_parallel {
-		tc.check_semantics()
+		if tc.scope_parallel_check_workers {
+			tc.check_semantics_scoped_serial()
+		} else {
+			tc.check_semantics()
+		}
 		return false
 	}
 	$if windows {
