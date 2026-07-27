@@ -34,7 +34,8 @@ pub fn run(vexe string, dir string) int {
 	names.sort()
 	filter := os.getenv('VTEST_ONLY')
 	if filter.len > 0 {
-		names = names.filter(it.contains(filter) || os.join_path(dir, it).contains(filter))
+		filters := filter.split(',')
+		names = names.filter(name_matches_filters(it, os.join_path(dir, it), filters))
 	}
 	start_at := os.getenv('VTEST_START_AT').int()
 	if start_at >= names.len && names.len > 0 {
@@ -119,6 +120,10 @@ pub fn run(vexe string, dir string) int {
 		eprintln('${failures - max_reported_mismatches} additional mismatch details were not shown')
 	}
 	return if failures == 0 { 0 } else { 1 }
+}
+
+fn name_matches_filters(name string, path string, filters []string) bool {
+	return filters.any(name.contains(it) || path.contains(it))
 }
 
 fn run_fixture(vexe string, repo_root string, path string, index int) FixtureResult {
