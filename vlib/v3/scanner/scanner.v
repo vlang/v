@@ -663,32 +663,35 @@ fn (mut s Scanner) number() {
 		c := s.peek_byte(1)
 		if c == `b` || c == `B` {
 			s.offset += 2
-			if s.consume_digits(2) == 0 {
-				s.error('number part of this binary is not provided', s.pos + 1)
-			} else if s.offset < s.src.len && s.src[s.offset].is_alnum() {
+			digits := s.consume_digits(2)
+			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this binary number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
 				s.consume_invalid_numeric_suffix()
+			} else if digits == 0 {
+				s.error('number part of this binary is not provided', s.pos + 1)
 			}
 			return
 		} else if c == `x` || c == `X` {
 			s.offset += 2
-			if s.consume_digits(16) == 0 {
-				s.error('number part of this hexadecimal is not provided', s.pos + 1)
-			} else if s.offset < s.src.len && s.src[s.offset].is_alnum() {
+			digits := s.consume_digits(16)
+			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this hexadecimal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
 				s.consume_invalid_numeric_suffix()
+			} else if digits == 0 {
+				s.error('number part of this hexadecimal is not provided', s.pos + 1)
 			}
 			return
 		} else if c == `o` || c == `O` {
 			s.offset += 2
-			if s.consume_digits(8) == 0 {
-				s.error('number part of this octal is not provided', s.pos + 1)
-			} else if s.offset < s.src.len && s.src[s.offset].is_alnum() {
+			digits := s.consume_digits(8)
+			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this octal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
 				s.consume_invalid_numeric_suffix()
+			} else if digits == 0 {
+				s.error('number part of this octal is not provided', s.pos + 1)
 			}
 			return
 		}
