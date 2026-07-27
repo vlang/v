@@ -707,9 +707,11 @@ fn (mut s Scanner) number() {
 		}
 	}
 	mut has_exponent := false
+	mut exponent_has_no_digits := false
+	mut exponent_pos := 0
 	if s.offset < s.src.len && (s.src[s.offset] == `e` || s.src[s.offset] == `E`) {
 		has_exponent = true
-		exponent_pos := s.offset
+		exponent_pos = s.offset
 		s.offset++
 		if s.offset < s.src.len && (s.src[s.offset] == `+` || s.src[s.offset] == `-`) {
 			s.offset++
@@ -719,7 +721,7 @@ fn (mut s Scanner) number() {
 				s.offset = exponent_pos
 				return
 			}
-			s.error('exponent has no digits', exponent_pos)
+			exponent_has_no_digits = true
 		}
 	}
 	if s.offset < s.src.len && s.src[s.offset] == `.` && s.peek_byte(1).is_digit() {
@@ -742,7 +744,10 @@ fn (mut s Scanner) number() {
 		invalid_digit := s.src[s.offset]
 		s.consume_invalid_numeric_suffix()
 		invalid_ident := s.number_prefixed_identifier_name(s.pos, s.offset)
-		if invalid_ident.len > 0 {
+		if exponent_has_no_digits {
+			s.error('this number has unsuitable digit `${invalid_digit.ascii_str()}`',
+				invalid_digit_offset)
+		} else if invalid_ident.len > 0 {
 			message := 'identifier name `${invalid_ident}` cannot start with a number'
 			if !s.diagnostics.any(it.message == message) {
 				s.error_span(message, s.pos, s.offset)
@@ -751,6 +756,8 @@ fn (mut s Scanner) number() {
 			s.error('this number has unsuitable digit `${invalid_digit.ascii_str()}`',
 				invalid_digit_offset)
 		}
+	} else if exponent_has_no_digits {
+		s.error('exponent has no digits', exponent_pos)
 	}
 }
 

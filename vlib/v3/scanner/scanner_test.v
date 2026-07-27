@@ -61,3 +61,40 @@ fn test_all_number_prefixed_identifiers_are_reported() {
 	assert scanner.diagnostics[1].offset == 8
 	assert scanner.diagnostics[1].end == 10
 }
+
+fn test_malformed_exponent_suffixes_are_unsuitable_digits() {
+	cases := {
+		'2Ea':    'this number has unsuitable digit `a`'
+		'2e+foo': 'this number has unsuitable digit `f`'
+	}
+	for source, expected_message in cases {
+		mut files := token.FileSet.new()
+		mut file := files.add_file('malformed_exponent.v', source.len)
+		file.index_lines(source)
+		preferences := &pref.Preferences{}
+		mut scanner := new_scanner(preferences, .normal)
+		scanner.init(file, source)
+
+		assert scanner.scan() == .number
+		assert scanner.lit == source
+		assert scanner.offset == source.len
+		assert scanner.diagnostics.len == 1
+		assert scanner.diagnostics[0].message == expected_message
+		assert scanner.diagnostics[0].offset == if source == '2Ea' {
+			2
+		} else {
+			3
+		}
+	}
+
+	mut files := token.FileSet.new()
+	mut file := files.add_file('missing_exponent.v', 2)
+	file.index_lines('2E')
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, '2E')
+	assert scanner.scan() == .number
+	assert scanner.diagnostics.len == 1
+	assert scanner.diagnostics[0].message == 'exponent has no digits'
+	assert scanner.diagnostics[0].offset == 1
+}
