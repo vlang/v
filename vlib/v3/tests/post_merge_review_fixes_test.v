@@ -8005,4 +8005,23 @@ fn main() {
 }
 ')
 	assert out == ''
+	run_bad(v3_bin, 'recursive_str_unconditional_loop_break_path', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	for {
+		if copy.remaining == 0 {
+			break
+		}
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
 }

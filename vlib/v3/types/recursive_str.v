@@ -43,6 +43,11 @@ mut:
 	pending_goto    string
 }
 
+struct RecursiveStrLoopFlow {
+	fallthrough []RecursiveStrEnv
+	breaks      []RecursiveStrEnv
+}
+
 struct RecursiveStrContext {
 	fn_id         flat.NodeId
 	fn_name       string
@@ -290,23 +295,26 @@ fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env 
 		}
 	}
 	base := env.clone_env()
-	mut loop_env := base.clone_env()
-	mut falls_through := true
-	for i in body_start .. int(node.children_count) {
-		if !tc.recursive_str_process_stmt(tc.a.child(node, i), mut loop_env, ctx) {
-			falls_through = false
-			break
+	mut flow := tc.recursive_str_process_loop_sequence(*node, body_start, [
+		base.clone_env(),
+	], ctx)
+	if node.kind == .for_stmt {
+		mut after_post := []RecursiveStrEnv{}
+		for loop_path in flow.fallthrough {
+			mut post_env := loop_path.clone_env()
+			if tc.recursive_str_process_stmt(tc.a.child(node, 2), mut post_env, ctx) {
+				after_post << post_env
+			}
+		}
+		flow = RecursiveStrLoopFlow{
+			fallthrough: after_post
+			breaks:      flow.breaks
 		}
 	}
-	if falls_through && node.kind == .for_stmt {
-		tc.recursive_str_process_stmt(tc.a.child(node, 2), mut loop_env, ctx)
-	}
-	mut paths := []RecursiveStrEnv{}
+	mut paths := flow.breaks.clone()
 	if node.kind != .for_stmt || !tc.recursive_str_loop_guarantees_entry(*node) {
 		paths << base
-	}
-	if falls_through {
-		paths << loop_env
+		paths << flow.fallthrough
 	}
 	if paths.len == 0 {
 		return false
@@ -324,6 +332,160 @@ fn (tc &TypeChecker) recursive_str_loop_guarantees_entry(node flat.Node) bool {
 		return true
 	}
 	return tc.constant_bool_value(condition_id) or { false }
+}
+
+fn (mut tc TypeChecker) recursive_str_process_loop_sequence(node flat.Node, start int, initial []RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrLoopFlow {
+	mut active := initial.clone()
+	mut breaks := []RecursiveStrEnv{}
+	for i in start .. int(node.children_count) {
+		mut next := []RecursiveStrEnv{}
+		for loop_path in active {
+			flow := tc.recursive_str_process_loop_control_stmt(tc.a.child(&node, i), loop_path, ctx)
+			next << flow.fallthrough
+			breaks << flow.breaks
+		}
+		active = next.clone()
+		if active.len == 0 {
+			break
+		}
+	}
+	return RecursiveStrLoopFlow{
+		fallthrough: active
+		breaks:      breaks
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_process_loop_control_stmt(id flat.NodeId, source RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrLoopFlow {
+	if !tc.valid_node_id(id) {
+		return RecursiveStrLoopFlow{
+			fallthrough: [source]
+		}
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.break_stmt {
+			return RecursiveStrLoopFlow{
+				breaks: [source]
+			}
+		}
+		.continue_stmt {
+			return RecursiveStrLoopFlow{}
+		}
+		.block {
+			return tc.recursive_str_process_loop_sequence(*node, 0, [source], ctx)
+		}
+		.if_expr {
+			return tc.recursive_str_process_loop_if(*node, source, ctx)
+		}
+		.match_stmt {
+			return tc.recursive_str_process_loop_match(*node, source, ctx)
+		}
+		.select_stmt {
+			return tc.recursive_str_process_loop_select(*node, source, ctx)
+		}
+		else {
+			mut env := source.clone_env()
+			if tc.recursive_str_process_stmt(id, mut env, ctx) {
+				return RecursiveStrLoopFlow{
+					fallthrough: [env]
+				}
+			}
+		}
+	}
+	return RecursiveStrLoopFlow{}
+}
+
+fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrLoopFlow {
+	mut base := source.clone_env()
+	mut fallthrough := []RecursiveStrEnv{}
+	mut breaks := []RecursiveStrEnv{}
+	mut has_else := false
+	mut i := 0
+	for i < node.children_count {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.node(child_id)
+		if child.kind == .block {
+			has_else = true
+			flow := tc.recursive_str_process_loop_sequence(*child, 0, [
+				base.clone_env(),
+			], ctx)
+			fallthrough << flow.fallthrough
+			breaks << flow.breaks
+			i++
+			continue
+		}
+		mut condition_env := base.clone_env()
+		tc.recursive_str_eval_condition(child_id, mut condition_env, ctx)
+		if i + 1 < node.children_count {
+			block := tc.a.child_node(&node, i + 1)
+			if block.kind == .block {
+				flow := tc.recursive_str_process_loop_sequence(*block, 0, [
+					condition_env.clone_env(),
+				], ctx)
+				fallthrough << flow.fallthrough
+				breaks << flow.breaks
+				base = condition_env
+				i += 2
+				continue
+			}
+		}
+		i++
+	}
+	if !has_else {
+		fallthrough << base
+	}
+	return RecursiveStrLoopFlow{
+		fallthrough: fallthrough
+		breaks:      breaks
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_process_loop_match(node flat.Node, source RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrLoopFlow {
+	mut base := source.clone_env()
+	if node.children_count > 0 {
+		tc.recursive_str_eval_expr(tc.a.child(&node, 0), mut base, ctx)
+	}
+	mut fallthrough := []RecursiveStrEnv{}
+	mut breaks := []RecursiveStrEnv{}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			continue
+		}
+		start := if branch.value.is_int() { branch.value.int() } else { 0 }
+		flow := tc.recursive_str_process_loop_sequence(*branch, start, [
+			base.clone_env(),
+		], ctx)
+		fallthrough << flow.fallthrough
+		breaks << flow.breaks
+	}
+	if !tc.match_has_else_or_exhaustive_coverage(node) {
+		fallthrough << base
+	}
+	return RecursiveStrLoopFlow{
+		fallthrough: fallthrough
+		breaks:      breaks
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_process_loop_select(node flat.Node, source RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrLoopFlow {
+	mut fallthrough := []RecursiveStrEnv{}
+	mut breaks := []RecursiveStrEnv{}
+	for i in 0 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .select_branch {
+			continue
+		}
+		flow := tc.recursive_str_process_loop_sequence(*branch, 0, [
+			source.clone_env(),
+		], ctx)
+		fallthrough << flow.fallthrough
+		breaks << flow.breaks
+	}
+	return RecursiveStrLoopFlow{
+		fallthrough: fallthrough
+		breaks:      breaks
+	}
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
