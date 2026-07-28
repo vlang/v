@@ -7845,3 +7845,39 @@ fn main() {}
 ',
 		'cannot call `str()` method recursively')
 }
+
+fn test_recursive_str_allows_recursing_into_child_values() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_child_value', 'struct Tree {
+	children []Tree
+}
+
+fn (tree Tree) str() string {
+	if tree.children.len == 0 {
+		return "leaf"
+	}
+	return tree.children[0].str()
+}
+
+fn main() {
+	println(Tree{
+		children: [Tree{}]
+	}.str())
+}
+')
+	assert out == 'leaf'
+}
+
+fn test_recursive_str_preserves_provenance_through_array_elements() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_array_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item]
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
