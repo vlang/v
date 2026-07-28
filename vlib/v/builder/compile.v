@@ -21,6 +21,16 @@ fn resolve_ccompiler_type_and_pkgconfig_mode(mut prefs pref.Preferences) {
 }
 
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
+	compile_with_optional_external_c_error_report(pref_, backend_cb, none)
+}
+
+// compile_with_external_c_error_report compiles with the established compiler and submits
+// `report` only after that build succeeds.
+pub fn compile_with_external_c_error_report(command string, pref_ &pref.Preferences, backend_cb FnBackend, report ExternalCErrorBugReport) {
+	compile_with_optional_external_c_error_report(pref_, backend_cb, report)
+}
+
+fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backend_cb FnBackend, report ?ExternalCErrorBugReport) {
 	if pref_.is_test {
 		disable_c_error_bug_reports()
 	}
@@ -41,6 +51,11 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 	mut b := new_builder(pref_)
 	if b.should_rebuild() {
 		b.rebuild(backend_cb)
+	}
+	if failed := report {
+		// Do this before run_compiled_executable_and_exit: successful builds and run
+		// commands exit there, so the caller cannot reliably submit the report later.
+		consume_external_c_error_bug_report(pref_, failed)
 	}
 	b.exit_on_invalid_syntax()
 	// running does not require the parsers anymore

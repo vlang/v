@@ -10,6 +10,7 @@ const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
 const macos_v3_private_environment_names = [
 	'V_MACOS_V3_FALLBACK_FILE',
+	'V_MACOS_V3_C_ERROR_DIR',
 	'V_MACOS_V3_VHASH',
 	'V_MACOS_V3_VCURRENT_HASH',
 	macos_v3_caller_vexe_env,

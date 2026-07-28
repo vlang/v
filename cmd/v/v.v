@@ -147,8 +147,7 @@ fn main() {
 	}
 	match command {
 		'run', 'crun', 'build', 'build-module' {
-			rebuild(prefs)
-			submit_macos_v3_c_error_report(prefs, macos_v3_c_error_report)
+			rebuild(prefs, macos_v3_c_error_report)
 			return
 		}
 		'help' {
@@ -187,8 +186,7 @@ fn main() {
 			if command.ends_with('.v') || os.exists(command) {
 				// println('command')
 				// println(prefs.path)
-				rebuild(prefs)
-				submit_macos_v3_c_error_report(prefs, macos_v3_c_error_report)
+				rebuild(prefs, macos_v3_c_error_report)
 				return
 			}
 		}
@@ -208,15 +206,6 @@ fn main() {
 	eprintln(util.new_suggestion(command, all_commands, similarity_threshold: 0.2).say('v: unknown command `${command}`'))
 	eprintln('Run ${term.highlight_command('v help')} for usage.')
 	exit(1)
-}
-
-fn submit_macos_v3_c_error_report(prefs &pref.Preferences, report ?MacosV3CErrorReport) {
-	failed := report or { return }
-	defer {
-		os.rmdir_all(failed.report_dir) or {}
-	}
-	builder.submit_external_c_error_bug_report(prefs, failed.ccompiler, failed.c_output,
-		failed.c_file, 'V3')
 }
 
 fn invoke_help_and_exit(remaining []string) {
@@ -298,7 +287,7 @@ fn cached_v3_ownership_executable_path(vroot string) string {
 		'v3_ownership'))
 }
 
-fn rebuild(prefs &pref.Preferences) {
+fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport) {
 	match prefs.backend {
 		.c {
 			$if no_bootstrapv ? {
@@ -308,7 +297,17 @@ fn rebuild(prefs &pref.Preferences) {
 				// `v -os cross -o v.c cmd/v` having a functional C codegen inside instead.
 				util.launch_tool(prefs.is_verbose, 'builders/c_builder', os.args[1..])
 			}
-			builder.compile('build', prefs, cbuilder.compile_c)
+			if failed := macos_v3_c_error_report {
+				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
+					ccompiler:   failed.ccompiler
+					c_output:    failed.c_output
+					c_file:      failed.c_file
+					tag:         'V3'
+					cleanup_dir: failed.report_dir
+				})
+			} else {
+				builder.compile('build', prefs, cbuilder.compile_c)
+			}
 		}
 		.js_node, .js_freestanding, .js_browser {
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])

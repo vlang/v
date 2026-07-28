@@ -489,6 +489,7 @@ fn test_driver_preserves_macos_launcher_caller_environment() {
 const compile_vexe = \$env('VEXE')
 const compile_vchild = \$env('VCHILD')
 const compile_private = \$env('V_MACOS_V3_CALLER_VEXE')
+const compile_c_error_dir = \$env('V_MACOS_V3_C_ERROR_DIR')
 
 fn env_value(name string) string {
 	return os.getenv_opt(name) or { '<unset>' }
@@ -499,6 +500,7 @@ fn main() {
 	println('runtime:' + env_value('VEXE') + '|' + env_value('VCHILD'))
 	println('private:' + compile_private + '|' + env_value('V_MACOS_V3_CALLER_VEXE') + '|' +
 		env_value('V_MACOS_V3_CALLER_VCHILD'))
+	println('c-error-dir:' + compile_c_error_dir + '|' + env_value('V_MACOS_V3_C_ERROR_DIR'))
 }
 ")!
 	cache_dir := os.join_path(root, 'cache')
@@ -509,12 +511,13 @@ fn main() {
 	unset_environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '0'
 	unset_environment['V_MACOS_V3_CALLER_VCHILD'] = ''
 	unset_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '0'
+	unset_environment['V_MACOS_V3_C_ERROR_DIR'] = os.join_path(root, 'private-c-error')
 	unset_environment['V3CACHE'] = cache_dir
 	unset_output := os.join_path(root, 'caller_unset')
 	unset_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', unset_output, 'run', source], unset_environment)
 	assert unset_run.exit_code == 0, unset_run.output
-	assert unset_run.output == 'compile:|\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\n', unset_run.output
+	assert unset_run.output == 'compile:|\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\n', unset_run.output
 
 	mut set_environment := unset_environment.clone()
 	set_environment['V_MACOS_V3_CALLER_VEXE'] = 'caller-vexe'
@@ -525,7 +528,7 @@ fn main() {
 	set_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', set_output, 'run', source], set_environment)
 	assert set_run.exit_code == 0, set_run.output
-	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\n', set_run.output
+	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\n', set_run.output
 }
 
 fn test_driver_resolves_boolean_d_and_documented_pseudos() {

@@ -283,16 +283,38 @@ fn main() {
 		process.set_environment(environment)
 		process.set_redirect_stdio()
 		process.run()
+		compiler_pid := process.pid
 		process.wait()
 		compiler_output := process.stdout_slurp() + process.stderr_slurp()
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
 		assert compiler_output.contains('retrying with `-old-compiler`'), compiler_output
+		report_dir := os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${compiler_pid}.c_error')
+		assert !os.exists(report_dir), 'fallback report directory was not cleaned: ${report_dir}'
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0
 		assert run.output.trim_space() == 'old compiler retry succeeded'
+
+		os.rm(output)!
+		mut run_process := os.new_process(@VEXE)
+		run_process.set_args(['-gc', 'none', 'run', target])
+		run_process.set_environment(environment)
+		run_process.set_redirect_stdio()
+		run_process.run()
+		run_compiler_pid := run_process.pid
+		run_process.wait()
+		run_output := run_process.stdout_slurp() + run_process.stderr_slurp()
+		run_exit_code := run_process.code
+		run_process.close()
+		assert run_exit_code == 0, run_output
+		assert run_output.contains('retrying with `-old-compiler`'), run_output
+		assert run_output.contains('old compiler retry succeeded'), run_output
+		run_report_dir := os.join_path(os.vtmp_dir(),
+			'macos_v3_fallback_${run_compiler_pid}.c_error')
+		assert !os.exists(run_report_dir), 'run fallback report directory was not cleaned: ${run_report_dir}'
+		assert !os.exists(output), 'run fallback executable was not cleaned: ${output}'
 	}
 }
 

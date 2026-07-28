@@ -50,6 +50,17 @@ pub:
 	v_source       string // a small chunk of V source around the failing line (bounded), never the whole file
 }
 
+// ExternalCErrorBugReport describes a generated-C failure produced by another compiler
+// implementation and confirmed by a successful build with the established compiler.
+pub struct ExternalCErrorBugReport {
+pub:
+	ccompiler   string
+	c_output    string
+	c_file      string
+	tag         string
+	cleanup_dir string
+}
+
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
 	v.submit_c_error_bug_report_with_tag(ccompiler, c_output, '', true)
 }
@@ -98,6 +109,16 @@ pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler str
 	mut b := new_builder(prefs)
 	b.out_name_c = c_file
 	b.submit_c_error_bug_report_with_tag(ccompiler, c_output, tag, false)
+}
+
+fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalCErrorBugReport) {
+	defer {
+		if report.cleanup_dir != '' {
+			os.rmdir_all(report.cleanup_dir) or {}
+		}
+	}
+	submit_external_c_error_bug_report(prefs, report.ccompiler, report.c_output, report.c_file,
+		report.tag)
 }
 
 fn c_error_report_build_options(prefs &pref.Preferences, tag string) string {
