@@ -51,14 +51,18 @@ pub:
 }
 
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
+	v.submit_c_error_bug_report_with_tag(ccompiler, c_output, '', true)
+}
+
+fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output string, tag string, retry_with_vlines bool) {
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		return
 	}
 	// Snapshot the user's real flags now: the vlines fallback below temporarily flips
 	// `pref.is_vlines`, so computing this after it would misreport `vlines` for plain builds.
-	build_options := codegen_build_options(v.pref)
+	build_options := c_error_report_build_options(v.pref, tag)
 	mut raw_report := v.new_c_error_bug_report(ccompiler, c_output)
-	if raw_report.v_file == '' {
+	if retry_with_vlines && raw_report.v_file == '' {
 		// The default `.tmp.c` has no `#line` directives, so the C error could not be
 		// traced back to a V line. Regenerate the C with `#line` info (as `-g` would),
 		// recompile, and reuse the richer report when it does map to a V source line.
@@ -83,6 +87,29 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 	println('V ${report.v_version}, ${report.target_os}/${report.arch}, cc: ${report.ccompiler}, build options: ${report.build_options}')
 	print_c_error_bug_report_context(report)
 	println('='.repeat('================== C compiler bug report =============='.len))
+}
+
+// submit_external_c_error_bug_report submits C diagnostics and generated source produced by
+// another compiler implementation after the established compiler has confirmed the build.
+pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, c_file string, tag string) {
+	if !c_error_should_send_bug_report(c_output) {
+		return
+	}
+	mut b := new_builder(prefs)
+	b.out_name_c = c_file
+	b.submit_c_error_bug_report_with_tag(ccompiler, c_output, tag, false)
+}
+
+fn c_error_report_build_options(prefs &pref.Preferences, tag string) string {
+	options := codegen_build_options(prefs)
+	trimmed_tag := tag.trim_space()
+	if trimmed_tag == '' {
+		return options
+	}
+	if options == '' {
+		return trimmed_tag
+	}
+	return '${trimmed_tag} ${options}'
 }
 
 fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CErrorBugReport {

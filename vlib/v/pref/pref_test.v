@@ -497,6 +497,14 @@ fn test_v3_memory_limit_passthrough_flags_are_accepted() {
 	}
 }
 
+fn test_old_compiler_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-old-compiler', target], false)
+	assert command == target
+	assert prefs.old_compiler
+	assert '-old-compiler' !in prefs.build_options
+}
+
 fn test_compact_boolean_define_is_accepted() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, command := pref.parse_args_and_show_errors([], ['-dfeature', target], false)

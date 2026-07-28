@@ -327,6 +327,38 @@ fn main() {
 	}
 }
 
+fn test_driver_requests_macos_compatibility_for_c_compilation_errors() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_c_error_fallback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'missing_symbol.c.v')
+	os.write_file(source, 'fn C.v3_missing_symbol()
+
+fn main() {
+	C.v3_missing_symbol()
+}
+')!
+	fallback_file := os.join_path(root, 'fallback')
+	report_dir := os.join_path(root, 'c_error')
+	mut environment := os.environ()
+	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
+	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
+	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
+		'-no-memory-limit', source], environment)
+	assert result.exit_code != 0
+	assert result.output == '', result.output
+	assert os.read_file(fallback_file)! == 'c_compilation_error'
+	assert os.read_file(os.join_path(report_dir, 'compiler'))!.trim_space() != ''
+	assert os.read_file(os.join_path(report_dir, 'output'))!.to_lower().contains('v3_missing_symbol')
+	source_name := os.read_file(os.join_path(report_dir, 'source_name'))!.trim_space()
+	assert source_name == 'src.c'
+	assert os.is_file(os.join_path(report_dir, source_name))
+}
+
 fn test_driver_cg_selects_debug_module_files() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_cg_debug_files_${os.getpid()}')
 	os.rmdir_all(root) or {}

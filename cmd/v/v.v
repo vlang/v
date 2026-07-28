@@ -66,6 +66,13 @@ const external_tools = [
 	'where',
 ]
 
+struct MacosV3CErrorReport {
+	ccompiler  string
+	c_output   string
+	c_file     string
+	report_dir string
+}
+
 @[unsafe]
 fn timers_pointer(p &util.Timers) &util.Timers {
 	// TODO: the static variable here is used as a workaround for the current incompatibility of -usecache and globals in the main module:
@@ -118,7 +125,7 @@ fn main() {
 	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs)
-	maybe_delegate_to_macos_v3(command, prefs)
+	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -141,6 +148,7 @@ fn main() {
 	match command {
 		'run', 'crun', 'build', 'build-module' {
 			rebuild(prefs)
+			submit_macos_v3_c_error_report(prefs, macos_v3_c_error_report)
 			return
 		}
 		'help' {
@@ -180,6 +188,7 @@ fn main() {
 				// println('command')
 				// println(prefs.path)
 				rebuild(prefs)
+				submit_macos_v3_c_error_report(prefs, macos_v3_c_error_report)
 				return
 			}
 		}
@@ -199,6 +208,15 @@ fn main() {
 	eprintln(util.new_suggestion(command, all_commands, similarity_threshold: 0.2).say('v: unknown command `${command}`'))
 	eprintln('Run ${term.highlight_command('v help')} for usage.')
 	exit(1)
+}
+
+fn submit_macos_v3_c_error_report(prefs &pref.Preferences, report ?MacosV3CErrorReport) {
+	failed := report or { return }
+	defer {
+		os.rmdir_all(failed.report_dir) or {}
+	}
+	builder.submit_external_c_error_bug_report(prefs, failed.ccompiler, failed.c_output,
+		failed.c_file, 'V3')
 }
 
 fn invoke_help_and_exit(remaining []string) {

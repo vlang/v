@@ -57,10 +57,15 @@ $if !skip_wasm ? {
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
 const macos_v3_inline_asm_fallback = 'inline_asm'
+const macos_v3_c_error_fallback = 'c_compilation_error'
+const macos_v3_c_error_compiler_file = 'compiler'
+const macos_v3_c_error_output_file = 'output'
+const macos_v3_c_error_source_name_file = 'source_name'
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -3528,13 +3533,60 @@ fn record_compile_value(mut values map[string]string, define string) {
 	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
 }
 
-fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic) bool {
-	fallback_file := os.getenv(macos_v3_fallback_file_env)
+fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
 	if fallback_file == '' || !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
 		return false
 	}
 	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
 	return true
+}
+
+fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string) bool {
+	if fallback_file == '' || report_dir == '' || !os.is_file(c_source) {
+		return false
+	}
+	os.rmdir_all(report_dir) or {}
+	os.mkdir_all(report_dir) or { return false }
+	source_name := os.base(c_source)
+	report_source := os.join_path(report_dir, source_name)
+	os.cp(c_source, report_source) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_compiler_file), ccompiler) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_output_file), c_output) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_source_name_file), source_name) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(fallback_file, macos_v3_c_error_fallback) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	return true
+}
+
+fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_dir string, ccompiler string, message string, c_sources []string) bool {
+	is_c_error := message.starts_with('failed to build C object ')
+		|| message.starts_with('failed to build cached module object ')
+		|| message.starts_with('failed to build cached program prefix:')
+		|| message.starts_with('failed to build cached development dylib:')
+	if !is_c_error {
+		return false
+	}
+	for c_source in c_sources {
+		if os.is_file(c_source) {
+			return request_macos_v3_c_error_fallback(fallback_file, report_dir, ccompiler, message,
+				c_source)
+		}
+	}
+	return false
 }
 
 // main runs the v3 entry point.
@@ -3544,6 +3596,8 @@ fn main() {
 		eprintln(cli_usage())
 		exit(1)
 	}
+	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
+	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
 
 	mut input_file := ''
 	mut output_file := ''
@@ -4156,7 +4210,7 @@ fn main() {
 		i64(0)
 	}
 	if p.diagnostics.len > 0 {
-		if request_macos_v3_compatibility_fallback(p.diagnostics) {
+		if request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
 			exit(1)
 		}
 		for diagnostic in p.diagnostics {
@@ -4170,6 +4224,7 @@ fn main() {
 		exit(1)
 	}
 	os.unsetenv(macos_v3_fallback_file_env)
+	os.unsetenv(macos_v3_c_error_dir_env)
 	// Parsing workers canonicalize source-backed node text before their buffers
 	// are released. Metadata keys are finalized here before semantic phases begin.
 	p.release_source_storage()
@@ -5314,7 +5369,15 @@ fn main() {
 		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
 			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
-			eprintln(err.msg())
+			message := err.msg()
+			if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+				macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
+				cc_src])
+			{
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			eprintln(message)
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
@@ -5378,7 +5441,18 @@ fn main() {
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file,
 							incremental_tcc_declarations_path, cached_prefix, compile_signature, mut
 							cache_state) or {
-							eprintln(err.msg())
+							message := err.msg()
+							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+								macos_v3_c_error_dir, c_compiler, message, [
+								cache_plan_file,
+								published_c_source,
+								cc_src,
+							])
+							{
+								cleanup_c_build_dir(cc_dir)
+								exit(1)
+							}
+							eprintln(message)
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
@@ -5402,7 +5476,18 @@ fn main() {
 						prepared_cache = prepare_v3_cached_generic_body(generated_source,
 							cached_prefix, cached_declarations, cached_body, compile_signature, mut
 							cache_state) or {
-							eprintln(err.msg())
+							message := err.msg()
+							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+								macos_v3_c_error_dir, c_compiler, message, [
+								cache_plan_file,
+								published_c_source,
+								cc_src,
+							])
+							{
+								cleanup_c_build_dir(cc_dir)
+								exit(1)
+							}
+							eprintln(message)
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
@@ -5411,7 +5496,18 @@ fn main() {
 					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns,
 						&pre_tc, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags,
 						needs_objective_c, interface_impl_signature, mut cache_state) or {
-						eprintln(err.msg())
+						message := err.msg()
+						if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+							macos_v3_c_error_dir, c_compiler, message, [
+							cache_plan_file,
+							published_c_source,
+							cc_src,
+						])
+						{
+							cleanup_c_build_dir(cc_dir)
+							exit(1)
+						}
+						eprintln(message)
 						cleanup_c_build_dir(cc_dir)
 						exit(1)
 					}
@@ -5521,14 +5617,36 @@ fn main() {
 					&cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags,
 					resolved_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut
 					c_object_cache_stats) or {
-					eprintln(err.msg())
+					message := err.msg()
+					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+						macos_v3_c_error_dir, c_compiler, message, [
+						published_c_source,
+						cache_plan_file,
+						cc_src,
+					])
+					{
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
+					eprintln(message)
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
 				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects,
 					resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler,
 					cc_dir, !silent || show_cc, mut c_object_cache_stats) or {
-					eprintln(err.msg())
+					message := err.msg()
+					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+						macos_v3_c_error_dir, c_compiler, message, [
+						published_c_source,
+						cache_plan_file,
+						cc_src,
+					])
+					{
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
+					eprintln(message)
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
@@ -5722,6 +5840,12 @@ fn main() {
 			}
 			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
 			if result.exit_code != 0 {
+				if request_macos_v3_c_error_fallback(macos_v3_fallback_file, macos_v3_c_error_dir,
+					c_compiler, result.output, os.join_path_single(cc_dir, fallback_source))
+				{
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
 				eprintln('C compilation failed:')
 				eprintln(result.output)
 				cleanup_c_build_dir(cc_dir)

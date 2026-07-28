@@ -13,6 +13,9 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 			gc_mode:   .no_gc
 		}
 		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.old_compiler = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.old_compiler = false
 		prefs.coverage_dir = '/tmp/vcovdir'
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.coverage_dir = ''
@@ -194,6 +197,7 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 			caller_environment)
 		assert environment[macos_v3_vhash_env] == @VHASH
 		assert environment[macos_v3_vcurrent_hash_env] == @VCURRENTHASH
+		assert environment[macos_v3_c_error_dir_env] == '/tmp/macos_v3_fallback.c_error'
 		assert environment['VEXE'] == os.real_path(@VEXE)
 		assert environment['VCHILD'] == 'true'
 		assert environment[macos_v3_caller_vexe_present_env] == '1'
@@ -208,6 +212,87 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert unset_environment[macos_v3_caller_vexe_env] == ''
 		assert unset_environment[macos_v3_caller_vchild_present_env] == '0'
 		assert unset_environment[macos_v3_caller_vchild_env] == ''
+	}
+}
+
+fn test_macos_v3_reads_c_error_fallback_report() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'macos_v3_c_error_report_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, macos_v3_c_error_source_name_file), 'src.c')!
+		os.write_file(os.join_path(root, macos_v3_c_error_compiler_file), 'clang')!
+		os.write_file(os.join_path(root, macos_v3_c_error_output_file),
+			'src.c:2:1: error: generated failure')!
+		os.write_file(os.join_path(root, 'src.c'), 'int main(void) { return missing; }\n')!
+		report := read_macos_v3_c_error_report(root) or {
+			assert false
+			return
+		}
+		assert report.ccompiler == 'clang'
+		assert report.c_output.contains('generated failure')
+		assert report.c_file == os.join_path(root, 'src.c')
+		assert report.report_dir == root
+	}
+}
+
+fn test_macos_v3_c_error_falls_back_to_old_compiler() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_c_error_retry_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		fake_source := os.join_path(root, 'fake_v3.v')
+		fake_v3 := os.join_path(root, 'fake_v3')
+		os.write_file(fake_source, "import os
+
+fn main() {
+	fallback_file := os.getenv('V_MACOS_V3_FALLBACK_FILE')
+	report_dir := os.getenv('V_MACOS_V3_C_ERROR_DIR')
+	os.mkdir_all(report_dir)!
+	os.write_file(os.join_path(report_dir, 'compiler'), 'clang')!
+	os.write_file(os.join_path(report_dir, 'output'), 'src.c:1:1: error: simulated V3 failure')!
+	os.write_file(os.join_path(report_dir, 'source_name'), 'src.c')!
+	os.write_file(os.join_path(report_dir, 'src.c'), 'int simulated_v3_failure;\\n')!
+	os.write_file(fallback_file, 'c_compilation_error')!
+	exit(1)
+}
+")!
+		fake_build :=
+			os.execute('${os.quoted_path(@VEXE)} -old-compiler -o ${os.quoted_path(fake_v3)} ${os.quoted_path(fake_source)}')
+		assert fake_build.exit_code == 0, fake_build.output
+		target := os.join_path(root, 'target.v')
+		output := os.join_path(root, 'target')
+		os.write_file(target, "fn main() {
+	println('old compiler retry succeeded')
+}
+")!
+		mut environment := os.environ()
+		environment[macos_v3_executable_env] = fake_v3
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
+		environment[macos_v3_bootstrap_env] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', output, target])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('retrying with `-old-compiler`'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0
+		assert run.output.trim_space() == 'old compiler retry succeeded'
 	}
 }
 

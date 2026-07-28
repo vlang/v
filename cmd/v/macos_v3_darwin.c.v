@@ -10,6 +10,7 @@ import v.util
 const macos_v3_bootstrap_env = 'V_MACOS_V3_BOOTSTRAP'
 const macos_v3_executable_env = 'V_MACOS_V3_EXECUTABLE'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
@@ -17,17 +18,21 @@ const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
 const macos_v3_inline_asm_fallback = 'inline_asm'
+const macos_v3_c_error_fallback = 'c_compilation_error'
+const macos_v3_c_error_compiler_file = 'compiler'
+const macos_v3_c_error_output_file = 'output'
+const macos_v3_c_error_source_name_file = 'source_name'
 
-fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
+fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
 	if os.getenv(macos_v3_bootstrap_env) != '' || !is_macos_v3_default_executable(os.executable())
 		|| !is_macos_v3_relevant_command(command, prefs)
 		|| !macos_v3_environment_flags_are_supported(os.getenv('CFLAGS'), os.getenv('LDFLAGS'))
 		|| !macos_v3_args_are_supported(forwarded_args) {
-		return
+		return none
 	}
-	launch_macos_v3_compiler(prefs, forwarded_args)
+	return launch_macos_v3_compiler(prefs, forwarded_args)
 }
 
 fn macos_v3_environment_flags_are_supported(cflags string, ldflags string) bool {
@@ -39,7 +44,7 @@ fn is_macos_v3_default_executable(vexe string) bool {
 }
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
-	if prefs.path == '' || prefs.backend != .c || prefs.os != .macos {
+	if prefs.old_compiler || prefs.path == '' || prefs.backend != .c || prefs.os != .macos {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
@@ -208,7 +213,7 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	return forwarded_args
 }
 
-fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
+fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3CErrorReport {
 	caller_environment := os.environ()
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -240,6 +245,8 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	process.set_args(forwarded_args)
 	fallback_file := os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${os.getpid()}')
 	os.rm(fallback_file) or {}
+	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
+	os.rmdir_all(c_error_dir) or {}
 	environment := macos_v3_child_environment(vexe, fallback_file, caller_environment)
 	process.set_environment(environment)
 	process.run()
@@ -249,12 +256,56 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	fallback_reason := os.read_file(fallback_file) or { '' }
 	os.rm(fallback_file) or {}
 	if exit_code != 0 && fallback_reason == macos_v3_inline_asm_fallback {
+		os.rmdir_all(c_error_dir) or {}
 		if prefs.is_verbose {
 			println('V3 requested the compatibility compiler for inline assembly')
 		}
-		return
+		return none
 	}
+	if exit_code != 0 && fallback_reason == macos_v3_c_error_fallback {
+		report := read_macos_v3_c_error_report(c_error_dir) or {
+			os.rmdir_all(c_error_dir) or {}
+			eprintln('V3 requested a C-error fallback, but its diagnostics could not be read')
+			exit(exit_code)
+		}
+		eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
+		if report.c_output != '' {
+			eprintln(report.c_output.trim_right('\r\n'))
+		}
+		return report
+	}
+	os.rmdir_all(c_error_dir) or {}
 	exit(exit_code)
+}
+
+fn macos_v3_c_error_report_dir(fallback_file string) string {
+	return fallback_file + '.c_error'
+}
+
+fn read_macos_v3_c_error_report(report_dir string) ?MacosV3CErrorReport {
+	source_name := os.read_file(os.join_path(report_dir, macos_v3_c_error_source_name_file)) or {
+		return none
+	}
+	clean_source_name := source_name.trim_space()
+	if clean_source_name == '' || os.base(clean_source_name) != clean_source_name {
+		return none
+	}
+	ccompiler := os.read_file(os.join_path(report_dir, macos_v3_c_error_compiler_file)) or {
+		return none
+	}
+	c_output := os.read_file(os.join_path(report_dir, macos_v3_c_error_output_file)) or {
+		return none
+	}
+	c_file := os.join_path(report_dir, clean_source_name)
+	if !os.is_file(c_file) {
+		return none
+	}
+	return MacosV3CErrorReport{
+		ccompiler:  ccompiler.trim_space()
+		c_output:   c_output
+		c_file:     c_file
+		report_dir: report_dir
+	}
 }
 
 fn macos_v3_child_environment(vexe string, fallback_file string, caller_environment map[string]string) map[string]string {
@@ -266,6 +317,7 @@ fn macos_v3_child_environment(vexe string, fallback_file string, caller_environm
 	environment['VCHILD'] = 'true'
 	environment['VEXE'] = os.real_path(vexe)
 	environment[macos_v3_fallback_file_env] = fallback_file
+	environment[macos_v3_c_error_dir_env] = macos_v3_c_error_report_dir(fallback_file)
 	environment[macos_v3_vhash_env] = @VHASH
 	environment[macos_v3_vcurrent_hash_env] = @VCURRENTHASH
 	return environment

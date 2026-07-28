@@ -36,7 +36,13 @@ runs serial stages to stay within its memory safety limit.
 `cmd/v` remains the CLI and compatibility dispatcher. Ordinary unflagged C builds use the
 established compiler because their default GC mode is `boehm_full_opt`. Tests, command tools,
 self-hosted temporary compilers, cross-compilation, and modes not yet supported by V3 also
-continue through the established compiler. Other operating systems are unchanged.
+continue through the established compiler. Pass `-old-compiler` to explicitly use that
+compatibility path for an otherwise eligible macOS build. Other operating systems are unchanged.
+
+When V3's generated C fails to compile, `cmd/v` automatically retries the command through the
+established compiler. If that retry succeeds, the existing automatic C-error reporter submits the
+V3 diagnostics to bugs.vlang.io with `V3` in the report's build options. The usual
+`V_C_ERROR_BUG_REPORT_DISABLED` and GitHub CI safeguards still apply.
 
 ## Target selection
 
