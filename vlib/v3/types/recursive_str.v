@@ -163,6 +163,15 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			}
 			return false
 		}
+		.assert_stmt {
+			// Assertions can be removed from production builds, so their mutations
+			// cannot establish progress for a later recursive call.
+			mut assert_env := env.clone_env()
+			for i in 0 .. node.children_count {
+				tc.recursive_str_eval_expr(tc.a.child(node, i), mut assert_env, ctx)
+			}
+			return true
+		}
 		.defer_stmt {
 			// Deferred statements execute after the current path has finished. Check their
 			// bodies without letting deferred mutations affect earlier recursive calls.
@@ -186,6 +195,9 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 		.match_stmt {
 			return tc.recursive_str_process_match_stmt(id, mut env, ctx)
 		}
+		.select_stmt {
+			return tc.recursive_str_process_select_stmt(id, mut env, ctx)
+		}
 		.for_stmt, .for_in_stmt {
 			return tc.recursive_str_process_loop_stmt(id, mut env, ctx)
 		}
@@ -194,6 +206,35 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			return true
 		}
 	}
+}
+
+fn (mut tc TypeChecker) recursive_str_process_select_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
+	node := tc.a.node(id)
+	base := env.clone_env()
+	mut branch_envs := []RecursiveStrEnv{}
+	for i in 0 .. node.children_count {
+		branch_id := tc.a.child(node, i)
+		branch := tc.a.node(branch_id)
+		if branch.kind != .select_branch {
+			continue
+		}
+		mut branch_env := base.clone_env()
+		mut falls_through := true
+		for j in 0 .. branch.children_count {
+			if !tc.recursive_str_process_stmt(tc.a.child(branch, j), mut branch_env, ctx) {
+				falls_through = false
+				break
+			}
+		}
+		if falls_through {
+			branch_envs << branch_env
+		}
+	}
+	if branch_envs.len == 0 {
+		return false
+	}
+	env = tc.recursive_str_merge_envs(branch_envs)
+	return true
 }
 
 fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
@@ -263,6 +304,9 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		}
 		.match_stmt {
 			return tc.recursive_str_eval_match_expr(id, mut env, ctx)
+		}
+		.select_stmt {
+			tc.recursive_str_process_select_stmt(id, mut env, ctx)
 		}
 		.or_expr {
 			if node.children_count == 0 {

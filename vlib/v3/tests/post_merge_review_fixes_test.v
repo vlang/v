@@ -7147,6 +7147,55 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_assertion_mutation_is_not_guaranteed_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_assertion_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) bool {
+	item.remaining--
+	return true
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	assert advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_select_branches_have_isolated_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_select_branch_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			copy.remaining--
+		}
+		else {
+			return copy.str()
+		}
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_deferred_mutation_does_not_count_as_progress() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_deferred_mutation', 'struct Item {
