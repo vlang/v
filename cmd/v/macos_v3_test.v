@@ -13,6 +13,15 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 			gc_mode:   .no_gc
 		}
 		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.coverage_dir = '/tmp/vcovdir'
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.coverage_dir = ''
+		prefs.show_cc = true
+		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.output_mode = .silent
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.output_mode = .stdout
+		prefs.show_cc = false
 		prefs.gc_mode = .boehm_full_opt
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.gc_mode = .no_gc

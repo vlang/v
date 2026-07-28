@@ -38,7 +38,8 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if (prefs.is_crun && !is_direct_vsh) || prefs.is_test || prefs.is_prod
 		|| prefs.autofree || prefs.build_mode == .build_module || prefs.is_cstrict
 		|| prefs.use_cache || prefs.parallel_cc || prefs.out_name_is_dir
-		|| prefs.exclude.len > 0 {
+		|| prefs.exclude.len > 0 || prefs.coverage_dir != ''
+		|| (prefs.show_cc && prefs.output_mode == .silent) {
 		return false
 	}
 	if prefs.gc_mode != .no_gc {
