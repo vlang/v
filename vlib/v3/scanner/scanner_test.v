@@ -122,3 +122,18 @@ fn test_invalid_unicode_scalar_escapes_are_reported() {
 		assert scanner.diagnostics[0].offset == source.len - 1
 	}
 }
+
+fn test_unknown_string_escape_is_reported() {
+	source := r"'\_'"
+	mut files := token.FileSet.new()
+	mut file := files.add_file('unknown_escape.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+
+	assert scanner.scan() == .string
+	assert scanner.diagnostics.len == 1
+	assert scanner.diagnostics[0].message == '`_` unknown escape sequence'
+	assert scanner.diagnostics[0].offset == 2
+}

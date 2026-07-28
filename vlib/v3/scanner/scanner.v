@@ -640,6 +640,10 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 fn (mut s Scanner) check_string_escape(backslash_offset int) {
 	escape_offset := backslash_offset + 1
 	escape := s.src[escape_offset]
+	if !is_known_string_escape(escape) {
+		s.error('`${escape.ascii_str()}` unknown escape sequence', escape_offset)
+		return
+	}
 	digits, message := match escape {
 		`x` { 2, r'`\x` used without two following hex digits' }
 		`u` { 4, r'`\u` incomplete 16 bit unicode character value' }
@@ -660,6 +664,11 @@ fn (mut s Scanner) check_string_escape(backslash_offset int) {
 		literal := s.source_lit(backslash_offset, end)
 		s.error('invalid unicode point `${literal}`', end)
 	}
+}
+
+fn is_known_string_escape(c u8) bool {
+	return (c >= `0` && c <= `9`) || c == `\n`
+		|| c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`, `}`, `'`, `"`, `U`]
 }
 
 fn string_escape_hex_value(c u8) u32 {
