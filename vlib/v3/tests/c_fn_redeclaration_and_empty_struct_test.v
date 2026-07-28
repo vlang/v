@@ -54,8 +54,8 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 
 	compatible_root := write_c_fn_redecl_v3_project('c_fn_compatible', {
 		'v.mod':       "Module { name: 'c_fn_compatible' }\n"
-		'moda/moda.v': 'module moda\n\nstruct C.Display {}\n\nfn C.compat_probe(value int, data byteptr, display voidptr, mut state usize) int\n\npub fn touch() {\n\tmut state := usize(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, mut state)\n}\n'
-		'modb/modb.v': 'module modb\n\nstruct C.Display {}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display, state &usize) i32\n\npub fn touch() {\n\tmut state := usize(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, &state)\n}\n'
+		'moda/moda.v': 'module moda\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\nfn C.compat_probe(value int, data byteptr, display voidptr, mut state usize) int\nfn C.local_make() &C.Widget\n\npub fn touch() {\n\tmut state := usize(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, mut state)\n}\n\npub fn value() int {\n\treturn C.local_make().value\n}\n'
+		'modb/modb.v': 'module modb\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display, state &usize) i32\nfn C.local_make() voidptr\n\npub fn touch() {\n\tmut state := usize(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, &state)\n}\n\npub fn make() voidptr {\n\treturn C.local_make()\n}\n'
 		'main.v':      'module main\n\nimport moda as _\nimport modb as _\n\nfn main() {}\n'
 	})!
 	defer {

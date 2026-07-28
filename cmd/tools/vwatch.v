@@ -616,7 +616,7 @@ fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_ar
 	worker_opts << ['watch', '--vwatchworker']
 	worker_opts << all_args_after_watch_cmd
 	$if !windows {
-		os.signal_opt(.cont, fn (_ os.Signal) {
+		os.signal_opt(vwatchtty.continue_signal(), fn (_ os.Signal) {
 			mut context := unsafe { &Context(voidptr(&ccontext)) }
 			context.resume_worker = true
 		}) or { panic(err) }
@@ -644,6 +644,11 @@ fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_ar
 	}
 }
 
+fn propagate_terminal_stop(_ os.Signal) {
+	context := unsafe { &Context(voidptr(&ccontext)) }
+	vwatchtty.suspend_manager_process_group(context.watcher_pgid)
+}
+
 fn (mut context Context) worker_main() {
 	context.watcher_pgid = vwatchtty.process_group()
 	context.rerun_channel = chan RerunCommand{cap: 10}
@@ -653,10 +658,9 @@ fn (mut context Context) worker_main() {
 		context.kill_pgroup()
 	}) or { panic(err) }
 	$if !windows {
-		os.signal_opt(.tstp, fn (_ os.Signal) {
-			context := unsafe { &Context(voidptr(&ccontext)) }
-			vwatchtty.suspend_manager_process_group(context.watcher_pgid)
-		}) or { panic(err) }
+		for signal in vwatchtty.terminal_stop_signals() {
+			os.signal_opt(signal, propagate_terminal_stop) or { panic(err) }
+		}
 	}
 	spawn context.compilation_runner_loop()
 	change_detection_loop(context)

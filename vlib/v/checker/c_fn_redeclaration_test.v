@@ -81,3 +81,14 @@ fn test_clipboard_and_x11_c_fn_redeclarations_are_compatible() {
 	result := os.execute('${c_fn_redeclaration_vexe} -os linux -check ${os.quoted_path(root)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_mldsa_and_slhdsa_c_fn_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_mldsa_slhdsa_redeclaration', {
+		'main.v': 'module main\n\nimport x.crypto.mldsa as _\nimport x.crypto.slhdsa as _\n\nfn main() {}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result := os.execute('${c_fn_redeclaration_vexe} -check ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}

@@ -19,6 +19,18 @@ pub fn process_group() int {
 	return C.getpgrp()
 }
 
+// continue_signal returns the platform's SIGCONT value.
+pub fn continue_signal() os.Signal {
+	// The C constant is the authoritative value for the active Unix platform.
+	return unsafe { os.Signal(C.SIGCONT) }
+}
+
+// terminal_stop_signals returns the platform's terminal stop signal values.
+pub fn terminal_stop_signals() []os.Signal {
+	// The C constants are the authoritative values for the active Unix platform.
+	return [unsafe { os.Signal(C.SIGTSTP) }, unsafe { os.Signal(C.SIGTTIN) }, unsafe { os.Signal(C.SIGTTOU) }]
+}
+
 // suspend_manager_process_group stops the manager's original process group,
 // then stops the foreground worker that received SIGTSTP.
 pub fn suspend_manager_process_group(manager_pgid int) {

@@ -505,6 +505,9 @@ pub mut:
 	enable_globals               bool
 	fn_ret_types                 map[string]Type
 	fn_param_types               map[string][]Type
+	c_fn_module_ret_types        map[string]Type
+	c_fn_module_param_types      map[string][]Type
+	c_fn_module_variadic         map[string]bool
 	fn_shared_params             map[string][]bool
 	mut_receiver_methods         map[string]bool
 	source_no_body_fns           map[string]bool
@@ -734,6 +737,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		a:                                     a
 		fn_ret_types:                          map[string]Type{}
 		fn_param_types:                        map[string][]Type{}
+		c_fn_module_ret_types:                 map[string]Type{}
+		c_fn_module_param_types:               map[string][]Type{}
+		c_fn_module_variadic:                  map[string]bool{}
 		fn_shared_params:                      map[string][]bool{}
 		mut_receiver_methods:                  map[string]bool{}
 		source_no_body_fns:                    map[string]bool{}
@@ -861,6 +867,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		enable_globals:                     tc.enable_globals
 		fn_ret_types:                       tc.fn_ret_types
 		fn_param_types:                     tc.fn_param_types
+		c_fn_module_ret_types:              tc.c_fn_module_ret_types
+		c_fn_module_param_types:            tc.c_fn_module_param_types
+		c_fn_module_variadic:               tc.c_fn_module_variadic
 		fn_shared_params:                   tc.fn_shared_params
 		mut_receiver_methods:               tc.mut_receiver_methods
 		source_no_body_fns:                 tc.source_no_body_fns
@@ -2484,6 +2493,10 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						}
 					}
 				}
+				module_key := c_fn_module_signature_key(tc.cur_module, c_name)
+				tc.c_fn_module_ret_types[module_key] = ret_type
+				tc.c_fn_module_param_types[module_key] = ptypes.clone()
+				tc.c_fn_module_variadic[module_key] = is_variadic
 				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic, false)
 				if is_variadic {
 					tc.register_c_variadic_fn(node.value)
@@ -34268,8 +34281,28 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
 	}
 }
 
+fn c_fn_module_signature_key(module_name string, fn_name string) string {
+	return '${module_name}\x01${fn_name}'
+}
+
 // call_info updates call info state for TypeChecker.
 fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
+	if name.starts_with('C.') {
+		module_key := c_fn_module_signature_key(tc.cur_module, name)
+		if return_type := tc.c_fn_module_ret_types[module_key] {
+			is_variadic := tc.c_fn_module_variadic[module_key] or { false }
+			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
+			return CallInfo{
+				name:          name
+				params:        params.clone()
+				return_type:   return_type
+				has_receiver:  has_receiver
+				is_variadic:   is_variadic
+				is_c_variadic: is_variadic
+				params_known:  true
+			}
+		}
+	}
 	mut params := []Type{}
 	mut params_known := false
 	if p := tc.fn_param_types[name] {
