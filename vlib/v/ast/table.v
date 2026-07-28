@@ -303,6 +303,9 @@ fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type,
 	}
 	left := t.fully_unaliased_type(left_type)
 	right := t.fully_unaliased_type(right_type)
+	if left.has_option_or_result() || right.has_option_or_result() {
+		return false
+	}
 	if left == right {
 		return true
 	}
