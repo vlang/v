@@ -50948,7 +50948,29 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 }
 
 fn method_return_signature_compatible(actual Type, expected Type) bool {
-	return fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected)
+	if fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected) {
+		return true
+	}
+	actual_unaliased := unalias_type(actual)
+	expected_unaliased := unalias_type(expected)
+	if actual_unaliased is OptionType && expected_unaliased is OptionType {
+		return method_wrapped_fn_return_signature_compatible(actual_unaliased.base_type,
+			expected_unaliased.base_type)
+	}
+	if actual_unaliased is ResultType && expected_unaliased is ResultType {
+		return method_wrapped_fn_return_signature_compatible(actual_unaliased.base_type,
+			expected_unaliased.base_type)
+	}
+	return false
+}
+
+fn method_wrapped_fn_return_signature_compatible(actual Type, expected Type) bool {
+	actual_unaliased := unalias_type(actual)
+	expected_unaliased := unalias_type(expected)
+	if actual_unaliased is FnType && expected_unaliased is FnType {
+		return Type(actual_unaliased).name() == Type(expected_unaliased).name()
+	}
+	return false
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {

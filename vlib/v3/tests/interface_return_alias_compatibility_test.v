@@ -35,7 +35,7 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 	assert alias_run.output.trim_space() == '42', alias_run.output
 
 	wrapped_fn_compile := compile_interface_return(v3_bin, 'wrapped_fn_alias',
-		'type MathOp = fn (int, int) int\n\ninterface Calculator {\n\tget_operation() ?MathOp\n}\n\nstruct SimpleCalc {}\n\nfn (s SimpleCalc) get_operation() ?MathOp {\n\treturn fn (a int, b int) int {\n\t\treturn a + b\n\t}\n}\n\nfn main() {\n\tcalc := Calculator(SimpleCalc{})\n\toperation := calc.get_operation() or { panic("missing operation") }\n\tprintln(operation(2, 3))\n}\n')
+		'type MathOp = fn (int, int) int\n\ntype EquivalentMathOp = fn (int, int) int\n\ninterface Calculator {\n\tget_operation() ?MathOp\n}\n\nstruct SimpleCalc {}\n\nfn (s SimpleCalc) get_operation() ?EquivalentMathOp {\n\treturn fn (a int, b int) int {\n\t\treturn a + b\n\t}\n}\n\nfn main() {\n\tcalc := Calculator(SimpleCalc{})\n\toperation := calc.get_operation() or { panic("missing operation") }\n\tprintln(operation(2, 3))\n}\n')
 	assert wrapped_fn_compile.exit_code == 0, wrapped_fn_compile.output
 	wrapped_fn_bin := os.join_path(os.temp_dir(),
 		'v3_interface_return_wrapped_fn_alias_${os.getpid()}')
