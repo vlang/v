@@ -338,6 +338,28 @@ fn main() {
 		general_run := os.execute(os.quoted_path(general_output))
 		assert general_run.exit_code == 0
 		assert general_run.output.trim_space() == 'old compiler retry succeeded'
+
+		environment.delete('V_MACOS_V3_TEST_GENERAL_FAILURE')
+		failing_target := os.join_path(root, 'failing_target.v')
+		failing_output := os.join_path(root, 'failing_target')
+		os.write_file(failing_target, '#flag -lmacos_v3_missing_library_${os.getpid()}
+
+fn main() {}
+')!
+		mut failing_process := os.new_process(@VEXE)
+		failing_process.set_args(['-gc', 'none', '-o', failing_output, failing_target])
+		failing_process.set_environment(environment)
+		failing_process.set_redirect_stdio()
+		failing_process.run()
+		failing_compiler_pid := failing_process.pid
+		failing_process.wait()
+		failing_output_text := failing_process.stdout_slurp() + failing_process.stderr_slurp()
+		failing_exit_code := failing_process.code
+		failing_process.close()
+		assert failing_exit_code != 0, failing_output_text
+		failing_report_dir := os.join_path(os.vtmp_dir(),
+			'macos_v3_fallback_${failing_compiler_pid}.c_error')
+		assert !os.exists(failing_report_dir), 'failed compatibility build left staged report directory: ${failing_report_dir}'
 	}
 }
 

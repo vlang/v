@@ -31,6 +31,11 @@ pub fn compile_with_external_c_error_report(command string, pref_ &pref.Preferen
 }
 
 fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backend_cb FnBackend, report ?ExternalCErrorBugReport) {
+	if failed := report {
+		// The compatibility compiler may exit from any validation, parser, checker, or
+		// C compilation path below. Register cleanup before entering those paths.
+		register_external_c_error_report_cleanup(failed.cleanup_dir)
+	}
 	if pref_.is_test {
 		disable_c_error_bug_reports()
 	}

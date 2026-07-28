@@ -61,6 +61,43 @@ pub:
 	cleanup_dir string
 }
 
+@[unsafe]
+fn external_c_error_report_cleanup_dir(dir string, update bool) string {
+	mut static pending_dir := ''
+	if update {
+		pending_dir = dir
+	}
+	return pending_dir
+}
+
+fn register_external_c_error_report_cleanup(dir string) {
+	if dir == '' {
+		return
+	}
+	unsafe {
+		external_c_error_report_cleanup_dir(dir, true)
+	}
+	at_exit(cleanup_pending_external_c_error_report) or {}
+}
+
+fn cleanup_external_c_error_report(dir string) {
+	if dir == '' {
+		return
+	}
+	os.rmdir_all(dir) or { return }
+	pending_dir := unsafe { external_c_error_report_cleanup_dir('', false) }
+	if pending_dir == dir {
+		unsafe {
+			external_c_error_report_cleanup_dir('', true)
+		}
+	}
+}
+
+fn cleanup_pending_external_c_error_report() {
+	pending_dir := unsafe { external_c_error_report_cleanup_dir('', false) }
+	cleanup_external_c_error_report(pending_dir)
+}
+
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
 	v.submit_c_error_bug_report_with_tag(ccompiler, c_output, '', true)
 }
@@ -113,9 +150,7 @@ pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler str
 
 fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalCErrorBugReport) {
 	defer {
-		if report.cleanup_dir != '' {
-			os.rmdir_all(report.cleanup_dir) or {}
-		}
+		cleanup_external_c_error_report(report.cleanup_dir)
 	}
 	submit_external_c_error_bug_report(prefs, report.ccompiler, report.c_output, report.c_file,
 		report.tag)
