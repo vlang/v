@@ -1,5 +1,7 @@
 type MathOp = fn (int, int) int
 
+type EquivalentMathOp = fn (int, int) int
+
 type MyInt = int
 
 type AliasedMathOp = fn (MyInt, MyInt) MyInt
@@ -81,7 +83,7 @@ fn (c CdeclFactoryCalc) get_factory() CdeclMathFactory {
 
 struct OptionalSimpleCalc {}
 
-fn (c OptionalSimpleCalc) get_operation() ?MathOp {
+fn (c OptionalSimpleCalc) get_operation() ?EquivalentMathOp {
 	_ = c
 	return fn (a int, b int) int {
 		return a + b
