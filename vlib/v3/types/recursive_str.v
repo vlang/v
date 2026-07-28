@@ -620,31 +620,18 @@ fn (mut tc TypeChecker) recursive_str_process_match_stmt(id flat.NodeId, mut env
 	tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
 	base := env.clone_env()
 	mut branch_envs := []RecursiveStrEnv{}
-	mut exhaustive := false
-	mut saw_true := false
-	mut saw_false := false
+	exhaustive := tc.match_has_else_or_exhaustive_coverage(*node)
 	for i in 1 .. node.children_count {
 		branch_id := tc.a.child(node, i)
 		branch := tc.a.node(branch_id)
 		if branch.kind != .match_branch {
 			continue
 		}
-		if branch.value == 'else' {
-			exhaustive = true
-		}
-		for j in 0 .. branch.children_count {
-			part := tc.a.child_node(branch, j)
-			if part.kind == .bool_literal {
-				saw_true = saw_true || part.value == 'true'
-				saw_false = saw_false || part.value == 'false'
-			}
-		}
 		mut branch_env := base.clone_env()
 		if tc.recursive_str_process_match_branch(*branch, mut branch_env, ctx) {
 			branch_envs << branch_env
 		}
 	}
-	exhaustive = exhaustive || (saw_true && saw_false)
 	if !exhaustive {
 		branch_envs << base
 	}
@@ -822,6 +809,9 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 
 fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_id flat.NodeId, op flat.Op, mut env RecursiveStrEnv) {
 	name := tc.recursive_str_root_ident(target_id) or { return }
+	if tc.recursive_str_mutation_is_noop(rhs_id, op) {
+		return
+	}
 	if tc.valid_node_id(rhs_id) && op == .assign
 		&& tc.source_text_for_node(target_id).trim_space() == tc.source_text_for_node(rhs_id).trim_space() {
 		return
@@ -831,6 +821,38 @@ fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_
 	} else {
 		tc.recursive_str_mark_value_progress(name, mut env)
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_mutation_is_noop(rhs_id flat.NodeId, op flat.Op) bool {
+	if !tc.valid_node_id(rhs_id) {
+		return false
+	}
+	node := tc.a.node(rhs_id)
+	if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+		return tc.recursive_str_mutation_is_noop(tc.a.child(node, 0), op)
+	}
+	if node.kind !in [.int_literal, .float_literal] {
+		return false
+	}
+	if op in [.plus_assign, .minus_assign, .pipe_assign, .xor_assign, .left_shift_assign,
+		.right_shift_assign, .right_shift_unsigned_assign] {
+		return numeric_literal_is_zero(node.value)
+	}
+	if op in [.mul_assign, .div_assign, .power_assign] {
+		return numeric_literal_is_one(node.value)
+	}
+	return false
+}
+
+fn numeric_literal_is_one(value string) bool {
+	mut clean := value.to_lower().replace('_', '')
+	for suffix in ['f32', 'f64', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'] {
+		if clean.ends_with(suffix) {
+			clean = clean[..clean.len - suffix.len]
+			break
+		}
+	}
+	return clean in ['1', '1.', '1.0', '0x1', '0b1', '0o1']
 }
 
 fn (tc &TypeChecker) recursive_str_root_ident(id flat.NodeId) ?string {
@@ -1085,6 +1107,13 @@ fn (tc &TypeChecker) recursive_str_fn_decl_id(name string) ?flat.NodeId {
 }
 
 fn (mut tc TypeChecker) recursive_str_guaranteed_param_effect(decl flat.Node, param_index int) RecursiveStrParamEffect {
+	return tc.recursive_str_guaranteed_param_effect_depth(decl, param_index, 0)
+}
+
+fn (mut tc TypeChecker) recursive_str_guaranteed_param_effect_depth(decl flat.Node, param_index int, depth int) RecursiveStrParamEffect {
+	if depth >= 32 {
+		return RecursiveStrParamEffect{}
+	}
 	if param_index < 0 || param_index >= decl.children_count {
 		return RecursiveStrParamEffect{}
 	}
@@ -1094,11 +1123,12 @@ fn (mut tc TypeChecker) recursive_str_guaranteed_param_effect(decl flat.Node, pa
 	}
 	mut result := RecursiveStrParamEffect{}
 	for i in 0 .. decl.children_count {
-		child := tc.a.child_node(&decl, i)
+		child_id := tc.a.child(&decl, i)
+		child := tc.a.node(child_id)
 		if child.kind == .param {
 			continue
 		}
-		effect := tc.recursive_str_stmt_param_effect(*child, param.value)
+		effect := tc.recursive_str_stmt_param_effect(child_id, param.value, depth)
 		if effect.kind != .none {
 			result = effect
 		}
@@ -1124,13 +1154,20 @@ fn (tc &TypeChecker) recursive_str_stmt_may_return(node flat.Node) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name string) RecursiveStrParamEffect {
+fn (mut tc TypeChecker) recursive_str_stmt_param_effect(id flat.NodeId, name string, depth int) RecursiveStrParamEffect {
+	if !tc.valid_node_id(id) {
+		return RecursiveStrParamEffect{}
+	}
+	node := tc.a.node(id)
 	match node.kind {
 		.assign {
 			if node.children_count >= 2 {
-				lhs_id := tc.a.child(&node, 0)
-				rhs_id := tc.a.child(&node, node.children_count - 1)
+				lhs_id := tc.a.child(node, 0)
+				rhs_id := tc.a.child(node, node.children_count - 1)
 				lhs := tc.a.node(lhs_id)
+				if tc.recursive_str_mutation_is_noop(rhs_id, node.op) {
+					return RecursiveStrParamEffect{}
+				}
 				if lhs.kind == .ident && lhs.value == name {
 					if tc.source_text_for_node(lhs_id).trim_space() != tc.source_text_for_node(rhs_id).trim_space() {
 						return RecursiveStrParamEffect{
@@ -1161,8 +1198,11 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		}
 		.selector_assign, .index_assign {
 			if node.children_count >= 2 {
-				lhs_id := tc.a.child(&node, 0)
-				rhs_id := tc.a.child(&node, node.children_count - 1)
+				lhs_id := tc.a.child(node, 0)
+				rhs_id := tc.a.child(node, node.children_count - 1)
+				if tc.recursive_str_mutation_is_noop(rhs_id, node.op) {
+					return RecursiveStrParamEffect{}
+				}
 				if root := tc.recursive_str_root_ident(lhs_id) {
 					if root != name {
 						return RecursiveStrParamEffect{}
@@ -1184,7 +1224,7 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		}
 		.postfix {
 			if node.children_count > 0 {
-				target_id := tc.a.child(&node, 0)
+				target_id := tc.a.child(node, 0)
 				if root := tc.recursive_str_root_ident(target_id) {
 					if root != name {
 						return RecursiveStrParamEffect{}
@@ -1203,7 +1243,7 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		}
 		.infix {
 			if node.op == .left_shift && node.children_count >= 2 {
-				lhs_id := tc.a.child(&node, 0)
+				lhs_id := tc.a.child(node, 0)
 				if _ := array_type_from_receiver(tc.resolve_type(lhs_id)) {
 					if root := tc.recursive_str_root_ident(lhs_id) {
 						if root != name {
@@ -1222,11 +1262,15 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 				}
 			}
 		}
+		.call {
+			return tc.recursive_str_call_param_effect(id, name, depth)
+		}
 		.expr_stmt, .block {
 			mut result := RecursiveStrParamEffect{}
 			for i in 0 .. node.children_count {
-				child := tc.a.child_node(&node, i)
-				effect := tc.recursive_str_stmt_param_effect(*child, name)
+				child_id := tc.a.child(node, i)
+				child := tc.a.node(child_id)
+				effect := tc.recursive_str_stmt_param_effect(child_id, name, depth)
 				if effect.kind != .none {
 					result = effect
 				}
@@ -1240,12 +1284,13 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 			mut effects := []RecursiveStrParamEffect{}
 			mut has_else := false
 			for i in 0 .. node.children_count {
-				child := tc.a.child_node(&node, i)
+				child_id := tc.a.child(node, i)
+				child := tc.a.node(child_id)
 				if child.kind == .block {
 					if i == node.children_count - 1 && i % 2 == 0 {
 						has_else = true
 					}
-					effects << tc.recursive_str_stmt_param_effect(*child, name)
+					effects << tc.recursive_str_stmt_param_effect(child_id, name, depth)
 				}
 			}
 			if has_else && effects.len > 1 {
@@ -1255,13 +1300,14 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		.match_stmt {
 			mut effects := []RecursiveStrParamEffect{}
 			for i in 1 .. node.children_count {
-				branch := tc.a.child_node(&node, i)
+				branch_id := tc.a.child(node, i)
+				branch := tc.a.node(branch_id)
 				if branch.kind != .match_branch {
 					continue
 				}
-				effects << tc.recursive_str_stmt_param_effect(*branch, name)
+				effects << tc.recursive_str_stmt_param_effect(branch_id, name, depth)
 			}
-			if tc.match_has_else_or_exhaustive_coverage(node) && effects.len > 0 {
+			if tc.match_has_else_or_exhaustive_coverage(*node) && effects.len > 0 {
 				return recursive_str_merge_param_effects(effects)
 			}
 		}
@@ -1269,8 +1315,9 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 			condition_count := if node.value.is_int() { node.value.int() } else { 0 }
 			mut result := RecursiveStrParamEffect{}
 			for i in condition_count .. node.children_count {
-				child := tc.a.child_node(&node, i)
-				effect := tc.recursive_str_stmt_param_effect(*child, name)
+				child_id := tc.a.child(node, i)
+				child := tc.a.node(child_id)
+				effect := tc.recursive_str_stmt_param_effect(child_id, name, depth)
 				if effect.kind != .none {
 					result = effect
 				}
@@ -1283,6 +1330,42 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		else {}
 	}
 	return RecursiveStrParamEffect{}
+}
+
+fn (mut tc TypeChecker) recursive_str_call_param_effect(call_id flat.NodeId, name string, depth int) RecursiveStrParamEffect {
+	if depth >= 32 {
+		return RecursiveStrParamEffect{}
+	}
+	resolved := tc.resolved_call_name(call_id) or {
+		tc.assignment_rhs_call_name(call_id) or { return RecursiveStrParamEffect{} }
+	}
+	decl_id := tc.recursive_str_fn_decl_id(resolved) or { return RecursiveStrParamEffect{} }
+	decl := tc.a.node(decl_id)
+	call := tc.a.node(call_id)
+	actuals := tc.recursive_str_call_param_actuals(*call, *decl)
+	mut result := RecursiveStrParamEffect{}
+	for param_index in 0 .. decl.children_count {
+		param := tc.a.child_node(decl, param_index)
+		if param.kind != .param {
+			continue
+		}
+		actual_id := actuals[param.value] or { continue }
+		if tc.recursive_str_root_ident(actual_id) or { continue } != name {
+			continue
+		}
+		mut effect := tc.recursive_str_guaranteed_param_effect_depth(*decl, param_index, depth + 1)
+		if effect.kind == .rebind && effect.source_param.len > 0 {
+			source_id := actuals[effect.source_param] or { flat.empty_node }
+			effect = RecursiveStrParamEffect{
+				...effect
+				source_param: tc.recursive_str_root_ident(source_id) or { '' }
+			}
+		}
+		if effect.kind != .none {
+			result = effect
+		}
+	}
+	return result
 }
 
 fn recursive_str_merge_param_effects(effects []RecursiveStrParamEffect) RecursiveStrParamEffect {

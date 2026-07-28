@@ -7442,6 +7442,153 @@ fn main() {
 	assert sum_out == 'done'
 }
 
+fn test_recursive_str_direct_exhaustive_matches_count_as_progress() {
+	v3_bin := build_v3()
+	enum_out := run_good(v3_bin, 'recursive_str_direct_exhaustive_enum_match', 'enum Mode {
+	one
+	two
+}
+
+struct Item {
+	mode Mode
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	match copy.mode {
+		.one { copy.remaining-- }
+		.two { copy.remaining-- }
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert enum_out == 'done'
+
+	sum_out := run_good(v3_bin, 'recursive_str_direct_exhaustive_sum_match', 'struct First {}
+struct Second {}
+type Mode = First | Second
+
+struct Item {
+	mode Mode = First{}
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	match copy.mode {
+		First { copy.remaining-- }
+		Second { copy.remaining-- }
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert sum_out == 'done'
+}
+
+fn test_recursive_str_noop_mutations_do_not_count_as_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_add_zero_noop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining += 0
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_multiply_one_noop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining *= 1
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_add_zero_noop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn unchanged(mut item Item) {
+	item.remaining += 0
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	unchanged(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_nested_helper_mutations_count_as_progress() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_nested_helper_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	item.remaining--
+}
+
+fn advance(mut item Item) {
+	decrement(mut item)
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert out == 'done'
+}
+
 fn test_duplicate_function_diagnostics_survive_body_errors() {
 	check_src := '${tmp_test_path('duplicate_fn_with_body_error')}.v'
 	os.write_file(check_src, "fn duplicate() int {

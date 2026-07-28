@@ -98,11 +98,13 @@ fn test_parallel_parser_preserves_template_metadata_and_warning_severity() {
 		mut src := strings.new_builder(64_000)
 		src.writeln('module main')
 		src.writeln('')
-		if file_index == 3 {
+		if file_index == 0 {
 			src.writeln('fn templated_action() {')
 			src.writeln("\t\$tmpl('worker.txt')")
 			src.writeln('}')
 			src.writeln('')
+		}
+		if file_index == 3 {
 			src.writeln('fn malformed_array() {')
 			src.writeln('\ta2 := [][][]f32[][]{}')
 			src.writeln('\t_ = a2')
