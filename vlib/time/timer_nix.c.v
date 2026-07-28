@@ -15,9 +15,7 @@ fn timer_thread_entry(args_ptr voidptr) voidptr {
 		}
 	}
 	run_timer(args.duration, args.output, args.stop, args.done)
-	unsafe {
-		C.free(args)
-	}
+	free_timer_thread_args(args)
 	return unsafe { nil }
 }
 
@@ -25,9 +23,7 @@ fn start_timer(duration Duration, output chan Time, stop chan chan bool, done ch
 	args := new_timer_thread_args(duration, output, stop, done)
 	result := C.v_sync_thread_create_detached(voidptr(timer_thread_entry), voidptr(args))
 	if result != 0 {
-		unsafe {
-			C.free(args)
-		}
+		free_timer_thread_args(args)
 		panic('could not start timer: error ${result}')
 	}
 }

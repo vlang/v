@@ -17,9 +17,7 @@ fn waitgroup_thread_entry(args_ptr voidptr) u32 {
 	args.f()
 	mut wg := args.wg
 	wg.done()
-	unsafe {
-		C.free(args)
-	}
+	free_waitgroup_thread_args(args)
 	return 0
 }
 
@@ -28,9 +26,7 @@ fn start_waitgroup_thread(mut wg WaitGroup, f fn ()) {
 	result := C.v_sync_thread_create_detached(voidptr(waitgroup_thread_entry), voidptr(args))
 	if result != 0 {
 		wg.done()
-		unsafe {
-			C.free(args)
-		}
+		free_waitgroup_thread_args(args)
 		panic('could not start waitgroup task: error ${result}')
 	}
 }

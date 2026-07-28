@@ -36,18 +36,35 @@ mut:
 
 struct WaitGroupThreadArgs {
 mut:
-	wg &WaitGroup
-	f  fn () = unsafe { nil }
+	wg             &WaitGroup
+	f              fn () = unsafe { nil }
+	prealloc_scope voidptr
 }
 
 fn new_waitgroup_thread_args(wg &WaitGroup, f fn ()) &WaitGroupThreadArgs {
-	mut args := unsafe { &WaitGroupThreadArgs(C.calloc(1, sizeof(WaitGroupThreadArgs))) }
+	// Keep the wait group and captured callback context visible to tracing collectors.
+	mut args := unsafe { &WaitGroupThreadArgs(vcalloc(sizeof(WaitGroupThreadArgs))) }
 	if args == unsafe { nil } {
 		panic('could not allocate waitgroup thread arguments')
 	}
 	args.wg = wg
 	args.f = f
+	$if prealloc {
+		args.prealloc_scope = unsafe { prealloc_scope_retain_current() }
+	}
 	return args
+}
+
+fn free_waitgroup_thread_args(args &WaitGroupThreadArgs) {
+	$if prealloc {
+		scope := args.prealloc_scope
+		unsafe {
+			prealloc_scope_release(scope)
+		}
+	}
+	unsafe {
+		free(args)
+	}
 }
 
 // new_waitgroup creates a new WaitGroup.

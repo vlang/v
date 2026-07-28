@@ -10,14 +10,16 @@ pub:
 
 struct TimerThreadArgs {
 mut:
-	duration Duration
-	output   chan Time
-	stop     chan chan bool
-	done     chan bool
+	duration       Duration
+	output         chan Time
+	stop           chan chan bool
+	done           chan bool
+	prealloc_scope voidptr
 }
 
 fn new_timer_thread_args(duration Duration, output chan Time, stop chan chan bool, done chan bool) &TimerThreadArgs {
-	mut args := unsafe { &TimerThreadArgs(C.calloc(1, sizeof(TimerThreadArgs))) }
+	// Keep the channels visible to tracing collectors until the detached worker finishes.
+	mut args := unsafe { &TimerThreadArgs(vcalloc(sizeof(TimerThreadArgs))) }
 	if args == unsafe { nil } {
 		panic('could not allocate timer thread arguments')
 	}
@@ -25,7 +27,22 @@ fn new_timer_thread_args(duration Duration, output chan Time, stop chan chan boo
 	args.output = output
 	args.stop = stop
 	args.done = done
+	$if prealloc {
+		args.prealloc_scope = unsafe { prealloc_scope_retain_current() }
+	}
 	return args
+}
+
+fn free_timer_thread_args(args &TimerThreadArgs) {
+	$if prealloc {
+		scope := args.prealloc_scope
+		unsafe {
+			prealloc_scope_release(scope)
+		}
+	}
+	unsafe {
+		free(args)
+	}
 }
 
 // new_timer creates a Timer that sends the current time on its unbuffered channel after `duration`.
