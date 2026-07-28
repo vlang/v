@@ -518,20 +518,32 @@ fn (t &Table) method_types_are_equal(left Type, right Type) bool {
 	return unaliased_left == unaliased_right
 }
 
+fn (t &Table) method_fn_return_types_are_compatible(left Type, right Type) bool {
+	unaliased_left := t.fully_unaliased_type(left)
+	unaliased_right := t.fully_unaliased_type(right)
+	if unaliased_left.nr_muls() != unaliased_right.nr_muls() {
+		return false
+	}
+	has_wrapper := unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result()
+	if has_wrapper && unaliased_left.flags() != unaliased_right.flags() {
+		return false
+	}
+	left_sym := t.sym(unaliased_left)
+	right_sym := t.sym(unaliased_right)
+	if left_sym.info is FnType && right_sym.info is FnType {
+		if has_wrapper
+			&& t.fn_type_signature(left_sym.info.func) != t.fn_type_signature(right_sym.info.func) {
+			return false
+		}
+		return t.fn_types_are_compatible(left_sym.info.func, right_sym.info.func, 0)
+	}
+	return false
+}
+
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	mut same_return_type := t.method_types_are_equal(f.return_type, func.return_type)
 	if !same_return_type {
-		f_return_type := t.fully_unaliased_type(f.return_type)
-		func_return_type := t.fully_unaliased_type(func.return_type)
-		if !f_return_type.has_option_or_result() && !func_return_type.has_option_or_result()
-			&& f_return_type.nr_muls() == func_return_type.nr_muls() {
-			f_return_sym := t.sym(f_return_type)
-			func_return_sym := t.sym(func_return_type)
-			if f_return_sym.info is FnType && func_return_sym.info is FnType {
-				same_return_type = t.fn_types_are_compatible(f_return_sym.info.func,
-					func_return_sym.info.func, 0)
-			}
-		}
+		same_return_type = t.method_fn_return_types_are_compatible(f.return_type, func.return_type)
 	}
 	if !same_return_type {
 		s := t.type_to_str(f.return_type)
