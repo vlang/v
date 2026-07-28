@@ -3929,6 +3929,10 @@ fn (t &Transformer) specialized_direct_generic_type_text(typ string, args []stri
 			inner := t.specialized_direct_generic_type_text(clean[prefix.len..], args, params) or {
 				return none
 			}
+			if (prefix == '?' && inner.starts_with('?'))
+				|| (prefix == '!' && inner.starts_with('!')) {
+				return inner
+			}
 			return prefix + inner
 		}
 	}
@@ -8148,7 +8152,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		} else {
 			'[]${array_value}'
 		}
-	} else if node.kind == .struct_init && node.value.len > 0 {
+	} else if node.kind == .struct_init && node.value.len > 0 && node.value != 'Optional' {
 		// The checker can annotate `T{}` with its surrounding optional/result
 		// context. For a concrete clone the literal itself is authoritative.
 		struct_subst := t.subst_type(node.value, args)
@@ -8286,6 +8290,10 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		}
 		t.generic_clone_children = t.generic_clone_children[..scratch_start]
 		return clone_id
+	}
+	if node.kind == .struct_init && children.len == 0 && t.is_optional_type_name(cloned_typ)
+		&& (node.value == 'Optional' || t.is_optional_type_name(node.value)) {
+		children << t.make_sum_literal_field('ok', t.make_bool_literal(true), 'bool')
 	}
 	cloned_typ = t.retarget_cloned_map_key_storage_type(node, mut children, cloned_typ)
 	t.retarget_cloned_new_map_call(node, mut children, cloned_typ)
@@ -9881,10 +9889,12 @@ fn substitute_generic_type_text_with_params(typ string, args []string, params []
 		return 'mut ' + substitute_generic_type_text_with_params(clean[4..], args, params)
 	}
 	if clean.starts_with('?') {
-		return '?' + substitute_generic_type_text_with_params(clean[1..], args, params)
+		inner := substitute_generic_type_text_with_params(clean[1..], args, params)
+		return if inner.starts_with('?') { inner } else { '?' + inner }
 	}
 	if clean.starts_with('!') {
-		return '!' + substitute_generic_type_text_with_params(clean[1..], args, params)
+		inner := substitute_generic_type_text_with_params(clean[1..], args, params)
+		return if inner.starts_with('!') { inner } else { '!' + inner }
 	}
 	if clean.starts_with('...') {
 		return '...' + substitute_generic_type_text_with_params(clean[3..], args, params)

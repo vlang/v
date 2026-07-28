@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module sync
 
-import time
-
 #flag -lpthread
 
 @[trusted]
@@ -310,7 +308,7 @@ pub fn (mut sem Semaphore) try_wait() bool {
 
 // timed_wait is similar to .wait(), but it also accepts a timeout duration,
 // thus it can return false early, if the timeout passed before the semaphore was posted.
-pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
+pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
 		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
@@ -318,7 +316,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 		}
 	}
 	C.pthread_mutex_lock(&sem.mtx)
-	t_spec := timeout.timespec()
+	t_spec := sync_realtime_deadline(timeout)
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
 

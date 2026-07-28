@@ -43,10 +43,12 @@ On macOS it uses physical footprint, matching Activity Monitor more closely; els
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
 On macOS, each stage benchmark prints physical footprint immediately after RSS.
 
-Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` uses the
-platform's default thread stack and checks allocation, thread creation, and join failures. Since
-V's `spawn` expression has no error return, these runtime failures print a diagnostic and abort;
-packed arguments are released if thread creation fails.
+Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
+detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
+and 2 MiB on 32-bit targets); `-thread-stack-size <bytes>` overrides it. Thread allocation,
+creation, and join failures are checked. Since V's `spawn` expression has no error return, these
+runtime failures print a diagnostic and abort; packed arguments are released if thread creation
+fails.
 
 The type system (`types/`) uses a `Type` sum type with 20 variants instead of
 string-based type checks. Primitive types use a `Properties` flag enum with

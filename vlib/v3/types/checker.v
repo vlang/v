@@ -8365,7 +8365,12 @@ fn (tc &TypeChecker) new_error_kind_since(start int, kind TypeErrorKind) bool {
 
 // check_decl_type_strings validates check decl type strings state for types.
 fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.Node) {
-	generic_params := tc.infer_decl_generic_params(node)
+	mut generic_params := tc.infer_decl_generic_params(node)
+	if node.kind == .type_decl && node.generic_params().len == 0 {
+		for name in tc.fixed_array_map_alias_generic_params(node.typ) {
+			generic_params[name] = true
+		}
+	}
 	decl_generic_mentions_error := tc.check_struct_or_interface_decl_generic_mentions(node_id, node)
 	if node.kind == .type_decl {
 		if imported_name := tc.selective_imported_builtin_in_type(node.typ) {
@@ -8489,6 +8494,29 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			}
 		}
 	}
+}
+
+fn (tc &TypeChecker) fixed_array_map_alias_generic_params(typ string) []string {
+	clean := typ.trim_space()
+	if !clean.starts_with('[') {
+		return []string{}
+	}
+	bracket_end := find_matching_bracket(clean, 0)
+	if bracket_end >= clean.len {
+		return []string{}
+	}
+	element_type := clean[bracket_end + 1..].trim_space()
+	if !element_type.starts_with('map[') {
+		return []string{}
+	}
+	mut counts := map[string]int{}
+	tc.collect_generic_param_candidates(element_type, mut counts)
+	mut names := []string{cap: counts.len}
+	for name, _ in counts {
+		names << name
+	}
+	names.sort()
+	return names
 }
 
 fn (tc &TypeChecker) selective_imported_builtin_in_type(type_text string) ?string {
@@ -50441,13 +50469,21 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 		})
 	}
 	if typ is OptionType {
+		base_type := tc.substitute_generic_type(typ.base_type, args, param_names)
+		if base_type is OptionType {
+			return base_type
+		}
 		return Type(OptionType{
-			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is ResultType {
+		base_type := tc.substitute_generic_type(typ.base_type, args, param_names)
+		if base_type is ResultType {
+			return base_type
+		}
 		return Type(ResultType{
-			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is Alias {
@@ -50528,13 +50564,21 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		})
 	}
 	if typ is OptionType {
+		base_type := tc.substitute_generic_type_values(typ.base_type, args, param_names)
+		if base_type is OptionType {
+			return base_type
+		}
 		return Type(OptionType{
-			base_type: tc.substitute_generic_type_values(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is ResultType {
+		base_type := tc.substitute_generic_type_values(typ.base_type, args, param_names)
+		if base_type is ResultType {
+			return base_type
+		}
 		return Type(ResultType{
-			base_type: tc.substitute_generic_type_values(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is FnType {
@@ -54859,10 +54903,12 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 		return 'mut ' + subst_generic_text(clean[4..], args, params)
 	}
 	if clean.starts_with('?') {
-		return '?' + subst_generic_text(clean[1..], args, params)
+		inner := subst_generic_text(clean[1..], args, params)
+		return if inner.starts_with('?') { inner } else { '?' + inner }
 	}
 	if clean.starts_with('!') {
-		return '!' + subst_generic_text(clean[1..], args, params)
+		inner := subst_generic_text(clean[1..], args, params)
+		return if inner.starts_with('!') { inner } else { '!' + inner }
 	}
 	if clean.starts_with('...') {
 		return '...' + subst_generic_text(clean[3..], args, params)

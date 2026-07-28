@@ -350,6 +350,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			&& !c.table.unaliased_type(got_type).is_any_kind_of_pointer()
 			&& got_type != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
 			if exprv.is_auto_deref_var() {
+				c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], false)
 				continue
 			}
 			if c.table.final_sym(exp_type).kind == .interface
@@ -364,7 +365,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			r_expr := node.exprs[expr_idxs[i]]
 			if r_expr is ast.Ident {
 				mut ident_expr := r_expr
-				c.fail_if_stack_struct_action_outside_unsafe(mut ident_expr, 'returned')
+				if node.exprs[expr_idxs[i]].is_auto_deref_var() {
+					c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], false)
+				} else {
+					c.fail_if_stack_struct_action_outside_unsafe(mut ident_expr, 'returned')
+				}
 			} else if r_expr is ast.PrefixExpr && r_expr.op == .amp {
 				// &var
 				if r_expr.right is ast.Ident {

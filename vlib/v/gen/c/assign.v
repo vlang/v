@@ -1411,7 +1411,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			// `resolved_expr_type` returns the smartcasted (unwrapped) type for variables
 			// inside `if x != none` blocks, but the C variable is still the option type
 			// and needs option wrapping on assignment.
-			if orig_var_option && !var_type.has_flag(.option) {
+			if orig_var_option && g.is_smartcast_assign_lhs(left) && !var_type.has_flag(.option) {
 				var_type = var_type.set_flag(.option)
 			}
 			resolved_val_type := g.resolved_expr_type(val, val_type)

@@ -1581,6 +1581,7 @@ fn cli_usage() string {
 		'  -b <c|arm64|wasm|eval>      backend\n' +
 		'  -os <name> -arch <name>     target platform\n' +
 		'  -cc <compiler>               C compiler executable\n' +
+		'  -thread-stack-size <bytes>   spawned-thread stack size\n' +
 		'  -prod -c99 -shared -strict  C build modes\n' +
 		'  -v                           verbose stage profiling\n' +
 		'  -silent                      suppress benchmark output\n' +
@@ -3447,6 +3448,8 @@ fn main() {
 	mut silent := false
 	mut is_debug := false
 	mut c99 := false
+	mut thread_stack_size := 0
+	mut thread_stack_size_set := false
 	mut all_backends := false
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
@@ -3467,7 +3470,7 @@ fn main() {
 			i++
 			continue
 		}
-		if args[i] in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc']
+		if args[i] in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size']
 			&& (i + 1 >= args.len || args[i + 1].starts_with('-')) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
@@ -3557,6 +3560,10 @@ fn main() {
 			explicit_tcc = requested_compiler in ['tcc', 'tinyc']
 			c_compiler = requested_compiler
 			c_compiler_explicit = true
+			i += 2
+		} else if args[i] == '-thread-stack-size' && i + 1 < args.len {
+			thread_stack_size = args[i + 1].int()
+			thread_stack_size_set = true
 			i += 2
 		} else if args[i] == '-cflags' && i + 1 < args.len {
 			parsed_c_flags := cmdexec.split_args(args[i + 1]) or {
@@ -3803,6 +3810,11 @@ fn main() {
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
 	prefs.target = target
+	prefs.thread_stack_size = if thread_stack_size_set {
+		thread_stack_size
+	} else {
+		target.default_thread_stack_size()
+	}
 	prefs.backend = backend
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
@@ -3830,6 +3842,7 @@ fn main() {
 		'shared=${is_shared}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
+		'thread_stack_size=${prefs.thread_stack_size}',
 		'ownership=${ownership_mode}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
 		'defines=${prefs.user_defines.join(',')}',
@@ -5007,6 +5020,7 @@ fn main() {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
+			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
@@ -5042,6 +5056,7 @@ fn main() {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
+			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)

@@ -255,7 +255,7 @@ fn name_matches_filters(name string, path string, filters []string) bool {
 
 fn forwarded_compiler_options(args []string) []string {
 	value_options := ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d',
-		'-gc', '-cc', '-cflags']
+		'-gc', '-cc', '-cflags', '-thread-stack-size']
 	runner_options := ['-silent', '-no-parallel', '--no-parallel', '-nocache', '--no-cache',
 		'-checker-fixture']
 	mut options := []string{cap: args.len}

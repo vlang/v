@@ -1,13 +1,11 @@
 module sync
 
-import time
-
 fn wait_select_once(ch &Channel, done chan string, label string) {
 	mut channels := [ch]
 	directions := [Direction.pop]
 	mut value := 0
 	mut objs := [voidptr(&value)]
-	idx := channel_select(mut channels, directions, mut objs, time.infinite)
+	idx := channel_select(mut channels, directions, mut objs, infinite_timeout)
 	match idx {
 		0 {
 			done <- '${label}:${value}'
@@ -40,7 +38,7 @@ fn wait_for_pop_subscribers(ch &Channel, want int) {
 		if pop_subscriber_count(ch) == want {
 			return
 		}
-		time.sleep(5 * time.millisecond)
+		sync_sleep_nanoseconds(5_000_000)
 	}
 	assert false, 'timed out waiting for ${want} read select subscriber(s)'
 }
@@ -56,7 +54,7 @@ fn test_select_waiters_are_fifo() {
 	// Subscriber registration happens before the first non-blocking try,
 	// so there is a small window where the second goroutine is still in
 	// its initial try_pop before blocking.
-	time.sleep(50 * time.millisecond)
+	sync_sleep_nanoseconds(50_000_000)
 	value := 999
 	ch.push(&value)
 	assert <-done == 'first:999'
