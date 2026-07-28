@@ -3411,7 +3411,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 				}
 				'@FILE_LINE' {
 					write_comptime_cond_string(mut out,
-						'${os.real_path(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
+						'${os.file_name(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
 				}
 				'@METHOD' {
 					write_comptime_cond_string(mut out, method_name)
@@ -8626,7 +8626,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, p.column_for_pos(name_pos).str())
 			}
 			if name == '@FILE_LINE' {
-				return p.add_val_id(5, '${os.real_path(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
+				return p.add_val_id(5, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {

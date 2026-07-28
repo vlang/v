@@ -3326,7 +3326,7 @@ fn cached_source_pseudo_edit(source string, start int, source_file string, line_
 			vmod_root
 		}
 		'@FILE_LINE' {
-			'${file}:${line_nr}'
+			'${os.file_name(source_file)}:${line_nr}'
 		}
 		'@FILE' {
 			file

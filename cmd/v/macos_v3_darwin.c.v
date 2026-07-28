@@ -52,7 +52,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		|| prefs.autofree || prefs.build_mode == .build_module || prefs.is_cstrict
 		|| prefs.use_cache || prefs.parallel_cc || prefs.out_name_is_dir
 		|| prefs.exclude.len > 0 || prefs.coverage_dir != '' || prefs.is_o
-		|| prefs.is_vlines || (prefs.is_shared && (prefs.is_run || prefs.is_crun)) {
+		|| prefs.is_vlines || prefs.is_shared {
 		return false
 	}
 	if prefs.gc_mode != .no_gc {

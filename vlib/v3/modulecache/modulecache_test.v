@@ -2,6 +2,13 @@ module modulecache
 
 import os
 
+fn test_cached_file_line_uses_source_file_name() {
+	source := 'return [@FILE, @FILE_LINE, @LINE]'
+	source_file := os.join_path(os.vtmp_dir(), 'nested', 'origin.v')
+	rewritten := cached_embedded_source_paths(source, '', source_file, 5)
+	assert rewritten == "return ['${os.real_path(source_file)}', 'origin.v:5', '5']"
+}
+
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	details := SourceSignatureDetails{
 		signature:  'content-signature'
