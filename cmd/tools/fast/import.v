@@ -55,7 +55,11 @@ fn import_table_html(mut db sqlite.DB, html string) !int {
 		b := Benchmark{
 			commit_hash: commit
 			message:     unescape_html(cells[2])
-			commit_date: parse_old_date(cells[0].trim_space())
+			// The old table timestamp was Git's author date (%at), which is not
+			// monotonic along ancestry. Recover the committer date (%ct) from the
+			// checkout so imported rows sort consistently with sampled ones; fall
+			// back to the table timestamp only for commits git cannot resolve.
+			commit_date: committer_date_for(commit, parse_old_date(cells[0].trim_space()))
 			created_at:  time.now()
 			v_c_ms:      cell_int(cells[3])
 			v_self_ms:   cell_int(cells[4])
@@ -112,6 +116,20 @@ fn cell_int(s string) int {
 
 fn unescape_html(s string) string {
 	return s.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').trim_space()
+}
+
+// committer_date_for recovers the committer date (%ct) of `commit` from the local
+// checkout, giving imported rows the same monotonic ordering key as sampled ones.
+// Returns `fallback` (the old table timestamp) when the commit cannot be resolved.
+fn committer_date_for(commit string, fallback time.Time) time.Time {
+	res := os.execute('git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:%ct ${commit}')
+	if res.exit_code == 0 {
+		ts := res.output.trim_space().i64()
+		if ts > 0 {
+			return time.unix(ts)
+		}
+	}
+	return fallback
 }
 
 // parse_old_date reads the old `time.format()` output (`YYYY-MM-DD HH:MM`). If it

@@ -74,7 +74,9 @@ fn cmd_run(args []string) ! {
 	}
 
 	mut selected := []string{}
-	for i := 0; i < commits.len; i += step {
+	// Start at step-1 so "every 50th commit" actually samples the 50th, 100th,
+	// ... commits (1-based), not the 1st, 51st, 101st.
+	for i := step - 1; i < commits.len; i += step {
 		selected << commits[i]
 	}
 	elog('year ${year}: ${commits.len} commits on ${ref}, sampling every ${step}th => ${selected.len} benchmarks')
@@ -120,7 +122,14 @@ fn cmd_run(args []string) ! {
 			failed++
 			continue
 		}
-		insert_benchmark(mut db, b)!
+		// The `commit_hash` UNIQUE constraint makes this insert the atomic claim:
+		// if a concurrent run (e.g. cron overlapping a manual backfill) already
+		// stored this commit, the insert is rejected instead of duplicating the row.
+		insert_benchmark(mut db, b) or {
+			elog('  ${short} was stored by a concurrent run, skipping: ${err}')
+			skipped++
+			continue
+		}
 		ok++
 		elog('  stored ${short}: v.c ${b.v_c_ms}ms, v ${b.v_self_ms}ms, hello ${b.hello_ms}ms (${ok} done, ${failed} failed, ${skipped} skipped)')
 	}

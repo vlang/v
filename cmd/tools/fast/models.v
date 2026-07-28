@@ -11,8 +11,8 @@ import db.sqlite
 @[table: 'benchmarks']
 struct Benchmark {
 mut:
-	id          int @[primary; sql: serial]
-	commit_hash string    // short (8 char) commit hash
+	id          int    @[primary; sql: serial]
+	commit_hash string @[unique] // short (8 char) hash; unique so concurrent runs cannot insert duplicates
 	message     string    // commit subject line
 	commit_date time.Time // committer date (%ct); monotonic along first-parent
 	created_at  time.Time // when this benchmark was actually run
@@ -42,6 +42,15 @@ fn open_db() !sqlite.DB {
 fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {
 	sql db {
 		insert b into Benchmark
+	}!
+}
+
+// delete_benchmark removes the row for a commit, used by `bench -force` to
+// replace an existing measurement (commit_hash is UNIQUE, so a plain re-insert
+// would otherwise be rejected).
+fn delete_benchmark(mut db sqlite.DB, hash string) ! {
+	sql db {
+		delete from Benchmark where commit_hash == hash
 	}!
 }
 

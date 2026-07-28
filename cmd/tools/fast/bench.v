@@ -23,13 +23,19 @@ fn cmd_bench(args []string) ! {
 	}
 	// Bail out before the expensive rebuild + measurement suite, so repeat
 	// invocations for an unchanged HEAD stay cheap.
-	if benchmark_exists(db, commit) && !args.contains('-force') {
+	exists := benchmark_exists(db, commit)
+	if exists && !args.contains('-force') {
 		elog('commit ${commit} is already benchmarked (use -force to re-run)')
 		return
 	}
 
 	build_vprod(vdir, args)!
 	b := run_measurements(vdir, commit, message, date, args)!
+	// Replace the old row only after a successful rebuild+measurement, so a
+	// failed -force run never destroys the existing data (commit_hash is UNIQUE).
+	if exists {
+		delete_benchmark(mut db, commit)!
+	}
 	insert_benchmark(mut db, b)!
 	elog('stored benchmark for ${commit}')
 }
