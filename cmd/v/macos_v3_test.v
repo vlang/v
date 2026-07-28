@@ -22,11 +22,25 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.output_mode = .stdout
 		prefs.show_cc = false
+		prefs.is_vlines = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_vlines = false
 		prefs.gc_mode = .boehm_full_opt
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.gc_mode = .no_gc
 		prefs.is_run = true
 		assert is_macos_v3_relevant_command('run', prefs)
+		prefs.is_shared = true
+		assert !is_macos_v3_relevant_command('run', prefs)
+		prefs.is_run = false
+		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.path = 'script.vsh'
+		prefs.is_crun = true
+		assert !is_macos_v3_relevant_command('script.vsh', prefs)
+		prefs.is_crun = false
+		prefs.is_shared = false
+		prefs.is_run = true
+		prefs.path = 'main.v'
 		prefs.os = .linux
 		assert !is_macos_v3_relevant_command('run', prefs)
 		prefs.os = .macos
