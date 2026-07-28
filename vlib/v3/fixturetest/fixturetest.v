@@ -10,6 +10,11 @@ const diagnostic_fixture_suffixes = ['/vlib/v/checker/tests', '/vlib/v/parser/te
 // Keep these exclusions aligned with v/compiler_errors_test.v.
 const diagnostic_fixture_skip_paths = ['non_existing.vv',
 	'vlib/v/checker/tests/var_duplicate_const.vv']
+const diagnostic_fixture_specialized_paths = [
+	'vlib/v/checker/tests/index_expr_implicit_int_downcast_err.vv',
+	'vlib/v/checker/tests/js_number_requires_explicit_cast.vv',
+	'vlib/v/checker/tests/disable_explicit_mutability.vv',
+]
 const diagnostic_fixture_skip_missing_headers = [
 	'vlib/v/checker/tests/missing_c_lib_header_1.vv',
 	'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv',
@@ -113,13 +118,17 @@ fn excluded_diagnostic_fixture_paths() []string {
 	$if windows {
 		excluded << diagnostic_fixture_skip_on_windows
 	}
+	// These have dedicated JS or explicit-mutability runs and are never part of the
+	// default adjacent-.out sweep, including under `-d noskip`.
+	excluded << diagnostic_fixture_specialized_paths
 	return excluded
 }
 
 // run compares every `.vv` compiler invocation with its adjacent `.out` file.
-pub fn run(vexe string, dir string) int {
+pub fn run(vexe string, dir string, invocation_args []string) int {
 	fixture_dir := os.real_path(dir)
 	repo_root := fixture_repo_root(vexe, fixture_dir)
+	compiler_options := forwarded_compiler_options(invocation_args)
 	mut names := os.ls(dir) or {
 		eprintln('failed to list fixture directory `${dir}`: ${err}')
 		return 1
@@ -179,7 +188,7 @@ pub fn run(vexe string, dir string) int {
 		batch_end := int_min(batch_start + max_parallel_fixtures, paths.len)
 		mut threads := []thread FixtureResult{cap: batch_end - batch_start}
 		for index in batch_start .. batch_end {
-			threads << spawn run_fixture(vexe, repo_root, paths[index], index)
+			threads << spawn run_fixture(vexe, repo_root, paths[index], index, compiler_options)
 		}
 		for result in threads.wait() {
 			index := result.index
@@ -244,10 +253,41 @@ fn name_matches_filters(name string, path string, filters []string) bool {
 	return filters.any(name.contains(it) || path.contains(it))
 }
 
-fn run_fixture(vexe string, repo_root string, path string, index int) FixtureResult {
+fn forwarded_compiler_options(args []string) []string {
+	value_options := ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d',
+		'-gc', '-cc', '-cflags']
+	runner_options := ['-silent', '-no-parallel', '--no-parallel', '-nocache', '--no-cache',
+		'-checker-fixture']
+	mut options := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in value_options {
+			if i + 1 >= args.len {
+				break
+			}
+			if arg != '-o' {
+				options << arg
+				options << args[i + 1]
+			}
+			i += 2
+			continue
+		}
+		if arg == 'test' || arg in runner_options || !arg.starts_with('-') {
+			i++
+			continue
+		}
+		options << arg
+		i++
+	}
+	return options
+}
+
+fn run_fixture(vexe string, repo_root string, path string, index int, compiler_options []string) FixtureResult {
 	output_base := fixture_binary_path(index)
-	result := cmdexec.run_in(vexe, ['-silent', '-no-parallel', '-nocache', '-checker-fixture',
-		'-o', output_base, path], repo_root)
+	mut args := compiler_options.clone()
+	args << ['-silent', '-no-parallel', '-nocache', '-checker-fixture', '-o', output_base, path]
+	result := cmdexec.run_in(vexe, args, repo_root)
 	os.rm(output_base) or {}
 	os.rm(output_base + '.c') or {}
 	os.write_file(fixture_output_path(index), result.output) or {

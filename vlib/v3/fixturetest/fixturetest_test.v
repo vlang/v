@@ -39,6 +39,12 @@ fn test_is_diagnostic_fixture_dir_restricts_dispatch_to_diagnostic_suites() {
 	assert !is_comparable_fixture(checker_dir, 'missing_output.vv')
 	os.setenv('VAUTOFIX', '1', true)
 	assert is_comparable_fixture(checker_dir, 'missing_output.vv')
+	for name in ['index_expr_implicit_int_downcast_err.vv', 'js_number_requires_explicit_cast.vv',
+		'disable_explicit_mutability.vv'] {
+		os.write_file(os.join_path(checker_dir, name), 'fn main() {}\n') or { panic(err) }
+		assert !is_comparable_fixture(checker_dir, name)
+		assert !os.exists(os.join_path(checker_dir, name.all_before_last('.vv') + '.out'))
+	}
 	os.unsetenv('VAUTOFIX')
 
 	runtime_dir := os.join_path(root, 'vlib', 'v', 'gen', 'c', 'testdata')
@@ -100,6 +106,13 @@ fn test_environment_specific_fixture_exclusions_match_reference_runner() {
 	}
 }
 
+fn test_forwarded_compiler_options_preserve_configuration_flags() {
+	args := ['-silent', '-cc', 'clang', '-d', 'test', '-dfoo', '-o', 'ignored-output', 'test',
+		'/checkout/vlib/v/checker/tests', '-os', 'windows', '-no-parallel', '-keepc']
+	assert forwarded_compiler_options(args) == ['-cc', 'clang', '-d', 'test', '-dfoo', '-os',
+		'windows', '-keepc']
+}
+
 fn test_run_autofixes_missing_and_mismatched_output() {
 	$if windows {
 		return
@@ -124,14 +137,26 @@ fn test_run_autofixes_missing_and_mismatched_output() {
 	expected_path := os.join_path(checker_dir, 'sample.out')
 	os.write_file(source_path, 'fn main() {}\n') or { panic(err) }
 	fake_vexe := os.join_path(root, 'v3')
+	captured_path := os.join_path(root, 'fixture_args.txt')
 	expected := 'vlib/v/checker/tests/sample.vv:1:1: error: updated output\n'
-	os.write_file(fake_vexe, "#!/bin/sh\nprintf '%s' '${expected}'\nexit 1\n") or { panic(err) }
+	os.write_file(fake_vexe, '#!/bin/sh
+printf "%s\n" "\$@" > "${captured_path}"
+printf "%s" "${expected}"
+exit 1
+') or {
+		panic(err)
+	}
 	os.chmod(fake_vexe, 0o700) or { panic(err) }
 
-	assert run(fake_vexe, checker_dir) == 1
+	invocation_args := ['-d', 'fixture_flag', 'test', checker_dir]
+	assert run(fake_vexe, checker_dir, invocation_args) == 1
 	actual := os.read_file(expected_path) or { panic(err) }
 	assert actual == expected
-	assert run(fake_vexe, checker_dir) == 0
+	assert run(fake_vexe, checker_dir, invocation_args) == 0
+	captured := os.read_lines(captured_path) or { panic(err) }
+	assert captured[..2] == ['-d', 'fixture_flag']
+	assert captured[2..6] == ['-silent', '-no-parallel', '-nocache', '-checker-fixture']
+	assert captured.last() == 'vlib/v/checker/tests/sample.vv'
 }
 
 fn test_fixture_repo_root_falls_back_to_requested_suite() {
