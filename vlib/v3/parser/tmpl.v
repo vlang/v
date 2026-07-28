@@ -1456,9 +1456,11 @@ fn template_mapped_pos(template_file &token.File, template_lines []string, line 
 	}
 	raw_line := template_lines[line - 1]
 	mut column := int_max(1, generated_column)
+	mut span_start := column - 1
 	mut span_len := int_max(1, generated_len)
 	if is_control {
 		column = int_max(1, generated_column + control_column_delta)
+		span_start = column - 1
 	} else {
 		interpolation_index := generated_template_interpolation_index(generated_line,
 			generated_column)
@@ -1467,12 +1469,13 @@ fn template_mapped_pos(template_file &token.File, template_lines []string, line 
 		{
 			if expr_start, expr_end := template_interpolation_expr_span(raw_line, at) {
 				column = expr_start + 2
+				span_start = expr_start
 				span_len = expr_end - expr_start
 			}
 		}
 	}
 	line_start := template_file.line_start(line)
-	start := line_start + int_min(column - 1, raw_line.len)
+	start := line_start + int_min(span_start, raw_line.len)
 	return token.new_span(template_id, start, start + span_len).with_reported_column(column)
 }
 

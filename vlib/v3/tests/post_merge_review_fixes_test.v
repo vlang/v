@@ -6727,6 +6727,7 @@ fn main() {
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('columns.txt:1:3: error: undefined ident: `unknown`'), compile.output
 	assert compile.output.contains('columns.txt:1:12: error: undefined ident: `unknown`'), compile.output
+	assert compile.output.contains('    1 | @unknown @unknown\n      |  ~~~~~~~'), compile.output
 }
 
 fn test_explicit_template_interpolations_use_expression_columns() {
@@ -6752,6 +6753,7 @@ fn main() {
 	assert compile.output.contains('explicit_columns.txt:1:4: error: undefined ident: `missing`'), compile.output
 
 	assert compile.output.contains('explicit_columns.txt:1:15: error: undefined ident: `absent`'), compile.output
+	assert compile.output.contains('    1 | @{missing} @(absent)\n      |   ~~~~~~~'), compile.output
 }
 
 fn test_dollar_template_interpolations_use_expression_columns() {
@@ -6776,6 +6778,7 @@ fn main() {
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('dollar_columns.txt:1:4: error: undefined ident: `first`'), compile.output
 	assert compile.output.contains('dollar_columns.txt:1:12: error: undefined ident: `second`'), compile.output
+	assert compile.output.contains('    1 | \${first} @second\n      |   ~~~~~'), compile.output
 }
 
 fn test_template_translation_shorthand_diagnostics_use_template_source() {
