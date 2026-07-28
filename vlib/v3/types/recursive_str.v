@@ -153,6 +153,15 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			}
 			return false
 		}
+		.defer_stmt {
+			// Deferred statements execute after the current path has finished. Check their
+			// bodies without letting deferred mutations affect earlier recursive calls.
+			mut deferred_env := env.clone_env()
+			for i in 0 .. node.children_count {
+				tc.recursive_str_process_stmt(tc.a.child(node, i), mut deferred_env, ctx)
+			}
+			return true
+		}
 		.block {
 			for i in 0 .. node.children_count {
 				if !tc.recursive_str_process_stmt(tc.a.child(node, i), mut env, ctx) {
@@ -247,6 +256,9 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		}
 		.call {
 			return tc.recursive_str_eval_call(id, mut env, ctx)
+		}
+		.fn_literal, .lambda_expr {
+			// Creating a closure does not execute its body.
 		}
 		.postfix {
 			if node.children_count > 0 {

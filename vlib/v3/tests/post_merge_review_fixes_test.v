@@ -6869,6 +6869,54 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_deferred_mutation_does_not_count_as_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_deferred_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	defer {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_does_not_execute_stored_closure_bodies() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_stored_closure_bodies', 'struct LambdaItem {}
+
+fn (item LambdaItem) str() string {
+	callback := || item.str()
+	_ = callback
+	return "lambda"
+}
+
+struct LiteralItem {}
+
+fn (item LiteralItem) str() string {
+	callback := fn [item] () string {
+		return item.str()
+	}
+	_ = callback
+	return "literal"
+}
+
+fn main() {
+	println(LambdaItem{}.str())
+	println(LiteralItem{}.str())
+}
+')
+	assert out == 'lambda\nliteral'
+}
+
 fn test_parameter_redefinition_only_suppresses_related_unused_notices() {
 	v3_bin := build_v3()
 	src := 'fn broken(value int, value string) {}
