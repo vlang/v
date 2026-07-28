@@ -165,6 +165,8 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			disabled_fns:           map[string]bool{}
 			export_fn_names:        map[string]string{}
 			source_files:           map[int]&token.File{}
+			template_call_sites:    map[int]token.Pos{}
+			template_actions:       map[int]string{}
 			missing_imports:        map[int]string{}
 			text_ids:               map[string]flat.TextId{}
 			specialized_fn_nodes:   map[int]bool{}

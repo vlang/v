@@ -6965,3 +6965,63 @@ fn unrelated() {
 	unrelated_start := source.index('fn unrelated') or { panic('missing unrelated function') }
 	assert inference_errors[0].pos.offset > unrelated_start, tc.errors.str()
 }
+
+fn test_template_include_diagnostics_use_partial_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_include_diagnostic_source')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('root.txt')
+}
+")
+	write_project_file(root, 'root.txt', "before
+@include 'partial.txt'
+after
+")
+	write_project_file(root, 'partial.txt', 'partial first
+@missing_from_partial
+partial last
+')
+	output := tmp_test_path('template_include_diagnostic_source')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('partial.txt:2:3: error: undefined ident: `missing_from_partial`'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert !compile.output.contains('<veb-template>'), compile.output
+}
+
+fn test_template_import_diagnostics_preserve_each_line() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_import_diagnostic_lines')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('imports.txt')
+}
+")
+	write_project_file(root, 'imports.txt', '@import os
+middle
+@import json
+')
+	output := tmp_test_path('template_import_diagnostic_lines')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.count('invalid expression: unexpected keyword `import`') == 2, compile.output
+	assert compile.output.count('expression does not return a value (veb action: main__main)') == 2, compile.output
+
+	assert compile.output.count('imports.txt:1:30: error:') == 2, compile.output
+	assert compile.output.count('imports.txt:3:30: error:') == 2, compile.output
+}

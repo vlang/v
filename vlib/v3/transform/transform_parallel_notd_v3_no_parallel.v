@@ -1786,6 +1786,8 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		disabled_fns:           a.disabled_fns
 		noreturn_fns:           a.noreturn_fns
 		source_files:           a.source_files
+		template_call_sites:    a.template_call_sites
+		template_actions:       a.template_actions
 		source_buffers:         a.source_buffers
 		text_values:            a.text_values
 		text_ids:               a.text_ids

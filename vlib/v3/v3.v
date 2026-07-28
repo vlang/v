@@ -2906,6 +2906,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		export_fn_names:        ast.export_fn_names
 		noreturn_fns:           ast.noreturn_fns
 		source_files:           ast.source_files
+		template_call_sites:    ast.template_call_sites.clone()
+		template_actions:       clone_int_string_map(ast.template_actions)
 		source_buffers:         ast.source_buffers
 		text_values:            text_values
 		text_ids:               text_ids
