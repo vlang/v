@@ -1415,14 +1415,38 @@ fn run_test_binary(bin_file string) int {
 	return run_binary(bin_file, []string{})
 }
 
+fn ignore_run_signal(_ os.Signal) {
+}
+
 fn run_binary(bin_file string, args []string) int {
 	run_path := executable_path_for_run(bin_file)
 	mut process := os.new_process(run_path)
 	process.set_args(args)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
-	process.run()
+	// Ignore SIGINT and SIGQUIT while waiting so an interrupted child does not
+	// terminate V3 before it can remove the implicit run executable.
+	prev_int_handler := os.signal_opt(.int, ignore_run_signal) or {
+		eprintln('v3: could not set SIGINT handler: ${err}')
+		return 1
+	}
+	mut prev_quit_handler := os.SignalHandler(ignore_run_signal)
+	$if !windows {
+		prev_quit_handler = os.signal_opt(.quit, ignore_run_signal) or {
+			os.signal_opt(.int, prev_int_handler) or {}
+			eprintln('v3: could not set SIGQUIT handler: ${err}')
+			return 1
+		}
+	}
 	process.wait()
+	os.signal_opt(.int, prev_int_handler) or {
+		eprintln('v3: could not restore SIGINT handler: ${err}')
+	}
+	$if !windows {
+		os.signal_opt(.quit, prev_quit_handler) or {
+			eprintln('v3: could not restore SIGQUIT handler: ${err}')
+		}
+	}
 	exit_code := if process.code >= 0 { process.code } else { 1 }
 	process.close()
 	return exit_code

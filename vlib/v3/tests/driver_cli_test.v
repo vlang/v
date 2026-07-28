@@ -1,4 +1,5 @@
 import os
+import time
 import v3.cmdexec
 import v3.pref
 
@@ -229,6 +230,54 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	assert implicit_run.output == 'ran once\n', implicit_run.output
 	assert !os.exists(run_binary)
 	assert !os.exists(run_binary + '.c')
+	$if !windows {
+		interrupted_program := os.join_path(root, 'interrupted_run.v')
+		interrupted_binary := interrupted_program.all_before_last('.v')
+		interrupted_marker := os.join_path(root, 'interrupted_run_started')
+		os.write_file(interrupted_program, "import os
+
+fn main() {
+	os.write_file('${interrupted_marker}', 'started') or { exit(2) }
+	for {}
+}
+")!
+		mut interrupted_run := os.new_process(v3_bin)
+		interrupted_run.use_pgroup = true
+		interrupted_run.set_args(['-silent', '-no-parallel', 'run', interrupted_program])
+		interrupted_run.run()
+		mut interrupted_started := false
+		for _ in 0 .. 600 {
+			if os.exists(interrupted_marker) {
+				interrupted_started = true
+				break
+			}
+			if !interrupted_run.is_alive() {
+				break
+			}
+			time.sleep(100 * time.millisecond)
+		}
+		if !interrupted_started {
+			if interrupted_run.is_alive() {
+				interrupted_run.signal_pgkill()
+			}
+			interrupted_run.wait()
+			run_error := interrupted_run.err
+			interrupted_run.close()
+			assert false, 'interrupted run did not start: ${run_error}'
+		}
+		interrupt := os.execute('kill -INT -${interrupted_run.pid}')
+		if interrupt.exit_code != 0 {
+			interrupted_run.signal_pgkill()
+			interrupted_run.wait()
+			interrupted_run.close()
+			assert false, interrupt.output
+		}
+		interrupted_run.wait()
+		interrupted_exit_code := interrupted_run.code
+		interrupted_run.close()
+		assert interrupted_exit_code != 0
+		assert !os.exists(interrupted_binary)
+	}
 	debug_define_program := os.join_path(root, 'debug_define.v')
 	os.write_file(debug_define_program, '@[if debug]
 fn enabled_by_define() {

@@ -1,5 +1,6 @@
 module main
 
+import os
 import v.pref
 
 fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
@@ -9,8 +10,12 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 			backend:   .c
 			os:        .macos
 			is_script: true
+			gc_mode:   .no_gc
 		}
 		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.gc_mode = .boehm_full_opt
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.gc_mode = .no_gc
 		prefs.is_run = true
 		assert is_macos_v3_relevant_command('run', prefs)
 		prefs.os = .linux
@@ -52,6 +57,18 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 			prefs.path = path
 			assert !is_macos_v3_relevant_command(path, prefs)
 		}
+		root := os.join_path(os.vtmp_dir(), 'macos_v3_symlink_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'source.v')
+		alias := os.join_path(root, 'alias.v')
+		os.write_file(source, 'fn main() {}\n') or { panic(err) }
+		os.symlink(source, alias) or { panic(err) }
+		prefs.path = alias
+		assert !is_macos_v3_relevant_command(alias, prefs)
 	}
 }
 
