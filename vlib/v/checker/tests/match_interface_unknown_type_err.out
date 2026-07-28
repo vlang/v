@@ -1,7 +1,63 @@
-vlib/v/checker/tests/match_interface_unknown_type_err.vv:9:3: error: unknown type `Nil`
-    7 | fn (v Value) get_str() string {
-    8 |     return match v {
-    9 |         Nil {
-      |         ~~~
-   10 |             ''
-   11 |         }
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:17:3: error: unknown type `Missing`
+   15 | 
+   16 |     match s.val {
+   17 |         Missing {}
+      |         ~~~~~~~
+   18 |         Missing[int] {}
+   19 |         Missing[Box] {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:18:3: error: unknown type `Missing[int]`
+   16 |     match s.val {
+   17 |         Missing {}
+   18 |         Missing[int] {}
+      |         ~~~~~~~
+   19 |         Missing[Box] {}
+   20 |         Box[Missing] {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:19:3: error: unknown type `Missing[Box]`
+   17 |         Missing {}
+   18 |         Missing[int] {}
+   19 |         Missing[Box] {}
+      |         ~~~~~~~
+   20 |         Box[Missing] {}
+   21 |         Box[[]Missing] {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:20:7: error: unknown type `Box[Missing]`
+   18 |         Missing[int] {}
+   19 |         Missing[Box] {}
+   20 |         Box[Missing] {}
+      |             ~~~~~~~
+   21 |         Box[[]Missing] {}
+   22 |         Box[map[string]Missing] {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:21:9: error: unknown type `Box[[]Missing]`
+   19 |         Missing[Box] {}
+   20 |         Box[Missing] {}
+   21 |         Box[[]Missing] {}
+      |               ~~~~~~~
+   22 |         Box[map[string]Missing] {}
+   23 |         Box[map[Missing]string] {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:22:18: error: unknown type `Box[map[string]Missing]`
+   20 |         Box[Missing] {}
+   21 |         Box[[]Missing] {}
+   22 |         Box[map[string]Missing] {}
+      |                        ~~~~~~~
+   23 |         Box[map[Missing]string] {}
+   24 |         Box[fn (Missing) int] {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:23:11: error: unknown type `Box[map[Missing]string]`
+   21 |         Box[[]Missing] {}
+   22 |         Box[map[string]Missing] {}
+   23 |         Box[map[Missing]string] {}
+      |                 ~~~~~~~
+   24 |         Box[fn (Missing) int] {}
+   25 |         Box[fn (int) Missing] {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:24:11: error: unknown type `Box[fn (Missing) int]`
+   22 |         Box[map[string]Missing] {}
+   23 |         Box[map[Missing]string] {}
+   24 |         Box[fn (Missing) int] {}
+      |                 ~~~~~~~
+   25 |         Box[fn (int) Missing] {}
+   26 |         else {}
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:25:16: error: unknown type `Box[fn (int) Missing]`
+   23 |         Box[map[Missing]string] {}
+   24 |         Box[fn (Missing) int] {}
+   25 |         Box[fn (int) Missing] {}
+      |                      ~~~~~~~
+   26 |         else {}
+   27 |     }

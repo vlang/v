@@ -2162,18 +2162,21 @@ fn (c &Checker) generic_names_for_type_parent(typ_sym &ast.TypeSymbol) []string 
 // `.placeholder` type symbol (e.g. an undeclared type `Missing`) inside `sym`:
 // either `sym` itself, or - for a generic instantiation such as `Missing[int]` or
 // `Box[Missing]` - its parent type or any of its concrete type arguments,
-// including ones nested inside a container (`Box[[]Missing]`, `Box[map[string]Missing]`, etc.).
+// including ones nested inside a container (`Box[[]Missing]`, `Box[map[string]Missing]`, etc.)
+// or a function type's parameter/return types (`Box[fn (Missing) int]`, `Box[fn (int) Missing]`).
 // Returns the short (unqualified) name of the first unresolved identifier found,
 // so callers can locate it in the source for a precise diagnostic position
 // or none if `sym` is fully resolved.
 fn (c &Checker) find_unresolved_placeholder_name(sym &ast.TypeSymbol) ?string {
 	if sym.kind == .placeholder && sym.language != .c {
-		short_name := sym.name.all_after_last('.')
 		// An undeclared generic base type (e.g. `Missing` in `Missing[int]`) is registered
-		// as a single opaque placeholder whose name is the whole bracketed text
-		// (`Missing[int]`); strip everything from the first `[` to get just the
-		// actually-undeclared identifier.
-		return if short_name.contains('[') { short_name.all_before('[') } else { short_name }
+		// as a single opaque placeholder whose name is the whole bracketed text, module-qualified
+		// (`main.Missing[int]`, or `main.Missing[main.Box]` if a concrete type argument is itself
+		// module-qualified). Strip the bracketed suffix *first*, so a `.` inside it (from a
+		// qualified concrete type argument) is not mistaken for the base name's own module
+		// separator, then strip that module prefix to get just the actually-undeclared identifier.
+		base_name := if sym.name.contains('[') { sym.name.all_before('[') } else { sym.name }
+		return base_name.all_after_last('.')
 	}
 	if sym.info is ast.GenericInst {
 		parent_sym := c.table.sym_by_idx(sym.info.parent_idx)
@@ -2199,9 +2202,10 @@ fn (c &Checker) find_unresolved_placeholder_name(sym &ast.TypeSymbol) ?string {
 		}
 	}
 	// A concrete type argument can itself be a container (e.g. `Box[[]Missing]`,
-	// `Box[map[string]Missing]`, `Box[chan Missing]`); recurse into its
-	// element/value/parent types too, so an unresolved type nested inside one
-	// is not missed.
+	// `Box[map[string]Missing]`, `Box[chan Missing]`) or a function type whose
+	// parameter or return types may be unresolved (`Box[fn (Missing) int]`,
+	// `Box[fn (int) Missing]`); recurse into those too, so an unresolved type
+	// nested inside one is not missed.
 	nested_types := match sym.info {
 		ast.Array { [sym.info.elem_type] }
 		ast.ArrayFixed { [sym.info.elem_type] }
@@ -2209,12 +2213,20 @@ fn (c &Checker) find_unresolved_placeholder_name(sym &ast.TypeSymbol) ?string {
 		ast.Map { [sym.info.key_type, sym.info.value_type] }
 		ast.MultiReturn { sym.info.types }
 		ast.Alias { [sym.info.parent_type] }
+		ast.FnType { [sym.info.func.return_type] }
 		else { []ast.Type{} }
 	}
 
 	for nested_type in nested_types {
 		if name := c.find_unresolved_placeholder_name(c.table.sym(nested_type)) {
 			return name
+		}
+	}
+	if sym.info is ast.FnType {
+		for param in sym.info.func.params {
+			if name := c.find_unresolved_placeholder_name(c.table.sym(param.typ)) {
+				return name
+			}
 		}
 	}
 	return none

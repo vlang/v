@@ -1,8 +1,28 @@
 interface Value {}
 
+struct Box[T] {
+	val T
+}
+
 fn main() {
-	v := Value(1)
-	if v is Nil[int] {
-		println('yes')
+	v := Value(Box[int]{})
+
+	if v is Missing {
+	}
+	if v is Missing[int] {
+	}
+	if v is Missing[Box] {
+	}
+	if v is Box[Missing] {
+	}
+	if v is Box[[]Missing] {
+	}
+	if v is Box[map[string]Missing] {
+	}
+	if v is Box[map[Missing]string] {
+	}
+	if v is Box[fn (Missing) int] {
+	}
+	if v is Box[fn (int) Missing] {
 	}
 }

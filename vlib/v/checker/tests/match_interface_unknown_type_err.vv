@@ -1,23 +1,28 @@
 interface Value {}
 
-struct Holder {
-	val Value
+struct Box[T] {
+	val T
 }
 
-fn (v Value) get_str() string {
-	return match v {
-		Nil {
-			''
-		}
-		else {
-			''
-		}
-	}
+struct Holder {
+	val Value
 }
 
 fn main() {
 	s := Holder{
 		val: 42
 	}
-	println(s.val.get_str())
+
+	match s.val {
+		Missing {}
+		Missing[int] {}
+		Missing[Box] {}
+		Box[Missing] {}
+		Box[[]Missing] {}
+		Box[map[string]Missing] {}
+		Box[map[Missing]string] {}
+		Box[fn (Missing) int] {}
+		Box[fn (int) Missing] {}
+		else {}
+	}
 }
