@@ -12,6 +12,7 @@ type NestedBazFixed = [2]BazFixed
 struct Empty {}
 
 type EmptyFixed = [2]Empty
+type NestedEmptyFixed = [4][2]Empty
 
 type Dot = [3]f64
 type Box = [2]Dot
@@ -43,6 +44,12 @@ fn test_fixed_array_alias_of_empty_struct() {
 fn test_direct_fixed_array_alias_of_empty_struct_init() {
 	fixed := EmptyFixed{}
 	assert fixed.len == 2
+}
+
+fn test_nested_fixed_array_alias_of_empty_struct() {
+	nested := NestedEmptyFixed{}
+	assert nested.len == 4
+	assert nested[0].len == 2
 }
 
 fn test_nested_fixed_array_alias_in_struct_init() {
