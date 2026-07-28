@@ -6731,6 +6731,30 @@ fn main() {
 	assert compile.output.contains('explicit_columns.txt:1:15: error: undefined ident: `absent`'), compile.output
 }
 
+fn test_dollar_template_interpolations_use_expression_columns() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('dollar_template_interpolation_columns')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('dollar_columns.txt')
+}
+")
+	write_project_file(root, 'dollar_columns.txt', '\${first} @second
+')
+	output := tmp_test_path('dollar_template_interpolation_columns')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('dollar_columns.txt:1:4: error: undefined ident: `first`'), compile.output
+	assert compile.output.contains('dollar_columns.txt:1:12: error: undefined ident: `second`'), compile.output
+}
+
 fn test_template_control_diagnostics_use_template_source() {
 	v3_bin := build_v3()
 	root := '${tmp_test_path('template_control_diagnostics')}_project'
@@ -6988,6 +7012,48 @@ fn (item Item) str() string {
 		copy.remaining--
 		0
 	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_short_circuit_progress_is_conditional() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_logical_and_rhs_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) bool {
+	item.remaining--
+	return true
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	_ = false && advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_logical_or_rhs_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) bool {
+	item.remaining--
+	return true
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	_ = true || advance(mut copy)
 	return copy.str()
 }
 

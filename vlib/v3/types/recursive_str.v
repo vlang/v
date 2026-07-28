@@ -282,6 +282,16 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 			}
 		}
 		.infix {
+			if node.op in [.logical_or, .logical_and] && node.children_count >= 2 {
+				tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+				base := env.clone_env()
+				mut rhs_env := base.clone_env()
+				tc.recursive_str_eval_expr(tc.a.child(node, 1), mut rhs_env, ctx)
+				env = tc.recursive_str_merge_envs([base, rhs_env])
+				return RecursiveStrBinding{
+					typ_name: tc.resolve_type(id).name()
+				}
+			}
 			for i in 0 .. node.children_count {
 				tc.recursive_str_eval_expr(tc.a.child(node, i), mut env, ctx)
 			}

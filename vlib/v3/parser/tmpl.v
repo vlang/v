@@ -1495,20 +1495,22 @@ fn template_interpolation_offset(line string, wanted int, skip_offset int) ?int 
 	mut index := 0
 	mut i := 0
 	for i + 1 < line.len {
-		if line[i] != `@` {
+		is_at_interpolation := line[i] == `@`
+		is_dollar_interpolation := line[i] == `$` && line[i + 1] == `{`
+		if !is_at_interpolation && !is_dollar_interpolation {
 			i++
 			continue
 		}
-		if i == skip_offset {
+		if is_at_interpolation && i == skip_offset {
 			i += 2
 			continue
 		}
 		next := line[i + 1]
-		if next == `@` {
+		if is_at_interpolation && next == `@` {
 			i += 2
 			continue
 		}
-		if next == `{` || next == `(` || is_tmpl_ident_start(next) {
+		if is_dollar_interpolation || next == `{` || next == `(` || is_tmpl_ident_start(next) {
 			if index == wanted {
 				return i
 			}
@@ -1520,10 +1522,13 @@ fn template_interpolation_offset(line string, wanted int, skip_offset int) ?int 
 }
 
 fn template_interpolation_expr_span(line string, at int) ?(int, int) {
-	if at < 0 || at + 1 >= line.len || line[at] != `@` {
+	if at < 0 || at + 1 >= line.len || (line[at] != `@` && line[at] != `$`) {
 		return none
 	}
 	next := line[at + 1]
+	if line[at] == `$` && next != `{` {
+		return none
+	}
 	mut start := at + 1
 	mut end := start
 	if next == `{` || next == `(` {
