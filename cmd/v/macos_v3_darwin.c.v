@@ -113,9 +113,9 @@ fn macos_v3_args_are_supported(args []string) bool {
 			'--c99', '-strict', '-cstrict', '-ownership', '--ownership', '-no-parallel',
 			'--no-parallel', '-parallel-transform', '--parallel-transform', '-all-backends',
 			'--all-backends', '-g', '-cg', '-autofree', '-v', '-checker-fixture', '-stats',
-			'-show-timings', '-showcc', '-keepc', '-no-retry-compilation', '-skip-running',
-			'-usecache', '-no-prealloc', '--no-prealloc', '-nocache', '--no-cache',
-			'-no-memory-limit', '--no-memory-limit', '-prealloc', '-enable-globals'] {
+			'-show-timings', '-showcc', '-keepc', '-skip-running', '-usecache', '-no-prealloc',
+			'--no-prealloc', '-nocache', '--no-cache', '-no-memory-limit', '--no-memory-limit',
+			'-prealloc', '-enable-globals'] {
 			i++
 			continue
 		}

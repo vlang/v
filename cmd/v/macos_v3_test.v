@@ -142,6 +142,7 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-foo', 'main.v'])
+		assert !macos_v3_args_are_supported(['-no-retry-compilation', 'main.v'])
 		assert !macos_v3_args_are_supported(['-silent', 'main.v'])
 		assert !macos_v3_args_are_supported(['-w', 'main.v'])
 		for help_flag in ['-?', '-h', '-help', '--help'] {
