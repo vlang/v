@@ -159,7 +159,6 @@ vlib/crypto/ed25519/internal/edwards25519/table_test.v
 vlib/crypto/hkdf/example_test.v
 vlib/crypto/hkdf/hkdf_test.v
 vlib/crypto/hmac/hmac_test.v
-vlib/crypto/internal/subtle/comparison_test.v
 vlib/crypto/md5/md5_test.v
 vlib/crypto/pbkdf2/pbkdf2_test.v
 vlib/crypto/pem/pem_test.v
@@ -189,6 +188,7 @@ vlib/crypto/sha512/sha512_256_shavs_test.v
 vlib/crypto/sha512/sha512_shavs_monte_test.v
 vlib/crypto/sha512/sha512_shavs_test.v
 vlib/crypto/sha512/sha512_test.v
+vlib/crypto/subtle/comparison_test.v
 vlib/datatypes/bloom_filter_test.v
 vlib/datatypes/bstree_test.v
 vlib/datatypes/doubly_linked_list_test.v

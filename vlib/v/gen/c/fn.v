@@ -1319,16 +1319,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				}
 			}
 			mut method_name := c_name(call_fn.name)
-			if call_fn.name.contains('_') {
-				parts := call_fn.name.split('_')
-				if parts.len >= 2 {
-					receiver_type_name := parts[0]
-					if resolved_sym := g.table.find_sym(receiver_type_name) {
-						if resolved_sym.is_builtin() {
-							method_name = 'builtin__${method_name}'
-						}
-					}
-				}
+			trace_receiver_name := call_fn.name.all_before('_')
+			if call_fn.func.is_method
+				&& g.receiver_type_is_builtin(call_fn.func.receiver_type, trace_receiver_name) {
+				method_name = 'builtin__${method_name}'
 			}
 			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
 				if add_trace_hook {
@@ -1722,6 +1716,21 @@ fn (mut g Gen) c_call_name(node ast.CallExpr, cname string) string {
 		g.extern_out.writeln('extern ${alias_sig};')
 	}
 	return alias_name
+}
+
+fn (mut g Gen) c_call_return_type_cast(node ast.CallExpr) ast.Type {
+	if !g.table.c_fn_has_local_return_types(node.name) {
+		return ast.no_type
+	}
+	if f := g.table.find_c_fn_in_module(node.name, node.mod) {
+		typ := f.return_type
+		sym := g.table.final_sym(typ)
+		if typ.is_any_kind_of_pointer()
+			|| sym.kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char, .rune, .bool, .enum, .function] {
+			return typ
+		}
+	}
+	return ast.no_type
 }
 
 fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
@@ -4873,10 +4882,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		name = util.no_dots('${receiver_type_name}_${method_name}')
 	}
-	if resolved_sym := g.table.find_sym(receiver_type_name) {
-		if resolved_sym.is_builtin() && !receiver_type_name.starts_with('_') {
-			name = 'builtin__${name}'
-		}
+	if g.receiver_type_is_builtin(unwrapped_rec_type, receiver_type_name)
+		&& !receiver_type_name.starts_with('_') {
+		name = 'builtin__${name}'
 	} else if receiver_type_name in ['int_literal', 'float_literal', 'vint_t'] {
 		name = 'builtin__${name}'
 	}
@@ -5665,6 +5673,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 }
 
+// receiver_type_is_builtin follows type indexes only, so parallel cgen does not
+// read the type-name map while another checker shard may still be extending it.
+fn (g &Gen) receiver_type_is_builtin(typ ast.Type, receiver_name string) bool {
+	sym := g.table.sym(typ)
+	if sym.is_builtin() {
+		return true
+	}
+	return receiver_name in ['array', 'map', 'chan', 'thread']
+}
+
 fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// call struct field with fn type
 	// TODO: test node.left instead
@@ -6044,6 +6062,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// g.write(cur_line + ' /* <== af cur line*/')
 			// }
 			mut is_fn_var := false
+			mut has_c_return_type_cast := false
 			if !is_selector_call {
 				if obj := node.scope.find_var(node.name) {
 					// Temp fix generate call fn error when the struct type of sumtype
@@ -6140,6 +6159,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if !is_fn_var {
+				if node.language == .c {
+					c_return_type := g.c_call_return_type_cast(node)
+					if c_return_type != ast.no_type {
+						g.write('((${g.styp(c_return_type)})')
+						has_c_return_type_cast = true
+					}
+				}
 				if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
 					if node.is_fn_var {
 						g.gen_trace_fn_var_call(node, name, call_generic_names, call_concrete_types)
@@ -6179,6 +6205,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if name != '&' {
+				g.write(')')
+			}
+			if has_c_return_type_cast {
 				g.write(')')
 			}
 			if node.return_type != 0 && !node.return_type.has_option_or_result()
@@ -6360,6 +6389,15 @@ fn (mut g Gen) call_arg_param(node ast.CallExpr, arg_idx int) ?ast.Param {
 			}
 		}
 		return none
+	}
+	if node.language == .c {
+		if func := g.table.find_c_fn_in_module(node.name, node.mod) {
+			return if func.is_variadic && arg_idx >= func.params.len - 1 {
+				func.params.last()
+			} else {
+				func.params[arg_idx]
+			}
+		}
 	}
 	if func := g.table.find_fn(node.name) {
 		return if func.is_variadic && arg_idx >= func.params.len - 1 {

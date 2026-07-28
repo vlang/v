@@ -20,6 +20,20 @@ system's cryptographically secure random source and can return an error. The sep
 
 ## Examples
 
+### Constant-time comparisons
+
+Use `crypto.subtle` for low-level helpers whose running time does not depend on secret data:
+
+```v
+import crypto.subtle
+
+fn main() {
+	expected := [u8(1), 2, 3]
+	actual := [u8(1), 2, 3]
+	assert subtle.constant_time_compare(expected, actual) == 1
+}
+```
+
 ### AES
 
 ```v

@@ -654,7 +654,7 @@ fn test_filelock_uses_headerless_fcntl_helpers() {
 
 import os
 
-fn C.open(&char, i32, i32) i32
+fn C.open(&char, i32, ...int) i32
 fn C.close(i32) i32
 fn C.v_filelock_lock(i32, i32, i32, u64, u64) i32
 fn C.v_filelock_unlock(i32, u64, u64) i32

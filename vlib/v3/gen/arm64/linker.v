@@ -8,7 +8,7 @@ import os
 import time
 
 // C.open declares the C open symbol used by arm64.
-fn C.open(charptr, int, int) int
+fn C.open(charptr, int, ...int) int
 
 // C.write declares the C write symbol used by arm64.
 fn C.write(int, voidptr, int) int

@@ -7,20 +7,21 @@ import v3.cmdexec
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose        bool
-	output_file    string
-	target         Target = host_target()
-	user_defines   []string
-	compile_values map[string]string
-	backend        string = 'c'
-	c99            bool
-	vroot          string = detect_vroot()
-	vexe           string = detect_vexe()
-	selfhost       bool
-	building_v     bool // compiling the V compiler itself: no generics, skip monomorphization
-	is_prod        bool
-	is_debug       bool
-	is_test        bool // at least one compatible user test file is being compiled
+	verbose           bool
+	output_file       string
+	target            Target = host_target()
+	user_defines      []string
+	compile_values    map[string]string
+	backend           string = 'c'
+	c99               bool
+	vroot             string = detect_vroot()
+	vexe              string = detect_vexe()
+	selfhost          bool
+	building_v        bool // compiling the V compiler itself: no generics, skip monomorphization
+	is_prod           bool
+	is_debug          bool
+	is_test           bool // at least one compatible user test file is being compiled
+	thread_stack_size int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm bool
@@ -76,6 +77,11 @@ pub fn host_target() Target {
 	return target_from(os.user_os(), host_arch()) or {
 		panic('unsupported compiler host target ${os.user_os()}/${host_arch()}')
 	}
+}
+
+// default_thread_stack_size returns the target-specific spawned-thread stack size.
+pub fn (target Target) default_thread_stack_size() int {
+	return if target.pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
 }
 
 // target_from validates and canonicalizes an OS/architecture pair.

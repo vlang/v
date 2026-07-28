@@ -34,7 +34,7 @@ fn iocp_gc_test_handler(req HttpRequest) !HttpResponse {
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 	if path == '/large' {
 		send_buffer_size := 4096
-		if C.setsockopt(C.SOCKET(req.client_conn_handle), C.SOL_SOCKET, C.SO_SNDBUF,
+		if C.v_fasthttp_setsockopt(C.SOCKET(req.client_conn_handle), C.SOL_SOCKET, C.SO_SNDBUF,
 			voidptr(&send_buffer_size), sizeof(send_buffer_size)) != 0 {
 			return error('failed to constrain the large-response send buffer')
 		}

@@ -508,6 +508,9 @@ pub mut:
 	enable_globals               bool
 	fn_ret_types                 map[string]Type
 	fn_param_types               map[string][]Type
+	c_fn_module_ret_types        map[string]Type
+	c_fn_module_param_types      map[string][]Type
+	c_fn_module_variadic         map[string]bool
 	fn_shared_params             map[string][]bool
 	mut_receiver_methods         map[string]bool
 	source_no_body_fns           map[string]bool
@@ -737,6 +740,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		a:                                     a
 		fn_ret_types:                          map[string]Type{}
 		fn_param_types:                        map[string][]Type{}
+		c_fn_module_ret_types:                 map[string]Type{}
+		c_fn_module_param_types:               map[string][]Type{}
+		c_fn_module_variadic:                  map[string]bool{}
 		fn_shared_params:                      map[string][]bool{}
 		mut_receiver_methods:                  map[string]bool{}
 		source_no_body_fns:                    map[string]bool{}
@@ -864,6 +870,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		enable_globals:                     tc.enable_globals
 		fn_ret_types:                       tc.fn_ret_types
 		fn_param_types:                     tc.fn_param_types
+		c_fn_module_ret_types:              tc.c_fn_module_ret_types
+		c_fn_module_param_types:            tc.c_fn_module_param_types
+		c_fn_module_variadic:               tc.c_fn_module_variadic
 		fn_shared_params:                   tc.fn_shared_params
 		mut_receiver_methods:               tc.mut_receiver_methods
 		source_no_body_fns:                 tc.source_no_body_fns
@@ -2288,6 +2297,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.type_cache.c_name_entries.clear()
 	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
+	tc.check_c_fn_redeclarations(a)
 	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
@@ -2470,6 +2480,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				}
 			}
 			.c_fn_decl {
+				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}
 				mut is_variadic := false
@@ -2479,9 +2491,18 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						if child.typ.starts_with('...') {
 							is_variadic = true
 						}
-						ptypes << tc.parse_type(child.typ)
+						parsed_param_type := tc.parse_type(child.typ)
+						ptypes << if child.is_mut {
+							mut_param_semantic_type(parsed_param_type)
+						} else {
+							parsed_param_type
+						}
 					}
 				}
+				module_key := c_fn_module_signature_key(tc.cur_module, c_name)
+				tc.c_fn_module_ret_types[module_key] = ret_type
+				tc.c_fn_module_param_types[module_key] = ptypes.clone()
+				tc.c_fn_module_variadic[module_key] = is_variadic
 				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic, false)
 				if is_variadic {
 					tc.register_c_variadic_fn(node.value)
@@ -2841,6 +2862,96 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 			else {}
 		}
 	}
+}
+
+struct CFnDeclSignature {
+	return_type string
+	params      []string
+	is_variadic bool
+}
+
+fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
+	mut signatures := map[string]CFnDeclSignature{}
+	mut modules := map[string]string{}
+	tc.cur_module = ''
+	tc.cur_file = ''
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.c_fn_decl {
+				name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				mut params := []string{}
+				mut is_variadic := false
+				for i in 0 .. node.children_count {
+					child := a.child_node(&node, i)
+					if child.kind != .param {
+						continue
+					}
+					if child.typ.starts_with('...') {
+						is_variadic = true
+					} else {
+						params << tc.c_type(tc.parse_type(child.typ))
+					}
+				}
+				signature := CFnDeclSignature{
+					return_type: tc.c_type(tc.parse_type(node.typ))
+					params:      params
+					is_variadic: is_variadic
+				}
+				if existing := signatures[name] {
+					existing_module := modules[name] or { '' }
+					if existing_module == 'builtin' || existing_module == tc.cur_module {
+						signatures[name] = signature
+						modules[name] = tc.cur_module
+					} else if tc.cur_module != 'builtin'
+						&& !c_fn_decl_signatures_compatible(existing, signature) {
+						tc.record_error_unfiltered(.duplicate_decl,
+							'C function `${name}` was already declared with a different signature',
+							flat.NodeId(node_idx))
+					}
+				} else {
+					signatures[name] = signature
+					modules[name] = tc.cur_module
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn c_fn_decl_signatures_compatible(a CFnDeclSignature, b CFnDeclSignature) bool {
+	if !c_fn_decl_abi_types_compatible(a.return_type, b.return_type) {
+		return false
+	}
+	if a.is_variadic != b.is_variadic || a.params.len != b.params.len {
+		return false
+	}
+	return c_fn_decl_param_prefix_compatible(a.params, b.params, a.params.len)
+}
+
+fn c_fn_decl_param_prefix_compatible(a []string, b []string, count int) bool {
+	if a.len < count || b.len < count {
+		return false
+	}
+	for i in 0 .. count {
+		if !c_fn_decl_abi_types_compatible(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+fn c_fn_decl_abi_types_compatible(a string, b string) bool {
+	if a == b || (a in ['int', 'i32'] && b in ['int', 'i32']) {
+		return true
+	}
+	return (a == 'void*' && b.ends_with('*')) || (b == 'void*' && a.ends_with('*'))
 }
 
 fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string, first_module string, second_module string) bool {
@@ -8499,7 +8610,12 @@ fn (tc &TypeChecker) new_error_kind_since(start int, kind TypeErrorKind) bool {
 
 // check_decl_type_strings validates check decl type strings state for types.
 fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.Node) {
-	generic_params := tc.infer_decl_generic_params(node)
+	mut generic_params := tc.infer_decl_generic_params(node)
+	if node.kind == .type_decl && node.generic_params().len == 0 {
+		for name in tc.fixed_array_map_alias_generic_params(node.typ) {
+			generic_params[name] = true
+		}
+	}
 	decl_generic_mentions_error := tc.check_struct_or_interface_decl_generic_mentions(node_id, node)
 	mut invalid_generic_struct_alias := false
 	if node.kind == .type_decl {
@@ -8657,6 +8773,29 @@ fn (mut tc TypeChecker) check_type_alias_generic_struct_application(node_id flat
 		'${short_name} type is generic struct, must specify the generic type names, e.g. ${short_name}[int]',
 		node_id, tc.type_diagnostic_pos(node_id, clean))
 	return true
+}
+
+fn (tc &TypeChecker) fixed_array_map_alias_generic_params(typ string) []string {
+	clean := typ.trim_space()
+	if !clean.starts_with('[') {
+		return []string{}
+	}
+	bracket_end := find_matching_bracket(clean, 0)
+	if bracket_end >= clean.len {
+		return []string{}
+	}
+	element_type := clean[bracket_end + 1..].trim_space()
+	if !element_type.starts_with('map[') {
+		return []string{}
+	}
+	mut counts := map[string]int{}
+	tc.collect_generic_param_candidates(element_type, mut counts)
+	mut names := []string{cap: counts.len}
+	for name, _ in counts {
+		names << name
+	}
+	names.sort()
+	return names
 }
 
 fn (tc &TypeChecker) selective_imported_builtin_in_type(type_text string) ?string {
@@ -18026,6 +18165,9 @@ fn (tc &TypeChecker) interface_diagnostic_method_signature(signature_key string,
 }
 
 fn (tc &TypeChecker) interface_diagnostic_type_name(typ Type, alias_module string) string {
+	if !tc.checker_fixture_mode {
+		return typ.name()
+	}
 	if typ is Alias {
 		if fn_type_from_type(typ) != none {
 			return tc.interface_diagnostic_type_name(typ.base_type, alias_module)
@@ -35124,8 +35266,28 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
 	}
 }
 
+fn c_fn_module_signature_key(module_name string, fn_name string) string {
+	return '${module_name}\x01${fn_name}'
+}
+
 // call_info updates call info state for TypeChecker.
 fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
+	if name.starts_with('C.') {
+		module_key := c_fn_module_signature_key(tc.cur_module, name)
+		if return_type := tc.c_fn_module_ret_types[module_key] {
+			is_variadic := tc.c_fn_module_variadic[module_key] or { false }
+			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
+			return CallInfo{
+				name:          name
+				params:        params.clone()
+				return_type:   return_type
+				has_receiver:  has_receiver
+				is_variadic:   is_variadic
+				is_c_variadic: is_variadic
+				params_known:  true
+			}
+		}
+	}
 	mut params := []Type{}
 	mut params_known := false
 	if p := tc.fn_param_types[name] {
@@ -35857,7 +36019,11 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 }
 
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
-	decl_module := tc.fn_type_modules[info.name] or { '' }
+	decl_module := if info.name.starts_with('C.') {
+		tc.cur_module
+	} else {
+		tc.fn_type_modules[info.name] or { '' }
+	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return none }
 	mut source_param_idx := param_idx
 	if info.has_implicit_veb_ctx {
@@ -45459,6 +45625,10 @@ fn (tc &TypeChecker) distinct_alias_primitive_mismatch(actual Type, expected Typ
 
 fn (tc &TypeChecker) generic_struct_field_unknown_type_message(struct_name string) ?string {
 	decl := tc.source_struct_decl_for_name(struct_name) or { return none }
+	base_name, _, is_generic := generic_type_application_parts(struct_name)
+	lookup_name := if is_generic { base_name } else { struct_name }
+	decl_file := tc.struct_files[lookup_name] or { tc.cur_file }
+	decl_module := tc.struct_modules[lookup_name] or { tc.cur_module }
 	for i in 0 .. decl.children_count {
 		field_id := tc.a.child(&decl, i)
 		field := tc.a.node(field_id)
@@ -45471,44 +45641,60 @@ fn (tc &TypeChecker) generic_struct_field_unknown_type_message(struct_name strin
 				return diagnostic.msg
 			}
 		}
-		source_file := tc.a.source_files[field.pos.id] or { continue }
-		decl_module := tc.file_modules[source_file.name] or { '' }
-		if decl_module != tc.cur_module {
-			continue
-		}
-		if unknown_name := tc.first_unknown_type_name(field.typ, decl.generic_params()) {
+		if unknown_name := tc.first_unknown_type_name_in_scope(field.typ, decl_file, decl_module,
+			decl.generic_params())
+		{
 			return tc.unknown_type_message(unknown_name, field_id)
 		}
 	}
 	return none
 }
 
-fn (tc &TypeChecker) first_unknown_type_name(raw string, generic_params []string) ?string {
+fn (tc &TypeChecker) first_unknown_type_name_in_scope(raw string, file string, mod_name string, generic_params []string) ?string {
 	clean := trimmed_space(raw)
 	if clean.len == 0 {
 		return none
 	}
 	for prefix in ['?', '!', '&', '[]', 'shared ', 'mut '] {
 		if clean.starts_with(prefix) {
-			return tc.first_unknown_type_name(clean[prefix.len..], generic_params)
+			return tc.first_unknown_type_name_in_scope(clean[prefix.len..], file, mod_name,
+				generic_params)
 		}
 	}
 	base, args, is_generic := generic_type_application_parts(clean)
 	if is_generic {
-		if should_check_named_type(base) && base !in generic_params && !tc.type_name_known(base) {
+		if should_check_named_type(base) && base !in generic_params
+			&& !tc.type_name_known_in_scope(base, file, mod_name) {
 			return base
 		}
 		for arg in args {
-			if unknown := tc.first_unknown_type_name(arg, generic_params) {
+			if unknown := tc.first_unknown_type_name_in_scope(arg, file, mod_name, generic_params) {
 				return unknown
 			}
 		}
 		return none
 	}
-	if clean !in generic_params && should_check_named_type(clean) && !tc.type_name_known(clean) {
+	if clean !in generic_params && should_check_named_type(clean)
+		&& !tc.type_name_known_in_scope(clean, file, mod_name) {
 		return clean
 	}
 	return none
+}
+
+fn (tc &TypeChecker) type_name_known_in_scope(name string, file string, mod_name string) bool {
+	if is_builtin_type_name(name) || name == 'unknown' || name.starts_with('C.') {
+		return true
+	}
+	if name.contains('.') {
+		return tc.type_symbol_known(tc.resolve_imported_type_text_in_file(name, file))
+	}
+	if mod_name !in ['', 'main', 'builtin'] && tc.type_symbol_known('${mod_name}.${name}') {
+		return true
+	}
+	if resolved := tc.resolve_selective_import_type_symbol_in_file(name, file) {
+		return tc.type_symbol_known(resolved)
+	}
+	return tc.type_symbol_known(name)
 }
 
 fn struct_field_has_attr(field flat.Node, name string) bool {
@@ -51874,13 +52060,21 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 		})
 	}
 	if typ is OptionType {
+		base_type := tc.substitute_generic_type(typ.base_type, args, param_names)
+		if base_type is OptionType {
+			return base_type
+		}
 		return Type(OptionType{
-			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is ResultType {
+		base_type := tc.substitute_generic_type(typ.base_type, args, param_names)
+		if base_type is ResultType {
+			return base_type
+		}
 		return Type(ResultType{
-			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is Struct {
@@ -51966,13 +52160,21 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		})
 	}
 	if typ is OptionType {
+		base_type := tc.substitute_generic_type_values(typ.base_type, args, param_names)
+		if base_type is OptionType {
+			return base_type
+		}
 		return Type(OptionType{
-			base_type: tc.substitute_generic_type_values(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is ResultType {
+		base_type := tc.substitute_generic_type_values(typ.base_type, args, param_names)
+		if base_type is ResultType {
+			return base_type
+		}
 		return Type(ResultType{
-			base_type: tc.substitute_generic_type_values(typ.base_type, args, param_names)
+			base_type: base_type
 		})
 	}
 	if typ is FnType {
@@ -52169,7 +52371,7 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 	}
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
-	return actual_ret.name() == expected_ret.name()
+	return method_return_signature_compatible(actual_ret, expected_ret)
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string) bool {
@@ -52183,7 +52385,33 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 		}
 	}
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
-	return actual.return_type.name() == expected_ret.name()
+	return method_return_signature_compatible(actual.return_type, expected_ret)
+}
+
+fn method_return_signature_compatible(actual Type, expected Type) bool {
+	if fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected) {
+		return true
+	}
+	actual_unaliased := unalias_type(actual)
+	expected_unaliased := unalias_type(expected)
+	if actual_unaliased is OptionType && expected_unaliased is OptionType {
+		return method_wrapped_fn_return_signature_compatible(actual_unaliased.base_type,
+			expected_unaliased.base_type)
+	}
+	if actual_unaliased is ResultType && expected_unaliased is ResultType {
+		return method_wrapped_fn_return_signature_compatible(actual_unaliased.base_type,
+			expected_unaliased.base_type)
+	}
+	return false
+}
+
+fn method_wrapped_fn_return_signature_compatible(actual Type, expected Type) bool {
+	actual_unaliased := unalias_type(actual)
+	expected_unaliased := unalias_type(expected)
+	if actual_unaliased is FnType && expected_unaliased is FnType {
+		return Type(actual_unaliased).name() == Type(expected_unaliased).name()
+	}
+	return false
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {
@@ -56407,10 +56635,12 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 		return 'mut ' + subst_generic_text(clean[4..], args, params)
 	}
 	if clean.starts_with('?') {
-		return '?' + subst_generic_text(clean[1..], args, params)
+		inner := subst_generic_text(clean[1..], args, params)
+		return if inner.starts_with('?') { inner } else { '?' + inner }
 	}
 	if clean.starts_with('!') {
-		return '!' + subst_generic_text(clean[1..], args, params)
+		inner := subst_generic_text(clean[1..], args, params)
+		return if inner.starts_with('!') { inner } else { '!' + inner }
 	}
 	if clean.starts_with('...') {
 		return '...' + subst_generic_text(clean[3..], args, params)

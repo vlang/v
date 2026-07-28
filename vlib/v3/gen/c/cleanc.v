@@ -236,6 +236,7 @@ mut:
 	compiler_vroot               string
 	compiler_vexe                string
 	target                       pref.Target
+	thread_stack_size            int = 8 * 1024 * 1024
 	compile_values               map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
 	output_path                  string
 	output_error                 string
@@ -866,6 +867,11 @@ pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 // set_target sets the canonical code-generation target.
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
+}
+
+// set_thread_stack_size configures the stack size used by generated worker threads.
+pub fn (mut g FlatGen) set_thread_stack_size(size int) {
+	g.thread_stack_size = size
 }
 
 // set_compile_values records explicit `-d` values so `$d(...)` inside `#flag`
@@ -1924,6 +1930,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Leave headroom for the small body-dependent supplement emitted below.
 	g.sb.ensure_cap(known_output_len + 1_048_576) // 1 MiB
 	g.c99_feature_test_macros()
+	g.thread_stack_size_definition()
 	g.emit_preserved_c_directives()
 	g.preamble()
 	if g.cache_split {
@@ -12569,7 +12576,7 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
 	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; void* result; } __v_windows_thread_context;')
-	g.writeln('static const size_t __v_thread_stack_size = 8388608;')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
 	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
 	g.writeln('static DWORD WINAPI __v_windows_thread_start(void* raw_context) { __v_windows_thread_context* context = (__v_windows_thread_context*)raw_context; context->result = context->start(context->arg); return 0; }')
 	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
@@ -12593,7 +12600,7 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
-	g.writeln('static const size_t __v_thread_stack_size = 8388608;')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
 	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
 	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_thread result;')
@@ -12609,6 +12616,12 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('\treturn result;')
 	g.writeln('}')
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) thread_stack_size_definition() {
+	g.writeln('#ifndef V_THREAD_STACK_SIZE')
+	g.writeln('#define V_THREAD_STACK_SIZE ${g.thread_stack_size}')
 	g.writeln('#endif')
 }
 
@@ -12874,12 +12887,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
-	// The spawned-thread stack defaults to 8 MiB but is overridable at C compile
-	// time (e.g. `-DV_THREAD_STACK_SIZE=...`) so it is a tunable default rather
-	// than a universal constant.
-	g.writeln('#ifndef V_THREAD_STACK_SIZE')
-	g.writeln('#define V_THREAD_STACK_SIZE 8388608')
-	g.writeln('#endif')
 	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
 	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
 	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')

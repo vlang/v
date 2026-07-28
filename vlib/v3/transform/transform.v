@@ -8767,6 +8767,9 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		if t.is_error_call(child) {
 			return t.transform_expr(return_child_id)
 		}
+		if child.kind in [.lambda_expr, .fn_literal] {
+			return t.transform_expr_for_type(return_child_id, target_type)
+		}
 		if child.kind == .or_expr {
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}

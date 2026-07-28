@@ -75,6 +75,8 @@ pub mut:
 	type_symbols                []&TypeSymbol
 	type_idxs                   map[string]int
 	fns                         map[string]Fn
+	c_fns_by_module             map[string]Fn
+	c_fns_with_local_returns    map[string]bool
 	iface_types                 map[string][]Type
 	dumps                       map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports                     []string       // List of all imports
@@ -143,6 +145,8 @@ pub fn (mut t Table) free() {
 		t.type_symbols.free()
 		t.type_idxs.free()
 		t.fns.free()
+		t.c_fns_by_module.free()
+		t.c_fns_with_local_returns.free()
 		t.dumps.free()
 		t.imports.free()
 		t.modules.free()
@@ -297,6 +301,97 @@ fn (t &Table) fn_types_are_compatible(left &Fn, right &Fn, depth int) bool {
 	return t.fn_type_components_are_compatible(left.return_type, right.return_type, depth + 1)
 }
 
+// c_fn_declarations_are_compatible reports whether two declarations describe the same C ABI.
+pub fn (t &Table) c_fn_declarations_are_compatible(left &Fn, right &Fn) bool {
+	return t.c_fn_declarations_are_compatible_at_depth(left, right, 0)
+}
+
+fn (t &Table) c_fn_declarations_are_compatible_at_depth(left &Fn, right &Fn, depth int) bool {
+	if depth >= max_alias_chain_depth {
+		return false
+	}
+	if fn_type_calling_convention(left) != fn_type_calling_convention(right) {
+		return false
+	}
+	if left.is_variadic != right.is_variadic {
+		return false
+	}
+	mut compared_params := left.params.len
+	left_fixed_params := left.params.len - if left.is_variadic && !left.is_c_variadic {
+		1
+	} else {
+		0
+	}
+	right_fixed_params := right.params.len - if right.is_variadic && !right.is_c_variadic {
+		1
+	} else {
+		0
+	}
+	if left.is_variadic {
+		if left_fixed_params != right_fixed_params {
+			return false
+		}
+		compared_params = left_fixed_params
+	} else if left.params.len != right.params.len {
+		return false
+	}
+	for i in 0 .. compared_params {
+		param := left.params[i]
+		right_param := right.params[i]
+		if param.is_shared != right_param.is_shared || param.is_atomic != right_param.is_atomic
+			|| !t.c_fn_type_components_are_compatible(param.typ, right_param.typ, depth + 1) {
+			return false
+		}
+	}
+	return t.c_fn_type_components_are_compatible(left.return_type, right.return_type, depth + 1)
+}
+
+fn (t &Table) c_fn_type_components_are_compatible(left_type Type, right_type Type, depth int) bool {
+	if left_type == right_type {
+		return true
+	}
+	left := t.fully_unaliased_type(left_type)
+	right := t.fully_unaliased_type(right_type)
+	if left.has_option_or_result() || right.has_option_or_result() {
+		return false
+	}
+	if left == right {
+		return true
+	}
+	if (left in voidptr_types && right in voidptr_types)
+		|| (left in byteptr_types && right in byteptr_types)
+		|| (left in charptr_types && right in charptr_types) {
+		return true
+	}
+	// C APIs often use `void *` and an opaque object pointer interchangeably
+	// across headers. Calls remain ABI-compatible when one declaration uses
+	// `voidptr` and the other uses a typed object pointer.
+	if (left in voidptr_types && right.is_any_kind_of_pointer())
+		|| (right in voidptr_types && left.is_any_kind_of_pointer()) {
+		return true
+	}
+	if left.flags() == right.flags() {
+		if left.idx() in [int_type_idx, i32_type_idx] && right.idx() in [int_type_idx, i32_type_idx] {
+			return true
+		}
+	}
+	if depth >= max_alias_chain_depth || left.flags() != right.flags() {
+		return false
+	}
+	left_sym := t.sym(left)
+	right_sym := t.sym(right)
+	if left_sym.language == .c && right_sym.language == .c && left_sym.cname == right_sym.cname {
+		return true
+	}
+	if left_sym.info is FnType && right_sym.info is FnType {
+		left_info := left_sym.info as FnType
+		right_info := right_sym.info as FnType
+		return t.c_fn_declarations_are_compatible_at_depth(left_info.func, right_info.func, depth +
+			1)
+	}
+	return t.fn_type_components_are_compatible(left, right, depth + 1)
+}
+
 fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type, depth int) bool {
 	if left_type == right_type {
 		return true
@@ -411,20 +506,44 @@ fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type,
 	return false
 }
 
-pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
-	mut same_return_type := f.return_type == func.return_type
-	if !same_return_type {
-		f_return_type := t.fully_unaliased_type(f.return_type)
-		func_return_type := t.fully_unaliased_type(func.return_type)
-		if !f_return_type.has_option_or_result() && !func_return_type.has_option_or_result()
-			&& f_return_type.nr_muls() == func_return_type.nr_muls() {
-			f_return_sym := t.sym(f_return_type)
-			func_return_sym := t.sym(func_return_type)
-			if f_return_sym.info is FnType && func_return_sym.info is FnType {
-				same_return_type = t.fn_types_are_compatible(f_return_sym.info.func,
-					func_return_sym.info.func, 0)
-			}
+fn (t &Table) method_types_are_equal(left Type, right Type) bool {
+	if left == right {
+		return true
+	}
+	unaliased_left := t.fully_unaliased_type(left)
+	unaliased_right := t.fully_unaliased_type(right)
+	if unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result() {
+		return false
+	}
+	return unaliased_left == unaliased_right
+}
+
+fn (t &Table) method_fn_return_types_are_compatible(left Type, right Type) bool {
+	unaliased_left := t.fully_unaliased_type(left)
+	unaliased_right := t.fully_unaliased_type(right)
+	if unaliased_left.nr_muls() != unaliased_right.nr_muls() {
+		return false
+	}
+	has_wrapper := unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result()
+	if has_wrapper && unaliased_left.flags() != unaliased_right.flags() {
+		return false
+	}
+	left_sym := t.sym(unaliased_left)
+	right_sym := t.sym(unaliased_right)
+	if left_sym.info is FnType && right_sym.info is FnType {
+		if has_wrapper
+			&& t.fn_type_signature(left_sym.info.func) != t.fn_type_signature(right_sym.info.func) {
+			return false
 		}
+		return t.fn_types_are_compatible(left_sym.info.func, right_sym.info.func, 0)
+	}
+	return false
+}
+
+pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
+	mut same_return_type := t.method_types_are_equal(f.return_type, func.return_type)
+	if !same_return_type {
+		same_return_type = t.method_fn_return_types_are_compatible(f.return_type, func.return_type)
 	}
 	if !same_return_type {
 		s := t.type_to_str(f.return_type)
@@ -439,7 +558,7 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	for i in 0 .. f.params.len {
 		// don't check receiver for `.typ`
 		has_unexpected_type := i > 0
-			&& t.unaliased_type(f.params[i].typ) != t.unaliased_type(func.params[i].typ)
+			&& !t.method_types_are_equal(f.params[i].typ, func.params[i].typ)
 		// temporary hack for JS ifaces
 		lsym := t.sym(f.params[i].typ)
 		rsym := t.sym(func.params[i].typ)
@@ -533,9 +652,38 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 	return none
 }
 
+fn c_fn_module_key(name string, mod string) string {
+	return '${mod}\x01${name}'
+}
+
+// find_c_fn_in_module returns the declaration of a C function visible in `mod`.
+// C ABI-compatible declarations can retain different V-only call metadata.
+pub fn (t &Table) find_c_fn_in_module(name string, mod string) ?Fn {
+	if f := t.c_fns_by_module[c_fn_module_key(name, mod)] {
+		return f
+	}
+	return t.find_fn(name)
+}
+
+// c_fn_has_local_return_types reports whether compatible declarations of a C
+// function retain different V return types.
+pub fn (t &Table) c_fn_has_local_return_types(name string) bool {
+	return t.c_fns_with_local_returns[name]
+}
+
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
+}
+
+// register_c_fn_in_module records module-local call metadata for a C declaration.
+pub fn (mut t Table) register_c_fn_in_module(new_fn Fn) {
+	if existing := t.find_fn(new_fn.name) {
+		if existing.return_type != new_fn.return_type {
+			t.c_fns_with_local_returns[new_fn.name] = true
+		}
+	}
+	t.c_fns_by_module[c_fn_module_key(new_fn.name, new_fn.mod)] = new_fn
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {

@@ -24,7 +24,7 @@ fn C.listen(__fd i32, __n i32) i32
 fn C.perror(s &u8)
 fn C.close(fd i32) i32
 fn C.htons(__hostshort u16) u16
-fn C.fcntl(fd i32, cmd i32, arg i32) i32
+fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
 fn C.signal(sig int, handler voidptr) voidptr
 
 const buf_size = max_connection_size

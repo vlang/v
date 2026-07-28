@@ -1329,6 +1329,9 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_definitions.writeln('')
 	}
+	g.comptime_definitions.writeln('#ifndef V_THREAD_STACK_SIZE')
+	g.comptime_definitions.writeln('#define V_THREAD_STACK_SIZE ${g.pref.thread_stack_size}')
+	g.comptime_definitions.writeln('#endif')
 	if g.table.gostmts > 0 {
 		g.comptime_definitions.writeln('#define __VTHREADS__ (1)')
 	}
@@ -2845,6 +2848,15 @@ fn (g &Gen) fixed_array_base_elem_sym(typ ast.Type) &ast.TypeSymbol {
 }
 
 pub fn (mut g Gen) write_typedef_types() {
+	if g.pref.skip_unused {
+		mut visited := map[int]bool{}
+		for sym in g.table.type_symbols {
+			if sym.kind == .alias && sym.idx in g.table.used_features.used_syms
+				&& sym.info is ast.Alias {
+				g.mark_used_alias_parent_types(sym.info.parent_type, mut visited)
+			}
+		}
+	}
 	type_symbols := g.table.type_symbols.filter(!it.is_builtin
 		&& it.kind in [.array, .array_fixed, .chan, .map])
 	for sym in type_symbols {
@@ -2874,7 +2886,16 @@ pub fn (mut g Gen) write_typedef_types() {
 				} else {
 					continue
 				}
-				if g.typedef_type_has_unresolved_generic_placeholder_parts(info.elem_type) {
+				elem_sym := g.table.sym(info.elem_type)
+				has_unresolved_generic_parts :=
+					g.typedef_type_has_unresolved_generic_placeholder_parts(info.elem_type)
+				if has_unresolved_generic_parts && elem_sym.info is ast.Map {
+					if info.size > 0 && !info.is_fn_ret {
+						g.type_definitions.writeln('typedef map ${sym.cname} [${info.size}];')
+					}
+					continue
+				}
+				if has_unresolved_generic_parts {
 					continue
 				}
 				base_elem_sym := g.fixed_array_base_elem_sym(info.elem_type)
@@ -2984,6 +3005,28 @@ pub fn (mut g Gen) write_typedef_types() {
 	}
 }
 
+fn (mut g Gen) mark_used_alias_parent_types(typ ast.Type, mut visited map[int]bool) {
+	if typ == 0 || visited[typ.idx()] {
+		return
+	}
+	visited[typ.idx()] = true
+	g.table.used_features.used_syms[typ.idx()] = true
+	sym := g.table.sym(typ)
+	match sym.info {
+		ast.Alias {
+			g.mark_used_alias_parent_types(sym.info.parent_type, mut visited)
+		}
+		ast.Array, ast.ArrayFixed, ast.Chan {
+			g.mark_used_alias_parent_types(sym.info.elem_type, mut visited)
+		}
+		ast.Map {
+			g.mark_used_alias_parent_types(sym.info.key_type, mut visited)
+			g.mark_used_alias_parent_types(sym.info.value_type, mut visited)
+		}
+		else {}
+	}
+}
+
 // emit_alias_typedef_chain emits parent alias typedefs before child ones so a
 // chain like `type Main = A; type A = B; type B = string` ends up as
 // `typedef string B; typedef B A; typedef A Main;` in declaration order.
@@ -3022,9 +3065,8 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 			parent_styp = g.styp(sym.info.parent_type)
 			// Chained aliases (#27055): if the parent is itself an alias whose
 			// ultimate base is a fixed array of non-builtin elements, the parent
-			// typedef has been deferred to `alias_definitions` so this child
-			// must also be deferred — otherwise `typedef Parent Child;` lands
-			// in `type_definitions` before `Parent` exists.
+			// typedef is emitted by `write_types`, so this child must be emitted
+			// there too.
 			mut walk_typ := sym.info.parent_type
 			for {
 				walk_sym := g.table.sym(walk_typ)
@@ -3088,10 +3130,31 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 		return
 	}
 	if is_fixed_array_of_non_builtin {
-		g.alias_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
+		// write_types emits this alias after its fixed-array parent.
+		return
 	} else {
 		g.type_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
 	}
+}
+
+fn (g &Gen) alias_is_fixed_array_of_non_builtin(sym ast.TypeSymbol) bool {
+	if sym.info !is ast.Alias {
+		return false
+	}
+	alias_info := sym.info as ast.Alias
+	mut typ := alias_info.parent_type
+	for {
+		type_sym := g.table.sym(typ)
+		if type_sym.info is ast.Alias {
+			typ = type_sym.info.parent_type
+			continue
+		}
+		if type_sym.info is ast.ArrayFixed {
+			return !g.fixed_array_base_elem_sym(type_sym.info.elem_type).is_builtin()
+		}
+		return false
+	}
+	return false
 }
 
 pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
@@ -12727,6 +12790,13 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					}
 				}
 			}
+			ast.Alias {
+				if (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms)
+					&& g.alias_is_fixed_array_of_non_builtin(sym) {
+					parent_styp := g.styp(sym.info.parent_type)
+					g.type_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
+				}
+			}
 			else {}
 		}
 	}
@@ -12859,6 +12929,13 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 						}
 						field_deps << xdep
 					}
+				}
+			}
+			ast.Alias {
+				parent_sym := g.table.sym(sym.info.parent_type)
+				dep := parent_sym.scoped_name()
+				if dep in type_names {
+					field_deps << dep
 				}
 			}
 			ast.SumType {
@@ -13592,6 +13669,9 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 				if !typ.has_flag(.shared_f) && g.inside_global_decl {
 					init_str = '(${g.styp(typ)}){'
 				}
+			}
+			if info.fields.len == 0 {
+				init_str += 'E_STRUCT'
 			}
 			if sym.language in [.c, .v] {
 				for field in info.fields {
