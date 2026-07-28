@@ -6811,13 +6811,15 @@ fn unused_notice_is_parameter_redefinition_cascade(a &flat.FlatAst, notice types
 	if int(notice_fn) < 0 {
 		return false
 	}
+	notice_name := notice.msg.find_between('`', '`')
 	decl_assign := type_diagnostic_enclosing_node_kind(a, notice_fn, notice.node, .decl_assign, 0)
 	for diagnostic in type_errors {
 		if !diagnostic.msg.starts_with('redefinition of parameter `') {
 			continue
 		}
 		error_fn := type_diagnostic_enclosing_fn(a, diagnostic)
-		if error_fn == notice_fn {
+		redefined_name := diagnostic.msg.find_between('`', '`')
+		if error_fn == notice_fn && notice_name.len > 0 && notice_name == redefined_name {
 			return true
 		}
 		if int(error_fn) >= 0 && int(decl_assign) >= 0

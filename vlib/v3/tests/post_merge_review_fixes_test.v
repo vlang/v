@@ -7305,7 +7305,9 @@ fn test_diagnostic_footer_uses_deduplicated_error_count() {
 
 fn test_parameter_redefinition_only_suppresses_related_unused_notices() {
 	v3_bin := build_v3()
-	src := 'fn broken(value int, value string) {}
+	src := 'fn broken(value int, value string) {
+	same_function_unused := 1
+}
 
 fn unrelated() {
 	unused := 1
@@ -7319,6 +7321,7 @@ fn main() {}
 	compile := os.execute('${v3_bin} -checker-fixture ${bad_src} -b c -o ${bad_bin}')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('redefinition of parameter `value`'), compile.output
+	assert compile.output.contains('unused variable: `same_function_unused`'), compile.output
 	assert compile.output.contains('unused variable: `unused`'), compile.output
 }
 

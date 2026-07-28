@@ -947,7 +947,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		return
 	}
 	for diagnostic in tc.errors {
-		if diagnostic.msg == 'expecting `:=` (e.g. `mut x :=`)' || diagnostic.msg.starts_with('redefinition of parameter `') {
+		if diagnostic.msg == 'expecting `:=` (e.g. `mut x :=`)' {
 			return
 		}
 	}
