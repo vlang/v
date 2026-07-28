@@ -75,6 +75,7 @@ pub mut:
 	type_symbols                []&TypeSymbol
 	type_idxs                   map[string]int
 	fns                         map[string]Fn
+	c_fns_by_module             map[string]Fn
 	iface_types                 map[string][]Type
 	dumps                       map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports                     []string       // List of all imports
@@ -143,6 +144,7 @@ pub fn (mut t Table) free() {
 		t.type_symbols.free()
 		t.type_idxs.free()
 		t.fns.free()
+		t.c_fns_by_module.free()
 		t.dumps.free()
 		t.imports.free()
 		t.modules.free()
@@ -624,9 +626,27 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 	return none
 }
 
+fn c_fn_module_key(name string, mod string) string {
+	return '${mod}\x01${name}'
+}
+
+// find_c_fn_in_module returns the declaration of a C function visible in `mod`.
+// C ABI-compatible declarations can retain different V-only call metadata.
+pub fn (t &Table) find_c_fn_in_module(name string, mod string) ?Fn {
+	if f := t.c_fns_by_module[c_fn_module_key(name, mod)] {
+		return f
+	}
+	return t.find_fn(name)
+}
+
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
+}
+
+// register_c_fn_in_module records module-local call metadata for a C declaration.
+pub fn (mut t Table) register_c_fn_in_module(new_fn Fn) {
+	t.c_fns_by_module[c_fn_module_key(new_fn.name, new_fn.mod)] = new_fn
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {

@@ -80,7 +80,7 @@ fn C.XDestroyWindow(d &C.Display, w Window) int
 
 fn C.XNextEvent(d &C.Display, e &C.XEvent) int
 
-fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time Time)
+fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time Time) int
 
 fn C.XGetSelectionOwner(d &C.Display, a Atom) Window
 

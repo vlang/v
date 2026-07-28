@@ -6,6 +6,8 @@ import os
 #include <unistd.h>
 
 fn C.getpgrp() int
+fn C.getpgid(pid int) int
+fn C.getpid() int
 fn C.kill(pid int, signal int) int
 fn C.setpgid(pid int, pgid int) int
 fn C.signal(signal int, handler voidptr) voidptr
@@ -15,6 +17,30 @@ fn C.tcsetpgrp(fd int, pgid int) int
 // process_group returns the watcher's current process group.
 pub fn process_group() int {
 	return C.getpgrp()
+}
+
+// suspend_manager_process_group stops the manager's original process group,
+// then stops the foreground worker that received SIGTSTP.
+pub fn suspend_manager_process_group(manager_pgid int) {
+	if C.getpgrp() != manager_pgid {
+		C.kill(-manager_pgid, C.SIGTSTP)
+	}
+	C.kill(C.getpid(), C.SIGSTOP)
+}
+
+// continue_process_group_of resumes the worker and watched child after the
+// shell continues the manager job.
+pub fn continue_process_group_of(pid int) {
+	pgid := C.getpgid(pid)
+	if pgid <= 0 {
+		return
+	}
+	if os.is_atty(0) != 0 && C.tcgetpgrp(0) == C.getpgrp() {
+		previous_handler := C.signal(C.SIGTTOU, C.SIG_IGN)
+		C.tcsetpgrp(0, pgid)
+		C.signal(C.SIGTTOU, previous_handler)
+	}
+	C.kill(-pgid, C.SIGCONT)
 }
 
 // set_foreground_process_group gives the child process group control of stdin's terminal.

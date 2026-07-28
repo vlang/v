@@ -2465,6 +2465,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				}
 			}
 			.c_fn_decl {
+				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}
 				mut is_variadic := false
@@ -2474,7 +2476,12 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						if child.typ.starts_with('...') {
 							is_variadic = true
 						}
-						ptypes << tc.parse_type(child.typ)
+						parsed_param_type := tc.parse_type(child.typ)
+						ptypes << if child.is_mut {
+							mut_param_semantic_type(parsed_param_type)
+						} else {
+							parsed_param_type
+						}
 					}
 				}
 				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic, false)
@@ -34994,7 +35001,11 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 }
 
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
-	decl_module := tc.fn_type_modules[info.name] or { '' }
+	decl_module := if info.name.starts_with('C.') {
+		tc.cur_module
+	} else {
+		tc.fn_type_modules[info.name] or { '' }
+	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return none }
 	mut source_param_idx := param_idx
 	if info.has_implicit_veb_ctx {

@@ -90,6 +90,7 @@ mut:
 	child_process   &os.Process = unsafe { nil }
 	child_has_tty   bool
 	watcher_pgid    int
+	resume_worker   bool
 	is_exiting      bool     // set by SIGINT/Ctrl-C
 	v_cycles        int      // how many times the worker has restarted the V compiler
 	scan_cycles     int      // how many times the worker has scanned for source file changes
@@ -614,11 +615,21 @@ fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_ar
 	mut worker_opts := all_args_before_watch_cmd.clone()
 	worker_opts << ['watch', '--vwatchworker']
 	worker_opts << all_args_after_watch_cmd
+	$if !windows {
+		os.signal_opt(.cont, fn (_ os.Signal) {
+			mut context := unsafe { &Context(voidptr(&ccontext)) }
+			context.resume_worker = true
+		}) or { panic(err) }
+	}
 	for {
 		mut worker_process := os.new_process(myexecutable)
 		worker_process.set_args(worker_opts)
 		worker_process.run()
 		for {
+			if context.resume_worker {
+				context.resume_worker = false
+				vwatchtty.continue_process_group_of(worker_process.pid)
+			}
 			if !worker_process.is_alive() {
 				worker_process.wait()
 				break
@@ -641,6 +652,12 @@ fn (mut context Context) worker_main() {
 		context.is_exiting = true
 		context.kill_pgroup()
 	}) or { panic(err) }
+	$if !windows {
+		os.signal_opt(.tstp, fn (_ os.Signal) {
+			context := unsafe { &Context(voidptr(&ccontext)) }
+			vwatchtty.suspend_manager_process_group(context.watcher_pgid)
+		}) or { panic(err) }
+	}
 	spawn context.compilation_runner_loop()
 	change_detection_loop(context)
 }
