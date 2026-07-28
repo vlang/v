@@ -6872,3 +6872,55 @@ fn main() {
 
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
+
+fn test_recursive_str_helper_merges_incompatible_branch_effects_conservatively() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_incompatible_helper_effects', 'struct Item {
+	rebind bool
+mut:
+	values []int
+}
+
+fn change(mut item Item) {
+	if item.rebind {
+		item.values[0]--
+	} else {
+		item = Item{
+			values: [1]
+		}
+	}
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	change(mut copy)
+	return item.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_array_append_counts_as_progress() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_array_append_progress', 'struct Item {
+mut:
+	items []int
+}
+
+fn (item Item) str() string {
+	if item.items.len == 2 {
+		return "done"
+	}
+	mut copy := item
+	copy.items << 1
+	return copy.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert out == 'done'
+}

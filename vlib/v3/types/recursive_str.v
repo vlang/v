@@ -254,6 +254,17 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 				tc.recursive_str_apply_mutation(target_id, flat.empty_node, node.op, mut env)
 			}
 		}
+		.infix {
+			for i in 0 .. node.children_count {
+				tc.recursive_str_eval_expr(tc.a.child(node, i), mut env, ctx)
+			}
+			if node.op == .left_shift && node.children_count >= 2 {
+				lhs_id := tc.a.child(node, 0)
+				if _ := array_type_from_receiver(tc.resolve_type(lhs_id)) {
+					tc.recursive_str_apply_mutation(lhs_id, tc.a.child(node, 1), node.op, mut env)
+				}
+			}
+		}
 		else {
 			for i in 0 .. node.children_count {
 				tc.recursive_str_eval_expr(tc.a.child(node, i), mut env, ctx)
@@ -877,6 +888,23 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 				}
 			}
 		}
+		.infix {
+			if node.op == .left_shift && node.children_count >= 2 {
+				lhs_id := tc.a.child(&node, 0)
+				if _ := array_type_from_receiver(tc.resolve_type(lhs_id)) {
+					if root := tc.recursive_str_root_ident(lhs_id) {
+						if root != name {
+							return .none
+						}
+						return if tc.recursive_str_expr_contains_index(lhs_id) {
+							.shared
+						} else {
+							.value
+						}
+					}
+				}
+			}
+		}
 		.expr_stmt, .block {
 			for i in 0 .. node.children_count {
 				child := tc.a.child_node(&node, i)
@@ -901,8 +929,8 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 					effects << tc.recursive_str_stmt_param_effect(*child, name)
 				}
 			}
-			if has_else && effects.len > 1 && effects.all(it != .none) {
-				return effects[0]
+			if has_else && effects.len > 1 {
+				return recursive_str_merge_param_effects(effects)
 			}
 		}
 		.match_stmt {
@@ -926,8 +954,8 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 				effects << tc.recursive_str_stmt_param_effect(*branch, name)
 			}
 			exhaustive = exhaustive || (saw_true && saw_false)
-			if exhaustive && effects.len > 0 && effects.all(it != .none) {
-				return effects[0]
+			if exhaustive && effects.len > 0 {
+				return recursive_str_merge_param_effects(effects)
 			}
 		}
 		.match_branch {
@@ -946,4 +974,17 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		else {}
 	}
 	return .none
+}
+
+fn recursive_str_merge_param_effects(effects []RecursiveStrMutationEffect) RecursiveStrMutationEffect {
+	if effects.len == 0 || effects[0] == .none {
+		return .none
+	}
+	first := effects[0]
+	for effect in effects[1..] {
+		if effect != first {
+			return .none
+		}
+	}
+	return first
 }
