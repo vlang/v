@@ -524,7 +524,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 
 	if !initialized && !is_generic_default {
-		if nr_fields > 0 {
+		if nr_fields > 0 && !sym.is_empty_struct_array() {
 			g.write('0')
 		} else {
 			g.write('E_STRUCT')

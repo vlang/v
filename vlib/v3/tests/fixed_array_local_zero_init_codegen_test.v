@@ -22,6 +22,10 @@ fn test_local_fixed_array_zero_init_declarations_use_direct_c_arrays() {
 
 type Handle = voidptr
 
+struct Empty {}
+
+type EmptyFixed = [2]Empty
+
 fn local_score() int {
 	mut direct := [4]int{}
 	direct[0] = 1
@@ -31,8 +35,9 @@ fn local_score() int {
 	handles[0] = voidptr(0)
 	mut nested := unsafe { [2][3]int{} }
 	nested[1][2] = 3
+	empty := EmptyFixed{}
 	handle_score := if handles[0] == voidptr(0) { 4 } else { 0 }
-	return direct[0] + wrapped[1] + nested[1][2] + handle_score
+	return direct[0] + wrapped[1] + nested[1][2] + empty.len + handle_score
 }
 
 fn main() {
@@ -46,7 +51,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '10'
+	assert run.output.trim_space() == '12'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('intdirect[4]={0};')
@@ -60,4 +65,33 @@ fn main() {
 		|| compact.contains('intnested[2][3]={{0,0,0},{0,0,0}};'), generated
 	assert !generated.contains(' = (Array_fixed_'), generated
 	assert !generated.contains('Array_fixed_voidptr_32 handles'), generated
+}
+
+fn test_struct_field_rejects_pointer_to_fixed_array_alias() {
+	v3_bin := local_fixed_array_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_fixed_array_struct_field_${os.getpid()}.v')
+	os.write_file(src, 'module main
+
+type Arr = [2]int
+
+struct Foo {
+	arr Arr
+}
+
+fn main() {
+	a := Arr{}
+	foo := Foo{
+		arr: &a
+	}
+	println(foo.arr.len)
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_struct_field_${os.getpid()}')
+	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot initialize field `arr` with `&Arr`; expected `Arr`'), compile.output
+
+	assert !compile.output.contains('C compilation failed'), compile.output
 }

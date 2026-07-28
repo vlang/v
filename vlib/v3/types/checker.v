@@ -43962,6 +43962,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 						actual = semantic_mut_param
 					}
 				}
+				pointer_to_value_fixed_array := actual is Pointer
+					&& unalias_type(actual.base_type) is ArrayFixed
+					&& unalias_type(expected) is ArrayFixed
 				clean_expected := unalias_type(expected)
 				clean_actual := unalias_type(actual)
 				if clean_expected is None {
@@ -44052,7 +44055,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					&& !tc.type_implements_interface(actual, clean_expected)
 					&& tc.record_interface_implementation_error(.assignment_mismatch, actual, clean_expected, field_id, tc.struct_init_field_value_pos(field, value_id)) {
 					continue
-				} else if tc.distinct_alias_primitive_mismatch(source_actual, expected)
+				} else if pointer_to_value_fixed_array
+					|| tc.distinct_alias_primitive_mismatch(source_actual, expected)
 					|| (clean_expected is Map && clean_actual is Map
 					&& clean_expected.name() != clean_actual.name())
 					|| (!tc.expr_compatible(value_id, actual, expected)

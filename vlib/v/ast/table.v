@@ -268,8 +268,165 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	return sig
 }
 
+fn fn_type_calling_convention(f &Fn) string {
+	for attr in f.attrs {
+		if attr.name == 'callconv' {
+			return attr.arg
+		}
+	}
+	return 'cdecl'
+}
+
+fn (t &Table) fn_types_are_compatible(left &Fn, right &Fn, depth int) bool {
+	if left.params.len != right.params.len || left.is_variadic != right.is_variadic
+		|| left.is_c_variadic != right.is_c_variadic
+		|| fn_type_calling_convention(left) != fn_type_calling_convention(right) {
+		return false
+	}
+	if depth >= max_alias_chain_depth {
+		return false
+	}
+	for i, param in left.params {
+		right_param := right.params[i]
+		if param.is_mut != right_param.is_mut || param.is_shared != right_param.is_shared
+			|| param.is_atomic != right_param.is_atomic
+			|| !t.fn_type_components_are_compatible(param.typ, right_param.typ, depth + 1) {
+			return false
+		}
+	}
+	return t.fn_type_components_are_compatible(left.return_type, right.return_type, depth + 1)
+}
+
+fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type, depth int) bool {
+	if left_type == right_type {
+		return true
+	}
+	left := t.fully_unaliased_type(left_type)
+	right := t.fully_unaliased_type(right_type)
+	if left.has_option_or_result() || right.has_option_or_result() {
+		return false
+	}
+	if left == right {
+		return true
+	}
+	if depth >= max_alias_chain_depth {
+		return false
+	}
+	if left.flags() != right.flags() {
+		return false
+	}
+	left_sym := t.sym(left)
+	right_sym := t.sym(right)
+	if left_sym.kind != right_sym.kind {
+		return false
+	}
+	if left_sym.info is FnType {
+		if right_sym.info !is FnType {
+			return false
+		}
+		left_info := left_sym.info as FnType
+		right_info := right_sym.info as FnType
+		return t.fn_types_are_compatible(left_info.func, right_info.func, depth)
+	}
+	if left_sym.info is Array {
+		if right_sym.info !is Array {
+			return false
+		}
+		left_info := left_sym.info as Array
+		right_info := right_sym.info as Array
+		return left_info.nr_dims == right_info.nr_dims
+			&& t.fn_type_components_are_compatible(left_info.elem_type, right_info.elem_type, depth + 1)
+	}
+	if left_sym.info is ArrayFixed {
+		if right_sym.info !is ArrayFixed {
+			return false
+		}
+		left_info := left_sym.info as ArrayFixed
+		right_info := right_sym.info as ArrayFixed
+		return left_info.size == right_info.size
+			&& t.fn_type_components_are_compatible(left_info.elem_type, right_info.elem_type, depth + 1)
+	}
+	if left_sym.info is Map {
+		if right_sym.info !is Map {
+			return false
+		}
+		left_info := left_sym.info as Map
+		right_info := right_sym.info as Map
+		return
+			t.fn_type_components_are_compatible(left_info.key_type, right_info.key_type, depth + 1)
+			&& t.fn_type_components_are_compatible(left_info.value_type, right_info.value_type, depth + 1)
+	}
+	if left_sym.info is Chan {
+		if right_sym.info !is Chan {
+			return false
+		}
+		left_info := left_sym.info as Chan
+		right_info := right_sym.info as Chan
+		return left_info.is_mut == right_info.is_mut
+			&& t.fn_type_components_are_compatible(left_info.elem_type, right_info.elem_type, depth + 1)
+	}
+	if left_sym.info is Thread {
+		if right_sym.info !is Thread {
+			return false
+		}
+		left_info := left_sym.info as Thread
+		right_info := right_sym.info as Thread
+		return_type_matches := t.fn_type_components_are_compatible(left_info.return_type,
+			right_info.return_type, depth + 1)
+		return return_type_matches
+	}
+	if left_sym.info is MultiReturn {
+		if right_sym.info !is MultiReturn {
+			return false
+		}
+		left_info := left_sym.info as MultiReturn
+		right_info := right_sym.info as MultiReturn
+		if left_info.types.len != right_info.types.len {
+			return false
+		}
+		for i, typ in left_info.types {
+			if !t.fn_type_components_are_compatible(typ, right_info.types[i], depth + 1) {
+				return false
+			}
+		}
+		return true
+	}
+	if left_sym.info is GenericInst {
+		if right_sym.info !is GenericInst {
+			return false
+		}
+		left_info := left_sym.info as GenericInst
+		right_info := right_sym.info as GenericInst
+		if left_info.parent_idx != right_info.parent_idx
+			|| left_info.concrete_types.len != right_info.concrete_types.len {
+			return false
+		}
+		for i, typ in left_info.concrete_types {
+			if !t.fn_type_components_are_compatible(typ, right_info.concrete_types[i], depth + 1) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
-	if f.return_type != func.return_type {
+	mut same_return_type := f.return_type == func.return_type
+	if !same_return_type {
+		f_return_type := t.fully_unaliased_type(f.return_type)
+		func_return_type := t.fully_unaliased_type(func.return_type)
+		if !f_return_type.has_option_or_result() && !func_return_type.has_option_or_result()
+			&& f_return_type.nr_muls() == func_return_type.nr_muls() {
+			f_return_sym := t.sym(f_return_type)
+			func_return_sym := t.sym(func_return_type)
+			if f_return_sym.info is FnType && func_return_sym.info is FnType {
+				same_return_type = t.fn_types_are_compatible(f_return_sym.info.func,
+					func_return_sym.info.func, 0)
+			}
+		}
+	}
+	if !same_return_type {
 		s := t.type_to_str(f.return_type)
 		return 'expected return type `${s}`'
 	}
