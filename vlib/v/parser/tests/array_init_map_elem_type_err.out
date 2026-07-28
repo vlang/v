@@ -1,4 +1,4 @@
-vlib/v/checker/tests/array_init_map_elem_type_err.vv:2:9: error: cannot init `map` without key and value definition
+vlib/v/parser/tests/array_init_map_elem_type_err.vv:2:9: error: cannot use the map type without key and value definition
     1 | fn main() {
     2 |     a := []map{}
       |            ~~~

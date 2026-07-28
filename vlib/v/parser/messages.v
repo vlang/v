@@ -234,5 +234,5 @@ fn (mut p Parser) chan_type_error() {
 }
 
 fn (mut p Parser) map_type_error() {
-	p.error_with_pos('cannot init `map` without key and value definition', p.prev_tok.pos())
+	p.error_with_pos('cannot use the map type without key and value definition', p.prev_tok.pos())
 }
