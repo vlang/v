@@ -137,8 +137,10 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 	$if macos {
 		assert macos_v3_args_are_supported(['main.v'])
 		assert macos_v3_args_are_supported(['-keepc', '-o', 'main', 'build', 'main.v'])
+		assert macos_v3_args_are_supported(['-d', 'spaced_define', 'main.v'])
 		assert macos_v3_args_are_supported(['-dcompact_define', 'main.v'])
-		assert macos_v3_args_are_supported(['-dcompact_value=enabled', 'main.v'])
+		assert !macos_v3_args_are_supported(['-d', 'spaced_value=enabled', 'main.v'])
+		assert !macos_v3_args_are_supported(['-dcompact_value=enabled', 'main.v'])
 		assert macos_v3_args_are_supported(['run', 'main.v', '--program-option'])
 		assert macos_v3_args_are_supported(['script.vsh', '--script-option'])
 		assert !macos_v3_args_are_supported(['-ldflags', '-framework Cocoa', 'main.v'])

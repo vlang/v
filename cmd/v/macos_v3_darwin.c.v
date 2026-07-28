@@ -100,7 +100,14 @@ fn macos_v3_args_are_supported(args []string) bool {
 			i++
 			continue
 		}
-		if arg in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc',
+		if arg == '-d' {
+			if i + 1 >= args.len || args[i + 1].contains('=') {
+				return false
+			}
+			i += 2
+			continue
+		}
+		if arg in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-gc',
 			'-cflags'] {
 			if i + 1 >= args.len {
 				return false
@@ -116,6 +123,9 @@ fn macos_v3_args_are_supported(args []string) bool {
 			return false
 		}
 		if arg.starts_with('-d') && arg.len > 2 {
+			if arg.contains('=') {
+				return false
+			}
 			i++
 			continue
 		}
