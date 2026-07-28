@@ -50930,7 +50930,7 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 	}
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
-	return tc.method_param_signature_compatible(actual_ret, expected_ret)
+	return method_return_signature_compatible(actual_ret, expected_ret)
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string) bool {
@@ -50944,7 +50944,11 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 		}
 	}
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
-	return tc.method_param_signature_compatible(actual.return_type, expected_ret)
+	return method_return_signature_compatible(actual.return_type, expected_ret)
+}
+
+fn method_return_signature_compatible(actual Type, expected Type) bool {
+	return fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected)
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {
