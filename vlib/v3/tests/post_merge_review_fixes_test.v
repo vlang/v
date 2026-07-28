@@ -5170,6 +5170,29 @@ fn main() {
 	assert out == '1\n4,7'
 }
 
+fn test_unused_generic_receiver_method_is_not_instantiated() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'unused_generic_receiver_method', 'struct Item {}
+
+struct Box[T] {
+	items []T
+}
+
+fn (box Box[T]) len() int {
+	return box.items.len
+}
+
+fn (box Box[T]) ordered() bool {
+	return box.items[0] < box.items[1]
+}
+
+fn main() {
+	_ = Box[Item]{}.len()
+}
+')
+	assert out == ''
+}
+
 fn test_explicit_generic_method_index_callee_codegen() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'explicit_generic_method_index_callee', 'struct Tool {}

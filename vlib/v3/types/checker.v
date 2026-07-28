@@ -32438,55 +32438,59 @@ fn (mut tc TypeChecker) check_instantiated_generic_as_casts(call flat.Node, info
 fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, info CallInfo) {
 	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
 	mut instantiations := [instantiation]
-	if receiver_id := tc.generic_method_call_receiver_id(call) {
-		receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
-		receiver_base := strip_generic_args_name(receiver_type.name())
-		for idx in tc.top_level_idx {
-			candidate_id := flat.NodeId(idx)
-			if candidate_id == instantiation.decl_id {
-				continue
-			}
-			candidate := tc.a.node(candidate_id)
-			if candidate.kind != .fn_decl {
-				continue
-			}
-			mut receiver_param_id := flat.NodeId(-1)
-			for i in 0 .. candidate.children_count {
-				param_id := tc.a.child(candidate, i)
-				param := tc.a.node(param_id)
-				if param.kind == .param {
-					receiver_param_id = param_id
-					break
+	// The exact-output fixture path expands every sibling method for compatibility
+	// with v1. Normal compilation specializes regular methods on demand.
+	if tc.checker_fixture_mode {
+		if receiver_id := tc.generic_method_call_receiver_id(call) {
+			receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
+			receiver_base := strip_generic_args_name(receiver_type.name())
+			for idx in tc.top_level_idx {
+				candidate_id := flat.NodeId(idx)
+				if candidate_id == instantiation.decl_id {
+					continue
 				}
-			}
-			if !tc.valid_node_id(receiver_param_id) {
-				continue
-			}
-			receiver_param := tc.a.node(receiver_param_id)
-			param_text := trimmed_space(receiver_param.typ).trim_left('&').trim_left('mut ')
-			param_base, _, is_generic := generic_type_application_parts(param_text)
-			if !is_generic {
-				continue
-			}
-			source_file := tc.a.source_files[receiver_param.pos.id] or { continue }
-			module_name := tc.file_modules[source_file.name] or { '' }
-			qualified_base := if param_base.contains('.') || module_name.len == 0
-				|| module_name == 'main' {
-				param_base
-			} else {
-				'${module_name}.${param_base}'
-			}
-			if qualified_base != receiver_base {
-				continue
-			}
-			generic_params := tc.infer_decl_generic_param_names(candidate)
-			if generic_params.len != instantiation.concrete_args.len {
-				continue
-			}
-			instantiations << GenericCompileErrorInstantiation{
-				decl_id:        candidate_id
-				generic_params: generic_params
-				concrete_args:  instantiation.concrete_args.clone()
+				candidate := tc.a.node(candidate_id)
+				if candidate.kind != .fn_decl {
+					continue
+				}
+				mut receiver_param_id := flat.NodeId(-1)
+				for i in 0 .. candidate.children_count {
+					param_id := tc.a.child(candidate, i)
+					param := tc.a.node(param_id)
+					if param.kind == .param {
+						receiver_param_id = param_id
+						break
+					}
+				}
+				if !tc.valid_node_id(receiver_param_id) {
+					continue
+				}
+				receiver_param := tc.a.node(receiver_param_id)
+				param_text := trimmed_space(receiver_param.typ).trim_left('&').trim_left('mut ')
+				param_base, _, is_generic := generic_type_application_parts(param_text)
+				if !is_generic {
+					continue
+				}
+				source_file := tc.a.source_files[receiver_param.pos.id] or { continue }
+				module_name := tc.file_modules[source_file.name] or { '' }
+				qualified_base := if param_base.contains('.') || module_name.len == 0
+					|| module_name == 'main' {
+					param_base
+				} else {
+					'${module_name}.${param_base}'
+				}
+				if qualified_base != receiver_base {
+					continue
+				}
+				generic_params := tc.infer_decl_generic_param_names(candidate)
+				if generic_params.len != instantiation.concrete_args.len {
+					continue
+				}
+				instantiations << GenericCompileErrorInstantiation{
+					decl_id:        candidate_id
+					generic_params: generic_params
+					concrete_args:  instantiation.concrete_args.clone()
+				}
 			}
 		}
 	}
