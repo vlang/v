@@ -3,12 +3,21 @@ type MathOp = fn (int, int) int
 @[callconv: cdecl]
 type CdeclMathOp = fn (int, int) int
 
+type MathFactory = fn () MathOp
+
+@[callconv: cdecl]
+type CdeclMathFactory = fn () CdeclMathOp
+
 interface Calculator {
 	get_operation() MathOp
 }
 
 interface CdeclCalculator {
 	get_operation() CdeclMathOp
+}
+
+interface FactoryCalculator {
+	get_factory() MathFactory
 }
 
 struct SimpleCalc {}
@@ -38,6 +47,17 @@ fn (c PlainCalc) get_operation() MathOp {
 	}
 }
 
+struct CdeclFactoryCalc {}
+
+fn (c CdeclFactoryCalc) get_factory() CdeclMathFactory {
+	_ = c
+	return fn () CdeclMathOp {
+		return fn (a int, b int) int {
+			return a / b
+		}
+	}
+}
+
 fn test_interface_method_fn_type_alias_return() {
 	calc := Calculator(SimpleCalc{})
 	operation := calc.get_operation()
@@ -52,4 +72,11 @@ fn test_interface_method_fn_type_alias_omitted_callconv_matches_cdecl() {
 	plain_calc := CdeclCalculator(PlainCalc{})
 	plain_operation := plain_calc.get_operation()
 	assert plain_operation(5, 3) == 15
+}
+
+fn test_interface_method_nested_fn_type_alias_omitted_callconv_matches_cdecl() {
+	calc := FactoryCalculator(CdeclFactoryCalc{})
+	factory := calc.get_factory()
+	operation := factory()
+	assert operation(12, 3) == 4
 }
