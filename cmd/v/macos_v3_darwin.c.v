@@ -18,6 +18,7 @@ const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
 const macos_v3_inline_asm_fallback = 'inline_asm'
+const macos_v3_compiler_error_fallback = 'compiler_error'
 const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
@@ -273,6 +274,11 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 			eprintln(report.c_output.trim_right('\r\n'))
 		}
 		return report
+	}
+	if exit_code != 0 && fallback_reason == macos_v3_compiler_error_fallback {
+		os.rmdir_all(c_error_dir) or {}
+		eprintln('V3 compilation failed; retrying with `-old-compiler`.')
+		return none
 	}
 	os.rmdir_all(c_error_dir) or {}
 	exit(exit_code)

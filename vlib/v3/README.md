@@ -39,6 +39,10 @@ self-hosted temporary compilers, cross-compilation, and modes not yet supported 
 continue through the established compiler. Pass `-old-compiler` to explicitly use that
 compatibility path for an otherwise eligible macOS build. Other operating systems are unchanged.
 
+When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
+retries the command through the established compiler. Exit codes from successfully compiled
+`run` programs are returned unchanged and do not trigger a retry.
+
 When V3's generated C fails to compile, `cmd/v` automatically retries the command through the
 established compiler. If that retry succeeds, the existing automatic C-error reporter submits the
 V3 diagnostics to bugs.vlang.io with `V3` in the report's build options. The usual

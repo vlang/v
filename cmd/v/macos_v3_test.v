@@ -239,7 +239,7 @@ fn test_macos_v3_reads_c_error_fallback_report() {
 	}
 }
 
-fn test_macos_v3_c_error_falls_back_to_old_compiler() {
+fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_c_error_retry_${os.getpid()}')
 		os.rmdir_all(root) or {}
@@ -253,6 +253,10 @@ fn test_macos_v3_c_error_falls_back_to_old_compiler() {
 
 fn main() {
 	fallback_file := os.getenv('V_MACOS_V3_FALLBACK_FILE')
+	if os.getenv('V_MACOS_V3_TEST_GENERAL_FAILURE') == '1' {
+		os.write_file(fallback_file, 'compiler_error')!
+		exit(1)
+	}
 	report_dir := os.getenv('V_MACOS_V3_C_ERROR_DIR')
 	os.mkdir_all(report_dir)!
 	os.write_file(os.join_path(report_dir, 'compiler'), 'clang')!
@@ -315,6 +319,25 @@ fn main() {
 			'macos_v3_fallback_${run_compiler_pid}.c_error')
 		assert !os.exists(run_report_dir), 'run fallback report directory was not cleaned: ${run_report_dir}'
 		assert !os.exists(output), 'run fallback executable was not cleaned: ${output}'
+
+		general_output := os.join_path(root, 'general_fallback')
+		environment['V_MACOS_V3_TEST_GENERAL_FAILURE'] = '1'
+		mut general_process := os.new_process(@VEXE)
+		general_process.set_args(['-gc', 'none', '-o', general_output, target])
+		general_process.set_environment(environment)
+		general_process.set_redirect_stdio()
+		general_process.run()
+		general_process.wait()
+		general_output_text := general_process.stdout_slurp() + general_process.stderr_slurp()
+		general_exit_code := general_process.code
+		general_process.close()
+		assert general_exit_code == 0, general_output_text
+		assert general_output_text.contains('V3 compilation failed; retrying with `-old-compiler`.'), general_output_text
+
+		assert os.is_executable(general_output)
+		general_run := os.execute(os.quoted_path(general_output))
+		assert general_run.exit_code == 0
+		assert general_run.output.trim_space() == 'old compiler retry succeeded'
 	}
 }
 

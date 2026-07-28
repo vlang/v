@@ -327,6 +327,65 @@ fn main() {
 	}
 }
 
+fn test_driver_requests_macos_compatibility_for_language_errors() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_language_fallback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'generic_fn_call.v')
+	os.write_file(source, 'struct Opt[T] {
+	val T
+	some bool
+}
+
+fn some[T](val T) Opt[T] {
+	return Opt[T]{
+		val: val
+		some: true
+	}
+}
+
+fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
+	if f.some {
+		return some[U](op(f.val))
+	}
+	return Opt[U]{}
+}
+
+fn main() {
+	result := some("hello").map(|s| s.len)
+	assert result.some && result.val == 5
+}
+')!
+	fallback_file := os.join_path(root, 'fallback')
+	mut environment := os.environ()
+	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
+	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
+		'-no-memory-limit', source], environment)
+	assert result.exit_code != 0
+	assert os.read_file(fallback_file)! == 'compiler_error'
+
+	compat_output := os.join_path(root, 'compat')
+	compat := cmdexec.run(@VEXE, ['-old-compiler', '-o', compat_output, source])
+	assert compat.exit_code == 0, compat.output
+	compat_run := cmdexec.run(compat_output, [])
+	assert compat_run.exit_code == 0, compat_run.output
+
+	os.rm(fallback_file)!
+	nonzero_source := os.join_path(root, 'nonzero_run.v')
+	os.write_file(nonzero_source, 'fn main() {
+	exit(23)
+}
+')!
+	nonzero_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
+		'-no-memory-limit', 'run', nonzero_source], environment)
+	assert nonzero_run.exit_code == 23, nonzero_run.output
+	assert !os.exists(fallback_file)
+}
+
 fn test_driver_requests_macos_compatibility_for_c_compilation_errors() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_c_error_fallback_${os.getpid()}')
 	os.rmdir_all(root) or {}

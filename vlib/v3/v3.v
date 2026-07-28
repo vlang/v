@@ -62,6 +62,7 @@ const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
 const macos_v3_inline_asm_fallback = 'inline_asm'
+const macos_v3_compiler_error_fallback = 'compiler_error'
 const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
@@ -3533,6 +3534,18 @@ fn record_compile_value(mut values map[string]string, define string) {
 	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
 }
 
+fn stage_macos_v3_compiler_error_fallback(fallback_file string) {
+	if fallback_file != '' {
+		os.write_file(fallback_file, macos_v3_compiler_error_fallback) or {}
+	}
+}
+
+fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
+	if fallback_file != '' {
+		os.rm(fallback_file) or {}
+	}
+}
+
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
 	if fallback_file == '' || !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
 		return false
@@ -3598,6 +3611,11 @@ fn main() {
 	}
 	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
+	// A delegated V3 process owns the fallback marker until it has successfully
+	// produced its output. Specialized failures overwrite it below. Successful
+	// run/test programs clear it before launch, so their exit status is never
+	// mistaken for a compiler failure by the macOS driver.
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 
 	mut input_file := ''
 	mut output_file := ''
@@ -5341,6 +5359,7 @@ fn main() {
 		if c_only {
 			b.metric('generated C size', os.file_size(cc_src), 'bytes')
 			b.print_report()
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			return
 		}
 
@@ -5876,6 +5895,7 @@ fn main() {
 		} else {
 			'cc'
 		})
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		if should_run {
 			run_result := run_binary(bin_file, run_args)
 			if remove_binary_after_run {
@@ -5893,6 +5913,7 @@ fn main() {
 			b.step('test')
 		}
 	}
+	clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 
 	worker_stats := a.worker_stats()
 	b.metric('worker phase callbacks', i64(worker_stats.tasks_run), 'tasks')
