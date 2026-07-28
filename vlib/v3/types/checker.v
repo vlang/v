@@ -27757,6 +27757,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			}
 			tc.track_variadic_fn_value_local(lhs_id, rhs_id)
 		}
+		tc.update_unsafe_reference_alias_assignment(lhs_id, rhs_id, expected_type, node.op)
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
 			lhs := tc.a.node(lhs_id)
@@ -27780,6 +27781,26 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		_ = ownership_rhs_ids
 		_ = ownership_lhs_types
 		_ = ownership_rhs_types
+	}
+}
+
+fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op) {
+	if op != .assign || unalias_type(lhs_type) !is Map {
+		return
+	}
+	lhs := tc.a.node(tc.unwrap_paren_expr_id(lhs_id))
+	if lhs.kind != .ident || lhs.value == '_' {
+		return
+	}
+	owner := tc.cur_scope.lookup_owner(lhs.value) or { return }
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	if tc.expr_is_unsafe_reference_alias(rhs_id) {
+		tc.fn_context.unsafe_reference_alias_owners[key] = true
+	} else {
+		tc.fn_context.unsafe_reference_alias_owners.delete(key)
 	}
 }
 

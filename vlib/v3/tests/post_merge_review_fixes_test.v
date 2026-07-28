@@ -7881,3 +7881,45 @@ fn main() {}
 ',
 		'cannot call `str()` method recursively')
 }
+
+fn test_recursive_str_noreturn_branch_does_not_fall_through() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_noreturn_branch', '@[noreturn]
+fn stop() {
+	panic("done")
+}
+
+struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	if copy.remaining == 0 {
+		stop()
+	} else {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+')
+	assert out == ''
+}
+
+fn test_map_rebind_clears_unsafe_alias_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'map_rebind_clears_unsafe_alias', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	alias = map[string]int{}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+}

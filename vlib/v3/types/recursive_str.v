@@ -192,7 +192,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			for i in 0 .. node.children_count {
 				tc.recursive_str_eval_expr(tc.a.child(node, i), mut env, ctx)
 			}
-			return true
+			return !tc.expr_never_returns(id)
 		}
 		.return_stmt {
 			for i in 0 .. node.children_count {
