@@ -1051,6 +1051,8 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string
 		if !ok || args.len == 0 {
 			continue
 		}
+		fixture_expand_regular_methods := t.fixture_should_expand_regular_generic_methods(args)
+			&& t.generic_struct_spec_has_emitted_method(base, args, decls, emitted)
 		for decl_key, decl in decls {
 			if !decl_key.contains('.') || decl_key.all_before_last('.') != base {
 				continue
@@ -1070,7 +1072,8 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string
 				if !t.generic_struct_operator_call_seen(c_name('${spec}.${method}')) {
 					continue
 				}
-			} else if !t.generic_struct_method_needed_for_interface(spec, method) {
+			} else if !fixture_expand_regular_methods
+				&& !t.generic_struct_method_needed_for_interface(spec, method) {
 				mvkey := '${spec}.${method}'
 				if !t.generic_struct_method_used_for_spec(spec, decl, args, method) {
 					if isnil(t.tc) || mvkey !in t.tc.generic_method_value_info {
@@ -1106,6 +1109,23 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string
 		}
 	}
 	return any
+}
+
+fn (t &Transformer) fixture_should_expand_regular_generic_methods(args []string) bool {
+	if isnil(t.tc) || !t.tc.checker_fixture_mode {
+		return false
+	}
+	for raw_arg in args {
+		arg := raw_arg.trim_left('&?!').trim_left('[]')
+		for candidate in [arg, arg.all_after_last('.')] {
+			if file := t.tc.struct_files[candidate] {
+				if file in t.tc.diagnostic_files {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) generic_struct_operator_call_seen(name string) bool {
@@ -2913,8 +2933,11 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 			t.normalize_type_alias(field_type)
 		}
 		fields << types.StructField{
-			name: field.value
-			typ:  t.tc.parse_resolution_type(normalized_field_type)
+			name:        field.value
+			typ:         t.tc.parse_resolution_type(normalized_field_type)
+			has_default: field.children_count > 0
+			is_embed:    field.typ.len == 0 || field.value.len == 0 || field.value == field.typ
+			is_mut:      field.is_mut
 		}
 	}
 	t.tc.structs[spec_name] = fields
@@ -3241,8 +3264,16 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.active_specialization_main_types = old_specialization_main_types.move()
 	generic_params := t.generic_fn_param_names(decl.node, decl.module)
 	validate_return := t.generic_fn_return_depends_on_comptime_if(decl.node, generic_params)
+	mut concrete_error_count := 0
+	if !isnil(t.tc) {
+		concrete_error_count = t.tc.errors.len
+		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
+	}
 	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, generic_params,
 		concrete_args, decl.node.value, validate_return)
+	if !isnil(t.tc) && t.tc.errors.len == concrete_error_count {
+		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
+	}
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(clone_id, decl.module, decl.file)
 	t.cur_module = old_module
@@ -6141,6 +6172,11 @@ fn (t &Transformer) generic_plain_call_candidates(name string, module_name strin
 		if qname !in candidates {
 			candidates << qname
 		}
+		if selected := t.tc.resolve_any_selective_import_fn(name) {
+			if selected !in candidates {
+				candidates << selected
+			}
+		}
 	}
 	return candidates
 }
@@ -8163,6 +8199,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		}
 		if base_type.starts_with('&') {
 			cloned_op = .arrow
+		}
+	}
+	if node.kind == .infix && children.len >= 2 {
+		lhs_type := t.trim_pointer_type(t.node_type(children[0]))
+		struct_type := t.generic_struct_instance_name(lhs_type)
+		if struct_type.len > 0 {
+			if call_info := t.struct_operator_call_info(struct_type, node.op) {
+				t.mark_struct_operator_used_name(call_info.name)
+			}
 		}
 	}
 	if node.kind == .prefix && children.len > 0 {

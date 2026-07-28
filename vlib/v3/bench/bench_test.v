@@ -10,8 +10,8 @@ fn test_memory_limit_error_starts_at_limit() {
 
 	message := memory_limit_error(default_memory_limit_kb, default_memory_limit_kb, 'after parse',
 		'RSS')
-	assert message.contains('10240 MiB RSS after parse')
-	assert message.contains('limit: 10 GiB')
+	assert message.contains('2048 MiB RSS after parse')
+	assert message.contains('limit: 2 GiB')
 	assert message.contains('`-no-memory-limit`')
 }
 

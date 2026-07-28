@@ -1243,6 +1243,11 @@ fn (mut t Transformer) mark_struct_operator_used_name(name string) {
 	}
 	t.used_struct_operator_fns[name] = true
 	t.used_struct_operator_fns[c_name(name)] = true
+	if name.starts_with('main.') {
+		short := name['main.'.len..]
+		t.used_struct_operator_fns[short] = true
+		t.used_struct_operator_fns[c_name(short)] = true
+	}
 	if name.contains('[') && name.contains(']') {
 		return
 	}
@@ -7703,6 +7708,9 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if kind_id == 34 {
 		return t.transform_typeof_expr(id, node)
 	}
+	if kind_id == 35 {
+		return t.transform_dump_expr(node)
+	}
 	if kind_id == 7 {
 		return t.transform_ident_expr(id, node)
 	}
@@ -7721,7 +7729,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if node.kind == .string_literal {
 		return t.transform_nested_string_literal_expr(id, node)
 	}
-	if kind_id == 30 || kind_id == 35 || kind_id == 27 || kind_id == 57 {
+	if kind_id == 30 || kind_id == 27 || kind_id == 57 {
 		return t.transform_children_expr(id, node)
 	}
 	if kind_id == 1 || kind_id == 2 || kind_id == 3 || kind_id == 4 || kind_id == 5 || kind_id == 28
@@ -7807,6 +7815,9 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		.typeof_expr {
 			return t.transform_typeof_expr(id, node)
 		}
+		.dump_expr {
+			return t.transform_dump_expr(node)
+		}
 		.ident {
 			return t.transform_ident_expr(id, node)
 		}
@@ -7822,7 +7833,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		.select_stmt {
 			return t.transform_select_expr(node)
 		}
-		.lambda_expr, .dump_expr, .range, .select_branch {
+		.lambda_expr, .range, .select_branch {
 			return t.transform_children_expr(id, node)
 		}
 		.int_literal, .float_literal, .bool_literal, .char_literal, .nil_literal, .none_expr,
@@ -7834,6 +7845,85 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return id
 		}
 	}
+}
+
+fn dump_relative_source_path(path string) string {
+	normalized := os.real_path(path).replace('\\', '/')
+	cwd := os.getwd().replace('\\', '/').trim_right('/')
+	if cwd.len > 0 && normalized.starts_with(cwd + '/') {
+		return normalized[cwd.len + 1..]
+	}
+	if relative := normalized.index('/vlib/') {
+		return normalized[relative + 1..]
+	}
+	return path.replace('\\', '/')
+}
+
+fn dump_pointer_depth(typ string) int {
+	mut depth := 0
+	for depth < typ.len && typ[depth] == `&` {
+		depth++
+	}
+	return depth
+}
+
+fn (mut t Transformer) dump_value_string(expr flat.NodeId, typ string) flat.NodeId {
+	if !typ.starts_with('&') || t.is_fixed_array_type(typ) {
+		return t.wrap_string_conversion(expr, typ)
+	}
+	elem_type := typ[1..]
+	ptr_name := t.new_temp('dump_ptr')
+	text_name := t.new_temp('dump_ptr_text')
+	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, typ)
+	t.set_var_type(ptr_name, typ)
+	nil_text := '&'.repeat(dump_pointer_depth(typ)) + 'nil'
+	t.pending_stmts << t.make_decl_assign_typed(text_name, t.make_string_literal(nil_text),
+		'string')
+
+	saved := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value := t.make_prefix(.mul, t.make_ident(ptr_name))
+	t.set_node_typ(int(value), elem_type)
+	value_text := t.dump_value_string(value, elem_type)
+	mut then_body := []flat.NodeId{}
+	t.drain_pending(mut then_body)
+	t.pending_stmts = saved
+	t.unset_var_type(ptr_name)
+	then_body << t.make_assign(t.make_ident(text_name), t.string_plus(t.make_string_literal('&'),
+		value_text))
+	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
+	return t.make_ident(text_name)
+}
+
+fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
+	if node.children_count == 0 {
+		return t.make_empty()
+	}
+	child_id := t.a.child(&node, 0)
+	mut typ := t.node_type(child_id)
+	if typ.len == 0 || typ == 'unknown' {
+		typ = t.resolve_expr_type(child_id)
+	}
+	child := t.transform_expr(child_id)
+	temp_name := t.new_temp('dump')
+	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
+	if isnil(t.tc) || !t.tc.suppress_dump_output {
+		value := t.make_ident(temp_name)
+		value_text := t.dump_value_string(value, typ)
+		mut path := t.cur_file
+		mut line := 0
+		if file := t.a.source_files[node.pos.id] {
+			path = file.name
+			line = file.position(node.pos).line
+		}
+		expr_text := if node.value.len > 0 { node.value } else { 'dump expression' }
+		prefix :=
+			t.make_string_literal('[${dump_relative_source_path(path)}:${line}] ${expr_text}: ')
+		message := t.string_plus(prefix, value_text)
+		t.pending_stmts << t.make_expr_stmt(t.make_call('eprintln', arr1(message)))
+	}
+	return t.make_ident(temp_name)
 }
 
 fn (mut t Transformer) transform_nested_string_literal_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -11723,6 +11813,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		pos:            node.pos
 		value:          node.value
 		typ:            if inferred_typ.len > 0 { inferred_typ } else { node.typ }
+		is_mut:         node.is_mut
 	})
 	mut result := t.with_pending_before(new_id)
 	if cleanup_name := t.local_closure_cleanup_decls[int(id)] {
@@ -14386,6 +14477,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 
 // transform_call_expr transforms transform call expr data for transform.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.value.len > 0 && node.value == '__v_compile_warn' {
+		return t.make_empty()
+	}
 	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
 	}

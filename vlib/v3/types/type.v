@@ -107,6 +107,7 @@ pub:
 pub struct Channel {
 pub:
 	elem_type Type
+	is_mut    bool
 }
 
 // Map represents map data used by types.
@@ -232,6 +233,7 @@ pub fn clone_owned_type(value Type) Type {
 		Channel {
 			Type(Channel{
 				elem_type: clone_owned_type(value.elem_type)
+				is_mut:    value.is_mut
 			})
 		}
 		Map {
@@ -308,8 +310,11 @@ pub fn clone_owned_types(values []Type) []Type {
 // StructField represents struct field data used by types.
 pub struct StructField {
 pub:
-	name string
-	typ  Type
+	name        string
+	typ         Type
+	has_default bool
+	is_embed    bool
+	is_mut      bool
 }
 
 // unwrap_pointer transforms unwrap pointer data for types.
@@ -438,12 +443,18 @@ pub fn (t Type) name() string {
 		return '[${len_text}]${elem_type}'
 	}
 	if t is Channel {
+		if t.is_mut && t.elem_type is Pointer {
+			return 'chan mut ${nested_type_name(t.elem_type.base_type)}'
+		}
 		return 'chan ${nested_type_name(t.elem_type)}'
 	}
 	if t is Map {
 		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
 	}
 	if t is Pointer {
+		if t.base_type is Void {
+			return 'voidptr'
+		}
 		return '&${nested_type_name(t.base_type)}'
 	}
 	if t is FnType {

@@ -1384,13 +1384,20 @@ fn (t &Transformer) generic_struct_operator_fn_name(struct_type string, op_name 
 	if !ok {
 		return none
 	}
-	params := t.generic_struct_params_for_base(base) or { return none }
-	if params.len == 0 {
-		return none
-	}
-	generic_key := '${base}[${params.join(', ')}].${op_name}'
-	if generic_key in t.tc.fn_ret_types || generic_key in t.tc.fn_param_types {
-		return '${struct_type}.${op_name}'
+	for candidate_base in [base, base.all_after_last('.')] {
+		params := t.generic_struct_params_for_base(candidate_base) or { continue }
+		if params.len == 0 {
+			continue
+		}
+		generic_key := '${candidate_base}[${params.join(', ')}].${op_name}'
+		if generic_key in t.tc.fn_ret_types || generic_key in t.tc.fn_param_types {
+			call_receiver := if struct_type.starts_with('main.') {
+				struct_type['main.'.len..]
+			} else {
+				struct_type
+			}
+			return '${call_receiver}.${op_name}'
+		}
 	}
 	return none
 }

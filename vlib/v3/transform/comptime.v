@@ -2843,6 +2843,9 @@ fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
 	}
 	mut base_key := key
 	mut indirections := 0
+	for base_key.starts_with('?') || base_key.starts_with('!') {
+		base_key = base_key[1..].trim_space()
+	}
 	for base_key.starts_with('&') {
 		indirections++
 		base_key = base_key[1..].trim_space()
@@ -3067,6 +3070,12 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children_with_type(node, t.clone_field_subst_type_text(node,
 			var_name, fm))
+	}
+	if node.kind == .or_expr && node.value == '?' && node.children_count > 0 && !fm.is_option
+		&& t.direct_reflected_field_selector(t.a.child(&node, 0), var_name) {
+		source_id := t.a.child(&node, 0)
+		t.tc.record_cgen_error_at('cannot use `?` on non-option expression', id, source_id, '?')
+		return t.clone_field_subst_children(node, var_name, fm, inner_vars)
 	}
 	// `sizeof(field)` stores the parser's ambiguous identifier in the node value rather
 	// than as a child expression. Inside a reflected field loop it denotes the concrete

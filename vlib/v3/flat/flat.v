@@ -215,6 +215,8 @@ pub mut:
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
+	// missing_imports retains source import paths for unresolved import nodes.
+	missing_imports map[int]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build
@@ -292,6 +294,7 @@ pub fn FlatAst.new() FlatAst {
 		export_fn_names:        map[string]string{}
 		noreturn_fns:           map[string]bool{}
 		source_files:           map[int]&token.File{}
+		missing_imports:        map[int]string{}
 		text_ids:               map[string]TextId{}
 		specialized_fn_nodes:   map[int]bool{}
 		specialized_fn_modules: map[int]string{}

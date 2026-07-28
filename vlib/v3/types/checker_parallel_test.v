@@ -98,3 +98,35 @@ fn test_parallel_checker_preserves_all_dependency_edges() {
 		}
 	}
 }
+
+fn assert_preflight_error_keeps_function_semantics(name string, source string, initial_error string, collection_error bool) {
+	for want_parallel in [false, true] {
+		path := os.join_path(os.vtmp_dir(),
+			'v3_preflight_continuation_${name}_${want_parallel}_${os.getpid()}.v')
+		os.write_file(path, source) or { panic(err) }
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		if collection_error {
+			assert tc.errors.any(it.msg.contains(initial_error)), tc.errors.str()
+		}
+		tc.diagnose_unknown_calls = true
+		tc.check_semantics_opt(want_parallel)
+		assert tc.errors.any(it.msg.contains(initial_error)), tc.errors.str()
+		assert tc.errors.filter(it.msg.contains(initial_error)).len == 1, tc.errors.str()
+		assert tc.errors.any(it.msg.contains('unknown function') && it.msg.contains('unknown_call')), tc.errors.str()
+
+		os.rm(path) or {}
+	}
+}
+
+fn test_preflight_errors_do_not_skip_function_semantics() {
+	assert_preflight_error_keeps_function_semantics('collection_error',
+		'type Recursive = []Recursive\n\nfn main() {\n\tunknown_call()\n}\n',
+		'recursive declarations of aliases', true)
+	assert_preflight_error_keeps_function_semantics('for_in_const_conflict',
+		'const item = 1\n\nfn report_other_error() {\n\tunknown_call()\n}\n\nfn main() {\n\tfor item in [1, 2] {}\n}\n',
+		'duplicate of a const name `item`', false)
+}

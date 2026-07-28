@@ -6,11 +6,13 @@ import strings
 import time
 import v3.bench
 import v3.cmdexec
-import v3.modulecache
+import v3.errors as v3errors
 import v3.flat
+import v3.fixturetest
 import v3.gen.c as cgen
 import v3.gen.c.naming
 import v3.markused
+import v3.modulecache
 import v3.parser
 import v3.pref
 import v3.transform
@@ -1419,6 +1421,7 @@ fn run_binary(bin_file string, args []string) int {
 	process.set_args(args)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
+	process.run()
 	process.wait()
 	exit_code := if process.code >= 0 { process.code } else { 1 }
 	process.close()
@@ -1563,6 +1566,9 @@ fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
 		return os.base(os.real_path(input_file))
 	}
+	if input_file.ends_with('.vv') {
+		return input_file.all_before_last('.vv')
+	}
 	if input_file.ends_with('.v') {
 		return input_file.all_before_last('.v')
 	}
@@ -1577,7 +1583,8 @@ fn cli_usage() string {
 		'  -cc <compiler>               C compiler executable\n' +
 		'  -prod -c99 -shared -strict  C build modes\n' +
 		'  -v                           verbose stage profiling\n' +
-		'  -no-memory-limit             disable the 10 GiB memory safety limit\n' +
+		'  -silent                      suppress benchmark output\n' +
+		'  -no-memory-limit             disable the 2 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -2957,8 +2964,11 @@ fn clone_struct_field_map(values map[string][]types.StructField) map[string][]ty
 		mut owned_fields := []types.StructField{cap: fields.len}
 		for field in fields {
 			owned_fields << types.StructField{
-				name: field.name.clone()
-				typ:  types.clone_owned_type(field.typ)
+				name:        field.name.clone()
+				typ:         types.clone_owned_type(field.typ)
+				has_default: field.has_default
+				is_embed:    field.is_embed
+				is_mut:      field.is_mut
 			}
 		}
 		cloned[name.clone()] = owned_fields
@@ -3434,6 +3444,7 @@ fn main() {
 	mut building_v := false
 	mut ownership_mode := false
 	mut verbose := false
+	mut silent := false
 	mut is_debug := false
 	mut c99 := false
 	mut all_backends := false
@@ -3443,6 +3454,7 @@ fn main() {
 	mut user_c_flags := []string{}
 	mut should_run := false
 	mut is_test_command := false
+	mut is_checker_fixture := false
 	mut run_args := []string{}
 	mut i := 0
 	for i < args.len {
@@ -3565,6 +3577,12 @@ fn main() {
 		} else if args[i] == '-v' {
 			verbose = true
 			i++
+		} else if args[i] == '-silent' {
+			silent = true
+			i++
+		} else if args[i] == '-checker-fixture' {
+			is_checker_fixture = true
+			i++
 		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
 			'-no-retry-compilation'] {
 			// v3 already reports phase metrics, prints the C command, retains generated C,
@@ -3614,6 +3632,9 @@ fn main() {
 		eprintln('no input file')
 		exit(1)
 	}
+	if is_test_command && fixturetest.is_diagnostic_fixture_dir(input_file) {
+		exit(fixturetest.run(os.executable(), input_file, args))
+	}
 	maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	if gc_mode != 'none' {
 		eprintln('unsupported garbage collector `${gc_mode}`; v3 currently supports only `-gc none`')
@@ -3633,9 +3654,6 @@ fn main() {
 	if ownership_mode && !ownership_checker_compiled() {
 		eprintln('ownership support is not compiled into this v3 executable')
 		exit(1)
-	}
-	if enable_globals_compat {
-		eprintln('warning: `-enable-globals` is unnecessary; globals are always enabled in v3')
 	}
 	if backend !in ['c', 'arm64', 'wasm', 'eval'] {
 		eprintln('unknown backend `${backend}`; expected c, arm64, wasm, or eval')
@@ -3667,8 +3685,15 @@ fn main() {
 		building_v = true
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
-	scope_prealloc_stages := should_scope_prealloc_stages()
-	scope_prealloc_cgen := should_scope_prealloc_cgen()
+	// Serial compilation does not create enough concurrent scratch allocation to
+	// justify disposable stage arenas. Keeping it in the compilation arena also
+	// guarantees that a serial diagnostic run cannot retain a pointer into a
+	// released stage scope.
+	scope_prealloc_stages := should_scope_prealloc_stages() && !current_no_parallel
+	// Function checking still creates substantial short-lived state in serial
+	// mode for large import graphs. Scope each function independently there too.
+	scope_prealloc_check := should_scope_prealloc_stages()
+	scope_prealloc_cgen := should_scope_prealloc_cgen() && !current_no_parallel
 	// The selective transform promotion path is designed around worker-owned
 	// results outside the disposable stage arena.
 	scope_prealloc_transform := scope_prealloc_stages
@@ -3763,12 +3788,17 @@ fn main() {
 	}
 
 	mut b := bench.new()
+	if silent {
+		b.set_quiet()
+	}
 	if no_memory_limit {
 		b.disable_memory_limit()
 	}
 	b.start_memory_monitor()
 	mut c_object_cache_stats := CObjectCacheStats{}
-	println('=== v3 benchmark ===')
+	if !silent {
+		println('=== v3 benchmark ===')
+	}
 
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
@@ -3783,6 +3813,7 @@ fn main() {
 	prefs.is_prod = is_prod
 	prefs.is_debug = is_debug
 	prefs.verbose = verbose
+	prefs.supports_inline_asm = is_checker_fixture
 	host_target := pref.host_target()
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
@@ -3800,7 +3831,7 @@ fn main() {
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
 		'ownership=${ownership_mode}',
-		'test=${is_test_command || pref.is_test_file_for_backend(input_file, backend)}',
+		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
 	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
@@ -3882,13 +3913,13 @@ fn main() {
 	// after parsing builtin, but before collecting and parsing user inputs, so
 	// `$if test` and `_d_test.v` apply to both file and directory test commands.
 	if 'test' !in prefs.user_defines
-		&& (is_test_command || pref.is_test_file_for_backend(input_file, backend)) {
+		&& (is_test_command || is_v3_test_file(input_file, backend, target)) {
 		prefs.user_defines << 'test'
 	}
 
 	// Parse user input: single file or directory
 	mut user_files := []string{}
-	if input_file.ends_with('.v') {
+	if input_file.ends_with('.v') || input_file.ends_with('.vv') {
 		user_files << input_file
 		user_files = expand_single_test_file_inputs(user_files, prefs)
 	} else if os.is_dir(input_file) {
@@ -3914,7 +3945,7 @@ fn main() {
 	} else {
 		user_files << input_file
 	}
-	prefs.is_test = user_files.any(pref.is_test_file_for_platform(it, backend, prefs.target))
+	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	test_files := test_input_files(user_files, backend, prefs.target)
 
@@ -3936,7 +3967,12 @@ fn main() {
 	}
 	if p.diagnostics.len > 0 {
 		for diagnostic in p.diagnostics {
-			eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: error: ${diagnostic.message}')
+			if file := a.source_files[diagnostic.pos.id] {
+				eprintln(v3errors.formatted_source_error('error:', diagnostic.message, file,
+					diagnostic.pos))
+			} else {
+				eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: error: ${diagnostic.message}')
+			}
 		}
 		exit(1)
 	}
@@ -3983,9 +4019,13 @@ fn main() {
 	])
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files',
 		p.parsed_v_header_file_paths)
-	println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths)} lines')
+	if !silent {
+		println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths)} lines')
+	}
 	b.metric_items('parsed .v files', p.parsed_v_files, 'files', '.v files', p.parsed_v_file_paths)
-	println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths)} lines')
+	if !silent {
+		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths)} lines')
+	}
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
@@ -4161,11 +4201,20 @@ fn main() {
 	if backend == 'c' && cache_state.manager.enabled {
 		b.step('cache lookup')
 	}
+	if is_checker_fixture {
+		if missing_header := checker_fixture_missing_header(a, user_files, c_compiler, user_defines) {
+			eprintln('builder error: ${missing_header}')
+			exit(1)
+		}
+	}
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
+	pre_tc.enable_globals = enable_globals_compat
+	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
 	mut incremental_stage_used_fns := map[string]bool{}
 	mut uses_generics := false
@@ -4173,7 +4222,7 @@ fn main() {
 	mut transform_texts_canonical := cgen_cache_hit
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
-		if scope_prealloc_stages {
+		if scope_prealloc_check {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
@@ -4183,6 +4232,10 @@ fn main() {
 		if verbose {
 			eprintln('  [ttime]   ck collect       ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			cvsw.restart()
+		}
+		if pre_tc.check_interface_embedding_limits() {
+			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			exit(1)
 		}
 		pre_tc.diagnose_unknown_calls = true
 		pre_tc.prepare_threads_condition()
@@ -4201,8 +4254,27 @@ fn main() {
 		} else {
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
 		}
+		pre_tc.check_main_module_requirement(is_shared)
+		if incremental_cache_hit {
+			b.step('check (incremental)')
+		} else {
+			b.step_parallel('check', check_was_parallel)
+		}
 		if pre_tc.errors.len > 0 {
-			print_type_errors(pre_tc.errors)
+			if is_checker_fixture {
+				fixture_used_fns, fixture_uses_generics := markused.mark_used_with_generic_usage(a,
+					&pre_tc)
+				has_invalid_comptime_struct_update :=
+					pre_tc.errors.any(it.msg == 'cannot use struct update syntax in compile time expressions')
+				if fixture_uses_generics && !has_invalid_comptime_struct_update {
+					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc,
+						fixture_used_fns, false)
+				}
+			}
+			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			pre_tc.notices.clear()
+		}
+		if pre_tc.errors.len > 0 {
 			exit(1)
 		}
 		incremental_uses_generics = incremental_cache_hit
@@ -4241,11 +4313,6 @@ fn main() {
 			if invalidate_changed_cache_dependents(mut cache_state) {
 				restart_v3_after_cache_invalidation()
 			}
-		}
-		if incremental_cache_hit {
-			b.step('check (incremental)')
-		} else {
-			b.step_parallel('check', check_was_parallel)
 		}
 		// Ownership analysis only exists in `-d ownership` builds and runs
 		// interleaved inside check; report its accumulated time as a dedicated
@@ -4319,6 +4386,15 @@ fn main() {
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
+		pre_tc.diagnose_unused_private_declarations(used_fns)
+		if pre_tc.notices.len > 0 {
+			checker_sql_warnings_only := is_checker_fixture && ast_contains_sql_expr(a)
+			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture)
+			pre_tc.notices.clear()
+			if checker_sql_warnings_only {
+				exit(0)
+			}
+		}
 
 		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 		// by default for compatible builds, and `-no-parallel` disables both threaded transform
@@ -4610,7 +4686,7 @@ fn main() {
 		b.step('annotate types (cached)')
 	}
 	if pre_tc.errors.len > 0 {
-		print_type_errors(pre_tc.errors)
+		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 		exit(1)
 	}
 
@@ -4759,6 +4835,13 @@ fn main() {
 			}
 		} else {
 			used_fns = monomorph_used_fns.move()
+		}
+		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
+			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			pre_tc.notices.clear()
+		}
+		if pre_tc.errors.len > 0 {
+			exit(1)
 		}
 		if monomorph_errors.len > 0 {
 			eprintln('type checker found ${monomorph_errors.len} error(s):')
@@ -5312,11 +5395,13 @@ fn main() {
 				tcc_cache_hit = os.is_file(cc_out)
 				used_tcc = tcc_cache_hit
 			}
-			println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
-				' (cached)'
-			} else {
-				''
-			}}')
+			if !silent {
+				println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
+					' (cached)'
+				} else {
+					''
+				}}')
+			}
 			if !tcc_cache_hit {
 				result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 				if result.exit_code == 0 {
@@ -5365,7 +5450,9 @@ fn main() {
 			}
 			tcc_args << resolved_c_flags
 			tcc_args << '-lm'
-			println('  > ${cmdexec.display(tcc_path, tcc_args)}')
+			if !silent {
+				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
+			}
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 			used_tcc = result.exit_code == 0
 		}
@@ -5417,7 +5504,9 @@ fn main() {
 			}
 			cc_args << resolved_c_flags
 			cc_args << '-lm'
-			println('  > ${cmdexec.display(c_compiler, cc_args)}')
+			if !silent {
+				println('  > ${cmdexec.display(c_compiler, cc_args)}')
+			}
 			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
 			if result.exit_code != 0 {
 				eprintln('C compilation failed:')
@@ -5456,7 +5545,7 @@ fn main() {
 				exit(run_result)
 			}
 			b.step('run')
-		} else if test_files.len > 0 && !explicit_output {
+		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture) {
 			test_result := run_test_binary(bin_file)
 			if test_result != 0 {
 				exit(test_result)
@@ -5488,9 +5577,112 @@ fn main() {
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
 	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races, 'objects')
 	b.print_report()
-	if newly_cached_module_count > 0 {
+	if newly_cached_module_count > 0 && !silent {
 		println('Hint: cached ${newly_cached_module_count} modules. They will not be recompiled on the next run unless they change.')
 	}
+}
+
+fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compiler string, user_defines []string) ?string {
+	mut selected_files := map[string]bool{}
+	for file in user_files {
+		selected_files[os.real_path(file)] = true
+	}
+	mut current_file := ''
+	mut current_module := 'main'
+	mut selected := false
+	for node in a.nodes {
+		if node.kind == .file {
+			current_file = node.value
+			current_module = 'main'
+			selected = os.real_path(current_file) in selected_files
+			continue
+		}
+		if !selected {
+			continue
+		}
+		if node.kind == .module_decl {
+			current_module = node.value
+			continue
+		}
+		if node.kind != .directive || node.value != 'include' {
+			continue
+		}
+		raw_target, explanation := checker_fixture_include_target_message(node.typ)
+		target := checker_fixture_resolve_include_define(raw_target, user_defines)
+		if target.len < 3 || checker_fixture_header_exists(target, current_file, c_compiler) {
+			continue
+		}
+		message := if explanation.len > 0 {
+			explanation.trim_right('.') + '.'
+		} else if shader_message := checker_fixture_missing_shader_message(target, current_file) {
+			shader_message
+		} else {
+			'Please install the corresponding development headers.'
+		}
+		return 'Header file ${target}, needed for module `${current_module}` was not found. ${message}'
+	}
+	return none
+}
+
+fn checker_fixture_include_target_message(raw string) (string, string) {
+	if marker := raw.index(' #') {
+		return raw[..marker].trim_space(), raw[marker + 2..].trim_space()
+	}
+	return raw.trim_space(), ''
+}
+
+fn checker_fixture_resolve_include_define(target string, user_defines []string) string {
+	start := target.index("\$d('") or { return target }
+	name_end := target.index_after("','", start + 4) or { return target }
+	default_end := target.index_after("')", name_end + 3) or { return target }
+	name := target[start + 4..name_end]
+	default_value := target[name_end + 3..default_end]
+	mut value := default_value
+	for define in user_defines {
+		if define == name {
+			value = '1'
+		} else if define.starts_with('${name}=') {
+			value = define[name.len + 1..]
+		}
+	}
+	return target[..start] + value + target[default_end + 2..]
+}
+
+fn checker_fixture_missing_shader_message(target string, source_file string) ?string {
+	if !target.starts_with('"') || !target.ends_with('"') {
+		return none
+	}
+	header := target[1..target.len - 1]
+	if !header.ends_with('.h') {
+		return none
+	}
+	shader_name := header[..header.len - 2] + '.glsl'
+	shader_path := if os.is_abs_path(shader_name) {
+		shader_name
+	} else {
+		os.join_path(os.dir(source_file), shader_name)
+	}
+	if !os.is_file(shader_path) {
+		return none
+	}
+	return 'This header can be generated from `${os.file_name(shader_name)}`. Run `v shader .` in that directory to create it.'
+}
+
+fn checker_fixture_header_exists(target string, source_file string, c_compiler string) bool {
+	if target.starts_with('"') && target.ends_with('"') {
+		path := target[1..target.len - 1]
+		resolved := if os.is_abs_path(path) { path } else { os.join_path(os.dir(source_file), path) }
+		return os.is_file(resolved)
+	}
+	if !target.starts_with('<') || !target.ends_with('>') {
+		return true
+	}
+	header := target[1..target.len - 1]
+	probe := os.join_path(os.vtmp_dir(), 'v3_header_probe_${os.getpid()}.c')
+	os.write_file(probe, '') or { return true }
+	result := cmdexec.run(c_compiler, ['-E', '-x', 'c', '-include', header, probe])
+	os.rm(probe) or {}
+	return result.exit_code == 0
 }
 
 fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) []string {
@@ -6502,17 +6694,140 @@ fn builtin_dir_for_vroot(root string) string {
 	return os.join_path_single(os.join_path_single(root, 'vlib'), 'builtin')
 }
 
-// print_type_errors updates print type errors state for v3 entry point.
-fn print_type_errors(errors []types.TypeError) {
-	eprintln('type checker found ${errors.len} error(s):')
-	max_errors := if errors.len < 20 { errors.len } else { 20 }
+// print_type_diagnostics renders notices before fatal type errors.
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool) {
+	mut ordered_notices := notices.clone()
+	ordered_notices.sort_with_compare(compare_print_notices)
+	for notice in ordered_notices {
+		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
+		eprintln(v3errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
+		print_type_diagnostic_details(notice.details)
+	}
+	source_errors := reorder_chained_generic_inference_errors(a, type_errors)
+	mut ordered_errors := []types.TypeError{cap: source_errors.len}
+	for err in source_errors {
+		if !is_bare_generic_fntype_decl_error(err) {
+			ordered_errors << err
+		}
+	}
+	for err in source_errors {
+		if is_bare_generic_fntype_decl_error(err) {
+			ordered_errors << err
+		}
+	}
+	max_errors := if all_errors || ordered_errors.len < 20 { ordered_errors.len } else { 20 }
 	for ei in 0 .. max_errors {
-		err := errors[ei]
-		eprintln('  [${err.file}] ${err.node_pos} node=${err.node} ${err.node_kind} `${err.node_value}`: ${err.msg}')
+		err := ordered_errors[ei]
+		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
+		eprintln(v3errors.formatted_error(severity, err.msg, a, err.node, err.pos))
+		print_type_diagnostic_details(err.details)
 	}
-	if errors.len > 20 {
-		eprintln('  ... and ${errors.len - 20} more')
+	if !all_errors && type_errors.len > 20 {
+		eprintln('... and ${type_errors.len - 20} more errors')
 	}
+}
+
+fn reorder_chained_generic_inference_errors(a &flat.FlatAst, errors []types.TypeError) []types.TypeError {
+	mut paired_call_by_struct := map[int]int{}
+	mut paired_calls := map[int]bool{}
+	for struct_index, struct_error in errors {
+		if !struct_error.msg.starts_with('could not infer generic type `')
+			|| !struct_error.msg.contains(' in generic struct `') {
+			continue
+		}
+		for call_index, call_error in errors {
+			if !call_error.msg.starts_with('could not infer generic type `')
+				|| !call_error.msg.contains(' in call to `') || paired_calls[call_index]
+				|| !type_diagnostic_call_uses_struct_receiver(a, call_error.node, struct_error.node) {
+				continue
+			}
+			paired_call_by_struct[struct_index] = call_index
+			paired_calls[call_index] = true
+			break
+		}
+	}
+	if paired_call_by_struct.len == 0 {
+		return errors.clone()
+	}
+	mut ordered := []types.TypeError{cap: errors.len}
+	for struct_index, struct_error in errors {
+		if call_index := paired_call_by_struct[struct_index] {
+			ordered << struct_error
+			ordered << errors[call_index]
+		}
+	}
+	for index, err in errors {
+		if index !in paired_call_by_struct && !paired_calls[index] {
+			ordered << err
+		}
+	}
+	return ordered
+}
+
+fn type_diagnostic_call_uses_struct_receiver(a &flat.FlatAst, call_id flat.NodeId, struct_id flat.NodeId) bool {
+	call_index := int(call_id)
+	if call_index < 0 || call_index >= a.nodes.len {
+		return false
+	}
+	call := a.nodes[call_index]
+	if call.kind != .call || call.children_count == 0 {
+		return false
+	}
+	mut callee_id := a.child(&call, 0)
+	mut callee := a.node(callee_id)
+	if callee.kind == .index && callee.children_count > 0 {
+		callee_id = a.child(callee, 0)
+		callee = a.node(callee_id)
+	}
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	return a.child(callee, 0) == struct_id
+}
+
+fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
+	return err.msg.starts_with('generic function `')
+		&& err.msg.contains(' in fn declaration must specify the generic type names')
+}
+
+fn print_type_diagnostic_details(details []string) {
+	for index, detail in details {
+		eprintln(if index == 0 { 'Details: ${detail}' } else { detail })
+	}
+}
+
+fn compare_print_notices(a &types.TypeError, b &types.TypeError) int {
+	a_is_unused_import := a.msg.contains(' is imported but never used.')
+	b_is_unused_import := b.msg.contains(' is imported but never used.')
+	if a_is_unused_import != b_is_unused_import {
+		return if a_is_unused_import { -1 } else { 1 }
+	}
+	a_is_unsafe_call := a.msg.contains('must be called from an `unsafe` block')
+	b_is_unsafe_call := b.msg.contains('must be called from an `unsafe` block')
+	if a_is_unsafe_call != b_is_unsafe_call {
+		return if a_is_unsafe_call { -1 } else { 1 }
+	}
+	a_is_reference_assignment := a.msg.starts_with('cannot assign a reference to a value')
+	b_is_reference_assignment := b.msg.starts_with('cannot assign a reference to a value')
+	if a_is_reference_assignment != b_is_reference_assignment {
+		return if a_is_reference_assignment { -1 } else { 1 }
+	}
+	a_is_warning := a.severity == 'warning:'
+	b_is_warning := b.severity == 'warning:'
+	if a_is_warning != b_is_warning {
+		return if a_is_warning { 1 } else { -1 }
+	}
+	a_is_unused_param := a.msg.starts_with('unused parameter:')
+	b_is_unused_param := b.msg.starts_with('unused parameter:')
+	a_is_unused_fn := a.msg.starts_with('unused function:')
+	b_is_unused_fn := b.msg.starts_with('unused function:')
+	if a_is_unused_param != b_is_unused_param {
+		if a_is_unused_fn || b_is_unused_fn {
+			return if a_is_unused_param { -1 } else { 1 }
+		}
+		return if a_is_unused_param { 1 } else { -1 }
+	}
+	return int(a.node) - int(b.node)
 }
 
 fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
@@ -6648,11 +6963,15 @@ fn diagnostic_root_for_input(input_file string, user_files []string) string {
 fn test_input_files(user_files []string, backend string, target pref.Target) []string {
 	mut files := []string{}
 	for file in user_files {
-		if pref.is_test_file_for_platform(file, backend, target) {
+		if is_v3_test_file(file, backend, target) {
 			files << file
 		}
 	}
 	return files
+}
+
+fn is_v3_test_file(file string, backend string, target pref.Target) bool {
+	return file.ends_with('_test.vv') || pref.is_test_file_for_platform(file, backend, target)
 }
 
 fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) []string {
@@ -7072,6 +7391,7 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	}
 	a.nodes = new_nodes
 	a.file_node_ids = []int{}
+	a.file_index_incomplete = true
 	for k in 0 .. a.children.len {
 		cid := int(a.children[k])
 		if cid >= 0 {
@@ -7203,6 +7523,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut forced_full_module_paths := map[string]bool{}
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
+	mut unresolved_modules := map[string]bool{}
 	mut cached_header_source_contexts := map[string]string{}
 	bundle_import_file := cache_bundle_import_file(prefs.get_vlib_module_path('builtin'))
 	if builtin_sources := cache_state.module_sources['builtin'] {
@@ -7346,6 +7667,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
+			if unresolved_modules[mod_name] {
+				a.missing_imports[node_idx] = mod_name
+			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
 					set_node_value_canonical(mut a, node_idx, module_identity)
@@ -7390,6 +7714,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
+			if !mod_dir_exists && !is_bundle_warmup_import {
+				a.missing_imports[node_idx] = mod_name
+				unresolved_modules[mod_name] = true
+			}
 			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
 				node_idx++
 				continue
