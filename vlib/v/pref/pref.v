@@ -536,6 +536,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-ownership' {
 				// Passed through to the V3 ownership compiler by cmd/v.
 			}
+			'-no-memory-limit', '--no-memory-limit' {
+				// Passed through to V3 dispatchers by cmd/v.
+			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 			}
