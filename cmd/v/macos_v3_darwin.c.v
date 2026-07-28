@@ -13,6 +13,7 @@ const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
+const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
@@ -147,10 +148,10 @@ fn macos_v3_args_are_supported(args []string) bool {
 		if arg in ['-prod', '-shared', '--shared', '-selfhost', '-building-v', '-building_v', '-c99',
 			'--c99', '-strict', '-cstrict', '-ownership', '--ownership', '-no-parallel',
 			'--no-parallel', '-parallel-transform', '--parallel-transform', '-all-backends',
-			'--all-backends', '-g', '-cg', '-autofree', '-v', '-checker-fixture', '-stats',
-			'-show-timings', '-showcc', '-keepc', '-skip-running', '-usecache', '-no-prealloc',
-			'--no-prealloc', '-nocache', '--no-cache', '-no-memory-limit', '--no-memory-limit',
-			'-prealloc', '-enable-globals'] {
+			'--all-backends', '-cg', '-autofree', '-v', '-checker-fixture', '-stats', '-show-timings',
+			'-showcc', '-keepc', '-skip-running', '-usecache', '-no-prealloc', '--no-prealloc',
+			'-nocache', '--no-cache', '-no-memory-limit', '--no-memory-limit', '-prealloc',
+			'-enable-globals'] {
 			i++
 			continue
 		}
@@ -200,6 +201,9 @@ fn macos_v3_needs_compatible_default_output(path string) bool {
 
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
 	mut forwarded_args := raw_args.clone()
+	if macos_v3_compat_c99_flag !in forwarded_args {
+		forwarded_args.insert(0, macos_v3_compat_c99_flag)
+	}
 	if prefs.skip_running && '-skip-running' !in forwarded_args {
 		forwarded_args.insert(0, '-skip-running')
 	}

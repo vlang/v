@@ -284,6 +284,38 @@ fn main() {
 		'-o', g_output, source])
 	assert g_compile.exit_code == 0, g_compile.output
 	assert !g_compile.output.contains('-Wl,-export_dynamic'), g_compile.output
+
+	c99_c_source := os.join_path(root, 'compat_c99.c')
+	os.write_file(c99_c_source, '#if !defined(__STDC_VERSION__) || __STDC_VERSION__ != 199901L
+#error expected strict C99
+#endif
+
+int v3_compat_c99_probe(void) {
+	return 99;
+}
+')!
+	c99_source := os.join_path(root, 'compat_c99.v')
+	os.write_file(c99_source, "#flag @DIR/compat_c99.c
+
+fn C.v3_compat_c99_probe() int
+
+fn main() {
+	\$if c99 ? {
+		println('defined')
+	} \$else {
+		println(C.v3_compat_c99_probe())
+	}
+}
+")!
+	c99_output := os.join_path(root, 'compat_c99')
+	c99_compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-prod', '-showcc',
+		'-macos-v3-compat-c99', '-o', c99_output, c99_source])
+	assert c99_compile.exit_code == 0, c99_compile.output
+	assert c99_compile.output.contains('-std=c99'), c99_compile.output
+	assert !c99_compile.output.contains('-std=gnu11'), c99_compile.output
+	c99_run := cmdexec.run(c99_output, [])
+	assert c99_run.exit_code == 0, c99_run.output
+	assert c99_run.output == '99\n', c99_run.output
 }
 
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {

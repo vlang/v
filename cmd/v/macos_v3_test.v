@@ -136,6 +136,17 @@ fn test_macos_v3_forwards_showcc_with_quiet_benchmarks() {
 	}
 }
 
+fn test_macos_v3_forwards_compatibility_c99_mode() {
+	$if macos {
+		prefs := &pref.Preferences{}
+		forwarded := macos_v3_forwarded_args(prefs, ['main.v'])
+		assert macos_v3_compat_c99_flag in forwarded
+		assert forwarded.count(it == macos_v3_compat_c99_flag) == 1
+		already_present := macos_v3_forwarded_args(prefs, [macos_v3_compat_c99_flag, 'main.v'])
+		assert already_present.count(it == macos_v3_compat_c99_flag) == 1
+	}
+}
+
 fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 	$if macos {
 		assert macos_v3_args_are_supported(['main.v'])
@@ -153,6 +164,8 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-foo', 'main.v'])
+		assert !macos_v3_args_are_supported(['-g', 'main.v'])
+		assert macos_v3_args_are_supported(['-cg', 'main.v'])
 		for arch in ['x86', 'rv32', 'riscv32', 'sparc64', 'ppc', 'ppc32', 'powerpc', 'js', 'js_node',
 			'js_browser', 'js_freestanding'] {
 			assert !macos_v3_args_are_supported(['-arch', arch, 'main.v'])

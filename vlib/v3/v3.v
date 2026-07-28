@@ -60,6 +60,7 @@ const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
+const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const macos_v3_compiler_error_fallback = 'compiler_error'
@@ -3718,9 +3719,9 @@ fn main() {
 			// of the generics machinery) is pure overhead when building it.
 			building_v = true
 			i++
-		} else if args[i] == '-c99' || args[i] == '--c99' {
+		} else if args[i] in ['-c99', '--c99', macos_v3_compat_c99_flag] {
 			c99 = true
-			if 'c99' !in user_defines {
+			if args[i] != macos_v3_compat_c99_flag && 'c99' !in user_defines {
 				user_defines << 'c99'
 			}
 			i++
