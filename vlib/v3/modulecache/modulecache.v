@@ -6,6 +6,7 @@ import strings
 import v3.flat
 import v3.pref
 import v3.types
+import v.util.version
 
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
@@ -21,7 +22,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-1'
+const source_signature_cache_format = 'v3-source-signature-cache-2'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -251,7 +252,8 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		{
 			uses_build_pseudo = true
 		}
-		if source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
+		uses_vmod_hash := source_uses_pseudo(source, ['@VMODHASH'])
+		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
 			root, vmod_file := signature_vmod_root(file)
 			vmod_metadata := if vmod_file.len > 0 {
 				file_metadata_signature(vmod_file)
@@ -272,6 +274,13 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 				hash = hash_bytes(hash, [u8(0)])
 			}
 			hash = hash_bytes(hash, [u8(0xff)])
+			if uses_vmod_hash {
+				vmod_hash := signature_vmod_hash(root, vmod_file)
+				validation << 'vmodhash=${path}\t${root}\t${vmod_file}\t${hash_text(vmod_hash)}'
+				hash = hash_bytes(hash, [u8(0xfa)])
+				hash = hash_bytes(hash, vmod_hash.bytes())
+				hash = hash_bytes(hash, [u8(0xff)])
+			}
 		}
 		for name in compile_time_env_names(source) {
 			env_names[name] = true
@@ -654,6 +663,18 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			}
 			continue
 		}
+		if line.starts_with('vmodhash=') {
+			parts := line['vmodhash='.len..].split('\t')
+			if parts.len != 4 || parts[0].len == 0 {
+				return none
+			}
+			root, vmod_file := signature_vmod_root(parts[0])
+			vmod_hash := signature_vmod_hash(root, vmod_file)
+			if root != parts[1] || vmod_file != parts[2] || hash_text(vmod_hash) != parts[3] {
+				return none
+			}
+			continue
+		}
 		return none
 	}
 	if signature.len == 0 {
@@ -677,6 +698,13 @@ fn signature_vmod_root(source_file string) (string, string) {
 		dir = parent
 	}
 	return os.real_path(original_dir), ''
+}
+
+fn signature_vmod_hash(root string, vmod_file string) string {
+	if vmod_file.len == 0 {
+		return ''
+	}
+	return version.githash(root) or { '' }
 }
 
 fn compile_time_env_names(source string) []string {

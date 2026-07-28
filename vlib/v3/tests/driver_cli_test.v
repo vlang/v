@@ -458,6 +458,14 @@ fn main() {
 		assert run.exit_code == 0, run.output
 		assert run.output == 'true\n16\n0123456\ntrue\ntrue\n', run.output
 	}
+	os.write_file(os.join_path(git_refs, 'main'), 'abcdef0123456789abcdef0123456789abcdef01\n')!
+	updated_output := os.join_path(root, 'comptime_values_updated_hash')
+	updated_compile := cmdexec.run(v3_bin, ['-d', 'feature', '-silent', '-no-parallel', '-o',
+		updated_output, source])
+	assert updated_compile.exit_code == 0, updated_compile.output
+	updated_run := cmdexec.run(updated_output, [])
+	assert updated_run.exit_code == 0, updated_run.output
+	assert updated_run.output == 'true\n16\nabcdef0\ntrue\nfalse\n', updated_run.output
 }
 
 fn test_driver_run_preserves_stdin() {
