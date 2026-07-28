@@ -1444,9 +1444,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.ComptimeSelector, ast.DumpExpr, ast.InfixExpr, ast.IfExpr, ast.MatchExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
-			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident, ast.CallExpr]))
-			&& !((g.pref.translated || g.file.is_translated)
-			&& unaliased_left_sym.kind != .array_fixed)
+			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident, ast.CallExpr])
+			|| (val is ast.StructInit && !is_decl && !blank_assign)) && !((g.pref.translated
+			|| g.file.is_translated) && unaliased_left_sym.kind != .array_fixed)
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
@@ -1596,6 +1596,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						right_var := g.new_tmp_var()
 						g.write('${arr_typ} ${right_var} = ')
 						g.expr(right)
+						g.writeln(';')
+						fixed_right_expr = right_var
+					} else if val is ast.StructInit {
+						// e.g. `a = Arr{}`, where `type Arr = [N]Box`
+						// struct_init() emits a bare brace-init list with no cast prefix
+						// for fixed arrays, which is only valid as a declaration initializer,
+						// not as a memcpy() argument expression.
+						right_var := g.new_tmp_var()
+						g.write('${arr_typ} ${right_var} = ')
+						g.expr(val)
 						g.writeln(';')
 						fixed_right_expr = right_var
 					} else {

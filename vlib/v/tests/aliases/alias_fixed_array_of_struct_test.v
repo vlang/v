@@ -69,3 +69,43 @@ fn test_nested_fixed_array_alias_in_struct_init() {
 	assert v_tst.box[0][0] == 0.0
 	assert v_tst.box[1][2] == 0.0
 }
+
+fn test_blank_plain_assign_nested_fixed_array_of_empty_structs() {
+	_ = NestedEmptyFixed{}
+}
+
+fn test_reassign_fixed_array_alias() {
+	// Not empty struct
+	mut fixed := BazFixed{}
+	fixed = BazFixed{}
+	assert fixed.len == 2
+
+	mut ref_fixed := &BazFixed{}
+	ref_fixed = &BazFixed{}
+	assert ref_fixed.len == 2
+
+	mut nested_fixed := NestedBazFixed{}
+	nested_fixed = NestedBazFixed{}
+	assert nested_fixed.len == 2
+
+	mut ref_nested_fixed := &NestedBazFixed{}
+	ref_nested_fixed = &NestedBazFixed{}
+	assert ref_nested_fixed.len == 2
+
+	// Empty struct
+	mut empty_fixed := EmptyFixed{}
+	empty_fixed = EmptyFixed{}
+	assert empty_fixed.len == 2
+
+	mut ref_empty_fixed := &EmptyFixed{}
+	ref_empty_fixed = &EmptyFixed{}
+	assert ref_empty_fixed.len == 2
+
+	mut nested_empty_fixed := NestedEmptyFixed{}
+	nested_empty_fixed = NestedEmptyFixed{}
+	assert nested_empty_fixed.len == 4
+
+	mut ref_nested_empty_fixed := &NestedEmptyFixed{}
+	ref_nested_empty_fixed = &NestedEmptyFixed{}
+	assert ref_nested_empty_fixed.len == 4
+}
