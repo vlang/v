@@ -4,6 +4,7 @@ import os
 import time
 import term
 import v.help
+import v.util.vwatchtty
 
 const scan_timeout_s = get_scan_timeout_seconds()
 
@@ -87,6 +88,8 @@ mut:
 	opts            []string
 	rerun_channel   chan RerunCommand
 	child_process   &os.Process = unsafe { nil }
+	child_has_tty   bool
+	watcher_pgid    int
 	is_exiting      bool     // set by SIGINT/Ctrl-C
 	v_cycles        int      // how many times the worker has restarted the V compiler
 	scan_cycles     int      // how many times the worker has scanned for source file changes
@@ -303,11 +306,19 @@ fn (mut context Context) kill_pgroup() {
 	if unsafe { context.child_process == 0 } {
 		return
 	}
+	context.restore_terminal()
 	if context.child_process.is_alive() {
 		context.child_process.signal_pgkill()
 	}
 	context.child_process.wait()
 	context.child_process.close()
+}
+
+fn (mut context Context) restore_terminal() {
+	if context.child_has_tty {
+		vwatchtty.restore_foreground_process_group(context.watcher_pgid)
+		context.child_has_tty = false
+	}
 }
 
 fn (mut context Context) run_before_cmd() {
@@ -338,6 +349,8 @@ fn (mut context Context) compilation_runner_loop() {
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
+		context.child_has_tty = vwatchtty.set_foreground_process_group(context.child_process.pid,
+			context.watcher_pgid)
 		if !context.silent {
 			eprintln('${timestamp}: ${cmd} | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		}
@@ -349,7 +362,15 @@ fn (mut context Context) compilation_runner_loop() {
 					return
 				}
 				if !context.child_process.is_alive() {
+					context.restore_terminal()
+					was_interrupted := context.child_process.status == .aborted
+						&& context.child_process.code == 130
 					context.child_process.wait()
+					if was_interrupted {
+						context.child_process.close()
+						context.is_exiting = true
+						return
+					}
 					notalive_count++
 					if notalive_count == 1 {
 						// a short lived process finished, do cleanup:
@@ -379,6 +400,7 @@ fn (mut context Context) compilation_runner_loop() {
 				}
 			}
 			if !context.child_process.is_alive() {
+				context.restore_terminal()
 				context.elog('> child_process is no longer alive | notalive_count: ${notalive_count}')
 				context.child_process.wait()
 				context.child_process.close()
@@ -612,6 +634,7 @@ fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_ar
 }
 
 fn (mut context Context) worker_main() {
+	context.watcher_pgid = vwatchtty.process_group()
 	context.rerun_channel = chan RerunCommand{cap: 10}
 	os.signal_opt(.int, fn (_ os.Signal) {
 		mut context := unsafe { &Context(voidptr(&ccontext)) }

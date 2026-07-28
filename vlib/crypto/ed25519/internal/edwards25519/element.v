@@ -3,7 +3,7 @@ module edwards25519
 import math.bits
 import math.unsigned
 import encoding.binary
-import crypto.internal.subtle
+import crypto.subtle
 
 // embedded unsigned.Uint128
 struct Uint128 {

@@ -1073,7 +1073,7 @@ run them via `v file.v` instead',
 				}
 			}
 		}
-		p.table.register_fn(ast.Fn{
+		new_fn := ast.Fn{
 			name:                  name
 			file_mode:             file_mode
 			params:                params
@@ -1107,7 +1107,25 @@ run them via `v file.v` instead',
 			language: language
 			//
 			is_expand_simple_interpolation: is_expand_simple_interpolation
-		})
+		}
+		mut should_register := true
+		if language == .c {
+			existing, has_existing := table_fn_lookup(p.table, name)
+			if has_existing && existing.mod != new_fn.mod && existing.mod != 'builtin'
+				&& new_fn.mod != 'builtin' {
+				should_register = false
+				if !p.table.c_fn_declarations_are_compatible(&existing, &new_fn) {
+					p.error_with_pos_no_advance('C function `${name}` was already declared with a different signature',
+						name_pos)
+				} else if new_fn.is_variadic && !existing.is_variadic {
+					// Keep the more general declaration so calls from both modules remain valid.
+					should_register = true
+				}
+			}
+		}
+		if should_register {
+			p.table.register_fn(new_fn)
+		}
 	}
 	/*
 	// Register implicit context var

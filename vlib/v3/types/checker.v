@@ -2285,6 +2285,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.type_cache.c_name_entries.clear()
 	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
+	tc.check_c_fn_redeclarations(a)
 	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
@@ -2835,6 +2836,101 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 			else {}
 		}
 	}
+}
+
+struct CFnDeclSignature {
+	return_type string
+	params      []string
+	is_variadic bool
+}
+
+fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
+	mut signatures := map[string]CFnDeclSignature{}
+	mut modules := map[string]string{}
+	tc.cur_module = ''
+	tc.cur_file = ''
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.c_fn_decl {
+				name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				mut params := []string{}
+				mut is_variadic := false
+				for i in 0 .. node.children_count {
+					child := a.child_node(&node, i)
+					if child.kind != .param {
+						continue
+					}
+					if child.typ.starts_with('...') {
+						is_variadic = true
+					} else {
+						params << tc.c_type(tc.parse_type(child.typ))
+					}
+				}
+				signature := CFnDeclSignature{
+					return_type: tc.c_type(tc.parse_type(node.typ))
+					params:      params
+					is_variadic: is_variadic
+				}
+				if existing := signatures[name] {
+					existing_module := modules[name] or { '' }
+					if existing_module == 'builtin' || existing_module == tc.cur_module {
+						signatures[name] = signature
+						modules[name] = tc.cur_module
+					} else if tc.cur_module != 'builtin'
+						&& !c_fn_decl_signatures_compatible(existing, signature) {
+						tc.record_error_unfiltered(.duplicate_decl,
+							'C function `${name}` was already declared with a different signature',
+							flat.NodeId(node_idx))
+					}
+				} else {
+					signatures[name] = signature
+					modules[name] = tc.cur_module
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn c_fn_decl_signatures_compatible(a CFnDeclSignature, b CFnDeclSignature) bool {
+	if !c_fn_decl_abi_types_compatible(a.return_type, b.return_type) {
+		return false
+	}
+	if a.is_variadic == b.is_variadic {
+		if a.params.len != b.params.len {
+			return false
+		}
+		return c_fn_decl_param_prefix_compatible(a.params, b.params, a.params.len)
+	}
+	variadic := if a.is_variadic { a } else { b }
+	fixed := if a.is_variadic { b } else { a }
+	if fixed.params.len < variadic.params.len {
+		return false
+	}
+	return c_fn_decl_param_prefix_compatible(fixed.params, variadic.params, variadic.params.len)
+}
+
+fn c_fn_decl_param_prefix_compatible(a []string, b []string, count int) bool {
+	if a.len < count || b.len < count {
+		return false
+	}
+	for i in 0 .. count {
+		if !c_fn_decl_abi_types_compatible(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+fn c_fn_decl_abi_types_compatible(a string, b string) bool {
+	return a == b || (a in ['int', 'i32'] && b in ['int', 'i32'])
 }
 
 fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string, first_module string, second_module string) bool {

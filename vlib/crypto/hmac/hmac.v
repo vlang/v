@@ -2,7 +2,7 @@
 // implementation based on https://tools.ietf.org/html/rfc2104
 module hmac
 
-import crypto.internal.subtle
+import crypto.subtle
 
 // new returns a HMAC byte array, depending on the hash algorithm used.
 pub fn new(key []u8, data []u8, hash_func fn ([]u8) []u8, blocksize int) []u8 {

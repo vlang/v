@@ -79,7 +79,7 @@ fn test_skip_unused_does_not_emit_impl_methods_for_interface_extensions() {
 	source := [
 		'module main',
 		'',
-		'import crypto.internal.subtle',
+		'import crypto.subtle',
 		'',
 		'interface Elem {}',
 		'',
