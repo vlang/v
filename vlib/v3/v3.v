@@ -3882,6 +3882,7 @@ fn main() {
 		output_file = bin_file + '.c'
 	}
 	binary_existed_before := os.exists(bin_file)
+	remove_binary_after_run := should_run && !explicit_output && !keep_c && !binary_existed_before
 
 	// Decide which backend modules to compile into the output. By default only the C
 	// backend is built; the arm64/wasm/eval backends (and the whole SSA pipeline that the
@@ -5116,8 +5117,8 @@ fn main() {
 	} else {
 		// C backend (default)
 		c_standard := c_standard_flag(prefs.c99)
-		use_cached_dev_dylib := cache_state.manager.enabled && !is_prod && !is_shared
-			&& !is_selfhost && prefs.normalized_target_os() == 'macos'
+		use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
+			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
 		mut cc_dir := ''
 		mut cc_src := output_file
 		mut cc_out := ''
@@ -5718,7 +5719,7 @@ fn main() {
 		})
 		if should_run {
 			run_result := run_binary(bin_file, run_args)
-			if !explicit_output && !keep_c && !binary_existed_before {
+			if remove_binary_after_run {
 				os.rm(bin_file) or {}
 			}
 			if run_result != 0 {

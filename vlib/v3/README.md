@@ -115,15 +115,16 @@ Third-party C objects retain dependency manifests, so warm builds verify each un
 header once without launching a dependency-scanner process per object. Unchanged inputs use
 nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
 This work is reported as the separate `C object cache` benchmark stage before `cc`.
-On macOS, cached non-production executable builds combine the imported-module objects and
+On macOS, cached non-production implicit `run` builds combine the imported-module objects and
 generated runtime prefix into a content-keyed dylib with the system C compiler. The remaining
 current-directory program unit is compiled and linked against that dylib with bundled TinyCC.
 Objective-C and framework compilation flags stay on the cached dylib side. This work is reported
-as `C dylib cache`; the resulting development executable retains an absolute runtime dependency
-on that cache artifact. An exact warm plan also restores its content-keyed TinyCC executable and
-reports `cc (cached)`; project source, module object, C dependency, TinyCC input, argument, or
-dylib changes invalidate it. Production, shared-library, self-host, explicit `-cc`, and
-`-nocache` builds keep their existing direct-link behavior.
+as `C dylib cache`; the temporary executable retains an absolute runtime dependency on that cache
+artifact and is removed after the run. An exact warm plan also restores its content-keyed TinyCC
+executable and reports `cc (cached)`; project source, module object, C dependency, TinyCC input,
+argument, or dylib changes invalidate it. Persistent outputs—including ordinary compilation,
+explicit `run -o` output, and `-keepc` runs—are standalone. Production, shared-library, self-host,
+explicit `-cc`, and `-nocache` builds also keep their existing direct-link behavior.
 When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
 the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
 cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.

@@ -198,6 +198,37 @@ fn run_driver_with_environment(v3_bin string, args []string, environment map[str
 	return collect_driver_process_result(mut process)
 }
 
+fn test_driver_persistent_macos_output_survives_cache_removal() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_persistent_output_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
+	source := os.join_path(root, 'persistent.v')
+	os.write_file(source, "fn main() {
+	println('persistent-output-ok')
+}
+")!
+	output := source.all_before_last('.v')
+	cache_dir := os.join_path(root, 'cache')
+	os.mkdir_all(cache_dir) or { panic(err) }
+	mut environment := os.environ()
+	environment['V3CACHE'] = cache_dir
+	compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
+		source], environment)
+	assert compile.exit_code == 0, compile.output
+	assert os.is_file(output)
+	os.rmdir_all(cache_dir) or { panic(err) }
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'persistent-output-ok\n', run.output
+}
+
 fn kept_c_files(dir string) []string {
 	mut files := (os.ls(dir) or { return []string{} }).filter(it.ends_with('.tmp.c'))
 	files.sort()
