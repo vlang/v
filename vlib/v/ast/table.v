@@ -278,7 +278,8 @@ fn fn_type_calling_convention(f &Fn) string {
 }
 
 fn (t &Table) fn_types_are_compatible(left &Fn, right &Fn, depth int) bool {
-	if t.fn_type_source_signature(left) != t.fn_type_source_signature(right)
+	if left.params.len != right.params.len || left.is_variadic != right.is_variadic
+		|| left.is_c_variadic != right.is_c_variadic
 		|| fn_type_calling_convention(left) != fn_type_calling_convention(right) {
 		return false
 	}
@@ -286,7 +287,10 @@ fn (t &Table) fn_types_are_compatible(left &Fn, right &Fn, depth int) bool {
 		return false
 	}
 	for i, param in left.params {
-		if !t.fn_type_components_are_compatible(param.typ, right.params[i].typ, depth + 1) {
+		right_param := right.params[i]
+		if param.is_mut != right_param.is_mut || param.is_shared != right_param.is_shared
+			|| param.is_atomic != right_param.is_atomic
+			|| !t.fn_type_components_are_compatible(param.typ, right_param.typ, depth + 1) {
 			return false
 		}
 	}
@@ -382,16 +386,26 @@ fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type,
 				return false
 			}
 		}
+		return true
 	}
-	if left_sym.generic_types.len != right_sym.generic_types.len {
-		return false
-	}
-	for i, typ in left_sym.generic_types {
-		if !t.fn_type_components_are_compatible(typ, right_sym.generic_types[i], depth + 1) {
+	if left_sym.info is GenericInst {
+		if right_sym.info !is GenericInst {
 			return false
 		}
+		left_info := left_sym.info as GenericInst
+		right_info := right_sym.info as GenericInst
+		if left_info.parent_idx != right_info.parent_idx
+			|| left_info.concrete_types.len != right_info.concrete_types.len {
+			return false
+		}
+		for i, typ in left_info.concrete_types {
+			if !t.fn_type_components_are_compatible(typ, right_info.concrete_types[i], depth + 1) {
+				return false
+			}
+		}
+		return true
 	}
-	return true
+	return false
 }
 
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {

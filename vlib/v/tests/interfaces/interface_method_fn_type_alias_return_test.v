@@ -1,5 +1,9 @@
 type MathOp = fn (int, int) int
 
+type MyInt = int
+
+type AliasedMathOp = fn (MyInt, MyInt) MyInt
+
 @[callconv: cdecl]
 type CdeclMathOp = fn (int, int) int
 
@@ -14,6 +18,10 @@ interface Calculator {
 
 interface CdeclCalculator {
 	get_operation() CdeclMathOp
+}
+
+interface AliasedCalculator {
+	get_operation() AliasedMathOp
 }
 
 interface FactoryCalculator {
@@ -47,6 +55,15 @@ fn (c PlainCalc) get_operation() MathOp {
 	}
 }
 
+struct AliasCalc {}
+
+fn (c AliasCalc) get_operation() MathOp {
+	_ = c
+	return fn (a int, b int) int {
+		return a - b
+	}
+}
+
 struct CdeclFactoryCalc {}
 
 fn (c CdeclFactoryCalc) get_factory() CdeclMathFactory {
@@ -72,6 +89,12 @@ fn test_interface_method_fn_type_alias_omitted_callconv_matches_cdecl() {
 	plain_calc := CdeclCalculator(PlainCalc{})
 	plain_operation := plain_calc.get_operation()
 	assert plain_operation(5, 3) == 15
+}
+
+fn test_interface_method_fn_type_component_alias_matches_parent() {
+	calc := AliasedCalculator(AliasCalc{})
+	operation := calc.get_operation()
+	assert operation(8, 3) == 5
 }
 
 fn test_interface_method_nested_fn_type_alias_omitted_callconv_matches_cdecl() {

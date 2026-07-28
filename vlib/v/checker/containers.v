@@ -1171,7 +1171,6 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 	if left_value_sym.kind == .interface {
 		is_empty_interface := left_value_sym.info is ast.Interface
 			&& left_value_sym.info.methods.len == 0 && left_value_sym.info.fields.len == 0
-			&& left_value_sym.info.embeds.len == 0
 		if right is ast.ArrayInit && right.is_fixed {
 			c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
 			return ast.void_type

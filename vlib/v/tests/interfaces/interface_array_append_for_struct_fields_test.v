@@ -1,4 +1,8 @@
-interface Value {}
+interface EmptyValue {}
+
+interface Value {
+	EmptyValue
+}
 
 struct Empty {}
 
@@ -20,7 +24,7 @@ fn geoadd(key string, geo_locations ...GeoLocation) []Value {
 	return args
 }
 
-fn test_append_for_struct_fields_to_empty_interface_array() {
+fn test_append_for_struct_fields_to_embedded_empty_interface_array() {
 	args := geoadd('places', GeoLocation{
 		name:      'home'
 		longitude: 1.25
