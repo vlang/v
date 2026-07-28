@@ -1,0 +1,26 @@
+type MyInt = int
+
+interface OptionalProvider {
+	value() ?MyInt
+}
+
+struct OptionalIntProvider {}
+
+fn (_ OptionalIntProvider) value() ?int {
+	return 1
+}
+
+interface ResultProvider {
+	value() !MyInt
+}
+
+struct ResultIntProvider {}
+
+fn (_ ResultIntProvider) value() !int {
+	return 2
+}
+
+fn main() {
+	_ := OptionalProvider(OptionalIntProvider{})
+	_ := ResultProvider(ResultIntProvider{})
+}

@@ -2753,14 +2753,25 @@ fn (mut g Gen) alias_shared_parent_type(typ ast.Type) ast.Type {
 }
 
 fn (mut g Gen) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Type, is_mut bool) ast.Type {
-	if is_mut || orig_type == 0 || smartcast_type == 0 || orig_type.is_ptr() {
+	if orig_type == 0 || smartcast_type == 0 || orig_type.is_ptr() {
 		return smartcast_type
 	}
 	orig_sym := g.table.final_sym(orig_type)
+	if is_mut {
+		if orig_sym.kind == .interface && smartcast_type.nr_muls() > 1 {
+			// Interface storage adds one pointer level on top of the pointer variant.
+			return smartcast_type.deref()
+		}
+		return smartcast_type
+	}
 	resolved_smartcast_type := g.unwrap_generic(smartcast_type)
 	smartcast_sym := g.table.final_sym(resolved_smartcast_type)
 	if orig_sym.kind == .interface && smartcast_sym.kind != .interface {
 		if smartcast_sym.kind in [.struct, .aggregate] && !smartcast_sym.is_builtin() {
+			if smartcast_type.nr_muls() > 1 {
+				// Expose `&T`, not the interface's internal `&&T` representation.
+				return smartcast_type.deref()
+			}
 			return if smartcast_type.is_ptr() { smartcast_type } else { smartcast_type.ref() }
 		}
 		if smartcast_type.is_ptr() {
@@ -7895,6 +7906,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				lhs_expr_type = g.unwrap_generic(selector_ident.obj.typ)
 			}
 		}
+	} else if selector_expr_expr is ast.SelectorExpr {
+		resolved_smartcast_type := g.resolve_selector_smartcast_type(selector_expr_expr)
+		if resolved_smartcast_type != 0 {
+			lhs_expr_type = resolved_smartcast_type
+		}
 	}
 	if lhs_expr_type == 0 {
 		lhs_expr_type = node.expr_type
@@ -10284,7 +10300,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				current_smartcast_type := g.exposed_smartcast_type(resolved_var.orig_type,
 					smartcast_types.last(), resolved_var.is_mut)
 				mut needs_interface_smartcast_deref := g.table.is_interface_smartcast(resolved_var)
-					&& current_smartcast_type != 0
+					&& current_smartcast_type != 0 && !current_smartcast_type.is_ptr()
 					&& smartcast_types.last().nr_muls() == current_smartcast_type.nr_muls() + 1
 				// When inside_interface_deref is set (e.g. string interpolation),
 				// interface smartcast to non-pointer builtins also needs deref since
