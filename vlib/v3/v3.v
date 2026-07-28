@@ -56,10 +56,24 @@ $if !skip_wasm ? {
 }
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
+const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
+const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
+const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
+const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
+const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
+const macos_v3_inline_asm_fallback = 'inline_asm'
+const macos_v3_compiler_error_fallback = 'compiler_error'
+const macos_v3_c_error_fallback = 'c_compilation_error'
+const macos_v3_c_error_compiler_file = 'compiler'
+const macos_v3_c_error_output_file = 'output'
+const macos_v3_c_error_source_name_file = 'source_name'
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
 const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
+const v3_crun_build_identity_env = 'V3_CRUN_BUILD_IDENTITY'
+const v3_internal_restart_env = 'V3_INTERNAL_RESTART'
 
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
@@ -161,18 +175,25 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	if atomic_s.len == 0 {
 		return ''
 	}
+	wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	signature := modulecache.file_signature(atomic_s)
 	if signature.len == 0 {
 		return atomic_s
 	}
-	object_path := os.join_path(cache_dir, 'atomic_${naming.sanitize(signature)}.o')
+	wrapv_suffix := if wrapv_flag.len > 0 { '_wrapv' } else { '' }
+	object_path := os.join_path(cache_dir, 'atomic_${naming.sanitize(signature)}${wrapv_suffix}.o')
 	if os.is_file(object_path) {
 		return object_path
 	}
 	os.mkdir_all(cache_dir) or { return atomic_s }
 	build_path := '${object_path}.tmp.${os.getpid()}'
-	result := cmdexec.run(tcc_path, ['-std=gnu11', tcc_includes, '-c', atomic_s, '-o', build_path])
+	mut args := ['-std=gnu11', tcc_includes]
+	if wrapv_flag.len > 0 {
+		args << wrapv_flag
+	}
+	args << ['-c', atomic_s, '-o', build_path]
+	result := cmdexec.run(tcc_path, args)
 	if result.exit_code != 0 || !os.is_file(build_path) {
 		os.rm(build_path) or {}
 		return atomic_s
@@ -334,7 +355,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 fn c_link_plan_path(cache_dir string, flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v1', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v2', os.getwd(), flags.join('\x00'),
 		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
 		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format] {
 		hash = c_hash_bytes(hash, identity.bytes())
@@ -897,7 +918,7 @@ fn v3_program_prefix_source_identity(prefix_source string, cached_objects []stri
 	return hash.hex()
 }
 
-fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_c_flags []string, manager &modulecache.Manager, target_args []string, target pref.Target, c_compiler string, build_dir string, mut stats CObjectCacheStats) !string {
+fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_c_flags []string, manager &modulecache.Manager, target_args []string, target pref.Target, c_compiler string, build_dir string, show_c_command bool, mut stats CObjectCacheStats) !string {
 	link_flags := c_dylib_link_flags(resolved_c_flags)
 	mut objects := [prefix_object]
 	objects << cached_objects
@@ -962,7 +983,9 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 	response := args.map(c_response_file_arg(it)).join('\n')
 	os.write_file(response_path, response)!
 	response_arg := '@${response_path}'
-	println('  > ${cmdexec.display(c_compiler, [response_arg])} (${objects.len} cached objects)')
+	if show_c_command {
+		println('  > ${cmdexec.display(c_compiler, [response_arg])} (${objects.len} cached objects)')
+	}
 	result := cmdexec.run(c_compiler, [response_arg])
 	if result.exit_code != 0 {
 		return error('failed to build cached development dylib:\n${result.output}')
@@ -1095,6 +1118,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	args << target_args
 	if pic_flag.len > 0 {
 		args << pic_flag
+	}
+	wrapv_flag := c_wrapv_flag(target.os)
+	if wrapv_flag.len > 0 {
+		args << wrapv_flag
 	}
 	args << '-w'
 	args << support_flags
@@ -1382,6 +1409,14 @@ fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
 }
 
+fn c_wrapv_flag(target_os string) string {
+	return if target_os in ['macos', 'linux', 'openbsd', 'freebsd', 'windows'] {
+		'-fwrapv'
+	} else {
+		''
+	}
+}
+
 fn shared_pic_flag(is_shared bool, target_os string) string {
 	if is_shared && target_os != 'windows' {
 		return '-fPIC'
@@ -1415,14 +1450,42 @@ fn run_test_binary(bin_file string) int {
 	return run_binary(bin_file, []string{})
 }
 
+fn ignore_run_signal(_ os.Signal) {
+}
+
 fn run_binary(bin_file string, args []string) int {
 	run_path := executable_path_for_run(bin_file)
 	mut process := os.new_process(run_path)
 	process.set_args(args)
+	mut environment := pref.macos_v3_caller_environment()
+	environment.delete(macos_v3_vhash_env)
+	environment.delete(macos_v3_vcurrent_hash_env)
+	process.set_environment(environment)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
-	process.run()
+	// Ignore SIGINT and SIGQUIT while waiting so an interrupted child does not
+	// terminate V3 before it can remove the implicit run executable.
+	prev_int_handler := os.signal_opt(.int, ignore_run_signal) or {
+		eprintln('v3: could not set SIGINT handler: ${err}')
+		return 1
+	}
+	mut prev_quit_handler := os.SignalHandler(ignore_run_signal)
+	$if !windows {
+		prev_quit_handler = os.signal_opt(.quit, ignore_run_signal) or {
+			os.signal_opt(.int, prev_int_handler) or {}
+			eprintln('v3: could not set SIGQUIT handler: ${err}')
+			return 1
+		}
+	}
 	process.wait()
+	os.signal_opt(.int, prev_int_handler) or {
+		eprintln('v3: could not restore SIGINT handler: ${err}')
+	}
+	$if !windows {
+		os.signal_opt(.quit, prev_quit_handler) or {
+			eprintln('v3: could not restore SIGQUIT handler: ${err}')
+		}
+	}
 	exit_code := if process.code >= 0 { process.code } else { 1 }
 	process.close()
 	return exit_code
@@ -1569,10 +1632,140 @@ fn default_bin_file_for_input(input_file string) string {
 	if input_file.ends_with('.vv') {
 		return input_file.all_before_last('.vv')
 	}
+	if input_file.ends_with('.vsh') {
+		return input_file.all_before_last('.vsh')
+	}
 	if input_file.ends_with('.v') {
 		return input_file.all_before_last('.v')
 	}
 	return input_file
+}
+
+fn keep_c_output_file(bin_file string) string {
+	name := os.file_name(os.real_path(bin_file))
+	mut sanitized := strings.new_builder(name.len)
+	for ch in name {
+		if ch >= 128 || (ch >= `0` && ch <= `9`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `a` && ch <= `z`) || ch in [`-`, `.`, `_`] {
+			sanitized.write_u8(ch)
+		} else {
+			sanitized.write_u8(`_`)
+		}
+	}
+	mut base := sanitized.str()
+	if base in ['', '.', '..'] {
+		base = 'vtmp'
+	}
+	return os.real_path(os.join_path_single(os.vtmp_dir(), '${base}.${rand.ulid()}.tmp.c'))
+}
+
+fn v3_crun_cache_marker_path(bin_file string) string {
+	key := c_hash_bytes(u64(1469598103934665603), os.abs_path(bin_file).bytes()).hex()
+	return os.join_path(os.vtmp_dir(), 'v3_crun_cache', key)
+}
+
+fn v3_crun_cache_matches(bin_file string, build_identity string) bool {
+	if build_identity.len == 0 {
+		return false
+	}
+	binary_signature := modulecache.file_signature(bin_file)
+	if binary_signature.len == 0 {
+		return false
+	}
+	marker := os.read_file(v3_crun_cache_marker_path(bin_file)) or { return false }
+	return marker == '${build_identity}\n${binary_signature}'
+}
+
+fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
+	if build_identity.len == 0 {
+		return
+	}
+	binary_signature := modulecache.file_signature(bin_file)
+	if binary_signature.len == 0 {
+		return
+	}
+	marker := v3_crun_cache_marker_path(bin_file)
+	os.mkdir_all(os.dir(marker), mode: 0o700)!
+	staged := '${marker}.stage.${os.getpid()}.${rand.ulid()}'
+	os.write_file(staged, '${build_identity}\n${binary_signature}')!
+	os.mv(staged, marker) or {
+		os.rm(staged) or {}
+		return err
+	}
+}
+
+fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, is_strict bool, enable_globals bool) string {
+	mut source_paths := map[string]bool{}
+	for file in user_files {
+		source_paths[os.real_path(file)] = true
+	}
+	for files in state.module_sources.values() {
+		for file in files {
+			source_paths[os.real_path(file)] = true
+		}
+	}
+	mut sources := source_paths.keys()
+	sources.sort()
+	source_signature := modulecache.cached_source_signature(state.manager.dir, 'crun', sources)
+	if source_signature.len == 0 {
+		return ''
+	}
+	uses_build_time := modulecache.source_files_use_build_time_pseudo(sources)
+	mut hash := u64(1469598103934665603)
+	for value in [
+		'v3-crun-cache-v1',
+		state.manager.salt,
+		is_strict.str(),
+		enable_globals.str(),
+		user_c_flags.join('\x00'),
+		source_signature,
+		prefs.vhash,
+		prefs.vcurrent_hash,
+		if uses_build_time {
+			prefs.build_date
+		} else {
+			''
+		},
+		if uses_build_time {
+			prefs.build_time
+		} else {
+			''
+		},
+		if uses_build_time {
+			prefs.build_timestamp
+		} else {
+			''
+		},
+	] {
+		hash = c_hash_bytes(hash, value.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	mut external_paths := map[string]bool{}
+	for paths in state.module_external_inputs.values() {
+		for path in paths {
+			external_paths[os.real_path(path)] = true
+		}
+	}
+	for paths in state.module_native_roots.values() {
+		for path in paths {
+			external_paths[os.real_path(path)] = true
+		}
+	}
+	for path in state.external_resolution_dirs {
+		external_paths[os.real_path(path)] = true
+	}
+	for path in state.external_missing_paths {
+		external_paths[os.real_path(path)] = true
+	}
+	mut paths := external_paths.keys()
+	paths.sort()
+	for path in paths {
+		hash = c_hash_bytes(hash, path.bytes())
+		hash = c_hash_bytes(hash, [u8(0)])
+		hash = c_hash_bytes(hash, modulecache.file_metadata_signature(path).bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	return hash.hex()
 }
 
 fn cli_usage() string {
@@ -1585,6 +1778,7 @@ fn cli_usage() string {
 		'  -prod -c99 -shared -strict  C build modes\n' +
 		'  -v                           verbose stage profiling\n' +
 		'  -silent                      suppress benchmark output\n' +
+		'  -showcc                      print C compiler commands\n' +
 		'  -no-memory-limit             disable the 2 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
@@ -3124,6 +3318,46 @@ fn default_cc_identity() string {
 	return '${cc_path}\t${metadata}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
 }
 
+fn effective_c_compiler_name(compiler string, target pref.Target) string {
+	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
+	name := os.file_name(os.real_path(compiler_path)).to_lower_ascii()
+	if name.contains('tcc') || name.contains('tinyc') {
+		return 'tinyc'
+	}
+	if name.contains('clang') {
+		return 'clang'
+	}
+	if name.contains('gcc') {
+		return 'gcc'
+	}
+	if name.contains('mingw') {
+		return 'mingw'
+	}
+	if name in ['cl', 'cl.exe'] || name.contains('msvc') {
+		return 'msvc'
+	}
+	if name.contains('++') {
+		return 'cplusplus'
+	}
+	version := cmdexec.run(compiler_path, ['--version']).output.to_lower_ascii()
+	if version.contains('tiny c compiler') || version.contains('tcc version') {
+		return 'tinyc'
+	}
+	if version.contains('clang') {
+		return 'clang'
+	}
+	if version.contains('gcc') || version.contains('free software foundation') {
+		return 'gcc'
+	}
+	if version.contains('mingw') {
+		return 'mingw'
+	}
+	if version.contains('microsoft') && version.contains('c/c++') {
+		return 'msvc'
+	}
+	return if target.os in ['macos', 'ios'] { 'clang' } else { 'gcc' }
+}
+
 fn v3_cache_compiler_signature(vroot string) string {
 	dir := os.join_path(vroot, 'vlib', 'v3')
 	if !os.is_dir(dir) {
@@ -3412,6 +3646,74 @@ fn record_compile_value(mut values map[string]string, define string) {
 	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
 }
 
+fn stage_macos_v3_compiler_error_fallback(fallback_file string) {
+	if fallback_file != '' {
+		os.write_file(fallback_file, macos_v3_compiler_error_fallback) or {}
+	}
+}
+
+fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
+	if fallback_file != '' {
+		os.rm(fallback_file) or {}
+	}
+}
+
+fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
+	if fallback_file == '' || !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
+		return false
+	}
+	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
+	return true
+}
+
+fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string) bool {
+	if fallback_file == '' || report_dir == '' || !os.is_file(c_source) {
+		return false
+	}
+	os.rmdir_all(report_dir) or {}
+	os.mkdir_all(report_dir) or { return false }
+	source_name := os.base(c_source)
+	report_source := os.join_path(report_dir, source_name)
+	os.cp(c_source, report_source) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_compiler_file), ccompiler) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_output_file), c_output) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_source_name_file), source_name) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(fallback_file, macos_v3_c_error_fallback) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	return true
+}
+
+fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_dir string, ccompiler string, message string, c_sources []string) bool {
+	is_c_error := message.starts_with('failed to build C object ')
+		|| message.starts_with('failed to build cached module object ')
+		|| message.starts_with('failed to build cached program prefix:')
+		|| message.starts_with('failed to build cached development dylib:')
+	if !is_c_error {
+		return false
+	}
+	for c_source in c_sources {
+		if os.is_file(c_source) {
+			return request_macos_v3_c_error_fallback(fallback_file, report_dir, ccompiler, message,
+				c_source)
+		}
+	}
+	return false
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -3419,6 +3721,13 @@ fn main() {
 		eprintln(cli_usage())
 		exit(1)
 	}
+	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
+	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
+	// A delegated V3 process owns the fallback marker until it has successfully
+	// produced its output. Specialized failures overwrite it below. Successful
+	// run/test programs clear it before launch, so their exit status is never
+	// mistaken for a compiler failure by the macOS driver.
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 
 	mut input_file := ''
 	mut output_file := ''
@@ -3446,7 +3755,11 @@ fn main() {
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut show_cc := false
+	mut keep_c := false
+	mut skip_running := false
 	mut is_debug := false
+	mut is_c_debug := false
 	mut c99 := false
 	mut thread_stack_size := 0
 	mut thread_stack_size_set := false
@@ -3456,6 +3769,7 @@ fn main() {
 	mut compile_values := map[string]string{}
 	mut user_c_flags := []string{}
 	mut should_run := false
+	mut is_direct_vsh := false
 	mut is_test_command := false
 	mut is_checker_fixture := false
 	mut run_args := []string{}
@@ -3481,6 +3795,9 @@ fn main() {
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
 			should_run = true
+			i++
+		} else if args[i] == 'build' && input_file.len == 0 && !should_run {
+			skip_running = true
 			i++
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
@@ -3514,13 +3831,13 @@ fn main() {
 			// of the generics machinery) is pure overhead when building it.
 			building_v = true
 			i++
-		} else if args[i] == '-c99' || args[i] == '--c99' {
+		} else if args[i] in ['-c99', '--c99', macos_v3_compat_c99_flag] {
 			c99 = true
-			if 'c99' !in user_defines {
+			if args[i] != macos_v3_compat_c99_flag && 'c99' !in user_defines {
 				user_defines << 'c99'
 			}
 			i++
-		} else if args[i] == '-strict' {
+		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
 			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
@@ -3574,6 +3891,9 @@ fn main() {
 			i += 2
 		} else if args[i] in ['-g', '-cg'] {
 			is_debug = true
+			if args[i] == '-cg' {
+				is_c_debug = true
+			}
 			user_c_flags << '-g'
 			i++
 		} else if args[i] == '-autofree' {
@@ -3587,13 +3907,22 @@ fn main() {
 		} else if args[i] == '-silent' {
 			silent = true
 			i++
+		} else if args[i] == '-showcc' {
+			show_cc = true
+			i++
 		} else if args[i] == '-checker-fixture' {
 			is_checker_fixture = true
 			i++
-		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
-			'-no-retry-compilation'] {
-			// v3 already reports phase metrics, prints the C command, retains generated C,
-			// and suppresses C warnings. Accept the corresponding V flags for compatibility.
+		} else if args[i] == '-keepc' {
+			keep_c = true
+			i++
+		} else if args[i] == '-skip-running' {
+			skip_running = true
+			i++
+		} else if args[i] in ['-stats', '-show-timings', '-w', '-no-retry-compilation', '-usecache'] {
+			// v3 already reports phase metrics, suppresses C warnings, leaves
+			// explicit-output tests unrun, and caches modules by default.
+			// Accept the corresponding V flags for compatibility.
 			i++
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
 			no_prealloc = true
@@ -3626,9 +3955,14 @@ fn main() {
 				exit(1)
 			}
 			input_file = args[i]
+			if input_file.ends_with('.vsh') {
+				is_direct_vsh = !should_run
+				should_run = true
+			}
 			i++
 		}
 	}
+	should_run = should_run && !skip_running
 	mut current_no_parallel := no_parallel
 	mut current_parallel_transform := parallel_transform
 	if current_no_parallel {
@@ -3638,6 +3972,10 @@ fn main() {
 	if input_file == '' {
 		eprintln('no input file')
 		exit(1)
+	}
+	if is_debug && 'debug' !in user_defines {
+		user_defines << 'debug'
+		record_compile_value(mut compile_values, 'debug')
 	}
 	if is_test_command && fixturetest.is_diagnostic_fixture_dir(input_file) {
 		exit(fixturetest.run(os.executable(), input_file, args))
@@ -3752,6 +4090,9 @@ fn main() {
 		}
 		output_file = bin_file + '.c'
 	}
+	binary_existed_before := os.exists(bin_file)
+	remove_binary_after_run := should_run && !is_direct_vsh && !explicit_output && !keep_c
+		&& !binary_existed_before
 
 	// Decide which backend modules to compile into the output. By default only the C
 	// backend is built; the arm64/wasm/eval backends (and the whole SSA pipeline that the
@@ -3816,10 +4157,29 @@ fn main() {
 		target.default_thread_stack_size()
 	}
 	prefs.backend = backend
+	prefs.ccompiler = if backend == 'arm64' {
+		'tinyc'
+	} else {
+		effective_c_compiler_name(c_compiler, target)
+	}
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
-	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
+	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
+		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
+		// checkout instead of selecting another V checkout around the input.
+		os.real_path(os.dir(prefs.vexe))
+	} else {
+		resolve_vroot_for_input(prefs.vroot, input_file)
+	}
+	prefs.vhash = os.getenv(macos_v3_vhash_env)
+	if prefs.vhash == '' {
+		prefs.vhash = @VHASH
+	}
+	prefs.vcurrent_hash = os.getenv(macos_v3_vcurrent_hash_env)
+	if prefs.vcurrent_hash == '' {
+		prefs.vcurrent_hash = @VCURRENTHASH
+	}
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
@@ -3827,27 +4187,34 @@ fn main() {
 	prefs.verbose = verbose
 	prefs.supports_inline_asm = is_checker_fixture
 	host_target := pref.host_target()
-	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
+	// `-keepc` promises a complete generated C translation unit. The module cache
+	// splits imported implementations into separate objects, so its main source
+	// alone cannot reproduce the build.
+	cache_enabled := backend == 'c' && !c_only && !no_cache && !keep_c && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	cache_salt := [
 		'compiler=${v3_cache_compiler_signature(prefs.vroot)}',
 		'cc=${cc_identity}',
+		'ccompiler=${prefs.ccompiler}',
 		'vexe=${prefs.vexe}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
 		'debug=${is_debug}',
+		'c_debug=${is_c_debug}',
 		'shared=${is_shared}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
 		'thread_stack_size=${prefs.thread_stack_size}',
+		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
 		'ownership=${ownership_mode}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
-	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
+	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp, prefs.vhash,
+		prefs.vcurrent_hash].join('\n')
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled,
 		build_pseudo_values)
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
@@ -3979,6 +4346,9 @@ fn main() {
 		i64(0)
 	}
 	if p.diagnostics.len > 0 {
+		if request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
+			exit(1)
+		}
 		for diagnostic in p.diagnostics {
 			if file := a.source_files[diagnostic.pos.id] {
 				eprintln(v3errors.formatted_source_error('error:', diagnostic.message, file,
@@ -4043,6 +4413,34 @@ fn main() {
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
+
+	mut crun_build_identity := ''
+	if is_direct_vsh && should_run && !explicit_output {
+		carried_identity := os.getenv(v3_crun_build_identity_env)
+		if os.getenv(v3_internal_restart_env) == '1' && carried_identity.len > 0 {
+			crun_build_identity = carried_identity
+		} else {
+			mut crun_c_flags := user_c_flags.clone()
+			crun_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
+				prefs.compile_values)
+			_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, crun_c_flags)
+			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files,
+				crun_c_flags, is_strict, enable_globals_compat)
+			if crun_build_identity.len > 0 {
+				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
+			}
+		}
+		if os.is_file(bin_file) && v3_crun_cache_matches(bin_file, crun_build_identity) {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			run_result := run_binary(bin_file, run_args)
+			if run_result != 0 {
+				exit(run_result)
+			}
+			b.step('run (cached)')
+			b.print_report()
+			return
+		}
+	}
 
 	// An exact whole-program C plan hit already certifies the current user sources,
 	// cached module interfaces, compiler configuration, target, and native inputs.
@@ -4960,8 +5358,8 @@ fn main() {
 	} else {
 		// C backend (default)
 		c_standard := c_standard_flag(prefs.c99)
-		use_cached_dev_dylib := cache_state.manager.enabled && !is_prod && !is_shared
-			&& !is_selfhost && prefs.normalized_target_os() == 'macos'
+		use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
+			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
 		mut cc_dir := ''
 		mut cc_src := output_file
 		mut cc_out := ''
@@ -5019,6 +5417,7 @@ fn main() {
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_compile_values(prefs.compile_values)
@@ -5055,6 +5454,7 @@ fn main() {
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_compile_values(prefs.compile_values)
@@ -5103,6 +5503,7 @@ fn main() {
 		if c_only {
 			b.metric('generated C size', os.file_size(cc_src), 'bytes')
 			b.print_report()
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			return
 		}
 
@@ -5124,10 +5525,22 @@ fn main() {
 		if prefs.normalized_target_os() == 'macos' {
 			warn_args << ['-Wno-incompatible-function-pointer-types', '-Wno-typedef-redefinition']
 		}
+		wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
+		if wrapv_flag.len > 0 {
+			warn_args << wrapv_flag
+		}
 		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
 			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
-			eprintln(err.msg())
+			message := err.msg()
+			if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+				macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
+				cc_src])
+			{
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			eprintln(message)
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
@@ -5191,7 +5604,18 @@ fn main() {
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file,
 							incremental_tcc_declarations_path, cached_prefix, compile_signature, mut
 							cache_state) or {
-							eprintln(err.msg())
+							message := err.msg()
+							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+								macos_v3_c_error_dir, c_compiler, message, [
+								cache_plan_file,
+								published_c_source,
+								cc_src,
+							])
+							{
+								cleanup_c_build_dir(cc_dir)
+								exit(1)
+							}
+							eprintln(message)
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
@@ -5215,7 +5639,18 @@ fn main() {
 						prepared_cache = prepare_v3_cached_generic_body(generated_source,
 							cached_prefix, cached_declarations, cached_body, compile_signature, mut
 							cache_state) or {
-							eprintln(err.msg())
+							message := err.msg()
+							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+								macos_v3_c_error_dir, c_compiler, message, [
+								cache_plan_file,
+								published_c_source,
+								cc_src,
+							])
+							{
+								cleanup_c_build_dir(cc_dir)
+								exit(1)
+							}
+							eprintln(message)
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
@@ -5224,7 +5659,18 @@ fn main() {
 					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns,
 						&pre_tc, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags,
 						needs_objective_c, interface_impl_signature, mut cache_state) or {
-						eprintln(err.msg())
+						message := err.msg()
+						if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+							macos_v3_c_error_dir, c_compiler, message, [
+							cache_plan_file,
+							published_c_source,
+							cc_src,
+						])
+						{
+							cleanup_c_build_dir(cc_dir)
+							exit(1)
+						}
+						eprintln(message)
 						cleanup_c_build_dir(cc_dir)
 						exit(1)
 					}
@@ -5334,14 +5780,36 @@ fn main() {
 					&cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags,
 					resolved_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut
 					c_object_cache_stats) or {
-					eprintln(err.msg())
+					message := err.msg()
+					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+						macos_v3_c_error_dir, c_compiler, message, [
+						published_c_source,
+						cache_plan_file,
+						cc_src,
+					])
+					{
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
+					eprintln(message)
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
 				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects,
 					resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler,
-					cc_dir, mut c_object_cache_stats) or {
-					eprintln(err.msg())
+					cc_dir, !silent || show_cc, mut c_object_cache_stats) or {
+					message := err.msg()
+					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+						macos_v3_c_error_dir, c_compiler, message, [
+						published_c_source,
+						cache_plan_file,
+						cc_src,
+					])
+					{
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
+					eprintln(message)
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
@@ -5353,16 +5821,20 @@ fn main() {
 			b.step('C dylib cache')
 		}
 		b.metric('generated C size', os.file_size(published_c_source), 'bytes')
-		published_c := '${output_file}.tmp.${os.getpid()}.${rand.ulid()}'
-		os.cp(published_c_source, published_c) or {
-			eprintln('failed to stage generated C output ${output_file}: ${err}')
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
-		}
-		os.mv(published_c, output_file) or {
-			eprintln('failed to publish generated C output ${output_file}: ${err}')
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
+		if keep_c {
+			keep_c_file := keep_c_output_file(bin_file)
+			staged_c := '${keep_c_file}.stage.${os.getpid()}.${rand.ulid()}'
+			os.cp(published_c_source, staged_c) or {
+				eprintln('failed to stage generated C output ${keep_c_file}: ${err}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			os.mv(staged_c, keep_c_file) or {
+				os.rm(staged_c) or {}
+				eprintln('failed to retain generated C output ${keep_c_file}: ${err}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
 		}
 		// Compile inside a per-output build dir, using constant relative source/output basenames,
 		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
@@ -5376,7 +5848,8 @@ fn main() {
 		mut tried_tcc := false
 		mut tcc_cache_hit := false
 		mut used_tcc := false
-		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language {
+		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language
+			&& !is_c_debug {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -5385,6 +5858,9 @@ fn main() {
 			tcc_lib := '-L${tcc_lib_dir}'
 			mut tcc_args := [c_standard, tcc_includes, tcc_lib, '-w',
 				'-Werror=implicit-function-declaration']
+			if wrapv_flag.len > 0 {
+				tcc_args << wrapv_flag
+			}
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', 'out', os.base(tcc_main_file)]
 			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
@@ -5410,7 +5886,7 @@ fn main() {
 				tcc_cache_hit = os.is_file(cc_out)
 				used_tcc = tcc_cache_hit
 			}
-			if !silent {
+			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
 					' (cached)'
 				} else {
@@ -5431,7 +5907,7 @@ fn main() {
 		// undeclared-function diagnostics remain enforced.
 		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
-			&& !cache_state.manager.enabled {
+			&& !cache_state.manager.enabled && !is_c_debug {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -5465,7 +5941,7 @@ fn main() {
 			}
 			tcc_args << resolved_c_flags
 			tcc_args << '-lm'
-			if !silent {
+			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
@@ -5496,6 +5972,9 @@ fn main() {
 			if prefs.normalized_target_os() == 'macos' && !is_shared {
 				cc_args << '-Wl,-stack_size,0x4000000'
 			}
+			if is_c_debug && prefs.normalized_target_os() == 'macos' && !is_shared {
+				cc_args << '-Wl,-export_dynamic'
+			}
 			if is_shared {
 				cc_args << '-shared'
 			}
@@ -5519,11 +5998,17 @@ fn main() {
 			}
 			cc_args << resolved_c_flags
 			cc_args << '-lm'
-			if !silent {
+			if !silent || show_cc {
 				println('  > ${cmdexec.display(c_compiler, cc_args)}')
 			}
 			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
 			if result.exit_code != 0 {
+				if request_macos_v3_c_error_fallback(macos_v3_fallback_file, macos_v3_c_error_dir,
+					c_compiler, result.output, os.join_path_single(cc_dir, fallback_source))
+				{
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
 				eprintln('C compilation failed:')
 				eprintln(result.output)
 				cleanup_c_build_dir(cc_dir)
@@ -5554,8 +6039,15 @@ fn main() {
 		} else {
 			'cc'
 		})
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		if should_run {
+			if is_direct_vsh && !explicit_output {
+				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}
+			}
 			run_result := run_binary(bin_file, run_args)
+			if remove_binary_after_run {
+				os.rm(bin_file) or {}
+			}
 			if run_result != 0 {
 				exit(run_result)
 			}
@@ -5568,6 +6060,7 @@ fn main() {
 			b.step('test')
 		}
 	}
+	clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 
 	worker_stats := a.worker_stats()
 	b.metric('worker phase callbacks', i64(worker_stats.tasks_run), 'tasks')
@@ -6314,6 +6807,7 @@ fn restart_v3_with_args(extra_args []string) {
 	executable := os.executable()
 	mut args := extra_args.clone()
 	args << os.args[1..]
+	os.setenv(v3_internal_restart_env, '1', true)
 	$if js {
 		mut command := [os.quoted_path(executable)]
 		for arg in args {

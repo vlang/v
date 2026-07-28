@@ -235,6 +235,7 @@ mut:
 	runtime_init_modules         []string
 	compiler_vroot               string
 	compiler_vexe                string
+	compiler_vexe_env_setup      bool = true
 	target                       pref.Target
 	thread_stack_size            int = 8 * 1024 * 1024
 	compile_values               map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
@@ -862,6 +863,11 @@ fn (g &FlatGen) top_level_nodes() []int {
 // set_compiler_vexe sets the V executable path baked into generated test/runtime helpers.
 pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 	g.compiler_vexe = path
+}
+
+// set_compiler_vexe_env_setup controls whether generated programs populate an unset VEXE.
+pub fn (mut g FlatGen) set_compiler_vexe_env_setup(enabled bool) {
+	g.compiler_vexe_env_setup = enabled
 }
 
 // set_target sets the canonical code-generation target.

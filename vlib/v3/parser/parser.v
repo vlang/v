@@ -8,6 +8,8 @@ import v3.flat
 import v3.pref
 import v3.scanner
 import v3.token
+import v.util
+import v.util.version
 
 const max_parse_diagnostics = 100
 
@@ -544,6 +546,14 @@ fn vmod_root_for_file(path string) string {
 		dir = parent
 	}
 	return dir
+}
+
+fn vmod_hash_for_file(path string) !string {
+	root := vmod_root_for_file(path)
+	if !os.is_file(os.join_path_single(root, 'v.mod')) {
+		return error('@VMODHASH can only be used in projects that have a v.mod file')
+	}
+	return version.githash(root)
 }
 
 // next supports next handling for Parser.
@@ -2397,7 +2407,7 @@ fn (mut p Parser) skip_attrs() {
 		p.next()
 		if p.tok == .key_if {
 			p.next()
-			if !p.eval_comptime_cond(p.parse_attribute_comptime_cond()) {
+			if !p.eval_attribute_comptime_cond(p.parse_attribute_comptime_cond()) {
 				p.skip_next_decl = true
 			}
 		}
@@ -2564,7 +2574,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 		p.next() // consume `@[` / `[`
 		if p.tok == .key_if {
 			p.next()
-			if !p.eval_comptime_cond(p.parse_attribute_comptime_cond()) {
+			if !p.eval_attribute_comptime_cond(p.parse_attribute_comptime_cond()) {
 				p.skip_next_decl = true
 			}
 			p.check(.rsbr)
@@ -3376,7 +3386,17 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					}
 					write_comptime_cond_string(mut out, content.replace('\r\n', '\n'))
 				}
-				'@VEXEROOT' {
+				'@VMODHASH' {
+					hash := vmod_hash_for_file(p.cur_file) or {
+						message := p.a.add_val_id(5, err.msg())
+						call := p.make_compile_error_call(message, pseudo_pos + start, pseudo_pos +
+							i)
+						_ = p.make_top_level_compile_error(call)
+						''
+					}
+					write_comptime_cond_string(mut out, hash)
+				}
+				'@VEXEROOT', '@VROOT' {
 					write_comptime_cond_string(mut out, p.prefs.vroot)
 				}
 				'@VEXE' {
@@ -3386,9 +3406,12 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 				'@LINE' {
 					write_comptime_cond_string(mut out, p.line_nr_for_pos(pseudo_pos).str())
 				}
+				'@COLUMN' {
+					write_comptime_cond_string(mut out, p.column_for_pos(pseudo_pos + start).str())
+				}
 				'@FILE_LINE' {
 					write_comptime_cond_string(mut out,
-						'${os.real_path(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
+						'${os.file_name(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
 				}
 				'@METHOD' {
 					write_comptime_cond_string(mut out, method_name)
@@ -3427,16 +3450,21 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					write_comptime_cond_string(mut out, p.prefs.normalized_target_os())
 				}
 				'@CCOMPILER' {
-					write_comptime_cond_string(mut out, @CCOMPILER)
+					write_comptime_cond_string(mut out, p.prefs.ccompiler)
 				}
 				'@BACKEND' {
 					write_comptime_cond_string(mut out, p.prefs.backend)
 				}
 				'@PLATFORM' {
-					write_comptime_cond_string(mut out, @PLATFORM)
+					write_comptime_cond_string(mut out, p.prefs.comptime_platform())
 				}
 				'@VCURRENTHASH', '@VHASH' {
-					write_comptime_cond_string(mut out, '')
+					hash := if name == '@VHASH' {
+						p.prefs.vhash
+					} else {
+						p.prefs.vcurrent_hash
+					}
+					write_comptime_cond_string(mut out, hash)
 				}
 				else {
 					out.write_string(name)
@@ -3859,6 +3887,27 @@ fn (mut p Parser) parse_top_level_comptime_else() flat.NodeId {
 fn (p &Parser) eval_comptime_cond(cond string) bool {
 	return p.eval_comptime_cond_with_target_override(cond,
 		p.tok_pos in p.unsupported_inline_asm_guards)
+}
+
+fn (p &Parser) eval_attribute_comptime_cond(cond string) bool {
+	name := comptime_cond_strip_outer_parens(cond.trim_space())
+	mut is_name := name.len > 0
+	for c in name {
+		if !c.is_letter() && !c.is_digit() && c != `_` {
+			is_name = false
+			break
+		}
+	}
+	if is_name {
+		for define in p.prefs.user_defines {
+			if define == name || define.starts_with('${name}=') {
+				// Attribute guards allow explicit `-d` overrides even when the
+				// name is also a built-in flag. `$if debug` still follows -g/-cg.
+				return true
+			}
+		}
+	}
+	return p.eval_comptime_cond(cond)
 }
 
 fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_target_arch bool) bool {
@@ -4468,9 +4517,9 @@ fn (p &Parser) comptime_cond_name_is_flag(cond string, name string, end int) boo
 		'android', 'termux', 'wasm32_emscripten', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64',
 		'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv64', 'riscv64', 's390x', 'ppc64', 'ppc64le',
 		'loongarch64', 'wasm32', 'little_endian', 'big_endian', 'debug', 'test', 'native',
-		'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm',
-		'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat',
-		'threads' {
+		'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc',
+		'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree',
+		'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
 			return true
 		}
 		else {}
@@ -5022,14 +5071,25 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			return flat.empty_node
 		}
 		p.next()
-		// First argument is the compile-time define name. v3 currently only
-		// uses the default expression, so consume the name expression.
+		define_name := if p.tok == .string { strip_quotes(p.lit) } else { '' }
+		// The first argument is the compile-time define name.
 		if p.tok != .comma && p.tok != .rpar && p.tok != .eof {
 			p.expr(.lowest)
 		}
 		if p.tok == .comma {
 			p.next()
-			default_expr := p.expr(.lowest)
+			mut value_expr := p.expr(.lowest)
+			default := p.a.node(value_expr)
+			if value := p.prefs.compile_values[define_name] {
+				if default.kind in [.bool_literal, .char_literal, .float_literal, .string_literal,
+					.int_literal] {
+					resolved := resolve_comptime_define_literal(default, value) or {
+						p.record_diagnostic(err.msg(), dollar_pos)
+						*default
+					}
+					value_expr = p.a.add_node(resolved)
+				}
+			}
 			for p.tok != .rpar && p.tok != .eof {
 				p.next()
 			}
@@ -5037,7 +5097,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			return p.add_node(flat.Node{
 				kind:           .paren
 				value:          '__v3_comptime_d'
-				children_start: p.add_child(default_expr)
+				children_start: p.add_child(value_expr)
 				children_count: 1
 				pos:            p.span_to(dollar_pos)
 			})
@@ -5103,7 +5163,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		if p.tok == .lpar {
 			p.next() // skip (
 			if p.tok == .string {
-				env_val = os.getenv(strip_quotes(p.lit))
+				env_val = pref.macos_v3_caller_env_value(strip_quotes(p.lit))
 				p.next()
 			}
 			for p.tok != .rpar && p.tok != .eof {
@@ -5150,6 +5210,45 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+fn resolve_comptime_define_literal(default &flat.Node, value string) !flat.Node {
+	match default.kind {
+		.bool_literal {
+			if value !in ['true', 'false'] {
+				return error('bool literal `true` or `false` expected, found "${value}"')
+			}
+		}
+		.char_literal {
+			if value.starts_with('\\') {
+				if value.len <= 1 {
+					return error('empty escape sequence found')
+				}
+				if !util.is_escape_sequence(value[1]) {
+					return error('char literal escape sequence expected, found "${value}"')
+				}
+			} else if value.len != 1 {
+				return error('char literal expected, found "${value}"')
+			}
+		}
+		.float_literal {
+			if value.count('.') != 1 {
+				return error('f64 literal expected, found "${value}"')
+			}
+		}
+		.int_literal {
+			if !value.is_int() {
+				return error('i64 literal expected, found "${value}"')
+			}
+		}
+		.string_literal {}
+		else {
+			return error('expected pure literal, found "${value}"')
+		}
+	}
+	mut resolved := *default
+	resolved.value = value
+	return resolved
 }
 
 fn defer_result_index_literal(value string) ?int {
@@ -8503,7 +8602,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				return p.add_val_id(5, content.replace('\r\n', '\n'))
 			}
-			if name == '@VEXEROOT' {
+			if name == '@VMODHASH' {
+				hash := vmod_hash_for_file(p.cur_file) or {
+					message := p.add_val_id(5, err.msg())
+					return p.make_compile_error_call(message, name_pos, p.prev_tok_end)
+				}
+				return p.add_val_id(5, hash)
+			}
+			if name in ['@VEXEROOT', '@VROOT'] {
 				return p.add_val_id(5, p.prefs.vroot)
 			}
 			if name == '@VEXE' {
@@ -8516,8 +8622,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				// like V1, `@LINE` is a string literal holding the 1-based line number
 				return p.add_val_id(5, p.line_nr_for_pos(name_pos).str())
 			}
+			if name == '@COLUMN' {
+				return p.add_val_id(5, p.column_for_pos(name_pos).str())
+			}
 			if name == '@FILE_LINE' {
-				return p.add_val_id(5, '${os.real_path(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
+				return p.add_val_id(5, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {
@@ -8565,16 +8674,20 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, p.prefs.normalized_target_os())
 			}
 			if name == '@CCOMPILER' {
-				return p.add_val_id(5, @CCOMPILER)
+				return p.add_val_id(5, p.prefs.ccompiler)
 			}
 			if name == '@BACKEND' {
 				return p.add_val_id(5, p.prefs.backend)
 			}
 			if name == '@PLATFORM' {
-				return p.add_val_id(5, @PLATFORM)
+				return p.add_val_id(5, p.prefs.comptime_platform())
 			}
 			if name == '@VCURRENTHASH' || name == '@VHASH' {
-				return p.add_val_id(5, '')
+				return p.add_val_id(5, if name == '@VHASH' {
+					p.prefs.vhash
+				} else {
+					p.prefs.vcurrent_hash
+				})
 			}
 			if name == 'chan' && p.can_start_type_name() {
 				if p.tok == .not {

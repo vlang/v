@@ -488,6 +488,32 @@ fn test_m32_does_not_override_explicit_arch() {
 	assert prefs.build_options.contains('-m32')
 }
 
+fn test_v3_memory_limit_passthrough_flags_are_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for flag in ['-no-memory-limit', '--no-memory-limit'] {
+		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
+		assert command == target
+		assert flag !in prefs.build_options
+	}
+}
+
+fn test_old_compiler_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-old-compiler', target], false)
+	assert command == target
+	assert prefs.old_compiler
+	assert '-old-compiler' !in prefs.build_options
+}
+
+fn test_compact_boolean_define_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-dfeature', target], false)
+	assert command == target
+	assert prefs.compile_values['feature'] == 'true'
+	assert 'feature' in prefs.compile_defines
+	assert prefs.build_options.contains('-d feature')
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
