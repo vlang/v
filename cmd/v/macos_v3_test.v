@@ -95,6 +95,9 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert !macos_v3_args_are_supported(['-path', '@vlib', 'main.v'])
 		assert !macos_v3_args_are_supported(['-show-c-output', 'main.v'])
 		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
+		for help_flag in ['-?', '-h', '-help', '--help'] {
+			assert !macos_v3_args_are_supported(['-gc', 'none', help_flag, 'main.v'])
+		}
 	}
 }
 

@@ -106,7 +106,7 @@ fn macos_v3_args_are_supported(args []string) bool {
 			'--all-backends', '-g', '-cg', '-autofree', '-v', '-silent', '-checker-fixture', '-stats',
 			'-show-timings', '-showcc', '-keepc', '-w', '-no-retry-compilation', '-skip-running',
 			'-usecache', '-no-prealloc', '--no-prealloc', '-nocache', '--no-cache',
-			'-no-memory-limit', '--no-memory-limit', '-prealloc', '-enable-globals', '-h', '--help'] {
+			'-no-memory-limit', '--no-memory-limit', '-prealloc', '-enable-globals'] {
 			i++
 			continue
 		}
