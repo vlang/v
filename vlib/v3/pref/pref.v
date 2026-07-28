@@ -164,11 +164,11 @@ pub fn has_macos_v3_caller_environment() bool {
 
 // macos_v3_caller_env_value returns the caller-visible value for compile-time `$env`.
 pub fn macos_v3_caller_env_value(name string) string {
-	if !has_macos_v3_caller_environment() {
-		return os.getenv(name)
-	}
 	if name in macos_v3_private_environment_names {
 		return ''
+	}
+	if !has_macos_v3_caller_environment() {
+		return os.getenv(name)
 	}
 	if name == 'VEXE' {
 		return if os.getenv(macos_v3_caller_vexe_present_env) == '1' {
@@ -190,13 +190,12 @@ pub fn macos_v3_caller_env_value(name string) string {
 // macos_v3_caller_environment returns the environment that delegated run children should see.
 pub fn macos_v3_caller_environment() map[string]string {
 	mut environment := os.environ()
-	if !has_macos_v3_caller_environment() {
-		return environment
+	if has_macos_v3_caller_environment() {
+		restore_macos_v3_caller_environment_value(mut environment, 'VEXE',
+			macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD',
+			macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
 	}
-	restore_macos_v3_caller_environment_value(mut environment, 'VEXE', macos_v3_caller_vexe_env,
-		macos_v3_caller_vexe_present_env)
-	restore_macos_v3_caller_environment_value(mut environment, 'VCHILD',
-		macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
 	for name in macos_v3_private_environment_names {
 		environment.delete(name)
 	}

@@ -4241,8 +4241,6 @@ fn main() {
 		}
 		exit(1)
 	}
-	os.unsetenv(macos_v3_fallback_file_env)
-	os.unsetenv(macos_v3_c_error_dir_env)
 	// Parsing workers canonicalize source-backed node text before their buffers
 	// are released. Metadata keys are finalized here before semantic phases begin.
 	p.release_source_storage()

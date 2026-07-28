@@ -1591,6 +1591,72 @@ fn main() {
 	assert !stdout.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 }
 
+fn test_module_cache_restart_preserves_macos_fallback_transport() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_restart_fallback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn value() int {
+	return 41
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+
+	// Adding a C flag changes the cached compile signature and restarts V3 after parsing.
+	write_module_cache_file(root, 'main.v', "module main
+
+#flag -DV3_CACHE_RESTART_FALLBACK_PROBE
+
+import os
+import wrapper
+
+fn main() {
+	mut marker := os.open_append(os.args[1]) or { panic(err) }
+	marker.writeln('run') or { panic(err) }
+	marker.close()
+	println(wrapper.value())
+	exit(23)
+}
+")
+	fallback_file := os.join_path(root, 'fallback')
+	report_dir := os.join_path(root, 'c_error')
+	side_effect_file := os.join_path(root, 'side_effects')
+	mut environment := os.environ()
+	environment['V3CACHE'] = cache_dir
+	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
+	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
+	mut process := os.new_process(v3_bin)
+	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	exit_code := process.code
+	process.close()
+	assert exit_code == 23, output
+	assert output == '41\n', output
+	assert os.read_lines(side_effect_file)! == ['run']
+	assert !os.exists(fallback_file), 'cache restart left a stale fallback marker'
+	assert !os.exists(report_dir), 'cache restart exposed or staged a C error report'
+}
+
 fn test_cached_objects_receive_forced_include_flags() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_forced_include_${os.getpid()}')

@@ -315,14 +315,16 @@ fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 		environment_source := os.join_path(root, 'fallback_environment.v')
 		os.write_file(environment_source, "import os
 
+const compile_fallback = \$env('V_MACOS_V3_FALLBACK_FILE')
+
 fn main() {
-	println(os.getenv('V_MACOS_V3_FALLBACK_FILE'))
+	println(compile_fallback + '|' + os.getenv('V_MACOS_V3_FALLBACK_FILE'))
 }
 ")!
 		environment_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
 			'-no-memory-limit', 'run', environment_source], environment)
 		assert environment_run.exit_code == 0, environment_run.output
-		assert environment_run.output == '\n', environment_run.output
+		assert environment_run.output == '|\n', environment_run.output
 		assert !os.exists(fallback_file)
 	}
 }

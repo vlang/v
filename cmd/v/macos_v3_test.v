@@ -186,6 +186,42 @@ fn test_macos_v3_bootstrap_clears_argument_environment() {
 	}
 }
 
+fn test_macos_v3_external_tool_children_do_not_inherit_bootstrap() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'macos_v3_external_tool_env_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		target := os.join_path(root, 'bootstrap_environment_test.v')
+		os.write_file(target, "import os
+
+const compile_bootstrap = \$env('V_MACOS_V3_BOOTSTRAP')
+
+fn test_bootstrap_is_private() {
+	assert compile_bootstrap == ''
+	assert os.getenv('V_MACOS_V3_BOOTSTRAP') == ''
+}
+")!
+		mut environment := os.environ()
+		environment.delete(macos_v3_bootstrap_env)
+		environment[macos_v3_executable_env] = os.join_path(root, 'missing_v3')
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['test', target])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, output
+	}
+}
+
 fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 	$if macos {
 		caller_environment := {
