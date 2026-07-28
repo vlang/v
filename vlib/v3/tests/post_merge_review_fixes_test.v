@@ -6736,6 +6736,35 @@ value
 	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
 }
 
+fn test_inline_template_control_bodies_use_template_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('inline_template_control_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('inline_control.txt')
+}
+")
+	write_project_file(root, 'inline_control.txt', '@if true { @missing_if }
+@for item in [1] { @missing_for }
+')
+	output := tmp_test_path('inline_template_control_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('inline_control.txt:1:14: error: undefined ident: `missing_if`'), compile.output
+
+	assert compile.output.contains('inline_control.txt:2:22: error: undefined ident: `missing_for`'), compile.output
+
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert !compile.output.contains('<veb-template>'), compile.output
+}
+
 fn test_qualified_struct_literal_in_select_send_condition() {
 	v3_bin := build_v3()
 	result := run_good_project_result(v3_bin, 'qualified_struct_literal_select_send', '', {
@@ -6923,6 +6952,101 @@ fn main() {
 }
 ')
 	assert out == 'done'
+}
+
+fn test_recursive_str_exhaustive_enum_and_sum_matches_count_as_progress() {
+	v3_bin := build_v3()
+	enum_out := run_good(v3_bin, 'recursive_str_exhaustive_enum_match_progress', 'enum Mode {
+	one
+	two
+}
+
+struct Item {
+	mode Mode
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	match item.mode {
+		.one { item.remaining-- }
+		.two { item.remaining-- }
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	decrement(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert enum_out == 'done'
+
+	sum_out := run_good(v3_bin, 'recursive_str_exhaustive_sum_match_progress', 'struct First {}
+struct Second {}
+type Mode = First | Second
+
+struct Item {
+	mode Mode = First{}
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	match item.mode {
+		First { item.remaining-- }
+		Second { item.remaining-- }
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	decrement(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert sum_out == 'done'
+}
+
+fn test_duplicate_function_diagnostics_survive_body_errors() {
+	check_src := '${tmp_test_path('duplicate_fn_with_body_error')}.v'
+	os.write_file(check_src, "fn duplicate() int {
+	return 'bad'
+}
+
+fn duplicate(value int) {}
+") or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.severity == 'builder error:'
+		&& it.msg == 'redefinition of function `duplicate`'), tc.errors.str()
+	assert tc.errors.filter(it.severity == 'conflicting declaration:'
+		&& it.node_value == 'duplicate').len == 2, tc.errors.str()
+	assert tc.errors.any(it.msg.contains('cannot use `string` as type `int` in return argument')), tc.errors.str()
 }
 
 fn test_bare_generic_inference_suppression_stays_with_return_declaration() {

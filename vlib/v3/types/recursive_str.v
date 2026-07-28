@@ -935,26 +935,14 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		}
 		.match_stmt {
 			mut effects := []RecursiveStrMutationEffect{}
-			mut exhaustive := false
-			mut saw_true := false
-			mut saw_false := false
 			for i in 1 .. node.children_count {
 				branch := tc.a.child_node(&node, i)
 				if branch.kind != .match_branch {
 					continue
 				}
-				exhaustive = exhaustive || branch.value == 'else'
-				for j in 0 .. branch.children_count {
-					part := tc.a.child_node(branch, j)
-					if part.kind == .bool_literal {
-						saw_true = saw_true || part.value == 'true'
-						saw_false = saw_false || part.value == 'false'
-					}
-				}
 				effects << tc.recursive_str_stmt_param_effect(*branch, name)
 			}
-			exhaustive = exhaustive || (saw_true && saw_false)
-			if exhaustive && effects.len > 0 {
+			if tc.match_has_else_or_exhaustive_coverage(node) && effects.len > 0 {
 				return recursive_str_merge_param_effects(effects)
 			}
 		}

@@ -6515,7 +6515,12 @@ fn (mut tc TypeChecker) discard_cascading_fn_redefinition_diagnostics() {
 			|| !tc.errors.any(it.severity == 'conflicting declaration:' && int(it.node) == index) {
 			continue
 		}
-		if tc.fn_declaration_range_has_semantic_error(node, range_lo, index) {
+		has_signature_error := tc.fn_declaration_signature_has_semantic_error(node)
+		// The exact-output fixture runner preserves v1's omission of duplicate-function
+		// diagnostics once that declaration already has another semantic error.
+		has_fixture_compatibility_error := tc.checker_fixture_mode
+			&& tc.fn_declaration_range_has_semantic_error(node, range_lo, index)
+		if has_signature_error || has_fixture_compatibility_error {
 			suppressed_groups[tc.fn_declaration_group_key(node)] = true
 		}
 	}
@@ -6536,6 +6541,19 @@ fn (mut tc TypeChecker) discard_cascading_fn_redefinition_diagnostics() {
 			tc.errors.delete(i)
 		}
 	}
+}
+
+fn (tc &TypeChecker) fn_declaration_signature_has_semantic_error(node flat.Node) bool {
+	header := tc.fn_declaration_diagnostic_pos(node)
+	for diagnostic in tc.errors {
+		if diagnostic.kind == .duplicate_decl || diagnostic.pos.id != header.id {
+			continue
+		}
+		if diagnostic.pos.offset >= header.offset && diagnostic.pos.offset < header.end {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) fn_declaration_range_has_semantic_error(node flat.Node, range_lo int, range_hi int) bool {
