@@ -48,16 +48,28 @@ pub fn formatted_parser_diagnostic(kind string, message string, a &flat.FlatAst,
 }
 
 fn append_template_call_stack(result string, kind string, a &flat.FlatAst, pos token.Pos) string {
-	call_pos := a.template_call_sites[pos.id] or { return result }
-	call_file := a.source_files[call_pos.id] or { return result }
-	position := call_file.position(call_pos)
-	path := relative_error_path(call_file.name)
-	context_full := formatted_source_error(kind, '', call_file, call_pos)
-	context := context_full.all_after_first('\n')
-	if context.len == 0 {
-		return '${result}\ncalled from ${path}:${position.line}:${position.column}'
+	mut output := result
+	mut current := pos
+	mut visited := map[int]bool{}
+	for {
+		if current.id in visited {
+			break
+		}
+		visited[current.id] = true
+		call_pos := a.template_call_sites[current.id] or { break }
+		if call_file := a.source_files[call_pos.id] {
+			position := call_file.position(call_pos)
+			path := relative_error_path(call_file.name)
+			context_full := formatted_source_error(kind, '', call_file, call_pos)
+			context := context_full.all_after_first('\n')
+			output += '\ncalled from ${path}:${position.line}:${position.column}'
+			if context.len > 0 {
+				output += '\n${context}'
+			}
+		}
+		current = call_pos
 	}
-	return '${result}\ncalled from ${path}:${position.line}:${position.column}\n${context}'
+	return output
 }
 
 // formatted_source_error renders a diagnostic for a source file and byte span.

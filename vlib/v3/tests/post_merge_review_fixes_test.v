@@ -6778,6 +6778,32 @@ fn main() {
 	assert compile.output.contains('dollar_columns.txt:1:12: error: undefined ident: `second`'), compile.output
 }
 
+fn test_template_translation_shorthand_diagnostics_use_template_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_translation_shorthand_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('translation.html')
+}
+")
+	write_project_file(root, 'translation.html', '%title
+')
+	output := tmp_test_path('template_translation_shorthand_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('translation.html:1:'), compile.output
+	assert compile.output.contains('undefined ident: `ctx`'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert !compile.output.contains('<veb-template>'), compile.output
+}
+
 fn test_template_control_diagnostics_use_template_source() {
 	v3_bin := build_v3()
 	root := '${tmp_test_path('template_control_diagnostics')}_project'
@@ -7587,6 +7613,32 @@ fn main() {
 }
 ')
 	assert out == 'done'
+}
+
+fn test_recursive_str_helper_terminal_rebind_is_not_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_terminal_rebind', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut copy Item, original Item, reset bool) {
+	copy.remaining--
+	if reset {
+		copy = original
+		return
+	}
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	advance(mut copy, item, true)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
 }
 
 fn test_duplicate_function_diagnostics_survive_body_errors() {

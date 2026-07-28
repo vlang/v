@@ -1336,8 +1336,9 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 	for generated_index, generated_line in generated_lines {
 		for template_index in template_search_start .. source_lines.len {
 			template_line := source_lines[template_index].text
-			plain := tmpl_line_content(template_line, false)
-			escaped := tmpl_line_content(template_line, true)
+			expanded_template_line := expand_veb_tr_shorthand(template_line)
+			plain := tmpl_line_content(expanded_template_line, false)
+			escaped := tmpl_line_content(expanded_template_line, true)
 			matches_content := (plain.len > 0 && generated_line.contains(plain))
 				|| (escaped.len > 0 && generated_line.contains(escaped))
 			mut matches_control := false
