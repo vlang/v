@@ -34,6 +34,21 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 	assert alias_run.exit_code == 0, alias_run.output
 	assert alias_run.output.trim_space() == '42', alias_run.output
 
+	wrapped_fn_compile := compile_interface_return(v3_bin, 'wrapped_fn_alias',
+		'type MathOp = fn (int, int) int\n\ninterface Calculator {\n\tget_operation() ?MathOp\n}\n\nstruct SimpleCalc {}\n\nfn (s SimpleCalc) get_operation() ?MathOp {\n\treturn fn (a int, b int) int {\n\t\treturn a + b\n\t}\n}\n\nfn main() {\n\tcalc := Calculator(SimpleCalc{})\n\toperation := calc.get_operation() or { panic("missing operation") }\n\tprintln(operation(2, 3))\n}\n')
+	assert wrapped_fn_compile.exit_code == 0, wrapped_fn_compile.output
+	wrapped_fn_bin := os.join_path(os.temp_dir(),
+		'v3_interface_return_wrapped_fn_alias_${os.getpid()}')
+	wrapped_fn_run := os.execute(os.quoted_path(wrapped_fn_bin))
+	assert wrapped_fn_run.exit_code == 0, wrapped_fn_run.output
+	assert wrapped_fn_run.output.trim_space() == '5', wrapped_fn_run.output
+
+	wrapped_component_alias_compile := compile_interface_return(v3_bin,
+		'wrapped_fn_component_alias',
+		'type MyInt = int\n\ntype MathOp = fn (int, int) int\n\ntype AliasedMathOp = fn (MyInt, MyInt) MyInt\n\ninterface Calculator {\n\tget_operation() ?AliasedMathOp\n}\n\nstruct SimpleCalc {}\n\nfn (s SimpleCalc) get_operation() ?MathOp {\n\treturn fn (a int, b int) int {\n\t\treturn a + b\n\t}\n}\n\nfn main() {\n\t_ := Calculator(SimpleCalc{})\n}\n')
+	assert wrapped_component_alias_compile.exit_code != 0, wrapped_component_alias_compile.output
+	assert wrapped_component_alias_compile.output.contains('expected return type `?AliasedMathOp`'), wrapped_component_alias_compile.output
+
 	int_compile := compile_interface_return(v3_bin, 'integer_conversion',
 		'interface Provider {\n\tvalue() int\n}\n\nstruct WideValue {}\n\nfn (w WideValue) value() i64 {\n\treturn 42\n}\n\nfn main() {\n\t_ := Provider(WideValue{})\n}\n')
 	assert int_compile.exit_code != 0, int_compile.output
