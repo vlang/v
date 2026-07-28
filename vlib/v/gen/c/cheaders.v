@@ -373,6 +373,9 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #if defined(_MSC_VER) && !defined(__clang__)
 	#define V_CRT_LINKAGE __declspec(dllimport)
 	#define V_CRT_CALL VCALLCONV(cdecl)
+#elif defined(__MINGW32__) || defined(__MINGW64__)
+	#define V_CRT_LINKAGE __declspec(dllimport)
+	#define V_CRT_CALL
 #else
 	#define V_CRT_LINKAGE
 	#define V_CRT_CALL

@@ -29,7 +29,10 @@ fn test_background_watch_does_not_take_terminal() {
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
 		process.use_pgroup = true
-		$if macos || freebsd || openbsd {
+		$if openbsd {
+			command := '${os.quoted_path(shell_exe)} -m ${os.quoted_path(shell_path)} ${os.quoted_path(helper_path)} ${os.quoted_path(sleep_exe)} ${os.quoted_path(marker_path)}'
+			process.set_args(['-c', command, '/dev/null'])
+		} $else $if macos || freebsd {
 			process.set_args(['-q', '/dev/null', shell_exe, '-m', shell_path, helper_path, sleep_exe,
 				marker_path])
 		} $else {
@@ -83,7 +86,10 @@ fn test_background_restore_does_not_reclaim_terminal() {
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
 		process.use_pgroup = true
-		$if macos || freebsd || openbsd {
+		$if openbsd {
+			command := '${os.quoted_path(shell_exe)} -m ${os.quoted_path(shell_path)} ${os.quoted_path(helper_path)} ${os.quoted_path(marker_path)}'
+			process.set_args(['-c', command, '/dev/null'])
+		} $else $if macos || freebsd {
 			process.set_args(['-q', '/dev/null', shell_exe, '-m', shell_path, helper_path,
 				marker_path])
 		} $else {
@@ -127,7 +133,10 @@ fn test_watch_run_forwards_terminal_input() {
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
 		process.use_pgroup = true
-		$if macos || freebsd || openbsd {
+		$if openbsd {
+			command := '${os.quoted_path(vwatch_stdin_vexe)} watch run ${os.quoted_path(source_path)} ${os.quoted_path(marker_path)}'
+			process.set_args(['-c', command, '/dev/null'])
+		} $else $if macos || freebsd {
 			process.set_args(['-q', '/dev/null', vwatch_stdin_vexe, 'watch', 'run', source_path,
 				marker_path])
 		} $else {
