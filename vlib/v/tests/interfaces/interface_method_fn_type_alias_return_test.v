@@ -28,6 +28,10 @@ interface FactoryCalculator {
 	get_factory() MathFactory
 }
 
+interface OptionalCalculator {
+	get_operation() ?MathOp
+}
+
 struct SimpleCalc {}
 
 fn (s SimpleCalc) get_operation() MathOp {
@@ -75,6 +79,15 @@ fn (c CdeclFactoryCalc) get_factory() CdeclMathFactory {
 	}
 }
 
+struct OptionalSimpleCalc {}
+
+fn (c OptionalSimpleCalc) get_operation() ?MathOp {
+	_ = c
+	return fn (a int, b int) int {
+		return a + b
+	}
+}
+
 fn test_interface_method_fn_type_alias_return() {
 	calc := Calculator(SimpleCalc{})
 	operation := calc.get_operation()
@@ -102,4 +115,10 @@ fn test_interface_method_nested_fn_type_alias_omitted_callconv_matches_cdecl() {
 	factory := calc.get_factory()
 	operation := factory()
 	assert operation(12, 3) == 4
+}
+
+fn test_interface_method_option_fn_type_alias_return() {
+	calc := OptionalCalculator(OptionalSimpleCalc{})
+	operation := calc.get_operation() or { panic('missing operation') }
+	assert operation(2, 3) == 5
 }
