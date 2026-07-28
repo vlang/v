@@ -114,3 +114,25 @@ fn test_fasthttp_and_veb_linux_c_fn_redeclarations_are_compatible() {
 	result := os.execute('${c_fn_redeclaration_vexe} -os linux -check ${os.quoted_path(root)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_trace_calls_and_os_pthread_self_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_trace_calls_os_redeclaration', {
+		'main.v': 'module main\n\nimport os\n\nfn main() {\n\t_ := os.args\n}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result := os.execute('${c_fn_redeclaration_vexe} -trace-calls -check ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_picoev_and_os_notify_macos_c_fn_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_picoev_os_notify_macos_redeclaration', {
+		'main.v': 'module main\n\nimport os.notify as _\nimport picoev as _\n\nfn main() {}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result := os.execute('${c_fn_redeclaration_vexe} -os macos -check ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
