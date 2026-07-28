@@ -21,6 +21,7 @@ import log
 //                                           benchmark every <step>th commit of <year>
 //   v run . seed                            insert demo rows (to preview the UI)
 //   v run . import <table.html> [...]       migrate old fast.vlang.io history
+//   v run . export [-o <dir>]               render a static site for GitHub Pages
 //   v run . help
 
 const fast_dir = os.real_path(os.dir(@FILE))
@@ -94,6 +95,9 @@ fn main() {
 		'import' {
 			cmd_import(rest) or { fatal('import failed: ${err}') }
 		}
+		'export' {
+			cmd_export(rest) or { fatal('export failed: ${err}') }
+		}
 		'help', '-h', '--help' {
 			print_help()
 		}
@@ -120,6 +124,7 @@ Commands:
                                      benchmark every <step>th commit of a year
   seed                               insert demo rows (to preview the UI)
   import <table.html> [...]          migrate old fast.vlang.io history into fast.db
+  export [-o <dir>]                  render a static site (index.html + json) for GitHub Pages
   help                               show this help
 
 Database: ${db_path}')

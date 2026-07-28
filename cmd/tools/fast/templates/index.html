@@ -174,7 +174,8 @@ async function drawChart() {
 	const el = document.getElementById('chart');
 	if (!el) return;
 	let data;
-	try { data = await (await fetch('/api/benchmarks')).json(); } catch (e) { return; }
+	// relative URL so it works both from the veb server and the static export
+	try { data = await (await fetch('benchmarks.json')).json(); } catch (e) { return; }
 	if (!data || data.length === 0) return;
 
 	const dpr = window.devicePixelRatio || 1;

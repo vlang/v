@@ -55,15 +55,10 @@ pub fn (mut app App) index(mut ctx Context) veb.Result {
 	return $veb.html()
 }
 
-// api_benchmarks returns the whole history as JSON, oldest first, for charting.
-@['/api/benchmarks']
-pub fn (mut app App) api_benchmarks(mut ctx Context) veb.Result {
-	mut db := open_db() or { return ctx.server_error('database error: ${err}') }
-	list := load_benchmarks(db) or { return ctx.server_error('database error: ${err}') }
-	db.close() or {}
-
+// chart_points converts stored benchmarks (newest first) into chronological
+// chart points (oldest first), shared by the JSON endpoints and the static export.
+fn chart_points(list []Benchmark) []ChartPoint {
 	mut points := []ChartPoint{cap: list.len}
-	// load_benchmarks returns newest first; charts want chronological order
 	for i := list.len - 1; i >= 0; i-- {
 		b := list[i]
 		points << ChartPoint{
@@ -74,7 +69,29 @@ pub fn (mut app App) api_benchmarks(mut ctx Context) veb.Result {
 			hello:  b.hello_ms
 		}
 	}
-	return ctx.json(points)
+	return points
+}
+
+// benchmarks_json serves the chart data. The static export writes the same JSON
+// to a `benchmarks.json` file, so the page's chart works in both modes.
+@['/benchmarks.json']
+pub fn (mut app App) benchmarks_json(mut ctx Context) veb.Result {
+	return render_chart_json(mut ctx)
+}
+
+// api_benchmarks serves the same data under a stable API path.
+@['/api/benchmarks']
+pub fn (mut app App) api_benchmarks(mut ctx Context) veb.Result {
+	return render_chart_json(mut ctx)
+}
+
+// render_chart_json is a free function (not an App method) so veb does not
+// register it as its own route.
+fn render_chart_json(mut ctx Context) veb.Result {
+	mut db := open_db() or { return ctx.server_error('database error: ${err}') }
+	list := load_benchmarks(db) or { return ctx.server_error('database error: ${err}') }
+	db.close() or {}
+	return ctx.json(chart_points(list))
 }
 
 // health is a tiny liveness endpoint, handy when running as a background job.
