@@ -20,6 +20,13 @@ struct RecursiveStrConditionalParamFlow {
 	has_fallthrough bool
 }
 
+struct RecursiveStrParamLoopFlow {
+	fallthrough []RecursiveStrParamEffect
+	breaks      []RecursiveStrParamEffect
+	continues   []RecursiveStrParamEffect
+	returns     []RecursiveStrParamEffect
+}
+
 struct RecursiveStrReturnedParam {
 	name     string
 	index    int
@@ -915,13 +922,11 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		if !tc.errors.any(it.msg == message && it.pos == pos) {
 			tc.record_error_at(.unknown_fn, message, id, pos)
 		}
-	} else if callee.kind == .ident {
-		if callee_binding.is_recursive_str_method && callee_binding.can_recurse
-			&& !callee_binding.progressed {
-			message := 'cannot call `str()` method recursively'
-			if !tc.errors.any(it.msg == message && it.pos == callee.pos) {
-				tc.record_error_at(.unknown_fn, message, id, callee.pos)
-			}
+	} else if callee_binding.is_recursive_str_method && callee_binding.can_recurse
+		&& !callee_binding.progressed {
+		message := 'cannot call `str()` method recursively'
+		if !tc.errors.any(it.msg == message && it.pos == callee.pos) {
+			tc.record_error_at(.unknown_fn, message, id, callee.pos)
 		}
 	}
 	mut arg_bindings := []RecursiveStrBinding{}
@@ -1670,7 +1675,7 @@ fn (tc &TypeChecker) recursive_str_returned_params(decl flat.Node) ?[]RecursiveS
 				continue
 			}
 			value_id := tc.a.child(node, 0)
-			name := tc.recursive_str_root_ident(value_id) or { continue }
+			name := tc.recursive_str_returned_param_root(value_id) or { continue }
 			index := params[name] or { continue }
 			returned << RecursiveStrReturnedParam{
 				name:     name
@@ -1687,6 +1692,17 @@ fn (tc &TypeChecker) recursive_str_returned_params(decl flat.Node) ?[]RecursiveS
 		return returned
 	}
 	return none
+}
+
+fn (tc &TypeChecker) recursive_str_returned_param_root(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind in [.assoc, .paren, .cast_expr, .as_expr, .dump_expr] && node.children_count > 0 {
+		return tc.recursive_str_returned_param_root(tc.a.child(node, 0))
+	}
+	return tc.recursive_str_root_ident(id)
 }
 
 fn (tc &TypeChecker) recursive_str_direct_returned_ident(id flat.NodeId) ?string {
@@ -2135,9 +2151,212 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(id flat.NodeId, name str
 			}
 			return result
 		}
+		.for_stmt {
+			return tc.recursive_str_loop_param_effect(*node, name, depth)
+		}
 		else {}
 	}
 	return RecursiveStrParamEffect{}
+}
+
+fn (mut tc TypeChecker) recursive_str_loop_param_effect(node flat.Node, name string, depth int) RecursiveStrParamEffect {
+	if !tc.recursive_str_loop_guarantees_entry(node) || node.children_count < 3 {
+		return RecursiveStrParamEffect{}
+	}
+	flow := tc.recursive_str_param_loop_sequence(node, 3, [RecursiveStrParamEffect{}], name, depth)
+	if flow.fallthrough.len > 0 || flow.continues.len > 0 || flow.returns.len > 0 {
+		return RecursiveStrParamEffect{}
+	}
+	return recursive_str_merge_param_effects(flow.breaks)
+}
+
+fn (mut tc TypeChecker) recursive_str_param_loop_sequence(node flat.Node, start int, initial []RecursiveStrParamEffect, name string, depth int) RecursiveStrParamLoopFlow {
+	mut active := initial.clone()
+	mut breaks := []RecursiveStrParamEffect{}
+	mut continues := []RecursiveStrParamEffect{}
+	mut returns := []RecursiveStrParamEffect{}
+	for i in start .. int(node.children_count) {
+		mut next := []RecursiveStrParamEffect{}
+		for source in active {
+			flow := tc.recursive_str_param_loop_control_stmt(tc.a.child(&node, i), source, name,
+				depth)
+			next << flow.fallthrough
+			breaks << flow.breaks
+			continues << flow.continues
+			returns << flow.returns
+		}
+		active = next.clone()
+		if active.len == 0 {
+			break
+		}
+	}
+	return RecursiveStrParamLoopFlow{
+		fallthrough: active
+		breaks:      breaks
+		continues:   continues
+		returns:     returns
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_param_loop_control_stmt(id flat.NodeId, source RecursiveStrParamEffect, name string, depth int) RecursiveStrParamLoopFlow {
+	if !tc.valid_node_id(id) {
+		return RecursiveStrParamLoopFlow{
+			fallthrough: [source]
+		}
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.break_stmt {
+			return RecursiveStrParamLoopFlow{
+				breaks: [source]
+			}
+		}
+		.continue_stmt {
+			return RecursiveStrParamLoopFlow{
+				continues: [source]
+			}
+		}
+		.return_stmt {
+			return RecursiveStrParamLoopFlow{
+				returns: [source]
+			}
+		}
+		.block {
+			return tc.recursive_str_param_loop_sequence(*node, 0, [source], name, depth)
+		}
+		.if_expr {
+			return tc.recursive_str_param_loop_if(*node, source, name, depth)
+		}
+		.match_stmt {
+			return tc.recursive_str_param_loop_match(*node, source, name, depth)
+		}
+		.select_stmt {
+			return tc.recursive_str_param_loop_select(*node, source, name, depth)
+		}
+		else {
+			effect := tc.recursive_str_stmt_param_effect(id, name, depth)
+			final_effect := if effect.kind == .none { source } else { effect }
+			if node.kind == .expr_stmt && tc.expr_never_returns(id) {
+				return RecursiveStrParamLoopFlow{
+					returns: [final_effect]
+				}
+			}
+			return RecursiveStrParamLoopFlow{
+				fallthrough: [final_effect]
+			}
+		}
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_param_loop_if(node flat.Node, source RecursiveStrParamEffect, name string, depth int) RecursiveStrParamLoopFlow {
+	mut fallthrough := []RecursiveStrParamEffect{}
+	mut breaks := []RecursiveStrParamEffect{}
+	mut continues := []RecursiveStrParamEffect{}
+	mut returns := []RecursiveStrParamEffect{}
+	mut has_else := false
+	mut has_guaranteed_branch := false
+	mut i := 0
+	for i < node.children_count {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.node(child_id)
+		if child.kind == .block {
+			has_else = true
+			flow := tc.recursive_str_param_loop_sequence(*child, 0, [source], name, depth)
+			fallthrough << flow.fallthrough
+			breaks << flow.breaks
+			continues << flow.continues
+			returns << flow.returns
+			break
+		}
+		mut condition_is_true := false
+		mut condition_is_false := false
+		if value := tc.constant_bool_value(child_id) {
+			condition_is_true = value
+			condition_is_false = !value
+		}
+		if i + 1 >= node.children_count {
+			i++
+			continue
+		}
+		block := tc.a.child_node(&node, i + 1)
+		if block.kind != .block {
+			i++
+			continue
+		}
+		if !condition_is_false {
+			flow := tc.recursive_str_param_loop_sequence(*block, 0, [source], name, depth)
+			fallthrough << flow.fallthrough
+			breaks << flow.breaks
+			continues << flow.continues
+			returns << flow.returns
+		}
+		i += 2
+		if condition_is_true {
+			has_guaranteed_branch = true
+			break
+		}
+	}
+	if !has_else && !has_guaranteed_branch {
+		fallthrough << source
+	}
+	return RecursiveStrParamLoopFlow{
+		fallthrough: fallthrough
+		breaks:      breaks
+		continues:   continues
+		returns:     returns
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_param_loop_match(node flat.Node, source RecursiveStrParamEffect, name string, depth int) RecursiveStrParamLoopFlow {
+	mut fallthrough := []RecursiveStrParamEffect{}
+	mut breaks := []RecursiveStrParamEffect{}
+	mut continues := []RecursiveStrParamEffect{}
+	mut returns := []RecursiveStrParamEffect{}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			continue
+		}
+		start := if branch.value.is_int() { branch.value.int() } else { 0 }
+		flow := tc.recursive_str_param_loop_sequence(*branch, start, [source], name, depth)
+		fallthrough << flow.fallthrough
+		breaks << flow.breaks
+		continues << flow.continues
+		returns << flow.returns
+	}
+	if !tc.match_has_else_or_exhaustive_coverage(node) {
+		fallthrough << source
+	}
+	return RecursiveStrParamLoopFlow{
+		fallthrough: fallthrough
+		breaks:      breaks
+		continues:   continues
+		returns:     returns
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_param_loop_select(node flat.Node, source RecursiveStrParamEffect, name string, depth int) RecursiveStrParamLoopFlow {
+	mut fallthrough := []RecursiveStrParamEffect{}
+	mut breaks := []RecursiveStrParamEffect{}
+	mut continues := []RecursiveStrParamEffect{}
+	mut returns := []RecursiveStrParamEffect{}
+	for i in 0 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .select_branch {
+			continue
+		}
+		flow := tc.recursive_str_param_loop_sequence(*branch, 0, [source], name, depth)
+		fallthrough << flow.fallthrough
+		breaks << flow.breaks
+		continues << flow.continues
+		returns << flow.returns
+	}
+	return RecursiveStrParamLoopFlow{
+		fallthrough: fallthrough
+		breaks:      breaks
+		continues:   continues
+		returns:     returns
+	}
 }
 
 fn (tc &TypeChecker) recursive_str_conditional_stmt_id(id flat.NodeId) ?flat.NodeId {

@@ -7940,6 +7940,17 @@ fn (item Item) str() string {
 fn main() {}
 ',
 		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_indexed_bound_method_value', 'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	callbacks := [recurse]
+	return callbacks[0]()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_helper_summary_keeps_later_rebind() {
@@ -8365,6 +8376,23 @@ fn (item Item) str() string {
 fn main() {}
 ',
 		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_returned_struct_update', 'struct Item {
+	value int
+}
+
+fn same(item Item) Item {
+	return Item{
+		...item
+	}
+}
+
+fn (item Item) str() string {
+	return same(item).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_progressed_struct_update', 'struct Item {
 	remaining int
 }
@@ -8377,6 +8405,61 @@ fn (item Item) str() string {
 		...item
 		remaining: item.remaining - 1
 	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+	run_bad(v3_bin, 'recursive_str_helper_unconditional_loop_early_break', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	for {
+		if item.remaining == 0 {
+			break
+		}
+		item.remaining--
+	}
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_helper_unconditional_loop_progress() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_helper_unconditional_loop_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	for {
+		item.remaining--
+		break
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
 }
 
 fn main() {
