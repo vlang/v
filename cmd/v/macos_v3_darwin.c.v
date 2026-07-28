@@ -121,6 +121,11 @@ fn macos_v3_args_are_supported(args []string) bool {
 			if arg == '-o' && args[i + 1].starts_with('-') {
 				return false
 			}
+			// The established CLI treats this legacy alias as amd64, while V3
+			// uses x86 for its 32-bit target.
+			if arg == '-arch' && args[i + 1] == 'x86' {
+				return false
+			}
 			i += 2
 			continue
 		}
