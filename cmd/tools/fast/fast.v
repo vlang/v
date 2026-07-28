@@ -17,7 +17,7 @@ import log
 // Usage:
 //   v run . serve [-port 8080]              start the web app (default command)
 //   v run . bench [-clang] [-noprod]        benchmark the current HEAD commit
-//   v run . run [-year 2026] [-step 50] [-dry-run]
+//   v run . run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
 //                                           benchmark every <step>th commit of <year>
 //   v run . seed                            insert demo rows (to preview the UI)
 //   v run . help
@@ -56,6 +56,16 @@ fn lexec(cmd string) string {
 // git runs a git subcommand against `dir` and returns its trimmed output.
 fn git(dir string, subcmd string) string {
 	return lexec('git -C ${os.quoted_path(dir)} ${subcmd}')
+}
+
+// exe_name returns the platform-specific executable file name (V and its
+// builds are named `v`/`vprod` on unix, `v.exe`/`vprod.exe` on Windows).
+fn exe_name(base string) string {
+	$if windows {
+		return base + '.exe'
+	} $else {
+		return base
+	}
 }
 
 fn main() {
@@ -102,7 +112,7 @@ fn print_help() {
 Commands:
   serve [-port 8080]                 start the veb web app (default)
   bench [-clang] [-noprod]           benchmark the current HEAD commit
-  run [-year 2026] [-step 50] [-dry-run]
+  run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
                                      benchmark every <step>th commit of a year
   seed                               insert demo rows (to preview the UI)
   help                               show this help

@@ -12,7 +12,28 @@ const oldv_src = os.join_path(vdir, 'cmd', 'tools', 'oldv.v')
 
 // vexe returns the V compiler of the main checkout, used to drive `oldv`.
 fn vexe() string {
-	return os.join_path(vdir, 'v')
+	return os.join_path(vdir, exe_name('v'))
+}
+
+// resolve_history_ref picks the git revision to walk for the backfill. Not every
+// checkout has a local `master` (the reviewed one only had `main` + `work`), so
+// prefer an explicit -branch, then the remote's default branch, then a local
+// master/main, and finally HEAD, which always exists.
+fn resolve_history_ref(user_branch string) string {
+	if user_branch != '' {
+		return user_branch
+	}
+	gitc := 'git -C ${os.quoted_path(vdir)}'
+	origin := os.execute('${gitc} symbolic-ref --quiet --short refs/remotes/origin/HEAD')
+	if origin.exit_code == 0 && origin.output.trim_space() != '' {
+		return origin.output.trim_space()
+	}
+	for cand in ['master', 'main'] {
+		if os.execute('${gitc} rev-parse --verify --quiet ${cand}').exit_code == 0 {
+			return cand
+		}
+	}
+	return 'HEAD'
 }
 
 // cmd_run samples every <step>th commit of <year> (default: every 50th commit of
@@ -21,6 +42,7 @@ fn vexe() string {
 fn cmd_run(args []string) ! {
 	mut year := 2026
 	mut step := 50
+	mut branch := ''
 	dry := args.contains('-dry-run')
 	for i, a in args {
 		if a == '-year' && i + 1 < args.len {
@@ -29,18 +51,25 @@ fn cmd_run(args []string) ! {
 		if a == '-step' && i + 1 < args.len {
 			step = args[i + 1].int()
 		}
+		if a == '-branch' && i + 1 < args.len {
+			branch = args[i + 1]
+		}
 	}
 	if step < 1 {
 		step = 1
 	}
 
+	ref := resolve_history_ref(branch)
 	from := '${year}-01-01'
 	to := '${year + 1}-01-01'
-	out := git(vdir,
-		'log master --first-parent --reverse --since=${from} --until=${to} --pretty=format:%H')
-	commits := out.split_into_lines().filter(it.len > 0)
+	log_cmd := 'git -C ${os.quoted_path(vdir)} log ${ref} --first-parent --reverse --since=${from} --until=${to} --pretty=format:%H'
+	res := os.execute(log_cmd)
+	if res.exit_code != 0 {
+		return error('could not read history from `${ref}`: ${res.output.trim_space()}')
+	}
+	commits := res.output.split_into_lines().filter(it.len > 0)
 	if commits.len == 0 {
-		elog('no commits found for ${year}')
+		elog('no commits found for ${year} on ${ref}')
 		return
 	}
 
@@ -48,7 +77,7 @@ fn cmd_run(args []string) ! {
 	for i := 0; i < commits.len; i += step {
 		selected << commits[i]
 	}
-	elog('year ${year}: ${commits.len} commits on master, sampling every ${step}th => ${selected.len} benchmarks')
+	elog('year ${year}: ${commits.len} commits on ${ref}, sampling every ${step}th => ${selected.len} benchmarks')
 
 	// A dry run only lists what would be measured; keep it read-only and never
 	// touch the database (the source dir may not even be writable).
@@ -111,7 +140,7 @@ fn benchmark_commit(commit string, short string, message string, date time.Time,
 // working `./v` — the same way fast.vlang.io always produced historic compilers.
 fn build_with_oldv(commit string, args []string) !string {
 	dir := os.join_path(oldv_cache, 'v_at_' + commit)
-	built_v := os.join_path(dir, 'v')
+	built_v := os.join_path(dir, exe_name('v'))
 	if os.is_executable(built_v) {
 		elog('  oldv: reusing cached build at ${dir}')
 		return dir

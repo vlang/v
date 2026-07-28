@@ -36,17 +36,19 @@ fn cmd_bench(args []string) ! {
 // checkout's own `./v`.
 fn build_vprod(dir string, args []string) ! {
 	os.chdir(dir)!
+	v := os.join_path('.', exe_name('v'))
 	if args.contains('-noprod') {
 		elog('  building vprod (fast, non-prod) in ${dir} ...')
-		lexec('./v -o vprod cmd/v')
+		lexec('${v} -o vprod cmd/v')
 	} else {
 		// Note: intentionally NOT using -prealloc: on historic commits the
 		// prealloc allocator can crash at startup (SIGBUS), which would make
 		// every measurement time an instant crash instead of a real compile.
 		elog('  building vprod (-prod) in ${dir} ...')
-		lexec('./v -o vprod -prod cmd/v')
+		lexec('${v} -o vprod -prod cmd/v')
 	}
-	if !os.exists(os.join_path(dir, 'vprod')) {
+	// V appends `.exe` to the output name on Windows, so check the same.
+	if !os.exists(os.join_path(dir, exe_name('vprod'))) {
 		return error('failed to build vprod in ${dir}')
 	}
 }
@@ -57,7 +59,7 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 	// Use the system C compiler (cc). tcc is not available on every machine
 	// (e.g. arm64 macOS), and `-cc tcc` there silently falls back to cc anyway.
 	ccompiler := if args.contains('-clang') { 'clang' } else { 'cc' }
-	vprod := os.join_path(dir, 'vprod')
+	vprod := os.join_path(dir, exe_name('vprod'))
 	os.chdir(dir)!
 
 	// Sanity probe: make sure vprod actually compiles cmd/v to a real v.c before

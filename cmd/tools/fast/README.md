@@ -25,7 +25,7 @@ Run from inside `cmd/tools/fast/`:
 ```sh
 v run . serve [-port 8080]          # start the web app (default command)
 v run . bench [-clang] [-noprod]    # benchmark the current HEAD commit
-v run . run [-year 2026] [-step 50] [-dry-run]
+v run . run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
                                     # benchmark every <step>th commit of a year
 v run . seed                        # insert demo rows, to preview the UI
 v run . help
@@ -47,8 +47,9 @@ on the local machine.
 ./fast run                 # == ./fast run -year 2026 -step 50
 ```
 
-For 2026 that samples ~56 commits out of the 2771 on `master`. Preview the exact
-set first without building anything:
+For 2026 that samples ~56 commits out of the ~2770 on the repo's default branch
+(resolved from `origin/HEAD`, falling back to `master`/`main`/`HEAD`; override with
+`-branch <ref>`). Preview the exact set first without building anything:
 
 ```sh
 ./fast run -dry-run
