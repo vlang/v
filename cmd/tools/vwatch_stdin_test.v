@@ -18,21 +18,22 @@ fn test_background_watch_does_not_take_terminal() {
 		helper_path := os.join_path(tmp_dir, 'background_tty')
 		marker_path := os.join_path(tmp_dir, 'handed_off.txt')
 		shell_path := os.join_path(tmp_dir, 'run_background.sh')
+		sleep_exe := os.find_abs_path_of_executable('sleep') or { return }
 		os.write_file(source_path,
-			'import os\nimport v.util.vwatchtty\n\nfn main() {\n\thanded_off := vwatchtty.set_foreground_process_group(os.getpid(), vwatchtty.process_group())\n\tos.write_file(os.args[1], handed_off.str())!\n}\n')!
+			"import os\nimport v.util.vwatchtty\n\nfn main() {\n\tmut child := os.new_process(os.args[1])\n\tchild.use_pgroup = true\n\tchild.set_args(['10'])\n\tchild.run()\n\twatcher_pgid := vwatchtty.process_group()\n\thanded_off := vwatchtty.set_foreground_process_group(child.pid, watcher_pgid)\n\tworker_pgid := vwatchtty.process_group()\n\tchild.signal_term()\n\tchild.wait()\n\tchild.close()\n\tos.write_file(os.args[2], '\${handed_off},\${watcher_pgid},\${worker_pgid},\${child.pid}')!\n}\n")!
 		build_result :=
 			os.execute('${os.quoted_path(vwatch_stdin_vexe)} -o ${os.quoted_path(helper_path)} ${os.quoted_path(source_path)}')
 		assert build_result.exit_code == 0, build_result.output
-		os.write_file(shell_path, ['set -m', r'"$1" "$2" &', 'wait'].join('\n'))!
+		os.write_file(shell_path, ['set -m', r'"$1" "$2" "$3" &', 'wait'].join('\n'))!
 
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
 		process.use_pgroup = true
 		$if macos || freebsd || openbsd {
-			process.set_args(['-q', '/dev/null', shell_exe, '-m', shell_path, helper_path,
+			process.set_args(['-q', '/dev/null', shell_exe, '-m', shell_path, helper_path, sleep_exe,
 				marker_path])
 		} $else {
-			command := '${os.quoted_path(shell_exe)} -m ${os.quoted_path(shell_path)} ${os.quoted_path(helper_path)} ${os.quoted_path(marker_path)}'
+			command := '${os.quoted_path(shell_exe)} -m ${os.quoted_path(shell_path)} ${os.quoted_path(helper_path)} ${os.quoted_path(sleep_exe)} ${os.quoted_path(marker_path)}'
 			process.set_args(['-q', '-c', command, '/dev/null'])
 		}
 		process.run()
@@ -48,7 +49,11 @@ fn test_background_watch_does_not_take_terminal() {
 		process.wait()
 		output := process.stdout_slurp() + process.stderr_slurp()
 		process.close()
-		assert os.read_file(marker_path) or { '' } == 'false', output
+		groups := (os.read_file(marker_path) or { '' }).split(',')
+		assert groups.len == 4, output
+		assert groups[0] == 'false', output
+		assert groups[1] != groups[2], output
+		assert groups[2] == groups[3], output
 	}
 }
 

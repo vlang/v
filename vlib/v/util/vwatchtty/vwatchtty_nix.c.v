@@ -60,16 +60,17 @@ pub fn set_foreground_process_group(pid int, watcher_pgid int) bool {
 	if os.is_atty(0) == 0 {
 		return false
 	}
-	// A background watch job must not take the terminal away from the shell.
-	if C.tcgetpgrp(0) != watcher_pgid {
-		return false
-	}
 	// The child also calls setpgid before exec. Repeating it in the parent
 	// closes the race before the terminal foreground group is changed.
 	C.setpgid(pid, pid)
-	// Joining the child group makes Ctrl-C reach both the watched command and
-	// the watcher, while the manager remains available to reap the worker.
+	// Joining the child group makes terminal signals reach both the watched
+	// command and the worker, while the manager remains available to reap it.
 	joined_child_group := C.setpgid(0, pid) == 0
+	// A background watch job must not take the terminal away from the shell.
+	// It remains in the child group so that a child stop also stops the worker.
+	if C.tcgetpgrp(0) != watcher_pgid {
+		return false
+	}
 	previous_handler := C.signal(C.SIGTTOU, C.SIG_IGN)
 	result := C.tcsetpgrp(0, pid)
 	C.signal(C.SIGTTOU, previous_handler)
