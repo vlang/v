@@ -4073,7 +4073,10 @@ fn main() {
 	prefs.verbose = verbose
 	prefs.supports_inline_asm = is_checker_fixture
 	host_target := pref.host_target()
-	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
+	// `-keepc` promises a complete generated C translation unit. The module cache
+	// splits imported implementations into separate objects, so its main source
+	// alone cannot reproduce the build.
+	cache_enabled := backend == 'c' && !c_only && !no_cache && !keep_c && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	cache_salt := [

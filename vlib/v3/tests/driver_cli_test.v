@@ -793,6 +793,35 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	assert kept_files.len == 1, kept_files.str()
 	assert os.file_size(kept_files[0]) > 0
 	assert os.file_name(kept_files[0]).starts_with('implicit_build.')
+	keep_c_module_dir := os.join_path(root, 'keepcmod')
+	os.mkdir_all(keep_c_module_dir)!
+	os.write_file(os.join_path(keep_c_module_dir, 'keepcmod.v'), "module keepcmod
+
+pub fn message() string {
+	return 'cached module code retained'
+}
+")!
+	keep_c_module_program := os.join_path(root, 'keepc_modules.v')
+	keep_c_module_binary := keep_c_module_program.all_before_last('.v')
+	os.write_file(keep_c_module_program, 'import keepcmod
+
+fn main() {
+	println(keepcmod.message())
+}
+')!
+	keep_c_environment['V3CACHE'] = os.join_path(root, 'keepc_cache')
+	keep_c_module_build := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-keepc',
+		keep_c_module_program], keep_c_environment)
+	assert keep_c_module_build.exit_code == 0, keep_c_module_build.output
+	keep_c_module_run := cmdexec.run(keep_c_module_binary, [])
+	assert keep_c_module_run.exit_code == 0, keep_c_module_run.output
+	assert keep_c_module_run.output == 'cached module code retained\n', keep_c_module_run.output
+	kept_module_files :=
+		kept_c_files(keep_c_dir).filter(os.file_name(it).starts_with('keepc_modules.'))
+	assert kept_module_files.len == 1, kept_module_files.str()
+	kept_module_source := os.read_file(kept_module_files[0])!
+	assert kept_module_source.contains('keepcmod__message'), kept_module_source
+	assert kept_module_source.contains('cached module code retained'), kept_module_source
 	run_program := os.join_path(root, 'implicit_run.v')
 	run_binary := run_program.all_before_last('.v')
 	os.write_file(run_program, "println('ran once')")!
