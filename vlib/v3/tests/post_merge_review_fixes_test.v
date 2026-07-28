@@ -7923,3 +7923,86 @@ fn test_map_rebind_clears_unsafe_alias_provenance() {
 ',
 		'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
+
+fn test_recursive_str_struct_update_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_struct_update_provenance', 'struct Item {
+	value int
+}
+
+fn (item Item) str() string {
+	return Item{
+		...item
+	}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_struct_update_helper_provenance', 'struct Item {
+	value int
+}
+
+fn same(value Item) Item {
+	return value
+}
+
+fn (item Item) str() string {
+	return same(Item{
+		...item
+	}).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_progressed_struct_update', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	return Item{
+		...item
+		remaining: item.remaining - 1
+	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_unconditional_loop_has_no_zero_iteration_path() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_unconditional_loop_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	for {
+		copy.remaining--
+		break
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
