@@ -11,7 +11,9 @@ import arrays
 fn cmd_bench(args []string) ! {
 	commit := git(vdir, 'rev-parse HEAD')[..8]
 	message := git(vdir, 'log -n1 --pretty=format:%s ${commit}')
-	ts := git(vdir, 'log -n1 --pretty=format:%at ${commit}')
+	// committer date (%ct), not author date (%at): it is monotonic along
+	// first-parent history, so ordering by it preserves ancestry order.
+	ts := git(vdir, 'log -n1 --pretty=format:%ct ${commit}')
 	date := time.unix(ts.i64())
 	elog('Benchmarking HEAD ${commit} "${message}" (${date.format()})')
 
@@ -37,18 +39,26 @@ fn cmd_bench(args []string) ! {
 fn build_vprod(dir string, args []string) ! {
 	os.chdir(dir)!
 	v := os.join_path('.', exe_name('v'))
+	// V appends `.exe` to the output name on Windows, so use the same.
+	vprod := os.join_path(dir, exe_name('vprod'))
+	// Remove any stale vprod from a previous commit first: if the rebuild below
+	// fails, a leftover binary must not be benchmarked under the new commit hash.
+	os.rm(vprod) or {}
+	mut build_cmd := '${v} -o vprod -prod cmd/v'
 	if args.contains('-noprod') {
+		build_cmd = '${v} -o vprod cmd/v'
 		elog('  building vprod (fast, non-prod) in ${dir} ...')
-		lexec('${v} -o vprod cmd/v')
 	} else {
 		// Note: intentionally NOT using -prealloc: on historic commits the
 		// prealloc allocator can crash at startup (SIGBUS), which would make
 		// every measurement time an instant crash instead of a real compile.
 		elog('  building vprod (-prod) in ${dir} ...')
-		lexec('${v} -o vprod -prod cmd/v')
 	}
-	// V appends `.exe` to the output name on Windows, so check the same.
-	if !os.exists(os.join_path(dir, exe_name('vprod'))) {
+	res := os.execute(build_cmd)
+	if res.exit_code != 0 {
+		return error('vprod build failed (exit ${res.exit_code}) in ${dir}:\n${res.output}')
+	}
+	if !os.exists(vprod) {
 		return error('failed to build vprod in ${dir}')
 	}
 }
@@ -66,14 +76,15 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 	// timing anything. A broken build (e.g. it crashes at startup) must fail the
 	// commit, not silently record a ~2ms "instant crash" as a great result.
 	os.rm('v.c') or {}
-	probe := os.execute('${vprod} ${voptions} -o v.c cmd/v')
+	qvprod := os.quoted_path(vprod)
+	probe := os.execute('${qvprod} ${voptions} -o v.c cmd/v')
 	if probe.exit_code != 0 || !os.exists('v.c') || os.file_size('v.c') < 100_000 {
 		return error('vprod probe failed in ${dir} (exit ${probe.exit_code}); skipping commit')
 	}
 
-	v_c := measure('${vprod} ${voptions} -o v.c cmd/v', 'v -o v.c')!
-	v_self := measure('${vprod} ${voptions} -cc ${ccompiler} -o v2 cmd/v', 'v -o v')!
-	hello := measure('${vprod} ${voptions} -cc ${ccompiler} examples/hello_world.v', 'v hello.v')!
+	v_c := measure('${qvprod} ${voptions} -o v.c cmd/v', 'v -o v.c')!
+	v_self := measure('${qvprod} ${voptions} -cc ${ccompiler} -o v2 cmd/v', 'v -o v')!
+	hello := measure('${qvprod} ${voptions} -cc ${ccompiler} examples/hello_world.v', 'v hello.v')!
 	vc_size := int(os.file_size('v.c') / 1000)
 	scan, parse, check, cgen, vlines := measure_steps_minimal(vprod)!
 	lines_per_s := if v_c > 0 { int(f64(vlines) / f64(v_c) * 1000.0) } else { 0 }
@@ -148,7 +159,7 @@ fn measure_steps_minimal(vprod string) !(int, int, int, int, int) {
 }
 
 fn measure_steps_one_sample(vprod string) (int, int, int, int, int) {
-	cmd := '${vprod} ${voptions} -o v.c cmd/v'
+	cmd := '${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
 	resp := os.execute(cmd)
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0

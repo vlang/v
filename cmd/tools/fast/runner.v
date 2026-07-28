@@ -85,13 +85,18 @@ fn cmd_run(args []string) ! {
 		for idx, c in selected {
 			short := c[..8]
 			message := git(vdir, 'log -n1 --pretty=format:%s ${c}')
-			ts := git(vdir, 'log -n1 --pretty=format:%at ${c}')
+			ts := git(vdir, 'log -n1 --pretty=format:%ct ${c}')
 			date := time.unix(ts.i64())
 			elog('[${idx + 1:2}/${selected.len}] ${short} ${date.format()} ${message}')
 		}
 		elog('dry run: nothing was built or stored')
 		return
 	}
+
+	// Refresh the shared oldv cache once up front. oldv only auto-syncs when
+	// ~/.cache/oldv/{v,vc} is absent, so without this a stale cache cannot build
+	// commits newer than the last sync - breaking the scheduled/resumable use.
+	sync_oldv_cache()
 
 	mut db := open_db()!
 	defer {
@@ -102,7 +107,7 @@ fn cmd_run(args []string) ! {
 	for idx, c in selected {
 		short := c[..8]
 		message := git(vdir, 'log -n1 --pretty=format:%s ${c}')
-		ts := git(vdir, 'log -n1 --pretty=format:%at ${c}')
+		ts := git(vdir, 'log -n1 --pretty=format:%ct ${c}')
 		date := time.unix(ts.i64())
 		elog('[${idx + 1:2}/${selected.len}] ${short} ${date.format()} ${message}')
 		if benchmark_exists(db, short) {
@@ -130,6 +135,14 @@ fn benchmark_commit(commit string, short string, message string, date time.Time,
 	dir := build_with_oldv(commit, args)!
 	build_vprod(dir, args)!
 	return run_measurements(dir, short, message, date, args)!
+}
+
+// sync_oldv_cache updates the shared oldv source cache (~/.cache/oldv/{v,vc}).
+// It is best-effort: if the network is down but the cache already covers the
+// selected commits, the per-commit builds can still succeed from the local copy.
+fn sync_oldv_cache() {
+	elog('  oldv: syncing source cache in ${oldv_cache} ...')
+	lexec('${os.quoted_path(vexe())} run ${os.quoted_path(oldv_src)} --cache-sync')
 }
 
 // build_with_oldv builds (or reuses a cached build of) V at `commit` via the

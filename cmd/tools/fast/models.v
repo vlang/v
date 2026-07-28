@@ -14,7 +14,7 @@ mut:
 	id          int @[primary; sql: serial]
 	commit_hash string    // short (8 char) commit hash
 	message     string    // commit subject line
-	commit_date time.Time // author/commit date of the measured commit
+	commit_date time.Time // committer date (%ct); monotonic along first-parent
 	created_at  time.Time // when this benchmark was actually run
 	v_c_ms      int       // `v -o v.c cmd/v`   : self compile to C
 	v_self_ms   int       // `v -o v cmd/v`     : self compile to a binary
