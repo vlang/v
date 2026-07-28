@@ -101,3 +101,24 @@ fn test_malformed_exponent_suffixes_are_unsuitable_digits() {
 	assert scanner.diagnostics[0].message == 'exponent has no digits'
 	assert scanner.diagnostics[0].offset == 1
 }
+
+fn test_invalid_unicode_scalar_escapes_are_reported() {
+	cases := {
+		r"'\uD8FF'":     r'invalid unicode point `\uD8FF`'
+		r"'\U0000D8FF'": r'invalid unicode point `\U0000D8FF`'
+		r"'\U00110000'": r'invalid unicode point `\U00110000`'
+	}
+	for source, expected_message in cases {
+		mut files := token.FileSet.new()
+		mut file := files.add_file('invalid_unicode.v', source.len)
+		file.index_lines(source)
+		preferences := &pref.Preferences{}
+		mut scanner := new_scanner(preferences, .normal)
+		scanner.init(file, source)
+
+		for scanner.scan() != .eof {}
+		assert scanner.diagnostics.len == 1
+		assert scanner.diagnostics[0].message == expected_message
+		assert scanner.diagnostics[0].offset == source.len - 1
+	}
+}

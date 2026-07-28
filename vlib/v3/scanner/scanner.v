@@ -646,13 +646,30 @@ fn (mut s Scanner) check_string_escape(backslash_offset int) {
 		`U` { 8, r'`\U` incomplete 32 bit unicode character value' }
 		else { return }
 	}
+	mut value := u32(0)
 	for i in 0 .. digits {
 		index := escape_offset + 1 + i
 		if index >= s.src.len || !s.src[index].is_hex_digit() {
 			s.error(message, escape_offset)
 			return
 		}
+		value = (value << 4) | string_escape_hex_value(s.src[index])
 	}
+	if escape != `x` && (value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) {
+		end := escape_offset + 1 + digits
+		literal := s.source_lit(backslash_offset, end)
+		s.error('invalid unicode point `${literal}`', end)
+	}
+}
+
+fn string_escape_hex_value(c u8) u32 {
+	if c >= `0` && c <= `9` {
+		return u32(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return u32(c - `a`) + 10
+	}
+	return u32(c - `A`) + 10
 }
 
 @[direct_array_access]
