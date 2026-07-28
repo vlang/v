@@ -9,6 +9,7 @@ fn C.getpgrp() int
 fn C.kill(pid int, signal int) int
 fn C.setpgid(pid int, pgid int) int
 fn C.signal(signal int, handler voidptr) voidptr
+fn C.tcgetpgrp(fd int) int
 fn C.tcsetpgrp(fd int, pgid int) int
 
 // process_group returns the watcher's current process group.
@@ -19,6 +20,10 @@ pub fn process_group() int {
 // set_foreground_process_group gives the child process group control of stdin's terminal.
 pub fn set_foreground_process_group(pid int, watcher_pgid int) bool {
 	if os.is_atty(0) == 0 {
+		return false
+	}
+	// A background watch job must not take the terminal away from the shell.
+	if C.tcgetpgrp(0) != watcher_pgid {
 		return false
 	}
 	// The child also calls setpgid before exec. Repeating it in the parent
