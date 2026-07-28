@@ -524,13 +524,17 @@ fn (t &Table) method_fn_return_types_are_compatible(left Type, right Type) bool 
 	if unaliased_left.nr_muls() != unaliased_right.nr_muls() {
 		return false
 	}
-	if (unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result())
-		&& unaliased_left.flags() != unaliased_right.flags() {
+	has_wrapper := unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result()
+	if has_wrapper && unaliased_left.flags() != unaliased_right.flags() {
 		return false
 	}
 	left_sym := t.sym(unaliased_left)
 	right_sym := t.sym(unaliased_right)
 	if left_sym.info is FnType && right_sym.info is FnType {
+		if has_wrapper
+			&& t.fn_type_signature(left_sym.info.func) != t.fn_type_signature(right_sym.info.func) {
+			return false
+		}
 		return t.fn_types_are_compatible(left_sym.info.func, right_sym.info.func, 0)
 	}
 	return false
