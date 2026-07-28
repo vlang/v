@@ -1301,6 +1301,8 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 		start := p.add_children(param_ids)
 		is_v_header_decl := !is_c_decl && p.cur_file.ends_with('.vh')
+		is_trusted_c_decl := is_c_decl
+			&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == 'trusted')
 		if disable_body && is_v_header_decl {
 			p.mark_disabled_fn(name)
 		}
@@ -1314,8 +1316,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
 			// Function nodes do not otherwise use is_mut. On a .vh declaration it
-			// records that the body lives in a cached object and must not be emitted.
-			is_mut: is_v_header_decl
+			// records that the body lives in a cached object and must not be emitted;
+			// on a C declaration it preserves the parser's implicit unsafe/trusted state.
+			is_mut: is_v_header_decl || is_trusted_c_decl
 		})
 		p.pending_export = ''
 		p.register_pending_noreturn(name)

@@ -21,10 +21,11 @@ struct RecursiveStrReturnedParam {
 
 struct RecursiveStrBinding {
 mut:
-	can_recurse bool
-	progressed  bool
-	storage_id  int
-	typ_name    string
+	can_recurse             bool
+	progressed              bool
+	is_recursive_str_method bool
+	storage_id              int
+	typ_name                string
 }
 
 struct RecursiveStrEnv {
@@ -291,7 +292,19 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 				return tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
 			}
 		}
-		.selector, .index {
+		.selector {
+			if node.children_count > 0 {
+				receiver_id := tc.a.child(node, 0)
+				mut binding := tc.recursive_str_eval_expr(receiver_id, mut env, ctx)
+				if node.value == 'str' && binding.can_recurse && tc.expr_is_method_value(id)
+					&& tc.recursive_str_method_value_targets_current(id, receiver_id, ctx) {
+					binding.is_recursive_str_method = true
+					binding.typ_name = tc.resolve_type(id).name()
+				}
+				return binding
+			}
+		}
+		.index {
 			if node.children_count > 0 {
 				return tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
 			}
@@ -406,6 +419,14 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		if !tc.errors.any(it.msg == message && it.pos == pos) {
 			tc.record_error_at(.unknown_fn, message, id, pos)
 		}
+	} else if callee.kind == .ident {
+		binding := env.bindings[callee.value] or { RecursiveStrBinding{} }
+		if binding.is_recursive_str_method && binding.can_recurse && !binding.progressed {
+			message := 'cannot call `str()` method recursively'
+			if !tc.errors.any(it.msg == message && it.pos == callee.pos) {
+				tc.record_error_at(.unknown_fn, message, id, callee.pos)
+			}
+		}
 	}
 	for i in 1 .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(node, i))
@@ -421,6 +442,26 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(id).name()
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_method_value_targets_current(selector_id flat.NodeId, receiver_id flat.NodeId, ctx RecursiveStrContext) bool {
+	if resolved := tc.resolved_fn_value_name(selector_id) {
+		if resolved != ctx.fn_name && tc.recursive_str_has_concrete_fn_decl(resolved) {
+			return false
+		}
+	}
+	if !tc.valid_node_id(receiver_id) {
+		return false
+	}
+	if tc.recursive_str_receiver_is_concrete_match_variant(selector_id, receiver_id, ctx) {
+		return false
+	}
+	actual := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
+	expected := unalias_and_unwrap_pointer_type(ctx.receiver_type)
+	if actual is Unknown || expected is Unknown {
+		return true
+	}
+	return actual.name() == expected.name()
 }
 
 fn (tc &TypeChecker) recursive_str_call_targets_current(call_id flat.NodeId, receiver_id flat.NodeId, ctx RecursiveStrContext) bool {
@@ -727,6 +768,7 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 	}
 	mut can_recurse := false
 	mut has_unprogressed := false
+	mut is_recursive_str_method := false
 	mut storage_id := bindings[0].storage_id
 	mut typ_name := bindings[0].typ_name
 	for binding in bindings {
@@ -734,6 +776,7 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 			can_recurse = true
 			has_unprogressed = has_unprogressed || !binding.progressed
 		}
+		is_recursive_str_method = is_recursive_str_method || binding.is_recursive_str_method
 		if binding.storage_id != storage_id {
 			storage_id = 0
 		}
@@ -742,10 +785,11 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 		}
 	}
 	return RecursiveStrBinding{
-		can_recurse: can_recurse
-		progressed:  can_recurse && !has_unprogressed
-		storage_id:  storage_id
-		typ_name:    typ_name
+		can_recurse:             can_recurse
+		progressed:              can_recurse && !has_unprogressed
+		is_recursive_str_method: is_recursive_str_method
+		storage_id:              storage_id
+		typ_name:                typ_name
 	}
 }
 
@@ -1021,6 +1065,7 @@ fn (mut tc TypeChecker) recursive_str_guaranteed_param_effect(decl flat.Node, pa
 	if param.kind != .param {
 		return RecursiveStrParamEffect{}
 	}
+	mut result := RecursiveStrParamEffect{}
 	for i in 0 .. decl.children_count {
 		child := tc.a.child_node(&decl, i)
 		if child.kind == .param {
@@ -1028,13 +1073,13 @@ fn (mut tc TypeChecker) recursive_str_guaranteed_param_effect(decl flat.Node, pa
 		}
 		effect := tc.recursive_str_stmt_param_effect(*child, param.value)
 		if effect.kind != .none {
-			return effect
+			result = effect
 		}
 		if tc.recursive_str_stmt_may_return(*child) {
-			return RecursiveStrParamEffect{}
+			return result
 		}
 	}
-	return RecursiveStrParamEffect{}
+	return result
 }
 
 fn (tc &TypeChecker) recursive_str_stmt_may_return(node flat.Node) bool {
@@ -1151,16 +1196,18 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 			}
 		}
 		.expr_stmt, .block {
+			mut result := RecursiveStrParamEffect{}
 			for i in 0 .. node.children_count {
 				child := tc.a.child_node(&node, i)
 				effect := tc.recursive_str_stmt_param_effect(*child, name)
 				if effect.kind != .none {
-					return effect
+					result = effect
 				}
 				if tc.recursive_str_stmt_may_return(*child) {
-					return RecursiveStrParamEffect{}
+					return result
 				}
 			}
+			return result
 		}
 		.if_expr {
 			mut effects := []RecursiveStrParamEffect{}
@@ -1193,16 +1240,18 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		}
 		.match_branch {
 			condition_count := if node.value.is_int() { node.value.int() } else { 0 }
+			mut result := RecursiveStrParamEffect{}
 			for i in condition_count .. node.children_count {
 				child := tc.a.child_node(&node, i)
 				effect := tc.recursive_str_stmt_param_effect(*child, name)
 				if effect.kind != .none {
-					return effect
+					result = effect
 				}
 				if tc.recursive_str_stmt_may_return(*child) {
-					return RecursiveStrParamEffect{}
+					return result
 				}
 			}
+			return result
 		}
 		else {}
 	}

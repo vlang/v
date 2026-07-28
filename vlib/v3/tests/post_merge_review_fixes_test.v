@@ -7565,3 +7565,59 @@ middle
 	assert compile.output.count('imports.txt:1:30: error:') == 2, compile.output
 	assert compile.output.count('imports.txt:3:30: error:') == 2, compile.output
 }
+
+fn test_recursive_str_bound_method_value_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_bound_method_value', 'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	return recurse()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_helper_summary_keeps_later_rebind() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_later_rebind', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut copy Item, original Item) {
+	copy.remaining--
+	copy = original
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	advance(mut copy, item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_user_c_string_function_is_not_inferred_unsafe() {
+	v3_bin := build_v3()
+	src_path := '${tmp_test_path('user_c_strlen_not_unsafe')}.v'
+	bin_path := tmp_test_path('user_c_strlen_not_unsafe')
+	os.write_file(src_path, "fn C.strlen(charptr) usize
+
+fn main() {
+	println(C.strlen(c'x'))
+	_ = C.strerror(0)
+}
+") or {
+		panic(err)
+	}
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
+}

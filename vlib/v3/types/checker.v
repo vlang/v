@@ -515,6 +515,7 @@ pub mut:
 	mut_receiver_methods         map[string]bool
 	source_no_body_fns           map[string]bool
 	unsafe_fns                   map[string]bool
+	unsafe_c_fns                 map[string]bool
 	fn_ret_type_texts            map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
 	fn_param_type_texts          map[string][]string // generic struct method key -> original param type texts (receiver first)
 	fn_type_files                map[string]string
@@ -747,6 +748,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		mut_receiver_methods:                  map[string]bool{}
 		source_no_body_fns:                    map[string]bool{}
 		unsafe_fns:                            map[string]bool{}
+		unsafe_c_fns:                          map[string]bool{}
 		fn_ret_type_texts:                     map[string]string{}
 		fn_param_type_texts:                   map[string][]string{}
 		fn_type_files:                         map[string]string{}
@@ -877,6 +879,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		mut_receiver_methods:               tc.mut_receiver_methods
 		source_no_body_fns:                 tc.source_no_body_fns
 		unsafe_fns:                         tc.unsafe_fns
+		unsafe_c_fns:                       tc.unsafe_c_fns
 		fn_ret_type_texts:                  tc.fn_ret_type_texts
 		fn_param_type_texts:                tc.fn_param_type_texts
 		fn_type_files:                      tc.fn_type_files
@@ -1899,6 +1902,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
 	tc.a = a
 	tc.visible_mutation_cache = new_visible_mutation_cache()
+	tc.unsafe_c_fns.clear()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.file_scope = new_scope(unsafe { nil })
@@ -2503,6 +2507,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				tc.c_fn_module_ret_types[module_key] = ret_type
 				tc.c_fn_module_param_types[module_key] = ptypes.clone()
 				tc.c_fn_module_variadic[module_key] = is_variadic
+				tc.unsafe_c_fns[module_key] = !node.is_mut
 				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic, false)
 				if is_variadic {
 					tc.register_c_variadic_fn(node.value)
@@ -31579,7 +31584,9 @@ fn (tc &TypeChecker) is_builtin_unsafe_c_call(node flat.Node, name string) bool 
 		return false
 	}
 	base := tc.a.child_node(callee, 0)
-	return base.kind == .ident && base.value == 'C'
+	owner_module := tc.fn_type_modules[name] or { '' }
+	return base.kind == .ident && base.value == 'C' && owner_module == 'builtin'
+		&& tc.unsafe_c_fns[c_fn_module_signature_key(owner_module, name)]
 }
 
 fn (tc &TypeChecker) os_raw_io_unsupported_type(typ Type, path string, mut checked map[string]bool) ?string {
