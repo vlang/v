@@ -54,11 +54,13 @@ fn benchmark_exists(db sqlite.DB, hash string) bool {
 	return rows.len > 0
 }
 
-// load_benchmarks returns every stored benchmark, newest commit first.
-fn load_benchmarks(db sqlite.DB) []Benchmark {
+// load_benchmarks returns every stored benchmark, newest commit first. It
+// propagates query errors so a database outage (locked/corrupt/incompatible
+// schema) surfaces as a server error rather than masquerading as "no data".
+fn load_benchmarks(db sqlite.DB) ![]Benchmark {
 	return sql db {
 		select from Benchmark order by commit_date desc
-	} or { []Benchmark{} }
+	}!
 }
 
 // Delta is a rendered difference badge for one column: `text` is what to show

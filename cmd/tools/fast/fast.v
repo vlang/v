@@ -20,6 +20,7 @@ import log
 //   v run . run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
 //                                           benchmark every <step>th commit of <year>
 //   v run . seed                            insert demo rows (to preview the UI)
+//   v run . import <table.html> [...]       migrate old fast.vlang.io history
 //   v run . help
 
 const fast_dir = os.real_path(os.dir(@FILE))
@@ -90,6 +91,9 @@ fn main() {
 		'seed' {
 			cmd_seed() or { fatal('seed failed: ${err}') }
 		}
+		'import' {
+			cmd_import(rest) or { fatal('import failed: ${err}') }
+		}
 		'help', '-h', '--help' {
 			print_help()
 		}
@@ -115,6 +119,7 @@ Commands:
   run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
                                      benchmark every <step>th commit of a year
   seed                               insert demo rows (to preview the UI)
+  import <table.html> [...]          migrate old fast.vlang.io history into fast.db
   help                               show this help
 
 Database: ${db_path}')

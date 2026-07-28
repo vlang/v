@@ -28,6 +28,7 @@ v run . bench [-clang] [-noprod]    # benchmark the current HEAD commit
 v run . run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
                                     # benchmark every <step>th commit of a year
 v run . seed                        # insert demo rows, to preview the UI
+v run . import <table.html> [...]   # migrate old fast.vlang.io history into fast.db
 v run . help
 ```
 
@@ -37,6 +38,22 @@ Or compile once and reuse the binary:
 v -o fast .
 ./fast serve
 ```
+
+## Migrating history from the old static site
+
+The previous tool accumulated its history in `table.html` (mirrored into the
+gh-pages `index.html`). Before making `fast.db` authoritative, import that history
+so the dashboard does not start empty:
+
+```sh
+# from a checkout of the old gh-pages output (github.com/vlang/website)
+./fast import path/to/table.html            # or the old index.html
+./fast import 2024.html 2023.html 2022.html # older per-year archives too
+```
+
+`import` parses the old 14-column rows (timestamp, commit, message, v.c, v, …) and
+inserts them. It is idempotent — commits already in the database are skipped — so
+you can re-run it or point it at several files.
 
 ## Running the 2026 sampler locally
 

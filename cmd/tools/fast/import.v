@@ -1,0 +1,141 @@
+// Copyright (c) 2019-2026 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module main
+
+import os
+import time
+import db.sqlite
+
+// cmd_import migrates the accumulated history produced by the old static-site
+// pipeline (the `table.html` / gh-pages `index.html` files) into fast.db, so the
+// dashboard keeps its per-commit history when the deployment switches over.
+//
+//   v run . import path/to/table.html [more.html ...]
+//
+// It is idempotent: commits already present in the database are skipped.
+fn cmd_import(args []string) ! {
+	files := args.filter(!it.starts_with('-'))
+	if files.len == 0 {
+		return error('usage: fast import <table.html> [more.html ...]')
+	}
+	mut db := open_db()!
+	defer {
+		db.close() or {}
+	}
+	mut total := 0
+	for f in files {
+		content := os.read_file(f) or { return error('cannot read ${f}: ${err}') }
+		n := import_table_html(mut db, content)!
+		elog('imported ${n} rows from ${f}')
+		total += n
+	}
+	elog('import done: ${total} rows inserted. Start the web app with: v run . serve')
+}
+
+// import_table_html parses the `<tr>` rows of an old fast.vlang.io table and
+// inserts them, returning the number of newly inserted rows. The historic row
+// layout is 14 `<td>` cells: date, commit(link), message, v.c, v, native(unused),
+// hello, v.c size, parse, check, cgen, scan, V lines, V lines/s.
+fn import_table_html(mut db sqlite.DB, html string) !int {
+	mut inserted := 0
+	for row in html.split('<tr>') {
+		// data rows link to a commit; the header row (with `<th>`) does not
+		if !row.contains('/commit/') {
+			continue
+		}
+		cells := extract_cells(row.all_before('</tr>'))
+		if cells.len < 14 {
+			continue
+		}
+		commit := cells[1].trim_space()
+		if commit == '' || benchmark_exists(db, commit) {
+			continue
+		}
+		b := Benchmark{
+			commit_hash: commit
+			message:     unescape_html(cells[2])
+			commit_date: parse_old_date(cells[0].trim_space())
+			created_at:  time.now()
+			v_c_ms:      cell_int(cells[3])
+			v_self_ms:   cell_int(cells[4])
+			hello_ms:    cell_int(cells[6])
+			vc_size_kb:  cell_int(cells[7])
+			parse_ms:    cell_int(cells[8])
+			check_ms:    cell_int(cells[9])
+			cgen_ms:     cell_int(cells[10])
+			scan_ms:     cell_int(cells[11])
+			vlines:      cell_int(cells[12])
+			lines_per_s: cell_int(cells[13])
+		}
+		insert_benchmark(mut db, b)!
+		inserted++
+	}
+	return inserted
+}
+
+// extract_cells returns the text content of each `<td>` in a row, tags stripped.
+fn extract_cells(row string) []string {
+	mut cells := []string{}
+	mut rest := row
+	for {
+		open := rest.index('<td') or { break }
+		gt := rest[open..].index('>') or { break }
+		rest = rest[open + gt + 1..]
+		close := rest.index('</td>') or { break }
+		cells << strip_tags(rest[..close])
+		rest = rest[close + 5..]
+	}
+	return cells
+}
+
+// strip_tags removes any `<...>` tags from a cell and trims the result.
+fn strip_tags(s string) string {
+	mut out := []u8{}
+	mut in_tag := false
+	for c in s {
+		if c == `<` {
+			in_tag = true
+		} else if c == `>` {
+			in_tag = false
+		} else if !in_tag {
+			out << c
+		}
+	}
+	return out.bytestr().trim_space()
+}
+
+// cell_int parses a numeric cell, dropping units and separators (`ms`, `KB`, `,`).
+fn cell_int(s string) int {
+	return s.replace('ms', '').replace('KB', '').replace(',', '').trim_space().int()
+}
+
+fn unescape_html(s string) string {
+	return s.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').trim_space()
+}
+
+// parse_old_date reads the old `time.format()` output (`YYYY-MM-DD HH:MM`). If it
+// cannot be parsed, it returns the unix epoch so the row still imports (it simply
+// sorts to the bottom) rather than being dropped.
+fn parse_old_date(s string) time.Time {
+	parts := s.split(' ')
+	ymd := parts[0].split('-')
+	if ymd.len < 3 {
+		return time.unix(0)
+	}
+	mut hour, mut minute := 0, 0
+	if parts.len > 1 {
+		hm := parts[1].split(':')
+		hour = hm[0].int()
+		if hm.len > 1 {
+			minute = hm[1].int()
+		}
+	}
+	return time.new(
+		year:   ymd[0].int()
+		month:  ymd[1].int()
+		day:    ymd[2].int()
+		hour:   hour
+		minute: minute
+	)
+}
