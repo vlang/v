@@ -30,8 +30,8 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 	v3_bin := build_c_fn_redecl_v3()
 	root := write_c_fn_redecl_v3_project('c_fn_conflict', {
 		'v.mod':       "Module { name: 'c_fn_conflict' }\n"
-		'moda/moda.v': 'module moda\n\nfn C.getpid() int\n\npub fn pid() int {\n\treturn C.getpid()\n}\n'
-		'modb/modb.v': 'module modb\n\nfn C.getpid() u64\n\npub fn pid() u64 {\n\treturn C.getpid()\n}\n'
+		'moda/moda.v': 'module moda\n\nfn C.getpid() int\nfn C.variadic_probe(value int, weight f32) int\n\npub fn pid() int {\n\treturn C.getpid()\n}\n'
+		'modb/modb.v': 'module modb\n\nfn C.getpid() u64\nfn C.variadic_probe(value int, ...) int\n\npub fn pid() u64 {\n\treturn C.getpid()\n}\n'
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tprintln(moda.pid())\n\tprintln(modb.pid())\n}\n'
 	})!
 	defer {
@@ -48,12 +48,14 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(root)} -b c -o ${os.quoted_path(conflict_out)}')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('C function `C.getpid` was already declared with a different signature'), result.output
+	assert result.output.contains('C function `C.variadic_probe` was already declared with a different signature'), result.output
+
 	assert !result.output.contains('C compilation failed'), result.output
 
 	compatible_root := write_c_fn_redecl_v3_project('c_fn_compatible', {
 		'v.mod':       "Module { name: 'c_fn_compatible' }\n"
-		'moda/moda.v': 'module moda\n\nstruct C.Display {}\n\nfn C.compat_probe(value int, data byteptr, display voidptr) int\n\npub fn touch() {}\n'
-		'modb/modb.v': 'module modb\n\nstruct C.Display {}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display) i32\n\npub fn touch() {}\n'
+		'moda/moda.v': 'module moda\n\nstruct C.Display {}\n\nfn C.compat_probe(value int, data byteptr, display voidptr, mut state usize) int\n\npub fn touch() {}\n'
+		'modb/modb.v': 'module modb\n\nstruct C.Display {}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display, state &usize) i32\n\npub fn touch() {}\n'
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmoda.touch()\n\tmodb.touch()\n}\n'
 	})!
 	defer {

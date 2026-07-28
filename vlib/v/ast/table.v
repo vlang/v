@@ -309,6 +309,9 @@ fn (t &Table) c_fn_declarations_are_compatible_at_depth(left &Fn, right &Fn, dep
 	if fn_type_calling_convention(left) != fn_type_calling_convention(right) {
 		return false
 	}
+	if left.is_variadic != right.is_variadic {
+		return false
+	}
 	mut compared_params := left.params.len
 	left_fixed_params := left.params.len - if left.is_variadic && !left.is_c_variadic {
 		1
@@ -320,14 +323,7 @@ fn (t &Table) c_fn_declarations_are_compatible_at_depth(left &Fn, right &Fn, dep
 	} else {
 		0
 	}
-	if left.is_variadic != right.is_variadic {
-		variadic_params := if left.is_variadic { left_fixed_params } else { right_fixed_params }
-		fixed_params := if left.is_variadic { right.params.len } else { left.params.len }
-		if fixed_params < variadic_params {
-			return false
-		}
-		compared_params = variadic_params
-	} else if left.is_variadic {
+	if left.is_variadic {
 		if left_fixed_params != right_fixed_params {
 			return false
 		}
@@ -338,8 +334,7 @@ fn (t &Table) c_fn_declarations_are_compatible_at_depth(left &Fn, right &Fn, dep
 	for i in 0 .. compared_params {
 		param := left.params[i]
 		right_param := right.params[i]
-		if param.is_mut != right_param.is_mut || param.is_shared != right_param.is_shared
-			|| param.is_atomic != right_param.is_atomic
+		if param.is_shared != right_param.is_shared || param.is_atomic != right_param.is_atomic
 			|| !t.c_fn_type_components_are_compatible(param.typ, right_param.typ, depth + 1) {
 			return false
 		}

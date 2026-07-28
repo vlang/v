@@ -1117,9 +1117,6 @@ run them via `v file.v` instead',
 				if !p.table.c_fn_declarations_are_compatible(&existing, &new_fn) {
 					p.error_with_pos_no_advance('C function `${name}` was already declared with a different signature',
 						name_pos)
-				} else if new_fn.is_variadic && !existing.is_variadic {
-					// Keep the more general declaration so calls from both modules remain valid.
-					should_register = true
 				}
 			}
 		}
