@@ -204,9 +204,48 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-cstrict', '-skip-running', '-usecache',
 		'build', '-o', binary, program])
 	assert build.exit_code == 0, build.output
+	assert !os.exists(binary + '.c')
 	built := cmdexec.run(binary, [])
 	assert built.exit_code == 0, built.output
 	assert built.output == 'built\n', built.output
+	implicit_program := os.join_path(root, 'implicit_build.v')
+	implicit_binary := os.join_path(root, 'implicit_build')
+	implicit_c := implicit_binary + '.c'
+	os.write_file(implicit_program, "println('implicit')")!
+	os.write_file(implicit_c, 'existing C source')!
+	implicit_build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', implicit_program])
+	assert implicit_build.exit_code == 0, implicit_build.output
+	assert os.is_file(implicit_binary)
+	assert os.read_file(implicit_c)! == 'existing C source'
+	os.rm(implicit_c)!
+	keep_c_build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-keepc', implicit_program])
+	assert keep_c_build.exit_code == 0, keep_c_build.output
+	assert os.file_size(implicit_c) > 0
+	run_program := os.join_path(root, 'implicit_run.v')
+	run_binary := run_program.all_before_last('.v')
+	os.write_file(run_program, "println('ran once')")!
+	implicit_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', 'run', run_program])
+	assert implicit_run.exit_code == 0, implicit_run.output
+	assert implicit_run.output == 'ran once\n', implicit_run.output
+	assert !os.exists(run_binary)
+	assert !os.exists(run_binary + '.c')
+	debug_define_program := os.join_path(root, 'debug_define.v')
+	os.write_file(debug_define_program, '@[if debug]
+fn enabled_by_define() {
+	println("attribute debug")
+}
+
+fn main() {
+	$if debug {
+		println("comptime debug")
+	}
+	enabled_by_define()
+}
+')!
+	debug_define_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-d', 'debug', 'run',
+		debug_define_program])
+	assert debug_define_run.exit_code == 0, debug_define_run.output
+	assert debug_define_run.output == 'attribute debug\n', debug_define_run.output
 	source := os.join_path(root, 'implicit_script.vsh')
 	os.write_file(source, "import os
 
@@ -216,6 +255,8 @@ println(os.args[1..].join('|'))
 	run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'one', '--two'])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'false\none|--two\n', run.output
+	assert !os.exists(source.all_before_last('.vsh'))
+	assert !os.exists(source.all_before_last('.vsh') + '.c')
 }
 
 fn assert_driver_wasm_output(path string) {

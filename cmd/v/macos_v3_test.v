@@ -35,6 +35,27 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		prefs.is_prod = false
 		prefs.path = 'version'
 		assert !is_macos_v3_relevant_command('version', prefs)
+		prefs.path = 'vlib/v3'
+		assert !is_macos_v3_relevant_command('vlib/v3', prefs)
+		prefs.path = 'fixture.vv'
+		assert !is_macos_v3_relevant_command('run', prefs)
+		prefs.path = 'script.vsh'
+		prefs.is_crun = true
+		assert is_macos_v3_relevant_command('script.vsh', prefs)
+		assert !is_macos_v3_relevant_command('crun', prefs)
+	}
+}
+
+fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
+	$if macos {
+		assert macos_v3_args_are_supported(['main.v'])
+		assert macos_v3_args_are_supported(['-keepc', '-o', 'main', 'build', 'main.v'])
+		assert macos_v3_args_are_supported(['run', 'main.v', '--program-option'])
+		assert macos_v3_args_are_supported(['script.vsh', '--script-option'])
+		assert !macos_v3_args_are_supported(['-ldflags', '-framework Cocoa', 'main.v'])
+		assert !macos_v3_args_are_supported(['-path', '@vlib', 'main.v'])
+		assert !macos_v3_args_are_supported(['-show-c-output', 'main.v'])
+		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
 	}
 }
 

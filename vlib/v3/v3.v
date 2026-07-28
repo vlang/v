@@ -3449,6 +3449,7 @@ fn main() {
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut keep_c := false
 	mut is_debug := false
 	mut c99 := false
 	mut thread_stack_size := 0
@@ -3595,11 +3596,14 @@ fn main() {
 		} else if args[i] == '-checker-fixture' {
 			is_checker_fixture = true
 			i++
-		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
-			'-no-retry-compilation', '-skip-running', '-usecache'] {
-			// v3 already reports phase metrics, prints the C command, retains generated C,
-			// suppresses C warnings, leaves explicit-output tests unrun, and caches modules
-			// by default. Accept the corresponding V flags for compatibility.
+		} else if args[i] == '-keepc' {
+			keep_c = true
+			i++
+		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-w', '-no-retry-compilation',
+			'-skip-running', '-usecache'] {
+			// v3 already reports phase metrics, prints the C command, suppresses C
+			// warnings, leaves explicit-output tests unrun, and caches modules by default.
+			// Accept the corresponding V flags for compatibility.
 			i++
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
 			no_prealloc = true
@@ -3761,6 +3765,7 @@ fn main() {
 		}
 		output_file = bin_file + '.c'
 	}
+	binary_existed_before := os.exists(bin_file)
 
 	// Decide which backend modules to compile into the output. By default only the C
 	// backend is built; the arm64/wasm/eval backends (and the whole SSA pipeline that the
@@ -5362,16 +5367,18 @@ fn main() {
 			b.step('C dylib cache')
 		}
 		b.metric('generated C size', os.file_size(published_c_source), 'bytes')
-		published_c := '${output_file}.tmp.${os.getpid()}.${rand.ulid()}'
-		os.cp(published_c_source, published_c) or {
-			eprintln('failed to stage generated C output ${output_file}: ${err}')
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
-		}
-		os.mv(published_c, output_file) or {
-			eprintln('failed to publish generated C output ${output_file}: ${err}')
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
+		if keep_c {
+			published_c := '${output_file}.tmp.${os.getpid()}.${rand.ulid()}'
+			os.cp(published_c_source, published_c) or {
+				eprintln('failed to stage generated C output ${output_file}: ${err}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			os.mv(published_c, output_file) or {
+				eprintln('failed to publish generated C output ${output_file}: ${err}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
 		}
 		// Compile inside a per-output build dir, using constant relative source/output basenames,
 		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
@@ -5565,6 +5572,9 @@ fn main() {
 		})
 		if should_run {
 			run_result := run_binary(bin_file, run_args)
+			if !explicit_output && !keep_c && !binary_existed_before {
+				os.rm(bin_file) or {}
+			}
 			if run_result != 0 {
 				exit(run_result)
 			}

@@ -2397,7 +2397,7 @@ fn (mut p Parser) skip_attrs() {
 		p.next()
 		if p.tok == .key_if {
 			p.next()
-			if !p.eval_comptime_cond(p.parse_attribute_comptime_cond()) {
+			if !p.eval_attribute_comptime_cond(p.parse_attribute_comptime_cond()) {
 				p.skip_next_decl = true
 			}
 		}
@@ -2564,7 +2564,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 		p.next() // consume `@[` / `[`
 		if p.tok == .key_if {
 			p.next()
-			if !p.eval_comptime_cond(p.parse_attribute_comptime_cond()) {
+			if !p.eval_attribute_comptime_cond(p.parse_attribute_comptime_cond()) {
 				p.skip_next_decl = true
 			}
 			p.check(.rsbr)
@@ -3859,6 +3859,27 @@ fn (mut p Parser) parse_top_level_comptime_else() flat.NodeId {
 fn (p &Parser) eval_comptime_cond(cond string) bool {
 	return p.eval_comptime_cond_with_target_override(cond,
 		p.tok_pos in p.unsupported_inline_asm_guards)
+}
+
+fn (p &Parser) eval_attribute_comptime_cond(cond string) bool {
+	name := comptime_cond_strip_outer_parens(cond.trim_space())
+	mut is_name := name.len > 0
+	for c in name {
+		if !c.is_letter() && !c.is_digit() && c != `_` {
+			is_name = false
+			break
+		}
+	}
+	if is_name {
+		for define in p.prefs.user_defines {
+			if define == name || define.starts_with('${name}=') {
+				// Attribute guards allow explicit `-d` overrides even when the
+				// name is also a built-in flag. `$if debug` still follows -g/-cg.
+				return true
+			}
+		}
+	}
+	return p.eval_comptime_cond(cond)
 }
 
 fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_target_arch bool) bool {

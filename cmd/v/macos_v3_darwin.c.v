@@ -11,11 +11,14 @@ const macos_v3_bootstrap_env = 'V_MACOS_V3_BOOTSTRAP'
 const macos_v3_executable_env = 'V_MACOS_V3_EXECUTABLE'
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
+	all_args := util.join_env_vflags_and_os_args()
+	forwarded_args := all_args[1..]
 	if os.getenv(macos_v3_bootstrap_env) != '' || !is_macos_v3_default_executable(os.executable())
-		|| !is_macos_v3_relevant_command(command, prefs) {
+		|| !is_macos_v3_relevant_command(command, prefs)
+		|| !macos_v3_args_are_supported(forwarded_args) {
 		return
 	}
-	launch_macos_v3_compiler(prefs)
+	launch_macos_v3_compiler(prefs, forwarded_args)
 }
 
 fn is_macos_v3_default_executable(vexe string) bool {
@@ -26,34 +29,91 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.path == '' || prefs.backend != .c || prefs.os != .macos {
 		return false
 	}
+	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
+	is_direct_vsh := normalized_path.ends_with('.vsh') && command != 'crun'
 	if command in external_tools
 		|| command in ['help', 'version', 'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'interpret', 'get', 'translate'] {
 		return false
 	}
-	if prefs.is_crun || prefs.is_test || prefs.is_prod || prefs.autofree
-		|| prefs.build_mode == .build_module || prefs.is_cstrict || prefs.use_cache
-		|| prefs.parallel_cc || prefs.exclude.len > 0 {
+	if (prefs.is_crun && !is_direct_vsh) || prefs.is_test || prefs.is_prod
+		|| prefs.autofree || prefs.build_mode == .build_module || prefs.is_cstrict
+		|| prefs.use_cache || prefs.parallel_cc || prefs.exclude.len > 0 {
 		return false
 	}
 	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
 		return false
 	}
-	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
 	if normalized_path == 'cmd/v' || normalized_path.ends_with('/cmd/v')
 		|| normalized_path.ends_with('/cmd/v/v.v') || normalized_path.starts_with('cmd/tools/')
-		|| normalized_path.contains('/cmd/tools/') {
+		|| normalized_path.contains('/cmd/tools/') || normalized_path.ends_with('.vv')
+		|| os.is_dir(prefs.path) {
 		// Keep the established compiler available as the compatibility fallback.
 		// V3 does not compile all of cmd/v yet, and command tools are built on
-		// demand while dispatching CLI commands such as `fmt` and `test`.
+		// demand while dispatching CLI commands such as `fmt` and `test`. Legacy
+		// .vv fixtures and directory builds also retain established semantics.
 		return false
 	}
 	return command == 'run' || command == 'build' || prefs.is_script
-		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vv')
-		|| normalized_path.ends_with('.vsh') || os.is_dir(prefs.path)
+		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+}
+
+fn macos_v3_args_are_supported(args []string) bool {
+	mut input_seen := false
+	mut should_run := false
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if should_run && input_seen {
+			// Everything after the input to `run`, or after a direct V script,
+			// belongs to the program rather than the compiler.
+			i++
+			continue
+		}
+		if arg == 'run' && !input_seen {
+			should_run = true
+			i++
+			continue
+		}
+		if arg in ['build', 'test'] && !input_seen {
+			i++
+			continue
+		}
+		if arg in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc',
+			'-cc', '-cflags'] {
+			if i + 1 >= args.len {
+				return false
+			}
+			i += 2
+			continue
+		}
+		if arg.starts_with('-d') && arg.len > 2 {
+			i++
+			continue
+		}
+		if arg in ['-prod', '-shared', '--shared', '-selfhost', '-building-v', '-building_v', '-c99',
+			'--c99', '-strict', '-cstrict', '-ownership', '--ownership', '-no-parallel',
+			'--no-parallel', '-parallel-transform', '--parallel-transform', '-all-backends',
+			'--all-backends', '-g', '-cg', '-autofree', '-v', '-silent', '-checker-fixture', '-stats',
+			'-show-timings', '-showcc', '-keepc', '-w', '-no-retry-compilation', '-skip-running',
+			'-usecache', '-no-prealloc', '--no-prealloc', '-nocache', '--no-cache',
+			'-no-memory-limit', '--no-memory-limit', '-prealloc', '-enable-globals', '-h', '--help'] {
+			i++
+			continue
+		}
+		if arg.starts_with('-') || input_seen {
+			return false
+		}
+		input_seen = true
+		if arg.ends_with('.vsh') {
+			should_run = true
+		}
+		i++
+	}
+	return input_seen
 }
 
 @[noreturn]
-fn launch_macos_v3_compiler(prefs &pref.Preferences) {
+fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
@@ -76,7 +136,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences) {
 		}
 		build_lock.release()
 	}
-	mut forwarded_args := util.join_env_vflags_and_os_args()[1..].clone()
+	mut forwarded_args := raw_args.clone()
 	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && !prefs.show_cc {
 		forwarded_args.insert(0, '-silent')
 	}
