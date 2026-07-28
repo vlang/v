@@ -55,6 +55,27 @@ fn test_standalone_block_preserves_leading_label() {
 	assert ast.nodes.all(it.kind != .map_init)
 }
 
+fn test_supported_unix_comptime_aliases_have_no_diagnostics() {
+	path := os.join_path(os.temp_dir(), 'v3_comptime_unix_aliases_${os.getpid()}.v')
+	os.write_file(path, "fn main() {
+	\$if unix {
+		println('unix')
+	}
+	\$if posix {
+		println('posix')
+	}
+}
+") or {
+		panic(err)
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+}
+
 // Literal nodes must carry their own span, not the span of the token that
 // happens to follow them after p.next().
 fn test_literal_nodes_span_their_own_source() {

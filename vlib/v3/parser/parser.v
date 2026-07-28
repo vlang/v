@@ -2788,6 +2788,8 @@ fn (p &Parser) known_bare_comptime_flag(name string) bool {
 		'freebsd',
 		'openbsd',
 		'netbsd',
+		'posix',
+		'unix',
 		'bsd',
 		'dragonfly',
 		'android',
