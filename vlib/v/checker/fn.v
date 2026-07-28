@@ -1849,6 +1849,16 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	// already prefixed (mod.fn) or C/builtin/main
+	if !found && node.language == .c {
+		if f := c.table.find_c_fn_in_module(fn_name, node.mod) {
+			found = true
+			func = f
+			if fn_name in c.table.fns {
+				unsafe { c.table.fns[fn_name].usages++ }
+			}
+			c.mark_fn_decl_as_referenced(f.fkey())
+		}
+	}
 	if !found {
 		if f := c.table.find_fn(fn_name) {
 			found = true

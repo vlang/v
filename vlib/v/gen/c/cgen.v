@@ -13670,6 +13670,9 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 					init_str = '(${g.styp(typ)}){'
 				}
 			}
+			if info.fields.len == 0 {
+				init_str += 'E_STRUCT'
+			}
 			if sym.language in [.c, .v] {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)

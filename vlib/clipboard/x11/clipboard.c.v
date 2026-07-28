@@ -72,29 +72,29 @@ pub mut:
 
 fn C.XInitThreads() i32
 
-fn C.XCloseDisplay(d &C.Display)
+fn C.XCloseDisplay(d &C.Display) int
 
-fn C.XFlush(d &C.Display)
+fn C.XFlush(d &C.Display) int
 
-fn C.XDestroyWindow(d &C.Display, w Window)
+fn C.XDestroyWindow(d &C.Display, w Window) int
 
-fn C.XNextEvent(d &C.Display, e &C.XEvent)
+fn C.XNextEvent(d &C.Display, e &C.XEvent) int
 
-fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time Time)
+fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time Time) int
 
 fn C.XGetSelectionOwner(d &C.Display, a Atom) Window
 
 fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, format i32, mode i32, data voidptr,
 	nelements i32) i32
 
-fn C.XSendEvent(d &C.Display, requestor Window, propagate i32, mask i64, event &C.XEvent)
+fn C.XSendEvent(d &C.Display, requestor Window, propagate i32, mask i64, event &C.XEvent) int
 
-fn C.XInternAtom(d &C.Display, typ &u8, only_if_exists i32) Atom
+fn C.XInternAtom(d &C.Display, typ &char, only_if_exists i32) Atom
 
 fn C.XCreateSimpleWindow(d &C.Display, root Window, x i32, y i32, width u32, height u32, border_width u32,
 	border u64, background u64) Window
 
-fn C.XOpenDisplay(name &u8) &C.Display
+fn C.XOpenDisplay(name &char) &C.Display
 
 fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time) i32
 
@@ -113,7 +113,7 @@ fn C.BlackPixel(display &C.Display, screen_number i32) u32
 
 fn C.WhitePixel(display &C.Display, screen_number i32) u32
 
-fn C.XFree(data voidptr)
+fn C.XFree(data voidptr) int
 
 // X11 event type constants
 pub const C.DestroyNotify int
@@ -437,8 +437,8 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 		if ret != 0 {
 			C.XFree(ret)
 		}
-		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type, &actual_format, &nitems,
-			&bytes_after, &ret)
+		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, Atom(0), &actual_type, &actual_format,
+			&nitems, &bytes_after, &ret)
 		read_bytes *= 2
 		if bytes_after == 0 {
 			break

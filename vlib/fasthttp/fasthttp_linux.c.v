@@ -30,7 +30,7 @@ fn C.close(fd i32) i32
 
 fn C.htons(__hostshort u16) u16
 
-fn C.fcntl(fd i32, cmd i32, arg i32) i32
+fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
 
 fn C.accept4(sockfd i32, addr &net.Addr, addrlen &u32, flags i32) i32
 
@@ -44,7 +44,7 @@ fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
 
 fn C.fstat(fd i32, buf &C.stat) i32
 
-fn C.open(pathname &u8, flags i32, mode int) i32
+fn C.open(pathname &char, flags i32, mode ...int) i32
 
 fn C.memmove(dest voidptr, src voidptr, n usize) voidptr
 

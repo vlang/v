@@ -6,7 +6,7 @@
 module aes
 
 import crypto.cipher
-import crypto.internal.subtle
+import crypto.subtle
 
 // The AES block size in bytes.
 pub const block_size = 16

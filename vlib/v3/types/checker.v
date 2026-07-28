@@ -505,6 +505,9 @@ pub mut:
 	enable_globals               bool
 	fn_ret_types                 map[string]Type
 	fn_param_types               map[string][]Type
+	c_fn_module_ret_types        map[string]Type
+	c_fn_module_param_types      map[string][]Type
+	c_fn_module_variadic         map[string]bool
 	fn_shared_params             map[string][]bool
 	mut_receiver_methods         map[string]bool
 	source_no_body_fns           map[string]bool
@@ -734,6 +737,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		a:                                     a
 		fn_ret_types:                          map[string]Type{}
 		fn_param_types:                        map[string][]Type{}
+		c_fn_module_ret_types:                 map[string]Type{}
+		c_fn_module_param_types:               map[string][]Type{}
+		c_fn_module_variadic:                  map[string]bool{}
 		fn_shared_params:                      map[string][]bool{}
 		mut_receiver_methods:                  map[string]bool{}
 		source_no_body_fns:                    map[string]bool{}
@@ -861,6 +867,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		enable_globals:                     tc.enable_globals
 		fn_ret_types:                       tc.fn_ret_types
 		fn_param_types:                     tc.fn_param_types
+		c_fn_module_ret_types:              tc.c_fn_module_ret_types
+		c_fn_module_param_types:            tc.c_fn_module_param_types
+		c_fn_module_variadic:               tc.c_fn_module_variadic
 		fn_shared_params:                   tc.fn_shared_params
 		mut_receiver_methods:               tc.mut_receiver_methods
 		source_no_body_fns:                 tc.source_no_body_fns
@@ -2285,6 +2294,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.type_cache.c_name_entries.clear()
 	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
+	tc.check_c_fn_redeclarations(a)
 	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
@@ -2464,6 +2474,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				}
 			}
 			.c_fn_decl {
+				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}
 				mut is_variadic := false
@@ -2473,9 +2485,18 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						if child.typ.starts_with('...') {
 							is_variadic = true
 						}
-						ptypes << tc.parse_type(child.typ)
+						parsed_param_type := tc.parse_type(child.typ)
+						ptypes << if child.is_mut {
+							mut_param_semantic_type(parsed_param_type)
+						} else {
+							parsed_param_type
+						}
 					}
 				}
+				module_key := c_fn_module_signature_key(tc.cur_module, c_name)
+				tc.c_fn_module_ret_types[module_key] = ret_type
+				tc.c_fn_module_param_types[module_key] = ptypes.clone()
+				tc.c_fn_module_variadic[module_key] = is_variadic
 				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic, false)
 				if is_variadic {
 					tc.register_c_variadic_fn(node.value)
@@ -2835,6 +2856,96 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 			else {}
 		}
 	}
+}
+
+struct CFnDeclSignature {
+	return_type string
+	params      []string
+	is_variadic bool
+}
+
+fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
+	mut signatures := map[string]CFnDeclSignature{}
+	mut modules := map[string]string{}
+	tc.cur_module = ''
+	tc.cur_file = ''
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.c_fn_decl {
+				name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				mut params := []string{}
+				mut is_variadic := false
+				for i in 0 .. node.children_count {
+					child := a.child_node(&node, i)
+					if child.kind != .param {
+						continue
+					}
+					if child.typ.starts_with('...') {
+						is_variadic = true
+					} else {
+						params << tc.c_type(tc.parse_type(child.typ))
+					}
+				}
+				signature := CFnDeclSignature{
+					return_type: tc.c_type(tc.parse_type(node.typ))
+					params:      params
+					is_variadic: is_variadic
+				}
+				if existing := signatures[name] {
+					existing_module := modules[name] or { '' }
+					if existing_module == 'builtin' || existing_module == tc.cur_module {
+						signatures[name] = signature
+						modules[name] = tc.cur_module
+					} else if tc.cur_module != 'builtin'
+						&& !c_fn_decl_signatures_compatible(existing, signature) {
+						tc.record_error_unfiltered(.duplicate_decl,
+							'C function `${name}` was already declared with a different signature',
+							flat.NodeId(node_idx))
+					}
+				} else {
+					signatures[name] = signature
+					modules[name] = tc.cur_module
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn c_fn_decl_signatures_compatible(a CFnDeclSignature, b CFnDeclSignature) bool {
+	if !c_fn_decl_abi_types_compatible(a.return_type, b.return_type) {
+		return false
+	}
+	if a.is_variadic != b.is_variadic || a.params.len != b.params.len {
+		return false
+	}
+	return c_fn_decl_param_prefix_compatible(a.params, b.params, a.params.len)
+}
+
+fn c_fn_decl_param_prefix_compatible(a []string, b []string, count int) bool {
+	if a.len < count || b.len < count {
+		return false
+	}
+	for i in 0 .. count {
+		if !c_fn_decl_abi_types_compatible(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+fn c_fn_decl_abi_types_compatible(a string, b string) bool {
+	if a == b || (a in ['int', 'i32'] && b in ['int', 'i32']) {
+		return true
+	}
+	return (a == 'void*' && b.ends_with('*')) || (b == 'void*' && a.ends_with('*'))
 }
 
 fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string, first_module string, second_module string) bool {
@@ -34170,8 +34281,28 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
 	}
 }
 
+fn c_fn_module_signature_key(module_name string, fn_name string) string {
+	return '${module_name}\x01${fn_name}'
+}
+
 // call_info updates call info state for TypeChecker.
 fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
+	if name.starts_with('C.') {
+		module_key := c_fn_module_signature_key(tc.cur_module, name)
+		if return_type := tc.c_fn_module_ret_types[module_key] {
+			is_variadic := tc.c_fn_module_variadic[module_key] or { false }
+			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
+			return CallInfo{
+				name:          name
+				params:        params.clone()
+				return_type:   return_type
+				has_receiver:  has_receiver
+				is_variadic:   is_variadic
+				is_c_variadic: is_variadic
+				params_known:  true
+			}
+		}
+	}
 	mut params := []Type{}
 	mut params_known := false
 	if p := tc.fn_param_types[name] {
@@ -34903,7 +35034,11 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 }
 
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
-	decl_module := tc.fn_type_modules[info.name] or { '' }
+	decl_module := if info.name.starts_with('C.') {
+		tc.cur_module
+	} else {
+		tc.fn_type_modules[info.name] or { '' }
+	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return none }
 	mut source_param_idx := param_idx
 	if info.has_implicit_veb_ctx {

@@ -6717,7 +6717,8 @@ that are substituted at compile time:
 - `@DIR` => replaced with the absolute path of the *folder*, where the V source file is.
 - `@LINE` => replaced with the V line number where it appears (as a string).
 - `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path.
-- `@LOCATION` => file, line and name of the current type + method; suitable for logging.
+- `@LOCATION` => file, line and name of the current module + function or method;
+  suitable for logging.
 - `@COLUMN` => replaced with the column where it appears (as a string).
 - `@VEXE` => replaced with the path to the V compiler.
 - `@VEXEROOT`  => will be substituted with the *folder*,

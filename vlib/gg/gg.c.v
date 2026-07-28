@@ -27,7 +27,7 @@ struct C.XRRCrtcInfo {
 	height u32
 }
 
-fn C.XOpenDisplay(i32) voidptr
+fn C.XOpenDisplay(voidptr) voidptr
 fn C.XCloseDisplay(voidptr) i32
 fn C.DefaultScreen(voidptr) i32
 fn C.DefaultRootWindow(voidptr) u64

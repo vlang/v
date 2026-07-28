@@ -11,7 +11,7 @@ module mldsa
 
 import crypto.rand
 import crypto.sha3
-import crypto.internal.subtle
+import crypto.subtle
 
 @[direct_array_access]
 fn slice_to_32(s []u8) [32]u8 {
