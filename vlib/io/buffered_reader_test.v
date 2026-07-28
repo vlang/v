@@ -182,6 +182,22 @@ fn (mut r OneByteReader) read(mut buf []u8) !int {
 	return read
 }
 
+fn test_peek_zero_bytes() {
+	data := rand.bytes(4)!
+	mut br := new_one_byte_buffered_reader(data)
+	mut p := br.peek(0)!
+	assert p.len == 0
+
+	p = br.peek(0)!
+	assert p.len == 0
+
+	p = br.peek(1)!
+	assert p.len == 1
+
+	p = br.peek(0)!
+	assert p.len == 0
+}
+
 fn test_read_refills_buffer() {
 	data := 'abc'.bytes()
 	mut br := new_one_byte_buffered_reader(data)
