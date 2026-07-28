@@ -3,6 +3,18 @@ module main
 import os
 import v.pref
 
+fn test_macos_v3_default_is_limited_to_macos_26_2_or_github_actions() {
+	$if macos {
+		assert macos_v3_default_is_enabled('26.2', '')
+		assert macos_v3_default_is_enabled('26.2.1', '')
+		for version in ['', '26', '25.7', '26.1', '26.3', '27.0', 'invalid'] {
+			assert !macos_v3_default_is_enabled(version, '')
+		}
+		assert macos_v3_default_is_enabled('', 'true')
+		assert macos_v3_default_is_enabled('25.7', 'true')
+	}
+}
+
 fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 	$if macos {
 		mut prefs := &pref.Preferences{
@@ -327,6 +339,7 @@ fn main() {
 ")!
 		mut environment := os.environ()
 		environment[macos_v3_executable_env] = fake_v3
+		environment['GITHUB_ACTIONS'] = 'true'
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
 		environment[macos_v3_bootstrap_env] = ''
 		environment['VFLAGS'] = ''

@@ -24,17 +24,42 @@ const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
+const macos_v3_enabled_product_version_major = 26
+const macos_v3_enabled_product_version_minor = 2
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
 	if os.getenv(macos_v3_bootstrap_env) != '' || !is_macos_v3_default_executable(os.executable())
-		|| !is_macos_v3_relevant_command(command, prefs)
+		|| !is_macos_v3_relevant_command(command, prefs) || !macos_v3_default_is_enabled_for_host()
 		|| !macos_v3_environment_flags_are_supported(os.getenv('CFLAGS'), os.getenv('LDFLAGS'))
 		|| !macos_v3_args_are_supported(forwarded_args) {
 		return none
 	}
 	return launch_macos_v3_compiler(prefs, forwarded_args)
+}
+
+fn macos_v3_default_is_enabled_for_host() bool {
+	if os.getenv('GITHUB_ACTIONS') == 'true' {
+		return true
+	}
+	version := os.execute('/usr/bin/sw_vers -productVersion')
+	if version.exit_code != 0 {
+		return false
+	}
+	return macos_v3_default_is_enabled(version.output, '')
+}
+
+fn macos_v3_default_is_enabled(product_version string, github_actions string) bool {
+	if github_actions == 'true' {
+		return true
+	}
+	parts := product_version.trim_space().split('.')
+	if parts.len < 2 || !parts[0].is_int() || !parts[1].is_int() {
+		return false
+	}
+	return parts[0].int() == macos_v3_enabled_product_version_major
+		&& parts[1].int() == macos_v3_enabled_product_version_minor
 }
 
 fn macos_v3_environment_flags_are_supported(cflags string, ldflags string) bool {

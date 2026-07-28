@@ -27,17 +27,18 @@ can compile the full builtin map.v.
 
 ## macOS V3 dispatch
 
-On macOS, the top-level `v` command dispatches supported native C source builds to a cached
-compiler built from `vlib/v3/v3.v` when the effective garbage collector mode is `none`. For
-example, `v -gc none file.v`, `v -gc none run file.v`, and `v -gc none script.vsh` are eligible;
-`-prealloc` also selects the no-GC mode. The cached compiler is rebuilt when V3 sources change and
-runs serial stages to stay within its memory safety limit.
+On macOS 26.2, or in a macOS GitHub Actions job, the top-level `v` command dispatches supported
+native C source builds to a cached compiler built from `vlib/v3/v3.v` when the effective garbage
+collector mode is `none`. For example, `v -gc none file.v`, `v -gc none run file.v`, and
+`v -gc none script.vsh` are eligible; `-prealloc` also selects the no-GC mode. The cached compiler
+is rebuilt when V3 sources change and runs serial stages to stay within its memory safety limit.
 
 `cmd/v` remains the CLI and compatibility dispatcher. Ordinary unflagged C builds use the
 established compiler because their default GC mode is `boehm_full_opt`. Tests, command tools,
 self-hosted temporary compilers, cross-compilation, and modes not yet supported by V3 also
 continue through the established compiler. Pass `-old-compiler` to explicitly use that
-compatibility path for an otherwise eligible macOS build. Other operating systems are unchanged.
+compatibility path for an otherwise eligible macOS build. Local macOS releases other than 26.2
+also use the established compiler. Other operating systems are unchanged.
 
 When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
 retries the command through the established compiler. Exit codes from successfully compiled
