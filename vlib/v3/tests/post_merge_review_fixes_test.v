@@ -6874,6 +6874,27 @@ fn main() {}
 	assert compile.output.contains('unknown struct `T`'), compile.output
 }
 
+fn test_generic_array_suppression_keeps_unrelated_unknown_type_errors() {
+	v3_bin := build_v3()
+	src := 'struct Example[T] {}
+
+fn main() {
+	_ = T(0)
+	_ = []Example[T]{}
+}
+'
+	bad_src := '${tmp_test_path('generic_array_unrelated_unknown_type')}.v'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('generic_array_unrelated_unknown_type')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	unknown_lines :=
+		compile.output.split_into_lines().filter(it.contains('error: unknown type `T`'))
+	assert unknown_lines.len > 0, compile.output
+	assert unknown_lines.all(it.contains(':4:')), compile.output
+	assert compile.output.contains('generic struct cannot be used in non-generic function'), compile.output
+}
+
 fn test_recursive_str_loop_progress_retains_zero_iteration_path() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_zero_iteration_loop', 'struct Item {
@@ -6887,6 +6908,31 @@ fn (item Item) str() string {
 		next.remaining--
 	}
 	return next.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_or_fallback_progress_is_conditional() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_conditional_or_fallback', 'struct Item {
+mut:
+	remaining int
+}
+
+fn maybe() ?int {
+	return 1
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	_ := maybe() or {
+		copy.remaining--
+		0
+	}
+	return copy.str()
 }
 
 fn main() {}

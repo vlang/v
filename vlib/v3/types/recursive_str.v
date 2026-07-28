@@ -254,6 +254,21 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		.match_stmt {
 			return tc.recursive_str_eval_match_expr(id, mut env, ctx)
 		}
+		.or_expr {
+			if node.children_count == 0 {
+				return RecursiveStrBinding{}
+			}
+			source_result := tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+			if node.children_count < 2 || node.value in ['!', '?'] {
+				return source_result
+			}
+			base := env.clone_env()
+			mut fallback_env := base.clone_env()
+			fallback_result :=
+				tc.recursive_str_eval_expr(tc.a.child(node, 1), mut fallback_env, ctx)
+			env = tc.recursive_str_merge_envs([base, fallback_env])
+			return tc.recursive_str_merge_bindings([source_result, fallback_result])
+		}
 		.call {
 			return tc.recursive_str_eval_call(id, mut env, ctx)
 		}

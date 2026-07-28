@@ -21294,12 +21294,9 @@ fn (mut tc TypeChecker) discard_unknown_type_errors_inside_node(node flat.Node) 
 		i--
 		diagnostic := tc.errors[i]
 		if diagnostic.kind == .unknown_type && diagnostic.msg.starts_with('unknown type `')
-			&& diagnostic.pos.id == node.pos.id {
-			unknown_name := diagnostic.msg.all_after('`').all_before('`')
-			if (diagnostic.pos.offset >= node.pos.offset && diagnostic.pos.end <= node.pos.end)
-				|| type_text_contains_symbol(node.typ, unknown_name) {
-				tc.errors.delete(i)
-			}
+			&& diagnostic.pos.id == node.pos.id && diagnostic.pos.offset >= node.pos.offset
+			&& diagnostic.pos.end <= node.pos.end {
+			tc.errors.delete(i)
 		}
 	}
 }
