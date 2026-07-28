@@ -13,14 +13,51 @@ const source_context_after = 2
 pub fn formatted_error(kind string, message string, a &flat.FlatAst, node flat.NodeId, pos token.Pos) string {
 	if pos.is_valid() {
 		file := a.source_files[pos.id] or { return '${kind} ${message}' }
-		return formatted_source_error(kind, message, file, pos)
+		action_message := if action := a.template_actions[pos.id] {
+			'${message} (veb action: ${action})'
+		} else {
+			message
+		}
+		result := formatted_source_error(kind, action_message, file, pos)
+		return append_template_call_stack(result, kind, a, pos)
 	}
 	if int(node) < 0 || int(node) >= a.nodes.len {
 		return '${kind} ${message}'
 	}
 	n := a.nodes[int(node)]
 	file := a.source_files[n.pos.id] or { return '${kind} ${message}' }
-	return formatted_source_error(kind, message, file, n.pos)
+	action_message := if action := a.template_actions[n.pos.id] {
+		'${message} (veb action: ${action})'
+	} else {
+		message
+	}
+	result := formatted_source_error(kind, action_message, file, n.pos)
+	return append_template_call_stack(result, kind, a, n.pos)
+}
+
+// formatted_parser_error renders a parser diagnostic with template call-site context.
+pub fn formatted_parser_error(message string, a &flat.FlatAst, pos token.Pos) string {
+	return formatted_parser_diagnostic('error:', message, a, pos)
+}
+
+// formatted_parser_diagnostic renders a parser diagnostic with template call-site context.
+pub fn formatted_parser_diagnostic(kind string, message string, a &flat.FlatAst, pos token.Pos) string {
+	file := a.source_files[pos.id] or { return '${kind} ${message}' }
+	result := formatted_source_error(kind, message, file, pos)
+	return append_template_call_stack(result, kind, a, pos)
+}
+
+fn append_template_call_stack(result string, kind string, a &flat.FlatAst, pos token.Pos) string {
+	call_pos := a.template_call_sites[pos.id] or { return result }
+	call_file := a.source_files[call_pos.id] or { return result }
+	position := call_file.position(call_pos)
+	path := relative_error_path(call_file.name)
+	context_full := formatted_source_error(kind, '', call_file, call_pos)
+	context := context_full.all_after_first('\n')
+	if context.len == 0 {
+		return '${result}\ncalled from ${path}:${position.line}:${position.column}'
+	}
+	return '${result}\ncalled from ${path}:${position.line}:${position.column}\n${context}'
 }
 
 // formatted_source_error renders a diagnostic for a source file and byte span.

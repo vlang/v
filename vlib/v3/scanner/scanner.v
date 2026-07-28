@@ -634,7 +634,7 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		}
 		s.offset++
 	}
-	s.error('unterminated string literal', s.pos)
+	s.error('unfinished string literal', s.src.len)
 }
 
 fn (mut s Scanner) check_string_escape(backslash_offset int) {

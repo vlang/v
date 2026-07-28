@@ -42,6 +42,20 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 	}
 }
 
+// run_in_merged executes a command with stderr redirected into stdout so the
+// relative order of diagnostics and program output is preserved.
+pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
+	command := display(program, args)
+	if work_folder.len == 0 {
+		return os.execute(command)
+	}
+	$if windows {
+		return os.execute('cd /d ${os.quoted_path(work_folder)} && ${command}')
+	} $else {
+		return os.execute('cd ${os.quoted_path(work_folder)} && exec ${command}')
+	}
+}
+
 // split_args parses a directive or tool response into literal argv elements.
 // Quotes and quoting backslash escapes group text; no shell expansion is performed.
 pub fn split_args(input string) ![]string {

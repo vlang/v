@@ -801,6 +801,14 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			i--
 			continue
 		}
+		// Keep an invalid keyword interpolation parseable here. The template parser
+		// reports both compatibility diagnostics after registering the template's
+		// real source file, avoiding an unbounded recovery loop in the generated V.
+		if trimmed_line.starts_with('@import ') {
+			literal_line := line.replace_once('@import', '@@import')
+			source.writeln(tmpl_line_content(literal_line, escape))
+			continue
+		}
 		if trimmed_line == '}' && brace_block_kinds.len > 0 && brace_block_kinds.last() == .control {
 			source.writeln(tmpl_str_end)
 			source.writeln('}')
@@ -944,6 +952,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 // node whose `value` is the resolved template file path and whose `typ` is
 // 'html' (for veb.html, yields a veb.Result) or 'tmpl' (yields a string).
 fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
+	call_start := int_max(0, p.span_start() - 1)
 	if is_html {
 		p.next() // skip `veb`
 		p.check(.dot)
@@ -1010,6 +1019,7 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		kind:  .veb_template
 		value: path
 		typ:   if is_html { 'html' } else { 'tmpl' }
+		pos:   p.span_to(call_start)
 	})
 }
 
@@ -1122,10 +1132,12 @@ fn nearest_vmod_dir(start_dir string) ?string {
 // parse_stmts_from_source parses `src` as a statement sequence using a temporary
 // sub-scanner, returning the parsed statement node ids. The parser's scanner and
 // token state are saved and restored around the call.
-fn (mut p Parser) parse_stmts_from_source(src string) []flat.NodeId {
+fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call_pos token.Pos) []flat.NodeId {
 	// The AST owns every source buffer so zero-copy token views stay valid.
 	p.a.source_buffers << src
 	stable_src := p.a.source_buffers.last()
+	first_node := p.a.nodes.len
+	first_diagnostic := p.diagnostics.len
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('<veb-template>', stable_src.len)
 	file.index_lines(stable_src)
@@ -1161,6 +1173,7 @@ fn (mut p Parser) parse_stmts_from_source(src string) []flat.NodeId {
 		}
 	}
 	p.end_local_binding_scope()
+	p.remap_template_source(first_node, first_diagnostic, file, stable_src, template_path, call_pos)
 
 	p.s = saved_s
 	p.tok = saved_tok
@@ -1174,6 +1187,126 @@ fn (mut p Parser) parse_stmts_from_source(src string) []flat.NodeId {
 	p.peek_end = saved_peek_end
 	p.has_peek = saved_has_peek
 	return ids
+}
+
+fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, generated_file &token.File, generated_source string, template_path string, call_pos token.Pos) {
+	template_source := os.read_file(template_path) or { return }
+	mut template_file_set := token.FileSet.new()
+	mut template_file := template_file_set.add_file(template_path, template_source.len)
+	template_file.index_lines(template_source)
+	template_id := p.next_file_id
+	p.next_file_id++
+	p.a.source_files[template_id] = template_file
+	p.a.template_call_sites[template_id] = token.new_pos(call_pos.id, call_pos.offset)
+	action := p.template_action_name()
+	p.a.template_actions[template_id] = action
+
+	generated_lines := generated_source.split_into_lines()
+	template_lines := template_source.split_into_lines()
+	mut line_map := []int{len: generated_lines.len, init: 1}
+	mut direct_map := []bool{len: generated_lines.len}
+	for index in 0 .. line_map.len {
+		line_map[index] = int_max(1, int_min(index, template_lines.len))
+	}
+	for generated_index, generated_line in generated_lines {
+		for template_index, template_line in template_lines {
+			plain := tmpl_line_content(template_line, false)
+			escaped := tmpl_line_content(template_line, true)
+			if (plain.len > 0 && generated_line.contains(plain))
+				|| (escaped.len > 0 && generated_line.contains(escaped)) {
+				line_map[generated_index] = template_index + 1
+				direct_map[generated_index] = true
+				break
+			}
+		}
+	}
+	for index in first_node .. p.a.nodes.len {
+		node := p.a.nodes[index]
+		generated_position := generated_file.position(node.pos)
+		line_index := generated_position.line - 1
+		if line_index < 0 || line_index >= line_map.len || !direct_map[line_index] {
+			continue
+		}
+		mapped := template_mapped_pos(template_file, template_lines, line_map[line_index],
+			generated_position.column, node.pos.end - node.pos.offset, template_id)
+		p.a.nodes[index] = flat.Node{
+			...node
+			pos: mapped
+		}
+	}
+	for index in first_diagnostic .. p.diagnostics.len {
+		diagnostic := p.diagnostics[index]
+		generated_position := generated_file.position(diagnostic.pos)
+		line_index := generated_position.line - 1
+		if line_index < 0 || line_index >= line_map.len || !direct_map[line_index] {
+			continue
+		}
+		mapped_line := line_map[line_index]
+		mapped := template_mapped_pos(template_file, template_lines, mapped_line,
+			generated_position.column, diagnostic.pos.end - diagnostic.pos.offset, template_id)
+		p.diagnostics[index] = Diagnostic{
+			...diagnostic
+			file:   template_path
+			pos:    mapped
+			line:   mapped_line
+			column: generated_position.column
+		}
+	}
+	for line_index, line in template_lines {
+		if !line.trim_space().starts_with('@import ') {
+			continue
+		}
+		line_number := line_index + 1
+		line_start := template_file.line_start(line_number)
+		pos := token.new_pos(template_id, line_start + line.len).with_reported_column(30)
+		messages := [
+			'invalid expression: unexpected keyword `import`',
+			'expression does not return a value (veb action: ${action})',
+		]
+		for message in messages {
+			if p.diagnostics.any(it.file == template_path && it.message == message) {
+				continue
+			}
+			p.append_diagnostic(Diagnostic{
+				file:    template_path
+				pos:     pos
+				line:    line_number
+				column:  30
+				message: message
+			})
+		}
+	}
+}
+
+fn (p &Parser) template_action_name() string {
+	short := p.cur_fn.all_after_last('.')
+	if short == 'main' {
+		module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
+		return '${module_name}__main'
+	}
+	return short
+}
+
+fn template_mapped_pos(template_file &token.File, template_lines []string, line int, generated_column int, generated_len int, template_id int) token.Pos {
+	if line <= 0 || line > template_lines.len {
+		return token.new_pos(template_id, 0)
+	}
+	raw_line := template_lines[line - 1]
+	mut column := int_max(1, generated_column)
+	mut span_len := int_max(1, generated_len)
+	if at := raw_line.index('@') {
+		if at + 1 < raw_line.len && is_tmpl_ident_start(raw_line[at + 1]) {
+			mut end := at + 2
+			for end < raw_line.len && is_tmpl_ident_part(raw_line[end]) {
+				end++
+			}
+			column = at + 3
+			span_len = end - at - 1
+		}
+	}
+	line_start := template_file.line_start(line)
+	start := line_start + int_min(column - 1, raw_line.len)
+	return token.new_span(template_id, start, start + span_len).with_reported_column(column)
 }
 
 // expand_veb_template_stmt lowers a statement whose value is a `.veb_template`
@@ -1195,7 +1328,19 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			} else {
 				'\nreturn ${bname}\n'
 			}
-			return p.parse_stmts_from_source(src)
+			ids := p.parse_stmts_from_source(src, child.value, child.pos)
+			if ids.len > 0 {
+				last := p.a.node(ids.last())
+				if last.kind == .return_stmt && last.children_count == 1 {
+					value_id := p.a.child(last, 0)
+					value := p.a.nodes[int(value_id)]
+					p.a.nodes[int(value_id)] = flat.Node{
+						...value
+						pos: child.pos
+					}
+				}
+			}
+			return ids
 		}
 	}
 	// Only a plain `:=` / `=` binding is re-emitted here (both carry op `.assign`); a
@@ -1219,7 +1364,7 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			bname, mut src := p.veb_template_builder_source(rhs)
 			value_expr := if rhs.typ == 'html' { 'ctx.html(${bname})' } else { bname }
 			src += '\n${mut_prefix}${lhs.value} ${bind_op} ${value_expr}\n'
-			return p.parse_stmts_from_source(src)
+			return p.parse_stmts_from_source(src, rhs.value, rhs.pos)
 		}
 	}
 	// A declaration's LHS name is not in scope during its own initializer, so hide the
@@ -1476,7 +1621,7 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 	bname, builder_src := p.veb_template_builder_source(tmpl)
 	// Parse the builder once to discover which names it references, so the closure can
 	// capture the locals among them (capturing a `const`/`fn` too is harmless).
-	builder_ids := p.parse_stmts_from_source(builder_src)
+	builder_ids := p.parse_stmts_from_source(builder_src, tmpl.value, tmpl.pos)
 	mut declared := map[string]bool{}
 	declared[bname] = true
 	mut seen := map[string]bool{}
@@ -1504,7 +1649,7 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 	}
 	cap_part := if captures.len > 0 { '[${captures.join(', ')}] ' } else { '' }
 	iife_src := '(fn ${cap_part}() ${ret_type} {\n${builder_src}\nreturn ${value_expr}\n}())'
-	return p.parse_veb_template_replacement_expr(iife_src)
+	return p.parse_veb_template_replacement_expr(iife_src, tmpl)
 }
 
 // decl_assign_lhs_rhs_slots returns the child indices that hold the LHS declaration targets and
@@ -1762,8 +1907,8 @@ fn (p &Parser) declare_template_ident(id flat.NodeId, mut declared map[string]bo
 // parse_veb_template_replacement_expr parses `src` as an expression (via a throwaway
 // `_ = <src>` assignment) and returns the RHS node id, used to substitute a rendered
 // template value in place of a `.veb_template` placeholder.
-fn (mut p Parser) parse_veb_template_replacement_expr(src string) ?flat.NodeId {
-	stmts := p.parse_stmts_from_source('_ = ${src}\n')
+fn (mut p Parser) parse_veb_template_replacement_expr(src string, tmpl flat.Node) ?flat.NodeId {
+	stmts := p.parse_stmts_from_source('_ = ${src}\n', tmpl.value, tmpl.pos)
 	if stmts.len != 1 {
 		return none
 	}

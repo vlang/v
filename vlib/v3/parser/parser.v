@@ -32,11 +32,12 @@ const sql_query_data_alias_reserved_tokens = [
 // Diagnostic is a structured source-ingestion, lexical, or parse diagnostic.
 pub struct Diagnostic {
 pub:
-	file    string
-	pos     token.Pos
-	line    int
-	column  int
-	message string
+	file     string
+	pos      token.Pos
+	line     int
+	column   int
+	severity string
+	message  string
 }
 
 // Parser represents parser data used by parser.
@@ -94,6 +95,7 @@ mut:
 	pending_decl_attrs                []string
 	pending_decl_attr_kinds           []int
 	in_for_container                  bool
+	in_select_branch_condition        int
 	in_array_literal                  int
 	in_map_value                      int
 	in_struct_init_value              int
@@ -495,6 +497,24 @@ fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
 	})
 }
 
+fn (mut p Parser) record_warning_span(message string, start int, end int) {
+	clamped_start := clamp_source_offset(start, p.s.src.len)
+	clamped_end := clamp_source_offset(end, p.s.src.len)
+	mut line := 1
+	mut column := clamped_start + 1
+	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
+		line, column = p.s.current_file().find_line_and_column(clamped_start)
+	}
+	p.append_diagnostic(Diagnostic{
+		file:     p.cur_file
+		pos:      token.new_span(p.cur_file_id, clamped_start, clamped_end)
+		line:     line
+		column:   column
+		severity: 'warning:'
+		message:  message
+	})
+}
+
 fn (mut p Parser) append_diagnostic(diagnostic Diagnostic) {
 	if p.diagnostic_limit_reached {
 		return
@@ -514,9 +534,28 @@ fn (mut p Parser) append_diagnostic(diagnostic Diagnostic) {
 }
 
 fn (mut p Parser) collect_scanner_diagnostics() {
+	mut malformed_declarations := map[string]bool{}
 	for diagnostic in p.s.diagnostics {
+		if diagnostic.message.starts_with('identifier name `')
+			&& scanner_diagnostic_starts_assignment(p.s.src, diagnostic.end) {
+			malformed_declarations[diagnostic.message] = true
+		}
+	}
+	for diagnostic in p.s.diagnostics {
+		if diagnostic.message in malformed_declarations
+			&& !scanner_diagnostic_starts_assignment(p.s.src, diagnostic.end) {
+			continue
+		}
 		p.record_diagnostic_span(diagnostic.message, diagnostic.offset, diagnostic.end)
 	}
+}
+
+fn scanner_diagnostic_starts_assignment(source string, start int) bool {
+	mut cursor := start
+	for cursor < source.len && source[cursor] in [` `, `\t`, `\r`, `\n`] {
+		cursor++
+	}
+	return cursor < source.len && source[cursor] in [`:`, `=`]
 }
 
 // read_source_file_raw reads the complete file or returns the I/O error. Source
@@ -7474,7 +7513,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			continue
 		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
-		if p.tok == .lcbr && (!p.in_for_container || p.current_lcbr_is_attached()) {
+		if p.tok == .lcbr && p.in_select_branch_condition == 0
+			&& (!p.in_for_container || p.current_lcbr_is_attached()) {
 			lhs_node := p.a.nodes[int(lhs)]
 			if p.peek() == .rcbr && p.is_comptime_type_accessor(lhs) {
 				p.next() // skip `{`
@@ -7498,8 +7538,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				base := p.a.child_node(&lhs_node, 0)
 				is_c_struct := base.kind == .ident && base.value == 'C'
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
-				is_v_struct := base.kind == .ident && base.value != 'C' && lhs_node.value[0] >= `A`
-					&& lhs_node.value[0] <= `Z`
+				is_v_struct := base.kind == .ident && base.value != 'C'
+					&& ((lhs_node.value[0] >= `A` && lhs_node.value[0] <= `Z`)
+					|| p.imported_module_names[base.value])
 				if is_c_struct || is_v_struct {
 					full_name := '${base.value}.${lhs_node.value}'
 					lhs = p.struct_init(full_name)
@@ -8597,35 +8638,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				val_type := p.parse_type_name()
 				map_type := 'map[${key_type}]${val_type}'
 				if p.tok == .lcbr {
-					p.next() // skip {
-					mut ids := []flat.NodeId{}
-					for p.tok != .rcbr && p.tok != .eof {
-						if p.tok == .semicolon {
-							p.next()
-							continue
-						}
-						k := p.expr(.lowest)
-						p.check(.colon)
-						p.in_map_value++
-						v := p.expr(.lowest)
-						p.in_map_value--
-						ids << k
-						ids << v
-						if p.tok == .comma || p.tok == .semicolon {
-							p.next()
-						}
-					}
-					p.check(.rcbr)
-					if ids.len > 0 {
-						istart := p.add_children(ids)
-						return p.add_node(flat.Node{
-							kind:           .map_init
-							value:          map_type
-							children_start: istart
-							children_count: flat.child_count(ids.len)
-							pos:            p.span_to(name_pos)
-						})
-					}
+					return p.map_init_after_type(map_type, name_pos)
 				}
 				return p.a.add_node(flat.Node{
 					kind:  .map_init
@@ -9028,6 +9041,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.question {
+			option_start := p.span_start()
 			p.next()
 			inner_type := p.parse_type_name()
 			type_name := if inner_type.len > 0 { '?${inner_type}' } else { '?' }
@@ -9044,6 +9058,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				})
 			}
 			if p.tok == .lcbr {
+				if inner_type.starts_with('map[') {
+					return p.map_init_after_type(type_name, option_start)
+				}
 				return p.struct_init(type_name)
 			}
 			return p.add(flat.NodeKind.empty)
@@ -9166,6 +9183,36 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.add(flat.NodeKind.empty)
 		}
 	}
+}
+
+fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
+	p.next() // skip {
+	mut ids := []flat.NodeId{}
+	for p.tok != .rcbr && p.tok != .eof {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		key := p.expr(.lowest)
+		p.check(.colon)
+		p.in_map_value++
+		value := p.expr(.lowest)
+		p.in_map_value--
+		ids << key
+		ids << value
+		if p.tok == .comma || p.tok == .semicolon {
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	children_start := p.add_children(ids)
+	return p.add_node(flat.Node{
+		kind:           .map_init
+		value:          map_type
+		children_start: children_start
+		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(start)
+	})
 }
 
 fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int) ?flat.NodeId {
@@ -9478,6 +9525,26 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	// `a#[..]` gated slice: clamped, non-panicking (lowers to slice_ni/substr_ni)
 	gated_op := if p.lit == '#' { flat.Op.gated_index } else { flat.Op.none }
 	p.check(.lsbr)
+	if p.tok == .rsbr {
+		lhs_node := p.a.node(lhs)
+		if lhs_node.kind == .array_init && lhs_node.typ.starts_with('[]') {
+			p.record_warning_span('use `x := []Type{}` instead of `x := []Type`',
+				lhs_node.pos.offset, p.tok_pos)
+		}
+		p.record_diagnostic('invalid expression: unexpected token `]`', p.tok_pos)
+		p.next()
+		for p.tok == .lsbr && p.peek() == .rsbr {
+			p.next()
+			p.next()
+		}
+		istart := p.add_children2(lhs, flat.empty_node)
+		return p.add_node_from(flat.Node{
+			kind:           .index
+			op:             gated_op
+			children_start: istart
+			children_count: 2
+		}, lhs)
+	}
 	first := p.index_part_expr()
 	if p.tok == .rsbr {
 		p.next()
@@ -10579,7 +10646,7 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		is_else = true
 		p.next()
 	} else {
-		cond_ids << p.expr(.lowest)
+		cond_ids << p.select_branch_expr()
 		// could be assignment: ch <- val, val := <-ch, or val = <-ch
 		if token_is_assignment(p.tok) || p.tok == .decl_assign {
 			op := p.tok
@@ -10593,7 +10660,7 @@ fn (mut p Parser) select_branch() flat.NodeId {
 				recv_compound_op = op.str()
 			}
 			p.next()
-			cond_ids << p.expr(.lowest)
+			cond_ids << p.select_branch_expr()
 		}
 	}
 	mut body_ids := []flat.NodeId{}
@@ -10622,6 +10689,13 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
+}
+
+fn (mut p Parser) select_branch_expr() flat.NodeId {
+	p.in_select_branch_condition++
+	id := p.expr(.lowest)
+	p.in_select_branch_condition--
+	return id
 }
 
 // sizeof_expr supports sizeof expr handling for Parser.

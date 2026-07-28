@@ -287,7 +287,7 @@ fn run_fixture(vexe string, repo_root string, path string, index int, compiler_o
 	output_base := fixture_binary_path(index)
 	mut args := compiler_options.clone()
 	args << ['-silent', '-no-parallel', '-nocache', '-checker-fixture', '-o', output_base, path]
-	result := cmdexec.run_in(vexe, args, repo_root)
+	result := cmdexec.run_in_merged(vexe, args, repo_root)
 	os.rm(output_base) or {}
 	os.rm(output_base + '.c') or {}
 	os.write_file(fixture_output_path(index), result.output) or {

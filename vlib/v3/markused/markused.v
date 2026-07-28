@@ -7588,6 +7588,15 @@ fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo
 		if field.kind != .field_decl || field.children_count == 0 || field.value in provided {
 			continue
 		}
+		default := c.a.child_node(field, 0)
+		if default.kind == .struct_init {
+			default_info := c.struct_decl_info_with_imports(default.value, info.module, imports) or {
+				StructDeclInfo{}
+			}
+			if default_info.node_id == info.node_id {
+				continue
+			}
+		}
 		c.collect_calls(field, info.module, imports, '', '', mut calls)
 	}
 }
