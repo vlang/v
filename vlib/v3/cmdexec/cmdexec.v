@@ -46,13 +46,12 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 // relative order of diagnostics and program output is preserved.
 pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
 	command := display(program, args)
-	if work_folder.len == 0 {
-		return os.execute(command)
-	}
 	$if windows {
-		return os.execute('cd /d ${os.quoted_path(work_folder)} && ${command}')
+		comspec := os.getenv('COMSPEC')
+		shell := if comspec.len > 0 { comspec } else { 'cmd.exe' }
+		return run_in(shell, ['/D', '/S', '/C', '${command} 2>&1'], work_folder)
 	} $else {
-		return os.execute('cd ${os.quoted_path(work_folder)} && exec ${command}')
+		return run_in('/bin/sh', ['-c', 'exec ${command} 2>&1'], work_folder)
 	}
 }
 

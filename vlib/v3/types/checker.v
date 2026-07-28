@@ -6383,7 +6383,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	tc.check_array_decompose_counts()
 	tc.check_selective_builtin_import_diagnostics()
 	tc.check_unused_import_diagnostics()
-	tc.discard_fn_redefinition_diagnostics_with_semantic_errors()
+	tc.discard_cascading_fn_redefinition_diagnostics()
 	tc.notices.sort_with_compare(compare_type_notices)
 	// All ordinary source annotations have now been validated with module-strict
 	// lookup. Later transform/codegen stages also parse synthesized generic type
@@ -6391,8 +6391,22 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	tc.resolution_type_mode = true
 }
 
-fn (mut tc TypeChecker) discard_fn_redefinition_diagnostics_with_semantic_errors() {
-	if !tc.errors.any(it.kind != .duplicate_decl) {
+fn (mut tc TypeChecker) discard_cascading_fn_redefinition_diagnostics() {
+	mut suppressed_groups := map[string]bool{}
+	mut previous_top_level := -1
+	for index in tc.top_level_idx {
+		range_lo := previous_top_level + 1
+		previous_top_level = index
+		node := tc.a.nodes[index]
+		if node.kind != .fn_decl
+			|| !tc.errors.any(it.severity == 'conflicting declaration:' && int(it.node) == index) {
+			continue
+		}
+		if tc.fn_declaration_range_has_semantic_error(node, range_lo, index) {
+			suppressed_groups[tc.fn_declaration_group_key(node)] = true
+		}
+	}
+	if suppressed_groups.len == 0 {
 		return
 	}
 	mut i := tc.errors.len
@@ -6401,12 +6415,37 @@ fn (mut tc TypeChecker) discard_fn_redefinition_diagnostics_with_semantic_errors
 		diagnostic := tc.errors[i]
 		is_builder := diagnostic.severity == 'builder error:'
 			&& diagnostic.msg.starts_with('redefinition of function `')
+			&& suppressed_groups[diagnostic.node_value]
 		is_conflict := diagnostic.severity == 'conflicting declaration:'
 			&& tc.valid_node_id(diagnostic.node) && tc.a.node(diagnostic.node).kind == .fn_decl
+			&& suppressed_groups[tc.fn_declaration_group_key(tc.a.node(diagnostic.node))]
 		if is_builder || is_conflict {
 			tc.errors.delete(i)
 		}
 	}
+}
+
+fn (tc &TypeChecker) fn_declaration_range_has_semantic_error(node flat.Node, range_lo int, range_hi int) bool {
+	for diagnostic in tc.errors {
+		if diagnostic.kind == .duplicate_decl {
+			continue
+		}
+		node_index := int(diagnostic.node)
+		if node_index >= range_lo && node_index <= range_hi {
+			return true
+		}
+		if diagnostic.pos.id == node.pos.id && diagnostic.pos.offset >= node.pos.offset
+			&& diagnostic.pos.offset < node.pos.end {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) fn_declaration_group_key(node flat.Node) string {
+	file := tc.a.source_files[node.pos.id] or { return node.value }
+	module_name := tc.file_modules[file.name] or { '' }
+	return checker_qualified_fn_name(module_name, node.value)
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics_scoped(fn_idx int, range_lo int, file string, module_name string) {
@@ -6578,19 +6617,16 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 		}
 		display_name := tc.a.nodes[indexes[0]].value
 		if display_name.all_after_last('.') == 'init'
-			|| tc.fn_group_name_conflicts_with_import(indexes, display_name.all_after_last('.')) {
+			|| tc.fn_group_name_conflicts_with_import(indexes, display_name.all_after_last('.'))
+			|| tc.fn_group_contains_builtin_declaration(indexes) {
 			continue
 		}
-		if visibility := tc.declaration_visibility['builtin.${display_name.all_after_last('.')}'] {
-			if visibility.is_pub {
-				continue
-			}
-		}
 		tc.errors << TypeError{
-			msg:      'redefinition of function `${display_name}`'
-			kind:     .duplicate_decl
-			node:     flat.empty_node
-			severity: 'builder error:'
+			msg:        'redefinition of function `${display_name}`'
+			kind:       .duplicate_decl
+			node:       flat.empty_node
+			node_value: key
+			severity:   'builder error:'
 		}
 		for index in indexes {
 			node_id := flat.NodeId(index)
@@ -6604,6 +6640,18 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 			}
 		}
 	}
+}
+
+fn (tc &TypeChecker) fn_group_contains_builtin_declaration(indexes []int) bool {
+	for index in indexes {
+		node := tc.a.nodes[index]
+		file := tc.a.source_files[node.pos.id] or { continue }
+		module_name := tc.file_modules[file.name] or { continue }
+		if module_name == 'builtin' {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) fn_group_name_conflicts_with_import(indexes []int, name string) bool {

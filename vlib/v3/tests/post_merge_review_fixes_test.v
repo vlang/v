@@ -6629,3 +6629,55 @@ fn shadowed() int {
 	assert !fixture_tc.errors.any(it.msg.contains('shadowed_offset')), fixture_tc.errors.str()
 	assert fixture_tc.notices.any(it.msg == 'unused variable: `offset`'), fixture_tc.notices.str()
 }
+
+fn test_duplicate_function_diagnostics_survive_unrelated_semantic_errors() {
+	check_src := '${tmp_test_path('duplicate_fn_with_unrelated_error')}.v'
+	os.write_file(check_src, "fn duplicate() {}
+
+fn duplicate(value int) {}
+
+fn unrelated() int {
+	return 'bad'
+}
+") or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.severity == 'builder error:'
+		&& it.msg == 'redefinition of function `duplicate`'), tc.errors.str()
+	assert tc.errors.filter(it.severity == 'conflicting declaration:'
+		&& it.node_value == 'duplicate').len == 2, tc.errors.str()
+	assert tc.errors.any(it.msg.contains('cannot use `string` as type `int` in return argument')), tc.errors.str()
+}
+
+fn test_repeated_template_lines_keep_distinct_diagnostic_positions() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('repeated_template_line_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('repeated.txt')
+}
+")
+	write_project_file(root, 'repeated.txt', '@unknown_var
+middle
+@unknown_var
+')
+	output := tmp_test_path('repeated_template_line_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('repeated.txt:1:3: error: undefined ident: `unknown_var`'), compile.output
+
+	assert compile.output.contains('repeated.txt:3:3: error: undefined ident: `unknown_var`'), compile.output
+}

@@ -1208,14 +1208,17 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 	for index in 0 .. line_map.len {
 		line_map[index] = int_max(1, int_min(index, template_lines.len))
 	}
+	mut template_search_start := 0
 	for generated_index, generated_line in generated_lines {
-		for template_index, template_line in template_lines {
+		for template_index in template_search_start .. template_lines.len {
+			template_line := template_lines[template_index]
 			plain := tmpl_line_content(template_line, false)
 			escaped := tmpl_line_content(template_line, true)
 			if (plain.len > 0 && generated_line.contains(plain))
 				|| (escaped.len > 0 && generated_line.contains(escaped)) {
 				line_map[generated_index] = template_index + 1
 				direct_map[generated_index] = true
+				template_search_start = template_index + 1
 				break
 			}
 		}
