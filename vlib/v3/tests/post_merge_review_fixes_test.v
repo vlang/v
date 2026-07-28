@@ -7131,6 +7131,77 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_helper_multiple_returns_merge_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_multiple_return_aliases', 'struct Item {
+mut:
+	remaining int
+}
+
+fn choose(original Item, changed Item, use_original bool) Item {
+	if use_original {
+		return original
+	}
+	return changed
+}
+
+fn (item Item) str() string {
+	mut changed := item
+	changed.remaining--
+	return choose(item, changed, true).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_constant_true_branch_has_no_fallthrough() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_constant_true_branch', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	if true {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+	fn main() {}
+')
+	assert out == ''
+	helper_out := run_good(v3_bin, 'recursive_str_helper_constant_true_branch', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	if true {
+		item.remaining--
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+')
+	assert helper_out == ''
+}
+
 fn test_recursive_str_helper_rebind_transfers_receiver_provenance() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_helper_rebind_source', 'struct Item {

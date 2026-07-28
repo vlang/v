@@ -405,9 +405,10 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 	mut fallthrough := []RecursiveStrEnv{}
 	mut breaks := []RecursiveStrEnv{}
 	mut has_else := false
+	mut has_guaranteed_branch := false
 	mut i := 0
 	for i < node.children_count {
-		child_id := tc.a.child(&node, i)
+		child_id := tc.a.child(node, i)
 		child := tc.a.node(child_id)
 		if child.kind == .block {
 			has_else = true
@@ -421,22 +422,34 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 		}
 		mut condition_env := base.clone_env()
 		tc.recursive_str_eval_condition(child_id, mut condition_env, ctx)
+		mut condition_is_true := false
+		mut condition_is_false := false
+		if value := tc.constant_bool_value(child_id) {
+			condition_is_true = value
+			condition_is_false = !value
+		}
 		if i + 1 < node.children_count {
 			block := tc.a.child_node(&node, i + 1)
 			if block.kind == .block {
-				flow := tc.recursive_str_process_loop_sequence(*block, 0, [
-					condition_env.clone_env(),
-				], ctx)
-				fallthrough << flow.fallthrough
-				breaks << flow.breaks
+				if !condition_is_false {
+					flow := tc.recursive_str_process_loop_sequence(*block, 0, [
+						condition_env.clone_env(),
+					], ctx)
+					fallthrough << flow.fallthrough
+					breaks << flow.breaks
+				}
 				base = condition_env
 				i += 2
+				if condition_is_true {
+					has_guaranteed_branch = true
+					break
+				}
 				continue
 			}
 		}
 		i++
 	}
-	if !has_else {
+	if !has_else && !has_guaranteed_branch {
 		fallthrough << base
 	}
 	return RecursiveStrLoopFlow{
@@ -959,6 +972,7 @@ fn (mut tc TypeChecker) recursive_str_process_if_stmt(id flat.NodeId, mut env Re
 	mut base := env.clone_env()
 	mut branch_envs := []RecursiveStrEnv{}
 	mut has_else := false
+	mut has_guaranteed_branch := false
 	mut i := 0
 	for i < node.children_count {
 		child_id := tc.a.child(node, i)
@@ -974,21 +988,33 @@ fn (mut tc TypeChecker) recursive_str_process_if_stmt(id flat.NodeId, mut env Re
 		}
 		mut condition_env := base.clone_env()
 		tc.recursive_str_eval_condition(child_id, mut condition_env, ctx)
+		mut condition_is_true := false
+		mut condition_is_false := false
+		if value := tc.constant_bool_value(child_id) {
+			condition_is_true = value
+			condition_is_false = !value
+		}
 		if i + 1 < node.children_count {
 			block_id := tc.a.child(node, i + 1)
 			if tc.a.node(block_id).kind == .block {
-				mut branch_env := condition_env.clone_env()
-				if tc.recursive_str_process_stmt(block_id, mut branch_env, ctx) {
-					branch_envs << branch_env
+				if !condition_is_false {
+					mut branch_env := condition_env.clone_env()
+					if tc.recursive_str_process_stmt(block_id, mut branch_env, ctx) {
+						branch_envs << branch_env
+					}
 				}
 				base = condition_env
 				i += 2
+				if condition_is_true {
+					has_guaranteed_branch = true
+					break
+				}
 				continue
 			}
 		}
 		i++
 	}
-	if !has_else {
+	if !has_else && !has_guaranteed_branch {
 		branch_envs << base
 	}
 	if branch_envs.len == 0 {
@@ -1059,18 +1085,29 @@ fn (mut tc TypeChecker) recursive_str_eval_if_expr(id flat.NodeId, mut env Recur
 		}
 		mut condition_env := base.clone_env()
 		tc.recursive_str_eval_condition(child_id, mut condition_env, ctx)
+		mut condition_is_true := false
+		mut condition_is_false := false
+		if value := tc.constant_bool_value(child_id) {
+			condition_is_true = value
+			condition_is_false = !value
+		}
 		if i + 1 < node.children_count {
 			block_id := tc.a.child(node, i + 1)
 			block := tc.a.node(block_id)
 			if block.kind == .block {
-				mut branch_env := condition_env.clone_env()
-				result := tc.recursive_str_eval_block_value(*block, mut branch_env, ctx)
-				if result.typ_name.len > 0 || result.can_recurse {
-					results << result
-					branch_envs << branch_env
+				if !condition_is_false {
+					mut branch_env := condition_env.clone_env()
+					result := tc.recursive_str_eval_block_value(*block, mut branch_env, ctx)
+					if result.typ_name.len > 0 || result.can_recurse {
+						results << result
+						branch_envs << branch_env
+					}
 				}
 				base = condition_env
 				i += 2
+				if condition_is_true {
+					break
+				}
 				continue
 			}
 		}
@@ -1457,7 +1494,7 @@ fn (tc &TypeChecker) recursive_str_binding_for_expr(id flat.NodeId, env Recursiv
 	}
 }
 
-fn (tc &TypeChecker) recursive_str_returned_param(decl flat.Node) ?RecursiveStrReturnedParam {
+fn (tc &TypeChecker) recursive_str_returned_params(decl flat.Node) ?[]RecursiveStrReturnedParam {
 	mut params := map[string]int{}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. decl.children_count {
@@ -1469,8 +1506,7 @@ fn (tc &TypeChecker) recursive_str_returned_param(decl flat.Node) ?RecursiveStrR
 			stack << child_id
 		}
 	}
-	mut returned := RecursiveStrReturnedParam{}
-	mut has_return := false
+	mut returned := []RecursiveStrReturnedParam{}
 	for stack.len > 0 {
 		id := stack.pop()
 		node := tc.a.node(id)
@@ -1484,21 +1520,20 @@ fn (tc &TypeChecker) recursive_str_returned_param(decl flat.Node) ?RecursiveStrR
 			value_id := tc.a.child(node, 0)
 			name := tc.recursive_str_root_ident(value_id) or { return none }
 			index := params[name] or { return none }
-			if has_return && returned.name != name {
-				return none
+			if returned.any(it.name == name) {
+				continue
 			}
-			returned = RecursiveStrReturnedParam{
+			returned << RecursiveStrReturnedParam{
 				name:  name
 				index: index
 			}
-			has_return = true
 			continue
 		}
 		for i in 0 .. node.children_count {
 			stack << tc.a.child(node, i)
 		}
 	}
-	if has_return {
+	if returned.len > 0 {
 		return returned
 	}
 	return none
@@ -1508,26 +1543,33 @@ fn (mut tc TypeChecker) recursive_str_call_return_binding(call_id flat.NodeId, e
 	resolved := tc.resolved_call_name(call_id) or { return none }
 	decl_id := tc.recursive_str_fn_decl_id(resolved) or { return none }
 	decl := tc.a.node(decl_id)
-	returned := tc.recursive_str_returned_param(*decl) or { return none }
+	returned := tc.recursive_str_returned_params(*decl) or { return none }
 	call := tc.a.node(call_id)
 	actuals := tc.recursive_str_call_param_actuals(*call, *decl)
-	actual_id := actuals[returned.name] or { return none }
-	mut binding := tc.recursive_str_binding_for_expr(actual_id, env)
-	effect := tc.recursive_str_guaranteed_param_effect(*decl, returned.index)
-	match effect.kind {
-		.value, .shared {
-			if binding.can_recurse {
-				binding.progressed = true
+	mut bindings := []RecursiveStrBinding{}
+	for returned_param in returned {
+		actual_id := actuals[returned_param.name] or { continue }
+		mut binding := tc.recursive_str_binding_for_expr(actual_id, env)
+		effect := tc.recursive_str_guaranteed_param_effect(*decl, returned_param.index)
+		match effect.kind {
+			.value, .shared {
+				if binding.can_recurse {
+					binding.progressed = true
+				}
 			}
-		}
-		.rebind {
-			if source_id := actuals[effect.source_param] {
-				binding = tc.recursive_str_binding_for_expr(source_id, env)
+			.rebind {
+				if source_id := actuals[effect.source_param] {
+					binding = tc.recursive_str_binding_for_expr(source_id, env)
+				}
 			}
+			else {}
 		}
-		else {}
+		bindings << binding
 	}
-	return binding
+	if bindings.len == 0 {
+		return none
+	}
+	return tc.recursive_str_merge_bindings(bindings)
 }
 
 fn (mut tc TypeChecker) recursive_str_apply_call_mutations(call_id flat.NodeId, mut env RecursiveStrEnv) {
@@ -1953,25 +1995,56 @@ fn (mut tc TypeChecker) recursive_str_conditional_param_flow(id flat.NodeId, nam
 	mut terminal := []RecursiveStrParamEffect{}
 	mut fallthrough := []RecursiveStrParamEffect{}
 	mut has_else := false
-	for i in 0 .. node.children_count {
+	mut has_guaranteed_branch := false
+	mut i := 0
+	for i < node.children_count {
 		child_id := tc.a.child(node, i)
 		child := tc.a.node(child_id)
-		if child.kind != .block {
+		if child.kind == .block {
+			has_else = true
+			effect := tc.recursive_str_stmt_param_effect(child_id, name, depth)
+			final_effect := if effect.kind == .none { incoming } else { effect }
+			if tc.recursive_str_stmt_may_return(*child) {
+				terminal << final_effect
+			}
+			if !tc.recursive_str_stmt_always_returns(*child) {
+				fallthrough << final_effect
+			}
+			break
+		}
+		mut condition_is_true := false
+		mut condition_is_false := false
+		if value := tc.constant_bool_value(child_id) {
+			condition_is_true = value
+			condition_is_false = !value
+		}
+		if i + 1 >= node.children_count {
+			i++
 			continue
 		}
-		if i == node.children_count - 1 && i % 2 == 0 {
-			has_else = true
+		block_id := tc.a.child(node, i + 1)
+		block := tc.a.node(block_id)
+		if block.kind != .block {
+			i++
+			continue
 		}
-		effect := tc.recursive_str_stmt_param_effect(child_id, name, depth)
-		final_effect := if effect.kind == .none { incoming } else { effect }
-		if tc.recursive_str_stmt_may_return(*child) {
-			terminal << final_effect
+		if !condition_is_false {
+			effect := tc.recursive_str_stmt_param_effect(block_id, name, depth)
+			final_effect := if effect.kind == .none { incoming } else { effect }
+			if tc.recursive_str_stmt_may_return(*block) {
+				terminal << final_effect
+			}
+			if !tc.recursive_str_stmt_always_returns(*block) {
+				fallthrough << final_effect
+			}
 		}
-		if !tc.recursive_str_stmt_always_returns(*child) {
-			fallthrough << final_effect
+		i += 2
+		if condition_is_true {
+			has_guaranteed_branch = true
+			break
 		}
 	}
-	if !has_else {
+	if !has_else && !has_guaranteed_branch {
 		fallthrough << incoming
 	}
 	return RecursiveStrConditionalParamFlow{
