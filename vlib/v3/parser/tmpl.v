@@ -1464,13 +1464,9 @@ fn template_mapped_pos(template_file &token.File, template_lines []string, line 
 		if at := template_interpolation_offset(raw_line, interpolation_index,
 			interpolation_skip_offset)
 		{
-			if at + 1 < raw_line.len && is_tmpl_ident_start(raw_line[at + 1]) {
-				mut end := at + 2
-				for end < raw_line.len && is_tmpl_ident_part(raw_line[end]) {
-					end++
-				}
-				column = at + 3
-				span_len = end - at - 1
+			if expr_start, expr_end := template_interpolation_expr_span(raw_line, at) {
+				column = expr_start + 2
+				span_len = expr_end - expr_start
 			}
 		}
 	}
@@ -1521,6 +1517,46 @@ fn template_interpolation_offset(line string, wanted int, skip_offset int) ?int 
 		i++
 	}
 	return none
+}
+
+fn template_interpolation_expr_span(line string, at int) ?(int, int) {
+	if at < 0 || at + 1 >= line.len || line[at] != `@` {
+		return none
+	}
+	next := line[at + 1]
+	mut start := at + 1
+	mut end := start
+	if next == `{` || next == `(` {
+		close := if next == `{` { `}` } else { `)` }
+		balanced_end := find_tmpl_balanced_end(line, at + 1, next, close)
+		if balanced_end == -1 {
+			return none
+		}
+		start = at + 2
+		end = balanced_end - 1
+	} else if is_tmpl_ident_start(next) {
+		complex_end := find_tmpl_complex_at_expr_end(line, at + 1)
+		if complex_end != -1 {
+			end = complex_end
+		} else {
+			end = at + 2
+			for end < line.len && is_tmpl_ident_part(line[end]) {
+				end++
+			}
+		}
+	} else {
+		return none
+	}
+	for start < end && line[start].is_space() {
+		start++
+	}
+	for end > start && line[end - 1].is_space() {
+		end--
+	}
+	if start == end {
+		return none
+	}
+	return start, end
 }
 
 // expand_veb_template_stmt lowers a statement whose value is a `.veb_template`

@@ -6706,6 +6706,31 @@ fn main() {
 	assert compile.output.contains('columns.txt:1:12: error: undefined ident: `unknown`'), compile.output
 }
 
+fn test_explicit_template_interpolations_use_expression_columns() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('explicit_template_interpolation_columns')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('explicit_columns.txt')
+}
+")
+	write_project_file(root, 'explicit_columns.txt', '@{missing} @(absent)
+')
+	output := tmp_test_path('explicit_template_interpolation_columns')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('explicit_columns.txt:1:4: error: undefined ident: `missing`'), compile.output
+
+	assert compile.output.contains('explicit_columns.txt:1:15: error: undefined ident: `absent`'), compile.output
+}
+
 fn test_template_control_diagnostics_use_template_source() {
 	v3_bin := build_v3()
 	root := '${tmp_test_path('template_control_diagnostics')}_project'
@@ -6915,6 +6940,39 @@ fn main() {
 }
 ')
 	assert out == 'lambda\nliteral'
+}
+
+fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unbacked_enum_integer_overflow', 'enum Huge {
+	value = 18446744073709551616
+}
+
+fn main() {}
+',
+		'integer literal 18446744073709551616 overflows int')
+}
+
+fn test_diagnostic_footer_uses_deduplicated_error_count() {
+	v3_bin := build_v3()
+	mut source := ''
+	for index in 0 .. 15 {
+		source += 'fn broken_${index}[U](value T) {
+	_ := T{}
+}
+
+'
+	}
+	source += 'fn main() {}
+'
+	bad_src := '${tmp_test_path('deduplicated_error_footer')}.v'
+	os.write_file(bad_src, source) or { panic(err) }
+	bad_bin := tmp_test_path('deduplicated_error_footer')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.count('generic type name `T` is not mentioned in fn') == 15, compile.output
+	assert !compile.output.contains('unknown struct `T`'), compile.output
+	assert !compile.output.contains('more errors'), compile.output
 }
 
 fn test_parameter_redefinition_only_suppresses_related_unused_notices() {

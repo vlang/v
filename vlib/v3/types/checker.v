@@ -18755,7 +18755,11 @@ fn (mut tc TypeChecker) check_untyped_integer_literal_overflow(id flat.NodeId) {
 		return
 	}
 	if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .enum_field {
-		return
+		enum_id := tc.direct_parent_id(parent_id)
+		if tc.valid_node_id(enum_id) && tc.a.node(enum_id).kind == .enum_decl
+			&& tc.a.node(enum_id).generic_params().len > 0 {
+			return
+		}
 	}
 	mut literal := tc.integer_literal_source(id) or { return }
 	literal = literal.replace('_', '')

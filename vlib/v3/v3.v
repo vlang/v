@@ -6801,8 +6801,8 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		eprintln(v3errors.formatted_error(severity, err.msg, a, err.node, err.pos))
 		print_type_diagnostic_details(err.details)
 	}
-	if !all_errors && type_errors.len > 20 {
-		eprintln('... and ${type_errors.len - 20} more errors')
+	if !all_errors && ordered_errors.len > max_errors {
+		eprintln('... and ${ordered_errors.len - max_errors} more errors')
 	}
 }
 
