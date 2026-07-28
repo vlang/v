@@ -53,14 +53,18 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		return false
 	}
 	if normalized_path == 'cmd/v' || normalized_path.ends_with('/cmd/v')
-		|| normalized_path.ends_with('/cmd/v/v.v') || normalized_path.starts_with('cmd/tools/')
-		|| normalized_path.contains('/cmd/tools/') || normalized_path.ends_with('.vv')
-		|| os.is_dir(prefs.path) || macos_v3_source_path_resolves_differently(prefs.path)
+		|| normalized_path.ends_with('/cmd/v/v.v')
+		|| normalized_path.starts_with('cmd/tools/')
+		|| normalized_path.contains('/cmd/tools/')
+		|| normalized_path.ends_with('.vv')
+		|| (!normalized_path.ends_with('.v') && !normalized_path.ends_with('.vsh'))
+		|| os.is_dir(prefs.path)
+		|| macos_v3_source_path_resolves_differently(prefs.path)
 		|| macos_v3_needs_compatible_default_output(prefs.path) {
 		// Keep the established compiler available as the compatibility fallback.
 		// V3 does not compile all of cmd/v yet, and command tools are built on
 		// demand while dispatching CLI commands such as `fmt` and `test`. Legacy
-		// .vv fixtures, directory builds, and sources needing compatibility
+		// .vv fixtures, directory/non-V builds, and sources needing compatibility
 		// output-name derivation also retain established semantics.
 		return false
 	}

@@ -70,6 +70,9 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		assert !is_macos_v3_relevant_command('vlib/v3', prefs)
 		prefs.path = 'fixture.vv'
 		assert !is_macos_v3_relevant_command('run', prefs)
+		prefs.path = 'program.txt'
+		assert !is_macos_v3_relevant_command('run', prefs)
+		assert !is_macos_v3_relevant_command('build', prefs)
 		prefs.path = 'script.vsh'
 		prefs.is_crun = true
 		assert is_macos_v3_relevant_command('script.vsh', prefs)

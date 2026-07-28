@@ -225,6 +225,50 @@ fn main() {
 	}
 }
 
+fn test_driver_cg_selects_debug_module_files() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cg_debug_files_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	project := os.join_path(root, 'project')
+	variant_dir := os.join_path(project, 'variant')
+	os.mkdir_all(variant_dir) or { panic(err) }
+	os.write_file(os.join_path(project, 'v.mod'), "Module {
+	name: 'debug_file_selection'
+}
+")!
+	os.write_file(os.join_path(project, 'main.v'), 'module main
+
+import variant
+
+fn main() {
+	println(variant.selected())
+}
+')!
+	os.write_file(os.join_path(variant_dir, 'variant_d_debug.v'), "module variant
+
+pub fn selected() string {
+	return 'debug'
+}
+")!
+	os.write_file(os.join_path(variant_dir, 'variant_notd_debug.v'), "module variant
+
+pub fn selected() string {
+	return 'release'
+}
+")!
+	output := os.join_path(root, 'debug_file_selection')
+	compile := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit', '-cg', '-o',
+		output, project])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'debug\n', run.output
+}
+
 fn test_driver_run_preserves_stdin() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_stdin_${os.getpid()}')
 	os.rmdir_all(root) or {}

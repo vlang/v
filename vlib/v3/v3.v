@@ -3700,6 +3700,10 @@ fn main() {
 		eprintln('no input file')
 		exit(1)
 	}
+	if is_debug && 'debug' !in user_defines {
+		user_defines << 'debug'
+		record_compile_value(mut compile_values, 'debug')
+	}
 	if is_test_command && fixturetest.is_diagnostic_fixture_dir(input_file) {
 		exit(fixturetest.run(os.executable(), input_file, args))
 	}
