@@ -145,7 +145,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			p.chan_type_error()
 			return 0
 		}
-		if elem_type == ast.map_type {
+		if elem_type.idx() == ast.map_type_idx {
 			p.map_type_error()
 			return 0
 		}
@@ -176,7 +176,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 		p.chan_type_error()
 		return 0
 	}
-	if elem_type == ast.map_type {
+	if elem_type.idx() == ast.map_type_idx {
 		p.map_type_error()
 		return 0
 	}

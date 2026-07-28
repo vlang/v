@@ -35,7 +35,7 @@ fn (mut p Parser) parse_fixed_array_literal_elem_type() ast.Type {
 		p.chan_type_error()
 		return 0
 	}
-	if elem_type == ast.map_type {
+	if elem_type.idx() == ast.map_type_idx {
 		p.map_type_error()
 		return 0
 	}
@@ -191,7 +191,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 					has_type = true
 				} else {
 					elem_type = p.parse_type()
-					if elem_type == ast.map_type {
+					if elem_type.idx() == ast.map_type_idx {
 						p.map_type_error()
 						return ast.ArrayInit{}
 					}
