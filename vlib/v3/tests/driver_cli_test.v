@@ -414,6 +414,52 @@ fn main() {
 	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\n', set_run.output
 }
 
+fn test_driver_resolves_boolean_d_and_documented_pseudos() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_comptime_values_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	project := os.join_path(root, 'project')
+	git_refs := os.join_path(project, '.git', 'refs', 'heads')
+	os.mkdir_all(git_refs) or { panic(err) }
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'driver_comptime_values' }\n")!
+	os.write_file(os.join_path(project, '.git', 'HEAD'), 'ref: refs/heads/main\n')!
+	os.write_file(os.join_path(git_refs, 'main'), '0123456789abcdef0123456789abcdef01234567\n')!
+	source := os.join_path(project, 'main.v')
+	os.write_file(source, "module main
+
+const enabled = \$d('feature', false)
+const column = @COLUMN
+const project_hash = @VMODHASH
+const column_condition = \$if @COLUMN != '' { true } \$else { false }
+const hash_condition = \$if @VMODHASH == '0123456' { true } \$else { false }
+
+fn main() {
+	println(enabled)
+	println(column)
+	println(project_hash)
+	println(column_condition)
+	println(hash_condition)
+}
+")!
+	for i, define_args in [
+		['-d', 'feature'],
+		['-dfeature'],
+	] {
+		output := os.join_path(root, 'comptime_values_${i}')
+		mut args := define_args.clone()
+		args << ['-silent', '-no-parallel', '-o', output, source]
+		compile := cmdexec.run(v3_bin, args)
+		assert compile.exit_code == 0, compile.output
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == 'true\n16\n0123456\ntrue\ntrue\n', run.output
+	}
+}
+
 fn test_driver_run_preserves_stdin() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_stdin_${os.getpid()}')
 	os.rmdir_all(root) or {}

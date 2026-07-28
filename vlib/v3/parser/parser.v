@@ -8,6 +8,7 @@ import v3.flat
 import v3.pref
 import v3.scanner
 import v3.token
+import v.util.version
 
 const max_parse_diagnostics = 100
 
@@ -544,6 +545,14 @@ fn vmod_root_for_file(path string) string {
 		dir = parent
 	}
 	return dir
+}
+
+fn vmod_hash_for_file(path string) !string {
+	root := vmod_root_for_file(path)
+	if !os.is_file(os.join_path_single(root, 'v.mod')) {
+		return error('@VMODHASH can only be used in projects that have a v.mod file')
+	}
+	return version.githash(root)
 }
 
 // next supports next handling for Parser.
@@ -3376,6 +3385,16 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					}
 					write_comptime_cond_string(mut out, content.replace('\r\n', '\n'))
 				}
+				'@VMODHASH' {
+					hash := vmod_hash_for_file(p.cur_file) or {
+						message := p.a.add_val_id(5, err.msg())
+						call := p.make_compile_error_call(message, pseudo_pos + start, pseudo_pos +
+							i)
+						_ = p.make_top_level_compile_error(call)
+						''
+					}
+					write_comptime_cond_string(mut out, hash)
+				}
 				'@VEXEROOT' {
 					write_comptime_cond_string(mut out, p.prefs.vroot)
 				}
@@ -3385,6 +3404,9 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 				}
 				'@LINE' {
 					write_comptime_cond_string(mut out, p.line_nr_for_pos(pseudo_pos).str())
+				}
+				'@COLUMN' {
+					write_comptime_cond_string(mut out, p.column_for_pos(pseudo_pos + start).str())
 				}
 				'@FILE_LINE' {
 					write_comptime_cond_string(mut out,
@@ -5048,14 +5070,24 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			return flat.empty_node
 		}
 		p.next()
-		// First argument is the compile-time define name. v3 currently only
-		// uses the default expression, so consume the name expression.
+		define_name := if p.tok == .string { strip_quotes(p.lit) } else { '' }
+		// The first argument is the compile-time define name.
 		if p.tok != .comma && p.tok != .rpar && p.tok != .eof {
 			p.expr(.lowest)
 		}
 		if p.tok == .comma {
 			p.next()
-			default_expr := p.expr(.lowest)
+			mut value_expr := p.expr(.lowest)
+			default := p.a.node(value_expr)
+			if value := p.prefs.compile_values[define_name] {
+				if default.kind == .bool_literal && value in ['true', 'false'] {
+					value_expr = p.a.add_node(flat.Node{
+						kind:  .bool_literal
+						value: value
+						pos:   default.pos
+					})
+				}
+			}
 			for p.tok != .rpar && p.tok != .eof {
 				p.next()
 			}
@@ -5063,7 +5095,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			return p.add_node(flat.Node{
 				kind:           .paren
 				value:          '__v3_comptime_d'
-				children_start: p.add_child(default_expr)
+				children_start: p.add_child(value_expr)
 				children_count: 1
 				pos:            p.span_to(dollar_pos)
 			})
@@ -8529,6 +8561,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				return p.add_val_id(5, content.replace('\r\n', '\n'))
 			}
+			if name == '@VMODHASH' {
+				hash := vmod_hash_for_file(p.cur_file) or {
+					message := p.add_val_id(5, err.msg())
+					return p.make_compile_error_call(message, name_pos, p.prev_tok_end)
+				}
+				return p.add_val_id(5, hash)
+			}
 			if name == '@VEXEROOT' {
 				return p.add_val_id(5, p.prefs.vroot)
 			}
@@ -8541,6 +8580,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if name == '@LINE' {
 				// like V1, `@LINE` is a string literal holding the 1-based line number
 				return p.add_val_id(5, p.line_nr_for_pos(name_pos).str())
+			}
+			if name == '@COLUMN' {
+				return p.add_val_id(5, p.column_for_pos(name_pos).str())
 			}
 			if name == '@FILE_LINE' {
 				return p.add_val_id(5, '${os.real_path(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')

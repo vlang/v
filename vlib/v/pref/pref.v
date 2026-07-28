@@ -1182,6 +1182,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					// store for future iterations
 					res.is_vsh = true
 				}
+				if arg.starts_with('-d') && arg.len > 2 {
+					res.parse_define(arg[2..])
+					continue
+				}
 				if !arg.starts_with('-') {
 					if command == '' {
 						command, command_idx = arg, i

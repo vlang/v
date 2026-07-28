@@ -497,6 +497,15 @@ fn test_v3_memory_limit_passthrough_flags_are_accepted() {
 	}
 }
 
+fn test_compact_boolean_define_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-dfeature', target], false)
+	assert command == target
+	assert prefs.compile_values['feature'] == 'true'
+	assert 'feature' in prefs.compile_defines
+	assert prefs.build_options.contains('-d feature')
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
