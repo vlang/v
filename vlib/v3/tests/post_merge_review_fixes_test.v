@@ -8045,6 +8045,106 @@ fn test_fresh_unsafe_map_is_not_reference_alias() {
 	assert out == '1'
 }
 
+fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_if_return_path', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if cond {
+		alias = unsafe { original }
+		return
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	run_bad(v3_bin, 'unsafe_map_alias_match_return_path', 'fn branch(value int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	match value {
+		0 {
+			alias = unsafe { original }
+			return
+		}
+		else {}
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(1)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	run_bad(v3_bin, 'unsafe_map_alias_loop_zero_path', 'fn branch(values []int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for _ in values {
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch([]int{})
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_all_if_paths', 'fn branch(cond bool) {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := map[string]int{}
+	if cond {
+		alias = unsafe { first }
+	} else {
+		alias = unsafe { second }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+')
+	assert out == '1'
+	loop_out := run_good(v3_bin, 'unsafe_map_alias_loop_return_path', 'fn branch(values []int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	for _ in values {
+		alias = map[string]int{}
+		return
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch([]int{})
+}
+')
+	assert loop_out == '1'
+}
+
 fn test_recursive_str_struct_update_preserves_receiver_provenance() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_struct_update_provenance', 'struct Item {
