@@ -150,8 +150,15 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-foo', 'main.v'])
-		assert !macos_v3_args_are_supported(['-arch', 'x86', 'main.v'])
-		assert macos_v3_args_are_supported(['-arch', 'x86_64', 'main.v'])
+		for arch in ['x86', 'rv32', 'riscv32', 'sparc64', 'ppc', 'ppc32', 'powerpc', 'js', 'js_node',
+			'js_browser', 'js_freestanding'] {
+			assert !macos_v3_args_are_supported(['-arch', arch, 'main.v'])
+		}
+		for arch in ['amd64', 'x86_64', 'x64', 'arm64', 'aarch64', 'arm32', 'aarch32', 'arm', 'rv64',
+			'riscv64', 'risc-v64', 'riscv', 'risc-v', 'i386', 'x86_32', 'x32', 'IA-32', 'ia-32',
+			'ia32', 's390x', 'ppc64le', 'loongarch64', 'ppc64', 'wasm32', 'wasm'] {
+			assert macos_v3_args_are_supported(['-arch', arch, 'main.v'])
+		}
 		assert macos_v3_args_are_supported(['-no-memory-limit', 'main.v'])
 		assert macos_v3_args_are_supported(['--no-memory-limit', 'main.v'])
 		assert !macos_v3_args_are_supported(['-no-retry-compilation', 'main.v'])

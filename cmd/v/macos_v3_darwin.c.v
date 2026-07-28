@@ -121,9 +121,7 @@ fn macos_v3_args_are_supported(args []string) bool {
 			if arg == '-o' && args[i + 1].starts_with('-') {
 				return false
 			}
-			// The established CLI treats this legacy alias as amd64, while V3
-			// uses x86 for its 32-bit target.
-			if arg == '-arch' && args[i + 1] == 'x86' {
+			if arg == '-arch' && !macos_v3_arch_is_supported(args[i + 1]) {
 				return false
 			}
 			i += 2
@@ -160,6 +158,17 @@ fn macos_v3_args_are_supported(args []string) bool {
 		i++
 	}
 	return input_seen
+}
+
+fn macos_v3_arch_is_supported(arch_name string) bool {
+	// The established CLI treats this legacy alias as amd64, while V3 uses
+	// x86 for its 32-bit target.
+	if arch_name == 'x86' {
+		return false
+	}
+	arch := pref.arch_from_string(arch_name) or { return false }
+	return arch in [.amd64, .arm64, .arm32, .rv64, .i386, .s390x, .ppc64le, .loongarch64, .ppc64,
+		.wasm32]
 }
 
 fn macos_v3_needs_compatible_default_output(path string) bool {
