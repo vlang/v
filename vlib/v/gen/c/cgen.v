@@ -12788,7 +12788,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 			}
 			ast.Alias {
-				if g.alias_is_fixed_array_of_non_builtin(sym) {
+				if (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms)
+					&& g.alias_is_fixed_array_of_non_builtin(sym) {
 					parent_styp := g.styp(sym.info.parent_type)
 					g.type_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
 				}
