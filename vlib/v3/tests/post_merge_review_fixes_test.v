@@ -6924,3 +6924,44 @@ fn main() {
 ')
 	assert out == 'done'
 }
+
+fn test_bare_generic_inference_suppression_stays_with_return_declaration() {
+	check_src := '${tmp_test_path('bare_generic_inference_scope')}.v'
+	source := 'struct GenericChannelStruct[T] {
+	ch chan T
+}
+
+struct Simple {
+	msg string
+}
+
+fn main() {
+	new_channel_struct[Simple]()
+}
+
+pub fn new_channel_struct[T]() GenericChannelStruct {
+	d := GenericChannelStruct{
+		ch: chan T{}
+	}
+	return d
+}
+
+fn unrelated() {
+	_ := GenericChannelStruct{}
+}
+'
+	os.write_file(check_src, source) or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.msg.starts_with('return generic struct `GenericChannelStruct` in fn declaration must specify the generic type names')), tc.errors.str()
+
+	inference_errors :=
+		tc.errors.filter(it.msg == 'could not infer generic type `T` in generic struct `GenericChannelStruct[T]`')
+	assert inference_errors.len == 1, tc.errors.str()
+	unrelated_start := source.index('fn unrelated') or { panic('missing unrelated function') }
+	assert inference_errors[0].pos.offset > unrelated_start, tc.errors.str()
+}

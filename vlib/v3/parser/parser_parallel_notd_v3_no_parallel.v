@@ -941,26 +941,27 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		w.a.nodes.len = 0
 	}
 	if ma.has_scope {
-		// Pre-index diagnostic line tables from the worker source buffers while
-		// they are still alive; the serial tail only inserts the results.
-		mut file_ids := w.a.source_files.keys()
-		file_ids.sort()
-		for source_idx, file_id in file_ids {
-			file := w.a.source_files[file_id] or { continue }
-			if source_idx >= w.a.source_buffers.len {
-				continue
-			}
-			source := w.a.source_buffers[source_idx]
-			mut file_set := token.FileSet.new()
-			mut stored_file := file_set.add_file(file.name.clone(), file.size)
-			stored_file.index_lines(source)
+		// Clone diagnostic line tables while the scoped worker still owns them.
+		// A source file does not necessarily have a matching source buffer:
+		// template parsing stores the generated V source separately from the
+		// real template file registered for diagnostic remapping.
+		for file_id, file in w.a.source_files {
 			ma.pending_files << PendingSourceFile{
 				file_id: file_id
-				file:    stored_file
+				file:    clone_parser_source_file(file)
 			}
 		}
 	}
 	return unsafe { nil }
+}
+
+fn clone_parser_source_file(file &token.File) &token.File {
+	mut file_set := token.FileSet.new()
+	mut stored_file := file_set.add_file(file.name.clone(), file.size)
+	for line in 2 .. file.line_count() + 1 {
+		stored_file.add_line(file.line_start(line))
+	}
+	return stored_file
 }
 
 fn par_parse_merge_enabled() bool {
@@ -1121,12 +1122,20 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 	}
 	for diagnostic in w.diagnostics {
 		p.append_diagnostic(Diagnostic{
-			file:    diagnostic.file.clone()
-			pos:     diagnostic.pos
-			line:    diagnostic.line
-			column:  diagnostic.column
-			message: diagnostic.message.clone()
+			file:     diagnostic.file.clone()
+			pos:      diagnostic.pos
+			line:     diagnostic.line
+			column:   diagnostic.column
+			message:  diagnostic.message.clone()
+			severity: diagnostic.severity.clone()
 		})
+	}
+	for file_id, call_site in w.a.template_call_sites {
+		p.a.template_call_sites[file_id] = call_site
+	}
+	for file_id, action in w.a.template_actions {
+		_, canonical := p.a.intern_text(action)
+		p.a.template_actions[file_id] = canonical
 	}
 	if use_pending {
 		// Line tables were indexed on the copy thread; only the map inserts
@@ -1148,20 +1157,10 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		}
 	} else {
 		// Node and metadata text has already been promoted into the master text
-		// table. Rebuild only the compact line indexes needed by diagnostics and
-		// let the much larger worker source buffers die with the task arena.
-		mut file_ids := w.a.source_files.keys()
-		file_ids.sort()
-		for source_idx, file_id in file_ids {
-			file := w.a.source_files[file_id] or { continue }
-			if source_idx >= w.a.source_buffers.len {
-				continue
-			}
-			source := w.a.source_buffers[source_idx]
-			mut file_set := token.FileSet.new()
-			mut stored_file := file_set.add_file(file.name.clone(), file.size)
-			stored_file.index_lines(source)
-			p.a.source_files[file_id] = stored_file
+		// table. Keep only the compact line indexes needed by diagnostics and let
+		// the much larger worker source buffers die with the task arena.
+		for file_id, file in w.a.source_files {
+			p.a.source_files[file_id] = clone_parser_source_file(file)
 		}
 	}
 	for key, value in w.comptime_const_values {

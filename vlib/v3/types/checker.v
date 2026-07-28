@@ -45080,7 +45080,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					tc.struct_generic_params[qualified] or { []string{} }
 				}
 				if params.len > 0
-					&& !tc.errors.any(it.msg.starts_with('return generic struct `${generic_name}` in fn declaration must specify the generic type names')) {
+					&& !tc.struct_init_has_related_bare_generic_return_error(id, generic_name) {
 					inferred := tc.infer_generic_struct_init_param_texts(node, generic_name, params)
 					mut missing_param := params[0]
 					for param in params {
@@ -45498,6 +45498,33 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		tc.check_node(tc.a.child(&node, i))
 	}
 	_ = id
+}
+
+fn (tc &TypeChecker) struct_init_has_related_bare_generic_return_error(id flat.NodeId, generic_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	init_pos := tc.a.node(id).pos
+	mut enclosing_id := flat.empty_node
+	mut enclosing_offset := -1
+	for index in tc.top_level_idx {
+		decl := tc.a.node(flat.NodeId(index))
+		if decl.pos.id != init_pos.id || decl.pos.offset > init_pos.offset
+			|| decl.pos.offset <= enclosing_offset {
+			continue
+		}
+		enclosing_id = flat.NodeId(index)
+		enclosing_offset = decl.pos.offset
+	}
+	if !tc.valid_node_id(enclosing_id) {
+		return false
+	}
+	enclosing := tc.a.node(enclosing_id)
+	if enclosing.kind != .fn_decl || enclosing.generic_params().len == 0 {
+		return false
+	}
+	return_name := tc.bare_generic_decl_type_name(enclosing.typ) or { return false }
+	return return_name == generic_name
 }
 
 fn (tc &TypeChecker) fn_types_match_ignoring_module_qualification(expected FnType, actual Type) bool {
