@@ -22,6 +22,9 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.output_mode = .stdout
 		prefs.show_cc = false
+		prefs.is_o = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_o = false
 		prefs.is_vlines = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_vlines = false
@@ -92,6 +95,14 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		os.symlink(source, alias) or { panic(err) }
 		prefs.path = alias
 		assert !is_macos_v3_relevant_command(alias, prefs)
+	}
+}
+
+fn test_macos_v3_environment_flags_require_compatibility_compiler() {
+	$if macos {
+		assert macos_v3_environment_flags_are_supported('', '')
+		assert !macos_v3_environment_flags_are_supported('-DMACOS_V3_CFLAGS', '')
+		assert !macos_v3_environment_flags_are_supported('', '-framework Cocoa')
 	}
 }
 

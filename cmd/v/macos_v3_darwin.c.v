@@ -15,10 +15,15 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 	forwarded_args := all_args[1..]
 	if os.getenv(macos_v3_bootstrap_env) != '' || !is_macos_v3_default_executable(os.executable())
 		|| !is_macos_v3_relevant_command(command, prefs)
+		|| !macos_v3_environment_flags_are_supported(os.getenv('CFLAGS'), os.getenv('LDFLAGS'))
 		|| !macos_v3_args_are_supported(forwarded_args) {
 		return
 	}
 	launch_macos_v3_compiler(prefs, forwarded_args)
+}
+
+fn macos_v3_environment_flags_are_supported(cflags string, ldflags string) bool {
+	return cflags == '' && ldflags == ''
 }
 
 fn is_macos_v3_default_executable(vexe string) bool {
@@ -38,8 +43,8 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if (prefs.is_crun && !is_direct_vsh) || prefs.is_test || prefs.is_prod
 		|| prefs.autofree || prefs.build_mode == .build_module || prefs.is_cstrict
 		|| prefs.use_cache || prefs.parallel_cc || prefs.out_name_is_dir
-		|| prefs.exclude.len > 0 || prefs.coverage_dir != '' || prefs.is_vlines
-		|| (prefs.is_shared && (prefs.is_run || prefs.is_crun)) {
+		|| prefs.exclude.len > 0 || prefs.coverage_dir != '' || prefs.is_o
+		|| prefs.is_vlines || (prefs.is_shared && (prefs.is_run || prefs.is_crun)) {
 		return false
 	}
 	if prefs.gc_mode != .no_gc {
