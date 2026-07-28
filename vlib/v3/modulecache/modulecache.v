@@ -221,6 +221,17 @@ pub fn source_signature(source_files []string) string {
 	return source_signature_details(source_files, '').signature
 }
 
+// source_files_use_build_time_pseudo reports whether selected sources depend on build time.
+pub fn source_files_use_build_time_pseudo(source_files []string) bool {
+	for file in source_files {
+		source := os.read_file(file) or { continue }
+		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
+			return true
+		}
+	}
+	return false
+}
+
 struct SourceSignatureDetails {
 	signature  string
 	validation []string

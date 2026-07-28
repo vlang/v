@@ -583,6 +583,8 @@ const compile_vexe = \$env('VEXE')
 const compile_vchild = \$env('VCHILD')
 const compile_private = \$env('V_MACOS_V3_CALLER_VEXE')
 const compile_c_error_dir = \$env('V_MACOS_V3_C_ERROR_DIR')
+const compile_crun_identity = \$env('V3_CRUN_BUILD_IDENTITY')
+const compile_internal_restart = \$env('V3_INTERNAL_RESTART')
 
 fn env_value(name string) string {
 	return os.getenv_opt(name) or { '<unset>' }
@@ -594,6 +596,8 @@ fn main() {
 	println('private:' + compile_private + '|' + env_value('V_MACOS_V3_CALLER_VEXE') + '|' +
 		env_value('V_MACOS_V3_CALLER_VCHILD'))
 	println('c-error-dir:' + compile_c_error_dir + '|' + env_value('V_MACOS_V3_C_ERROR_DIR'))
+	println('crun-private:' + compile_crun_identity + '|' + compile_internal_restart + '|' +
+		env_value('V3_CRUN_BUILD_IDENTITY') + '|' + env_value('V3_INTERNAL_RESTART'))
 }
 ")!
 	cache_dir := os.join_path(root, 'cache')
@@ -605,12 +609,14 @@ fn main() {
 	unset_environment['V_MACOS_V3_CALLER_VCHILD'] = ''
 	unset_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '0'
 	unset_environment['V_MACOS_V3_C_ERROR_DIR'] = os.join_path(root, 'private-c-error')
+	unset_environment['V3_CRUN_BUILD_IDENTITY'] = 'private-crun-identity'
+	unset_environment['V3_INTERNAL_RESTART'] = '1'
 	unset_environment['V3CACHE'] = cache_dir
 	unset_output := os.join_path(root, 'caller_unset')
 	unset_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', unset_output, 'run', source], unset_environment)
 	assert unset_run.exit_code == 0, unset_run.output
-	assert unset_run.output == 'compile:|\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\n', unset_run.output
+	assert unset_run.output == 'compile:|\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', unset_run.output
 
 	mut set_environment := unset_environment.clone()
 	set_environment['V_MACOS_V3_CALLER_VEXE'] = 'caller-vexe'
@@ -621,7 +627,7 @@ fn main() {
 	set_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', set_output, 'run', source], set_environment)
 	assert set_run.exit_code == 0, set_run.output
-	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\n', set_run.output
+	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', set_run.output
 }
 
 fn test_driver_resolves_boolean_d_and_documented_pseudos() {
@@ -895,17 +901,55 @@ fn main() {
 		debug_define_program])
 	assert debug_define_run.exit_code == 0, debug_define_run.output
 	assert debug_define_run.output == 'attribute debug\n', debug_define_run.output
+	crun_module_dir := os.join_path(root, 'crunmod')
+	crun_module_file := os.join_path(crun_module_dir, 'crunmod.v')
+	os.mkdir_all(crun_module_dir)!
+	os.write_file(crun_module_file, "module crunmod
+
+pub fn message() string {
+	return 'cached module'
+}
+")!
 	source := os.join_path(root, 'implicit_script.vsh')
-	os.write_file(source, "import os
+	os.write_file(source, "import crunmod
+import os
 
 println(os.executable().ends_with('.vsh'))
+println(crunmod.message())
 println(os.args[1..].join('|'))
 ")!
 	run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'one', '--two'])
 	assert run.exit_code == 0, run.output
-	assert run.output == 'false\none|--two\n', run.output
-	assert !os.exists(source.all_before_last('.vsh'))
+	assert run.output == 'false\ncached module\none|--two\n', run.output
+	script_binary := source.all_before_last('.vsh')
+	assert os.is_file(script_binary)
 	assert !os.exists(source.all_before_last('.vsh') + '.c')
+	warm_cache_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'warm'])
+	assert warm_cache_run.exit_code == 0, warm_cache_run.output
+	assert warm_cache_run.output == 'false\ncached module\nwarm\n', warm_cache_run.output
+	cache_stamp := os.file_last_mod_unix(script_binary) + 3600
+	os.utime(script_binary, cache_stamp, cache_stamp)!
+	cached_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'cached'])
+	assert cached_run.exit_code == 0, cached_run.output
+	assert cached_run.output == 'false\ncached module\ncached\n', cached_run.output
+	assert os.file_last_mod_unix(script_binary) == cache_stamp
+	os.write_file(crun_module_file, "module crunmod
+
+pub fn message() string {
+	return 'rebuilt module'
+}
+")!
+	rebuilt_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'new'])
+	assert rebuilt_run.exit_code == 0, rebuilt_run.output
+	assert rebuilt_run.output == 'false\nrebuilt module\nnew\n', rebuilt_run.output
+	assert os.file_last_mod_unix(script_binary) != cache_stamp
+	explicit_run_source := os.join_path(root, 'explicit_run_script.vsh')
+	explicit_run_binary := explicit_run_source.all_before_last('.vsh')
+	os.write_file(explicit_run_source, "println('explicit run')")!
+	explicit_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', 'run', explicit_run_source])
+	assert explicit_run.exit_code == 0, explicit_run.output
+	assert explicit_run.output == 'explicit run\n', explicit_run.output
+	assert !os.exists(explicit_run_binary)
 	compile_only_source := os.join_path(root, 'compile_only.vsh')
 	compile_only_binary := compile_only_source.all_before_last('.vsh')
 	run_marker := os.join_path(root, 'compile_only_ran')

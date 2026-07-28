@@ -72,6 +72,8 @@ const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
 const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
+const v3_crun_build_identity_env = 'V3_CRUN_BUILD_IDENTITY'
+const v3_internal_restart_env = 'V3_INTERNAL_RESTART'
 
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
@@ -1655,6 +1657,107 @@ fn keep_c_output_file(bin_file string) string {
 		base = 'vtmp'
 	}
 	return os.real_path(os.join_path_single(os.vtmp_dir(), '${base}.${rand.ulid()}.tmp.c'))
+}
+
+fn v3_crun_cache_marker_path(bin_file string) string {
+	key := c_hash_bytes(u64(1469598103934665603), os.abs_path(bin_file).bytes()).hex()
+	return os.join_path(os.vtmp_dir(), 'v3_crun_cache', key)
+}
+
+fn v3_crun_cache_matches(bin_file string, build_identity string) bool {
+	if build_identity.len == 0 {
+		return false
+	}
+	marker := os.read_file(v3_crun_cache_marker_path(bin_file)) or { return false }
+	return marker == build_identity
+}
+
+fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
+	if build_identity.len == 0 {
+		return
+	}
+	marker := v3_crun_cache_marker_path(bin_file)
+	os.mkdir_all(os.dir(marker), mode: 0o700)!
+	staged := '${marker}.stage.${os.getpid()}.${rand.ulid()}'
+	os.write_file(staged, build_identity)!
+	os.mv(staged, marker) or {
+		os.rm(staged) or {}
+		return err
+	}
+}
+
+fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, is_strict bool, enable_globals bool) string {
+	mut source_paths := map[string]bool{}
+	for file in user_files {
+		source_paths[os.real_path(file)] = true
+	}
+	for files in state.module_sources.values() {
+		for file in files {
+			source_paths[os.real_path(file)] = true
+		}
+	}
+	mut sources := source_paths.keys()
+	sources.sort()
+	source_signature := modulecache.cached_source_signature(state.manager.dir, 'crun', sources)
+	if source_signature.len == 0 {
+		return ''
+	}
+	uses_build_time := modulecache.source_files_use_build_time_pseudo(sources)
+	mut hash := u64(1469598103934665603)
+	for value in [
+		'v3-crun-cache-v1',
+		state.manager.salt,
+		is_strict.str(),
+		enable_globals.str(),
+		user_c_flags.join('\x00'),
+		source_signature,
+		prefs.vhash,
+		prefs.vcurrent_hash,
+		if uses_build_time {
+			prefs.build_date
+		} else {
+			''
+		},
+		if uses_build_time {
+			prefs.build_time
+		} else {
+			''
+		},
+		if uses_build_time {
+			prefs.build_timestamp
+		} else {
+			''
+		},
+	] {
+		hash = c_hash_bytes(hash, value.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	mut external_paths := map[string]bool{}
+	for paths in state.module_external_inputs.values() {
+		for path in paths {
+			external_paths[os.real_path(path)] = true
+		}
+	}
+	for paths in state.module_native_roots.values() {
+		for path in paths {
+			external_paths[os.real_path(path)] = true
+		}
+	}
+	for path in state.external_resolution_dirs {
+		external_paths[os.real_path(path)] = true
+	}
+	for path in state.external_missing_paths {
+		external_paths[os.real_path(path)] = true
+	}
+	mut paths := external_paths.keys()
+	paths.sort()
+	for path in paths {
+		hash = c_hash_bytes(hash, path.bytes())
+		hash = c_hash_bytes(hash, [u8(0)])
+		hash = c_hash_bytes(hash, modulecache.file_metadata_signature(path).bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	return hash.hex()
 }
 
 fn cli_usage() string {
@@ -3658,6 +3761,7 @@ fn main() {
 	mut compile_values := map[string]string{}
 	mut user_c_flags := []string{}
 	mut should_run := false
+	mut is_direct_vsh := false
 	mut is_test_command := false
 	mut is_checker_fixture := false
 	mut run_args := []string{}
@@ -3844,6 +3948,7 @@ fn main() {
 			}
 			input_file = args[i]
 			if input_file.ends_with('.vsh') {
+				is_direct_vsh = !should_run
 				should_run = true
 			}
 			i++
@@ -3978,7 +4083,8 @@ fn main() {
 		output_file = bin_file + '.c'
 	}
 	binary_existed_before := os.exists(bin_file)
-	remove_binary_after_run := should_run && !explicit_output && !keep_c && !binary_existed_before
+	remove_binary_after_run := should_run && !is_direct_vsh && !explicit_output && !keep_c
+		&& !binary_existed_before
 
 	// Decide which backend modules to compile into the output. By default only the C
 	// backend is built; the arm64/wasm/eval backends (and the whole SSA pipeline that the
@@ -4299,6 +4405,34 @@ fn main() {
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
+
+	mut crun_build_identity := ''
+	if is_direct_vsh && should_run && !explicit_output {
+		carried_identity := os.getenv(v3_crun_build_identity_env)
+		if os.getenv(v3_internal_restart_env) == '1' && carried_identity.len > 0 {
+			crun_build_identity = carried_identity
+		} else {
+			mut crun_c_flags := user_c_flags.clone()
+			crun_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
+				prefs.compile_values)
+			_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, crun_c_flags)
+			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files,
+				crun_c_flags, is_strict, enable_globals_compat)
+			if crun_build_identity.len > 0 {
+				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
+			}
+		}
+		if os.is_file(bin_file) && v3_crun_cache_matches(bin_file, crun_build_identity) {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			run_result := run_binary(bin_file, run_args)
+			if run_result != 0 {
+				exit(run_result)
+			}
+			b.step('run (cached)')
+			b.print_report()
+			return
+		}
+	}
 
 	// An exact whole-program C plan hit already certifies the current user sources,
 	// cached module interfaces, compiler configuration, target, and native inputs.
@@ -5899,6 +6033,9 @@ fn main() {
 		})
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		if should_run {
+			if is_direct_vsh && !explicit_output {
+				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}
+			}
 			run_result := run_binary(bin_file, run_args)
 			if remove_binary_after_run {
 				os.rm(bin_file) or {}
@@ -6662,6 +6799,7 @@ fn restart_v3_with_args(extra_args []string) {
 	executable := os.executable()
 	mut args := extra_args.clone()
 	args << os.args[1..]
+	os.setenv(v3_internal_restart_env, '1', true)
 	$if js {
 		mut command := [os.quoted_path(executable)]
 		for arg in args {

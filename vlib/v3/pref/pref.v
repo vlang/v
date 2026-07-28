@@ -13,6 +13,8 @@ const macos_v3_private_environment_names = [
 	'V_MACOS_V3_C_ERROR_DIR',
 	'V_MACOS_V3_VHASH',
 	'V_MACOS_V3_VCURRENT_HASH',
+	'V3_CRUN_BUILD_IDENTITY',
+	'V3_INTERNAL_RESTART',
 	macos_v3_caller_vexe_env,
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
