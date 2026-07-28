@@ -927,6 +927,20 @@ println(os.args[1..].join('|'))
 	warm_cache_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'warm'])
 	assert warm_cache_run.exit_code == 0, warm_cache_run.output
 	assert warm_cache_run.output == 'false\ncached module\nwarm\n', warm_cache_run.output
+	compat_source := os.join_path(root, 'compat_script_binary.v')
+	os.write_file(compat_source, "fn main() {
+	println('compatibility binary')
+}
+")!
+	compat_build := cmdexec.run(@VEXE, ['-old-compiler', '-o', script_binary, compat_source])
+	assert compat_build.exit_code == 0, compat_build.output
+	compat_run := cmdexec.run(script_binary, [])
+	assert compat_run.exit_code == 0, compat_run.output
+	assert compat_run.output == 'compatibility binary\n', compat_run.output
+	rebound_v3_run := cmdexec.run(v3_bin,
+		['-silent', '-no-parallel', source, 'after-compatibility'])
+	assert rebound_v3_run.exit_code == 0, rebound_v3_run.output
+	assert rebound_v3_run.output == 'false\ncached module\nafter-compatibility\n', rebound_v3_run.output
 	cache_stamp := os.file_last_mod_unix(script_binary) + 3600
 	os.utime(script_binary, cache_stamp, cache_stamp)!
 	cached_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'cached'])

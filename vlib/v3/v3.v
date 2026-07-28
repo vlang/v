@@ -1668,18 +1668,26 @@ fn v3_crun_cache_matches(bin_file string, build_identity string) bool {
 	if build_identity.len == 0 {
 		return false
 	}
+	binary_signature := modulecache.file_signature(bin_file)
+	if binary_signature.len == 0 {
+		return false
+	}
 	marker := os.read_file(v3_crun_cache_marker_path(bin_file)) or { return false }
-	return marker == build_identity
+	return marker == '${build_identity}\n${binary_signature}'
 }
 
 fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
 	if build_identity.len == 0 {
 		return
 	}
+	binary_signature := modulecache.file_signature(bin_file)
+	if binary_signature.len == 0 {
+		return
+	}
 	marker := v3_crun_cache_marker_path(bin_file)
 	os.mkdir_all(os.dir(marker), mode: 0o700)!
 	staged := '${marker}.stage.${os.getpid()}.${rand.ulid()}'
-	os.write_file(staged, build_identity)!
+	os.write_file(staged, '${build_identity}\n${binary_signature}')!
 	os.mv(staged, marker) or {
 		os.rm(staged) or {}
 		return err
