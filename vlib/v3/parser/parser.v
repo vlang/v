@@ -8,6 +8,7 @@ import v3.flat
 import v3.pref
 import v3.scanner
 import v3.token
+import v.util
 import v.util.version
 
 const max_parse_diagnostics = 100
@@ -3395,7 +3396,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					}
 					write_comptime_cond_string(mut out, hash)
 				}
-				'@VEXEROOT' {
+				'@VEXEROOT', '@VROOT' {
 					write_comptime_cond_string(mut out, p.prefs.vroot)
 				}
 				'@VEXE' {
@@ -5080,12 +5081,13 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			mut value_expr := p.expr(.lowest)
 			default := p.a.node(value_expr)
 			if value := p.prefs.compile_values[define_name] {
-				if default.kind == .bool_literal && value in ['true', 'false'] {
-					value_expr = p.a.add_node(flat.Node{
-						kind:  .bool_literal
-						value: value
-						pos:   default.pos
-					})
+				if default.kind in [.bool_literal, .char_literal, .float_literal, .string_literal,
+					.int_literal] {
+					resolved := resolve_comptime_define_literal(default, value) or {
+						p.record_diagnostic(err.msg(), dollar_pos)
+						*default
+					}
+					value_expr = p.a.add_node(resolved)
 				}
 			}
 			for p.tok != .rpar && p.tok != .eof {
@@ -5208,6 +5210,45 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+fn resolve_comptime_define_literal(default &flat.Node, value string) !flat.Node {
+	match default.kind {
+		.bool_literal {
+			if value !in ['true', 'false'] {
+				return error('bool literal `true` or `false` expected, found "${value}"')
+			}
+		}
+		.char_literal {
+			if value.starts_with('\\') {
+				if value.len <= 1 {
+					return error('empty escape sequence found')
+				}
+				if !util.is_escape_sequence(value[1]) {
+					return error('char literal escape sequence expected, found "${value}"')
+				}
+			} else if value.len != 1 {
+				return error('char literal expected, found "${value}"')
+			}
+		}
+		.float_literal {
+			if value.count('.') != 1 {
+				return error('f64 literal expected, found "${value}"')
+			}
+		}
+		.int_literal {
+			if !value.is_int() {
+				return error('i64 literal expected, found "${value}"')
+			}
+		}
+		.string_literal {}
+		else {
+			return error('expected pure literal, found "${value}"')
+		}
+	}
+	mut resolved := *default
+	resolved.value = value
+	return resolved
 }
 
 fn defer_result_index_literal(value string) ?int {
@@ -8568,7 +8609,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				return p.add_val_id(5, hash)
 			}
-			if name == '@VEXEROOT' {
+			if name in ['@VEXEROOT', '@VROOT'] {
 				return p.add_val_id(5, p.prefs.vroot)
 			}
 			if name == '@VEXE' {

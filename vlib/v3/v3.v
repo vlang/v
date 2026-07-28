@@ -3954,7 +3954,13 @@ fn main() {
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
-	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
+	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
+		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
+		// checkout instead of selecting another V checkout around the input.
+		os.real_path(os.dir(prefs.vexe))
+	} else {
+		resolve_vroot_for_input(prefs.vroot, input_file)
+	}
 	prefs.vhash = os.getenv(macos_v3_vhash_env)
 	if prefs.vhash == '' {
 		prefs.vhash = @VHASH

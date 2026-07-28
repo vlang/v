@@ -434,15 +434,19 @@ fn test_driver_resolves_boolean_d_and_documented_pseudos() {
 const enabled = \$d('feature', false)
 const column = @COLUMN
 const project_hash = @VMODHASH
+const legacy_root_matches = @VROOT == @VEXEROOT
 const column_condition = \$if @COLUMN != '' { true } \$else { false }
 const hash_condition = \$if @VMODHASH == '0123456' { true } \$else { false }
+const legacy_root_condition = \$if @VROOT == @VEXEROOT { true } \$else { false }
 
 fn main() {
 	println(enabled)
 	println(column)
 	println(project_hash)
+	println(legacy_root_matches)
 	println(column_condition)
 	println(hash_condition)
+	println(legacy_root_condition)
 }
 ")!
 	for i, define_args in [
@@ -456,7 +460,7 @@ fn main() {
 		assert compile.exit_code == 0, compile.output
 		run := cmdexec.run(output, [])
 		assert run.exit_code == 0, run.output
-		assert run.output == 'true\n16\n0123456\ntrue\ntrue\n', run.output
+		assert run.output == 'true\n16\n0123456\ntrue\ntrue\ntrue\ntrue\n', run.output
 	}
 	os.write_file(os.join_path(git_refs, 'main'), 'abcdef0123456789abcdef0123456789abcdef01\n')!
 	updated_output := os.join_path(root, 'comptime_values_updated_hash')
@@ -465,7 +469,54 @@ fn main() {
 	assert updated_compile.exit_code == 0, updated_compile.output
 	updated_run := cmdexec.run(updated_output, [])
 	assert updated_run.exit_code == 0, updated_run.output
-	assert updated_run.output == 'true\n16\nabcdef0\ntrue\nfalse\n', updated_run.output
+	assert updated_run.output == 'true\n16\nabcdef0\ntrue\ntrue\nfalse\ntrue\n', updated_run.output
+
+	invalid_source := os.join_path(project, 'invalid_define.v')
+	os.write_file(invalid_source, "module main
+
+const value = \$d('feature', 1)
+
+fn main() {
+	println(value)
+}
+")!
+	assert_driver_cli_failure(v3_bin, ['-d', 'feature', '-silent', '-no-parallel', invalid_source],
+		'i64 literal expected, found "true"')
+}
+
+fn test_delegated_driver_preserves_invoking_vroot() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_invoking_vroot_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	other_checkout := os.join_path(root, 'other_checkout')
+	os.mkdir_all(os.join_path(other_checkout, 'vlib', 'builtin')) or { panic(err) }
+	source := os.join_path(other_checkout, 'main.v')
+	os.write_file(source, 'module main
+
+fn main() {
+	println(@VEXEROOT)
+	println(@VROOT)
+	println(\$if @VROOT == @VEXEROOT { true } \$else { false })
+}
+')!
+	output := os.join_path(root, 'invoking_vroot')
+	mut environment := os.environ()
+	environment['VEXE'] = @VEXE
+	environment['V_MACOS_V3_CALLER_VEXE'] = ''
+	environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '0'
+	environment['V_MACOS_V3_CALLER_VCHILD'] = ''
+	environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '0'
+	compile := run_driver_with_environment(v3_bin, ['-nocache', '-silent', '-no-parallel', '-o',
+		output, source], environment)
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	invoking_root := os.real_path(os.dir(@VEXE))
+	assert run.output == '${invoking_root}\n${invoking_root}\ntrue\n', run.output
 }
 
 fn test_driver_run_preserves_stdin() {
