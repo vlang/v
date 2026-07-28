@@ -6869,10 +6869,15 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 		if !transformed_fn_is_used(node.value, module_name, used_fns) {
 			continue
 		}
+		root_file := a.specialized_fn_files[idx] or { cur_file }
 		root_ids << flat.NodeId(idx)
 		root_modules << module_name
-		root_files << (a.specialized_fn_files[idx] or { cur_file })
-		if msg := unsupported_backend_node_error(a, flat.NodeId(idx), backend, mut visited) {
+		root_files << root_file
+		diagnose_aggregates := tc.diagnostic_files.len == 0 || root_file in tc.diagnostic_files
+		fallback_location := backend_node_location(a, node)
+		if msg := unsupported_backend_node_error(a, tc, flat.NodeId(idx), backend,
+			diagnose_aggregates, fallback_location, mut visited)
+		{
 			return msg
 		}
 	}
@@ -6901,7 +6906,12 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 				root_ids << a.child(field, 0)
 				root_modules << cur_module
 				root_files << cur_file
-				if msg := unsupported_backend_node_error(a, a.child(field, 0), backend, mut visited) {
+				diagnose_aggregates := tc.diagnostic_files.len == 0
+					|| cur_file in tc.diagnostic_files
+				fallback_location := backend_node_location(a, *field)
+				if msg := unsupported_backend_node_error(a, tc, a.child(field, 0), backend,
+					diagnose_aggregates, fallback_location, mut visited)
+				{
 					return msg
 				}
 			}
@@ -6915,27 +6925,66 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 				root_ids << expr_id
 				root_modules << cur_module
 				root_files << cur_file
-				if msg := unsupported_backend_node_error(a, expr_id, backend, mut visited) {
+				diagnose_aggregates := tc.diagnostic_files.len == 0
+					|| cur_file in tc.diagnostic_files
+				fallback_location := backend_node_location(a, *field)
+				if msg := unsupported_backend_node_error(a, tc, expr_id, backend,
+					diagnose_aggregates, fallback_location, mut visited)
+				{
 					return msg
 				}
 			}
 		}
 	}
 	for expr_id in markused.reachable_const_exprs(a, tc, root_ids, root_modules, root_files) {
-		if msg := unsupported_backend_node_error(a, expr_id, backend, mut visited) {
+		mut diagnose_aggregates := false
+		if source_file := a.source_files[a.node(expr_id).pos.id] {
+			diagnose_aggregates = tc.diagnostic_files.len == 0
+				|| source_file.name in tc.diagnostic_files
+		}
+		fallback_location := backend_node_location(a, *a.node(expr_id))
+		if msg := unsupported_backend_node_error(a, tc, expr_id, backend, diagnose_aggregates,
+			fallback_location, mut visited)
+		{
 			return msg
 		}
 	}
 	return none
 }
 
-fn unsupported_backend_node_error(a &flat.FlatAst, id flat.NodeId, backend string, mut visited []bool) ?string {
+fn backend_node_location(a &flat.FlatAst, node flat.Node) string {
+	if source_pos := a.source_position(node.pos) {
+		return '${source_pos}: '
+	}
+	return ''
+}
+
+fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, mut visited []bool) ?string {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len || visited[idx] {
 		return none
 	}
 	visited[idx] = true
 	node := a.nodes[idx]
+	if backend == 'wasm' && diagnose_aggregates {
+		mut unsupported_type := ''
+		if node.kind in [.array_literal, .array_init, .map_init, .struct_init] {
+			unsupported_type = tc.resolve_type(id).name()
+		} else if node.kind == .call && node.children_count > 0 {
+			callee := a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value == 'new_map' {
+				unsupported_type = tc.resolve_type(id).name()
+			}
+		}
+		if unsupported_type.len > 0 {
+			location := if source_pos := a.source_position(node.pos) {
+				'${source_pos}: '
+			} else {
+				fallback_location
+			}
+			return '${location}error: the V3 wasm backend does not support type `${unsupported_type}` yet'
+		}
+	}
 	op := match node.op {
 		.power { '**' }
 		.power_assign { '**=' }
@@ -6945,7 +6994,7 @@ fn unsupported_backend_node_error(a &flat.FlatAst, id flat.NodeId, backend strin
 		location := if source_pos := a.source_position(node.pos) {
 			'${source_pos}: '
 		} else {
-			''
+			fallback_location
 		}
 		return '${location}error: operator `${op}` is not supported by the V3 ${backend} backend'
 	}
@@ -6953,12 +7002,14 @@ fn unsupported_backend_node_error(a &flat.FlatAst, id flat.NodeId, backend strin
 		location := if source_pos := a.source_position(node.pos) {
 			'${source_pos}: '
 		} else {
-			''
+			fallback_location
 		}
 		return '${location}error: `$res()` is not supported by the V3 ${backend} backend'
 	}
 	for i in 0 .. node.children_count {
-		if msg := unsupported_backend_node_error(a, a.child(&node, i), backend, mut visited) {
+		if msg := unsupported_backend_node_error(a, tc, a.child(&node, i), backend,
+			diagnose_aggregates, fallback_location, mut visited)
+		{
 			return msg
 		}
 	}

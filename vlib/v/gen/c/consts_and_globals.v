@@ -638,9 +638,11 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 			if g.pref.translated {
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
-			} else if (field.expr.is_literal() && should_init) || cinit
+			} else if !should_init && !cinit {
+				// Cached modules provide the definition and initialization.
+			} else if field.expr.is_literal() || cinit
 				|| (field.expr is ast.ArrayInit && field.expr.is_fixed)
-				|| (is_simple_unsafe_expr && should_init) {
+				|| is_simple_unsafe_expr {
 				// Simple literals can be initialized right away in global scope in C.
 				// e.g. `int myglobal = 10;`
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')

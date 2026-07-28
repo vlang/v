@@ -1319,16 +1319,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				}
 			}
 			mut method_name := c_name(call_fn.name)
-			if call_fn.name.contains('_') {
-				parts := call_fn.name.split('_')
-				if parts.len >= 2 {
-					receiver_type_name := parts[0]
-					if resolved_sym := g.table.find_sym(receiver_type_name) {
-						if resolved_sym.is_builtin() {
-							method_name = 'builtin__${method_name}'
-						}
-					}
-				}
+			trace_receiver_name := call_fn.name.all_before('_')
+			if call_fn.func.is_method
+				&& g.receiver_type_is_builtin(call_fn.func.receiver_type, trace_receiver_name) {
+				method_name = 'builtin__${method_name}'
 			}
 			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
 				if add_trace_hook {
@@ -4888,10 +4882,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		name = util.no_dots('${receiver_type_name}_${method_name}')
 	}
-	if resolved_sym := g.table.find_sym(receiver_type_name) {
-		if resolved_sym.is_builtin() && !receiver_type_name.starts_with('_') {
-			name = 'builtin__${name}'
-		}
+	if g.receiver_type_is_builtin(unwrapped_rec_type, receiver_type_name)
+		&& !receiver_type_name.starts_with('_') {
+		name = 'builtin__${name}'
 	} else if receiver_type_name in ['int_literal', 'float_literal', 'vint_t'] {
 		name = 'builtin__${name}'
 	}
@@ -5678,6 +5671,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
 	}
+}
+
+// receiver_type_is_builtin follows type indexes only, so parallel cgen does not
+// read the type-name map while another checker shard may still be extending it.
+fn (g &Gen) receiver_type_is_builtin(typ ast.Type, receiver_name string) bool {
+	sym := g.table.sym(typ)
+	if sym.is_builtin() {
+		return true
+	}
+	return receiver_name in ['array', 'map', 'chan', 'thread']
 }
 
 fn (mut g Gen) fn_call(node ast.CallExpr) {

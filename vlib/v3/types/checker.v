@@ -44373,6 +44373,10 @@ fn (tc &TypeChecker) distinct_alias_primitive_mismatch(actual Type, expected Typ
 
 fn (tc &TypeChecker) generic_struct_field_unknown_type_message(struct_name string) ?string {
 	decl := tc.source_struct_decl_for_name(struct_name) or { return none }
+	base_name, _, is_generic := generic_type_application_parts(struct_name)
+	lookup_name := if is_generic { base_name } else { struct_name }
+	decl_file := tc.struct_files[lookup_name] or { tc.cur_file }
+	decl_module := tc.struct_modules[lookup_name] or { tc.cur_module }
 	for i in 0 .. decl.children_count {
 		field_id := tc.a.child(&decl, i)
 		field := tc.a.node(field_id)
@@ -44385,39 +44389,55 @@ fn (tc &TypeChecker) generic_struct_field_unknown_type_message(struct_name strin
 				return diagnostic.msg
 			}
 		}
-		if unknown_name := tc.first_unknown_type_name(field.typ) {
+		if unknown_name := tc.first_unknown_type_name_in_scope(field.typ, decl_file, decl_module) {
 			return tc.unknown_type_message(unknown_name, field_id)
 		}
 	}
 	return none
 }
 
-fn (tc &TypeChecker) first_unknown_type_name(raw string) ?string {
+fn (tc &TypeChecker) first_unknown_type_name_in_scope(raw string, file string, mod_name string) ?string {
 	clean := trimmed_space(raw)
 	if clean.len == 0 {
 		return none
 	}
 	for prefix in ['?', '!', '&', '[]', 'shared ', 'mut '] {
 		if clean.starts_with(prefix) {
-			return tc.first_unknown_type_name(clean[prefix.len..])
+			return tc.first_unknown_type_name_in_scope(clean[prefix.len..], file, mod_name)
 		}
 	}
 	base, args, is_generic := generic_type_application_parts(clean)
 	if is_generic {
-		if should_check_named_type(base) && !tc.type_name_known(base) {
+		if should_check_named_type(base) && !tc.type_name_known_in_scope(base, file, mod_name) {
 			return base
 		}
 		for arg in args {
-			if unknown := tc.first_unknown_type_name(arg) {
+			if unknown := tc.first_unknown_type_name_in_scope(arg, file, mod_name) {
 				return unknown
 			}
 		}
 		return none
 	}
-	if should_check_named_type(clean) && !tc.type_name_known(clean) {
+	if should_check_named_type(clean) && !tc.type_name_known_in_scope(clean, file, mod_name) {
 		return clean
 	}
 	return none
+}
+
+fn (tc &TypeChecker) type_name_known_in_scope(name string, file string, mod_name string) bool {
+	if is_builtin_type_name(name) || name == 'unknown' || name.starts_with('C.') {
+		return true
+	}
+	if name.contains('.') {
+		return tc.type_symbol_known(tc.resolve_imported_type_text_in_file(name, file))
+	}
+	if mod_name !in ['', 'main', 'builtin'] && tc.type_symbol_known('${mod_name}.${name}') {
+		return true
+	}
+	if resolved := tc.resolve_selective_import_type_symbol_in_file(name, file) {
+		return tc.type_symbol_known(resolved)
+	}
+	return tc.type_symbol_known(name)
 }
 
 fn struct_field_has_attr(field flat.Node, name string) bool {
@@ -50910,7 +50930,7 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 	}
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
-	return actual_ret.name() == expected_ret.name()
+	return tc.method_param_signature_compatible(actual_ret, expected_ret)
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string) bool {
@@ -50924,7 +50944,7 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 		}
 	}
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
-	return actual.return_type.name() == expected_ret.name()
+	return tc.method_param_signature_compatible(actual.return_type, expected_ret)
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {

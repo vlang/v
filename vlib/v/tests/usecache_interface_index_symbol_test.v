@@ -42,6 +42,24 @@ fn test_usecache_interface_index_is_real_symbol() {
 	assert res2.output.contains('enum { _IError_None___index =')
 }
 
+fn test_usecache_builtin_fixed_array_globals_are_extern_only() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27592')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'issue_27592.v')
+	os.write_file(source_path, "fn main() {\n\tprintln('hello world')\n}\n") or { panic(err) }
+
+	res := os.execute('${os.quoted_path(vexe)} -usecache -o - ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack;'), res.output
+	assert res.output.contains('extern Array_fixed_voidptr_64 g_autostr_addr_stack;'), res.output
+	assert !res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack = {0};'), res.output
+	assert !res.output.contains('g_autostr_type_stack = {0}; // global 3'), res.output
+	assert !res.output.contains('g_autostr_addr_stack = {0}; // global 3'), res.output
+}
+
 fn test_usecache_shared_interface_lock_uses_enum_index_in_case_labels() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27330_shared')
 	os.mkdir_all(tmp_dir) or { panic(err) }

@@ -18,11 +18,12 @@ pub struct Gen {
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	file_path string // current ast.File path
-	warnings  []errors.Warning
-	errors    []errors.Error
-	table     &ast.Table = unsafe { nil }
-	enum_vals map[string]Enum
+	file_path   string // current ast.File path
+	current_pos token.Pos
+	warnings    []errors.Warning
+	errors      []errors.Error
+	table       &ast.Table = unsafe { nil }
+	enum_vals   map[string]Enum
 
 	mod                    wasm.Module
 	pool                   serialise.Pool
@@ -192,6 +193,7 @@ pub fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 }
 
 pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	g.current_pos = node.pos
 	if node.language in [.js, .wasm] {
 		g.fn_external_import(node)
 		return
@@ -1059,6 +1061,7 @@ pub fn (mut g Gen) store_field(typ ast.Type, ftyp ast.Type, name string) {
 }
 
 pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
+	g.current_pos = node.pos()
 	match node {
 		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
@@ -1095,7 +1098,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			} else {
 				match ts.info {
 					ast.Array {
-						g.w_error('wasm backend does not support dynamic arrays')
+						g.v_error('the wasm backend does not support dynamic arrays yet', node.pos)
 					}
 					ast.ArrayFixed {
 						typ = ts.info.elem_type
