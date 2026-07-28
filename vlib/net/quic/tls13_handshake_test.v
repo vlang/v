@@ -326,9 +326,10 @@ fn concat_bytes(a []u8, b []u8) []u8 {
 
 fn test_process_encrypted_extensions_rejects_unoffered_alpn_selection() {
 	client_random := []u8{len: 32, init: 0x71}
-	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 	defer {
 		h.free()
+		unsafe { server.priv_key.free() }
 	}
 	server_initial_scid := [u8(1), 1, 1, 1]
 	// The server selects "h2" -- a real protocol, just not one this client
@@ -350,9 +351,10 @@ fn test_process_encrypted_extensions_rejects_unoffered_alpn_selection() {
 
 fn test_process_encrypted_extensions_rejects_missing_alpn() {
 	client_random := []u8{len: 32, init: 0x72}
-	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 	defer {
 		h.free()
+		unsafe { server.priv_key.free() }
 	}
 	server_initial_scid := [u8(2), 2, 2, 2]
 	// build_fake_encrypted_extensions (not the _with_alpn variant with an
@@ -387,9 +389,10 @@ fn test_process_encrypted_extensions_rejects_missing_alpn() {
 // alert (-> QUIC error 0x016d).
 fn test_process_encrypted_extensions_rejects_missing_quic_transport_parameters() {
 	client_random := []u8{len: 32, init: 0x73}
-	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 	defer {
 		h.free()
+		unsafe { server.priv_key.free() }
 	}
 	server_initial_scid := [u8(3), 3, 3, 3]
 	name_bytes := 'h3'.bytes()
@@ -425,9 +428,10 @@ fn test_process_encrypted_extensions_rejects_missing_quic_transport_parameters()
 // process_encrypted_extensions, which holds peer_initial_scid, can.
 fn test_process_encrypted_extensions_rejects_stateless_reset_token_with_zero_length_scid() {
 	client_random := []u8{len: 32, init: 0x74}
-	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 	defer {
 		h.free()
+		unsafe { server.priv_key.free() }
 	}
 	zero_length_scid := []u8{}
 	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
@@ -446,9 +450,10 @@ fn test_process_encrypted_extensions_rejects_stateless_reset_token_with_zero_len
 
 fn test_process_encrypted_extensions_rejects_preferred_address_with_zero_length_scid() {
 	client_random := []u8{len: 32, init: 0x75}
-	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 	defer {
 		h.free()
+		unsafe { server.priv_key.free() }
 	}
 	zero_length_scid := []u8{}
 	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
@@ -470,9 +475,10 @@ fn test_process_encrypted_extensions_rejects_preferred_address_with_zero_length_
 
 fn test_process_encrypted_extensions_rejects_original_dcid_mismatch() {
 	client_random := []u8{len: 32, init: 0x73}
-	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 	defer {
 		h.free()
+		unsafe { server.priv_key.free() }
 	}
 	server_initial_scid := [u8(3), 3, 3, 3]
 	// The peer's transport parameters authenticate a DIFFERENT
@@ -496,9 +502,10 @@ fn test_process_encrypted_extensions_rejects_original_dcid_mismatch() {
 
 fn test_process_encrypted_extensions_rejects_unexpected_retry_source_connection_id() {
 	client_random := []u8{len: 32, init: 0x74}
-	mut h, _ := drive_to_wait_encrypted_extensions(client_random)!
+	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 	defer {
 		h.free()
+		unsafe { server.priv_key.free() }
 	}
 	server_initial_scid := [u8(4), 4, 4, 4]
 	// The peer's transport parameters include retry_source_connection_id

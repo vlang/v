@@ -191,6 +191,16 @@ fn reject_unsolicited_extensions(extensions []TlsExtension, allowed []u16, conte
 	}
 }
 
+// parse_server_hello parses a ServerHello handshake message body (RFC 8446
+// §4.1.3), returning either a ParsedServerHello or, when `random` matches the
+// magic HelloRetryRequest value, a ParsedHelloRetryRequest -- the two share a
+// wire type but are validated against distinct mandatory fields and allowed-
+// extension sets (see server_hello_allowed/hello_retry_request_allowed
+// above). Rejects a non-1.3 selected_version, a non-empty
+// legacy_session_id_echo, a missing/malformed key_share, and any extension
+// not on the applicable allowlist -- cipher_suite itself is parsed and
+// returned but not validated here; the caller (process_server_hello) checks
+// it against the single suite this client offers.
 pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 	if body.len < 2 + 32 + 1 {
 		return error('quic: truncated ServerHello: need at least 35 bytes for the fixed prefix, have ${body.len}')
