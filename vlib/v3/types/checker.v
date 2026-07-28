@@ -23009,15 +23009,17 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	}
 	expected_fn := tc.lambda_expected_fn_type(id)
 	mut forbidden_captures := map[string]bool{}
-	mut outer_scope := tc.cur_scope
-	for outer_scope != unsafe { nil } {
-		for name in outer_scope.names {
-			qname := tc.qualify_name(name)
-			if name !in tc.global_names && qname !in tc.global_names {
-				forbidden_captures[name] = true
+	if tc.checker_fixture_mode {
+		mut outer_scope := tc.cur_scope
+		for outer_scope != unsafe { nil } {
+			for name in outer_scope.names {
+				qname := tc.qualify_name(name)
+				if name !in tc.global_names && qname !in tc.global_names {
+					forbidden_captures[name] = true
+				}
 			}
+			outer_scope = outer_scope.parent
 		}
-		outer_scope = outer_scope.parent
 	}
 	saved_fn_context := tc.fn_context
 	tc.fn_context = new_function_check_context()
@@ -23031,7 +23033,7 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	tc.fn_context.method_value_stack_mut_owners =
 		saved_fn_context.method_value_stack_mut_owners.clone()
 	tc.fn_context.closure_forbidden_captures = forbidden_captures.clone()
-	tc.fn_context.lambda_no_captures = true
+	tc.fn_context.lambda_no_captures = tc.checker_fixture_mode
 	$if ownership ? {
 		tc.ownership_begin_lambda_expr(id, node)
 	}

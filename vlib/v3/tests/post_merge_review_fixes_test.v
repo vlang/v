@@ -6614,6 +6614,18 @@ fn shadowed() int {
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
 	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
 	assert !tc.notices.any(it.msg == 'unused variable: `offset`'), tc.notices.str()
 	assert tc.notices.any(it.msg == 'unused variable: `shadowed_offset`'), tc.notices.str()
+
+	mut fixture_parser := parser.Parser.new(prefs)
+	mut fixture_ast := fixture_parser.parse_file(check_src)
+	mut fixture_tc := types.TypeChecker.new(fixture_ast)
+	fixture_tc.checker_fixture_mode = true
+	fixture_tc.collect(fixture_ast)
+	fixture_tc.check_semantics()
+	assert fixture_tc.errors.any(it.msg == 'undefined variable `offset`'), fixture_tc.errors.str()
+	assert fixture_tc.errors.any(it.msg == '`offset` used as value'), fixture_tc.errors.str()
+	assert !fixture_tc.errors.any(it.msg.contains('shadowed_offset')), fixture_tc.errors.str()
+	assert fixture_tc.notices.any(it.msg == 'unused variable: `offset`'), fixture_tc.notices.str()
 }

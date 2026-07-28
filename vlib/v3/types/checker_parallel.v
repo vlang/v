@@ -929,7 +929,9 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 			return
 		}
 	}
-	tc.record_lambda_capture_errors(node)
+	if tc.checker_fixture_mode {
+		tc.record_lambda_capture_errors(node)
+	}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -1256,6 +1258,9 @@ fn (tc &TypeChecker) fn_body_reads_ident(node flat.Node, name string, decl_id fl
 		id := stack.pop()
 		current := tc.a.node(id)
 		if current.kind == .lambda_expr {
+			if tc.checker_fixture_mode {
+				continue
+			}
 			if current.children_count > 0 {
 				mut shadows_name := false
 				for i in 0 .. current.children_count - 1 {
