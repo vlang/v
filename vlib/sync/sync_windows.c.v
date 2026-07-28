@@ -228,10 +228,9 @@ fn (mut sem Semaphore) wait_for_available_count(timeout i64) bool {
 	outer: for {
 		if c == 0 {
 			sleep_result := C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, t_ms, 0)
-			if sleep_result == 0 {
-				break outer
+			if sleep_result != 0 {
+				c = C.atomic_load_u32(&sem.count)
 			}
-			c = C.atomic_load_u32(&sem.count)
 		}
 		for c > 0 {
 			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
@@ -242,14 +241,21 @@ fn (mut sem Semaphore) wait_for_available_count(timeout i64) bool {
 				break outer
 			}
 		}
-		time_now := sync_mono_now()
-		if time_now > time_end {
-			break outer // timeout exceeded
+		expired, next_t_ms := sync_timeout_chunk(time_end, sync_mono_now())
+		if expired {
+			break outer
 		}
-		t_ms = sync_milliseconds(time_end - time_now)
+		t_ms = next_t_ms
 	}
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 	return acquired
+}
+
+fn sync_timeout_chunk(time_end i64, time_now i64) (bool, u32) {
+	if time_now >= time_end {
+		return true, 0
+	}
+	return false, sync_milliseconds(time_end - time_now)
 }
 
 pub fn (mut m RwMutex) destroy() {

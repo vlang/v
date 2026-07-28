@@ -27,3 +27,18 @@ fn test_semaphore_timed_wait_handles_spurious_wake_with_infinite_timeout() {
 
 	assert acquired
 }
+
+fn test_semaphore_long_finite_timeout_uses_multiple_chunks() {
+	timeout := i64(60 * 24 * 60 * 60) * 1_000_000_000
+	first_t_ms := sync_milliseconds(timeout)
+	assert first_t_ms == u32(C.INFINITE - 1)
+
+	elapsed_after_first_chunk := i64(first_t_ms) * 1_000_000
+	expired, next_t_ms := sync_timeout_chunk(timeout, elapsed_after_first_chunk)
+	assert !expired
+	assert next_t_ms > 0
+	assert next_t_ms < first_t_ms
+
+	expired_at_deadline, _ := sync_timeout_chunk(timeout, timeout)
+	assert expired_at_deadline
+}
