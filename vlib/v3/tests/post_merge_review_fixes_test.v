@@ -7085,6 +7085,68 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_helper_return_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_return_alias', 'struct Item {}
+
+fn same(item Item) Item {
+	return item
+}
+
+fn (item Item) str() string {
+	return same(item).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_helper_rebind_transfers_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_rebind_source', 'struct Item {
+mut:
+	remaining int
+}
+
+fn copy_from(mut destination Item, source Item) {
+	destination = source
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining--
+	copy_from(mut copy, item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_spawn_mutation_is_not_synchronous_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_spawned_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	item.remaining--
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	spawn advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_deferred_mutation_does_not_count_as_progress() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_deferred_mutation', 'struct Item {
