@@ -5129,7 +5129,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		if p.tok == .lpar {
 			p.next() // skip (
 			if p.tok == .string {
-				env_val = os.getenv(strip_quotes(p.lit))
+				env_val = pref.macos_v3_caller_env_value(strip_quotes(p.lit))
 				p.next()
 			}
 			for p.tok != .rpar && p.tok != .eof {

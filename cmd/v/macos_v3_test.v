@@ -174,9 +174,29 @@ fn test_macos_v3_bootstrap_clears_argument_environment() {
 
 fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 	$if macos {
-		environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback')
+		caller_environment := {
+			'PATH':   '/usr/bin'
+			'VEXE':   'caller-vexe'
+			'VCHILD': 'caller-vchild'
+		}
+		environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback',
+			caller_environment)
 		assert environment[macos_v3_vhash_env] == @VHASH
 		assert environment[macos_v3_vcurrent_hash_env] == @VCURRENTHASH
+		assert environment['VEXE'] == os.real_path(@VEXE)
+		assert environment['VCHILD'] == 'true'
+		assert environment[macos_v3_caller_vexe_present_env] == '1'
+		assert environment[macos_v3_caller_vexe_env] == 'caller-vexe'
+		assert environment[macos_v3_caller_vchild_present_env] == '1'
+		assert environment[macos_v3_caller_vchild_env] == 'caller-vchild'
+
+		unset_environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback', {
+			'PATH': '/usr/bin'
+		})
+		assert unset_environment[macos_v3_caller_vexe_present_env] == '0'
+		assert unset_environment[macos_v3_caller_vexe_env] == ''
+		assert unset_environment[macos_v3_caller_vchild_present_env] == '0'
+		assert unset_environment[macos_v3_caller_vchild_env] == ''
 	}
 }
 

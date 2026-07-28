@@ -12,6 +12,10 @@ const macos_v3_executable_env = 'V_MACOS_V3_EXECUTABLE'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
+const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
+const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
+const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
+const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
@@ -191,6 +195,7 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 }
 
 fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
+	caller_environment := os.environ()
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
@@ -221,7 +226,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	process.set_args(forwarded_args)
 	fallback_file := os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${os.getpid()}')
 	os.rm(fallback_file) or {}
-	environment := macos_v3_child_environment(vexe, fallback_file)
+	environment := macos_v3_child_environment(vexe, fallback_file, caller_environment)
 	process.set_environment(environment)
 	process.run()
 	process.wait()
@@ -238,14 +243,28 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	exit(exit_code)
 }
 
-fn macos_v3_child_environment(vexe string, fallback_file string) map[string]string {
-	mut environment := os.environ()
+fn macos_v3_child_environment(vexe string, fallback_file string, caller_environment map[string]string) map[string]string {
+	mut environment := caller_environment.clone()
+	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, 'VEXE',
+		macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, 'VCHILD',
+		macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
 	environment['VCHILD'] = 'true'
 	environment['VEXE'] = os.real_path(vexe)
 	environment[macos_v3_fallback_file_env] = fallback_file
 	environment[macos_v3_vhash_env] = @VHASH
 	environment[macos_v3_vcurrent_hash_env] = @VCURRENTHASH
 	return environment
+}
+
+fn preserve_macos_v3_caller_environment_value(mut environment map[string]string, caller_environment map[string]string, name string, value_name string, present_name string) {
+	if value := caller_environment[name] {
+		environment[value_name] = value
+		environment[present_name] = '1'
+	} else {
+		environment[value_name] = ''
+		environment[present_name] = '0'
+	}
 }
 
 fn build_macos_v3_compiler(vexe string, vroot string, v3_source string, v3_exe string, is_verbose bool) {

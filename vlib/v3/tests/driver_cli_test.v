@@ -361,6 +361,59 @@ pub fn values() []string {
 	}
 }
 
+fn test_driver_preserves_macos_launcher_caller_environment() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_caller_environment_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'caller_environment.v')
+	os.write_file(source, "import os
+
+const compile_vexe = \$env('VEXE')
+const compile_vchild = \$env('VCHILD')
+const compile_private = \$env('V_MACOS_V3_CALLER_VEXE')
+
+fn env_value(name string) string {
+	return os.getenv_opt(name) or { '<unset>' }
+}
+
+fn main() {
+	println('compile:' + compile_vexe + '|' + compile_vchild)
+	println('runtime:' + env_value('VEXE') + '|' + env_value('VCHILD'))
+	println('private:' + compile_private + '|' + env_value('V_MACOS_V3_CALLER_VEXE') + '|' +
+		env_value('V_MACOS_V3_CALLER_VCHILD'))
+}
+")!
+	cache_dir := os.join_path(root, 'cache')
+	mut unset_environment := os.environ()
+	unset_environment['VEXE'] = @VEXE
+	unset_environment['VCHILD'] = 'true'
+	unset_environment['V_MACOS_V3_CALLER_VEXE'] = ''
+	unset_environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '0'
+	unset_environment['V_MACOS_V3_CALLER_VCHILD'] = ''
+	unset_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '0'
+	unset_environment['V3CACHE'] = cache_dir
+	unset_output := os.join_path(root, 'caller_unset')
+	unset_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
+		'-o', unset_output, 'run', source], unset_environment)
+	assert unset_run.exit_code == 0, unset_run.output
+	assert unset_run.output == 'compile:|\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\n', unset_run.output
+
+	mut set_environment := unset_environment.clone()
+	set_environment['V_MACOS_V3_CALLER_VEXE'] = 'caller-vexe'
+	set_environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '1'
+	set_environment['V_MACOS_V3_CALLER_VCHILD'] = 'caller-vchild'
+	set_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '1'
+	set_output := os.join_path(root, 'caller_set')
+	set_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
+		'-o', set_output, 'run', source], set_environment)
+	assert set_run.exit_code == 0, set_run.output
+	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\n', set_run.output
+}
+
 fn test_driver_run_preserves_stdin() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_stdin_${os.getpid()}')
 	os.rmdir_all(root) or {}

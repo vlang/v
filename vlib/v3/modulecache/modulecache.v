@@ -4,6 +4,7 @@ import os
 import rand
 import strings
 import v3.flat
+import v3.pref
 import v3.types
 
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
@@ -288,7 +289,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 	mut names := env_names.keys()
 	names.sort()
 	for name in names {
-		value := os.getenv(name)
+		value := pref.macos_v3_caller_env_value(name)
 		validation << 'env=${name}\t${hash_text(value)}'
 		hash = hash_bytes(hash, [u8(0xfe)])
 		hash = hash_bytes(hash, name.bytes())
@@ -616,7 +617,8 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		}
 		if line.starts_with('env=') {
 			parts := line['env='.len..].split('\t')
-			if parts.len != 2 || parts[0].len == 0 || hash_text(os.getenv(parts[0])) != parts[1] {
+			if parts.len != 2 || parts[0].len == 0
+				|| hash_text(pref.macos_v3_caller_env_value(parts[0])) != parts[1] {
 				return none
 			}
 			continue

@@ -4425,7 +4425,7 @@ fn (mut g FlatGen) set_cur_fn_ret(ret_type types.Type) {
 
 // gen_compiler_vexe_env_setup emits compiler vexe env setup output for c.
 fn (mut g FlatGen) gen_compiler_vexe_env_setup() {
-	if g.compiler_vexe.len == 0 && g.compiler_vroot.len == 0 {
+	if !g.compiler_vexe_env_setup || (g.compiler_vexe.len == 0 && g.compiler_vroot.len == 0) {
 		return
 	}
 	root := c_escape(g.compiler_vroot)
