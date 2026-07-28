@@ -47,6 +47,24 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		prefs.path = 'main.v'
 		prefs.out_name_is_dir = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.out_name_is_dir = false
+		for path in ['foo.c.v', 'foo.js.v', 'foo.wasm.v', '.v'] {
+			prefs.path = path
+			assert !is_macos_v3_relevant_command(path, prefs)
+		}
+	}
+}
+
+fn test_macos_v3_forwards_environment_driven_skip_running() {
+	$if macos {
+		prefs := &pref.Preferences{
+			skip_running: true
+		}
+		forwarded := macos_v3_forwarded_args(prefs, ['script.vsh'])
+		assert '-skip-running' in forwarded
+		assert forwarded.count('-skip-running') == 1
+		already_explicit := macos_v3_forwarded_args(prefs, ['-skip-running', 'script.vsh'])
+		assert already_explicit.count('-skip-running') == 1
 	}
 }
 

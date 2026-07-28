@@ -47,11 +47,12 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if normalized_path == 'cmd/v' || normalized_path.ends_with('/cmd/v')
 		|| normalized_path.ends_with('/cmd/v/v.v') || normalized_path.starts_with('cmd/tools/')
 		|| normalized_path.contains('/cmd/tools/') || normalized_path.ends_with('.vv')
-		|| os.is_dir(prefs.path) {
+		|| os.is_dir(prefs.path) || macos_v3_needs_compatible_default_output(prefs.path) {
 		// Keep the established compiler available as the compatibility fallback.
 		// V3 does not compile all of cmd/v yet, and command tools are built on
 		// demand while dispatching CLI commands such as `fmt` and `test`. Legacy
-		// .vv fixtures and directory builds also retain established semantics.
+		// .vv fixtures, directory builds, and sources needing compatibility
+		// output-name derivation also retain established semantics.
 		return false
 	}
 	return command == 'run' || command == 'build' || prefs.is_script
@@ -113,6 +114,43 @@ fn macos_v3_args_are_supported(args []string) bool {
 	return input_seen
 }
 
+fn macos_v3_needs_compatible_default_output(path string) bool {
+	raw_filename := os.file_name(path)
+	filename := raw_filename.trim_space()
+	if filename != raw_filename {
+		return true
+	}
+	base := filename.all_before_last('.')
+	if base == '' || base in ['.', '..', '-'] || os.file_ext(base) in ['.c', '.js', '.wasm'] {
+		return true
+	}
+	if base == filename && filename.starts_with('.') {
+		return true
+	}
+	for c in base {
+		if c < ` ` || c == 127 {
+			return true
+		}
+	}
+	return base.ends_with('.c') || base.ends_with('.js') || base.ends_with('.wasm')
+}
+
+fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
+	mut forwarded_args := raw_args.clone()
+	if prefs.skip_running && '-skip-running' !in forwarded_args {
+		forwarded_args.insert(0, '-skip-running')
+	}
+	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && !prefs.show_cc {
+		forwarded_args.insert(0, '-silent')
+	}
+	// Serial stages keep cold-cache builds of larger programs below V3's
+	// physical-memory safety limit.
+	if '-no-parallel' !in forwarded_args {
+		forwarded_args.insert(0, '-no-parallel')
+	}
+	return forwarded_args
+}
+
 @[noreturn]
 fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	vexe := pref.vexe_path()
@@ -137,15 +175,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 		}
 		build_lock.release()
 	}
-	mut forwarded_args := raw_args.clone()
-	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && !prefs.show_cc {
-		forwarded_args.insert(0, '-silent')
-	}
-	// Serial stages keep cold-cache builds of larger programs below V3's
-	// physical-memory safety limit.
-	if '-no-parallel' !in forwarded_args {
-		forwarded_args.insert(0, '-no-parallel')
-	}
+	forwarded_args := macos_v3_forwarded_args(prefs, raw_args)
 	if prefs.is_verbose {
 		println('Launching macOS V3 compiler: ${os.quoted_path(v3_exe)} ${util.args_quote_paths(forwarded_args)}')
 	}
