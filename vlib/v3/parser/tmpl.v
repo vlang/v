@@ -508,6 +508,11 @@ struct TmplControlLine {
 	closes_inline_block bool
 }
 
+struct TemplateControlSourceMap {
+	generated    string
+	column_delta int
+}
+
 fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 	pos := line.index(directive) or { return TmplControlLine{} }
 	remainder := line[pos + directive.len..].trim_space()
@@ -595,6 +600,31 @@ fn parse_tmpl_else_line(line string) TmplControlLine {
 		opens_brace_block:   true
 		closes_inline_block: true
 	}
+}
+
+fn template_control_source_map(line string) ?TemplateControlSourceMap {
+	if pos := line.index('@if ') {
+		control := parse_tmpl_control_line(line, '@if')
+		return TemplateControlSourceMap{
+			generated:    'if ${control.header} {'
+			column_delta: pos + 1
+		}
+	}
+	if pos := line.index('@for') {
+		control := parse_tmpl_control_line(line, '@for')
+		return TemplateControlSourceMap{
+			generated:    'for ${control.header} {'
+			column_delta: pos + 1
+		}
+	}
+	if pos := line.index('@else') {
+		control := parse_tmpl_else_line(line)
+		return TemplateControlSourceMap{
+			generated:    '} ${control.header} {'
+			column_delta: pos - 1
+		}
+	}
+	return none
 }
 
 enum TmplBraceBlockKind {
@@ -1205,6 +1235,8 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 	template_lines := template_source.split_into_lines()
 	mut line_map := []int{len: generated_lines.len, init: 1}
 	mut direct_map := []bool{len: generated_lines.len}
+	mut control_map := []bool{len: generated_lines.len}
+	mut control_column_delta := []int{len: generated_lines.len}
 	for index in 0 .. line_map.len {
 		line_map[index] = int_max(1, int_min(index, template_lines.len))
 	}
@@ -1214,10 +1246,19 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 			template_line := template_lines[template_index]
 			plain := tmpl_line_content(template_line, false)
 			escaped := tmpl_line_content(template_line, true)
-			if (plain.len > 0 && generated_line.contains(plain))
-				|| (escaped.len > 0 && generated_line.contains(escaped)) {
+			matches_content := (plain.len > 0 && generated_line.contains(plain))
+				|| (escaped.len > 0 && generated_line.contains(escaped))
+			mut matches_control := false
+			mut column_delta := 0
+			if control := template_control_source_map(template_line) {
+				matches_control = generated_line.trim_space() == control.generated
+				column_delta = control.column_delta
+			}
+			if matches_content || matches_control {
 				line_map[generated_index] = template_index + 1
 				direct_map[generated_index] = true
+				control_map[generated_index] = matches_control
+				control_column_delta[generated_index] = column_delta
 				template_search_start = template_index + 1
 				break
 			}
@@ -1232,7 +1273,7 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		}
 		mapped := template_mapped_pos(template_file, template_lines, line_map[line_index],
 			generated_lines[line_index], generated_position.column, node.pos.end - node.pos.offset,
-			template_id)
+			template_id, control_map[line_index], control_column_delta[line_index])
 		p.a.nodes[index] = flat.Node{
 			...node
 			pos: mapped
@@ -1248,7 +1289,8 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		mapped_line := line_map[line_index]
 		mapped := template_mapped_pos(template_file, template_lines, mapped_line,
 			generated_lines[line_index], generated_position.column,
-			diagnostic.pos.end - diagnostic.pos.offset, template_id)
+			diagnostic.pos.end - diagnostic.pos.offset, template_id, control_map[line_index],
+			control_column_delta[line_index])
 		p.diagnostics[index] = Diagnostic{
 			...diagnostic
 			file:   template_path
@@ -1292,22 +1334,27 @@ fn (p &Parser) template_action_name() string {
 	return short
 }
 
-fn template_mapped_pos(template_file &token.File, template_lines []string, line int, generated_line string, generated_column int, generated_len int, template_id int) token.Pos {
+fn template_mapped_pos(template_file &token.File, template_lines []string, line int, generated_line string, generated_column int, generated_len int, template_id int, is_control bool, control_column_delta int) token.Pos {
 	if line <= 0 || line > template_lines.len {
 		return token.new_pos(template_id, 0)
 	}
 	raw_line := template_lines[line - 1]
 	mut column := int_max(1, generated_column)
 	mut span_len := int_max(1, generated_len)
-	interpolation_index := generated_template_interpolation_index(generated_line, generated_column)
-	if at := template_interpolation_offset(raw_line, interpolation_index) {
-		if at + 1 < raw_line.len && is_tmpl_ident_start(raw_line[at + 1]) {
-			mut end := at + 2
-			for end < raw_line.len && is_tmpl_ident_part(raw_line[end]) {
-				end++
+	if is_control {
+		column = int_max(1, generated_column + control_column_delta)
+	} else {
+		interpolation_index := generated_template_interpolation_index(generated_line,
+			generated_column)
+		if at := template_interpolation_offset(raw_line, interpolation_index) {
+			if at + 1 < raw_line.len && is_tmpl_ident_start(raw_line[at + 1]) {
+				mut end := at + 2
+				for end < raw_line.len && is_tmpl_ident_part(raw_line[end]) {
+					end++
+				}
+				column = at + 3
+				span_len = end - at - 1
 			}
-			column = at + 3
-			span_len = end - at - 1
 		}
 	}
 	line_start := template_file.line_start(line)

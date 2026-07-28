@@ -308,6 +308,29 @@ fn main() {
 	assert used['new_map']
 }
 
+fn test_self_typed_default_collects_explicit_initializer_calls() {
+	used := mark_used_source('self_typed_default_explicit_call', '
+interface Value {}
+
+struct End {}
+
+struct S {
+	inner Value = S{
+		inner: make()
+	}
+}
+
+fn make() Value {
+	return End{}
+}
+
+fn main() {
+	_ := S{}
+}
+')
+	assert used['make']
+}
+
 // test_string_membership_seeds_contains_runtime_helpers validates this v3 regression case.
 fn test_string_membership_seeds_contains_runtime_helpers() {
 	used := mark_used_source('string_membership_contains', '

@@ -6706,6 +6706,36 @@ fn main() {
 	assert compile.output.contains('columns.txt:1:12: error: undefined ident: `unknown`'), compile.output
 }
 
+fn test_template_control_diagnostics_use_template_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_control_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('control.txt')
+}
+")
+	write_project_file(root, 'control.txt', '@if missing {
+value
+@end
+@for item in missing_items {
+@item
+@end
+')
+	output := tmp_test_path('template_control_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('control.txt:1:5: error: undefined ident: `missing`'), compile.output
+	assert compile.output.contains('control.txt:4:14: error: undefined ident: `missing_items`'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+}
+
 fn test_qualified_struct_literal_in_select_send_condition() {
 	v3_bin := build_v3()
 	result := run_good_project_result(v3_bin, 'qualified_struct_literal_select_send', '', {
@@ -6759,4 +6789,25 @@ fn (item Item) str() string {
 fn main() {}
 ',
 		'cannot call `str()` method recursively')
+}
+
+fn test_unknown_struct_suppression_stays_with_related_generic_declaration() {
+	v3_bin := build_v3()
+	src := 'fn broken[U](value T) {
+	_ := value
+}
+
+fn unrelated() {
+	_ := T{}
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('unrelated_unknown_struct')}.v'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('unrelated_unknown_struct')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('generic type name `T` is not mentioned in fn `broken[U]`'), compile.output
+	assert compile.output.contains('unknown struct `T`'), compile.output
 }

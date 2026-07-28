@@ -6779,8 +6779,8 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		eprintln(v3errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
 		print_type_diagnostic_details(notice.details)
 	}
-	source_errors := reorder_chained_generic_inference_errors(a,
-		dedupe_type_diagnostics(type_errors))
+	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a,
+		type_errors))
 	mut ordered_errors := []types.TypeError{cap: source_errors.len}
 	for err in source_errors {
 		if !is_bare_generic_fntype_decl_error(err) {
@@ -6804,7 +6804,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	}
 }
 
-fn dedupe_type_diagnostics(type_errors []types.TypeError) []types.TypeError {
+fn dedupe_type_diagnostics(a &flat.FlatAst, type_errors []types.TypeError) []types.TypeError {
 	mut deduped := []types.TypeError{cap: type_errors.len}
 	for err in type_errors {
 		if err.msg.ends_with('` must be initialized')
@@ -6821,7 +6821,10 @@ fn dedupe_type_diagnostics(type_errors []types.TypeError) []types.TypeError {
 		}
 		if err.msg.starts_with('unknown struct `') {
 			name := err.msg.all_after('`').all_before('`')
-			if type_errors.any(it.msg.starts_with('generic type name `${name}` is not mentioned in fn ')) {
+			err_fn := type_diagnostic_enclosing_fn(a, err)
+			if int(err_fn) >= 0
+				&& type_errors.any(it.msg.starts_with('generic type name `${name}` is not mentioned in fn ')
+				&& type_diagnostic_enclosing_fn(a, it) == err_fn) {
 				continue
 			}
 		}
@@ -6839,6 +6842,72 @@ fn dedupe_type_diagnostics(type_errors []types.TypeError) []types.TypeError {
 		deduped << err
 	}
 	return deduped
+}
+
+fn type_diagnostic_enclosing_fn(a &flat.FlatAst, diagnostic types.TypeError) flat.NodeId {
+	if int(diagnostic.node) >= 0 && int(diagnostic.node) < a.nodes.len
+		&& a.node(diagnostic.node).kind == .fn_decl {
+		return diagnostic.node
+	}
+	mut diagnostic_pos := diagnostic.pos
+	if !diagnostic_pos.is_valid() && int(diagnostic.node) >= 0 && int(diagnostic.node) < a.nodes.len {
+		diagnostic_pos = a.node(diagnostic.node).pos
+	}
+	mut enclosing := flat.empty_node
+	mut enclosing_len := 2147483647
+	for index, node in a.nodes {
+		if node.kind != .fn_decl {
+			continue
+		}
+		if diagnostic_pos.is_valid() && node.pos.is_valid() && node.pos.id == diagnostic_pos.id
+			&& diagnostic_pos.offset >= node.pos.offset && diagnostic_pos.end <= node.pos.end {
+			span_len := node.pos.end - node.pos.offset
+			if span_len < enclosing_len {
+				enclosing = flat.NodeId(index)
+				enclosing_len = span_len
+			}
+			continue
+		}
+		if int(diagnostic.node) >= 0
+			&& type_diagnostic_node_tree_contains(a, flat.NodeId(index), diagnostic.node, 0) {
+			return flat.NodeId(index)
+		}
+	}
+	if int(enclosing) >= 0 {
+		return enclosing
+	}
+	mut nearest := flat.empty_node
+	mut nearest_offset := -1
+	for index, node in a.nodes {
+		if node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl, .enum_decl, .const_decl, .global_decl, .c_fn_decl, .module_decl, .import_decl]
+			|| !node.pos.is_valid() || !diagnostic_pos.is_valid()
+			|| node.pos.id != diagnostic_pos.id || node.pos.offset > diagnostic_pos.offset
+			|| node.pos.offset <= nearest_offset {
+			continue
+		}
+		nearest = flat.NodeId(index)
+		nearest_offset = node.pos.offset
+	}
+	if int(nearest) >= 0 && a.node(nearest).kind == .fn_decl {
+		return nearest
+	}
+	return flat.empty_node
+}
+
+fn type_diagnostic_node_tree_contains(a &flat.FlatAst, root_id flat.NodeId, target_id flat.NodeId, depth int) bool {
+	if root_id == target_id {
+		return true
+	}
+	if depth > 32 || int(root_id) < 0 || int(root_id) >= a.nodes.len {
+		return false
+	}
+	root := a.node(root_id)
+	for i in 0 .. root.children_count {
+		if type_diagnostic_node_tree_contains(a, a.child(root, i), target_id, depth + 1) {
+			return true
+		}
+	}
+	return false
 }
 
 fn reorder_chained_generic_inference_errors(a &flat.FlatAst, errors []types.TypeError) []types.TypeError {

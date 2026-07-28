@@ -7594,6 +7594,10 @@ fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo
 				StructDeclInfo{}
 			}
 			if default_info.node_id == info.node_id {
+				for j in 0 .. default.children_count {
+					explicit_field := c.a.child_node(default, j)
+					c.collect_calls(explicit_field, info.module, imports, '', '', mut calls)
+				}
 				continue
 			}
 		}
