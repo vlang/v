@@ -11,12 +11,32 @@ const pending_loop_label_marker = '__v_pending_loop_label:'
 const skip_scope_drops_block_value = '__v3_skip_scope_drops'
 const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
 
+fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_type types.Map, base_is_pointer bool) {
+	c_key := g.map_key_temp_c_type(map_type.key_type)
+	c_val := g.tc.c_type(map_type.value_type)
+	g.write('(*(${c_val}*)map__get_or_set(')
+	if !base_is_pointer {
+		g.write('&')
+	}
+	g.gen_expr(base_id)
+	g.write(', &(${c_key}[]){')
+	g.gen_expr(g.a.child(&node, 1))
+	g.write('}, ')
+	g.gen_default_value_addr_for_type(map_type.value_type)
+	g.write('))')
+}
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	if node.kind == .index {
 		base_id := g.a.child(&node, 0)
 		base_type := g.usable_expr_type(base_id)
+		clean_base_type := map_str_clean_type(base_type)
+		if clean_base_type is types.Map {
+			gen_map_index_lvalue(mut g, node, base_id, clean_base_type, base_type is types.Pointer)
+			return
+		}
 		base := g.a.nodes[int(base_id)]
 		if base.kind == .prefix && base.op == .mul && base.children_count > 0 {
 			child_id := g.a.child(&base, 0)
@@ -30,18 +50,6 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 				g.write(']')
 				return
 			}
-		}
-		if base_type is types.Map {
-			c_key := g.map_key_temp_c_type(base_type.key_type)
-			c_val := g.tc.c_type(base_type.value_type)
-			g.write('(*(${c_val}*)map__get_or_set(&')
-			g.gen_expr(base_id)
-			g.write(', &(${c_key}[]){')
-			g.gen_expr(g.a.child(&node, 1))
-			g.write('}, ')
-			g.gen_default_value_addr_for_type(base_type.value_type)
-			g.write('))')
-			return
 		}
 		if base_type is types.Pointer {
 			if _ := array_fixed_type(base_type.base_type) {
