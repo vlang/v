@@ -7,8 +7,29 @@ const max_reported_mismatches = 20
 const max_parallel_fixtures = 1
 const diagnostic_fixture_suffixes = ['/vlib/v/checker/tests', '/vlib/v/parser/tests',
 	'/vlib/v/scanner/tests']
-// Keep aligned with the unconditional skip_files exclusions in v/compiler_errors_test.v.
-const unstable_diagnostic_fixture_names = ['var_duplicate_const.vv']
+// Keep these exclusions aligned with v/compiler_errors_test.v.
+const diagnostic_fixture_skip_paths = ['non_existing.vv',
+	'vlib/v/checker/tests/var_duplicate_const.vv']
+const diagnostic_fixture_skip_missing_headers = [
+	'vlib/v/checker/tests/missing_c_lib_header_1.vv',
+	'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv',
+	'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv',
+	'vlib/v/checker/tests/missing_shader_header_1.vv',
+]
+const diagnostic_fixture_skip_on_ubuntu_musl = [
+	'vlib/v/checker/tests/orm_op_with_option_and_none.vv',
+	'vlib/v/checker/tests/orm_unused_var.vv',
+	'vlib/v/tests/skip_unused/gg_code.vv',
+]
+const diagnostic_fixture_skip_on_ci_musl = ['vlib/v/tests/skip_unused/gg_code.vv']
+const diagnostic_fixture_skip_on_msvc = [
+	'vlib/v/checker/tests/asm_alias_does_not_exist.vv',
+	'vlib/v/checker/tests/asm_immutable_err.vv',
+]
+const diagnostic_fixture_skip_on_windows = [
+	'vlib/v/checker/tests/invalid_utf8_string.vv',
+	'vlib/v/checker/tests/modules/deprecated_module',
+]
 
 struct FixtureResult {
 	index     int
@@ -46,8 +67,53 @@ fn is_standard_test_file(file string) bool {
 }
 
 fn is_comparable_fixture(dir string, name string) bool {
-	return name !in unstable_diagnostic_fixture_names && name.ends_with('.vv')
-		&& os.is_file(os.join_path(dir, name.all_before_last('.vv') + '.out'))
+	if !name.ends_with('.vv') || !os.is_file(os.join_path(dir, name))
+		|| is_excluded_diagnostic_fixture(dir, name) {
+		return false
+	}
+	return autofix_enabled() || os.is_file(os.join_path(dir, name.all_before_last('.vv') + '.out'))
+}
+
+fn autofix_enabled() bool {
+	return os.getenv('VAUTOFIX') != ''
+}
+
+fn is_excluded_diagnostic_fixture(dir string, name string) bool {
+	normalized := os.real_path(os.join_path(dir, name)).replace('\\', '/')
+	for excluded in excluded_diagnostic_fixture_paths() {
+		if (!excluded.contains('/') && name == excluded)
+			|| normalized.ends_with('/${excluded.replace('\\', '/')}') {
+			return true
+		}
+	}
+	return false
+}
+
+fn excluded_diagnostic_fixture_paths() []string {
+	mut excluded := diagnostic_fixture_skip_paths.clone()
+	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
+		excluded << diagnostic_fixture_skip_on_ubuntu_musl
+	}
+	if os.getenv('V_CI_MUSL').len > 0 {
+		excluded << diagnostic_fixture_skip_on_ci_musl
+	}
+	if os.getenv('V_CI_CSTRICT').len > 0 {
+		excluded << diagnostic_fixture_skip_missing_headers
+	}
+	$if noskip ? {
+		excluded = []
+	}
+	$if tinyc {
+		excluded << diagnostic_fixture_skip_missing_headers
+	}
+	$if msvc {
+		excluded << diagnostic_fixture_skip_on_msvc
+		excluded << diagnostic_fixture_skip_missing_headers
+	}
+	$if windows {
+		excluded << diagnostic_fixture_skip_on_windows
+	}
+	return excluded
 }
 
 // run compares every `.vv` compiler invocation with its adjacent `.out` file.
@@ -80,17 +146,25 @@ pub fn run(vexe string, dir string) int {
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VTEST_RUNNER', 'normal', true)
 	mut paths := []string{cap: names.len}
+	mut expected_paths := []string{cap: names.len}
 	mut expected_outputs := []string{cap: names.len}
 	mut expected_exit_codes := []int{cap: names.len}
 	for name in names {
 		absolute_path := os.join_path(fixture_dir, name)
 		path := repo_relative_path(repo_root, absolute_path)
 		expected_path := absolute_path.all_before_last('.vv') + '.out'
+		if autofix_enabled() && !os.exists(expected_path) {
+			os.write_file(expected_path, '') or {
+				eprintln('failed to create `${expected_path}`: ${err}')
+				return 1
+			}
+		}
 		expected := os.read_file(expected_path) or {
 			eprintln('failed to read `${expected_path}`: ${err}')
 			return 1
 		}
 		paths << path
+		expected_paths << expected_path
 		cleaned_expected := clean_output(expected)
 		expected_outputs << cleaned_expected
 		expected_exit_codes << expected_fixture_exit_code(cleaned_expected)
@@ -120,6 +194,13 @@ pub fn run(vexe string, dir string) int {
 			if fixture_result_matches(expected_outputs[index], found, expected_exit_codes[index], exit_code)
 				&& !abnormal {
 				continue
+			}
+			// Like compiler_errors_test, rewrite now but keep the first pass failed so the
+			// changed expectations can be reviewed before the confirming second pass.
+			if autofix_enabled() && expected_outputs[index] != found {
+				os.write_file(expected_paths[index], found_raw) or {
+					eprintln('failed to update `${expected_paths[index]}`: ${err}')
+				}
 			}
 			failures++
 			if abnormal {

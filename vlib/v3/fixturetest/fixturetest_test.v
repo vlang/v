@@ -3,9 +3,16 @@ module fixturetest
 import os
 
 fn test_is_diagnostic_fixture_dir_restricts_dispatch_to_diagnostic_suites() {
+	original_autofix := os.getenv('VAUTOFIX')
+	os.unsetenv('VAUTOFIX')
 	root := os.join_path(os.temp_dir(), 'v3_fixturetest_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	defer {
+		if original_autofix.len > 0 {
+			os.setenv('VAUTOFIX', original_autofix, true)
+		} else {
+			os.unsetenv('VAUTOFIX')
+		}
 		os.rmdir_all(root) or {}
 	}
 
@@ -21,7 +28,18 @@ fn test_is_diagnostic_fixture_dir_restricts_dispatch_to_diagnostic_suites() {
 		panic(err)
 	}
 	assert is_comparable_fixture(checker_dir, 'sample_test.vv')
-	assert !is_comparable_fixture(checker_dir, 'var_duplicate_const.vv')
+	$if noskip ? {
+		assert is_comparable_fixture(checker_dir, 'var_duplicate_const.vv')
+	} $else {
+		assert !is_comparable_fixture(checker_dir, 'var_duplicate_const.vv')
+	}
+	os.write_file(os.join_path(checker_dir, 'missing_output.vv'), 'fn main() {}\n') or {
+		panic(err)
+	}
+	assert !is_comparable_fixture(checker_dir, 'missing_output.vv')
+	os.setenv('VAUTOFIX', '1', true)
+	assert is_comparable_fixture(checker_dir, 'missing_output.vv')
+	os.unsetenv('VAUTOFIX')
 
 	runtime_dir := os.join_path(root, 'vlib', 'v', 'gen', 'c', 'testdata')
 	os.mkdir_all(runtime_dir) or { panic(err) }
@@ -33,6 +51,87 @@ fn test_is_diagnostic_fixture_dir_restricts_dispatch_to_diagnostic_suites() {
 
 	os.write_file(os.join_path(checker_dir, 'compiler_test.v'), 'module main\n') or { panic(err) }
 	assert !is_diagnostic_fixture_dir(checker_dir)
+}
+
+fn test_environment_specific_fixture_exclusions_match_reference_runner() {
+	original_ubuntu_musl := os.getenv('V_CI_UBUNTU_MUSL')
+	original_musl := os.getenv('V_CI_MUSL')
+	original_cstrict := os.getenv('V_CI_CSTRICT')
+	os.unsetenv('V_CI_UBUNTU_MUSL')
+	os.unsetenv('V_CI_MUSL')
+	os.unsetenv('V_CI_CSTRICT')
+	defer {
+		for name, value in {
+			'V_CI_UBUNTU_MUSL': original_ubuntu_musl
+			'V_CI_MUSL':        original_musl
+			'V_CI_CSTRICT':     original_cstrict
+		} {
+			if value.len > 0 {
+				os.setenv(name, value, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+
+	os.setenv('V_CI_UBUNTU_MUSL', '1', true)
+	mut excluded := excluded_diagnostic_fixture_paths()
+	$if noskip ? {
+		assert 'vlib/v/checker/tests/orm_unused_var.vv' !in excluded
+	} $else {
+		assert 'vlib/v/checker/tests/orm_unused_var.vv' in excluded
+	}
+	os.unsetenv('V_CI_UBUNTU_MUSL')
+
+	os.setenv('V_CI_CSTRICT', '1', true)
+	excluded = excluded_diagnostic_fixture_paths()
+	$if noskip ? {
+	} $else {
+		assert 'vlib/v/checker/tests/missing_c_lib_header_1.vv' in excluded
+	}
+	$if tinyc {
+		assert 'vlib/v/checker/tests/missing_shader_header_1.vv' in excluded
+	}
+	$if msvc {
+		assert 'vlib/v/checker/tests/asm_alias_does_not_exist.vv' in excluded
+	}
+	$if windows {
+		assert 'vlib/v/checker/tests/invalid_utf8_string.vv' in excluded
+	}
+}
+
+fn test_run_autofixes_missing_and_mismatched_output() {
+	$if windows {
+		return
+	}
+	original_autofix := os.getenv('VAUTOFIX')
+	os.setenv('VAUTOFIX', '1', true)
+	root := os.join_path(os.temp_dir(), 'v3_fixture_autofix_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		if original_autofix.len > 0 {
+			os.setenv('VAUTOFIX', original_autofix, true)
+		} else {
+			os.unsetenv('VAUTOFIX')
+		}
+		os.rmdir_all(root) or {}
+	}
+
+	checker_dir := os.join_path(root, 'vlib', 'v', 'checker', 'tests')
+	os.mkdir_all(checker_dir) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'vlib', 'v3')) or { panic(err) }
+	source_path := os.join_path(checker_dir, 'sample.vv')
+	expected_path := os.join_path(checker_dir, 'sample.out')
+	os.write_file(source_path, 'fn main() {}\n') or { panic(err) }
+	fake_vexe := os.join_path(root, 'v3')
+	expected := 'vlib/v/checker/tests/sample.vv:1:1: error: updated output\n'
+	os.write_file(fake_vexe, "#!/bin/sh\nprintf '%s' '${expected}'\nexit 1\n") or { panic(err) }
+	os.chmod(fake_vexe, 0o700) or { panic(err) }
+
+	assert run(fake_vexe, checker_dir) == 1
+	actual := os.read_file(expected_path) or { panic(err) }
+	assert actual == expected
+	assert run(fake_vexe, checker_dir) == 0
 }
 
 fn test_fixture_repo_root_falls_back_to_requested_suite() {
