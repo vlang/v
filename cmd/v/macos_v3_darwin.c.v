@@ -105,6 +105,10 @@ fn macos_v3_args_are_supported(args []string) bool {
 			i += 2
 			continue
 		}
+		if arg in ['-debug', '-debug-tcc', '-define', '-disable-explicit-mutability',
+			'-div-by-zero-is-zero', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines'] {
+			return false
+		}
 		if arg.starts_with('-d') && arg.len > 2 {
 			i++
 			continue

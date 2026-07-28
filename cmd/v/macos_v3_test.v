@@ -134,6 +134,8 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 	$if macos {
 		assert macos_v3_args_are_supported(['main.v'])
 		assert macos_v3_args_are_supported(['-keepc', '-o', 'main', 'build', 'main.v'])
+		assert macos_v3_args_are_supported(['-dcompact_define', 'main.v'])
+		assert macos_v3_args_are_supported(['-dcompact_value=enabled', 'main.v'])
 		assert macos_v3_args_are_supported(['run', 'main.v', '--program-option'])
 		assert macos_v3_args_are_supported(['script.vsh', '--script-option'])
 		assert !macos_v3_args_are_supported(['-ldflags', '-framework Cocoa', 'main.v'])
@@ -145,6 +147,10 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert !macos_v3_args_are_supported(['-no-retry-compilation', 'main.v'])
 		assert !macos_v3_args_are_supported(['-silent', 'main.v'])
 		assert !macos_v3_args_are_supported(['-w', 'main.v'])
+		for named_d_flag in ['-debug', '-debug-tcc', '-define', '-disable-explicit-mutability',
+			'-div-by-zero-is-zero', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines'] {
+			assert !macos_v3_args_are_supported([named_d_flag, 'main.v'])
+		}
 		for help_flag in ['-?', '-h', '-help', '--help'] {
 			assert !macos_v3_args_are_supported(['-gc', 'none', help_flag, 'main.v'])
 		}
