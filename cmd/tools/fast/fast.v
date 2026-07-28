@@ -123,7 +123,8 @@ Commands:
   run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
                                      benchmark every <step>th commit of a year
   seed                               insert demo rows (to preview the UI)
-  import <table.html> [...]          migrate old fast.vlang.io history into fast.db
+  import [--since YYYY-MM-DD] <table.html> [...]
+                                     migrate old fast.vlang.io history into fast.db
   export [-o <dir>]                  render a static site (index.html + json) for GitHub Pages
   help                               show this help
 

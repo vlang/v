@@ -49,6 +49,9 @@ so the dashboard does not start empty:
 # from a checkout of the old gh-pages output (github.com/vlang/website)
 ./fast import path/to/table.html            # or the old index.html
 ./fast import 2024.html 2023.html 2022.html # older per-year archives too
+
+# only import rows from a given date onward:
+./fast import --since 2026-01-01 index.html
 ```
 
 `import` parses the old 14-column rows (timestamp, commit, message, v.c, v, …) and

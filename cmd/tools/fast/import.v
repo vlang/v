@@ -11,13 +11,28 @@ import db.sqlite
 // pipeline (the `table.html` / gh-pages `index.html` files) into fast.db, so the
 // dashboard keeps its per-commit history when the deployment switches over.
 //
-//   v run . import path/to/table.html [more.html ...]
+//   v run . import [--since YYYY-MM-DD] path/to/table.html [more.html ...]
 //
 // It is idempotent: commits already present in the database are skipped.
+// With --since, rows older than the given date are not imported.
 fn cmd_import(args []string) ! {
-	files := args.filter(!it.starts_with('-'))
+	mut files := []string{}
+	mut since := i64(0)
+	mut i := 0
+	for i < args.len {
+		a := args[i]
+		if a == '--since' && i + 1 < args.len {
+			since = parse_since(args[i + 1])
+			i += 2
+			continue
+		}
+		if !a.starts_with('-') {
+			files << a
+		}
+		i++
+	}
 	if files.len == 0 {
-		return error('usage: fast import <table.html> [more.html ...]')
+		return error('usage: fast import [--since YYYY-MM-DD] <table.html> [more.html ...]')
 	}
 	mut db := open_db()!
 	defer {
@@ -26,18 +41,27 @@ fn cmd_import(args []string) ! {
 	mut total := 0
 	for f in files {
 		content := os.read_file(f) or { return error('cannot read ${f}: ${err}') }
-		n := import_table_html(mut db, content)!
+		n := import_table_html(mut db, content, since)!
 		elog('imported ${n} rows from ${f}')
 		total += n
 	}
 	elog('import done: ${total} rows inserted. Start the web app with: v run . serve')
 }
 
+// parse_since converts a YYYY-MM-DD string into a unix timestamp (0 == no filter).
+fn parse_since(s string) i64 {
+	p := s.split('-')
+	if p.len < 3 {
+		return 0
+	}
+	return time.new(year: p[0].int(), month: p[1].int(), day: p[2].int()).unix()
+}
+
 // import_table_html parses the `<tr>` rows of an old fast.vlang.io table and
 // inserts them, returning the number of newly inserted rows. The historic row
 // layout is 14 `<td>` cells: date, commit(link), message, v.c, v, native(unused),
 // hello, v.c size, parse, check, cgen, scan, V lines, V lines/s.
-fn import_table_html(mut db sqlite.DB, html string) !int {
+fn import_table_html(mut db sqlite.DB, html string, since i64) !int {
 	mut inserted := 0
 	for row in html.split('<tr>') {
 		// data rows link to a commit; the header row (with `<th>`) does not
@@ -52,14 +76,18 @@ fn import_table_html(mut db sqlite.DB, html string) !int {
 		if commit == '' || benchmark_exists(db, commit) {
 			continue
 		}
+		// The old table timestamp was Git's author date (%at), which is not
+		// monotonic along ancestry. Recover the committer date (%ct) from the
+		// checkout so imported rows sort consistently with sampled ones; fall
+		// back to the table timestamp only for commits git cannot resolve.
+		cdate := committer_date_for(commit, parse_old_date(cells[0].trim_space()))
+		if since != 0 && cdate.unix() < since {
+			continue
+		}
 		b := Benchmark{
 			commit_hash: commit
 			message:     unescape_html(cells[2])
-			// The old table timestamp was Git's author date (%at), which is not
-			// monotonic along ancestry. Recover the committer date (%ct) from the
-			// checkout so imported rows sort consistently with sampled ones; fall
-			// back to the table timestamp only for commits git cannot resolve.
-			commit_date: committer_date_for(commit, parse_old_date(cells[0].trim_space()))
+			commit_date: cdate
 			created_at:  time.now()
 			v_c_ms:      cell_int(cells[3])
 			v_self_ms:   cell_int(cells[4])
