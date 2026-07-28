@@ -40,6 +40,12 @@ pub:
 	message  string
 }
 
+struct MalformedScannerDeclaration {
+	message string
+	offset  int
+	scope   token.Pos
+}
+
 // Parser represents parser data used by parser.
 pub struct Parser {
 	prefs &pref.Preferences
@@ -536,20 +542,51 @@ fn (mut p Parser) append_diagnostic(diagnostic Diagnostic) {
 }
 
 fn (mut p Parser) collect_scanner_diagnostics() {
-	mut malformed_declarations := map[string]bool{}
+	mut malformed_declarations := []MalformedScannerDeclaration{}
 	for diagnostic in p.s.diagnostics {
 		if diagnostic.message.starts_with('identifier name `')
 			&& scanner_diagnostic_starts_assignment(p.s.src, diagnostic.end) {
-			malformed_declarations[diagnostic.message] = true
+			malformed_declarations << MalformedScannerDeclaration{
+				message: diagnostic.message
+				offset:  diagnostic.offset
+				scope:   p.scanner_diagnostic_lexical_scope(diagnostic.offset, diagnostic.end)
+			}
 		}
 	}
 	for diagnostic in p.s.diagnostics {
-		if diagnostic.message in malformed_declarations
-			&& !scanner_diagnostic_starts_assignment(p.s.src, diagnostic.end) {
+		is_declaration := scanner_diagnostic_starts_assignment(p.s.src, diagnostic.end)
+		if !is_declaration && malformed_declarations.any(it.message == diagnostic.message
+			&& it.offset < diagnostic.offset && it.scope.id == p.cur_file_id
+			&& diagnostic.offset >= it.scope.offset && diagnostic.end <= it.scope.end) {
 			continue
 		}
 		p.record_diagnostic_span(diagnostic.message, diagnostic.offset, diagnostic.end)
 	}
+}
+
+fn (p &Parser) scanner_diagnostic_lexical_scope(start int, end int) token.Pos {
+	mut scope := token.new_span(p.cur_file_id, 0, p.s.src.len)
+	mut scope_len := p.s.src.len
+	mut scope_scanner := scanner.new_scanner(p.prefs, .normal)
+	scope_scanner.init(p.s.current_file(), p.s.src)
+	mut open_braces := []int{}
+	for {
+		tok := scope_scanner.scan()
+		if tok == .lcbr {
+			open_braces << scope_scanner.pos
+		} else if tok == .rcbr && open_braces.len > 0 {
+			open := open_braces.pop()
+			close := scope_scanner.offset
+			if open <= start && close >= end && close - open < scope_len {
+				scope = token.new_span(p.cur_file_id, open, close)
+				scope_len = close - open
+			}
+		}
+		if tok == .eof {
+			break
+		}
+	}
+	return scope
 }
 
 fn scanner_diagnostic_starts_assignment(source string, start int) bool {
@@ -557,7 +594,13 @@ fn scanner_diagnostic_starts_assignment(source string, start int) bool {
 	for cursor < source.len && source[cursor] in [` `, `\t`, `\r`, `\n`] {
 		cursor++
 	}
-	return cursor < source.len && source[cursor] in [`:`, `=`]
+	if cursor >= source.len {
+		return false
+	}
+	if source[cursor] == `:` {
+		return cursor + 1 < source.len && source[cursor + 1] == `=`
+	}
+	return source[cursor] == `=` && (cursor + 1 >= source.len || source[cursor + 1] != `=`)
 }
 
 // read_source_file_raw reads the complete file or returns the I/O error. Source
@@ -7541,9 +7584,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				base := p.a.child_node(&lhs_node, 0)
 				is_c_struct := base.kind == .ident && base.value == 'C'
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
-				is_v_struct := base.kind == .ident && base.value != 'C'
-					&& ((lhs_node.value[0] >= `A` && lhs_node.value[0] <= `Z`)
-					|| p.imported_module_names[base.value])
+				is_v_struct := base.kind == .ident && base.value != 'C' && lhs_node.value[0] >= `A`
+					&& lhs_node.value[0] <= `Z`
 				if is_c_struct || is_v_struct {
 					full_name := '${base.value}.${lhs_node.value}'
 					lhs = p.struct_init(full_name)

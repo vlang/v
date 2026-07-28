@@ -6828,6 +6828,62 @@ fn main() {
 	assert result.run_output == '7\n8', result.run_output
 }
 
+fn test_imported_lowercase_selector_with_attached_block_is_not_struct_literal() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_lowercase_selector_attached_block', {
+		'v.mod':         "Module { name: 'imported_lowercase_selector_attached_block' }\n"
+		'flags/flags.v': 'module flags
+
+pub const enabled = true
+'
+		'main.v':        'module main
+
+import flags
+
+fn main() {
+	mut seen := 0
+	if flags.enabled{
+		seen = 1
+	}
+	println(seen)
+}
+'
+	}, 'main.v')
+	assert out == '1'
+}
+
+fn test_number_prefixed_identifier_suppression_stays_in_declaration_scope() {
+	path := '${tmp_test_path('number_prefixed_identifier_scopes')}.v'
+	os.write_file(path, 'fn declares() {
+	mut 3a := 1
+}
+
+fn uses() {
+	println(3a)
+}
+
+fn compares() {
+	if 3a == 0 {}
+}
+
+fn same_scope() {
+	mut 4b := 2
+	println(4b)
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(path)
+	three_a := p.diagnostics.filter(it.message == 'identifier name `3a` cannot start with a number')
+	assert three_a.len == 3, p.diagnostics.str()
+	assert three_a.map(it.line) == [2, 6, 10], p.diagnostics.str()
+	four_b := p.diagnostics.filter(it.message == 'identifier name `4b` cannot start with a number')
+	assert four_b.len == 1, p.diagnostics.str()
+	assert four_b[0].line == 14, p.diagnostics.str()
+}
+
 fn test_recursive_str_helper_progress_must_cover_early_return_paths() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_helper_early_return', 'struct Item {
