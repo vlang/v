@@ -118,6 +118,7 @@ fn main() {
 	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs)
+	maybe_delegate_to_macos_v3(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -130,6 +131,10 @@ fn main() {
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {
 		// External tools
+		$if macos {
+			// Tool-managed child compilations are part of the compatibility path too.
+			os.setenv(macos_v3_bootstrap_env, '1', true)
+		}
 		util.launch_tool(prefs.is_verbose, 'v' + command, os.args[1..])
 		return
 	}

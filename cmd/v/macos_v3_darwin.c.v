@@ -1,0 +1,135 @@
+module main
+
+import hash
+import os
+import os.filelock
+import time
+import v.pref
+import v.util
+
+const macos_v3_bootstrap_env = 'V_MACOS_V3_BOOTSTRAP'
+const macos_v3_executable_env = 'V_MACOS_V3_EXECUTABLE'
+
+fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
+	if os.getenv(macos_v3_bootstrap_env) != '' || !is_macos_v3_default_executable(os.executable())
+		|| !is_macos_v3_relevant_command(command, prefs) {
+		return
+	}
+	launch_macos_v3_compiler(prefs)
+}
+
+fn is_macos_v3_default_executable(vexe string) bool {
+	return os.base(vexe) in ['v', 'v.exe', 'vnew', 'vnew.exe']
+}
+
+fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
+	if prefs.path == '' || prefs.backend != .c || prefs.os != .macos {
+		return false
+	}
+	if command in external_tools
+		|| command in ['help', 'version', 'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'interpret', 'get', 'translate'] {
+		return false
+	}
+	if prefs.is_crun || prefs.is_test || prefs.is_prod || prefs.autofree
+		|| prefs.build_mode == .build_module || prefs.is_cstrict || prefs.use_cache
+		|| prefs.parallel_cc || prefs.exclude.len > 0 {
+		return false
+	}
+	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+		return false
+	}
+	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
+	if normalized_path == 'cmd/v' || normalized_path.ends_with('/cmd/v')
+		|| normalized_path.ends_with('/cmd/v/v.v') || normalized_path.starts_with('cmd/tools/')
+		|| normalized_path.contains('/cmd/tools/') {
+		// Keep the established compiler available as the compatibility fallback.
+		// V3 does not compile all of cmd/v yet, and command tools are built on
+		// demand while dispatching CLI commands such as `fmt` and `test`.
+		return false
+	}
+	return command == 'run' || command == 'build' || prefs.is_script
+		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vv')
+		|| normalized_path.ends_with('.vsh') || os.is_dir(prefs.path)
+}
+
+@[noreturn]
+fn launch_macos_v3_compiler(prefs &pref.Preferences) {
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
+	util.set_vroot_folder(vroot)
+	v3_source := os.join_path(vroot, 'vlib', 'v3', 'v3.v')
+	v3_source_dir := os.dir(v3_source)
+	mut v3_exe := os.getenv(macos_v3_executable_env)
+	if v3_exe == '' {
+		v3_exe = cached_macos_v3_executable_path(vroot)
+		os.mkdir_all(os.dir(v3_exe)) or {
+			eprintln('cannot create `${os.dir(v3_exe)}`: ${err}')
+			exit(1)
+		}
+		mut build_lock := filelock.new(v3_exe + '.lock')
+		if !build_lock.wait_acquire(10 * time.minute) {
+			eprintln('timed out waiting to build `${v3_source}`')
+			exit(1)
+		}
+		if util.should_recompile_tool(vexe, v3_source_dir, 'v3', v3_exe) {
+			build_macos_v3_compiler(vexe, vroot, v3_source, v3_exe, prefs.is_verbose)
+		}
+		build_lock.release()
+	}
+	mut forwarded_args := util.join_env_vflags_and_os_args()[1..].clone()
+	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && !prefs.show_cc {
+		forwarded_args.insert(0, '-silent')
+	}
+	// Serial stages keep cold-cache builds of larger programs below V3's
+	// physical-memory safety limit.
+	if '-no-parallel' !in forwarded_args {
+		forwarded_args.insert(0, '-no-parallel')
+	}
+	if prefs.is_verbose {
+		println('Launching macOS V3 compiler: ${os.quoted_path(v3_exe)} ${util.args_quote_paths(forwarded_args)}')
+	}
+	mut process := os.new_process(v3_exe)
+	process.set_args(forwarded_args)
+	mut environment := os.environ()
+	environment['VCHILD'] = 'true'
+	environment['VEXE'] = os.real_path(vexe)
+	process.set_environment(environment)
+	process.run()
+	process.wait()
+	exit_code := if process.code >= 0 { process.code } else { 1 }
+	process.close()
+	exit(exit_code)
+}
+
+fn build_macos_v3_compiler(vexe string, vroot string, v3_source string, v3_exe string, is_verbose bool) {
+	args := ['-prealloc', '-o', v3_exe, v3_source]
+	if is_verbose {
+		println('Compiling macOS V3 compiler with: ${os.quoted_path(vexe)} ${util.args_quote_paths(args)}')
+	}
+	mut process := os.new_process(vexe)
+	process.set_work_folder(vroot)
+	process.set_args(args)
+	mut environment := os.environ()
+	environment[macos_v3_bootstrap_env] = '1'
+	environment['VFLAGS'] = ''
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	exit_code := if process.code >= 0 { process.code } else { 1 }
+	process.close()
+	if exit_code != 0 {
+		eprintln('cannot compile `${v3_source}`: ${exit_code}\n${output}')
+		exit(1)
+	}
+	if is_verbose && output != '' {
+		print(output)
+	}
+}
+
+fn cached_macos_v3_executable_path(vroot string) string {
+	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
+	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash,
+		'v3'))
+}

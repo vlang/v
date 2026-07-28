@@ -1569,6 +1569,9 @@ fn default_bin_file_for_input(input_file string) string {
 	if input_file.ends_with('.vv') {
 		return input_file.all_before_last('.vv')
 	}
+	if input_file.ends_with('.vsh') {
+		return input_file.all_before_last('.vsh')
+	}
 	if input_file.ends_with('.v') {
 		return input_file.all_before_last('.v')
 	}
@@ -3482,6 +3485,8 @@ fn main() {
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
 			should_run = true
 			i++
+		} else if args[i] == 'build' && input_file.len == 0 && !should_run {
+			i++
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
 			i++
@@ -3520,7 +3525,7 @@ fn main() {
 				user_defines << 'c99'
 			}
 			i++
-		} else if args[i] == '-strict' {
+		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
 			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
@@ -3591,9 +3596,10 @@ fn main() {
 			is_checker_fixture = true
 			i++
 		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
-			'-no-retry-compilation'] {
+			'-no-retry-compilation', '-skip-running', '-usecache'] {
 			// v3 already reports phase metrics, prints the C command, retains generated C,
-			// and suppresses C warnings. Accept the corresponding V flags for compatibility.
+			// suppresses C warnings, leaves explicit-output tests unrun, and caches modules
+			// by default. Accept the corresponding V flags for compatibility.
 			i++
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
 			no_prealloc = true
@@ -3626,6 +3632,9 @@ fn main() {
 				exit(1)
 			}
 			input_file = args[i]
+			if input_file.ends_with('.vsh') {
+				should_run = true
+			}
 			i++
 		}
 	}

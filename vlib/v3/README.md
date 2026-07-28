@@ -25,6 +25,17 @@ builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until v3
 can compile the full builtin map.v.
 
+## macOS default compiler
+
+On macOS, the top-level `v` command dispatches supported native C source builds to a cached
+compiler built from `vlib/v3/v3.v`. This includes unflagged `v file.v`, `v run file.v`, and V
+scripts. The cached compiler is rebuilt when V3 sources change and runs serial stages to stay
+within its memory safety limit.
+
+`cmd/v` remains the CLI and compatibility dispatcher. Tests, command tools, self-hosted temporary
+compilers, cross-compilation, and modes not yet supported by V3 continue through the established
+compiler. Other operating systems are unchanged.
+
 ## Target selection
 
 The C backend accepts `-os <name>` and `-arch <name>`. The target controls source-file suffix
@@ -38,7 +49,7 @@ The command line rejects unknown options, missing option values, unsupported bac
 multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
 currently supported collector mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
-The driver monitors compiler memory throughout the build and exits when it reaches 10 GiB.
+The driver monitors compiler memory throughout the build and exits when it reaches 2 GiB.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
 On macOS, each stage benchmark prints physical footprint immediately after RSS.

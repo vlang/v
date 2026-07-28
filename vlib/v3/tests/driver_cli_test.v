@@ -7,9 +7,15 @@ const driver_cli_v3_dir = os.dir(os.dir(@FILE))
 const driver_cli_v3_src = os.join_path(driver_cli_v3_dir, 'v3.v')
 
 fn build_driver_cli_v3(root string) string {
+	return build_driver_cli_v3_with_flags(root, [])
+}
+
+fn build_driver_cli_v3_with_flags(root string, flags []string) string {
 	bin := os.join_path(root, 'v3_driver_cli')
-	result := cmdexec.run(@VEXE, ['-gc', 'none', '-path', '${driver_cli_vlib_dir}|@vlib|@vmodules',
-		'-o', bin, driver_cli_v3_src])
+	mut args := ['-gc', 'none']
+	args << flags
+	args << ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', bin, driver_cli_v3_src]
+	result := cmdexec.run(@VEXE, args)
 	assert result.exit_code == 0, result.output
 	return bin
 }
@@ -182,6 +188,34 @@ fn test_driver_run_preserves_stdin() {
 	result := run_driver_with_stdin_file(v3_bin, ['-o', output, 'run', source], input_file)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('read:from-stdin'), result.output
+}
+
+fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_vsh_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
+	program := os.join_path(root, 'dispatcher_build.v')
+	binary := os.join_path(root, 'dispatcher_build')
+	os.write_file(program, "println('built')")!
+	build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-cstrict', '-skip-running', '-usecache',
+		'build', '-o', binary, program])
+	assert build.exit_code == 0, build.output
+	built := cmdexec.run(binary, [])
+	assert built.exit_code == 0, built.output
+	assert built.output == 'built\n', built.output
+	source := os.join_path(root, 'implicit_script.vsh')
+	os.write_file(source, "import os
+
+println(os.executable().ends_with('.vsh'))
+println(os.args[1..].join('|'))
+")!
+	run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'one', '--two'])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'false\none|--two\n', run.output
 }
 
 fn assert_driver_wasm_output(path string) {
