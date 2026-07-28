@@ -25,16 +25,18 @@ builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until v3
 can compile the full builtin map.v.
 
-## macOS default compiler
+## macOS V3 dispatch
 
 On macOS, the top-level `v` command dispatches supported native C source builds to a cached
-compiler built from `vlib/v3/v3.v`. This includes unflagged `v file.v`, `v run file.v`, and V
-scripts. The cached compiler is rebuilt when V3 sources change and runs serial stages to stay
-within its memory safety limit.
+compiler built from `vlib/v3/v3.v` when the effective garbage collector mode is `none`. For
+example, `v -gc none file.v`, `v -gc none run file.v`, and `v -gc none script.vsh` are eligible;
+`-prealloc` also selects the no-GC mode. The cached compiler is rebuilt when V3 sources change and
+runs serial stages to stay within its memory safety limit.
 
-`cmd/v` remains the CLI and compatibility dispatcher. Tests, command tools, self-hosted temporary
-compilers, cross-compilation, and modes not yet supported by V3 continue through the established
-compiler. Other operating systems are unchanged.
+`cmd/v` remains the CLI and compatibility dispatcher. Ordinary unflagged C builds use the
+established compiler because their default GC mode is `boehm_full_opt`. Tests, command tools,
+self-hosted temporary compilers, cross-compilation, and modes not yet supported by V3 also
+continue through the established compiler. Other operating systems are unchanged.
 
 ## Target selection
 
