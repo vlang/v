@@ -93,6 +93,9 @@ fn macos_v3_args_are_supported(args []string) bool {
 			if i + 1 >= args.len {
 				return false
 			}
+			if arg == '-o' && args[i + 1] == '-' {
+				return false
+			}
 			i += 2
 			continue
 		}
@@ -104,7 +107,7 @@ fn macos_v3_args_are_supported(args []string) bool {
 			'--c99', '-strict', '-cstrict', '-ownership', '--ownership', '-no-parallel',
 			'--no-parallel', '-parallel-transform', '--parallel-transform', '-all-backends',
 			'--all-backends', '-g', '-cg', '-autofree', '-v', '-silent', '-checker-fixture', '-stats',
-			'-show-timings', '-showcc', '-keepc', '-w', '-no-retry-compilation', '-skip-running',
+			'-show-timings', '-showcc', '-keepc', '-no-retry-compilation', '-skip-running',
 			'-usecache', '-no-prealloc', '--no-prealloc', '-nocache', '--no-cache',
 			'-no-memory-limit', '--no-memory-limit', '-prealloc', '-enable-globals'] {
 			i++
