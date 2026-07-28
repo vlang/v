@@ -409,18 +409,18 @@ fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type,
 }
 
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
-	f_return_type := t.fully_unaliased_type(f.return_type)
-	func_return_type := t.fully_unaliased_type(func.return_type)
-	f_return_sym := t.sym(f_return_type)
-	func_return_sym := t.sym(func_return_type)
-	mut same_return_type := f_return_type == func_return_type
-	if !same_return_type && f_return_type.nr_muls() == func_return_type.nr_muls()
-		&& f_return_type.has_flag(.option) == func_return_type.has_flag(.option)
-		&& f_return_type.has_flag(.result) == func_return_type.has_flag(.result)
-		&& f_return_sym.info is FnType {
-		if func_return_sym.info is FnType {
-			same_return_type = t.fn_types_are_compatible(f_return_sym.info.func,
-				func_return_sym.info.func, 0)
+	mut same_return_type := f.return_type == func.return_type
+	if !same_return_type {
+		f_return_type := t.fully_unaliased_type(f.return_type)
+		func_return_type := t.fully_unaliased_type(func.return_type)
+		if !f_return_type.has_option_or_result() && !func_return_type.has_option_or_result()
+			&& f_return_type.nr_muls() == func_return_type.nr_muls() {
+			f_return_sym := t.sym(f_return_type)
+			func_return_sym := t.sym(func_return_type)
+			if f_return_sym.info is FnType && func_return_sym.info is FnType {
+				same_return_type = t.fn_types_are_compatible(f_return_sym.info.func,
+					func_return_sym.info.func, 0)
+			}
 		}
 	}
 	if !same_return_type {
