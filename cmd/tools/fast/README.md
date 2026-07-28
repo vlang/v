@@ -78,8 +78,11 @@ To keep the local dashboard fresh, run the sampler on a schedule and keep the we
 app up, e.g. with cron:
 
 ```cron
-# rebuild the tool and sample any new commits every hour
-0 * * * * cd /path/to/v/cmd/tools/fast && v -o fast . && ./fast run >> fast.log 2>&1
+# Update the checkout, rebuild the tool, and sample any new commits every hour.
+# `fast run` enumerates commits from THIS checkout (it resolves e.g. origin/master),
+# so the checkout MUST be updated here (git pull) — the oldv cache sync only
+# refreshes ~/.cache/oldv. Without the pull the dashboard stops advancing.
+0 * * * * cd /path/to/v && git pull --ff-only && cd cmd/tools/fast && v -o fast . && ./fast run >> fast.log 2>&1
 ```
 
 and start the server once (e.g. in a `tmux`/`screen` session or a user service):

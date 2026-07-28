@@ -143,7 +143,7 @@ fn measure(cmd string, description string) !int {
 fn measure_steps_minimal(vprod string) !(int, int, int, int, int) {
 	mut scans, mut parses, mut checks, mut cgens, mut vliness := []int{}, []int{}, []int{}, []int{}, []int{}
 	for _ in 0 .. max_samples {
-		scan, parse, check, cgen, vlines := measure_steps_one_sample(vprod)
+		scan, parse, check, cgen, vlines := measure_steps_one_sample(vprod)!
 		scans << scan
 		parses << parse
 		checks << check
@@ -158,9 +158,12 @@ fn measure_steps_minimal(vprod string) !(int, int, int, int, int) {
 	return scan, parse, check, cgen, vlines
 }
 
-fn measure_steps_one_sample(vprod string) (int, int, int, int, int) {
+fn measure_steps_one_sample(vprod string) !(int, int, int, int, int) {
 	cmd := '${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
 	resp := os.execute(cmd)
+	if resp.exit_code != 0 {
+		return error('stage-timing run failed (exit ${resp.exit_code}): `${cmd}`\n${resp.output}')
+	}
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()
@@ -187,6 +190,12 @@ fn measure_steps_one_sample(vprod string) (int, int, int, int, int) {
 				vlines = s.trim_space().int()
 			}
 		}
+	}
+	// Both output formats set parse/check/cgen on success; if none parsed, the
+	// output was unusable (e.g. a crash that still exited 0), so reject it rather
+	// than letting arrays.min pick these zeroes into the stored row.
+	if parse == 0 && check == 0 && cgen == 0 {
+		return error('could not parse stage timings from output:\n${resp.output}')
 	}
 	return scan, parse, check, cgen, vlines
 }
