@@ -3450,6 +3450,7 @@ fn main() {
 	mut verbose := false
 	mut silent := false
 	mut keep_c := false
+	mut skip_running := false
 	mut is_debug := false
 	mut c99 := false
 	mut thread_stack_size := 0
@@ -3487,6 +3488,7 @@ fn main() {
 			should_run = true
 			i++
 		} else if args[i] == 'build' && input_file.len == 0 && !should_run {
+			skip_running = true
 			i++
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
@@ -3599,8 +3601,11 @@ fn main() {
 		} else if args[i] == '-keepc' {
 			keep_c = true
 			i++
+		} else if args[i] == '-skip-running' {
+			skip_running = true
+			i++
 		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-w', '-no-retry-compilation',
-			'-skip-running', '-usecache'] {
+			'-usecache'] {
 			// v3 already reports phase metrics, prints the C command, suppresses C
 			// warnings, leaves explicit-output tests unrun, and caches modules by default.
 			// Accept the corresponding V flags for compatibility.
@@ -3642,6 +3647,7 @@ fn main() {
 			i++
 		}
 	}
+	should_run = should_run && !skip_running
 	mut current_no_parallel := no_parallel
 	mut current_parallel_transform := parallel_transform
 	if current_no_parallel {

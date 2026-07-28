@@ -257,6 +257,23 @@ println(os.args[1..].join('|'))
 	assert run.output == 'false\none|--two\n', run.output
 	assert !os.exists(source.all_before_last('.vsh'))
 	assert !os.exists(source.all_before_last('.vsh') + '.c')
+	compile_only_source := os.join_path(root, 'compile_only.vsh')
+	compile_only_binary := compile_only_source.all_before_last('.vsh')
+	run_marker := os.join_path(root, 'compile_only_ran')
+	os.write_file(compile_only_source, "import os
+
+os.write_file('${run_marker}', 'ran')!
+")!
+	skip_run := cmdexec.run(v3_bin,
+		['-silent', '-no-parallel', '-skip-running', compile_only_source])
+	assert skip_run.exit_code == 0, skip_run.output
+	assert os.is_file(compile_only_binary)
+	assert !os.exists(run_marker)
+	os.rm(compile_only_binary)!
+	build_script := cmdexec.run(v3_bin, ['-silent', '-no-parallel', 'build', compile_only_source])
+	assert build_script.exit_code == 0, build_script.output
+	assert os.is_file(compile_only_binary)
+	assert !os.exists(run_marker)
 }
 
 fn assert_driver_wasm_output(path string) {

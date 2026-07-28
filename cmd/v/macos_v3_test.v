@@ -43,6 +43,10 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		prefs.is_crun = true
 		assert is_macos_v3_relevant_command('script.vsh', prefs)
 		assert !is_macos_v3_relevant_command('crun', prefs)
+		prefs.is_crun = false
+		prefs.path = 'main.v'
+		prefs.out_name_is_dir = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
 	}
 }
 
