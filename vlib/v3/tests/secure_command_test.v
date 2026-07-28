@@ -36,6 +36,17 @@ fn test_run_in_merged_sets_the_child_work_folder() {
 	assert os.real_path(result.output.trim_space()) == os.real_path(work_folder), result.output
 }
 
+fn test_run_in_merged_preserves_exact_arguments() {
+	$if windows {
+		return
+	}
+	arg := r'-IC:\SDK\include'
+	result := cmdexec.run_in_merged('/bin/sh', ['-c', 'printf %s "\$1"; printf %s "\$1" >&2', 'sh',
+		arg], '')
+	assert result.exit_code == 0, result.output
+	assert result.output == arg + arg, result.output
+}
+
 fn test_command_argument_parser_preserves_quoted_values() {
 	args := cmdexec.split_args('-I "dir with spaces" -DNAME=\'quoted value\' plain\\ value') or {
 		panic(err)

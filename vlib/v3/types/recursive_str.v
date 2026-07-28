@@ -754,8 +754,26 @@ fn (mut tc TypeChecker) recursive_str_guaranteed_param_effect(decl flat.Node, pa
 		if effect != .none {
 			return effect
 		}
+		if tc.recursive_str_stmt_may_return(*child) {
+			return .none
+		}
 	}
 	return .none
+}
+
+fn (tc &TypeChecker) recursive_str_stmt_may_return(node flat.Node) bool {
+	if node.kind == .return_stmt {
+		return true
+	}
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if tc.recursive_str_stmt_may_return(*tc.a.child_node(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name string) RecursiveStrMutationEffect {
@@ -822,9 +840,13 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		}
 		.expr_stmt, .block {
 			for i in 0 .. node.children_count {
-				effect := tc.recursive_str_stmt_param_effect(*tc.a.child_node(&node, i), name)
+				child := tc.a.child_node(&node, i)
+				effect := tc.recursive_str_stmt_param_effect(*child, name)
 				if effect != .none {
 					return effect
+				}
+				if tc.recursive_str_stmt_may_return(*child) {
+					return .none
 				}
 			}
 		}
@@ -872,9 +894,13 @@ fn (mut tc TypeChecker) recursive_str_stmt_param_effect(node flat.Node, name str
 		.match_branch {
 			condition_count := if node.value.is_int() { node.value.int() } else { 0 }
 			for i in condition_count .. node.children_count {
-				effect := tc.recursive_str_stmt_param_effect(*tc.a.child_node(&node, i), name)
+				child := tc.a.child_node(&node, i)
+				effect := tc.recursive_str_stmt_param_effect(*child, name)
 				if effect != .none {
 					return effect
+				}
+				if tc.recursive_str_stmt_may_return(*child) {
+					return .none
 				}
 			}
 		}

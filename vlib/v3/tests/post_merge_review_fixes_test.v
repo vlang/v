@@ -6681,3 +6681,82 @@ middle
 
 	assert compile.output.contains('repeated.txt:3:3: error: undefined ident: `unknown_var`'), compile.output
 }
+
+fn test_template_interpolations_keep_distinct_columns() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_interpolation_columns')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('columns.txt')
+}
+")
+	write_project_file(root, 'columns.txt', '@unknown @unknown
+')
+	output := tmp_test_path('template_interpolation_columns')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('columns.txt:1:3: error: undefined ident: `unknown`'), compile.output
+	assert compile.output.contains('columns.txt:1:12: error: undefined ident: `unknown`'), compile.output
+}
+
+fn test_qualified_struct_literal_in_select_send_condition() {
+	v3_bin := build_v3()
+	result := run_good_project_result(v3_bin, 'qualified_struct_literal_select_send', '', {
+		'v.mod':               "Module { name: 'qualified_struct_literal_select_send' }\n"
+		'messages/messages.v': 'module messages
+
+pub struct Msg {
+pub:
+	x int
+}
+'
+		'main.v':              'module main
+
+import messages
+
+fn main() {
+	ch := chan messages.Msg{cap: 1}
+	select {
+		ch <- messages.Msg{
+			x: 7
+		} {
+			println("sent")
+		}
+	}
+}
+'
+	}, 'main.v')
+	assert !result.compile_output.contains('unexpected token'), result.compile_output
+}
+
+fn test_recursive_str_helper_progress_must_cover_early_return_paths() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_early_return', 'struct Item {
+mut:
+	remaining int
+}
+
+fn maybe_decrement(mut item Item, stop bool) {
+	if stop {
+		return
+	}
+	item.remaining--
+}
+
+fn (item Item) str() string {
+	mut next := item
+	maybe_decrement(mut next, true)
+	return next.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}

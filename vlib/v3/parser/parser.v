@@ -7513,7 +7513,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			continue
 		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
-		if p.tok == .lcbr && p.in_select_branch_condition == 0
+		if p.tok == .lcbr && (p.in_select_branch_condition == 0 || p.current_lcbr_is_attached())
 			&& (!p.in_for_container || p.current_lcbr_is_attached()) {
 			lhs_node := p.a.nodes[int(lhs)]
 			if p.peek() == .rcbr && p.is_comptime_type_accessor(lhs) {

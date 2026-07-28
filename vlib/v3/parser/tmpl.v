@@ -1231,7 +1231,8 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 			continue
 		}
 		mapped := template_mapped_pos(template_file, template_lines, line_map[line_index],
-			generated_position.column, node.pos.end - node.pos.offset, template_id)
+			generated_lines[line_index], generated_position.column, node.pos.end - node.pos.offset,
+			template_id)
 		p.a.nodes[index] = flat.Node{
 			...node
 			pos: mapped
@@ -1246,7 +1247,8 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		}
 		mapped_line := line_map[line_index]
 		mapped := template_mapped_pos(template_file, template_lines, mapped_line,
-			generated_position.column, diagnostic.pos.end - diagnostic.pos.offset, template_id)
+			generated_lines[line_index], generated_position.column,
+			diagnostic.pos.end - diagnostic.pos.offset, template_id)
 		p.diagnostics[index] = Diagnostic{
 			...diagnostic
 			file:   template_path
@@ -1290,14 +1292,15 @@ fn (p &Parser) template_action_name() string {
 	return short
 }
 
-fn template_mapped_pos(template_file &token.File, template_lines []string, line int, generated_column int, generated_len int, template_id int) token.Pos {
+fn template_mapped_pos(template_file &token.File, template_lines []string, line int, generated_line string, generated_column int, generated_len int, template_id int) token.Pos {
 	if line <= 0 || line > template_lines.len {
 		return token.new_pos(template_id, 0)
 	}
 	raw_line := template_lines[line - 1]
 	mut column := int_max(1, generated_column)
 	mut span_len := int_max(1, generated_len)
-	if at := raw_line.index('@') {
+	interpolation_index := generated_template_interpolation_index(generated_line, generated_column)
+	if at := template_interpolation_offset(raw_line, interpolation_index) {
 		if at + 1 < raw_line.len && is_tmpl_ident_start(raw_line[at + 1]) {
 			mut end := at + 2
 			for end < raw_line.len && is_tmpl_ident_part(raw_line[end]) {
@@ -1310,6 +1313,46 @@ fn template_mapped_pos(template_file &token.File, template_lines []string, line 
 	line_start := template_file.line_start(line)
 	start := line_start + int_min(column - 1, raw_line.len)
 	return token.new_span(template_id, start, start + span_len).with_reported_column(column)
+}
+
+fn generated_template_interpolation_index(line string, column int) int {
+	mut index := 0
+	mut found := false
+	target := int_max(0, column - 1)
+	for i := 0; i + 1 < line.len && i <= target; i++ {
+		if line[i] == `$` && line[i + 1] == `{` {
+			if found {
+				index++
+			} else {
+				found = true
+			}
+		}
+	}
+	return index
+}
+
+fn template_interpolation_offset(line string, wanted int) ?int {
+	mut index := 0
+	mut i := 0
+	for i + 1 < line.len {
+		if line[i] != `@` {
+			i++
+			continue
+		}
+		next := line[i + 1]
+		if next == `@` {
+			i += 2
+			continue
+		}
+		if next == `{` || next == `(` || is_tmpl_ident_start(next) {
+			if index == wanted {
+				return i
+			}
+			index++
+		}
+		i++
+	}
+	return none
 }
 
 // expand_veb_template_stmt lowers a statement whose value is a `.veb_template`

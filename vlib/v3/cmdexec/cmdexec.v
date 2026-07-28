@@ -42,17 +42,10 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 	}
 }
 
-// run_in_merged executes a command with stderr redirected into stdout so the
-// relative order of diagnostics and program output is preserved.
+// run_in_merged executes a command with an exact argument vector and captures
+// both stdout and stderr.
 pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
-	command := display(program, args)
-	$if windows {
-		comspec := os.getenv('COMSPEC')
-		shell := if comspec.len > 0 { comspec } else { 'cmd.exe' }
-		return run_in(shell, ['/D', '/S', '/C', '${command} 2>&1'], work_folder)
-	} $else {
-		return run_in('/bin/sh', ['-c', 'exec ${command} 2>&1'], work_folder)
-	}
+	return run_in(program, args, work_folder)
 }
 
 // split_args parses a directive or tool response into literal argv elements.
