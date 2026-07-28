@@ -32,6 +32,7 @@ struct RecursiveStrEnv {
 mut:
 	bindings        map[string]RecursiveStrBinding
 	next_storage_id int = 2
+	pending_goto    string
 }
 
 struct RecursiveStrContext {
@@ -45,6 +46,7 @@ fn (env &RecursiveStrEnv) clone_env() RecursiveStrEnv {
 	return RecursiveStrEnv{
 		bindings:        env.bindings.clone()
 		next_storage_id: env.next_storage_id
+		pending_goto:    env.pending_goto
 	}
 }
 
@@ -78,15 +80,41 @@ fn (mut tc TypeChecker) check_recursive_str_calls(fn_id flat.NodeId, node flat.N
 		receiver_name: receiver_node.value
 		receiver_type: receiver_type
 	}
-	for i in 0 .. node.children_count {
+	tc.recursive_str_process_child_sequence(node, mut env, ctx)
+}
+
+fn (mut tc TypeChecker) recursive_str_process_child_sequence(node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
+	mut i := 0
+	for i < int(node.children_count) {
 		child_id := tc.a.child(&node, i)
 		if tc.a.node(child_id).kind == .param {
+			i++
 			continue
 		}
-		if !tc.recursive_str_process_stmt(child_id, mut env, ctx) {
-			break
+		if tc.recursive_str_process_stmt(child_id, mut env, ctx) {
+			i++
+			continue
+		}
+		if env.pending_goto.len > 0 {
+			if target := tc.recursive_str_forward_label_index(node, i, env.pending_goto) {
+				env.pending_goto = ''
+				i = target + 1
+				continue
+			}
+		}
+		return false
+	}
+	return true
+}
+
+fn (tc &TypeChecker) recursive_str_forward_label_index(node flat.Node, after int, label string) ?int {
+	for i in after + 1 .. int(node.children_count) {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .label_stmt && child.value == label {
+			return i
 		}
 	}
+	return none
 }
 
 fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
@@ -164,6 +192,10 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			}
 			return false
 		}
+		.goto_stmt {
+			env.pending_goto = node.value
+			return false
+		}
 		.assert_stmt {
 			// Assertions can be removed from production builds, so their mutations
 			// cannot establish progress for a later recursive call.
@@ -183,12 +215,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			return true
 		}
 		.block {
-			for i in 0 .. node.children_count {
-				if !tc.recursive_str_process_stmt(tc.a.child(node, i), mut env, ctx) {
-					return false
-				}
-			}
-			return true
+			return tc.recursive_str_process_child_sequence(*node, mut env, ctx)
 		}
 		.if_expr {
 			return tc.recursive_str_process_if_stmt(id, mut env, ctx)

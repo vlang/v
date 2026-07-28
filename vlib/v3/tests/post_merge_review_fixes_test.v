@@ -7621,3 +7621,25 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
 }
+
+fn test_recursive_str_forward_goto_skips_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_forward_goto', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	unsafe {
+		goto recurse
+	}
+	copy.remaining--
+recurse:
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
