@@ -771,6 +771,15 @@ pub fn (p &Preferences) normalized_target_arch() string {
 	return p.target.arch
 }
 
+// comptime_platform returns the established @PLATFORM name for the selected target.
+pub fn (p &Preferences) comptime_platform() string {
+	return match p.target.arch {
+		'x86' { 'i386' }
+		'riscv64' { 'rv64' }
+		else { p.target.arch }
+	}
+}
+
 // is_cross_target reports whether is cross target applies in pref.
 pub fn (p &Preferences) is_cross_target() bool {
 	host := host_target()

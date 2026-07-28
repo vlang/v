@@ -3433,7 +3433,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					write_comptime_cond_string(mut out, p.prefs.backend)
 				}
 				'@PLATFORM' {
-					write_comptime_cond_string(mut out, @PLATFORM)
+					write_comptime_cond_string(mut out, p.prefs.comptime_platform())
 				}
 				'@VCURRENTHASH', '@VHASH' {
 					hash := if name == '@VHASH' {
@@ -8597,7 +8597,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, p.prefs.backend)
 			}
 			if name == '@PLATFORM' {
-				return p.add_val_id(5, @PLATFORM)
+				return p.add_val_id(5, p.prefs.comptime_platform())
 			}
 			if name == '@VCURRENTHASH' || name == '@VHASH' {
 				return p.add_val_id(5, if name == '@VHASH' {

@@ -149,10 +149,17 @@ fn main() {
 		panic(err)
 	}
 	output := os.join_path(root, 'cli_header_program')
-	compile := cmdexec.run(v3_bin, ['-nocache', '-keepc', '-cflags', '-I "${include_dir}"', '-o',
-		output, source])
+	keep_c_dir := os.join_path(root, 'kept_c')
+	os.mkdir(keep_c_dir)!
+	mut environment := os.environ()
+	environment['VTMP'] = keep_c_dir
+	compile := run_driver_with_environment(v3_bin, ['-nocache', '-keepc', '-cflags',
+		'-I "${include_dir}"', '-o', output, source], environment)
 	assert compile.exit_code == 0, compile.output
-	generated_c := os.read_file(output + '.c')!
+	assert !os.exists(output + '.c')
+	kept_files := kept_c_files(keep_c_dir)
+	assert kept_files.len == 1, kept_files.str()
+	generated_c := os.read_file(kept_files[0])!
 	assert !generated_c.contains('#include "cli_header.h"'), generated_c
 	assert generated_c.contains('static inline int cli_header_value(CliHeaderValue* item)')
 	run := cmdexec.run(output, [])
@@ -189,6 +196,12 @@ fn run_driver_with_environment(v3_bin string, args []string, environment map[str
 	process.set_args(args)
 	process.set_environment(environment)
 	return collect_driver_process_result(mut process)
+}
+
+fn kept_c_files(dir string) []string {
+	mut files := (os.ls(dir) or { return []string{} }).filter(it.ends_with('.tmp.c'))
+	files.sort()
+	return files.map(os.join_path_single(dir, it))
 }
 
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {
@@ -400,10 +413,18 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	assert showcc_build.output.contains('  > '), showcc_build.output
 	assert !showcc_build.output.contains('=== v3 benchmark ==='), showcc_build.output
 	assert !showcc_build.output.contains('MB RSS'), showcc_build.output
-	os.rm(implicit_c)!
-	keep_c_build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-keepc', implicit_program])
+	keep_c_dir := os.join_path(root, 'kept_c')
+	os.mkdir(keep_c_dir)!
+	mut keep_c_environment := os.environ()
+	keep_c_environment['VTMP'] = keep_c_dir
+	keep_c_build := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-keepc',
+		implicit_program], keep_c_environment)
 	assert keep_c_build.exit_code == 0, keep_c_build.output
-	assert os.file_size(implicit_c) > 0
+	assert os.read_file(implicit_c)! == 'existing C source'
+	kept_files := kept_c_files(keep_c_dir)
+	assert kept_files.len == 1, kept_files.str()
+	assert os.file_size(kept_files[0]) > 0
+	assert os.file_name(kept_files[0]).starts_with('implicit_build.')
 	run_program := os.join_path(root, 'implicit_run.v')
 	run_binary := run_program.all_before_last('.v')
 	os.write_file(run_program, "println('ran once')")!
@@ -513,6 +534,40 @@ fn assert_driver_wasm_output(path string) {
 	assert bytes[..4] == [u8(0), 0x61, 0x73, 0x6d]
 }
 
+fn test_driver_platform_pseudo_uses_selected_target_arch() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_platform_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'platform.v')
+	os.write_file(source, "fn main() {
+	println(@PLATFORM)
+	\$if @PLATFORM == 'amd64' {
+		println('selected-amd64')
+	} \$else \$if @PLATFORM == 'arm64' {
+		println('selected-arm64')
+	}
+}
+")!
+	for target_arch, platform in {
+		'x86_64': 'amd64'
+		'arm64':  'arm64'
+	} {
+		output := os.join_path(root, 'platform_${platform}.c')
+		compile := cmdexec.run(v3_bin, ['-nocache', '-no-parallel', '-os', 'macos', '-arch',
+			target_arch, '-o', output, source])
+		assert compile.exit_code == 0, compile.output
+		generated_c := os.read_file(output)!
+		assert generated_c.contains('{"${platform}", ${platform.len}'), generated_c
+		assert generated_c.contains('selected-${platform}'), generated_c
+		other_platform := if platform == 'amd64' { 'arm64' } else { 'amd64' }
+		assert !generated_c.contains('selected-${other_platform}'), generated_c
+	}
+}
+
 fn test_wasm_backend_defaults_target_unless_explicit() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_wasm_target_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -591,11 +646,16 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert verbose_compile.exit_code == 0, verbose_compile.output
 	assert verbose_compile.output.contains('[ttime]'), verbose_compile.output
 	compat_output := os.join_path(root, 'hello_compat')
+	kept_before := kept_c_files(os.vtmp_dir())
 	compat_compile := cmdexec.run(v3_bin, ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
 		'-g', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])
 	assert compat_compile.exit_code == 0, compat_compile.output
 	assert os.is_file(compat_output)
-	assert os.is_file(compat_output + '.c')
+	assert !os.exists(compat_output + '.c')
+	new_kept_files := kept_c_files(os.vtmp_dir()).filter(it !in kept_before
+		&& os.file_name(it).starts_with('hello_compat.'))
+	assert new_kept_files.len == 1, new_kept_files.str()
+	os.rm(new_kept_files[0])!
 	debug_source := os.join_path(root, 'debug_comptime.v')
 	os.write_file(debug_source,
 		"fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n") or {

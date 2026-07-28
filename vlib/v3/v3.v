@@ -1613,6 +1613,24 @@ fn default_bin_file_for_input(input_file string) string {
 	return input_file
 }
 
+fn keep_c_output_file(bin_file string) string {
+	name := os.file_name(os.real_path(bin_file))
+	mut sanitized := strings.new_builder(name.len)
+	for ch in name {
+		if ch >= 128 || (ch >= `0` && ch <= `9`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `a` && ch <= `z`) || ch in [`-`, `.`, `_`] {
+			sanitized.write_u8(ch)
+		} else {
+			sanitized.write_u8(`_`)
+		}
+	}
+	mut base := sanitized.str()
+	if base in ['', '.', '..'] {
+		base = 'vtmp'
+	}
+	return os.real_path(os.join_path_single(os.vtmp_dir(), '${base}.${rand.ulid()}.tmp.c'))
+}
+
 fn cli_usage() string {
 	return 'usage: v3 [run|test] <file.v|directory> [options]\n' +
 		'  -o <output>                 output binary or C file\n' +
@@ -5485,14 +5503,16 @@ fn main() {
 		}
 		b.metric('generated C size', os.file_size(published_c_source), 'bytes')
 		if keep_c {
-			published_c := '${output_file}.tmp.${os.getpid()}.${rand.ulid()}'
-			os.cp(published_c_source, published_c) or {
-				eprintln('failed to stage generated C output ${output_file}: ${err}')
+			keep_c_file := keep_c_output_file(bin_file)
+			staged_c := '${keep_c_file}.stage.${os.getpid()}.${rand.ulid()}'
+			os.cp(published_c_source, staged_c) or {
+				eprintln('failed to stage generated C output ${keep_c_file}: ${err}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
-			os.mv(published_c, output_file) or {
-				eprintln('failed to publish generated C output ${output_file}: ${err}')
+			os.mv(staged_c, keep_c_file) or {
+				os.rm(staged_c) or {}
+				eprintln('failed to retain generated C output ${keep_c_file}: ${err}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
