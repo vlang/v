@@ -21,8 +21,9 @@ struct RecursiveStrConditionalParamFlow {
 }
 
 struct RecursiveStrReturnedParam {
-	name  string
-	index int
+	name     string
+	index    int
+	value_id flat.NodeId
 }
 
 struct RecursiveStrBinding {
@@ -768,12 +769,43 @@ fn (mut tc TypeChecker) recursive_str_eval_struct_update(id flat.NodeId, node fl
 
 fn (tc &TypeChecker) recursive_str_struct_update_field_changes_base(base_id flat.NodeId, field flat.Node) bool {
 	if field.kind != .field_init || field.children_count == 0 || field.value.len == 0 {
-		return true
+		return false
 	}
 	value_id := tc.a.child(&field, 0)
-	base_text := tc.source_text_for_node(base_id).trim_space()
-	value_text := tc.source_text_for_node(value_id).trim_space()
-	return value_text != '${base_text}.${field.value}'
+	if tc.recursive_str_expr_matches_struct_field(value_id, base_id, field.value) {
+		return false
+	}
+	value := tc.a.node(value_id)
+	if value.kind != .infix || value.children_count < 2 {
+		return false
+	}
+	lhs_id := tc.a.child(value, 0)
+	rhs_id := tc.a.child(value, 1)
+	if value.op in [.plus, .minus]
+		&& tc.recursive_str_expr_matches_struct_field(lhs_id, base_id, field.value) {
+		rhs := tc.a.node(rhs_id)
+		return rhs.kind in [.int_literal, .float_literal] && !numeric_literal_is_zero(rhs.value)
+	}
+	if value.op == .plus && tc.recursive_str_expr_matches_struct_field(rhs_id, base_id, field.value) {
+		lhs := tc.a.node(lhs_id)
+		return lhs.kind in [.int_literal, .float_literal] && !numeric_literal_is_zero(lhs.value)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) recursive_str_expr_matches_struct_field(id flat.NodeId, base_id flat.NodeId, field_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.recursive_str_expr_matches_struct_field(tc.a.child(node, 0), base_id, field_name)
+	}
+	if node.kind != .selector || node.value != field_name || node.children_count == 0 {
+		return false
+	}
+	receiver_id := tc.a.child(node, 0)
+	return tc.source_text_for_node(receiver_id).trim_space() == tc.source_text_for_node(base_id).trim_space()
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_array_expr(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
@@ -1635,17 +1667,15 @@ fn (tc &TypeChecker) recursive_str_returned_params(decl flat.Node) ?[]RecursiveS
 		}
 		if node.kind == .return_stmt {
 			if node.children_count != 1 {
-				return none
-			}
-			value_id := tc.a.child(node, 0)
-			name := tc.recursive_str_root_ident(value_id) or { return none }
-			index := params[name] or { return none }
-			if returned.any(it.name == name) {
 				continue
 			}
+			value_id := tc.a.child(node, 0)
+			name := tc.recursive_str_root_ident(value_id) or { continue }
+			index := params[name] or { continue }
 			returned << RecursiveStrReturnedParam{
-				name:  name
-				index: index
+				name:     name
+				index:    index
+				value_id: value_id
 			}
 			continue
 		}
@@ -1659,6 +1689,20 @@ fn (tc &TypeChecker) recursive_str_returned_params(decl flat.Node) ?[]RecursiveS
 	return none
 }
 
+fn (tc &TypeChecker) recursive_str_direct_returned_ident(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr] && node.children_count > 0 {
+		return tc.recursive_str_direct_returned_ident(tc.a.child(node, 0))
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) recursive_str_call_return_binding(call_id flat.NodeId, env RecursiveStrEnv) ?RecursiveStrBinding {
 	resolved := tc.resolved_call_name(call_id) or { return none }
 	decl_id := tc.recursive_str_fn_decl_id(resolved) or { return none }
@@ -1666,23 +1710,26 @@ fn (mut tc TypeChecker) recursive_str_call_return_binding(call_id flat.NodeId, e
 	returned := tc.recursive_str_returned_params(*decl) or { return none }
 	call := tc.a.node(call_id)
 	actuals := tc.recursive_str_call_param_actuals(*call, *decl)
+	mut return_env := env.clone_env()
+	for name, actual_id in actuals {
+		return_env.bindings[name] = tc.recursive_str_binding_for_expr(actual_id, env)
+	}
 	mut bindings := []RecursiveStrBinding{}
 	for returned_param in returned {
-		actual_id := actuals[returned_param.name] or { continue }
-		mut binding := tc.recursive_str_binding_for_expr(actual_id, env)
-		effect := tc.recursive_str_guaranteed_param_effect(*decl, returned_param.index)
-		match effect.kind {
-			.value, .shared {
-				if binding.can_recurse {
-					binding.progressed = true
+		mut binding := tc.recursive_str_binding_for_expr(returned_param.value_id, return_env)
+		if _ := tc.recursive_str_direct_returned_ident(returned_param.value_id) {
+			effect := tc.recursive_str_guaranteed_param_effect(*decl, returned_param.index)
+			match effect.kind {
+				.value, .shared {
+					if binding.can_recurse {
+						binding.progressed = true
+					}
 				}
-			}
-			.rebind {
-				if source_id := actuals[effect.source_param] {
-					binding = tc.recursive_str_binding_for_expr(source_id, env)
+				.rebind {
+					binding = return_env.bindings[effect.source_param] or { binding }
 				}
+				else {}
 			}
-			else {}
 		}
 		bindings << binding
 	}

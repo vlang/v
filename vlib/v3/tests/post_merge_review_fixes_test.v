@@ -8028,6 +8028,46 @@ fn main() {
 	assert out == 'leaf'
 }
 
+fn test_recursive_str_helper_returned_descendant_is_distinct() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_returned_aggregate_alias', 'struct Item {}
+
+fn first(items []Item) Item {
+	return items[0]
+}
+
+fn (item Item) str() string {
+	items := [item]
+	return first(items).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_helper_returned_child', 'struct Tree {
+	children []Tree
+}
+
+fn first(tree Tree) Tree {
+	return tree.children[0]
+}
+
+fn (tree Tree) str() string {
+	if tree.children.len == 0 {
+		return "leaf"
+	}
+	return first(tree).str()
+}
+
+fn main() {
+	println(Tree{
+		children: [Tree{}]
+	}.str())
+}
+')
+	assert out == 'leaf'
+}
+
 fn test_recursive_str_preserves_provenance_through_array_elements() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_array_element_provenance', 'struct Item {}
@@ -8288,6 +8328,20 @@ fn test_recursive_str_struct_update_preserves_receiver_provenance() {
 fn (item Item) str() string {
 	return Item{
 		...item
+	}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_struct_update_noop_field', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	return Item{
+		...item
+		remaining: item.remaining + 0
 	}.str()
 }
 
