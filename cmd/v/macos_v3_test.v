@@ -142,10 +142,20 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-foo', 'main.v'])
+		assert !macos_v3_args_are_supported(['-silent', 'main.v'])
 		assert !macos_v3_args_are_supported(['-w', 'main.v'])
 		for help_flag in ['-?', '-h', '-help', '--help'] {
 			assert !macos_v3_args_are_supported(['-gc', 'none', help_flag, 'main.v'])
 		}
+	}
+}
+
+fn test_macos_v3_bootstrap_clears_argument_environment() {
+	$if macos {
+		environment := macos_v3_bootstrap_environment()
+		assert environment[macos_v3_bootstrap_env] == '1'
+		assert environment['VFLAGS'] == ''
+		assert environment['VOSARGS'] == ''
 	}
 }
 

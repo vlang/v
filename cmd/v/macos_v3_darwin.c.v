@@ -112,7 +112,7 @@ fn macos_v3_args_are_supported(args []string) bool {
 		if arg in ['-prod', '-shared', '--shared', '-selfhost', '-building-v', '-building_v', '-c99',
 			'--c99', '-strict', '-cstrict', '-ownership', '--ownership', '-no-parallel',
 			'--no-parallel', '-parallel-transform', '--parallel-transform', '-all-backends',
-			'--all-backends', '-g', '-cg', '-autofree', '-v', '-silent', '-checker-fixture', '-stats',
+			'--all-backends', '-g', '-cg', '-autofree', '-v', '-checker-fixture', '-stats',
 			'-show-timings', '-showcc', '-keepc', '-no-retry-compilation', '-skip-running',
 			'-usecache', '-no-prealloc', '--no-prealloc', '-nocache', '--no-cache',
 			'-no-memory-limit', '--no-memory-limit', '-prealloc', '-enable-globals'] {
@@ -217,10 +217,7 @@ fn build_macos_v3_compiler(vexe string, vroot string, v3_source string, v3_exe s
 	mut process := os.new_process(vexe)
 	process.set_work_folder(vroot)
 	process.set_args(args)
-	mut environment := os.environ()
-	environment[macos_v3_bootstrap_env] = '1'
-	environment['VFLAGS'] = ''
-	process.set_environment(environment)
+	process.set_environment(macos_v3_bootstrap_environment())
 	process.set_redirect_stdio()
 	process.run()
 	process.wait()
@@ -234,6 +231,14 @@ fn build_macos_v3_compiler(vexe string, vroot string, v3_source string, v3_exe s
 	if is_verbose && output != '' {
 		print(output)
 	}
+}
+
+fn macos_v3_bootstrap_environment() map[string]string {
+	mut environment := os.environ()
+	environment[macos_v3_bootstrap_env] = '1'
+	environment['VFLAGS'] = ''
+	environment['VOSARGS'] = ''
+	return environment
 }
 
 fn cached_macos_v3_executable_path(vroot string) string {
