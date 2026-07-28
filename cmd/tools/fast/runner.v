@@ -42,6 +42,7 @@ fn resolve_history_ref(user_branch string) string {
 fn cmd_run(args []string) ! {
 	mut year := 2026
 	mut step := 50
+	mut latest := 0
 	mut branch := ''
 	dry := args.contains('-dry-run')
 	for i, a in args {
@@ -50,6 +51,9 @@ fn cmd_run(args []string) ! {
 		}
 		if a == '-step' && i + 1 < args.len {
 			step = args[i + 1].int()
+		}
+		if a == '-latest' && i + 1 < args.len {
+			latest = args[i + 1].int()
 		}
 		if a == '-branch' && i + 1 < args.len {
 			branch = args[i + 1]
@@ -60,26 +64,41 @@ fn cmd_run(args []string) ! {
 	}
 
 	ref := resolve_history_ref(branch)
-	from := '${year}-01-01'
-	to := '${year + 1}-01-01'
-	log_cmd := 'git -C ${os.quoted_path(vdir)} log ${ref} --first-parent --reverse --since=${from} --until=${to} --pretty=format:%H'
-	res := os.execute(log_cmd)
-	if res.exit_code != 0 {
-		return error('could not read history from `${ref}`: ${res.output.trim_space()}')
-	}
-	commits := res.output.split_into_lines().filter(it.len > 0)
-	if commits.len == 0 {
-		elog('no commits found for ${year} on ${ref}')
-		return
-	}
-
 	mut selected := []string{}
-	// Start at step-1 so "every 50th commit" actually samples the 50th, 100th,
-	// ... commits (1-based), not the 1st, 51st, 101st.
-	for i := step - 1; i < commits.len; i += step {
-		selected << commits[i]
+	if latest > 0 {
+		// benchmark the N most recent first-parent commits (newest last, so they
+		// are stored oldest-first)
+		res :=
+			os.execute('git -C ${os.quoted_path(vdir)} log ${ref} --first-parent -n ${latest} --pretty=format:%H')
+		if res.exit_code != 0 {
+			return error('could not read history from `${ref}`: ${res.output.trim_space()}')
+		}
+		// git log lists newest-first; append in reverse so they are stored oldest-first
+		lines := res.output.split_into_lines().filter(it.len > 0)
+		for i := lines.len - 1; i >= 0; i-- {
+			selected << lines[i]
+		}
+		elog('benchmarking the ${selected.len} latest commits on ${ref}')
+	} else {
+		from := '${year}-01-01'
+		to := '${year + 1}-01-01'
+		log_cmd := 'git -C ${os.quoted_path(vdir)} log ${ref} --first-parent --reverse --since=${from} --until=${to} --pretty=format:%H'
+		res := os.execute(log_cmd)
+		if res.exit_code != 0 {
+			return error('could not read history from `${ref}`: ${res.output.trim_space()}')
+		}
+		commits := res.output.split_into_lines().filter(it.len > 0)
+		if commits.len == 0 {
+			elog('no commits found for ${year} on ${ref}')
+			return
+		}
+		// Start at step-1 so "every 50th commit" actually samples the 50th, 100th,
+		// ... commits (1-based), not the 1st, 51st, 101st.
+		for i := step - 1; i < commits.len; i += step {
+			selected << commits[i]
+		}
+		elog('year ${year}: ${commits.len} commits on ${ref}, sampling every ${step}th => ${selected.len} benchmarks')
 	}
-	elog('year ${year}: ${commits.len} commits on ${ref}, sampling every ${step}th => ${selected.len} benchmarks')
 
 	// A dry run only lists what would be measured; keep it read-only and never
 	// touch the database (the source dir may not even be writable).

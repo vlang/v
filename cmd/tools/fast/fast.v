@@ -17,8 +17,9 @@ import log
 // Usage:
 //   v run . serve [-port 8080]              start the web app (default command)
 //   v run . bench [-clang] [-noprod]        benchmark the current HEAD commit
-//   v run . run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
-//                                           benchmark every <step>th commit of <year>
+//   v run . run [-year 2026] [-step 50] [-latest N] [-branch <ref>] [-dry-run]
+//                                           benchmark every <step>th commit of <year>,
+//                                           or the N most recent commits with -latest
 //   v run . seed                            insert demo rows (to preview the UI)
 //   v run . import <table.html> [...]       migrate old fast.vlang.io history
 //   v run . export [-o <dir>]               render a static site for GitHub Pages
@@ -120,8 +121,9 @@ fn print_help() {
 Commands:
   serve [-port 8080]                 start the veb web app (default)
   bench [-clang] [-noprod]           benchmark the current HEAD commit
-  run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
-                                     benchmark every <step>th commit of a year
+  run [-year 2026] [-step 50] [-latest N] [-branch <ref>] [-dry-run]
+                                     benchmark every <step>th commit of a year,
+                                     or the N most recent commits with -latest
   seed                               insert demo rows (to preview the UI)
   import [--since YYYY-MM-DD] <table.html> [...]
                                      migrate old fast.vlang.io history into fast.db
