@@ -51,6 +51,9 @@ The command line rejects unknown options, missing option values, unsupported bac
 multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
 currently supported collector mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
+Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
+two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
+backtraces while plain `-g` retains its V-source debug behavior.
 The driver monitors compiler memory throughout the build and exits when it reaches 2 GiB.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.

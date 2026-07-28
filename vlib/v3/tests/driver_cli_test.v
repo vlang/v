@@ -235,6 +235,57 @@ fn kept_c_files(dir string) []string {
 	return files.map(os.join_path_single(dir, it))
 }
 
+fn test_driver_macos_wrapv_and_cg_link_flags() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_macos_c_flags_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
+	source := os.join_path(root, 'signed_overflow.v')
+	os.write_file(source, '#flag -O2
+
+fn increment_is_greater(value int) bool {
+	return value + 1 > value
+}
+
+fn main() {
+	println(increment_is_greater(int(2147483647)))
+}
+')!
+	output := os.join_path(root, 'signed_overflow')
+	compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-prod', '-showcc', '-o', output,
+		source])
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('-fwrapv'), compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'false\n', run.output
+
+	tcc_output := os.join_path(root, 'signed_overflow_tcc')
+	tcc_compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-showcc', '-o', tcc_output,
+		source])
+	assert tcc_compile.exit_code == 0, tcc_compile.output
+	assert tcc_compile.output.contains('tcc.exe'), tcc_compile.output
+	assert tcc_compile.output.contains('-fwrapv'), tcc_compile.output
+
+	cg_output := os.join_path(root, 'signed_overflow_cg')
+	cg_compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-prod', '-showcc', '-cg',
+		'-o', cg_output, source])
+	assert cg_compile.exit_code == 0, cg_compile.output
+	assert cg_compile.output.contains('-Wl,-export_dynamic'), cg_compile.output
+
+	g_output := os.join_path(root, 'signed_overflow_g')
+	g_compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-prod', '-showcc', '-g',
+		'-o', g_output, source])
+	assert g_compile.exit_code == 0, g_compile.output
+	assert !g_compile.output.contains('-Wl,-export_dynamic'), g_compile.output
+}
+
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 	$if amd64 || arm64 {
 		root := os.join_path(os.vtmp_dir(), 'v3_driver_inline_asm_fallback_${os.getpid()}')

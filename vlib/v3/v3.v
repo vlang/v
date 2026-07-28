@@ -166,18 +166,25 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	if atomic_s.len == 0 {
 		return ''
 	}
+	wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	signature := modulecache.file_signature(atomic_s)
 	if signature.len == 0 {
 		return atomic_s
 	}
-	object_path := os.join_path(cache_dir, 'atomic_${naming.sanitize(signature)}.o')
+	wrapv_suffix := if wrapv_flag.len > 0 { '_wrapv' } else { '' }
+	object_path := os.join_path(cache_dir, 'atomic_${naming.sanitize(signature)}${wrapv_suffix}.o')
 	if os.is_file(object_path) {
 		return object_path
 	}
 	os.mkdir_all(cache_dir) or { return atomic_s }
 	build_path := '${object_path}.tmp.${os.getpid()}'
-	result := cmdexec.run(tcc_path, ['-std=gnu11', tcc_includes, '-c', atomic_s, '-o', build_path])
+	mut args := ['-std=gnu11', tcc_includes]
+	if wrapv_flag.len > 0 {
+		args << wrapv_flag
+	}
+	args << ['-c', atomic_s, '-o', build_path]
+	result := cmdexec.run(tcc_path, args)
 	if result.exit_code != 0 || !os.is_file(build_path) {
 		os.rm(build_path) or {}
 		return atomic_s
@@ -339,7 +346,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 fn c_link_plan_path(cache_dir string, flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v1', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v2', os.getwd(), flags.join('\x00'),
 		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
 		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format] {
 		hash = c_hash_bytes(hash, identity.bytes())
@@ -1103,6 +1110,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if pic_flag.len > 0 {
 		args << pic_flag
 	}
+	wrapv_flag := c_wrapv_flag(target.os)
+	if wrapv_flag.len > 0 {
+		args << wrapv_flag
+	}
 	args << '-w'
 	args << support_flags
 	if language.len > 0 {
@@ -1387,6 +1398,14 @@ fn c_flag_is_c_source_file(flag string) bool {
 
 fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
+}
+
+fn c_wrapv_flag(target_os string) string {
+	return if target_os in ['macos', 'linux', 'openbsd', 'freebsd', 'windows'] {
+		'-fwrapv'
+	} else {
+		''
+	}
 }
 
 fn shared_pic_flag(is_shared bool, target_os string) string {
@@ -3556,6 +3575,7 @@ fn main() {
 	mut keep_c := false
 	mut skip_running := false
 	mut is_debug := false
+	mut is_c_debug := false
 	mut c99 := false
 	mut thread_stack_size := 0
 	mut thread_stack_size_set := false
@@ -3686,6 +3706,9 @@ fn main() {
 			i += 2
 		} else if args[i] in ['-g', '-cg'] {
 			is_debug = true
+			if args[i] == '-cg' {
+				is_c_debug = true
+			}
 			user_c_flags << '-g'
 			i++
 		} else if args[i] == '-autofree' {
@@ -3990,6 +4013,7 @@ fn main() {
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
 		'debug=${is_debug}',
+		'c_debug=${is_c_debug}',
 		'shared=${is_shared}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
@@ -5283,6 +5307,10 @@ fn main() {
 		if prefs.normalized_target_os() == 'macos' {
 			warn_args << ['-Wno-incompatible-function-pointer-types', '-Wno-typedef-redefinition']
 		}
+		wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
+		if wrapv_flag.len > 0 {
+			warn_args << wrapv_flag
+		}
 		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
 			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
@@ -5539,7 +5567,8 @@ fn main() {
 		mut tried_tcc := false
 		mut tcc_cache_hit := false
 		mut used_tcc := false
-		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language {
+		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language
+			&& !is_c_debug {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -5548,6 +5577,9 @@ fn main() {
 			tcc_lib := '-L${tcc_lib_dir}'
 			mut tcc_args := [c_standard, tcc_includes, tcc_lib, '-w',
 				'-Werror=implicit-function-declaration']
+			if wrapv_flag.len > 0 {
+				tcc_args << wrapv_flag
+			}
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', 'out', os.base(tcc_main_file)]
 			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
@@ -5594,7 +5626,7 @@ fn main() {
 		// undeclared-function diagnostics remain enforced.
 		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
-			&& !cache_state.manager.enabled {
+			&& !cache_state.manager.enabled && !is_c_debug {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -5658,6 +5690,9 @@ fn main() {
 			cc_args << '-Wno-int-conversion'
 			if prefs.normalized_target_os() == 'macos' && !is_shared {
 				cc_args << '-Wl,-stack_size,0x4000000'
+			}
+			if is_c_debug && prefs.normalized_target_os() == 'macos' && !is_shared {
+				cc_args << '-Wl,-export_dynamic'
 			}
 			if is_shared {
 				cc_args << '-shared'
