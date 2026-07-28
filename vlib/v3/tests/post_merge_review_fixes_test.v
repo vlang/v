@@ -6589,3 +6589,31 @@ fn main() {
 ')
 	assert out == '7\n7'
 }
+
+fn test_lambda_capture_counts_as_local_use_without_counting_shadowed_parameters() {
+	check_src := '${tmp_test_path('lambda_capture_local_usage')}.v'
+	os.write_file(check_src, 'fn apply(f fn (int) int, value int) int {
+	return f(value)
+}
+
+fn captured() int {
+	offset := 7
+	return apply(|n| n + offset, 5)
+}
+
+fn shadowed() int {
+	shadowed_offset := 7
+	return apply(|shadowed_offset| shadowed_offset + 1, 5)
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert !tc.notices.any(it.msg == 'unused variable: `offset`'), tc.notices.str()
+	assert tc.notices.any(it.msg == 'unused variable: `shadowed_offset`'), tc.notices.str()
+}

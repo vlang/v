@@ -1256,6 +1256,19 @@ fn (tc &TypeChecker) fn_body_reads_ident(node flat.Node, name string, decl_id fl
 		id := stack.pop()
 		current := tc.a.node(id)
 		if current.kind == .lambda_expr {
+			if current.children_count > 0 {
+				mut shadows_name := false
+				for i in 0 .. current.children_count - 1 {
+					param := tc.a.child_node(current, i)
+					if param.kind == .ident && param.value == name {
+						shadows_name = true
+						break
+					}
+				}
+				if !shadows_name {
+					stack << tc.a.child(current, current.children_count - 1)
+				}
+			}
 			continue
 		}
 		if id != decl_id && current.kind == .ident && current.value == name {
