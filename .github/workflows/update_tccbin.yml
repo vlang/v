@@ -55,6 +55,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Test tccbin workflow preservation
+        if: matrix.id == 'linux-amd64'
+        run: bash thirdparty/build_scripts/tccbin_workflow_preservation_test.sh
+
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
         run: brew install make
@@ -80,6 +84,7 @@ jobs:
           echo "TinyCC $TCC_COMMIT resolves to $hash"
 
       - name: Clone tccbin branch
+        id: tccbin
         shell: bash
         env:
           TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
@@ -87,6 +92,8 @@ jobs:
           set -euo pipefail
           git clone --branch "${{ matrix.branch }}" --depth=1 \
             "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
+          echo "base_commit=$(git -C thirdparty/tcc rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "workflow_tree=$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)" >> "$GITHUB_OUTPUT"
           if [ "$PUBLISH" = 'true' ]; then
             if [ -z "$TCCBIN_TOKEN" ]; then
               echo "::error::VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}"
@@ -138,6 +145,17 @@ jobs:
           EOF
           thirdparty/tcc/tcc.exe /tmp/tcc-stdatomic-smoke.c -o /tmp/tcc-stdatomic-smoke
           /tmp/tcc-stdatomic-smoke
+
+      - name: Verify tccbin workflows were preserved
+        if: steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d thirdparty/tcc/.github/workflows
+          test -n "$(find thirdparty/tcc/.github/workflows -type f -print)"
+          test "$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)" = "${{ steps.tccbin.outputs.workflow_tree }}"
+          git -C thirdparty/tcc diff --exit-code \
+            "${{ steps.tccbin.outputs.base_commit }}" HEAD -- .github/workflows
 
       - name: Upload TCC bundle artifact
         if: steps.rebuild.outputs.skip != 'true'
@@ -218,6 +236,8 @@ jobs:
 
           git clone --branch "${{ matrix.branch }}" --depth=1 \
             "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
+          tccbin_base_commit="$(git -C thirdparty/tcc rev-parse HEAD)"
+          tccbin_workflow_tree="$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)"
           if [ "$PUBLISH" = 'true' ]; then
             if [ -z "$TCCBIN_TOKEN" ]; then
               echo "VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}" >&2
@@ -249,6 +269,12 @@ jobs:
           EOF
           thirdparty/tcc/tcc.exe /tmp/tcc-stdatomic-smoke.c -o /tmp/tcc-stdatomic-smoke
           /tmp/tcc-stdatomic-smoke
+
+          test -d thirdparty/tcc/.github/workflows
+          test -n "$(find thirdparty/tcc/.github/workflows -type f -print)"
+          test "$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)" = "$tccbin_workflow_tree"
+          git -C thirdparty/tcc diff --exit-code \
+            "$tccbin_base_commit" HEAD -- .github/workflows
 
           if [ "$PUBLISH" = 'true' ]; then
             git -C thirdparty/tcc push origin HEAD:${{ matrix.branch }}

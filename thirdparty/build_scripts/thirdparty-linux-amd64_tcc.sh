@@ -74,7 +74,7 @@ make install
 
 popd
 
-rsync -a --delete tinycc/$TCC_FOLDER/                 $TCC_FOLDER/
+rsync -a --delete --exclude='/.github/' tinycc/$TCC_FOLDER/                 $TCC_FOLDER/
 rsync -a          thirdparty/tcc.original/.git/       $TCC_FOLDER/.git/
 rsync -a          thirdparty/tcc.original/lib/libgc*  $TCC_FOLDER/lib/
 rsync -a          thirdparty/tcc.original/lib/build*  $TCC_FOLDER/lib/
