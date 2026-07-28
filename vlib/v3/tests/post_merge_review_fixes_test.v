@@ -6781,18 +6781,26 @@ pub:
 import messages
 
 fn main() {
-	ch := chan messages.Msg{cap: 1}
+	ch := chan messages.Msg{cap: 2}
 	select {
 		ch <- messages.Msg{
 			x: 7
 		} {
-			println("sent")
+			println(7)
+		}
+	}
+	select {
+		ch <- messages.Msg {
+			x: 8
+		} {
+			println(8)
 		}
 	}
 }
 '
 	}, 'main.v')
 	assert !result.compile_output.contains('unexpected token'), result.compile_output
+	assert result.run_output == '7\n8', result.run_output
 }
 
 fn test_recursive_str_helper_progress_must_cover_early_return_paths() {

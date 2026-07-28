@@ -331,6 +331,32 @@ fn main() {
 	assert used['make']
 }
 
+fn test_self_typed_default_collects_nested_omitted_default_calls() {
+	used := mark_used_source('self_typed_default_nested_omitted_call', '
+interface Value {}
+
+struct End {}
+
+struct S {
+	inner Value = S{
+		inner: End{}
+	}
+	token int = make()
+}
+
+fn make() int {
+	return 7
+}
+
+fn main() {
+	_ := S{
+		token: 1
+	}
+}
+')
+	assert used['make']
+}
+
 // test_string_membership_seeds_contains_runtime_helpers validates this v3 regression case.
 fn test_string_membership_seeds_contains_runtime_helpers() {
 	used := mark_used_source('string_membership_contains', '

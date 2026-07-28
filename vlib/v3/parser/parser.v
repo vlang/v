@@ -7515,7 +7515,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			continue
 		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
-		if p.tok == .lcbr && (p.in_select_branch_condition == 0 || p.current_lcbr_is_attached())
+		if p.tok == .lcbr && (p.in_select_branch_condition == 0 || p.current_lcbr_is_attached()
+			|| p.select_condition_has_qualified_struct_type(lhs))
 			&& (!p.in_for_container || p.current_lcbr_is_attached()) {
 			lhs_node := p.a.nodes[int(lhs)]
 			if p.peek() == .rcbr && p.is_comptime_type_accessor(lhs) {
@@ -11057,6 +11058,18 @@ fn (mut p Parser) current_lcbr_looks_struct_init() bool {
 fn (p &Parser) current_lcbr_is_attached() bool {
 	return p.tok == .lcbr && p.tok_pos > 0 && p.tok_pos <= p.s.src.len
 		&& !p.s.src[p.tok_pos - 1].is_space()
+}
+
+fn (p &Parser) select_condition_has_qualified_struct_type(lhs flat.NodeId) bool {
+	type_name := p.type_expr_name(lhs)
+	base := type_name.all_before('[')
+	if !base.contains('.') {
+		return false
+	}
+	module_alias := base.all_before('.')
+	short_name := base.all_after_last('.')
+	return p.imported_module_names[module_alias] && short_name.len > 0 && short_name[0] >= `A`
+		&& short_name[0] <= `Z`
 }
 
 fn (mut p Parser) current_generic_suffix_args_followed_by_lcbr() ?[]string {

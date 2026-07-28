@@ -7581,27 +7581,45 @@ fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?Str
 
 // collect_struct_default_calls_from_info supports collect_struct_default_calls_from_info handling.
 fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, provided map[string]bool, mut calls []string) {
+	mut active_defaults := map[int]bool{}
+	c.collect_struct_default_calls_from_info_guarded(info, provided, mut active_defaults, mut calls)
+}
+
+fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info StructDeclInfo, provided map[string]bool, mut active_defaults map[int]bool, mut calls []string) {
 	node := c.a.node(info.node_id)
 	imports := c.imports(info.import_context)
 	for i in 0 .. node.children_count {
-		field := c.a.child_node(node, i)
+		field_id := c.a.child(node, i)
+		field := c.a.node(field_id)
 		if field.kind != .field_decl || field.children_count == 0 || field.value in provided {
 			continue
 		}
+		if active_defaults[int(field_id)] {
+			continue
+		}
+		active_defaults[int(field_id)] = true
 		default := c.a.child_node(field, 0)
 		if default.kind == .struct_init {
 			default_info := c.struct_decl_info_with_imports(default.value, info.module, imports) or {
 				StructDeclInfo{}
 			}
 			if default_info.node_id == info.node_id {
+				mut nested_provided := map[string]bool{}
 				for j in 0 .. default.children_count {
 					explicit_field := c.a.child_node(default, j)
+					if explicit_field.kind == .field_init {
+						nested_provided[explicit_field.value] = true
+					}
 					c.collect_calls(explicit_field, info.module, imports, '', '', mut calls)
 				}
+				c.collect_struct_default_calls_from_info_guarded(info, nested_provided, mut
+					active_defaults, mut calls)
+				active_defaults.delete(int(field_id))
 				continue
 			}
 		}
 		c.collect_calls(field, info.module, imports, '', '', mut calls)
+		active_defaults.delete(int(field_id))
 	}
 }
 
