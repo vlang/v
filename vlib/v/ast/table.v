@@ -506,8 +506,20 @@ fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type,
 	return false
 }
 
+fn (t &Table) method_types_are_equal(left Type, right Type) bool {
+	if left == right {
+		return true
+	}
+	unaliased_left := t.fully_unaliased_type(left)
+	unaliased_right := t.fully_unaliased_type(right)
+	if unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result() {
+		return false
+	}
+	return unaliased_left == unaliased_right
+}
+
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
-	mut same_return_type := f.return_type == func.return_type
+	mut same_return_type := t.method_types_are_equal(f.return_type, func.return_type)
 	if !same_return_type {
 		f_return_type := t.fully_unaliased_type(f.return_type)
 		func_return_type := t.fully_unaliased_type(func.return_type)
@@ -534,7 +546,7 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	for i in 0 .. f.params.len {
 		// don't check receiver for `.typ`
 		has_unexpected_type := i > 0
-			&& t.unaliased_type(f.params[i].typ) != t.unaliased_type(func.params[i].typ)
+			&& !t.method_types_are_equal(f.params[i].typ, func.params[i].typ)
 		// temporary hack for JS ifaces
 		lsym := t.sym(f.params[i].typ)
 		rsym := t.sym(func.params[i].typ)
