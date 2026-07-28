@@ -19,7 +19,7 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		prefs.show_cc = true
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.output_mode = .silent
-		assert !is_macos_v3_relevant_command('main.v', prefs)
+		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.output_mode = .stdout
 		prefs.show_cc = false
 		prefs.gc_mode = .boehm_full_opt
@@ -88,9 +88,20 @@ fn test_macos_v3_forwards_environment_driven_skip_running() {
 		}
 		forwarded := macos_v3_forwarded_args(prefs, ['script.vsh'])
 		assert '-skip-running' in forwarded
-		assert forwarded.count('-skip-running') == 1
+		assert forwarded.count(it == '-skip-running') == 1
 		already_explicit := macos_v3_forwarded_args(prefs, ['-skip-running', 'script.vsh'])
-		assert already_explicit.count('-skip-running') == 1
+		assert already_explicit.count(it == '-skip-running') == 1
+	}
+}
+
+fn test_macos_v3_forwards_showcc_with_quiet_benchmarks() {
+	$if macos {
+		prefs := &pref.Preferences{
+			show_cc: true
+		}
+		forwarded := macos_v3_forwarded_args(prefs, ['-showcc', 'main.v'])
+		assert '-silent' in forwarded
+		assert '-showcc' in forwarded
 	}
 }
 
@@ -105,6 +116,7 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert !macos_v3_args_are_supported(['-show-c-output', 'main.v'])
 		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-', 'main.v'])
+		assert !macos_v3_args_are_supported(['-o', '-foo', 'main.v'])
 		assert !macos_v3_args_are_supported(['-w', 'main.v'])
 		for help_flag in ['-?', '-h', '-help', '--help'] {
 			assert !macos_v3_args_are_supported(['-gc', 'none', help_flag, 'main.v'])

@@ -897,7 +897,7 @@ fn v3_program_prefix_source_identity(prefix_source string, cached_objects []stri
 	return hash.hex()
 }
 
-fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_c_flags []string, manager &modulecache.Manager, target_args []string, target pref.Target, c_compiler string, build_dir string, mut stats CObjectCacheStats) !string {
+fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_c_flags []string, manager &modulecache.Manager, target_args []string, target pref.Target, c_compiler string, build_dir string, show_c_command bool, mut stats CObjectCacheStats) !string {
 	link_flags := c_dylib_link_flags(resolved_c_flags)
 	mut objects := [prefix_object]
 	objects << cached_objects
@@ -962,7 +962,9 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 	response := args.map(c_response_file_arg(it)).join('\n')
 	os.write_file(response_path, response)!
 	response_arg := '@${response_path}'
-	println('  > ${cmdexec.display(c_compiler, [response_arg])} (${objects.len} cached objects)')
+	if show_c_command {
+		println('  > ${cmdexec.display(c_compiler, [response_arg])} (${objects.len} cached objects)')
+	}
 	result := cmdexec.run(c_compiler, [response_arg])
 	if result.exit_code != 0 {
 		return error('failed to build cached development dylib:\n${result.output}')
@@ -1612,6 +1614,7 @@ fn cli_usage() string {
 		'  -prod -c99 -shared -strict  C build modes\n' +
 		'  -v                           verbose stage profiling\n' +
 		'  -silent                      suppress benchmark output\n' +
+		'  -showcc                      print C compiler commands\n' +
 		'  -no-memory-limit             disable the 2 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
@@ -3473,6 +3476,7 @@ fn main() {
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut show_cc := false
 	mut keep_c := false
 	mut skip_running := false
 	mut is_debug := false
@@ -3619,6 +3623,9 @@ fn main() {
 		} else if args[i] == '-silent' {
 			silent = true
 			i++
+		} else if args[i] == '-showcc' {
+			show_cc = true
+			i++
 		} else if args[i] == '-checker-fixture' {
 			is_checker_fixture = true
 			i++
@@ -3628,10 +3635,9 @@ fn main() {
 		} else if args[i] == '-skip-running' {
 			skip_running = true
 			i++
-		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-w', '-no-retry-compilation',
-			'-usecache'] {
-			// v3 already reports phase metrics, prints the C command, suppresses C
-			// warnings, leaves explicit-output tests unrun, and caches modules by default.
+		} else if args[i] in ['-stats', '-show-timings', '-w', '-no-retry-compilation', '-usecache'] {
+			// v3 already reports phase metrics, suppresses C warnings, leaves
+			// explicit-output tests unrun, and caches modules by default.
 			// Accept the corresponding V flags for compatibility.
 			i++
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
@@ -5384,7 +5390,7 @@ fn main() {
 				}
 				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects,
 					resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler,
-					cc_dir, mut c_object_cache_stats) or {
+					cc_dir, !silent || show_cc, mut c_object_cache_stats) or {
 					eprintln(err.msg())
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
@@ -5456,7 +5462,7 @@ fn main() {
 				tcc_cache_hit = os.is_file(cc_out)
 				used_tcc = tcc_cache_hit
 			}
-			if !silent {
+			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
 					' (cached)'
 				} else {
@@ -5511,7 +5517,7 @@ fn main() {
 			}
 			tcc_args << resolved_c_flags
 			tcc_args << '-lm'
-			if !silent {
+			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
@@ -5565,7 +5571,7 @@ fn main() {
 			}
 			cc_args << resolved_c_flags
 			cc_args << '-lm'
-			if !silent {
+			if !silent || show_cc {
 				println('  > ${cmdexec.display(c_compiler, cc_args)}')
 			}
 			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)

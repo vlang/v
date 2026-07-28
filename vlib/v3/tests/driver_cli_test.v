@@ -218,6 +218,13 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	assert implicit_build.exit_code == 0, implicit_build.output
 	assert os.is_file(implicit_binary)
 	assert os.read_file(implicit_c)! == 'existing C source'
+	showcc_binary := os.join_path(root, 'showcc_build')
+	showcc_build := cmdexec.run(v3_bin, ['-silent', '-showcc', '-no-parallel', '-o', showcc_binary,
+		implicit_program])
+	assert showcc_build.exit_code == 0, showcc_build.output
+	assert showcc_build.output.contains('  > '), showcc_build.output
+	assert !showcc_build.output.contains('=== v3 benchmark ==='), showcc_build.output
+	assert !showcc_build.output.contains('MB RSS'), showcc_build.output
 	os.rm(implicit_c)!
 	keep_c_build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-keepc', implicit_program])
 	assert keep_c_build.exit_code == 0, keep_c_build.output

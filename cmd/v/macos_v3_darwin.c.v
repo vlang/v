@@ -38,8 +38,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if (prefs.is_crun && !is_direct_vsh) || prefs.is_test || prefs.is_prod
 		|| prefs.autofree || prefs.build_mode == .build_module || prefs.is_cstrict
 		|| prefs.use_cache || prefs.parallel_cc || prefs.out_name_is_dir
-		|| prefs.exclude.len > 0 || prefs.coverage_dir != ''
-		|| (prefs.show_cc && prefs.output_mode == .silent) {
+		|| prefs.exclude.len > 0 || prefs.coverage_dir != '' {
 		return false
 	}
 	if prefs.gc_mode != .no_gc {
@@ -94,7 +93,7 @@ fn macos_v3_args_are_supported(args []string) bool {
 			if i + 1 >= args.len {
 				return false
 			}
-			if arg == '-o' && args[i + 1] == '-' {
+			if arg == '-o' && args[i + 1].starts_with('-') {
 				return false
 			}
 			i += 2
@@ -152,7 +151,7 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if prefs.skip_running && '-skip-running' !in forwarded_args {
 		forwarded_args.insert(0, '-skip-running')
 	}
-	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && !prefs.show_cc {
+	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings {
 		forwarded_args.insert(0, '-silent')
 	}
 	// Serial stages keep cold-cache builds of larger programs below V3's
