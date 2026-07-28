@@ -42,3 +42,9 @@ fn test_semaphore_long_finite_timeout_uses_multiple_chunks() {
 	expired_at_deadline, _ := sync_timeout_chunk(timeout, timeout)
 	assert expired_at_deadline
 }
+
+fn test_semaphore_near_infinite_timeout_saturates_deadline() {
+	time_now := i64(10_000_000_000)
+	assert sync_timeout_deadline(time_now, infinite_timeout - 1) == infinite_timeout
+	assert sync_timeout_deadline(time_now, 1_000_000_000) == time_now + 1_000_000_000
+}

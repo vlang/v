@@ -2,7 +2,7 @@
 #define V_SYNC_THREAD_HELPER_H
 
 #ifndef V_THREAD_STACK_SIZE
-#define V_THREAD_STACK_SIZE 8388608
+#define V_THREAD_STACK_SIZE 0
 #endif
 
 #ifdef _WIN32
@@ -27,7 +27,9 @@ static inline int v_sync_thread_create_detached(void *start, void *arg) {
 	if (rc != 0) {
 		return rc;
 	}
-	rc = pthread_attr_setstacksize(&attr, V_THREAD_STACK_SIZE);
+	if (V_THREAD_STACK_SIZE != 0) {
+		rc = pthread_attr_setstacksize(&attr, V_THREAD_STACK_SIZE);
+	}
 	if (rc == 0) {
 		rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	}

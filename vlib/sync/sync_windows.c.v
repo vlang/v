@@ -219,7 +219,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
 }
 
 fn (mut sem Semaphore) wait_for_available_count(timeout i64) bool {
-	time_end := sync_mono_now() + timeout
+	time_end := sync_timeout_deadline(sync_mono_now(), timeout)
 	mut t_ms := sync_milliseconds(timeout)
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	mut acquired := false
@@ -249,6 +249,13 @@ fn (mut sem Semaphore) wait_for_available_count(timeout i64) bool {
 	}
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 	return acquired
+}
+
+fn sync_timeout_deadline(time_now i64, timeout i64) i64 {
+	if timeout > infinite_timeout - time_now {
+		return infinite_timeout
+	}
+	return time_now + timeout
 }
 
 fn sync_timeout_chunk(time_end i64, time_now i64) (bool, u32) {

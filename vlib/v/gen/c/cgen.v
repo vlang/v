@@ -1329,6 +1329,9 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_definitions.writeln('')
 	}
+	g.comptime_definitions.writeln('#ifndef V_THREAD_STACK_SIZE')
+	g.comptime_definitions.writeln('#define V_THREAD_STACK_SIZE ${g.pref.thread_stack_size}')
+	g.comptime_definitions.writeln('#endif')
 	if g.table.gostmts > 0 {
 		g.comptime_definitions.writeln('#define __VTHREADS__ (1)')
 	}
