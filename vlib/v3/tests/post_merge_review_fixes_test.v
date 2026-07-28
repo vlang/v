@@ -8205,6 +8205,80 @@ fn main() {
 	assert loop_out == '1'
 }
 
+fn test_unsafe_map_alias_provenance_delays_defer_effects() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_deferred_assignment', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	defer {
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_deferred_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	defer {
+		alias = map[string]int{}
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_isolates_select_branches() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_select_branch_isolation', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			alias = unsafe { original }
+		}
+		else {
+			copy := alias
+			println(copy.len)
+		}
+	}
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_all_select_paths', 'fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := map[string]int{}
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			alias = unsafe { first }
+		}
+		else {
+			alias = unsafe { second }
+		}
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
 fn test_recursive_str_struct_update_preserves_receiver_provenance() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_struct_update_provenance', 'struct Item {

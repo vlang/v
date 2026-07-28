@@ -15908,11 +15908,13 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 					node.pos)
 			}
 		}
+		unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
 		$if ownership ? {
 			tc.ownership_check_defer_stmt(id, node)
 		} $else {
 			tc.check_defer_stmt(node)
 		}
+		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
 		return
 	}
 	if node.kind == .spawn_expr {
@@ -21038,7 +21040,10 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	}
 	base_smartcasts := clone_smartcasts(tc.smartcasts)
 	mut invalidated_smartcasts := map[string]bool{}
+	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
+	mut unsafe_alias_paths := []map[string]bool{}
 	for i in 0 .. node.children_count {
+		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
 		if base_smartcasts.len > 0 {
 			tc.smartcasts = clone_smartcasts(base_smartcasts)
 		}
@@ -21142,6 +21147,9 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		$if ownership ? {
 			tc.ownership_end_branch(branch_id)
 		}
+		if !tc.stmt_sequence_definitely_returns(&branch, body_start) {
+			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+		}
 		for key, _ in base_smartcasts {
 			if key !in tc.smartcasts {
 				invalidated_smartcasts[key] = true
@@ -21152,6 +21160,8 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	for key, _ in invalidated_smartcasts {
 		tc.smartcasts.delete(key)
 	}
+	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
+		unsafe_alias_base)
 	$if ownership ? {
 		tc.ownership_end_branch_group()
 	}
