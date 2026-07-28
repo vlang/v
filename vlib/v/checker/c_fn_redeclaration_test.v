@@ -45,6 +45,25 @@ fn test_compatible_c_fn_redeclarations_across_modules_are_accepted() {
 	assert result.exit_code == 0, result.output
 }
 
+fn test_module_local_c_fn_signatures_are_used_during_codegen() {
+	root := write_c_fn_redeclaration_project('c_fn_module_local_codegen', {
+		'v.mod':          "Module { name: 'c_fn_module_local_codegen' }\n"
+		'local_widget.h': '#ifndef LOCAL_WIDGET_H\n#define LOCAL_WIDGET_H\n\ntypedef struct Widget {\n\tint value;\n} Widget;\n\nstatic Widget local_widget = { 21 };\n\nstatic void *local_make(void) {\n\treturn &local_widget;\n}\n\nstatic int local_value(void *widget) {\n\treturn ((Widget *)widget)->value;\n}\n\n#endif\n'
+		'moda/moda.c.v':  'module moda\n\n#include "@VMODROOT/local_widget.h"\n\nfn C.local_make() voidptr\nfn C.local_value(widget voidptr) int\n\npub fn raw_value() int {\n\treturn C.local_value(C.local_make())\n}\n'
+		'modb/modb.c.v':  'module modb\n\n#include "@VMODROOT/local_widget.h"\n\nstruct C.Widget {\n\tvalue int\n}\n\nfn C.local_make() &C.Widget\nfn C.local_value(widget &C.Widget) int\n\npub fn typed_value() int {\n\treturn C.local_make().value + C.local_value(C.local_make())\n}\n'
+		'main.v':         'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tassert moda.raw_value() == 21\n\tassert modb.typed_value() == 42\n}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	executable := os.join_path(root, 'module_local_codegen')
+	build_result :=
+		os.execute('${c_fn_redeclaration_vexe} -cstrict -o ${os.quoted_path(executable)} ${os.quoted_path(root)}')
+	assert build_result.exit_code == 0, build_result.output
+	run_result := os.execute(os.quoted_path(executable))
+	assert run_result.exit_code == 0, run_result.output
+}
+
 fn test_fixed_and_variadic_c_fn_redeclarations_conflict() {
 	root := write_c_fn_redeclaration_project('c_fn_fixed_variadic_redeclaration', {
 		'v.mod':       "Module { name: 'c_fn_fixed_variadic_redeclaration' }\n"

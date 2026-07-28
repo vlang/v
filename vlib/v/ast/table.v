@@ -76,6 +76,7 @@ pub mut:
 	type_idxs                   map[string]int
 	fns                         map[string]Fn
 	c_fns_by_module             map[string]Fn
+	c_fns_with_local_returns    map[string]bool
 	iface_types                 map[string][]Type
 	dumps                       map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports                     []string       // List of all imports
@@ -145,6 +146,7 @@ pub fn (mut t Table) free() {
 		t.type_idxs.free()
 		t.fns.free()
 		t.c_fns_by_module.free()
+		t.c_fns_with_local_returns.free()
 		t.dumps.free()
 		t.imports.free()
 		t.modules.free()
@@ -639,6 +641,12 @@ pub fn (t &Table) find_c_fn_in_module(name string, mod string) ?Fn {
 	return t.find_fn(name)
 }
 
+// c_fn_has_local_return_types reports whether compatible declarations of a C
+// function retain different V return types.
+pub fn (t &Table) c_fn_has_local_return_types(name string) bool {
+	return t.c_fns_with_local_returns[name]
+}
+
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
@@ -646,6 +654,11 @@ pub fn (t &Table) known_fn(name string) bool {
 
 // register_c_fn_in_module records module-local call metadata for a C declaration.
 pub fn (mut t Table) register_c_fn_in_module(new_fn Fn) {
+	if existing := t.find_fn(new_fn.name) {
+		if existing.return_type != new_fn.return_type {
+			t.c_fns_with_local_returns[new_fn.name] = true
+		}
+	}
 	t.c_fns_by_module[c_fn_module_key(new_fn.name, new_fn.mod)] = new_fn
 }
 
