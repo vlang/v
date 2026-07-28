@@ -82,13 +82,24 @@ fn test_clipboard_and_x11_c_fn_redeclarations_are_compatible() {
 	assert result.exit_code == 0, result.output
 }
 
-fn test_mldsa_and_slhdsa_c_fn_redeclarations_are_compatible() {
-	root := write_c_fn_redeclaration_project('c_fn_mldsa_slhdsa_redeclaration', {
-		'main.v': 'module main\n\nimport x.crypto.mldsa as _\nimport x.crypto.slhdsa as _\n\nfn main() {}\n'
+fn test_ecdsa_mldsa_and_slhdsa_c_fn_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_ecdsa_mldsa_slhdsa_redeclaration', {
+		'main.v': 'module main\n\nimport crypto.ecdsa as _\nimport x.crypto.mldsa as _\nimport x.crypto.slhdsa as _\n\nfn main() {}\n'
 	})!
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	result := os.execute('${c_fn_redeclaration_vexe} -check ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_fasthttp_and_net_windows_c_fn_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_fasthttp_net_windows_redeclaration', {
+		'main.v': 'module main\n\nimport fasthttp as _\nimport net as _\n\nfn main() {}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result := os.execute('${c_fn_redeclaration_vexe} -os windows -check ${os.quoted_path(root)}')
 	assert result.exit_code == 0, result.output
 }

@@ -71,10 +71,10 @@ fn C.EVP_PKEY_fromdata_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_fromdata(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY, selection i32, params &C.OSSL_PARAM) i32
 
 // no-prehash signing (verifying)
-fn C.EVP_PKEY_sign(ctx &C.EVP_PKEY_CTX, sig &u8, siglen &usize, tbs &u8, tbslen i32) i32
+fn C.EVP_PKEY_sign(ctx &C.EVP_PKEY_CTX, sig &u8, siglen &usize, tbs &u8, tbslen usize) i32
 fn C.EVP_PKEY_sign_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_verify_init(ctx &C.EVP_PKEY_CTX) i32
-fn C.EVP_PKEY_verify(ctx &C.EVP_PKEY_CTX, sig &u8, siglen i32, tbs &u8, tbslen i32) i32
+fn C.EVP_PKEY_verify(ctx &C.EVP_PKEY_CTX, sig &u8, siglen usize, tbs &u8, tbslen usize) i32
 
 // single shoot digest signing (verifying) routine
 fn C.EVP_DigestSign(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize, tbs &u8, tbslen i32) i32

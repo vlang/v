@@ -85,13 +85,15 @@ pub fn set_foreground_process_group(pid int, watcher_pgid int) bool {
 	return false
 }
 
-// restore_foreground_process_group returns control of stdin's terminal to the watcher.
+// restore_foreground_process_group returns terminal control to the watcher only
+// when the current worker process group still owns it.
 pub fn restore_foreground_process_group(watcher_pgid int) {
-	if os.is_atty(0) == 0 {
-		return
+	// A worker resumed with `bg` no longer owns the terminal. In that case,
+	// leave it with the shell and only rejoin the watcher process group.
+	if os.is_atty(0) != 0 && C.tcgetpgrp(0) == C.getpgrp() {
+		previous_handler := C.signal(C.SIGTTOU, C.SIG_IGN)
+		C.tcsetpgrp(0, watcher_pgid)
+		C.signal(C.SIGTTOU, previous_handler)
 	}
-	previous_handler := C.signal(C.SIGTTOU, C.SIG_IGN)
-	C.tcsetpgrp(0, watcher_pgid)
-	C.signal(C.SIGTTOU, previous_handler)
 	C.setpgid(0, watcher_pgid)
 }
