@@ -140,6 +140,7 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 		assert macos_v3_args_are_supported(['script.vsh', '--script-option'])
 		assert !macos_v3_args_are_supported(['-ldflags', '-framework Cocoa', 'main.v'])
 		assert !macos_v3_args_are_supported(['-path', '@vlib', 'main.v'])
+		assert !macos_v3_args_are_supported(['-cc', 'clang', 'main.v'])
 		assert !macos_v3_args_are_supported(['-show-c-output', 'main.v'])
 		assert !macos_v3_args_are_supported(['-output', 'main', 'main.v'])
 		assert !macos_v3_args_are_supported(['-o', '-', 'main.v'])

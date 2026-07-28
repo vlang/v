@@ -9,6 +9,8 @@ import v.util
 
 const macos_v3_bootstrap_env = 'V_MACOS_V3_BOOTSTRAP'
 const macos_v3_executable_env = 'V_MACOS_V3_EXECUTABLE'
+const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_inline_asm_fallback = 'inline_asm'
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 	all_args := util.join_env_vflags_and_os_args()
@@ -95,7 +97,7 @@ fn macos_v3_args_are_supported(args []string) bool {
 			continue
 		}
 		if arg in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc',
-			'-cc', '-cflags'] {
+			'-cflags'] {
 			if i + 1 >= args.len {
 				return false
 			}
@@ -172,7 +174,6 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	return forwarded_args
 }
 
-@[noreturn]
 fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -203,13 +204,24 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	mut process := os.new_process(v3_exe)
 	process.set_args(forwarded_args)
 	mut environment := os.environ()
+	fallback_file := os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${os.getpid()}')
+	os.rm(fallback_file) or {}
 	environment['VCHILD'] = 'true'
 	environment['VEXE'] = os.real_path(vexe)
+	environment[macos_v3_fallback_file_env] = fallback_file
 	process.set_environment(environment)
 	process.run()
 	process.wait()
 	exit_code := if process.code >= 0 { process.code } else { 1 }
 	process.close()
+	fallback_reason := os.read_file(fallback_file) or { '' }
+	os.rm(fallback_file) or {}
+	if exit_code != 0 && fallback_reason == macos_v3_inline_asm_fallback {
+		if prefs.is_verbose {
+			println('V3 requested the compatibility compiler for inline assembly')
+		}
+		return
+	}
 	exit(exit_code)
 }
 

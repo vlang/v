@@ -56,6 +56,9 @@ $if !skip_wasm ? {
 }
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
+const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
+const macos_v3_inline_asm_fallback = 'inline_asm'
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -3442,6 +3445,15 @@ fn record_compile_value(mut values map[string]string, define string) {
 	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
 }
 
+fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic) bool {
+	fallback_file := os.getenv(macos_v3_fallback_file_env)
+	if fallback_file == '' || !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
+		return false
+	}
+	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
+	return true
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -4029,6 +4041,9 @@ fn main() {
 		i64(0)
 	}
 	if p.diagnostics.len > 0 {
+		if request_macos_v3_compatibility_fallback(p.diagnostics) {
+			exit(1)
+		}
 		for diagnostic in p.diagnostics {
 			if file := a.source_files[diagnostic.pos.id] {
 				eprintln(v3errors.formatted_source_error('error:', diagnostic.message, file,
@@ -4039,6 +4054,7 @@ fn main() {
 		}
 		exit(1)
 	}
+	os.unsetenv(macos_v3_fallback_file_env)
 	// Parsing workers canonicalize source-backed node text before their buffers
 	// are released. Metadata keys are finalized here before semantic phases begin.
 	p.release_source_storage()

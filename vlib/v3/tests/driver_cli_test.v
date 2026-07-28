@@ -157,6 +157,10 @@ fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) o
 	mut process := os.new_process(v3_bin)
 	process.set_args(args)
 	process.set_stdin_path(stdin_path)
+	return collect_driver_process_result(mut process)
+}
+
+fn collect_driver_process_result(mut process os.Process) os.Result {
 	process.set_redirect_stdio()
 	process.run()
 	process.wait()
@@ -170,6 +174,54 @@ fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) o
 	return os.Result{
 		exit_code: exit_code
 		output:    output
+	}
+}
+
+fn run_driver_with_environment(v3_bin string, args []string, environment map[string]string) os.Result {
+	mut process := os.new_process(v3_bin)
+	process.set_args(args)
+	process.set_environment(environment)
+	return collect_driver_process_result(mut process)
+}
+
+fn test_driver_requests_macos_compatibility_for_inline_assembly() {
+	$if amd64 || arm64 {
+		root := os.join_path(os.vtmp_dir(), 'v3_driver_inline_asm_fallback_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		v3_bin := build_driver_cli_v3(root)
+		source := os.join_path(root, 'inline_asm.v')
+		arch := pref.host_arch()
+		os.write_file(source, 'fn main() {
+	asm ${arch} {
+		nop
+	}
+}
+')!
+		fallback_file := os.join_path(root, 'fallback')
+		mut environment := os.environ()
+		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
+		result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', source],
+			environment)
+		assert result.exit_code != 0
+		assert result.output == '', result.output
+		assert os.read_file(fallback_file)! == 'inline_asm'
+		os.rm(fallback_file)!
+		environment_source := os.join_path(root, 'fallback_environment.v')
+		os.write_file(environment_source, "import os
+
+fn main() {
+	println(os.getenv('V_MACOS_V3_FALLBACK_FILE'))
+}
+")!
+		environment_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
+			'-no-memory-limit', 'run', environment_source], environment)
+		assert environment_run.exit_code == 0, environment_run.output
+		assert environment_run.output == '\n', environment_run.output
+		assert !os.exists(fallback_file)
 	}
 }
 
