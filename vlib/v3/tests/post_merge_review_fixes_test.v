@@ -6811,3 +6811,64 @@ fn main() {}
 	assert compile.output.contains('generic type name `T` is not mentioned in fn `broken[U]`'), compile.output
 	assert compile.output.contains('unknown struct `T`'), compile.output
 }
+
+fn test_recursive_str_loop_progress_retains_zero_iteration_path() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_zero_iteration_loop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	for _ in []int{} {
+		next.remaining--
+	}
+	return next.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_parameter_redefinition_only_suppresses_related_unused_notices() {
+	v3_bin := build_v3()
+	src := 'fn broken(value int, value string) {}
+
+fn unrelated() {
+	unused := 1
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('parameter_redefinition_unrelated_notice')}.vv'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('parameter_redefinition_unrelated_notice')
+	compile := os.execute('${v3_bin} -checker-fixture ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('redefinition of parameter `value`'), compile.output
+	assert compile.output.contains('unused variable: `unused`'), compile.output
+}
+
+fn test_undefined_variable_preserves_unrelated_unused_import() {
+	check_src := '${tmp_test_path('undefined_variable_unrelated_import')}.v'
+	os.write_file(check_src, 'import os
+
+fn main() {
+	value := value
+	println(value)
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.msg.starts_with('undefined variable') && it.node_value == 'value'), tc.errors.str()
+
+	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
+}

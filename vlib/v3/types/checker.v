@@ -4114,7 +4114,9 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			|| tc.import_is_used(flat.NodeId(idx), node) {
 			continue
 		}
-		if tc.errors.any(it.file == tc.cur_file && it.msg.starts_with('undefined variable')) {
+		if tc.errors.any(it.file == tc.cur_file && it.kind == .unknown_ident
+			&& it.msg.starts_with('undefined variable') && it.node_value == node.typ)
+		{
 			continue
 		}
 		if tc.node_has_unused_import_warning(flat.NodeId(idx)) {

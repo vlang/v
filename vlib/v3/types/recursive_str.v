@@ -167,11 +167,50 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 		.match_stmt {
 			return tc.recursive_str_process_match_stmt(id, mut env, ctx)
 		}
+		.for_stmt, .for_in_stmt {
+			return tc.recursive_str_process_loop_stmt(id, mut env, ctx)
+		}
 		else {
 			tc.recursive_str_eval_expr(id, mut env, ctx)
 			return true
 		}
 	}
+}
+
+fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
+	node := tc.a.node(id)
+	mut body_start := 0
+	if node.kind == .for_stmt {
+		if node.children_count < 3 {
+			return true
+		}
+		tc.recursive_str_process_stmt(tc.a.child(node, 0), mut env, ctx)
+		tc.recursive_str_eval_condition(tc.a.child(node, 1), mut env, ctx)
+		body_start = 3
+	} else {
+		body_start = if node.value.is_int() { node.value.int() } else { 3 }
+		for i in 2 .. int_min(body_start, int(node.children_count)) {
+			tc.recursive_str_eval_expr(tc.a.child(node, i), mut env, ctx)
+		}
+	}
+	base := env.clone_env()
+	mut loop_env := base.clone_env()
+	mut falls_through := true
+	for i in body_start .. int(node.children_count) {
+		if !tc.recursive_str_process_stmt(tc.a.child(node, i), mut loop_env, ctx) {
+			falls_through = false
+			break
+		}
+	}
+	if falls_through && node.kind == .for_stmt {
+		tc.recursive_str_process_stmt(tc.a.child(node, 2), mut loop_env, ctx)
+	}
+	mut paths := [base]
+	if falls_through {
+		paths << loop_env
+	}
+	env = tc.recursive_str_merge_envs(paths)
+	return true
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
