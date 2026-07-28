@@ -614,6 +614,47 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 	return .success
 }
 
+// select_recheck_after_waiting coordinates opposing unbuffered selects that
+// both missed each other while their state was still `select_state_scanning`.
+// The select with the lowest state address rescans; later selects wake it and
+// remain in the claimable waiting state.
+fn select_recheck_after_waiting(mut channels []&Channel, dir []Direction, state &u32) bool {
+	mut found_later_waiter := false
+	for i, mut ch in channels {
+		if ch.cap != 0 {
+			continue
+		}
+		sub_mtx := if dir[i] == .push {
+			ch.read_sub_mtx
+		} else {
+			ch.write_sub_mtx
+		}
+		sub_mtx.lock()
+		mut sub := if dir[i] == .push {
+			ch.read_subscriber
+		} else {
+			ch.write_subscriber
+		}
+		for sub != unsafe { nil } {
+			if sub.state != state && C.atomic_load_u32(sub.state) == select_state_waiting {
+				if usize(sub.state) < usize(state) {
+					sub.sem.post()
+					sub_mtx.unlock()
+					return false
+				}
+				found_later_waiter = true
+			}
+			sub = sub.nxt
+		}
+		sub_mtx.unlock()
+	}
+	if found_later_waiter {
+		mut expected := select_state_waiting
+		return C.atomic_compare_exchange_strong_u32(state, &expected, select_state_scanning)
+	}
+	return false
+}
+
 // channel_select waits `timeout` on any of `channels[i]` until one of them can
 // push (`dir[i] == .push`) or pop (`dir[i] == .pop`) the object referenced by
 // `objrefs[i]`. `timeout = i64 max` means wait unlimited time.
@@ -730,6 +771,9 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 			break outer
 		}
 		C.atomic_store_u32(&select_state, select_state_waiting)
+		if select_recheck_after_waiting(mut channels, dir, &select_state) {
+			continue
+		}
 		mut timed_out := false
 		if timeout != infinite_timeout {
 			remaining := timeout - (sync_mono_now() - start)

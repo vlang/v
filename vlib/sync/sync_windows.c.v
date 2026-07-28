@@ -211,6 +211,10 @@ pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
 			return true
 		}
 	}
+	if timeout == infinite_timeout {
+		sem.wait()
+		return true
+	}
 	return sem.wait_for_available_count(timeout)
 }
 
