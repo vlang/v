@@ -2930,7 +2930,10 @@ fn c_fn_decl_param_prefix_compatible(a []string, b []string, count int) bool {
 }
 
 fn c_fn_decl_abi_types_compatible(a string, b string) bool {
-	return a == b || (a in ['int', 'i32'] && b in ['int', 'i32'])
+	if a == b || (a in ['int', 'i32'] && b in ['int', 'i32']) {
+		return true
+	}
+	return (a == 'void*' && b.ends_with('*')) || (b == 'void*' && a.ends_with('*'))
 }
 
 fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string, first_module string, second_module string) bool {

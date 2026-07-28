@@ -13665,13 +13665,13 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			} else {
 				'{'
 			}
-			if info.fields.len == 0 {
-				init_str += 'E_STRUCT'
-			}
 			$if windows {
 				if !typ.has_flag(.shared_f) && g.inside_global_decl {
 					init_str = '(${g.styp(typ)}){'
 				}
+			}
+			if info.fields.len == 0 {
+				init_str += 'E_STRUCT'
 			}
 			if sym.language in [.c, .v] {
 				for field in info.fields {

@@ -52,8 +52,8 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 
 	compatible_root := write_c_fn_redecl_v3_project('c_fn_compatible', {
 		'v.mod':       "Module { name: 'c_fn_compatible' }\n"
-		'moda/moda.v': 'module moda\n\nfn C.compat_probe(value int, data byteptr) int\n\npub fn touch() {}\n'
-		'modb/modb.v': 'module modb\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8) i32\n\npub fn touch() {}\n'
+		'moda/moda.v': 'module moda\n\nstruct C.Display {}\n\nfn C.compat_probe(value int, data byteptr, display voidptr) int\n\npub fn touch() {}\n'
+		'modb/modb.v': 'module modb\n\nstruct C.Display {}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display) i32\n\npub fn touch() {}\n'
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmoda.touch()\n\tmodb.touch()\n}\n'
 	})!
 	defer {
@@ -70,16 +70,20 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 	assert compatible_result.exit_code == 0, compatible_result.output
 
 	empty_root := write_c_fn_redecl_v3_project('empty_struct_default', {
-		'main.v': 'struct Empty {}\n\nfn make_empty() Empty {\n\treturn Empty{}\n}\n\nfn main() {\n\t_ := make_empty()\n}\n'
+		'main.v': 'struct Empty {}\n\n__global global_empty Empty\n\nfn make_empty() Empty {\n\treturn Empty{}\n}\n\nfn main() {\n\t_ := make_empty()\n\t_ = global_empty\n}\n'
 	})!
 	c_path := os.join_path(empty_root, 'main.c')
 	defer {
 		os.rmdir_all(empty_root) or {}
 	}
 	empty_result :=
-		os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(empty_root)} -b c -o ${os.quoted_path(c_path)}')
+		os.execute('${os.quoted_path(v3_bin)} -no-memory-limit -enable-globals ${os.quoted_path(empty_root)} -b c -o ${os.quoted_path(c_path)}')
 	assert empty_result.exit_code == 0, empty_result.output
 	generated := os.read_file(c_path)!
 	assert !generated.contains('Empty){}'), generated
 	assert generated.contains('Empty){0}'), generated
+	global_initializers := generated.split_into_lines().filter(it.contains('global_empty = '))
+	assert global_initializers.len == 1, generated
+	global_initializer := global_initializers[0]
+	assert global_initializer.contains('{0}'), global_initializer
 }

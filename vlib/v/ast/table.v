@@ -364,6 +364,13 @@ fn (t &Table) c_fn_type_components_are_compatible(left_type Type, right_type Typ
 		|| (left in charptr_types && right in charptr_types) {
 		return true
 	}
+	// C APIs often use `void *` and an opaque object pointer interchangeably
+	// across headers. Calls remain ABI-compatible when one declaration uses
+	// `voidptr` and the other uses a typed object pointer.
+	if (left in voidptr_types && right.is_any_kind_of_pointer())
+		|| (right in voidptr_types && left.is_any_kind_of_pointer()) {
+		return true
+	}
 	if left.flags() == right.flags() {
 		if left.idx() in [int_type_idx, i32_type_idx] && right.idx() in [int_type_idx, i32_type_idx] {
 			return true

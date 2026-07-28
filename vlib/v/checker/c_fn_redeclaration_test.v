@@ -34,13 +34,24 @@ fn test_conflicting_c_fn_redeclarations_across_modules_are_reported_at_declarati
 fn test_compatible_c_fn_redeclarations_across_modules_are_accepted() {
 	root := write_c_fn_redeclaration_project('c_fn_compatible_redeclaration', {
 		'v.mod':       "Module { name: 'c_fn_compatible_redeclaration' }\n"
-		'moda/moda.v': 'module moda\n\nfn C.compat_probe(value int, data byteptr) int\n\npub fn touch() {}\n'
-		'modb/modb.v': 'module modb\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8) i32\n\npub fn touch() {}\n'
+		'moda/moda.v': 'module moda\n\nstruct C.Display {}\n\nfn C.compat_probe(value int, data byteptr, display voidptr) int\n\npub fn touch() {}\n'
+		'modb/modb.v': 'module modb\n\nstruct C.Display {}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display) i32\n\npub fn touch() {}\n'
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmoda.touch()\n\tmodb.touch()\n}\n'
 	})!
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	result := os.execute('${c_fn_redeclaration_vexe} -check ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_gg_and_clipboard_c_fn_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_gg_clipboard_redeclaration', {
+		'main.v': 'module main\n\nimport gg as _\nimport clipboard as _\n\nfn main() {}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result := os.execute('${c_fn_redeclaration_vexe} -os linux -check ${os.quoted_path(root)}')
 	assert result.exit_code == 0, result.output
 }
