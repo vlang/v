@@ -45,11 +45,14 @@ mut:
 	next_storage_id    int = 2
 	pending_goto       string
 	active_closure_ids map[int]bool
+	defer_scopes       [][]flat.NodeId
 }
 
 struct RecursiveStrLoopFlow {
 	fallthrough []RecursiveStrEnv
 	breaks      []RecursiveStrEnv
+	continues   []RecursiveStrEnv
+	returns     []RecursiveStrEnv
 }
 
 struct RecursiveStrContext {
@@ -60,11 +63,64 @@ struct RecursiveStrContext {
 }
 
 fn (env &RecursiveStrEnv) clone_env() RecursiveStrEnv {
+	mut defer_scopes := [][]flat.NodeId{cap: env.defer_scopes.len}
+	for scope in env.defer_scopes {
+		defer_scopes << scope.clone()
+	}
 	return RecursiveStrEnv{
 		bindings:           env.bindings.clone()
 		next_storage_id:    env.next_storage_id
 		pending_goto:       env.pending_goto
 		active_closure_ids: env.active_closure_ids.clone()
+		defer_scopes:       defer_scopes
+	}
+}
+
+fn recursive_str_push_defer_scope(mut env RecursiveStrEnv) {
+	env.defer_scopes << []flat.NodeId{}
+}
+
+fn (mut tc TypeChecker) recursive_str_register_defer(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv) {
+	if env.defer_scopes.len == 0 {
+		recursive_str_push_defer_scope(mut env)
+	}
+	scope_index := if node.value == 'function' { 0 } else { env.defer_scopes.len - 1 }
+	env.defer_scopes[scope_index] << id
+}
+
+fn (mut tc TypeChecker) recursive_str_run_current_defer_scope(mut env RecursiveStrEnv, ctx RecursiveStrContext) {
+	if env.defer_scopes.len == 0 {
+		return
+	}
+	scope_index := env.defer_scopes.len - 1
+	defer_stmts := env.defer_scopes[scope_index].clone()
+	env.defer_scopes[scope_index] = []flat.NodeId{}
+	for i := defer_stmts.len; i > 0; i-- {
+		defer_id := defer_stmts[i - 1]
+		if !tc.valid_node_id(defer_id) {
+			continue
+		}
+		defer_node := tc.a.node(defer_id)
+		for j in 0 .. defer_node.children_count {
+			tc.recursive_str_process_stmt(tc.a.child(defer_node, j), mut env, ctx)
+		}
+	}
+	env.defer_scopes.delete_last()
+}
+
+fn (mut tc TypeChecker) recursive_str_close_defer_scope(envs []RecursiveStrEnv, ctx RecursiveStrContext) []RecursiveStrEnv {
+	mut closed := []RecursiveStrEnv{cap: envs.len}
+	for source in envs {
+		mut env := source.clone_env()
+		tc.recursive_str_run_current_defer_scope(mut env, ctx)
+		closed << env
+	}
+	return closed
+}
+
+fn (mut tc TypeChecker) recursive_str_run_all_defer_scopes(mut env RecursiveStrEnv, ctx RecursiveStrContext) {
+	for env.defer_scopes.len > 0 {
+		tc.recursive_str_run_current_defer_scope(mut env, ctx)
 	}
 }
 
@@ -102,7 +158,9 @@ fn (mut tc TypeChecker) check_recursive_str_calls(fn_id flat.NodeId, node flat.N
 }
 
 fn (mut tc TypeChecker) recursive_str_process_child_sequence(node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
+	recursive_str_push_defer_scope(mut env)
 	mut i := 0
+	mut falls_through := true
 	for i < int(node.children_count) {
 		child_id := tc.a.child(&node, i)
 		if tc.a.node(child_id).kind == .param {
@@ -120,9 +178,11 @@ fn (mut tc TypeChecker) recursive_str_process_child_sequence(node flat.Node, mut
 				continue
 			}
 		}
-		return false
+		falls_through = false
+		break
 	}
-	return true
+	tc.recursive_str_run_current_defer_scope(mut env, ctx)
+	return falls_through
 }
 
 fn (tc &TypeChecker) recursive_str_forward_label_index(node flat.Node, after int, label string) ?int {
@@ -146,9 +206,6 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			rhs_count := tc.multi_assign_rhs_count(*node)
 			for i, lhs_id in lhs_ids {
 				lhs := tc.a.node(lhs_id)
-				if lhs.kind != .ident || lhs.value == '_' {
-					continue
-				}
 				rhs_id := if rhs_count == 1 {
 					tc.multi_assign_rhs_id(*node, 0)
 				} else if i < rhs_count {
@@ -157,6 +214,9 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 					flat.empty_node
 				}
 				mut binding := tc.recursive_str_eval_expr(rhs_id, mut env, ctx)
+				if lhs.kind != .ident || lhs.value == '_' {
+					continue
+				}
 				if binding.typ_name.len == 0 && tc.valid_node_id(rhs_id) {
 					binding.typ_name = tc.resolve_type(rhs_id).name()
 				}
@@ -224,12 +284,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			return true
 		}
 		.defer_stmt {
-			// Deferred statements execute after the current path has finished. Check their
-			// bodies without letting deferred mutations affect earlier recursive calls.
-			mut deferred_env := env.clone_env()
-			for i in 0 .. node.children_count {
-				tc.recursive_str_process_stmt(tc.a.child(node, i), mut deferred_env, ctx)
-			}
+			tc.recursive_str_register_defer(id, *node, mut env)
 			return true
 		}
 		.block {
@@ -265,14 +320,7 @@ fn (mut tc TypeChecker) recursive_str_process_select_stmt(id flat.NodeId, mut en
 			continue
 		}
 		mut branch_env := base.clone_env()
-		mut falls_through := true
-		for j in 0 .. branch.children_count {
-			if !tc.recursive_str_process_stmt(tc.a.child(branch, j), mut branch_env, ctx) {
-				falls_through = false
-				break
-			}
-		}
-		if falls_through {
+		if tc.recursive_str_process_child_sequence(*branch, mut branch_env, ctx) {
 			branch_envs << branch_env
 		}
 	}
@@ -303,9 +351,15 @@ fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env 
 	mut flow := tc.recursive_str_process_loop_sequence(*node, body_start, [
 		base.clone_env(),
 	], ctx)
+	for return_path in flow.returns {
+		mut return_env := return_path.clone_env()
+		tc.recursive_str_run_all_defer_scopes(mut return_env, ctx)
+	}
 	if node.kind == .for_stmt {
 		mut after_post := []RecursiveStrEnv{}
-		for loop_path in flow.fallthrough {
+		mut post_paths := flow.fallthrough.clone()
+		post_paths << flow.continues
+		for loop_path in post_paths {
 			mut post_env := loop_path.clone_env()
 			if tc.recursive_str_process_stmt(tc.a.child(node, 2), mut post_env, ctx) {
 				after_post << post_env
@@ -314,6 +368,7 @@ fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env 
 		flow = RecursiveStrLoopFlow{
 			fallthrough: after_post
 			breaks:      flow.breaks
+			returns:     flow.returns
 		}
 	}
 	mut paths := flow.breaks.clone()
@@ -340,14 +395,23 @@ fn (tc &TypeChecker) recursive_str_loop_guarantees_entry(node flat.Node) bool {
 }
 
 fn (mut tc TypeChecker) recursive_str_process_loop_sequence(node flat.Node, start int, initial []RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrLoopFlow {
-	mut active := initial.clone()
+	mut active := []RecursiveStrEnv{cap: initial.len}
+	for initial_env in initial {
+		mut scoped_env := initial_env.clone_env()
+		recursive_str_push_defer_scope(mut scoped_env)
+		active << scoped_env
+	}
 	mut breaks := []RecursiveStrEnv{}
+	mut continues := []RecursiveStrEnv{}
+	mut returns := []RecursiveStrEnv{}
 	for i in start .. int(node.children_count) {
 		mut next := []RecursiveStrEnv{}
 		for loop_path in active {
 			flow := tc.recursive_str_process_loop_control_stmt(tc.a.child(&node, i), loop_path, ctx)
 			next << flow.fallthrough
 			breaks << flow.breaks
+			continues << flow.continues
+			returns << flow.returns
 		}
 		active = next.clone()
 		if active.len == 0 {
@@ -355,8 +419,10 @@ fn (mut tc TypeChecker) recursive_str_process_loop_sequence(node flat.Node, star
 		}
 	}
 	return RecursiveStrLoopFlow{
-		fallthrough: active
-		breaks:      breaks
+		fallthrough: tc.recursive_str_close_defer_scope(active, ctx)
+		breaks:      tc.recursive_str_close_defer_scope(breaks, ctx)
+		continues:   tc.recursive_str_close_defer_scope(continues, ctx)
+		returns:     tc.recursive_str_close_defer_scope(returns, ctx)
 	}
 }
 
@@ -374,7 +440,9 @@ fn (mut tc TypeChecker) recursive_str_process_loop_control_stmt(id flat.NodeId, 
 			}
 		}
 		.continue_stmt {
-			return RecursiveStrLoopFlow{}
+			return RecursiveStrLoopFlow{
+				continues: [source]
+			}
 		}
 		.block {
 			return tc.recursive_str_process_loop_sequence(*node, 0, [source], ctx)
@@ -395,6 +463,11 @@ fn (mut tc TypeChecker) recursive_str_process_loop_control_stmt(id flat.NodeId, 
 					fallthrough: [env]
 				}
 			}
+			if node.kind == .return_stmt || (node.kind == .expr_stmt && tc.expr_never_returns(id)) {
+				return RecursiveStrLoopFlow{
+					returns: [env]
+				}
+			}
 		}
 	}
 	return RecursiveStrLoopFlow{}
@@ -404,6 +477,8 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 	mut base := source.clone_env()
 	mut fallthrough := []RecursiveStrEnv{}
 	mut breaks := []RecursiveStrEnv{}
+	mut continues := []RecursiveStrEnv{}
+	mut returns := []RecursiveStrEnv{}
 	mut has_else := false
 	mut has_guaranteed_branch := false
 	mut i := 0
@@ -417,6 +492,8 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 			], ctx)
 			fallthrough << flow.fallthrough
 			breaks << flow.breaks
+			continues << flow.continues
+			returns << flow.returns
 			i++
 			continue
 		}
@@ -437,6 +514,8 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 					], ctx)
 					fallthrough << flow.fallthrough
 					breaks << flow.breaks
+					continues << flow.continues
+					returns << flow.returns
 				}
 				base = condition_env
 				i += 2
@@ -455,6 +534,8 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 	return RecursiveStrLoopFlow{
 		fallthrough: fallthrough
 		breaks:      breaks
+		continues:   continues
+		returns:     returns
 	}
 }
 
@@ -465,6 +546,8 @@ fn (mut tc TypeChecker) recursive_str_process_loop_match(node flat.Node, source 
 	}
 	mut fallthrough := []RecursiveStrEnv{}
 	mut breaks := []RecursiveStrEnv{}
+	mut continues := []RecursiveStrEnv{}
+	mut returns := []RecursiveStrEnv{}
 	for i in 1 .. node.children_count {
 		branch := tc.a.child_node(&node, i)
 		if branch.kind != .match_branch {
@@ -476,6 +559,8 @@ fn (mut tc TypeChecker) recursive_str_process_loop_match(node flat.Node, source 
 		], ctx)
 		fallthrough << flow.fallthrough
 		breaks << flow.breaks
+		continues << flow.continues
+		returns << flow.returns
 	}
 	if !tc.match_has_else_or_exhaustive_coverage(node) {
 		fallthrough << base
@@ -483,12 +568,16 @@ fn (mut tc TypeChecker) recursive_str_process_loop_match(node flat.Node, source 
 	return RecursiveStrLoopFlow{
 		fallthrough: fallthrough
 		breaks:      breaks
+		continues:   continues
+		returns:     returns
 	}
 }
 
 fn (mut tc TypeChecker) recursive_str_process_loop_select(node flat.Node, source RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrLoopFlow {
 	mut fallthrough := []RecursiveStrEnv{}
 	mut breaks := []RecursiveStrEnv{}
+	mut continues := []RecursiveStrEnv{}
+	mut returns := []RecursiveStrEnv{}
 	for i in 0 .. node.children_count {
 		branch := tc.a.child_node(&node, i)
 		if branch.kind != .select_branch {
@@ -499,10 +588,14 @@ fn (mut tc TypeChecker) recursive_str_process_loop_select(node flat.Node, source
 		], ctx)
 		fallthrough << flow.fallthrough
 		breaks << flow.breaks
+		continues << flow.continues
+		returns << flow.returns
 	}
 	return RecursiveStrLoopFlow{
 		fallthrough: fallthrough
 		breaks:      breaks
+		continues:   continues
+		returns:     returns
 	}
 }
 
@@ -743,21 +836,26 @@ fn (tc &TypeChecker) recursive_str_constant_index(id flat.NodeId) ?int {
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_block_value(node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
+	recursive_str_push_defer_scope(mut env)
+	mut result := RecursiveStrBinding{}
 	if node.children_count == 0 {
-		return RecursiveStrBinding{}
+		tc.recursive_str_run_current_defer_scope(mut env, ctx)
+		return result
 	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
 		if i == node.children_count - 1 && child.kind == .expr_stmt && child.children_count > 0 {
-			return tc.recursive_str_eval_expr(tc.a.child(child, child.children_count - 1), mut env,
-				ctx)
+			result = tc.recursive_str_eval_expr(tc.a.child(child, child.children_count - 1), mut
+				env, ctx)
+			break
 		}
 		if !tc.recursive_str_process_stmt(child_id, mut env, ctx) {
-			return RecursiveStrBinding{}
+			break
 		}
 	}
-	return RecursiveStrBinding{}
+	tc.recursive_str_run_current_defer_scope(mut env, ctx)
+	return result
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
@@ -1055,13 +1153,17 @@ fn (mut tc TypeChecker) recursive_str_process_match_stmt(id flat.NodeId, mut env
 }
 
 fn (mut tc TypeChecker) recursive_str_process_match_branch(branch flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
+	recursive_str_push_defer_scope(mut env)
 	condition_count := if branch.value.is_int() { branch.value.int() } else { 0 }
+	mut falls_through := true
 	for i in condition_count .. branch.children_count {
 		if !tc.recursive_str_process_stmt(tc.a.child(&branch, i), mut env, ctx) {
-			return false
+			falls_through = false
+			break
 		}
 	}
-	return true
+	tc.recursive_str_run_current_defer_scope(mut env, ctx)
+	return falls_through
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_if_expr(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
@@ -1134,6 +1236,7 @@ fn (mut tc TypeChecker) recursive_str_eval_match_expr(id flat.NodeId, mut env Re
 			continue
 		}
 		mut branch_env := base.clone_env()
+		recursive_str_push_defer_scope(mut branch_env)
 		condition_count := if branch.value.is_int() { branch.value.int() } else { 0 }
 		mut result := RecursiveStrBinding{}
 		mut falls := true
@@ -1148,6 +1251,7 @@ fn (mut tc TypeChecker) recursive_str_eval_match_expr(id flat.NodeId, mut env Re
 				break
 			}
 		}
+		tc.recursive_str_run_current_defer_scope(mut branch_env, ctx)
 		if falls && (result.typ_name.len > 0 || result.can_recurse) {
 			results << result
 			branch_envs << branch_env
@@ -1182,8 +1286,10 @@ fn (tc &TypeChecker) recursive_str_merge_envs(envs []RecursiveStrEnv) RecursiveS
 		active_closure_ids: envs[0].active_closure_ids.clone()
 	}
 	mut names := map[string]bool{}
+	mut max_defer_scopes := 0
 	for env in envs {
 		result.next_storage_id = int_max(result.next_storage_id, env.next_storage_id)
+		max_defer_scopes = int_max(max_defer_scopes, env.defer_scopes.len)
 		for name, _ in env.bindings {
 			names[name] = true
 		}
@@ -1192,6 +1298,20 @@ fn (tc &TypeChecker) recursive_str_merge_envs(envs []RecursiveStrEnv) RecursiveS
 				result.active_closure_ids[id] = true
 			}
 		}
+	}
+	for scope_index in 0 .. max_defer_scopes {
+		mut defer_stmts := []flat.NodeId{}
+		for env in envs {
+			if scope_index >= env.defer_scopes.len {
+				continue
+			}
+			for defer_id in env.defer_scopes[scope_index] {
+				if defer_id !in defer_stmts {
+					defer_stmts << defer_id
+				}
+			}
+		}
+		result.defer_scopes << defer_stmts
 	}
 	for name, _ in names {
 		mut bindings := []RecursiveStrBinding{}

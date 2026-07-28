@@ -7316,6 +7316,66 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_deferred_calls_use_scope_exit_state_in_lifo_order() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_deferred_call_exit_state', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	next.remaining--
+	defer {
+		_ := next.str()
+	}
+	next = item
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_deferred_call_before_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	defer {
+		next.remaining--
+	}
+	defer {
+		_ := next.str()
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_deferred_mutation_before_call', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	defer {
+		_ := next.str()
+	}
+	defer {
+		next.remaining--
+	}
+	return ""
+}
+
+fn main() {}
+')
+	assert out == ''
+}
+
 fn test_recursive_str_does_not_execute_stored_closure_bodies() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'recursive_str_stored_closure_bodies', 'struct LambdaItem {}
