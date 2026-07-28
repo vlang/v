@@ -57,6 +57,8 @@ $if !skip_wasm ? {
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
+const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const scoped_transform_signature_headroom = 2048
@@ -1427,6 +1429,10 @@ fn run_binary(bin_file string, args []string) int {
 	run_path := executable_path_for_run(bin_file)
 	mut process := os.new_process(run_path)
 	process.set_args(args)
+	mut environment := os.environ()
+	environment.delete(macos_v3_vhash_env)
+	environment.delete(macos_v3_vcurrent_hash_env)
+	process.set_environment(environment)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
 	// Ignore SIGINT and SIGQUIT while waiting so an interrupted child does not
@@ -3157,6 +3163,46 @@ fn default_cc_identity() string {
 	return '${cc_path}\t${metadata}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
 }
 
+fn effective_c_compiler_name(compiler string, target pref.Target) string {
+	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
+	name := os.file_name(os.real_path(compiler_path)).to_lower_ascii()
+	if name.contains('tcc') || name.contains('tinyc') {
+		return 'tinyc'
+	}
+	if name.contains('clang') {
+		return 'clang'
+	}
+	if name.contains('gcc') {
+		return 'gcc'
+	}
+	if name.contains('mingw') {
+		return 'mingw'
+	}
+	if name in ['cl', 'cl.exe'] || name.contains('msvc') {
+		return 'msvc'
+	}
+	if name.contains('++') {
+		return 'cplusplus'
+	}
+	version := cmdexec.run(compiler_path, ['--version']).output.to_lower_ascii()
+	if version.contains('tiny c compiler') || version.contains('tcc version') {
+		return 'tinyc'
+	}
+	if version.contains('clang') {
+		return 'clang'
+	}
+	if version.contains('gcc') || version.contains('free software foundation') {
+		return 'gcc'
+	}
+	if version.contains('mingw') {
+		return 'mingw'
+	}
+	if version.contains('microsoft') && version.contains('c/c++') {
+		return 'msvc'
+	}
+	return if target.os in ['macos', 'ios'] { 'clang' } else { 'gcc' }
+}
+
 fn v3_cache_compiler_signature(vroot string) string {
 	dir := os.join_path(vroot, 'vlib', 'v3')
 	if !os.is_dir(dir) {
@@ -3882,10 +3928,23 @@ fn main() {
 		target.default_thread_stack_size()
 	}
 	prefs.backend = backend
+	prefs.ccompiler = if backend == 'arm64' {
+		'tinyc'
+	} else {
+		effective_c_compiler_name(c_compiler, target)
+	}
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
+	prefs.vhash = os.getenv(macos_v3_vhash_env)
+	if prefs.vhash == '' {
+		prefs.vhash = @VHASH
+	}
+	prefs.vcurrent_hash = os.getenv(macos_v3_vcurrent_hash_env)
+	if prefs.vcurrent_hash == '' {
+		prefs.vcurrent_hash = @VCURRENTHASH
+	}
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
@@ -3899,6 +3958,7 @@ fn main() {
 	cache_salt := [
 		'compiler=${v3_cache_compiler_signature(prefs.vroot)}',
 		'cc=${cc_identity}',
+		'ccompiler=${prefs.ccompiler}',
 		'vexe=${prefs.vexe}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
@@ -3913,7 +3973,8 @@ fn main() {
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
-	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
+	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp, prefs.vhash,
+		prefs.vcurrent_hash].join('\n')
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled,
 		build_pseudo_values)
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'

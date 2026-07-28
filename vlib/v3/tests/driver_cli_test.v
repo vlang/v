@@ -16,7 +16,14 @@ fn build_driver_cli_v3_with_flags(root string, flags []string) string {
 	mut args := ['-gc', 'none']
 	args << flags
 	args << ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', bin, driver_cli_v3_src]
-	result := cmdexec.run(@VEXE, args)
+	mut result := os.Result{}
+	$if macos {
+		mut environment := os.environ()
+		environment['V_MACOS_V3_BOOTSTRAP'] = '1'
+		result = run_driver_with_environment(@VEXE, args, environment)
+	} $else {
+		result = cmdexec.run(@VEXE, args)
+	}
 	assert result.exit_code == 0, result.output
 	return bin
 }
@@ -267,6 +274,78 @@ pub fn selected() string {
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'debug\n', run.output
+}
+
+fn test_driver_propagates_default_compiler_and_hash_pseudos() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_driver_compiler_hashes_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		v3_bin := build_driver_cli_v3(root)
+		project := os.join_path(root, 'project')
+		module_dir := os.join_path(project, 'compilerinfo')
+		os.mkdir_all(module_dir) or { panic(err) }
+		os.write_file(os.join_path(project, 'v.mod'), "Module {
+	name: 'compiler_hash_selection'
+}
+")!
+		os.write_file(os.join_path(project, 'main.v'), 'module main
+
+import compilerinfo
+import os
+
+fn main() {
+	println(compilerinfo.values().join("|"))
+	println(os.getenv("V_MACOS_V3_VHASH") + "|" + os.getenv("V_MACOS_V3_VCURRENT_HASH"))
+}
+')!
+		os.write_file(os.join_path(module_dir, 'compilerinfo.v'), 'module compilerinfo
+
+pub fn values() []string {
+	mut rows := []string{}
+	$if clang {
+		rows << "clang"
+	} $else $if gcc {
+		rows << "gcc"
+	} $else {
+		rows << "other"
+	}
+	rows << @CCOMPILER
+	rows << @VHASH
+	rows << @VCURRENTHASH
+	$if @VHASH == "delegated-build-hash" && @VCURRENTHASH == "delegated-current-hash" {
+		rows << "hash-condition"
+	}
+	return rows
+}
+')!
+		output := os.join_path(root, 'compiler_hash_selection')
+		mut environment := os.environ()
+		environment['V_MACOS_V3_VHASH'] = 'delegated-build-hash'
+		environment['V_MACOS_V3_VCURRENT_HASH'] = 'delegated-current-hash'
+		environment['V3CACHE'] = os.join_path(root, 'cache')
+		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
+			'-o', output, 'run', project], environment)
+		assert compile.exit_code == 0, compile.output
+		assert compile.output == 'clang|clang|delegated-build-hash|delegated-current-hash|hash-condition\n|\n', compile.output
+
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == 'clang|clang|delegated-build-hash|delegated-current-hash|hash-condition\n|\n', run.output
+
+		environment['V_MACOS_V3_VHASH'] = 'second-build-hash'
+		environment['V_MACOS_V3_VCURRENT_HASH'] = 'second-current-hash'
+		second_output := os.join_path(root, 'compiler_hash_selection_second')
+		second_compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
+			'-no-memory-limit', '-o', second_output, project], environment)
+		assert second_compile.exit_code == 0, second_compile.output
+		second_run := cmdexec.run(second_output, [])
+		assert second_run.exit_code == 0, second_run.output
+		assert second_run.output == 'clang|clang|second-build-hash|second-current-hash\n|\n', second_run.output
+	}
 }
 
 fn test_driver_run_preserves_stdin() {

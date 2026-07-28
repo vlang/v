@@ -40,9 +40,11 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	// name-boundary check still applies inside literals
 	assert !source_uses_pseudo("module m\n\nconst s = \$embed_file('@VROOTX/not-a-pseudo')", roots)
 
-	build := ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']
+	build := ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME', '@VHASH', '@VCURRENTHASH']
 	assert !source_uses_pseudo("module m\n\npub const marker = '@BUILD_DATE'", build)
 	assert source_uses_pseudo('module m\n\npub const marker = @BUILD_DATE', build)
+	assert source_uses_pseudo('module m\n\npub const build_hash = @VHASH', build)
+	assert source_uses_pseudo('module m\n\npub const current_hash = @VCURRENTHASH', build)
 	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${@BUILD_TIMESTAMP}'", build)
 	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'literal @BUILD_TIMESTAMP ${1}'",
 		build)

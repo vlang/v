@@ -240,7 +240,14 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
+		if source_uses_pseudo(source, [
+			'@BUILD_TIMESTAMP',
+			'@BUILD_DATE',
+			'@BUILD_TIME',
+			'@VHASH',
+			'@VCURRENTHASH',
+		])
+		{
 			uses_build_pseudo = true
 		}
 		if source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {

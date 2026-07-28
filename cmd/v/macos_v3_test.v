@@ -172,6 +172,14 @@ fn test_macos_v3_bootstrap_clears_argument_environment() {
 	}
 }
 
+fn test_macos_v3_child_environment_forwards_compiler_hashes() {
+	$if macos {
+		environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback')
+		assert environment[macos_v3_vhash_env] == @VHASH
+		assert environment[macos_v3_vcurrent_hash_env] == @VCURRENTHASH
+	}
+}
+
 fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 	$if macos {
 		assert is_macos_v3_default_executable('/tmp/v')

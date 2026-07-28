@@ -13,9 +13,12 @@ pub mut:
 	user_defines      []string
 	compile_values    map[string]string
 	backend           string = 'c'
+	ccompiler         string = 'gcc'
 	c99               bool
 	vroot             string = detect_vroot()
 	vexe              string = detect_vexe()
+	vhash             string
+	vcurrent_hash     string
 	selfhost          bool
 	building_v        bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod           bool
@@ -860,8 +863,11 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'builtin_write_buf_to_fd_should_use_c_write' {
 			return p.backend == 'arm64'
 		}
+		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
+			return p.backend == 'c' && p.ccompiler == name
+		}
 		'tinyc' {
-			return p.backend == 'arm64'
+			return p.backend == 'arm64' || (p.backend == 'c' && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
 			return p.backend == 'arm64' || name in p.user_defines

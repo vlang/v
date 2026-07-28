@@ -3427,7 +3427,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					write_comptime_cond_string(mut out, p.prefs.normalized_target_os())
 				}
 				'@CCOMPILER' {
-					write_comptime_cond_string(mut out, @CCOMPILER)
+					write_comptime_cond_string(mut out, p.prefs.ccompiler)
 				}
 				'@BACKEND' {
 					write_comptime_cond_string(mut out, p.prefs.backend)
@@ -3436,7 +3436,12 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					write_comptime_cond_string(mut out, @PLATFORM)
 				}
 				'@VCURRENTHASH', '@VHASH' {
-					write_comptime_cond_string(mut out, '')
+					hash := if name == '@VHASH' {
+						p.prefs.vhash
+					} else {
+						p.prefs.vcurrent_hash
+					}
+					write_comptime_cond_string(mut out, hash)
 				}
 				else {
 					out.write_string(name)
@@ -4489,9 +4494,9 @@ fn (p &Parser) comptime_cond_name_is_flag(cond string, name string, end int) boo
 		'android', 'termux', 'wasm32_emscripten', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64',
 		'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv64', 'riscv64', 's390x', 'ppc64', 'ppc64le',
 		'loongarch64', 'wasm32', 'little_endian', 'big_endian', 'debug', 'test', 'native',
-		'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm',
-		'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat',
-		'threads' {
+		'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc',
+		'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree',
+		'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
 			return true
 		}
 		else {}
@@ -8586,7 +8591,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, p.prefs.normalized_target_os())
 			}
 			if name == '@CCOMPILER' {
-				return p.add_val_id(5, @CCOMPILER)
+				return p.add_val_id(5, p.prefs.ccompiler)
 			}
 			if name == '@BACKEND' {
 				return p.add_val_id(5, p.prefs.backend)
@@ -8595,7 +8600,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, @PLATFORM)
 			}
 			if name == '@VCURRENTHASH' || name == '@VHASH' {
-				return p.add_val_id(5, '')
+				return p.add_val_id(5, if name == '@VHASH' {
+					p.prefs.vhash
+				} else {
+					p.prefs.vcurrent_hash
+				})
 			}
 			if name == 'chan' && p.can_start_type_name() {
 				if p.tok == .not {

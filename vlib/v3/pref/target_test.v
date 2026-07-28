@@ -95,6 +95,23 @@ fn test_debug_comptime_flag_uses_target_preferences() {
 	assert comptime_flag_value(prefs, 'debug')
 }
 
+fn test_c_compiler_comptime_flags_use_effective_compiler() {
+	mut prefs := new_preferences()
+	prefs.backend = 'c'
+	prefs.ccompiler = 'clang'
+	assert comptime_flag_value(prefs, 'clang')
+	assert !comptime_flag_value(prefs, 'gcc')
+	assert !comptime_flag_value(prefs, 'tinyc')
+	prefs.ccompiler = 'gcc'
+	assert comptime_flag_value(prefs, 'gcc')
+	assert !comptime_flag_value(prefs, 'clang')
+	prefs.ccompiler = 'tinyc'
+	assert comptime_flag_value(prefs, 'tinyc')
+	prefs.backend = 'arm64'
+	assert comptime_flag_value(prefs, 'tinyc')
+	assert !comptime_flag_value(prefs, 'gcc')
+}
+
 fn test_source_selection_uses_target_os_and_arch() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_target_pref_${os.getpid()}')
 	os.rmdir_all(dir) or {}
