@@ -7,7 +7,6 @@ module sync
 // This test case uses the implementation in `sync/channels.v` directly
 // in order to test it independently from the support in the core language
 import os
-import time
 
 fn test_should_run_flaky_test() {
 	if os.getenv('VTEST_RUN_FLAKY') != '1' {
@@ -65,7 +64,7 @@ fn test_select() {
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for _ in 0 .. 1200 {
-		idx := channel_select(mut channels, directions, mut objs, time.infinite)
+		idx := channel_select(mut channels, directions, mut objs, infinite_timeout)
 		match idx {
 			0 {
 				sum += ri

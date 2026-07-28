@@ -3,12 +3,9 @@
 // that can be found in the LICENSE file.
 module sync
 
-import time
-
 #include <synchapi.h>
 #include <time.h>
 
-fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
 fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) i32
@@ -207,7 +204,7 @@ pub fn (mut sem Semaphore) try_wait() bool {
 	return false
 }
 
-pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
+pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
 		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
@@ -217,12 +214,9 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return sem.wait_for_available_count(timeout)
 }
 
-fn (mut sem Semaphore) wait_for_available_count(timeout time.Duration) bool {
-	mut ft_start := C._FILETIME{}
-	C.GetSystemTimeAsFileTime(&ft_start)
-	time_end := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) +
-		u64(timeout / (100 * time.nanosecond))
-	mut t_ms := u32(timeout.sys_milliseconds())
+fn (mut sem Semaphore) wait_for_available_count(timeout i64) bool {
+	time_end := sync_mono_now() + timeout
+	mut t_ms := sync_milliseconds(timeout)
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	mut acquired := false
 	mut c := C.atomic_load_u32(&sem.count)
@@ -244,12 +238,11 @@ fn (mut sem Semaphore) wait_for_available_count(timeout time.Duration) bool {
 				break outer
 			}
 		}
-		C.GetSystemTimeAsFileTime(&ft_start)
-		time_now := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) // in 100ns
+		time_now := sync_mono_now()
 		if time_now > time_end {
 			break outer // timeout exceeded
 		}
-		t_ms = u32((time_end - time_now) / 10000)
+		t_ms = sync_milliseconds(time_end - time_now)
 	}
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 	return acquired

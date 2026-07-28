@@ -34,6 +34,22 @@ mut:
 	sem   Semaphore // Blocks wait() until add() drops the task count to zero
 }
 
+struct WaitGroupThreadArgs {
+mut:
+	wg &WaitGroup
+	f  fn () = unsafe { nil }
+}
+
+fn new_waitgroup_thread_args(wg &WaitGroup, f fn ()) &WaitGroupThreadArgs {
+	mut args := unsafe { &WaitGroupThreadArgs(C.calloc(1, sizeof(WaitGroupThreadArgs))) }
+	if args == unsafe { nil } {
+		panic('could not allocate waitgroup thread arguments')
+	}
+	args.wg = wg
+	args.f = f
+	return args
+}
+
 // new_waitgroup creates a new WaitGroup.
 pub fn new_waitgroup() &WaitGroup {
 	mut wg := WaitGroup{}
@@ -100,8 +116,5 @@ pub fn (mut wg WaitGroup) wait() {
 // Calls to wg.go() should happen before the call to wg.wait().
 pub fn (mut wg WaitGroup) go(f fn ()) {
 	wg.add(1)
-	spawn fn (mut wg WaitGroup, f fn ()) {
-		f()
-		wg.done()
-	}(mut wg, f)
+	start_waitgroup_thread(mut wg, f)
 }

@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module sync
 
-import time
-
 // There's no additional linking (-lpthread) needed for Android.
 // See https://stackoverflow.com/a/31277163/1904615
 $if !android {
@@ -285,17 +283,11 @@ pub fn (mut sem Semaphore) try_wait() bool {
 
 // timed_wait is similar to .wait(), but it also accepts a timeout duration,
 // thus it can return false early, if the timeout passed before the semaphore was posted.
-pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
-	$if macos {
-		time.sleep(timeout)
-		return true
-	}
-	t_spec := timeout.timespec()
+pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
+	t_spec := sync_realtime_deadline(timeout)
 	for {
-		$if !macos {
-			if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
-				return true
-			}
+		if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
+			return true
 		}
 		e := C.errno
 		match e {
