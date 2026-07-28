@@ -128,6 +128,9 @@ fn valid_utf8_sequence_len(text string, index int) int {
 
 fn relative_error_path(path string) string {
 	mut normalized := os.real_path(path).replace('\\', '/')
+	if os.getenv('VERROR_PATHS') == 'absolute' {
+		return normalized
+	}
 	workdir := os.getwd().replace('\\', '/').trim_right('/') + '/'
 	if normalized.starts_with(workdir) {
 		normalized = normalized[workdir.len..]

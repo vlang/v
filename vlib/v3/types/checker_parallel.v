@@ -113,15 +113,18 @@ fn check_worker_scope_free(scope voidptr) {
 // check_semantics_opt runs semantic checks, using worker threads for independent
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
+	error_count := tc.errors.len
 	tc.check_for_in_const_conflicts_preflight()
-	if tc.errors.len > 0 {
+	if tc.checker_fixture_mode && tc.errors.len > 0 {
 		return false
 	}
-	tc.check_comptime_for_source_types_preflight()
-	error_count := tc.errors.len
-	tc.check_comptime_struct_updates_preflight()
-	if tc.errors.len > error_count {
-		return false
+	if tc.errors.len == error_count {
+		tc.check_comptime_for_source_types_preflight()
+		struct_update_error_count := tc.errors.len
+		tc.check_comptime_struct_updates_preflight()
+		if tc.errors.len > struct_update_error_count {
+			return false
+		}
 	}
 	if !want_parallel {
 		if tc.scope_parallel_check_workers {

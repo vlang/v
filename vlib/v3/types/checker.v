@@ -23681,8 +23681,11 @@ fn (mut tc TypeChecker) check_loop_var_const_conflict(id flat.NodeId) bool {
 	}
 	if qname in tc.const_types || node.value in tc.const_types
 		|| tc.const_key_for_name(node.value) != none {
-		tc.record_error_at(.duplicate_decl, 'duplicate of a const name `${node.value}`', id,
-			tc.node_value_diagnostic_pos(id))
+		message := 'duplicate of a const name `${node.value}`'
+		pos := tc.node_value_diagnostic_pos(id)
+		if !tc.errors.any(it.msg == message && it.pos == pos) {
+			tc.record_error_at(.duplicate_decl, message, id, pos)
+		}
 		return true
 	}
 	return false
