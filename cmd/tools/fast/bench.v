@@ -15,17 +15,19 @@ fn cmd_bench(args []string) ! {
 	date := time.unix(ts.i64())
 	elog('Benchmarking HEAD ${commit} "${message}" (${date.format()})')
 
-	build_vprod(vdir, args)!
-	b := run_measurements(vdir, commit, message, date, args)!
-
 	mut db := open_db()!
 	defer {
 		db.close() or {}
 	}
+	// Bail out before the expensive rebuild + measurement suite, so repeat
+	// invocations for an unchanged HEAD stay cheap.
 	if benchmark_exists(db, commit) && !args.contains('-force') {
 		elog('commit ${commit} is already benchmarked (use -force to re-run)')
 		return
 	}
+
+	build_vprod(vdir, args)!
+	b := run_measurements(vdir, commit, message, date, args)!
 	insert_benchmark(mut db, b)!
 	elog('stored benchmark for ${commit}')
 }
@@ -67,9 +69,9 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 		return error('vprod probe failed in ${dir} (exit ${probe.exit_code}); skipping commit')
 	}
 
-	v_c := measure('${vprod} ${voptions} -o v.c cmd/v', 'v -o v.c')
-	v_self := measure('${vprod} ${voptions} -cc ${ccompiler} -o v2 cmd/v', 'v -o v')
-	hello := measure('${vprod} ${voptions} -cc ${ccompiler} examples/hello_world.v', 'v hello.v')
+	v_c := measure('${vprod} ${voptions} -o v.c cmd/v', 'v -o v.c')!
+	v_self := measure('${vprod} ${voptions} -cc ${ccompiler} -o v2 cmd/v', 'v -o v')!
+	hello := measure('${vprod} ${voptions} -cc ${ccompiler} examples/hello_world.v', 'v hello.v')!
 	vc_size := int(os.file_size('v.c') / 1000)
 	scan, parse, check, cgen, vlines := measure_steps_minimal(vprod)!
 	lines_per_s := if v_c > 0 { int(f64(vlines) / f64(v_c) * 1000.0) } else { 0 }
@@ -93,8 +95,11 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 }
 
 // measure returns the average wall-clock time (ms) for `cmd`, discarding the
-// highest samples to reduce noise from random load spikes.
-fn measure(cmd string, description string) int {
+// highest samples to reduce noise from random load spikes. It errors if any run
+// of `cmd` exits non-zero, so a commit whose compilation fails (e.g. an old
+// revision that emits v.c but cannot complete the C compile with the selected
+// cc) is skipped instead of recording the short failure time as a great result.
+fn measure(cmd string, description string) !int {
 	elog('  Measuring ${description}, warmups: ${warmup_samples}, samples: ${max_samples}, discard: ${discard_highest_samples}')
 	for _ in 0 .. warmup_samples {
 		os.system(cmd)
@@ -102,8 +107,11 @@ fn measure(cmd string, description string) int {
 	mut runs := []int{}
 	for r in 0 .. max_samples {
 		sw := time.new_stopwatch()
-		os.execute(cmd)
+		res := os.execute(cmd)
 		sample := int(sw.elapsed().milliseconds())
+		if res.exit_code != 0 {
+			return error('command failed (exit ${res.exit_code}): `${cmd}`\n${res.output}')
+		}
 		runs << sample
 		elog('    sample ${r + 1:2}/${max_samples:2} ... ${sample} ms')
 	}

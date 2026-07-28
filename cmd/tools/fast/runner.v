@@ -50,6 +50,20 @@ fn cmd_run(args []string) ! {
 	}
 	elog('year ${year}: ${commits.len} commits on master, sampling every ${step}th => ${selected.len} benchmarks')
 
+	// A dry run only lists what would be measured; keep it read-only and never
+	// touch the database (the source dir may not even be writable).
+	if dry {
+		for idx, c in selected {
+			short := c[..8]
+			message := git(vdir, 'log -n1 --pretty=format:%s ${c}')
+			ts := git(vdir, 'log -n1 --pretty=format:%at ${c}')
+			date := time.unix(ts.i64())
+			elog('[${idx + 1:2}/${selected.len}] ${short} ${date.format()} ${message}')
+		}
+		elog('dry run: nothing was built or stored')
+		return
+	}
+
 	mut db := open_db()!
 	defer {
 		db.close() or {}
@@ -62,9 +76,6 @@ fn cmd_run(args []string) ! {
 		ts := git(vdir, 'log -n1 --pretty=format:%at ${c}')
 		date := time.unix(ts.i64())
 		elog('[${idx + 1:2}/${selected.len}] ${short} ${date.format()} ${message}')
-		if dry {
-			continue
-		}
 		if benchmark_exists(db, short) {
 			elog('  already benchmarked, skipping')
 			skipped++
@@ -79,11 +90,7 @@ fn cmd_run(args []string) ! {
 		ok++
 		elog('  stored ${short}: v.c ${b.v_c_ms}ms, v ${b.v_self_ms}ms, hello ${b.hello_ms}ms (${ok} done, ${failed} failed, ${skipped} skipped)')
 	}
-	if dry {
-		elog('dry run: nothing was built or stored')
-	} else {
-		elog('run done: ${ok} stored, ${failed} failed, ${skipped} skipped. Start the web app with: v run . serve')
-	}
+	elog('run done: ${ok} stored, ${failed} failed, ${skipped} skipped. Start the web app with: v run . serve')
 }
 
 // benchmark_commit builds V exactly as it was at `commit` using the `oldv` tool,
