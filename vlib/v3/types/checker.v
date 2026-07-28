@@ -25273,7 +25273,10 @@ fn (tc &TypeChecker) expr_is_unsafe_reference_alias(id flat.NodeId) bool {
 	}
 	node := tc.a.node(id)
 	if node.kind == .block && node.value == 'unsafe' {
-		return true
+		if node.children_count == 0 {
+			return false
+		}
+		return tc.unsafe_block_tail_is_reference_alias(tc.a.child(node, node.children_count - 1))
 	}
 	if node.kind == .ident {
 		owner := tc.cur_scope.lookup_owner(node.value) or { return false }
@@ -25283,6 +25286,17 @@ fn (tc &TypeChecker) expr_is_unsafe_reference_alias(id flat.NodeId) bool {
 		return tc.expr_is_unsafe_reference_alias(tc.a.child(node, node.children_count - 1))
 	}
 	return false
+}
+
+fn (tc &TypeChecker) unsafe_block_tail_is_reference_alias(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt, .block] && node.children_count > 0 {
+		return tc.unsafe_block_tail_is_reference_alias(tc.a.child(node, node.children_count - 1))
+	}
+	return node.kind in [.ident, .selector, .index]
 }
 
 fn (tc &TypeChecker) static_initializer_is_constant(id flat.NodeId) bool {

@@ -7270,6 +7270,32 @@ fn main() {
 	assert out == 'lambda\nliteral'
 }
 
+fn test_recursive_str_invoked_closure_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_invoked_lambda', 'struct LambdaItem {}
+
+fn (item LambdaItem) str() string {
+	callback := || item.str()
+	return callback()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_invoked_fn_literal', 'struct LiteralItem {}
+
+fn (item LiteralItem) str() string {
+	callback := fn [item] () string {
+		return item.str()
+	}
+	return callback()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unbacked_enum_integer_overflow', 'enum Huge {
@@ -7922,6 +7948,27 @@ fn test_map_rebind_clears_unsafe_alias_provenance() {
 }
 ',
 		'cannot copy map: call `move` or `clone` method (or use a reference)')
+}
+
+fn test_fresh_unsafe_map_is_not_reference_alias() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'fresh_unsafe_map_is_not_reference_alias', 'fn main() {
+	mut alias := unsafe { map[string]int{} }
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_reference_alias', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
 }
 
 fn test_recursive_str_struct_update_preserves_receiver_provenance() {
