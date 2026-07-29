@@ -15,12 +15,16 @@ fn cmd_bench(args []string) ! {
 	// first-parent history, so ordering by it preserves ancestry order.
 	ts := git(vdir, 'log -n1 --pretty=format:%ct ${commit}')
 	date := time.unix(ts.i64())
-	elog('Benchmarking HEAD ${commit} "${message}" (${date.format()})')
+	// the history this HEAD belongs to (branch name, or "HEAD" if detached)
+	head_ref := git(vdir, 'rev-parse --abbrev-ref HEAD')
+	elog('Benchmarking HEAD ${commit} on ${head_ref} "${message}" (${date.format()})')
 
 	mut db := open_db()!
 	defer {
 		db.close() or {}
 	}
+	// don't mix this branch's history into a database tracking another one
+	ensure_single_ref(db, head_ref)!
 	// Bail out before the expensive rebuild + measurement suite, so repeat
 	// invocations for an unchanged HEAD stay cheap.
 	exists := benchmark_exists(db, commit)
@@ -30,7 +34,8 @@ fn cmd_bench(args []string) ! {
 	}
 
 	build_vprod(vdir, args)!
-	b := run_measurements(vdir, commit, message, date, args)!
+	mut b := run_measurements(vdir, commit, message, date, args)!
+	b.git_ref = head_ref
 	// Replace the old row only after a successful rebuild+measurement, so a
 	// failed -force run never destroys the existing data (commit_hash is UNIQUE).
 	if exists {

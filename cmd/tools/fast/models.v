@@ -13,6 +13,7 @@ struct Benchmark {
 mut:
 	id          int    @[primary; sql: serial]
 	commit_hash string @[unique] // short (8 char) hash; unique so concurrent runs cannot insert duplicates
+	git_ref     string    // the history this row belongs to (e.g. origin/master); mixing is rejected
 	message     string    // commit subject line
 	commit_date time.Time // committer date (%ct); monotonic along first-parent
 	created_at  time.Time // when this benchmark was actually run
@@ -73,23 +74,6 @@ fn migrate_exec(mut db sqlite.DB, query string) ! {
 // is transactional and idempotent (a no-op once applied), and propagates errors
 // so open_db() fails loudly rather than returning an inconsistent schema.
 fn migrate_schema(mut db sqlite.DB) ! {
-	// The migration finishes by creating this unique index; if it already exists,
-	// the database is up to date and there is nothing to do (avoids re-running the
-	// dedupe/DDL on every per-request open_db()).
-	done :=
-		db.exec("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_benchmarks_commit_hash'")!
-	if done.len > 0 {
-		return
-	}
-	migrate_exec(mut db, 'BEGIN')!
-	apply_migration(mut db) or {
-		migrate_exec(mut db, 'ROLLBACK') or {}
-		return err
-	}
-	migrate_exec(mut db, 'COMMIT')!
-}
-
-fn apply_migration(mut db sqlite.DB) ! {
 	// Discover the existing columns so we only ALTER genuinely-missing ones — that
 	// way a failing ALTER is a real error, not the benign "duplicate column name".
 	info := db.exec('PRAGMA table_info(benchmarks)')!
@@ -99,6 +83,20 @@ fn apply_migration(mut db sqlite.DB) ! {
 			existing[row.vals[1]] = true // table_info column 1 is the name
 		}
 	}
+	// `git_ref` is the newest column; once present the database is fully migrated,
+	// so there is nothing to do (avoids re-running the DDL on every open_db()).
+	if 'git_ref' in existing {
+		return
+	}
+	migrate_exec(mut db, 'BEGIN')!
+	apply_migration(mut db, existing) or {
+		migrate_exec(mut db, 'ROLLBACK') or {}
+		return err
+	}
+	migrate_exec(mut db, 'COMMIT')!
+}
+
+fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	rss_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
 		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb',
 		'hello_rss_q3_kb', 'hello_rss_max_kb']
@@ -108,6 +106,9 @@ fn apply_migration(mut db sqlite.DB) ! {
 				'ALTER TABLE benchmarks ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0')!
 		}
 	}
+	if 'git_ref' !in existing {
+		migrate_exec(mut db, "ALTER TABLE benchmarks ADD COLUMN git_ref TEXT NOT NULL DEFAULT ''")!
+	}
 	// A database created before commit_hash gained @[unique] has no uniqueness
 	// enforcement (CREATE TABLE IF NOT EXISTS won't add it), so overlapping runs
 	// could insert duplicate commits and the ORM upsert's ON CONFLICT would have no
@@ -116,6 +117,19 @@ fn apply_migration(mut db sqlite.DB) ! {
 		'DELETE FROM benchmarks WHERE id NOT IN (SELECT MAX(id) FROM benchmarks GROUP BY commit_hash)')!
 	migrate_exec(mut db,
 		'CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_commit_hash ON benchmarks(commit_hash)')!
+}
+
+// ensure_single_ref rejects mixing histories in one database: the dashboard
+// orders rows by date and build_rows treats neighbours as ancestors, which is
+// only valid within a single first-parent history. Legacy rows (empty git_ref)
+// are treated as compatible with any ref.
+fn ensure_single_ref(db sqlite.DB, git_ref string) ! {
+	rows := load_benchmarks(db)!
+	for r in rows {
+		if r.git_ref != '' && r.git_ref != git_ref {
+			return error('fast.db already tracks history for git ref `${r.git_ref}`; refusing to also record `${git_ref}` — mixing branches would corrupt the ancestry-based chart. Use a separate database or clear fast.db.')
+		}
+	}
 }
 
 fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {

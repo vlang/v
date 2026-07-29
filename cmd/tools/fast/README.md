@@ -25,10 +25,15 @@ Run from inside `cmd/tools/fast/`:
 ```sh
 v run . serve [-port 8080]          # start the web app (default command)
 v run . bench [-clang] [-noprod]    # benchmark the current HEAD commit
-v run . run [-year 2026] [-step 50] [-branch <ref>] [-dry-run]
-                                    # benchmark every <step>th commit of a year
+v run . run [-year 2026] [-step 50] [-latest N] [-branch <ref>] [-dry-run]
+                                    # benchmark every <step>th commit of a year,
+                                    # or the N most recent commits with -latest
+v run . remeasure                   # re-measure every stored commit (backfill new
+                                    # metrics, e.g. RSS, onto existing rows)
+v run . export [-o <dir>]           # render the static site (index.html + json)
 v run . seed                        # insert demo rows, to preview the UI
-v run . import <table.html> [...]   # migrate old fast.vlang.io history into fast.db
+v run . import [--since YYYY-MM-DD] <table.html> [...]
+                                    # migrate old fast.vlang.io history into fast.db
 v run . help
 ```
 
@@ -57,6 +62,15 @@ so the dashboard does not start empty:
 `import` parses the old 14-column rows (timestamp, commit, message, v.c, v, …) and
 inserts them. It is idempotent — commits already in the database are skipped — so
 you can re-run it or point it at several files.
+
+**Backfill the RSS charts.** The old data has no memory numbers, so imported rows
+have zeroes for every RSS field and the "RSS: self-compile"/"RSS: hello.v" charts
+would be empty. After importing (and whenever you add a new metric to an existing
+deployment), run `remeasure` to re-measure the stored commits and populate them:
+
+```sh
+./fast remeasure   # reuses the cached oldv builds; safe to stop/resume
+```
 
 ## Running the 2026 sampler locally
 

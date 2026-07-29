@@ -126,6 +126,9 @@ fn cmd_run(args []string) ! {
 	defer {
 		db.close() or {}
 	}
+	// keep this database to a single history — mixing refs breaks the chart's
+	// ancestry assumption (see ensure_single_ref).
+	ensure_single_ref(db, ref)!
 
 	mut ok, mut failed, mut skipped := 0, 0, 0
 	for idx, c in selected {
@@ -139,11 +142,12 @@ fn cmd_run(args []string) ! {
 			skipped++
 			continue
 		}
-		b := benchmark_commit(c, short, message, date, args) or {
+		mut b := benchmark_commit(c, short, message, date, args) or {
 			elog('  FAILED to benchmark ${short}: ${err}')
 			failed++
 			continue
 		}
+		b.git_ref = ref
 		// The `commit_hash` UNIQUE constraint makes this insert the atomic claim:
 		// if a concurrent run (e.g. cron overlapping a manual backfill) already
 		// stored this commit, the insert is rejected instead of duplicating the row.
@@ -186,11 +190,12 @@ fn cmd_remeasure(args []string) ! {
 		rp := os.execute('git -C ${os.quoted_path(vdir)} rev-parse ${os.quoted_path(short)}')
 		full := if rp.exit_code == 0 { rp.output.trim_space() } else { short }
 		elog('[${idx + 1:2}/${rows.len}] ${short} ${r.commit_date.format()} ${r.message}')
-		b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
+		mut b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
 			elog('  FAILED to remeasure ${short}: ${err}')
 			failed++
 			continue
 		}
+		b.git_ref = r.git_ref // preserve the history this row already belongs to
 		// atomic replace: an upsert on the unique commit_hash cannot lose the
 		// existing row if it fails, unlike a delete followed by a separate insert
 		upsert_benchmark(mut db, b) or {
