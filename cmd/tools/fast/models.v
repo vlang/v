@@ -45,9 +45,14 @@ mut:
 // so calling this repeatedly is safe.
 fn open_db() !sqlite.DB {
 	mut db := sqlite.connect(db_path)!
+	// Close the just-opened connection if schema init fails (e.g. the db is
+	// locked), so the per-request open_db() callers do not leak file descriptors.
 	sql db {
 		create table Benchmark
-	}!
+	} or {
+		db.close() or {}
+		return err
+	}
 	migrate_schema(mut db)
 	return db
 }
