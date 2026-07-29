@@ -158,8 +158,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
-	pp.work_on_items(cmds)
-	for x in pp.get_results[os.Result]() {
+	pp.work_on_pointers(unsafe { cmds.pointers() })
+	for result_ptr in pp.get_result_pointers() {
+		x := unsafe { &os.Result(result_ptr) }
 		failed += if x.exit_code == 0 { 0 } else { 1 }
 	}
 	eprint_time(sw,
@@ -200,7 +201,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 }
 
 fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
-	cmd := p.get_item[string](idx)
+	cmd := unsafe { *(&string(p.get_item_ptr(idx))) }
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)

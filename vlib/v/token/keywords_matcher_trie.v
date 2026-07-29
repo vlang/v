@@ -99,6 +99,22 @@ pub fn new_keywords_matcher_trie[T](kw_map map[string]T) KeywordsMatcherTrie {
 	return km
 }
 
+fn new_keyword_kind_matcher_trie(kw_map map[string]Kind) KeywordsMatcherTrie {
+	mut km := KeywordsMatcherTrie.new(10)
+	for k, v in kw_map {
+		km.add_word(k, int(v))
+	}
+	return km
+}
+
+fn new_keyword_int_matcher_trie(kw_map map[string]int) KeywordsMatcherTrie {
+	mut km := KeywordsMatcherTrie.new(10)
+	for k, v in kw_map {
+		km.add_word(k, v)
+	}
+	return km
+}
+
 // new_keywords_matcher_from_array_trie creates a new KeywordsMatcherTrie instance from a given array
 // of strings. The values for the strings, that `find` will return, will be the indexes in that array.
 pub fn new_keywords_matcher_from_array_trie(names []string) KeywordsMatcherTrie {
@@ -106,7 +122,7 @@ pub fn new_keywords_matcher_from_array_trie(names []string) KeywordsMatcherTrie 
 	for i, name in names {
 		m[name] = i
 	}
-	return new_keywords_matcher_trie[int](m)
+	return new_keyword_int_matcher_trie(m)
 }
 
 //

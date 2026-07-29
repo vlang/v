@@ -4780,8 +4780,7 @@ fn (mut g FlatGen) struct_decls() {
 	// structs below (right after the element struct is defined), so struct fields that
 	// reference them resolve. Primitive-element ones were already emitted earlier.
 	fixed_array_needed := g.collect_fixed_array_typedefs_needed()
-	mut struct_names := g.tc.structs.keys()
-	struct_names.sort()
+	struct_names := g.c_struct_decl_names()
 	mut sum_names := g.tc.sum_types.keys()
 	sum_names.sort()
 	mut interface_names := g.interfaces.keys()
@@ -5103,8 +5102,7 @@ fn (g &FlatGen) collect_flattened_map_type_alias(typ string, mut names map[strin
 
 // type_forward_decls returns type forward decls data for FlatGen.
 fn (mut g FlatGen) type_forward_decls() {
-	mut struct_names := g.tc.structs.keys()
-	struct_names.sort()
+	struct_names := g.c_struct_decl_names()
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
 			continue
@@ -5146,6 +5144,15 @@ fn (mut g FlatGen) type_forward_decls() {
 		g.writeln('typedef array Array;')
 	}
 	g.writeln('')
+}
+
+fn (g &FlatGen) c_struct_decl_names() []string {
+	mut names := g.tc.structs.keys()
+	if g.skip_generics {
+		names = names.filter(!g.is_generic_struct(it))
+	}
+	names.sort()
+	return names
 }
 
 // emit_struct emits emit struct output for c.

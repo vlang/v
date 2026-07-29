@@ -17324,10 +17324,10 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		}
 	}
 	generic_name := node.value.all_after_last('.')
-	target_is_generic_param := generic_name in tc.fn_context.generic_params
-		|| tc.active_generic_param(generic_name)
+	target_is_generic_param := is_bare_generic_param(generic_name)
+		&& (generic_name in tc.fn_context.generic_params || tc.active_generic_param(generic_name)
 		|| tc.node_has_enclosing_generic_param(id, generic_name)
-		|| tc.source_enclosing_fn_has_generic_param(id, generic_name)
+		|| tc.source_enclosing_fn_has_generic_param(id, generic_name))
 	if target is Unknown {
 		if target_is_generic_param {
 			actual_generic_source := tc.resolve_type(child_id)
@@ -47207,13 +47207,15 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	$if ownership ? {
 		tc.ownership_check_ident(id, node)
 	}
-	active_generic_ident := node.value in tc.fn_context.generic_params
-		|| tc.active_generic_param(node.value)
-		|| tc.node_has_enclosing_generic_param(id, node.value)
-		|| tc.source_enclosing_fn_has_generic_param(id, node.value)
-	if is_bare_generic_param(node.value) && active_generic_ident {
-		tc.register_synth_type(id, unknown_type('generic placeholder `${node.value}`'))
-		return
+	if is_bare_generic_param(node.value) {
+		active_generic_ident := node.value in tc.fn_context.generic_params
+			|| tc.active_generic_param(node.value)
+			|| tc.node_has_enclosing_generic_param(id, node.value)
+			|| tc.source_enclosing_fn_has_generic_param(id, node.value)
+		if active_generic_ident {
+			tc.register_synth_type(id, unknown_type('generic placeholder `${node.value}`'))
+			return
+		}
 	}
 	if typ := tc.non_file_scope_type(node.value) {
 		if typ is Unknown && typ.reason == 'invalid variable' {
@@ -53547,12 +53549,14 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if node.value == '_' {
 				return Type(void_)
 			}
-			active_generic_ident := node.value in tc.fn_context.generic_params
-				|| tc.active_generic_param(node.value)
-				|| tc.node_has_enclosing_generic_param(id, node.value)
-				|| tc.source_enclosing_fn_has_generic_param(id, node.value)
-			if is_bare_generic_param(node.value) && active_generic_ident {
-				return unknown_type('generic placeholder `${node.value}`')
+			if is_bare_generic_param(node.value) {
+				active_generic_ident := node.value in tc.fn_context.generic_params
+					|| tc.active_generic_param(node.value)
+					|| tc.node_has_enclosing_generic_param(id, node.value)
+					|| tc.source_enclosing_fn_has_generic_param(id, node.value)
+				if active_generic_ident {
+					return unknown_type('generic placeholder `${node.value}`')
+				}
 			}
 			if smart_type := tc.smartcast_type(id) {
 				return smart_type

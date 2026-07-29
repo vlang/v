@@ -4003,12 +4003,13 @@ pub fn run(args []string) {
 		exit(1)
 	}
 
-	// Compiling v3 itself implies building_v: it uses no generics, so the monomorphization
-	// pass is pure overhead. -building-v can force this for any input.
-	if input_implies_building_v(input_file) {
+	cmd_v_build := input_is_cmd_v(input_file)
+	// Neither compiler entry point uses generics. Keep self-builds off the generic
+	// reachability and monomorphization paths without requiring an explicit flag.
+	// -building-v can force the same mode for another known non-generic input.
+	if input_implies_building_v(input_file) || cmd_v_build {
 		building_v = true
 	}
-	cmd_v_build := input_is_cmd_v(input_file)
 	// Serial compilation does not create enough concurrent scratch allocation to
 	// justify disposable stage arenas. Keeping it in the compilation arena also
 	// guarantees that a serial diagnostic run cannot retain a pointer into a
@@ -4338,10 +4339,10 @@ pub fn run(args []string) {
 		}
 		exit(1)
 	}
-	// Embedded V3 keeps Cgen serial for deterministic C output. Parallel
-	// transform is also disabled for larger imports to stay below 2 GiB.
+	// Parallel transform is disabled for larger embedded imports to stay below
+	// 2 GiB. Cgen workers reconcile their local string IDs during the ordered
+	// merge, so embedded generation remains deterministic in parallel.
 	if !current_no_parallel && os.getenv(v3_embedded_env) == '1' {
-		cache_no_parallel_cgen = true
 		if a.nodes.len >= embedded_parallel_transform_node_limit {
 			current_parallel_transform = false
 		}
@@ -5088,19 +5089,12 @@ pub fn run(args []string) {
 		exit(1)
 	}
 
-	// Monomorphization only adds specialized generic instantiations to `used_fns`. Skip
-	// it when markused found no reachable generic use; the small metadata cleanup keeps
-	// unreachable generic templates out of C without walking or rewriting their ASTs.
-	// Self-host builds retain their dedicated generic-function erasure pass.
+	// Monomorphization only adds specialized generic instantiations to `used_fns`.
+	// Markused and Cgen already exclude unreachable generic templates, so builds
+	// with no reachable generic use need no generic cleanup pass at all.
 	if cgen_cache_hit {
 		// The cached C plan and metadata are the only consumers of the specialized
 		// AST and checker state on this path.
-	} else if building_v {
-		mut mono_sw := time.new_stopwatch()
-		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
-		if verbose {
-			eprintln('  [ttime] erase templates    ${f64(mono_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		}
 	} else if uses_generics && (!incremental_cache_hit || incremental_uses_generics
 		|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns)) {
 		mut monomorph_used_fns := map[string]bool{}
@@ -5248,8 +5242,6 @@ pub fn run(args []string) {
 			}
 			exit(1)
 		}
-	} else {
-		erase_unreachable_generic_type_templates(mut pre_tc)
 	}
 	pre_tc.clear_c_type_cache()
 	mut mono_tail_sw := time.new_stopwatch()
@@ -5284,8 +5276,10 @@ pub fn run(args []string) {
 		b.step('monomorphize (incremental)')
 	} else if generic_cache_hit {
 		b.step('monomorphize (dependency cache)')
-	} else {
+	} else if uses_generics {
 		b.step('monomorphize')
+	} else {
+		b.step('finalize')
 	}
 	if backend == 'wasm' {
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
@@ -7681,20 +7675,6 @@ fn is_test_harness_hook_name(name string) bool {
 fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 	for uf in user_files {
 		tc.diagnostic_files[uf] = true
-	}
-}
-
-fn erase_unreachable_generic_type_templates(mut tc types.TypeChecker) {
-	for name in tc.struct_generic_params.keys() {
-		tc.structs.delete(name)
-		tc.unions.delete(name)
-		tc.params_structs.delete(name)
-		tc.unregister_short_type_name(name)
-	}
-	for name in tc.sum_generic_params.keys() {
-		tc.sum_types.delete(name)
-		tc.sum_generic_params.delete(name)
-		tc.unregister_short_type_name(name)
 	}
 }
 

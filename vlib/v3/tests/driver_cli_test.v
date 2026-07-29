@@ -34,6 +34,42 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn test_driver_only_monomorphizes_when_generics_are_used() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_generics_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	hello_source := os.join_path(root, 'hello.v')
+	os.write_file(hello_source, "fn main() { println('ok') }\n") or { panic(err) }
+	hello_output := os.join_path(root, 'hello.c')
+	hello_compile := cmdexec.run(v3_bin, ['-nocache', '-v', '-o', hello_output, hello_source])
+	assert hello_compile.exit_code == 0, hello_compile.output
+	assert hello_compile.output.contains('finalize'), hello_compile.output
+	assert !hello_compile.output.contains('monomorphize'), hello_compile.output
+	hello_c := os.read_file(hello_output)!
+	assert !hello_c.contains('struct stdatomic__AtomicVal')
+	assert !hello_c.contains('struct sync__ThreadLocalStorage')
+
+	generic_source := os.join_path(root, 'generic.v')
+	os.write_file(generic_source, 'fn identity[T](value T) T {
+	return value
+}
+
+fn main() {
+	println(identity(1))
+}
+') or {
+		panic(err)
+	}
+	generic_output := os.join_path(root, 'generic.c')
+	generic_compile := cmdexec.run(v3_bin, ['-nocache', '-v', '-o', generic_output, generic_source])
+	assert generic_compile.exit_code == 0, generic_compile.output
+	assert generic_compile.output.contains('monomorphize'), generic_compile.output
+}
+
 fn test_v3_build_rejects_garbage_collectors() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_build_${os.getpid()}')
 	os.rmdir_all(root) or {}

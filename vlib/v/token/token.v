@@ -211,7 +211,7 @@ pub const token_str = build_token_str()
 
 pub const keywords = build_keys()
 
-pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
+pub const scanner_matcher = new_keyword_kind_matcher_trie(keywords)
 
 // build_keys generates a map with keywords' string values:
 // Keywords['return'] == .key_return

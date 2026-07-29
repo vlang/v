@@ -104,6 +104,26 @@ fn test_parallel_cgen_main_emits_module_init_call() {
 	assert c_code.all_after('int main').contains('_vinit();')
 }
 
+fn test_parallel_cgen_remaps_worker_string_ids() {
+	v3_bin := build_parallel_v3()
+	source := os.join_path(os.temp_dir(), 'v3_parallel_string_ids_${os.getpid()}.v')
+	os.write_file(source, "fn main() { println('parallel strings') }\n") or { panic(err) }
+	defer {
+		os.rm(source) or {}
+	}
+	parallel_output := os.join_path(os.temp_dir(), 'v3_parallel_string_ids_${os.getpid()}.c')
+	serial_output := os.join_path(os.temp_dir(), 'v3_serial_string_ids_${os.getpid()}.c')
+	parallel_compile := os.execute('VJOBS=2 ${v3_bin} -nocache -o ${parallel_output} ${source}')
+	assert parallel_compile.exit_code == 0, parallel_compile.output
+	assert parallel_compile.output.contains('cgen (parallel)'), parallel_compile.output
+	serial_compile :=
+		os.execute('VJOBS=2 ${v3_bin} -no-parallel -nocache -o ${serial_output} ${source}')
+	assert serial_compile.exit_code == 0, serial_compile.output
+	parallel_c := os.read_file(parallel_output) or { panic(err) }
+	serial_c := os.read_file(serial_output) or { panic(err) }
+	assert parallel_c == serial_c
+}
+
 fn write_parallel_gettid_project(name string) string {
 	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
