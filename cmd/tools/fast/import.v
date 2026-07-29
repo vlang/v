@@ -133,6 +133,15 @@ fn import_table_html(mut db sqlite.DB, html string, since i64, git_ref string) !
 		if since != 0 && cdate.unix() < since {
 			continue
 		}
+		// Verify the commit actually belongs to the claimed history before tagging it
+		// with git_ref. On a fresh database the claim has no stored tip for
+		// history_diverged to validate, so pairing the wrong archive with --ref (e.g. a
+		// branch's commits with `--ref origin/master`) would otherwise mix unrelated
+		// points into one history and only be caught later when a sampler is rejected.
+		if commit_off_history(commit, git_ref) {
+			elog('  skipping ${commit}: not on the claimed history ${git_ref} (wrong archive for this --ref?)')
+			continue
+		}
 		b := Benchmark{
 			commit_hash: commit
 			git_ref:     git_ref
@@ -220,6 +229,18 @@ fn is_commit_hash(s string) bool {
 // rows as ancestry neighbours, importing an out-of-order date would show misleading
 // deltas — so unresolved rows are skipped instead. On a full checkout every historical
 // commit resolves; only a shallow/partial clone drops rows, which a full fetch fixes.
+// commit_off_history reports whether `commit` is *proven* not to belong to `git_ref`'s
+// history — git resolves both and reports the commit is not an ancestor of the ref
+// (merge-base --is-ancestor exit 1). It returns false when membership holds (exit 0) or
+// cannot be determined (exit >1, e.g. an unresolvable ref on a shallow clone), matching
+// history_diverged's lenient-when-unknown stance so a partial checkout is not
+// over-rejected. `commit` has already been resolved in the local checkout by the caller.
+fn commit_off_history(commit string, git_ref string) bool {
+	res :=
+		os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor ${os.quoted_path(commit)} ${os.quoted_path(git_ref)}')
+	return res.exit_code == 1
+}
+
 fn resolve_commit(raw string) ?(string, time.Time) {
 	res :=
 		os.execute("git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:'%H %ct' ${os.quoted_path(raw)}")

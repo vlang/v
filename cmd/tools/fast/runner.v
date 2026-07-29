@@ -176,9 +176,10 @@ fn cmd_run(args []string) ! {
 	// Every sampled build/insert failed on a fresh database: drop the claim we made, so
 	// a later run/bench/import for another ref is not rejected by an otherwise empty
 	// database (as the import and bench paths do). The zero-row guard keeps a claim that
-	// covers real rows (e.g. an all-skipped resume) untouched.
+	// covers real rows (e.g. an all-skipped resume) untouched. A failed DELETE (db full/
+	// locked/I/O) is surfaced, not logged as released, since the claim would then persist.
 	if ok == 0 && !already && benchmark_count(db) == 0 {
-		db.exec_none("DELETE FROM fast_meta WHERE key = 'history_ref'")
+		migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'")!
 		elog('no benchmarks stored; released the history claim on the empty database')
 	}
 	elog('run done: ${ok} stored, ${failed} failed, ${skipped} skipped. Start the web app with: v run . serve')
@@ -286,8 +287,9 @@ const build_lock_heartbeat_secs = 5 * 60
 // process still owns it.
 struct BuildLock {
 mut:
-	stop chan bool
-	hb   thread
+	token string // unique per acquisition; identifies this owner in the owner file
+	stop  chan bool
+	hb    thread
 }
 
 // acquire_build_lock takes the global build lock, returning none if another live run
@@ -302,9 +304,14 @@ fn acquire_build_lock() ?BuildLock {
 	os.mkdir_all(oldv_cache) or {}
 	for attempt in 0 .. 5 {
 		if dir_created(build_lock_dir) {
-			stamp_build_lock() // record ownership + first heartbeat
+			// A token unique to this acquisition (pid is not enough: a reused pid after
+			// this process dies must not look like the same owner). Everything downstream
+			// checks the token, so a reclaimed lock is never mistaken for still ours.
+			token := '${os.getpid()}-${time.sys_mono_now()}'
+			stamp_build_lock(token) // record ownership + first heartbeat
 			mut bl := BuildLock{
-				stop: chan bool{}
+				token: token
+				stop:  chan bool{}
 			}
 			bl.hb = spawn bl.heartbeat()
 			return bl
@@ -333,7 +340,14 @@ fn (bl BuildLock) heartbeat() {
 				return
 			}
 			build_lock_heartbeat_secs * time.second {
-				stamp_build_lock()
+				// Stop refreshing once we no longer own the lock. If this process was
+				// suspended past the stale threshold, a second run may have reclaimed the
+				// directory and written its own token; blindly re-stamping would overwrite
+				// the successor's ownership and later let this process delete its live lock.
+				if !build_lock_owned_by(bl.token) {
+					return
+				}
+				stamp_build_lock(bl.token)
 			}
 		}
 	}
@@ -355,30 +369,32 @@ fn build_lock_age() i64 {
 	return build_lock_stale_secs + 1
 }
 
-// stamp_build_lock (re)writes the owner heartbeat (pid + timestamp). It is called when
-// the lock is taken and then periodically by the heartbeat thread, so a long but
-// healthy run keeps the lock fresh and is never mistaken for a crashed one.
-fn stamp_build_lock() {
-	os.write_file(build_lock_owner, '${os.getpid()} ${time.now().unix()}') or {}
+// stamp_build_lock (re)writes the owner file with this acquisition's unique token. It is
+// called when the lock is taken and then periodically by the heartbeat thread, so a long
+// but healthy run keeps the lock fresh (via the file's mtime) and is never mistaken for a
+// crashed one. Writing the token — not just the pid + time — lets a resumed heartbeat and
+// release() tell whether they still own the lock or were reclaimed while suspended.
+fn stamp_build_lock(token string) {
+	os.write_file(build_lock_owner, token) or {}
 }
 
 // release stops the heartbeat and drops the lock — but only while this process still
 // owns it. If the heartbeat ever stalled past the stale threshold and another run
-// reclaimed the directory, the owner file now names a different pid; deleting it would
+// reclaimed the directory, the owner file now holds a different token; deleting it would
 // clobber that live replacement lock, so leave it in place.
 fn (mut bl BuildLock) release() {
 	bl.stop <- true
 	bl.hb.wait()
-	if build_lock_owned_by_us() {
+	if build_lock_owned_by(bl.token) {
 		os.rmdir_all(build_lock_dir) or {}
 	}
 }
 
-// build_lock_owned_by_us reports whether the owner file still records this process's
-// pid, i.e. no other run has reclaimed the lock in the meantime.
-fn build_lock_owned_by_us() bool {
+// build_lock_owned_by reports whether the owner file still holds `token`, i.e. no other
+// run has reclaimed the lock and stamped its own token in the meantime.
+fn build_lock_owned_by(token string) bool {
 	content := os.read_file(build_lock_owner) or { return false }
-	return content.all_before(' ').int() == os.getpid()
+	return content.trim_space() == token
 }
 
 // dir_created reports whether it created `path`. mkdir is atomic, so exactly one of

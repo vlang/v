@@ -85,14 +85,18 @@ fn cmd_bench(args []string) ! {
 	}
 
 	measure_and_store(mut db, commit, message, date, history, args) or {
+		build_err := err
 		// The build or measurement failed. If this call freshly claimed a previously
 		// empty database, drop the claim: leaving it would permanently reject a later
 		// successful bench for another ref (the same empty-database condition the
-		// importer rolls back). Only do so while the database is still empty.
+		// importer rolls back). Only do so while the database is still empty, and surface
+		// a failed rollback too, so a full/locked database is not silently left claimed.
 		if !already && benchmark_count(db) == 0 {
-			db.exec_none("DELETE FROM fast_meta WHERE key = 'history_ref'")
+			migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'") or {
+				return error('${build_err}; also failed to release the empty history claim: ${err}')
+			}
 		}
-		return err
+		return build_err
 	}
 	elog('stored benchmark for ${commit}')
 }
