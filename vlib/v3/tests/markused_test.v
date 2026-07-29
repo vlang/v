@@ -98,9 +98,11 @@ fn mark_used_source(name string, source string) map[string]bool {
 
 fn test_trivial_literal_output_prunes_conservative_runtime_helper_seeds() {
 	used := mark_used_source('trivial_literal_output', "println('Hello, World!')")
-	assert used['__new_array']
-	assert used['array.get']
-	assert used['array.push']
+	assert !used['__new_array']
+	assert !used['array.get']
+	assert !used['array.push']
+	assert !used['array.delete_last']
+	assert !used['i64.str']
 	assert !used['map.clone']
 	assert !used['strconv.format_uint']
 }
@@ -115,6 +117,8 @@ println(message())
 ")
 	assert used['map.clone']
 	assert used['strconv.format_uint']
+	assert used['array.delete_last']
+	assert used['i64.str']
 }
 
 fn find_fn_node_id(a &flat.FlatAst, name string) int {

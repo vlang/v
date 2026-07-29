@@ -157,7 +157,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		a:  a
 		tc: tc.fork_for_parallel_transform(a)
 	}
-	rt_scan_parallel := par_markused_seeds_enabled()
+	rt_scan_parallel := par_markused_seeds_enabled() && !trivial_literal_output
 	rt_scan.enabled = rt_scan_parallel
 	rt_scan_thread := spawn markused_rt_helpers_thread(mut rt_scan)
 	mut cur_module := ''
@@ -338,36 +338,37 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	used['main'] = true
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	enqueue_auto_roots(fn_decls, reachable_modules, mut used, mut queue)
-	enqueue_export_roots(a, mut used, mut queue)
-	enqueue_veb_handler_roots(a, tc, mut used, mut queue)
-	enqueue_test_file_roots(a, test_files, mut used, mut queue)
-	queue << 'time.Time.new'
-	used['time.Time.new'] = true
-	used['Time.new'] = true
-	queue << 'gen_expr_lvalue'
-	used['gen_expr_lvalue'] = true
-	queue << 'c.gen_expr_lvalue'
-	used['c.gen_expr_lvalue'] = true
-	queue << 'gen_assign'
-	used['gen_assign'] = true
-	queue << 'c.gen_assign'
-	used['c.gen_assign'] = true
-	// Parallel compiler callbacks and channel runtime helpers contain calls that
-	// are only selected after markused (by prealloc/worker lowering). Keep their
-	// concrete callees available for self-hosted compiler builds.
-	for seed in ['c.FlatGen.gen_fn_items_scoped_batches',
-		'markused.CallCollector.collect_bodies_scoped_batches',
-		'parser.Parser.precollect_parallel_comptime_consts', 'types.TypeChecker.check_scoped_batches',
-		'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy'] {
-		queue << seed
-		used[seed] = true
-	}
-	for seed in ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
-		'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
-		queue << seed
-		used[seed] = true
+	if trivial_literal_output {
+		// Primitive signed-integer string wrappers are part of the generated C
+		// prelude even when the user program never calls them.
+		queue << 'strconv.format_int'
+		used['strconv.format_int'] = true
 	}
 	if !trivial_literal_output {
+		enqueue_export_roots(a, mut used, mut queue)
+		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
+		enqueue_test_file_roots(a, test_files, mut used, mut queue)
+		for seed in ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue',
+			'gen_assign', 'c.gen_assign'] {
+			queue << seed
+			used[seed] = true
+		}
+		// Parallel compiler callbacks and channel runtime helpers contain calls that
+		// are only selected after markused (by prealloc/worker lowering). Keep their
+		// concrete callees available for self-hosted compiler builds.
+		for seed in ['c.FlatGen.gen_fn_items_scoped_batches',
+			'markused.CallCollector.collect_bodies_scoped_batches',
+			'parser.Parser.precollect_parallel_comptime_consts',
+			'types.TypeChecker.check_scoped_batches', 'sync.Semaphore.timed_wait',
+			'sync.Semaphore.destroy'] {
+			queue << seed
+			used[seed] = true
+		}
+		for seed in ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
+			'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
+			queue << seed
+			used[seed] = true
+		}
 		for seed in ['new_array_from_c_array', 'array.set', 'array.push_many', 'array.insert',
 			'array.insert_many', 'array.prepend', 'array.reverse', 'array.slice', 'array.slice_ni',
 			'string.substr_ni', 'array.pop_left', 'array.clone', 'array.delete', 'array.ensure_cap',
@@ -391,20 +392,20 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			queue << seed
 			used[seed] = true
 		}
-	}
-	queue << 'array.delete_last'
-	used['array.delete_last'] = true
-	for type_name in tc.ownership_drop_type_names() {
-		method := '${type_name}.drop'
-		enqueue(method, mut used, mut queue)
-		lowered := markused_c_name(method)
-		if lowered != method {
-			enqueue(lowered, mut used, mut queue)
+		queue << 'array.delete_last'
+		used['array.delete_last'] = true
+		for type_name in tc.ownership_drop_type_names() {
+			method := '${type_name}.drop'
+			enqueue(method, mut used, mut queue)
+			lowered := markused_c_name(method)
+			if lowered != method {
+				enqueue(lowered, mut used, mut queue)
+			}
 		}
-	}
-	for seed in ['i8.str', 'i16.str', 'i32.str', 'i64.str'] {
-		queue << seed
-		used[seed] = true
+		for seed in ['i8.str', 'i16.str', 'i32.str', 'i64.str'] {
+			queue << seed
+			used[seed] = true
+		}
 	}
 	for name in cache_roots {
 		enqueue(name, mut used, mut queue)
@@ -487,14 +488,17 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			enqueue(name.clone(), mut used, mut queue)
 		}
 		markused_worker_scope_free(rt_scan.scope)
-	} else {
+	} else if !trivial_literal_output {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	}
-	if markused_program_needs_closure_runtime(a, tc) {
+	if !trivial_literal_output && markused_program_needs_closure_runtime(a, tc) {
 		enqueue('closure.closure_create_with_data', mut used, mut queue)
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
 	}
-	enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
+	if !trivial_literal_output {
+		enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut
+			queue)
+	}
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
 	// through a wrapper cgen generates later. The checker records them per enclosing
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
