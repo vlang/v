@@ -404,8 +404,8 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 				if do_signatures {
 					if 'typedef' in node.typ.split(',') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch,
-							'`typedef` attribute can only be used with C structs', node_id,
-							tc.declaration_keyword_name_pos(node_id, 'struct'))
+							'`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id,
+							'struct'))
 					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 				}
@@ -862,7 +862,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
-	tc.fn_context.concrete_generic_receiver_specialization = fn_value_is_concrete_generic_receiver_specialization(node.value)
+	tc.fn_context.concrete_generic_receiver_specialization =
+		fn_value_is_concrete_generic_receiver_specialization(node.value)
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
 	tc.method_value_local_depth = map[string]int{}

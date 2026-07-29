@@ -772,8 +772,8 @@ fn (mut t Transformer) erase_consts_initialized_by_erased_templates(decls map[st
 					}
 					value_id := t.a.child(field, 0)
 					mut called := map[string]bool{}
-					t.collect_type_erased_generic_template_calls(value_id, cur_module,
-						decls, mut called)
+					t.collect_type_erased_generic_template_calls(value_id, cur_module, decls, mut
+						called)
 					if called.len == 0 {
 						continue
 					}

@@ -411,24 +411,24 @@ mut:
 	// Cached at node_id assignment: should_diagnose consults this per node,
 	// and deriving it re-parsed the function name on every call.
 	concrete_generic_receiver_specialization bool
-	mut_param_base_types              map[string]Type
-	mut_param_owners                  map[string]ScopeBindingOwner
-	mut_local_owners                  map[string]ScopeBindingOwner
-	closure_copy_owners               map[string]ScopeBindingOwner
-	shared_owners                     map[string][]ScopeBindingOwner
-	shared_array_owners               map[string][]ScopeBindingOwner
-	locked_shared_names               map[string]int
-	locked_shared_modes               map[string][]u8
-	immutable_reference_aliases       map[string]bool
-	unsafe_reference_alias_owners     map[string]bool
-	unsafe_alias_break_states         [][]map[string]bool
-	closure_forbidden_captures        map[string]bool
-	closure_scope                     &Scope = unsafe { nil }
-	lambda_no_captures                bool
-	generic_params                    []string
-	return_type                       Type = Type(void_)
-	undefined_variable_context_depth  int
-	continue_after_unknown_ident      bool
+	mut_param_base_types                     map[string]Type
+	mut_param_owners                         map[string]ScopeBindingOwner
+	mut_local_owners                         map[string]ScopeBindingOwner
+	closure_copy_owners                      map[string]ScopeBindingOwner
+	shared_owners                            map[string][]ScopeBindingOwner
+	shared_array_owners                      map[string][]ScopeBindingOwner
+	locked_shared_names                      map[string]int
+	locked_shared_modes                      map[string][]u8
+	immutable_reference_aliases              map[string]bool
+	unsafe_reference_alias_owners            map[string]bool
+	unsafe_alias_break_states                [][]map[string]bool
+	closure_forbidden_captures               map[string]bool
+	closure_scope                            &Scope = unsafe { nil }
+	lambda_no_captures                       bool
+	generic_params                           []string
+	return_type                              Type = Type(void_)
+	undefined_variable_context_depth         int
+	continue_after_unknown_ident             bool
 }
 
 fn new_function_check_context() FunctionCheckContext {
@@ -459,36 +459,36 @@ fn new_function_check_context() FunctionCheckContext {
 
 fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 	return FunctionCheckContext{
-		method_value_locals:               src.method_value_locals.clone()
-		method_value_local_owners:         clone_scope_binding_owner_map(src.method_value_local_owners)
-		method_value_local_depth:          src.method_value_local_depth.clone()
-		method_value_stack_mut_owners:     src.method_value_stack_mut_owners.clone()
-		fn_value_variadic_locals:          src.fn_value_variadic_locals.clone()
-		fn_value_variadic_local_owners:    src.fn_value_variadic_local_owners.clone()
-		fn_value_variadic_local_depth:     src.fn_value_variadic_local_depth.clone()
-		capturing_fn_literal_locals:       src.capturing_fn_literal_locals.clone()
-		capturing_fn_literal_local_owners: src.capturing_fn_literal_local_owners.clone()
-		capturing_fn_literal_local_depth:  src.capturing_fn_literal_local_depth.clone()
-		node_id:                           src.node_id
+		method_value_locals:                      src.method_value_locals.clone()
+		method_value_local_owners:                clone_scope_binding_owner_map(src.method_value_local_owners)
+		method_value_local_depth:                 src.method_value_local_depth.clone()
+		method_value_stack_mut_owners:            src.method_value_stack_mut_owners.clone()
+		fn_value_variadic_locals:                 src.fn_value_variadic_locals.clone()
+		fn_value_variadic_local_owners:           src.fn_value_variadic_local_owners.clone()
+		fn_value_variadic_local_depth:            src.fn_value_variadic_local_depth.clone()
+		capturing_fn_literal_locals:              src.capturing_fn_literal_locals.clone()
+		capturing_fn_literal_local_owners:        src.capturing_fn_literal_local_owners.clone()
+		capturing_fn_literal_local_depth:         src.capturing_fn_literal_local_depth.clone()
+		node_id:                                  src.node_id
 		concrete_generic_receiver_specialization: src.concrete_generic_receiver_specialization
-		mut_param_base_types:              src.mut_param_base_types.clone()
-		mut_param_owners:                  src.mut_param_owners.clone()
-		mut_local_owners:                  src.mut_local_owners.clone()
-		closure_copy_owners:               src.closure_copy_owners.clone()
-		shared_owners:                     src.shared_owners.clone()
-		shared_array_owners:               src.shared_array_owners.clone()
-		locked_shared_names:               src.locked_shared_names.clone()
-		locked_shared_modes:               src.locked_shared_modes.clone()
-		immutable_reference_aliases:       src.immutable_reference_aliases.clone()
-		unsafe_reference_alias_owners:     src.unsafe_reference_alias_owners.clone()
-		unsafe_alias_break_states:         clone_unsafe_alias_break_states(src.unsafe_alias_break_states)
-		closure_forbidden_captures:        src.closure_forbidden_captures.clone()
-		closure_scope:                     src.closure_scope
-		lambda_no_captures:                src.lambda_no_captures
-		generic_params:                    src.generic_params.clone()
-		return_type:                       src.return_type
-		undefined_variable_context_depth:  src.undefined_variable_context_depth
-		continue_after_unknown_ident:      src.continue_after_unknown_ident
+		mut_param_base_types:                     src.mut_param_base_types.clone()
+		mut_param_owners:                         src.mut_param_owners.clone()
+		mut_local_owners:                         src.mut_local_owners.clone()
+		closure_copy_owners:                      src.closure_copy_owners.clone()
+		shared_owners:                            src.shared_owners.clone()
+		shared_array_owners:                      src.shared_array_owners.clone()
+		locked_shared_names:                      src.locked_shared_names.clone()
+		locked_shared_modes:                      src.locked_shared_modes.clone()
+		immutable_reference_aliases:              src.immutable_reference_aliases.clone()
+		unsafe_reference_alias_owners:            src.unsafe_reference_alias_owners.clone()
+		unsafe_alias_break_states:                clone_unsafe_alias_break_states(src.unsafe_alias_break_states)
+		closure_forbidden_captures:               src.closure_forbidden_captures.clone()
+		closure_scope:                            src.closure_scope
+		lambda_no_captures:                       src.lambda_no_captures
+		generic_params:                           src.generic_params.clone()
+		return_type:                              src.return_type
+		undefined_variable_context_depth:         src.undefined_variable_context_depth
+		continue_after_unknown_ident:             src.continue_after_unknown_ident
 	}
 }
 
@@ -712,7 +712,7 @@ pub mut:
 	// Per-fork resolve_type memo for the current check work item's node range;
 	// nil until check_fn_items_serial arms it (see BodyResolveMemo).
 	body_resolve_memo &BodyResolveMemo = unsafe { nil }
-	import_info_cache  &ImportInfoCache  = unsafe { nil }
+	import_info_cache &ImportInfoCache = unsafe { nil }
 	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
 	// Only `-d ownership` builds ever write it (every writer lives in
 	// checker_ownership_d_ownership.v), so plain builds report exactly 0.
@@ -17510,8 +17510,8 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, Type(void_))
 		return
 	}
-	if node.op == .amp && tc.node_source_starts_with(id, '&')
-		&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
+	if node.op == .amp && tc.node_source_starts_with(id, '&') && tc.unsafe_depth == 0
+		&& !tc.expr_is_inside_unsafe_block(id) {
 		if fixed_array_id := tc.fixed_array_reference_ident(child_id) {
 			name := tc.a.node(fixed_array_id).value
 			tc.record_error_at(.assignment_mismatch,
@@ -17945,8 +17945,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	}
 	if target_struct := struct_type_from_type(target) {
 		actual_is_voidptr := fn_param_is_voidptr_type(actual)
-			|| (tc.expr_tail_is_nil(child_id)
-			&& tc.node_source_starts_with(child_id, 'unsafe'))
+			|| (tc.expr_tail_is_nil(child_id) && tc.node_source_starts_with(child_id, 'unsafe'))
 		if actual_is_voidptr {
 			if target is Alias {
 				tc.record_error_at(.assignment_mismatch,
@@ -26778,8 +26777,7 @@ fn (tc &TypeChecker) expr_initializes_shared_array(id flat.NodeId) bool {
 	if node.kind !in [.array_init, .array_literal] {
 		return false
 	}
-	return node.typ.contains('shared ')
-		|| tc.node_source_starts_with(id, '[]shared ')
+	return node.typ.contains('shared ') || tc.node_source_starts_with(id, '[]shared ')
 }
 
 fn (tc &TypeChecker) shared_array_element_index(id flat.NodeId) ?flat.NodeId {
@@ -29417,8 +29415,7 @@ fn (tc &TypeChecker) expr_is_negative_integer_literal(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
-	if unalias_type(tc.resolve_type(id)).is_integer()
-		&& tc.node_source_starts_with(id, '-') {
+	if unalias_type(tc.resolve_type(id)).is_integer() && tc.node_source_starts_with(id, '-') {
 		return true
 	}
 	return false
@@ -32001,8 +31998,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			if receiver.kind == .ident && receiver.value == 'C' && 'C.${callee.value}' in tc.structs
 				&& node.children_count == 2 {
 				arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-				if tc.expr_tail_is_nil(arg_id)
-					&& tc.node_source_starts_with(arg_id, 'unsafe') {
+				if tc.expr_tail_is_nil(arg_id) && tc.node_source_starts_with(arg_id, 'unsafe') {
 					name_pos := tc.method_call_name_pos(node, callee)
 					tc.record_error_at(.assignment_mismatch, 'cannot cast `voidptr` to struct', id, token.new_span(name_pos.id,
 						name_pos.offset, node.pos.end))
