@@ -511,6 +511,7 @@ pub mut:
 	fn_shared_params             map[string][]bool
 	mut_receiver_methods         map[string]bool
 	source_no_body_fns           map[string]bool
+	source_no_body_fn_suffixes   map[string]bool
 	unsafe_fns                   map[string]bool
 	fn_ret_type_texts            map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
 	fn_param_type_texts          map[string][]string // generic struct method key -> original param type texts (receiver first)
@@ -712,6 +713,9 @@ mut:
 	// direct_parent_id.
 	direct_parent_ids           []flat.NodeId
 	direct_parent_index_trusted bool
+	// Immutable declaration indexes shared by checker workers.
+	declaration_attributes map[int][]string
+	type_declaration_ids   map[string][]int
 	// Immutable node -> generic parameter index shared by checker workers.
 	enclosing_generic_params_by_node map[int][]string
 }
@@ -751,6 +755,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_shared_params:                      map[string][]bool{}
 		mut_receiver_methods:                  map[string]bool{}
 		source_no_body_fns:                    map[string]bool{}
+		source_no_body_fn_suffixes:            map[string]bool{}
 		unsafe_fns:                            map[string]bool{}
 		fn_ret_type_texts:                     map[string]string{}
 		fn_param_type_texts:                   map[string][]string{}
@@ -860,6 +865,8 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		type_interner:                           type_interner
 		symbols:                                 symbols
 		enclosing_generic_params_by_node:        map[int][]string{}
+		declaration_attributes:                  map[int][]string{}
+		type_declaration_ids:                    map[string][]int{}
 	}
 }
 
@@ -882,6 +889,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_shared_params:                   tc.fn_shared_params
 		mut_receiver_methods:               tc.mut_receiver_methods
 		source_no_body_fns:                 tc.source_no_body_fns
+		source_no_body_fn_suffixes:         tc.source_no_body_fn_suffixes
 		unsafe_fns:                         tc.unsafe_fns
 		fn_ret_type_texts:                  tc.fn_ret_type_texts
 		fn_param_type_texts:                tc.fn_param_type_texts
@@ -982,6 +990,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		top_level_idx_nodes_len:            tc.top_level_idx_nodes_len
 		direct_parent_ids:                  tc.direct_parent_ids
 		direct_parent_index_trusted:        tc.direct_parent_index_trusted
+		declaration_attributes:             tc.declaration_attributes
+		type_declaration_ids:               tc.type_declaration_ids
 		enclosing_generic_params_by_node:   tc.enclosing_generic_params_by_node
 		expected_expr_id:                   -1
 		expected_expr_type:                 Type(void_)
@@ -1297,7 +1307,14 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 
 fn (mut tc TypeChecker) build_direct_parent_index(a &flat.FlatAst) {
 	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
+	tc.declaration_attributes = map[int][]string{}
 	for parent_idx, node in a.nodes {
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			decl_id := node.value['@attributes:'.len..].int()
+			if decl_id >= 0 && decl_id < a.nodes.len {
+				tc.declaration_attributes[decl_id] = node.generic_params()
+			}
+		}
 		for child_idx in 0 .. node.children_count {
 			child := a.child(&node, child_idx)
 			idx := int(child)
@@ -1308,6 +1325,18 @@ fn (mut tc TypeChecker) build_direct_parent_index(a &flat.FlatAst) {
 		}
 	}
 	tc.direct_parent_index_trusted = true
+}
+
+fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
+	tc.type_declaration_ids = map[string][]int{}
+	for index in tc.top_level_idx {
+		node := a.nodes[index]
+		if node.kind !in [.struct_decl, .type_decl] {
+			continue
+		}
+		short_name := node.value.all_after_last('.')
+		tc.type_declaration_ids[short_name] << index
+	}
 }
 
 fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
@@ -2185,6 +2214,7 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node) {
 fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
 	tc.build_enclosing_generic_param_index(a)
+	tc.build_type_declaration_index(a)
 	tc.collect_module_attributes_from_nodes(a)
 	tc.index_multiple_module_import_lines(a)
 	// Pass 1: collect type-level names (aliases, enums, sum types)
@@ -2320,6 +2350,12 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				}
 			}
 			.c_fn_decl {
+				if tl_idx >= a.user_code_start {
+					qname := tc.qualify_decl_name(node.value)
+					tc.source_no_body_fn_suffixes[qname] = true
+					tc.source_no_body_fn_suffixes[node.value] = true
+					tc.source_no_body_fn_suffixes[node.value.all_after_last('.')] = true
+				}
 				if !node.value.starts_with('C.') {
 					qname := tc.qualify_decl_name(node.value)
 					tc.source_no_body_fns[qname] = true
@@ -8089,19 +8125,12 @@ fn (tc &TypeChecker) declaration_attribute_without_value_pos(node_id flat.NodeId
 	if !tc.should_check_source_name(node_id) {
 		return none
 	}
-	marker := '@attributes:${int(node_id)}'
 	mut has_bare_attr := false
-	for node in tc.a.nodes {
-		if node.kind != .directive || node.value != marker {
-			continue
+	for raw in tc.declaration_attributes[int(node_id)] {
+		if raw.trim_space() == name {
+			has_bare_attr = true
+			break
 		}
-		for raw in node.generic_params() {
-			if raw.trim_space() == name {
-				has_bare_attr = true
-				break
-			}
-		}
-		break
 	}
 	if !has_bare_attr {
 		return none
@@ -8118,23 +8147,16 @@ fn (tc &TypeChecker) declaration_attribute_without_value_pos(node_id flat.NodeId
 }
 
 fn (tc &TypeChecker) declaration_attribute_value(node_id flat.NodeId, name string) ?string {
-	marker := '@attributes:${int(node_id)}'
-	for node in tc.a.nodes {
-		if node.kind != .directive || node.value != marker {
+	for raw in tc.declaration_attributes[int(node_id)] {
+		if raw.all_before(':').trim_space() != name || !raw.contains(':') {
 			continue
 		}
-		for raw in node.generic_params() {
-			if raw.all_before(':').trim_space() != name || !raw.contains(':') {
-				continue
-			}
-			value := raw.all_after(':').trim_space()
-			if value.len >= 2 && ((value[0] == `'` && value[value.len - 1] == `'`)
-				|| (value[0] == `"` && value[value.len - 1] == `"`)) {
-				return value[1..value.len - 1]
-			}
-			return value
+		value := raw.all_after(':').trim_space()
+		if value.len >= 2 && ((value[0] == `'` && value[value.len - 1] == `'`)
+			|| (value[0] == `"` && value[value.len - 1] == `"`)) {
+			return value[1..value.len - 1]
 		}
-		return none
+		return value
 	}
 	return none
 }
@@ -11334,17 +11356,10 @@ fn (tc &TypeChecker) node_contains_runtime_call(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) declaration_has_attribute(node_id flat.NodeId, name string) bool {
-	marker := '@attributes:${int(node_id)}'
-	for node in tc.a.nodes {
-		if node.kind != .directive || node.value != marker {
-			continue
+	for raw in tc.declaration_attributes[int(node_id)] {
+		if raw.all_before(':').trim_space() == name {
+			return true
 		}
-		for raw in node.generic_params() {
-			if raw.all_before(':').trim_space() == name {
-				return true
-			}
-		}
-		return false
 	}
 	return false
 }
@@ -11355,15 +11370,7 @@ fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) bool 
 	if type_name.len == 0 {
 		return false
 	}
-	for index in tc.top_level_idx {
-		node := tc.a.node(flat.NodeId(index))
-		if node.kind !in [.struct_decl, .type_decl] {
-			continue
-		}
-		if node.value != type_name
-			&& node.value.all_after_last('.') != type_name.all_after_last('.') {
-			continue
-		}
+	for index in tc.type_declaration_ids[type_name.all_after_last('.')] {
 		if tc.declaration_has_attribute(flat.NodeId(index), name) {
 			return true
 		}
@@ -30106,16 +30113,8 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 }
 
 fn (tc &TypeChecker) source_declares_bodyless_function(name string) bool {
-	for idx in tc.top_level_idx {
-		if idx < tc.a.user_code_start {
-			continue
-		}
-		node := tc.a.nodes[idx]
-		if node.kind == .c_fn_decl && (node.value == name || node.value.ends_with('.${name}')) {
-			return true
-		}
-	}
-	return false
+	return name in tc.source_no_body_fn_suffixes
+		|| name.all_after_last('.') in tc.source_no_body_fn_suffixes
 }
 
 fn multi_return_payload_type(typ Type) ?MultiReturn {
