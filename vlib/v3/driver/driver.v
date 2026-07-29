@@ -7723,15 +7723,26 @@ fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
 	return skipped
 }
 
+struct ImplicitFieldScanIndex {
+mut:
+	aliases     map[string]string
+	fields      map[string]map[string]string
+	enum_fields map[string]map[string]bool
+	fn_returns  map[string]string
+	globals     map[string]string
+}
+
 struct ImplicitImportScan {
 mut:
-	node_idx         int
-	needs_sync       bool
-	has_sync         bool
-	needs_embed      bool
-	has_embed_import bool
-	needs_closure    bool
-	has_closure      bool
+	node_idx             int
+	field_index_node_idx int
+	field_index          ImplicitFieldScanIndex
+	needs_sync           bool
+	has_sync             bool
+	needs_embed          bool
+	has_embed_import     bool
+	needs_closure        bool
+	has_closure          bool
 }
 
 const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
@@ -7839,7 +7850,10 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 	known_field_selectors := if scan.needs_closure {
 		map[int]bool{}
 	} else {
-		implicit_known_field_selectors(a, scan.node_idx, end_node)
+		implicit_field_scan_index_append(a, scan.field_index_node_idx, end_node, mut
+			scan.field_index)
+		scan.field_index_node_idx = end_node
+		implicit_known_field_selectors(a, scan.node_idx, end_node, scan.field_index)
 	}
 	for i in scan.node_idx .. end_node {
 		node := a.nodes[i]
@@ -7892,21 +7906,7 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 	scan.node_idx = end_node
 }
 
-struct ImplicitFieldScanIndex {
-	aliases     map[string]string
-	fields      map[string]map[string]string
-	enum_fields map[string]map[string]bool
-	fn_returns  map[string]string
-mut:
-	globals map[string]string
-}
-
-fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int) map[int]bool {
-	// Imported functions commonly return builtin values used by a later module
-	// (for example, utf32_to_str_no_malloc() in strings). Index declarations
-	// already parsed in earlier waves while limiting candidate traversal to the
-	// newly appended region.
-	index := implicit_field_scan_index(a, 0, end)
+fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index ImplicitFieldScanIndex) map[int]bool {
 	mut selectors := map[int]bool{}
 	for fn_idx in start .. end {
 		fn_node := a.nodes[fn_idx]
@@ -8017,17 +8017,13 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int) map[int]b
 	return selectors
 }
 
-fn implicit_field_scan_index(a &flat.FlatAst, start int, end int) ImplicitFieldScanIndex {
-	mut aliases := map[string]string{}
-	mut fields := map[string]map[string]string{}
-	mut enum_fields := map[string]map[string]bool{}
-	mut fn_returns := map[string]string{}
+fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut index ImplicitFieldScanIndex) {
 	for idx in start .. end {
 		node := a.nodes[idx]
 		match node.kind {
 			.type_decl {
 				if node.value.len > 0 && node.typ.len > 0 {
-					aliases[node.value] = node.typ
+					index.aliases[node.value] = node.typ
 				}
 			}
 			.struct_decl {
@@ -8039,7 +8035,7 @@ fn implicit_field_scan_index(a &flat.FlatAst, start int, end int) ImplicitFieldS
 					}
 				}
 				if declared.len > 0 {
-					fields[node.value] = declared.move()
+					index.fields[node.value] = declared.move()
 				}
 			}
 			.enum_decl {
@@ -8051,30 +8047,23 @@ fn implicit_field_scan_index(a &flat.FlatAst, start int, end int) ImplicitFieldS
 					}
 				}
 				if declared.len > 0 {
-					enum_fields[node.value] = declared.move()
+					index.enum_fields[node.value] = declared.move()
 				}
 			}
 			.fn_decl, .c_fn_decl {
 				if node.value.len == 0 || node.typ.len == 0 {
 					continue
 				}
-				if old := fn_returns[node.value] {
+				if old := index.fn_returns[node.value] {
 					if old != node.typ {
-						fn_returns[node.value] = ''
+						index.fn_returns[node.value] = ''
 					}
 				} else {
-					fn_returns[node.value] = node.typ
+					index.fn_returns[node.value] = node.typ
 				}
 			}
 			else {}
 		}
-	}
-	mut index := ImplicitFieldScanIndex{
-		aliases:     aliases
-		fields:      fields
-		enum_fields: enum_fields
-		fn_returns:  fn_returns
-		globals:     map[string]string{}
 	}
 	for idx in start .. end {
 		node := a.nodes[idx]
@@ -8096,7 +8085,6 @@ fn implicit_field_scan_index(a &flat.FlatAst, start int, end int) ImplicitFieldS
 			}
 		}
 	}
-	return index
 }
 
 fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
@@ -8857,6 +8845,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 		insert_synthetic_imports(mut a, insertions)
 		implicit_imports.node_idx += insertions.len
+		implicit_imports.field_index_node_idx += insertions.len
 	}
 	return was_parallel
 }
