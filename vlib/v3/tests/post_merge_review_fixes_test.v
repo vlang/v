@@ -7383,6 +7383,16 @@ fn (item Item) str() string {
 fn main() {}
 ',
 		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_spawned_call', 'struct Item {}
+
+fn (item Item) str() string {
+	t := spawn item.str()
+	return t.wait()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_assertion_mutation_is_not_guaranteed_progress() {
@@ -7401,6 +7411,28 @@ fn (item Item) str() string {
 	mut copy := item
 	assert advance(mut copy)
 	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_unreachable_assert_message', 'struct Item {}
+
+fn (item Item) str() string {
+	assert true, item.str()
+	return "ok"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert out == 'ok'
+	run_bad(v3_bin, 'recursive_str_reachable_assert_message', 'struct Item {}
+
+fn (item Item) str() string {
+	assert false, item.str()
+	return "unreachable"
 }
 
 fn main() {}

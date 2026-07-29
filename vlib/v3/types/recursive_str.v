@@ -288,8 +288,13 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			// Assertions can be removed from production builds, so their mutations
 			// cannot establish progress for a later recursive call.
 			mut assert_env := env.clone_env()
-			for i in 0 .. node.children_count {
-				tc.recursive_str_eval_expr(tc.a.child(node, i), mut assert_env, ctx)
+			if node.children_count > 0 {
+				condition_id := tc.a.child(node, 0)
+				tc.recursive_str_eval_expr(condition_id, mut assert_env, ctx)
+				condition_is_true := tc.constant_bool_value(condition_id) or { false }
+				if node.children_count > 1 && !condition_is_true {
+					tc.recursive_str_eval_expr(tc.a.child(node, 1), mut assert_env, ctx)
+				}
 			}
 			return true
 		}
@@ -747,7 +752,11 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		}
 		.spawn_expr {
 			// Starting asynchronous work does not execute its body synchronously before the
-			// following recursive call.
+			// following recursive call, but calls inside it still need recursion diagnostics.
+			mut spawned_env := env.clone_env()
+			for i in 0 .. node.children_count {
+				tc.recursive_str_eval_expr(tc.a.child(node, i), mut spawned_env, ctx)
+			}
 		}
 		.postfix {
 			if node.children_count > 0 {
