@@ -9751,6 +9751,60 @@ fn main() {
 	assert custom_out == 'safe'
 }
 
+fn test_recursive_str_skips_zero_length_repeated_array_provenance() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_zero_length_repeated_array', 'struct Item {}
+
+fn (item Item) str() string {
+	values := []Item{len: 0, init: item}
+	return values.str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert out == '[]'
+	helper_out := run_good(v3_bin, 'recursive_str_helper_zero_length_repeated_array', 'struct Item {}
+
+fn repeat(item Item) []Item {
+	return []Item{len: 0, init: item}
+}
+
+fn (item Item) str() string {
+	return repeat(item).str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert helper_out == '[]'
+	run_bad(v3_bin, 'recursive_str_nonzero_repeated_array', 'struct Item {}
+
+fn (item Item) str() string {
+	values := []Item{len: 1, init: item}
+	return values.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_nonzero_repeated_array', 'struct Item {}
+
+fn repeat(item Item) []Item {
+	return []Item{len: 1, init: item}
+}
+
+fn (item Item) str() string {
+	return repeat(item).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_tracks_for_in_values_and_array_slices() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_for_in_value', 'struct Item {}

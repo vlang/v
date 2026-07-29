@@ -1250,11 +1250,15 @@ fn (mut tc TypeChecker) recursive_str_eval_map_expr(id flat.NodeId, node flat.No
 fn (mut tc TypeChecker) recursive_str_eval_array_expr(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
 	mut elements := []RecursiveStrBinding{}
 	mut repeated_element := false
+	is_empty := tc.recursive_str_array_init_is_empty(node, env)
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
 		if node.kind == .array_init && child.kind == .field_init {
 			if child.value == 'init' && child.children_count > 0 {
+				if is_empty {
+					continue
+				}
 				elements = [
 					tc.recursive_str_eval_expr(tc.a.child(child, 0), mut env, ctx),
 				]
@@ -1273,6 +1277,23 @@ fn (mut tc TypeChecker) recursive_str_eval_array_expr(id flat.NodeId, node flat.
 		elements:         elements
 		repeated_element: repeated_element
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_array_init_is_empty(node flat.Node, env RecursiveStrEnv) bool {
+	if node.kind != .array_init {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(&node, i)
+		if field.kind != .field_init || field.value != 'len' || field.children_count == 0 {
+			continue
+		}
+		if length := tc.recursive_str_resolved_constant_index(tc.a.child(field, 0), env) {
+			return length == 0
+		}
+		return false
+	}
+	return false
 }
 
 fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index_id flat.NodeId, result_id flat.NodeId, env RecursiveStrEnv) RecursiveStrBinding {
@@ -3059,11 +3080,15 @@ fn (tc &TypeChecker) recursive_str_binding_for_expr(id flat.NodeId, env Recursiv
 		.array_literal, .array_init {
 			mut elements := []RecursiveStrBinding{}
 			mut repeated_element := false
+			is_empty := tc.recursive_str_array_init_is_empty(*node, env)
 			for i in 0 .. node.children_count {
 				child_id := tc.a.child(node, i)
 				child := tc.a.node(child_id)
 				if node.kind == .array_init && child.kind == .field_init {
 					if child.value == 'init' && child.children_count > 0 {
+						if is_empty {
+							continue
+						}
 						elements = [
 							tc.recursive_str_binding_for_expr(tc.a.child(child, 0), env),
 						]
