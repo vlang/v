@@ -359,13 +359,36 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 }
 
 // check_top_level_declarations runs every declaration-level check (type
-// strings, signatures, const/enum field values). Independent from function
-// body checking, so the parallel flow runs it on the master thread while the
-// pool workers check bodies; serial flows call it directly.
+// strings, signatures, const/enum field values) in the original interleaved
+// declaration order. Serial flows call it directly; the parallel flow splits
+// it via check_top_level_declarations_filtered.
 fn (mut tc TypeChecker) check_top_level_declarations() {
-	tc.check_alias_declaration_cycles()
-	tc.check_c_struct_redeclarations(tc.a)
-	tc.check_c_fn_redeclarations(tc.a)
+	tc.check_top_level_declarations_filtered(true, true)
+}
+
+// check_top_level_declaration_values runs only the initializer-value checks
+// (top-level statements, struct field defaults, enum values, const values).
+// These can mutate compilation-wide state — check_const_field_values poisons
+// tc.const_types for cyclic constants — and their results must be visible to
+// every body worker, so the parallel flow runs them before submitting chunks.
+fn (mut tc TypeChecker) check_top_level_declaration_values() {
+	tc.check_top_level_declarations_filtered(true, false)
+}
+
+// check_top_level_declaration_signatures runs the declaration checks that only
+// read the frozen collect tables and record diagnostics (type strings,
+// signature shapes, alias cycles, C redeclarations). The parallel flow runs
+// them on the master thread while the pool workers check bodies.
+fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
+	tc.check_top_level_declarations_filtered(false, true)
+}
+
+fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
+	if do_signatures {
+		tc.check_alias_declaration_cycles()
+		tc.check_c_struct_redeclarations(tc.a)
+		tc.check_c_fn_redeclarations(tc.a)
+	}
 	tc.cur_module = ''
 	tc.cur_file = ''
 	for i in tc.top_level_idx {
@@ -373,22 +396,31 @@ fn (mut tc TypeChecker) check_top_level_declarations() {
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
-				tc.check_top_level_file_statements(node)
+				if do_values {
+					tc.check_top_level_file_statements(node)
+				}
 			}
 			.module_decl {
 				tc.enter_module(node.value)
 			}
 			.struct_decl {
 				node_id := flat.NodeId(i)
-				if 'typedef' in node.typ.split(',') && !node.value.starts_with('C.') {
-					tc.record_error_at(.assignment_mismatch,
-						'`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id,
-						'struct'))
+				if do_signatures {
+					if 'typedef' in node.typ.split(',') && !node.value.starts_with('C.') {
+						tc.record_error_at(.assignment_mismatch,
+							'`typedef` attribute can only be used with C structs', node_id,
+							tc.declaration_keyword_name_pos(node_id, 'struct'))
+					}
+					tc.check_decl_type_strings(flat.NodeId(i), node)
 				}
-				tc.check_decl_type_strings(flat.NodeId(i), node)
-				tc.check_struct_field_defaults(node_id, node)
+				if do_values {
+					tc.check_struct_field_defaults(node_id, node)
+				}
 			}
 			.type_decl, .interface_decl {
+				if !do_signatures {
+					continue
+				}
 				node_id := flat.NodeId(i)
 				if node.kind == .type_decl && tc.type_declaration_exists_before(node_id, node.value) {
 					kind := if node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1 {
@@ -403,12 +435,19 @@ fn (mut tc TypeChecker) check_top_level_declarations() {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
-				tc.check_enum_field_values(flat.NodeId(i), node)
+				if do_values {
+					tc.check_enum_field_values(flat.NodeId(i), node)
+				}
 			}
 			.const_decl {
-				tc.check_const_field_values(node)
+				if do_values {
+					tc.check_const_field_values(node)
+				}
 			}
 			.fn_decl {
+				if !do_signatures {
+					continue
+				}
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
 				tc.check_init_fn_signature(flat.NodeId(i), node)
@@ -419,6 +458,9 @@ fn (mut tc TypeChecker) check_top_level_declarations() {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.c_fn_decl {
+				if !do_signatures {
+					continue
+				}
 				tc.check_main_fn_signature(flat.NodeId(i), node)
 				if tc.reject_unsupported_generics {
 					tc.check_decl_type_strings(flat.NodeId(i), node)
@@ -427,12 +469,14 @@ fn (mut tc TypeChecker) check_top_level_declarations() {
 			else {}
 		}
 	}
-	tc.check_test_file_has_test_fn()
+	if do_signatures {
+		tc.check_test_file_has_test_fn()
+	}
 }
 
-fn check_top_level_decls_thread(arg voidptr) voidptr {
+fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 	mut tc := unsafe { &TypeChecker(arg) }
-	tc.check_top_level_declarations()
+	tc.check_top_level_declaration_signatures()
 	return unsafe { nil }
 }
 
@@ -452,6 +496,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			tc.check_fn_items_serial(items)
 			return false
 		}
+		// Initializer-value checks can mutate compilation-wide state that the
+		// body workers read (for example the const-cycle poisoning of
+		// tc.const_types), so they must complete before any chunk is
+		// submitted; only the read-only signature checks overlap the pool.
+		tc.check_top_level_declaration_values()
 		mut chunk_target := n_jobs
 		if tc.scope_parallel_check_workers {
 			chunk_target = n_jobs * check_chunk_oversubscribe
@@ -489,10 +538,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		// workers: in-range cache writes go straight into the shared arrays (the
 		// master owns those slots), out-of-range ones into its sparse maps, which
 		// are replayed first after join so that worker merges overwrite them in
-		// the same order the old serial flow did. The declaration-level checks
+		// the same order the old serial flow did. The read-only signature checks
 		// run as a final synchronous task, so the master performs them while the
 		// pool workers are still checking bodies; its sparse mode keeps their
-		// cache writes out of the worker-owned shared array ranges.
+		// cache writes out of the worker-owned shared array ranges. The mutating
+		// value checks already ran before any chunk was created.
 		tc.parallel_check_sparse = true
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		mut tasks := []workers.Task{cap: chunk_count + 1}
@@ -505,7 +555,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			}
 		}
 		tasks << workers.Task{
-			run:        check_top_level_decls_thread
+			run:        check_top_level_decl_signatures_thread
 			arg:        voidptr(tc)
 			force_sync: true
 		}

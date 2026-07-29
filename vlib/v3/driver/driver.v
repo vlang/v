@@ -4735,12 +4735,14 @@ pub fn run(args []string) {
 		}
 		if verbose {
 			eprintln('  [ttime]     ck iface embed ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			cvsw.restart()
 		}
 		pre_tc.diagnose_unknown_calls = true
 		pre_tc.prepare_threads_condition()
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 		if verbose {
 			eprintln('  [ttime]     ck unsup gen   ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			cvsw.restart()
 		}
 		if !incremental_cache_hit {
 			pre_tc.prepare_interface_query_indexes()
