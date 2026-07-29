@@ -3700,6 +3700,61 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 	return false
 }
 
+fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
+	if prefs.backend != 'c' || prefs.target.os != 'macos' || is_test_command || is_checker_fixture
+		|| !input_file.ends_with('.v') || !os.is_file(input_file)
+		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
+		return false
+	}
+	// Parse the one user file before builtin. This conservative syntax-only pass
+	// lets literal output programs avoid parsing and checking builtin declarations
+	// that markused will discard, without applying a text heuristic to V syntax.
+	mut candidate_parser := parser.Parser.new(prefs)
+	candidate_ast := candidate_parser.parse_file(input_file)
+	if candidate_parser.diagnostics.len > 0 {
+		return false
+	}
+	mut candidate_files := map[string]bool{}
+	for node in candidate_ast.nodes {
+		if node.kind == .file {
+			candidate_files[node.value] = true
+		}
+	}
+	return candidate_files.len == 1
+		&& markused.is_trivial_literal_output_program(candidate_ast, candidate_files)
+}
+
+fn is_minimal_literal_output_builtin_file(path string) bool {
+	return os.file_name(path) in [
+		'array.v',
+		'array_notd_gcboehm_opt.v',
+		'builtin.v',
+		'chan_option_result.v',
+		'int.v',
+		'int_notd_new_int.v',
+		'map.v',
+		'map_notd_gcboehm_opt.v',
+		'string.v',
+		'allocation.c.v',
+		'backtraces.c.v',
+		'backtraces_nix.c.v',
+		'builtin.c.v',
+		'builtin_backtraces_nix.c.v',
+		'builtin_nix.c.v',
+		'builtin_notd_gcboehm.c.v',
+		'builtin_notd_use_libbacktrace.c.v',
+		'cfns.c.v',
+		'cfns_wrapper.c.v',
+		'character_inout.c.v',
+		'map.c.v',
+		'option.c.v',
+		'panicing.c.v',
+		'prealloc.c.v',
+		'printing.c.v',
+		'vgc_notd_vgc.c.v',
+	]
+}
+
 // run executes the V3 compiler driver with `args`.
 pub fn run(args []string) {
 	if args.len == 0 {
@@ -4174,12 +4229,15 @@ pub fn run(args []string) {
 	prefs.is_debug = is_debug
 	prefs.verbose = verbose
 	prefs.supports_inline_asm = is_checker_fixture
+	minimal_literal_output := input_uses_minimal_literal_output_builtin(input_file, prefs,
+		is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
 	// `-keepc` promises a complete generated C translation unit. The module cache
 	// splits imported implementations into separate objects, so its main source
-	// alone cannot reproduce the build.
+	// alone cannot reproduce the build. Literal output uses a deliberately reduced
+	// builtin source set, which likewise must remain a monolithic translation unit.
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !keep_c && !c_compiler_explicit
-		&& target.os == host_target.os && target.arch == host_target.arch
+		&& !minimal_literal_output && target.os == host_target.os && target.arch == host_target.arch
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
 	cache_salt := [
@@ -4226,8 +4284,11 @@ pub fn run(args []string) {
 	if ownership_mode && 'ownership' !in builtin_defines {
 		builtin_defines << 'ownership'
 	}
-	builtin_files := pref.get_v_files_from_dir_for_target(builtin_dir, builtin_defines,
+	mut builtin_files := pref.get_v_files_from_dir_for_target(builtin_dir, builtin_defines,
 		prefs.target)
+	if minimal_literal_output {
+		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
+	}
 	bundle_sources := builtin_bundle_source_files(prefs, builtin_files)
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
@@ -4318,14 +4379,14 @@ pub fn run(args []string) {
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	test_files := test_input_files(user_files, backend, prefs.target)
 
-	seed_implicit_imports(mut a)
+	seed_implicit_imports(mut a, minimal_literal_output)
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
 	resolve_imports_started_us := b.current_step_time_us()
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
-	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, mut cache_state, mut
-		parse_timing)
+	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, minimal_literal_output, mut
+		cache_state, mut parse_timing)
 	resolve_imports_elapsed_us := b.current_step_time_us() - resolve_imports_started_us
 	resolve_imports_parse_us := parse_timing.header_us + parse_timing.source_us -
 		resolve_imports_parse_started_us
@@ -7944,7 +8005,7 @@ mut:
 
 const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
-fn seed_implicit_imports(mut a flat.FlatAst) {
+fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool) {
 	start := a.nodes.len
 	// Builtin declares the channel ABI even when a program never uses channels.
 	// Start at user code so that declaration alone does not pull the whole sync
@@ -7963,7 +8024,7 @@ fn seed_implicit_imports(mut a flat.FlatAst) {
 	// transform, after import resolution. Seed the runtime only when parsed syntax can
 	// need it; unconditional insertion conflicts with user modules whose source alias is
 	// `closure`.
-	if scan.needs_closure && !scan.has_closure {
+	if !skip_closure_runtime && scan.needs_closure && !scan.has_closure {
 		a.add_node(closure_import_node())
 	}
 	a.intern_node_texts_from(start)
@@ -8652,7 +8713,7 @@ fn file_index_usable_for_imports(a &flat.FlatAst) bool {
 		&& os.getenv('V3_NO_FILE_IDX') == '' && os.getenv('V3_NO_IMPORT_IDX') == ''
 }
 
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -9030,7 +9091,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 				synthetic_embed_file_added = true
 			}
-			if !synthetic_closure_added && implicit_imports.needs_closure
+			if !skip_closure_runtime && !synthetic_closure_added && implicit_imports.needs_closure
 				&& !implicit_imports.has_closure {
 				insertions << SyntheticInsertion{
 					pos:  region_end
