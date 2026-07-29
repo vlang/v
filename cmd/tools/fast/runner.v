@@ -142,7 +142,17 @@ fn cmd_run(args []string) ! {
 			skipped++
 			continue
 		}
+		// Reserve this commit's shared oldv checkout before building or measuring it,
+		// so an overlapping run (e.g. cron overlapping a manual backfill) never
+		// bootstraps and benchmarks the same v_at_<commit> at once. The insert below
+		// only claims the commit in the database, long after the checkout is touched.
+		held_lock := try_lock_commit(c) or {
+			elog('  ${short}: ${err}, skipping')
+			skipped++
+			continue
+		}
 		mut b := benchmark_commit(c, short, message, date, args) or {
+			unlock_commit(held_lock)
 			elog('  FAILED to benchmark ${short}: ${err}')
 			failed++
 			continue
@@ -152,10 +162,12 @@ fn cmd_run(args []string) ! {
 		// if a concurrent run (e.g. cron overlapping a manual backfill) already
 		// stored this commit, the insert is rejected instead of duplicating the row.
 		insert_benchmark(mut db, b) or {
+			unlock_commit(held_lock)
 			elog('  ${short} was stored by a concurrent run, skipping: ${err}')
 			skipped++
 			continue
 		}
+		unlock_commit(held_lock)
 		ok++
 		elog('  stored ${short}: v.c ${b.v_c_ms}ms, v ${b.v_self_ms}ms, hello ${b.hello_ms}ms (${ok} done, ${failed} failed, ${skipped} skipped)')
 	}
@@ -179,7 +191,7 @@ fn cmd_remeasure(args []string) ! {
 	elog('remeasuring ${rows.len} commits (refreshes timings, adds RSS) ...')
 	sync_oldv_cache()
 
-	mut ok, mut failed := 0, 0
+	mut ok, mut failed, mut skipped := 0, 0, 0
 	for idx, r in rows {
 		short := r.commit_hash
 		// Resolve the short hash to a full one so the cached oldv build is reused.
@@ -190,7 +202,15 @@ fn cmd_remeasure(args []string) ! {
 		rp := os.execute('git -C ${os.quoted_path(vdir)} rev-parse ${os.quoted_path(short)}')
 		full := if rp.exit_code == 0 { rp.output.trim_space() } else { short }
 		elog('[${idx + 1:2}/${rows.len}] ${short} ${r.commit_date.format()} ${r.message}')
+		// Reserve the shared checkout so a concurrent run/remeasure does not build
+		// vprod in or measure the same v_at_<commit> at the same time (see cmd_run).
+		held_lock := try_lock_commit(full) or {
+			elog('  ${short}: ${err}, skipping')
+			skipped++
+			continue
+		}
 		mut b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
+			unlock_commit(held_lock)
 			elog('  FAILED to remeasure ${short}: ${err}')
 			failed++
 			continue
@@ -199,14 +219,16 @@ fn cmd_remeasure(args []string) ! {
 		// atomic replace: an upsert on the unique commit_hash cannot lose the
 		// existing row if it fails, unlike a delete followed by a separate insert
 		upsert_benchmark(mut db, b) or {
+			unlock_commit(held_lock)
 			elog('  FAILED to store ${short}: ${err}')
 			failed++
 			continue
 		}
+		unlock_commit(held_lock)
 		ok++
 		elog('  updated ${short}: v.c ${b.v_c_ms}ms, self RSS med ${b.self_rss_med_kb / 1024}MB peak ${b.self_rss_max_kb / 1024}MB')
 	}
-	elog('remeasure done: ${ok} updated, ${failed} failed')
+	elog('remeasure done: ${ok} updated, ${failed} failed, ${skipped} skipped')
 }
 
 // benchmark_commit builds V exactly as it was at `commit` using the `oldv` tool,
@@ -225,6 +247,38 @@ fn benchmark_commit(commit string, short string, message string, date time.Time,
 fn sync_oldv_cache() {
 	elog('  oldv: syncing source cache in ${oldv_cache} ...')
 	lexec('${os.quoted_path(vexe())} run ${os.quoted_path(oldv_src)} --cache-sync')
+}
+
+// A single-commit build + vprod + measure completes in a few minutes; a lock left
+// behind for longer than this must be from a run that crashed, so it is reclaimed.
+const build_lock_stale_secs = i64(3 * 60 * 60)
+
+// try_lock_commit reserves <commit>'s shared oldv checkout (v_at_<commit>) so two
+// overlapping runs never bootstrap, build vprod in, or measure the same checkout at
+// once — which would clobber each other's build or contaminate the timings. The DB
+// `commit_hash` UNIQUE constraint only claims the commit at insert time, long after
+// the shared checkout has been touched, so a separate lock is needed here.
+//
+// It uses an atomic mkdir of a per-commit lock directory: one syscall, portable, and
+// no C interop. Exactly one racer creates the directory; the rest get an error. A
+// directory left by a crashed run is reclaimed once it is older than the stale limit,
+// so a crash never strands the commit. Returns the lock path, or an error if another
+// live run currently holds it.
+fn try_lock_commit(commit string) !string {
+	os.mkdir_all(oldv_cache) or {}
+	lockdir := os.join_path(oldv_cache, 'v_at_${commit}.lock')
+	if os.exists(lockdir)
+		&& time.now().unix() - os.file_last_mod_unix(lockdir) > build_lock_stale_secs {
+		os.rmdir(lockdir) or {}
+	}
+	os.mkdir(lockdir) or { return error('another run holds its build lock') }
+	return lockdir
+}
+
+// unlock_commit releases a lock taken by try_lock_commit. Best-effort: a leftover
+// directory is reclaimed by the staleness check in try_lock_commit on a later run.
+fn unlock_commit(lockdir string) {
+	os.rmdir(lockdir) or {}
 }
 
 // build_with_oldv builds (or reuses a cached build of) V at `commit` via the

@@ -53,7 +53,9 @@ fn cmd_import(args []string) ! {
 	// sampler run for another ref. Re-importing into an already-claimed database with
 	// nothing new is still fine (idempotent), so only reject a freshly-made claim.
 	already := history_claimed(db)
-	db.exec_none('BEGIN')
+	// A failed BEGIN would leave the inserts running in autocommit, where ROLLBACK
+	// cannot undo them, so validate it up front like the migration code does.
+	migrate_exec(mut db, 'BEGIN')!
 	total := do_import(mut db, files, since, ref) or {
 		db.exec_none('ROLLBACK')
 		return err
@@ -62,7 +64,13 @@ fn cmd_import(args []string) ! {
 		db.exec_none('ROLLBACK')
 		return error('no benchmark rows found in ${files.join(', ')}; nothing imported (history not claimed)')
 	}
-	db.exec_none('COMMIT')
+	// A failed COMMIT (disk full, I/O error, ...) leaves the transaction to be rolled
+	// back when the connection closes, so it must not be reported as a successful
+	// import — validate its result code and surface the failure instead of logging done.
+	migrate_exec(mut db, 'COMMIT') or {
+		db.exec_none('ROLLBACK')
+		return err
+	}
 	elog('import done: ${total} rows inserted. Start the web app with: v run . serve')
 }
 
