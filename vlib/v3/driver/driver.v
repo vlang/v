@@ -4179,8 +4179,9 @@ pub fn run(args []string) {
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !keep_c && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
+	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
 	cache_salt := [
-		'compiler=${v3_cache_compiler_signature(prefs.vroot)}',
+		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
 		'ccompiler=${prefs.ccompiler}',
 		'vexe=${prefs.vexe}',

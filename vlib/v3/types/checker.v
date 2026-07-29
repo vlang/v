@@ -18175,6 +18175,10 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 	if name.len == 0 || !tc.valid_node_id(id) {
 		return false
 	}
+	if tc.fn_context.node_id >= 0 && int(id) >= tc.check_range_lo && int(id) <= tc.check_range_hi {
+		params := tc.enclosing_generic_params_by_node[tc.fn_context.node_id] or { return false }
+		return name in params
+	}
 	if tc.direct_parent_index_trusted {
 		mut current_idx := int(id)
 		for current_idx >= 0 && current_idx < tc.a.nodes.len {
