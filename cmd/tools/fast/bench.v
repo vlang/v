@@ -71,12 +71,10 @@ fn cmd_bench(args []string) ! {
 	build_vprod(vdir, args)!
 	mut b := run_measurements(vdir, commit, message, date, args)!
 	b.git_ref = history
-	// Replace the old row only after a successful rebuild+measurement, so a
-	// failed -force run never destroys the existing data (commit_hash is UNIQUE).
-	if exists {
-		delete_benchmark(mut db, commit)!
-	}
-	insert_benchmark(mut db, b)!
+	// Atomic replace via upsert on the unique commit_hash: a `-force` re-measure
+	// updates the row in a single statement, so an interrupted or failed store can
+	// never lose the previous valid measurement (unlike a delete then insert).
+	upsert_benchmark(mut db, b)!
 	elog('stored benchmark for ${commit}')
 }
 

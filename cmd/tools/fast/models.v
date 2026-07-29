@@ -131,30 +131,63 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 }
 
 // canonicalize_history seeds/rewrites the database's history identity in the
-// current normalized form, from the stored fast_meta value and existing rows. It
-// keeps an upgraded database usable even when normalize_ref's output changed
-// between versions (e.g. `master` -> `origin/master`), and seeds fast_meta for a
-// database whose fast_meta was created empty by an intermediate release. It errors
-// if the rows/meta already identify more than one history.
+// current normalized form, from the stored fast_meta value and existing rows, so
+// an upgraded database stays usable even when normalize_ref's output changed
+// between versions (e.g. `master` -> `origin/master`). It errors if the rows/meta
+// already identify more than one history.
 fn canonicalize_history(mut db sqlite.DB) ! {
-	mut norms := map[string]bool{}
+	// the single raw stored identity (from meta, else the rows)
+	mut raw := ''
 	m := db.exec("SELECT value FROM fast_meta WHERE key = 'history_ref'")!
 	if m.len > 0 && m[0].vals[0] != '' {
-		norms[normalize_ref(m[0].vals[0])] = true
+		raw = m[0].vals[0]
 	}
 	rows := db.exec("SELECT DISTINCT git_ref FROM benchmarks WHERE git_ref != ''")!
 	for r in rows {
-		norms[normalize_ref(r.vals[0])] = true
+		v := r.vals[0]
+		if v == '' {
+			continue
+		}
+		if raw == '' {
+			raw = v
+		} else if v != raw && normalize_ref(v) != normalize_ref(raw) {
+			return error('cannot migrate fast.db: it already contains rows from multiple histories (${raw}, ${v})')
+		}
 	}
-	if norms.len > 1 {
-		return error('cannot migrate fast.db: it already contains rows from multiple histories (${norms.keys().join(', ')})')
+	if raw == '' {
+		return
 	}
-	if norms.len == 1 {
-		safe := norms.keys()[0].replace("'", "''")
-		migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'")!
-		migrate_exec(mut db, "INSERT INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
-		migrate_exec(mut db, "UPDATE benchmarks SET git_ref = '${safe}' WHERE git_ref != ''")!
+	mut canon := normalize_ref(raw)
+	// If normalization qualified a bare name with a remote (the fallback for a ref
+	// with no local upstream, e.g. `release` -> `origin/release`), only adopt it
+	// once the stored commits are proven to belong to that history — otherwise a
+	// local branch that diverged from the same-named remote would be silently
+	// relabeled and future remote measurements would mix two histories. The newest
+	// stored commit is the tip of this single first-parent history, so its ancestry
+	// covers the rest.
+	if canon != raw && !stored_tip_on(db, canon) {
+		canon = raw
 	}
+	safe := canon.replace("'", "''")
+	migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'")!
+	migrate_exec(mut db, "INSERT INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
+	migrate_exec(mut db, "UPDATE benchmarks SET git_ref = '${safe}' WHERE git_ref != ''")!
+}
+
+// stored_tip_on reports whether the newest stored commit is contained in `git_ref`
+// (an ancestor of it). Returns false if it cannot be resolved, so migration stays
+// conservative and does not remap onto an unproven history.
+fn stored_tip_on(db sqlite.DB, git_ref string) bool {
+	tip := db.exec('SELECT commit_hash FROM benchmarks ORDER BY commit_date DESC LIMIT 1') or {
+		return false
+	}
+	if tip.len == 0 {
+		return true // no rows to contradict the candidate
+	}
+	c := tip[0].vals[0]
+	res :=
+		os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor ${os.quoted_path(c)} ${os.quoted_path(git_ref)}')
+	return res.exit_code == 0
 }
 
 // normalize_ref reduces a ref to a stable history identity, so a local branch and
@@ -267,15 +300,6 @@ fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {
 fn upsert_benchmark(mut db sqlite.DB, b Benchmark) ! {
 	sql db {
 		upsert b into Benchmark
-	}!
-}
-
-// delete_benchmark removes the row for a commit, used by `bench -force` to
-// replace an existing measurement (commit_hash is UNIQUE, so a plain re-insert
-// would otherwise be rejected).
-fn delete_benchmark(mut db sqlite.DB, hash string) ! {
-	sql db {
-		delete from Benchmark where commit_hash == hash
 	}!
 }
 
