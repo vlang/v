@@ -121,7 +121,8 @@ for a while; the log is written to `fast.log`.
 # `fast run` enumerates commits from THIS checkout (it resolves e.g. origin/master),
 # so the checkout MUST be updated here (git pull) — the oldv cache sync only
 # refreshes ~/.cache/oldv. Without the pull the dashboard stops advancing.
-0 * * * * cd /path/to/v && git pull --ff-only && cd cmd/tools/fast && v -o fast . && ./fast run >> fast.log 2>&1
+0 * * * * cd /path/to/v && git pull --ff-only \
+  && cd cmd/tools/fast && v -o fast . && ./fast run >> fast.log 2>&1
 ```
 
 ```sh
@@ -172,5 +173,6 @@ Everything lives in `fast.db` (SQLite). The schema is defined by the `Benchmark`
 struct in `models.v` and created automatically. Inspect it directly if you like:
 
 ```sh
-sqlite3 fast.db 'select commit_hash, commit_date, v_c_ms, v_self_ms from benchmarks order by commit_date;'
+sqlite3 fast.db \
+  'select commit_hash, commit_date, v_c_ms, v_self_ms from benchmarks order by commit_date;'
 ```

@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
+import os
 import time
 import db.sqlite
 
@@ -140,19 +141,19 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	}
 }
 
-// normalize_ref reduces a ref to a stable history identity so equivalent names
-// (e.g. `master`, `origin/master`, `refs/heads/master`) map to the same value.
+// normalize_ref reduces a ref to a stable history identity, so a local branch and
+// its remote-tracking ref share one identity (e.g. `master` and `origin/master`),
+// WITHOUT collapsing same-named branches on different remotes (`origin/release`
+// vs `upstream/release`, which stay distinct). It canonicalizes to the upstream
+// remote-tracking ref when there is one, otherwise keeps the ref as given.
 fn normalize_ref(ref string) string {
 	mut r := ref.trim_space()
 	r = r.trim_string_left('refs/heads/')
 	r = r.trim_string_left('refs/remotes/')
-	// strip a leading "<remote>/" segment (e.g. origin/)
-	for remote in git(vdir, 'remote').split_into_lines() {
-		rr := remote.trim_space()
-		if rr != '' && r.starts_with(rr + '/') {
-			r = r[rr.len + 1..]
-			break
-		}
+	target := os.quoted_path('${r}@{upstream}')
+	up := os.execute('git -C ${os.quoted_path(vdir)} rev-parse --abbrev-ref ${target}')
+	if up.exit_code == 0 && up.output.trim_space() != '' {
+		return up.output.trim_space()
 	}
 	return r
 }
