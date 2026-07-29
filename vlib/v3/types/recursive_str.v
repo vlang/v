@@ -53,6 +53,7 @@ mut:
 	next_storage_id    int = 2
 	pending_goto       string
 	active_closure_ids map[int]bool
+	active_helper_ids  map[int]bool
 	defer_scopes       [][]flat.NodeId
 }
 
@@ -80,6 +81,7 @@ fn (env &RecursiveStrEnv) clone_env() RecursiveStrEnv {
 		next_storage_id:    env.next_storage_id
 		pending_goto:       env.pending_goto
 		active_closure_ids: env.active_closure_ids.clone()
+		active_helper_ids:  env.active_helper_ids.clone()
 		defer_scopes:       defer_scopes
 	}
 }
@@ -985,7 +987,7 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	}
 	if callee.kind == .selector && callee.value == 'str' && receiver_binding.can_recurse
 		&& !receiver_binding.progressed
-		&& tc.recursive_str_call_targets_current(id, receiver_id, ctx) {
+		&& tc.recursive_str_call_targets_current(id, receiver_id, receiver_binding, env.active_helper_ids.len > 0, ctx) {
 		pos := tc.method_call_name_pos(*node, *callee)
 		message := 'cannot call `str()` method recursively'
 		if !tc.errors.any(it.msg == message && it.pos == pos) {
@@ -1003,6 +1005,7 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		arg_id := tc.call_arg_value(tc.a.child(node, i))
 		arg_bindings << tc.recursive_str_eval_expr(arg_id, mut env, ctx)
 	}
+	tc.recursive_str_eval_invoked_helper(id, receiver_binding, arg_bindings, env, ctx)
 	tc.recursive_str_apply_call_mutations(id, mut env)
 	for closure_id in callee_binding.closure_ids {
 		tc.recursive_str_eval_invoked_closure(closure_id, callee_binding, arg_bindings, mut env,
@@ -1017,6 +1020,43 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(id).name()
 	}
+}
+
+fn (mut tc TypeChecker) recursive_str_eval_invoked_helper(call_id flat.NodeId, receiver RecursiveStrBinding, args []RecursiveStrBinding, env RecursiveStrEnv, ctx RecursiveStrContext) {
+	resolved := tc.resolved_call_name(call_id) or { return }
+	decl_id := tc.recursive_str_fn_decl_id(resolved) or { return }
+	if decl_id == ctx.fn_id || env.active_helper_ids[int(decl_id)] {
+		return
+	}
+	decl := tc.a.node(decl_id)
+	call := tc.a.node(call_id)
+	mut helper_env := RecursiveStrEnv{
+		next_storage_id:    env.next_storage_id
+		active_closure_ids: env.active_closure_ids.clone()
+		active_helper_ids:  env.active_helper_ids.clone()
+	}
+	helper_env.active_helper_ids[int(decl_id)] = true
+	mut has_provenance := false
+	mut actual_index := 0
+	callee := tc.a.child_node(call, 0)
+	mut actual_bindings := args.clone()
+	if callee.kind == .selector && callee.children_count > 0 {
+		actual_bindings.prepend(receiver)
+	}
+	for i in 0 .. decl.children_count {
+		param := tc.a.child_node(decl, i)
+		if param.kind != .param || actual_index >= actual_bindings.len {
+			continue
+		}
+		binding := actual_bindings[actual_index]
+		helper_env.bindings[param.value] = binding
+		has_provenance = has_provenance || recursive_str_binding_has_provenance(binding)
+		actual_index++
+	}
+	if !has_provenance {
+		return
+	}
+	tc.recursive_str_process_child_sequence(*decl, mut helper_env, ctx)
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_invoked_closure(id flat.NodeId, closure RecursiveStrBinding, args []RecursiveStrBinding, mut env RecursiveStrEnv, ctx RecursiveStrContext) {
@@ -1094,8 +1134,15 @@ fn (tc &TypeChecker) recursive_str_method_value_targets_current(selector_id flat
 	return actual.name() == expected.name()
 }
 
-fn (tc &TypeChecker) recursive_str_call_targets_current(call_id flat.NodeId, receiver_id flat.NodeId, ctx RecursiveStrContext) bool {
-	resolved := tc.resolved_call_name(call_id) or { return false }
+fn (tc &TypeChecker) recursive_str_call_targets_current(call_id flat.NodeId, receiver_id flat.NodeId, receiver RecursiveStrBinding, allow_unresolved bool, ctx RecursiveStrContext) bool {
+	resolved := tc.resolved_call_name(call_id) or {
+		if !allow_unresolved {
+			return false
+		}
+		actual := unwrap_all_pointers(tc.parse_type(receiver.typ_name))
+		expected := unwrap_all_pointers(ctx.receiver_type)
+		return actual !is Unknown && expected !is Unknown && actual.name() == expected.name()
+	}
 	if resolved != ctx.fn_name && tc.recursive_str_has_concrete_fn_decl(resolved) {
 		return false
 	}
@@ -1398,6 +1445,7 @@ fn (tc &TypeChecker) recursive_str_merge_envs(envs []RecursiveStrEnv) RecursiveS
 	mut result := RecursiveStrEnv{
 		next_storage_id:    envs[0].next_storage_id
 		active_closure_ids: envs[0].active_closure_ids.clone()
+		active_helper_ids:  envs[0].active_helper_ids.clone()
 	}
 	mut names := map[string]bool{}
 	mut max_defer_scopes := 0
@@ -1410,6 +1458,11 @@ fn (tc &TypeChecker) recursive_str_merge_envs(envs []RecursiveStrEnv) RecursiveS
 		for id, active in env.active_closure_ids {
 			if active {
 				result.active_closure_ids[id] = true
+			}
+		}
+		for id, active in env.active_helper_ids {
+			if active {
+				result.active_helper_ids[id] = true
 			}
 		}
 	}

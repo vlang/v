@@ -7207,6 +7207,68 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_invoked_helper_calls_are_analyzed() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_invoked_helper_call', 'struct Item {}
+
+fn recurse(item Item) string {
+	return item.str()
+}
+
+fn (item Item) str() string {
+	return recurse(item)
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_progressed_invoked_helper_call', 'struct Item {
+mut:
+	remaining int
+}
+
+fn recurse(item Item) string {
+	return item.str()
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return "done"
+	}
+	mut copy := item
+	copy.remaining--
+	return recurse(copy)
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert out == 'done'
+	cycle_out := run_good(v3_bin, 'recursive_str_helper_analysis_cycle_guard', 'struct Item {}
+
+fn ping(item Item, remaining int) string {
+	if remaining <= 0 {
+		return "done"
+	}
+	return pong(item, remaining - 1)
+}
+
+fn pong(item Item, remaining int) string {
+	return ping(item, remaining)
+}
+
+fn (item Item) str() string {
+	return ping(item, 1)
+}
+
+fn main() {}
+')
+	assert cycle_out == ''
+}
+
 fn test_recursive_str_helper_multiple_returns_merge_provenance() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_helper_multiple_return_aliases', 'struct Item {
