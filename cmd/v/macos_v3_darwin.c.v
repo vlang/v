@@ -5,6 +5,10 @@ import v.pref
 import v.util
 import v3.driver
 
+#include <sys/sysctl.h>
+
+fn C.sysctlbyname(&char, voidptr, &usize, voidptr, usize) int
+
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
@@ -48,11 +52,24 @@ fn macos_v3_default_is_enabled_for_host() bool {
 	if os.getenv('GITHUB_ACTIONS') == 'true' {
 		return true
 	}
-	version := os.execute('/usr/bin/sw_vers -productVersion')
-	if version.exit_code != 0 {
+	version := macos_product_version()
+	if version == '' {
 		return false
 	}
-	return macos_v3_default_is_enabled(version.output, '')
+	return macos_v3_default_is_enabled(version, '')
+}
+
+fn macos_product_version() string {
+	mut size := usize(0)
+	if C.sysctlbyname(c'kern.osproductversion', unsafe { nil }, &size, unsafe { nil }, 0) != 0
+		|| size < 2 {
+		return ''
+	}
+	mut buf := []u8{len: int(size)}
+	if C.sysctlbyname(c'kern.osproductversion', buf.data, &size, unsafe { nil }, 0) != 0 {
+		return ''
+	}
+	return unsafe { cstring_to_vstring(&char(buf.data)) }
 }
 
 fn macos_v3_default_is_enabled(product_version string, github_actions string) bool {

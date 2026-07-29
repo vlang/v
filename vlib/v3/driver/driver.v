@@ -3298,7 +3298,8 @@ fn default_cc_identity() string {
 
 fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
-	name := os.file_name(os.real_path(compiler_path)).to_lower_ascii()
+	resolved_path := os.real_path(compiler_path)
+	name := os.file_name(resolved_path).to_lower_ascii()
 	if name.contains('tcc') || name.contains('tinyc') {
 		return 'tinyc'
 	}
@@ -3316,6 +3317,11 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	}
 	if name.contains('++') {
 		return 'cplusplus'
+	}
+	// Apple's system `cc` is Clang. Avoid launching it just to rediscover that
+	// fact on every C-output-only compilation.
+	if target.os in ['macos', 'ios'] && resolved_path == '/usr/bin/cc' {
+		return 'clang'
 	}
 	version := cmdexec.run(compiler_path, ['--version']).output.to_lower_ascii()
 	if version.contains('tiny c compiler') || version.contains('tcc version') {
@@ -7731,7 +7737,12 @@ const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
 fn seed_implicit_imports(mut a flat.FlatAst) {
 	start := a.nodes.len
-	mut scan := ImplicitImportScan{}
+	// Builtin declares the channel ABI even when a program never uses channels.
+	// Start at user code so that declaration alone does not pull the whole sync
+	// module into every program; imported source is scanned wave by wave below.
+	mut scan := ImplicitImportScan{
+		node_idx: a.user_code_start
+	}
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	if scan.needs_sync && !scan.has_sync {
 		a.add_node(sync_import_node())
@@ -8074,7 +8085,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// wave the synthetic nodes are only spliced in after every boundary has been
 	// checked, so a later module's bounded already-imported scan cannot yet see an
 	// earlier module's pending seed; the flags stand in for it.
-	mut implicit_imports := ImplicitImportScan{}
+	mut implicit_imports := ImplicitImportScan{
+		node_idx: a.user_code_start
+	}
 	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
 	mut synthetic_sync_added := implicit_imports.has_sync
 	mut synthetic_embed_file_added := implicit_imports.has_embed_import

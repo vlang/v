@@ -52,6 +52,8 @@ fn test_driver_only_monomorphizes_when_generics_are_used() {
 	hello_c := os.read_file(hello_output)!
 	assert !hello_c.contains('struct stdatomic__AtomicVal')
 	assert !hello_c.contains('struct sync__ThreadLocalStorage')
+	assert !hello_c.contains('struct sync__Channel {')
+	assert !hello_c.contains('v3_chan_str')
 
 	generic_source := os.join_path(root, 'generic.v')
 	os.write_file(generic_source, 'fn identity[T](value T) T {
@@ -68,6 +70,33 @@ fn main() {
 	generic_compile := cmdexec.run(v3_bin, ['-nocache', '-v', '-o', generic_output, generic_source])
 	assert generic_compile.exit_code == 0, generic_compile.output
 	assert generic_compile.output.contains('monomorphize'), generic_compile.output
+
+	channel_dir := os.join_path(root, 'channel_project')
+	channel_module_dir := os.join_path(channel_dir, 'worker')
+	os.mkdir_all(channel_module_dir)!
+	os.write_file(os.join_path(channel_module_dir, 'worker.v'), 'module worker
+
+pub fn value() int {
+	ch := chan int{cap: 1}
+	ch <- 71
+	return <-ch
+}
+')!
+	channel_source := os.join_path(channel_dir, 'main.v')
+	os.write_file(channel_source, 'module main
+
+import worker
+
+fn main() {
+	println(worker.value())
+}
+')!
+	channel_output := os.join_path(root, 'channel_program')
+	channel_compile := cmdexec.run(v3_bin, ['-nocache', '-o', channel_output, channel_source])
+	assert channel_compile.exit_code == 0, channel_compile.output
+	channel_run := cmdexec.run(channel_output, [])
+	assert channel_run.exit_code == 0, channel_run.output
+	assert channel_run.output == '71\n'
 }
 
 fn test_v3_build_rejects_garbage_collectors() {
