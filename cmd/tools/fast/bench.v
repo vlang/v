@@ -182,7 +182,10 @@ fn peak_rss_kb(cmd string) int {
 	if !os.exists('/usr/bin/time') {
 		return -1 // timing binary unavailable
 	}
-	tmp := os.join_path(os.temp_dir(), 'fast_rss.txt')
+	// Per-process + per-invocation file name, so overlapping sampler/remeasure
+	// runs never clobber each other's `time` output (which would drop samples or
+	// attribute another commit's RSS to this one).
+	tmp := os.join_path(os.temp_dir(), 'fast_rss_${os.getpid()}_${time.sys_mono_now()}.txt')
 	defer {
 		os.rm(tmp) or {}
 	}

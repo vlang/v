@@ -57,16 +57,32 @@ fn open_db() !sqlite.DB {
 	return db
 }
 
-// migrate_schema adds any columns that a database created by an older version of
-// the tool is missing, so upgrading does not require rebuilding fast.db. Adding a
-// column that already exists just fails harmlessly (exec_none returns a code).
+// migrate_schema upgrades a database created by an older version of the tool, so
+// upgrading does not require rebuilding fast.db. It is a no-op once applied.
 fn migrate_schema(mut db sqlite.DB) {
+	// The migration finishes by creating this unique index; if it already exists,
+	// the database is up to date and there is nothing to do (avoids re-running the
+	// dedupe/DDL on every per-request open_db()).
+	if done := db.exec("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_benchmarks_commit_hash'") {
+		if done.len > 0 {
+			return
+		}
+	}
+	// Add columns missing from older databases. Adding one that already exists just
+	// fails harmlessly (exec_none returns a code rather than throwing).
 	added_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
 		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb',
 		'hello_rss_q3_kb', 'hello_rss_max_kb']
 	for c in added_columns {
 		db.exec_none('ALTER TABLE benchmarks ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0')
 	}
+	// A database created before commit_hash gained @[unique] has no uniqueness
+	// enforcement (CREATE TABLE IF NOT EXISTS won't add it), so overlapping runs
+	// could insert duplicate commits and the ORM upsert's ON CONFLICT would have no
+	// index to target. Deduplicate (keep the newest row per hash) and add a unique
+	// index, which both enforces uniqueness and backs the upsert.
+	db.exec_none('DELETE FROM benchmarks WHERE id NOT IN (SELECT MAX(id) FROM benchmarks GROUP BY commit_hash)')
+	db.exec_none('CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_commit_hash ON benchmarks(commit_hash)')
 }
 
 fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {
