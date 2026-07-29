@@ -11199,7 +11199,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				field_id, tc.struct_field_type_pos(*field))
 		}
 		if field.children_count > 0
-			&& (field.typ.contains('$d(') || tc.source_text_for_node(field_id).contains('$d(')) {
+			&& (field.typ.contains('$d(') || tc.node_source_contains(field_id, '$d(')) {
 			default_id := tc.a.child(field, 0)
 			tc.record_error_at(.assignment_mismatch,
 				'cannot initialize a fixed size array field that uses `$d()` as size quantifier since the size may change via -d',
@@ -13232,7 +13232,7 @@ fn (tc &TypeChecker) comptime_struct_update_id(id flat.NodeId) ?flat.NodeId {
 			is_update := node.kind == .assoc
 				|| (child.kind == .prefix && child.value == '...')
 				|| tc.node_has_ellipsis_prefix(child_id)
-			if is_update && tc.source_text_for_node(child_id).contains('$(') {
+			if is_update && tc.node_source_contains(child_id, '$(') {
 				return child_id
 			}
 		}
@@ -17499,7 +17499,7 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, Type(void_))
 		return
 	}
-	if node.op == .amp && tc.source_text_for_node(id).trim_space().starts_with('&')
+	if node.op == .amp && tc.node_source_starts_with(id, '&')
 		&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 		if fixed_array_id := tc.fixed_array_reference_ident(child_id) {
 			name := tc.a.node(fixed_array_id).value
@@ -17935,7 +17935,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	if target_struct := struct_type_from_type(target) {
 		actual_is_voidptr := fn_param_is_voidptr_type(actual)
 			|| (tc.expr_tail_is_nil(child_id)
-			&& tc.source_text_for_node(child_id).starts_with('unsafe'))
+			&& tc.node_source_starts_with(child_id, 'unsafe'))
 		if actual_is_voidptr {
 			if target is Alias {
 				tc.record_error_at(.assignment_mismatch,
@@ -26763,7 +26763,7 @@ fn (tc &TypeChecker) expr_initializes_shared_array(id flat.NodeId) bool {
 		return false
 	}
 	return node.typ.contains('shared ')
-		|| tc.source_text_for_node(id).trim_space().starts_with('[]shared ')
+		|| tc.node_source_starts_with(id, '[]shared ')
 }
 
 fn (tc &TypeChecker) shared_array_element_index(id flat.NodeId) ?flat.NodeId {
@@ -29101,6 +29101,66 @@ fn (tc &TypeChecker) source_text_for_node(id flat.NodeId) string {
 	return source[start..end].trim_space()
 }
 
+// node_source_starts_with reports whether the node's source span, after
+// skipping leading whitespace, starts with prefix — the in-place equivalent of
+// source_text_for_node(id).starts_with(prefix), without the span substr copy
+// (this runs for every `&x` prefix expression and unsafe-argument check).
+fn (tc &TypeChecker) node_source_starts_with(id flat.NodeId, prefix string) bool {
+	if !tc.valid_node_id(id) {
+		return ''.starts_with(prefix)
+	}
+	node := tc.a.nodes[int(id)]
+	file := tc.a.source_files[node.pos.id] or { return node.value.starts_with(prefix) }
+	source := tc.source_texts_by_file[file.name] or { return node.value.starts_with(prefix) }
+	start := int_max(0, int_min(node.pos.offset, source.len))
+	end := int_max(start, int_min(node.pos.end, source.len))
+	if end <= start {
+		return node.value.starts_with(prefix)
+	}
+	mut i := start
+	for i < end && source[i] in [` `, `\t`, `\n`, `\r`] {
+		i++
+	}
+	if end - i < prefix.len {
+		return false
+	}
+	for j in 0 .. prefix.len {
+		if unsafe { source.str[i + j] != prefix.str[j] } {
+			return false
+		}
+	}
+	return true
+}
+
+// node_source_contains reports whether the node's source span contains needle,
+// scanning the file text in place: substr-copying a large span (a match
+// statement can cover thousands of lines) per query multiplies into megabytes.
+// The span is not trimmed; a needle match in leading/trailing whitespace is
+// impossible for identifier-like needles.
+fn (tc &TypeChecker) node_source_contains(id flat.NodeId, needle string) bool {
+	if needle.len == 0 || !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	file := tc.a.source_files[node.pos.id] or { return node.value.contains(needle) }
+	source := tc.source_texts_by_file[file.name] or { return node.value.contains(needle) }
+	start := int_max(0, int_min(node.pos.offset, source.len))
+	end := int_max(start, int_min(node.pos.end, source.len))
+	if end - start < needle.len {
+		return false
+	}
+	for i := start; i <= end - needle.len; i++ {
+		mut j := 0
+		for j < needle.len && unsafe { source.str[i + j] == needle.str[j] } {
+			j++
+		}
+		if j == needle.len {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut tc TypeChecker) check_import_symbol_conflict(id flat.NodeId, name string) {
 	if name.len == 0 || name == '_' || !tc.has_active_import(name) {
 		return
@@ -29342,7 +29402,7 @@ fn (tc &TypeChecker) expr_is_negative_integer_literal(id flat.NodeId) bool {
 		return false
 	}
 	if unalias_type(tc.resolve_type(id)).is_integer()
-		&& tc.source_text_for_node(id).trim_space().starts_with('-') {
+		&& tc.node_source_starts_with(id, '-') {
 		return true
 	}
 	return false
@@ -31923,7 +31983,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				&& node.children_count == 2 {
 				arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 				if tc.expr_tail_is_nil(arg_id)
-					&& tc.source_text_for_node(arg_id).starts_with('unsafe') {
+					&& tc.node_source_starts_with(arg_id, 'unsafe') {
 					name_pos := tc.method_call_name_pos(node, callee)
 					tc.record_error_at(.assignment_mismatch, 'cannot cast `voidptr` to struct', id, token.new_span(name_pos.id,
 						name_pos.offset, node.pos.end))
@@ -36697,7 +36757,7 @@ fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info C
 			name = tc.generic_call_base_name(*base) or { '' }
 		}
 	}
-	if name.len == 0 && info.name.contains('_T_') {
+	if name.len == 0 && info.name.index_after_('_T_', 0) >= 0 {
 		name = info.name.all_before('_T_')
 	}
 	if name.len == 0 {
@@ -43577,6 +43637,10 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	mut seen_match_patterns := map[string]int{}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	mut unsafe_alias_paths := []map[string]bool{}
+	// One in-place scan for the whole match: the old per-condition
+	// source_text_for_node(...).contains(...) copied the entire match span
+	// (thousands of lines for dispatch tables) once per condition.
+	match_source_has_typeof := tc.node_source_contains(id, 'typeof(')
 	$if ownership ? {
 		if value_context {
 			tc.ownership_begin_value_branch_group()
@@ -43621,7 +43685,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			tc.check_match_type_pattern_subject(subject_id, subject_type, cond_id)
 			tc.check_duplicate_match_condition(branch, i, j, cond_id, mut seen_match_values, mut
 				seen_match_ranges, mut seen_match_patterns)
-			if !tc.source_text_for_node(id).contains('typeof(') {
+			if !match_source_has_typeof {
 				tc.record_constant_match_condition(subject_id, cond_id,
 					i < int(node.children_count) - 1)
 			}
