@@ -9248,3 +9248,41 @@ fn main() {}
 ',
 		'cannot call `str()` method recursively')
 }
+
+fn test_recursive_str_preserves_provenance_through_buffered_channels() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_buffered_channel_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	ch := chan Item{cap: 1}
+	ch <- item
+	return (<-ch).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_buffered_channel_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	copy.remaining--
+	ch := chan Item{cap: 1}
+	ch <- copy
+	return (<-ch).str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}

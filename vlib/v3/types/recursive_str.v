@@ -751,9 +751,18 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 				}
 			}
 		}
-		.paren, .prefix, .cast_expr, .as_expr, .dump_expr {
+		.paren, .cast_expr, .as_expr, .dump_expr {
 			if node.children_count > 0 {
 				return tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+			}
+		}
+		.prefix {
+			if node.children_count > 0 {
+				child_id := tc.a.child(node, 0)
+				if node.op == .arrow {
+					return tc.recursive_str_eval_channel_receive(id, child_id, mut env, ctx)
+				}
+				return tc.recursive_str_eval_expr(child_id, mut env, ctx)
 			}
 		}
 		.selector {
@@ -896,6 +905,13 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 			mut operand_bindings := []RecursiveStrBinding{cap: int(node.children_count)}
 			for i in 0 .. node.children_count {
 				operand_bindings << tc.recursive_str_eval_expr(tc.a.child(node, i), mut env, ctx)
+			}
+			if node.op == .arrow && node.children_count >= 2 {
+				tc.recursive_str_apply_channel_send(tc.a.child(node, 0), operand_bindings[1], mut
+					env)
+				return RecursiveStrBinding{
+					typ_name: tc.resolve_type(id).name()
+				}
 			}
 			if node.op == .left_shift && node.children_count >= 2 {
 				lhs_id := tc.a.child(node, 0)
@@ -2114,6 +2130,63 @@ fn recursive_str_binding_has_provenance(binding RecursiveStrBinding) bool {
 		return true
 	}
 	return binding.elements.any(recursive_str_binding_has_provenance(it))
+}
+
+fn (mut tc TypeChecker) recursive_str_eval_channel_receive(result_id flat.NodeId, channel_id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
+	tc.recursive_str_eval_expr(channel_id, mut env, ctx)
+	if unalias_and_unwrap_pointer_type(tc.resolve_type(channel_id)) !is Channel {
+		return RecursiveStrBinding{
+			typ_name: tc.resolve_type(result_id).name()
+		}
+	}
+	name := tc.recursive_str_root_ident(channel_id) or {
+		return RecursiveStrBinding{
+			typ_name: tc.resolve_type(result_id).name()
+		}
+	}
+	channel := env.bindings[name] or {
+		return RecursiveStrBinding{
+			typ_name: tc.resolve_type(result_id).name()
+		}
+	}
+	if channel.elements.len == 0 {
+		return RecursiveStrBinding{
+			typ_name: tc.resolve_type(result_id).name()
+		}
+	}
+	mut payload := channel.elements[0]
+	if payload.typ_name.len == 0 {
+		payload.typ_name = tc.resolve_type(result_id).name()
+	}
+	tc.recursive_str_set_channel_payloads(name, channel.elements[1..].clone(), mut env)
+	return payload
+}
+
+fn (tc &TypeChecker) recursive_str_apply_channel_send(channel_id flat.NodeId, payload RecursiveStrBinding, mut env RecursiveStrEnv) bool {
+	if unalias_and_unwrap_pointer_type(tc.resolve_type(channel_id)) !is Channel {
+		return false
+	}
+	name := tc.recursive_str_root_ident(channel_id) or { return false }
+	channel := env.bindings[name] or { return false }
+	mut payloads := channel.elements.clone()
+	payloads << payload
+	tc.recursive_str_set_channel_payloads(name, payloads, mut env)
+	return true
+}
+
+fn (tc &TypeChecker) recursive_str_set_channel_payloads(name string, payloads []RecursiveStrBinding, mut env RecursiveStrEnv) {
+	source := env.bindings[name] or { return }
+	names := env.bindings.keys()
+	for alias in names {
+		mut binding := env.bindings[alias]
+		if alias != name && (source.storage_id == 0 || binding.storage_id != source.storage_id) {
+			continue
+		}
+		binding.elements = payloads.clone()
+		binding.element_keys = []string{}
+		binding.repeated_element = false
+		env.bindings[alias] = binding
+	}
 }
 
 fn (tc &TypeChecker) recursive_str_apply_array_append(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs RecursiveStrBinding, mut env RecursiveStrEnv) bool {
