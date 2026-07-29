@@ -1442,6 +1442,11 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	if callee.kind == .selector && callee.children_count > 0 {
 		receiver_id = tc.a.child(callee, 0)
 		receiver_binding = tc.recursive_str_eval_expr(receiver_id, mut env, ctx)
+		if field_binding := tc.recursive_str_named_element_binding(receiver_binding,
+			recursive_str_struct_field_key(callee.value), tc.a.child(node, 0))
+		{
+			callee_binding = field_binding
+		}
 	} else if callee.kind == .ident {
 		callee_binding = env.bindings[callee.value] or { RecursiveStrBinding{} }
 	} else {
@@ -1837,10 +1842,9 @@ fn (mut tc TypeChecker) recursive_str_eval_invoked_closure(id flat.NodeId, closu
 }
 
 fn (tc &TypeChecker) recursive_str_method_value_targets_current(selector_id flat.NodeId, receiver_id flat.NodeId, ctx RecursiveStrContext) bool {
-	if resolved := tc.resolved_fn_value_name(selector_id) {
-		if resolved != ctx.fn_name && tc.recursive_str_has_concrete_fn_decl(resolved) {
-			return false
-		}
+	resolved := tc.resolved_fn_value_name(selector_id) or { '' }
+	if resolved != ctx.fn_name && tc.recursive_str_has_concrete_fn_decl(resolved) {
+		return false
 	}
 	if !tc.valid_node_id(receiver_id) {
 		return false
@@ -1853,7 +1857,10 @@ fn (tc &TypeChecker) recursive_str_method_value_targets_current(selector_id flat
 	if actual is Unknown || expected is Unknown {
 		return true
 	}
-	return actual.name() == expected.name()
+	if actual.name() == expected.name() {
+		return true
+	}
+	return actual is Interface && !tc.recursive_str_has_concrete_fn_decl(resolved)
 }
 
 fn (tc &TypeChecker) recursive_str_call_targets_current(call_id flat.NodeId, receiver_id flat.NodeId, receiver RecursiveStrBinding, allow_unresolved bool, ctx RecursiveStrContext) bool {

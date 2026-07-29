@@ -8215,6 +8215,37 @@ fn (item Item) str() string {
 fn main() {}
 ',
 		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_interface_bound_method_value', 'interface Printable {
+	str() string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	printable := Printable(item)
+	recurse := printable.str
+	return recurse()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_function_field_bound_method_value', 'struct Holder {
+	cb fn () string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	holder := Holder{
+		cb: item.str
+	}
+	return holder.cb()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_helper_summary_keeps_later_rebind() {
