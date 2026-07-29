@@ -7112,6 +7112,82 @@ fn (item Item) str() string {
 fn main() {}
 ',
 		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_unreachable_short_circuit_call', 'struct Item {}
+
+fn (item Item) str() string {
+	if false && item.str() == "never" {
+		return "unreachable"
+	}
+	if true || item.str() == "never" {
+		return "ok"
+	}
+	return "unreachable"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert out == 'ok'
+}
+
+fn test_recursive_str_comptime_if_uses_selected_branch() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_inactive_comptime_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	$if threads {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_selected_comptime_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	$if threads {
+	} $else {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+	inactive_call_out := run_good(v3_bin, 'recursive_str_inactive_comptime_call', 'struct Item {}
+
+fn (item Item) str() string {
+	$if threads {
+		return item.str()
+	} $else {
+		return "ok"
+	}
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert inactive_call_out == 'ok'
 }
 
 fn test_recursive_str_helper_return_preserves_receiver_provenance() {

@@ -307,6 +307,9 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 		.select_stmt {
 			return tc.recursive_str_process_select_stmt(id, mut env, ctx)
 		}
+		.comptime_if {
+			return tc.recursive_str_process_comptime_if_stmt(*node, mut env, ctx)
+		}
 		.for_stmt, .for_in_stmt {
 			return tc.recursive_str_process_loop_stmt(id, mut env, ctx)
 		}
@@ -315,6 +318,32 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			return true
 		}
 	}
+}
+
+fn (mut tc TypeChecker) recursive_str_process_comptime_if_stmt(node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
+	if taken := tc.comptime_type_condition_value(node.value) {
+		branch_index := if taken { 0 } else { 1 }
+		if branch_index >= node.children_count {
+			return true
+		}
+		return tc.recursive_str_process_stmt(tc.a.child(&node, branch_index), mut env, ctx)
+	}
+	base := env.clone_env()
+	mut branch_envs := []RecursiveStrEnv{}
+	for i in 0 .. node.children_count {
+		mut branch_env := base.clone_env()
+		if tc.recursive_str_process_stmt(tc.a.child(&node, i), mut branch_env, ctx) {
+			branch_envs << branch_env
+		}
+	}
+	if node.children_count < 2 {
+		branch_envs << base
+	}
+	if branch_envs.len == 0 {
+		return false
+	}
+	env = tc.recursive_str_merge_envs(branch_envs)
+	return true
 }
 
 fn (mut tc TypeChecker) recursive_str_process_select_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
@@ -672,6 +701,9 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		.select_stmt {
 			tc.recursive_str_process_select_stmt(id, mut env, ctx)
 		}
+		.comptime_if {
+			return tc.recursive_str_eval_comptime_if_expr(id, *node, mut env, ctx)
+		}
 		.or_expr {
 			if node.children_count == 0 {
 				return RecursiveStrBinding{}
@@ -723,7 +755,19 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		}
 		.infix {
 			if node.op in [.logical_or, .logical_and] && node.children_count >= 2 {
-				tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+				lhs_id := tc.a.child(node, 0)
+				tc.recursive_str_eval_expr(lhs_id, mut env, ctx)
+				if lhs := tc.constant_bool_value(lhs_id) {
+					if (node.op == .logical_and && !lhs) || (node.op == .logical_or && lhs) {
+						return RecursiveStrBinding{
+							typ_name: tc.resolve_type(id).name()
+						}
+					}
+					tc.recursive_str_eval_expr(tc.a.child(node, 1), mut env, ctx)
+					return RecursiveStrBinding{
+						typ_name: tc.resolve_type(id).name()
+					}
+				}
 				base := env.clone_env()
 				mut rhs_env := base.clone_env()
 				tc.recursive_str_eval_expr(tc.a.child(node, 1), mut rhs_env, ctx)
@@ -751,6 +795,31 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(id).name()
 	}
+}
+
+fn (mut tc TypeChecker) recursive_str_eval_comptime_if_expr(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
+	if taken := tc.comptime_type_condition_value(node.value) {
+		branch_index := if taken { 0 } else { 1 }
+		if branch_index >= node.children_count {
+			return RecursiveStrBinding{
+				typ_name: tc.resolve_type(id).name()
+			}
+		}
+		return tc.recursive_str_eval_expr(tc.a.child(&node, branch_index), mut env, ctx)
+	}
+	base := env.clone_env()
+	mut branch_envs := []RecursiveStrEnv{}
+	mut results := []RecursiveStrBinding{}
+	for i in 0 .. node.children_count {
+		mut branch_env := base.clone_env()
+		results << tc.recursive_str_eval_expr(tc.a.child(&node, i), mut branch_env, ctx)
+		branch_envs << branch_env
+	}
+	if node.children_count < 2 {
+		branch_envs << base
+	}
+	env = tc.recursive_str_merge_envs(branch_envs)
+	return tc.recursive_str_merge_bindings(results)
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_struct_update(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
@@ -1306,7 +1375,15 @@ fn (mut tc TypeChecker) recursive_str_eval_condition(id flat.NodeId, mut env Rec
 	}
 	node := tc.a.node(id)
 	if node.kind == .infix && node.op in [.logical_or, .logical_and] && node.children_count >= 2 {
-		tc.recursive_str_eval_condition(tc.a.child(node, 0), mut env, ctx)
+		lhs_id := tc.a.child(node, 0)
+		tc.recursive_str_eval_condition(lhs_id, mut env, ctx)
+		if lhs := tc.constant_bool_value(lhs_id) {
+			if (node.op == .logical_and && !lhs) || (node.op == .logical_or && lhs) {
+				return
+			}
+			tc.recursive_str_eval_condition(tc.a.child(node, 1), mut env, ctx)
+			return
+		}
 		mut conditional_env := env.clone_env()
 		tc.recursive_str_eval_condition(tc.a.child(node, 1), mut conditional_env, ctx)
 		return
