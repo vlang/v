@@ -12674,6 +12674,12 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 		if parts := t.match_branch_tuple_parts(branch, body_start, lhs_ids.len) {
 			prefix = parts.prefix.clone()
 			assignment = t.make_multi_value_assign(lhs_ids, parts.values)
+		} else if t.match_branch_tail_exits(branch, body_start) {
+			// An exiting branch (return/break/continue/noreturn call) supplies
+			// no tuple values; keep its body unchanged.
+			for j in body_start .. int(branch.children_count) {
+				prefix << t.a.child(branch, j)
+			}
 		} else {
 			tail_id := t.match_branch_multi_return_expr(branch, body_start, lhs_ids.len) or {
 				return none
@@ -12688,7 +12694,9 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 			branch_children << t.a.child(branch, j)
 		}
 		branch_children << prefix
-		branch_children << assignment
+		if assignment != flat.empty_node {
+			branch_children << assignment
+		}
 		start := t.a.children.len
 		t.a.children << branch_children
 		match_children << t.a.add_node(flat.Node{
@@ -12717,6 +12725,45 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 		pos:                  node.pos
 		is_mut:               node.is_mut
 		skip_ownership_drops: node.skip_ownership_drops
+	}
+}
+
+// match_branch_tail_exits reports whether a match branch body always leaves
+// the enclosing scope, so a lowered multi-value match needs no assignment there.
+fn (t &Transformer) match_branch_tail_exits(branch flat.Node, body_start int) bool {
+	if branch.children_count <= body_start {
+		return false
+	}
+	return t.stmt_tail_exits(t.a.child(&branch, branch.children_count - 1))
+}
+
+fn (t &Transformer) stmt_tail_exits(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.return_stmt, .break_stmt, .continue_stmt {
+			return true
+		}
+		.block {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.stmt_tail_exits(t.a.child(&node, node.children_count - 1))
+		}
+		.expr_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.stmt_tail_exits(t.a.child(&node, 0))
+		}
+		.call {
+			return t.is_noreturn_call(id)
+		}
+		else {
+			return false
+		}
 	}
 }
 

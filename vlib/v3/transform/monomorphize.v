@@ -737,10 +737,61 @@ pub fn erase_generic_templates(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 			}
 			erased[key] = decl
 		}
+		t.erase_consts_initialized_by_erased_templates(decls)
 		t.erase_generic_fn_decls(erased)
 		t.timing_profile('  [ttime]   erase apply           ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (erased: ${decls.len - keep.len})')
 	}
 	return t.used_fns
+}
+
+// erase_consts_initialized_by_erased_templates empties const initializers that
+// call a generic template. A building-v compile erases those templates instead
+// of monomorphizing them, so a surviving initializer call would reference a
+// function that no longer exists in the generated C. The V compiler itself
+// never reads such consts; an accidental new use fails loudly as an unknown
+// identifier in C rather than silently reading zeroed storage.
+fn (mut t Transformer) erase_consts_initialized_by_erased_templates(decls map[string]GenericFnDecl) {
+	if decls.len == 0 {
+		return
+	}
+	mut cur_module := ''
+	for i in 0 .. t.a.nodes.len {
+		node := t.a.nodes[i]
+		match node.kind {
+			.file {
+				cur_module = t.tc.file_modules[node.value] or { '' }
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.const_decl {
+				for ci in 0 .. node.children_count {
+					field := t.a.child_node(&node, ci)
+					if field.kind != .const_field || field.children_count == 0 {
+						continue
+					}
+					value_id := t.a.child(field, 0)
+					mut called := map[string]bool{}
+					t.collect_type_erased_generic_template_calls(value_id, cur_module,
+						decls, mut called)
+					if called.len == 0 {
+						continue
+					}
+					mut subtree := map[int]bool{}
+					t.collect_node_subtree_ids(value_id, mut subtree)
+					for idx, _ in subtree {
+						old := t.a.nodes[idx]
+						t.set_node(idx, flat.Node{
+							kind: .empty
+							pos:  old.pos
+						})
+						t.clear_typechecker_node_cache(idx)
+					}
+				}
+			}
+			else {}
+		}
+	}
 }
 
 fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]GenericFnDecl {
