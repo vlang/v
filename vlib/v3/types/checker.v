@@ -15945,10 +15945,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				&& tc.selector_type(expr_id, *expr) == none
 			undefined_self_reference := expr_type is Unknown && expr.kind == .ident
 				&& tc.errors.any(it.node == expr_id && it.msg.starts_with('undefined variable:'))
-			if tc.string_interpolation_recurses_str(expr_type) {
-				tc.record_error_at(.call_arg_mismatch, 'cannot call `str()` method recursively',
-					expr_id, tc.string_interpolation_expr_pos(expr_id))
-			} else if (expr_type is Void && !tc.expr_subtree_has_undefined_variable_error(expr_id))
+			if (expr_type is Void && !tc.expr_subtree_has_undefined_variable_error(expr_id))
 				|| (expr_type is MultiReturn && expr_type.types.len == 0)
 				|| invalid_selector
 				|| (expr_type is Unknown && expr.kind == .ident && tc.cur_scope.lookup(expr.value) == none
@@ -47722,27 +47719,6 @@ fn (tc &TypeChecker) current_fn_has_invalid_defer_mode() bool {
 		for i in 0 .. node.children_count {
 			stack << tc.a.child(node, i)
 		}
-	}
-	return false
-}
-
-fn (tc &TypeChecker) string_interpolation_recurses_str(expr_type Type) bool {
-	fn_id := flat.NodeId(tc.fn_context.node_id)
-	if !tc.valid_node_id(fn_id) {
-		return false
-	}
-	fn_node := tc.a.node(fn_id)
-	if !fn_node.value.ends_with('.str') {
-		return false
-	}
-	for i in 0 .. fn_node.children_count {
-		param := tc.a.child_node(fn_node, i)
-		if param.kind != .param || param.op != .dot {
-			continue
-		}
-		receiver_type := unalias_type(unwrap_pointer(tc.parse_type(param.typ)))
-		interpolation_type := unalias_type(unwrap_pointer(expr_type))
-		return receiver_type.name() == interpolation_type.name()
 	}
 	return false
 }

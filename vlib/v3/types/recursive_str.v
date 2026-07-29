@@ -834,6 +834,30 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		.comptime_if {
 			return tc.recursive_str_eval_comptime_if_expr(id, *node, mut env, ctx)
 		}
+		.string_interp {
+			for i in 0 .. node.children_count {
+				part_id := tc.a.child(node, i)
+				part := tc.a.node(part_id)
+				expr_id := if part.kind == .directive && part.value == 'string_interp_format'
+					&& part.children_count > 0 {
+					tc.a.child(part, 0)
+				} else {
+					part_id
+				}
+				binding := tc.recursive_str_eval_expr(expr_id, mut env, ctx)
+				if !recursive_str_binding_has_unprogressed_receiver(binding) {
+					continue
+				}
+				pos := tc.string_interpolation_expr_pos(expr_id)
+				message := 'cannot call `str()` method recursively'
+				if !tc.errors.any(it.msg == message && it.pos == pos) {
+					tc.record_error_at(.unknown_fn, message, expr_id, pos)
+				}
+			}
+			return RecursiveStrBinding{
+				typ_name: tc.resolve_type(id).name()
+			}
+		}
 		.or_expr {
 			if node.children_count == 0 {
 				return RecursiveStrBinding{}

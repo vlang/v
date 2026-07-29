@@ -9471,3 +9471,55 @@ fn main() {}
 ',
 		'cannot call `str()` method recursively')
 }
+
+fn test_recursive_str_detects_string_interpolation_formatting() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_interpolated_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	return "\${item}"
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_interpolated_aggregate_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	return "\${[item]}"
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_formatted_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	return "\${item:10}"
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_interpolated_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	return "\${next}"
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
