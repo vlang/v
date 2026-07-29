@@ -112,6 +112,11 @@ fn pool_worker(arg voidptr) voidptr {
 			worker_run_ns: if finished_at >= started_at { finished_at - started_at } else { 0 }
 		}
 	}
+	$if prealloc {
+		unsafe {
+			prealloc_thread_cleanup()
+		}
+	}
 	return unsafe { nil }
 }
 
