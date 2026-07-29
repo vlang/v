@@ -4799,14 +4799,20 @@ fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 	}
 	t.exclusive_closure_returns_done = true
 	t.exclusive_closure_return_fns.clear()
+	old_module := t.cur_module
+	defer {
+		t.cur_module = old_module
+	}
 	mut module_name := ''
 	for idx in 0 .. t.a.nodes.len {
 		node := t.a.nodes[idx]
 		if node.kind == .module_decl {
 			module_name = node.value
+			t.cur_module = module_name
 			continue
 		}
 		if node.kind != .fn_decl || node.generic_params().len > 0
+			|| !t.fn_decl_returns_fn_pointer(node, module_name)
 			|| !t.fn_decl_exclusively_returns_fresh_closure(node) {
 			continue
 		}
@@ -4821,6 +4827,29 @@ fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 			t.exclusive_closure_return_fns['${module_name}.${node.value}'] = true
 		}
 	}
+}
+
+fn (t &Transformer) fn_decl_returns_fn_pointer(node flat.Node, module_name string) bool {
+	if node.typ.starts_with('fn ') {
+		return true
+	}
+	if isnil(t.tc) {
+		return false
+	}
+	qname := if module_name in ['', 'main', 'builtin'] || node.value.starts_with('${module_name}.') {
+		node.value
+	} else {
+		'${module_name}.${node.value}'
+	}
+	if ret := t.tc.fn_ret_types[qname] {
+		return ret is types.FnType || (ret is types.Alias && ret.base_type is types.FnType)
+	}
+	if qname != node.value {
+		if ret := t.tc.fn_ret_types[node.value] {
+			return ret is types.FnType || (ret is types.Alias && ret.base_type is types.FnType)
+		}
+	}
+	return t.is_fn_pointer_type_name(node.typ)
 }
 
 fn (t &Transformer) fn_decl_exclusively_returns_fresh_closure(node flat.Node) bool {
