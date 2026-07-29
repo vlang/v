@@ -215,6 +215,10 @@ pub mut:
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
+	// Template-generated nodes keep their original template source location while
+	// retaining the comptime call site used for v1-compatible diagnostic stacks.
+	template_call_sites map[int]token.Pos
+	template_actions    map[int]string
 	// missing_imports retains source import paths for unresolved import nodes.
 	missing_imports map[int]string
 	// file_node_ids records every .file node the parser creates, in creation
@@ -294,6 +298,8 @@ pub fn FlatAst.new() FlatAst {
 		export_fn_names:        map[string]string{}
 		noreturn_fns:           map[string]bool{}
 		source_files:           map[int]&token.File{}
+		template_call_sites:    map[int]token.Pos{}
+		template_actions:       map[int]string{}
 		missing_imports:        map[int]string{}
 		text_ids:               map[string]TextId{}
 		specialized_fn_nodes:   map[int]bool{}

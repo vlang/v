@@ -274,6 +274,16 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		ppsw2 := time.new_stopwatch()
 		any_started := p.a.worker_pool.run(tasks)
 		p.timing_profile('  [ttime]   pp parse pool    ${f64(ppsw2.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		// A template can allocate extra source IDs inside any chunk. Rebase later
+		// chunks in input order so those IDs remain identical to serial parsing
+		// and cannot collide with a later source file.
+		mut next_chunk_file_id := p.next_file_id
+		for ci in 0 .. thread_count {
+			worker_first_file_id := dispatch_file_id_start + bounds[ci + 1]
+			parser_workers[ci].remap_worker_file_ids(worker_first_file_id,
+				next_chunk_file_id - worker_first_file_id)
+			next_chunk_file_id = parser_workers[ci].next_file_id
+		}
 		// Merge each helper in fixed chunk order (input file order),
 		// so node numbering stays deterministic and byte-identical to serial.
 		ppsw3 := time.new_stopwatch()
@@ -287,10 +297,72 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			}
 		}
 		p.timing_profile('  [ttime]   pp merge         ${f64(ppsw3.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		p.next_file_id = dispatch_file_id_start + paths.len
+		p.next_file_id = next_chunk_file_id
 		p.timing_profile('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len})')
 		return starts, any_started
 	}
+}
+
+fn remap_worker_pos(pos token.Pos, first_file_id int, next_file_id int, delta int) token.Pos {
+	if delta == 0 || pos.id < first_file_id || pos.id >= next_file_id {
+		return pos
+	}
+	return token.Pos{
+		...pos
+		id: pos.id + delta
+	}
+}
+
+fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
+	if delta == 0 {
+		return
+	}
+	old_next_file_id := p.next_file_id
+	for i in 0 .. p.a.nodes.len {
+		pos := remap_worker_pos(p.a.nodes[i].pos, first_file_id, old_next_file_id, delta)
+		p.a.nodes[i] = p.a.nodes[i].with_pos(pos)
+	}
+	mut source_files := map[int]&token.File{}
+	for file_id, file in p.a.source_files {
+		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+			file_id + delta
+		} else {
+			file_id
+		}
+		source_files[shifted_id] = file
+	}
+	p.a.source_files = source_files.move()
+	mut template_call_sites := map[int]token.Pos{}
+	for file_id, call_site in p.a.template_call_sites {
+		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+			file_id + delta
+		} else {
+			file_id
+		}
+		template_call_sites[shifted_id] = remap_worker_pos(call_site, first_file_id,
+			old_next_file_id, delta)
+	}
+	p.a.template_call_sites = template_call_sites.move()
+	mut template_actions := map[int]string{}
+	for file_id, action in p.a.template_actions {
+		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+			file_id + delta
+		} else {
+			file_id
+		}
+		template_actions[shifted_id] = action
+	}
+	p.a.template_actions = template_actions.move()
+	for i in 0 .. p.diagnostics.len {
+		p.diagnostics[i] = Diagnostic{
+			...p.diagnostics[i]
+			pos: remap_worker_pos(p.diagnostics[i].pos, first_file_id, old_next_file_id, delta)
+		}
+	}
+	if p.cur_file_id >= first_file_id && p.cur_file_id < old_next_file_id {
+		p.cur_file_id += delta
+	}
+	p.next_file_id += delta
 }
 
 fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
@@ -941,26 +1013,27 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		w.a.nodes.len = 0
 	}
 	if ma.has_scope {
-		// Pre-index diagnostic line tables from the worker source buffers while
-		// they are still alive; the serial tail only inserts the results.
-		mut file_ids := w.a.source_files.keys()
-		file_ids.sort()
-		for source_idx, file_id in file_ids {
-			file := w.a.source_files[file_id] or { continue }
-			if source_idx >= w.a.source_buffers.len {
-				continue
-			}
-			source := w.a.source_buffers[source_idx]
-			mut file_set := token.FileSet.new()
-			mut stored_file := file_set.add_file(file.name.clone(), file.size)
-			stored_file.index_lines(source)
+		// Clone diagnostic line tables while the scoped worker still owns them.
+		// A source file does not necessarily have a matching source buffer:
+		// template parsing stores the generated V source separately from the
+		// real template file registered for diagnostic remapping.
+		for file_id, file in w.a.source_files {
 			ma.pending_files << PendingSourceFile{
 				file_id: file_id
-				file:    stored_file
+				file:    clone_parser_source_file(file)
 			}
 		}
 	}
 	return unsafe { nil }
+}
+
+fn clone_parser_source_file(file &token.File) &token.File {
+	mut file_set := token.FileSet.new()
+	mut stored_file := file_set.add_file(file.name.clone(), file.size)
+	for line in 2 .. file.line_count() + 1 {
+		stored_file.add_line(file.line_start(line))
+	}
+	return stored_file
 }
 
 fn par_parse_merge_enabled() bool {
@@ -1121,12 +1194,20 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 	}
 	for diagnostic in w.diagnostics {
 		p.append_diagnostic(Diagnostic{
-			file:    diagnostic.file.clone()
-			pos:     diagnostic.pos
-			line:    diagnostic.line
-			column:  diagnostic.column
-			message: diagnostic.message.clone()
+			file:     diagnostic.file.clone()
+			pos:      diagnostic.pos
+			line:     diagnostic.line
+			column:   diagnostic.column
+			message:  diagnostic.message.clone()
+			severity: diagnostic.severity.clone()
 		})
+	}
+	for file_id, call_site in w.a.template_call_sites {
+		p.a.template_call_sites[file_id] = call_site
+	}
+	for file_id, action in w.a.template_actions {
+		_, canonical := p.a.intern_text(action)
+		p.a.template_actions[file_id] = canonical
 	}
 	if use_pending {
 		// Line tables were indexed on the copy thread; only the map inserts
@@ -1148,20 +1229,10 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		}
 	} else {
 		// Node and metadata text has already been promoted into the master text
-		// table. Rebuild only the compact line indexes needed by diagnostics and
-		// let the much larger worker source buffers die with the task arena.
-		mut file_ids := w.a.source_files.keys()
-		file_ids.sort()
-		for source_idx, file_id in file_ids {
-			file := w.a.source_files[file_id] or { continue }
-			if source_idx >= w.a.source_buffers.len {
-				continue
-			}
-			source := w.a.source_buffers[source_idx]
-			mut file_set := token.FileSet.new()
-			mut stored_file := file_set.add_file(file.name.clone(), file.size)
-			stored_file.index_lines(source)
-			p.a.source_files[file_id] = stored_file
+		// table. Keep only the compact line indexes needed by diagnostics and let
+		// the much larger worker source buffers die with the task arena.
+		for file_id, file in w.a.source_files {
+			p.a.source_files[file_id] = clone_parser_source_file(file)
 		}
 	}
 	for key, value in w.comptime_const_values {

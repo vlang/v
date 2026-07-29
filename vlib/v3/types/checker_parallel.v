@@ -149,8 +149,8 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 }
 
 // check_semantics_scoped_serial keeps a no-parallel preallocated check bounded
-// without starting helper threads. Each function batch publishes only its
-// diagnostics and node caches before its disposable arena is released.
+// without starting helper threads. The serial semantic pass scopes each function
+// independently when scope_parallel_check_workers is enabled.
 fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.resolution_type_mode = false
 	tc.install_type_cache_overlay()
@@ -497,6 +497,46 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_c_string_buffer_conversion := a.msg.starts_with('to convert a C string buffer pointer')
+	b_is_c_string_buffer_conversion := b.msg.starts_with('to convert a C string buffer pointer')
+	a_is_pointer_string_cast := a.msg.starts_with('cannot cast pointer type ')
+		&& a.msg.contains(' to string')
+	b_is_pointer_string_cast := b.msg.starts_with('cannot cast pointer type ')
+		&& b.msg.contains(' to string')
+	if a_is_c_string_buffer_conversion && b_is_pointer_string_cast {
+		return -1
+	}
+	if b_is_c_string_buffer_conversion && a_is_pointer_string_cast {
+		return 1
+	}
+	a_is_option_result_split := a.msg.starts_with('Option and Result types have been split')
+	b_is_option_result_split := b.msg.starts_with('Option and Result types have been split')
+	a_is_none_result_mismatch := a.msg.starts_with('cannot use `none` as Result type')
+	b_is_none_result_mismatch := b.msg.starts_with('cannot use `none` as Result type')
+	if a_is_option_result_split && b_is_none_result_mismatch {
+		return -1
+	}
+	if b_is_option_result_split && a_is_none_result_mismatch {
+		return 1
+	}
+	a_is_option_array_push := a.msg == 'cannot push to Option array that was not unwrapped first'
+	b_is_option_array_push := b.msg == 'cannot push to Option array that was not unwrapped first'
+	a_is_option_array_unwrap := a.msg.contains('cannot be used as `[]')
+		&& a.msg.ends_with('unwrap the option first')
+	b_is_option_array_unwrap := b.msg.contains('cannot be used as `[]')
+		&& b.msg.ends_with('unwrap the option first')
+	if (a_is_option_array_push || a_is_option_array_unwrap)
+		&& (b_is_option_array_push || b_is_option_array_unwrap) {
+		if a.pos.id != b.pos.id {
+			return a.pos.id - b.pos.id
+		}
+		if a.pos.offset != b.pos.offset {
+			return a.pos.offset - b.pos.offset
+		}
+		if a_is_option_array_push != b_is_option_array_push {
+			return if a_is_option_array_push { -1 } else { 1 }
+		}
+	}
 	a_is_bare_generic_fntype_decl := a.msg.starts_with('generic function `')
 		&& a.msg.contains(' in fn declaration must specify the generic type names')
 	b_is_bare_generic_fntype_decl := b.msg.starts_with('generic function `')
@@ -739,6 +779,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.insert_fn_param_binding(p)
 	}
 	tc.insert_implicit_veb_ctx(node)
+	tc.check_veb_app_method_params(flat.NodeId(fn_idx), node)
 	// Open generic declarations are checked when they are instantiated.  Walking every
 	// template in a selected module diagnoses names that only exist after comptime
 	// expansion (and even dead generic helpers), unlike the reference compiler.
@@ -752,6 +793,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	should_check_generic_body := generic_params.len == 0 || qname in tc.selected_file_called_fns
 	if should_check_generic_body && !signature_has_bare_generic_type {
 		tc.check_fn_body(node)
+		tc.check_recursive_str_calls(flat.NodeId(fn_idx), node)
 	} else if generic_params.len > 0 && node.value.contains('.')
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_deferred_generic_receiver_comparisons(node)
@@ -892,7 +934,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			raw_param_type := tc.parse_type(param.typ)
 			receiver_type := unwrap_pointer(raw_receiver_type)
 			param_type := unwrap_pointer(raw_param_type)
-			if receiver_type.name() == param_type.name()
+			if !receiver.is_mut && !param.is_mut && receiver_type.name() == param_type.name()
 				&& raw_receiver_type.name() != raw_param_type.name() {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch,
@@ -939,7 +981,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		return
 	}
 	for diagnostic in tc.errors {
-		if diagnostic.msg == 'expecting `:=` (e.g. `mut x :=`)' || diagnostic.msg.starts_with('redefinition of parameter `') {
+		if diagnostic.msg == 'expecting `:=` (e.g. `mut x :=`)' {
 			return
 		}
 	}
@@ -1211,6 +1253,53 @@ fn (tc &TypeChecker) expr_subtree_has_error(id flat.NodeId) bool {
 	return false
 }
 
+fn (tc &TypeChecker) expr_subtree_has_undefined_ident_error(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	for diagnostic in tc.errors {
+		if diagnostic.kind != .unknown_ident
+			|| (!diagnostic.msg.starts_with('undefined variable:')
+			&& !diagnostic.msg.starts_with('undefined ident:')) {
+			continue
+		}
+		if diagnostic.node == id {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) expr_subtree_has_undefined_variable_error(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	root := tc.a.node(id)
+	for diagnostic in tc.errors {
+		if diagnostic.kind != .unknown_ident || !diagnostic.msg.starts_with('undefined variable:') {
+			continue
+		}
+		if diagnostic.node == id {
+			return true
+		}
+		if diagnostic.pos.id == root.pos.id && diagnostic.pos.offset >= root.pos.offset
+			&& diagnostic.pos.end <= root.pos.end {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) expr_subtree_has_no_value_error(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	root := tc.a.node(id)
+	return tc.errors.any(it.msg.contains('does not return a value') && (it.node == id
+		|| (it.pos.id == root.pos.id && it.pos.offset >= root.pos.offset
+		&& it.pos.end <= root.pos.end)))
+}
+
 fn (tc &TypeChecker) expr_subtree_has_error_except(id flat.NodeId, ignored TypeErrorKind) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -1269,8 +1358,12 @@ fn (tc &TypeChecker) expr_subtree_allows_unused_warning(id flat.NodeId) bool {
 	return tc.errors.any(it.pos.id == root.pos.id && it.pos.offset >= root.pos.offset
 		&& it.pos.end <= root.pos.end && (it.msg == 'map value cannot be only `none`'
 		|| it.msg == 'cannot take the address of a literal value'
+		|| it.msg.starts_with('ambiguous field `')
+		|| it.msg.starts_with('invalid empty map initialisation syntax')
 		|| it.msg.starts_with('invalid map value: expected ')
-		|| (it.msg.starts_with('generic struct `')
+		|| (it.msg.starts_with('type mismatch, `') && it.msg.ends_with('` must return a bool'))
+		|| (it.msg.contains('` is a generic fn, you should pass its concrete types, e.g. ')
+		&& it.msg.ends_with('[int]')) || (it.msg.starts_with('generic struct `')
 		&& it.msg.contains('` must specify type parameter'))))
 }
 
@@ -1334,6 +1427,10 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 				}
 			}
 		}
+		if current.kind == .comptime_for && candidate_names[current.typ]
+			&& shadow_depth[current.typ] == 0 {
+			used_names[current.typ] = true
+		}
 		for i in 0 .. current.children_count {
 			if i % 2 == 0 && current.kind == .decl_assign {
 				lhs := tc.a.child_node(current, i)
@@ -1369,6 +1466,9 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_uses_ident(node, param.value) {
 			continue
 		}
+		if tc.fn_body_reflects_param_type(node, param.typ) {
+			continue
+		}
 		mut has_param_error := false
 		for diagnostic in tc.errors {
 			if diagnostic.node == param_id
@@ -1389,6 +1489,30 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		tc.record_notice_at(.unknown_ident, 'unused parameter: `${param.value}`', param_id,
 			tc.node_value_diagnostic_pos(param_id))
 	}
+}
+
+fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type string) bool {
+	if param_type.len == 0 || param_type !in node.generic_params() {
+		return false
+	}
+	mut stack := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			stack << child_id
+		}
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		child := tc.a.node(id)
+		if child.kind == .comptime_for && child.typ == param_type {
+			return true
+		}
+		for i in 0 .. child.children_count {
+			stack << tc.a.child(child, i)
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {

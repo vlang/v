@@ -3194,6 +3194,17 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	}
 	// `typeof(<var>)` / `typeof(<var>).name` / `typeof(<var>).idx`: the field's own type,
 	// not the FieldData metadata struct.
+	if node.kind == .typeof_expr && t.typeof_arg_is_field_typ(id, var_name) {
+		return t.make_string_literal(fm.typ)
+	}
+	if node.kind == .selector && node.children_count > 0
+		&& t.typeof_arg_is_field_typ(t.a.child(&node, 0), var_name) {
+		match node.value {
+			'name' { return t.make_string_literal(fm.typ) }
+			'idx' { return t.make_int_literal(fm.typ_id) }
+			else {}
+		}
+	}
 	if node.kind == .typeof_expr && t.typeof_arg_is_var(id, var_name) {
 		return t.make_string_literal(fm.typ)
 	}
@@ -3404,6 +3415,22 @@ fn (t &Transformer) typeof_arg_is_var(id flat.NodeId, var_name string) bool {
 	}
 	arg := t.a.child_node(&node, 0)
 	return arg.kind == .ident && arg.value == var_name
+}
+
+fn (t &Transformer) typeof_arg_is_field_typ(id flat.NodeId, var_name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .typeof_expr || node.children_count == 0 {
+		return false
+	}
+	arg := t.a.child_node(&node, 0)
+	if arg.kind != .selector || arg.value != 'typ' || arg.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(arg, 0)
+	return base.kind == .ident && base.value == var_name
 }
 
 // dollar_selector_names_var reports whether a `$(...)` selector's name expression is the current

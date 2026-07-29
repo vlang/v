@@ -34,11 +34,18 @@ const sql_query_data_alias_reserved_tokens = [
 // Diagnostic is a structured source-ingestion, lexical, or parse diagnostic.
 pub struct Diagnostic {
 pub:
-	file    string
-	pos     token.Pos
-	line    int
-	column  int
+	file     string
+	pos      token.Pos
+	line     int
+	column   int
+	severity string
+	message  string
+}
+
+struct MalformedScannerDeclaration {
 	message string
+	offset  int
+	scope   token.Pos
 }
 
 // Parser represents parser data used by parser.
@@ -96,6 +103,7 @@ mut:
 	pending_decl_attrs                []string
 	pending_decl_attr_kinds           []int
 	in_for_container                  bool
+	in_select_branch_condition        int
 	in_array_literal                  int
 	in_map_value                      int
 	in_struct_init_value              int
@@ -165,6 +173,8 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			disabled_fns:           map[string]bool{}
 			export_fn_names:        map[string]string{}
 			source_files:           map[int]&token.File{}
+			template_call_sites:    map[int]token.Pos{}
+			template_actions:       map[int]string{}
 			missing_imports:        map[int]string{}
 			text_ids:               map[string]flat.TextId{}
 			specialized_fn_nodes:   map[int]bool{}
@@ -497,6 +507,24 @@ fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
 	})
 }
 
+fn (mut p Parser) record_warning_span(message string, start int, end int) {
+	clamped_start := clamp_source_offset(start, p.s.src.len)
+	clamped_end := clamp_source_offset(end, p.s.src.len)
+	mut line := 1
+	mut column := clamped_start + 1
+	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
+		line, column = p.s.current_file().find_line_and_column(clamped_start)
+	}
+	p.append_diagnostic(Diagnostic{
+		file:     p.cur_file
+		pos:      token.new_span(p.cur_file_id, clamped_start, clamped_end)
+		line:     line
+		column:   column
+		severity: 'warning:'
+		message:  message
+	})
+}
+
 fn (mut p Parser) append_diagnostic(diagnostic Diagnostic) {
 	if p.diagnostic_limit_reached {
 		return
@@ -516,9 +544,65 @@ fn (mut p Parser) append_diagnostic(diagnostic Diagnostic) {
 }
 
 fn (mut p Parser) collect_scanner_diagnostics() {
+	mut malformed_declarations := []MalformedScannerDeclaration{}
 	for diagnostic in p.s.diagnostics {
+		if diagnostic.message.starts_with('identifier name `')
+			&& scanner_diagnostic_starts_assignment(p.s.src, diagnostic.end) {
+			malformed_declarations << MalformedScannerDeclaration{
+				message: diagnostic.message
+				offset:  diagnostic.offset
+				scope:   p.scanner_diagnostic_lexical_scope(diagnostic.offset, diagnostic.end)
+			}
+		}
+	}
+	for diagnostic in p.s.diagnostics {
+		is_declaration := scanner_diagnostic_starts_assignment(p.s.src, diagnostic.end)
+		if !is_declaration && malformed_declarations.any(it.message == diagnostic.message
+			&& it.offset < diagnostic.offset && it.scope.id == p.cur_file_id
+			&& diagnostic.offset >= it.scope.offset && diagnostic.end <= it.scope.end) {
+			continue
+		}
 		p.record_diagnostic_span(diagnostic.message, diagnostic.offset, diagnostic.end)
 	}
+}
+
+fn (p &Parser) scanner_diagnostic_lexical_scope(start int, end int) token.Pos {
+	mut scope := token.new_span(p.cur_file_id, 0, p.s.src.len)
+	mut scope_len := p.s.src.len
+	mut scope_scanner := scanner.new_scanner(p.prefs, .normal)
+	scope_scanner.init(p.s.current_file(), p.s.src)
+	mut open_braces := []int{}
+	for {
+		tok := scope_scanner.scan()
+		if tok == .lcbr {
+			open_braces << scope_scanner.pos
+		} else if tok == .rcbr && open_braces.len > 0 {
+			open := open_braces.pop()
+			close := scope_scanner.offset
+			if open <= start && close >= end && close - open < scope_len {
+				scope = token.new_span(p.cur_file_id, open, close)
+				scope_len = close - open
+			}
+		}
+		if tok == .eof {
+			break
+		}
+	}
+	return scope
+}
+
+fn scanner_diagnostic_starts_assignment(source string, start int) bool {
+	mut cursor := start
+	for cursor < source.len && source[cursor] in [` `, `\t`, `\r`, `\n`] {
+		cursor++
+	}
+	if cursor >= source.len {
+		return false
+	}
+	if source[cursor] == `:` {
+		return cursor + 1 < source.len && source[cursor + 1] == `=`
+	}
+	return source[cursor] == `=` && (cursor + 1 >= source.len || source[cursor + 1] != `=`)
 }
 
 // read_source_file_raw reads the complete file or returns the I/O error. Source
@@ -1227,6 +1311,8 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 		start := p.add_children(param_ids)
 		is_v_header_decl := !is_c_decl && p.cur_file.ends_with('.vh')
+		is_trusted_c_decl := is_c_decl
+			&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == 'trusted')
 		if disable_body && is_v_header_decl {
 			p.mark_disabled_fn(name)
 		}
@@ -1240,8 +1326,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
 			// Function nodes do not otherwise use is_mut. On a .vh declaration it
-			// records that the body lives in a cached object and must not be emitted.
-			is_mut: is_v_header_decl
+			// records that the body lives in a cached object and must not be emitted;
+			// on a C declaration it preserves the parser's implicit unsafe/trusted state.
+			is_mut: is_v_header_decl || is_trusted_c_decl
 		})
 		p.pending_export = ''
 		p.register_pending_noreturn(name)
@@ -7573,7 +7660,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			continue
 		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
-		if p.tok == .lcbr && (!p.in_for_container || p.current_lcbr_is_attached()) {
+		if p.tok == .lcbr && (p.in_select_branch_condition == 0 || p.current_lcbr_is_attached()
+			|| p.select_condition_has_qualified_struct_type(lhs))
+			&& (!p.in_for_container || p.current_lcbr_is_attached()) {
 			lhs_node := p.a.nodes[int(lhs)]
 			if p.peek() == .rcbr && p.is_comptime_type_accessor(lhs) {
 				p.next() // skip `{`
@@ -8710,35 +8799,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				val_type := p.parse_type_name()
 				map_type := 'map[${key_type}]${val_type}'
 				if p.tok == .lcbr {
-					p.next() // skip {
-					mut ids := []flat.NodeId{}
-					for p.tok != .rcbr && p.tok != .eof {
-						if p.tok == .semicolon {
-							p.next()
-							continue
-						}
-						k := p.expr(.lowest)
-						p.check(.colon)
-						p.in_map_value++
-						v := p.expr(.lowest)
-						p.in_map_value--
-						ids << k
-						ids << v
-						if p.tok == .comma || p.tok == .semicolon {
-							p.next()
-						}
-					}
-					p.check(.rcbr)
-					if ids.len > 0 {
-						istart := p.add_children(ids)
-						return p.add_node(flat.Node{
-							kind:           .map_init
-							value:          map_type
-							children_start: istart
-							children_count: flat.child_count(ids.len)
-							pos:            p.span_to(name_pos)
-						})
-					}
+					return p.map_init_after_type(map_type, name_pos)
 				}
 				return p.a.add_node(flat.Node{
 					kind:  .map_init
@@ -9141,6 +9202,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.question {
+			option_start := p.span_start()
 			p.next()
 			inner_type := p.parse_type_name()
 			type_name := if inner_type.len > 0 { '?${inner_type}' } else { '?' }
@@ -9157,6 +9219,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				})
 			}
 			if p.tok == .lcbr {
+				if inner_type.starts_with('map[') {
+					return p.empty_map_init_after_type(type_name, option_start)
+				}
 				return p.struct_init(type_name)
 			}
 			return p.add(flat.NodeKind.empty)
@@ -9279,6 +9344,62 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.add(flat.NodeKind.empty)
 		}
 	}
+}
+
+fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
+	p.next() // skip {
+	mut ids := []flat.NodeId{}
+	for p.tok != .rcbr && p.tok != .eof {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		key := p.expr(.lowest)
+		p.check(.colon)
+		p.in_map_value++
+		value := p.expr(.lowest)
+		p.in_map_value--
+		ids << key
+		ids << value
+		if p.tok == .comma || p.tok == .semicolon {
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	children_start := p.add_children(ids)
+	return p.add_node(flat.Node{
+		kind:           .map_init
+		value:          map_type
+		children_start: children_start
+		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(start)
+	})
+}
+
+fn (mut p Parser) empty_map_init_after_type(map_type string, start int) flat.NodeId {
+	p.next() // skip {
+	if p.tok != .rcbr {
+		p.record_diagnostic_span('`}` expected; explicit `map` initialization does not support parameters',
+			p.tok_pos, p.tok_end)
+		mut nested_braces := 0
+		for p.tok != .eof {
+			if p.tok == .lcbr {
+				nested_braces++
+			} else if p.tok == .rcbr {
+				if nested_braces == 0 {
+					break
+				}
+				nested_braces--
+			}
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	return p.add_node(flat.Node{
+		kind:  .map_init
+		value: map_type
+		pos:   p.span_to(start)
+	})
 }
 
 fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int) ?flat.NodeId {
@@ -9591,6 +9712,26 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	// `a#[..]` gated slice: clamped, non-panicking (lowers to slice_ni/substr_ni)
 	gated_op := if p.lit == '#' { flat.Op.gated_index } else { flat.Op.none }
 	p.check(.lsbr)
+	if p.tok == .rsbr {
+		lhs_node := p.a.node(lhs)
+		if lhs_node.kind == .array_init && lhs_node.typ.starts_with('[]') {
+			p.record_warning_span('use `x := []Type{}` instead of `x := []Type`',
+				lhs_node.pos.offset, p.tok_pos)
+		}
+		p.record_diagnostic('invalid expression: unexpected token `]`', p.tok_pos)
+		p.next()
+		for p.tok == .lsbr && p.peek() == .rsbr {
+			p.next()
+			p.next()
+		}
+		istart := p.add_children2(lhs, flat.empty_node)
+		return p.add_node_from(flat.Node{
+			kind:           .index
+			op:             gated_op
+			children_start: istart
+			children_count: 2
+		}, lhs)
+	}
 	first := p.index_part_expr()
 	if p.tok == .rsbr {
 		p.next()
@@ -10692,7 +10833,7 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		is_else = true
 		p.next()
 	} else {
-		cond_ids << p.expr(.lowest)
+		cond_ids << p.select_branch_expr()
 		// could be assignment: ch <- val, val := <-ch, or val = <-ch
 		if token_is_assignment(p.tok) || p.tok == .decl_assign {
 			op := p.tok
@@ -10706,7 +10847,7 @@ fn (mut p Parser) select_branch() flat.NodeId {
 				recv_compound_op = op.str()
 			}
 			p.next()
-			cond_ids << p.expr(.lowest)
+			cond_ids << p.select_branch_expr()
 		}
 	}
 	mut body_ids := []flat.NodeId{}
@@ -10735,6 +10876,13 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
+}
+
+fn (mut p Parser) select_branch_expr() flat.NodeId {
+	p.in_select_branch_condition++
+	id := p.expr(.lowest)
+	p.in_select_branch_condition--
+	return id
 }
 
 // sizeof_expr supports sizeof expr handling for Parser.
@@ -11094,6 +11242,18 @@ fn (mut p Parser) current_lcbr_looks_struct_init() bool {
 fn (p &Parser) current_lcbr_is_attached() bool {
 	return p.tok == .lcbr && p.tok_pos > 0 && p.tok_pos <= p.s.src.len
 		&& !p.s.src[p.tok_pos - 1].is_space()
+}
+
+fn (p &Parser) select_condition_has_qualified_struct_type(lhs flat.NodeId) bool {
+	type_name := p.type_expr_name(lhs)
+	base := type_name.all_before('[')
+	if !base.contains('.') {
+		return false
+	}
+	module_alias := base.all_before('.')
+	short_name := base.all_after_last('.')
+	return p.imported_module_names[module_alias] && short_name.len > 0 && short_name[0] >= `A`
+		&& short_name[0] <= `Z`
 }
 
 fn (mut p Parser) current_generic_suffix_args_followed_by_lcbr() ?[]string {

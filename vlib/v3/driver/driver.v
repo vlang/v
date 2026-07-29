@@ -3078,6 +3078,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		export_fn_names:        ast.export_fn_names
 		noreturn_fns:           ast.noreturn_fns
 		source_files:           ast.source_files
+		template_call_sites:    ast.template_call_sites.clone()
+		template_actions:       clone_int_string_map(ast.template_actions)
 		source_buffers:         ast.source_buffers
 		text_values:            text_values
 		text_ids:               text_ids
@@ -4338,10 +4340,21 @@ pub fn run(args []string) {
 		}
 		for diagnostic in p.diagnostics {
 			if file := a.source_files[diagnostic.pos.id] {
-				eprintln(v3errors.formatted_source_error('error:', diagnostic.message, file,
+				_ = file
+				severity := if diagnostic.severity.len > 0 {
+					diagnostic.severity
+				} else {
+					'error:'
+				}
+				eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
 					diagnostic.pos))
 			} else {
-				eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: error: ${diagnostic.message}')
+				severity := if diagnostic.severity.len > 0 {
+					diagnostic.severity
+				} else {
+					'error:'
+				}
+				eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
 			}
 		}
 		exit(1)
@@ -4672,7 +4685,53 @@ pub fn run(args []string) {
 					&pre_tc)
 				has_invalid_comptime_struct_update :=
 					pre_tc.errors.any(it.msg == 'cannot use struct update syntax in compile time expressions')
-				if fixture_uses_generics && !has_invalid_comptime_struct_update {
+				has_missing_closure_generic := pre_tc.errors.any(
+					(it.msg.starts_with('Add the generic type `')
+					&& it.msg.contains(' to the anon fn generic list type'))
+					|| it.msg.starts_with('generic closure fn must specify type parameter'))
+				has_instantiated_generic_as_cast_error := pre_tc.errors.any(int(it.node) >= 0
+					&& int(it.node) < a.nodes.len && a.nodes[int(it.node)].kind == .as_expr
+					&& it.msg.starts_with('cannot cast `'))
+				has_empty_array_generic_error :=
+					pre_tc.errors.any(it.msg == 'cannot use empty array as generic argument')
+				has_generic_fntype_arg_mismatch := pre_tc.errors.any(
+					it.msg.starts_with('cannot use `fn ') && it.msg.contains('` as `fn ')
+					&& it.msg.contains(' in argument '))
+				has_generic_call_arg_mismatch := pre_tc.errors.any(
+					it.msg.starts_with('cannot use `') && it.msg.contains(' in argument '))
+				has_generic_inference_error :=
+					pre_tc.errors.any(it.msg.starts_with('could not infer generic type `'))
+				has_generic_struct_init_error := pre_tc.errors.any(
+					it.msg.starts_with('generic struct init type parameter `')
+					|| it.msg.starts_with('generic struct init expects '))
+				has_generic_type_mismatch :=
+					pre_tc.errors.any(it.msg.starts_with('mismatched types `'))
+				has_unknown_method_error := pre_tc.errors.any(
+					it.msg.starts_with('unknown method or field: `')
+					|| (it.msg.starts_with('method `')
+					&& it.msg.contains(' cannot bind `voidptr` to a generic receiver pattern')))
+				mut has_instantiated_compile_error := false
+				for type_error in pre_tc.errors {
+					if type_error.kind != .compile_error || int(type_error.node) < 0
+						|| int(type_error.node) >= a.nodes.len {
+						continue
+					}
+					error_node := a.node(type_error.node)
+					if error_node.kind != .call || error_node.children_count == 0 {
+						continue
+					}
+					callee := a.child_node(error_node, 0)
+					if callee.kind != .ident || callee.value != '__v_compile_error' {
+						has_instantiated_compile_error = true
+						break
+					}
+				}
+				if fixture_uses_generics && !has_invalid_comptime_struct_update
+					&& !has_missing_closure_generic && !has_instantiated_generic_as_cast_error
+					&& !has_instantiated_compile_error && !has_empty_array_generic_error
+					&& !has_generic_fntype_arg_mismatch && !has_generic_call_arg_mismatch
+					&& !has_generic_inference_error && !has_generic_struct_init_error
+					&& !has_generic_type_mismatch && !has_unknown_method_error {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc,
 						fixture_used_fns, false)
 				}
@@ -7200,11 +7259,16 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
 	for notice in ordered_notices {
+		if all_errors && notice.msg.starts_with('unused variable: `')
+			&& unused_notice_is_parameter_redefinition_cascade(a, notice, type_errors) {
+			continue
+		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
 		eprintln(v3errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
 		print_type_diagnostic_details(notice.details)
 	}
-	source_errors := reorder_chained_generic_inference_errors(a, type_errors)
+	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a,
+		type_errors))
 	mut ordered_errors := []types.TypeError{cap: source_errors.len}
 	for err in source_errors {
 		if !is_bare_generic_fntype_decl_error(err) {
@@ -7223,9 +7287,134 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		eprintln(v3errors.formatted_error(severity, err.msg, a, err.node, err.pos))
 		print_type_diagnostic_details(err.details)
 	}
-	if !all_errors && type_errors.len > 20 {
-		eprintln('... and ${type_errors.len - 20} more errors')
+	if !all_errors && ordered_errors.len > max_errors {
+		eprintln('... and ${ordered_errors.len - max_errors} more errors')
 	}
+}
+
+fn unused_notice_is_parameter_redefinition_cascade(a &flat.FlatAst, notice types.TypeError, type_errors []types.TypeError) bool {
+	notice_fn := type_diagnostic_enclosing_fn(a, notice)
+	if int(notice_fn) < 0 {
+		return false
+	}
+	notice_name := notice.msg.find_between('`', '`')
+	for diagnostic in type_errors {
+		if !diagnostic.msg.starts_with('redefinition of parameter `') {
+			continue
+		}
+		error_fn := type_diagnostic_enclosing_fn(a, diagnostic)
+		redefined_name := diagnostic.msg.find_between('`', '`')
+		if error_fn == notice_fn && notice_name.len > 0 && notice_name == redefined_name {
+			return true
+		}
+	}
+	return false
+}
+
+fn dedupe_type_diagnostics(a &flat.FlatAst, type_errors []types.TypeError) []types.TypeError {
+	mut deduped := []types.TypeError{cap: type_errors.len}
+	for err in type_errors {
+		if err.msg.ends_with('` must be initialized')
+			&& type_errors.any(it.msg.starts_with('enum `') && it.msg.ends_with('` is private')
+			&& it.pos.id == err.pos.id && err.pos.offset >= it.pos.offset
+			&& err.pos.end <= it.pos.end) {
+			continue
+		}
+		if err.msg.starts_with('unknown type `')
+			&& type_errors.any(it.msg == 'generic struct cannot be used in non-generic function'
+			&& it.pos.id == err.pos.id && err.pos.offset >= it.pos.offset
+			&& err.pos.end <= it.pos.end) {
+			continue
+		}
+		if err.msg.starts_with('unknown struct `') {
+			name := err.msg.all_after('`').all_before('`')
+			err_fn := type_diagnostic_enclosing_fn(a, err)
+			if int(err_fn) >= 0
+				&& type_errors.any(it.msg.starts_with('generic type name `${name}` is not mentioned in fn ')
+				&& type_diagnostic_enclosing_fn(a, it) == err_fn) {
+				continue
+			}
+		}
+		if err.msg.contains('` is a generic fn, you should pass its concrete types, e.g. ')
+			&& err.msg.ends_with('[int]') {
+			deduped << err
+			continue
+		}
+		if deduped.any(it.msg == err.msg && it.pos.id == err.pos.id
+			&& it.pos.offset == err.pos.offset && it.pos.end == err.pos.end
+			&& it.severity == err.severity)
+		{
+			continue
+		}
+		deduped << err
+	}
+	return deduped
+}
+
+fn type_diagnostic_enclosing_fn(a &flat.FlatAst, diagnostic types.TypeError) flat.NodeId {
+	if int(diagnostic.node) >= 0 && int(diagnostic.node) < a.nodes.len
+		&& a.node(diagnostic.node).kind == .fn_decl {
+		return diagnostic.node
+	}
+	mut diagnostic_pos := diagnostic.pos
+	if !diagnostic_pos.is_valid() && int(diagnostic.node) >= 0 && int(diagnostic.node) < a.nodes.len {
+		diagnostic_pos = a.node(diagnostic.node).pos
+	}
+	mut enclosing := flat.empty_node
+	mut enclosing_len := 2147483647
+	for index, node in a.nodes {
+		if node.kind != .fn_decl {
+			continue
+		}
+		if diagnostic_pos.is_valid() && node.pos.is_valid() && node.pos.id == diagnostic_pos.id
+			&& diagnostic_pos.offset >= node.pos.offset && diagnostic_pos.end <= node.pos.end {
+			span_len := node.pos.end - node.pos.offset
+			if span_len < enclosing_len {
+				enclosing = flat.NodeId(index)
+				enclosing_len = span_len
+			}
+			continue
+		}
+		if int(diagnostic.node) >= 0
+			&& type_diagnostic_node_tree_contains(a, flat.NodeId(index), diagnostic.node, 0) {
+			return flat.NodeId(index)
+		}
+	}
+	if int(enclosing) >= 0 {
+		return enclosing
+	}
+	mut nearest := flat.empty_node
+	mut nearest_offset := -1
+	for index, node in a.nodes {
+		if node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl, .enum_decl, .const_decl, .global_decl, .c_fn_decl, .module_decl, .import_decl]
+			|| !node.pos.is_valid() || !diagnostic_pos.is_valid()
+			|| node.pos.id != diagnostic_pos.id || node.pos.offset > diagnostic_pos.offset
+			|| node.pos.offset <= nearest_offset {
+			continue
+		}
+		nearest = flat.NodeId(index)
+		nearest_offset = node.pos.offset
+	}
+	if int(nearest) >= 0 && a.node(nearest).kind == .fn_decl {
+		return nearest
+	}
+	return flat.empty_node
+}
+
+fn type_diagnostic_node_tree_contains(a &flat.FlatAst, root_id flat.NodeId, target_id flat.NodeId, depth int) bool {
+	if root_id == target_id {
+		return true
+	}
+	if depth > 32 || int(root_id) < 0 || int(root_id) >= a.nodes.len {
+		return false
+	}
+	root := a.node(root_id)
+	for i in 0 .. root.children_count {
+		if type_diagnostic_node_tree_contains(a, a.child(root, i), target_id, depth + 1) {
+			return true
+		}
+	}
+	return false
 }
 
 fn reorder_chained_generic_inference_errors(a &flat.FlatAst, errors []types.TypeError) []types.TypeError {
