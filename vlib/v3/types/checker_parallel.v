@@ -169,6 +169,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	}
 	tc.sort_parallel_check_errors()
 	tc.restore_type_cache_base()
+	tc.direct_parent_index_trusted = false
 	tc.resolution_type_mode = true
 }
 
@@ -188,6 +189,7 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 		}
 	}
 	tc.check_fn_items_serial(selected_items)
+	tc.direct_parent_index_trusted = false
 	tc.resolution_type_mode = true
 }
 
@@ -230,6 +232,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.restore_type_cache_base()
 		// Match the serial checker: only generated post-check type text may use the
 		// cross-module generic-argument fallback.
+		tc.direct_parent_index_trusted = false
 		tc.resolution_type_mode = true
 		return was_parallel
 	}

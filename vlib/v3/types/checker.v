@@ -706,6 +706,14 @@ mut:
 	visible_mutation_cache   &VisibleMutationCache    = unsafe { nil }
 	type_interner            &TypeInterner            = unsafe { nil }
 	symbols                  &SymbolInterner          = unsafe { nil }
+	// direct_parent_ids maps a parsed node to the first AST node that references
+	// it as a child. It is immutable during semantic checking and shared by
+	// checker workers. Transformed or appended nodes use the scan fallback in
+	// direct_parent_id.
+	direct_parent_ids           []flat.NodeId
+	direct_parent_index_trusted bool
+	// Immutable node -> generic parameter index shared by checker workers.
+	enclosing_generic_params_by_node map[int][]string
 }
 
 fn (tc &TypeChecker) timing_profile(message string) {
@@ -851,6 +859,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		visible_mutation_cache:                  new_visible_mutation_cache()
 		type_interner:                           type_interner
 		symbols:                                 symbols
+		enclosing_generic_params_by_node:        map[int][]string{}
 	}
 }
 
@@ -971,6 +980,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		pending_ierror_errors:              []PendingIerrorError{}
 		top_level_idx:                      tc.top_level_idx
 		top_level_idx_nodes_len:            tc.top_level_idx_nodes_len
+		direct_parent_ids:                  tc.direct_parent_ids
+		direct_parent_index_trusted:        tc.direct_parent_index_trusted
+		enclosing_generic_params_by_node:   tc.enclosing_generic_params_by_node
 		expected_expr_id:                   -1
 		expected_expr_type:                 Type(void_)
 		smartcasts:                         tc.smartcasts
@@ -1281,6 +1293,37 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.expr_type_set = []bool{len: n}
 	tc.checking_nodes = []bool{len: n}
 	tc.parallel_check_sparse = false
+}
+
+fn (mut tc TypeChecker) build_direct_parent_index(a &flat.FlatAst) {
+	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
+	for parent_idx, node in a.nodes {
+		for child_idx in 0 .. node.children_count {
+			child := a.child(&node, child_idx)
+			idx := int(child)
+			if idx >= 0 && idx < tc.direct_parent_ids.len
+				&& tc.direct_parent_ids[idx] == flat.empty_node {
+				tc.direct_parent_ids[idx] = flat.NodeId(parent_idx)
+			}
+		}
+	}
+	tc.direct_parent_index_trusted = true
+}
+
+fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
+	tc.enclosing_generic_params_by_node = map[int][]string{}
+	for idx in tc.top_level_idx {
+		node := a.nodes[idx]
+		if node.kind != .fn_decl || node.generic_params().len == 0 {
+			continue
+		}
+		for child_idx in 0 .. node.children_count {
+			child := a.child(&node, child_idx)
+			if int(child) >= 0 {
+				tc.enclosing_generic_params_by_node[int(child)] = node.generic_params()
+			}
+		}
+	}
 }
 
 fn (mut tc TypeChecker) extend_node_caches(n int) {
@@ -1902,6 +1945,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
 	tc.reset_node_caches(a.nodes.len)
+	tc.build_direct_parent_index(a)
 	$if ownership ? {
 		tc.ownership_reset()
 	}
@@ -2140,6 +2184,7 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node) {
 // and the full-scan fallback in collect()).
 fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
+	tc.build_enclosing_generic_param_index(a)
 	tc.collect_module_attributes_from_nodes(a)
 	tc.index_multiple_module_import_lines(a)
 	// Pass 1: collect type-level names (aliases, enums, sum types)
@@ -6483,6 +6528,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	// All ordinary source annotations have now been validated with module-strict
 	// lookup. Later transform/codegen stages also parse synthesized generic type
 	// text, where concrete arguments can legitimately come from another module.
+	tc.direct_parent_index_trusted = false
 	tc.resolution_type_mode = true
 }
 
@@ -9472,22 +9518,8 @@ fn (tc &TypeChecker) node_has_enclosing_generic_param(node_id flat.NodeId, name 
 	if name in node.generic_params() {
 		return true
 	}
-	for i in tc.top_level_idx {
-		if i <= int(node_id) {
-			continue
-		}
-		fn_node := tc.a.nodes[i]
-		if fn_node.kind != .fn_decl || name !in fn_node.generic_params() {
-			continue
-		}
-		for ci in 0 .. fn_node.children_count {
-			if tc.a.child(&fn_node, ci) == node_id {
-				return true
-			}
-		}
-		break
-	}
-	return false
+	params := tc.enclosing_generic_params_by_node[int(node_id)] or { return false }
+	return name in params
 }
 
 fn (tc &TypeChecker) collect_generic_receiver_params(node flat.Node, mut params map[string]bool) {
@@ -21594,10 +21626,27 @@ fn (tc &TypeChecker) direct_parent_kind(id flat.NodeId) flat.NodeKind {
 }
 
 fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
-	for idx, candidate in tc.a.nodes {
+	idx := int(id)
+	if idx >= 0 && idx < tc.direct_parent_ids.len {
+		parent_id := tc.direct_parent_ids[idx]
+		if parent_id != flat.empty_node {
+			parent := tc.a.node(parent_id)
+			for i in 0 .. parent.children_count {
+				if tc.a.child(parent, i) == id {
+					return parent_id
+				}
+			}
+		} else if tc.direct_parent_index_trusted {
+			// The parsed AST does not change during semantic checking, so an
+			// indexed missing parent is definitive. Later transform stages can
+			// rewire existing nodes and therefore retain the scan fallback.
+			return flat.empty_node
+		}
+	}
+	for parent_idx, candidate in tc.a.nodes {
 		for i in 0 .. candidate.children_count {
 			if tc.a.child(&candidate, i) == id {
-				return flat.NodeId(idx)
+				return flat.NodeId(parent_idx)
 			}
 		}
 	}
@@ -30057,7 +30106,10 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 }
 
 fn (tc &TypeChecker) source_declares_bodyless_function(name string) bool {
-	for idx := tc.a.user_code_start; idx < tc.a.nodes.len; idx++ {
+	for idx in tc.top_level_idx {
+		if idx < tc.a.user_code_start {
+			continue
+		}
 		node := tc.a.nodes[idx]
 		if node.kind == .c_fn_decl && (node.value == name || node.value.ends_with('.${name}')) {
 			return true
