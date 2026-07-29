@@ -8295,6 +8295,37 @@ fn (item Item) str() string {
 fn main() {}
 ',
 		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_map_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	values := {"self": item}
+	return values["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_array_indexed_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut items := [item]
+	items[0].remaining--
+	return items[0].str()
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
 }
 
 fn test_recursive_str_noreturn_branch_does_not_fall_through() {

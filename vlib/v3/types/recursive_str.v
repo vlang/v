@@ -44,6 +44,7 @@ mut:
 	storage_id              int
 	typ_name                string
 	elements                []RecursiveStrBinding
+	element_keys            []string
 	repeated_element        bool
 	closure_ids             []flat.NodeId
 	closure_capture_names   []string
@@ -702,6 +703,9 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		.array_literal, .array_init {
 			return tc.recursive_str_eval_array_expr(id, *node, mut env, ctx)
 		}
+		.map_init {
+			return tc.recursive_str_eval_map_expr(id, *node, mut env, ctx)
+		}
 		.struct_init {
 			return tc.recursive_str_eval_struct_init(id, *node, mut env, ctx)
 		}
@@ -987,6 +991,28 @@ fn (tc &TypeChecker) recursive_str_expr_matches_struct_field(id flat.NodeId, bas
 	return tc.source_text_for_node(receiver_id).trim_space() == tc.source_text_for_node(base_id).trim_space()
 }
 
+fn (mut tc TypeChecker) recursive_str_eval_map_expr(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
+	mut elements := []RecursiveStrBinding{}
+	mut element_keys := []string{}
+	mut i := 0
+	for i < int(node.children_count) {
+		key_id := tc.a.child(&node, i)
+		tc.recursive_str_eval_expr(key_id, mut env, ctx)
+		if i + 1 >= node.children_count {
+			break
+		}
+		value_id := tc.a.child(&node, i + 1)
+		element_keys << tc.recursive_str_constant_map_key(key_id) or { '' }
+		elements << tc.recursive_str_eval_expr(value_id, mut env, ctx)
+		i += 2
+	}
+	return RecursiveStrBinding{
+		typ_name:     tc.resolve_type(id).name()
+		elements:     elements
+		element_keys: element_keys
+	}
+}
+
 fn (mut tc TypeChecker) recursive_str_eval_array_expr(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
 	mut elements := []RecursiveStrBinding{}
 	mut repeated_element := false
@@ -1017,6 +1043,16 @@ fn (mut tc TypeChecker) recursive_str_eval_array_expr(id flat.NodeId, node flat.
 
 fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index_id flat.NodeId, result_id flat.NodeId) RecursiveStrBinding {
 	if base.elements.len > 0 {
+		if base.element_keys.len == base.elements.len && '' !in base.element_keys {
+			if key := tc.recursive_str_constant_map_key(index_id) {
+				for i := base.element_keys.len - 1; i >= 0; i-- {
+					if base.element_keys[i] == key {
+						return base.elements[i]
+					}
+				}
+			}
+			return tc.recursive_str_merge_bindings(base.elements)
+		}
 		if base.repeated_element {
 			return base.elements[0]
 		}
@@ -1029,6 +1065,24 @@ fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index
 	}
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(result_id).name()
+	}
+}
+
+fn (tc &TypeChecker) recursive_str_constant_map_key(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .cast_expr] && node.children_count > 0 {
+		return tc.recursive_str_constant_map_key(tc.a.child(node, 0))
+	}
+	return match node.kind {
+		.string_literal { 'string:${node.value}' }
+		.char_literal { 'char:${node.value}' }
+		.int_literal { 'int:${node.value.to_lower().replace('_', '')}' }
+		.bool_literal { 'bool:${node.value}' }
+		.enum_val { 'enum:${node.value}' }
+		else { none }
 	}
 }
 
@@ -1603,6 +1657,7 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 	mut storage_id := bindings[0].storage_id
 	mut typ_name := bindings[0].typ_name
 	mut max_elements := 0
+	mut element_keys := bindings[0].element_keys.clone()
 	mut repeated_element := true
 	mut closure_ids := []flat.NodeId{}
 	mut capture_candidates := map[string][]RecursiveStrBinding{}
@@ -1619,6 +1674,9 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 			typ_name = binding.typ_name
 		}
 		max_elements = int_max(max_elements, binding.elements.len)
+		if binding.element_keys != element_keys {
+			element_keys = []string{}
+		}
 		repeated_element = repeated_element && binding.repeated_element
 		for closure_id in binding.closure_ids {
 			if closure_id !in closure_ids {
@@ -1689,6 +1747,7 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 		storage_id:              storage_id
 		typ_name:                typ_name
 		elements:                elements
+		element_keys:            element_keys
 		repeated_element:        repeated_element && elements.len > 0
 		closure_ids:             closure_ids
 		closure_capture_names:   closure_capture_names
@@ -1720,6 +1779,14 @@ fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_
 	if tc.recursive_str_mutation_is_noop(rhs_id, op) {
 		return
 	}
+	if tc.valid_node_id(rhs_id) && op == .assign
+		&& tc.source_text_for_node(target_id).trim_space() == tc.source_text_for_node(rhs_id).trim_space() {
+		return
+	}
+	if tc.recursive_str_expr_contains_index(target_id)
+		&& tc.recursive_str_apply_indexed_mutation(name, target_id, rhs_id, op, mut env) {
+		return
+	}
 	if delta := tc.recursive_str_numeric_mutation_delta(rhs_id, op) {
 		if tc.recursive_str_expr_contains_index(target_id) {
 			tc.recursive_str_mark_shared_progress(name, mut env)
@@ -1729,15 +1796,85 @@ fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_
 		}
 		return
 	}
-	if tc.valid_node_id(rhs_id) && op == .assign
-		&& tc.source_text_for_node(target_id).trim_space() == tc.source_text_for_node(rhs_id).trim_space() {
-		return
-	}
 	if tc.recursive_str_expr_contains_index(target_id) {
 		tc.recursive_str_mark_shared_progress(name, mut env)
 	} else {
 		tc.recursive_str_mark_value_progress(name, mut env)
 	}
+}
+
+fn (mut tc TypeChecker) recursive_str_apply_indexed_mutation(name string, target_id flat.NodeId, rhs_id flat.NodeId, op flat.Op, mut env RecursiveStrEnv) bool {
+	indexes := tc.recursive_str_index_path(target_id) or { return false }
+	if indexes.len == 0 {
+		return false
+	}
+	mut binding := env.bindings[name] or { return false }
+	if !tc.recursive_str_apply_indexed_binding_mutation(indexes, 0, target_id, rhs_id, op, mut
+		binding) {
+		return false
+	}
+	env.bindings[name] = binding
+	return true
+}
+
+fn (tc &TypeChecker) recursive_str_index_path(id flat.NodeId) ?[]flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return []flat.NodeId{}
+	}
+	if node.kind in [.selector, .paren, .prefix, .as_expr, .cast_expr] && node.children_count > 0 {
+		return tc.recursive_str_index_path(tc.a.child(node, 0))
+	}
+	if node.kind == .index && node.children_count >= 2 {
+		mut indexes := tc.recursive_str_index_path(tc.a.child(node, 0)) or { return none }
+		indexes << tc.a.child(node, 1)
+		return indexes
+	}
+	return none
+}
+
+fn (mut tc TypeChecker) recursive_str_apply_indexed_binding_mutation(indexes []flat.NodeId, depth int, target_id flat.NodeId, rhs_id flat.NodeId, op flat.Op, mut binding RecursiveStrBinding) bool {
+	if depth >= indexes.len {
+		if delta := tc.recursive_str_numeric_mutation_delta(rhs_id, op) {
+			target := tc.recursive_str_mutation_target_key(target_id)
+			return tc.recursive_str_apply_numeric_delta_to_binding(target, delta, mut binding)
+		}
+		return recursive_str_mark_binding_value_progress(mut binding)
+	}
+	element_index := tc.recursive_str_tracked_element_index(binding, indexes[depth]) or {
+		return false
+	}
+	binding.elements = binding.elements.clone()
+	mut element := binding.elements[element_index]
+	if !tc.recursive_str_apply_indexed_binding_mutation(indexes, depth + 1, target_id, rhs_id, op, mut
+		element) {
+		return false
+	}
+	binding.elements[element_index] = element
+	return true
+}
+
+fn (tc &TypeChecker) recursive_str_tracked_element_index(binding RecursiveStrBinding, index_id flat.NodeId) ?int {
+	if binding.elements.len == 0 || binding.repeated_element {
+		return none
+	}
+	if binding.element_keys.len == binding.elements.len && '' !in binding.element_keys {
+		key := tc.recursive_str_constant_map_key(index_id) or { return none }
+		for i := binding.element_keys.len - 1; i >= 0; i-- {
+			if binding.element_keys[i] == key {
+				return i
+			}
+		}
+		return none
+	}
+	index := tc.recursive_str_constant_index(index_id) or { return none }
+	if index < 0 || index >= binding.elements.len {
+		return none
+	}
+	return index
 }
 
 fn (tc &TypeChecker) recursive_str_numeric_mutation_delta(rhs_id flat.NodeId, op flat.Op) ?i64 {
@@ -1785,18 +1922,28 @@ fn (tc &TypeChecker) recursive_str_mutation_target_key(id flat.NodeId) string {
 }
 
 fn (tc &TypeChecker) recursive_str_apply_numeric_delta(name string, target string, delta i64, mut env RecursiveStrEnv) {
-	if delta == 0 {
+	mut binding := env.bindings[name] or { return }
+	if !tc.recursive_str_apply_numeric_delta_to_binding(target, delta, mut binding) {
 		return
 	}
-	mut binding := env.bindings[name] or { return }
-	if !binding.can_recurse || binding.nonreversible_progress || target.len == 0 {
-		if binding.can_recurse && target.len == 0 {
-			binding.progressed = true
-			binding.nonreversible_progress = true
-			binding.numeric_deltas = map[string]i64{}
-			env.bindings[name] = binding
-		}
-		return
+	env.bindings[name] = binding
+}
+
+fn (tc &TypeChecker) recursive_str_apply_numeric_delta_to_binding(target string, delta i64, mut binding RecursiveStrBinding) bool {
+	if delta == 0 {
+		return true
+	}
+	if !binding.can_recurse {
+		return false
+	}
+	if binding.nonreversible_progress {
+		return true
+	}
+	if target.len == 0 {
+		binding.progressed = true
+		binding.nonreversible_progress = true
+		binding.numeric_deltas = map[string]i64{}
+		return true
 	}
 	binding.numeric_deltas = binding.numeric_deltas.clone()
 	current := binding.numeric_deltas[target]
@@ -1804,8 +1951,7 @@ fn (tc &TypeChecker) recursive_str_apply_numeric_delta(name string, target strin
 		binding.progressed = true
 		binding.nonreversible_progress = true
 		binding.numeric_deltas = map[string]i64{}
-		env.bindings[name] = binding
-		return
+		return true
 	}
 	next := current + delta
 	if next == 0 {
@@ -1814,7 +1960,7 @@ fn (tc &TypeChecker) recursive_str_apply_numeric_delta(name string, target strin
 		binding.numeric_deltas[target] = next
 	}
 	binding.progressed = binding.numeric_deltas.len > 0
-	env.bindings[name] = binding
+	return true
 }
 
 fn (tc &TypeChecker) recursive_str_mutation_is_noop(rhs_id flat.NodeId, op flat.Op) bool {
@@ -1882,12 +2028,19 @@ fn (tc &TypeChecker) recursive_str_expr_contains_index(id flat.NodeId) bool {
 
 fn (tc &TypeChecker) recursive_str_mark_value_progress(name string, mut env RecursiveStrEnv) {
 	mut binding := env.bindings[name] or { return }
-	if binding.can_recurse {
-		binding.progressed = true
-		binding.nonreversible_progress = true
-		binding.numeric_deltas = map[string]i64{}
+	if recursive_str_mark_binding_value_progress(mut binding) {
 		env.bindings[name] = binding
 	}
+}
+
+fn recursive_str_mark_binding_value_progress(mut binding RecursiveStrBinding) bool {
+	if !binding.can_recurse {
+		return false
+	}
+	binding.progressed = true
+	binding.nonreversible_progress = true
+	binding.numeric_deltas = map[string]i64{}
+	return true
 }
 
 fn (tc &TypeChecker) recursive_str_mark_shared_progress(name string, mut env RecursiveStrEnv) {
