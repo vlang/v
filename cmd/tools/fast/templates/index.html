@@ -25,7 +25,10 @@
 		font-size: 14px;
 		line-height: 1.5;
 	}
-	.wrap { max-width: 1400px; margin: 0 auto; padding: 24px 20px 60px; }
+	/* use the full screen width so the wide stats table never needs horizontal scroll */
+	.wrap { max-width: none; margin: 0 auto; padding: 24px 24px 60px; }
+	/* keep the graph at a readable size instead of stretching it across the whole screen */
+	.chartbox { max-width: 1400px; }
 	h1 { font-size: 26px; margin: 0 0 4px; }
 	h1 a { color: var(--fg); text-decoration: none; }
 	.sub { color: var(--muted); margin-bottom: 20px; }
@@ -106,7 +109,7 @@
 			or <code>v run . run</code> to sample every 50th commit of 2026.
 		</div>
 	@else
-		<div class="panel">
+		<div class="panel chartbox">
 			<h2>Self-compilation time (ms), oldest → newest</h2>
 			<canvas id="chart" width="1360" height="320"></canvas>
 			<div class="legend">
