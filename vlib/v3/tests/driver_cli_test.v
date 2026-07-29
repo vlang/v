@@ -54,6 +54,7 @@ fn test_driver_only_monomorphizes_when_generics_are_used() {
 	assert !hello_c.contains('struct sync__ThreadLocalStorage')
 	assert !hello_c.contains('struct sync__Channel {')
 	assert !hello_c.contains('v3_chan_str')
+	assert !hello_c.contains('ChanState__autostr')
 
 	generic_source := os.join_path(root, 'generic.v')
 	os.write_file(generic_source, 'fn identity[T](value T) T {

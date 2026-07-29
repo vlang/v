@@ -3755,6 +3755,16 @@ fn is_minimal_literal_output_builtin_file(path string) bool {
 	]
 }
 
+fn suppress_minimal_literal_output_builtin_imports(mut a flat.FlatAst) {
+	// array.v and string.v need these modules only inside bodies that the literal
+	// output reachability path neither checks nor emits.
+	for i in 0 .. a.user_code_start {
+		if a.nodes[i].kind == .import_decl && a.nodes[i].value in ['strings', 'strconv'] {
+			a.nodes[i] = flat.Node{}
+		}
+	}
+}
+
 // run executes the V3 compiler driver with `args`.
 pub fn run(args []string) {
 	if args.len == 0 {
@@ -4338,6 +4348,9 @@ pub fn run(args []string) {
 		a.close_workers()
 	}
 	a.user_code_start = a.nodes.len
+	if minimal_literal_output {
+		suppress_minimal_literal_output_builtin_imports(mut a)
+	}
 
 	// Test mode is a compile-time define as well as a harness mode. Install it
 	// after parsing builtin, but before collecting and parsing user inputs, so
@@ -5532,6 +5545,7 @@ pub fn run(args []string) {
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
+			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
@@ -5569,6 +5583,7 @@ pub fn run(args []string) {
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
+			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)

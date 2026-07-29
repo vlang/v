@@ -243,6 +243,7 @@ mut:
 	output_error                 string
 	c99_mode                     bool
 	skip_generics                bool
+	skip_enum_autostr            bool
 	placeholder_check_forced     bool
 	cur_fn_name                  string
 	current_decl_is_mut          bool
@@ -413,6 +414,12 @@ pub fn (mut g FlatGen) set_prealloc(on bool) {
 // that the generated program has no generic instantiations.
 pub fn (mut g FlatGen) set_skip_generics(on bool) {
 	g.skip_generics = on
+}
+
+// set_skip_enum_autostr omits synthesized enum string helpers when reachability
+// proves the program cannot format an enum.
+pub fn (mut g FlatGen) set_skip_enum_autostr(on bool) {
+	g.skip_enum_autostr = on
 }
 
 fn (mut g FlatGen) push_scope() {
@@ -1981,7 +1988,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cached_header_forward_decls()
 	g.interface_method_forward_decls()
 	g.shared_dup_fns()
-	g.enum_str_forward_decls()
+	if !g.skip_enum_autostr {
+		g.enum_str_forward_decls()
+	}
 	g.callback_wrapper_decls()
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
@@ -1989,7 +1998,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if !g.cache_split {
 		g.interface_method_stubs()
 	}
-	g.enum_str_defs()
+	if !g.skip_enum_autostr {
+		g.enum_str_defs()
+	}
 	g.sb.write_string(const_code)
 	// The final builder now owns a copy of the const code.
 	unsafe { const_code.free() }
@@ -9225,8 +9236,8 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 				for ai in 1 .. node.children_count {
 					arg_id := g.a.child(node, ai)
 					arg_node := g.a.node(arg_id)
-					if g.const_ref_node_may_match_fixed_candidate(arg_node,
-						fixed_candidate_idents, fixed_candidate_shorts)
+					if g.const_ref_node_may_match_fixed_candidate(arg_node, fixed_candidate_idents,
+						fixed_candidate_shorts)
 					{
 						call_base_items << FixedStorageConstRefItem{
 							id:     arg_id
