@@ -5235,13 +5235,14 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 }
 
 fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fields []SoaFieldInfo) ?string {
-	c_name := 'C.${soa_name}'
-	has_matching_c_decl := c_name in g.tc.structs && g.soa_companion_c_decl_matches(c_name, fields)
-	if c_name in g.tc.structs && !has_matching_c_decl {
-		return c_name
+	c_decl_name := 'C.${soa_name}'
+	has_matching_c_decl := c_decl_name in g.tc.structs
+		&& g.soa_companion_c_decl_matches(c_decl_name, fields)
+	if c_decl_name in g.tc.structs && !has_matching_c_decl {
+		return c_decl_name
 	}
 	for name in g.tc.structs.keys() {
-		if name == struct_name || name == c_name {
+		if name == struct_name || name == c_decl_name {
 			continue
 		}
 		if g.cname(name) == soa_name {
@@ -5270,7 +5271,7 @@ fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fie
 	}
 	if !has_matching_c_decl
 		&& (soa_name in g.inlined_c_typedef_names || soa_name in g.inlined_c_structs) {
-		return c_name
+		return c_decl_name
 	}
 	return none
 }
