@@ -681,8 +681,7 @@ pub mut:
 	channel_send_or_expr_id int  = -1
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
-	// See QualifyNameCache: nil unless armed for a static-table phase; forks
-	// must replace it with their own instance (fork_for_parallel_codegen).
+	// See QualifyNameCache: forks must replace it with their own instance.
 	qualify_name_cache &QualifyNameCache = unsafe { nil }
 	import_info_cache  &ImportInfoCache  = unsafe { nil }
 	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
@@ -868,6 +867,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		visible_mutation_cache:                  new_visible_mutation_cache()
 		type_interner:                           type_interner
 		symbols:                                 symbols
+		qualify_name_cache:                      &QualifyNameCache{}
 		enclosing_generic_params_by_node:        map[int][]string{}
 		declaration_attributes:                  map[int][]string{}
 		type_declaration_ids:                    map[string][]int{}
@@ -1344,13 +1344,22 @@ fn (mut tc TypeChecker) build_direct_parent_index(a &flat.FlatAst) {
 
 fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
 	tc.type_declaration_ids = map[string][]int{}
+	mut module_name := ''
 	for index in tc.top_level_idx {
 		node := a.nodes[index]
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
 		if node.kind !in [.struct_decl, .type_decl] {
 			continue
 		}
 		short_name := node.value.all_after_last('.')
 		tc.type_declaration_ids[short_name] << index
+		qualified := qualify_decl_name_in_module(node.value, module_name)
+		if qualified != short_name {
+			tc.type_declaration_ids[qualified] << index
+		}
 	}
 }
 
@@ -3621,15 +3630,16 @@ fn (tc &TypeChecker) local_fn_decl_exists_scan(name string) bool {
 }
 
 // qualify_name supports qualify name handling for TypeChecker.
-// QualifyNameCache memoizes qualify_name per (module, file) context. It must
-// only be armed while the declared-type tables are static (parallel cgen of
-// generic-free builds); every checker fork gets its own instance.
+// QualifyNameCache memoizes qualify_name per source and type-resolution context.
+// Its table fingerprint invalidates entries while collection is still growing
+// the declared-type tables; every checker fork gets its own instance.
 pub struct QualifyNameCache {
 pub mut:
-	module      string
-	file        string
-	fingerprint int = -1
-	entries     map[string]string
+	module               string
+	file                 string
+	resolution_type_mode bool
+	fingerprint          int = -1
+	entries              map[string]string
 }
 
 // qualify_table_fingerprint tracks growth of every declared-type table
@@ -3652,9 +3662,11 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 		mut cache := tc.qualify_name_cache
 		fingerprint := tc.qualify_table_fingerprint()
 		if cache.module != tc.cur_module || cache.file != tc.cur_file
+			|| cache.resolution_type_mode != tc.resolution_type_mode
 			|| cache.fingerprint != fingerprint {
 			cache.module = tc.cur_module
 			cache.file = tc.cur_file
+			cache.resolution_type_mode = tc.resolution_type_mode
 			cache.fingerprint = fingerprint
 			cache.entries.clear()
 		}
@@ -18140,14 +18152,21 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 		return false
 	}
 	if tc.direct_parent_index_trusted {
-		mut current := id
-		for tc.valid_node_id(current) {
-			node := tc.a.nodes[int(current)]
+		mut current_idx := int(id)
+		for current_idx >= 0 && current_idx < tc.a.nodes.len {
+			node := tc.a.nodes[current_idx]
 			if node.kind == .fn_decl {
-				params := tc.enclosing_generic_params_by_node[int(current)] or { return false }
+				params := tc.enclosing_generic_params_by_node[current_idx] or { return false }
 				return name in params
 			}
-			current = tc.direct_parent_id(current)
+			if current_idx >= tc.direct_parent_ids.len {
+				return false
+			}
+			parent_idx := int(tc.direct_parent_ids[current_idx])
+			if parent_idx == current_idx {
+				return false
+			}
+			current_idx = parent_idx
 		}
 		return false
 	}
@@ -44592,18 +44611,9 @@ fn (tc &TypeChecker) source_struct_decl_id_for_name(name string) ?flat.NodeId {
 	raw_target := trimmed_space(name)
 	parsed_target, _, is_generic := generic_type_application_parts(raw_target)
 	target := if is_generic { parsed_target } else { raw_target }
-	mut module_name := ''
-	for index in tc.top_level_idx {
+	for index in tc.type_declaration_ids[target] {
 		node := tc.a.nodes[index]
-		if node.kind == .module_decl {
-			module_name = node.value
-			continue
-		}
-		if node.kind != .struct_decl {
-			continue
-		}
-		qualified := qualify_decl_name_in_module(node.value, module_name)
-		if node.value == target || qualified == target {
+		if node.kind == .struct_decl {
 			return flat.NodeId(index)
 		}
 	}
