@@ -49,6 +49,10 @@ fn recycle_scopes_on_worker(worker_id int) int {
 				return -1
 			}
 		}
+		unsafe { prealloc_thread_cleanup() }
+		if unsafe { g_memory_block != nil } {
+			return -1
+		}
 	}
 	return worker_id
 }

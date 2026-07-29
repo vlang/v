@@ -494,6 +494,41 @@ fn vmemory_block_free_chain(first &VMemoryBlock) {
 	}
 }
 
+@[unsafe]
+fn prealloc_recycle_cache_free(cache &VPreallocBlockCache) {
+	if cache == unsafe { nil } {
+		return
+	}
+	$if !windows && !freestanding && !vinix {
+		unsafe {
+			for i in 0 .. cache.count {
+				C.munmap(cache.starts[i], usize(cache.sizes[i]))
+			}
+		}
+	}
+	unsafe {
+		C.free(cache)
+	}
+}
+
+// prealloc_thread_cleanup releases the current thread's arena and recycle
+// cache. Generated wrappers call it after void-returning spawned work.
+@[unsafe]
+pub fn prealloc_thread_cleanup() {
+	unsafe {
+		mut cache := &VPreallocBlockCache(nil)
+		if g_memory_block != nil {
+			cache = g_memory_block.recycle_cache
+		}
+		for g_memory_block != nil {
+			block := g_memory_block
+			g_memory_block = g_memory_block.previous
+			vmemory_block_free(block)
+		}
+		prealloc_recycle_cache_free(cache)
+	}
+}
+
 /////////////////////////////////////////////////
 
 @[unsafe]
@@ -577,11 +612,7 @@ fn prealloc_vcleanup() {
 		}
 	}
 	unsafe {
-		for g_memory_block != 0 {
-			tmp := g_memory_block
-			g_memory_block = g_memory_block.previous
-			vmemory_block_free(tmp)
-		}
+		prealloc_thread_cleanup()
 	}
 }
 

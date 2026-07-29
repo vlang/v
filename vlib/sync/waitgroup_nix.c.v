@@ -11,6 +11,7 @@ fn waitgroup_thread_entry(args_ptr voidptr) voidptr {
 		defer {
 			unsafe {
 				prealloc_scope_end(scope)
+				prealloc_thread_cleanup()
 			}
 		}
 	}

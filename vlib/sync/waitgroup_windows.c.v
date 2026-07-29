@@ -11,6 +11,7 @@ fn waitgroup_thread_entry(args_ptr voidptr) u32 {
 		defer {
 			unsafe {
 				prealloc_scope_end(scope)
+				prealloc_thread_cleanup()
 			}
 		}
 	}
