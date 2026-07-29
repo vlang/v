@@ -132,6 +132,11 @@ pub fn (pool &PoolProcessor) get_item[T](idx int) T {
 	return unsafe { *(&T(pool.items[idx])) }
 }
 
+// get_item_ptr returns the raw pointer for an item at `idx`.
+pub fn (pool &PoolProcessor) get_item_ptr(idx int) voidptr {
+	return pool.items[idx]
+}
+
 // get_result - called by the main thread to get a specific result.
 // Retrieves a type safe instance of the produced result.
 pub fn (pool &PoolProcessor) get_result[T](idx int) T {
@@ -160,6 +165,17 @@ pub fn (pool &PoolProcessor) get_results_ref[T]() []&T {
 		}
 	}
 	return res
+}
+
+// get_result_pointers returns the raw result pointers in input order.
+pub fn (pool &PoolProcessor) get_result_pointers() []voidptr {
+	rlock pool.results {
+		mut res := []voidptr{cap: pool.results.len}
+		for result in pool.results {
+			res << result
+		}
+		return res
+	}
 }
 
 // set_shared_context - can be called during the setup so that you can

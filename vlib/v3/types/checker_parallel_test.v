@@ -55,6 +55,69 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	transform_worker.free_parallel_transform_caches()
 }
 
+fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes() {
+	mut a := flat.FlatAst.new()
+	child := a.add_val(.ident, 'child')
+	first_children := a.begin_children()
+	a.add_child(child)
+	first_parent := a.add_node(flat.Node{
+		kind:           .paren
+		children_start: first_children
+		children_count: 1
+	})
+	second_children := a.begin_children()
+	a.add_child(child)
+	a.add_node(flat.Node{
+		kind:           .expr_stmt
+		children_start: second_children
+		children_count: 1
+	})
+
+	mut tc := TypeChecker.new(&a)
+	tc.build_direct_parent_index(&a)
+	assert tc.direct_parent_id(child) == first_parent
+	assert tc.direct_parent_id(first_parent) == flat.empty_node
+
+	appended_child := a.add_val(.ident, 'appended')
+	appended_children := a.begin_children()
+	a.add_child(appended_child)
+	appended_parent := a.add_node(flat.Node{
+		kind:           .paren
+		children_start: appended_children
+		children_count: 1
+	})
+	assert tc.direct_parent_id(appended_child) == appended_parent
+}
+
+fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
+	mut a := flat.FlatAst.new()
+	generic_child := a.add_val(.ident, 'T')
+	generic_children := a.begin_children()
+	a.add_child(generic_child)
+	mut generic_fn := flat.Node{
+		kind:           .fn_decl
+		children_start: generic_children
+		children_count: 1
+	}
+	generic_fn.set_generic_params(['T'])
+	generic_fn_id := a.add_node(generic_fn)
+
+	unrelated_child := a.add_val(.ident, 'T')
+	unrelated_children := a.begin_children()
+	a.add_child(unrelated_child)
+	unrelated_fn_id := a.add_node(flat.Node{
+		kind:           .fn_decl
+		children_start: unrelated_children
+		children_count: 1
+	})
+
+	mut tc := TypeChecker.new(&a)
+	tc.top_level_idx = [int(generic_fn_id), int(unrelated_fn_id)]
+	tc.build_enclosing_generic_param_index(&a)
+	assert tc.node_has_enclosing_generic_param(generic_child, 'T')
+	assert !tc.node_has_enclosing_generic_param(unrelated_child, 'T')
+}
+
 fn test_parallel_checker_preserves_all_dependency_edges() {
 	$if !windows {
 		old_vjobs := os.getenv_opt('VJOBS')

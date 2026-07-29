@@ -481,11 +481,12 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared
-		pp.work_on_items(files)
+		pp.work_on_pointers(unsafe { files.pointers() })
 		util.timing_measure('cgen parallel processing')
 
 		util.timing_start('cgen unification')
-		for g in pp.get_results_ref[Gen]() {
+		for result_ptr in pp.get_result_pointers() {
+			g := unsafe { &Gen(result_ptr) }
 			global_g.embedded_files << g.embedded_files
 			global_g.out << g.out
 			global_g.cheaders << g.cheaders
@@ -1032,7 +1033,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 }
 
 fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr {
-	file := p.get_item[&ast.File](idx)
+	file := unsafe { *(&&ast.File(p.get_item_ptr(idx))) }
 	timing_label_for_thread := 'C GEN thread ${wid}'
 	util.timing_start(timing_label_for_thread)
 	defer {

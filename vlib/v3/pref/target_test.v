@@ -10,6 +10,9 @@ fn test_target_from_normalizes_and_derives_platform_properties() {
 	assert target.endian == 'little'
 	assert target.pointer_bits == 64
 	assert target.object_format == 'macho'
+	mut prefs := new_preferences()
+	prefs.target = target
+	assert prefs.comptime_platform() == 'amd64'
 
 	wasm_target := target_from('emscripten', 'wasm32') or { panic(err) }
 	assert wasm_target.pointer_bits == 32
@@ -25,6 +28,8 @@ fn test_target_from_normalizes_and_derives_platform_properties() {
 	assert termux_target.arch == 'arm64'
 	assert termux_target.abi == 'android'
 	assert termux_target.object_format == 'elf'
+	prefs.target = termux_target
+	assert prefs.comptime_platform() == 'arm64'
 }
 
 fn test_native_arch_aliases_normalize_to_supported_targets() {
@@ -37,6 +42,11 @@ fn test_native_arch_aliases_normalize_to_supported_targets() {
 	assert target_from('linux', 'ppc64le')!.arch == 'ppc64le'
 	assert target_from('linux', 'loongarch64')!.arch == 'loongarch64'
 	assert target_from('wasm32_emscripten', 'wasm')!.arch == 'wasm32'
+	mut prefs := new_preferences()
+	prefs.target = target_from('linux', 'i386')!
+	assert prefs.comptime_platform() == 'i386'
+	prefs.target = target_from('linux', 'rv64')!
+	assert prefs.comptime_platform() == 'rv64'
 }
 
 fn test_remaining_native_os_targets_are_supported() {
@@ -93,6 +103,23 @@ fn test_debug_comptime_flag_uses_target_preferences() {
 	assert !comptime_flag_value(prefs, 'debug')
 	prefs.is_debug = true
 	assert comptime_flag_value(prefs, 'debug')
+}
+
+fn test_c_compiler_comptime_flags_use_effective_compiler() {
+	mut prefs := new_preferences()
+	prefs.backend = 'c'
+	prefs.ccompiler = 'clang'
+	assert comptime_flag_value(prefs, 'clang')
+	assert !comptime_flag_value(prefs, 'gcc')
+	assert !comptime_flag_value(prefs, 'tinyc')
+	prefs.ccompiler = 'gcc'
+	assert comptime_flag_value(prefs, 'gcc')
+	assert !comptime_flag_value(prefs, 'clang')
+	prefs.ccompiler = 'tinyc'
+	assert comptime_flag_value(prefs, 'tinyc')
+	prefs.backend = 'arm64'
+	assert comptime_flag_value(prefs, 'tinyc')
+	assert !comptime_flag_value(prefs, 'gcc')
 }
 
 fn test_source_selection_uses_target_os_and_arch() {

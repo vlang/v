@@ -157,6 +157,7 @@ pub mut:
 	show_callgraph         bool // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	show_unused_params     bool = true // regular function params should report as unused by default.
+	old_compiler           bool   // `-old-compiler` - bypass experimental compiler dispatchers.
 	c_error_bug_report_url string // `-bug-report-url url` - override the automatic C compiler bug report endpoint.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
@@ -535,6 +536,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-ownership' {
 				// Passed through to the V3 ownership compiler by cmd/v.
+			}
+			'-old-compiler' {
+				res.old_compiler = true
+			}
+			'-no-memory-limit', '--no-memory-limit' {
+				// Passed through to V3 dispatchers by cmd/v.
 			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
@@ -1178,6 +1185,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if is_source_file(arg) && arg.ends_with('.vsh') {
 					// store for future iterations
 					res.is_vsh = true
+				}
+				if arg.starts_with('-d') && arg.len > 2 {
+					res.parse_define(arg[2..])
+					continue
 				}
 				if !arg.starts_with('-') {
 					if command == '' {

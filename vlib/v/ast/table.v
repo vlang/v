@@ -374,6 +374,21 @@ fn (t &Table) c_fn_type_components_are_compatible(left_type Type, right_type Typ
 		if left.idx() in [int_type_idx, i32_type_idx] && right.idx() in [int_type_idx, i32_type_idx] {
 			return true
 		}
+		if t.pointer_size == 8 {
+			if (left.idx() in [isize_type_idx, i64_type_idx]
+				&& right.idx() in [isize_type_idx, i64_type_idx])
+				|| (left.idx() in [usize_type_idx, u64_type_idx]
+				&& right.idx() in [usize_type_idx, u64_type_idx]) {
+				return true
+			}
+		} else if t.pointer_size == 4 {
+			if (left.idx() in [isize_type_idx, int_type_idx, i32_type_idx]
+				&& right.idx() in [isize_type_idx, int_type_idx, i32_type_idx])
+				|| (left.idx() in [usize_type_idx, u32_type_idx]
+				&& right.idx() in [usize_type_idx, u32_type_idx]) {
+				return true
+			}
+		}
 	}
 	if depth >= max_alias_chain_depth || left.flags() != right.flags() {
 		return false

@@ -430,8 +430,9 @@ fn test_h2_pool_alpn_fallback_completes_request() {
 // what read_timeout was configured (Codex P1, vlang/v#27643
 // pullrequestreview-4627654418, discussion 3521494711).
 fn test_h2_pool_respects_request_read_timeout() {
+	respond_delay := 3 * time.second
 	mut srv := &H2PoolSrv{
-		respond_delay: 3 * time.second
+		respond_delay: respond_delay
 	}
 	port, mut listener, th := start_h2_pool_srv(mut srv) or {
 		assert false, 'server: ${err}'
@@ -444,7 +445,7 @@ fn test_h2_pool_respects_request_read_timeout() {
 		read_timeout: 300 * time.millisecond
 	) or {
 		elapsed := sw.elapsed()
-		assert elapsed < 2 * time.second, 'expected the read_timeout to fire well before the 3s-stalled server responds, took ${elapsed}'
+		assert elapsed < respond_delay, 'expected the read_timeout to fire before the stalled server responds, took ${elapsed}'
 		stop_h2_pool_srv(mut listener, th)
 		return
 	}

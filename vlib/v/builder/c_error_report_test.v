@@ -119,6 +119,15 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert !opts.contains('-cc gcc')
 }
 
+fn test_external_c_error_report_build_options_include_v3_tag() {
+	prefs := pref.Preferences{
+		gc_mode: .no_gc
+	}
+	options := c_error_report_build_options(&prefs, 'V3')
+	assert options.split(' ').first() == 'V3'
+	assert options.contains('gc:no_gc')
+}
+
 fn test_codegen_build_options_reports_no_skip_unused_override() {
 	// a C build with skip_unused off means `-no-skip-unused` was passed (it defaults to true);
 	// replay must disable it too, or a smaller C program could miss the error

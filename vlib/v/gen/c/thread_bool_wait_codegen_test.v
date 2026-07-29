@@ -44,6 +44,8 @@ fn test_prealloc_spawn_args_use_c_malloc() {
 	assert res.output.contains('builtin__prealloc_scope_end(thread_prealloc_scope);'), res.output
 	assert res.output.contains('builtin__prealloc_scope_release(arg->prealloc_scope);'), res.output
 	assert res.output.contains('free(arg);'), res.output
+	assert res.output.contains('builtin__prealloc_thread_cleanup();'), res.output
+	assert res.output.contains('builtin__prealloc_scope_release(arg->prealloc_scope);\n\tfree(arg);\n\tbuiltin__prealloc_thread_cleanup();'), res.output
 	assert !res.output.contains('builtin___v_malloc(sizeof(thread_arg_main__worker))'), res.output
 	assert res.output.contains('malloc(sizeof(int))'), res.output
 	assert res.output.contains('free(ret_ptr);'), res.output

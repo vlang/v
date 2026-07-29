@@ -66,6 +66,13 @@ const external_tools = [
 	'where',
 ]
 
+struct MacosV3CErrorReport {
+	ccompiler  string
+	c_output   string
+	c_file     string
+	report_dir string
+}
+
 @[unsafe]
 fn timers_pointer(p &util.Timers) &util.Timers {
 	// TODO: the static variable here is used as a workaround for the current incompatibility of -usecache and globals in the main module:
@@ -118,6 +125,7 @@ fn main() {
 	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs)
+	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -135,7 +143,7 @@ fn main() {
 	}
 	match command {
 		'run', 'crun', 'build', 'build-module' {
-			rebuild(prefs)
+			rebuild(prefs, macos_v3_c_error_report)
 			return
 		}
 		'help' {
@@ -174,7 +182,7 @@ fn main() {
 			if command.ends_with('.v') || os.exists(command) {
 				// println('command')
 				// println(prefs.path)
-				rebuild(prefs)
+				rebuild(prefs, macos_v3_c_error_report)
 				return
 			}
 		}
@@ -275,7 +283,7 @@ fn cached_v3_ownership_executable_path(vroot string) string {
 		'v3_ownership'))
 }
 
-fn rebuild(prefs &pref.Preferences) {
+fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport) {
 	match prefs.backend {
 		.c {
 			$if no_bootstrapv ? {
@@ -285,7 +293,17 @@ fn rebuild(prefs &pref.Preferences) {
 				// `v -os cross -o v.c cmd/v` having a functional C codegen inside instead.
 				util.launch_tool(prefs.is_verbose, 'builders/c_builder', os.args[1..])
 			}
-			builder.compile('build', prefs, cbuilder.compile_c)
+			if failed := macos_v3_c_error_report {
+				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
+					ccompiler:   failed.ccompiler
+					c_output:    failed.c_output
+					c_file:      failed.c_file
+					tag:         'V3'
+					cleanup_dir: failed.report_dir
+				})
+			} else {
+				builder.compile('build', prefs, cbuilder.compile_c)
+			}
 		}
 		.js_node, .js_freestanding, .js_browser {
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])

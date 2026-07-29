@@ -96,6 +96,27 @@ fn mark_used_source(name string, source string) map[string]bool {
 	return markused.mark_used(a, tc)
 }
 
+fn test_trivial_literal_output_prunes_conservative_runtime_helper_seeds() {
+	used := mark_used_source('trivial_literal_output', "println('Hello, World!')")
+	assert used['__new_array']
+	assert used['array.get']
+	assert used['array.push']
+	assert !used['map.clone']
+	assert !used['strconv.format_uint']
+}
+
+fn test_nontrivial_output_keeps_conservative_runtime_helper_seeds() {
+	used := mark_used_source('nontrivial_output', "
+fn message() string {
+	return 'Hello, World!'
+}
+
+println(message())
+")
+	assert used['map.clone']
+	assert used['strconv.format_uint']
+}
+
 fn find_fn_node_id(a &flat.FlatAst, name string) int {
 	for i, node in a.nodes {
 		if node.kind == .fn_decl && node.value == name {

@@ -439,7 +439,7 @@ $if windows {
 			return
 		}
 		mut record := unsafe { &Win32WindowRecord(data) }
-		record.pending_dropped_files << unsafe { tos_clone(&u8(path)) }
+		record.pending_dropped_files << clone_native_path(path)
 	}
 
 	@[export: 'v_multiwindow_win32_window_drop_end']

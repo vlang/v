@@ -145,6 +145,11 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
+	trivial_literal_output := markused_is_trivial_literal_output_program(a, tc)
+	// An exact literal-output program has no user expressions or declarations that
+	// can instantiate a generic. Skip generic indexes and per-node generic checks,
+	// just as the known non-generic self-host path does.
+	detect_reachable_generics := detect_generics && !trivial_literal_output
 	// The runtime-helper detection scan only reads the AST and (forked) checker
 	// caches, so it runs on its own thread under the decl scan + precollect and
 	// its enqueue requests are replayed in scan order at the seeds step below.
@@ -167,7 +172,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
 	mut generic_type_bases := map[string]bool{}
-	if detect_generics {
+	if detect_reachable_generics {
 		for node in a.nodes {
 			if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
 				generic_type_bases[node.value] = true
@@ -357,29 +362,35 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		queue << seed
 		used[seed] = true
 	}
-	for seed in ['__new_array', 'new_array_from_c_array', 'array.get', 'array.set', 'array.push',
-		'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
-		'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone',
-		'array.delete', 'array.ensure_cap', 'string.==', 'string.<', 'string.free',
-		'string.all_before', 'string.all_before_last', 'string.all_after', 'string.all_after_last',
-		'string.substr', 'string__substr', 'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes',
-		'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
-		'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get',
-		'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
-		'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'strings.Builder.write_ptr',
-		'strings.Builder.write_runes', 'strings.Builder.free', 'strconv.format_int',
-		'strconv.format_uint', 'strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64',
-		'bool.str', 'int.str', 'u64.str', 'f32.str', 'f64.str', 'rune.str', 'string.+', 'ptr_str',
-		'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'os.join_path_single', 'panic',
-		'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
-		'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
-		'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
-		'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
-		'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
-		'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join', 'Array_string__join',
-		'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
+	for seed in ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
+		'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
 		queue << seed
 		used[seed] = true
+	}
+	if !trivial_literal_output {
+		for seed in ['new_array_from_c_array', 'array.set', 'array.push_many', 'array.insert',
+			'array.insert_many', 'array.prepend', 'array.reverse', 'array.slice', 'array.slice_ni',
+			'string.substr_ni', 'array.pop_left', 'array.clone', 'array.delete', 'array.ensure_cap',
+			'string.==', 'string.<', 'string.free', 'string.all_before', 'string.all_before_last',
+			'string.all_after', 'string.all_after_last', 'string.substr', 'string__substr',
+			'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes', 'charptr.vstring',
+			'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
+			'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get',
+			'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
+			'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'strings.Builder.write_ptr',
+			'strings.Builder.write_runes', 'strings.Builder.free', 'strconv.format_int',
+			'strconv.format_uint', 'strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64',
+			'bool.str', 'int.str', 'u64.str', 'f32.str', 'f64.str', 'rune.str', 'string.+', 'ptr_str',
+			'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'os.join_path_single', 'panic',
+			'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
+			'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
+			'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_eq_string', 'map_eq_int_1',
+			'map_eq_int_2', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2',
+			'map_free_string', '[]string.join', 'Array_string__join', 'embed_file.Decoder.decompress',
+			'exit', 'v_exit'] {
+			queue << seed
+			used[seed] = true
+		}
 	}
 	queue << 'array.delete_last'
 	used['array.delete_last'] = true
@@ -434,18 +445,18 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		const_decls:             const_decls
 		const_suffixes:          const_name_suffixes
 		import_contexts:         import_contexts
-		selective_alias_targets: if detect_generics {
+		selective_alias_targets: if detect_reachable_generics {
 			markused_selective_alias_targets(tc)
 		} else {
 			map[string][]string{}
 		}
-		iface_param_gate:        if detect_generics {
+		iface_param_gate:        if detect_reachable_generics {
 			markused_interface_param_gate(tc)
 		} else {
 			map[string]bool{}
 		}
 		generic_type_bases:      generic_type_bases
-		detect_generics:         detect_generics
+		detect_generics:         detect_reachable_generics
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap
@@ -1733,6 +1744,68 @@ fn test_file_module_name(a &flat.FlatAst, file_node flat.Node) string {
 fn is_test_harness_root_name(name string) bool {
 	return name.starts_with('test_')
 		|| name in ['testsuite_begin', 'testsuite_end', 'before_each', 'after_each']
+}
+
+fn markused_is_trivial_literal_output_program(a &flat.FlatAst, tc &types.TypeChecker) bool {
+	if tc.diagnostic_files.len != 1 {
+		return false
+	}
+	mut stack := []flat.NodeId{}
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		if node.kind != .file || node.value !in tc.diagnostic_files {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			stack << a.child(&node, i)
+		}
+	}
+	if stack.len == 0 {
+		return false
+	}
+	mut output_calls := 0
+	mut main_fns := 0
+	for stack.len > 0 {
+		id := stack.pop()
+		if int(id) < 0 {
+			continue
+		}
+		node := a.node(id)
+		match node.kind {
+			.module_decl, .block, .expr_stmt, .string_literal {}
+			.fn_decl {
+				if node.value != 'main' || main_fns > 0 {
+					return false
+				}
+				main_fns++
+			}
+			.call {
+				if node.children_count != 2 {
+					return false
+				}
+				callee := a.child_node(node, 0)
+				arg := a.child_node(node, 1)
+				if callee.kind != .ident
+					|| callee.value !in ['print', 'println', 'eprint', 'eprintln']
+					|| arg.kind != .string_literal {
+					return false
+				}
+				output_calls++
+			}
+			.ident {
+				if node.value !in ['print', 'println', 'eprint', 'eprintln'] {
+					return false
+				}
+			}
+			else {
+				return false
+			}
+		}
+		for i in 0 .. node.children_count {
+			stack << a.child(node, i)
+		}
+	}
+	return output_calls > 0
 }
 
 // enqueue_main_module_roots supports enqueue main module roots handling for markused.

@@ -82,7 +82,7 @@ fn test_c_flag_target_filter_drops_termux_off_termux() {
 	assert run.output.trim_space() == 'termux-filter-ok'
 }
 
-fn test_objective_c_flags_are_confined_to_cached_dylib() {
+fn test_objective_c_flags_are_applied_to_standalone_build() {
 	$if !macos {
 		return
 	}
@@ -90,7 +90,7 @@ fn test_objective_c_flags_are_confined_to_cached_dylib() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}.v')
@@ -101,15 +101,14 @@ fn test_objective_c_flags_are_confined_to_cached_dylib() {
 	bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}')
 	os.rm(bin) or {}
 	os.rmdir_all(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -no-memory-limit -b c -o ${bin} ${src}')
 	assert compile.exit_code == 0, compile.output
-	tcc_lines := compile.output.split_into_lines().filter(it.contains('tcc.exe'))
-	assert tcc_lines.len == 1, compile.output
-	tcc_line := tcc_lines[0]
-	assert tcc_line.contains('.dylib'), tcc_line
-	assert !tcc_line.contains('-fobjc-arc'), tcc_line
-	assert !tcc_line.contains('-x objective-c'), tcc_line
-	assert compile.output.contains('C dylib cache'), compile.output
+	cc_lines := compile.output.split_into_lines().filter(it.contains('> cc '))
+	assert cc_lines.len == 1, compile.output
+	cc_line := cc_lines[0]
+	assert cc_line.contains('-fobjc-arc'), cc_line
+	assert cc_line.contains('-x objective-c'), cc_line
+	assert !compile.output.contains('C dylib cache'), compile.output
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

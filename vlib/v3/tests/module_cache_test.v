@@ -14,7 +14,7 @@ fn build_module_cache_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(@VEXE)} -gc none -path "${module_cache_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(module_cache_v3_src)}')
+		os.execute('${os.quoted_path(@VEXE)} -gc none -prealloc -path "${module_cache_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(module_cache_v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -48,6 +48,13 @@ fn compile_module_cache_project(v3_bin string, cache_dir string, main_file strin
 	result :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(output)} ${os.quoted_path(main_file)}')
 	assert result.exit_code == 0, result.output
+}
+
+fn run_cached_module_cache_project(v3_bin string, cache_dir string, main_file string) string {
+	result :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -silent -no-memory-limit run ${os.quoted_path(main_file)}')
+	assert result.exit_code == 0, result.output
+	return result.output.trim_space()
 }
 
 fn run_module_cache_binary(path string) string {
@@ -1582,6 +1589,72 @@ fn main() {
 	stderr := os.read_file(stderr_file) or { panic(err) }
 	assert stderr.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 	assert !stdout.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
+}
+
+fn test_module_cache_restart_preserves_macos_fallback_transport() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_restart_fallback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn value() int {
+	return 41
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+
+	// Adding a C flag changes the cached compile signature and restarts V3 after parsing.
+	write_module_cache_file(root, 'main.v', "module main
+
+#flag -DV3_CACHE_RESTART_FALLBACK_PROBE
+
+import os
+import wrapper
+
+fn main() {
+	mut marker := os.open_append(os.args[1]) or { panic(err) }
+	marker.writeln('run') or { panic(err) }
+	marker.close()
+	println(wrapper.value())
+	exit(23)
+}
+")
+	fallback_file := os.join_path(root, 'fallback')
+	report_dir := os.join_path(root, 'c_error')
+	side_effect_file := os.join_path(root, 'side_effects')
+	mut environment := os.environ()
+	environment['V3CACHE'] = cache_dir
+	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
+	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
+	mut process := os.new_process(v3_bin)
+	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	exit_code := process.code
+	process.close()
+	assert exit_code == 23, output
+	assert output == '41\n', output
+	assert os.read_lines(side_effect_file)! == ['run']
+	assert !os.exists(fallback_file), 'cache restart left a stale fallback marker'
+	assert !os.exists(report_dir), 'cache restart exposed or staged a C error report'
 }
 
 fn test_cached_objects_receive_forced_include_flags() {
@@ -5630,12 +5703,8 @@ fn main() {
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
-	first_output := os.join_path(root, 'first')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
-	assert run_module_cache_binary(first_output) == '1'
-	baseline_output := os.join_path(root, 'baseline')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
-	assert run_module_cache_binary(baseline_output) == '1'
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == '1'
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == '1'
 
 	write_module_cache_file(root, 'archive/value.c', 'int cached_archive_value(void) {
 	return 2;
@@ -5646,11 +5715,7 @@ fn main() {
 	assert second_cc.exit_code == 0, second_cc.output
 	second_ar := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
 	assert second_ar.exit_code == 0, second_ar.output
-	changed_output := os.join_path(root, 'changed')
-	changed :=
-		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
-	assert changed.exit_code == 0, changed.output
-	assert run_module_cache_binary(changed_output) == '2'
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == '2'
 }
 
 fn test_cached_dev_dylib_invalidates_for_force_loaded_static_archive_change() {
@@ -5698,12 +5763,8 @@ fn main() {
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
-	first_output := os.join_path(root, 'first')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
-	assert run_module_cache_binary(first_output) == '3'
-	baseline_output := os.join_path(root, 'baseline')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
-	assert run_module_cache_binary(baseline_output) == '3'
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == '3'
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == '3'
 
 	write_module_cache_file(root, 'archive/value.c', 'int force_loaded_archive_value(void) {
 	return 4;
@@ -5714,14 +5775,10 @@ fn main() {
 	assert second_cc.exit_code == 0, second_cc.output
 	second_ar := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
 	assert second_ar.exit_code == 0, second_ar.output
-	changed_output := os.join_path(root, 'changed')
-	changed :=
-		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
-	assert changed.exit_code == 0, changed.output
-	assert run_module_cache_binary(changed_output) == '4'
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == '4'
 }
 
-fn test_cached_dev_dylib_preserves_split_weak_library_flag() {
+fn test_standalone_build_preserves_split_weak_library_flag() {
 	$if !macos {
 		return
 	}
@@ -5764,10 +5821,7 @@ fn main() {
 	output := os.join_path(root, 'output')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
 	assert run_module_cache_binary(output) == '42'
-	mut cached_dylibs :=
-		os.walk_ext(cache_dir, '.dylib').filter(os.file_name(it).starts_with('dev_modules_'))
-	assert cached_dylibs.len == 1, cached_dylibs.str()
-	inspection := os.execute('otool -l ${os.quoted_path(cached_dylibs[0])}')
+	inspection := os.execute('otool -l ${os.quoted_path(output)}')
 	assert inspection.exit_code == 0, inspection.output
 	assert inspection.output.contains('cmd LC_LOAD_WEAK_DYLIB'), inspection.output
 	assert inspection.output.contains(library), inspection.output

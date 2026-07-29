@@ -322,12 +322,7 @@ ifeq ($(HAS_GIT),1)
 			done; \
 		fi; \
 		if ! "$(TMPTCC)/tcc.exe" --version > /dev/null 2> /dev/null; then \
-			if [ "$$fallback_branch" != '' ] && [ "$$fallback_branch" != "$$selected_branch" ] \
-				&& printf '%s\n' "$$branches" | grep -Fx "$$fallback_branch" > /dev/null; then \
-				echo "Pre-built TCC bundle $$selected_branch did not run; retrying with $$fallback_branch."; \
-				rm -rf "$(TMPTCC)"; \
-				$(GITFASTCLONE) --branch "$$fallback_branch" $(TCCREPO) "$(TMPTCC)"; \
-			fi; \
+			echo "Pre-built TCC bundle $$selected_branch did not run; V will use the system compiler: $(CC)"; \
 			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \
 		else \
 			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \

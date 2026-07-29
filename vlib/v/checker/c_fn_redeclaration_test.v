@@ -134,6 +134,45 @@ fn test_fasthttp_and_veb_linux_c_fn_redeclarations_are_compatible() {
 	assert result.exit_code == 0, result.output
 }
 
+fn test_fasthttp_and_veb_freebsd_c_fn_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_fasthttp_veb_freebsd_redeclaration', {
+		'main.v': 'module main\n\nimport fasthttp as _\nimport veb as _\n\nfn main() {}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result := os.execute('${c_fn_redeclaration_vexe} -os freebsd -check ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_os_and_posix_size_t_c_fn_redeclarations_are_compatible() {
+	root := write_c_fn_redeclaration_project('c_fn_os_posix_size_t_redeclaration', {
+		'main.v': 'module main\n\nimport os\n\nfn C.readlink(path &char, buf &char, size usize) int\nfn C.gethostname(name &char, size u64) int\n\nfn main() {\n\t_ = os.args\n}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result := os.execute('${c_fn_redeclaration_vexe} -os vinix -check ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_pointer_sized_c_fn_redeclarations_respect_target_width() {
+	root := write_c_fn_redeclaration_project('c_fn_pointer_sized_target_width', {
+		'v.mod':       "Module { name: 'c_fn_pointer_sized_target_width' }\n"
+		'moda/moda.v': 'module moda\n\nfn C.size_probe(size usize) isize\n\npub fn touch() {}\n'
+		'modb/modb.v': 'module modb\n\nfn C.size_probe(size u64) i64\n\npub fn touch() {}\n'
+		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmoda.touch()\n\tmodb.touch()\n}\n'
+	})!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	result_64 := os.execute('${c_fn_redeclaration_vexe} -m64 -check ${os.quoted_path(root)}')
+	assert result_64.exit_code == 0, result_64.output
+	result_32 := os.execute('${c_fn_redeclaration_vexe} -m32 -check ${os.quoted_path(root)}')
+	assert result_32.exit_code != 0, result_32.output
+	assert result_32.output.contains('C function `C.size_probe` was already declared with a different signature'), result_32.output
+}
+
 fn test_trace_calls_and_os_pthread_self_redeclarations_are_compatible() {
 	root := write_c_fn_redeclaration_project('c_fn_trace_calls_os_redeclaration', {
 		'main.v': 'module main\n\nimport os\n\nfn main() {\n\t_ := os.args\n}\n'

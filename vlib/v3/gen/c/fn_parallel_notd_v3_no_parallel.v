@@ -289,6 +289,15 @@ fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
 	}
 }
 
+fn (mut g FlatGen) preintern_ast_string_literals() {
+	for i in 0 .. g.a.nodes.len {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		}
+	}
+}
+
 fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	mut n_items := 0
 	if g.scope_parallel_workers {
@@ -301,12 +310,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		// Fuse body-local function-pointer discovery into the item cost walk so
 		// parallel type declarations see every typedef before their task starts.
 		// The globally numbered string table must also be complete before output.
-		for i in 0 .. g.a.nodes.len {
-			node := unsafe { &g.a.nodes[i] }
-			if node.kind == .string_literal {
-				g.intern_string(node.value)
-			}
-		}
+		g.preintern_ast_string_literals()
 		g.timing_profile('  [ttime]       pm str walk  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		pmsw.restart()
 		g.want_parallel_prep = true
@@ -1612,6 +1616,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		compiler_vroot:                 g.compiler_vroot
 		compiler_vexe:                  g.compiler_vexe
+		compiler_vexe_env_setup:        g.compiler_vexe_env_setup
 		cur_param_names:                if result_only {
 			g.cur_param_names
 		} else {
@@ -1803,7 +1808,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 	return wtc
 }
 
-fn (mut g FlatGen) publish_scoped_worker_string_literals(w &FlatGen) map[int]int {
+fn (mut g FlatGen) publish_worker_string_literals(w &FlatGen) map[int]int {
 	mut remap := map[int]int{}
 	mut common_len := 0
 	for common_len < g.str_lits.len && common_len < w.str_lits.len
@@ -1913,11 +1918,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
 	}
-	string_id_remap := if g.scope_parallel_workers {
-		g.publish_scoped_worker_string_literals(w)
-	} else {
-		map[int]int{}
-	}
+	string_id_remap := g.publish_worker_string_literals(w)
 	user_c_symbols := if string_id_remap.len > 0 {
 		g.cache_user_c_string_symbols()
 	} else {

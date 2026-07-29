@@ -524,6 +524,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				g.gowrappers.writeln('\tbuiltin___v_free(arg);')
 			}
 		}
+		if is_spawn && g.pref.prealloc && wrapper_return_type == ast.void_type {
+			g.gowrappers.writeln('\tbuiltin__prealloc_thread_cleanup();')
+		}
 		if g.pref.os != .windows && wrapper_return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
 		} else {
