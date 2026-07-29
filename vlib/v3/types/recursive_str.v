@@ -40,6 +40,17 @@ struct RecursiveStrAssignmentValue {
 	rhs_id  flat.NodeId
 }
 
+enum RecursiveStrAggregateSlotKind {
+	index
+	field
+}
+
+struct RecursiveStrAggregateSlot {
+	kind     RecursiveStrAggregateSlotKind
+	index_id flat.NodeId
+	key      string
+}
+
 struct RecursiveStrBinding {
 mut:
 	can_recurse             bool
@@ -271,6 +282,10 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 					}
 					env.bindings[lhs.value] = binding
 				} else {
+					if node.op == .assign
+						&& tc.recursive_str_replace_aggregate_slot(lhs_id, binding, mut env) {
+						continue
+					}
 					tc.recursive_str_apply_mutation(lhs_id, value.rhs_id, node.op, mut env)
 				}
 			}
@@ -280,7 +295,11 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			if node.children_count >= 2 {
 				lhs_id := tc.a.child(node, 0)
 				rhs_id := tc.a.child(node, node.children_count - 1)
-				tc.recursive_str_eval_expr(rhs_id, mut env, ctx)
+				rhs_binding := tc.recursive_str_eval_expr(rhs_id, mut env, ctx)
+				if node.op == .assign
+					&& tc.recursive_str_replace_aggregate_slot(lhs_id, rhs_binding, mut env) {
+					return true
+				}
 				tc.recursive_str_apply_mutation(lhs_id, rhs_id, node.op, mut env)
 			}
 			return true
@@ -1157,16 +1176,21 @@ fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index
 }
 
 fn (tc &TypeChecker) recursive_str_named_element_binding(base RecursiveStrBinding, key string, result_id flat.NodeId) ?RecursiveStrBinding {
+	index := recursive_str_named_element_index(base, key) or { return none }
+	mut binding := base.elements[index]
+	if binding.typ_name.len == 0 {
+		binding.typ_name = tc.resolve_type(result_id).name()
+	}
+	return binding
+}
+
+fn recursive_str_named_element_index(base RecursiveStrBinding, key string) ?int {
 	if base.element_keys.len != base.elements.len {
 		return none
 	}
 	for i := base.element_keys.len; i > 0; i-- {
 		if base.element_keys[i - 1] == key {
-			mut binding := base.elements[i - 1]
-			if binding.typ_name.len == 0 {
-				binding.typ_name = tc.resolve_type(result_id).name()
-			}
-			return binding
+			return i - 1
 		}
 	}
 	return none
@@ -1319,7 +1343,8 @@ fn (mut tc TypeChecker) recursive_str_eval_invoked_helper(call_id flat.NodeId, r
 	mut actual_index := 0
 	callee := tc.a.child_node(call, 0)
 	mut actual_bindings := args.clone()
-	if callee.kind == .selector && callee.children_count > 0 {
+	if tc.recursive_str_decl_has_receiver(*decl) && callee.kind == .selector
+		&& callee.children_count > 0 {
 		actual_bindings.prepend(receiver)
 	}
 	for i in 0 .. decl.children_count {
@@ -1486,8 +1511,7 @@ fn (tc &TypeChecker) recursive_str_has_concrete_fn_decl(name string) bool {
 		if node.kind != .fn_decl {
 			continue
 		}
-		if node.value == name || checker_qualified_fn_name(tc.cur_module, node.value) == name
-			|| node.value == name.trim_string_left('main.') {
+		if tc.recursive_str_fn_decl_matches(*node, name) {
 			return true
 		}
 	}
@@ -1921,6 +1945,69 @@ fn (tc &TypeChecker) recursive_str_apply_array_append(lhs_id flat.NodeId, rhs_id
 	return true
 }
 
+fn (tc &TypeChecker) recursive_str_replace_aggregate_slot(target_id flat.NodeId, rhs RecursiveStrBinding, mut env RecursiveStrEnv) bool {
+	name := tc.recursive_str_root_ident(target_id) or { return false }
+	path := tc.recursive_str_aggregate_slot_path(target_id) or { return false }
+	if path.len == 0 {
+		return false
+	}
+	mut binding := env.bindings[name] or { return false }
+	if !tc.recursive_str_replace_aggregate_binding_slot(path, 0, rhs, mut binding) {
+		return false
+	}
+	env.bindings[name] = binding
+	return true
+}
+
+fn (tc &TypeChecker) recursive_str_aggregate_slot_path(id flat.NodeId) ?[]RecursiveStrAggregateSlot {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return []RecursiveStrAggregateSlot{}
+	}
+	if node.kind in [.paren, .prefix, .as_expr, .cast_expr] && node.children_count > 0 {
+		return tc.recursive_str_aggregate_slot_path(tc.a.child(node, 0))
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		mut path := tc.recursive_str_aggregate_slot_path(tc.a.child(node, 0)) or { return none }
+		path << RecursiveStrAggregateSlot{
+			kind: .field
+			key:  recursive_str_struct_field_key(node.value)
+		}
+		return path
+	}
+	if node.kind == .index && node.children_count >= 2 {
+		mut path := tc.recursive_str_aggregate_slot_path(tc.a.child(node, 0)) or { return none }
+		path << RecursiveStrAggregateSlot{
+			kind:     .index
+			index_id: tc.a.child(node, 1)
+		}
+		return path
+	}
+	return none
+}
+
+fn (tc &TypeChecker) recursive_str_replace_aggregate_binding_slot(path []RecursiveStrAggregateSlot, depth int, rhs RecursiveStrBinding, mut binding RecursiveStrBinding) bool {
+	if depth >= path.len {
+		binding = rhs
+		return true
+	}
+	slot := path[depth]
+	element_index := match slot.kind {
+		.index { tc.recursive_str_tracked_element_index(binding, slot.index_id) or { return false } }
+		.field { recursive_str_named_element_index(binding, slot.key) or { return false } }
+	}
+	binding.elements = binding.elements.clone()
+	mut element := binding.elements[element_index]
+	if !tc.recursive_str_replace_aggregate_binding_slot(path, depth + 1, rhs, mut element) {
+		return false
+	}
+	binding.elements[element_index] = element
+	return true
+}
+
 fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_id flat.NodeId, op flat.Op, mut env RecursiveStrEnv) {
 	name := tc.recursive_str_root_ident(target_id) or { return }
 	if tc.recursive_str_mutation_is_noop(rhs_id, op) {
@@ -2213,7 +2300,8 @@ fn (tc &TypeChecker) recursive_str_call_param_actuals(call flat.Node, decl flat.
 		return map[string]flat.NodeId{}
 	}
 	callee := tc.a.child_node(&call, 0)
-	if callee.kind == .selector && callee.children_count > 0 {
+	if tc.recursive_str_decl_has_receiver(decl) && callee.kind == .selector
+		&& callee.children_count > 0 {
 		actual_ids << tc.a.child(callee, 0)
 	}
 	for i in 1 .. call.children_count {
@@ -2233,6 +2321,14 @@ fn (tc &TypeChecker) recursive_str_call_param_actuals(call flat.Node, decl flat.
 		actual_index++
 	}
 	return actuals
+}
+
+fn (tc &TypeChecker) recursive_str_decl_has_receiver(decl flat.Node) bool {
+	if decl.children_count == 0 {
+		return false
+	}
+	first := tc.a.child_node(&decl, 0)
+	return first.kind == .param && first.op == .dot
 }
 
 fn (tc &TypeChecker) recursive_str_binding_for_expr(id flat.NodeId, env RecursiveStrEnv) RecursiveStrBinding {
@@ -2558,7 +2654,8 @@ fn (mut tc TypeChecker) recursive_str_apply_call_mutations(call_id flat.NodeId, 
 	}
 	callee := tc.a.child_node(call, 0)
 	mut param_index := 0
-	if callee.kind == .selector && callee.children_count > 0 {
+	if tc.recursive_str_decl_has_receiver(*decl) && callee.kind == .selector
+		&& callee.children_count > 0 {
 		receiver_id := tc.a.child(callee, 0)
 		effect := tc.recursive_str_guaranteed_param_effect(*decl, 0)
 		source_binding := actual_bindings[effect.source_param] or { RecursiveStrBinding{} }
@@ -2620,12 +2717,23 @@ fn (tc &TypeChecker) recursive_str_fn_decl_id(name string) ?flat.NodeId {
 		if node.kind != .fn_decl {
 			continue
 		}
-		if node.value == name || checker_qualified_fn_name(tc.cur_module, node.value) == name
-			|| node.value == name.trim_string_left('main.') {
+		if tc.recursive_str_fn_decl_matches(*node, name) {
 			return id
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) recursive_str_fn_decl_matches(node flat.Node, name string) bool {
+	if node.value == name || node.value == name.trim_string_left('main.') {
+		return true
+	}
+	module_name := if source_file := tc.a.source_files[node.pos.id] {
+		tc.file_modules[source_file.name] or { tc.cur_module }
+	} else {
+		tc.cur_module
+	}
+	return checker_qualified_fn_name(module_name, node.value) == name
 }
 
 fn (mut tc TypeChecker) recursive_str_guaranteed_param_effect(decl flat.Node, param_index int) RecursiveStrParamEffect {

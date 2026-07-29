@@ -8457,6 +8457,82 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_preserves_qualified_helper_args_and_slot_replacements() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'recursive_str_qualified_helper_args', {
+		'v.mod':             "Module { name: 'recursive_str_qualified_helper_args' }\n"
+		'helpers/helpers.v': 'module helpers\n\npub interface Stringer {\n\tstr() string\n}\n\npub fn render(value Stringer) string {\n\treturn value.str()\n}\n'
+		'main.v':            'module main\n\nimport helpers\n\nstruct Item {}\n\nfn (item Item) str() string {\n\treturn helpers.render(item)\n}\n\nfn main() {}\n'
+	}, ['main.v'], 'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_static_helper_args', 'struct Helpers {}
+
+struct Item {}
+
+fn Helpers.render(item Item) string {
+	return item.str()
+}
+
+fn (item Item) str() string {
+	return Helpers.render(item)
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_slot_replacement', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [Item{
+		remaining: 0
+	}]
+	items[0] = item
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_map_slot_replacement', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := {"self": Item{
+		remaining: 0
+	}}
+	items["self"] = item
+	return items["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_wrapper_field_replacement', 'struct Item {
+	remaining int
+}
+
+struct Wrapper {
+mut:
+	value Item
+}
+
+fn (item Item) str() string {
+	mut wrapped := Wrapper{
+		value: Item{
+			remaining: 0
+		}
+	}
+	wrapped.value = item
+	return wrapped.value.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_noreturn_branch_does_not_fall_through() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'recursive_str_noreturn_branch', '@[noreturn]
