@@ -339,6 +339,23 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 	return v
 }
 
+@[inline; unsafe]
+fn vmemory_block_current_or_new() &VMemoryBlock {
+	unsafe {
+		// The current block is thread-local. Fresh workers need a base arena
+		// even when their first operation is a scoped allocation, so scope
+		// blocks have a per-thread recycle cache after the scope is detached.
+		mut mb := g_memory_block
+		if _unlikely_(mb == nil) {
+			mb = vmemory_block_new(nil, isize(prealloc_block_size), 0)
+			mb.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
+			vmemory_abort_on_nil(mb.recycle_cache, sizeof(VPreallocBlockCache))
+			g_memory_block = mb
+		}
+		return mb
+	}
+}
+
 @[unsafe]
 fn vmemory_block_malloc(n isize, align isize) &u8 {
 	unsafe {
@@ -346,16 +363,7 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 		// which block is current, and the bump updates go through the block
 		// itself. Thread-local access can be a library call (cc -O0 TLS,
 		// pthread-key emulation), so the fast path must not repeat it.
-		mut mb := g_memory_block
-		if _unlikely_(mb == nil) {
-			// Lazy per-thread initialization: when g_memory_block is
-			// thread-local, new threads start with a null pointer and need
-			// their own arena.
-			mb = vmemory_block_new(nil, isize(prealloc_block_size), 0)
-			mb.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
-			vmemory_abort_on_nil(mb.recycle_cache, sizeof(VPreallocBlockCache))
-			g_memory_block = mb
-		}
+		mut mb := vmemory_block_current_or_new()
 		$if prealloc_trace_malloc ? {
 			C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n',
 				mb.id, n, align)
@@ -587,7 +595,7 @@ pub fn prealloc_scope_begin() voidptr {
 	unsafe {
 		scope := &VPreallocScope(C.calloc(1, sizeof(VPreallocScope)))
 		vmemory_abort_on_nil(scope, sizeof(VPreallocScope))
-		scope.previous = g_memory_block
+		scope.previous = vmemory_block_current_or_new()
 		scope.first = vmemory_block_new_sized(scope.previous, isize(prealloc_scope_block_size), 0,
 			isize(prealloc_scope_block_size))
 		scope.first.is_scope = true
