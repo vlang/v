@@ -4639,6 +4639,7 @@ pub fn run(args []string) {
 	mut uses_generics := false
 	mut skip_transform_generics := true
 	mut transform_texts_canonical := cgen_cache_hit
+	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
 		if scope_prealloc_check {
@@ -4646,6 +4647,8 @@ pub fn run(args []string) {
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
 		set_diagnostic_files(mut pre_tc, user_files)
+		trivial_literal_output = markused.is_trivial_literal_output_program(a,
+			pre_tc.diagnostic_files)
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
 		if verbose {
@@ -4668,7 +4671,10 @@ pub fn run(args []string) {
 			eprintln('  [ttime]   ck iface idx     ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		mut check_was_parallel := false
-		if incremental_cache_hit {
+		if trivial_literal_output && !incremental_cache_hit {
+			used_fns = markused.mark_used_without_generic_detection(a, &pre_tc)
+			pre_tc.check_semantics_selected(used_fns)
+		} else if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
@@ -4827,6 +4833,8 @@ pub fn run(args []string) {
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a,
 				markused_tc, test_files)
+		} else if trivial_literal_output && used_fns.len > 0 {
+			uses_generics = false
 		} else if building_v {
 			used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
 			uses_generics = false
@@ -4914,7 +4922,7 @@ pub fn run(args []string) {
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
 			transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				true, building_v, transform_scope)
+				true, building_v || trivial_literal_output, transform_scope)
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
@@ -5069,7 +5077,7 @@ pub fn run(args []string) {
 		} else {
 			transform_used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				false, building_v)
+				false, building_v || trivial_literal_output)
 		}
 		if !incremental_cache_hit {
 			used_fns = transform_used_fns.move()

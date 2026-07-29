@@ -145,7 +145,7 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
-	trivial_literal_output := markused_is_trivial_literal_output_program(a, tc)
+	trivial_literal_output := is_trivial_literal_output_program(a, tc.diagnostic_files)
 	// An exact literal-output program has no user expressions or declarations that
 	// can instantiate a generic. Skip generic indexes and per-node generic checks,
 	// just as the known non-generic self-host path does.
@@ -1750,14 +1750,16 @@ fn is_test_harness_root_name(name string) bool {
 		|| name in ['testsuite_begin', 'testsuite_end', 'before_each', 'after_each']
 }
 
-fn markused_is_trivial_literal_output_program(a &flat.FlatAst, tc &types.TypeChecker) bool {
-	if tc.diagnostic_files.len != 1 {
+// is_trivial_literal_output_program reports whether the selected source consists
+// only of literal print calls. It does not depend on semantic collection, so the
+// driver can select its non-generic check path before checking function bodies.
+pub fn is_trivial_literal_output_program(a &flat.FlatAst, diagnostic_files map[string]bool) bool {
+	if diagnostic_files.len != 1 {
 		return false
 	}
 	mut stack := []flat.NodeId{}
-	for node_idx in tc.top_level_idx {
-		node := a.nodes[node_idx]
-		if node.kind != .file || node.value !in tc.diagnostic_files {
+	for node in a.nodes {
+		if node.kind != .file || node.value !in diagnostic_files {
 			continue
 		}
 		for i in 0 .. node.children_count {
