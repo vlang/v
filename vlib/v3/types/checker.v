@@ -681,7 +681,11 @@ pub mut:
 	channel_send_or_expr_id int  = -1
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
-	// See QualifyNameCache: forks must replace it with their own instance.
+	// See QualifyNameCache: nil unless armed for a phase whose allocations
+	// outlive every prealloc scope arena; forks must replace it with their own
+	// instance. A long-lived armed cache written during a scoped driver stage
+	// (markused/transform/cgen under -prealloc) stores map buckets and result
+	// strings in the disposable scope arena, and later reads crash.
 	qualify_name_cache &QualifyNameCache = unsafe { nil }
 	import_info_cache  &ImportInfoCache  = unsafe { nil }
 	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
@@ -867,7 +871,6 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		visible_mutation_cache:                  new_visible_mutation_cache()
 		type_interner:                           type_interner
 		symbols:                                 symbols
-		qualify_name_cache:                      &QualifyNameCache{}
 		enclosing_generic_params_by_node:        map[int][]string{}
 		declaration_attributes:                  map[int][]string{}
 		type_declaration_ids:                    map[string][]int{}
