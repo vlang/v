@@ -8171,6 +8171,27 @@ middle
 	assert compile.output.count('imports.txt:3:30: error:') == 2, compile.output
 }
 
+fn test_template_css_import_is_emitted_literally() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'template_css_import', {
+		'main.v':     "module main
+
+fn main() {
+	print(\$tmpl('style.html'))
+}
+"
+		'style.html': "<style>
+@import url('theme.css');
+body { color: red; }
+</style>
+"
+	}, 'main.v')
+	assert out == "<style>
+@import url('theme.css');
+body { color: red; }
+</style>"
+}
+
 fn test_recursive_str_bound_method_value_preserves_receiver_provenance() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_bound_method_value', 'struct Item {}

@@ -680,6 +680,8 @@ struct TemplateSourceLine {
 	text string
 	path string
 	line int
+mut:
+	state TmplState
 }
 
 struct RegisteredTemplateSource {
@@ -873,6 +875,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 		if state != .simple {
 			state.update(line)
 		}
+		lines[i].state = state
 		// HTML comments: emit literally, no @-interpolation.
 		if state == .html {
 			if in_html_comment {
@@ -902,7 +905,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 		// Keep an invalid keyword interpolation parseable here. The template parser
 		// reports both compatibility diagnostics after registering the template's
 		// real source file, avoiding an unbounded recovery loop in the generated V.
-		if trimmed_line.starts_with('@import ') {
+		if state != .css && trimmed_line.starts_with('@import ') {
 			literal_line := line.replace_once('@import', '@@import')
 			source.writeln(tmpl_line_content(literal_line, escape))
 			continue
@@ -1414,7 +1417,7 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 	}
 	for source_line in source_lines {
 		line := source_line.text
-		if !line.trim_space().starts_with('@import ') {
+		if source_line.state == .css || !line.trim_space().starts_with('@import ') {
 			continue
 		}
 		registered := registered_sources[source_line.path] or { continue }
