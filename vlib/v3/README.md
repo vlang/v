@@ -27,12 +27,13 @@ can compile the full builtin map.v.
 
 ## macOS V3 dispatch
 
-On macOS 26.2, or in a macOS GitHub Actions job, the top-level `v` command dispatches supported
-native C source builds to a cached compiler built from `vlib/v3/v3.v`. For example, `v file.v`,
-`v run file.v`, and `v script.vsh` are eligible. V3 currently compiles these unflagged builds
-without a garbage collector; `-gc none` and `-prealloc` are also eligible. An explicit non-none
-`-gc` mode stays on the established compiler. The cached compiler is rebuilt when V3 sources
-change and runs serial stages to stay within its memory safety limit.
+On macOS 26.2, or in a macOS GitHub Actions job, the top-level `v` command runs supported native C
+source builds through the V3 driver linked into `cmd/v`. It does not build or launch a second V3
+compiler process. For example, `v file.v`, `v run file.v`, and `v script.vsh` are eligible. V3
+currently compiles these unflagged builds without a garbage collector; `-gc none` and `-prealloc`
+are also eligible. An explicit non-none `-gc` mode stays on the established compiler. The
+in-process path currently uses serial stages and disables the split module cache, whose
+invalidation protocol still relies on restarting the standalone V3 executable.
 
 `cmd/v` remains the CLI and compatibility dispatcher. Tests, command tools, self-hosted temporary
 compilers, cross-compilation, and modes not yet supported by V3 continue through the established

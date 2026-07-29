@@ -156,9 +156,11 @@ fn test_macos_v3_forwards_compatibility_c99_mode() {
 		prefs := &pref.Preferences{}
 		forwarded := macos_v3_forwarded_args(prefs, ['main.v'])
 		assert macos_v3_compat_c99_flag in forwarded
+		assert '-nocache' in forwarded
 		assert forwarded.count(it == macos_v3_compat_c99_flag) == 1
 		already_present := macos_v3_forwarded_args(prefs, [macos_v3_compat_c99_flag, 'main.v'])
 		assert already_present.count(it == macos_v3_compat_c99_flag) == 1
+		assert already_present.count(it == '-nocache') == 1
 	}
 }
 
@@ -205,51 +207,6 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 	}
 }
 
-fn test_macos_v3_bootstrap_clears_argument_environment() {
-	$if macos {
-		environment := macos_v3_bootstrap_environment()
-		assert environment[macos_v3_bootstrap_env] == '1'
-		assert environment['VFLAGS'] == ''
-		assert environment['VOSARGS'] == ''
-	}
-}
-
-fn test_macos_v3_external_tool_children_do_not_inherit_bootstrap() {
-	$if macos {
-		root := os.join_path(os.vtmp_dir(), 'macos_v3_external_tool_env_${os.getpid()}')
-		os.rmdir_all(root) or {}
-		os.mkdir_all(root) or { panic(err) }
-		defer {
-			os.rmdir_all(root) or {}
-		}
-		target := os.join_path(root, 'bootstrap_environment_test.v')
-		os.write_file(target, "import os
-
-const compile_bootstrap = \$env('V_MACOS_V3_BOOTSTRAP')
-
-fn test_bootstrap_is_private() {
-	assert compile_bootstrap == ''
-	assert os.getenv('V_MACOS_V3_BOOTSTRAP') == ''
-}
-")!
-		mut environment := os.environ()
-		environment.delete(macos_v3_bootstrap_env)
-		environment[macos_v3_executable_env] = os.join_path(root, 'missing_v3')
-		environment['VFLAGS'] = ''
-		environment['VOSARGS'] = ''
-		mut process := os.new_process(@VEXE)
-		process.set_args(['test', target])
-		process.set_environment(environment)
-		process.set_redirect_stdio()
-		process.run()
-		process.wait()
-		output := process.stdout_slurp() + process.stderr_slurp()
-		exit_code := process.code
-		process.close()
-		assert exit_code == 0, output
-	}
-}
-
 fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 	$if macos {
 		caller_environment := {
@@ -262,6 +219,7 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert environment[macos_v3_vhash_env] == @VHASH
 		assert environment[macos_v3_vcurrent_hash_env] == @VCURRENTHASH
 		assert environment[macos_v3_c_error_dir_env] == '/tmp/macos_v3_fallback.c_error'
+		assert environment[macos_v3_embedded_env] == '1'
 		assert environment['VEXE'] == os.real_path(@VEXE)
 		assert environment['VCHILD'] == 'true'
 		assert environment[macos_v3_caller_vexe_present_env] == '1'
@@ -311,100 +269,50 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		fake_source := os.join_path(root, 'fake_v3.v')
-		fake_v3 := os.join_path(root, 'fake_v3')
-		os.write_file(fake_source, "import os
-
-fn main() {
-	fallback_file := os.getenv('V_MACOS_V3_FALLBACK_FILE')
-	if os.getenv('V_MACOS_V3_TEST_GENERAL_FAILURE') == '1' {
-		os.write_file(fallback_file, 'compiler_error')!
-		exit(1)
-	}
-	report_dir := os.getenv('V_MACOS_V3_C_ERROR_DIR')
-	os.mkdir_all(report_dir)!
-	os.write_file(os.join_path(report_dir, 'compiler'), 'clang')!
-	os.write_file(os.join_path(report_dir, 'output'), 'src.c:1:1: error: simulated V3 failure')!
-	os.write_file(os.join_path(report_dir, 'source_name'), 'src.c')!
-	os.write_file(os.join_path(report_dir, 'src.c'), 'int simulated_v3_failure;\\n')!
-	os.write_file(fallback_file, 'c_compilation_error')!
-	exit(1)
-}
-")!
-		fake_build :=
-			os.execute('${os.quoted_path(@VEXE)} -old-compiler -o ${os.quoted_path(fake_v3)} ${os.quoted_path(fake_source)}')
-		assert fake_build.exit_code == 0, fake_build.output
 		target := os.join_path(root, 'target.v')
 		output := os.join_path(root, 'target')
-		os.write_file(target, "fn main() {
-	println('old compiler retry succeeded')
+		asm_body := $if arm64 {
+			'asm arm64 {
+		mov output, 1
+		; +r (output)
+	}'
+		} $else {
+			'asm amd64 {
+		mov eax, 1
+		mov output, eax
+		; =r (output)
+		; ; eax
+	}'
+		}
+		os.write_file(target, 'fn main() {
+	mut output := 0
+	${asm_body}
+	assert output == 1
 }
-")!
+')!
 		mut environment := os.environ()
-		environment[macos_v3_executable_env] = fake_v3
 		environment['GITHUB_ACTIONS'] = 'true'
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
-		environment[macos_v3_bootstrap_env] = ''
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
-		process.set_args(['-o', output, target])
+		process.set_args(['-v', '-o', output, target])
 		process.set_environment(environment)
 		process.set_redirect_stdio()
 		process.run()
-		compiler_pid := process.pid
 		process.wait()
 		compiler_output := process.stdout_slurp() + process.stderr_slurp()
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
-		assert compiler_output.contains('retrying with `-old-compiler`'), compiler_output
-		report_dir := os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${compiler_pid}.c_error')
-		assert !os.exists(report_dir), 'fallback report directory was not cleaned: ${report_dir}'
+		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
+		assert !compiler_output.contains('Launching macOS V3 compiler:'), compiler_output
+		assert compiler_output.contains('compatibility compiler for inline assembly'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0
-		assert run.output.trim_space() == 'old compiler retry succeeded'
 
 		os.rm(output)!
-		mut run_process := os.new_process(@VEXE)
-		run_process.set_args(['-gc', 'none', 'run', target])
-		run_process.set_environment(environment)
-		run_process.set_redirect_stdio()
-		run_process.run()
-		run_compiler_pid := run_process.pid
-		run_process.wait()
-		run_output := run_process.stdout_slurp() + run_process.stderr_slurp()
-		run_exit_code := run_process.code
-		run_process.close()
-		assert run_exit_code == 0, run_output
-		assert run_output.contains('retrying with `-old-compiler`'), run_output
-		assert run_output.contains('old compiler retry succeeded'), run_output
-		run_report_dir := os.join_path(os.vtmp_dir(),
-			'macos_v3_fallback_${run_compiler_pid}.c_error')
-		assert !os.exists(run_report_dir), 'run fallback report directory was not cleaned: ${run_report_dir}'
-		assert !os.exists(output), 'run fallback executable was not cleaned: ${output}'
-
-		general_output := os.join_path(root, 'general_fallback')
-		environment['V_MACOS_V3_TEST_GENERAL_FAILURE'] = '1'
-		mut general_process := os.new_process(@VEXE)
-		general_process.set_args(['-gc', 'none', '-o', general_output, target])
-		general_process.set_environment(environment)
-		general_process.set_redirect_stdio()
-		general_process.run()
-		general_process.wait()
-		general_output_text := general_process.stdout_slurp() + general_process.stderr_slurp()
-		general_exit_code := general_process.code
-		general_process.close()
-		assert general_exit_code == 0, general_output_text
-		assert general_output_text.contains('V3 compilation failed; retrying with `-old-compiler`.'), general_output_text
-
-		assert os.is_executable(general_output)
-		general_run := os.execute(os.quoted_path(general_output))
-		assert general_run.exit_code == 0
-		assert general_run.output.trim_space() == 'old compiler retry succeeded'
-
-		environment.delete('V_MACOS_V3_TEST_GENERAL_FAILURE')
 		failing_target := os.join_path(root, 'failing_target.v')
 		failing_output := os.join_path(root, 'failing_target')
 		os.write_file(failing_target, '#flag -lmacos_v3_missing_library_${os.getpid()}
@@ -422,6 +330,7 @@ fn main() {}
 		failing_exit_code := failing_process.code
 		failing_process.close()
 		assert failing_exit_code != 0, failing_output_text
+		assert failing_output_text.contains('V3 C compilation failed; retrying with `-old-compiler`.')
 		failing_report_dir := os.join_path(os.vtmp_dir(),
 			'macos_v3_fallback_${failing_compiler_pid}.c_error')
 		assert !os.exists(failing_report_dir), 'failed compatibility build left staged report directory: ${failing_report_dir}'

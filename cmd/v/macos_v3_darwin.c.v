@@ -1,14 +1,10 @@
 module main
 
-import hash
 import os
-import os.filelock
-import time
 import v.pref
 import v.util
+import v3.driver
 
-const macos_v3_bootstrap_env = 'V_MACOS_V3_BOOTSTRAP'
-const macos_v3_executable_env = 'V_MACOS_V3_EXECUTABLE'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
@@ -18,6 +14,8 @@ const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
+const macos_v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
+const macos_v3_retry_env = 'V_MACOS_V3_RETRY'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const macos_v3_compiler_error_fallback = 'compiler_error'
 const macos_v3_c_error_fallback = 'c_compilation_error'
@@ -28,9 +26,16 @@ const macos_v3_enabled_product_version_major = 26
 const macos_v3_enabled_product_version_minor = 2
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
+	if os.getenv(macos_v3_retry_env) == '1' {
+		os.unsetenv(macos_v3_retry_env)
+		return take_macos_v3_c_error_report()
+	}
+	if prefs.old_compiler {
+		return take_macos_v3_c_error_report()
+	}
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
-	if os.getenv(macos_v3_bootstrap_env) != '' || !is_macos_v3_default_executable(os.executable())
+	if !is_macos_v3_default_executable(os.executable())
 		|| !is_macos_v3_relevant_command(command, prefs) || !macos_v3_default_is_enabled_for_host()
 		|| !macos_v3_environment_flags_are_supported(os.getenv('CFLAGS'), os.getenv('LDFLAGS'))
 		|| !macos_v3_args_are_supported(forwarded_args) {
@@ -244,6 +249,12 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if '-no-parallel' !in forwarded_args {
 		forwarded_args.insert(0, '-no-parallel')
 	}
+	// An embedded V3 driver cannot restart itself by replacing the cmd/v process.
+	// Keep its first in-process rollout monolithic until cache invalidation can
+	// restart the driver through an ordinary function return.
+	if '-nocache' !in forwarded_args && '--no-cache' !in forwarded_args {
+		forwarded_args.insert(0, '-nocache')
+	}
 	return forwarded_args
 }
 
@@ -252,69 +263,88 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
-	v3_source := os.join_path(vroot, 'vlib', 'v3', 'v3.v')
-	v3_source_dir := os.dir(v3_source)
-	mut v3_exe := os.getenv(macos_v3_executable_env)
-	if v3_exe == '' {
-		v3_exe = cached_macos_v3_executable_path(vroot)
-		os.mkdir_all(os.dir(v3_exe)) or {
-			eprintln('cannot create `${os.dir(v3_exe)}`: ${err}')
-			exit(1)
-		}
-		mut build_lock := filelock.new(v3_exe + '.lock')
-		if !build_lock.wait_acquire(10 * time.minute) {
-			eprintln('timed out waiting to build `${v3_source}`')
-			exit(1)
-		}
-		if util.should_recompile_tool(vexe, v3_source_dir, 'v3', v3_exe) {
-			build_macos_v3_compiler(vexe, vroot, v3_source, v3_exe, prefs.is_verbose)
-		}
-		build_lock.release()
-	}
 	forwarded_args := macos_v3_forwarded_args(prefs, raw_args)
 	if prefs.is_verbose {
-		println('Launching macOS V3 compiler: ${os.quoted_path(v3_exe)} ${util.args_quote_paths(forwarded_args)}')
+		println('Running macOS V3 compiler in process: ${util.args_quote_paths(forwarded_args)}')
 	}
-	mut process := os.new_process(v3_exe)
-	process.set_args(forwarded_args)
 	fallback_file := os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${os.getpid()}')
 	os.rm(fallback_file) or {}
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
 	os.rmdir_all(c_error_dir) or {}
 	environment := macos_v3_child_environment(vexe, fallback_file, caller_environment)
-	process.set_environment(environment)
-	process.run()
-	process.wait()
-	exit_code := if process.code >= 0 { process.code } else { 1 }
-	process.close()
-	fallback_reason := os.read_file(fallback_file) or { '' }
-	os.rm(fallback_file) or {}
-	if exit_code != 0 && fallback_reason == macos_v3_inline_asm_fallback {
-		os.rmdir_all(c_error_dir) or {}
-		if prefs.is_verbose {
-			println('V3 requested the compatibility compiler for inline assembly')
-		}
-		return none
+	replace_macos_v3_process_environment(environment)
+	is_verbose := prefs.is_verbose
+	retry_args := os.args[1..].clone()
+	at_exit(fn [caller_environment, fallback_file, c_error_dir, retry_args, is_verbose] () {
+		retry_macos_v3_with_old_compiler(caller_environment, fallback_file, c_error_dir,
+			retry_args, is_verbose)
+	}) or {
+		eprintln('cannot register the V3 compatibility fallback: ${err}')
+		exit(1)
 	}
-	if exit_code != 0 && fallback_reason == macos_v3_c_error_fallback {
+	driver.run(forwarded_args)
+	os.rm(fallback_file) or {}
+	os.rmdir_all(c_error_dir) or {}
+	exit(0)
+}
+
+fn replace_macos_v3_process_environment(environment map[string]string) {
+	current := os.environ()
+	for name, _ in current {
+		if name !in environment {
+			os.unsetenv(name)
+		}
+	}
+	for name, value in environment {
+		os.setenv(name, value, true)
+	}
+}
+
+fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallback_file string, c_error_dir string, retry_args []string, is_verbose bool) {
+	fallback_reason := os.read_file(fallback_file) or { return }
+	os.rm(fallback_file) or {}
+	if fallback_reason !in [macos_v3_inline_asm_fallback, macos_v3_compiler_error_fallback,
+		macos_v3_c_error_fallback] {
+		os.rmdir_all(c_error_dir) or {}
+		return
+	}
+	replace_macos_v3_process_environment(caller_environment)
+	if fallback_reason == macos_v3_c_error_fallback {
 		report := read_macos_v3_c_error_report(c_error_dir) or {
 			os.rmdir_all(c_error_dir) or {}
 			eprintln('V3 requested a C-error fallback, but its diagnostics could not be read')
-			exit(exit_code)
+			return
 		}
+		os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
 		eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
 		if report.c_output != '' {
 			eprintln(report.c_output.trim_right('\r\n'))
 		}
-		return report
-	}
-	if exit_code != 0 && fallback_reason == macos_v3_compiler_error_fallback {
+	} else {
 		os.rmdir_all(c_error_dir) or {}
-		eprintln('V3 compilation failed; retrying with `-old-compiler`.')
+		if fallback_reason == macos_v3_inline_asm_fallback {
+			if is_verbose {
+				println('V3 requested the compatibility compiler for inline assembly')
+			}
+		} else {
+			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
+		}
+	}
+	os.setenv(macos_v3_retry_env, '1', true)
+	executable := os.executable()
+	os.execvp(executable, retry_args) or {
+		os.rmdir_all(c_error_dir) or {}
+		eprintln('failed to launch the compatibility compiler `${executable}`: ${err}')
+	}
+}
+
+fn take_macos_v3_c_error_report() ?MacosV3CErrorReport {
+	report_dir := os.getenv(macos_v3_c_error_dir_env)
+	if report_dir == '' {
 		return none
 	}
-	os.rmdir_all(c_error_dir) or {}
-	exit(exit_code)
+	os.unsetenv(macos_v3_c_error_dir_env)
+	return read_macos_v3_c_error_report(report_dir)
 }
 
 fn macos_v3_c_error_report_dir(fallback_file string) string {
@@ -359,6 +389,7 @@ fn macos_v3_child_environment(vexe string, fallback_file string, caller_environm
 	environment[macos_v3_c_error_dir_env] = macos_v3_c_error_report_dir(fallback_file)
 	environment[macos_v3_vhash_env] = @VHASH
 	environment[macos_v3_vcurrent_hash_env] = @VCURRENTHASH
+	environment[macos_v3_embedded_env] = '1'
 	return environment
 }
 
@@ -370,42 +401,4 @@ fn preserve_macos_v3_caller_environment_value(mut environment map[string]string,
 		environment[value_name] = ''
 		environment[present_name] = '0'
 	}
-}
-
-fn build_macos_v3_compiler(vexe string, vroot string, v3_source string, v3_exe string, is_verbose bool) {
-	args := ['-prealloc', '-o', v3_exe, v3_source]
-	if is_verbose {
-		println('Compiling macOS V3 compiler with: ${os.quoted_path(vexe)} ${util.args_quote_paths(args)}')
-	}
-	mut process := os.new_process(vexe)
-	process.set_work_folder(vroot)
-	process.set_args(args)
-	process.set_environment(macos_v3_bootstrap_environment())
-	process.set_redirect_stdio()
-	process.run()
-	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
-	exit_code := if process.code >= 0 { process.code } else { 1 }
-	process.close()
-	if exit_code != 0 {
-		eprintln('cannot compile `${v3_source}`: ${exit_code}\n${output}')
-		exit(1)
-	}
-	if is_verbose && output != '' {
-		print(output)
-	}
-}
-
-fn macos_v3_bootstrap_environment() map[string]string {
-	mut environment := os.environ()
-	environment[macos_v3_bootstrap_env] = '1'
-	environment['VFLAGS'] = ''
-	environment['VOSARGS'] = ''
-	return environment
-}
-
-fn cached_macos_v3_executable_path(vroot string) string {
-	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
-	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash,
-		'v3'))
 }
