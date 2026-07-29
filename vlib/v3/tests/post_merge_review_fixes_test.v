@@ -9589,3 +9589,77 @@ fn main() {
 ')
 	assert custom_out == 'safe'
 }
+
+fn test_recursive_str_tracks_for_in_values_and_array_slices() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_for_in_value', 'struct Item {}
+
+fn (item Item) str() string {
+	for copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_for_in_index_and_value', 'struct Item {}
+
+fn (item Item) str() string {
+	for _, copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_slice_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item]
+	slice := items[0..1]
+	return slice[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_array_slice_terminal_index', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return ""
+	}
+	items := [item, Item{
+		done: true
+	}]
+	start := 1
+	end := 2
+	slice := items[start..end]
+	return slice[0].str()
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+')
+	assert out == ''
+	empty_slice_out := run_good(v3_bin, 'recursive_str_repeated_empty_slice', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [3]Item{init: item}
+	empty := items[0..0]
+	return empty.str()
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+')
+	assert empty_slice_out == ''
+}

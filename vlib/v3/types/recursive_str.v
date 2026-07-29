@@ -478,6 +478,7 @@ fn (mut tc TypeChecker) recursive_str_process_select_stmt(id flat.NodeId, mut en
 fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
 	node := tc.a.node(id)
 	mut body_start := 0
+	mut container_binding := RecursiveStrBinding{}
 	if node.kind == .for_stmt {
 		if node.children_count < 3 {
 			return true
@@ -487,13 +488,20 @@ fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env 
 		body_start = 3
 	} else {
 		body_start = if node.value.is_int() { node.value.int() } else { 3 }
-		for i in 2 .. int_min(body_start, int(node.children_count)) {
+		if node.children_count > 2 {
+			container_binding = tc.recursive_str_eval_expr(tc.a.child(node, 2), mut env, ctx)
+		}
+		for i in 3 .. int_min(body_start, int(node.children_count)) {
 			tc.recursive_str_eval_expr(tc.a.child(node, i), mut env, ctx)
 		}
 	}
 	base := env.clone_env()
+	mut loop_base := base.clone_env()
+	if node.kind == .for_in_stmt {
+		tc.recursive_str_bind_for_in_vars(*node, container_binding, mut loop_base)
+	}
 	mut flow := tc.recursive_str_process_loop_sequence(*node, body_start, [
-		base.clone_env(),
+		loop_base,
 	], ctx)
 	for return_path in flow.returns {
 		mut return_env := return_path.clone_env()
@@ -525,6 +533,37 @@ fn (mut tc TypeChecker) recursive_str_process_loop_stmt(id flat.NodeId, mut env 
 	}
 	env = tc.recursive_str_merge_envs(paths)
 	return true
+}
+
+fn (tc &TypeChecker) recursive_str_bind_for_in_vars(node flat.Node, container RecursiveStrBinding, mut env RecursiveStrEnv) {
+	if node.children_count < 3 {
+		return
+	}
+	key_id := tc.a.child(&node, 0)
+	value_id := tc.a.child(&node, 1)
+	key := tc.a.node(key_id)
+	value := tc.a.node(value_id)
+	mut target_id := key_id
+	mut target_name := key.value
+	if value.kind == .ident && value.value != '_' {
+		target_id = value_id
+		target_name = value.value
+	} else if key.kind != .ident || key.value == '_' {
+		return
+	} else if unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&node, 2))) is Map {
+		return
+	}
+	mut binding := if container.elements.len == 0 {
+		RecursiveStrBinding{}
+	} else if container.repeated_element {
+		container.elements[0]
+	} else {
+		tc.recursive_str_merge_bindings(container.elements)
+	}
+	if binding.typ_name.len == 0 {
+		binding.typ_name = tc.resolve_type(target_id).name()
+	}
+	env.bindings[target_name] = binding
 }
 
 fn (tc &TypeChecker) recursive_str_loop_guarantees_entry(node flat.Node) bool {
@@ -1223,6 +1262,10 @@ fn (mut tc TypeChecker) recursive_str_eval_array_expr(id flat.NodeId, node flat.
 
 fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index_id flat.NodeId, result_id flat.NodeId, env RecursiveStrEnv) RecursiveStrBinding {
 	if base.elements.len > 0 {
+		result := tc.a.node(result_id)
+		if result.kind == .index && result.value == 'range' {
+			return tc.recursive_str_slice_binding(base, *result, result_id, env)
+		}
 		if base.element_keys.len == base.elements.len && '' !in base.element_keys {
 			if key := tc.recursive_str_constant_map_key(index_id) {
 				for i := base.element_keys.len - 1; i >= 0; i-- {
@@ -1246,6 +1289,39 @@ fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(result_id).name()
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_slice_binding(base RecursiveStrBinding, node flat.Node, result_id flat.NodeId, env RecursiveStrEnv) RecursiveStrBinding {
+	mut result := base
+	result.typ_name = tc.resolve_type(result_id).name()
+	result.element_keys = []string{}
+	mut low := 0
+	mut high := base.elements.len
+	mut high_known := !base.repeated_element
+	if node.children_count > 1 {
+		low_id := tc.a.child(&node, 1)
+		if tc.a.node(low_id).kind != .empty {
+			low = tc.recursive_str_resolved_constant_index(low_id, env) or { return result }
+		}
+	}
+	if node.children_count > 2 {
+		high = tc.recursive_str_resolved_constant_index(tc.a.child(&node, 2), env) or {
+			return result
+		}
+		high_known = true
+	}
+	if base.repeated_element {
+		if high_known && low == high {
+			result.elements = []RecursiveStrBinding{}
+			result.repeated_element = false
+		}
+		return result
+	}
+	if low < 0 || high < low || high > base.elements.len {
+		return result
+	}
+	result.elements = base.elements[low..high].clone()
+	return result
 }
 
 fn (tc &TypeChecker) recursive_str_named_element_binding(base RecursiveStrBinding, key string, result_id flat.NodeId) ?RecursiveStrBinding {
