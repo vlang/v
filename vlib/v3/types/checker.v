@@ -6382,11 +6382,10 @@ pub fn (tc &TypeChecker) direct_dependencies(fn_node_id int) []string {
 	return names
 }
 
-fn (mut tc TypeChecker) record_direct_dependency(name string) {
-	if tc.fn_context.node_id < 0 || name.len == 0 {
+fn (mut tc TypeChecker) record_direct_dependency(id SymbolId) {
+	if tc.fn_context.node_id < 0 || id == 0 {
 		return
 	}
-	id, _ := tc.intern_symbol(name)
 	mut dependencies := tc.direct_dependencies_by_fn[tc.fn_context.node_id] or { []SymbolId{} }
 	if id !in dependencies {
 		dependencies << id
@@ -6464,8 +6463,8 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	if idx < 0 {
 		return
 	}
-	canonical := tc.canonical_symbol(name)
-	tc.record_direct_dependency(canonical)
+	symbol_id, canonical := tc.intern_symbol(name)
+	tc.record_direct_dependency(symbol_id)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_call_names.len {
 			tc.resolved_call_names[idx] = canonical
@@ -6490,8 +6489,8 @@ fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) 
 	if idx < 0 {
 		return
 	}
-	canonical := tc.canonical_symbol(name)
-	tc.record_direct_dependency(canonical)
+	symbol_id, canonical := tc.intern_symbol(name)
+	tc.record_direct_dependency(symbol_id)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_fn_value_names.len {
 			tc.resolved_fn_value_names[idx] = canonical
