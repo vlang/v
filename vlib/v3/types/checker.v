@@ -408,6 +408,9 @@ mut:
 	capturing_fn_literal_local_owners map[string][]ScopeBindingOwner
 	capturing_fn_literal_local_depth  map[string]int
 	node_id                           int = -1
+	// Cached at node_id assignment: should_diagnose consults this per node,
+	// and deriving it re-parsed the function name on every call.
+	concrete_generic_receiver_specialization bool
 	mut_param_base_types              map[string]Type
 	mut_param_owners                  map[string]ScopeBindingOwner
 	mut_local_owners                  map[string]ScopeBindingOwner
@@ -467,6 +470,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		capturing_fn_literal_local_owners: src.capturing_fn_literal_local_owners.clone()
 		capturing_fn_literal_local_depth:  src.capturing_fn_literal_local_depth.clone()
 		node_id:                           src.node_id
+		concrete_generic_receiver_specialization: src.concrete_generic_receiver_specialization
 		mut_param_base_types:              src.mut_param_base_types.clone()
 		mut_param_owners:                  src.mut_param_owners.clone()
 		mut_local_owners:                  src.mut_local_owners.clone()
@@ -705,6 +709,9 @@ pub mut:
 	// (markused/transform/cgen under -prealloc) stores map buckets and result
 	// strings in the disposable scope arena, and later reads crash.
 	qualify_name_cache &QualifyNameCache = unsafe { nil }
+	// Per-fork resolve_type memo for the current check work item's node range;
+	// nil until check_fn_items_serial arms it (see BodyResolveMemo).
+	body_resolve_memo &BodyResolveMemo = unsafe { nil }
 	import_info_cache  &ImportInfoCache  = unsafe { nil }
 	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
 	// Only `-d ownership` builds ever write it (every writer lives in
@@ -741,6 +748,19 @@ mut:
 	strings_builder_bindings     map[string]bool
 	static_associated_fn_keys    map[string]bool
 	declaration_param_mutability map[string][]bool
+	strict_map_index_files       map[string]bool
+	// short fn name -> first declaring top-level node index, in declaration
+	// order (mirrors the expr_raw_fn_type_text scan's first-match rule).
+	fn_decl_short_name_ids map[string]int
+	// '${file}\x00${alias}' -> dotted import path, and '${file}\x00${last
+	// segment}' -> dotted import path (first import wins), replacing per-call
+	// scans over every top-level declaration.
+	file_import_alias_paths  map[string]string
+	file_import_suffix_paths map[string]string
+	// struct name -> embedded receiver type names (empty entry when the struct
+	// has no embeds). Structs added after collect (monomorphization) miss this
+	// index and fall back to the field walk.
+	struct_embed_receivers map[string][]string
 	// Immutable node -> generic parameter index shared by checker workers.
 	enclosing_generic_params_by_node map[int][]string
 	enclosing_generic_param_masks    []u32
@@ -897,6 +917,11 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		strings_builder_bindings:                map[string]bool{}
 		static_associated_fn_keys:               map[string]bool{}
 		declaration_param_mutability:            map[string][]bool{}
+		strict_map_index_files:                  map[string]bool{}
+		fn_decl_short_name_ids:                  map[string]int{}
+		file_import_alias_paths:                 map[string]string{}
+		file_import_suffix_paths:                map[string]string{}
+		struct_embed_receivers:                  map[string][]string{}
 	}
 }
 
@@ -1027,6 +1052,11 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		strings_builder_bindings:           tc.strings_builder_bindings
 		static_associated_fn_keys:          tc.static_associated_fn_keys
 		declaration_param_mutability:       tc.declaration_param_mutability
+		strict_map_index_files:             tc.strict_map_index_files
+		fn_decl_short_name_ids:             tc.fn_decl_short_name_ids
+		file_import_alias_paths:            tc.file_import_alias_paths
+		file_import_suffix_paths:           tc.file_import_suffix_paths
+		struct_embed_receivers:             tc.struct_embed_receivers
 		enclosing_generic_params_by_node:   tc.enclosing_generic_params_by_node
 		enclosing_generic_param_masks:      tc.enclosing_generic_param_masks
 		expected_expr_id:                   -1
@@ -1396,15 +1426,44 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 	tc.strings_builder_bindings = map[string]bool{}
 	tc.static_associated_fn_keys = map[string]bool{}
 	tc.declaration_param_mutability = map[string][]bool{}
+	tc.strict_map_index_files = map[string]bool{}
+	tc.file_import_alias_paths = map[string]string{}
+	tc.file_import_suffix_paths = map[string]string{}
+	tc.fn_decl_short_name_ids = map[string]int{}
 	mut module_name := ''
+	mut file_name := ''
 	for index in tc.top_level_idx {
 		node := a.nodes[index]
+		if node.kind == .file {
+			file_name = node.value
+			continue
+		}
 		if node.kind == .module_decl {
 			module_name = node.value
+			if tc.declaration_has_attribute(flat.NodeId(index), 'strict_map_index') {
+				tc.strict_map_index_files[file_name] = true
+			}
+			continue
+		}
+		if node.kind == .import_decl {
+			path := tc.import_module_path_text(node)
+			if node.typ.len > 0 {
+				tc.file_import_alias_paths['${file_name}\x00${node.typ}'] = path
+			}
+			if path.contains('.') {
+				suffix_key := '${file_name}\x00${path.all_after_last('.')}'
+				if suffix_key !in tc.file_import_suffix_paths {
+					tc.file_import_suffix_paths[suffix_key] = path
+				}
+			}
 			continue
 		}
 		if node.kind != .fn_decl {
 			continue
+		}
+		short_name := node.value.all_after_last('.')
+		if short_name !in tc.fn_decl_short_name_ids {
+			tc.fn_decl_short_name_ids[short_name] = index
 		}
 		qname := checker_qualified_fn_name(module_name, node.value)
 		mut param_mutability := []bool{}
@@ -2862,6 +2921,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
 	tc.build_const_suffixes()
+	tc.build_struct_embed_index()
 	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !isnil(tc.visible_mutation_cache) {
 		mut visible_mutation_cache := tc.visible_mutation_cache
@@ -10623,35 +10683,63 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 	if name.len == 0 || source.len < name.len {
 		return none
 	}
-	mut search_from := 0
-	mut best_start := -1
-	mut best_distance := source.len + name.len
-	for search_from <= source.len - name.len {
-		start := source.index_after_(name, search_from)
+	// The anchor normally sits on (or immediately before) the identifier, so
+	// search outward from it instead of scanning the file from the top: the
+	// nearest word match on each side decides, exactly like the old full scan.
+	mut left_start := -1
+	for i := int_min(anchor, source.len - name.len); i >= 0; i-- {
+		if !identifier_word_match_at(source, name, i) {
+			continue
+		}
+		left_start = i
+		break
+	}
+	mut right_start := -1
+	mut from := int_max(anchor + 1, 0)
+	for from <= source.len - name.len {
+		start := source.index_after_(name, from)
 		if start < 0 {
 			break
 		}
-		left_is_name := start > 0 && (source[start - 1].is_alnum() || source[start - 1] == `_`)
-		end := start + name.len
-		right_is_name := end < source.len && (source[end].is_alnum() || source[end] == `_`)
-		if !left_is_name && !right_is_name {
-			distance := if start > anchor { start - anchor } else { anchor - start }
-			if distance < best_distance {
-				best_start = start
-				best_distance = distance
-			}
-			if start >= anchor {
-				// Matches are visited left to right, so every later word match
-				// is farther from the anchor than this one.
-				break
-			}
+		if identifier_word_match_at(source, name, start) {
+			right_start = start
+			break
 		}
-		search_from = start + 1
+		from = start + 1
+	}
+	best_start := if left_start < 0 {
+		right_start
+	} else if right_start < 0 {
+		left_start
+	} else if anchor - left_start <= right_start - anchor {
+		left_start
+	} else {
+		right_start
 	}
 	if best_start < 0 {
 		return none
 	}
 	return token.new_span(file_id, best_start, best_start + name.len)
+}
+
+@[direct_array_access]
+fn identifier_word_match_at(source string, name string, start int) bool {
+	if start < 0 || start + name.len > source.len {
+		return false
+	}
+	for j in 0 .. name.len {
+		if source[start + j] != name[j] {
+			return false
+		}
+	}
+	if start > 0 && (source[start - 1].is_alnum() || source[start - 1] == `_`) {
+		return false
+	}
+	end := start + name.len
+	if end < source.len && (source[end].is_alnum() || source[end] == `_`) {
+		return false
+	}
+	return true
 }
 
 fn (tc &TypeChecker) selected_main_file_declares_type(name string) bool {
@@ -11122,7 +11210,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				field_id, tc.struct_field_type_pos(*field))
 		}
 		if field.children_count > 0
-			&& (field.typ.contains('$d(') || tc.source_text_for_node(field_id).contains('$d(')) {
+			&& (field.typ.contains('$d(') || tc.node_source_contains(field_id, '$d(')) {
 			default_id := tc.a.child(field, 0)
 			tc.record_error_at(.assignment_mismatch,
 				'cannot initialize a fixed size array field that uses `$d()` as size quantifier since the size may change via -d',
@@ -13155,7 +13243,7 @@ fn (tc &TypeChecker) comptime_struct_update_id(id flat.NodeId) ?flat.NodeId {
 			is_update := node.kind == .assoc
 				|| (child.kind == .prefix && child.value == '...')
 				|| tc.node_has_ellipsis_prefix(child_id)
-			if is_update && tc.source_text_for_node(child_id).contains('$(') {
+			if is_update && tc.node_source_contains(child_id, '$(') {
 				return child_id
 			}
 		}
@@ -16364,7 +16452,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 
 fn (mut tc TypeChecker) check_loop_control_statement(id flat.NodeId, node flat.Node) {
 	if node.value.len > 0 {
-		if tc.diagnostic_files.len == 0 && !tc.valid_labelled_loop_control(node.value, node.pos) {
+		if tc.diagnostic_files.len == 0 && !tc.valid_labelled_loop_control(id, node.value) {
 			tc.record_invalid_loop_label(id, node)
 		}
 		return
@@ -16414,7 +16502,7 @@ fn (mut tc TypeChecker) check_labelled_loop_controls() {
 	for index, node in tc.a.nodes {
 		if index < tc.a.user_code_start || node.kind !in [.break_stmt, .continue_stmt]
 			|| node.value.len == 0 || !tc.node_is_in_selected_input_file(flat.NodeId(index))
-			|| tc.valid_labelled_loop_control(node.value, node.pos) {
+			|| tc.valid_labelled_loop_control(flat.NodeId(index), node.value) {
 			continue
 		}
 		key := '${node.pos.id}:${node.pos.offset}:${node.kind}'
@@ -16438,103 +16526,57 @@ fn (mut tc TypeChecker) record_invalid_loop_label(id flat.NodeId, node flat.Node
 	tc.errors << tc.make_type_error_at(.unknown_ident, message, id, pos)
 }
 
-fn (tc &TypeChecker) valid_labelled_loop_control(name string, pos token.Pos) bool {
-	for index, node in tc.a.nodes {
-		if node.kind != .label_stmt || node.value != name || node.pos.id != pos.id
-			|| !tc.label_starts_loop(flat.NodeId(index)) {
-			continue
+// valid_labelled_loop_control walks the break/continue statement's ancestor
+// chain looking for an enclosing loop whose preceding sibling is a matching
+// label. The old implementation scanned every AST node per candidate label and
+// brace-matched raw source text, which multiplied into full-AST scans for every
+// labelled loop control statement.
+fn (tc &TypeChecker) valid_labelled_loop_control(id flat.NodeId, name string) bool {
+	mut current := id
+	for _ in 0 .. 256 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
 		}
-		if tc.labelled_loop_contains_source_position(node, pos) {
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		if parent.kind in [.for_stmt, .for_in_stmt] && tc.loop_has_label(parent_id, name) {
 			return true
+		}
+		current = parent_id
+	}
+	return false
+}
+
+// loop_has_label reports whether the label statement immediately preceding
+// loop_id among its parent's children carries the given name.
+fn (tc &TypeChecker) loop_has_label(loop_id flat.NodeId, name string) bool {
+	parent_id := tc.direct_parent_id(loop_id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	for i in 1 .. int(parent.children_count) {
+		if tc.a.child(parent, i) == loop_id {
+			prev := tc.a.node(tc.a.child(parent, i - 1))
+			return prev.kind == .label_stmt && prev.value == name
 		}
 	}
 	return false
 }
 
 fn (tc &TypeChecker) label_starts_loop(id flat.NodeId) bool {
-	for parent in tc.a.nodes {
-		if parent.children_count < 2 {
-			continue
-		}
-		for i in 0 .. int(parent.children_count) - 1 {
-			if tc.a.child(&parent, i) != id {
-				continue
-			}
-			return tc.a.node(tc.a.child(&parent, i + 1)).kind in [.for_stmt, .for_in_stmt]
-		}
-	}
-	return false
-}
-
-fn (tc &TypeChecker) labelled_loop_contains_source_position(label flat.Node, pos token.Pos) bool {
-	if label.pos.id != pos.id {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
 		return false
 	}
-	file := tc.a.source_files[label.pos.id] or { return false }
-	source := tc.source_texts_by_file[file.name] or { return false }
-	start := int_max(0, int_min(label.pos.offset, source.len))
-	relative_open := source[start..].index_u8(`{`)
-	if relative_open < 0 {
-		return false
-	}
-	open := start + relative_open
-	mut depth := 0
-	mut quote := u8(0)
-	mut in_line_comment := false
-	mut in_block_comment := false
-	mut i := open
-	for i < source.len {
-		ch := source[i]
-		if in_line_comment {
-			if ch == `\n` {
-				in_line_comment = false
-			}
-			i++
-			continue
+	parent := tc.a.node(parent_id)
+	for i in 0 .. int(parent.children_count) - 1 {
+		if tc.a.child(parent, i) == id {
+			return tc.a.node(tc.a.child(parent, i + 1)).kind in [.for_stmt, .for_in_stmt]
 		}
-		if in_block_comment {
-			if ch == `*` && i + 1 < source.len && source[i + 1] == `/` {
-				in_block_comment = false
-				i += 2
-				continue
-			}
-			i++
-			continue
-		}
-		if quote != 0 {
-			if ch == `\\` {
-				i += 2
-				continue
-			}
-			if ch == quote {
-				quote = 0
-			}
-			i++
-			continue
-		}
-		if ch == `/` && i + 1 < source.len {
-			if source[i + 1] == `/` {
-				in_line_comment = true
-				i += 2
-				continue
-			}
-			if source[i + 1] == `*` {
-				in_block_comment = true
-				i += 2
-				continue
-			}
-		}
-		if ch in [`'`, `"`] || ch == 0x60 {
-			quote = ch
-		} else if ch == `{` {
-			depth++
-		} else if ch == `}` {
-			depth--
-			if depth == 0 {
-				return open < pos.offset && pos.end <= i + 1
-			}
-		}
-		i++
 	}
 	return false
 }
@@ -17468,7 +17510,7 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, Type(void_))
 		return
 	}
-	if node.op == .amp && tc.source_text_for_node(id).trim_space().starts_with('&')
+	if node.op == .amp && tc.node_source_starts_with(id, '&')
 		&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 		if fixed_array_id := tc.fixed_array_reference_ident(child_id) {
 			name := tc.a.node(fixed_array_id).value
@@ -17904,7 +17946,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	if target_struct := struct_type_from_type(target) {
 		actual_is_voidptr := fn_param_is_voidptr_type(actual)
 			|| (tc.expr_tail_is_nil(child_id)
-			&& tc.source_text_for_node(child_id).starts_with('unsafe'))
+			&& tc.node_source_starts_with(child_id, 'unsafe'))
 		if actual_is_voidptr {
 			if target is Alias {
 				tc.record_error_at(.assignment_mismatch,
@@ -21241,6 +21283,11 @@ fn (tc &TypeChecker) infix_read_type(id flat.NodeId) Type {
 }
 
 fn (tc &TypeChecker) mut_param_base_for_current_ident(name string, typ Type) ?Type {
+	if tc.fn_context.mut_param_base_types.len == 0 {
+		// Most functions have no mut params; skip the string-keyed probe that
+		// otherwise runs for every infix operand.
+		return none
+	}
 	if isnil(tc.cur_scope) || tc.cur_scope == tc.file_scope || tc.fn_context.node_id < 0 {
 		return none
 	}
@@ -26732,7 +26779,7 @@ fn (tc &TypeChecker) expr_initializes_shared_array(id flat.NodeId) bool {
 		return false
 	}
 	return node.typ.contains('shared ')
-		|| tc.source_text_for_node(id).trim_space().starts_with('[]shared ')
+		|| tc.node_source_starts_with(id, '[]shared ')
 }
 
 fn (tc &TypeChecker) shared_array_element_index(id flat.NodeId) ?flat.NodeId {
@@ -28874,8 +28921,34 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	}
 }
 
+// last_index_between returns the last occurrence of needle that starts at or
+// after lo and ends at or before end, scanning by index: a substr copy of the
+// file prefix here costs megabytes per call on large sources.
+fn last_index_between(source string, needle string, lo int, end int) int {
+	stop := int_min(end, source.len)
+	low := int_max(lo, 0)
+	if needle.len == 0 || stop - low < needle.len {
+		return -1
+	}
+	for i := stop - needle.len; i >= low; i-- {
+		mut j := 0
+		for j < needle.len && unsafe { source.str[i + j] == needle.str[j] } {
+			j++
+		}
+		if j == needle.len {
+			return i
+		}
+	}
+	return -1
+}
+
 fn (tc &TypeChecker) pointer_diagnostic_binding_type_name(id flat.NodeId, typ Type) string {
 	type_name := typ.name()
+	// Only pointer-flavored bindings can resolve to `nil`/`voidptr`; skip the
+	// source scan for every other type (this runs for each compound assign).
+	if unalias_type(typ) !is Pointer && type_name !in ['voidptr', 'nil'] {
+		return type_name
+	}
 	if !tc.valid_node_id(id) {
 		return type_name
 	}
@@ -28886,12 +28959,23 @@ fn (tc &TypeChecker) pointer_diagnostic_binding_type_name(id flat.NodeId, typ Ty
 	file := tc.a.source_files[node.pos.id] or { return type_name }
 	source := tc.source_texts_by_file[file.name] or { return type_name }
 	end := int_min(int_max(node.pos.offset, 0), source.len)
+	// A local `x := ...` declaration can only appear inside the enclosing
+	// function; bounding the backward scan there keeps misses (params, struct
+	// fields) from walking to the top of the file.
+	mut scan_lo := 0
+	if tc.fn_context.node_id >= 0 && tc.fn_context.node_id < tc.a.nodes.len {
+		fn_node := tc.a.nodes[tc.fn_context.node_id]
+		if fn_node.pos.id == node.pos.id && fn_node.pos.offset >= 0 && fn_node.pos.offset < end {
+			scan_lo = fn_node.pos.offset
+		}
+	}
 	needle := '${node.value} := nil'
-	if source[..end].last_index(needle) != none {
+	if last_index_between(source, needle, scan_lo, end) >= 0 {
 		return 'nil'
 	}
 	decl_needle := '${node.value} :='
-	if decl_start := source[..end].last_index(decl_needle) {
+	decl_start := last_index_between(source, decl_needle, scan_lo, end)
+	if decl_start >= 0 {
 		decl_end := source.index_after('\n', decl_start) or { end }
 		if source[decl_start..int_min(decl_end, end)].contains('nil') {
 			return 'nil'
@@ -28975,19 +29059,8 @@ fn (tc &TypeChecker) diagnostic_type_name(typ Type) string {
 			return module_path + raw[prefix.len..]
 		}
 	}
-	for idx in tc.top_level_idx {
-		node := tc.a.nodes[idx]
-		if node.kind != .import_decl {
-			continue
-		}
-		source_file := tc.a.source_files[node.pos.id] or { continue }
-		if source_file.name != tc.cur_file {
-			continue
-		}
-		module_path := tc.import_module_path_text(node)
-		if module_path.contains('.') && module_path.all_after_last('.') == prefix {
-			return module_path + raw[prefix.len..]
-		}
+	if module_path := tc.file_import_suffix_paths['${tc.cur_file}\x00${prefix}'] {
+		return module_path + raw[prefix.len..]
 	}
 	return raw
 }
@@ -29042,6 +29115,66 @@ fn (tc &TypeChecker) source_text_for_node(id flat.NodeId) string {
 		return node.value
 	}
 	return source[start..end].trim_space()
+}
+
+// node_source_starts_with reports whether the node's source span, after
+// skipping leading whitespace, starts with prefix — the in-place equivalent of
+// source_text_for_node(id).starts_with(prefix), without the span substr copy
+// (this runs for every `&x` prefix expression and unsafe-argument check).
+fn (tc &TypeChecker) node_source_starts_with(id flat.NodeId, prefix string) bool {
+	if !tc.valid_node_id(id) {
+		return ''.starts_with(prefix)
+	}
+	node := tc.a.nodes[int(id)]
+	file := tc.a.source_files[node.pos.id] or { return node.value.starts_with(prefix) }
+	source := tc.source_texts_by_file[file.name] or { return node.value.starts_with(prefix) }
+	start := int_max(0, int_min(node.pos.offset, source.len))
+	end := int_max(start, int_min(node.pos.end, source.len))
+	if end <= start {
+		return node.value.starts_with(prefix)
+	}
+	mut i := start
+	for i < end && source[i] in [` `, `\t`, `\n`, `\r`] {
+		i++
+	}
+	if end - i < prefix.len {
+		return false
+	}
+	for j in 0 .. prefix.len {
+		if unsafe { source.str[i + j] != prefix.str[j] } {
+			return false
+		}
+	}
+	return true
+}
+
+// node_source_contains reports whether the node's source span contains needle,
+// scanning the file text in place: substr-copying a large span (a match
+// statement can cover thousands of lines) per query multiplies into megabytes.
+// The span is not trimmed; a needle match in leading/trailing whitespace is
+// impossible for identifier-like needles.
+fn (tc &TypeChecker) node_source_contains(id flat.NodeId, needle string) bool {
+	if needle.len == 0 || !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	file := tc.a.source_files[node.pos.id] or { return node.value.contains(needle) }
+	source := tc.source_texts_by_file[file.name] or { return node.value.contains(needle) }
+	start := int_max(0, int_min(node.pos.offset, source.len))
+	end := int_max(start, int_min(node.pos.end, source.len))
+	if end - start < needle.len {
+		return false
+	}
+	for i := start; i <= end - needle.len; i++ {
+		mut j := 0
+		for j < needle.len && unsafe { source.str[i + j] == needle.str[j] } {
+			j++
+		}
+		if j == needle.len {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_import_symbol_conflict(id flat.NodeId, name string) {
@@ -29285,7 +29418,7 @@ fn (tc &TypeChecker) expr_is_negative_integer_literal(id flat.NodeId) bool {
 		return false
 	}
 	if unalias_type(tc.resolve_type(id)).is_integer()
-		&& tc.source_text_for_node(id).trim_space().starts_with('-') {
+		&& tc.node_source_starts_with(id, '-') {
 		return true
 	}
 	return false
@@ -29316,6 +29449,9 @@ fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat
 }
 
 fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type) bool {
+	if tc.smartcasts.len == 0 {
+		return false
+	}
 	key := tc.expr_key(lhs_id)
 	if key.len == 0 {
 		return false
@@ -31866,7 +32002,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				&& node.children_count == 2 {
 				arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 				if tc.expr_tail_is_nil(arg_id)
-					&& tc.source_text_for_node(arg_id).starts_with('unsafe') {
+					&& tc.node_source_starts_with(arg_id, 'unsafe') {
 					name_pos := tc.method_call_name_pos(node, callee)
 					tc.record_error_at(.assignment_mismatch, 'cannot cast `voidptr` to struct', id, token.new_span(name_pos.id,
 						name_pos.offset, node.pos.end))
@@ -33478,19 +33614,7 @@ fn (tc &TypeChecker) wrapped_receiver_payload_diagnostic_name(payload Type) stri
 }
 
 fn (tc &TypeChecker) current_file_import_path_for_alias(alias string) ?string {
-	mut file := ''
-	for index in tc.top_level_idx {
-		node := tc.a.nodes[index]
-		if node.kind == .file {
-			file = node.value
-			continue
-		}
-		if file != tc.cur_file || node.kind != .import_decl || node.typ != alias {
-			continue
-		}
-		return tc.import_module_path_text(node)
-	}
-	return none
+	return tc.file_import_alias_paths['${tc.cur_file}\x00${alias}'] or { return none }
 }
 
 fn (tc &TypeChecker) wrapped_receiver_has_method(payload Type, method string) bool {
@@ -34015,16 +34139,21 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) current_fn_is_concrete_generic_receiver_specialization() bool {
-	if tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len
-		|| tc.fn_context.generic_params.len > 0 {
+	return tc.fn_context.concrete_generic_receiver_specialization
+		&& tc.fn_context.generic_params.len == 0
+}
+
+// fn_value_is_concrete_generic_receiver_specialization derives the cached
+// FunctionCheckContext flag from a declaration name without allocating: the
+// receiver part (before the last dot) must be a concrete generic application
+// (`Box[int].clone`).
+fn fn_value_is_concrete_generic_receiver_specialization(value string) bool {
+	dot := value.last_index_u8(`.`)
+	if dot <= 1 || value[dot - 1] != `]` {
 		return false
 	}
-	node := tc.a.nodes[tc.fn_context.node_id]
-	if node.kind != .fn_decl || !node.value.contains('.') {
-		return false
-	}
-	receiver := node.value.all_before_last('.')
-	return receiver.contains('[') && receiver.ends_with(']')
+	open := value.index_u8(`[`)
+	return open >= 0 && open < dot
 }
 
 fn multiple_module_import_line_key(file_id int, line int) u64 {
@@ -36512,6 +36641,12 @@ fn visible_mutation_fn_lookup_name(name string) string {
 	if dot <= 0 {
 		return name
 	}
+	// Only a generic receiver (`Box[int].m`) changes the lookup name; skip the
+	// receiver substring allocation for the plain-method common case.
+	open := name.index_u8(`[`)
+	if open <= 0 || open >= dot {
+		return name
+	}
 	receiver := name[..dot]
 	clean_receiver := strip_generic_args_name(receiver)
 	if clean_receiver == receiver {
@@ -36652,7 +36787,7 @@ fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info C
 			name = tc.generic_call_base_name(*base) or { '' }
 		}
 	}
-	if name.len == 0 && info.name.contains('_T_') {
+	if name.len == 0 && info.name.index_after_('_T_', 0) >= 0 {
 		name = info.name.all_before('_T_')
 	}
 	if name.len == 0 {
@@ -36730,40 +36865,36 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type string, field_name string, decl_mod string) ?bool {
 	type_name := visible_mutation_receiver_type_name(receiver_type)
 	short_name := type_name.all_after_last('.')
-	mut cur_mod := ''
-	for i in tc.top_level_idx {
+	// Every struct declaration whose name (or qualified name) can match is
+	// indexed under its short name, in top-level order; the old full scan over
+	// every top-level declaration ran once per checked struct-init field.
+	for i in tc.type_declaration_ids[short_name] or { []int{} } {
 		node := tc.a.nodes[i]
-		match node.kind {
-			.file {
-				cur_mod = tc.file_modules[node.value] or { '' }
-			}
-			.module_decl {
-				cur_mod = node.value
-			}
-			.struct_decl {
-				if decl_mod.len > 0 && cur_mod != decl_mod {
-					continue
-				}
-				qname := if cur_mod in ['', 'main', 'builtin'] {
-					node.value
-				} else {
-					'${cur_mod}.${node.value}'
-				}
-				if node.value != short_name && qname != type_name {
-					continue
-				}
-				for j in 0 .. node.children_count {
-					field := tc.a.child_node(&node, j)
-					if field.kind != .field_decl || field.value != field_name {
-						continue
-					}
-					meta := field.generic_params()
-					return meta.len > 0 && meta[0].contains('p')
-				}
-				return none
-			}
-			else {}
+		if node.kind != .struct_decl {
+			continue
 		}
+		file := tc.a.source_files[node.pos.id] or { continue }
+		cur_mod := tc.file_modules[file.name] or { '' }
+		if decl_mod.len > 0 && cur_mod != decl_mod {
+			continue
+		}
+		qname := if cur_mod in ['', 'main', 'builtin'] {
+			node.value
+		} else {
+			'${cur_mod}.${node.value}'
+		}
+		if node.value != short_name && qname != type_name {
+			continue
+		}
+		for j in 0 .. node.children_count {
+			field := tc.a.child_node(&node, j)
+			if field.kind != .field_decl || field.value != field_name {
+				continue
+			}
+			meta := field.generic_params()
+			return meta.len > 0 && meta[0].contains('p')
+		}
+		return none
 	}
 	return none
 }
@@ -43536,6 +43667,10 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	mut seen_match_patterns := map[string]int{}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	mut unsafe_alias_paths := []map[string]bool{}
+	// One in-place scan for the whole match: the old per-condition
+	// source_text_for_node(...).contains(...) copied the entire match span
+	// (thousands of lines for dispatch tables) once per condition.
+	match_source_has_typeof := tc.node_source_contains(id, 'typeof(')
 	$if ownership ? {
 		if value_context {
 			tc.ownership_begin_value_branch_group()
@@ -43580,7 +43715,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			tc.check_match_type_pattern_subject(subject_id, subject_type, cond_id)
 			tc.check_duplicate_match_condition(branch, i, j, cond_id, mut seen_match_values, mut
 				seen_match_ranges, mut seen_match_patterns)
-			if !tc.source_text_for_node(id).contains('typeof(') {
+			if !match_source_has_typeof {
 				tc.record_constant_match_condition(subject_id, cond_id,
 					i < int(node.children_count) - 1)
 			}
@@ -46634,9 +46769,14 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 		}
 	}
 	if node.kind == .ident {
+		if index := tc.fn_decl_short_name_ids[node.value] {
+			return tc.fn_node_source_type_text(tc.a.node(flat.NodeId(index)))
+		}
+		// Declarations appended after collect (monomorphization) miss the
+		// index; scan them with an allocation-free suffix compare.
 		for index in tc.top_level_idx {
 			decl := tc.a.node(flat.NodeId(index))
-			if decl.kind == .fn_decl && decl.value.all_after_last('.') == node.value {
+			if decl.kind == .fn_decl && embedded_name_matches(node.value, decl.value) {
 				return tc.fn_node_source_type_text(decl)
 			}
 		}
@@ -48127,7 +48267,40 @@ fn (tc &TypeChecker) unknown_import_selector(node flat.Node) bool {
 		&& tc.enum_selector_type(&node) == none
 }
 
+// struct_embed_receiver_names returns the embedded receiver type names of a
+// struct, from the shared index built after collect. Structs registered later
+// (monomorphization) miss the index and use the field walk directly.
+fn (tc &TypeChecker) struct_embed_receiver_names(struct_name string) []string {
+	return tc.struct_embed_receivers[struct_name] or {
+		tc.compute_struct_embed_receivers(struct_name)
+	}
+}
+
+fn (tc &TypeChecker) compute_struct_embed_receivers(struct_name string) []string {
+	fields := tc.structs[struct_name] or { return []string{} }
+	mut receivers := []string{}
+	for field in fields {
+		embedded_type := embedded_field_type(field) or { continue }
+		receiver := method_type_name(unwrap_pointer(embedded_type))
+		if receiver.len == 0 {
+			continue
+		}
+		receivers << receiver
+	}
+	return receivers
+}
+
+fn (mut tc TypeChecker) build_struct_embed_index() {
+	tc.struct_embed_receivers = map[string][]string{}
+	for struct_name, _ in tc.structs {
+		tc.struct_embed_receivers[struct_name] = tc.compute_struct_embed_receivers(struct_name)
+	}
+}
+
 fn (tc &TypeChecker) embedded_method_candidates(struct_name string, method string) []string {
+	if tc.struct_embed_receiver_names(struct_name).len == 0 {
+		return []string{}
+	}
 	mut candidates := []string{}
 	mut seen := map[string]bool{}
 	tc.collect_embedded_method_candidates(struct_name, method, mut candidates, mut seen)
@@ -48140,12 +48313,7 @@ fn (tc &TypeChecker) collect_embedded_method_candidates(struct_name string, meth
 		return
 	}
 	seen[struct_name] = true
-	for field in tc.structs[struct_name] or { []StructField{} } {
-		embedded_type := embedded_field_type(field) or { continue }
-		receiver := method_type_name(unwrap_pointer(embedded_type))
-		if receiver.len == 0 {
-			continue
-		}
+	for receiver in tc.struct_embed_receiver_names(struct_name) {
 		if '${receiver}.${method}' in tc.fn_ret_types && receiver !in candidates {
 			candidates << receiver
 		}
@@ -48154,6 +48322,9 @@ fn (tc &TypeChecker) collect_embedded_method_candidates(struct_name string, meth
 }
 
 fn (tc &TypeChecker) embedded_field_candidates(struct_name string, field_name string) []string {
+	if tc.struct_embed_receiver_names(struct_name).len == 0 {
+		return []string{}
+	}
 	mut candidates := []string{}
 	mut seen := map[string]bool{}
 	tc.collect_embedded_field_candidates(struct_name, field_name, mut candidates, mut seen)
@@ -48166,12 +48337,7 @@ fn (tc &TypeChecker) collect_embedded_field_candidates(struct_name string, field
 		return
 	}
 	seen[struct_name] = true
-	for field in tc.structs[struct_name] or { []StructField{} } {
-		embedded_type := embedded_field_type(field) or { continue }
-		receiver := method_type_name(unwrap_pointer(embedded_type))
-		if receiver.len == 0 {
-			continue
-		}
+	for receiver in tc.struct_embed_receiver_names(struct_name) {
 		for embedded_field in tc.structs[receiver] or { []StructField{} } {
 			if embedded_field.name == field_name && embedded_field_type(embedded_field) == none
 				&& receiver !in candidates {
@@ -48764,7 +48930,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 					'`or {}` block required when indexing a map with sum type value', id, token.new_span(node.pos.id,
 					tc.a.node(base_id).pos.end, node.pos.end))
 			}
-			if tc.current_file_module_has_attribute('strict_map_index')
+			if tc.cur_file in tc.strict_map_index_files
 				&& !tc.index_is_handled_by_guard_or_or_block(id)
 				&& !tc.index_is_assignment_target(id) {
 				tc.record_error_at(.cannot_index,
@@ -53634,6 +53800,10 @@ fn (tc &TypeChecker) expr_key_part(id flat.NodeId) string {
 
 // smartcast_type supports smartcast type handling for TypeChecker.
 fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
+	if tc.smartcasts.len == 0 {
+		// No active smartcasts: skip building the (allocating) selector key.
+		return none
+	}
 	key := tc.expr_key(id)
 	if key.len == 0 {
 		return none
@@ -55284,7 +55454,62 @@ fn (tc &TypeChecker) comptime_static_type_expr_name(id flat.NodeId) ?string {
 }
 
 // resolve_type resolves resolve type information for types.
+// BodyResolveMemo caches resolve_type results for the node range owned by the
+// check work item currently being verified. Inside one function body every
+// node's resolution context is fixed (its smartcast set and scope bindings are
+// determined by its position), while the checker resolves the same subtrees
+// repeatedly (call info, argument checks, and child traversal each re-resolve
+// the same expressions). The memo lives per checker fork and is reset for
+// every work item, so it never crosses function or phase boundaries.
+@[heap]
+struct BodyResolveMemo {
+mut:
+	active bool
+	lo     int
+	hi     int
+	types  []Type
+	filled []u8
+}
+
+fn (mut memo BodyResolveMemo) begin(lo int, hi int) {
+	if lo < 0 || hi < lo {
+		memo.active = false
+		return
+	}
+	span := hi - lo + 1
+	memo.lo = lo
+	memo.hi = hi
+	if memo.types.len < span {
+		memo.types = []Type{len: span, init: Type(void_)}
+		memo.filled = []u8{len: span}
+	} else {
+		unsafe { vmemset(memo.filled.data, 0, span) }
+	}
+	memo.active = true
+}
+
 pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
+	memo := tc.body_resolve_memo
+	idx := int(id)
+	if isnil(memo) || !memo.active || idx < memo.lo || idx > memo.hi {
+		return tc.resolve_type_uncached(id)
+	}
+	mi := idx - memo.lo
+	if memo.filled[mi] != 0 {
+		return memo.types[mi]
+	}
+	typ := tc.resolve_type_uncached(id)
+	// Unknowns can be provisional (cycle guards, generic placeholders that a
+	// later registration resolves); never memoize them.
+	if typ !is Unknown {
+		mut m := unsafe { &BodyResolveMemo(memo) }
+		m.types[mi] = typ
+		m.filled[mi] = 1
+	}
+	return typ
+}
+
+fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 	if int(id) < 0 {
 		return unknown_type('missing node')
 	}
