@@ -115,13 +115,17 @@ the Pages branch (`github.com/vlang/website`, branch `gh-pages`); a GitHub Actio
 workflow in that branch redeploys on every push:
 
 ```cron
-# hourly: sample new commits, regenerate the static site, and publish it
-0 * * * * cd /path/to/v && git pull --ff-only && cd cmd/tools/fast && v -o fast . \
+# hourly: sample new commits, regenerate the static site, and publish it.
+# The `{ diff || commit; }` group keeps `||` bound to the diff check only (skip the
+# commit when nothing changed); the whole chain is `&&`-guarded and wrapped in a
+# `{ ...; }` group so ANY earlier failure (pull/build/run/export) aborts before the
+# commit/push and is captured in the log — nothing stale is ever published.
+0 * * * * { cd /path/to/v && git pull --ff-only && cd cmd/tools/fast && v -o fast . \
   && ./fast run \
   && ./fast export -o "$SITE" \
   && git -C "$SITE" add -A \
-  && git -C "$SITE" diff --cached --quiet || git -C "$SITE" commit -m "update fast.vlang.io" \
-  && git -C "$SITE" push >> fast.log 2>&1
+  && { git -C "$SITE" diff --cached --quiet || git -C "$SITE" commit -m "update fast.vlang.io" ; } \
+  && git -C "$SITE" push ; } >> /path/to/v/cmd/tools/fast/fast.log 2>&1
 ```
 
 (The old `fast_job.v` daemon and its `-upload` step have been removed; this

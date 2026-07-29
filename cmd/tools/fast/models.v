@@ -75,6 +75,15 @@ fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {
 	}!
 }
 
+// upsert_benchmark inserts `b`, or updates the existing row with the same
+// commit_hash (the unique key). Being a single atomic statement, a failure
+// cannot lose the previous measurement the way a delete-then-insert can.
+fn upsert_benchmark(mut db sqlite.DB, b Benchmark) ! {
+	sql db {
+		upsert b into Benchmark
+	}!
+}
+
 // delete_benchmark removes the row for a commit, used by `bench -force` to
 // replace an existing measurement (commit_hash is UNIQUE, so a plain re-insert
 // would otherwise be rejected).

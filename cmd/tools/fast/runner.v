@@ -191,8 +191,13 @@ fn cmd_remeasure(args []string) ! {
 			failed++
 			continue
 		}
-		delete_benchmark(mut db, short)!
-		insert_benchmark(mut db, b)!
+		// atomic replace: an upsert on the unique commit_hash cannot lose the
+		// existing row if it fails, unlike a delete followed by a separate insert
+		upsert_benchmark(mut db, b) or {
+			elog('  FAILED to store ${short}: ${err}')
+			failed++
+			continue
+		}
 		ok++
 		elog('  updated ${short}: v.c ${b.v_c_ms}ms, self RSS med ${b.self_rss_med_kb / 1024}MB peak ${b.self_rss_max_kb / 1024}MB')
 	}
