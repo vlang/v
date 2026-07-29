@@ -725,6 +725,7 @@ mut:
 	declaration_param_mutability map[string][]bool
 	// Immutable node -> generic parameter index shared by checker workers.
 	enclosing_generic_params_by_node map[int][]string
+	enclosing_generic_param_masks    []u32
 }
 
 fn (tc &TypeChecker) timing_profile(message string) {
@@ -1007,6 +1008,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		static_associated_fn_keys:          tc.static_associated_fn_keys
 		declaration_param_mutability:       tc.declaration_param_mutability
 		enclosing_generic_params_by_node:   tc.enclosing_generic_params_by_node
+		enclosing_generic_param_masks:      tc.enclosing_generic_param_masks
 		expected_expr_id:                   -1
 		expected_expr_type:                 Type(void_)
 		smartcasts:                         tc.smartcasts
@@ -1436,30 +1438,57 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 
 fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
 	tc.enclosing_generic_params_by_node = map[int][]string{}
+	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len}
+	mut previous_top_level_idx := -1
 	for idx in tc.top_level_idx {
 		node := a.nodes[idx]
 		if node.kind != .fn_decl || node.generic_params().len == 0 {
+			previous_top_level_idx = idx
 			continue
 		}
+		params := node.generic_params()
 		for child_idx in 0 .. node.children_count {
 			child := a.child(&node, child_idx)
 			if int(child) >= 0 {
-				tc.enclosing_generic_params_by_node[int(child)] = node.generic_params()
+				tc.enclosing_generic_params_by_node[int(child)] = params
 			}
 		}
+		tc.fill_enclosing_generic_param_mask(previous_top_level_idx + 1, idx + 1, params)
+		previous_top_level_idx = idx
 	}
 }
 
 fn (mut tc TypeChecker) cache_fn_generic_params(a &flat.FlatAst) {
+	mut previous_top_level_idx := -1
 	for idx in tc.top_level_idx {
 		node := a.nodes[idx]
 		if node.kind != .fn_decl {
+			previous_top_level_idx = idx
 			continue
 		}
 		params := tc.infer_decl_generic_param_names(node)
 		if params.len > 0 {
 			tc.enclosing_generic_params_by_node[idx] = params
+			tc.fill_enclosing_generic_param_mask(previous_top_level_idx + 1, idx + 1, params)
 		}
+		previous_top_level_idx = idx
+	}
+}
+
+fn (mut tc TypeChecker) fill_enclosing_generic_param_mask(start int, end int, params []string) {
+	mut mask := u32(0)
+	for param in params {
+		if param.len == 1 && param[0] >= `A` && param[0] <= `Z` {
+			mask |= u32(1) << u32(param[0] - `A`)
+		}
+	}
+	if mask == 0 {
+		return
+	}
+	safe_start := int_max(start, 0)
+	safe_end := int_min(end, tc.enclosing_generic_param_masks.len)
+	for idx in safe_start .. safe_end {
+		tc.enclosing_generic_param_masks[idx] |= mask
 	}
 }
 
@@ -18174,6 +18203,12 @@ fn (tc &TypeChecker) cast_expression_diagnostic_pos(node flat.Node, target_name 
 fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name string) bool {
 	if name.len == 0 || !tc.valid_node_id(id) {
 		return false
+	}
+	node_idx := int(id)
+	if name.len == 1 && name[0] >= `A` && name[0] <= `Z`
+		&& node_idx < tc.enclosing_generic_param_masks.len {
+		mask := u32(1) << u32(name[0] - `A`)
+		return tc.enclosing_generic_param_masks[node_idx] & mask != 0
 	}
 	if tc.fn_context.node_id >= 0 && int(id) >= tc.check_range_lo && int(id) <= tc.check_range_hi {
 		params := tc.enclosing_generic_params_by_node[tc.fn_context.node_id] or { return false }
