@@ -25295,35 +25295,55 @@ fn (tc &TypeChecker) current_fn_declared_unsafe() bool {
 }
 
 fn (tc &TypeChecker) expr_is_unsafe_reference_alias(id flat.NodeId) bool {
+	return tc.expr_is_reference_alias(id, false)
+}
+
+fn (tc &TypeChecker) expr_is_reference_alias(id flat.NodeId, unsafe_context bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
 	node := tc.a.node(id)
-	if node.kind == .block && node.value == 'unsafe' {
+	if node.kind in [.block, .match_branch] {
 		if node.children_count == 0 {
 			return false
 		}
-		return tc.unsafe_block_tail_is_reference_alias(tc.a.child(node, node.children_count - 1))
+		return tc.expr_is_reference_alias(tc.a.child(node, node.children_count - 1), unsafe_context
+			|| node.value == 'unsafe')
 	}
 	if node.kind == .ident {
+		if unsafe_context {
+			return true
+		}
 		owner := tc.cur_scope.lookup_owner(node.value) or { return false }
 		return tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()]
 	}
+	if unsafe_context && node.kind in [.selector, .index] {
+		return true
+	}
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return tc.expr_is_unsafe_reference_alias(tc.a.child(node, node.children_count - 1))
+		return tc.expr_is_reference_alias(tc.a.child(node, node.children_count - 1), unsafe_context)
+	}
+	if node.kind == .if_expr {
+		if node.children_count < 3 {
+			return false
+		}
+		return tc.expr_is_reference_alias(tc.a.child(node, 1), unsafe_context)
+			&& tc.expr_is_reference_alias(tc.a.child(node, 2), unsafe_context)
+	}
+	if node.kind == .match_stmt {
+		if node.children_count < 2 || !tc.match_has_else_or_exhaustive_coverage(*node) {
+			return false
+		}
+		for i in 1 .. node.children_count {
+			branch := tc.a.child_node(node, i)
+			if branch.kind != .match_branch
+				|| !tc.expr_is_reference_alias(tc.a.child(node, i), unsafe_context) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
-}
-
-fn (tc &TypeChecker) unsafe_block_tail_is_reference_alias(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
-		return false
-	}
-	node := tc.a.node(id)
-	if node.kind in [.paren, .expr_stmt, .block] && node.children_count > 0 {
-		return tc.unsafe_block_tail_is_reference_alias(tc.a.child(node, node.children_count - 1))
-	}
-	return node.kind in [.ident, .selector, .index]
 }
 
 fn (tc &TypeChecker) static_initializer_is_constant(id flat.NodeId) bool {

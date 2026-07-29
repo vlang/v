@@ -7915,6 +7915,40 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_reversed_mutations_do_not_count_as_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_reversed_increment', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining--
+	copy.remaining++
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_reversed_compound_assignment', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining += 2
+	copy.remaining -= 2
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_nested_helper_mutations_count_as_progress() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'recursive_str_nested_helper_progress', 'struct Item {
@@ -8324,6 +8358,49 @@ fn test_fresh_unsafe_map_is_not_reference_alias() {
 }
 ')
 	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_merges_conditional_expressions() {
+	v3_bin := build_v3()
+	if_out := run_good(v3_bin, 'unsafe_map_alias_if_expression', 'fn choose(cond bool) {
+	mut left := {
+		"value": 1
+	}
+	mut right := {
+		"value": 2
+	}
+	alias := if cond { (unsafe { left }) } else { (unsafe { right }) }
+	copy := alias
+	println(copy["value"])
+}
+
+fn main() {
+	choose(true)
+	choose(false)
+}
+')
+	assert if_out == '1\n2'
+	match_out := run_good(v3_bin, 'unsafe_map_alias_match_expression', 'fn choose(value int) {
+	mut left := {
+		"value": 1
+	}
+	mut right := {
+		"value": 2
+	}
+	alias := match value {
+		0 { (unsafe { left }) }
+		else { (unsafe { right }) }
+	}
+	copy := alias
+	println(copy["value"])
+}
+
+fn main() {
+	choose(0)
+	choose(1)
+}
+')
+	assert match_out == '1\n2'
 }
 
 fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {

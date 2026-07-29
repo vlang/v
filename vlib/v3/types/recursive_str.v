@@ -1,5 +1,6 @@
 module types
 
+import strconv
 import v3.flat
 
 enum RecursiveStrMutationEffect {
@@ -37,6 +38,8 @@ struct RecursiveStrBinding {
 mut:
 	can_recurse             bool
 	progressed              bool
+	nonreversible_progress  bool
+	numeric_deltas          map[string]i64
 	is_recursive_str_method bool
 	storage_id              int
 	typ_name                string
@@ -72,12 +75,18 @@ struct RecursiveStrContext {
 }
 
 fn (env &RecursiveStrEnv) clone_env() RecursiveStrEnv {
+	mut bindings := env.bindings.clone()
+	for name, binding in env.bindings {
+		mut cloned := binding
+		cloned.numeric_deltas = binding.numeric_deltas.clone()
+		bindings[name] = cloned
+	}
 	mut defer_scopes := [][]flat.NodeId{cap: env.defer_scopes.len}
 	for scope in env.defer_scopes {
 		defer_scopes << scope.clone()
 	}
 	return RecursiveStrEnv{
-		bindings:           env.bindings.clone()
+		bindings:           bindings
 		next_storage_id:    env.next_storage_id
 		pending_goto:       env.pending_goto
 		active_closure_ids: env.active_closure_ids.clone()
@@ -848,6 +857,8 @@ fn (mut tc TypeChecker) recursive_str_eval_struct_update(id flat.NodeId, node fl
 		}
 		if binding.can_recurse && tc.recursive_str_struct_update_field_changes_base(base_id, *field) {
 			binding.progressed = true
+			binding.nonreversible_progress = true
+			binding.numeric_deltas = map[string]i64{}
 		}
 	}
 	binding.typ_name = tc.resolve_type(id).name()
@@ -1560,9 +1571,39 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 	for name in closure_capture_names {
 		closure_captures << tc.recursive_str_merge_bindings(capture_candidates[name])
 	}
+	progressed := can_recurse && !has_unprogressed
+	mut nonreversible_progress := false
+	mut numeric_deltas := map[string]i64{}
+	if progressed {
+		mut first := true
+		mut can_preserve_deltas := true
+		for binding in bindings {
+			if !binding.can_recurse {
+				continue
+			}
+			if binding.nonreversible_progress
+				|| (binding.progressed && binding.numeric_deltas.len == 0) {
+				can_preserve_deltas = false
+				break
+			}
+			if first {
+				numeric_deltas = binding.numeric_deltas.clone()
+				first = false
+			} else if !recursive_str_numeric_deltas_equal(numeric_deltas, binding.numeric_deltas) {
+				can_preserve_deltas = false
+				break
+			}
+		}
+		if !can_preserve_deltas || numeric_deltas.len == 0 {
+			nonreversible_progress = true
+			numeric_deltas = map[string]i64{}
+		}
+	}
 	return RecursiveStrBinding{
 		can_recurse:             can_recurse
-		progressed:              can_recurse && !has_unprogressed
+		progressed:              progressed
+		nonreversible_progress:  nonreversible_progress
+		numeric_deltas:          numeric_deltas
 		is_recursive_str_method: is_recursive_str_method
 		storage_id:              storage_id
 		typ_name:                typ_name
@@ -1572,6 +1613,18 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 		closure_capture_names:   closure_capture_names
 		closure_captures:        closure_captures
 	}
+}
+
+fn recursive_str_numeric_deltas_equal(left map[string]i64, right map[string]i64) bool {
+	if left.len != right.len {
+		return false
+	}
+	for key, value in left {
+		if right[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 fn recursive_str_binding_has_provenance(binding RecursiveStrBinding) bool {
@@ -1586,6 +1639,15 @@ fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_
 	if tc.recursive_str_mutation_is_noop(rhs_id, op) {
 		return
 	}
+	if delta := tc.recursive_str_numeric_mutation_delta(rhs_id, op) {
+		if tc.recursive_str_expr_contains_index(target_id) {
+			tc.recursive_str_mark_shared_progress(name, mut env)
+		} else {
+			target := tc.recursive_str_mutation_target_key(target_id)
+			tc.recursive_str_apply_numeric_delta(name, target, delta, mut env)
+		}
+		return
+	}
 	if tc.valid_node_id(rhs_id) && op == .assign
 		&& tc.source_text_for_node(target_id).trim_space() == tc.source_text_for_node(rhs_id).trim_space() {
 		return
@@ -1595,6 +1657,83 @@ fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_
 	} else {
 		tc.recursive_str_mark_value_progress(name, mut env)
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_numeric_mutation_delta(rhs_id flat.NodeId, op flat.Op) ?i64 {
+	if op == .inc {
+		return i64(1)
+	}
+	if op == .dec {
+		return i64(-1)
+	}
+	if op !in [.plus_assign, .minus_assign] || !tc.valid_node_id(rhs_id) {
+		return none
+	}
+	node := tc.a.node(rhs_id)
+	if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+		return tc.recursive_str_numeric_mutation_delta(tc.a.child(node, 0), op)
+	}
+	if node.kind != .int_literal {
+		return none
+	}
+	value := numeric_literal_i64(node.value) or { return none }
+	if op == .minus_assign {
+		if value == min_i64 {
+			return none
+		}
+		return -value
+	}
+	return value
+}
+
+fn numeric_literal_i64(value string) ?i64 {
+	mut clean := value.to_lower().replace('_', '')
+	for suffix in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'] {
+		if clean.ends_with(suffix) {
+			clean = clean[..clean.len - suffix.len]
+			break
+		}
+	}
+	parsed := strconv.parse_int(clean, 0, 64) or { return none }
+	return parsed
+}
+
+fn (tc &TypeChecker) recursive_str_mutation_target_key(id flat.NodeId) string {
+	return tc.source_text_for_node(id).trim_space().replace(' ', '').replace('\t', '').replace('\n',
+		'').replace('\r', '')
+}
+
+fn (tc &TypeChecker) recursive_str_apply_numeric_delta(name string, target string, delta i64, mut env RecursiveStrEnv) {
+	if delta == 0 {
+		return
+	}
+	mut binding := env.bindings[name] or { return }
+	if !binding.can_recurse || binding.nonreversible_progress || target.len == 0 {
+		if binding.can_recurse && target.len == 0 {
+			binding.progressed = true
+			binding.nonreversible_progress = true
+			binding.numeric_deltas = map[string]i64{}
+			env.bindings[name] = binding
+		}
+		return
+	}
+	binding.numeric_deltas = binding.numeric_deltas.clone()
+	current := binding.numeric_deltas[target]
+	if (delta > 0 && current > max_i64 - delta) || (delta < 0 && current < min_i64 - delta) {
+		binding.progressed = true
+		binding.nonreversible_progress = true
+		binding.numeric_deltas = map[string]i64{}
+		env.bindings[name] = binding
+		return
+	}
+	next := current + delta
+	if next == 0 {
+		binding.numeric_deltas.delete(target)
+	} else {
+		binding.numeric_deltas[target] = next
+	}
+	binding.progressed = binding.numeric_deltas.len > 0
+	env.bindings[name] = binding
 }
 
 fn (tc &TypeChecker) recursive_str_mutation_is_noop(rhs_id flat.NodeId, op flat.Op) bool {
@@ -1664,6 +1803,8 @@ fn (tc &TypeChecker) recursive_str_mark_value_progress(name string, mut env Recu
 	mut binding := env.bindings[name] or { return }
 	if binding.can_recurse {
 		binding.progressed = true
+		binding.nonreversible_progress = true
+		binding.numeric_deltas = map[string]i64{}
 		env.bindings[name] = binding
 	}
 }
@@ -1678,6 +1819,8 @@ fn (tc &TypeChecker) recursive_str_mark_shared_progress(name string, mut env Rec
 		mut other := other_binding
 		if other.storage_id == binding.storage_id && other.can_recurse {
 			other.progressed = true
+			other.nonreversible_progress = true
+			other.numeric_deltas = map[string]i64{}
 			env.bindings[other_name] = other
 		}
 	}
@@ -1777,6 +1920,8 @@ fn (tc &TypeChecker) recursive_str_binding_for_expr(id flat.NodeId, env Recursiv
 					if binding.can_recurse
 						&& tc.recursive_str_struct_update_field_changes_base(base_id, *field) {
 						binding.progressed = true
+						binding.nonreversible_progress = true
+						binding.numeric_deltas = map[string]i64{}
 					}
 				}
 				binding.typ_name = tc.resolve_type(id).name()
@@ -1878,6 +2023,8 @@ fn (mut tc TypeChecker) recursive_str_call_return_binding(call_id flat.NodeId, e
 				.value, .shared {
 					if binding.can_recurse {
 						binding.progressed = true
+						binding.nonreversible_progress = true
+						binding.numeric_deltas = map[string]i64{}
 					}
 				}
 				.rebind {
