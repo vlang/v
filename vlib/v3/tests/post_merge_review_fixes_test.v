@@ -8381,6 +8381,82 @@ fn main() {}
 		'cannot call `str()` method recursively')
 }
 
+fn test_recursive_str_preserves_wrapper_append_and_helper_aggregate_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_wrapper_field_provenance', 'struct Item {}
+
+struct Wrapper {
+	value Item
+}
+
+fn (item Item) str() string {
+	wrapped := Wrapper{
+		value: item
+	}
+	return wrapped.value.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_append_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	mut items := []Item{}
+	items << item
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_array_provenance', 'struct Item {}
+
+fn wrap(item Item) []Item {
+	return [item]
+}
+
+fn (item Item) str() string {
+	return wrap(item)[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_map_provenance', 'struct Item {}
+
+fn wrap(item Item) map[string]Item {
+	return {"self": item}
+}
+
+fn (item Item) str() string {
+	return wrap(item)["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_wrapper_provenance', 'struct Item {}
+
+struct Wrapper {
+	value Item
+}
+
+fn wrap(item Item) Wrapper {
+	return Wrapper{
+		value: item
+	}
+}
+
+fn (item Item) str() string {
+	return wrap(item).value.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_noreturn_branch_does_not_fall_through() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'recursive_str_noreturn_branch', '@[noreturn]
