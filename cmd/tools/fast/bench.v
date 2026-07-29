@@ -6,6 +6,7 @@ module main
 import os
 import time
 import arrays
+import db.sqlite
 
 // history_ref_for_head returns the history (branch) that the current HEAD belongs
 // to. On a normal checkout that is the branch name; on a detached HEAD (common in
@@ -57,17 +58,49 @@ fn cmd_bench(args []string) ! {
 	defer {
 		db.close() or {}
 	}
+
+	// Serialize against any other benchmark process before touching the shared main
+	// checkout: bench rebuilds vprod and overwrites v.c / v2 / the hello binary in
+	// `vdir`, which a concurrent bench (or run) would clobber — corrupting the build
+	// or contaminating the timings. run's oldv builds take the same global lock.
+	if !acquire_build_lock() {
+		elog('another benchmark build is in progress; skipping bench for ${commit}')
+		return
+	}
+	defer {
+		release_build_lock()
+	}
+
 	// claim/validate this database's single history (normalized, so `master` and
-	// `origin/master` are the same); rejects mixing another branch's history.
+	// `origin/master` are the same); rejects mixing another branch's history. Remember
+	// whether it was already claimed, so a claim made by this call can be undone if the
+	// benchmark below fails and leaves the database empty.
+	already := history_claimed(db)
 	history := claim_history(mut db, head_ref)!
 	// Bail out before the expensive rebuild + measurement suite, so repeat
 	// invocations for an unchanged HEAD stay cheap.
-	exists := benchmark_exists(db, commit)
-	if exists && !args.contains('-force') {
+	if benchmark_exists(db, commit) && !args.contains('-force') {
 		elog('commit ${commit} is already benchmarked (use -force to re-run)')
 		return
 	}
 
+	measure_and_store(mut db, commit, message, date, history, args) or {
+		// The build or measurement failed. If this call freshly claimed a previously
+		// empty database, drop the claim: leaving it would permanently reject a later
+		// successful bench for another ref (the same empty-database condition the
+		// importer rolls back). Only do so while the database is still empty.
+		if !already && benchmark_count(db) == 0 {
+			db.exec_none("DELETE FROM fast_meta WHERE key = 'history_ref'")
+		}
+		return err
+	}
+	elog('stored benchmark for ${commit}')
+}
+
+// measure_and_store builds vprod, runs the measurement suite in the main checkout, and
+// stores the row. It is split out of cmd_bench so the caller can roll back a fresh,
+// still-empty history claim if any step here fails.
+fn measure_and_store(mut db sqlite.DB, commit string, message string, date time.Time, history string, args []string) ! {
 	build_vprod(vdir, args)!
 	mut b := run_measurements(vdir, commit, message, date, args)!
 	b.git_ref = history
@@ -75,7 +108,6 @@ fn cmd_bench(args []string) ! {
 	// updates the row in a single statement, so an interrupted or failed store can
 	// never lose the previous valid measurement (unlike a delete then insert).
 	upsert_benchmark(mut db, b)!
-	elog('stored benchmark for ${commit}')
 }
 
 // build_vprod builds an optimized `vprod` binary inside `dir` using that

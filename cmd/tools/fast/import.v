@@ -122,7 +122,10 @@ fn import_table_html(mut db sqlite.DB, html string, since i64, git_ref string) !
 		// chars of the full hash) plus the committer date (%ct, monotonic along
 		// ancestry, unlike the old table's %at), in one git call — so an imported
 		// 7/40-char id for the same commit is not stored as a duplicate point.
-		commit, cdate := resolve_commit(raw, parse_old_date(cells[0].trim_space()))
+		commit, cdate := resolve_commit(raw, parse_old_date(cells[0].trim_space())) or {
+			elog('  skipping ${raw}: not in the checkout and too short to canonicalize to 8 chars')
+			continue
+		}
 		if benchmark_exists(db, commit) {
 			continue
 		}
@@ -209,9 +212,12 @@ fn is_commit_hash(s string) bool {
 
 // resolve_commit maps an imported commit id to the canonical 8-char hash that
 // `run` stores (the first 8 chars of the full hash) and its committer date, in a
-// single git call. Falls back to a bounded abbreviation and the given table
-// timestamp when the commit is not present in the local checkout.
-fn resolve_commit(raw string, fallback_date time.Time) (string, time.Time) {
+// single git call. When the commit is not in the local checkout it falls back to the
+// leading 8 chars of the imported id, which matches what `run` would store — but only
+// if the id is already at least 8 chars long. A 7-char id that cannot be resolved is
+// returned as `none`: it cannot be canonicalized to 8 chars here, so storing it would
+// collide with the 8-char form once the commit is fetched, duplicating the point.
+fn resolve_commit(raw string, fallback_date time.Time) ?(string, time.Time) {
 	res :=
 		os.execute("git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:'%H %ct' ${os.quoted_path(raw)}")
 	if res.exit_code == 0 {
@@ -222,7 +228,10 @@ fn resolve_commit(raw string, fallback_date time.Time) (string, time.Time) {
 			return parts[0][..8], date
 		}
 	}
-	return short_hash(raw), fallback_date
+	if raw.len >= 8 {
+		return raw[..8], fallback_date
+	}
+	return none
 }
 
 // parse_old_date reads the old `time.format()` output (`YYYY-MM-DD HH:MM`). If it

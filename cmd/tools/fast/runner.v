@@ -249,15 +249,16 @@ fn sync_oldv_cache() {
 	lexec('${os.quoted_path(vexe())} run ${os.quoted_path(oldv_src)} --cache-sync')
 }
 
-// The oldv build lock serializes a whole build+measure against every other run. It is
-// global — one lock for all commits, not per-commit — because oldv checks a single
-// shared `v_at_vc` checkout out to a commit-specific VC revision for every build (see
-// cmd/tools/oldv.v and vgit.prepare_vc_source), so two runs building *different*
-// commits would still race on that shared checkout and its `v.c`, causing checkout
-// failures or bootstrapping with the wrong VC source. Holding it across the
-// measurement, and around the shared `sync_oldv_cache`, also keeps concurrent runs
-// from contending for the CPU and contaminating each other's timings.
-const build_lock_dir = os.join_path(oldv_cache, 'oldv-build.lock')
+// The build lock serializes a whole build+measure against every other benchmark
+// process on this machine. It is global — one lock, not per-commit — for two reasons:
+// `run` has every commit's oldv build check the single shared `v_at_vc` checkout out to
+// a commit-specific VC revision (see cmd/tools/oldv.v and vgit.prepare_vc_source), so
+// two runs building *different* commits still race on that shared checkout and its
+// `v.c`; and `bench` rebuilds vprod and overwrites `v.c` / `v2` / the hello binary
+// directly in the main checkout. Holding it across the measurement, and around the
+// shared `sync_oldv_cache`, also keeps concurrent runs from contending for the CPU and
+// contaminating each other's timings.
+const build_lock_dir = os.join_path(oldv_cache, 'fast-build.lock')
 const build_lock_owner = os.join_path(build_lock_dir, 'owner')
 
 // The lock is refreshed before every commit and released at the end of the run, so an

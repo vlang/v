@@ -229,7 +229,16 @@ fn normalize_ref(ref string) string {
 	up :=
 		os.execute('git -C ${os.quoted_path(vdir)} rev-parse --abbrev-ref ${os.quoted_path('${r}@{upstream}')}')
 	if up.exit_code == 0 && up.output.trim_space() != '' {
-		return up.output.trim_space()
+		upstream := up.output.trim_space()
+		// Only collapse the local branch onto its upstream once its commits are provably
+		// contained in that upstream. A diverged local branch (local-only commits, or a
+		// rewritten history) keeps its own identity, so `run -branch <local>` is never
+		// silently treated as the same history as a later run of the divergent remote
+		// ref — which would make the dashboard compare unrelated revisions.
+		if os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor ${os.quoted_path(r)} ${os.quoted_path(upstream)}').exit_code == 0 {
+			return upstream
+		}
+		return r
 	}
 	for remote in ordered_remotes(remotes) {
 		cand := '${remote}/${r}'
@@ -331,6 +340,17 @@ fn benchmark_exists(db sqlite.DB, hash string) bool {
 		select from Benchmark where commit_hash == hash
 	} or { return false }
 	return rows.len > 0
+}
+
+// benchmark_count returns the number of stored benchmark rows, or -1 if the count
+// cannot be read. The -1 sentinel lets callers avoid destructive fallbacks (e.g.
+// dropping a fresh history claim) when the database state is unknown.
+fn benchmark_count(db sqlite.DB) int {
+	rows := db.exec('SELECT count(*) FROM benchmarks') or { return -1 }
+	if rows.len == 0 {
+		return -1
+	}
+	return rows[0].vals[0].int()
 }
 
 // load_benchmarks returns every stored benchmark, newest commit first. It
