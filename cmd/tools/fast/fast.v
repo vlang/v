@@ -62,6 +62,12 @@ fn git(dir string, subcmd string) string {
 	return lexec('git -C ${os.quoted_path(dir)} ${subcmd}')
 }
 
+// short_hash abbreviates a commit hash for display, without panicking on the
+// 7-char hashes that `import` accepts (a plain `[..8]` slice would).
+fn short_hash(h string) string {
+	return if h.len > 8 { h[..8] } else { h }
+}
+
 // exe_name returns the platform-specific executable file name (V and its
 // builds are named `v`/`vprod` on unix, `v.exe`/`vprod.exe` on Windows).
 fn exe_name(base string) string {

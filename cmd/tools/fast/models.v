@@ -75,7 +75,7 @@ fn migrate_exec(mut db sqlite.DB, query string) ! {
 // PRAGMA user_version rather than the presence of a table/column, so a database
 // left half-migrated by an intermediate release (e.g. one that created fast_meta
 // but never seeded/canonicalized the history) is still upgraded.
-const schema_version = 1
+const schema_version = 2
 
 // migrate_schema upgrades a database created by an older version of the tool. It
 // is transactional and idempotent (a no-op once applied), and propagates errors
@@ -155,7 +155,20 @@ fn canonicalize_history(mut db sqlite.DB) ! {
 		}
 	}
 	if raw == '' {
-		return
+		// No recorded identity, but there may be legacy rows (git_ref='') from before
+		// the column existed. Leaving the db unclaimed would let the next run/bench/
+		// import claim an arbitrary ref and mix histories, so infer it: if the rows
+		// belong to the repository default branch, adopt it; otherwise refuse and make
+		// the operator choose (re-import with --ref, or start a fresh database).
+		cnt := db.exec('SELECT count(*) FROM benchmarks')!
+		if cnt.len == 0 || cnt[0].vals[0].int() == 0 {
+			return
+		}
+		def := normalize_ref(resolve_history_ref(''))
+		if def == '' || def == 'HEAD' || !stored_tip_on(db, def) {
+			return error('fast.db has ${cnt[0].vals[0]} rows with no recorded git history; re-import with `--ref <ref>`, or start a fresh database.')
+		}
+		raw = def
 	}
 	mut canon := normalize_ref(raw)
 	// If normalization qualified a bare name with a remote (the fallback for a ref
@@ -168,10 +181,12 @@ fn canonicalize_history(mut db sqlite.DB) ! {
 	if canon != raw && !stored_tip_on(db, canon) {
 		canon = raw
 	}
+	// tag every row (including legacy git_ref='' rows) with the single validated
+	// history, and record it in fast_meta.
 	safe := canon.replace("'", "''")
 	migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'")!
 	migrate_exec(mut db, "INSERT INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
-	migrate_exec(mut db, "UPDATE benchmarks SET git_ref = '${safe}' WHERE git_ref != ''")!
+	migrate_exec(mut db, "UPDATE benchmarks SET git_ref = '${safe}'")!
 }
 
 // stored_tip_on reports whether the newest stored commit is contained in `git_ref`
@@ -331,6 +346,7 @@ struct Delta {
 // Row is the view-model rendered by templates/index.html. All diffing is done
 // here in V (server side), so the template and the browser stay dumb.
 struct Row {
+mut:
 	num         int
 	timestamp   string
 	commit_hash string

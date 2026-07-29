@@ -6,6 +6,7 @@ module main
 import os
 import time
 import json2
+import encoding.html
 
 // cmd_export renders the dashboard to a static site (index.html + benchmarks.json)
 // for hosting on GitHub Pages, since fast.vlang.io is served statically. The page
@@ -25,14 +26,20 @@ fn cmd_export(args []string) ! {
 	list := load_benchmarks(db)!
 	db.close()!
 
-	// same view-model as the index handler, rendered with $tmpl instead of $veb.html
-	rows := build_rows(list)
+	// same view-model as the index handler, rendered with $tmpl instead of $veb.html.
+	// $veb.html() HTML-escapes interpolations but $tmpl does not, so escape the
+	// user-controlled commit messages here to avoid breaking the `title` attribute
+	// or injecting markup into the published static page.
+	mut rows := build_rows(list)
+	for mut r in rows {
+		r.message = html.escape(r.message)
+	}
 	count := rows.len
 	latest := if count > 0 { rows[0].timestamp } else { '—' }
 	generated := time.now().format_ss()
-	html := $tmpl('templates/index.html')
+	page := $tmpl('templates/index.html')
 
-	os.write_file(os.join_path(out, 'index.html'), html)!
+	os.write_file(os.join_path(out, 'index.html'), page)!
 	os.write_file(os.join_path(out, 'benchmarks.json'), json2.encode(chart_points(list)))!
 	elog('exported ${count} benchmarks -> ${os.join_path(out, 'index.html')} (+ benchmarks.json)')
 }

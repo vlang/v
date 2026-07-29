@@ -241,13 +241,13 @@ fn build_with_oldv(commit string, args []string) !string {
 		return dir
 	}
 	cc := if args.contains('-clang') { 'clang' } else { 'cc' }
-	elog('  oldv: building V @ ${commit[..8]} (cc=${cc}) ...')
+	elog('  oldv: building V @ ${short_hash(commit)} (cc=${cc}) ...')
 	// `v run cmd/tools/oldv.v <commit>` clones v+vc into <cache>/oldv on first
 	// use, then checks out and bootstraps the requested commit.
 	cmd := '${os.quoted_path(vexe())} run ${os.quoted_path(oldv_src)} --cc ${cc} ${os.quoted_path(commit)}'
 	code := os.system(cmd)
 	if code != 0 || !os.is_executable(built_v) {
-		return error('oldv could not build ${commit[..8]} (expected ${built_v})')
+		return error('oldv could not build ${short_hash(commit)} (expected ${built_v})')
 	}
 	return dir
 }
