@@ -759,9 +759,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
 	tc.check_unreachable_after_noreturn_call(node)
 	if !is_specialized {
-		tc.record_unused_fn_vars(node)
-		tc.record_unused_fn_params(node)
-		tc.record_unused_fn_labels(node)
+		if tc.should_diagnose(flat.NodeId(fn_idx)) {
+			tc.record_unused_fn_vars(node)
+			tc.record_unused_fn_params(node)
+			tc.record_unused_fn_labels(node)
+		}
 		tc.check_fn_bare_generic_fntype_params(node)
 	}
 	tc.fn_context.node_id = -1
