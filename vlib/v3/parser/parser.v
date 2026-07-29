@@ -9107,7 +9107,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if p.tok == .lcbr {
 				if inner_type.starts_with('map[') {
-					return p.map_init_after_type(type_name, option_start)
+					return p.empty_map_init_after_type(type_name, option_start)
 				}
 				return p.struct_init(type_name)
 			}
@@ -9260,6 +9260,32 @@ fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
 		children_start: children_start
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(start)
+	})
+}
+
+fn (mut p Parser) empty_map_init_after_type(map_type string, start int) flat.NodeId {
+	p.next() // skip {
+	if p.tok != .rcbr {
+		p.record_diagnostic_span('`}` expected; explicit `map` initialization does not support parameters',
+			p.tok_pos, p.tok_end)
+		mut nested_braces := 0
+		for p.tok != .eof {
+			if p.tok == .lcbr {
+				nested_braces++
+			} else if p.tok == .rcbr {
+				if nested_braces == 0 {
+					break
+				}
+				nested_braces--
+			}
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	return p.add_node(flat.Node{
+		kind:  .map_init
+		value: map_type
+		pos:   p.span_to(start)
 	})
 }
 

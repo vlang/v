@@ -6812,7 +6812,6 @@ fn unused_notice_is_parameter_redefinition_cascade(a &flat.FlatAst, notice types
 		return false
 	}
 	notice_name := notice.msg.find_between('`', '`')
-	decl_assign := type_diagnostic_enclosing_node_kind(a, notice_fn, notice.node, .decl_assign, 0)
 	for diagnostic in type_errors {
 		if !diagnostic.msg.starts_with('redefinition of parameter `') {
 			continue
@@ -6820,49 +6819,6 @@ fn unused_notice_is_parameter_redefinition_cascade(a &flat.FlatAst, notice types
 		error_fn := type_diagnostic_enclosing_fn(a, diagnostic)
 		redefined_name := diagnostic.msg.find_between('`', '`')
 		if error_fn == notice_fn && notice_name.len > 0 && notice_name == redefined_name {
-			return true
-		}
-		if int(error_fn) >= 0 && int(decl_assign) >= 0
-			&& type_diagnostic_tree_calls_fn(a, decl_assign, a.node(error_fn).value, 0) {
-			return true
-		}
-	}
-	return false
-}
-
-fn type_diagnostic_enclosing_node_kind(a &flat.FlatAst, root_id flat.NodeId, target_id flat.NodeId, kind flat.NodeKind, depth int) flat.NodeId {
-	if depth > 32 || int(root_id) < 0 || int(root_id) >= a.nodes.len
-		|| !type_diagnostic_node_tree_contains(a, root_id, target_id, depth) {
-		return flat.empty_node
-	}
-	root := a.node(root_id)
-	if root.kind == kind {
-		return root_id
-	}
-	for i in 0 .. root.children_count {
-		enclosing := type_diagnostic_enclosing_node_kind(a, a.child(root, i), target_id, kind,
-
-			depth + 1)
-		if int(enclosing) >= 0 {
-			return enclosing
-		}
-	}
-	return flat.empty_node
-}
-
-fn type_diagnostic_tree_calls_fn(a &flat.FlatAst, root_id flat.NodeId, fn_name string, depth int) bool {
-	if depth > 32 || int(root_id) < 0 || int(root_id) >= a.nodes.len {
-		return false
-	}
-	root := a.node(root_id)
-	if root.kind == .call && root.children_count > 0 {
-		callee := a.child_node(root, 0)
-		if callee.value == fn_name || callee.value == fn_name.all_after_last('.') {
-			return true
-		}
-	}
-	for i in 0 .. root.children_count {
-		if type_diagnostic_tree_calls_fn(a, a.child(root, i), fn_name, depth + 1) {
 			return true
 		}
 	}

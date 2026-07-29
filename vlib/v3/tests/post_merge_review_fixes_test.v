@@ -7655,6 +7655,45 @@ fn main() {}
 	assert compile.output.contains('unused variable: `unused`'), compile.output
 }
 
+fn test_malformed_function_call_keeps_unrelated_unused_notice() {
+	v3_bin := build_v3()
+	src := 'fn bad(value int, value int) int {
+	return value
+}
+
+fn caller() {
+	unused := bad(1, 2)
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('malformed_function_call_unused_notice')}.vv'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('malformed_function_call_unused_notice')
+	compile := os.execute('${v3_bin} -checker-fixture ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('redefinition of parameter `value`'), compile.output
+	assert compile.output.contains('unused variable: `unused`'), compile.output
+}
+
+fn test_optional_typed_map_rejects_populated_braces() {
+	path := '${tmp_test_path('optional_typed_map_populated')}.v'
+	os.write_file(path, "fn main() {\n\t_ := ?map[string]int{'x': 1}\n}\n") or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(path)
+	assert p.diagnostics.any(it.message == '`}` expected; explicit `map` initialization does not support parameters'), p.diagnostics.str()
+
+	empty_path := '${tmp_test_path('optional_typed_map_empty')}.v'
+	os.write_file(empty_path, 'fn main() {
+	_ := ?map[string]int{}
+}
+') or { panic(err) }
+	mut empty_parser := parser.Parser.new(prefs)
+	empty_parser.parse_file(empty_path)
+	assert !empty_parser.diagnostics.any(it.message.contains('explicit `map` initialization does not support parameters')), empty_parser.diagnostics.str()
+}
+
 fn test_undefined_variable_preserves_unrelated_unused_import() {
 	check_src := '${tmp_test_path('undefined_variable_unrelated_import')}.v'
 	os.write_file(check_src, 'import os
