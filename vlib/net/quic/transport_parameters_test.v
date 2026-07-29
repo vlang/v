@@ -138,6 +138,59 @@ fn test_decode_preferred_address_rejects_zero_length_connection_id() {
 	assert false, 'expected an error for a zero-length connection ID on the wire'
 }
 
+// test_encode_preferred_address_rejects_mismatched_address_port and its
+// decode counterpart are regression tests for a Codex finding (vlang/v#27680
+// pullrequestreview-4806500473): RFC 9000 §18.2 defines an all-zero
+// address+port TOGETHER as "this family not provided", but neither side
+// validated that the pair was actually consistent -- an all-zero address
+// with a nonzero port (or vice versa) encoded/decoded successfully despite
+// being neither a real usable address nor the spec's own "not provided"
+// shape.
+fn test_encode_preferred_address_rejects_mismatched_address_port() {
+	pa_v4 := PreferredAddress{
+		ipv4_port:             8080 // nonzero port, but ipv4_address defaults to all-zero
+		connection_id:         [u8(1), 2, 3, 4]
+		stateless_reset_token: []u8{len: 16}
+	}
+	encode_preferred_address(pa_v4) or {
+		assert err.msg().contains('IPv4')
+		assert err.msg().contains('mismatch')
+		return
+	}
+	assert false, 'expected an error for an all-zero IPv4 address paired with a nonzero port'
+}
+
+fn test_encode_preferred_address_rejects_mismatched_ipv6_address_port() {
+	pa_v6 := PreferredAddress{
+		ipv6_port:             443 // nonzero port, but ipv6_address defaults to all-zero
+		connection_id:         [u8(1), 2, 3, 4]
+		stateless_reset_token: []u8{len: 16}
+	}
+	encode_preferred_address(pa_v6) or {
+		assert err.msg().contains('IPv6')
+		assert err.msg().contains('mismatch')
+		return
+	}
+	assert false, 'expected an error for an all-zero IPv6 address paired with a nonzero port'
+}
+
+fn test_decode_preferred_address_rejects_mismatched_address_port() {
+	// Hand-built wire bytes: all-zero ipv4_address, nonzero ipv4_port.
+	mut buf := []u8{len: 4} // ipv4_address = 0.0.0.0
+	buf << [u8(0x1f), 0x90] // ipv4_port = 8080
+	buf << []u8{len: 16} // ipv6_address = ::
+	buf << [u8(0), 0] // ipv6_port = 0
+	buf << u8(4) // cid_len
+	buf << [u8(1), 2, 3, 4]
+	buf << []u8{len: 16}
+	decode_preferred_address(buf) or {
+		assert err.msg().contains('IPv4')
+		assert err.msg().contains('mismatch')
+		return
+	}
+	assert false, 'expected an error for an all-zero IPv4 address paired with a nonzero port'
+}
+
 // test_encode_preferred_address_rejects_v1_cid_over_20_bytes and its decode
 // counterpart are regression tests for a Codex finding (vlang/v#27680
 // pullrequestreview-4783410111): a 21-255 byte connection_id passes the

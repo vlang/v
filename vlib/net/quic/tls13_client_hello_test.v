@@ -32,6 +32,39 @@ fn test_encode_server_name_extension_rejects_empty_hostname() {
 	assert false, 'expected an error for an empty hostname'
 }
 
+// test_encode_server_name_extension_rejects_hostname_near_65535_bound is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4806500473): the bound only checked
+// `name_bytes.len > 0xffff`, ignoring that a hostname entry (NameType(1) +
+// length(2) + name_bytes) is ITSELF wrapped in the ServerNameList's own
+// length(2) prefix -- 5 bytes of combined overhead that must fit in the
+// SAME u16 space as `data` overall (enforced generically by
+// encode_extension). Empirically, encode_extension's own generic guard
+// already rejected every value this loose bound let through (so no
+// malformed ClientHello was ever actually producible), but with a
+// misattributed "extension data too large" message instead of naming the
+// hostname; this fix makes the bound and the message correct at the right
+// layer.
+fn test_encode_server_name_extension_rejects_hostname_near_65535_bound() {
+	encode_server_name_extension('a'.repeat(65531)) or {
+		assert err.msg().contains('out of range')
+		return
+	}
+	assert false, 'expected an error for a hostname whose entry would overflow the available u16 space'
+}
+
+fn test_encode_server_name_extension_accepts_boundary_hostname_length() {
+	// 65530 is the largest hostname length that still leaves room for the
+	// 5 bytes of combined NameType/length/ServerNameList-length overhead
+	// under the u16 space encode_extension's own `data` is limited to:
+	// server_name.len = 3+65530 = 65533, data.len = 2+65533 = 65535 (fits
+	// exactly).
+	got := encode_server_name_extension('a'.repeat(65530))!
+	declared_len := (u32(got[4]) << 8) | u32(got[5])
+	assert declared_len == u32(65533)
+	assert got.len - 6 == 65533
+}
+
 fn test_encode_supported_groups_extension_wire_format() {
 	got := encode_supported_groups_extension()!
 	// type=000a, ext_data_len=0004, named_group_list_len=0002, secp256r1=0017
@@ -57,11 +90,13 @@ fn test_encode_signature_algorithms_extension_wire_format() {
 // stays strict and never accepts RSA-PKCS1v1.5.
 fn test_encode_signature_algorithms_cert_extension_wire_format() {
 	got := encode_signature_algorithms_cert_extension()!
-	// type=0032 (IANA registry value 50), ext_data_len=0010 (2+14),
-	// list_len=000e (7 schemes x 2 bytes): the 4 existing schemes plus the
-	// 3 new rsa_pkcs1_* ones.
-	assert got == [u8(0x00), 0x32, 0x00, 0x10, 0x00, 0x0e, 0x04, 0x03, 0x08, 0x04, 0x08, 0x05,
-		0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x06, 0x01]
+	// type=0032 (IANA registry value 50), ext_data_len=0014 (2+18),
+	// list_len=0012 (9 schemes x 2 bytes): ecdsa_secp256r1_sha256,
+	// ecdsa_secp384r1_sha384, ecdsa_secp521r1_sha512 (the latter two added
+	// for a Codex finding, vlang/v#27680 pullrequestreview-4806500473),
+	// rsa_pss_rsae_sha256/384/512, rsa_pkcs1_sha256/384/512.
+	assert got == [u8(0x00), 0x32, 0x00, 0x14, 0x00, 0x12, 0x04, 0x03, 0x05, 0x03, 0x06, 0x03,
+		0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x06, 0x01]
 }
 
 fn test_encode_key_share_extension_wire_format() {

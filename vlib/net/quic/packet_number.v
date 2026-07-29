@@ -48,6 +48,15 @@ pub fn encode_packet_number(full_pn u64, largest_acked ?u64) !([]u8, int) {
 		u64(0x7FFF_FFFF) // force the 4-byte path below
 	}
 
+	// A gap the 4-byte encoding can't unambiguously represent falls through
+	// every arm below with no bound left to check -- silently picking 4
+	// bytes anyway truncates full_pn to its low 32 bits, which
+	// decode_packet_number then reconstructs as a DIFFERENT packet number
+	// than the one actually sent (confirmed: encode_packet_number(2^62-1,
+	// Some(0)) round-trips to 2^32-1). Reject rather than silently corrupt.
+	if (num_unacked + 1) * 2 > 0x1_0000_0000 {
+		return error('quic: packet number gap of ${num_unacked} (full_pn=${full_pn}) exceeds what a 4-byte encoding can unambiguously represent (RFC 9000 §17.1); an ACK updating largest_acked is needed before this packet number can be sent')
+	}
 	n := match true {
 		(num_unacked + 1) * 2 <= 0x100 { 1 }
 		(num_unacked + 1) * 2 <= 0x1_0000 { 2 }

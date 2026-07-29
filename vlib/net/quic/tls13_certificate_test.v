@@ -164,6 +164,14 @@ fn test_parse_certificate_verify_rejects_unoffered_algorithm() {
 	body := build_test_certificate_verify_body(0x0401, [u8(1), 2, 3])
 	parse_certificate_verify(body) or {
 		assert err.msg().contains('not offered')
+		// Regression test for a Codex finding (vlang/v#27680
+		// pullrequestreview-4806500473): this used to be a plain error()
+		// (code 0), so process_certificate_verify's caller always
+		// remapped it to the generic decode_error alert instead of RFC
+		// 8446 §4.4.3's "not one offered" violation getting the same
+		// illegal_parameter classification this file already uses for the
+		// identical class of violation on cipher_suite.
+		assert err.code() == int(tls_alert_to_quic_error(.illegal_parameter))
 		return
 	}
 	assert false, 'expected an error for an algorithm not in signature_algorithms'

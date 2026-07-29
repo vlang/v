@@ -90,6 +90,40 @@ fn test_packet_number_encode_accepts_boundary_max_packet_number() {
 	assert n == 4
 }
 
+// test_packet_number_encode_rejects_gap_too_large_for_four_bytes is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4806500473): the length-selection `match` had no upper
+// bound on its `else { 4 }` arm, so a gap too large even for a 4-byte
+// encoding (more than 2^32) fell through to 4 bytes anyway instead of being
+// rejected. Confirmed via a standalone repro before this fix:
+// encode_packet_number(max_packet_number, Some(0)) silently produced 4
+// bytes that decode_packet_number then reconstructed as 2^32-1, a DIFFERENT
+// value than the 2^62-1 actually sent.
+fn test_packet_number_encode_rejects_gap_too_large_for_four_bytes() {
+	encode_packet_number(max_packet_number, u64(0)) or {
+		assert err.msg().contains('exceeds what a 4-byte encoding')
+		return
+	}
+	assert false, 'expected an error for a packet-number gap too large for any encoding length'
+}
+
+// test_packet_number_encode_accepts_boundary_four_byte_gap is the same
+// boundary check as test_packet_number_encode_accepts_boundary_max_packet_number
+// but pinned to the gap arithmetic itself: (num_unacked+1)*2 == 2^32 exactly
+// must still succeed (4 bytes) -- only a gap that EXCEEDS this must be
+// rejected, not one that exactly reaches it.
+fn test_packet_number_encode_accepts_boundary_four_byte_gap() {
+	largest_acked := u64(0)
+	// num_unacked = 2^31-1, so (num_unacked+1)*2 = 2^32 exactly -- the
+	// boundary the new check must accept, not just anything strictly below it.
+	full_pn := (u64(1) << 31) - 1
+	encoded, n := encode_packet_number(full_pn, largest_acked)!
+	assert n == 4
+	truncated := bytes_to_u64(encoded)
+	decoded := decode_packet_number(truncated, n, largest_acked)!
+	assert decoded == full_pn
+}
+
 fn test_packet_number_invalid_length_rejected() {
 	decode_packet_number(1, 5, none) or {
 		assert err.msg().contains('invalid packet number length')

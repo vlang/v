@@ -89,6 +89,18 @@ pub fn encode_preferred_address(pa PreferredAddress) ![]u8 {
 	if pa.stateless_reset_token.len != 16 {
 		return error('quic: preferred_address stateless_reset_token must be exactly 16 bytes, got ${pa.stateless_reset_token.len}')
 	}
+	// Mirrors decode_preferred_address's identical check -- an asymmetric
+	// pair checked on only one side of encode/decode is exactly the bug
+	// shape this codebase has hit before (see this file's own encode-side-
+	// bounds-entirely-absent history); a caller-constructed PreferredAddress
+	// with a mismatched pair should never be silently encoded onto the wire
+	// either, not just rejected when a PEER'S encoding is later decoded.
+	if (pa.ipv4_address == [4]u8{}) != (pa.ipv4_port == 0) {
+		return error('quic: preferred_address IPv4 address/port mismatch: an all-zero address must pair with port 0 (not provided), got address ${pa.ipv4_address} port ${pa.ipv4_port}')
+	}
+	if (pa.ipv6_address == [16]u8{}) != (pa.ipv6_port == 0) {
+		return error('quic: preferred_address IPv6 address/port mismatch: an all-zero address must pair with port 0 (not provided), got address ${pa.ipv6_address} port ${pa.ipv6_port}')
+	}
 	mut out := []u8{cap: 4 + 2 + 16 + 2 + 1 + pa.connection_id.len + 16}
 	out << pa.ipv4_address[..]
 	out << u8(pa.ipv4_port >> 8)
@@ -120,6 +132,20 @@ pub fn decode_preferred_address(buf []u8) !PreferredAddress {
 		ipv6_address[i] = buf[6 + i]
 	}
 	ipv6_port := (u16(buf[22]) << 8) | u16(buf[23])
+	// RFC 9000 §18.2 defines an all-zero address+port TOGETHER as "this
+	// family not provided"; the RFC text doesn't explicitly say what a
+	// MISMATCHED pair (zero address, nonzero port, or vice versa) means,
+	// but it's self-inconsistent under the spec's own stated meaning of
+	// all-zero -- neither a real usable address nor a clean "not
+	// provided" -- so it's rejected defensively here, the same way this
+	// file already rejects a duplicate parameter ID beyond the letter of
+	// the spec (Codex P2, vlang/v#27680 pullrequestreview-4806500473).
+	if (ipv4_address == [4]u8{}) != (ipv4_port == 0) {
+		return error('quic: preferred_address IPv4 address/port mismatch: an all-zero address must pair with port 0 (not provided), got address ${ipv4_address} port ${ipv4_port}')
+	}
+	if (ipv6_address == [16]u8{}) != (ipv6_port == 0) {
+		return error('quic: preferred_address IPv6 address/port mismatch: an all-zero address must pair with port 0 (not provided), got address ${ipv6_address} port ${ipv6_port}')
+	}
 	cid_len := int(buf[24])
 	expected_len := 25 + cid_len + 16
 	if buf.len != expected_len {

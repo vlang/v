@@ -126,7 +126,18 @@ pub fn parse_certificate_verify(body []u8) !ParsedCertificateVerify {
 	// which is the layer that actually needs to reject it.
 	if algorithm !in [sig_scheme_ecdsa_secp256r1_sha256, sig_scheme_rsa_pss_rsae_sha256,
 		sig_scheme_rsa_pss_rsae_sha384, sig_scheme_rsa_pss_rsae_sha512] {
-		return error('quic: CertificateVerify algorithm 0x${algorithm:04x} was not offered in signature_algorithms')
+		// RFC 8446 §4.4.3 requires the algorithm to be "one offered in the
+		// client's 'signature_algorithms' extension"; it does not itself
+		// name the alert for a violation. §6.2's general definition of
+		// illegal_parameter ("a field ... was incorrect or inconsistent
+		// with other fields") fits a value inconsistent with this client's
+		// own ClientHello, and this file's ServerHello/HelloRetryRequest
+		// cipher_suite-not-offered checks already use illegal_parameter for
+		// the identical class of violation (a peer selecting a value from a
+		// closed set this client didn't offer) -- extended here for
+		// consistency (Codex P2, vlang/v#27680 pullrequestreview-4806500473).
+		return error_with_code('quic: CertificateVerify algorithm 0x${algorithm:04x} was not offered in signature_algorithms',
+			int(tls_alert_to_quic_error(.illegal_parameter)))
 	}
 	return ParsedCertificateVerify{
 		algorithm: algorithm

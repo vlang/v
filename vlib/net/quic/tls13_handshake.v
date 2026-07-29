@@ -313,13 +313,17 @@ pub fn (mut h Tls13ClientHandshake) process_server_hello(msg HandshakeMessage, f
 				return handshake_error(.illegal_parameter,
 					'quic: HelloRetryRequest cipher_suite 0x${parsed.cipher_suite:04x} was not offered')
 			}
-			if parsed.selected_group != named_group_secp256r1 {
-				// v1 offers only secp256r1 (Phase 1's OpenSSL-backed ECDH
-				// support) -- a server asking for anything else cannot be
-				// satisfied, and there is no fallback group to try.
-				return handshake_error(.handshake_failure,
-					'quic: HelloRetryRequest selected an unsupported group 0x${parsed.selected_group:04x} (v1 only offers secp256r1)')
+			if selected_group := parsed.selected_group {
+				if selected_group != named_group_secp256r1 {
+					// v1 offers only secp256r1 (Phase 1's OpenSSL-backed ECDH
+					// support) -- a server asking for anything else cannot be
+					// satisfied, and there is no fallback group to try.
+					return handshake_error(.handshake_failure,
+						'quic: HelloRetryRequest selected an unsupported group 0x${selected_group:04x} (v1 only offers secp256r1)')
+				}
 			}
+			// Absent key_share (cookie-only HRR): the client's already-
+			// offered secp256r1 share stands, nothing to validate here.
 			h.got_hello_retry_request = true
 			// Regenerating ClientHello2 (a fresh ECDHE keypair, echoing any
 			// cookie extension, re-hashing the transcript per RFC 8446
@@ -549,7 +553,17 @@ pub fn (mut h Tls13ClientHandshake) process_certificate_verify(msg HandshakeMess
 		return handshake_error(.unexpected_message,
 			'quic: expected CertificateVerify, got ${msg.typ}')
 	}
-	cv := parse_certificate_verify(msg.body) or { return handshake_error(.decode_error, err.msg()) }
+	cv := parse_certificate_verify(msg.body) or {
+		// Same convention as process_server_hello/process_encrypted_extensions:
+		// parse_certificate_verify carries its own specific QUIC error code
+		// (via error_with_code) for the unoffered-algorithm class of
+		// failure; only a genuine structural parse failure (plain error(),
+		// code 0) should be remapped to the generic decode_error alert here.
+		if err.code() != 0 {
+			return err
+		}
+		return handshake_error(.decode_error, err.msg())
+	}
 	h.verified_chain.verify_certificate_verify_signature(cv, .server, h.certificate_transcript_hash) or {
 		return handshake_error(.decrypt_error, err.msg())
 	}

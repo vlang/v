@@ -75,11 +75,44 @@ fn test_parse_server_hello_detects_hello_retry_request() {
 		ParsedHelloRetryRequest {
 			assert result.cipher_suite == cipher_suite_tls_aes_128_gcm_sha256
 			assert result.selected_version == tls_version_1_3
-			assert result.selected_group == 0x0017
+			selected_group := result.selected_group or {
+				panic('expected a key_share-carried group to be present')
+			}
+
+			assert selected_group == 0x0017
 			assert result.cookie == none
 		}
 		ParsedServerHello {
 			assert false, 'the magic HelloRetryRequest random must decode as HRR, not a real ServerHello'
+		}
+	}
+}
+
+// test_parse_server_hello_hello_retry_request_cookie_only is a regression
+// test for a Codex finding (vlang/v#27680 pullrequestreview-4806500473):
+// key_share was previously treated as mandatory in every HelloRetryRequest,
+// rejecting a valid RFC 8446 §4.1.4 cookie-only HRR (requesting only an
+// anti-DoS cookie round-trip, since the client's already-offered key_share
+// is acceptable) before it could ever be represented as a
+// ParsedHelloRetryRequest.
+fn test_parse_server_hello_hello_retry_request_cookie_only() {
+	cookie_value := [u8(9), 8, 7, 6, 5]
+	mut cookie_data := []u8{}
+	cookie_data << u8(cookie_value.len >> 8)
+	cookie_data << u8(cookie_value.len)
+	cookie_data << cookie_value
+	cookie_ext := encode_extension(ext_cookie, cookie_data) or { panic(err) }
+	body := build_test_server_hello(hello_retry_request_random[..].clone(), []u8{}, cookie_ext)
+
+	result := parse_server_hello(body)!
+	match result {
+		ParsedHelloRetryRequest {
+			assert result.selected_group == none
+			got_cookie := result.cookie or { panic('expected a cookie to be present') }
+			assert got_cookie == cookie_value
+		}
+		ParsedServerHello {
+			assert false, 'expected a cookie-only HelloRetryRequest'
 		}
 	}
 }
@@ -338,6 +371,41 @@ fn test_parse_encrypted_extensions_rejects_key_share() {
 		return
 	}
 	assert false, 'expected an error for a key_share extension in EncryptedExtensions'
+}
+
+fn test_parse_encrypted_extensions_accepts_empty_server_name() {
+	ext := encode_extension(ext_server_name, []u8{}) or { panic(err) }
+	mut body := []u8{}
+	body << u8(ext.len >> 8)
+	body << u8(ext.len)
+	body << ext
+	extensions := parse_encrypted_extensions(body)!
+	found := find_extension(extensions, ext_server_name) or {
+		panic('expected server_name to be present')
+	}
+	assert found.data.len == 0
+}
+
+// test_parse_encrypted_extensions_rejects_nonempty_server_name is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4806500473): RFC 6066 §3 requires the server's
+// server_name acknowledgement extension_data to be empty ("the server
+// SHALL include an extension of type 'server_name' in the (extended)
+// server hello. The 'extension_data' field of this extension SHALL be
+// empty."), but this was never validated -- a malformed non-empty payload
+// passed through silently.
+fn test_parse_encrypted_extensions_rejects_nonempty_server_name() {
+	ext := encode_extension(ext_server_name, [u8(1), 2, 3]) or { panic(err) }
+	mut body := []u8{}
+	body << u8(ext.len >> 8)
+	body << u8(ext.len)
+	body << ext
+	parse_encrypted_extensions(body) or {
+		assert err.msg().contains('server_name')
+		assert err.msg().contains('empty')
+		return
+	}
+	assert false, 'expected an error for a non-empty server_name extension_data'
 }
 
 fn test_parse_encrypted_extensions_rejects_length_mismatch() {

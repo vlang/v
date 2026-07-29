@@ -618,6 +618,46 @@ fn test_handshake_certificate_verify_and_finished_with_real_cryptography() {
 	assert app_secrets.server_secret.len == 32
 }
 
+// test_process_certificate_verify_rejects_unoffered_algorithm is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4806500473): parse_certificate_verify's "algorithm not
+// offered" error used to be a plain error() (code 0), so
+// process_certificate_verify's caller always remapped it to the generic
+// decode_error alert regardless -- same class of gap as the
+// process_server_hello/process_encrypted_extensions fixes already in this
+// file, just for a third message type.
+fn test_process_certificate_verify_rejects_unoffered_algorithm() {
+	client_random := []u8{len: 32, init: 0x99}
+	server_initial_scid := [u8(5), 5, 5, 5]
+	mut h, server, cert_err_msg := drive_to_certificate(client_random, server_initial_scid)!
+	defer {
+		h.free()
+		unsafe { server.priv_key.free() }
+	}
+	_ = cert_err_msg
+
+	real_chain := mbedtls.build_certificate_chain([server.certificate_der])!
+	unsafe {
+		h.verified_chain = &VerifiedCertificateChain{
+			chain: real_chain
+		}
+	}
+	h.certificate_transcript_hash = h.transcript_hash()
+	h.state = .wait_certificate_verify
+
+	// rsa_pkcs1_sha256 (0x0401) -- a real SignatureScheme, just not one v1
+	// offers in signature_algorithms (only ecdsa_secp256r1_sha256/
+	// rsa_pss_rsae_sha256/384/512 are offered there).
+	cv_framed := build_fake_certificate_verify(0x0401, [u8(1), 2, 3])!
+	cv_msg, _ := parse_handshake_message(cv_framed)!
+	h.process_certificate_verify(cv_msg, cv_framed) or {
+		assert err.msg().contains('not offered')
+		assert err.code() == int(tls_alert_to_quic_error(.illegal_parameter))
+		return
+	}
+	assert false, 'expected an error for a CertificateVerify algorithm not in signature_algorithms'
+}
+
 // test_second_hello_retry_request_rejected exercises the specific edge case
 // RFC 8446 §4.1.4 mandates and this module's own plan calls out by name:
 // a second HelloRetryRequest is fatal, not just unusual.

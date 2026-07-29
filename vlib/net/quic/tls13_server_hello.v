@@ -141,9 +141,13 @@ pub struct ParsedHelloRetryRequest {
 pub:
 	cipher_suite     u16
 	selected_version u16
-	selected_group   u16
-	cookie           ?[]u8
-	extensions       []TlsExtension
+	// ?u16, not u16: RFC 8446 §4.1.4 lets an HRR request only a cookie
+	// round-trip with no key_share at all, when the client's already-
+	// offered share is acceptable to the server -- key_share is not
+	// mandatory in every HelloRetryRequest, only supported_versions is.
+	selected_group ?u16
+	cookie         ?[]u8
+	extensions     []TlsExtension
 }
 
 pub type ServerHelloMessage = ParsedHelloRetryRequest | ParsedServerHello
@@ -241,16 +245,22 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 
 	if random == hello_retry_request_random[..] {
 		reject_unsolicited_extensions(extensions, hello_retry_request_allowed, 'HelloRetryRequest')!
-		ks_ext := find_extension(extensions, ext_key_share) or {
-			return error('quic: HelloRetryRequest missing mandatory key_share extension')
+		// key_share is NOT mandatory here: RFC 8446 §4.1.4 permits a
+		// HelloRetryRequest that requests only a cookie round-trip, when
+		// the client's ALREADY-offered key_share is acceptable to the
+		// server and the only reason for the retry is anti-DoS (Codex P2,
+		// vlang/v#27680 pullrequestreview-4806500473) -- only
+		// supported_versions is stated as mandatory.
+		mut selected_group := ?u16(none)
+		if ks_ext := find_extension(extensions, ext_key_share) {
+			// KeyShareHelloRetryRequest carries only a NamedGroup (RFC 8446
+			// §4.2.8) — no key_exchange data, unlike a real ServerHello's
+			// KeyShareEntry below.
+			if ks_ext.data.len != 2 {
+				return error('quic: HelloRetryRequest key_share must be exactly 2 bytes (a NamedGroup), got ${ks_ext.data.len}')
+			}
+			selected_group = u16((u32(ks_ext.data[0]) << 8) | u32(ks_ext.data[1]))
 		}
-		// KeyShareHelloRetryRequest carries only a NamedGroup (RFC 8446
-		// §4.2.8) — no key_exchange data, unlike a real ServerHello's
-		// KeyShareEntry below.
-		if ks_ext.data.len != 2 {
-			return error('quic: HelloRetryRequest key_share must be exactly 2 bytes (a NamedGroup), got ${ks_ext.data.len}')
-		}
-		selected_group := u16((u32(ks_ext.data[0]) << 8) | u32(ks_ext.data[1]))
 		mut cookie := ?[]u8(none)
 		if cookie_ext := find_extension(extensions, ext_cookie) {
 			cookie = parse_cookie_extension(cookie_ext.data)!
@@ -335,6 +345,17 @@ pub fn parse_encrypted_extensions(body []u8) ![]TlsExtension {
 	if _ := find_extension(extensions, ext_early_data) {
 		return error_with_code('quic: EncryptedExtensions must not contain early_data (0-RTT is not offered)',
 			int(tls_alert_to_quic_error(.unsupported_extension)))
+	}
+	if sn_ext := find_extension(extensions, ext_server_name) {
+		// RFC 6066 §3: "the server SHALL include an extension of type
+		// 'server_name' in the (extended) server hello. The
+		// 'extension_data' field of this extension SHALL be empty." A
+		// non-empty payload here is a malformed acknowledgement, not a
+		// hostname echo -- this client never expects one back (Codex P2,
+		// vlang/v#27680 pullrequestreview-4806500473).
+		if sn_ext.data.len != 0 {
+			return error('quic: EncryptedExtensions server_name extension_data must be empty (RFC 6066 §3), got ${sn_ext.data.len} bytes')
+		}
 	}
 	for e in extensions {
 		if e.typ !in encrypted_extensions_allowed {

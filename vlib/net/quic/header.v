@@ -309,6 +309,9 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 	if buf[0] & 0x40 == 0 {
 		return error('short header Fixed Bit is clear: not a valid QUIC packet')
 	}
+	if dcid_len < 0 {
+		return error('invalid short header dcid_len ${dcid_len}: must not be negative')
+	}
 	if buf.len < 1 + dcid_len {
 		return error('truncated short header: need ${1 + dcid_len} bytes, have ${buf.len}')
 	}

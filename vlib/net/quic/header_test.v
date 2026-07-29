@@ -237,6 +237,25 @@ fn test_short_header_round_trip_and_zero_length_dcid() {
 	assert parsed2.dcid == dcid
 }
 
+// test_short_header_rejects_negative_dcid_len is a regression test for a
+// Codex finding (vlang/v#27680 pullrequestreview-4806500473): a negative
+// `dcid_len` (e.g. from unvalidated connection state) made
+// `buf.len < 1 + dcid_len` pass (since `1 + dcid_len` went negative too),
+// so the function proceeded to `buf[1..1 + dcid_len]` -- a slice with
+// start > end, which panics rather than returning this `!`-declared
+// function's own error. Confirmed via a standalone repro before this fix:
+// `parse_short_header([]u8{len: 10, init: 0x40}, -1)` crashed the process
+// with "V panic: array.slice: invalid slice index (start>end):1, 0".
+fn test_short_header_rejects_negative_dcid_len() {
+	buf := []u8{len: 10, init: 0x40}
+	parse_short_header(buf, -1) or {
+		assert err.msg().contains('dcid_len')
+		assert err.msg().contains('-1')
+		return
+	}
+	assert false, 'expected an error for a negative dcid_len, not a panic or success'
+}
+
 // test_short_header_decodes_spin_bit_and_key_phase is a regression test
 // for a Codex finding (vlang/v#27680 pullrequestreview-4781706846):
 // parse_short_header used to always return spin_bit/key_phase as false,

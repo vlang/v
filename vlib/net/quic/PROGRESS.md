@@ -43,8 +43,14 @@ checklist for exact status. Every checked item has passing tests under
     `retry.v`). `header.v` currently only recognizes the Retry packet type.
 - [x] P-256 ECDH added to `vlib/crypto/ecdsa/` (`derive_shared_secret`,
       `uncompressed_bytes`/`from_uncompressed_bytes` wire format helpers).
-- [x] New `vlib/crypto/rsa_pss/` module — RSA-PSS sign/verify (no RSA existed
-      in V before this).
+- [x] ~~New `vlib/crypto/rsa_pss/` module — RSA-PSS sign/verify (no RSA existed
+      in V before this).~~ Removed again as unused dead code once mbedTLS's
+      already-vendored `mbedtls_pk_verify_ext` was confirmed to cover
+      RSA-PSS verification (CertificateVerify) with no OpenSSL dependency,
+      matching README.md's own note (Codex P3, vlang/v#27680
+      pullrequestreview-4806500473: this entry was left marked complete
+      after the module's removal, pointing contributors at a module that no
+      longer exists).
 - [x] `/vreview` pass on Phase 0+1: found and fixed a wire-integer-truncation
       bug in `parse_long_header`'s `token_len` handling (a crafted oversized
       varint silently wrapped past a 32-bit `int` bounds check instead of

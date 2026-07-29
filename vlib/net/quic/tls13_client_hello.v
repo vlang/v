@@ -56,6 +56,22 @@ const sig_scheme_rsa_pkcs1_sha256 = u16(0x0401)
 const sig_scheme_rsa_pkcs1_sha384 = u16(0x0501)
 const sig_scheme_rsa_pkcs1_sha512 = u16(0x0601)
 
+// Same rationale and same cert-only restriction as the rsa_pkcs1_* trio
+// above, for the other two ECDSA curves the vendored mbedTLS build supports
+// (MBEDTLS_ECP_DP_SECP384R1_ENABLED/SECP521R1_ENABLED plus MBEDTLS_SHA512_C,
+// confirmed in mbedtls_config.h) but this client's own CertificateVerify
+// path does not: `verify_certificate_verify_signature`'s ECDSA branch
+// additionally requires the P-256 curve specifically
+// (public_key_curve_is_secp256r1), so `signature_algorithms` stays
+// P-256-only by design -- these two are for chain verification only, via
+// mbedTLS's generic X.509 verifier, which has no such curve restriction.
+// Without advertising them, a server whose chain is P-384- or P-521-signed
+// has no signature_algorithms_cert entry to select against, even though
+// this client's chain verification already supports both curves (Codex P2,
+// vlang/v#27680 pullrequestreview-4806500473).
+const sig_scheme_ecdsa_secp384r1_sha384 = u16(0x0503)
+const sig_scheme_ecdsa_secp521r1_sha512 = u16(0x0603)
+
 const tls_version_1_3 = u16(0x0304)
 
 // RFC 9001 §5.1 mandates TLS_AES_128_GCM_SHA256 for Initial packets; the
@@ -113,13 +129,15 @@ fn encode_signature_algorithms_extension() ![]u8 {
 // encode_signature_algorithms_cert_extension advertises a BROADER scheme
 // list than encode_signature_algorithms_extension -- everything this client
 // can validate for a CERTIFICATE's own signature via mbedTLS's generic
-// X.509 chain verifier (which supports RSA-PKCS1v1.5 in addition to
-// everything signature_algorithms already lists), even though CertificateVerify
-// itself stays restricted to the narrower live-handshake-signature set. See
-// this file's own sig_scheme_rsa_pkcs1_* doc comment for why these two lists
-// deliberately differ.
+// X.509 chain verifier (which supports RSA-PKCS1v1.5 and the P-384/P-521
+// ECDSA curves in addition to everything signature_algorithms already
+// lists), even though CertificateVerify itself stays restricted to the
+// narrower live-handshake-signature set. See this file's own
+// sig_scheme_rsa_pkcs1_*/sig_scheme_ecdsa_secp384r1_sha384 doc comments for
+// why these two lists deliberately differ.
 fn encode_signature_algorithms_cert_extension() ![]u8 {
-	schemes := [sig_scheme_ecdsa_secp256r1_sha256, sig_scheme_rsa_pss_rsae_sha256,
+	schemes := [sig_scheme_ecdsa_secp256r1_sha256, sig_scheme_ecdsa_secp384r1_sha384,
+		sig_scheme_ecdsa_secp521r1_sha512, sig_scheme_rsa_pss_rsae_sha256,
 		sig_scheme_rsa_pss_rsae_sha384, sig_scheme_rsa_pss_rsae_sha512, sig_scheme_rsa_pkcs1_sha256,
 		sig_scheme_rsa_pkcs1_sha384, sig_scheme_rsa_pkcs1_sha512]
 	mut list := []u8{}
@@ -140,7 +158,15 @@ fn encode_signature_algorithms_cert_extension() ![]u8 {
 // output (RFC 8446 §4.2.8.2's UncompressedPointRepresentation: 0x04 || X
 // || Y, 65 bytes for P-256).
 fn encode_key_share_extension(group u16, key_exchange []u8) ![]u8 {
-	if key_exchange.len == 0 || key_exchange.len > 0xffff {
+	// Sibling of encode_server_name_extension's identical bound fix (Codex
+	// P2, vlang/v#27680 pullrequestreview-4806500473): entry is
+	// group(2)+key_exchange_len(2)+key_exchange, then client_shares wraps
+	// THAT in its own length(2) prefix -- 6 bytes of combined overhead
+	// under the same u16 space as `data` overall. Not reachable with a
+	// real caller today (key_exchange is always the fixed 65-byte P-256
+	// uncompressed point), but the bound itself was equally wrong, closed
+	// proactively rather than waiting for a future caller to hit it.
+	if key_exchange.len == 0 || key_exchange.len > 0xffff - 6 {
 		return error('quic: key_exchange length ${key_exchange.len} out of range')
 	}
 	mut entry := []u8{}
@@ -163,7 +189,19 @@ fn encode_key_share_extension(group u16, key_exchange []u8) ![]u8 {
 // host_name is the only NameType defined).
 fn encode_server_name_extension(hostname string) ![]u8 {
 	name_bytes := hostname.bytes()
-	if name_bytes.len == 0 || name_bytes.len > 0xffff {
+	// A hostname entry is NameType(1) + name_length(2) + name_bytes, then
+	// the ServerNameList wrapping that adds its OWN length(2) prefix -- 5
+	// bytes of combined overhead that must fit alongside name_bytes under
+	// the SAME u16 space this whole `data` blob is limited to (checked
+	// generically by encode_extension below). The previous bound only
+	// checked `name_bytes.len > 0xffff`, ignoring that overhead entirely
+	// (Codex P2, vlang/v#27680 pullrequestreview-4806500473) -- in
+	// practice encode_extension's own generic size guard already caught
+	// every value this let through unrejected, so no malformed ClientHello
+	// was ever actually producible, but the bound itself was still wrong
+	// and gave a misattributed "extension data too large" message instead
+	// of clearly naming the hostname as the problem.
+	if name_bytes.len == 0 || name_bytes.len > 0xffff - 5 {
 		return error('quic: server_name hostname length ${name_bytes.len} out of range')
 	}
 	mut server_name := []u8{}
