@@ -18,11 +18,17 @@ import db.sqlite
 fn cmd_import(args []string) ! {
 	mut files := []string{}
 	mut since := i64(0)
+	mut ref := '' // history the imported rows belong to; defaults to the repo default
 	mut i := 0
 	for i < args.len {
 		a := args[i]
 		if a == '--since' && i + 1 < args.len {
 			since = parse_since(args[i + 1])
+			i += 2
+			continue
+		}
+		if a == '--ref' && i + 1 < args.len {
+			ref = args[i + 1]
 			i += 2
 			continue
 		}
@@ -32,20 +38,26 @@ fn cmd_import(args []string) ! {
 		i++
 	}
 	if files.len == 0 {
-		return error('usage: fast import [--since YYYY-MM-DD] <table.html> [more.html ...]')
+		return error('usage: fast import [--since YYYY-MM-DD] [--ref <ref>] <table.html> [more.html ...]')
+	}
+	if ref == '' {
+		ref = resolve_history_ref('') // the old fast.vlang.io history was the default branch
 	}
 	mut db := open_db()!
 	defer {
 		db.close() or {}
 	}
+	// tag imported rows with their history and claim it, so a later `run -branch X`
+	// on the same db is rejected instead of silently mixed in.
+	history := claim_history(mut db, ref)!
 	mut total := 0
 	for f in files {
 		content := os.read_file(f) or { return error('cannot read ${f}: ${err}') }
-		n := import_table_html(mut db, content, since)!
+		n := import_table_html(mut db, content, since, history)!
 		elog('imported ${n} rows from ${f}')
 		total += n
 	}
-	elog('import done: ${total} rows inserted. Start the web app with: v run . serve')
+	elog('import done: ${total} rows inserted (history: ${history}). Start the web app with: v run . serve')
 }
 
 // parse_since converts a YYYY-MM-DD string into a unix timestamp (0 == no filter).
@@ -61,7 +73,7 @@ fn parse_since(s string) i64 {
 // inserts them, returning the number of newly inserted rows. The historic row
 // layout is 14 `<td>` cells: date, commit(link), message, v.c, v, native(unused),
 // hello, v.c size, parse, check, cgen, scan, V lines, V lines/s.
-fn import_table_html(mut db sqlite.DB, html string, since i64) !int {
+fn import_table_html(mut db sqlite.DB, html string, since i64, git_ref string) !int {
 	mut inserted := 0
 	for row in html.split('<tr>') {
 		// data rows link to a commit; the header row (with `<th>`) does not
@@ -86,6 +98,7 @@ fn import_table_html(mut db sqlite.DB, html string, since i64) !int {
 		}
 		b := Benchmark{
 			commit_hash: commit
+			git_ref:     git_ref
 			message:     unescape_html(cells[2])
 			commit_date: cdate
 			created_at:  time.now()

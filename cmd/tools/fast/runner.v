@@ -126,9 +126,9 @@ fn cmd_run(args []string) ! {
 	defer {
 		db.close() or {}
 	}
-	// keep this database to a single history — mixing refs breaks the chart's
-	// ancestry assumption (see ensure_single_ref).
-	ensure_single_ref(db, ref)!
+	// claim this database's single history — mixing refs breaks the chart's
+	// ancestry assumption (see claim_history). `history` is the normalized ref.
+	history := claim_history(mut db, ref)!
 
 	mut ok, mut failed, mut skipped := 0, 0, 0
 	for idx, c in selected {
@@ -147,7 +147,7 @@ fn cmd_run(args []string) ! {
 			failed++
 			continue
 		}
-		b.git_ref = ref
+		b.git_ref = history
 		// The `commit_hash` UNIQUE constraint makes this insert the atomic claim:
 		// if a concurrent run (e.g. cron overlapping a manual backfill) already
 		// stored this commit, the insert is rejected instead of duplicating the row.

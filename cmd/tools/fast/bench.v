@@ -23,8 +23,9 @@ fn cmd_bench(args []string) ! {
 	defer {
 		db.close() or {}
 	}
-	// don't mix this branch's history into a database tracking another one
-	ensure_single_ref(db, head_ref)!
+	// claim/validate this database's single history (normalized, so `master` and
+	// `origin/master` are the same); rejects mixing another branch's history.
+	history := claim_history(mut db, head_ref)!
 	// Bail out before the expensive rebuild + measurement suite, so repeat
 	// invocations for an unchanged HEAD stay cheap.
 	exists := benchmark_exists(db, commit)
@@ -35,7 +36,7 @@ fn cmd_bench(args []string) ! {
 
 	build_vprod(vdir, args)!
 	mut b := run_measurements(vdir, commit, message, date, args)!
-	b.git_ref = head_ref
+	b.git_ref = history
 	// Replace the old row only after a successful rebuild+measurement, so a
 	// failed -force run never destroys the existing data (commit_hash is UNIQUE).
 	if exists {

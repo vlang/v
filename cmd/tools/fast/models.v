@@ -83,9 +83,11 @@ fn migrate_schema(mut db sqlite.DB) ! {
 			existing[row.vals[1]] = true // table_info column 1 is the name
 		}
 	}
-	// `git_ref` is the newest column; once present the database is fully migrated,
-	// so there is nothing to do (avoids re-running the DDL on every open_db()).
-	if 'git_ref' in existing {
+	// `fast_meta` is created last by the migration; once present the database is
+	// fully migrated, so there is nothing to do (avoids re-running the DDL on every
+	// open_db()).
+	meta := db.exec("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fast_meta'")!
+	if meta.len > 0 {
 		return
 	}
 	migrate_exec(mut db, 'BEGIN')!
@@ -117,19 +119,44 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 		'DELETE FROM benchmarks WHERE id NOT IN (SELECT MAX(id) FROM benchmarks GROUP BY commit_hash)')!
 	migrate_exec(mut db,
 		'CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_commit_hash ON benchmarks(commit_hash)')!
+	// single-row key/value store that holds this database's history identity
+	migrate_exec(mut db,
+		'CREATE TABLE IF NOT EXISTS fast_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')!
 }
 
-// ensure_single_ref rejects mixing histories in one database: the dashboard
-// orders rows by date and build_rows treats neighbours as ancestors, which is
-// only valid within a single first-parent history. Legacy rows (empty git_ref)
-// are treated as compatible with any ref.
-fn ensure_single_ref(db sqlite.DB, git_ref string) ! {
-	rows := load_benchmarks(db)!
-	for r in rows {
-		if r.git_ref != '' && r.git_ref != git_ref {
-			return error('fast.db already tracks history for git ref `${r.git_ref}`; refusing to also record `${git_ref}` — mixing branches would corrupt the ancestry-based chart. Use a separate database or clear fast.db.')
+// normalize_ref reduces a ref to a stable history identity so equivalent names
+// (e.g. `master`, `origin/master`, `refs/heads/master`) map to the same value.
+fn normalize_ref(ref string) string {
+	mut r := ref.trim_space()
+	r = r.trim_string_left('refs/heads/')
+	r = r.trim_string_left('refs/remotes/')
+	// strip a leading "<remote>/" segment (e.g. origin/)
+	for remote in git(vdir, 'remote').split_into_lines() {
+		rr := remote.trim_space()
+		if rr != '' && r.starts_with(rr + '/') {
+			r = r[rr.len + 1..]
+			break
 		}
 	}
+	return r
+}
+
+// claim_history atomically records this database's single history identity (the
+// normalized ref) the first time, and returns it. It errors if the database is
+// already claimed for a different history. The claim uses INSERT OR IGNORE on a
+// PRIMARY KEY, so two concurrent processes racing on an empty database cannot each
+// claim a different ref — exactly one INSERT wins and the loser sees the mismatch.
+fn claim_history(mut db sqlite.DB, ref string) !string {
+	norm := normalize_ref(ref)
+	safe := norm.replace("'", "''")
+	migrate_exec(mut db,
+		"INSERT OR IGNORE INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
+	rows := db.exec("SELECT value FROM fast_meta WHERE key = 'history_ref'")!
+	stored := if rows.len > 0 { rows[0].vals[0] } else { norm }
+	if stored != norm {
+		return error('fast.db already tracks history `${stored}`; refusing to record `${norm}` — mixing branches would corrupt the ancestry-based chart. Use a separate database.')
+	}
+	return norm
 }
 
 fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {
