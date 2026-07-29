@@ -63,12 +63,12 @@ fn cmd_bench(args []string) ! {
 	// checkout: bench rebuilds vprod and overwrites v.c / v2 / the hello binary in
 	// `vdir`, which a concurrent bench (or run) would clobber — corrupting the build
 	// or contaminating the timings. run's oldv builds take the same global lock.
-	if !acquire_build_lock() {
+	mut blk := acquire_build_lock() or {
 		elog('another benchmark build is in progress; skipping bench for ${commit}')
 		return
 	}
 	defer {
-		release_build_lock()
+		blk.release()
 	}
 
 	// claim/validate this database's single history (normalized, so `master` and

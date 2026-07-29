@@ -120,10 +120,11 @@ fn import_table_html(mut db sqlite.DB, html string, since i64, git_ref string) !
 		}
 		// Resolve to the canonical 8-char abbreviation that `run` stores (the first 8
 		// chars of the full hash) plus the committer date (%ct, monotonic along
-		// ancestry, unlike the old table's %at), in one git call — so an imported
-		// 7/40-char id for the same commit is not stored as a duplicate point.
-		commit, cdate := resolve_commit(raw, parse_old_date(cells[0].trim_space())) or {
-			elog('  skipping ${raw}: not in the checkout and too short to canonicalize to 8 chars')
+		// first-parent ancestry, unlike the old table's author date), from the local
+		// checkout — so an imported 7/40-char id is neither stored as a duplicate point
+		// nor placed out of ancestry order. Commits absent from the checkout are skipped.
+		commit, cdate := resolve_commit(raw) or {
+			elog('  skipping ${raw}: not in the local checkout, so its ancestry order cannot be preserved')
 			continue
 		}
 		if benchmark_exists(db, commit) {
@@ -210,52 +211,26 @@ fn is_commit_hash(s string) bool {
 	return true
 }
 
-// resolve_commit maps an imported commit id to the canonical 8-char hash that
-// `run` stores (the first 8 chars of the full hash) and its committer date, in a
-// single git call. When the commit is not in the local checkout it falls back to the
-// leading 8 chars of the imported id, which matches what `run` would store — but only
-// if the id is already at least 8 chars long. A 7-char id that cannot be resolved is
-// returned as `none`: it cannot be canonicalized to 8 chars here, so storing it would
-// collide with the 8-char form once the commit is fetched, duplicating the point.
-fn resolve_commit(raw string, fallback_date time.Time) ?(string, time.Time) {
+// resolve_commit maps an imported commit id to the canonical 8-char hash that `run`
+// stores (the first 8 chars of the full hash) and its committer date (%ct), from the
+// local checkout, in a single git call. It returns `none` when the commit is not
+// present: an absent commit has no reliable committer date, and the legacy table's
+// timestamp came from the Git author date, which is not guaranteed to follow
+// first-parent order. Since load_benchmarks sorts by commit_date and treats adjacent
+// rows as ancestry neighbours, importing an out-of-order date would show misleading
+// deltas — so unresolved rows are skipped instead. On a full checkout every historical
+// commit resolves; only a shallow/partial clone drops rows, which a full fetch fixes.
+fn resolve_commit(raw string) ?(string, time.Time) {
 	res :=
 		os.execute("git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:'%H %ct' ${os.quoted_path(raw)}")
 	if res.exit_code == 0 {
 		parts := res.output.trim_space().split(' ')
 		if parts.len == 2 && parts[0].len >= 8 {
 			ts := parts[1].i64()
-			date := if ts > 0 { time.unix(ts) } else { fallback_date }
-			return parts[0][..8], date
+			if ts > 0 {
+				return parts[0][..8], time.unix(ts)
+			}
 		}
-	}
-	if raw.len >= 8 {
-		return raw[..8], fallback_date
 	}
 	return none
-}
-
-// parse_old_date reads the old `time.format()` output (`YYYY-MM-DD HH:MM`). If it
-// cannot be parsed, it returns the unix epoch so the row still imports (it simply
-// sorts to the bottom) rather than being dropped.
-fn parse_old_date(s string) time.Time {
-	parts := s.split(' ')
-	ymd := parts[0].split('-')
-	if ymd.len < 3 {
-		return time.unix(0)
-	}
-	mut hour, mut minute := 0, 0
-	if parts.len > 1 {
-		hm := parts[1].split(':')
-		hour = hm[0].int()
-		if hm.len > 1 {
-			minute = hm[1].int()
-		}
-	}
-	return time.new(
-		year:   ymd[0].int()
-		month:  ymd[1].int()
-		day:    ymd[2].int()
-		hour:   hour
-		minute: minute
-	)
 }

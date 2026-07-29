@@ -315,7 +315,36 @@ fn claim_history(mut db sqlite.DB, ref string) !string {
 	if stored != norm {
 		return error('fast.db already tracks history `${stored}`; refusing to record `${norm}` — mixing branches would corrupt the ancestry-based chart. Use a separate database.')
 	}
+	// The ref string matching is not enough: a tracked branch can be force-pushed or
+	// reset onto unrelated history while keeping the same normalized name. Its stored
+	// tip would then no longer be an ancestor of the ref, and appending new samples
+	// beside the old ones makes the dashboard compute deltas across unrelated revisions.
+	// Refuse only when divergence is *proven* (both resolve and git reports not-an-
+	// ancestor), so a transient/shallow checkout that cannot resolve the tip is not
+	// rejected.
+	if history_diverged(db, norm) {
+		return error('fast.db history `${norm}` was force-pushed or reset onto unrelated history (its newest stored commit is no longer an ancestor of `${norm}`); refusing to append — the ancestry-based chart would compare unrelated revisions. Use a separate database.')
+	}
 	return norm
+}
+
+// history_diverged reports whether the newest stored commit is *definitively* not an
+// ancestor of `ref` — i.e. both resolve and git proves they are on unrelated history.
+// It returns false when ancestry holds, and also when it cannot be determined (e.g. a
+// shallow clone missing the stored commit), so a partial checkout does not reject an
+// otherwise valid reuse. `merge-base --is-ancestor` exits 0 (ancestor), 1 (proven not
+// ancestor), or >1 (could not resolve).
+fn history_diverged(db sqlite.DB, ref string) bool {
+	tip := db.exec('SELECT commit_hash FROM benchmarks ORDER BY commit_date DESC LIMIT 1') or {
+		return false
+	}
+	if tip.len == 0 {
+		return false // nothing stored yet — the first claim cannot diverge
+	}
+	c := tip[0].vals[0]
+	res :=
+		os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor ${os.quoted_path(c)} ${os.quoted_path(ref)}')
+	return res.exit_code == 1
 }
 
 fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {

@@ -120,12 +120,12 @@ fn cmd_run(args []string) ! {
 	// Serialize the whole run behind the global oldv build lock before touching any
 	// shared state: sync_oldv_cache and every per-commit build reuse oldv's shared
 	// source cache and `v_at_vc` checkout, so a second run must not proceed in parallel.
-	if !acquire_build_lock() {
-		elog('another benchmark run holds the oldv build lock; exiting (nothing to do)')
+	mut blk := acquire_build_lock() or {
+		elog('another benchmark run holds the build lock; exiting (nothing to do)')
 		return
 	}
 	defer {
-		release_build_lock()
+		blk.release()
 	}
 
 	// Refresh the shared oldv cache once up front. oldv only auto-syncs when
@@ -138,7 +138,10 @@ fn cmd_run(args []string) ! {
 		db.close() or {}
 	}
 	// claim this database's single history — mixing refs breaks the chart's
-	// ancestry assumption (see claim_history). `history` is the normalized ref.
+	// ancestry assumption (see claim_history). `history` is the normalized ref. Record
+	// whether the database was already claimed, so a claim this call makes on a fresh
+	// database can be rolled back if the run ends up storing nothing.
+	already := history_claimed(db)
 	history := claim_history(mut db, ref)!
 
 	mut ok, mut failed, mut skipped := 0, 0, 0
@@ -153,7 +156,6 @@ fn cmd_run(args []string) ! {
 			skipped++
 			continue
 		}
-		stamp_build_lock() // heartbeat: keep the held lock fresh across a long backfill
 		mut b := benchmark_commit(c, short, message, date, args) or {
 			elog('  FAILED to benchmark ${short}: ${err}')
 			failed++
@@ -170,6 +172,14 @@ fn cmd_run(args []string) ! {
 		}
 		ok++
 		elog('  stored ${short}: v.c ${b.v_c_ms}ms, v ${b.v_self_ms}ms, hello ${b.hello_ms}ms (${ok} done, ${failed} failed, ${skipped} skipped)')
+	}
+	// Every sampled build/insert failed on a fresh database: drop the claim we made, so
+	// a later run/bench/import for another ref is not rejected by an otherwise empty
+	// database (as the import and bench paths do). The zero-row guard keeps a claim that
+	// covers real rows (e.g. an all-skipped resume) untouched.
+	if ok == 0 && !already && benchmark_count(db) == 0 {
+		db.exec_none("DELETE FROM fast_meta WHERE key = 'history_ref'")
+		elog('no benchmarks stored; released the history claim on the empty database')
 	}
 	elog('run done: ${ok} stored, ${failed} failed, ${skipped} skipped. Start the web app with: v run . serve')
 }
@@ -190,12 +200,12 @@ fn cmd_remeasure(args []string) ! {
 	}
 	// Serialize against any concurrent run/remeasure before touching oldv's shared
 	// source cache and `v_at_vc` checkout (see acquire_build_lock).
-	if !acquire_build_lock() {
-		elog('another benchmark run holds the oldv build lock; exiting (nothing to do)')
+	mut blk := acquire_build_lock() or {
+		elog('another benchmark run holds the build lock; exiting (nothing to do)')
 		return
 	}
 	defer {
-		release_build_lock()
+		blk.release()
 	}
 	elog('remeasuring ${rows.len} commits (refreshes timings, adds RSS) ...')
 	sync_oldv_cache()
@@ -211,7 +221,6 @@ fn cmd_remeasure(args []string) ! {
 		rp := os.execute('git -C ${os.quoted_path(vdir)} rev-parse ${os.quoted_path(short)}')
 		full := if rp.exit_code == 0 { rp.output.trim_space() } else { short }
 		elog('[${idx + 1:2}/${rows.len}] ${short} ${r.commit_date.format()} ${r.message}')
-		stamp_build_lock() // heartbeat: keep the held lock fresh across a long remeasure
 		mut b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
 			elog('  FAILED to remeasure ${short}: ${err}')
 			failed++
@@ -261,26 +270,47 @@ fn sync_oldv_cache() {
 const build_lock_dir = os.join_path(oldv_cache, 'fast-build.lock')
 const build_lock_owner = os.join_path(build_lock_dir, 'owner')
 
-// The lock is refreshed before every commit and released at the end of the run, so an
-// owner heartbeat untouched for longer than this must belong to a run that crashed.
+// A lock whose owner heartbeat has not been refreshed for longer than this is treated
+// as belonging to a crashed run and may be reclaimed.
 const build_lock_stale_secs = i64(60 * 60)
 
-// acquire_build_lock takes the global oldv build lock, returning false if another live
-// run holds it. Mutual exclusion is an atomic mkdir. A lock left by a crashed run is
+// The background heartbeat refreshes the owner file this often while the lock is held.
+// It is kept well under the stale threshold so a healthy but slow build — one oldv
+// checkout plus the full measurement suite can exceed an hour on a slow machine — is
+// never mistaken for a crash and reclaimed out from under it.
+const build_lock_heartbeat_secs = 5 * 60
+
+// BuildLock is a held global build lock. It owns a background thread that keeps the
+// owner heartbeat fresh for the lock's whole lifetime, so a long build/measurement is
+// not reclaimed as stale, and its release() only removes the directory while this
+// process still owns it.
+struct BuildLock {
+mut:
+	stop chan bool
+	hb   thread
+}
+
+// acquire_build_lock takes the global build lock, returning none if another live run
+// holds it. Mutual exclusion is an atomic mkdir. A lock left by a crashed run is
 // reclaimed by atomically renaming the stale directory aside and then deleting *that*
 // copy — never build_lock_dir itself. So two processes recovering from the same crash
 // cannot both delete a fresh lock: rename() on one source is atomic, only one reclaimer
 // captures the stale directory, and a replacement lock another owner recreates at
-// build_lock_dir in the meantime is left untouched.
-fn acquire_build_lock() bool {
+// build_lock_dir in the meantime is left untouched. On success a heartbeat thread is
+// started; the caller must release() the returned lock.
+fn acquire_build_lock() ?BuildLock {
 	os.mkdir_all(oldv_cache) or {}
 	for attempt in 0 .. 5 {
 		if dir_created(build_lock_dir) {
 			stamp_build_lock() // record ownership + first heartbeat
-			return true
+			mut bl := BuildLock{
+				stop: chan bool{}
+			}
+			bl.hb = spawn bl.heartbeat()
+			return bl
 		}
 		if build_lock_age() <= build_lock_stale_secs {
-			return false // held by a live run (or one still stamping a fresh lock)
+			return none // held by a live run (or one still stamping a fresh lock)
 		}
 		// Stale: capture the directory by moving it aside, then discard our captured
 		// copy. Losers of the rename race fall through and re-evaluate — by then the
@@ -290,7 +320,23 @@ fn acquire_build_lock() bool {
 			os.rmdir_all(aside) or {}
 		}
 	}
-	return false
+	return none
+}
+
+// heartbeat refreshes the owner file every build_lock_heartbeat_secs until release()
+// signals it to stop, so a build/measurement that runs longer than the stale threshold
+// keeps the lock alive instead of letting a second invocation reclaim it as stale.
+fn (bl BuildLock) heartbeat() {
+	for {
+		select {
+			_ := <-bl.stop {
+				return
+			}
+			build_lock_heartbeat_secs * time.second {
+				stamp_build_lock()
+			}
+		}
+	}
 }
 
 // build_lock_age reports the seconds since the lock was last refreshed. It prefers the
@@ -309,16 +355,30 @@ fn build_lock_age() i64 {
 	return build_lock_stale_secs + 1
 }
 
-// stamp_build_lock (re)writes the owner heartbeat. It is called when the lock is taken
-// and again before every commit, so a long but healthy run keeps the lock fresh and is
-// never mistaken for a crashed one.
+// stamp_build_lock (re)writes the owner heartbeat (pid + timestamp). It is called when
+// the lock is taken and then periodically by the heartbeat thread, so a long but
+// healthy run keeps the lock fresh and is never mistaken for a crashed one.
 fn stamp_build_lock() {
 	os.write_file(build_lock_owner, '${os.getpid()} ${time.now().unix()}') or {}
 }
 
-// release_build_lock drops the lock at the end of a run.
-fn release_build_lock() {
-	os.rmdir_all(build_lock_dir) or {}
+// release stops the heartbeat and drops the lock — but only while this process still
+// owns it. If the heartbeat ever stalled past the stale threshold and another run
+// reclaimed the directory, the owner file now names a different pid; deleting it would
+// clobber that live replacement lock, so leave it in place.
+fn (mut bl BuildLock) release() {
+	bl.stop <- true
+	bl.hb.wait()
+	if build_lock_owned_by_us() {
+		os.rmdir_all(build_lock_dir) or {}
+	}
+}
+
+// build_lock_owned_by_us reports whether the owner file still records this process's
+// pid, i.e. no other run has reclaimed the lock in the meantime.
+fn build_lock_owned_by_us() bool {
+	content := os.read_file(build_lock_owner) or { return false }
+	return content.all_before(' ').int() == os.getpid()
 }
 
 // dir_created reports whether it created `path`. mkdir is atomic, so exactly one of
