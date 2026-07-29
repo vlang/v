@@ -2585,6 +2585,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			else {}
 		}
 	}
+	tc.check_alias_declaration_cycles()
 	tc.cache_fn_generic_params(a)
 	// Pass 1 can parse callback aliases before later modules with same-named
 	// types have been indexed. Rebuild name-derived caches from the complete
@@ -2592,9 +2593,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.type_cache.c_entries.clear()
 	tc.type_cache.c_name_entries.clear()
 	tc.invalidate_short_type_name_index()
-	// Alias-cycle and C-redeclaration checks are diagnostics over tables pass 1
-	// completed; check_top_level_declarations runs them off the serial path,
-	// concurrently with body checking in the parallel flow.
+	tc.check_c_struct_redeclarations(a)
+	tc.check_c_fn_redeclarations(a)
 	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
@@ -6670,9 +6670,6 @@ fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 pub fn (mut tc TypeChecker) check_semantics() {
 	tc.resolution_type_mode = false
 	tc.checked_const_names = map[string]bool{}
-	tc.check_alias_declaration_cycles()
-	tc.check_c_struct_redeclarations(tc.a)
-	tc.check_c_fn_redeclarations(tc.a)
 	tc.check_comptime_struct_updates_preflight()
 	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()

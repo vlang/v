@@ -376,19 +376,15 @@ fn (mut tc TypeChecker) check_top_level_declaration_values() {
 }
 
 // check_top_level_declaration_signatures runs the declaration checks that only
-// read the frozen collect tables and record diagnostics (type strings,
-// signature shapes, alias cycles, C redeclarations). The parallel flow runs
-// them on the master thread while the pool workers check bodies.
+// read the frozen collect tables and record diagnostics (type strings and
+// signature shapes; alias-cycle and C-redeclaration diagnostics stay in the
+// collection phase, where direct collect() callers expect them). The parallel
+// flow runs these on the master thread while the pool workers check bodies.
 fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
 	tc.check_top_level_declarations_filtered(false, true)
 }
 
 fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
-	if do_signatures {
-		tc.check_alias_declaration_cycles()
-		tc.check_c_struct_redeclarations(tc.a)
-		tc.check_c_fn_redeclarations(tc.a)
-	}
 	tc.cur_module = ''
 	tc.cur_file = ''
 	for i in tc.top_level_idx {
