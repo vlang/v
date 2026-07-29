@@ -418,6 +418,7 @@ mut:
 	locked_shared_modes               map[string][]u8
 	immutable_reference_aliases       map[string]bool
 	unsafe_reference_alias_owners     map[string]bool
+	unsafe_alias_break_states         [][]map[string]bool
 	closure_forbidden_captures        map[string]bool
 	closure_scope                     &Scope = unsafe { nil }
 	lambda_no_captures                bool
@@ -476,6 +477,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		locked_shared_modes:               src.locked_shared_modes.clone()
 		immutable_reference_aliases:       src.immutable_reference_aliases.clone()
 		unsafe_reference_alias_owners:     src.unsafe_reference_alias_owners.clone()
+		unsafe_alias_break_states:         clone_unsafe_alias_break_states(src.unsafe_alias_break_states)
 		closure_forbidden_captures:        src.closure_forbidden_captures.clone()
 		closure_scope:                     src.closure_scope
 		lambda_no_captures:                src.lambda_no_captures
@@ -484,6 +486,18 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		undefined_variable_context_depth:  src.undefined_variable_context_depth
 		continue_after_unknown_ident:      src.continue_after_unknown_ident
 	}
+}
+
+fn clone_unsafe_alias_break_states(states [][]map[string]bool) [][]map[string]bool {
+	mut result := [][]map[string]bool{cap: states.len}
+	for loop_states in states {
+		mut cloned_loop_states := []map[string]bool{cap: loop_states.len}
+		for state in loop_states {
+			cloned_loop_states << state.clone()
+		}
+		result << cloned_loop_states
+	}
+	return result
 }
 
 pub struct InterfaceImplIndex {
@@ -16046,6 +16060,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		smartcasts := tc.extract_smartcasts(lhs_id)
 		if smartcasts.len > 0 {
 			tc.check_node(lhs_id)
+			unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
 			for sc in smartcasts {
 				if valid_string_data(sc.name) {
@@ -16053,13 +16068,19 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				}
 			}
 			tc.check_node(rhs_id)
+			tc.merge_unsafe_reference_alias_short_circuit_state(node.op, lhs_id,
+				unsafe_alias_skipped_rhs)
 			tc.smartcasts = clone_smartcasts(saved_smartcasts)
 			return
 		}
 	}
 
+	mut unsafe_alias_skipped_rhs := map[string]bool{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
+		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
+			unsafe_alias_skipped_rhs = tc.fn_context.unsafe_reference_alias_owners.clone()
+		}
 		previous_channel_send_or_expr_id := tc.channel_send_or_expr_id
 		if node.kind == .infix && node.op == .arrow && i == 1 {
 			child := tc.a.node(child_id)
@@ -16074,6 +16095,10 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
 		} $else {
 			tc.check_node(child_id)
+		}
+		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
+			tc.merge_unsafe_reference_alias_short_circuit_state(node.op, tc.a.child(&node, 0),
+				unsafe_alias_skipped_rhs)
 		}
 		tc.channel_send_or_expr_id = previous_channel_send_or_expr_id
 	}
@@ -16148,6 +16173,9 @@ fn (mut tc TypeChecker) check_loop_control_statement(id flat.NodeId, node flat.N
 		}
 		parent := tc.a.node(parent_id)
 		if parent.kind in [.for_stmt, .for_in_stmt] {
+			if node.kind == .break_stmt {
+				tc.record_unsafe_reference_alias_loop_break_state()
+			}
 			return
 		}
 		if parent.kind == .comptime_for {
@@ -16907,11 +16935,12 @@ fn (mut tc TypeChecker) check_assert_stmt(node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
 	condition_id := tc.a.child(&node, 0)
 	tc.check_node(condition_id)
+	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
 	if node.children_count > 1 {
 		message_id := tc.a.child(&node, 1)
-		unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
 		tc.check_node(message_id)
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
 		message_type := tc.resolve_type(message_id)
@@ -24081,6 +24110,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	}
 	unsafe_alias_post := tc.fn_context.unsafe_reference_alias_owners.clone()
 	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
 	mut sequence_exited := false
 	mut unreachable_id := flat.empty_node
 	for i in 3 .. node.children_count {
@@ -24097,6 +24127,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 			sequence_exited = true
 		}
 	}
+	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
 	unsafe_alias_body := tc.fn_context.unsafe_reference_alias_owners.clone()
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
@@ -24132,7 +24163,11 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	if loop_may_skip_body {
 		unsafe_alias_paths << unsafe_alias_base
 	}
-	if body_may_break {
+	if unsafe_alias_break_states.len > 0 {
+		for state in unsafe_alias_break_states {
+			unsafe_alias_paths << state.clone()
+		}
+	} else if body_may_break {
 		unsafe_alias_paths << unsafe_alias_body
 	}
 	if body_reaches_post && (loop_may_skip_body || body_may_break) {
@@ -24148,6 +24183,27 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
 	tc.pop_scope()
+}
+
+fn (mut tc TypeChecker) record_unsafe_reference_alias_loop_break_state() {
+	if tc.fn_context.unsafe_alias_break_states.len == 0 {
+		return
+	}
+	index := tc.fn_context.unsafe_alias_break_states.len - 1
+	tc.fn_context.unsafe_alias_break_states[index] << tc.fn_context.unsafe_reference_alias_owners.clone()
+}
+
+fn (mut tc TypeChecker) take_unsafe_reference_alias_loop_break_states() []map[string]bool {
+	if tc.fn_context.unsafe_alias_break_states.len == 0 {
+		return []map[string]bool{}
+	}
+	index := tc.fn_context.unsafe_alias_break_states.len - 1
+	mut result := []map[string]bool{cap: tc.fn_context.unsafe_alias_break_states[index].len}
+	for state in tc.fn_context.unsafe_alias_break_states[index] {
+		result << state.clone()
+	}
+	tc.fn_context.unsafe_alias_break_states.delete_last()
+	return result
 }
 
 fn (tc &TypeChecker) unsafe_alias_statement_sequence_may_break(node flat.Node, body_start int) bool {
@@ -24561,6 +24617,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
+	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
 	$if ownership ? {
 		tc.ownership_begin_loop_branch_group()
 		if node.op != .amp {
@@ -24585,6 +24642,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			sequence_exited = true
 		}
 	}
+	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
@@ -24597,6 +24655,9 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.ownership_end_branch_group()
 	}
 	mut unsafe_alias_paths := [unsafe_alias_base]
+	for state in unsafe_alias_break_states {
+		unsafe_alias_paths << state.clone()
+	}
 	if !tc.stmt_sequence_definitely_returns(&node, header) {
 		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
 	}
@@ -28022,6 +28083,23 @@ fn apply_unsafe_reference_alias_state_delta(before map[string]bool, after map[st
 		}
 	}
 	return result
+}
+
+fn (mut tc TypeChecker) merge_unsafe_reference_alias_short_circuit_state(op flat.Op, lhs_id flat.NodeId, skipped_rhs map[string]bool) {
+	executed_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
+	if lhs := tc.constant_bool_value(lhs_id) {
+		rhs_executes := (op == .logical_and && lhs) || (op == .logical_or && !lhs)
+		tc.fn_context.unsafe_reference_alias_owners = if rhs_executes {
+			executed_rhs.clone()
+		} else {
+			skipped_rhs.clone()
+		}
+		return
+	}
+	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states([
+		skipped_rhs,
+		executed_rhs,
+	], skipped_rhs)
 }
 
 fn (tc &TypeChecker) unwrap_paren_expr_id(id flat.NodeId) flat.NodeId {
@@ -42885,6 +42963,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		lhs_id := tc.a.child(&cond, 0)
 		rhs_id := tc.a.child(&cond, 1)
 		mut bindings := tc.check_condition(lhs_id)
+		unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		for sc in tc.extract_smartcasts(lhs_id) {
 			if valid_string_data(sc.name) {
@@ -42893,6 +42972,8 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		}
 		rhs_bindings := tc.check_condition(rhs_id)
 		bindings << rhs_bindings
+		tc.merge_unsafe_reference_alias_short_circuit_state(cond.op, lhs_id,
+			unsafe_alias_skipped_rhs)
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 		tc.check_infix(cond_id, cond)
 		has_unresolved_generic_name := tc.expr_has_unresolved_generic_name_ident(cond_id)

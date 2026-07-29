@@ -8674,7 +8674,7 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 	}
 	mut alias := map[string]int{}
 	assert true, unsafe {
-		alias = original
+		alias = unsafe { original }
 		"failed"
 	}
 	copy := alias
@@ -8696,6 +8696,20 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 }
 ')
 	assert out == '1'
+	run_bad(v3_bin, 'unsafe_map_alias_assert_condition_assignment', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	assert unsafe {
+		alias = unsafe { original }
+		true
+	}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
 fn test_fresh_unsafe_map_is_not_reference_alias() {
@@ -8809,6 +8823,90 @@ fn main() {
 }
 ',
 		'cannot copy map: call `move` or `clone` method (or use a reference)')
+}
+
+fn test_unsafe_map_alias_provenance_tracks_each_loop_break() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		if cond {
+			break
+		}
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(true)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_assignment_before_break', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_skipped_logical_and_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if false && unsafe {
+		alias = unsafe { original }
+		true
+	} {}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	run_bad(v3_bin, 'unsafe_map_alias_skipped_logical_or_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true || unsafe {
+		alias = unsafe { original }
+		true
+	} {}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_required_logical_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true && unsafe {
+		alias = unsafe { original }
+		true
+	} {}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
 }
 
 fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
