@@ -7819,11 +7819,27 @@ fn cache_bundle_import_file(builtin_dir string) string {
 
 fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
 	mut call_callees := map[int]bool{}
-	for i in scan.node_idx .. end_node {
-		node := a.nodes[i]
-		if node.kind == .call && node.children_count > 0 {
-			call_callees[int(a.child(&node, 0))] = true
+	if !scan.needs_closure {
+		for i in scan.node_idx .. end_node {
+			node := a.nodes[i]
+			if node.kind == .call && node.children_count > 0 {
+				call_callees[int(a.child(&node, 0))] = true
+			} else if node.kind == .lambda_expr {
+				scan.needs_closure = true
+			} else if node.kind == .fn_literal {
+				for child_idx in 0 .. node.children_count {
+					if a.child_node(&node, child_idx).kind == .ident {
+						scan.needs_closure = true
+						break
+					}
+				}
+			}
 		}
+	}
+	known_field_selectors := if scan.needs_closure {
+		map[int]bool{}
+	} else {
+		implicit_known_field_selectors(a, scan.node_idx, end_node)
 	}
 	for i in scan.node_idx .. end_node {
 		node := a.nodes[i]
@@ -7864,15 +7880,441 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 						break
 					}
 				}
-			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees {
-				// A selector used as a value may be a bound method. Type information is
-				// unavailable during import discovery, so conservatively load the runtime;
-				// ordinary method calls are excluded by the callee set above.
+			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees
+				&& i !in known_field_selectors {
+				// A remaining selector used as a value may be a bound method. Full type
+				// information is unavailable during import discovery, so conservatively
+				// load the runtime; calls and provable fields are excluded above.
 				scan.needs_closure = true
 			}
 		}
 	}
 	scan.node_idx = end_node
+}
+
+struct ImplicitFieldScanIndex {
+	aliases     map[string]string
+	fields      map[string]map[string]string
+	enum_fields map[string]map[string]bool
+	fn_returns  map[string]string
+mut:
+	globals map[string]string
+}
+
+fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int) map[int]bool {
+	// Imported functions commonly return builtin values used by a later module
+	// (for example, utf32_to_str_no_malloc() in strings). Index declarations
+	// already parsed in earlier waves while limiting candidate traversal to the
+	// newly appended region.
+	index := implicit_field_scan_index(a, 0, end)
+	mut selectors := map[int]bool{}
+	for fn_idx in start .. end {
+		fn_node := a.nodes[fn_idx]
+		if fn_node.kind != .fn_decl {
+			continue
+		}
+		mut bindings := map[string]string{}
+		mut ambiguous := map[string]bool{}
+		mut body_roots := []flat.NodeId{cap: int(fn_node.children_count)}
+		for child_idx in 0 .. fn_node.children_count {
+			child_id := a.child(&fn_node, child_idx)
+			child := a.node(child_id)
+			if child.kind == .param {
+				if child.value in bindings {
+					ambiguous[child.value] = true
+				} else if child.typ.len > 0 {
+					bindings[child.value] = implicit_normalize_type(child.typ, index.aliases)
+				}
+			} else {
+				body_roots << child_id
+			}
+		}
+		mut candidates := []flat.NodeId{}
+		mut declarations := []flat.NodeId{}
+		mut stack := body_roots.clone()
+		for stack.len > 0 {
+			id := stack.pop()
+			if int(id) < 0 {
+				continue
+			}
+			node := a.node(id)
+			if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+				continue
+			}
+			if node.kind == .decl_assign {
+				declarations << id
+				for child_idx := 0; child_idx < node.children_count; child_idx += 2 {
+					lhs := a.child_node(node, child_idx)
+					if lhs.kind == .ident && lhs.value in bindings {
+						ambiguous[lhs.value] = true
+					}
+				}
+			} else if node.kind == .for_in_stmt && node.children_count >= 2 {
+				for child_idx in 0 .. 2 {
+					local := a.child_node(node, child_idx)
+					if local.kind == .ident {
+						ambiguous[local.value] = true
+					}
+				}
+			} else if node.kind == .selector && node.children_count > 0 {
+				candidates << id
+			}
+			for child_idx in 0 .. node.children_count {
+				stack << a.child(node, child_idx)
+			}
+		}
+		for _ in 0 .. declarations.len {
+			mut changed := false
+			for declaration_id in declarations {
+				declaration := a.node(declaration_id)
+				for child_idx := 0; child_idx + 1 < declaration.children_count; child_idx += 2 {
+					lhs := a.child_node(declaration, child_idx)
+					if lhs.kind != .ident || lhs.value in ambiguous {
+						continue
+					}
+					rhs_id := a.child(declaration, child_idx + 1)
+					typ := implicit_expr_type(a, rhs_id, bindings, index, 0)
+					if typ == '' {
+						continue
+					}
+					normalized := implicit_normalize_type(typ, index.aliases)
+					if old := bindings[lhs.value] {
+						if old != normalized {
+							ambiguous[lhs.value] = true
+							bindings.delete(lhs.value)
+						}
+					} else {
+						bindings[lhs.value] = normalized
+						changed = true
+					}
+				}
+			}
+			if !changed {
+				break
+			}
+		}
+		for selector_id in candidates {
+			selector := a.node(selector_id)
+			base_id := a.child(selector, 0)
+			base := a.node(base_id)
+			if base.kind == .ident && base.value in ambiguous {
+				continue
+			}
+			base_type := implicit_expr_type(a, base_id, bindings, index, 0)
+			if implicit_type_has_field(base_type, selector.value, index) {
+				selectors[int(selector_id)] = true
+				continue
+			}
+			if base.kind == .ident {
+				if enum_fields := index.enum_fields[base.value] {
+					if selector.value in enum_fields {
+						selectors[int(selector_id)] = true
+					}
+				}
+			}
+		}
+	}
+	return selectors
+}
+
+fn implicit_field_scan_index(a &flat.FlatAst, start int, end int) ImplicitFieldScanIndex {
+	mut aliases := map[string]string{}
+	mut fields := map[string]map[string]string{}
+	mut enum_fields := map[string]map[string]bool{}
+	mut fn_returns := map[string]string{}
+	for idx in start .. end {
+		node := a.nodes[idx]
+		match node.kind {
+			.type_decl {
+				if node.value.len > 0 && node.typ.len > 0 {
+					aliases[node.value] = node.typ
+				}
+			}
+			.struct_decl {
+				mut declared := map[string]string{}
+				for child_idx in 0 .. node.children_count {
+					field := a.child_node(&node, child_idx)
+					if field.kind == .field_decl && field.value.len > 0 {
+						declared[field.value] = field.typ
+					}
+				}
+				if declared.len > 0 {
+					fields[node.value] = declared.move()
+				}
+			}
+			.enum_decl {
+				mut declared := map[string]bool{}
+				for child_idx in 0 .. node.children_count {
+					field := a.child_node(&node, child_idx)
+					if field.kind == .enum_field && field.value.len > 0 {
+						declared[field.value] = true
+					}
+				}
+				if declared.len > 0 {
+					enum_fields[node.value] = declared.move()
+				}
+			}
+			.fn_decl, .c_fn_decl {
+				if node.value.len == 0 || node.typ.len == 0 {
+					continue
+				}
+				if old := fn_returns[node.value] {
+					if old != node.typ {
+						fn_returns[node.value] = ''
+					}
+				} else {
+					fn_returns[node.value] = node.typ
+				}
+			}
+			else {}
+		}
+	}
+	mut index := ImplicitFieldScanIndex{
+		aliases:     aliases
+		fields:      fields
+		enum_fields: enum_fields
+		fn_returns:  fn_returns
+		globals:     map[string]string{}
+	}
+	for idx in start .. end {
+		node := a.nodes[idx]
+		if node.kind !in [.const_decl, .global_decl] {
+			continue
+		}
+		for child_idx in 0 .. node.children_count {
+			field := a.child_node(&node, child_idx)
+			if field.kind != .const_field || field.children_count == 0 {
+				continue
+			}
+			typ := if field.typ.len > 0 {
+				field.typ
+			} else {
+				implicit_expr_type(a, a.child(field, 0), index.globals, index, 0)
+			}
+			if typ.len > 0 {
+				index.globals[field.value] = implicit_normalize_type(typ, index.aliases)
+			}
+		}
+	}
+	return index
+}
+
+fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+	if int(id) < 0 || depth > 12 {
+		return ''
+	}
+	node := a.node(id)
+	if node.typ.len > 0 {
+		return implicit_normalize_type(node.typ, index.aliases)
+	}
+	match node.kind {
+		.ident {
+			if typ := bindings[node.value] {
+				return typ
+			}
+			if typ := index.globals[node.value] {
+				return typ
+			}
+			if node.value in index.fields || node.value in index.enum_fields {
+				return node.value
+			}
+			return ''
+		}
+		.string_literal {
+			return 'string'
+		}
+		.int_literal {
+			return 'int'
+		}
+		.float_literal {
+			return 'f64'
+		}
+		.bool_literal {
+			return 'bool'
+		}
+		.char_literal {
+			return 'u8'
+		}
+		.array_literal, .array_init {
+			if node.children_count == 0 {
+				return '[]void'
+			}
+			elem_type := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+			if elem_type.len > 0 {
+				return '[]${elem_type}'
+			}
+			return '[]void'
+		}
+		.map_init {
+			return if node.typ.len > 0 { node.typ } else { 'map[void]void' }
+		}
+		.struct_init {
+			return implicit_normalize_type(node.value, index.aliases)
+		}
+		.paren, .expr_stmt, .postfix {
+			if node.children_count == 1 {
+				return implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+			}
+		}
+		.block {
+			if node.children_count > 0 {
+				return implicit_expr_type(a, a.child(node, node.children_count - 1), bindings,
+					index, depth + 1)
+			}
+		}
+		.if_expr {
+			if node.children_count < 3 {
+				return ''
+			}
+			mut typ := ''
+			for child_idx in 1 .. node.children_count {
+				branch_id := a.child(node, child_idx)
+				branch_type := implicit_expr_type(a, branch_id, bindings, index, depth + 1)
+				if branch_type == '' {
+					return ''
+				}
+				if typ == '' {
+					typ = branch_type
+				} else if implicit_normalize_type(typ, index.aliases) != implicit_normalize_type(branch_type,
+					index.aliases) {
+					return ''
+				}
+			}
+			return typ
+		}
+		.call {
+			return implicit_call_return_type(a, node, bindings, index, depth + 1)
+		}
+		.selector {
+			if node.children_count > 0 {
+				base_type := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+				return implicit_field_type(base_type, node.value, index)
+			}
+		}
+		.index {
+			if node.children_count > 0 {
+				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0),
+					bindings, index, depth + 1), index.aliases)
+				if base_type.starts_with('[]') {
+					return base_type[2..]
+				}
+				if base_type.starts_with('[') {
+					close := base_type.index(']') or { return '' }
+					if close + 1 < base_type.len {
+						return base_type[close + 1..]
+					}
+				}
+				if base_type == 'string' {
+					return 'u8'
+				}
+			}
+		}
+		.cast_expr, .as_expr {
+			if node.typ.len > 0 {
+				return implicit_normalize_type(node.typ, index.aliases)
+			}
+			if node.value.len > 0 {
+				return implicit_normalize_type(node.value, index.aliases)
+			}
+		}
+		else {}
+	}
+	return ''
+}
+
+fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+	if call.children_count == 0 {
+		return ''
+	}
+	callee := a.child_node(call, 0)
+	if callee.kind == .ident {
+		if typ := index.fn_returns[callee.value] {
+			return implicit_normalize_type(typ, index.aliases)
+		}
+		return ''
+	}
+	if callee.kind != .selector || callee.children_count == 0 {
+		return ''
+	}
+	base_id := a.child(callee, 0)
+	base_type := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1),
+		index.aliases)
+	if base_type == 'string' {
+		if callee.value == 'runes' {
+			return '[]rune'
+		}
+		if callee.value == 'bytes' {
+			return '[]u8'
+		}
+	}
+	if base_type.len > 0 {
+		for key in ['${base_type}.${callee.value}',
+			'${base_type.all_after_last('.')}.${callee.value}'] {
+			if typ := index.fn_returns[key] {
+				return implicit_normalize_type(typ, index.aliases)
+			}
+		}
+	}
+	return ''
+}
+
+fn implicit_type_has_field(raw_type string, field string, index ImplicitFieldScanIndex) bool {
+	return implicit_field_type(raw_type, field, index) != ''
+}
+
+fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanIndex) string {
+	typ := implicit_normalize_type(raw_type, index.aliases)
+	if typ == '' {
+		return ''
+	}
+	if typ == 'string' {
+		return match field {
+			'len', 'flags', 'is_lit' { 'int' }
+			'str' { '&u8' }
+			else { '' }
+		}
+	}
+	if typ.starts_with('[]') || typ.starts_with('...')
+		|| (typ.starts_with('[') && typ.contains(']')) {
+		return match field {
+			'len', 'cap', 'offset', 'flags', 'element_size' { 'int' }
+			'data' { 'voidptr' }
+			else { '' }
+		}
+	}
+	if typ.starts_with('map[') {
+		return match field {
+			'len', 'cap' { 'int' }
+			else { '' }
+		}
+	}
+	if declared := index.fields[typ] {
+		if field_type := declared[field] {
+			return implicit_normalize_type(field_type, index.aliases)
+		}
+	}
+	return ''
+}
+
+fn implicit_normalize_type(raw string, aliases map[string]string) string {
+	mut typ := raw.trim_space()
+	for _ in 0 .. 12 {
+		mut changed := false
+		for prefix in ['mut ', 'shared ', '&', '?', '!'] {
+			if typ.starts_with(prefix) {
+				typ = typ[prefix.len..].trim_space()
+				changed = true
+			}
+		}
+		if target := aliases[typ] {
+			typ = target.trim_space()
+			changed = true
+		}
+		if !changed {
+			break
+		}
+	}
+	return typ
 }
 
 fn type_text_is_channel(typ string) bool {
