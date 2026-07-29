@@ -1333,6 +1333,19 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		arg_id := tc.call_arg_value(tc.a.child(node, i))
 		arg_bindings << tc.recursive_str_eval_expr(arg_id, mut env, ctx)
 	}
+	if tc.recursive_str_is_builtin_print_call(id, *callee) {
+		for i, binding in arg_bindings {
+			if !recursive_str_binding_has_unprogressed_receiver(binding) {
+				continue
+			}
+			arg_id := tc.call_arg_value(tc.a.child(node, i + 1))
+			pos := tc.a.node(arg_id).pos
+			message := 'cannot call `str()` method recursively'
+			if !tc.errors.any(it.msg == message && it.pos == pos) {
+				tc.record_error_at(.unknown_fn, message, id, pos)
+			}
+		}
+	}
 	if result := tc.recursive_str_apply_builtin_array_mutator(id, *node, *callee, receiver_id,
 		receiver_binding, arg_bindings, mut env)
 	{
@@ -1358,6 +1371,16 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(id).name()
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_is_builtin_print_call(id flat.NodeId, callee flat.Node) bool {
+	if callee.kind != .ident || callee.value !in ['print', 'println', 'eprint', 'eprintln'] {
+		return false
+	}
+	if resolved := tc.resolved_call_name(id) {
+		return resolved.len == 0 || is_print_style_fn_name(resolved)
+	}
+	return true
 }
 
 fn (tc &TypeChecker) recursive_str_call_preserves_aggregate_elements(id flat.NodeId, callee flat.Node, receiver RecursiveStrBinding) bool {
@@ -2334,6 +2357,13 @@ fn recursive_str_binding_has_provenance(binding RecursiveStrBinding) bool {
 		return true
 	}
 	return binding.elements.any(recursive_str_binding_has_provenance(it))
+}
+
+fn recursive_str_binding_has_unprogressed_receiver(binding RecursiveStrBinding) bool {
+	if binding.can_recurse && !binding.progressed {
+		return true
+	}
+	return binding.elements.any(recursive_str_binding_has_unprogressed_receiver(it))
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_channel_receive(result_id flat.NodeId, channel_id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {

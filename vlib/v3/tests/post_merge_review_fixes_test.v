@@ -9378,3 +9378,49 @@ fn main() {
 ')
 	assert out == ''
 }
+
+fn test_recursive_str_detects_implicit_print_formatting() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_print_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	println(item)
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_print_aggregate_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	eprintln([item])
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_print_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	print(next)
+	return ""
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
