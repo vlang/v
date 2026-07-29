@@ -714,8 +714,11 @@ mut:
 	direct_parent_ids           []flat.NodeId
 	direct_parent_index_trusted bool
 	// Immutable declaration indexes shared by checker workers.
-	declaration_attributes map[int][]string
-	type_declaration_ids   map[string][]int
+	declaration_attributes       map[int][]string
+	type_declaration_ids         map[string][]int
+	strings_builder_bindings     map[string]bool
+	static_associated_fn_keys    map[string]bool
+	declaration_param_mutability map[string][]bool
 	// Immutable node -> generic parameter index shared by checker workers.
 	enclosing_generic_params_by_node map[int][]string
 }
@@ -867,6 +870,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		enclosing_generic_params_by_node:        map[int][]string{}
 		declaration_attributes:                  map[int][]string{}
 		type_declaration_ids:                    map[string][]int{}
+		strings_builder_bindings:                map[string]bool{}
+		static_associated_fn_keys:               map[string]bool{}
+		declaration_param_mutability:            map[string][]bool{}
 	}
 }
 
@@ -992,6 +998,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		direct_parent_index_trusted:        tc.direct_parent_index_trusted
 		declaration_attributes:             tc.declaration_attributes
 		type_declaration_ids:               tc.type_declaration_ids
+		strings_builder_bindings:           tc.strings_builder_bindings
+		static_associated_fn_keys:          tc.static_associated_fn_keys
+		declaration_param_mutability:       tc.declaration_param_mutability
 		enclosing_generic_params_by_node:   tc.enclosing_generic_params_by_node
 		expected_expr_id:                   -1
 		expected_expr_type:                 Type(void_)
@@ -1336,6 +1345,74 @@ fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
 		}
 		short_name := node.value.all_after_last('.')
 		tc.type_declaration_ids[short_name] << index
+	}
+}
+
+fn strings_builder_binding_key(fn_index int, name string) string {
+	return '${fn_index}\x00${name}'
+}
+
+fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
+	tc.strings_builder_bindings = map[string]bool{}
+	tc.static_associated_fn_keys = map[string]bool{}
+	tc.declaration_param_mutability = map[string][]bool{}
+	mut module_name := ''
+	for index in tc.top_level_idx {
+		node := a.nodes[index]
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .fn_decl {
+			continue
+		}
+		qname := checker_qualified_fn_name(module_name, node.value)
+		mut param_mutability := []bool{}
+		for child_index in 0 .. node.children_count {
+			param := a.child_node(&node, child_index)
+			if param.kind == .param {
+				param_mutability << param.is_mut
+			}
+		}
+		if node.value !in tc.declaration_param_mutability {
+			tc.declaration_param_mutability[node.value] = param_mutability
+		}
+		if qname !in tc.declaration_param_mutability {
+			tc.declaration_param_mutability[qname] = param_mutability
+		}
+		if node.value.contains('.') {
+			is_static := node.children_count == 0 || a.child_node(&node, 0).kind != .param
+				|| a.child_node(&node, 0).op != .dot
+			if node.value !in tc.static_associated_fn_keys {
+				tc.static_associated_fn_keys[node.value] = is_static
+			}
+			if qname !in tc.static_associated_fn_keys {
+				tc.static_associated_fn_keys[qname] = is_static
+			}
+		}
+		mut stack := []flat.NodeId{}
+		for child_index in 0 .. node.children_count {
+			child_id := a.child(&node, child_index)
+			if a.node(child_id).kind != .param {
+				stack << child_id
+			}
+		}
+		for stack.len > 0 {
+			id := stack.pop()
+			current := a.node(id)
+			if current.kind == .fn_literal {
+				continue
+			}
+			if current.kind == .decl_assign && current.children_count >= 2 {
+				lhs := a.child_node(current, 0)
+				if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(current, 1)) {
+					tc.strings_builder_bindings[strings_builder_binding_key(index, lhs.value)] = true
+				}
+			}
+			for child_index in 0 .. current.children_count {
+				stack << a.child(current, child_index)
+			}
+		}
 	}
 }
 
@@ -2215,6 +2292,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
 	tc.build_enclosing_generic_param_index(a)
 	tc.build_type_declaration_index(a)
+	tc.build_fn_declaration_indexes(a)
 	tc.collect_module_attributes_from_nodes(a)
 	tc.index_multiple_module_import_lines(a)
 	// Pass 1: collect type-level names (aliases, enums, sum types)
@@ -33663,32 +33741,7 @@ fn (tc &TypeChecker) binding_is_strings_builder(name string) bool {
 	if name.len == 0 || tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len {
 		return false
 	}
-	mut stack := []flat.NodeId{}
-	root := tc.a.nodes[tc.fn_context.node_id]
-	for i in 0 .. root.children_count {
-		child_id := tc.a.child(&root, i)
-		if tc.a.node(child_id).kind != .param {
-			stack << child_id
-		}
-	}
-	for stack.len > 0 {
-		id := stack.pop()
-		node := tc.a.node(id)
-		if node.kind == .fn_literal {
-			continue
-		}
-		if node.kind == .decl_assign && node.children_count >= 2 {
-			lhs := tc.a.child_node(node, 0)
-			if lhs.kind == .ident && lhs.value == name
-				&& tc.expr_is_strings_new_builder_call(tc.a.child(node, 1)) {
-				return true
-			}
-		}
-		for i in 0 .. node.children_count {
-			stack << tc.a.child(node, i)
-		}
-	}
-	return false
+	return strings_builder_binding_key(tc.fn_context.node_id, name) in tc.strings_builder_bindings
 }
 
 fn (tc &TypeChecker) expr_is_strings_new_builder_call(id flat.NodeId) bool {
@@ -35139,23 +35192,16 @@ fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {
 	if param := tc.visible_call_param(info, param_idx) {
 		return param.is_mut
 	}
-	for index in tc.top_level_idx {
-		node := tc.a.node(flat.NodeId(index))
-		if node.kind != .fn_decl
-			|| (node.value != info.name && !info.name.ends_with('.${node.value}')) {
-			continue
+	mut name := info.name
+	for name.len > 0 {
+		if params := tc.declaration_param_mutability[name] {
+			return param_idx >= 0 && param_idx < params.len && params[param_idx]
 		}
-		mut current := 0
-		for child_index in 0 .. node.children_count {
-			param := tc.a.child_node(node, child_index)
-			if param.kind != .param {
-				continue
-			}
-			if current == param_idx {
-				return param.is_mut
-			}
-			current++
+		dot := name.index_u8(`.`)
+		if dot < 0 {
+			break
 		}
+		name = name[dot + 1..]
 	}
 	return false
 }
@@ -47796,27 +47842,7 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method stri
 }
 
 fn (tc &TypeChecker) fn_key_is_static_associated(key string) bool {
-	mut module_name := ''
-	for index in tc.top_level_idx {
-		node := tc.a.node(flat.NodeId(index))
-		if node.kind == .module_decl {
-			module_name = node.value
-			continue
-		}
-		if node.kind != .fn_decl || !node.value.contains('.') {
-			continue
-		}
-		qname := checker_qualified_fn_name(module_name, node.value)
-		if key != node.value && key != qname {
-			continue
-		}
-		if node.children_count == 0 {
-			return true
-		}
-		first := tc.a.child_node(node, 0)
-		return first.kind != .param || first.op != .dot
-	}
-	return false
+	return tc.static_associated_fn_keys[key]
 }
 
 fn (tc &TypeChecker) static_assoc_type_candidates(type_ident string) []string {
