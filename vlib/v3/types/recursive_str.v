@@ -1333,6 +1333,11 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		arg_id := tc.call_arg_value(tc.a.child(node, i))
 		arg_bindings << tc.recursive_str_eval_expr(arg_id, mut env, ctx)
 	}
+	if result := tc.recursive_str_apply_builtin_array_mutator(id, *node, *callee, receiver_id,
+		receiver_binding, arg_bindings, mut env)
+	{
+		return result
+	}
 	tc.recursive_str_eval_invoked_helper(id, receiver_binding, arg_bindings, env, ctx)
 	tc.recursive_str_apply_call_mutations(id, mut env)
 	for closure_id in callee_binding.closure_ids {
@@ -1364,6 +1369,205 @@ fn (tc &TypeChecker) recursive_str_call_preserves_aggregate_elements(id flat.Nod
 	}
 	return callee.children_count > 0
 		&& unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(&callee, 0)))) is Map
+}
+
+fn (mut tc TypeChecker) recursive_str_apply_builtin_array_mutator(call_id flat.NodeId, call flat.Node, callee flat.Node, receiver_id flat.NodeId, receiver RecursiveStrBinding, args []RecursiveStrBinding, mut env RecursiveStrEnv) ?RecursiveStrBinding {
+	if callee.kind != .selector || !tc.valid_node_id(receiver_id) {
+		return none
+	}
+	_ := array_type_from_receiver(tc.resolve_type(receiver_id)) or { return none }
+	if resolved := tc.resolved_call_name(call_id) {
+		if resolved.len > 0 && !checker_is_raw_collection_method_name(resolved, 'array.') {
+			return none
+		}
+	}
+	method := callee.value
+	if method !in ['clear', 'delete', 'delete_many', 'delete_last', 'drop', 'insert', 'pop',
+		'pop_left', 'prepend', 'reverse_in_place', 'sort', 'sort_with_compare', 'trim'] {
+		return none
+	}
+	mut binding := receiver
+	binding.elements = receiver.elements.clone()
+	binding.element_keys = []string{}
+	mut result := RecursiveStrBinding{
+		typ_name: tc.resolve_type(call_id).name()
+	}
+	match method {
+		'clear' {
+			binding.elements = []RecursiveStrBinding{}
+			binding.repeated_element = false
+		}
+		'delete' {
+			index_id := tc.recursive_str_call_arg_id(call, 0) or { return result }
+			tc.recursive_str_delete_array_elements(mut binding, index_id, flat.empty_node)
+		}
+		'delete_many' {
+			index_id := tc.recursive_str_call_arg_id(call, 0) or { return result }
+			count_id := tc.recursive_str_call_arg_id(call, 1) or { return result }
+			tc.recursive_str_delete_array_elements(mut binding, index_id, count_id)
+		}
+		'delete_last' {
+			if !binding.repeated_element && binding.elements.len > 0 {
+				binding.elements.delete_last()
+			}
+		}
+		'drop' {
+			count_id := tc.recursive_str_call_arg_id(call, 0) or { return result }
+			tc.recursive_str_drop_array_elements(mut binding, count_id)
+		}
+		'insert', 'prepend' {
+			index_id := if method == 'insert' {
+				tc.recursive_str_call_arg_id(call, 0) or { return result }
+			} else {
+				flat.empty_node
+			}
+			value_arg := if method == 'insert' { 1 } else { 0 }
+			value_id := tc.recursive_str_call_arg_id(call, value_arg) or { return result }
+			value := if value_arg < args.len { args[value_arg] } else { RecursiveStrBinding{} }
+			tc.recursive_str_insert_array_elements(mut binding, index_id, value_id, value)
+		}
+		'pop', 'pop_left' {
+			if binding.elements.len > 0 {
+				index := if method == 'pop_left' { 0 } else { binding.elements.len - 1 }
+				result = if binding.repeated_element {
+					binding.elements[0]
+				} else {
+					binding.elements[index]
+				}
+				if !binding.repeated_element {
+					binding.elements.delete(index)
+				}
+				if result.typ_name.len == 0 {
+					result.typ_name = tc.resolve_type(call_id).name()
+				}
+			}
+		}
+		'reverse_in_place' {
+			if !binding.repeated_element {
+				binding.elements.reverse_in_place()
+			}
+		}
+		'sort', 'sort_with_compare' {
+			tc.recursive_str_make_array_order_conservative(mut binding)
+		}
+		'trim' {
+			index_id := tc.recursive_str_call_arg_id(call, 0) or { return result }
+			tc.recursive_str_trim_array_elements(mut binding, index_id)
+		}
+		else {}
+	}
+	tc.recursive_str_invalidate_value_facts(receiver_id, mut env)
+	if tc.a.node(receiver_id).kind == .ident {
+		name := tc.a.node(receiver_id).value
+		env.bindings[name] = binding
+	} else {
+		tc.recursive_str_replace_aggregate_slot(receiver_id, binding, mut env)
+	}
+	return result
+}
+
+fn (tc &TypeChecker) recursive_str_call_arg_id(call flat.Node, index int) ?flat.NodeId {
+	child_index := index + 1
+	if child_index < 1 || child_index >= call.children_count {
+		return none
+	}
+	return tc.call_arg_value(tc.a.child(&call, child_index))
+}
+
+fn (tc &TypeChecker) recursive_str_delete_array_elements(mut binding RecursiveStrBinding, index_id flat.NodeId, count_id flat.NodeId) {
+	if binding.elements.len == 0 || binding.repeated_element {
+		return
+	}
+	index := tc.recursive_str_constant_index(index_id) or {
+		tc.recursive_str_make_array_order_conservative(mut binding)
+		return
+	}
+	count := if tc.valid_node_id(count_id) {
+		tc.recursive_str_constant_index(count_id) or {
+			tc.recursive_str_make_array_order_conservative(mut binding)
+			return
+		}
+	} else {
+		1
+	}
+	if index < 0 || count < 0 || index > binding.elements.len
+		|| index + count > binding.elements.len {
+		return
+	}
+	for _ in 0 .. count {
+		binding.elements.delete(index)
+	}
+}
+
+fn (tc &TypeChecker) recursive_str_drop_array_elements(mut binding RecursiveStrBinding, count_id flat.NodeId) {
+	if binding.elements.len == 0 || binding.repeated_element {
+		return
+	}
+	count := tc.recursive_str_constant_index(count_id) or {
+		tc.recursive_str_make_array_order_conservative(mut binding)
+		return
+	}
+	if count <= 0 {
+		return
+	}
+	if count >= binding.elements.len {
+		binding.elements = []RecursiveStrBinding{}
+		return
+	}
+	binding.elements = binding.elements[count..].clone()
+}
+
+fn (tc &TypeChecker) recursive_str_insert_array_elements(mut binding RecursiveStrBinding, index_id flat.NodeId, value_id flat.NodeId, value RecursiveStrBinding) {
+	value_type := unalias_type(tc.resolve_type(value_id))
+	mut inserted := if value_type is Array || value_type is ArrayFixed {
+		value.elements.clone()
+	} else {
+		[value]
+	}
+	if binding.repeated_element {
+		inserted << binding.elements
+		binding.elements = [tc.recursive_str_merge_bindings(inserted)]
+		return
+	}
+	index := if tc.valid_node_id(index_id) {
+		tc.recursive_str_constant_index(index_id) or {
+			inserted << binding.elements
+			binding.elements = inserted
+			tc.recursive_str_make_array_order_conservative(mut binding)
+			return
+		}
+	} else {
+		0
+	}
+	if index < 0 || index > binding.elements.len {
+		return
+	}
+	mut elements := []RecursiveStrBinding{cap: binding.elements.len + inserted.len}
+	elements << binding.elements[..index]
+	elements << inserted
+	elements << binding.elements[index..]
+	binding.elements = elements
+}
+
+fn (tc &TypeChecker) recursive_str_trim_array_elements(mut binding RecursiveStrBinding, index_id flat.NodeId) {
+	if binding.elements.len == 0 || binding.repeated_element {
+		return
+	}
+	index := tc.recursive_str_constant_index(index_id) or {
+		tc.recursive_str_make_array_order_conservative(mut binding)
+		return
+	}
+	if index >= 0 && index < binding.elements.len {
+		binding.elements = binding.elements[..index].clone()
+	}
+}
+
+fn (tc &TypeChecker) recursive_str_make_array_order_conservative(mut binding RecursiveStrBinding) {
+	if binding.elements.len == 0 || binding.repeated_element {
+		return
+	}
+	binding.elements = [tc.recursive_str_merge_bindings(binding.elements)]
+	binding.repeated_element = true
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_invoked_helper(call_id flat.NodeId, receiver RecursiveStrBinding, args []RecursiveStrBinding, env RecursiveStrEnv, ctx RecursiveStrContext) {

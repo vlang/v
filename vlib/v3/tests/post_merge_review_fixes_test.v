@@ -9307,3 +9307,74 @@ fn main() {
 ')
 	assert out == ''
 }
+
+fn test_recursive_str_updates_array_provenance_after_mutators() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_array_delete_shift', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [Item{
+		remaining: item.remaining - 1
+	}, item]
+	items.delete(0)
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_reverse_in_place', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [item, Item{
+		remaining: item.remaining - 1
+	}]
+	items.reverse_in_place()
+	return items[1].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_prepend_shift', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [item]
+	items.prepend(Item{
+		remaining: item.remaining - 1
+	})
+	return items[1].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_array_delete_progress', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut items := [item, Item{
+		remaining: item.remaining - 1
+	}]
+	items.delete(0)
+	return items[0].str()
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
