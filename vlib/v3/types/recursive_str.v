@@ -1515,6 +1515,8 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		return result
 	}
 	tc.recursive_str_eval_invoked_helper(id, receiver_binding, arg_bindings, env, ctx)
+	tc.recursive_str_eval_builtin_array_callback(id, *callee, receiver_id, receiver_binding,
+		arg_bindings, mut env, ctx)
 	tc.recursive_str_apply_call_mutations(id, mut env)
 	for closure_id in callee_binding.closure_ids {
 		tc.recursive_str_eval_invoked_closure(closure_id, callee_binding, arg_bindings, mut env,
@@ -1533,6 +1535,28 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	}
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(id).name()
+	}
+}
+
+fn (mut tc TypeChecker) recursive_str_eval_builtin_array_callback(call_id flat.NodeId, callee flat.Node, receiver_id flat.NodeId, receiver RecursiveStrBinding, args []RecursiveStrBinding, mut env RecursiveStrEnv, ctx RecursiveStrContext) {
+	if callee.kind != .selector || callee.value != 'map' || args.len == 0
+		|| receiver.elements.len == 0 || !tc.valid_node_id(receiver_id) {
+		return
+	}
+	_ := array_type_from_receiver(tc.resolve_type(receiver_id)) or { return }
+	if resolved := tc.resolved_call_name(call_id) {
+		if resolved.len > 0 && resolved != 'array.map' {
+			return
+		}
+	}
+	callback := args[0]
+	if callback.closure_ids.len == 0 {
+		return
+	}
+	for element in receiver.elements {
+		for closure_id in callback.closure_ids {
+			tc.recursive_str_eval_invoked_closure(closure_id, callback, [element], mut env, ctx)
+		}
 	}
 }
 

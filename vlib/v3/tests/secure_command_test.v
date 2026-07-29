@@ -47,6 +47,16 @@ fn test_run_in_merged_preserves_exact_arguments() {
 	assert result.output == arg + arg, result.output
 }
 
+fn test_run_in_merged_preserves_child_stream_order() {
+	$if windows {
+		return
+	}
+	result := cmdexec.run_in_merged('/bin/sh', ['-c',
+		'printf err1 >&2; printf out1; printf err2 >&2; printf out2'], '')
+	assert result.exit_code == 0, result.output
+	assert result.output == 'err1out1err2out2', result.output
+}
+
 fn test_command_argument_parser_preserves_quoted_values() {
 	args := cmdexec.split_args('-I "dir with spaces" -DNAME=\'quoted value\' plain\\ value') or {
 		panic(err)

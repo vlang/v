@@ -8419,6 +8419,21 @@ fn main() {
 	assert out == ''
 }
 
+fn test_recursive_str_analyzes_array_map_callbacks() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_array_map_callback', 'struct Item {}
+
+fn (item Item) str() string {
+	return [item].map(fn (copy Item) string {
+		return copy.str()
+	}).join("")
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_preserves_multi_return_slots_and_aggregate_clones() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'recursive_str_multi_return_slot_provenance', 'struct Item {}
