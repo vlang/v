@@ -9663,3 +9663,53 @@ fn main() {
 ')
 	assert empty_slice_out == ''
 }
+
+fn test_recursive_str_detects_dump_formatting() {
+	v3_bin := build_v3()
+	source := 'struct Item {}
+
+fn (item Item) str() string {
+	_ = dump(item)
+	return ""
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+'
+	run_bad(v3_bin, 'recursive_str_dump_receiver', source, 'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_dump_aggregate_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	_ = dump([item])
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good_with_flags(v3_bin, 'recursive_str_dump_nop_dump', '-d nop_dump', source)
+	assert out == ''
+	progressed_out := run_good(v3_bin, 'recursive_str_dump_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	_ = dump(next)
+	return ""
+}
+
+fn main() {
+	_ = Item{
+		remaining: 1
+	}.str()
+}
+')
+	assert progressed_out.len > 0
+}
