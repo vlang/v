@@ -21286,6 +21286,11 @@ fn (tc &TypeChecker) infix_read_type(id flat.NodeId) Type {
 }
 
 fn (tc &TypeChecker) mut_param_base_for_current_ident(name string, typ Type) ?Type {
+	if tc.fn_context.mut_param_base_types.len == 0 {
+		// Most functions have no mut params; skip the string-keyed probe that
+		// otherwise runs for every infix operand.
+		return none
+	}
 	if isnil(tc.cur_scope) || tc.cur_scope == tc.file_scope || tc.fn_context.node_id < 0 {
 		return none
 	}
