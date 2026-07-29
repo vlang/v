@@ -5127,10 +5127,19 @@ fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params
 
 // register_fn_name_alias updates register fn name alias state for types.
 fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, params []Type, shared_params []bool, is_variadic bool, implicit_veb_ctx bool) {
-	if owner_module := tc.fn_type_modules[name] {
-		if owner_module != tc.cur_module && tc.cur_module !in ['', 'main', 'builtin']
-			&& !name.starts_with('${tc.cur_module}.') {
-			return
+	// C externs live in one global namespace and modules routinely redeclare
+	// them with refined types (builtin: `C.pthread_join(thread voidptr, ...)`,
+	// v3.workers: `C.pthread_join(thread C.pthread_t, ...)`). The
+	// first-registration guard below must not drop those refinements: cgen's
+	// module-blind parameter lookup would then see `voidptr` and take the
+	// address of struct-typed handles (gen-2 compilers panicked with
+	// `failed to join compiler worker 0`).
+	if !name.starts_with('C.') {
+		if owner_module := tc.fn_type_modules[name] {
+			if owner_module != tc.cur_module && tc.cur_module !in ['', 'main', 'builtin']
+				&& !name.starts_with('${tc.cur_module}.') {
+				return
+			}
 		}
 	}
 	tc.fn_ret_types[name] = ret_type
