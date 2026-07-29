@@ -87,7 +87,11 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		|| prefs.is_vlines || prefs.is_shared {
 		return false
 	}
-	if prefs.gc_mode != .no_gc {
+	// The established preference defaults select Boehm before dispatch runs,
+	// while V3 currently supports only no-GC builds. Treat that implicit mode
+	// as part of the V3 default; preserve explicit non-none `-gc` selections by
+	// keeping them on the compatibility compiler.
+	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
 		return false
 	}
 	if normalized_path == 'cmd/v' || normalized_path.ends_with('/cmd/v')

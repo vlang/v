@@ -44,10 +44,13 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_vlines = false
 		prefs.gc_mode = .boehm_full_opt
+		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.gc_set_by_flag = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.gc_mode = .no_gc
 		prefs.is_run = true
 		assert is_macos_v3_relevant_command('run', prefs)
+		prefs.gc_set_by_flag = false
 		prefs.is_shared = true
 		assert !is_macos_v3_relevant_command('run', prefs)
 		prefs.is_run = false
@@ -345,7 +348,7 @@ fn main() {
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
-		process.set_args(['-gc', 'none', '-o', output, target])
+		process.set_args(['-o', output, target])
 		process.set_environment(environment)
 		process.set_redirect_stdio()
 		process.run()

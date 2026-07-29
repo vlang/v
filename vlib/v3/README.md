@@ -28,17 +28,17 @@ can compile the full builtin map.v.
 ## macOS V3 dispatch
 
 On macOS 26.2, or in a macOS GitHub Actions job, the top-level `v` command dispatches supported
-native C source builds to a cached compiler built from `vlib/v3/v3.v` when the effective garbage
-collector mode is `none`. For example, `v -gc none file.v`, `v -gc none run file.v`, and
-`v -gc none script.vsh` are eligible; `-prealloc` also selects the no-GC mode. The cached compiler
-is rebuilt when V3 sources change and runs serial stages to stay within its memory safety limit.
+native C source builds to a cached compiler built from `vlib/v3/v3.v`. For example, `v file.v`,
+`v run file.v`, and `v script.vsh` are eligible. V3 currently compiles these unflagged builds
+without a garbage collector; `-gc none` and `-prealloc` are also eligible. An explicit non-none
+`-gc` mode stays on the established compiler. The cached compiler is rebuilt when V3 sources
+change and runs serial stages to stay within its memory safety limit.
 
-`cmd/v` remains the CLI and compatibility dispatcher. Ordinary unflagged C builds use the
-established compiler because their default GC mode is `boehm_full_opt`. Tests, command tools,
-self-hosted temporary compilers, cross-compilation, and modes not yet supported by V3 also
-continue through the established compiler. Pass `-old-compiler` to explicitly use that
-compatibility path for an otherwise eligible macOS build. Local macOS releases other than 26.2
-also use the established compiler. Other operating systems are unchanged.
+`cmd/v` remains the CLI and compatibility dispatcher. Tests, command tools, self-hosted temporary
+compilers, cross-compilation, and modes not yet supported by V3 continue through the established
+compiler. Pass `-old-compiler` to explicitly use that compatibility path for an otherwise
+eligible macOS build. Local macOS releases other than 26.2 also use the established compiler.
+Other operating systems are unchanged.
 
 When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
 retries the command through the established compiler. Exit codes from successfully compiled
