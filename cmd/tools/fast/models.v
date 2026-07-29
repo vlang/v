@@ -230,23 +230,46 @@ fn normalize_ref(ref string) string {
 		os.execute('git -C ${os.quoted_path(vdir)} rev-parse --abbrev-ref ${os.quoted_path('${r}@{upstream}')}')
 	if up.exit_code == 0 && up.output.trim_space() != '' {
 		upstream := up.output.trim_space()
-		// Only collapse the local branch onto its upstream once its commits are provably
-		// contained in that upstream. A diverged local branch (local-only commits, or a
-		// rewritten history) keeps its own identity, so `run -branch <local>` is never
-		// silently treated as the same history as a later run of the divergent remote
-		// ref — which would make the dashboard compare unrelated revisions.
-		if os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor ${os.quoted_path(r)} ${os.quoted_path(upstream)}').exit_code == 0 {
+		// Collapse the local branch onto its upstream when the two are on one line of
+		// history — either is an ancestor of the other. That keeps the identity stable
+		// across a normal push: a branch that is ahead of its upstream (unpushed commits)
+		// still normalizes to the upstream, and continues to after those commits are
+		// pushed, so claim_history does not reject the unchanged history. A genuinely
+		// diverged branch (neither an ancestor, e.g. a force-push onto unrelated history)
+		// keeps its own identity, so it is never mixed with the remote's revisions.
+		if same_line(r, upstream) {
 			return upstream
 		}
 		return r
 	}
+	// No configured upstream. Distinguish a *missing* local branch (a bare/legacy name we
+	// are merely qualifying, e.g. a stored `master` with no local branch) from a local
+	// branch that simply lacks an upstream: the former can adopt a remote ref freely, but
+	// the latter must be proven on the same line of history before being qualified, or a
+	// diverged local branch would be silently stored under the remote's identity.
+	local_exists := os.execute('git -C ${os.quoted_path(vdir)} rev-parse --verify --quiet ${os.quoted_path('refs/heads/${r}')}').exit_code == 0
 	for remote in ordered_remotes(remotes) {
 		cand := '${remote}/${r}'
-		if os.execute('git -C ${os.quoted_path(vdir)} rev-parse --verify --quiet ${os.quoted_path(cand)}').exit_code == 0 {
+		if os.execute('git -C ${os.quoted_path(vdir)} rev-parse --verify --quiet ${os.quoted_path(cand)}').exit_code != 0 {
+			continue
+		}
+		if !local_exists || same_line(r, cand) {
 			return cand
 		}
 	}
 	return r
+}
+
+// same_line reports whether refs `a` and `b` lie on one line of history — either is an
+// ancestor of the other. It returns false when they have genuinely diverged, and also
+// when either cannot be resolved (merge-base then exits >1), so an unresolvable ref is
+// never treated as sharing history.
+fn same_line(a string, b string) bool {
+	gitc := 'git -C ${os.quoted_path(vdir)}'
+	if os.execute('${gitc} merge-base --is-ancestor ${os.quoted_path(a)} ${os.quoted_path(b)}').exit_code == 0 {
+		return true
+	}
+	return os.execute('${gitc} merge-base --is-ancestor ${os.quoted_path(b)} ${os.quoted_path(a)}').exit_code == 0
 }
 
 // git_lines runs a git subcommand against the checkout and returns its non-empty
@@ -369,17 +392,6 @@ fn benchmark_exists(db sqlite.DB, hash string) bool {
 		select from Benchmark where commit_hash == hash
 	} or { return false }
 	return rows.len > 0
-}
-
-// benchmark_count returns the number of stored benchmark rows, or -1 if the count
-// cannot be read. The -1 sentinel lets callers avoid destructive fallbacks (e.g.
-// dropping a fresh history claim) when the database state is unknown.
-fn benchmark_count(db sqlite.DB) int {
-	rows := db.exec('SELECT count(*) FROM benchmarks') or { return -1 }
-	if rows.len == 0 {
-		return -1
-	}
-	return rows[0].vals[0].int()
 }
 
 // load_benchmarks returns every stored benchmark, newest commit first. It

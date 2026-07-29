@@ -89,10 +89,13 @@ fn cmd_bench(args []string) ! {
 		// The build or measurement failed. If this call freshly claimed a previously
 		// empty database, drop the claim: leaving it would permanently reject a later
 		// successful bench for another ref (the same empty-database condition the
-		// importer rolls back). Only do so while the database is still empty, and surface
-		// a failed rollback too, so a full/locked database is not silently left claimed.
-		if !already && benchmark_count(db) == 0 {
-			migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'") or {
+		// importer rolls back). The delete is conditional on the table still being empty
+		// in one statement, so a concurrent import that commits rows first keeps its
+		// claim (no count-then-delete race). A failed rollback is surfaced too, so a
+		// full/locked database is not silently left claimed.
+		if !already {
+			migrate_exec(mut db,
+				"DELETE FROM fast_meta WHERE key = 'history_ref' AND NOT EXISTS (SELECT 1 FROM benchmarks)") or {
 				return error('${build_err}; also failed to release the empty history claim: ${err}')
 			}
 		}

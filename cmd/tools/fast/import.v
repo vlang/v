@@ -78,6 +78,14 @@ fn cmd_import(args []string) ! {
 // inserted. Errors (or a zero result) let the caller roll the transaction back.
 fn do_import(mut db sqlite.DB, files []string, since i64, ref string) !int {
 	history := claim_history(mut db, ref)!
+	// The per-commit membership check (commit_off_history) can only reject a commit when
+	// git resolves both it and the claimed ref. If the claimed ref cannot be resolved
+	// (misspelled, deleted, or never fetched), every merge-base exits 128 and no commit
+	// is ever rejected, so an unrelated archive would import wholesale under a nonexistent
+	// identity. Fail up front instead of treating an unresolvable ref as confirmed history.
+	if !ref_resolvable(history) {
+		return error('claimed history ref `${history}` cannot be resolved in this checkout; refusing to import — fetch it, or pass a correct --ref')
+	}
 	mut total := 0
 	for f in files {
 		content := os.read_file(f) or { return error('cannot read ${f}: ${err}') }
@@ -229,6 +237,12 @@ fn is_commit_hash(s string) bool {
 // rows as ancestry neighbours, importing an out-of-order date would show misleading
 // deltas — so unresolved rows are skipped instead. On a full checkout every historical
 // commit resolves; only a shallow/partial clone drops rows, which a full fetch fixes.
+// ref_resolvable reports whether `git_ref` names a commit in this checkout. An import
+// against an unresolvable claimed ref must fail rather than silently accept every row.
+fn ref_resolvable(git_ref string) bool {
+	return os.execute('git -C ${os.quoted_path(vdir)} rev-parse --verify --quiet ${os.quoted_path('${git_ref}^{commit}')}').exit_code == 0
+}
+
 // commit_off_history reports whether `commit` is *proven* not to belong to `git_ref`'s
 // history — git resolves both and reports the commit is not an ancestor of the ref
 // (merge-base --is-ancestor exit 1). It returns false when membership holds (exit 0) or

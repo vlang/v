@@ -175,12 +175,16 @@ fn cmd_run(args []string) ! {
 	}
 	// Every sampled build/insert failed on a fresh database: drop the claim we made, so
 	// a later run/bench/import for another ref is not rejected by an otherwise empty
-	// database (as the import and bench paths do). The zero-row guard keeps a claim that
-	// covers real rows (e.g. an all-skipped resume) untouched. A failed DELETE (db full/
-	// locked/I/O) is surfaced, not logged as released, since the claim would then persist.
-	if ok == 0 && !already && benchmark_count(db) == 0 {
-		migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'")!
-		elog('no benchmarks stored; released the history claim on the empty database')
+	// database (as the import and bench paths do). The delete is conditional on the table
+	// still being empty *in one statement*, so a concurrent import that commits rows
+	// between here and the delete keeps its claim (no separate count-then-delete race). A
+	// failed DELETE (db full/locked/I/O) is surfaced, not logged as released.
+	if ok == 0 && !already {
+		migrate_exec(mut db,
+			"DELETE FROM fast_meta WHERE key = 'history_ref' AND NOT EXISTS (SELECT 1 FROM benchmarks)")!
+		if !history_claimed(db) {
+			elog('no benchmarks stored; released the history claim on the empty database')
+		}
 	}
 	elog('run done: ${ok} stored, ${failed} failed, ${skipped} skipped. Start the web app with: v run . serve')
 }
@@ -284,10 +288,12 @@ const build_lock_heartbeat_secs = 5 * 60
 // BuildLock is a held global build lock. It owns a background thread that keeps the
 // owner heartbeat fresh for the lock's whole lifetime, so a long build/measurement is
 // not reclaimed as stale, and its release() only removes the directory while this
-// process still owns it.
+// process still owns it. `owner` is the owner file, kept open so heartbeats can refresh
+// it through the descriptor rather than by path (see refresh_owner).
 struct BuildLock {
 mut:
 	token string // unique per acquisition; identifies this owner in the owner file
+	owner os.File
 	stop  chan bool
 	hb    thread
 }
@@ -308,9 +314,17 @@ fn acquire_build_lock() ?BuildLock {
 			// this process dies must not look like the same owner). Everything downstream
 			// checks the token, so a reclaimed lock is never mistaken for still ours.
 			token := '${os.getpid()}-${time.sys_mono_now()}'
-			stamp_build_lock(token) // record ownership + first heartbeat
+			// Keep the owner file open: heartbeats refresh it through THIS descriptor, so
+			// after a reclaim renames our directory aside the writes land on our orphaned
+			// inode and cannot overwrite the successor's owner file.
+			mut owner := os.open_file(build_lock_owner, 'w') or {
+				os.rmdir_all(build_lock_dir) or {}
+				return none
+			}
+			refresh_owner(mut owner, token) // record ownership + first heartbeat
 			mut bl := BuildLock{
 				token: token
+				owner: owner
 				stop:  chan bool{}
 			}
 			bl.hb = spawn bl.heartbeat()
@@ -332,22 +346,20 @@ fn acquire_build_lock() ?BuildLock {
 
 // heartbeat refreshes the owner file every build_lock_heartbeat_secs until release()
 // signals it to stop, so a build/measurement that runs longer than the stale threshold
-// keeps the lock alive instead of letting a second invocation reclaim it as stale.
+// keeps the lock alive instead of letting a second invocation reclaim it as stale. It
+// refreshes through the held descriptor, which is atomic with respect to a reclaim: if
+// this process was suspended past the stale threshold and a successor took over, our
+// descriptor points at the orphaned inode, so the refresh cannot overwrite the
+// successor's owner file (nor make us later delete its live lock).
 fn (bl BuildLock) heartbeat() {
+	mut owner := bl.owner // shares the underlying descriptor with the returned lock
 	for {
 		select {
 			_ := <-bl.stop {
 				return
 			}
 			build_lock_heartbeat_secs * time.second {
-				// Stop refreshing once we no longer own the lock. If this process was
-				// suspended past the stale threshold, a second run may have reclaimed the
-				// directory and written its own token; blindly re-stamping would overwrite
-				// the successor's ownership and later let this process delete its live lock.
-				if !build_lock_owned_by(bl.token) {
-					return
-				}
-				stamp_build_lock(bl.token)
+				refresh_owner(mut owner, bl.token)
 			}
 		}
 	}
@@ -369,23 +381,26 @@ fn build_lock_age() i64 {
 	return build_lock_stale_secs + 1
 }
 
-// stamp_build_lock (re)writes the owner file with this acquisition's unique token. It is
-// called when the lock is taken and then periodically by the heartbeat thread, so a long
-// but healthy run keeps the lock fresh (via the file's mtime) and is never mistaken for a
-// crashed one. Writing the token — not just the pid + time — lets a resumed heartbeat and
-// release() tell whether they still own the lock or were reclaimed while suspended.
-fn stamp_build_lock(token string) {
-	os.write_file(build_lock_owner, token) or {}
+// refresh_owner (re)writes `token` through the held owner descriptor and flushes it, so
+// the owner file's mtime advances (marking the lock live). Because it writes through the
+// descriptor rather than reopening by path, a write after the directory was reclaimed
+// lands on the orphaned inode and can never overwrite the successor's owner file — the
+// property that makes the heartbeat safe against a resumed, previously suspended owner.
+fn refresh_owner(mut owner os.File, token string) {
+	owner.write_to(0, token.bytes()) or { return }
+	owner.flush()
 }
 
-// release stops the heartbeat and drops the lock — but only while this process still
-// owns it. If the heartbeat ever stalled past the stale threshold and another run
-// reclaimed the directory, the owner file now holds a different token; deleting it would
-// clobber that live replacement lock, so leave it in place.
+// release stops the heartbeat, closes the owner descriptor, and drops the lock — but only
+// while this process still owns it. If the heartbeat ever stalled past the stale
+// threshold and another run reclaimed the directory, the owner file now holds a different
+// token; deleting it would clobber that live replacement lock, so leave it in place.
 fn (mut bl BuildLock) release() {
 	bl.stop <- true
 	bl.hb.wait()
-	if build_lock_owned_by(bl.token) {
+	owned := build_lock_owned_by(bl.token)
+	bl.owner.close()
+	if owned {
 		os.rmdir_all(build_lock_dir) or {}
 	}
 }
