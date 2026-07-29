@@ -199,6 +199,64 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 	tc.resolution_type_mode = true
 }
 
+// check_semantics_reachable validates only selected function declarations and
+// bodies, plus top-level statements in the selected input. It is intended for
+// source shapes that have already proven they cannot declare any other items.
+pub fn (mut tc TypeChecker) check_semantics_reachable(selected map[string]bool) {
+	tc.resolution_type_mode = false
+	tc.cur_module = ''
+	tc.cur_file = ''
+	mut items := []CheckWorkItem{cap: selected.len}
+	mut prev_tl := -1
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+				if node.value in tc.diagnostic_files {
+					tc.check_top_level_file_statements(node)
+				}
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.fn_decl {
+				qname := checker_qualified_fn_name(tc.cur_module, node.value)
+				if selected[qname] || selected[node.value] {
+					node_id := flat.NodeId(i)
+					tc.check_fn_declaration_name(node_id, node)
+					tc.check_main_fn_signature(node_id, node)
+					tc.check_init_fn_signature(node_id, node)
+					tc.check_str_method_signature(node_id, node)
+					tc.check_free_method_signature(node_id, node)
+					tc.check_sumtype_builtin_method_override(node_id, node)
+					tc.check_test_fn_signature(node_id, node)
+					tc.check_decl_type_strings(node_id, node)
+					cost := i - prev_tl
+					items << CheckWorkItem{
+						fn_idx:   i
+						range_lo: prev_tl + 1
+						file:     tc.cur_file
+						module:   tc.cur_module
+						cost:     cost
+						rank:     i64(cost) * 1_000_000_000 - i64(i)
+					}
+				}
+			}
+			.c_fn_decl {
+				if selected[node.value] {
+					tc.check_main_fn_signature(flat.NodeId(i), node)
+				}
+			}
+			else {}
+		}
+		prev_tl = i
+	}
+	tc.check_fn_items_serial(items)
+	tc.direct_parent_index_trusted = false
+	tc.resolution_type_mode = true
+}
+
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	$if windows {
 		tc.check_semantics()

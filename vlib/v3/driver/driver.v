@@ -4647,8 +4647,8 @@ pub fn run(args []string) {
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
 		set_diagnostic_files(mut pre_tc, user_files)
-		trivial_literal_output = markused.is_trivial_literal_output_program(a,
-			pre_tc.diagnostic_files)
+		trivial_literal_output = test_files.len == 0 && !is_checker_fixture
+			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
 		if verbose {
@@ -4673,7 +4673,7 @@ pub fn run(args []string) {
 		mut check_was_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
 			used_fns = markused.mark_used_without_generic_detection(a, &pre_tc)
-			pre_tc.check_semantics_selected(used_fns)
+			pre_tc.check_semantics_reachable(used_fns)
 		} else if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
