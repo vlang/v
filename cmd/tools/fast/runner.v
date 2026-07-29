@@ -117,6 +117,17 @@ fn cmd_run(args []string) ! {
 		return
 	}
 
+	// Serialize the whole run behind the global oldv build lock before touching any
+	// shared state: sync_oldv_cache and every per-commit build reuse oldv's shared
+	// source cache and `v_at_vc` checkout, so a second run must not proceed in parallel.
+	if !acquire_build_lock() {
+		elog('another benchmark run holds the oldv build lock; exiting (nothing to do)')
+		return
+	}
+	defer {
+		release_build_lock()
+	}
+
 	// Refresh the shared oldv cache once up front. oldv only auto-syncs when
 	// ~/.cache/oldv/{v,vc} is absent, so without this a stale cache cannot build
 	// commits newer than the last sync - breaking the scheduled/resumable use.
@@ -142,17 +153,8 @@ fn cmd_run(args []string) ! {
 			skipped++
 			continue
 		}
-		// Reserve this commit's shared oldv checkout before building or measuring it,
-		// so an overlapping run (e.g. cron overlapping a manual backfill) never
-		// bootstraps and benchmarks the same v_at_<commit> at once. The insert below
-		// only claims the commit in the database, long after the checkout is touched.
-		held_lock := try_lock_commit(c) or {
-			elog('  ${short}: ${err}, skipping')
-			skipped++
-			continue
-		}
+		stamp_build_lock() // heartbeat: keep the held lock fresh across a long backfill
 		mut b := benchmark_commit(c, short, message, date, args) or {
-			unlock_commit(held_lock)
 			elog('  FAILED to benchmark ${short}: ${err}')
 			failed++
 			continue
@@ -162,12 +164,10 @@ fn cmd_run(args []string) ! {
 		// if a concurrent run (e.g. cron overlapping a manual backfill) already
 		// stored this commit, the insert is rejected instead of duplicating the row.
 		insert_benchmark(mut db, b) or {
-			unlock_commit(held_lock)
 			elog('  ${short} was stored by a concurrent run, skipping: ${err}')
 			skipped++
 			continue
 		}
-		unlock_commit(held_lock)
 		ok++
 		elog('  stored ${short}: v.c ${b.v_c_ms}ms, v ${b.v_self_ms}ms, hello ${b.hello_ms}ms (${ok} done, ${failed} failed, ${skipped} skipped)')
 	}
@@ -188,10 +188,19 @@ fn cmd_remeasure(args []string) ! {
 		elog('remeasure: database is empty, nothing to do')
 		return
 	}
+	// Serialize against any concurrent run/remeasure before touching oldv's shared
+	// source cache and `v_at_vc` checkout (see acquire_build_lock).
+	if !acquire_build_lock() {
+		elog('another benchmark run holds the oldv build lock; exiting (nothing to do)')
+		return
+	}
+	defer {
+		release_build_lock()
+	}
 	elog('remeasuring ${rows.len} commits (refreshes timings, adds RSS) ...')
 	sync_oldv_cache()
 
-	mut ok, mut failed, mut skipped := 0, 0, 0
+	mut ok, mut failed := 0, 0
 	for idx, r in rows {
 		short := r.commit_hash
 		// Resolve the short hash to a full one so the cached oldv build is reused.
@@ -202,15 +211,8 @@ fn cmd_remeasure(args []string) ! {
 		rp := os.execute('git -C ${os.quoted_path(vdir)} rev-parse ${os.quoted_path(short)}')
 		full := if rp.exit_code == 0 { rp.output.trim_space() } else { short }
 		elog('[${idx + 1:2}/${rows.len}] ${short} ${r.commit_date.format()} ${r.message}')
-		// Reserve the shared checkout so a concurrent run/remeasure does not build
-		// vprod in or measure the same v_at_<commit> at the same time (see cmd_run).
-		held_lock := try_lock_commit(full) or {
-			elog('  ${short}: ${err}, skipping')
-			skipped++
-			continue
-		}
+		stamp_build_lock() // heartbeat: keep the held lock fresh across a long remeasure
 		mut b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
-			unlock_commit(held_lock)
 			elog('  FAILED to remeasure ${short}: ${err}')
 			failed++
 			continue
@@ -219,16 +221,14 @@ fn cmd_remeasure(args []string) ! {
 		// atomic replace: an upsert on the unique commit_hash cannot lose the
 		// existing row if it fails, unlike a delete followed by a separate insert
 		upsert_benchmark(mut db, b) or {
-			unlock_commit(held_lock)
 			elog('  FAILED to store ${short}: ${err}')
 			failed++
 			continue
 		}
-		unlock_commit(held_lock)
 		ok++
 		elog('  updated ${short}: v.c ${b.v_c_ms}ms, self RSS med ${b.self_rss_med_kb / 1024}MB peak ${b.self_rss_max_kb / 1024}MB')
 	}
-	elog('remeasure done: ${ok} updated, ${failed} failed, ${skipped} skipped')
+	elog('remeasure done: ${ok} updated, ${failed} failed')
 }
 
 // benchmark_commit builds V exactly as it was at `commit` using the `oldv` tool,
@@ -249,36 +249,88 @@ fn sync_oldv_cache() {
 	lexec('${os.quoted_path(vexe())} run ${os.quoted_path(oldv_src)} --cache-sync')
 }
 
-// A single-commit build + vprod + measure completes in a few minutes; a lock left
-// behind for longer than this must be from a run that crashed, so it is reclaimed.
-const build_lock_stale_secs = i64(3 * 60 * 60)
+// The oldv build lock serializes a whole build+measure against every other run. It is
+// global — one lock for all commits, not per-commit — because oldv checks a single
+// shared `v_at_vc` checkout out to a commit-specific VC revision for every build (see
+// cmd/tools/oldv.v and vgit.prepare_vc_source), so two runs building *different*
+// commits would still race on that shared checkout and its `v.c`, causing checkout
+// failures or bootstrapping with the wrong VC source. Holding it across the
+// measurement, and around the shared `sync_oldv_cache`, also keeps concurrent runs
+// from contending for the CPU and contaminating each other's timings.
+const build_lock_dir = os.join_path(oldv_cache, 'oldv-build.lock')
+const build_lock_owner = os.join_path(build_lock_dir, 'owner')
 
-// try_lock_commit reserves <commit>'s shared oldv checkout (v_at_<commit>) so two
-// overlapping runs never bootstrap, build vprod in, or measure the same checkout at
-// once — which would clobber each other's build or contaminate the timings. The DB
-// `commit_hash` UNIQUE constraint only claims the commit at insert time, long after
-// the shared checkout has been touched, so a separate lock is needed here.
-//
-// It uses an atomic mkdir of a per-commit lock directory: one syscall, portable, and
-// no C interop. Exactly one racer creates the directory; the rest get an error. A
-// directory left by a crashed run is reclaimed once it is older than the stale limit,
-// so a crash never strands the commit. Returns the lock path, or an error if another
-// live run currently holds it.
-fn try_lock_commit(commit string) !string {
+// The lock is refreshed before every commit and released at the end of the run, so an
+// owner heartbeat untouched for longer than this must belong to a run that crashed.
+const build_lock_stale_secs = i64(60 * 60)
+
+// acquire_build_lock takes the global oldv build lock, returning false if another live
+// run holds it. Mutual exclusion is an atomic mkdir. A lock left by a crashed run is
+// reclaimed by atomically renaming the stale directory aside and then deleting *that*
+// copy — never build_lock_dir itself. So two processes recovering from the same crash
+// cannot both delete a fresh lock: rename() on one source is atomic, only one reclaimer
+// captures the stale directory, and a replacement lock another owner recreates at
+// build_lock_dir in the meantime is left untouched.
+fn acquire_build_lock() bool {
 	os.mkdir_all(oldv_cache) or {}
-	lockdir := os.join_path(oldv_cache, 'v_at_${commit}.lock')
-	if os.exists(lockdir)
-		&& time.now().unix() - os.file_last_mod_unix(lockdir) > build_lock_stale_secs {
-		os.rmdir(lockdir) or {}
+	for attempt in 0 .. 5 {
+		if dir_created(build_lock_dir) {
+			stamp_build_lock() // record ownership + first heartbeat
+			return true
+		}
+		if build_lock_age() <= build_lock_stale_secs {
+			return false // held by a live run (or one still stamping a fresh lock)
+		}
+		// Stale: capture the directory by moving it aside, then discard our captured
+		// copy. Losers of the rename race fall through and re-evaluate — by then the
+		// winner may have already recreated a fresh, live lock.
+		aside := '${build_lock_dir}.stale.${os.getpid()}.${attempt}'
+		if renamed(build_lock_dir, aside) {
+			os.rmdir_all(aside) or {}
+		}
 	}
-	os.mkdir(lockdir) or { return error('another run holds its build lock') }
-	return lockdir
+	return false
 }
 
-// unlock_commit releases a lock taken by try_lock_commit. Best-effort: a leftover
-// directory is reclaimed by the staleness check in try_lock_commit on a later run.
-fn unlock_commit(lockdir string) {
-	os.rmdir(lockdir) or {}
+// build_lock_age reports the seconds since the lock was last refreshed. It prefers the
+// heartbeat `owner` file, but falls back to the directory's own creation time while a
+// just-created lock has not been stamped yet, so the tiny window between mkdir and the
+// first stamp counts as live rather than stale (never reclaimable out from under a new
+// owner). A vanished lock reads as reclaimable.
+fn build_lock_age() i64 {
+	now := time.now().unix()
+	if os.exists(build_lock_owner) {
+		return now - os.file_last_mod_unix(build_lock_owner)
+	}
+	if os.exists(build_lock_dir) {
+		return now - os.file_last_mod_unix(build_lock_dir)
+	}
+	return build_lock_stale_secs + 1
+}
+
+// stamp_build_lock (re)writes the owner heartbeat. It is called when the lock is taken
+// and again before every commit, so a long but healthy run keeps the lock fresh and is
+// never mistaken for a crashed one.
+fn stamp_build_lock() {
+	os.write_file(build_lock_owner, '${os.getpid()} ${time.now().unix()}') or {}
+}
+
+// release_build_lock drops the lock at the end of a run.
+fn release_build_lock() {
+	os.rmdir_all(build_lock_dir) or {}
+}
+
+// dir_created reports whether it created `path`. mkdir is atomic, so exactly one of
+// several racers creating the same directory succeeds.
+fn dir_created(path string) bool {
+	os.mkdir(path) or { return false }
+	return true
+}
+
+// renamed reports whether it atomically moved `src` to `dst`.
+fn renamed(src string, dst string) bool {
+	os.rename(src, dst) or { return false }
+	return true
 }
 
 // build_with_oldv builds (or reuses a cached build of) V at `commit` via the
