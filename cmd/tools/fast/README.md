@@ -88,8 +88,10 @@ on the local machine.
 ```
 
 For 2026 that samples ~56 commits out of the ~2770 on the repo's default branch
-(resolved from `origin/HEAD`, falling back to `master`/`main`/`HEAD`; override with
-`-branch <ref>`). Preview the exact set first without building anything:
+(resolved from `origin/HEAD`, falling back to a local `master`/`main`). Each database
+tracks one git history, so in a detached or shallow checkout where none of those
+resolve you must pass an explicit **`-branch <ref>`** — an unresolved `HEAD` is
+rejected, not tracked. Preview the exact set first without building anything:
 
 ```sh
 ./fast run -dry-run

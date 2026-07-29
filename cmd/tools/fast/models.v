@@ -71,10 +71,20 @@ fn migrate_exec(mut db sqlite.DB, query string) ! {
 	}
 }
 
+// schema_version is bumped whenever the migration changes. It is tracked with
+// PRAGMA user_version rather than the presence of a table/column, so a database
+// left half-migrated by an intermediate release (e.g. one that created fast_meta
+// but never seeded/canonicalized the history) is still upgraded.
+const schema_version = 1
+
 // migrate_schema upgrades a database created by an older version of the tool. It
 // is transactional and idempotent (a no-op once applied), and propagates errors
 // so open_db() fails loudly rather than returning an inconsistent schema.
 fn migrate_schema(mut db sqlite.DB) ! {
+	uv := db.exec('PRAGMA user_version')!
+	if uv.len > 0 && uv[0].vals[0].int() >= schema_version {
+		return
+	}
 	// Discover the existing columns so we only ALTER genuinely-missing ones — that
 	// way a failing ALTER is a real error, not the benign "duplicate column name".
 	info := db.exec('PRAGMA table_info(benchmarks)')!
@@ -84,18 +94,12 @@ fn migrate_schema(mut db sqlite.DB) ! {
 			existing[row.vals[1]] = true // table_info column 1 is the name
 		}
 	}
-	// `fast_meta` is created last by the migration; once present the database is
-	// fully migrated, so there is nothing to do (avoids re-running the DDL on every
-	// open_db()).
-	meta := db.exec("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fast_meta'")!
-	if meta.len > 0 {
-		return
-	}
 	migrate_exec(mut db, 'BEGIN')!
 	apply_migration(mut db, existing) or {
 		migrate_exec(mut db, 'ROLLBACK') or {}
 		return err
 	}
+	migrate_exec(mut db, 'PRAGMA user_version = ${schema_version}')!
 	migrate_exec(mut db, 'COMMIT')!
 }
 
@@ -123,12 +127,22 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	// single-row key/value store that holds this database's history identity
 	migrate_exec(mut db,
 		'CREATE TABLE IF NOT EXISTS fast_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')!
-	// Seed the history identity from existing rows so a database created by the
-	// previous version (which already tagged rows with git_ref) keeps its history
-	// and cannot be re-claimed for a different one. Reject if the rows already mix
-	// histories (more than one distinct ref after normalization).
-	rows := db.exec("SELECT DISTINCT git_ref FROM benchmarks WHERE git_ref != ''")!
+	canonicalize_history(mut db)!
+}
+
+// canonicalize_history seeds/rewrites the database's history identity in the
+// current normalized form, from the stored fast_meta value and existing rows. It
+// keeps an upgraded database usable even when normalize_ref's output changed
+// between versions (e.g. `master` -> `origin/master`), and seeds fast_meta for a
+// database whose fast_meta was created empty by an intermediate release. It errors
+// if the rows/meta already identify more than one history.
+fn canonicalize_history(mut db sqlite.DB) ! {
 	mut norms := map[string]bool{}
+	m := db.exec("SELECT value FROM fast_meta WHERE key = 'history_ref'")!
+	if m.len > 0 && m[0].vals[0] != '' {
+		norms[normalize_ref(m[0].vals[0])] = true
+	}
+	rows := db.exec("SELECT DISTINCT git_ref FROM benchmarks WHERE git_ref != ''")!
 	for r in rows {
 		norms[normalize_ref(r.vals[0])] = true
 	}
@@ -137,7 +151,9 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	}
 	if norms.len == 1 {
 		safe := norms.keys()[0].replace("'", "''")
+		migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref'")!
 		migrate_exec(mut db, "INSERT INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
+		migrate_exec(mut db, "UPDATE benchmarks SET git_ref = '${safe}' WHERE git_ref != ''")!
 	}
 }
 
