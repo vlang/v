@@ -702,6 +702,9 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		.array_literal, .array_init {
 			return tc.recursive_str_eval_array_expr(id, *node, mut env, ctx)
 		}
+		.struct_init {
+			return tc.recursive_str_eval_struct_init(id, *node, mut env, ctx)
+		}
 		.assoc {
 			return tc.recursive_str_eval_struct_update(id, *node, mut env, ctx)
 		}
@@ -815,6 +818,84 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(id).name()
 	}
+}
+
+fn (mut tc TypeChecker) recursive_str_eval_struct_init(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(&node, i)
+		for j in 0 .. field.children_count {
+			tc.recursive_str_eval_expr(tc.a.child(field, j), mut env, ctx)
+		}
+	}
+	target_type := tc.resolve_type(id)
+	fresh := RecursiveStrBinding{
+		typ_name: target_type.name()
+	}
+	target_struct := struct_type_from_type(target_type) or { return fresh }
+	fields := tc.struct_fields_for_init(target_struct.name)
+	if node.children_count != fields.len {
+		return fresh
+	}
+	if fields.len == 0 {
+		mut binding := env.bindings[ctx.receiver_name] or { return fresh }
+		if tc.type_compatible(ctx.receiver_type, target_type)
+			&& tc.type_compatible(target_type, ctx.receiver_type) {
+			binding.typ_name = target_type.name()
+			return binding
+		}
+		return fresh
+	}
+	mut receiver_text := ''
+	mut receiver_binding := RecursiveStrBinding{}
+	mut supplied := map[string]bool{}
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count != 1 {
+			return fresh
+		}
+		field_name := if field.value.len > 0 { field.value } else { fields[i].name }
+		if field_name in supplied {
+			return fresh
+		}
+		supplied[field_name] = true
+		value_id := tc.a.child(field, 0)
+		receiver_id := tc.recursive_str_struct_field_copy_receiver(value_id, field_name) or {
+			return fresh
+		}
+		current_text := tc.source_text_for_node(receiver_id).trim_space()
+		if receiver_text.len == 0 {
+			receiver_text = current_text
+			receiver_binding = tc.recursive_str_binding_for_expr(receiver_id, env)
+			receiver_type := tc.resolve_type(receiver_id)
+			if !receiver_binding.can_recurse || !tc.type_compatible(receiver_type, target_type)
+				|| !tc.type_compatible(target_type, receiver_type) {
+				return fresh
+			}
+		} else if current_text != receiver_text {
+			return fresh
+		}
+	}
+	for field in fields {
+		if field.name !in supplied {
+			return fresh
+		}
+	}
+	receiver_binding.typ_name = target_type.name()
+	return receiver_binding
+}
+
+fn (tc &TypeChecker) recursive_str_struct_field_copy_receiver(id flat.NodeId, field_name string) ?flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr] && node.children_count > 0 {
+		return tc.recursive_str_struct_field_copy_receiver(tc.a.child(node, 0), field_name)
+	}
+	if node.kind == .selector && node.value == field_name && node.children_count > 0 {
+		return tc.a.child(node, 0)
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_comptime_if_expr(id flat.NodeId, node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {

@@ -24038,6 +24038,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
+	loop_may_skip_body := node.children_count > 1 && tc.a.child_node(&node, 1).kind != .empty
 	$if ownership ? {
 		if node.children_count > 2 {
 			post_id := tc.a.child(&node, 2)
@@ -24090,12 +24091,12 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 			sequence_exited = true
 		}
 	}
+	unsafe_alias_body := tc.fn_context.unsafe_reference_alias_owners.clone()
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
 	$if ownership ? {
-		loop_may_skip_body := node.children_count > 1 && tc.a.child_node(&node, 1).kind != .empty
 		body_reaches_post := tc.ownership_statement_sequence_can_reach_loop_post(node, 3)
 		if node.children_count > 2 {
 			post_id := tc.a.child(&node, 2)
@@ -24119,10 +24120,21 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 		tc.ownership_end_branch_group()
 	}
-	mut unsafe_alias_paths := [unsafe_alias_base]
-	if !tc.stmt_sequence_definitely_returns(&node, 3) {
-		unsafe_alias_paths << unsafe_alias_post
-		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+	body_may_break := tc.unsafe_alias_statement_sequence_may_break(node, 3)
+	body_reaches_post := tc.unsafe_alias_statement_sequence_can_reach_loop_post(node, 3)
+	mut unsafe_alias_paths := []map[string]bool{}
+	if loop_may_skip_body {
+		unsafe_alias_paths << unsafe_alias_base
+	}
+	if body_may_break {
+		unsafe_alias_paths << unsafe_alias_body
+	}
+	if body_reaches_post && (loop_may_skip_body || body_may_break) {
+		unsafe_alias_paths << apply_unsafe_reference_alias_state_delta(unsafe_alias_base,
+			unsafe_alias_post, unsafe_alias_body)
+	}
+	if unsafe_alias_paths.len == 0 {
+		unsafe_alias_paths << unsafe_alias_base
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_base)
@@ -24130,6 +24142,119 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
 	tc.pop_scope()
+}
+
+fn (tc &TypeChecker) unsafe_alias_statement_sequence_may_break(node flat.Node, body_start int) bool {
+	for i in body_start .. node.children_count {
+		if tc.unsafe_alias_stmt_may_break(tc.a.child(&node, i)) {
+			return true
+		}
+		if tc.unsafe_alias_stmt_definitely_exits_before_loop_post(tc.a.child(&node, i)) {
+			return false
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) unsafe_alias_stmt_may_break(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.break_stmt {
+			return true
+		}
+		.for_stmt, .for_in_stmt, .fn_literal, .lambda_expr {
+			return false
+		}
+		.block {
+			return tc.unsafe_alias_statement_sequence_may_break(*node, 0)
+		}
+		.if_expr {
+			for i in 1 .. node.children_count {
+				if tc.unsafe_alias_stmt_may_break(tc.a.child(node, i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.match_stmt {
+			for i in 1 .. node.children_count {
+				branch := tc.a.child_node(node, i)
+				if branch.kind == .match_branch && tc.unsafe_alias_match_branch_may_break(*branch) {
+					return true
+				}
+			}
+			return false
+		}
+		else {}
+	}
+	for i in 0 .. node.children_count {
+		if tc.unsafe_alias_stmt_may_break(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) unsafe_alias_statement_sequence_can_reach_loop_post(node flat.Node, body_start int) bool {
+	for i in body_start .. node.children_count {
+		if tc.unsafe_alias_stmt_definitely_exits_before_loop_post(tc.a.child(&node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) unsafe_alias_stmt_definitely_exits_before_loop_post(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.break_stmt, .return_stmt {
+			return true
+		}
+		.continue_stmt, .for_stmt, .for_in_stmt, .fn_literal, .lambda_expr {
+			return false
+		}
+		.block {
+			return !tc.unsafe_alias_statement_sequence_can_reach_loop_post(*node, 0)
+		}
+		.if_expr {
+			if node.children_count < 3 {
+				return false
+			}
+			return tc.unsafe_alias_stmt_definitely_exits_before_loop_post(tc.a.child(node, 1))
+				&& tc.unsafe_alias_stmt_definitely_exits_before_loop_post(tc.a.child(node, 2))
+		}
+		.match_stmt {
+			if node.children_count < 2 || !tc.match_has_else_or_exhaustive_coverage(*node) {
+				return false
+			}
+			for i in 1 .. node.children_count {
+				branch := tc.a.child_node(node, i)
+				if branch.kind != .match_branch
+					|| !tc.unsafe_alias_match_branch_definitely_exits_before_loop_post(*branch) {
+					return false
+				}
+			}
+			return true
+		}
+		else {}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) unsafe_alias_match_branch_may_break(branch flat.Node) bool {
+	body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
+	return tc.unsafe_alias_statement_sequence_may_break(branch, body_start)
+}
+
+fn (tc &TypeChecker) unsafe_alias_match_branch_definitely_exits_before_loop_post(branch flat.Node) bool {
+	body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
+	return !tc.unsafe_alias_statement_sequence_can_reach_loop_post(branch, body_start)
 }
 
 fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
@@ -27873,6 +27998,21 @@ fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback ma
 	for key in result.keys() {
 		if states.any(!it[key]) {
 			result.delete(key)
+		}
+	}
+	return result
+}
+
+fn apply_unsafe_reference_alias_state_delta(before map[string]bool, after map[string]bool, target map[string]bool) map[string]bool {
+	mut result := target.clone()
+	for key, _ in before {
+		if !after[key] {
+			result.delete(key)
+		}
+	}
+	for key, _ in after {
+		if !before[key] {
+			result[key] = true
 		}
 	}
 	return result

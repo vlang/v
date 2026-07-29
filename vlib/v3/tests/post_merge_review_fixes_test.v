@@ -8403,6 +8403,55 @@ fn main() {
 	assert match_out == '1\n2'
 }
 
+fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'unsafe_map_alias_unconditional_loop', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+	post_out := run_good(v3_bin, 'unsafe_map_alias_skipped_loop_post', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	for ;; alias = map[string]int{} {
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert post_out == '1'
+	run_bad(v3_bin, 'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for cond {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+}
+
 fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unsafe_map_alias_if_return_path', 'fn branch(cond bool) {
@@ -8575,6 +8624,52 @@ fn test_unsafe_map_alias_provenance_isolates_select_branches() {
 }
 ')
 	assert out == '1'
+}
+
+fn test_recursive_str_struct_literal_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_struct_literal_provenance', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	return Item{
+		remaining: item.remaining
+	}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_empty_struct_literal_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	return Item{}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_changed_struct_literal', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	return Item{
+		remaining: item.remaining - 1
+	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
 }
 
 fn test_recursive_str_struct_update_preserves_receiver_provenance() {
