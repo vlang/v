@@ -178,10 +178,13 @@ fn cmd_remeasure(args []string) ! {
 	mut ok, mut failed := 0, 0
 	for idx, r in rows {
 		short := r.commit_hash
-		mut full := git(vdir, 'rev-parse ${short}')
-		if full == '' {
-			full = short
-		}
+		// Resolve the short hash to a full one so the cached oldv build is reused.
+		// `git()` ignores the exit status and returns combined output, and a failed
+		// rev-parse still echoes the input token before its fatal diagnostic, so
+		// check the exit code explicitly and fall back to the short hash only on a
+		// genuine resolution failure (e.g. a shallow clone).
+		rp := os.execute('git -C ${os.quoted_path(vdir)} rev-parse ${os.quoted_path(short)}')
+		full := if rp.exit_code == 0 { rp.output.trim_space() } else { short }
 		elog('[${idx + 1:2}/${rows.len}] ${short} ${r.commit_date.format()} ${r.message}')
 		b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
 			elog('  FAILED to remeasure ${short}: ${err}')

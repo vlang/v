@@ -163,31 +163,45 @@ fn measure_rss(cmd string, description string) RssStats {
 	}
 }
 
-// peak_rss_kb runs `cmd` under the platform's `time` tool and returns the peak
-// resident set size in KB (0 if it cannot be determined, e.g. on unsupported OS).
+// peak_rss_kb runs `cmd` under the platform's `time` tool and returns its peak
+// resident set size in KB. The return value distinguishes three cases:
+//   >0  a valid measurement
+//    0  this platform has no supported way to measure RSS (a real zero-data case)
+//   -1  the timing binary is missing, or the measured command exited non-zero
+//       (the run failed, so the sample must be rejected — `/usr/bin/time` can
+//       still print a maxrss line for a process that crashed)
 fn peak_rss_kb(cmd string) int {
-	tmp := os.join_path(os.temp_dir(), 'fast_rss.txt')
-	mut kb := i64(0)
+	mut time_flag := ''
 	$if macos {
-		// macOS `/usr/bin/time -l` prints "<bytes>  maximum resident set size" to stderr
-		os.system('/usr/bin/time -l ${cmd} 2>${os.quoted_path(tmp)}')
-		out := os.read_file(tmp) or { return 0 }
-		for line in out.split_into_lines() {
+		time_flag = '-l' // prints "<bytes>  maximum resident set size" to stderr
+	} $else $if linux {
+		time_flag = '-v' // prints "Maximum resident set size (kbytes): <kb>"
+	} $else {
+		return 0 // unsupported platform: legitimately no RSS data
+	}
+	if !os.exists('/usr/bin/time') {
+		return -1 // timing binary unavailable
+	}
+	tmp := os.join_path(os.temp_dir(), 'fast_rss.txt')
+	defer {
+		os.rm(tmp) or {}
+	}
+	if os.system('/usr/bin/time ${time_flag} ${cmd} 2>${os.quoted_path(tmp)}') != 0 {
+		return -1 // the measured command failed; reject this sample
+	}
+	out := os.read_file(tmp) or { return -1 }
+	mut kb := i64(0)
+	for line in out.split_into_lines() {
+		$if macos {
 			if line.contains('maximum resident set size') {
 				kb = line.trim_space().all_before(' ').i64() / 1024
 			}
-		}
-	} $else $if linux {
-		// GNU `/usr/bin/time -v` prints "Maximum resident set size (kbytes): <kb>"
-		os.system('/usr/bin/time -v ${cmd} 2>${os.quoted_path(tmp)}')
-		out := os.read_file(tmp) or { return 0 }
-		for line in out.split_into_lines() {
+		} $else {
 			if line.contains('Maximum resident set size') {
 				kb = line.all_after(':').trim_space().i64()
 			}
 		}
 	}
-	os.rm(tmp) or {}
 	return int(kb)
 }
 

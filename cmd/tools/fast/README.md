@@ -94,8 +94,7 @@ for a while; the log is written to `fast.log`.
 
 ### Keeping it running
 
-To keep the local dashboard fresh, run the sampler on a schedule and keep the web
-app up, e.g. with cron:
+**Local dynamic dashboard.** Sample on a schedule and keep the veb server up:
 
 ```cron
 # Update the checkout, rebuild the tool, and sample any new commits every hour.
@@ -105,11 +104,28 @@ app up, e.g. with cron:
 0 * * * * cd /path/to/v && git pull --ff-only && cd cmd/tools/fast && v -o fast . && ./fast run >> fast.log 2>&1
 ```
 
-and start the server once (e.g. in a `tmux`/`screen` session or a user service):
-
 ```sh
-cd /path/to/v/cmd/tools/fast && ./fast serve -port 8080
+cd /path/to/v/cmd/tools/fast && ./fast serve -port 8080   # in tmux/screen or a user service
 ```
+
+**Publishing fast.vlang.io.** The public site is served statically from GitHub
+Pages, so `fast run` alone (which only writes `fast.db`) does **not** update it —
+you must also `export` the static site and push it. Point `$SITE` at a checkout of
+the Pages branch (`github.com/vlang/website`, branch `gh-pages`); a GitHub Actions
+workflow in that branch redeploys on every push:
+
+```cron
+# hourly: sample new commits, regenerate the static site, and publish it
+0 * * * * cd /path/to/v && git pull --ff-only && cd cmd/tools/fast && v -o fast . \
+  && ./fast run \
+  && ./fast export -o "$SITE" \
+  && git -C "$SITE" add -A \
+  && git -C "$SITE" diff --cached --quiet || git -C "$SITE" commit -m "update fast.vlang.io" \
+  && git -C "$SITE" push >> fast.log 2>&1
+```
+
+(The old `fast_job.v` daemon and its `-upload` step have been removed; this
+export-and-push is their replacement.)
 
 ## What is measured
 
