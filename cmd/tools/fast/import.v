@@ -47,17 +47,37 @@ fn cmd_import(args []string) ! {
 	defer {
 		db.close() or {}
 	}
-	// tag imported rows with their history and claim it, so a later `run -branch X`
-	// on the same db is rejected instead of silently mixed in.
+	// Claim the history and insert the rows in one transaction, so an empty or failed
+	// import (unreadable file, or no usable rows) rolls back the claim too — otherwise
+	// it would permanently claim an empty database and reject a later valid import or
+	// sampler run for another ref. Re-importing into an already-claimed database with
+	// nothing new is still fine (idempotent), so only reject a freshly-made claim.
+	already := history_claimed(db)
+	db.exec_none('BEGIN')
+	total := do_import(mut db, files, since, ref) or {
+		db.exec_none('ROLLBACK')
+		return err
+	}
+	if total == 0 && !already {
+		db.exec_none('ROLLBACK')
+		return error('no benchmark rows found in ${files.join(', ')}; nothing imported (history not claimed)')
+	}
+	db.exec_none('COMMIT')
+	elog('import done: ${total} rows inserted. Start the web app with: v run . serve')
+}
+
+// do_import claims the history and imports all files, returning the number of rows
+// inserted. Errors (or a zero result) let the caller roll the transaction back.
+fn do_import(mut db sqlite.DB, files []string, since i64, ref string) !int {
 	history := claim_history(mut db, ref)!
 	mut total := 0
 	for f in files {
 		content := os.read_file(f) or { return error('cannot read ${f}: ${err}') }
 		n := import_table_html(mut db, content, since, history)!
-		elog('imported ${n} rows from ${f}')
+		elog('imported ${n} rows from ${f} (history: ${history})')
 		total += n
 	}
-	elog('import done: ${total} rows inserted (history: ${history}). Start the web app with: v run . serve')
+	return total
 }
 
 // parse_since converts a YYYY-MM-DD string into a unix timestamp (0 == no filter).
@@ -84,17 +104,20 @@ fn import_table_html(mut db sqlite.DB, html string, since i64, git_ref string) !
 		if cells.len < 14 {
 			continue
 		}
-		commit := cells[1].trim_space()
+		raw := cells[1].trim_space()
 		// Only accept a real hex commit hash. A crafted HTML file could otherwise put
 		// shell metacharacters here, which later reach `git`/`oldv` shell commands.
-		if !is_commit_hash(commit) || benchmark_exists(db, commit) {
+		if !is_commit_hash(raw) {
 			continue
 		}
-		// The old table timestamp was Git's author date (%at), which is not
-		// monotonic along ancestry. Recover the committer date (%ct) from the
-		// checkout so imported rows sort consistently with sampled ones; fall
-		// back to the table timestamp only for commits git cannot resolve.
-		cdate := committer_date_for(commit, parse_old_date(cells[0].trim_space()))
+		// Resolve to the canonical 8-char abbreviation that `run` stores (the first 8
+		// chars of the full hash) plus the committer date (%ct, monotonic along
+		// ancestry, unlike the old table's %at), in one git call — so an imported
+		// 7/40-char id for the same commit is not stored as a duplicate point.
+		commit, cdate := resolve_commit(raw, parse_old_date(cells[0].trim_space()))
+		if benchmark_exists(db, commit) {
+			continue
+		}
 		if since != 0 && cdate.unix() < since {
 			continue
 		}
@@ -176,19 +199,22 @@ fn is_commit_hash(s string) bool {
 	return true
 }
 
-// committer_date_for recovers the committer date (%ct) of `commit` from the local
-// checkout, giving imported rows the same monotonic ordering key as sampled ones.
-// Returns `fallback` (the old table timestamp) when the commit cannot be resolved.
-fn committer_date_for(commit string, fallback time.Time) time.Time {
+// resolve_commit maps an imported commit id to the canonical 8-char hash that
+// `run` stores (the first 8 chars of the full hash) and its committer date, in a
+// single git call. Falls back to a bounded abbreviation and the given table
+// timestamp when the commit is not present in the local checkout.
+fn resolve_commit(raw string, fallback_date time.Time) (string, time.Time) {
 	res :=
-		os.execute('git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:%ct ${os.quoted_path(commit)}')
+		os.execute("git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:'%H %ct' ${os.quoted_path(raw)}")
 	if res.exit_code == 0 {
-		ts := res.output.trim_space().i64()
-		if ts > 0 {
-			return time.unix(ts)
+		parts := res.output.trim_space().split(' ')
+		if parts.len == 2 && parts[0].len >= 8 {
+			ts := parts[1].i64()
+			date := if ts > 0 { time.unix(ts) } else { fallback_date }
+			return parts[0][..8], date
 		}
 	}
-	return fallback
+	return short_hash(raw), fallback_date
 }
 
 // parse_old_date reads the old `time.format()` output (`YYYY-MM-DD HH:MM`). If it

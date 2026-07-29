@@ -28,7 +28,7 @@ fn history_ref_for_head() string {
 	// otherwise pick a remote/local branch that contains the commit
 	for pattern in ['refs/remotes', 'refs/heads'] {
 		res :=
-			os.execute('git -C ${os.quoted_path(vdir)} for-each-ref --contains HEAD --format=%(refname) ${pattern}')
+			os.execute('git -C ${os.quoted_path(vdir)} for-each-ref --contains HEAD --format=${os.quoted_path('%(refname)')} ${pattern}')
 		if res.exit_code == 0 {
 			for line in res.output.split_into_lines() {
 				r := line.trim_space()

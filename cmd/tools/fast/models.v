@@ -282,6 +282,12 @@ fn ordered_remotes(remotes []string) []string {
 // already claimed for a different history. The claim uses INSERT OR IGNORE on a
 // PRIMARY KEY, so two concurrent processes racing on an empty database cannot each
 // claim a different ref — exactly one INSERT wins and the loser sees the mismatch.
+// history_claimed reports whether this database already has a history identity.
+fn history_claimed(db sqlite.DB) bool {
+	rows := db.exec("SELECT 1 FROM fast_meta WHERE key = 'history_ref'") or { return false }
+	return rows.len > 0
+}
+
 fn claim_history(mut db sqlite.DB, ref string) !string {
 	norm := normalize_ref(ref)
 	// `HEAD` (or empty) is not a stable history identity — e.g. a detached shallow
