@@ -145,6 +145,11 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
+	trivial_literal_output := markused_is_trivial_literal_output_program(a, tc)
+	// An exact literal-output program has no user expressions or declarations that
+	// can instantiate a generic. Skip generic indexes and per-node generic checks,
+	// just as the known non-generic self-host path does.
+	detect_reachable_generics := detect_generics && !trivial_literal_output
 	// The runtime-helper detection scan only reads the AST and (forked) checker
 	// caches, so it runs on its own thread under the decl scan + precollect and
 	// its enqueue requests are replayed in scan order at the seeds step below.
@@ -167,7 +172,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
 	mut generic_type_bases := map[string]bool{}
-	if detect_generics {
+	if detect_reachable_generics {
 		for node in a.nodes {
 			if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
 				generic_type_bases[node.value] = true
@@ -328,7 +333,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// BFS from main
 	mut used := map[string]bool{}
 	mut queue := []string{}
-	trivial_literal_output := markused_is_trivial_literal_output_program(a, tc)
 	reachable_modules := markused_reachable_modules(a, tc)
 	queue << 'main'
 	used['main'] = true
@@ -441,18 +445,18 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		const_decls:             const_decls
 		const_suffixes:          const_name_suffixes
 		import_contexts:         import_contexts
-		selective_alias_targets: if detect_generics {
+		selective_alias_targets: if detect_reachable_generics {
 			markused_selective_alias_targets(tc)
 		} else {
 			map[string][]string{}
 		}
-		iface_param_gate:        if detect_generics {
+		iface_param_gate:        if detect_reachable_generics {
 			markused_interface_param_gate(tc)
 		} else {
 			map[string]bool{}
 		}
 		generic_type_bases:      generic_type_bases
-		detect_generics:         detect_generics
+		detect_generics:         detect_reachable_generics
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap
