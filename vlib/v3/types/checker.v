@@ -681,7 +681,11 @@ pub mut:
 	channel_send_or_expr_id int  = -1
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
-	// See QualifyNameCache: forks must replace it with their own instance.
+	// See QualifyNameCache: nil unless armed for a phase whose allocations
+	// outlive every prealloc scope arena; forks must replace it with their own
+	// instance. A long-lived armed cache written during a scoped driver stage
+	// (markused/transform/cgen under -prealloc) stores map buckets and result
+	// strings in the disposable scope arena, and later reads crash.
 	qualify_name_cache &QualifyNameCache = unsafe { nil }
 	import_info_cache  &ImportInfoCache  = unsafe { nil }
 	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
@@ -867,7 +871,6 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		visible_mutation_cache:                  new_visible_mutation_cache()
 		type_interner:                           type_interner
 		symbols:                                 symbols
-		qualify_name_cache:                      &QualifyNameCache{}
 		enclosing_generic_params_by_node:        map[int][]string{}
 		declaration_attributes:                  map[int][]string{}
 		type_declaration_ids:                    map[string][]int{}
@@ -10206,8 +10209,10 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 	mut best_start := -1
 	mut best_distance := source.len + name.len
 	for search_from <= source.len - name.len {
-		relative := source[search_from..].index(name) or { break }
-		start := search_from + relative
+		start := source.index_after_(name, search_from)
+		if start < 0 {
+			break
+		}
 		left_is_name := start > 0 && (source[start - 1].is_alnum() || source[start - 1] == `_`)
 		end := start + name.len
 		right_is_name := end < source.len && (source[end].is_alnum() || source[end] == `_`)
@@ -10216,6 +10221,11 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 			if distance < best_distance {
 				best_start = start
 				best_distance = distance
+			}
+			if start >= anchor {
+				// Matches are visited left to right, so every later word match
+				// is farther from the anchor than this one.
+				break
 			}
 		}
 		search_from = start + 1
@@ -18188,12 +18198,30 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 	file := tc.a.source_files[node.pos.id] or { return false }
 	source := tc.source_texts_by_file[file.name] or { return false }
 	offset := int_min(int_max(node.pos.offset, 0), source.len)
-	fn_start := source[..offset].last_index('fn ') or { return false }
-	header_end_relative := source[fn_start..].index_u8(`{`)
-	if header_end_relative < 0 {
+	// Scan by index: substr copies of the file prefix/suffix here made every
+	// call allocate whole-file-sized temporaries, which multiplied into
+	// gigabytes on self-host builds.
+	mut fn_start := -1
+	for i := offset - 3; i >= 0; i-- {
+		if source[i] == `f` && source[i + 1] == `n` && source[i + 2] == ` ` {
+			fn_start = i
+			break
+		}
+	}
+	if fn_start < 0 {
 		return false
 	}
-	header := source[fn_start..fn_start + header_end_relative]
+	mut header_end := -1
+	for i := fn_start; i < source.len; i++ {
+		if source[i] == `{` {
+			header_end = i
+			break
+		}
+	}
+	if header_end < 0 {
+		return false
+	}
+	header := source[fn_start..header_end]
 	mut search_start := 0
 	for search_start < header.len {
 		open_relative := header[search_start..].index_u8(`[`)
@@ -21754,6 +21782,18 @@ fn (tc &TypeChecker) or_expr_payload_type(source_id flat.NodeId) ?Type {
 	}
 	if source.kind == .index && source.children_count > 0 {
 		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(source, 0)))
+		if source.value == 'range' {
+			// A gated range index yields a slice of the container, not an element.
+			if base_type is ArrayFixed {
+				return Type(Array{
+					elem_type: base_type.elem_type
+				})
+			}
+			if base_type is Array || base_type is String {
+				return base_type
+			}
+			return none
+		}
 		if base_type is Map {
 			return base_type.value_type
 		}
@@ -46394,6 +46434,22 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		method_name := 'string.${node.value}'
 		if method_name in tc.fn_param_types || method_name in tc.fn_ret_types {
 			return tc.method_value_type('string', node.value)
+		}
+	}
+	if clean is Array || clean is Map || clean is String {
+		// A declared field (e.g. `string.str &u8`) shadows the builtin method
+		// of the same name for selector access.
+		sname := if clean is Array {
+			'array'
+		} else if clean is Map {
+			'map'
+		} else {
+			'string'
+		}
+		for f in tc.structs[sname] or { []StructField{} } {
+			if f.name == node.value {
+				return f.typ
+			}
 		}
 	}
 	if typ := tc.builtin_method_value_type(base_type, node.value) {

@@ -9218,6 +9218,23 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 						}
 					}
 				}
+				// A const passed as a plain call argument (e.g. the lowered
+				// `array_get(const, i)` from a containment loop) needs dynamic
+				// array representation even when another use site aliases the
+				// same node as an index or `.len` base and marked it safe.
+				for ai in 1 .. node.children_count {
+					arg_id := g.a.child(node, ai)
+					arg_node := g.a.node(arg_id)
+					if g.const_ref_node_may_match_fixed_candidate(arg_node,
+						fixed_candidate_idents, fixed_candidate_shorts)
+					{
+						call_base_items << FixedStorageConstRefItem{
+							id:     arg_id
+							file:   cur_file
+							module: cur_module
+						}
+					}
+				}
 			}
 			.ident, .paren {
 				if g.const_ref_node_may_match_fixed_candidate(node, fixed_candidate_idents,
