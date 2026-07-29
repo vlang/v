@@ -3640,6 +3640,9 @@ pub mut:
 	resolution_type_mode bool
 	fingerprint          int = -1
 	entries              map[string]string
+	last_name            string
+	last_value           string
+	last_valid           bool
 }
 
 // qualify_table_fingerprint tracks growth of every declared-type table
@@ -3669,12 +3672,23 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 			cache.resolution_type_mode = tc.resolution_type_mode
 			cache.fingerprint = fingerprint
 			cache.entries.clear()
+			cache.last_valid = false
+		}
+		if cache.last_valid && cache.last_name.len == name.len
+			&& (unsafe { cache.last_name.str == name.str } || cache.last_name == name) {
+			return cache.last_value
 		}
 		if cached := cache.entries[name] {
+			cache.last_name = name
+			cache.last_value = cached
+			cache.last_valid = true
 			return cached
 		}
 		result := tc.qualify_name_uncached(name)
 		cache.entries[name] = result
+		cache.last_name = name
+		cache.last_value = result
+		cache.last_valid = true
 		return result
 	}
 	return tc.qualify_name_uncached(name)
