@@ -158,6 +158,44 @@ fn cmd_run(args []string) ! {
 	elog('run done: ${ok} stored, ${failed} failed, ${skipped} skipped. Start the web app with: v run . serve')
 }
 
+// cmd_remeasure re-measures every commit already in the database, replacing each
+// row with a fresh measurement. Used to backfill new metrics (e.g. RSS) onto
+// existing rows without changing which commits are tracked. It resolves each
+// stored short hash to a full hash so the cached oldv build is reused.
+fn cmd_remeasure(args []string) ! {
+	mut db := open_db()!
+	defer {
+		db.close() or {}
+	}
+	rows := load_benchmarks(db)!
+	if rows.len == 0 {
+		elog('remeasure: database is empty, nothing to do')
+		return
+	}
+	elog('remeasuring ${rows.len} commits (refreshes timings, adds RSS) ...')
+	sync_oldv_cache()
+
+	mut ok, mut failed := 0, 0
+	for idx, r in rows {
+		short := r.commit_hash
+		mut full := git(vdir, 'rev-parse ${short}')
+		if full == '' {
+			full = short
+		}
+		elog('[${idx + 1:2}/${rows.len}] ${short} ${r.commit_date.format()} ${r.message}')
+		b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
+			elog('  FAILED to remeasure ${short}: ${err}')
+			failed++
+			continue
+		}
+		delete_benchmark(mut db, short)!
+		insert_benchmark(mut db, b)!
+		ok++
+		elog('  updated ${short}: v.c ${b.v_c_ms}ms, self RSS med ${b.self_rss_med_kb / 1024}MB peak ${b.self_rss_max_kb / 1024}MB')
+	}
+	elog('remeasure done: ${ok} updated, ${failed} failed')
+}
+
 // benchmark_commit builds V exactly as it was at `commit` using the `oldv` tool,
 // then builds an optimized vprod and runs the measurements in that historic
 // checkout. The main repo is never touched — oldv works entirely inside its own

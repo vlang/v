@@ -36,6 +36,7 @@ const log_path = os.join_path(fast_dir, 'fast.log')
 const warmup_samples = 1
 const max_samples = 8
 const discard_highest_samples = 3
+const rss_samples = 5 // runs used for the peak-RSS five-number summary
 const voptions = ' -skip-unused -show-timings -stats '
 
 fn elog(msg string) {
@@ -90,6 +91,9 @@ fn main() {
 		'run', 'run-2026', 'backfill' {
 			cmd_run(rest) or { fatal('run failed: ${err}') }
 		}
+		'remeasure' {
+			cmd_remeasure(rest) or { fatal('remeasure failed: ${err}') }
+		}
 		'seed' {
 			cmd_seed() or { fatal('seed failed: ${err}') }
 		}
@@ -124,6 +128,7 @@ Commands:
   run [-year 2026] [-step 50] [-latest N] [-branch <ref>] [-dry-run]
                                      benchmark every <step>th commit of a year,
                                      or the N most recent commits with -latest
+  remeasure                          re-measure every stored commit (backfill new metrics)
   seed                               insert demo rows (to preview the UI)
   import [--since YYYY-MM-DD] <table.html> [...]
                                      migrate old fast.vlang.io history into fast.db

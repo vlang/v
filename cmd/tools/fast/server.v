@@ -22,6 +22,9 @@ struct ChartPoint {
 	v_c    int
 	v_self int
 	hello  int
+	// peak-RSS five-number summaries (KB): [min, q1, median, q3, max]
+	self_rss  []int
+	hello_rss []int
 }
 
 // serve starts the veb web app. It binds to localhost only, since this is meant
@@ -62,11 +65,15 @@ fn chart_points(list []Benchmark) []ChartPoint {
 	for i := list.len - 1; i >= 0; i-- {
 		b := list[i]
 		points << ChartPoint{
-			date:   b.commit_date.format()
-			hash:   b.commit_hash
-			v_c:    b.v_c_ms
-			v_self: b.v_self_ms
-			hello:  b.hello_ms
+			date:      b.commit_date.format()
+			hash:      b.commit_hash
+			v_c:       b.v_c_ms
+			v_self:    b.v_self_ms
+			hello:     b.hello_ms
+			self_rss:  [b.self_rss_min_kb, b.self_rss_q1_kb, b.self_rss_med_kb, b.self_rss_q3_kb,
+				b.self_rss_max_kb]
+			hello_rss: [b.hello_rss_min_kb, b.hello_rss_q1_kb, b.hello_rss_med_kb, b.hello_rss_q3_kb,
+				b.hello_rss_max_kb]
 		}
 	}
 	return points

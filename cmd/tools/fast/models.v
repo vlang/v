@@ -26,6 +26,18 @@ mut:
 	cgen_ms     int       // C generation time
 	vlines      int       // number of V source lines compiled
 	lines_per_s int       // V lines / second for the `v -o v.c` step
+	// peak resident-set-size (RSS) five-number summary (KB) across rss_samples runs,
+	// for a box-and-whisker view. self_* = V self-compiling cmd/v, hello_* = hello.v.
+	self_rss_min_kb  int
+	self_rss_q1_kb   int
+	self_rss_med_kb  int
+	self_rss_q3_kb   int
+	self_rss_max_kb  int
+	hello_rss_min_kb int
+	hello_rss_q1_kb  int
+	hello_rss_med_kb int
+	hello_rss_q3_kb  int
+	hello_rss_max_kb int
 }
 
 // open_db opens (creating if needed) the SQLite database and makes sure the
@@ -36,7 +48,20 @@ fn open_db() !sqlite.DB {
 	sql db {
 		create table Benchmark
 	}!
+	migrate_schema(mut db)
 	return db
+}
+
+// migrate_schema adds any columns that a database created by an older version of
+// the tool is missing, so upgrading does not require rebuilding fast.db. Adding a
+// column that already exists just fails harmlessly (exec_none returns a code).
+fn migrate_schema(mut db sqlite.DB) {
+	added_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
+		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb',
+		'hello_rss_q3_kb', 'hello_rss_max_kb']
+	for c in added_columns {
+		db.exec_none('ALTER TABLE benchmarks ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0')
+	}
 }
 
 fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {

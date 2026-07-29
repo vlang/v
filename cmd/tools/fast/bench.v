@@ -95,6 +95,11 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 	scan, parse, check, cgen, vlines := measure_steps_minimal(vprod)!
 	lines_per_s := if v_c > 0 { int(f64(vlines) / f64(v_c) * 1000.0) } else { 0 }
 
+	// peak RSS (memory) five-number summaries for the box-and-whisker view
+	self_rss := measure_rss('${qvprod} ${voptions} -o v.c cmd/v', 'v self-compile RSS')
+	hello_rss := measure_rss('${qvprod} ${voptions} -cc ${ccompiler} examples/hello_world.v',
+		'v hello.v RSS')
+
 	return Benchmark{
 		commit_hash: commit
 		message:     message
@@ -110,7 +115,80 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 		cgen_ms:     cgen
 		vlines:      vlines
 		lines_per_s: lines_per_s
+
+		self_rss_min_kb:  self_rss.min
+		self_rss_q1_kb:   self_rss.q1
+		self_rss_med_kb:  self_rss.med
+		self_rss_q3_kb:   self_rss.q3
+		self_rss_max_kb:  self_rss.max
+		hello_rss_min_kb: hello_rss.min
+		hello_rss_q1_kb:  hello_rss.q1
+		hello_rss_med_kb: hello_rss.med
+		hello_rss_q3_kb:  hello_rss.q3
+		hello_rss_max_kb: hello_rss.max
 	}
+}
+
+// RssStats is a five-number summary (KB) of peak RSS across several runs.
+struct RssStats {
+	min int
+	q1  int
+	med int
+	q3  int
+	max int
+}
+
+// measure_rss runs `cmd` rss_samples times, capturing each run's peak resident
+// set size, and returns the five-number summary (KB) for a box-and-whisker plot.
+fn measure_rss(cmd string, description string) RssStats {
+	elog('  Measuring ${description}, samples: ${rss_samples}')
+	mut vals := []int{}
+	for _ in 0 .. rss_samples {
+		kb := peak_rss_kb(cmd)
+		if kb > 0 {
+			vals << kb
+		}
+	}
+	if vals.len == 0 {
+		return RssStats{}
+	}
+	vals.sort()
+	n := vals.len
+	return RssStats{
+		min: vals[0]
+		q1:  vals[n / 4]
+		med: vals[n / 2]
+		q3:  vals[(3 * n) / 4]
+		max: vals[n - 1]
+	}
+}
+
+// peak_rss_kb runs `cmd` under the platform's `time` tool and returns the peak
+// resident set size in KB (0 if it cannot be determined, e.g. on unsupported OS).
+fn peak_rss_kb(cmd string) int {
+	tmp := os.join_path(os.temp_dir(), 'fast_rss.txt')
+	mut kb := i64(0)
+	$if macos {
+		// macOS `/usr/bin/time -l` prints "<bytes>  maximum resident set size" to stderr
+		os.system('/usr/bin/time -l ${cmd} 2>${os.quoted_path(tmp)}')
+		out := os.read_file(tmp) or { return 0 }
+		for line in out.split_into_lines() {
+			if line.contains('maximum resident set size') {
+				kb = line.trim_space().all_before(' ').i64() / 1024
+			}
+		}
+	} $else $if linux {
+		// GNU `/usr/bin/time -v` prints "Maximum resident set size (kbytes): <kb>"
+		os.system('/usr/bin/time -v ${cmd} 2>${os.quoted_path(tmp)}')
+		out := os.read_file(tmp) or { return 0 }
+		for line in out.split_into_lines() {
+			if line.contains('Maximum resident set size') {
+				kb = line.all_after(':').trim_space().i64()
+			}
+		}
+	}
+	os.rm(tmp) or {}
+	return int(kb)
 }
 
 // measure returns the average wall-clock time (ms) for `cmd`, discarding the
