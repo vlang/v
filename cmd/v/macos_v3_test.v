@@ -157,6 +157,7 @@ fn test_macos_v3_forwards_compatibility_c99_mode() {
 		forwarded := macos_v3_forwarded_args(prefs, ['main.v'])
 		assert macos_v3_compat_c99_flag in forwarded
 		assert '-nocache' in forwarded
+		assert '-no-parallel' !in forwarded
 		assert forwarded.count(it == macos_v3_compat_c99_flag) == 1
 		already_present := macos_v3_forwarded_args(prefs, [macos_v3_compat_c99_flag, 'main.v'])
 		assert already_present.count(it == macos_v3_compat_c99_flag) == 1

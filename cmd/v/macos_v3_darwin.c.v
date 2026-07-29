@@ -244,11 +244,6 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings {
 		forwarded_args.insert(0, '-silent')
 	}
-	// Serial stages keep cold-cache builds of larger programs below V3's
-	// physical-memory safety limit.
-	if '-no-parallel' !in forwarded_args {
-		forwarded_args.insert(0, '-no-parallel')
-	}
 	// An embedded V3 driver cannot restart itself by replacing the cmd/v process.
 	// Keep its first in-process rollout monolithic until cache invalidation can
 	// restart the driver through an ordinary function return.

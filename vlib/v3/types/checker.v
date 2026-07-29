@@ -713,6 +713,7 @@ mut:
 	// direct_parent_id.
 	direct_parent_ids           []flat.NodeId
 	direct_parent_index_trusted bool
+	has_goto_nodes              bool
 	// Immutable declaration indexes shared by checker workers.
 	declaration_attributes       map[int][]string
 	type_declaration_ids         map[string][]int
@@ -996,6 +997,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		top_level_idx_nodes_len:            tc.top_level_idx_nodes_len
 		direct_parent_ids:                  tc.direct_parent_ids
 		direct_parent_index_trusted:        tc.direct_parent_index_trusted
+		has_goto_nodes:                     tc.has_goto_nodes
 		declaration_attributes:             tc.declaration_attributes
 		type_declaration_ids:               tc.type_declaration_ids
 		strings_builder_bindings:           tc.strings_builder_bindings
@@ -1317,7 +1319,11 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 fn (mut tc TypeChecker) build_direct_parent_index(a &flat.FlatAst) {
 	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
 	tc.declaration_attributes = map[int][]string{}
+	tc.has_goto_nodes = false
 	for parent_idx, node in a.nodes {
+		if node.kind == .goto_stmt {
+			tc.has_goto_nodes = true
+		}
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
 			decl_id := node.value['@attributes:'.len..].int()
 			if decl_id >= 0 && decl_id < a.nodes.len {
@@ -1428,6 +1434,19 @@ fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
 			if int(child) >= 0 {
 				tc.enclosing_generic_params_by_node[int(child)] = node.generic_params()
 			}
+		}
+	}
+}
+
+fn (mut tc TypeChecker) cache_fn_generic_params(a &flat.FlatAst) {
+	for idx in tc.top_level_idx {
+		node := a.nodes[idx]
+		if node.kind != .fn_decl {
+			continue
+		}
+		params := tc.infer_decl_generic_param_names(node)
+		if params.len > 0 {
+			tc.enclosing_generic_params_by_node[idx] = params
 		}
 	}
 }
@@ -2446,6 +2465,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		}
 	}
 	tc.check_alias_declaration_cycles()
+	tc.cache_fn_generic_params(a)
 	// Pass 1 can parse callback aliases before later modules with same-named
 	// types have been indexed. Rebuild name-derived caches from the complete
 	// declaration table before collecting concrete signatures in pass 2.
@@ -6873,6 +6893,9 @@ fn (tc &TypeChecker) fn_declaration_source_signature(node flat.Node, pos token.P
 }
 
 fn (mut tc TypeChecker) check_goto_labels() {
+	if !tc.has_goto_nodes {
+		return
+	}
 	for index in tc.top_level_idx {
 		node := tc.a.node(flat.NodeId(index))
 		if node.kind == .fn_decl {
@@ -18116,6 +18139,18 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 	if name.len == 0 || !tc.valid_node_id(id) {
 		return false
 	}
+	if tc.direct_parent_index_trusted {
+		mut current := id
+		for tc.valid_node_id(current) {
+			node := tc.a.nodes[int(current)]
+			if node.kind == .fn_decl {
+				params := tc.enclosing_generic_params_by_node[int(current)] or { return false }
+				return name in params
+			}
+			current = tc.direct_parent_id(current)
+		}
+		return false
+	}
 	node := tc.a.nodes[int(id)]
 	file := tc.a.source_files[node.pos.id] or { return false }
 	source := tc.source_texts_by_file[file.name] or { return false }
@@ -21714,6 +21749,9 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 	idx := int(id)
 	if idx >= 0 && idx < tc.direct_parent_ids.len {
 		parent_id := tc.direct_parent_ids[idx]
+		if tc.direct_parent_index_trusted {
+			return parent_id
+		}
 		if parent_id != flat.empty_node {
 			parent := tc.a.node(parent_id)
 			for i in 0 .. parent.children_count {
@@ -21721,11 +21759,6 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 					return parent_id
 				}
 			}
-		} else if tc.direct_parent_index_trusted {
-			// The parsed AST does not change during semantic checking, so an
-			// indexed missing parent is definitive. Later transform stages can
-			// rewire existing nodes and therefore retain the scan fallback.
-			return flat.empty_node
 		}
 	}
 	for parent_idx, candidate in tc.a.nodes {

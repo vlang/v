@@ -44,6 +44,7 @@ const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
+const embedded_parallel_transform_node_limit = 100_000
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -4198,7 +4199,7 @@ pub fn run(args []string) {
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	// Cache markers and scoped output are stable across ordered worker chunks, so cached
 	// and preallocated builds use the same parallel function-body generator.
-	cache_no_parallel_cgen := current_no_parallel
+	mut cache_no_parallel_cgen := current_no_parallel
 	mut p := parser.Parser.new(prefs)
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
@@ -4336,6 +4337,14 @@ pub fn run(args []string) {
 			}
 		}
 		exit(1)
+	}
+	// Embedded V3 keeps Cgen serial for deterministic C output. Parallel
+	// transform is also disabled for larger imports to stay below 2 GiB.
+	if !current_no_parallel && os.getenv(v3_embedded_env) == '1' {
+		cache_no_parallel_cgen = true
+		if a.nodes.len >= embedded_parallel_transform_node_limit {
+			current_parallel_transform = false
+		}
 	}
 	// Parsing workers canonicalize source-backed node text before their buffers
 	// are released. Metadata keys are finalized here before semantic phases begin.
