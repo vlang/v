@@ -23,6 +23,12 @@ struct CheckWorkItem {
 	rank     i64
 }
 
+struct UnusedFnVarCandidate {
+	name   string
+	lhs_id flat.NodeId
+	rhs_id flat.NodeId
+}
+
 $if !windows {
 	struct CheckChunkArgs {
 		worker        voidptr
@@ -938,6 +944,8 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	if tc.checker_fixture_mode {
 		tc.record_lambda_capture_errors(node)
 	}
+	mut candidates := []UnusedFnVarCandidate{}
+	mut candidate_names := map[string]bool{}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -957,9 +965,6 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 					|| lhs.value.starts_with('_') {
 					continue
 				}
-				if tc.fn_body_reads_ident(node, lhs.value, lhs_id) {
-					continue
-				}
 				rhs_id := if rhs_count == 1 {
 					tc.multi_assign_rhs_id(current, 0)
 				} else if lhs_index < rhs_count {
@@ -967,17 +972,32 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 				} else {
 					flat.empty_node
 				}
-				if tc.expr_subtree_has_error_except(rhs_id, .if_branch_mismatch)
-					&& !tc.expr_subtree_allows_unused_warning(rhs_id) {
-					continue
+				candidates << UnusedFnVarCandidate{
+					name:   lhs.value
+					lhs_id: lhs_id
+					rhs_id: rhs_id
 				}
-				tc.record_warning_at(.unknown_ident, 'unused variable: `${lhs.value}`', lhs_id,
-					tc.node_value_diagnostic_pos(lhs_id))
+				candidate_names[lhs.value] = true
 			}
 		}
 		for i in 0 .. current.children_count {
 			stack << tc.a.child(current, i)
 		}
+	}
+	if candidates.len == 0 {
+		return
+	}
+	used_names := tc.fn_body_read_names(node, candidate_names)
+	for candidate in candidates {
+		if used_names[candidate.name] {
+			continue
+		}
+		if tc.expr_subtree_has_error_except(candidate.rhs_id, .if_branch_mismatch)
+			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
+			continue
+		}
+		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`',
+			candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
 	}
 }
 
@@ -1252,7 +1272,11 @@ fn (tc &TypeChecker) expr_subtree_allows_unused_warning(id flat.NodeId) bool {
 		&& it.msg.contains('` must specify type parameter'))))
 }
 
-fn (tc &TypeChecker) fn_body_reads_ident(node flat.Node, name string, decl_id flat.NodeId) bool {
+fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[string]bool) map[string]bool {
+	leave_lambda := flat.NodeId(-2)
+	mut used_names := map[string]bool{}
+	mut shadow_depth := map[string]int{}
+	mut shadow_names := []string{}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -1262,39 +1286,49 @@ fn (tc &TypeChecker) fn_body_reads_ident(node flat.Node, name string, decl_id fl
 	}
 	for stack.len > 0 {
 		id := stack.pop()
+		if id == leave_lambda {
+			shadow_depth[shadow_names.pop()]--
+			continue
+		}
 		current := tc.a.node(id)
 		if current.kind == .lambda_expr {
 			if tc.checker_fixture_mode {
 				continue
 			}
 			if current.children_count > 0 {
-				mut shadows_name := false
 				for i in 0 .. current.children_count - 1 {
 					param := tc.a.child_node(current, i)
-					if param.kind == .ident && param.value == name {
-						shadows_name = true
-						break
+					if param.kind == .ident && candidate_names[param.value] {
+						shadow_depth[param.value]++
+						shadow_names << param.value
+						stack << leave_lambda
 					}
 				}
-				if !shadows_name {
-					stack << tc.a.child(current, current.children_count - 1)
-				}
+				stack << tc.a.child(current, current.children_count - 1)
 			}
 			continue
 		}
-		if id != decl_id && current.kind == .ident && current.value == name {
-			return true
+		if current.kind == .ident && candidate_names[current.value]
+			&& shadow_depth[current.value] == 0 {
+			used_names[current.value] = true
 		}
-		if current.kind == .sql_expr && sql_text_contains_ident(current.value, name) {
-			return true
-		}
-		if current.kind == .comptime_if && type_text_contains_symbol(current.value, name) {
-			return true
-		}
-		if current.kind == .array_init {
-			if bound := fixed_array_bound_text(current.typ) {
-				if bound == name || type_text_contains_symbol(bound, name) {
-					return true
+		if current.kind in [.sql_expr, .comptime_if, .array_init] {
+			for name, _ in candidate_names {
+				if shadow_depth[name] > 0 || used_names[name] {
+					continue
+				}
+				if (current.kind == .sql_expr && sql_text_contains_ident(current.value, name))
+					|| (current.kind == .comptime_if
+					&& type_text_contains_symbol(current.value, name)) {
+					used_names[name] = true
+					continue
+				}
+				if current.kind == .array_init {
+					if bound := fixed_array_bound_text(current.typ) {
+						if bound == name || type_text_contains_symbol(bound, name) {
+							used_names[name] = true
+						}
+					}
 				}
 			}
 		}
@@ -1314,7 +1348,7 @@ fn (tc &TypeChecker) fn_body_reads_ident(node flat.Node, name string, decl_id fl
 			stack << tc.a.child(current, i)
 		}
 	}
-	return false
+	return used_names
 }
 
 fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
