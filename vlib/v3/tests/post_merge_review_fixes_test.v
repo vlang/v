@@ -8328,6 +8328,59 @@ fn main() {
 	assert out == ''
 }
 
+fn test_recursive_str_preserves_multi_return_slots_and_aggregate_clones() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_multi_return_slot_provenance', 'struct Item {}
+
+fn carry(item Item) (Item, int) {
+	return item, 0
+}
+
+fn (item Item) str() string {
+	copy, _ := carry(item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_multi_return_assign_slot_provenance', 'struct Item {}
+
+fn carry(item Item) (Item, int) {
+	return item, 0
+}
+
+fn (item Item) str() string {
+	mut copy := Item{}
+	copy, _ = carry(item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_clone_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	copies := [item].clone()
+	return copies[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_map_clone_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	copies := {"self": item}.clone()
+	return copies["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
 fn test_recursive_str_noreturn_branch_does_not_fall_through() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'recursive_str_noreturn_branch', '@[noreturn]

@@ -31,7 +31,13 @@ struct RecursiveStrParamLoopFlow {
 struct RecursiveStrReturnedParam {
 	name     string
 	index    int
+	slot     int
 	value_id flat.NodeId
+}
+
+struct RecursiveStrAssignmentValue {
+	binding RecursiveStrBinding
+	rhs_id  flat.NodeId
 }
 
 struct RecursiveStrBinding {
@@ -223,22 +229,19 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 	match node.kind {
 		.decl_assign {
 			lhs_ids := tc.multi_assign_lhs_ids(*node)
-			rhs_count := tc.multi_assign_rhs_count(*node)
+			values := tc.recursive_str_assignment_values(*node, lhs_ids.len, mut env, ctx)
 			for i, lhs_id in lhs_ids {
-				lhs := tc.a.node(lhs_id)
-				rhs_id := if rhs_count == 1 {
-					tc.multi_assign_rhs_id(*node, 0)
-				} else if i < rhs_count {
-					tc.multi_assign_rhs_id(*node, i)
-				} else {
-					flat.empty_node
+				if i >= values.len {
+					break
 				}
-				mut binding := tc.recursive_str_eval_expr(rhs_id, mut env, ctx)
+				lhs := tc.a.node(lhs_id)
+				value := values[i]
+				mut binding := value.binding
 				if lhs.kind != .ident || lhs.value == '_' {
 					continue
 				}
-				if binding.typ_name.len == 0 && tc.valid_node_id(rhs_id) {
-					binding.typ_name = tc.resolve_type(rhs_id).name()
+				if binding.typ_name.len == 0 && tc.valid_node_id(value.rhs_id) {
+					binding.typ_name = tc.resolve_type(value.rhs_id).name()
 				}
 				if binding.storage_id == 0 {
 					binding.storage_id = env.next_storage_id
@@ -249,14 +252,18 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 			return true
 		}
 		.assign {
-			if node.children_count >= 2 {
-				lhs_id := tc.a.child(node, 0)
-				rhs_id := tc.a.child(node, node.children_count - 1)
-				mut binding := tc.recursive_str_eval_expr(rhs_id, mut env, ctx)
+			lhs_ids := tc.multi_assign_lhs_ids(*node)
+			values := tc.recursive_str_assignment_values(*node, lhs_ids.len, mut env, ctx)
+			for i, lhs_id in lhs_ids {
+				if i >= values.len {
+					break
+				}
+				value := values[i]
+				mut binding := value.binding
 				lhs := tc.a.node(lhs_id)
 				if lhs.kind == .ident {
 					if binding.typ_name.len == 0 {
-						binding.typ_name = tc.resolve_type(rhs_id).name()
+						binding.typ_name = tc.resolve_type(value.rhs_id).name()
 					}
 					if binding.storage_id == 0 {
 						binding.storage_id = env.next_storage_id
@@ -264,7 +271,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 					}
 					env.bindings[lhs.value] = binding
 				} else {
-					tc.recursive_str_apply_mutation(lhs_id, rhs_id, node.op, mut env)
+					tc.recursive_str_apply_mutation(lhs_id, value.rhs_id, node.op, mut env)
 				}
 			}
 			return true
@@ -361,6 +368,52 @@ fn (mut tc TypeChecker) recursive_str_process_comptime_if_stmt(node flat.Node, m
 	}
 	env = tc.recursive_str_merge_envs(branch_envs)
 	return true
+}
+
+fn (mut tc TypeChecker) recursive_str_assignment_values(node flat.Node, lhs_count int, mut env RecursiveStrEnv, ctx RecursiveStrContext) []RecursiveStrAssignmentValue {
+	rhs_count := tc.multi_assign_rhs_count(node)
+	if rhs_count == 0 {
+		return []
+	}
+	if rhs_count == 1 {
+		rhs_id := tc.multi_assign_rhs_id(node, 0)
+		result := tc.recursive_str_eval_expr(rhs_id, mut env, ctx)
+		if lhs_count > 1 {
+			if multi := multi_return_payload_type(tc.resolve_type(rhs_id)) {
+				mut values := []RecursiveStrAssignmentValue{cap: lhs_count}
+				for i in 0 .. lhs_count {
+					mut binding := if i < result.elements.len {
+						result.elements[i]
+					} else {
+						RecursiveStrBinding{}
+					}
+					if binding.typ_name.len == 0 && i < multi.types.len {
+						binding.typ_name = multi.types[i].name()
+					}
+					values << RecursiveStrAssignmentValue{
+						binding: binding
+						rhs_id:  rhs_id
+					}
+				}
+				return values
+			}
+		}
+		return [
+			RecursiveStrAssignmentValue{
+				binding: result
+				rhs_id:  rhs_id
+			},
+		]
+	}
+	mut values := []RecursiveStrAssignmentValue{cap: int_min(lhs_count, rhs_count)}
+	for i in 0 .. int_min(lhs_count, rhs_count) {
+		rhs_id := tc.multi_assign_rhs_id(node, i)
+		values << RecursiveStrAssignmentValue{
+			binding: tc.recursive_str_eval_expr(rhs_id, mut env, ctx)
+			rhs_id:  rhs_id
+		}
+	}
+	return values
 }
 
 fn (mut tc TypeChecker) recursive_str_process_select_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
@@ -1166,6 +1219,11 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		tc.recursive_str_eval_invoked_closure(closure_id, callee_binding, arg_bindings, mut env,
 			ctx)
 	}
+	if tc.recursive_str_call_preserves_aggregate_elements(id, *callee, receiver_binding) {
+		mut returned := receiver_binding
+		returned.typ_name = tc.resolve_type(id).name()
+		return returned
+	}
 	if mut returned := tc.recursive_str_call_return_binding(id, env) {
 		if returned.typ_name.len == 0 {
 			returned.typ_name = tc.resolve_type(id).name()
@@ -1175,6 +1233,17 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	return RecursiveStrBinding{
 		typ_name: tc.resolve_type(id).name()
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_call_preserves_aggregate_elements(id flat.NodeId, callee flat.Node, receiver RecursiveStrBinding) bool {
+	if receiver.elements.len == 0 || callee.kind != .selector || callee.value != 'clone' {
+		return false
+	}
+	if resolved := tc.resolved_call_name(id) {
+		return resolved in ['array.clone', 'map.clone']
+	}
+	return callee.children_count > 0
+		&& unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(&callee, 0)))) is Map
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_invoked_helper(call_id flat.NodeId, receiver RecursiveStrBinding, args []RecursiveStrBinding, env RecursiveStrEnv, ctx RecursiveStrContext) {
@@ -2189,16 +2258,16 @@ fn (tc &TypeChecker) recursive_str_returned_params(decl flat.Node) ?[]RecursiveS
 			continue
 		}
 		if node.kind == .return_stmt {
-			if node.children_count != 1 {
-				continue
-			}
-			value_id := tc.a.child(node, 0)
-			name := tc.recursive_str_returned_param_root(value_id) or { continue }
-			index := params[name] or { continue }
-			returned << RecursiveStrReturnedParam{
-				name:     name
-				index:    index
-				value_id: value_id
+			for slot in 0 .. node.children_count {
+				value_id := tc.a.child(node, slot)
+				name := tc.recursive_str_returned_param_root(value_id) or { continue }
+				index := params[name] or { continue }
+				returned << RecursiveStrReturnedParam{
+					name:     name
+					index:    index
+					slot:     slot
+					value_id: value_id
+				}
 			}
 			continue
 		}
@@ -2248,8 +2317,17 @@ fn (mut tc TypeChecker) recursive_str_call_return_binding(call_id flat.NodeId, e
 	for name, actual_id in actuals {
 		return_env.bindings[name] = tc.recursive_str_binding_for_expr(actual_id, env)
 	}
-	mut bindings := []RecursiveStrBinding{}
+	return_type := tc.resolve_type(call_id)
+	slot_count := if multi := multi_return_payload_type(return_type) {
+		multi.types.len
+	} else {
+		1
+	}
+	mut slot_bindings := [][]RecursiveStrBinding{len: slot_count}
 	for returned_param in returned {
+		if returned_param.slot >= slot_bindings.len {
+			continue
+		}
 		mut binding := tc.recursive_str_binding_for_expr(returned_param.value_id, return_env)
 		if _ := tc.recursive_str_direct_returned_ident(returned_param.value_id) {
 			effect := tc.recursive_str_guaranteed_param_effect(*decl, returned_param.index)
@@ -2267,12 +2345,27 @@ fn (mut tc TypeChecker) recursive_str_call_return_binding(call_id flat.NodeId, e
 				else {}
 			}
 		}
-		bindings << binding
+		slot_bindings[returned_param.slot] << binding
 	}
-	if bindings.len == 0 {
-		return none
+	if slot_count == 1 {
+		if slot_bindings[0].len == 0 {
+			return none
+		}
+		return tc.recursive_str_merge_bindings(slot_bindings[0])
 	}
-	return tc.recursive_str_merge_bindings(bindings)
+	multi := multi_return_payload_type(return_type) or { return none }
+	mut elements := []RecursiveStrBinding{cap: slot_count}
+	for i in 0 .. slot_count {
+		mut binding := tc.recursive_str_merge_bindings(slot_bindings[i])
+		if binding.typ_name.len == 0 {
+			binding.typ_name = multi.types[i].name()
+		}
+		elements << binding
+	}
+	return RecursiveStrBinding{
+		typ_name: return_type.name()
+		elements: elements
+	}
 }
 
 fn (mut tc TypeChecker) recursive_str_apply_call_mutations(call_id flat.NodeId, mut env RecursiveStrEnv) {
