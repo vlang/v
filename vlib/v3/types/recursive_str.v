@@ -266,8 +266,12 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 					binding.storage_id = env.next_storage_id
 					env.next_storage_id++
 				}
+				fact_value := tc.recursive_str_known_fact_value(value.rhs_id, env) or { '' }
 				tc.recursive_str_invalidate_value_facts(lhs_id, mut env)
 				env.bindings[lhs.value] = binding
+				if fact_value.len > 0 {
+					tc.recursive_str_set_value_fact(lhs.value, fact_value, true, mut env)
+				}
 			}
 			return true
 		}
@@ -289,8 +293,12 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 						binding.storage_id = env.next_storage_id
 						env.next_storage_id++
 					}
+					fact_value := tc.recursive_str_known_fact_value(value.rhs_id, env) or { '' }
 					tc.recursive_str_invalidate_value_facts(lhs_id, mut env)
 					env.bindings[lhs.value] = binding
+					if fact_value.len > 0 {
+						tc.recursive_str_set_value_fact(lhs.value, fact_value, true, mut env)
+					}
 				} else {
 					if node.op == .assign
 						&& tc.recursive_str_replace_aggregate_slot(lhs_id, binding, mut env) {
@@ -796,7 +804,7 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 				} else {
 					flat.empty_node
 				}
-				return tc.recursive_str_index_binding(base, index_id, id)
+				return tc.recursive_str_index_binding(base, index_id, id, env)
 			}
 		}
 		.array_literal, .array_init {
@@ -1189,7 +1197,7 @@ fn (mut tc TypeChecker) recursive_str_eval_array_expr(id flat.NodeId, node flat.
 	}
 }
 
-fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index_id flat.NodeId, result_id flat.NodeId) RecursiveStrBinding {
+fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index_id flat.NodeId, result_id flat.NodeId, env RecursiveStrEnv) RecursiveStrBinding {
 	if base.elements.len > 0 {
 		if base.element_keys.len == base.elements.len && '' !in base.element_keys {
 			if key := tc.recursive_str_constant_map_key(index_id) {
@@ -1204,7 +1212,7 @@ fn (tc &TypeChecker) recursive_str_index_binding(base RecursiveStrBinding, index
 		if base.repeated_element {
 			return base.elements[0]
 		}
-		if index := tc.recursive_str_constant_index(index_id) {
+		if index := tc.recursive_str_resolved_constant_index(index_id, env) {
 			if index >= 0 && index < base.elements.len {
 				return base.elements[index]
 			}
@@ -1271,6 +1279,17 @@ fn (tc &TypeChecker) recursive_str_constant_index(id flat.NodeId) ?int {
 		return tc.recursive_str_constant_index(tc.a.child(node, 0))
 	}
 	return none
+}
+
+fn (tc &TypeChecker) recursive_str_resolved_constant_index(id flat.NodeId, env RecursiveStrEnv) ?int {
+	if index := tc.recursive_str_constant_index(id) {
+		return index
+	}
+	value := tc.recursive_str_known_fact_value(id, env) or { return none }
+	if !value.starts_with('int:') || !value[4..].is_int() {
+		return none
+	}
+	return value[4..].int()
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_block_value(node flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
@@ -2103,10 +2122,32 @@ fn (tc &TypeChecker) recursive_str_literal_fact_value(id flat.NodeId) ?string {
 		return tc.recursive_str_literal_fact_value(tc.a.child(node, 0))
 	}
 	return match node.kind {
-		.bool_literal { 'bool:${node.value}' }
-		.enum_val { 'enum:${node.value}' }
-		else { none }
+		.bool_literal {
+			'bool:${node.value}'
+		}
+		.enum_val {
+			'enum:${node.value}'
+		}
+		.int_literal {
+			value := numeric_literal_i64(node.value) or { return none }
+			if value < min_int || value > max_int {
+				none
+			} else {
+				'int:${value}'
+			}
+		}
+		else {
+			none
+		}
 	}
+}
+
+fn (tc &TypeChecker) recursive_str_known_fact_value(id flat.NodeId, env RecursiveStrEnv) ?string {
+	if value := tc.recursive_str_literal_fact_value(id) {
+		return value
+	}
+	key := tc.recursive_str_value_expr_key(id) or { return none }
+	return env.known_values[key] or { none }
 }
 
 fn (tc &TypeChecker) recursive_str_set_value_fact(key string, value string, equal bool, mut env RecursiveStrEnv) {
@@ -2874,7 +2915,7 @@ fn (tc &TypeChecker) recursive_str_binding_for_expr(id flat.NodeId, env Recursiv
 				} else {
 					flat.empty_node
 				}
-				return tc.recursive_str_index_binding(base, index_id, id)
+				return tc.recursive_str_index_binding(base, index_id, id, env)
 			}
 		}
 		.array_literal, .array_init {

@@ -9424,3 +9424,50 @@ fn main() {
 ')
 	assert out == ''
 }
+
+fn test_recursive_str_resolves_constant_local_array_indexes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_constant_local_terminal_index', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return ""
+	}
+	items := [item, Item{
+		done: true
+	}]
+	index := 1
+	return items[index].str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert out == ''
+	run_bad(v3_bin, 'recursive_str_constant_local_receiver_index', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item, Item{}]
+	index := 0
+	return items[index].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_mutated_local_receiver_index', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item, Item{}]
+	mut index := 1
+	index--
+	return items[index].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
