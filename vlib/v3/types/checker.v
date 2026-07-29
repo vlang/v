@@ -408,6 +408,9 @@ mut:
 	capturing_fn_literal_local_owners map[string][]ScopeBindingOwner
 	capturing_fn_literal_local_depth  map[string]int
 	node_id                           int = -1
+	// Cached at node_id assignment: should_diagnose consults this per node,
+	// and deriving it re-parsed the function name on every call.
+	concrete_generic_receiver_specialization bool
 	mut_param_base_types              map[string]Type
 	mut_param_owners                  map[string]ScopeBindingOwner
 	mut_local_owners                  map[string]ScopeBindingOwner
@@ -467,6 +470,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		capturing_fn_literal_local_owners: src.capturing_fn_literal_local_owners.clone()
 		capturing_fn_literal_local_depth:  src.capturing_fn_literal_local_depth.clone()
 		node_id:                           src.node_id
+		concrete_generic_receiver_specialization: src.concrete_generic_receiver_specialization
 		mut_param_base_types:              src.mut_param_base_types.clone()
 		mut_param_owners:                  src.mut_param_owners.clone()
 		mut_local_owners:                  src.mut_local_owners.clone()
@@ -745,6 +749,9 @@ mut:
 	static_associated_fn_keys    map[string]bool
 	declaration_param_mutability map[string][]bool
 	strict_map_index_files       map[string]bool
+	// short fn name -> first declaring top-level node index, in declaration
+	// order (mirrors the expr_raw_fn_type_text scan's first-match rule).
+	fn_decl_short_name_ids map[string]int
 	// '${file}\x00${alias}' -> dotted import path, and '${file}\x00${last
 	// segment}' -> dotted import path (first import wins), replacing per-call
 	// scans over every top-level declaration.
@@ -911,6 +918,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		static_associated_fn_keys:               map[string]bool{}
 		declaration_param_mutability:            map[string][]bool{}
 		strict_map_index_files:                  map[string]bool{}
+		fn_decl_short_name_ids:                  map[string]int{}
 		file_import_alias_paths:                 map[string]string{}
 		file_import_suffix_paths:                map[string]string{}
 		struct_embed_receivers:                  map[string][]string{}
@@ -1045,6 +1053,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		static_associated_fn_keys:          tc.static_associated_fn_keys
 		declaration_param_mutability:       tc.declaration_param_mutability
 		strict_map_index_files:             tc.strict_map_index_files
+		fn_decl_short_name_ids:             tc.fn_decl_short_name_ids
 		file_import_alias_paths:            tc.file_import_alias_paths
 		file_import_suffix_paths:           tc.file_import_suffix_paths
 		struct_embed_receivers:             tc.struct_embed_receivers
@@ -1420,6 +1429,7 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 	tc.strict_map_index_files = map[string]bool{}
 	tc.file_import_alias_paths = map[string]string{}
 	tc.file_import_suffix_paths = map[string]string{}
+	tc.fn_decl_short_name_ids = map[string]int{}
 	mut module_name := ''
 	mut file_name := ''
 	for index in tc.top_level_idx {
@@ -1450,6 +1460,10 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 		}
 		if node.kind != .fn_decl {
 			continue
+		}
+		short_name := node.value.all_after_last('.')
+		if short_name !in tc.fn_decl_short_name_ids {
+			tc.fn_decl_short_name_ids[short_name] = index
 		}
 		qname := checker_qualified_fn_name(module_name, node.value)
 		mut param_mutability := []bool{}
@@ -34120,16 +34134,21 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) current_fn_is_concrete_generic_receiver_specialization() bool {
-	if tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len
-		|| tc.fn_context.generic_params.len > 0 {
+	return tc.fn_context.concrete_generic_receiver_specialization
+		&& tc.fn_context.generic_params.len == 0
+}
+
+// fn_value_is_concrete_generic_receiver_specialization derives the cached
+// FunctionCheckContext flag from a declaration name without allocating: the
+// receiver part (before the last dot) must be a concrete generic application
+// (`Box[int].clone`).
+fn fn_value_is_concrete_generic_receiver_specialization(value string) bool {
+	dot := value.last_index_u8(`.`)
+	if dot <= 1 || value[dot - 1] != `]` {
 		return false
 	}
-	node := tc.a.nodes[tc.fn_context.node_id]
-	if node.kind != .fn_decl || !node.value.contains('.') {
-		return false
-	}
-	receiver := node.value.all_before_last('.')
-	return receiver.contains('[') && receiver.ends_with(']')
+	open := value.index_u8(`[`)
+	return open >= 0 && open < dot
 }
 
 fn multiple_module_import_line_key(file_id int, line int) u64 {
@@ -36615,6 +36634,12 @@ fn visible_mutation_fn_names_match(actual string, declared string) bool {
 fn visible_mutation_fn_lookup_name(name string) string {
 	dot := name.last_index_u8(`.`)
 	if dot <= 0 {
+		return name
+	}
+	// Only a generic receiver (`Box[int].m`) changes the lookup name; skip the
+	// receiver substring allocation for the plain-method common case.
+	open := name.index_u8(`[`)
+	if open <= 0 || open >= dot {
 		return name
 	}
 	receiver := name[..dot]
@@ -46739,9 +46764,14 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 		}
 	}
 	if node.kind == .ident {
+		if index := tc.fn_decl_short_name_ids[node.value] {
+			return tc.fn_node_source_type_text(tc.a.node(flat.NodeId(index)))
+		}
+		// Declarations appended after collect (monomorphization) miss the
+		// index; scan them with an allocation-free suffix compare.
 		for index in tc.top_level_idx {
 			decl := tc.a.node(flat.NodeId(index))
-			if decl.kind == .fn_decl && decl.value.all_after_last('.') == node.value {
+			if decl.kind == .fn_decl && embedded_name_matches(node.value, decl.value) {
 				return tc.fn_node_source_type_text(decl)
 			}
 		}
