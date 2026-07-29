@@ -21,7 +21,7 @@ import log
 //                                           benchmark every <step>th commit of <year>,
 //                                           or the N most recent commits with -latest
 //   v run . seed                            insert demo rows (to preview the UI)
-//   v run . import <table.html> [...]       migrate old fast.vlang.io history
+//   v run . import [--since D] [--ref R] <table.html> [...]  migrate old history
 //   v run . export [-o <dir>]               render a static site for GitHub Pages
 //   v run . help
 
@@ -130,8 +130,10 @@ Commands:
                                      or the N most recent commits with -latest
   remeasure                          re-measure every stored commit (backfill new metrics)
   seed                               insert demo rows (to preview the UI)
-  import [--since YYYY-MM-DD] <table.html> [...]
+  import [--since YYYY-MM-DD] [--ref <ref>] <table.html> [...]
                                      migrate old fast.vlang.io history into fast.db
+                                     (--ref: the history the rows belong to;
+                                      defaults to the repo default branch)
   export [-o <dir>]                  render a static site (index.html + json) for GitHub Pages
   help                               show this help
 

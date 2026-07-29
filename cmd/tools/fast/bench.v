@@ -7,6 +7,37 @@ import os
 import time
 import arrays
 
+// history_ref_for_head returns the history (branch) that the current HEAD belongs
+// to. On a normal checkout that is the branch name; on a detached HEAD (common in
+// CI / pinned deployments) `--abbrev-ref` yields the literal `HEAD`, so resolve it
+// to the branch/history that contains the commit — preferring the repository
+// default — instead of the meaningless `HEAD`.
+fn history_ref_for_head() string {
+	branch := git(vdir, 'rev-parse --abbrev-ref HEAD')
+	if branch != 'HEAD' {
+		return branch
+	}
+	// detached: if HEAD is on the default branch's history, use that
+	default_ref := resolve_history_ref('')
+	if os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor HEAD ${os.quoted_path(default_ref)}').exit_code == 0 {
+		return default_ref
+	}
+	// otherwise pick a remote/local branch that contains the commit
+	for pattern in ['refs/remotes', 'refs/heads'] {
+		res :=
+			os.execute('git -C ${os.quoted_path(vdir)} for-each-ref --contains HEAD --format=%(refname) ${pattern}')
+		if res.exit_code == 0 {
+			for line in res.output.split_into_lines() {
+				r := line.trim_space()
+				if r != '' && !r.ends_with('/HEAD') {
+					return r
+				}
+			}
+		}
+	}
+	return 'HEAD' // truly unattached commit
+}
+
 // cmd_bench benchmarks the current HEAD of the main repo and stores the result.
 fn cmd_bench(args []string) ! {
 	commit := git(vdir, 'rev-parse HEAD')[..8]
@@ -15,8 +46,8 @@ fn cmd_bench(args []string) ! {
 	// first-parent history, so ordering by it preserves ancestry order.
 	ts := git(vdir, 'log -n1 --pretty=format:%ct ${commit}')
 	date := time.unix(ts.i64())
-	// the history this HEAD belongs to (branch name, or "HEAD" if detached)
-	head_ref := git(vdir, 'rev-parse --abbrev-ref HEAD')
+	// the history this HEAD belongs to (its branch, resolved even when detached)
+	head_ref := history_ref_for_head()
 	elog('Benchmarking HEAD ${commit} on ${head_ref} "${message}" (${date.format()})')
 
 	mut db := open_db()!

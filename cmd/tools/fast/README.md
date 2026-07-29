@@ -32,7 +32,7 @@ v run . remeasure                   # re-measure every stored commit (backfill n
                                     # metrics, e.g. RSS, onto existing rows)
 v run . export [-o <dir>]           # render the static site (index.html + json)
 v run . seed                        # insert demo rows, to preview the UI
-v run . import [--since YYYY-MM-DD] <table.html> [...]
+v run . import [--since YYYY-MM-DD] [--ref <ref>] <table.html> [...]
                                     # migrate old fast.vlang.io history into fast.db
 v run . help
 ```
@@ -62,6 +62,12 @@ so the dashboard does not start empty:
 `import` parses the old 14-column rows (timestamp, commit, message, v.c, v, …) and
 inserts them. It is idempotent — commits already in the database are skipped — so
 you can re-run it or point it at several files.
+
+Each database tracks a single git history; imported rows are tagged with it and
+mixing branches is rejected. By default the history is the repository's default
+branch (what the old fast.vlang.io tracked). Pass **`--ref <ref>`** if you are
+migrating a different history (e.g. `--ref origin/v3`) so later `run`/`bench`
+commands on that branch are accepted and unrelated branches are rejected.
 
 **Backfill the RSS charts.** The old data has no memory numbers, so imported rows
 have zeroes for every RSS field and the "RSS: self-compile"/"RSS: hello.v" charts

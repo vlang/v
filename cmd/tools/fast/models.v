@@ -122,6 +122,22 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	// single-row key/value store that holds this database's history identity
 	migrate_exec(mut db,
 		'CREATE TABLE IF NOT EXISTS fast_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')!
+	// Seed the history identity from existing rows so a database created by the
+	// previous version (which already tagged rows with git_ref) keeps its history
+	// and cannot be re-claimed for a different one. Reject if the rows already mix
+	// histories (more than one distinct ref after normalization).
+	rows := db.exec("SELECT DISTINCT git_ref FROM benchmarks WHERE git_ref != ''")!
+	mut norms := map[string]bool{}
+	for r in rows {
+		norms[normalize_ref(r.vals[0])] = true
+	}
+	if norms.len > 1 {
+		return error('cannot migrate fast.db: it already contains rows from multiple histories (${norms.keys().join(', ')})')
+	}
+	if norms.len == 1 {
+		safe := norms.keys()[0].replace("'", "''")
+		migrate_exec(mut db, "INSERT INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
+	}
 }
 
 // normalize_ref reduces a ref to a stable history identity so equivalent names
