@@ -8,6 +8,14 @@ mut:
 }
 
 fn pool_test_task(arg voidptr) voidptr {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		defer {
+			unsafe {
+				prealloc_scope_end(scope)
+			}
+		}
+	}
 	mut a := unsafe { &PoolTestArg(arg) }
 	a.value++
 	return unsafe { nil }
