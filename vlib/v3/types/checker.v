@@ -29447,6 +29447,9 @@ fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat
 }
 
 fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type) bool {
+	if tc.smartcasts.len == 0 {
+		return false
+	}
 	key := tc.expr_key(lhs_id)
 	if key.len == 0 {
 		return false
@@ -53795,6 +53798,10 @@ fn (tc &TypeChecker) expr_key_part(id flat.NodeId) string {
 
 // smartcast_type supports smartcast type handling for TypeChecker.
 fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
+	if tc.smartcasts.len == 0 {
+		// No active smartcasts: skip building the (allocating) selector key.
+		return none
+	}
 	key := tc.expr_key(id)
 	if key.len == 0 {
 		return none
