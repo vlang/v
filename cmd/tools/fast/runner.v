@@ -69,7 +69,7 @@ fn cmd_run(args []string) ! {
 		// benchmark the N most recent first-parent commits (newest last, so they
 		// are stored oldest-first)
 		res :=
-			os.execute('git -C ${os.quoted_path(vdir)} log ${ref} --first-parent -n ${latest} --pretty=format:%H')
+			os.execute('git -C ${os.quoted_path(vdir)} log ${os.quoted_path(ref)} --first-parent -n ${latest} --pretty=format:%H')
 		if res.exit_code != 0 {
 			return error('could not read history from `${ref}`: ${res.output.trim_space()}')
 		}
@@ -80,9 +80,12 @@ fn cmd_run(args []string) ! {
 		}
 		elog('benchmarking the ${selected.len} latest commits on ${ref}')
 	} else {
-		from := '${year}-01-01'
-		to := '${year + 1}-01-01'
-		log_cmd := 'git -C ${os.quoted_path(vdir)} log ${ref} --first-parent --reverse --since=${from} --until=${to} --pretty=format:%H'
+		// Anchor both boundaries at midnight: git reads a bare `2026-01-01` as that
+		// date at the current time of day, which drops early Jan 1 commits and shifts
+		// every Nth sample. The `T00:00:00` form has no space, so it stays shell-safe.
+		from := '${year}-01-01T00:00:00'
+		to := '${year + 1}-01-01T00:00:00'
+		log_cmd := 'git -C ${os.quoted_path(vdir)} log ${os.quoted_path(ref)} --first-parent --reverse --since=${from} --until=${to} --pretty=format:%H'
 		res := os.execute(log_cmd)
 		if res.exit_code != 0 {
 			return error('could not read history from `${ref}`: ${res.output.trim_space()}')

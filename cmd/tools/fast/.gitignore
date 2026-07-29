@@ -5,7 +5,7 @@ fast
 fast.db
 fast.db-shm
 fast.db-wal
-fast.log
+*.log
 
 # oldv helper binary (compiled on demand)
 oldv
