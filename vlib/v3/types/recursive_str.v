@@ -76,6 +76,8 @@ mut:
 	active_closure_ids map[int]bool
 	active_helper_ids  map[int]bool
 	defer_scopes       [][]flat.NodeId
+	known_values       map[string]string
+	excluded_values    map[string]map[string]bool
 }
 
 struct RecursiveStrLoopFlow {
@@ -103,6 +105,10 @@ fn (env &RecursiveStrEnv) clone_env() RecursiveStrEnv {
 	for scope in env.defer_scopes {
 		defer_scopes << scope.clone()
 	}
+	mut excluded_values := map[string]map[string]bool{}
+	for key, values in env.excluded_values {
+		excluded_values[key] = values.clone()
+	}
 	return RecursiveStrEnv{
 		bindings:           bindings
 		next_storage_id:    env.next_storage_id
@@ -110,6 +116,8 @@ fn (env &RecursiveStrEnv) clone_env() RecursiveStrEnv {
 		active_closure_ids: env.active_closure_ids.clone()
 		active_helper_ids:  env.active_helper_ids.clone()
 		defer_scopes:       defer_scopes
+		known_values:       env.known_values.clone()
+		excluded_values:    excluded_values
 	}
 }
 
@@ -258,6 +266,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 					binding.storage_id = env.next_storage_id
 					env.next_storage_id++
 				}
+				tc.recursive_str_invalidate_value_facts(lhs_id, mut env)
 				env.bindings[lhs.value] = binding
 			}
 			return true
@@ -280,6 +289,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 						binding.storage_id = env.next_storage_id
 						env.next_storage_id++
 					}
+					tc.recursive_str_invalidate_value_facts(lhs_id, mut env)
 					env.bindings[lhs.value] = binding
 				} else {
 					if node.op == .assign
@@ -635,8 +645,10 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 			block := tc.a.child_node(&node, i + 1)
 			if block.kind == .block {
 				if !condition_is_false {
+					mut branch_env := condition_env.clone_env()
+					tc.recursive_str_apply_condition_facts(child_id, true, mut branch_env)
 					flow := tc.recursive_str_process_loop_sequence(*block, 0, [
-						condition_env.clone_env(),
+						branch_env,
 					], ctx)
 					fallthrough << flow.fallthrough
 					breaks << flow.breaks
@@ -644,6 +656,7 @@ fn (mut tc TypeChecker) recursive_str_process_loop_if(node flat.Node, source Rec
 					returns << flow.returns
 				}
 				base = condition_env
+				tc.recursive_str_apply_condition_facts(child_id, false, mut base)
 				i += 2
 				if condition_is_true {
 					has_guaranteed_branch = true
@@ -1047,7 +1060,8 @@ fn (mut tc TypeChecker) recursive_str_eval_struct_update(id flat.NodeId, node fl
 		for j in 0 .. field.children_count {
 			tc.recursive_str_eval_expr(tc.a.child(field, j), mut env, ctx)
 		}
-		if binding.can_recurse && tc.recursive_str_struct_update_field_changes_base(base_id, *field) {
+		if binding.can_recurse
+			&& tc.recursive_str_struct_update_field_changes_base(base_id, *field, env) {
 			binding.progressed = true
 			binding.nonreversible_progress = true
 			binding.numeric_deltas = map[string]i64{}
@@ -1057,13 +1071,24 @@ fn (mut tc TypeChecker) recursive_str_eval_struct_update(id flat.NodeId, node fl
 	return binding
 }
 
-fn (tc &TypeChecker) recursive_str_struct_update_field_changes_base(base_id flat.NodeId, field flat.Node) bool {
+fn (tc &TypeChecker) recursive_str_struct_update_field_changes_base(base_id flat.NodeId, field flat.Node, env RecursiveStrEnv) bool {
 	if field.kind != .field_init || field.children_count == 0 || field.value.len == 0 {
 		return false
 	}
 	value_id := tc.a.child(&field, 0)
 	if tc.recursive_str_expr_matches_struct_field(value_id, base_id, field.value) {
 		return false
+	}
+	if value := tc.recursive_str_literal_fact_value(value_id) {
+		if base_key := tc.recursive_str_value_expr_key(base_id) {
+			field_key := '${base_key}.${field.value}'
+			if known := env.known_values[field_key] {
+				return known != value
+			}
+			if excluded := env.excluded_values[field_key] {
+				return excluded[value]
+			}
+		}
 	}
 	value := tc.a.node(value_id)
 	if value.kind != .infix || value.children_count < 2 {
@@ -1553,11 +1578,13 @@ fn (mut tc TypeChecker) recursive_str_process_if_stmt(id flat.NodeId, mut env Re
 			if tc.a.node(block_id).kind == .block {
 				if !condition_is_false {
 					mut branch_env := condition_env.clone_env()
+					tc.recursive_str_apply_condition_facts(child_id, true, mut branch_env)
 					if tc.recursive_str_process_stmt(block_id, mut branch_env, ctx) {
 						branch_envs << branch_env
 					}
 				}
 				base = condition_env
+				tc.recursive_str_apply_condition_facts(child_id, false, mut base)
 				i += 2
 				if condition_is_true {
 					has_guaranteed_branch = true
@@ -1655,6 +1682,7 @@ fn (mut tc TypeChecker) recursive_str_eval_if_expr(id flat.NodeId, mut env Recur
 			if block.kind == .block {
 				if !condition_is_false {
 					mut branch_env := condition_env.clone_env()
+					tc.recursive_str_apply_condition_facts(child_id, true, mut branch_env)
 					result := tc.recursive_str_eval_block_value(*block, mut branch_env, ctx)
 					if result.typ_name.len > 0 || result.can_recurse {
 						results << result
@@ -1662,6 +1690,7 @@ fn (mut tc TypeChecker) recursive_str_eval_if_expr(id flat.NodeId, mut env Recur
 					}
 				}
 				base = condition_env
+				tc.recursive_str_apply_condition_facts(child_id, false, mut base)
 				i += 2
 				if condition_is_true {
 					break
@@ -1741,6 +1770,137 @@ fn (mut tc TypeChecker) recursive_str_eval_condition(id flat.NodeId, mut env Rec
 	tc.recursive_str_eval_expr(id, mut env, ctx)
 }
 
+fn (tc &TypeChecker) recursive_str_apply_condition_facts(id flat.NodeId, truth bool, mut env RecursiveStrEnv) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		tc.recursive_str_apply_condition_facts(tc.a.child(node, 0), truth, mut env)
+		return
+	}
+	if node.kind == .prefix && node.op == .not && node.children_count > 0 {
+		tc.recursive_str_apply_condition_facts(tc.a.child(node, 0), !truth, mut env)
+		return
+	}
+	if node.kind == .infix && node.children_count >= 2 {
+		if node.op == .logical_and && truth {
+			tc.recursive_str_apply_condition_facts(tc.a.child(node, 0), true, mut env)
+			tc.recursive_str_apply_condition_facts(tc.a.child(node, 1), true, mut env)
+			return
+		}
+		if node.op == .logical_or && !truth {
+			tc.recursive_str_apply_condition_facts(tc.a.child(node, 0), false, mut env)
+			tc.recursive_str_apply_condition_facts(tc.a.child(node, 1), false, mut env)
+			return
+		}
+		if node.op in [.eq, .ne] {
+			lhs_id := tc.a.child(node, 0)
+			rhs_id := tc.a.child(node, 1)
+			equal := if node.op == .eq { truth } else { !truth }
+			if key := tc.recursive_str_condition_field_key(lhs_id) {
+				if value := tc.recursive_str_literal_fact_value(rhs_id) {
+					tc.recursive_str_set_value_fact(key, value, equal, mut env)
+					return
+				}
+			}
+			if key := tc.recursive_str_condition_field_key(rhs_id) {
+				if value := tc.recursive_str_literal_fact_value(lhs_id) {
+					tc.recursive_str_set_value_fact(key, value, equal, mut env)
+				}
+			}
+			return
+		}
+	}
+	if node.kind == .selector && tc.resolve_type(id).name() == 'bool' {
+		if key := tc.recursive_str_condition_field_key(id) {
+			tc.recursive_str_set_value_fact(key, 'bool:${truth}', true, mut env)
+		}
+	}
+}
+
+fn (tc &TypeChecker) recursive_str_condition_field_key(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.recursive_str_condition_field_key(tc.a.child(node, 0))
+	}
+	if node.kind != .selector {
+		return none
+	}
+	return tc.recursive_str_value_expr_key(id)
+}
+
+fn (tc &TypeChecker) recursive_str_value_expr_key(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.recursive_str_value_expr_key(tc.a.child(node, 0))
+	}
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.recursive_str_value_expr_key(tc.a.child(node, 0)) or { return none }
+		return '${base}.${node.value}'
+	}
+	return none
+}
+
+fn (tc &TypeChecker) recursive_str_literal_fact_value(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.recursive_str_literal_fact_value(tc.a.child(node, 0))
+	}
+	return match node.kind {
+		.bool_literal { 'bool:${node.value}' }
+		.enum_val { 'enum:${node.value}' }
+		else { none }
+	}
+}
+
+fn (tc &TypeChecker) recursive_str_set_value_fact(key string, value string, equal bool, mut env RecursiveStrEnv) {
+	if key.len == 0 || value.len == 0 {
+		return
+	}
+	if equal {
+		env.known_values[key] = value
+		env.excluded_values.delete(key)
+		return
+	}
+	if key in env.known_values {
+		return
+	}
+	mut excluded := if key in env.excluded_values {
+		env.excluded_values[key].clone()
+	} else {
+		map[string]bool{}
+	}
+	excluded[value] = true
+	env.excluded_values[key] = excluded.move()
+}
+
+fn (tc &TypeChecker) recursive_str_invalidate_value_facts(id flat.NodeId, mut env RecursiveStrEnv) {
+	key := tc.recursive_str_value_expr_key(id) or { return }
+	for fact_key in env.known_values.keys() {
+		if fact_key == key || fact_key.starts_with('${key}.') || key.starts_with('${fact_key}.') {
+			env.known_values.delete(fact_key)
+		}
+	}
+	for fact_key in env.excluded_values.keys() {
+		if fact_key == key || fact_key.starts_with('${key}.') || key.starts_with('${fact_key}.') {
+			env.excluded_values.delete(fact_key)
+		}
+	}
+}
+
 fn (tc &TypeChecker) recursive_str_merge_envs(envs []RecursiveStrEnv) RecursiveStrEnv {
 	if envs.len == 0 {
 		return RecursiveStrEnv{}
@@ -1791,6 +1951,40 @@ fn (tc &TypeChecker) recursive_str_merge_envs(envs []RecursiveStrEnv) RecursiveS
 			}
 		}
 		result.bindings[name] = tc.recursive_str_merge_bindings(bindings)
+	}
+	for key, value in envs[0].known_values {
+		mut is_shared := true
+		for env in envs[1..] {
+			if env.known_values[key] != value {
+				is_shared = false
+				break
+			}
+		}
+		if is_shared {
+			result.known_values[key] = value
+		}
+	}
+	for key, values in envs[0].excluded_values {
+		mut shared_values := map[string]bool{}
+		for value, _ in values {
+			mut is_shared := true
+			for env in envs[1..] {
+				if key !in env.excluded_values {
+					is_shared = false
+					break
+				}
+				if !env.excluded_values[key][value] {
+					is_shared = false
+					break
+				}
+			}
+			if is_shared {
+				shared_values[value] = true
+			}
+		}
+		if shared_values.len > 0 {
+			result.excluded_values[key] = shared_values.move()
+		}
 	}
 	return result
 }
@@ -1941,6 +2135,7 @@ fn (tc &TypeChecker) recursive_str_apply_array_append(lhs_id flat.NodeId, rhs_id
 	} else {
 		binding.elements << rhs
 	}
+	tc.recursive_str_invalidate_value_facts(lhs_id, mut env)
 	env.bindings[lhs.value] = binding
 	return true
 }
@@ -1955,6 +2150,7 @@ fn (tc &TypeChecker) recursive_str_replace_aggregate_slot(target_id flat.NodeId,
 	if !tc.recursive_str_replace_aggregate_binding_slot(path, 0, rhs, mut binding) {
 		return false
 	}
+	tc.recursive_str_invalidate_value_facts(target_id, mut env)
 	env.bindings[name] = binding
 	return true
 }
@@ -2017,6 +2213,7 @@ fn (mut tc TypeChecker) recursive_str_apply_mutation(target_id flat.NodeId, rhs_
 		&& tc.source_text_for_node(target_id).trim_space() == tc.source_text_for_node(rhs_id).trim_space() {
 		return
 	}
+	tc.recursive_str_invalidate_value_facts(target_id, mut env)
 	if tc.recursive_str_expr_contains_index(target_id)
 		&& tc.recursive_str_apply_indexed_mutation(name, target_id, rhs_id, op, mut env) {
 		return
@@ -2425,7 +2622,7 @@ fn (tc &TypeChecker) recursive_str_binding_for_expr(id flat.NodeId, env Recursiv
 				for i in 1 .. node.children_count {
 					field := tc.a.child_node(node, i)
 					if binding.can_recurse
-						&& tc.recursive_str_struct_update_field_changes_base(base_id, *field) {
+						&& tc.recursive_str_struct_update_field_changes_base(base_id, *field, env) {
 						binding.progressed = true
 						binding.nonreversible_progress = true
 						binding.numeric_deltas = map[string]i64{}
@@ -2657,6 +2854,10 @@ fn (mut tc TypeChecker) recursive_str_apply_call_mutations(call_id flat.NodeId, 
 	if tc.recursive_str_decl_has_receiver(*decl) && callee.kind == .selector
 		&& callee.children_count > 0 {
 		receiver_id := tc.a.child(callee, 0)
+		receiver_param := tc.a.child_node(decl, 0)
+		if receiver_param.is_mut {
+			tc.recursive_str_invalidate_value_facts(receiver_id, mut env)
+		}
 		effect := tc.recursive_str_guaranteed_param_effect(*decl, 0)
 		source_binding := actual_bindings[effect.source_param] or { RecursiveStrBinding{} }
 		tc.recursive_str_apply_effect_to_target(receiver_id, effect, source_binding, mut env)
@@ -2672,6 +2873,7 @@ fn (mut tc TypeChecker) recursive_str_apply_call_mutations(call_id flat.NodeId, 
 		}
 		param := tc.a.child_node(decl, param_index)
 		if param.is_mut {
+			tc.recursive_str_invalidate_value_facts(arg_id, mut env)
 			effect := tc.recursive_str_guaranteed_param_effect(*decl, param_index)
 			source_binding := actual_bindings[effect.source_param] or { RecursiveStrBinding{} }
 			tc.recursive_str_apply_effect_to_target(arg_id, effect, source_binding, mut env)

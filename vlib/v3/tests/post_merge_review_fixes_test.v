@@ -8827,6 +8827,56 @@ fn main() {
 	assert loop_out == '1'
 }
 
+fn test_unsafe_map_alias_provenance_isolates_or_fallback() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_or_fallback_success_path', 'fn maybe(ok bool) ?int {
+	if ok {
+		return 1
+	}
+	return none
+}
+
+fn branch(ok bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	_ := maybe(ok) or {
+		alias = unsafe { original }
+		0
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(true)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_all_or_paths', 'fn maybe() ?int {
+	return none
+}
+
+fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := unsafe { first }
+	_ := maybe() or {
+		alias = unsafe { second }
+		0
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
 fn test_unsafe_map_alias_provenance_delays_defer_effects() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unsafe_map_alias_deferred_assignment', 'fn main() {
@@ -9049,6 +9099,70 @@ fn (item Item) str() string {
 	mut copy := item
 	advance(mut copy)
 	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_guarded_nonnumeric_struct_update_progress() {
+	v3_bin := build_v3()
+	bool_out := run_good(v3_bin, 'recursive_str_guarded_bool_struct_update', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return "done"
+	}
+	return Item{
+		...item
+		done: true
+	}.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert bool_out == 'done'
+	enum_out := run_good(v3_bin, 'recursive_str_guarded_enum_struct_update', 'enum State {
+	active
+	done
+}
+
+struct Item {
+	state State
+}
+
+fn (item Item) str() string {
+	if item.state == .done {
+		return "done"
+	}
+	return Item{
+		...item
+		state: .done
+	}.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert enum_out == 'done'
+	run_bad(v3_bin, 'recursive_str_guarded_bool_noop_struct_update', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if !item.done {
+		return "done"
+	}
+	return Item{
+		...item
+		done: true
+	}.str()
 }
 
 fn main() {}
