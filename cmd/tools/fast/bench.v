@@ -17,9 +17,12 @@ fn history_ref_for_head() string {
 	if branch != 'HEAD' {
 		return branch
 	}
-	// detached: if HEAD is on the default branch's history, use that
+	// detached: if HEAD is on the default branch's history, use that. Skip when the
+	// default is itself an unresolved `HEAD` (shallow checkout with no refs), since
+	// `merge-base --is-ancestor HEAD HEAD` trivially succeeds and would claim `HEAD`.
 	default_ref := resolve_history_ref('')
-	if os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor HEAD ${os.quoted_path(default_ref)}').exit_code == 0 {
+	if default_ref != 'HEAD'
+		&& os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor HEAD ${os.quoted_path(default_ref)}').exit_code == 0 {
 		return default_ref
 	}
 	// otherwise pick a remote/local branch that contains the commit

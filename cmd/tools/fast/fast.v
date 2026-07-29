@@ -147,6 +147,14 @@ fn cmd_seed() ! {
 	defer {
 		db.close() or {}
 	}
+	// Never mix synthetic demo rows with real benchmark data: refuse a non-empty
+	// database, and claim a distinct `seed-demo` history so a later real `run`/
+	// `bench` is rejected. Use a separate/empty database to preview the UI.
+	existing := load_benchmarks(db)!
+	if existing.len > 0 {
+		return error('fast.db already contains ${existing.len} rows; refusing to add demo data. Use a separate, empty database for `seed`.')
+	}
+	demo_ref := claim_history(mut db, 'seed-demo')!
 	base := time.new(year: 2026, month: 1, day: 5, hour: 12)
 	mut samples := [
 		Benchmark{
@@ -212,6 +220,7 @@ fn cmd_seed() ! {
 			continue
 		}
 		s.created_at = time.now()
+		s.git_ref = demo_ref
 		s.lines_per_s = if s.v_c_ms > 0 { int(f64(s.vlines) / f64(s.v_c_ms) * 1000.0) } else { 0 }
 		insert_benchmark(mut db, s)!
 		elog('seed: inserted ${s.commit_hash}')

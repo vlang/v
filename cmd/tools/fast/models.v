@@ -164,6 +164,14 @@ fn normalize_ref(ref string) string {
 // claim a different ref — exactly one INSERT wins and the loser sees the mismatch.
 fn claim_history(mut db sqlite.DB, ref string) !string {
 	norm := normalize_ref(ref)
+	// `HEAD` (or empty) is not a stable history identity — e.g. a detached shallow
+	// checkout with no origin/HEAD or master/main. Refuse it, since otherwise
+	// unrelated detached commits would all share the `HEAD` history and corrupt the
+	// ancestry-based chart. The user must check out a named branch or pass an
+	// explicit ref (`run -branch <ref>` / `import --ref <ref>`).
+	if norm == '' || norm == 'HEAD' {
+		return error('could not resolve a stable git history for this checkout (`${ref}`). Check out a named branch, or pass an explicit ref: `run -branch <ref>` / `import --ref <ref>`.')
+	}
 	safe := norm.replace("'", "''")
 	migrate_exec(mut db,
 		"INSERT OR IGNORE INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
