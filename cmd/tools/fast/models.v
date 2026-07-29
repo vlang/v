@@ -45,44 +45,77 @@ mut:
 // so calling this repeatedly is safe.
 fn open_db() !sqlite.DB {
 	mut db := sqlite.connect(db_path)!
-	// Close the just-opened connection if schema init fails (e.g. the db is
-	// locked), so the per-request open_db() callers do not leak file descriptors.
+	// Close the just-opened connection if schema init/migration fails (e.g. the db
+	// is locked), so the per-request open_db() callers do not leak file descriptors.
 	sql db {
 		create table Benchmark
 	} or {
 		db.close() or {}
 		return err
 	}
-	migrate_schema(mut db)
+	migrate_schema(mut db) or {
+		db.close() or {}
+		return err
+	}
 	return db
 }
 
-// migrate_schema upgrades a database created by an older version of the tool, so
-// upgrading does not require rebuilding fast.db. It is a no-op once applied.
-fn migrate_schema(mut db sqlite.DB) {
+// migrate_exec runs one migration statement and errors on any SQLite failure code
+// (locked, disk full, constraint, ...), so migration problems are not swallowed.
+fn migrate_exec(mut db sqlite.DB, query string) ! {
+	code := db.exec_none(query)
+	if code != sqlite.sqlite_ok && code != sqlite.sqlite_done {
+		return error('schema migration failed (sqlite code ${code}) for: ${query}')
+	}
+}
+
+// migrate_schema upgrades a database created by an older version of the tool. It
+// is transactional and idempotent (a no-op once applied), and propagates errors
+// so open_db() fails loudly rather than returning an inconsistent schema.
+fn migrate_schema(mut db sqlite.DB) ! {
 	// The migration finishes by creating this unique index; if it already exists,
 	// the database is up to date and there is nothing to do (avoids re-running the
 	// dedupe/DDL on every per-request open_db()).
-	if done := db.exec("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_benchmarks_commit_hash'") {
-		if done.len > 0 {
-			return
+	done :=
+		db.exec("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_benchmarks_commit_hash'")!
+	if done.len > 0 {
+		return
+	}
+	migrate_exec(mut db, 'BEGIN')!
+	apply_migration(mut db) or {
+		migrate_exec(mut db, 'ROLLBACK') or {}
+		return err
+	}
+	migrate_exec(mut db, 'COMMIT')!
+}
+
+fn apply_migration(mut db sqlite.DB) ! {
+	// Discover the existing columns so we only ALTER genuinely-missing ones — that
+	// way a failing ALTER is a real error, not the benign "duplicate column name".
+	info := db.exec('PRAGMA table_info(benchmarks)')!
+	mut existing := map[string]bool{}
+	for row in info {
+		if row.vals.len > 1 {
+			existing[row.vals[1]] = true // table_info column 1 is the name
 		}
 	}
-	// Add columns missing from older databases. Adding one that already exists just
-	// fails harmlessly (exec_none returns a code rather than throwing).
-	added_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
+	rss_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
 		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb',
 		'hello_rss_q3_kb', 'hello_rss_max_kb']
-	for c in added_columns {
-		db.exec_none('ALTER TABLE benchmarks ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0')
+	for c in rss_columns {
+		if c !in existing {
+			migrate_exec(mut db,
+				'ALTER TABLE benchmarks ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0')!
+		}
 	}
 	// A database created before commit_hash gained @[unique] has no uniqueness
 	// enforcement (CREATE TABLE IF NOT EXISTS won't add it), so overlapping runs
 	// could insert duplicate commits and the ORM upsert's ON CONFLICT would have no
-	// index to target. Deduplicate (keep the newest row per hash) and add a unique
-	// index, which both enforces uniqueness and backs the upsert.
-	db.exec_none('DELETE FROM benchmarks WHERE id NOT IN (SELECT MAX(id) FROM benchmarks GROUP BY commit_hash)')
-	db.exec_none('CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_commit_hash ON benchmarks(commit_hash)')
+	// index to target. Deduplicate (keep the newest row per hash) and add the index.
+	migrate_exec(mut db,
+		'DELETE FROM benchmarks WHERE id NOT IN (SELECT MAX(id) FROM benchmarks GROUP BY commit_hash)')!
+	migrate_exec(mut db,
+		'CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_commit_hash ON benchmarks(commit_hash)')!
 }
 
 fn insert_benchmark(mut db sqlite.DB, b Benchmark) ! {
