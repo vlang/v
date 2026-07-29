@@ -9523,3 +9523,69 @@ fn main() {
 ')
 	assert out == ''
 }
+
+fn test_recursive_str_detects_explicit_aggregate_stringification() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_explicit_array_str', 'struct Item {}
+
+fn (item Item) str() string {
+	values := [item]
+	return values.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_explicit_map_str', 'struct Item {}
+
+fn (item Item) str() string {
+	values := {
+		"item": item
+	}
+	return values.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_explicit_array_str_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	values := [next]
+	return values.str()
+}
+
+fn main() {
+	_ = Item{
+		remaining: 2
+	}.str()
+}
+')
+	assert out == ''
+	custom_out := run_good(v3_bin, 'recursive_str_custom_array_alias_str', 'struct Item {}
+
+type Items = []Item
+
+fn (items Items) str() string {
+	return "safe"
+}
+
+fn (item Item) str() string {
+	values := Items([item])
+	return values.str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert custom_out == 'safe'
+}

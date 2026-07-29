@@ -1356,9 +1356,12 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 	} else {
 		callee_binding = tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
 	}
-	if callee.kind == .selector && callee.value == 'str' && receiver_binding.can_recurse
-		&& !receiver_binding.progressed
-		&& tc.recursive_str_call_targets_current(id, receiver_id, receiver_binding, env.active_helper_ids.len > 0, ctx) {
+	direct_recursive_receiver := receiver_binding.can_recurse && !receiver_binding.progressed
+		&& tc.recursive_str_call_targets_current(id, receiver_id, receiver_binding, env.active_helper_ids.len > 0, ctx)
+	nested_recursive_receiver := tc.recursive_str_call_formats_nested_aggregate(id, receiver_id,
+		receiver_binding)
+	if callee.kind == .selector && callee.value == 'str'
+		&& (direct_recursive_receiver || nested_recursive_receiver) {
 		pos := tc.method_call_name_pos(*node, *callee)
 		message := 'cannot call `str()` method recursively'
 		if !tc.errors.any(it.msg == message && it.pos == pos) {
@@ -1424,6 +1427,19 @@ fn (tc &TypeChecker) recursive_str_is_builtin_print_call(id flat.NodeId, callee 
 		return resolved.len == 0 || is_print_style_fn_name(resolved)
 	}
 	return true
+}
+
+fn (tc &TypeChecker) recursive_str_call_formats_nested_aggregate(call_id flat.NodeId, receiver_id flat.NodeId, receiver RecursiveStrBinding) bool {
+	if !recursive_str_binding_has_unprogressed_receiver(receiver) {
+		return false
+	}
+	if resolved := tc.resolved_call_name(call_id) {
+		if tc.recursive_str_has_concrete_fn_decl(resolved) {
+			return false
+		}
+	}
+	receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
+	return receiver_type is Array || receiver_type is ArrayFixed || receiver_type is Map
 }
 
 fn (tc &TypeChecker) recursive_str_call_preserves_aggregate_elements(id flat.NodeId, callee flat.Node, receiver RecursiveStrBinding) bool {
