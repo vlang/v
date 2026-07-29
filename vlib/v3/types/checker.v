@@ -16911,7 +16911,9 @@ fn (mut tc TypeChecker) check_assert_stmt(node flat.Node) {
 	tc.check_node(condition_id)
 	if node.children_count > 1 {
 		message_id := tc.a.child(&node, 1)
+		unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
 		tc.check_node(message_id)
+		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
 		message_type := tc.resolve_type(message_id)
 		if !unalias_type(message_type).is_string() {
 			tc.record_error_at(.condition_mismatch, 'assert allows only a single string as its second argument, but found `${tc.diagnostic_expr_type_name(message_id,

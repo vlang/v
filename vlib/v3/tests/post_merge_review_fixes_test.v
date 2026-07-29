@@ -8666,6 +8666,38 @@ fn test_map_rebind_clears_unsafe_alias_provenance() {
 		'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
+fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_assert_message_assignment', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	assert true, unsafe {
+		alias = original
+		"failed"
+	}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_assert_message_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	assert true, unsafe {
+		alias = map[string]int{}
+		"failed"
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
 fn test_fresh_unsafe_map_is_not_reference_alias() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'fresh_unsafe_map_is_not_reference_alias', 'fn main() {
