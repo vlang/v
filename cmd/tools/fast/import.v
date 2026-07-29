@@ -85,7 +85,9 @@ fn import_table_html(mut db sqlite.DB, html string, since i64, git_ref string) !
 			continue
 		}
 		commit := cells[1].trim_space()
-		if commit == '' || benchmark_exists(db, commit) {
+		// Only accept a real hex commit hash. A crafted HTML file could otherwise put
+		// shell metacharacters here, which later reach `git`/`oldv` shell commands.
+		if !is_commit_hash(commit) || benchmark_exists(db, commit) {
 			continue
 		}
 		// The old table timestamp was Git's author date (%at), which is not
@@ -159,11 +161,27 @@ fn unescape_html(s string) string {
 	return s.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').trim_space()
 }
 
+// is_commit_hash reports whether `s` looks like an abbreviated or full git commit
+// hash (7-40 hex chars), used to reject untrusted commit cells before they reach
+// any shell command.
+fn is_commit_hash(s string) bool {
+	if s.len < 7 || s.len > 40 {
+		return false
+	}
+	for c in s {
+		if !(c.is_hex_digit()) {
+			return false
+		}
+	}
+	return true
+}
+
 // committer_date_for recovers the committer date (%ct) of `commit` from the local
 // checkout, giving imported rows the same monotonic ordering key as sampled ones.
 // Returns `fallback` (the old table timestamp) when the commit cannot be resolved.
 fn committer_date_for(commit string, fallback time.Time) time.Time {
-	res := os.execute('git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:%ct ${commit}')
+	res :=
+		os.execute('git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:%ct ${os.quoted_path(commit)}')
 	if res.exit_code == 0 {
 		ts := res.output.trim_space().i64()
 		if ts > 0 {

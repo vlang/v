@@ -48,8 +48,10 @@ fn serve(args []string) ! {
 // index renders the main dashboard: a chart plus the full benchmark history.
 pub fn (mut app App) index(mut ctx Context) veb.Result {
 	mut db := open_db() or { return ctx.server_error('database error: ${err}') }
+	defer {
+		db.close() or {}
+	}
 	list := load_benchmarks(db) or { return ctx.server_error('database error: ${err}') }
-	db.close() or {}
 
 	rows := build_rows(list)
 	count := rows.len
@@ -96,8 +98,10 @@ pub fn (mut app App) api_benchmarks(mut ctx Context) veb.Result {
 // register it as its own route.
 fn render_chart_json(mut ctx Context) veb.Result {
 	mut db := open_db() or { return ctx.server_error('database error: ${err}') }
+	defer {
+		db.close() or {}
+	}
 	list := load_benchmarks(db) or { return ctx.server_error('database error: ${err}') }
-	db.close() or {}
 	return ctx.json(chart_points(list))
 }
 

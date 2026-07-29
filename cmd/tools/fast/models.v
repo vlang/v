@@ -160,18 +160,73 @@ fn canonicalize_history(mut db sqlite.DB) ! {
 // normalize_ref reduces a ref to a stable history identity, so a local branch and
 // its remote-tracking ref share one identity (e.g. `master` and `origin/master`),
 // WITHOUT collapsing same-named branches on different remotes (`origin/release`
-// vs `upstream/release`, which stay distinct). It canonicalizes to the upstream
-// remote-tracking ref when there is one, otherwise keeps the ref as given.
+// vs `upstream/release`, which stay distinct).
 fn normalize_ref(ref string) string {
 	mut r := ref.trim_space()
 	r = r.trim_string_left('refs/heads/')
 	r = r.trim_string_left('refs/remotes/')
-	target := os.quoted_path('${r}@{upstream}')
-	up := os.execute('git -C ${os.quoted_path(vdir)} rev-parse --abbrev-ref ${target}')
+	if r == '' {
+		return r
+	}
+	remotes := git_lines('remote')
+	// already remote-qualified (origin/master, upstream/release): keep as-is
+	if r.all_before('/') in remotes {
+		return r
+	}
+	// bare branch name: canonicalize to its remote-tracking ref. Prefer the local
+	// branch's upstream; if there is no local branch (detached/shallow checkout, or
+	// a legacy stored `master`), qualify it with a remote that has the branch,
+	// preferring the repository default, so the identity does not depend on a local
+	// branch existing.
+	up :=
+		os.execute('git -C ${os.quoted_path(vdir)} rev-parse --abbrev-ref ${os.quoted_path('${r}@{upstream}')}')
 	if up.exit_code == 0 && up.output.trim_space() != '' {
 		return up.output.trim_space()
 	}
+	for remote in ordered_remotes(remotes) {
+		cand := '${remote}/${r}'
+		if os.execute('git -C ${os.quoted_path(vdir)} rev-parse --verify --quiet ${os.quoted_path(cand)}').exit_code == 0 {
+			return cand
+		}
+	}
 	return r
+}
+
+// git_lines runs a git subcommand against the checkout and returns its non-empty
+// output lines.
+fn git_lines(subcmd string) []string {
+	mut out := []string{}
+	res := os.execute('git -C ${os.quoted_path(vdir)} ${subcmd}')
+	if res.exit_code == 0 {
+		for line in res.output.split_into_lines() {
+			l := line.trim_space()
+			if l != '' {
+				out << l
+			}
+		}
+	}
+	return out
+}
+
+// ordered_remotes lists the remotes with the repository default (the remote of
+// origin/HEAD) first, so a bare branch present on several remotes canonicalizes
+// deterministically to the default one.
+fn ordered_remotes(remotes []string) []string {
+	mut def := 'origin'
+	res := os.execute('git -C ${os.quoted_path(vdir)} rev-parse --abbrev-ref origin/HEAD')
+	if res.exit_code == 0 && res.output.trim_space().contains('/') {
+		def = res.output.trim_space().all_before('/')
+	}
+	mut order := []string{}
+	if def in remotes {
+		order << def
+	}
+	for rem in remotes {
+		if rem !in order {
+			order << rem
+		}
+	}
+	return order
 }
 
 // claim_history atomically records this database's single history identity (the
