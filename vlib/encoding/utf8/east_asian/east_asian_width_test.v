@@ -21,3 +21,12 @@ fn test_width() {
 	assert display_width('☆', 2) == 2
 	assert display_width('🐈👽📛', 1) == 6
 }
+
+fn test_width_table_uses_unsigned_unicode_bounds() {
+	assert typeof(east_asian_width_data[0].point).name == 'u32'
+	assert typeof(east_asian_width_data[0].len).name == 'u32'
+	for entry in east_asian_width_data {
+		assert entry.point <= 0x10ffff
+		assert entry.len <= 0x110000 - entry.point
+	}
+}

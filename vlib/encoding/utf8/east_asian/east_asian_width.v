@@ -57,8 +57,8 @@ pub fn east_asian_width_property_at(s string, index int) EastAsianWidthProperty 
 
 struct EAWEntry {
 	property EastAsianWidthProperty
-	point    int
-	len      int
+	point    u32
+	len      u32
 }
 
 // EastAsianWidth-13.0.0.txt

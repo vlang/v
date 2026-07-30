@@ -14,8 +14,17 @@ fn testsuite_end() {
 	os.rmdir_all(tpath) or {}
 }
 
+fn vflags_target_musl(vflags string) bool {
+	return vflags.fields().any(it == '-musl' || it.ends_with('musl-gcc'))
+}
+
 fn testsuite_begin() {
-	os.setenv('VFLAGS', '', true)
+	// Keep explicit libc/compiler selection for musl test lanes. Clearing it
+	// makes child tool builds silently switch back to the host's default TCC
+	// and glibc, so the lane no longer tests the ABI it requested.
+	if !vflags_target_musl(os.getenv('VFLAGS')) {
+		os.setenv('VFLAGS', '', true)
+	}
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VJOBS', '2', true)
 	os.setenv('VTEST_HIDE_OK', '0', true)
@@ -49,6 +58,14 @@ fn test_xyz() { assert 5 == 7, "oh no" }
 	assert os.exists(os.join_path(tpath, 'js_runtime_error/runtime_error_test.js.v'))
 	assert os.exists(os.join_path(tpath, 'partial/passing_test.v'))
 	assert os.exists(os.join_path(tpath, 'partial/failing_test.v'))
+}
+
+fn test_vflags_target_musl_detection() {
+	assert vflags_target_musl('-cc musl-gcc -gc none')
+	assert vflags_target_musl('-cc=/opt/cross/bin/x86_64-linux-musl-gcc')
+	assert vflags_target_musl('-cc clang -musl')
+	assert !vflags_target_musl('')
+	assert !vflags_target_musl('-cc gcc -gc none')
 }
 
 fn test_vtest_executable_compiles() {

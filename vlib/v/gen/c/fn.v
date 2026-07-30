@@ -1147,6 +1147,14 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if node.language == .c && c_sym_name in ['va_start', 'va_arg', 'va_end', 'va_copy'] {
 		return
 	}
+	mut previous_user_goto_label_ids := g.user_goto_label_ids.move()
+	previous_user_goto_label_count := g.user_goto_label_count
+	g.user_goto_label_ids = map[string]int{}
+	g.user_goto_label_count = 0
+	defer {
+		g.user_goto_label_ids = previous_user_goto_label_ids.move()
+		g.user_goto_label_count = previous_user_goto_label_count
+	}
 	old_is_vlines_enabled := g.is_vlines_enabled
 	g.is_vlines_enabled = true
 	defer {

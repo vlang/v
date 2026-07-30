@@ -208,7 +208,7 @@ pub fn chunk_while[T](a []T, predicate fn (before T, after T) bool) [][]T {
 	return chunks
 }
 
-// WindowAttribute configures the windows produced by arrays.window
+// WindowAttribute configures the windows produced by arrays.window.
 pub struct WindowAttribute {
 pub:
 	size int // number of elements in each window; must be positive

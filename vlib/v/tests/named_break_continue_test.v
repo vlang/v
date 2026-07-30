@@ -43,4 +43,20 @@ fn test_labelled_for() {
 		}
 	}
 	assert i == 3
+
+	mut seen := []int{}
+	unsafe {
+		goto L4
+	}
+	L4: for a, b := 0, 10; a < 4; a++, b-- {
+		seen << a + b
+		for {
+			if a < 2 {
+				continue L4
+			} else {
+				break L4
+			}
+		}
+	}
+	assert seen == [10, 10, 10]
 }

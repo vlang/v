@@ -52,6 +52,22 @@ fn test_linux_musl_tcc_boehm_uses_system_libgc() {
 	cmd := '${os.quoted_path(@VEXE)} -dump-c-flags - -cc ${os.quoted_path(fake_tcc)} -no-retry-compilation -musl -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
 	res := execute_without_vflags(cmd)
 	assert res.exit_code == 0, res.output
+	// The optional musl system libgc may not be installed. The flags are dumped
+	// before linker discovery, so verify the selection without requiring it here.
+	assert res.output.contains('-lgc')
+	assert !res.output.contains('thirdparty/tcc/lib/libgc.a')
+}
+
+fn test_linux_musl_gcc_boehm_uses_system_libgc() {
+	$if !linux {
+		return
+	}
+	source_path := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+	cmd := '${os.quoted_path(@VEXE)} -dump-c-flags - -cc musl-gcc ${os.quoted_path(source_path)}'
+	res := execute_without_vflags(cmd)
+	// `musl-gcc` and its system libgc are optional on developer machines. The
+	// flags are dumped before C compiler discovery, so inspect the selection
+	// contract without requiring that optional toolchain here.
 	assert res.output.contains('-lgc')
 	assert !res.output.contains('thirdparty/tcc/lib/libgc.a')
 }

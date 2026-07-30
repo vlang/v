@@ -14,10 +14,18 @@ $if windows {
 	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 	$if tinyc {
 		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_cleanup.h"
+	}
+	$if tinyc && freebsd && amd64 {
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence_pre.h"
+	}
+	$if tinyc {
 		#include <stdatomic.h>
 		$if linux {
 			#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_linux_fence.h"
 		}
+	}
+	$if tinyc && freebsd && amd64 {
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence.h"
 	}
 }
 
