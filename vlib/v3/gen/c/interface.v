@@ -270,27 +270,33 @@ fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
 }
 
 fn (g &FlatGen) interface_dispatch_method_is_required(concrete_key string) bool {
-	if !concrete_key.contains('.') {
-		return false
-	}
-	method := concrete_key.all_after_last('.')
-	concrete_c_name := g.cname(concrete_key)
+	return concrete_key in g.interface_dispatch_required
+}
+
+fn (mut g FlatGen) precompute_required_interface_dispatch_methods() {
+	g.interface_dispatch_required.clear()
 	for iface_name, impls in g.iface_impls {
-		if !g.should_emit_interface_dispatch(iface_name, method) {
-			continue
-		}
-		for concrete in impls {
-			concrete_method := '${concrete}.${method}'
-			if concrete_method == concrete_key || g.cname(concrete_method) == concrete_c_name {
-				return g.interface_dispatch_target_decl_is_used(concrete_method)
+		methods := g.interfaces[iface_name] or { g.tc.interface_abstract_method_names(iface_name) }
+		for method in methods {
+			if !g.should_emit_interface_dispatch(iface_name, method) {
+				continue
 			}
-			expected := g.tc.concrete_method_signature_key(concrete, method) or { concrete_method }
-			if expected == concrete_key || g.cname(expected) == concrete_c_name {
-				return g.interface_dispatch_target_decl_is_used(expected)
+			for concrete in impls {
+				concrete_method := '${concrete}.${method}'
+				if g.interface_dispatch_target_decl_is_used(concrete_method) {
+					g.interface_dispatch_required[concrete_method] = true
+					g.interface_dispatch_required[g.cname(concrete_method)] = true
+				}
+				expected := g.tc.concrete_method_signature_key(concrete, method) or {
+					concrete_method
+				}
+				if g.interface_dispatch_target_decl_is_used(expected) {
+					g.interface_dispatch_required[expected] = true
+					g.interface_dispatch_required[g.cname(expected)] = true
+				}
 			}
 		}
 	}
-	return false
 }
 
 fn (g &FlatGen) interface_dispatch_target_decl_is_used(name string) bool {

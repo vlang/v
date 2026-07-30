@@ -382,6 +382,28 @@ fn main() {
 	c99_run := cmdexec.run(c99_output, [])
 	assert c99_run.exit_code == 0, c99_run.output
 	assert c99_run.output == '99\n', c99_run.output
+
+	native_object := os.join_path(root, 'compat_c99.o')
+	native_object_compile := cmdexec.run('cc',
+		['-std=c99', '-c', c99_c_source, '-o', native_object])
+	assert native_object_compile.exit_code == 0, native_object_compile.output
+	object_source := os.join_path(root, 'compat_object.v')
+	os.write_file(object_source, '#flag @DIR/compat_c99.o
+
+fn C.v3_compat_c99_probe() int
+
+fn main() {
+	println(C.v3_compat_c99_probe())
+}
+')!
+	object_output := os.join_path(root, 'compat_object')
+	object_compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-showcc', '-o',
+		object_output, object_source])
+	assert object_compile.exit_code == 0, object_compile.output
+	assert !object_compile.output.contains('tcc.exe'), object_compile.output
+	object_run := cmdexec.run(object_output, [])
+	assert object_run.exit_code == 0, object_run.output
+	assert object_run.output == '99\n', object_run.output
 }
 
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {

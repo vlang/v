@@ -1562,6 +1562,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_init_order:              g.global_init_order
 		enum_backing_infos:             g.enum_backing_infos
 		iface_impls:                    g.iface_impls
+		interface_dispatch_required:    g.interface_dispatch_required
 		iface_type_ids:                 g.iface_type_ids
 		interface_boxed_types:          g.interface_boxed_types
 		interface_boxed_types_done:     g.interface_boxed_types_done
@@ -1578,6 +1579,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
 		module_imports:                 g.module_imports
+		preserved_header_files_seen:    g.preserved_header_files_seen
 		libc_compat_fns:                g.libc_compat_fns.clone()
 		tc:                             if result_only {
 			unsafe { g.tc }
@@ -1672,37 +1674,42 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		// Function selection is complete before workers are created; body
 		// generation only reads this set.
-		emitted_fns:                 g.emitted_fns
-		array_method_cache:          if result_only {
+		emitted_fns:                     g.emitted_fns
+		array_method_cache:              if result_only {
 			g.array_method_cache
 		} else {
 			g.array_method_cache.clone()
 		}
-		param_types_cache:           if result_only {
+		param_types_cache:               if result_only {
 			g.param_types_cache
 		} else {
 			g.param_types_cache.clone()
 		}
-		interface_receiver_cache:    &StringLookupCache{}
-		normalize_call_cache:        &StringLookupCache{}
-		import_alias_cache:          &ContextStringLookupCache{}
-		enum_selector_cache:         &ContextStringLookupCache{}
-		enum_method_cache:           &ContextStringLookupCache{}
-		qualified_enum_method_cache: &ContextStringLookupCache{}
-		struct_decl_pref_cache:      &StructDeclPrefCache{}
-		embedded_fields_by_type:     g.embedded_fields_by_type
-		param_types_by_short:        g.param_types_by_short
-		generic_method_candidates:   g.generic_method_candidates
-		spawn_wrapper_names:         g.spawn_wrapper_names.clone()
-		spawn_wrapper_defs:          g.spawn_wrapper_defs.clone()
-		spawn_wrapper_defs_seen:     g.spawn_wrapper_defs_seen.clone()
-		callback_wrapper_names:      g.callback_wrapper_names.clone()
-		callback_wrapper_defs:       g.callback_wrapper_defs.clone()
-		callback_wrapper_defs_seen:  g.callback_wrapper_defs_seen.clone()
-		c_extern_refs:               g.c_extern_refs.clone()
-		c_extern_refs_ready:         g.c_extern_refs_ready
-		scope_parallel_workers:      g.scope_parallel_workers
-		c_name_cache:                &CNameCache{
+		interface_receiver_cache:        &StringLookupCache{}
+		normalize_call_cache:            &StringLookupCache{}
+		flattened_generic_name_cache:    &StringLookupCache{}
+		generic_struct_context_ct_cache: &StringLookupCache{}
+		struct_cname_cache:              &StringLookupCache{}
+		unique_struct_ct_cache:          &StringLookupCache{}
+		alias_method_cache:              &StringLookupCache{}
+		import_alias_cache:              &ContextStringLookupCache{}
+		enum_selector_cache:             &ContextStringLookupCache{}
+		enum_method_cache:               &ContextStringLookupCache{}
+		qualified_enum_method_cache:     &ContextStringLookupCache{}
+		struct_decl_pref_cache:          &StructDeclPrefCache{}
+		embedded_fields_by_type:         g.embedded_fields_by_type
+		param_types_by_short:            g.param_types_by_short
+		generic_method_candidates:       g.generic_method_candidates
+		spawn_wrapper_names:             g.spawn_wrapper_names.clone()
+		spawn_wrapper_defs:              g.spawn_wrapper_defs.clone()
+		spawn_wrapper_defs_seen:         g.spawn_wrapper_defs_seen.clone()
+		callback_wrapper_names:          g.callback_wrapper_names.clone()
+		callback_wrapper_defs:           g.callback_wrapper_defs.clone()
+		callback_wrapper_defs_seen:      g.callback_wrapper_defs_seen.clone()
+		c_extern_refs:                   g.c_extern_refs.clone()
+		c_extern_refs_ready:             g.c_extern_refs_ready
+		scope_parallel_workers:          g.scope_parallel_workers
+		c_name_cache:                    &CNameCache{
 			base: if !isnil(g.c_name_cache.base) { g.c_name_cache.base } else { g.c_name_cache }
 		}
 		// The const short-name index is read-only after its first build (the

@@ -8421,6 +8421,13 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 	return impls
 }
 
+// pre_transform_interface_impl_names returns the immutable implementer snapshot
+// prepared after semantic checking and before generic monomorphization.
+pub fn (tc &TypeChecker) pre_transform_interface_impl_names(iface_name string) ?[]string {
+	index := tc.interface_impl_indexes[iface_name] or { return none }
+	return index.names
+}
+
 // interface_type_ids returns the `_typ` dispatch IDs for an interface, preserving
 // any snapshot IDs emitted before late generic implementers were discovered.
 pub fn (tc &TypeChecker) interface_type_ids(iface_name string) map[string]int {
@@ -8444,6 +8451,24 @@ pub fn (mut tc TypeChecker) freeze_interface_impl_names() {
 	// Earlier transform queries may have cached an implementer list before all
 	// lowered method signatures were available. Cgen must rebuild from the frozen
 	// snapshot so its dispatch table uses the same IDs as transformed interface boxes.
+	tc.clear_interface_impl_cache()
+}
+
+// freeze_pre_transform_interface_impl_names freezes the immutable implementer
+// indexes prepared before transform. Transform does not add declarations; later
+// generic implementers remain discoverable because the matching candidate set is
+// frozen with the indexes.
+pub fn (mut tc TypeChecker) freeze_pre_transform_interface_impl_names() {
+	mut snapshots := map[string][]string{}
+	for iface_name in tc.interface_names.keys() {
+		if index := tc.interface_impl_indexes[iface_name] {
+			snapshots[iface_name] = index.names.clone()
+		} else {
+			snapshots[iface_name] = tc.interface_impl_names_uncached(iface_name)
+		}
+	}
+	tc.interface_impl_name_snapshots = snapshots.move()
+	tc.interface_impl_candidates_at_snapshot = tc.interface_impl_candidates_at_index.clone()
 	tc.clear_interface_impl_cache()
 }
 
@@ -9480,6 +9505,7 @@ pub fn (mut tc TypeChecker) prepare_interface_requirement_indexes() {
 pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 	tc.prepare_interface_requirement_indexes()
 	tc.interface_impl_indexes = map[string]&InterfaceImplIndex{}
+	tc.interface_impl_candidates_at_index = tc.interface_impl_candidate_names()
 	for iface_name in tc.interface_names.keys() {
 		impls := if is_builtin_ierror_name(iface_name) {
 			tc.ierror_impl_names()

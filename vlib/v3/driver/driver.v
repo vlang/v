@@ -5222,7 +5222,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if !incremental_cache_hit {
-			pre_tc.freeze_interface_impl_names()
+			pre_tc.freeze_pre_transform_interface_impl_names()
 		}
 		b.metric('AST nodes after transform', a.nodes.len, 'nodes')
 		b.metric('AST children after transform', a.children.len, 'edges')
@@ -5725,6 +5725,15 @@ pub fn run(args []string) {
 		}
 		b.step('C object cache')
 		link_uses_non_c_language := c_link_flags_use_non_c_language(resolved_c_flags)
+		mut tcc_link_has_incompatible_objects := false
+		if prefs.normalized_target_os() == 'macos' {
+			for flag in resolved_c_flags {
+				if c_flag_is_object_file(flag.trim_space()) {
+					tcc_link_has_incompatible_objects = true
+					break
+				}
+			}
+		}
 		link_c_standard := if link_uses_non_c_language {
 			''
 		} else {
@@ -6083,10 +6092,13 @@ pub fn run(args []string) {
 		// Cached module objects can make tcc accept an unresolved call in the
 		// program translation unit and emit a broken executable. Compile and link
 		// the much smaller cached main unit with the system C compiler so the same
-		// undeclared-function diagnostics remain enforced.
+		// undeclared-function diagnostics remain enforced. Bundled tcc also cannot
+		// link the Mach-O objects supplied by macOS system and third-party modules;
+		// avoid compiling the whole translation unit once before that guaranteed
+		// link failure.
 		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
-			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
-			&& !cache_state.manager.enabled && !is_c_debug {
+			&& !tcc_link_has_incompatible_objects && target_args.len == 0
+			&& (!c_compiler_explicit || explicit_tcc) && !cache_state.manager.enabled && !is_c_debug {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')

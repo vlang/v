@@ -3491,15 +3491,36 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum string, owner_mod 
 			return qname
 		}
 	}
+	cache_key := '${owner_mod}\n${t.cur_module}\n${clean}'
+	if !isnil(t.enum_expected_cache) {
+		if cached := t.enum_expected_cache.entries[cache_key] {
+			return cached
+		}
+		if t.enum_expected_cache.misses[cache_key] {
+			return ''
+		}
+	}
 	mut found := ''
 	for enum_name, _ in t.enum_types {
 		if enum_name.all_after_last('.') != clean {
 			continue
 		}
 		if found.len > 0 && found != enum_name {
+			if !isnil(t.enum_expected_cache) {
+				mut cache := t.enum_expected_cache
+				cache.misses[cache_key] = true
+			}
 			return ''
 		}
 		found = enum_name
+	}
+	if !isnil(t.enum_expected_cache) {
+		mut cache := t.enum_expected_cache
+		if found.len > 0 {
+			cache.entries[cache_key] = found
+		} else {
+			cache.misses[cache_key] = true
+		}
 	}
 	return found
 }

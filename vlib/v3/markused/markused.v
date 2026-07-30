@@ -772,21 +772,27 @@ fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used 
 		if methods.len == 0 {
 			continue
 		}
-		impls := if markused_is_ierror_interface_name(iface_name) {
-			tc.ierror_impl_names()
-		} else {
-			tc.interface_impl_names(iface_name)
-		}
-		if impls.len == 0 {
-			continue
-		}
+		mut used_methods := []string{cap: methods.len}
 		for method in methods {
 			dispatch_key := '${iface_name}.${method}'
 			dispatch_c_key := markused_c_name(dispatch_key)
 			short_dispatch_key := '${iface_name.all_after_last('.')}.${method}'
-			if dispatch_key !in used && dispatch_c_key !in used && short_dispatch_key !in used {
-				continue
+			if dispatch_key in used || dispatch_c_key in used || short_dispatch_key in used {
+				used_methods << method
 			}
+		}
+		if used_methods.len == 0 {
+			continue
+		}
+		impls := if markused_is_ierror_interface_name(iface_name) {
+			tc.ierror_impl_names()
+		} else {
+			markused_interface_impl_names(iface_name, tc)
+		}
+		if impls.len == 0 {
+			continue
+		}
+		for method in used_methods {
 			for impl in impls {
 				for alias in interface_implementer_method_aliases(impl, method, tc) {
 					if enqueue(alias, mut used, mut queue) {
@@ -799,6 +805,12 @@ fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used 
 		}
 	}
 	return added
+}
+
+fn markused_interface_impl_names(iface_name string, tc &types.TypeChecker) []string {
+	return tc.pre_transform_interface_impl_names(iface_name) or {
+		tc.interface_impl_names(iface_name)
+	}
 }
 
 fn interface_implementer_method_aliases(impl string, method string, tc &types.TypeChecker) []string {
@@ -844,7 +856,7 @@ fn ensure_iface_impls(recv string, cur_module string, tc &types.TypeChecker, mut
 	} else {
 		// Structs plus alias implementers, from the same list cgen assigns
 		// dispatch ids over.
-		impls = tc.interface_impl_names(iface_name)
+		impls = markused_interface_impl_names(iface_name, tc)
 	}
 	iface_impls[recv] = impls
 	if iface_name != recv {
@@ -2437,7 +2449,7 @@ fn markused_type_equality_uses_ierror_uncached(typ types.Type, tc &types.TypeChe
 			if markused_is_ierror_interface_name(typ.name) {
 				return true
 			}
-			for concrete in tc.interface_impl_names(typ.name) {
+			for concrete in markused_interface_impl_names(typ.name, tc) {
 				if markused_type_equality_uses_ierror(tc.parse_type(concrete), tc, mut cache) {
 					return true
 				}
@@ -2551,7 +2563,7 @@ fn markused_type_stringifies_channel_uncached(typ types.Type, cur_module string,
 			if 'str' in tc.interface_abstract_method_names(typ.name) {
 				return false
 			}
-			for concrete in tc.interface_impl_names(typ.name) {
+			for concrete in markused_interface_impl_names(typ.name, tc) {
 				if markused_type_stringifies_channel(tc.parse_type(concrete), cur_module, tc, mut
 					cache)
 				{
@@ -2739,7 +2751,7 @@ fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string,
 
 fn enqueue_interface_str_methods(iface_name string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	enqueue('${iface_name}.str', mut used, mut queue)
-	for impl in tc.interface_impl_names(iface_name) {
+	for impl in markused_interface_impl_names(iface_name, tc) {
 		method := '${impl}.str'
 		enqueue(method, mut used, mut queue)
 		lowered := markused_c_name(method)
@@ -2836,7 +2848,7 @@ fn enqueue_implicit_interface_str_dispatch_helpers(iface_name string, tc &types.
 		return
 	}
 	enqueue('string__plus', mut used, mut queue)
-	for impl in tc.interface_impl_names(iface_name) {
+	for impl in markused_interface_impl_names(iface_name, tc) {
 		if !tc.type_has_implicit_str_method(impl) {
 			continue
 		}
