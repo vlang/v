@@ -7,6 +7,10 @@ on:
         description: 'TinyCC ref, branch, or commit to build'
         required: false
         default: mob
+      libgc_commit:
+        description: 'bdwgc (Boehm GC) ref, branch, or commit to build - macOS amd64 only for now'
+        required: false
+        default: master
       publish:
         description: 'Push the rebuilt bundle to vlang/tccbin'
         type: boolean
@@ -49,9 +53,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       TCC_COMMIT: ${{ github.event.inputs.tcc_commit || 'mob' }}
+      LIBGC_COMMIT: ${{ github.event.inputs.libgc_commit || 'master' }}
       TCCBIN_REPO: vlang/tccbin
       PUBLISH: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'true' }}
       FORCE_REBUILD: ${{ github.event.inputs.force_rebuild == 'true' }}
+      ## Bump whenever the macos-amd64 paired-rebuild recipe (this
+      ## workflow's macos-amd64-scoped steps, or the _bdwgc*.sh scripts
+      ## they call) changes materially, independent of any upstream
+      ## SHA - lets "Check whether rebuild is needed" force a rebuild on
+      ## a recipe change alone.
+      MACOS_AMD64_RECIPE_VERSION: "1"
+      ## Single source of truth for both halves of the macos-amd64
+      ## pair - passed explicitly to both scripts below rather than
+      ## relying on their own internal defaults, so this check step
+      ## and the actual build can never independently drift.
+      MACOSX_DEPLOYMENT_TARGET: "10.13"
     steps:
       - uses: actions/checkout@v7
 
@@ -62,6 +78,13 @@ jobs:
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
         run: brew install make
+
+      - name: Install macOS build dependencies (bdwgc rebuild)
+        if: matrix.id == 'macos-amd64'
+        ## automake/libtool are needed by bdwgc's autogen.sh (aclocal,
+        ## libtoolize) - exact match to vlang/tccbin's own already-
+        ## proven CI step for this same rebuild.
+        run: brew install make automake libtool
 
       - name: Resolve TinyCC source hash
         id: tinycc
@@ -82,6 +105,48 @@ jobs:
           hash="$(git -C /tmp/tinycc-ref rev-parse HEAD)"
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
           echo "TinyCC $TCC_COMMIT resolves to $hash"
+
+      # Resolved once, here, and passed through explicitly as
+      # LIBGC_COMMIT into thirdparty-macos-amd64_bdwgc.sh below (which
+      # checks out this exact SHA, not a re-fetched floating ref) - so
+      # the rebuild-decision fingerprint and the actual build can never
+      # silently drift apart if LIBGC_COMMIT/libatomic_ops's default
+      # branch moves between resolving and building.
+      - name: Resolve bdwgc/libatomic_ops source hashes
+        if: matrix.id == 'macos-amd64'
+        id: bdwgc
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if git clone --quiet https://github.com/ivmai/bdwgc /tmp/bdwgc-ref; then
+              break
+            fi
+            rm -rf /tmp/bdwgc-ref
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+          git -C /tmp/bdwgc-ref checkout --quiet "$LIBGC_COMMIT"
+          libgc_hash="$(git -C /tmp/bdwgc-ref rev-parse HEAD)"
+          echo "libgc_hash=$libgc_hash" >> "$GITHUB_OUTPUT"
+          echo "bdwgc $LIBGC_COMMIT resolves to $libgc_hash"
+
+          for attempt in 1 2 3; do
+            if git clone --quiet https://github.com/bdwgc/libatomic_ops /tmp/libatomic_ops-ref; then
+              break
+            fi
+            rm -rf /tmp/libatomic_ops-ref
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+          git -C /tmp/libatomic_ops-ref checkout --quiet master
+          libatomic_ops_hash="$(git -C /tmp/libatomic_ops-ref rev-parse HEAD)"
+          echo "libatomic_ops_hash=$libatomic_ops_hash" >> "$GITHUB_OUTPUT"
+          echo "libatomic_ops master resolves to $libatomic_ops_hash"
 
       - name: Clone tccbin branch
         id: tccbin
@@ -108,11 +173,52 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          skip=false
           if [ "$FORCE_REBUILD" != 'true' ] \
             && [ -f thirdparty/tcc/build_source_hash.txt ] \
             && [ "$(cat thirdparty/tcc/build_source_hash.txt)" = "${{ steps.tinycc.outputs.hash }}" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            skip=true
             echo "tccbin/${{ matrix.branch }} already has TinyCC ${{ steps.tinycc.outputs.hash }}"
+          fi
+
+          # macos-amd64 ships a PAIR (tcc.exe + libgc) - a TinyCC-only
+          # hash match isn't enough to skip, since libgc has its own
+          # independent upstream (bdwgc/libatomic_ops), its own pinned
+          # deployment target, and its own recipe. Fingerprint the whole
+          # pair; skip only when every part of it, and the required
+          # output files, are already exactly what a rebuild would
+          # produce.
+          if [ "${{ matrix.id }}" = 'macos-amd64' ] && [ "$skip" = 'true' ]; then
+            reason=""
+            if [ ! -f thirdparty/tcc/lib/libgc_build_source_hash.txt ] \
+              || [ "$(cat thirdparty/tcc/lib/libgc_build_source_hash.txt)" != "${{ steps.bdwgc.outputs.libgc_hash }}" ]; then
+              reason="bdwgc hash mismatch or missing"
+            elif [ ! -f thirdparty/tcc/lib/libgc_build_libatomic_ops_source_hash.txt ] \
+              || [ "$(cat thirdparty/tcc/lib/libgc_build_libatomic_ops_source_hash.txt)" != "${{ steps.bdwgc.outputs.libatomic_ops_hash }}" ]; then
+              reason="libatomic_ops hash mismatch or missing"
+            elif [ ! -f thirdparty/tcc/build_macosx_deployment_target.txt ] \
+              || [ "$(cat thirdparty/tcc/build_macosx_deployment_target.txt)" != "$MACOSX_DEPLOYMENT_TARGET" ]; then
+              reason="deployment target mismatch or missing"
+            elif [ ! -f thirdparty/tcc/build_toolchain_identity.txt ] \
+              || [ "$(cat thirdparty/tcc/build_toolchain_identity.txt)" != "$(clang --version)" ]; then
+              reason="toolchain identity mismatch or missing"
+            elif [ ! -f thirdparty/tcc/lib/libgc_build_recipe_version.txt ] \
+              || [ "$(cat thirdparty/tcc/lib/libgc_build_recipe_version.txt)" != "$MACOS_AMD64_RECIPE_VERSION" ]; then
+              reason="recipe version mismatch or missing"
+            elif [ ! -L thirdparty/tcc/lib/libgc.dylib ] \
+              || [ ! -f "thirdparty/tcc/lib/$(readlink thirdparty/tcc/lib/libgc.dylib)" ]; then
+              reason="libgc.dylib missing or not a valid symlink"
+            elif [ ! -f thirdparty/tcc/bundle_checksums.txt ]; then
+              reason="bundle_checksums.txt missing"
+            fi
+            if [ -n "$reason" ]; then
+              echo "macos-amd64 pair fingerprint mismatch ($reason) - forcing rebuild despite TinyCC hash match"
+              skip=false
+            fi
+          fi
+
+          if [ "$skip" = 'true' ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -146,6 +252,237 @@ jobs:
           thirdparty/tcc/tcc.exe /tmp/tcc-stdatomic-smoke.c -o /tmp/tcc-stdatomic-smoke
           /tmp/tcc-stdatomic-smoke
 
+      # macos-amd64 only, from here through the tar upload: rebuild
+      # libgc.dylib in step with this same tcc.exe (the checked-in
+      # libgc.a has been silently preserved untouched across every
+      # prior rebuild, which is the root cause of the pair's
+      # conformance failure this whole change addresses), validate the
+      # pair, commit it separately from the tcc.exe commit above, then
+      # re-validate against a genuinely independent fresh checkout
+      # before ever considering it safe to upload/publish.
+      - name: Build paired libgc (macOS amd64)
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        env:
+          CC: clang
+          TCC_FOLDER: thirdparty/tcc
+          LIBGC_COMMIT: ${{ steps.bdwgc.outputs.libgc_hash }}
+          LIBATOMIC_OPS_COMMIT: ${{ steps.bdwgc.outputs.libatomic_ops_hash }}
+          RECIPE_VERSION: ${{ env.MACOS_AMD64_RECIPE_VERSION }}
+        run: bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc.sh
+
+      - name: Validate staged tcc.exe + libgc pairing (build directory)
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc_validate.sh thirdparty/tcc
+
+      - name: Record bundle checksums
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd thirdparty/tcc
+          libgc_dylib_target=$(readlink lib/libgc.dylib)
+          # lib/libgc.dylib is a symlink - shasum follows it and hashes
+          # the same content as lib/$libgc_dylib_target, but recording
+          # it under this name too matters: it's the exact path V's
+          # #flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib references,
+          # so a consumer verifying the bundle checks the path that
+          # actually gets used, not just its resolved target.
+          shasum -a 256 tcc.exe lib/libgc.dylib "lib/$libgc_dylib_target" lib/libgc.a lib/libtcc.a lib/libtcc1.a > bundle_checksums.txt
+          cat bundle_checksums.txt
+
+      - name: Commit paired libgc rebuild
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd thirdparty/tcc
+          libgc_dylib_target=$(readlink lib/libgc.dylib)
+          # -A (not a hardcoded file list) against these exact globs:
+          # if bdwgc's SONAME bumped this run (e.g. libgc.1.dylib ->
+          # libgc.2.dylib), the old versioned file was already removed
+          # from disk by thirdparty-macos-amd64_bdwgc.sh's own cleanup
+          # step, but a plain `git add <new-file-list>` never mentions
+          # the old path, so its deletion would never get staged - the
+          # stale file would keep reappearing from history on every
+          # future checkout. `git add -A -- <pathspec>` stages adds AND
+          # deletions matching the glob, so whatever SONAME disappeared
+          # this run is captured without needing to know its name.
+          #
+          # Deliberately only libgc*.dylib/libgc*.a here, NOT libgc.la/
+          # libgc.lai (which thirdparty-macos-amd64_bdwgc.sh's own
+          # cleanup line also removes defensively, but rsyncs only from
+          # bdwgc/.libs/ - libtool's .la/.lai wrapper files live one
+          # level up and are never actually staged into lib/ in the
+          # first place). `git add -A -- <pathspecs>` fails its ENTIRE
+          # invocation (stages nothing, not even the globs that do
+          # match) if even one pathspec matches zero files either
+          # on disk or in the index - confirmed by testing. A glob for
+          # a file that plausibly never exists here would turn this
+          # into a hard failure on every single normal run, not just a
+          # SONAME bump.
+          git add -A -- 'lib/libgc*.dylib' 'lib/libgc*.a' lib/libgc_build_*.txt bundle_checksums.txt build_macosx_deployment_target.txt build_toolchain_identity.txt
+          git status --porcelain
+          git commit -m "pair libgc rebuild (bdwgc $LIBGC_COMMIT) with this tcc.exe rebuild"
+        env:
+          LIBGC_COMMIT: ${{ steps.bdwgc.outputs.libgc_hash }}
+
+      - name: Clone a fresh, independent checkout of the new commit
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/tccbin-fresh-checkout
+          # Clone from the LOCAL thirdparty/tcc, not GitHub - these
+          # commits haven't been pushed yet, and the whole point is to
+          # verify exactly what's about to be pushed, not what's
+          # already public.
+          git clone --quiet thirdparty/tcc /tmp/tccbin-fresh-checkout
+          if [ -n "$(git -C /tmp/tccbin-fresh-checkout status --porcelain)" ]; then
+            echo "::error::fresh checkout of the new commit is not clean - something is untracked or modified that shouldn't be:"
+            git -C /tmp/tccbin-fresh-checkout status
+            exit 1
+          fi
+          echo "fresh checkout is clean at $(git -C /tmp/tccbin-fresh-checkout rev-parse HEAD)"
+
+      - name: Re-validate against the fresh, independent checkout
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc_validate.sh /tmp/tccbin-fresh-checkout
+
+      # Deliverable A (this PR) does not include the V selector change
+      # (deliverable C, vlib/builtin/builtin_d_gcboehm.c.v) - it merges
+      # separately, only after this pair is published and vlang/tccbin's
+      # gate is confirmed green under it. To actually exercise the
+      # dylib pairing here, apply that selector collapse to an entirely
+      # separate, freshly-cloned vlang/v workspace, in memory only -
+      # never written back to this checkout, never committed anywhere.
+      # This clone's own thirdparty/tcc has nothing to do with the
+      # bundle staged above (a brand new clone doesn't have one yet),
+      # so letting `make`'s default target bootstrap it normally here
+      # is safe - unlike running `make` against the staged checkout
+      # itself, which would `git clean -xf` away everything just built.
+      #
+      # Plain `make -j4`, deliberately NOT `make local=1`: both vc/ and
+      # thirdparty/tcc are gitignored, so this fresh `git clone` starts
+      # with neither. `local=1` makes the `latest_vc`/`latest_tcc`
+      # targets skip their own git-clone bootstrap entirely (see
+      # GNUmakefile's `ifndef local` branches) on the assumption that
+      # vc/v.c already exists from an earlier step in the same
+      # job - true in bootstrapping_ci.yml, which runs a plain `make`
+      # first, but not true here. `make local=1` here would fail
+      # outright with no vc/v.c to bootstrap v1 from. `latest_tcc`
+      # cloning its own stock thirdparty/tcc under plain `make` is
+      # harmless: the next step wholesale-replaces it with the staged,
+      # fresh-checkout-validated bundle only after this `make` already
+      # finished building ./v.
+      - name: Build V from source in an isolated workspace
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v-bootstrap-workspace
+          git clone --quiet "https://github.com/${{ github.repository }}" /tmp/v-bootstrap-workspace
+          git -C /tmp/v-bootstrap-workspace checkout --quiet "${{ github.sha }}"
+
+          python3 - <<'PYEOF'
+          path = "/tmp/v-bootstrap-workspace/vlib/builtin/builtin_d_gcboehm.c.v"
+          with open(path, "r", encoding="utf-8", newline="") as f:
+              content = f.read()
+          old = ('\t\t\t\t\t\t$if arm64 {\n'
+                 '\t\t\t\t\t\t\t// tcc on macOS arm64 can leave the bundled GC archive symbols unresolved.\n'
+                 '\t\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib\n'
+                 '\t\t\t\t\t\t\t#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"\n'
+                 '\t\t\t\t\t\t} $else {\n'
+                 '\t\t\t\t\t\t\t// macOS amd64 tccbin only ships libgc.a (no .dylib).\n'
+                 '\t\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a\n'
+                 '\t\t\t\t\t\t}\n')
+          new = ('\t\t\t\t\t\t// SMOKE-TEST-ONLY PATCH (thirdparty-macos-amd64_bdwgc_validate.sh\n'
+                 '\t\t\t\t\t\t// caller) - never committed. Deliverable C applies this for real.\n'
+                 '\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib\n'
+                 '\t\t\t\t\t\t#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"\n')
+          count = content.count(old)
+          assert count == 1, f"expected exactly 1 occurrence of the selector block to patch, found {count}"
+          content = content.replace(old, new)
+          with open(path, "w", encoding="utf-8", newline="") as f:
+              f.write(content)
+          print("smoke-test-only selector patch applied in isolated workspace")
+          PYEOF
+
+          (cd /tmp/v-bootstrap-workspace && make -j4)
+
+      - name: Real V + tcc + boehm compile-and-execute smoke test
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Point the isolated-workspace V's @VEXEROOT/thirdparty/tcc
+          # resolution at the exact, fresh-checkout-validated staged
+          # bundle - copied in only now, after `make` already built
+          # ./v using its own unrelated bootstrap, never before.
+          rm -rf /tmp/v-bootstrap-workspace/thirdparty/tcc
+          cp -a /tmp/tccbin-fresh-checkout /tmp/v-bootstrap-workspace/thirdparty/tcc
+
+          cat > /tmp/tcc_boehm_gc_smoke.v <<'EOF'
+          module main
+
+          fn main() {
+              mut arrs := [][]int{}
+              for i in 0 .. 20000 {
+                  arrs << [i, i * 2, i * 3]
+              }
+              gc_collect()
+              mut sum := i64(0)
+              for a in arrs {
+                  sum += a[0]
+              }
+              println('sum=${sum}')
+              if sum != i64(20000) * 19999 / 2 {
+                  eprintln('mismatch: got ${sum}')
+                  exit(1)
+              }
+          }
+          EOF
+
+          showcc_output=$(/tmp/v-bootstrap-workspace/v -cc tcc -gc boehm -showcc -o /tmp/tcc_boehm_gc_smoke /tmp/tcc_boehm_gc_smoke.v 2>&1)
+          echo "$showcc_output"
+          /tmp/tcc_boehm_gc_smoke
+
+          # @VEXEROOT resolves relative to the isolated workspace (where
+          # ./v itself lives and runs from), NOT this job's own working
+          # directory - the staged bundle only got copied into the
+          # isolated workspace's thirdparty/tcc, so that's the path a
+          # correct run must actually reference.
+          expected_tcc="/tmp/v-bootstrap-workspace/thirdparty/tcc/tcc.exe"
+          case "$showcc_output" in
+            *"$expected_tcc"*) echo "confirmed: used the staged tcc.exe at $expected_tcc" ;;
+            *) echo "::error::-showcc output does not reference the staged tcc.exe ($expected_tcc) - the smoke test may have compiled with a different compiler entirely."; exit 1 ;;
+          esac
+          case "$showcc_output" in
+            *"libgc.dylib"*) ;;
+            *) echo "::error::-showcc output does not mention libgc.dylib - the smoke test did not actually link against the dylib."; exit 1 ;;
+          esac
+          case "$showcc_output" in
+            *"-rpath"*) ;;
+            *) echo "::error::-showcc output does not include an -rpath flag - the dylib would not be locatable at runtime outside this exact CI job."; exit 1 ;;
+          esac
+          case "$showcc_output" in
+            *"libgc.a"*) echo "::error::-showcc output mentions libgc.a - the smoke test linked the static archive, not the dylib, contradicting the whole point of this validation."; exit 1 ;;
+            *) echo "confirmed: libgc.a does not appear in the link line" ;;
+          esac
+
+      - name: Upload tar archive (macOS amd64, preserves symlinks and executable bits)
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: tar -czf /tmp/tccbin-macos-amd64.tar.gz -C /tmp/tccbin-fresh-checkout .
+      - name: Upload tar archive artifact (macOS amd64)
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tccbin-macos-amd64-tar
+          path: /tmp/tccbin-macos-amd64.tar.gz
+
       - name: Verify tccbin workflows were preserved
         if: steps.rebuild.outputs.skip != 'true'
         shell: bash
@@ -164,8 +501,23 @@ jobs:
           name: tccbin-${{ matrix.id }}
           path: thirdparty/tcc
 
+      # macos-amd64 additionally requires an explicit unlock: vlang/tccbin's
+      # thirdparty-macos-amd64 build-and-test.yml currently hard-fails if the
+      # checked-in package unexpectedly starts passing (today it's supposed
+      # to still be broken) - that gate must flip to "must pass" (deliverable
+      # B) BEFORE a working pair is ever pushed here, or the very next green
+      # publish breaks that CI for the opposite reason. PUBLISH alone isn't
+      # a safe gate for this platform: it's true unconditionally on every
+      # monthly schedule run, and also on any manual dispatch with
+      # publish=true, regardless of whether B has landed yet. Repo variable
+      # MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED defaults to unset (falsy), so
+      # this stays closed until a maintainer sets it to 'true' after
+      # confirming B is live and green - see the "Sequence" section of the
+      # PR description.
       - name: Push tccbin branch
-        if: steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true'
+        if: >-
+          steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true' &&
+          (matrix.id != 'macos-amd64' || vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED == 'true')
         shell: bash
         run: |
           set -euo pipefail

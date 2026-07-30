@@ -30,18 +30,26 @@ if ! test -f vlib/v/compiler_errors_test.v; then
   exit 1
 fi
 
-export CFLAGS='-O3'
 export CURRENT_SCRIPT_PATH=$(realpath "$0")
 
 export TCC_COMMIT="${TCC_COMMIT:-mob}"
 export TCC_FOLDER="${TCC_FOLDER:-thirdparty/tcc.$TCC_COMMIT}"
 export TCC_REPO="${TCC_REPO:-https://repo.or.cz/tinycc.git}"
 export CC="${CC:-clang}"
+## Neither half of the tcc.exe/libgc pair pinned a deployment target
+## before this - without one, a rebuilt tcc.exe silently inherits the
+## CI runner's own macOS floor. Pin the same default here as
+## thirdparty-macos-amd64_bdwgc.sh uses for the GC half of the pair,
+## and fold it into CFLAGS explicitly - tcc's own build (unlike
+## bdwgc's autotools one) doesn't necessarily honor the bare env var.
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.13}"
+export CFLAGS="-O3 -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
 
-echo " BUILD_CMD: \`$BUILD_CMD\`"
-echo "        CC: $CC"
-echo "TCC_COMMIT: $TCC_COMMIT"
-echo "TCC_FOLDER: \`$TCC_FOLDER\`"
+echo "                      BUILD_CMD: \`$BUILD_CMD\`"
+echo "                             CC: $CC"
+echo "                     TCC_COMMIT: $TCC_COMMIT"
+echo "                     TCC_FOLDER: \`$TCC_FOLDER\`"
+echo "       MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
 echo ===============================================================
 
 rm -rf tinycc/
@@ -102,6 +110,8 @@ date                                                > $TCC_FOLDER/build_on_date.
 echo $TCC_COMMIT_FULL_HASH                          > $TCC_FOLDER/build_source_hash.txt
 $TCC_FOLDER/tcc.exe --version                       > $TCC_FOLDER/build_version.txt
 uname -a                                            > $TCC_FOLDER/build_machine_uname.txt
+echo $MACOSX_DEPLOYMENT_TARGET                      > $TCC_FOLDER/build_macosx_deployment_target.txt
+$CC --version                                       > $TCC_FOLDER/build_toolchain_identity.txt
 
 ## needed for Big Sur
 ln -s /System/DriverKit/usr/lib/libSystem.dylib $TCC_FOLDER/lib/libc.dylib
