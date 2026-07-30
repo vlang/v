@@ -51,6 +51,18 @@ fn run_parallel_cc_failure_case(case_name string, files map[string]string) os.Re
 	return run_parallel_cc_case(case_name, files)
 }
 
+fn run_parallel_cc_comptime_case(case_name string, source string, nr_jobs int) os.Result {
+	return run_parallel_cc_case_with_args(case_name, [
+		'-parallel-cc',
+		'run',
+		'main.v',
+	], {
+		'main.v': source
+	}, {
+		'VJOBS': nr_jobs.str()
+	})
+}
+
 fn test_parallel_cc_fails_when_c_compilation_fails() {
 	res := run_parallel_cc_failure_case('compile_fail', {
 		'main.v': 'module main
@@ -87,6 +99,73 @@ fn test_parallel_cc_succeeds_with_array_sort_compare_helper() {
 		println(xs)
 	}
 	'
+	})
+	assert res.exit_code == 0, res.output
+}
+
+fn test_parallel_cc_keeps_top_level_comptime_if_else_together() {
+	source := 'module main
+
+$if true {
+	@[markused]
+	fn parallel_cc_comptime_selected() int {
+		return 42
+	}
+} $else {
+	fn parallel_cc_comptime_inactive() int {
+		return -1
+	}
+}
+
+fn main() {
+	println("parallel-cc-comptime-if: " + parallel_cc_comptime_selected().str())
+}
+'
+	for nr_jobs in [2, 3] {
+		res := run_parallel_cc_comptime_case('top_level_comptime_if_else_${nr_jobs}', source,
+			nr_jobs)
+		assert res.exit_code == 0, res.output
+		assert res.output.contains('parallel-cc-comptime-if: 42'), res.output
+	}
+}
+
+fn test_parallel_cc_keeps_final_top_level_comptime_if_together() {
+	res := run_parallel_cc_comptime_case('final_top_level_comptime_if', 'module main
+
+fn main() {
+	println("parallel-cc-final-comptime: " + parallel_cc_final_comptime_fn().str())
+}
+
+$if true {
+	@[markused]
+	fn parallel_cc_final_comptime_fn() int {
+		return 42
+	}
+}
+', 2)
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('parallel-cc-final-comptime: 42'), res.output
+}
+
+fn test_parallel_cc_handles_only_conditional_functions_without_builtin() {
+	res := run_parallel_cc_case_with_args('only_conditional_functions_without_builtin', [
+		'-no-builtin',
+		'-gc',
+		'none',
+		'-no-skip-unused',
+		'-parallel-cc',
+		'run',
+		'main.v',
+	], {
+		'main.v': '$if usemain1 ? {
+	fn main() {}
+} $else {
+	fn main() {}
+}
+'
+	}, {
+		'VJOBS':                         '2'
+		'V_C_ERROR_BUG_REPORT_DISABLED': '1'
 	})
 	assert res.exit_code == 0, res.output
 }

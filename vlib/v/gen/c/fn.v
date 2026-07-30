@@ -955,7 +955,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			// g.write('static ')
 			// g.definitions.write_string('static ')
 		}
-		if !node.is_anon {
+		// Keep a top-level `$if` region in one C file so its preprocessor directives stay balanced.
+		if !node.is_anon && !g.comptime.inside_comptime_if {
 			g.out_fn_start_pos << g.out.len
 		}
 	}

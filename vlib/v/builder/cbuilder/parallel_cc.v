@@ -54,6 +54,14 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	c_files := int_max(1, util.nr_jobs)
 	eprintln('> c_files: ${c_files} | util.nr_jobs: ${util.nr_jobs}')
 
+	// `-no-builtin` can leave only functions inside a comptime region, so cgen has no safe
+	// function split positions. Offset 0 keeps all generated output together in out_x.c.
+	fn_start_positions := if result.out_fn_start_pos.len == 0 {
+		[0]
+	} else {
+		result.out_fn_start_pos
+	}
+
 	// Write generated stuff in `g.out` before and after the `out_fn_start_pos` locations,
 	// like the `int main()` to "out_0.c" and "out_x.c"
 
@@ -61,14 +69,14 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	os.write_file('${tmp_dir}/out.h', result.header) or { panic(err) }
 
 	// out_0.c
-	out0 := '//out0\n' + result.out_str[..result.out_fn_start_pos[0]]
+	out0 := '//out0\n' + result.out_str[..fn_start_positions[0]]
 	os.write_file('${tmp_dir}/out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
 		panic(err)
 	}
 
 	// out_x.c
 	os.write_file('${tmp_dir}/out_x.c', '#include "out.h"\n\n' + result.extern_str + '\n' +
-		result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
+		result.out_str[fn_start_positions.last()..]) or { panic(err) }
 
 	mut prev_fn_pos := 0
 	mut out_files := []os.File{len: c_files}
@@ -84,9 +92,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i].writeln(result.extern_str) or { panic(err) }
 	}
 
-	for i, fn_pos in result.out_fn_start_pos {
+	for i, fn_pos in fn_start_positions {
 		if prev_fn_pos >= result.out_str.len || fn_pos >= result.out_str.len || prev_fn_pos > fn_pos {
-			eprintln('> EXITING i=${i} out of ${result.out_fn_start_pos.len} prev_pos=${prev_fn_pos} fn_pos=${fn_pos}')
+			eprintln('> EXITING i=${i} out of ${fn_start_positions.len} prev_pos=${prev_fn_pos} fn_pos=${fn_pos}')
 			break
 		}
 		if i == 0 {
