@@ -81,12 +81,13 @@
 	td.msg { max-width: 368px; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 	td.commit a { color: var(--accent); text-decoration: none; }
 	.cell { position: relative; }
+	.memory { color: var(--muted); font-size: 11px; }
 	.diff {
 		display: inline-block;
 		border-radius: 3px;
 		color: #fff;
 		padding: 0 5px;
-		margin-left: 6px;
+		margin-top: 3px;
 		font-size: 11px;
 	}
 	.minus { background: var(--red); }
@@ -141,12 +142,12 @@
 				<th>v -o v</th>
 				<th>V lines / s</th>
 				<th>V lines</th>
-				<th>v hello.v</th>
 				<th>v.c size</th>
 				<th>scan</th>
 				<th>parse</th>
 				<th>check</th>
 				<th>cgen</th>
+				<th>v hello.v</th>
 			</tr>
 			@for row in rows
 			<tr>
@@ -155,26 +156,45 @@
 				<td class="left msg" title="${row.message}">${row.message}</td>
 				<td class="cell">${row.v_c}ms
 					@if row.d_v_c.text != ''
+					<br>
 					<span class="diff ${row.d_v_c.cls}">${row.d_v_c.text}</span>
 					@end
 				</td>
 				<td class="cell">${row.v_self}ms
 					@if row.d_v_self.text != ''
+					<br>
 					<span class="diff ${row.d_v_self.cls}">${row.d_v_self.text}</span>
 					@end
 				</td>
 				<td>${row.lines_per_s}</td>
 				<td>${row.vlines}</td>
+				<td>${row.vc_size} KB</td>
+				<td>${row.scan}ms
+					@if row.scan_rss > 0
+					<div class="memory">${row.scan_rss} MB</div>
+					@end
+				</td>
+				<td>${row.parse}ms
+					@if row.parse_rss > 0
+					<div class="memory">${row.parse_rss} MB</div>
+					@end
+				</td>
+				<td>${row.check}ms
+					@if row.check_rss > 0
+					<div class="memory">${row.check_rss} MB</div>
+					@end
+				</td>
+				<td>${row.cgen}ms
+					@if row.cgen_rss > 0
+					<div class="memory">${row.cgen_rss} MB</div>
+					@end
+				</td>
 				<td class="cell">${row.hello}ms
 					@if row.d_hello.text != ''
+					<br>
 					<span class="diff ${row.d_hello.cls}">${row.d_hello.text}</span>
 					@end
 				</td>
-				<td>${row.vc_size} KB</td>
-				<td>${row.scan}ms</td>
-				<td>${row.parse}ms</td>
-				<td>${row.check}ms</td>
-				<td>${row.cgen}ms</td>
 			</tr>
 			@end
 		</table>

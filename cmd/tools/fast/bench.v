@@ -154,44 +154,67 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 	ccompiler := if args.contains('-clang') { 'clang' } else { 'cc' }
 	vprod := os.join_path(dir, exe_name('vprod'))
 	os.chdir(dir)!
+	stage_v := build_v3_stage_compiler(dir, date, args)!
 
-	// Sanity probe: make sure vprod actually compiles cmd/v to a real v.c before
-	// timing anything. A broken build (e.g. it crashes at startup) must fail the
-	// commit, not silently record a ~2ms "instant crash" as a great result.
-	os.rm('v.c') or {}
-	qvprod := os.quoted_path(vprod)
-	probe := os.execute('${qvprod} ${voptions} -o v.c cmd/v')
-	if probe.exit_code != 0 || !os.exists('v.c') || os.file_size('v.c') < 100_000 {
-		return error('vprod probe failed in ${dir} (exit ${probe.exit_code}); skipping commit')
+	self_c_cmd := if stage_v == '' {
+		'${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
+	} else {
+		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -o v.c vlib/v3/v3.v'
+	}
+	self_bin_cmd := if stage_v == '' {
+		'${os.quoted_path(vprod)} ${voptions} -cc ${ccompiler} -o v2 cmd/v'
+	} else {
+		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -cc ${ccompiler} -o v2 vlib/v3/v3.v'
+	}
+	hello_cmd := if stage_v == '' {
+		'${os.quoted_path(vprod)} ${voptions} -cc ${ccompiler} examples/hello_world.v'
+	} else {
+		'${os.quoted_path(stage_v)} -no-memory-limit -show-timings -stats -cc ${ccompiler} -o fast_hello examples/hello_world.v'
 	}
 
-	v_c := measure('${qvprod} ${voptions} -o v.c cmd/v', 'v -o v.c')!
-	v_self := measure('${qvprod} ${voptions} -cc ${ccompiler} -o v2 cmd/v', 'v -o v')!
-	hello := measure('${qvprod} ${voptions} -cc ${ccompiler} examples/hello_world.v', 'v hello.v')!
+	// Sanity probe: make sure the compiler actually self-compiles to a real v.c
+	// before timing anything. A broken build (e.g. it crashes at startup) must
+	// fail the commit, not record a ~2ms "instant crash" as a great result.
+	os.rm('v.c') or {}
+	probe := os.execute(self_c_cmd)
+	if probe.exit_code != 0 || !os.exists('v.c') || os.file_size('v.c') < 100_000 {
+		return error('self-compile probe failed in ${dir} (exit ${probe.exit_code}); skipping commit')
+	}
+
+	v_c := measure(self_c_cmd, 'v -o v.c')!
+	v_self := measure(self_bin_cmd, 'v -o v')!
+	hello := measure(hello_cmd, 'v hello.v')!
 	vc_size := int(os.file_size('v.c') / 1000)
-	scan, parse, check, cgen, vlines := measure_steps_minimal(vprod)!
+	stages := measure_steps_minimal(vprod, stage_v)!
+	mut vlines := parse_vlines(probe.output)
+	if vlines == 0 {
+		vlines = stages.vlines
+	}
 	lines_per_s := if v_c > 0 { int(f64(vlines) / f64(v_c) * 1000.0) } else { 0 }
 
 	// peak RSS (memory) five-number summaries for the box-and-whisker view
-	self_rss := measure_rss('${qvprod} ${voptions} -o v.c cmd/v', 'v self-compile RSS')
-	hello_rss := measure_rss('${qvprod} ${voptions} -cc ${ccompiler} examples/hello_world.v',
-		'v hello.v RSS')
+	self_rss := measure_rss(self_c_cmd, 'v self-compile RSS')
+	hello_rss := measure_rss(hello_cmd, 'v hello.v RSS')
 
 	return Benchmark{
-		commit_hash: commit
-		message:     message
-		commit_date: date
-		created_at:  time.now()
-		v_c_ms:      v_c
-		v_self_ms:   v_self
-		hello_ms:    hello
-		vc_size_kb:  vc_size
-		scan_ms:     scan
-		parse_ms:    parse
-		check_ms:    check
-		cgen_ms:     cgen
-		vlines:      vlines
-		lines_per_s: lines_per_s
+		commit_hash:  commit
+		message:      message
+		commit_date:  date
+		created_at:   time.now()
+		v_c_ms:       v_c
+		v_self_ms:    v_self
+		hello_ms:     hello
+		vc_size_kb:   vc_size
+		scan_ms:      stages.scan_ms
+		parse_ms:     stages.parse_ms
+		check_ms:     stages.check_ms
+		cgen_ms:      stages.cgen_ms
+		scan_rss_kb:  stages.scan_rss_kb
+		parse_rss_kb: stages.parse_rss_kb
+		check_rss_kb: stages.check_rss_kb
+		cgen_rss_kb:  stages.cgen_rss_kb
+		vlines:       vlines
+		lines_per_s:  lines_per_s
 
 		self_rss_min_kb:  self_rss.min
 		self_rss_q1_kb:   self_rss.q1
@@ -204,6 +227,30 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 		hello_rss_q3_kb:  hello_rss.q3
 		hello_rss_max_kb: hello_rss.max
 	}
+}
+
+// build_v3_stage_compiler builds the standalone v3 driver used to self-compile
+// vlib/v3/v3.v after the phase-RSS rollout. Older rows deliberately keep zeroes
+// for these new fields, preserving the historical phase series.
+fn build_v3_stage_compiler(dir string, date time.Time, args []string) !string {
+	// 2026-07-30 00:00 Europe/Moscow, the day v3 became the macOS default.
+	if date.unix() < 1785358800 {
+		return ''
+	}
+	$if !macos {
+		return ''
+	}
+	vprod := os.join_path(dir, exe_name('vprod'))
+	stage_v := os.join_path(dir, exe_name('fastv3'))
+	os.rm(stage_v) or {}
+	prod := if args.contains('-noprod') { '' } else { '-prod' }
+	cmd := '${os.quoted_path(vprod)} -gc none ${prod} -o ${os.quoted_path(stage_v)} vlib/v3/v3.v'
+	elog('  building standalone v3 self-compiler ...')
+	res := os.execute(cmd)
+	if res.exit_code != 0 || !os.is_executable(stage_v) {
+		return error('standalone v3 build failed (exit ${res.exit_code}) in ${dir}:\n${res.output}')
+	}
+	return stage_v
 }
 
 // RssStats is a five-number summary (KB) of peak RSS across several runs.
@@ -266,7 +313,7 @@ fn peak_rss_kb(cmd string) int {
 	defer {
 		os.rm(tmp) or {}
 	}
-	if os.system('/usr/bin/time ${time_flag} ${cmd} 2>${os.quoted_path(tmp)}') != 0 {
+	if os.system('/usr/bin/time ${time_flag} ${cmd} > /dev/null 2>${os.quoted_path(tmp)}') != 0 {
 		return -1 // the measured command failed; reject this sample
 	}
 	out := os.read_file(tmp) or { return -1 }
@@ -293,7 +340,10 @@ fn peak_rss_kb(cmd string) int {
 fn measure(cmd string, description string) !int {
 	elog('  Measuring ${description}, warmups: ${warmup_samples}, samples: ${max_samples}, discard: ${discard_highest_samples}')
 	for _ in 0 .. warmup_samples {
-		os.system(cmd)
+		res := os.execute(cmd)
+		if res.exit_code != 0 {
+			return error('warmup failed (exit ${res.exit_code}): `${cmd}`\n${res.output}')
+		}
 	}
 	mut runs := []int{}
 	for r in 0 .. max_samples {
@@ -316,64 +366,158 @@ fn measure(cmd string, description string) !int {
 	return int(f64(arrays.sum(runs) or { 0 }) / runs.len)
 }
 
-// measure_steps_minimal runs `vprod` several times, capturing the minimum time
-// reported by `-show-timings` for each compiler stage.
-fn measure_steps_minimal(vprod string) !(int, int, int, int, int) {
-	mut scans, mut parses, mut checks, mut cgens, mut vliness := []int{}, []int{}, []int{}, []int{}, []int{}
-	for _ in 0 .. max_samples {
-		scan, parse, check, cgen, vlines := measure_steps_one_sample(vprod)!
-		scans << scan
-		parses << parse
-		checks << check
-		cgens << cgen
-		vliness << vlines
-	}
-	scan := arrays.min(scans) or { 0 }
-	parse := arrays.min(parses) or { 0 }
-	check := arrays.min(checks) or { 0 }
-	cgen := arrays.min(cgens) or { 0 }
-	vlines := arrays.max(vliness) or { 0 }
-	return scan, parse, check, cgen, vlines
+struct StageMeasurements {
+mut:
+	scan_ms      int
+	parse_ms     int
+	check_ms     int
+	cgen_ms      int
+	scan_rss_kb  int
+	parse_rss_kb int
+	check_rss_kb int
+	cgen_rss_kb  int
+	vlines       int
 }
 
-fn measure_steps_one_sample(vprod string) !(int, int, int, int, int) {
-	cmd := '${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
+// measure_steps_minimal runs the compiler several times, capturing the minimum
+// time and RSS reported for each compiler stage.
+fn measure_steps_minimal(vprod string, stage_v string) !StageMeasurements {
+	mut scans, mut parses, mut checks, mut cgens := []int{}, []int{}, []int{}, []int{}
+	mut scan_rss, mut parse_rss, mut check_rss, mut cgen_rss := []int{}, []int{}, []int{}, []int{}
+	mut vliness := []int{}
+	for _ in 0 .. max_samples {
+		sample := measure_steps_one_sample(vprod, stage_v)!
+		scans << sample.scan_ms
+		parses << sample.parse_ms
+		checks << sample.check_ms
+		cgens << sample.cgen_ms
+		scan_rss << sample.scan_rss_kb
+		parse_rss << sample.parse_rss_kb
+		check_rss << sample.check_rss_kb
+		cgen_rss << sample.cgen_rss_kb
+		vliness << sample.vlines
+	}
+	return StageMeasurements{
+		scan_ms:      arrays.min(scans) or { 0 }
+		parse_ms:     arrays.min(parses) or { 0 }
+		check_ms:     arrays.min(checks) or { 0 }
+		cgen_ms:      arrays.min(cgens) or { 0 }
+		scan_rss_kb:  arrays.min(scan_rss) or { 0 }
+		parse_rss_kb: arrays.min(parse_rss) or { 0 }
+		check_rss_kb: arrays.min(check_rss) or { 0 }
+		cgen_rss_kb:  arrays.min(cgen_rss) or { 0 }
+		vlines:       arrays.max(vliness) or { 0 }
+	}
+}
+
+fn measure_steps_one_sample(vprod string, stage_v string) !StageMeasurements {
+	cmd := if stage_v == '' {
+		'${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
+	} else {
+		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -o v.c vlib/v3/v3.v'
+	}
 	resp := os.execute(cmd)
 	if resp.exit_code != 0 {
 		return error('stage-timing run failed (exit ${resp.exit_code}): `${cmd}`\n${resp.output}')
 	}
+	return parse_stage_measurements(resp.output)
+}
 
-	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
-	lines := resp.output.split_into_lines()
+fn parse_stage_measurements(output string) !StageMeasurements {
+	if output.contains(' MB RSS') {
+		return parse_v3_stage_measurements(output)
+	}
+
+	mut result := StageMeasurements{
+		vlines: parse_vlines(output)
+	}
+	lines := output.split_into_lines()
 	if lines.len == 3 {
-		parse = lines[0].before('.').int()
-		check = lines[1].before('.').int()
-		cgen = lines[2].before('.').int()
+		result.parse_ms = lines[0].before('.').int()
+		result.check_ms = lines[1].before('.').int()
+		result.cgen_ms = lines[2].before('.').int()
 	} else {
 		ms_lines := lines.map(it.split('  ms '))
 		for line in ms_lines {
 			if line.len == 2 {
 				match line[1] {
-					'SCAN' { scan = line[0].int() }
-					'PARSE' { parse = line[0].int() }
-					'CHECK' { check = line[0].int() }
-					'C GEN' { cgen = line[0].int() }
+					'SCAN' { result.scan_ms = line[0].int() }
+					'PARSE' { result.parse_ms = line[0].int() }
+					'CHECK' { result.check_ms = line[0].int() }
+					'C GEN' { result.cgen_ms = line[0].int() }
 					else {}
 				}
-			} else if line[0].contains('V') && line[0].contains('source')
-				&& line[0].contains('size') {
-				start := line[0].index(':') or { 0 }
-				end := line[0].index('lines,') or { 0 }
-				s := line[0][start + 1..end]
-				vlines = s.trim_space().int()
 			}
 		}
 	}
 	// Both output formats set parse/check/cgen on success; if none parsed, the
 	// output was unusable (e.g. a crash that still exited 0), so reject it rather
 	// than letting arrays.min pick these zeroes into the stored row.
-	if parse == 0 && check == 0 && cgen == 0 {
-		return error('could not parse stage timings from output:\n${resp.output}')
+	if result.parse_ms == 0 && result.check_ms == 0 && result.cgen_ms == 0 {
+		return error('could not parse stage timings from output:\n${output}')
 	}
-	return scan, parse, check, cgen, vlines
+	return result
+}
+
+fn parse_v3_stage_measurements(output string) !StageMeasurements {
+	mut result := StageMeasurements{
+		vlines: parse_vlines(output)
+	}
+	for raw_line in output.split_into_lines() {
+		line := raw_line.trim_space()
+		ms_pos := line.index(' ms') or { continue }
+		left := line[..ms_pos].trim_space()
+		parts := left.fields()
+		if parts.len < 2 {
+			continue
+		}
+		label := parts[..parts.len - 1].join(' ')
+		ms := int(parts.last().f64())
+		rss_mb := rss_mb_from_v3_line(line)
+		match true {
+			label == 'parse setup/cache' {
+				// v3 scans while setting up its parse pipeline, so this is the
+				// closest equivalent to the old compiler's standalone SCAN stage.
+				result.scan_ms = ms
+				result.scan_rss_kb = rss_mb * 1024
+			}
+			label == 'parse .vh' || label.starts_with('parse .v') || label == 'resolve imports' {
+				result.parse_ms += ms
+				result.parse_rss_kb = rss_mb * 1024
+			}
+			label == 'check' || label.starts_with('check (') {
+				result.check_ms = ms
+				result.check_rss_kb = rss_mb * 1024
+			}
+			label == 'cgen' || label.starts_with('cgen (') {
+				result.cgen_ms = ms
+				result.cgen_rss_kb = rss_mb * 1024
+			}
+			else {}
+		}
+	}
+	if result.parse_ms == 0 && result.check_ms == 0 && result.cgen_ms == 0 {
+		return error('could not parse v3 stage timings from output:\n${output}')
+	}
+	return result
+}
+
+fn rss_mb_from_v3_line(line string) int {
+	rss_end := line.index(' MB RSS') or { return 0 }
+	return line[..rss_end].trim_space().all_after_last(' ').int()
+}
+
+fn parse_vlines(output string) int {
+	for raw_line in output.split_into_lines() {
+		line := raw_line.trim_space()
+		if line.starts_with('parsed .v lines') {
+			return line.trim_string_left('parsed .v lines').trim_space().all_before(' ').int()
+		}
+		if line.contains('V') && line.contains('source') && line.contains('size:') {
+			start := line.index(':') or { continue }
+			end := line.index('lines,') or { continue }
+			return line[start + 1..end].trim_space().int()
+		}
+	}
+	return 0
 }

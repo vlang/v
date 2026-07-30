@@ -158,16 +158,19 @@ export-and-push is their replacement.)
 
 | Column      | Command                          | Meaning                          |
 |-------------|----------------------------------|----------------------------------|
-| `v -o v.c`  | `vprod -o v.c cmd/v`             | self-compile to C                |
-| `v -o v`    | `vprod -o v cmd/v`               | self-compile to a binary         |
+| `v -o v.c`  | `vprod -o v.c cmd/v` / v3 self  | self-compile to C                |
+| `v -o v`    | `vprod -o v cmd/v` / v3 self    | self-compile to a binary         |
 | `V lines / s` | derived                        | V lines per second (`v -o v.c`)  |
 | `V lines`   | `-stats`                          | number of V source lines         |
 | `v hello.v` | `vprod examples/hello_world.v`   | compile a tiny program           |
 | `v.c size`  | –                                | size of the generated `v.c`      |
-| scan/parse/check/cgen | `-show-timings`        | per-stage compiler times (min)   |
+| scan/parse/check/cgen | v3 self `-show-timings` | per-stage time and RSS (min) |
 
 Wall-clock timings take `max_samples` measurements after a couple of warmups and
 discard the slowest ones to cut noise (see the constants in `fast.v`).
+Phase RSS is available for commits measured from 2026-07-30 onward; older rows
+remain timing-only. Starting on that date, self-compile measurements compile
+`vlib/v3/v3.v`; older measurements compile `cmd/v`.
 
 ## Database
 
