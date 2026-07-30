@@ -75,6 +75,27 @@ pub fn parse_certificate(body []u8) !ParsedCertificate {
 		}
 		extensions := parse_extension_list(body[cursor..cursor + ext_len])!
 		cursor += ext_len
+		// RFC 8446 §4.2's own extension-applicability table permits only
+		// status_request and signed_certificate_timestamp in a
+		// CertificateEntry ("CT") -- everything else (e.g.
+		// supported_versions, which is CH/SH/HRR-only) is illegal here
+		// regardless of what recognized extension type it is. This
+		// client's ClientHello (tls13_client_hello.v) never offers
+		// EITHER of the two CT-legal extensions, so per this file's own
+		// EncryptedExtensions precedent (parse_encrypted_extensions,
+		// "Implementations MUST NOT send extension responses if the
+		// remote endpoint did not send the corresponding extension
+		// requests... MUST abort... with an 'unsupported_extension'
+		// alert") the correct legal set here is empty: ANY extension
+		// present in a CertificateEntry is a violation, not just the
+		// specific illegal types a server might plausibly send (Codex
+		// P2, vlang/v#27680 pullrequestreview-4822597219 -- previously
+		// parsed and stored unconditionally, never checked against
+		// anything).
+		if extensions.len != 0 {
+			return error_with_code('quic: CertificateEntry contains extension 0x${extensions[0].typ:04x}, which this client did not offer (RFC 8446 §4.2 permits only status_request/signed_certificate_timestamp in a CertificateEntry, and this client offers neither)',
+				int(tls_alert_to_quic_error(.unsupported_extension)))
+		}
 
 		entries << CertificateEntry{
 			cert_data:  cert_data

@@ -63,7 +63,20 @@ fn test_parse_certificate_single_entry_round_trip() {
 	assert parsed.certificate_list[0].extensions.len == 0
 }
 
-fn test_parse_certificate_multiple_entries_with_extensions() {
+// test_parse_certificate_rejects_entry_with_illegal_extension is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4822597219): parse_certificate previously parsed and
+// stored each CertificateEntry's extensions unconditionally, with no check
+// against RFC 8446 §4.2's own extension-applicability table (which permits
+// only status_request/signed_certificate_timestamp in a CertificateEntry,
+// "CT") -- a server could smuggle supported_versions (CH/SH/HRR-only) or
+// any other extension through unchallenged. This client's ClientHello
+// never offers either of the two extensions §4.2 permits there, so the
+// correct legal set is empty: ANY extension present is now rejected,
+// verified here on the first (leaf) entry even though a later entry has
+// none, matching this function's existing all-or-nothing parse contract
+// (a failure anywhere aborts the whole parse, never partially succeeds).
+fn test_parse_certificate_rejects_entry_with_illegal_extension() {
 	leaf_cert := []u8{len: 200, init: 0xaa}
 	intermediate_cert := []u8{len: 150, init: 0xbb}
 
@@ -79,13 +92,11 @@ fn test_parse_certificate_multiple_entries_with_extensions() {
 	entries << intermediate_entry
 	body := build_test_certificate_body([]u8{}, entries)
 
-	parsed := parse_certificate(body)!
-	assert parsed.certificate_list.len == 2
-	assert parsed.certificate_list[0].cert_data == leaf_cert
-	assert parsed.certificate_list[0].extensions.len == 1
-	assert parsed.certificate_list[0].extensions[0].typ == ext_supported_versions
-	assert parsed.certificate_list[1].cert_data == intermediate_cert
-	assert parsed.certificate_list[1].extensions.len == 0
+	parse_certificate(body) or {
+		assert err.msg().contains('did not offer')
+		return
+	}
+	assert false, 'expected an error for a CertificateEntry containing any extension: this client offers neither status_request nor signed_certificate_timestamp, the only two RFC 8446 §4.2 permits in a CertificateEntry'
 }
 
 fn test_parse_certificate_rejects_empty_certificate_list() {

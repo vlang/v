@@ -783,6 +783,63 @@ fn test_certificate_rejects_nonempty_request_context() {
 	assert false, 'expected a non-empty certificate_request_context to be rejected'
 }
 
+// test_process_certificate_or_request_preserves_illegal_extension_code is a
+// self-caught regression test (found while /vreview-ing the fix for Codex
+// finding vlang/v#27680 pullrequestreview-4822597219, not itself a Codex
+// finding): parse_certificate's new CertificateEntry-extension check returns
+// error_with_code(..., unsupported_extension), but this function's `or {}`
+// unconditionally remapped ANY parse_certificate failure to the generic
+// decode_error alert, discarding that specific code -- the exact class of
+// gap process_server_hello/process_encrypted_extensions/
+// process_certificate_verify (this same file) already guard against for
+// their own parse callees.
+fn test_process_certificate_or_request_preserves_illegal_extension_code() {
+	mut h, server, cert_err_msg := drive_to_certificate([]u8{len: 32, init: 0x88}, [
+		u8(1),
+		2,
+		3,
+		4,
+	])!
+	defer {
+		h.free()
+		unsafe { server.priv_key.free() }
+	}
+	_ = cert_err_msg
+
+	der := handshake_test_pem_to_der(handshake_test_cert_pem)
+	mut ext := []u8{}
+	ext << u8(0)
+	ext << u8(43) // extension type 43 = supported_versions -- illegal in a CertificateEntry
+	ext << u8(0)
+	ext << u8(1)
+	ext << u8(0x03)
+
+	mut entry := []u8{}
+	entry << u8(der.len >> 16)
+	entry << u8(der.len >> 8)
+	entry << u8(der.len)
+	entry << der
+	entry << u8(ext.len >> 8)
+	entry << u8(ext.len)
+	entry << ext
+
+	mut body := []u8{}
+	body << u8(0) // certificate_request_context length = 0
+	body << u8(entry.len >> 16)
+	body << u8(entry.len >> 8)
+	body << u8(entry.len)
+	body << entry
+	cert_framed := encode_handshake_message(.certificate, body)!
+	cert_msg, _ := parse_handshake_message(cert_framed)!
+
+	h.process_certificate_or_request(cert_msg, cert_framed) or {
+		assert err.msg().contains('did not offer')
+		assert err.code() == int(tls_alert_to_quic_error(.unsupported_extension))
+		return
+	}
+	assert false, 'expected an error for a CertificateEntry containing an illegal extension'
+}
+
 fn test_process_server_hello_rejects_unoffered_cipher_suite() {
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
 		random:               []u8{len: 32, init: 0x55}

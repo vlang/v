@@ -85,8 +85,19 @@ fn test_packet_number_encode_rejects_exhausted_number() {
 	assert false, 'expected an error for a packet number above 2^62-1'
 }
 
+// Uses a concrete largest_acked (not none) so this test exercises only the
+// full_pn > max_packet_number exhaustion check (this function's very first
+// guard), not the separate "no ack yet, does full_pn fit in 4 bytes" check
+// added for pullrequestreview-4822597219 -- max_packet_number (2^62-1)
+// itself does not fit in 4 bytes, so with largest_acked=none this would
+// now be (correctly) rejected by THAT check instead, which is not what
+// this test is about. This test previously passed `none` here and got
+// away with it only because the "no ack yet" branch didn't validate
+// full_pn's magnitude at all before this round's fix -- see
+// test_packet_number_encode_rejects_oversized_first_packet_in_space below.
 fn test_packet_number_encode_accepts_boundary_max_packet_number() {
-	_, n := encode_packet_number(max_packet_number, none)!
+	largest_acked := max_packet_number - ((u64(1) << 31) - 1)
+	_, n := encode_packet_number(max_packet_number, largest_acked)!
 	assert n == 4
 }
 
@@ -121,6 +132,36 @@ fn test_packet_number_encode_accepts_boundary_four_byte_gap() {
 	assert n == 4
 	truncated := bytes_to_u64(encoded)
 	decoded := decode_packet_number(truncated, n, largest_acked)!
+	assert decoded == full_pn
+}
+
+// test_packet_number_encode_rejects_oversized_first_packet_in_space is a
+// regression test for a gap the previous fix (the gap-check above) didn't
+// close: when largest_acked is none, num_unacked was a fixed sentinel
+// (0x7FFF_FFFF) rather than something derived from full_pn, so the gap check
+// above could never fire in this branch regardless of how large full_pn
+// actually was. A full_pn that doesn't fit in 4 bytes silently truncated to
+// its low 32 bits instead of erroring (Codex P2, vlang/v#27680
+// pullrequestreview-4822597219): encode_packet_number(0x1_0000_0000, none)
+// returned four zero bytes, and decode_packet_number then reconstructed 0,
+// not 2^32.
+fn test_packet_number_encode_rejects_oversized_first_packet_in_space() {
+	encode_packet_number(u64(0x1_0000_0000), none) or {
+		assert err.msg().contains('cannot be represented by the 4-byte encoding')
+		return
+	}
+	assert false, 'expected an error for a first-in-space packet number that does not fit in 4 bytes'
+}
+
+// test_packet_number_encode_accepts_boundary_first_packet_in_space pins the
+// exact boundary: 2^32-1 (0xFFFF_FFFF) is the largest value 4 bytes CAN
+// represent and must still succeed, not just anything strictly below it.
+fn test_packet_number_encode_accepts_boundary_first_packet_in_space() {
+	full_pn := u64(0xFFFF_FFFF)
+	encoded, n := encode_packet_number(full_pn, none)!
+	assert n == 4
+	truncated := bytes_to_u64(encoded)
+	decoded := decode_packet_number(truncated, n, none)!
 	assert decoded == full_pn
 }
 

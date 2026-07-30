@@ -45,6 +45,23 @@ pub fn encode_packet_number(full_pn u64, largest_acked ?u64) !([]u8, int) {
 	num_unacked := if la := largest_acked {
 		if full_pn > la { full_pn - la } else { u64(0) }
 	} else {
+		// decode_packet_number (below) has no reference point to
+		// reconstruct against when largest_pn is none -- it returns the
+		// wire bytes AS the full packet number verbatim, with no window
+		// arithmetic. Round-tripping correctly therefore requires the
+		// chosen n-byte encoding to represent full_pn EXACTLY, not merely
+		// "unambiguously" (the twice-the-gap guarantee the acked branch
+		// above relies on doesn't apply here at all). This design always
+		// picks the 4-byte encoding in this branch, which is only valid
+		// when full_pn itself fits in 4 bytes -- checked explicitly,
+		// since the sentinel below makes the (num_unacked+1)*2 gap check
+		// further down a fixed constant that can never catch this
+		// (0x7FFF_FFFF is not derived from full_pn, so
+		// (0x7FFF_FFFF+1)*2 == 0x1_0000_0000 always, regardless of how
+		// large full_pn actually is).
+		if full_pn > 0xFFFF_FFFF {
+			return error('quic: packet number ${full_pn} cannot be represented by the 4-byte encoding used for the first packet in a space (no packet acknowledged yet); this exceeds 2^32-1')
+		}
 		u64(0x7FFF_FFFF) // force the 4-byte path below
 	}
 

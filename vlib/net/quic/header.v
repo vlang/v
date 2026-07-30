@@ -239,6 +239,23 @@ pub fn encode_long_header(h QuicLongHeader, reserved_bits u8, pn_length_bits u8)
 	if h.version != quic_v1 {
 		return error('unsupported QUIC version 0x${h.version:08x}: encode_long_header only supports QUIC v1 (0x00000001)')
 	}
+	// Length (RFC 9000 §17.2) covers the packet number field plus payload,
+	// so it can never be smaller than the packet number field's own
+	// encoded width (pn_length_bits+1 bytes, per this function's own doc
+	// comment above). h.length is caller-supplied and not derived from
+	// pn_length_bits inside this function, so nothing previously caught an
+	// inconsistent pair -- a header with e.g. a 4-byte packet number but
+	// length=1 encoded successfully, directing a peer using Length to skip
+	// over this packet (coalesced-packet splitting, a later phase) to a
+	// byte offset landing INSIDE the packet number field instead of past
+	// it (Codex P2, vlang/v#27680 pullrequestreview-4822597219). Retry
+	// packets have no packet number or Length field at all (see the
+	// `h.typ != .retry` guard around the Length varint below), so this
+	// check is scoped the same way.
+	if h.typ != .retry && h.length < u64(pn_length_bits) + 1 {
+		return error('long header Length (${h.length}) must be at least ${u64(pn_length_bits) + 1} bytes to cover the ${
+			pn_length_bits + 1}-byte packet number field it precedes')
+	}
 
 	type_bits := match h.typ {
 		.initial { u8(0) }

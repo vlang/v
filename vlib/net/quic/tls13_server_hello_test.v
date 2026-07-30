@@ -408,6 +408,42 @@ fn test_parse_encrypted_extensions_rejects_nonempty_server_name() {
 	assert false, 'expected an error for a non-empty server_name extension_data'
 }
 
+fn test_parse_encrypted_extensions_accepts_wellformed_supported_groups() {
+	ext := encode_extension(ext_supported_groups, [u8(0), 2, u8(named_group_secp256r1 >> 8),
+		u8(named_group_secp256r1)]) or { panic(err) }
+	mut body := []u8{}
+	body << u8(ext.len >> 8)
+	body << u8(ext.len)
+	body << ext
+	extensions := parse_encrypted_extensions(body)!
+	found := find_extension(extensions, ext_supported_groups) or {
+		panic('expected supported_groups to be present')
+	}
+	assert found.data.len == 4
+}
+
+// test_parse_encrypted_extensions_rejects_malformed_supported_groups is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4822597219): only the outer extension TLV framing was
+// validated for supported_groups; its inner NamedGroupList length prefix
+// (RFC 8446 §4.2.7 / RFC 7919) was never checked against the bytes actually
+// present. A payload claiming a 2-byte NamedGroupList with only 1 byte
+// present previously parsed successfully into an opaque, never-consumed
+// extension.
+fn test_parse_encrypted_extensions_rejects_malformed_supported_groups() {
+	ext := encode_extension(ext_supported_groups, [u8(0), 2, 0xAA]) or { panic(err) }
+	mut body := []u8{}
+	body << u8(ext.len >> 8)
+	body << u8(ext.len)
+	body << ext
+	parse_encrypted_extensions(body) or {
+		assert err.msg().contains('supported_groups')
+		assert err.msg().contains('does not match')
+		return
+	}
+	assert false, 'expected an error for a malformed supported_groups NamedGroupList'
+}
+
 fn test_parse_encrypted_extensions_rejects_length_mismatch() {
 	parse_encrypted_extensions([u8(0x00), 0x05]) or {
 		assert err.msg().contains('does not match')

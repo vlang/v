@@ -357,6 +357,34 @@ pub fn parse_encrypted_extensions(body []u8) ![]TlsExtension {
 			return error('quic: EncryptedExtensions server_name extension_data must be empty (RFC 6066 §3), got ${sn_ext.data.len} bytes')
 		}
 	}
+	if sg_ext := find_extension(extensions, ext_supported_groups) {
+		// RFC 8446 §4.2.7 / RFC 7919: NamedGroupList is `NamedGroup
+		// named_group_list<2..2^16-1>` -- a 2-byte length prefix
+		// followed by that many bytes of 2-byte NamedGroup codepoints
+		// (this codebase's own encode_supported_groups_extension,
+		// tls13_client_hello.v, produces exactly this shape). Only the
+		// OUTER extension TLV framing was validated above (by
+		// parse_extension_list) -- nothing checked the INNER
+		// NamedGroupList's own length prefix against the extension_data
+		// actually present, so a malformed inner length (e.g. declaring
+		// 2 group-bytes while only 1 is present) parsed successfully
+		// into an opaque, never-consumed TlsExtension (Codex P2,
+		// vlang/v#27680 pullrequestreview-4822597219). This client never
+		// reads this extension's value today -- key exchange is
+		// negotiated via key_share, not echoed back through
+		// supported_groups -- but accepting a structurally malformed TLS
+		// field is wrong independent of whether anything consumes it.
+		if sg_ext.data.len < 2 {
+			return error('quic: EncryptedExtensions supported_groups extension_data too short: need at least 2 bytes, have ${sg_ext.data.len}')
+		}
+		inner_len := int((u32(sg_ext.data[0]) << 8) | u32(sg_ext.data[1]))
+		if 2 + inner_len != sg_ext.data.len {
+			return error('quic: EncryptedExtensions supported_groups NamedGroupList length ${inner_len} does not match remaining extension_data ${sg_ext.data.len - 2}')
+		}
+		if inner_len == 0 || inner_len % 2 != 0 {
+			return error('quic: EncryptedExtensions supported_groups NamedGroupList must be a non-empty, even number of bytes (2-byte NamedGroup entries), got ${inner_len}')
+		}
+	}
 	for e in extensions {
 		if e.typ !in encrypted_extensions_allowed {
 			return error_with_code('quic: EncryptedExtensions contains extension 0x${e.typ:04x}, which this client did not offer or which RFC 8446 §4.2 does not permit here',

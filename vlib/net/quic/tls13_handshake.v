@@ -516,7 +516,18 @@ pub fn (mut h Tls13ClientHandshake) process_certificate_or_request(msg Handshake
 	if msg.typ != .certificate {
 		return handshake_error(.unexpected_message, 'quic: expected Certificate, got ${msg.typ}')
 	}
-	parsed := parse_certificate(msg.body) or { return handshake_error(.decode_error, err.msg()) }
+	parsed := parse_certificate(msg.body) or {
+		// Same convention as process_server_hello/process_encrypted_extensions/
+		// process_certificate_verify: parse_certificate carries its own
+		// specific QUIC error code (via error_with_code) for the
+		// illegal-CertificateEntry-extension class of failure; only a
+		// genuine structural parse failure (plain error(), code 0) should
+		// be remapped to the generic decode_error alert here.
+		if err.code() != 0 {
+			return err
+		}
+		return handshake_error(.decode_error, err.msg())
+	}
 	// RFC 8446 §4.4.2: "certificate_request_context: ... Otherwise (in the
 	// case of server authentication), this field SHALL be zero length."
 	// v1 never sends a CertificateRequest of its own (no post-handshake

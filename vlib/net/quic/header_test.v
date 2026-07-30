@@ -221,6 +221,46 @@ fn test_encode_long_header_rejects_unsupported_version() {
 	assert false, 'expected an error for encoding a non-v1 long header'
 }
 
+// test_encode_long_header_rejects_length_shorter_than_packet_number is a
+// regression test for a Codex finding (vlang/v#27680
+// pullrequestreview-4822597219): Length (RFC 9000 §17.2) covers the packet
+// number field plus payload, so it can never be shorter than the packet
+// number field's own encoded width -- but h.length is caller-supplied and
+// nothing checked it against pn_length_bits. A 4-byte packet number
+// (pn_length_bits=3) with length=1 previously encoded successfully,
+// directing a peer using Length to skip this packet to a byte offset
+// landing inside the packet number field instead of past it.
+fn test_encode_long_header_rejects_length_shorter_than_packet_number() {
+	h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    [u8(1), 2, 3, 4]
+		scid:    [u8(5), 6, 7, 8]
+		length:  1
+	}
+	encode_long_header(h, 0, 3) or {
+		assert err.msg().contains('must be at least')
+		return
+	}
+	assert false, 'expected an error for a Length shorter than the packet number field'
+}
+
+// test_encode_long_header_accepts_length_equal_to_packet_number is the
+// boundary check: length exactly equal to the packet number field's width
+// (a zero-byte payload) must still succeed, not just anything strictly
+// larger.
+fn test_encode_long_header_accepts_length_equal_to_packet_number() {
+	h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    [u8(1), 2, 3, 4]
+		scid:    [u8(5), 6, 7, 8]
+		length:  4
+	}
+	encoded := encode_long_header(h, 0, 3)!
+	assert encoded.len > 0
+}
+
 fn test_short_header_round_trip_and_zero_length_dcid() {
 	// Zero-length DCID short header: 1 byte total before the (still
 	// protected) packet number.
