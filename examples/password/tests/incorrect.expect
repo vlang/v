@@ -2,8 +2,9 @@
 
 set timeout 3
 set v_root [exec sh -c "git rev-parse --show-toplevel"]
+set v_exe [lindex $argv 0]
 
-spawn $v_root/v run $v_root/examples/password/password.v
+spawn $v_exe -old-compiler run $v_root/examples/password/password.v
 
 expect "Enter your password : " { send "Sample123\r" } timeout { exit 1 }
 expect "Confirm password : " { send "Sample234\r" } timeout { exit 1 }
