@@ -81,7 +81,7 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		assert !is_macos_v3_relevant_command('build', prefs)
 		prefs.path = 'script.vsh'
 		prefs.is_crun = true
-		assert is_macos_v3_relevant_command('script.vsh', prefs)
+		assert !is_macos_v3_relevant_command('script.vsh', prefs)
 		assert !is_macos_v3_relevant_command('crun', prefs)
 		prefs.is_crun = false
 		prefs.path = 'main.v'
@@ -324,7 +324,8 @@ fn main() {}
 		failing_exit_code := failing_process.code
 		failing_process.close()
 		assert failing_exit_code != 0, failing_output_text
-		assert failing_output_text.contains('V3 C compilation failed; retrying with `-old-compiler`.')
+		assert !failing_output_text.contains('V3 C compilation failed; retrying with `-old-compiler`.')
+		assert failing_output_text.contains('macos_v3_missing_library_')
 		failing_report_dir := os.join_path(os.vtmp_dir(),
 			'macos_v3_fallback_${failing_compiler_pid}.c_error')
 		assert !os.exists(failing_report_dir), 'failed compatibility build left staged report directory: ${failing_report_dir}'

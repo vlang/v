@@ -31,7 +31,7 @@ fn test_version_flag() {
 	v_verbose_cmd_res := os.execute_opt('${vexe} -v run ${example_path}')!.output
 	assert v_verbose_cmd_res != v_ver_cmd_res
 	assert v_verbose_cmd_res.contains('v.pref.lookup_path:')
-		|| v_verbose_cmd_res.contains('Launching macOS V3 compiler:')
+		|| v_verbose_cmd_res.contains('Running macOS V3 compiler in process:')
 
 	v_verbose_cmd_with_additional_args_res := os.execute_opt('${vexe} -g -v run ${example_path}')!.output
 	assert v_verbose_cmd_with_additional_args_res != v_ver_cmd_res

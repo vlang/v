@@ -56,16 +56,14 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
 	is_directory := os.is_dir(prefs.path)
-	is_direct_vsh := normalized_path.ends_with('.vsh') && command != 'crun'
 	if command in external_tools
 		|| command in ['help', 'version', 'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'interpret', 'get', 'translate'] {
 		return false
 	}
-	if (prefs.is_crun && !is_direct_vsh) || prefs.is_test || prefs.is_prod
-		|| prefs.autofree || prefs.build_mode == .build_module || prefs.is_cstrict
-		|| prefs.use_cache || prefs.parallel_cc || prefs.out_name_is_dir
-		|| prefs.exclude.len > 0 || prefs.coverage_dir != '' || prefs.is_o
-		|| prefs.is_vlines || prefs.is_shared {
+	if prefs.is_crun || prefs.is_test || prefs.is_prod || prefs.autofree
+		|| prefs.build_mode == .build_module || prefs.is_cstrict || prefs.use_cache
+		|| prefs.parallel_cc || prefs.out_name_is_dir || prefs.exclude.len > 0
+		|| prefs.coverage_dir != '' || prefs.is_o || prefs.is_vlines || prefs.is_shared {
 		return false
 	}
 	// The established preference defaults select Boehm before dispatch runs,
@@ -291,9 +289,11 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 			return
 		}
 		os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
-		eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
-		if report.c_output != '' {
-			eprintln(report.c_output.trim_right('\r\n'))
+		if is_verbose {
+			eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
+			if report.c_output != '' {
+				eprintln(report.c_output.trim_right('\r\n'))
+			}
 		}
 	} else {
 		os.rmdir_all(c_error_dir) or {}
@@ -302,7 +302,9 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 				println('V3 requested the compatibility compiler for inline assembly')
 			}
 		} else {
-			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
+			if is_verbose {
+				eprintln('V3 compilation failed; retrying with `-old-compiler`.')
+			}
 		}
 	}
 	os.setenv(macos_v3_retry_env, '1', true)

@@ -128,8 +128,8 @@ fn test_v_tutorials_tcc() {
 }
 
 fn build_fast_tcc() {
-	exec('cd cmd/tools/fast && v fast.v')
-	exec('cd cmd/tools/fast && ./fast')
+	exec('cd cmd/tools/fast && v -o fast .')
+	exec('cd cmd/tools/fast && ./fast help')
 }
 
 fn v_self_compilation_usecache_tcc() {

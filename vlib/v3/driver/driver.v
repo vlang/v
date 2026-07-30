@@ -1605,7 +1605,8 @@ fn input_is_cmd_v(input_file string) bool {
 
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
-		return os.base(os.real_path(input_file))
+		real_input := os.real_path(input_file)
+		return os.join_path_single(real_input, os.base(real_input))
 	}
 	if input_file.ends_with('.vv') {
 		return input_file.all_before_last('.vv')
@@ -4434,6 +4435,9 @@ pub fn run(args []string) {
 		if request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
 			exit(1)
 		}
+		if macos_v3_fallback_file != '' {
+			exit(1)
+		}
 		for diagnostic in p.diagnostics {
 			if file := a.source_files[diagnostic.pos.id] {
 				_ = file
@@ -4754,7 +4758,9 @@ pub fn run(args []string) {
 			cvsw.restart()
 		}
 		if pre_tc.check_interface_embedding_limits() {
-			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			if macos_v3_fallback_file == '' {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
 			exit(1)
 		}
 		if verbose {
@@ -4848,7 +4854,9 @@ pub fn run(args []string) {
 						fixture_used_fns, false)
 				}
 			}
-			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			if macos_v3_fallback_file == '' {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {
@@ -5265,6 +5273,9 @@ pub fn run(args []string) {
 		b.step('annotate types (cached)')
 	}
 	if pre_tc.errors.len > 0 {
+		if macos_v3_fallback_file != '' {
+			exit(1)
+		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 		exit(1)
 	}
@@ -5411,7 +5422,9 @@ pub fn run(args []string) {
 			used_fns = monomorph_used_fns.move()
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
-			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			if pre_tc.errors.len == 0 || macos_v3_fallback_file == '' {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {

@@ -71,6 +71,7 @@ struct Completion {
 struct C.pthread_t {}
 
 fn C.pthread_join(thread C.pthread_t, retval voidptr) int
+fn C.v3_pthread_zero() C.pthread_t
 fn C.v3_pthread_create(thread &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
 
 // Pool owns a bounded set of persistent compiler workers. Phase payloads stay
@@ -133,7 +134,7 @@ pub fn new(size int) &Pool {
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	stack_size := worker_stack_size()
 	for idx in 0 .. wanted {
-		mut thread_id := C.pthread_t{}
+		mut thread_id := C.v3_pthread_zero()
 		result := if fail == 'pool:all' || fail == 'pool:${idx}' {
 			11
 		} else {
