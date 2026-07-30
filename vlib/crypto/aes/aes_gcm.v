@@ -276,7 +276,7 @@ fn j0_from_nonce(nonce []u8) []u8 {
 }
 
 // bytes_equal compares two equal-length byte slices in constant time.
-// similar to `crypto.internal.subtle.constant_time_compare()` ones
+// similar to `crypto.subtle.constant_time_compare()` ones
 @[direct_array_access]
 fn bytes_equal(a []u8, b []u8) bool {
 	if a.len != b.len {

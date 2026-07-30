@@ -34,6 +34,39 @@ mut:
 	sem   Semaphore // Blocks wait() until add() drops the task count to zero
 }
 
+struct WaitGroupThreadArgs {
+mut:
+	wg             &WaitGroup
+	f              fn () = unsafe { nil }
+	prealloc_scope voidptr
+}
+
+fn new_waitgroup_thread_args(wg &WaitGroup, f fn ()) &WaitGroupThreadArgs {
+	// Keep the wait group and captured callback context visible to tracing collectors.
+	mut args := unsafe { &WaitGroupThreadArgs(vcalloc(sizeof(WaitGroupThreadArgs))) }
+	if args == unsafe { nil } {
+		panic('could not allocate waitgroup thread arguments')
+	}
+	args.wg = wg
+	args.f = f
+	$if prealloc {
+		args.prealloc_scope = unsafe { prealloc_scope_retain_current() }
+	}
+	return args
+}
+
+fn free_waitgroup_thread_args(args &WaitGroupThreadArgs) {
+	$if prealloc {
+		scope := args.prealloc_scope
+		unsafe {
+			prealloc_scope_release(scope)
+		}
+	}
+	unsafe {
+		free(args)
+	}
+}
+
 // new_waitgroup creates a new WaitGroup.
 pub fn new_waitgroup() &WaitGroup {
 	mut wg := WaitGroup{}
@@ -100,8 +133,5 @@ pub fn (mut wg WaitGroup) wait() {
 // Calls to wg.go() should happen before the call to wg.wait().
 pub fn (mut wg WaitGroup) go(f fn ()) {
 	wg.add(1)
-	spawn fn (mut wg WaitGroup, f fn ()) {
-		f()
-		wg.done()
-	}(mut wg, f)
+	start_waitgroup_thread(mut wg, f)
 }

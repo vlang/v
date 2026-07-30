@@ -10,6 +10,8 @@ pub type NodeId = int
 pub type TextId = u32
 
 pub const empty_node = NodeId(-1)
+pub const method_value_borrow_receiver_marker = '__v3_method_value_borrow_receiver'
+pub const method_value_clone_receiver_marker_prefix = '__v3_method_value_clone_receiver:'
 
 const empty_node_value = Node{}
 
@@ -102,6 +104,9 @@ pub enum NodeKind as u8 {
 	// by parse_comptime_expr and fully expanded (into builder statements) by
 	// parse_block_body at parse time, so it never reaches later phases.
 	veb_template
+	// A `$res()` / `$res(index)` expression. This must remain distinct from
+	// `.ident` so user-spellable names cannot be reinterpreted as defer results.
+	defer_result
 }
 
 // Op lists op values used by flat.
@@ -210,6 +215,20 @@ pub mut:
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
+	// Template-generated nodes keep their original template source location while
+	// retaining the comptime call site used for v1-compatible diagnostic stacks.
+	template_call_sites map[int]token.Pos
+	template_actions    map[int]string
+	// missing_imports retains source import paths for unresolved import nodes.
+	missing_imports map[int]string
+	// file_node_ids records every .file node the parser creates, in creation
+	// order: (marker, trailing) pairs per source file. The trailing node's
+	// children are the file's top-level declarations, letting collect build
+	// its top-level index without a full node scan. Stages that renumber
+	// nodes clear the list; consumers fall back to scanning when it is empty
+	// or file_index_incomplete is set (a source file failed to read).
+	file_node_ids         []int
+	file_index_incomplete bool
 	// source_buffers owns the storage behind zero-copy scanner strings retained
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.
@@ -279,6 +298,9 @@ pub fn FlatAst.new() FlatAst {
 		export_fn_names:        map[string]string{}
 		noreturn_fns:           map[string]bool{}
 		source_files:           map[int]&token.File{}
+		template_call_sites:    map[int]token.Pos{}
+		template_actions:       map[int]string{}
+		missing_imports:        map[int]string{}
 		text_ids:               map[string]TextId{}
 		specialized_fn_nodes:   map[int]bool{}
 		specialized_fn_modules: map[int]string{}
@@ -375,25 +397,94 @@ pub fn (a &FlatAst) text_count() int {
 // This runs serially after parse/transform worker merges, so the text table
 // itself requires no synchronization and cannot retain worker-arena storage.
 pub fn (mut a FlatAst) intern_node_texts_from(start int) {
+	a.intern_node_texts_range(start, a.nodes.len)
+}
+
+// intern_node_texts_range canonicalizes managed payloads in nodes[start..end).
+// The bounded form serves the parallel parse merge, where later chunks are
+// already present in the node array but must be interned in chunk order.
+pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
 	first := if start < 0 { 0 } else { start }
-	if first >= a.nodes.len {
+	if first >= end {
 		return
 	}
-	for idx in first .. a.nodes.len {
-		_, value := a.intern_text(a.nodes[idx].value)
-		_, typ := a.intern_text(a.nodes[idx].typ)
-		a.nodes[idx].value = value
-		a.nodes[idx].typ = typ
-		params := a.nodes[idx].generic_params()
-		if params.len > 0 {
-			mut canonical_params := []string{cap: params.len}
-			for item in params {
-				_, param := a.intern_text(item)
-				canonical_params << param
-			}
-			a.nodes[idx].set_generic_params(canonical_params)
-		}
+	// Node texts repeat heavily by exact string instance (already-interned
+	// strings share `.str`), so a direct-mapped pointer probe skips the
+	// content-hash table lookup for the overwhelming majority of nodes.
+	// Nothing is freed during this pass, so pointer keys stay valid.
+	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
+	mut cache_vals := []string{len: 4096}
+	for idx in first .. end {
+		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals)
 	}
+}
+
+// intern_node_texts_at canonicalizes only the listed node indexes (in list
+// order). The parallel parse merge pre-rebinds table hits on the copy threads
+// and records the remaining nodes here, so canonical-table insertion order
+// still matches the serial merge exactly.
+pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
+	if indexes.len == 0 {
+		return
+	}
+	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
+	mut cache_vals := []string{len: 4096}
+	for idx in indexes {
+		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals)
+	}
+}
+
+fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs []voidptr, mut cache_vals []string) {
+	a.nodes[idx].value = a.intern_text_ptr_cached(a.nodes[idx].value, mut cache_ptrs, mut
+		cache_vals)
+	a.nodes[idx].typ = a.intern_text_ptr_cached(a.nodes[idx].typ, mut cache_ptrs, mut cache_vals)
+	params := a.nodes[idx].generic_params()
+	if params.len > 0 {
+		// Always rebuild the payload: the params array itself may live in a
+		// stage arena even when every param string is already canonical.
+		mut canonical_params := []string{cap: params.len}
+		for item in params {
+			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
+		}
+		a.nodes[idx].set_generic_params(canonical_params)
+	}
+}
+
+// probe_text_ptr_cached is the read-only twin of intern_text_ptr_cached: it
+// rebinds `value` to its canonical copy when the text table already holds the
+// content and reports a miss otherwise, never mutating the table. Safe on
+// worker threads only while no thread inserts into the table.
+pub fn (a &FlatAst) probe_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string) (string, bool) {
+	if value.len == 0 {
+		return '', true
+	}
+	slot := int((u64(voidptr(value.str)) >> 4) & 4095)
+	if cache_ptrs[slot] == voidptr(value.str) && cache_vals[slot].len == value.len {
+		return cache_vals[slot], true
+	}
+	if id := a.text_ids[value] {
+		canonical := a.text_values[int(id) - 1]
+		cache_ptrs[slot] = voidptr(value.str)
+		cache_vals[slot] = canonical
+		return canonical, true
+	}
+	return value, false
+}
+
+pub fn (mut a FlatAst) intern_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string) string {
+	if value.len == 0 {
+		return ''
+	}
+	slot := int((u64(voidptr(value.str)) >> 4) & 4095)
+	// The length check guards against distinct strings sharing one base pointer
+	// (unsafe zero-copy slices); same pointer + same length means same content.
+	if cache_ptrs[slot] == voidptr(value.str) && cache_vals[slot].len == value.len {
+		return cache_vals[slot]
+	}
+	_, canonical := a.intern_text(value)
+	cache_ptrs[slot] = voidptr(value.str)
+	cache_vals[slot] = canonical
+	return canonical
 }
 
 // intern_metadata_texts canonicalizes all source-derived FlatAst map keys and

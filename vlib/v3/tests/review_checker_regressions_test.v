@@ -87,6 +87,137 @@ fn test_reject_fixed_array_decay_to_pointer() {
 	assert out == '1'
 }
 
+fn test_enum_in_list_and_nested_array_address_match_v1() {
+	v3_bin := build_v3_review_checker()
+	insert_header := os.join_path(os.temp_dir(), 'v3_review_checker_insert.h')
+	os.write_file(insert_header,
+		'static inline int v3_review_checker_inserted(void) { return 6; }\n') or { panic(err) }
+	out := run_good(v3_bin, 'good_enum_in_list_and_nested_array_address', '
+#insert "@DIR/v3_review_checker_insert.h"
+
+fn C.v3_review_checker_inserted() int
+
+const max_bytes = 32 * 1024 * 1024
+
+enum FormulaKind {
+	text
+	number
+	date_time
+}
+
+struct Sheet {
+	value int
+}
+
+struct Workbook {
+	sheets []Sheet
+}
+
+struct Evaluator {
+	workbook &Workbook
+}
+
+struct LocalHolder {
+	evaluator &Evaluator
+}
+
+struct CopyValue {
+	value int
+}
+
+fn pair() (int, int) {
+	return 4, 5
+}
+
+fn number_value(value f64) f64 {
+	return value
+}
+
+fn parse_number(text string) !f64 {
+	return match text {
+		"42" { text.f64() }
+		else { error("not a number") }
+	}
+}
+
+fn clone_value(original &CopyValue) CopyValue {
+	return CopyValue{
+		...original
+	}
+}
+
+fn contains_value(value string, mut values []string) bool {
+	return value in values
+}
+
+fn item_count(values []int) int {
+	return values.len
+}
+
+fn shifted_value(base string) ?string {
+	shifted := {
+		"a": "A"
+	}
+	return shifted[base] or { none }
+}
+
+fn (mut evaluator Evaluator) keep_pointer_locally() {
+	holder := LocalHolder{
+		evaluator: evaluator
+	}
+	println(holder.evaluator.workbook.sheets[0].value)
+}
+
+fn inspect(evaluator &Evaluator, kind FormulaKind) {
+	if kind in [.number, .date_time] {
+		println("enum")
+	}
+	sheet := &evaluator.workbook.sheets[0]
+	println(sheet.value)
+	ch := "a"[0]
+	assert ch >= `a` && ch <= `z`
+	assert ch in [`a`, `b`]
+	quote := `a`
+	assert ch == quote
+	assert u64(10) < max_bytes
+	first, second := if ch == `a` {
+		pair()
+	} else {
+		1, 2
+	}
+	println(first + second)
+}
+
+fn main() {
+	workbook := &Workbook{
+		sheets: [Sheet{
+			value: 42
+		}]
+	}
+	mut evaluator := Evaluator{
+		workbook: workbook
+	}
+	mut values := ["value"]
+	inspect(&evaluator, .number)
+	evaluator.keep_pointer_locally()
+	println(number_value(values.len))
+	println(parse_number("42") or { 0 })
+	println(clone_value(&CopyValue{
+		value: 8
+	}).value)
+	println(contains_value("value", mut values))
+	println(item_count([]))
+	println(shifted_value("a") or { "none" })
+	println(shifted_value("b") or { "none" })
+	println(C.v3_review_checker_inserted())
+}
+')
+	assert out == 'enum\n42\n9\n42\n1.0\n42.0\n8\ntrue\n0\nA\nnone\n6'
+	run_bad(v3_bin, 'bad_address_mutable_array_element',
+		'fn main() {\n\tmut values := [1]\n\t_ := &values[0]\n}\n',
+		'cannot take the address of mutable array elements outside unsafe blocks')
+}
+
 fn test_reject_cross_wrapper_option_result_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_result_value_in_option_return',
@@ -178,11 +309,11 @@ fn main() {
 		'cannot use `chan string`')
 }
 
-fn test_optional_parameters_are_required() {
+fn test_trailing_optional_parameters_are_lowered_to_none() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_omitted_optional_parameter',
-		'fn consume(value ?int) {}\n\nfn main() {\n\tconsume()\n}\n',
-		'argument count mismatch for `consume`: expected 1, got 0')
+	out := run_good(v3_bin, 'good_omitted_optional_parameter',
+		'fn consume(value ?int) int {\n\treturn value or { -1 }\n}\n\nfn main() {\n\tprintln(int_str(consume()))\n\tprintln(int_str(consume(7)))\n}\n')
+	assert out == '-1\n7'
 }
 
 fn test_multi_return_arguments_must_consume_the_parameter_tail() {
@@ -252,6 +383,12 @@ fn test_reject_narrowed_interface_method_parameters() {
 	run_bad(v3_bin, 'bad_narrowed_interface_method_param',
 		'interface Eq {\n\teq(other Eq) bool\n}\n\ninterface Ord {\n\tEq\n\tlt(other Ord) bool\n}\n\nstruct Int {}\n\nfn (Int) eq(other Ord) bool {\n\t_ = other\n\treturn true\n}\n\nfn (Int) lt(other Ord) bool {\n\t_ = other\n\treturn false\n}\n\nfn main() {\n\t_ := Eq(Int{})\n}\n',
 		'type `Int` does not implement interface `Eq`')
+	run_bad(v3_bin, 'bad_narrowed_interface_method_param_implementer',
+		'interface Base {\n\tbase() int\n}\n\ninterface Narrow {\n\tBase\n\tnarrow() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct BaseOnly {}\n\nfn (b BaseOnly) base() int {\n\treturn 1\n}\n\nstruct Service {}\n\nfn (s Service) base() int {\n\treturn 2\n}\n\nfn (s Service) narrow() int {\n\treturn 3\n}\n\nfn (s Service) handle(value Narrow) int {\n\treturn value.narrow()\n}\n\nfn invoke(handler Handler, value Base) int {\n\treturn handler.handle(value)\n}\n\nfn main() {\n\tprintln(invoke(Handler(Service{}), Base(BaseOnly{})))\n}\n',
+		'type `Service` does not implement interface `Handler`')
+	out := run_good(v3_bin, 'good_exact_interface_method_param',
+		'interface Base {\n\tbase() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct Value {}\n\nfn (v Value) base() int {\n\treturn 7\n}\n\nstruct Service {}\n\nfn (s Service) handle(value Base) int {\n\treturn value.base()\n}\n\nfn main() {\n\tprintln(Handler(Service{}).handle(Base(Value{})))\n}\n')
+	assert out == '7'
 }
 
 fn test_implicit_str_sum_does_not_satisfy_interface() {
@@ -376,9 +513,9 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	run_bad(v3_bin, 'bad_mut_receiver_address_of_immutable_value',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n',
 		'method `bump` requires a mutable receiver')
-	run_bad(v3_bin, 'bad_mut_receiver_immutable_pointer_binding',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n}\n',
-		'method `bump` requires a mutable receiver')
+	immutable_pointer_out := run_good(v3_bin, 'good_mut_receiver_immutable_pointer_binding',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert immutable_pointer_out == '1'
 	run_bad(v3_bin, 'bad_mut_receiver_or_temporary',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut values := {\n\t\t"item": St{}\n\t}\n\t(values["item"] or { St{} }).bump()\n}\n',
 		'method `bump` requires a mutable receiver')

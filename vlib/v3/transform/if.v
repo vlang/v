@@ -973,15 +973,39 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
 	ok_cond := t.make_selector(t.make_ident(tmp_name), 'ok', 'bool')
-	value_decl := t.make_decl_assign_typed(lhs.value, t.make_selector(t.make_ident(tmp_name),
-		'value', value_type), value_type)
-
+	// An if-guard condition stores the call at child 1 and any extra
+	// destructured names after it: [lhs0, rhs, lhs1, lhs2, ...].
+	mut lhs_ids := [lhs_id]
+	for i in 2 .. cond.children_count {
+		lhs_ids << t.a.child(&cond, i)
+	}
 	saved_var_types := t.var_types.clone()
-	t.set_var_type(lhs.value, value_type)
+	mut value_decls := []flat.NodeId{}
+	if lhs_ids.len > 1 {
+		if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
+			for i, lhs_item_id in lhs_ids {
+				lhs_item := t.a.nodes[int(lhs_item_id)]
+				if lhs_item.kind != .ident || lhs_item.value == '_' {
+					continue
+				}
+				field_type := rhs_types[i].name()
+				payload := t.make_selector(t.make_ident(tmp_name), 'value', value_type)
+				field := t.make_selector(payload, 'arg${i}', field_type)
+				value_decls << t.make_decl_assign_typed(lhs_item.value, field, field_type)
+				t.set_var_type(lhs_item.value, field_type)
+			}
+		}
+	}
+	if value_decls.len == 0 {
+		value_decls << t.make_decl_assign_typed(lhs.value, t.make_selector(t.make_ident(tmp_name),
+			'value', value_type), value_type)
+		t.set_var_type(lhs.value, value_type)
+	}
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type)
-	mut then_children := []flat.NodeId{cap: int(t.a.nodes[int(then_block0)].children_count) + 1}
-	then_children << value_decl
+	mut then_children := []flat.NodeId{cap: int(t.a.nodes[int(then_block0)].children_count) +
+		value_decls.len}
+	then_children << value_decls
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)

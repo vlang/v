@@ -524,7 +524,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 
 	if !initialized && !is_generic_default {
-		if nr_fields > 0 {
+		if nr_fields > 0 && !sym.is_empty_struct_array() {
 			g.write('0')
 		} else {
 			g.write('E_STRUCT')
@@ -770,10 +770,15 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	g.write('.${field_name} = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface] {
-			if field.typ.has_flag(.option) {
-				g.expr_with_opt(field.default_expr, field.default_expr_typ, field.typ)
+			default_expr_typ := if field.default_expr is ast.None {
+				ast.none_type
 			} else {
-				g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+				field.default_expr_typ
+			}
+			if field.typ.has_flag(.option) {
+				g.expr_with_opt(field.default_expr, default_expr_typ, field.typ)
+			} else {
+				g.expr_with_cast(field.default_expr, default_expr_typ, field.typ)
 			}
 			return true
 		}

@@ -107,6 +107,7 @@ pub:
 pub struct Channel {
 pub:
 	elem_type Type
+	is_mut    bool
 }
 
 // Map represents map data used by types.
@@ -232,6 +233,7 @@ pub fn clone_owned_type(value Type) Type {
 		Channel {
 			Type(Channel{
 				elem_type: clone_owned_type(value.elem_type)
+				is_mut:    value.is_mut
 			})
 		}
 		Map {
@@ -308,8 +310,11 @@ pub fn clone_owned_types(values []Type) []Type {
 // StructField represents struct field data used by types.
 pub struct StructField {
 pub:
-	name string
-	typ  Type
+	name        string
+	typ         Type
+	has_default bool
+	is_embed    bool
+	is_mut      bool
 }
 
 // unwrap_pointer transforms unwrap pointer data for types.
@@ -397,54 +402,41 @@ pub fn (t Type) name() string {
 	if t is Void {
 		return 'void'
 	}
-	if t is Unknown {
-		return 'unknown'
+	if t is Struct {
+		return t.name
 	}
-	if t is Nil {
-		return 'nil'
-	}
-	if t is None {
-		return 'none'
-	}
-	if t is String {
-		return 'string'
-	}
-	if t is Char {
-		return 'char'
-	}
-	if t is Rune {
-		return 'rune'
-	}
-	if t is ISize {
-		return 'isize'
-	}
-	if t is USize {
-		return 'usize'
+	if t is Alias {
+		return t.name
 	}
 	if t is Primitive {
 		return prim_name_from(t.props, t.size)
 	}
+	if t is Pointer {
+		if t.base_type is Void {
+			return 'voidptr'
+		}
+		return '&${nested_type_name(t.base_type)}'
+	}
 	if t is Array {
 		return '[]${nested_type_name(t.elem_type)}'
 	}
-	if t is ArrayFixed {
-		mut len_text := t.len.str()
-		if t.len_expr.len > 0 {
-			len_text = t.len_expr
-		}
-		elem_type := nested_type_name(t.elem_type)
-		// Keep fixed arrays in canonical prefix form. Suffix form loses nesting:
-		// both `?[3]u8` and `[3]?u8` otherwise collapse to the ambiguous `?u8[3]`.
-		return '[${len_text}]${elem_type}'
+	if t is Interface {
+		return t.name
 	}
-	if t is Channel {
-		return 'chan ${nested_type_name(t.elem_type)}'
+	if t is Enum {
+		return t.name
 	}
-	if t is Map {
-		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
+	if t is SumType {
+		return t.name
 	}
-	if t is Pointer {
-		return '&${nested_type_name(t.base_type)}'
+	if t is String {
+		return 'string'
+	}
+	if t is OptionType {
+		return '?${nested_type_name(t.base_type)}'
+	}
+	if t is ResultType {
+		return '!${nested_type_name(t.base_type)}'
 	}
 	if t is FnType {
 		mut s := 'fn('
@@ -460,31 +452,47 @@ pub fn (t Type) name() string {
 		}
 		return s
 	}
-	if t is OptionType {
-		return '?${nested_type_name(t.base_type)}'
+	if t is Map {
+		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
 	}
-	if t is ResultType {
-		return '!${nested_type_name(t.base_type)}'
+	if t is ArrayFixed {
+		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
+		elem_type := nested_type_name(t.elem_type)
+		// Keep fixed arrays in canonical prefix form. Suffix form loses nesting:
+		// both `?[3]u8` and `[3]?u8` otherwise collapse to the ambiguous `?u8[3]`.
+		return '[${len_text}]${elem_type}'
 	}
-	if t is Struct {
-		return t.name
+	if t is Channel {
+		if t.is_mut && t.elem_type is Pointer {
+			return 'chan mut ${nested_type_name(t.elem_type.base_type)}'
+		}
+		return 'chan ${nested_type_name(t.elem_type)}'
 	}
-	if t is Interface {
-		return t.name
+	if t is Unknown {
+		return 'unknown'
 	}
-	if t is Enum {
-		return t.name
+	if t is Nil {
+		return 'nil'
 	}
-	if t is SumType {
-		return t.name
+	if t is None {
+		return 'none'
 	}
-	if t is Alias {
-		return t.name
+	if t is Char {
+		return 'char'
+	}
+	if t is Rune {
+		return 'rune'
+	}
+	if t is ISize {
+		return 'isize'
+	}
+	if t is USize {
+		return 'usize'
 	}
 	if t is MultiReturn {
-		mut parts := []string{}
-		for i in 0 .. t.types.len {
-			parts << nested_type_name(t.types[i])
+		mut parts := []string{cap: t.types.len}
+		for typ in t.types {
+			parts << nested_type_name(typ)
 		}
 		return '(${parts.join(', ')})'
 	}

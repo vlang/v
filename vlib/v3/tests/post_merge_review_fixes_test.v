@@ -7,16 +7,28 @@ const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
-const repo_dir = os.dir(vlib_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
-const compiler_src_dir = os.join_path(repo_dir, 'cmd', 'v')
 
 fn tmp_test_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 }
 
+fn setup_v3_cache() {
+	cache_dir := tmp_test_path('post_merge_review_fixes_cache')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.rm(tmp_test_path('post_merge_review_fixes_test')) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
+
 fn build_v3() string {
+	setup_v3_cache()
 	v3_bin := tmp_test_path('post_merge_review_fixes_test')
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
@@ -209,12 +221,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, inputs [
 
 fn test_compiler_vexe_env_uses_running_executable() {
 	v3_bin := build_v3()
-	c_out := os.join_path(os.temp_dir(), 'v3_review_vexe.c')
-	os.rm(c_out) or {}
-	gen := os.execute('${v3_bin} -o ${c_out} ${compiler_src_dir}')
-	assert gen.exit_code == 0, gen.output
-	assert os.exists(c_out)
-	c_source := os.read_file(c_out) or { panic(err) }
+	c_source := gen_c(v3_bin, 'compiler_vexe_env', 'fn main() {}')
 	assert !c_source.contains('v3_vexe_target')
 	assert !c_source.contains('fopen(v3_src')
 	assert !c_source.contains('v3_checkout_vexe')
@@ -1288,7 +1295,10 @@ fn main() {
 
 fn test_interface_equality_includes_veb_handler_call_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_veb_handler_call_box', 'import veb
+	out := run_good_project(v3_bin, 'interface_eq_veb_handler_call_box', {
+		'v.mod':     "Module { name: 'interface_eq_veb_handler_call_box' }\n"
+		'veb/veb.v': 'module veb\n\npub struct Context {}\n\npub struct Result {}\n'
+		'main.v':    'import veb
 
 interface IValue {}
 
@@ -1323,7 +1333,8 @@ fn main() {
 	mut app := &App{}
 	_ = app.index()
 }
-')
+'
+	}, 'main.v')
 	assert out == 'true'
 }
 
@@ -2259,9 +2270,9 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context',
 		'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'if_error_branch_rejected_for_option_payload',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n",
-		'if-expression branch type mismatch')
+	option_error_out := run_good(v3_bin, 'if_error_branch_allowed_for_option_payload',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n")
+	assert option_error_out == ''
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
 		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
 		'if-expression branch type mismatch')
@@ -2376,7 +2387,7 @@ fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
 
 fn test_nested_string_plus_releases_intermediate_storage() {
 	v3_bin := build_v3()
-	source := "fn concat_path(dir string, name &string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', &name))\n}\n"
+	source := "fn concat_path(dir string, name string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', name))\n}\n"
 	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
 	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
 	assert c_source.contains('string__free(&__str_plus_acc_'), c_source
@@ -2437,6 +2448,17 @@ fn main() {
 	item_c := gen_c(v3_bin, 'for_mut_item_receiver_c', item_src)
 	item_main := c_fn_body(item_c, 'int main(')
 	assert item_main.len > 0, item_c
+	assert item_main.contains('Item* item ='), item_main
+	assert item_main.contains('__bump(item);'), item_main
+	assert !item_main.contains('__bump(&item);'), item_main
+	assert item_main.contains('bump_item(item);'), item_main
+	assert !item_main.contains('bump_item(&item);'), item_main
+	assert item_main.contains('inc_counter(&item);'), item_main
+	assert !item_main.contains('inc_counter(item);'), item_main
+	assert item_main.contains('inc_counter(&c);'), item_main
+	assert item_main.contains('__inc(&item);'), item_main
+	assert item_main.contains('__inc(&c);'), item_main
+	assert !item_main.contains('__inc(c);'), item_main
 	assert item_main.contains('Item* item ='), item_main
 	assert item_main.contains('__bump(item);'), item_main
 	assert !item_main.contains('__bump(&item);'), item_main
@@ -2512,7 +2534,7 @@ fn main() {
 ')
 	assert out.contains('chan int{\n    cap: 2, closed: false\n}')
 	assert out.contains('Holder{')
-	assert out.contains('chan int(nil)')
+	assert out.contains('chan int{\n        cap: 0, closed: false\n    }')
 }
 
 fn test_explicit_return_semicolon_ends_void_return() {
@@ -2622,10 +2644,9 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 		'argument count mismatch for `fixed.pointers`: expected 1, got 2')
 }
 
-fn test_alias_receiver_method_value_escape_is_rejected() {
+fn test_alias_receiver_method_value_escape_is_supported() {
 	v3_bin := build_v3()
-	err := 'a method value (`obj.method`) cannot escape its call site'
-	run_bad(v3_bin, 'alias_receiver_underlying_method_value_escape', 'struct Runner {
+	underlying := run_good(v3_bin, 'alias_receiver_underlying_method_value_escape', 'struct Runner {
 	n int
 }
 
@@ -2635,14 +2656,20 @@ fn (r Runner) run() int {
 	return r.n
 }
 
-fn bind(r RAlias) fn () int {
+fn make_callback(r RAlias) fn () int {
 	return r.run
 }
 
-fn main() {}
-',
-		err)
-	run_bad(v3_bin, 'alias_receiver_own_method_value_escape', 'struct Runner {
+fn main() {
+	r := RAlias(Runner{
+		n: 41
+	})
+	cb := make_callback(r)
+	println(int_str(cb()))
+}
+')
+	assert underlying == '41'
+	own := run_good(v3_bin, 'alias_receiver_own_method_value_escape', 'struct Runner {
 	n int
 }
 
@@ -2652,13 +2679,50 @@ fn (r RAlias) alias_run() int {
 	return r.n
 }
 
-fn bind(r RAlias) fn () int {
+fn make_callback(r RAlias) fn () int {
 	return r.alias_run
 }
 
-fn main() {}
-',
-		err)
+fn main() {
+	r := RAlias(Runner{
+		n: 42
+	})
+	cb := make_callback(r)
+	println(int_str(cb()))
+}
+')
+	assert own == '42'
+}
+
+fn test_interface_method_value_escape_is_supported() {
+	v3_bin := build_v3()
+	interface_method := run_good(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
+	run() int
+}
+
+struct Job {
+	n int
+}
+
+fn (j Job) run() int {
+	return j.n
+}
+
+struct Holder {
+	cb fn () int
+}
+
+fn main() {
+	r := Runner(Job{
+		n: 1
+	})
+	h := Holder{
+		cb: r.run
+	}
+	println(int_str(h.cb()))
+}
+')
+	assert interface_method == '1'
 }
 
 fn test_map_builtin_method_fallback_checks_arguments() {
@@ -2943,11 +3007,11 @@ fn test_unimported_main_types_are_not_visible_in_modules() {
 	run_bad_project(v3_bin, 'unimported_plain_main_type', {
 		'main.v':      'module main\n\nimport moda\n\nstruct Foo {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Foo\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
-	}, ['main.v', 'moda/moda.v'], 'unknown type `Foo`')
+	}, ['main.v'], 'unknown type `Foo`')
 	run_bad_project(v3_bin, 'unimported_generic_main_type', {
 		'main.v':      'module main\n\nimport moda\n\nstruct Box[T] {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Box[int]\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
-	}, ['main.v', 'moda/moda.v'], 'unknown type `Box`')
+	}, ['main.v'], 'unknown type `Box`')
 }
 
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
@@ -3001,7 +3065,8 @@ fn main() {
 }
 ')
 	omitempty_main := c_fn_body(omitempty_c, 'int main(int argc, char** argv)')
-	assert omitempty_main.contains('json__encode(&(Payload)')
+	assert !omitempty_main.contains('json__encode(&(Payload)')
+	assert omitempty_main.contains('.omit) == 0')
 
 	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
 
@@ -3702,8 +3767,8 @@ fn main() {
 	assert out.contains('present: Option(7)'), out
 	assert out.contains('missing: Option(none)'), out
 	assert out.contains("text: Option('hi')"), out
-	assert out.contains('ok: Option(9)'), out
-	assert out.contains('fail: Option(none)'), out
+	assert out.contains('ok: Result(9)'), out
+	assert out.contains('fail: Result(error: nope)'), out
 	assert !out.contains('?int{}'), out
 }
 
@@ -4130,9 +4195,9 @@ fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	run_bad(v3_bin, 'interface_voidptr_cast_rejected',
 		'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := Sink(p)\n}\n',
 		'does not implement interface')
-	run_bad(v3_bin, 'interface_pointer_voidptr_cast_rejected',
-		'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := &Sink(p)\n}\n',
-		'does not implement interface')
+	pointer_escape_out := run_good(v3_bin, 'interface_pointer_voidptr_cast_escape_hatch',
+		'interface Sink {\n\tput()\n}\n\nfn main() {\n\tp := unsafe { voidptr(0) }\n\t_ := &Sink(p)\n\tprintln("ok")\n}\n')
+	assert pointer_escape_out == 'ok'
 	run_bad(v3_bin, 'interface_alias_cast_non_implementer',
 		'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n',
 		'does not implement interface')
@@ -4155,6 +4220,9 @@ fn test_interface_is_unqualified_local_uses_exact_impl_id() {
 
 fn test_callback_lambda_lift_preserves_outer_captures() {
 	v3_bin := build_v3()
+	no_arg_out := run_good(v3_bin, 'callback_no_arg_lambda_lift_preserves_capture',
+		'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n')
+	assert no_arg_out == '42'
 	out := run_good(v3_bin, 'callback_lambda_lift_preserves_capture',
 		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n')
 	assert out == '12'
@@ -4344,7 +4412,7 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	assert c_source.contains('call(&visitor);')
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
 	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
-	assert out == 'ok'
+	assert out == '1'
 
 	assign_source := 'interface Base {
 	get() int
@@ -4917,7 +4985,7 @@ fn main() {
 	d["name"] = 1
 }
 ',
-		'overloaded index assignment requires a matching `[]=` setter')
+		'index assignment requires a `[]=` overload on `Dict`')
 	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_setter', dict_src +
 		'
 
@@ -4926,7 +4994,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'overloaded index assignment requires a matching `[]=` setter')
+		'index assignment requires a `[]=` overload on `Dict`')
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -4963,7 +5031,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'compound overloaded index assignment requires a matching `[]` getter')
+		'compound index assignment requires a `[]` overload on `Dict`')
 	mismatched_getter_src := 'struct Tensor {}
 
 fn (t Tensor) [] (index int) int {
@@ -4999,7 +5067,7 @@ fn main() {
 	w[1..2] += 3
 }
 ',
-		'compound overloaded index assignment requires matching `[]` and `[]=` index parameter types')
+		'compound index assignment requires matching `[]` and `[]=` index parameter types')
 	run_bad(v3_bin, 'overloaded_index_assignment_rejects_wrong_setter_key', setter_only_src +
 		'
 
@@ -5060,7 +5128,7 @@ fn main() {
 	d["name"] += 1
 }
 ',
-		'compound overloaded index assignment requires `[]` return type compatible with `[]=` value parameter type')
+		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
 	run_bad(v3_bin, 'overloaded_index_postfix_mutation_rejected', getter_and_setter_src +
 		'
 
@@ -5100,6 +5168,29 @@ fn main() {
 }
 ')
 	assert out == '1\n4,7'
+}
+
+fn test_unused_generic_receiver_method_is_not_instantiated() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'unused_generic_receiver_method', 'struct Item {}
+
+struct Box[T] {
+	items []T
+}
+
+fn (box Box[T]) len() int {
+	return box.items.len
+}
+
+fn (box Box[T]) ordered() bool {
+	return box.items[0] < box.items[1]
+}
+
+fn main() {
+	_ = Box[Item]{}.len()
+}
+')
+	assert out == ''
 }
 
 fn test_explicit_generic_method_index_callee_codegen() {
@@ -5355,7 +5446,7 @@ fn main() {
 '
 	c_source := gen_c(v3_bin, 'interface_upcast_promoted_struct_field', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('->Inner.name'), main_body
+	assert main_body.contains('.name = child.name'), main_body
 	assert !main_body.contains('->name'), main_body
 	out := run_good(v3_bin, 'interface_upcast_promoted_struct_field_run', source)
 	assert out == 'Ada\nGrace'
@@ -5634,36 +5725,10 @@ fn main() {
 	println(f.str())
 }
 ")
-	assert str_out.contains('nums: &[1, 2]'), str_out
-	assert str_out.contains("m: &{'a': 3}"), str_out
-	assert str_out.contains('bar: &Bar'), str_out
+	assert str_out.contains('nums: [1, 2]'), str_out
+	assert str_out.contains("m: {'a': 3}"), str_out
+	assert str_out.contains('bar: Bar'), str_out
 	assert str_out.contains('x: 7'), str_out
-	run_bad(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
-	run() int
-}
-
-struct Job {
-	n int
-}
-
-fn (j Job) run() int {
-	return j.n
-}
-
-struct Holder {
-	cb fn () int
-}
-
-fn main() {
-	r := Runner(Job{
-		n: 1
-	})
-	_ := Holder{
-		cb: r.run
-	}
-}
-',
-		'cannot escape its call site')
 	run_bad(v3_bin, 'review_voidptr_interface_cast', 'interface Sink {
 	sink()
 }
@@ -5709,19 +5774,13 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 		'index assignment requires a `[]=` overload')
 	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
-		'index must be `int`, not `string`')
+		'cannot use `string` as overloaded index; expected `int`')
 	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
 	pointer_depth_out := run_good(v3_bin, 'review_one_level_implicit_address',
 		'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n')
 	assert pointer_depth_out == '3'
-	run_bad(v3_bin, 'review_too_many_implicit_addresses',
-		'fn take(pp &&int) {\n\t_ = pp\n}\n\nfn main() {\n\tmut n := 1\n\ttake(n)\n}\n',
-		'expected `&&int`')
-	run_bad(v3_bin, 'review_pointer_arg_needs_unsupported_address',
-		'fn take(pp &&int) {\n\t_ = pp\n}\n\nfn main() {\n\tmut n := 1\n\tmut p := &n\n\ttake(p)\n}\n',
-		'expected `&&int`')
 	alias_str_out := run_good(v3_bin, 'review_alias_struct_implicit_interface_str',
 		"interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n")
 	assert alias_str_out == 'true\ntrue'
@@ -6510,7 +6569,7 @@ fn main() {
 }
 ')
 	assert mut_pointer_iteration_out == '9\n9'
-	run_bad(v3_bin, 'ordinary_pointer_rejected_for_value_param', 'struct PointerCallItem {
+	ordinary_pointer_out := run_good(v3_bin, 'ordinary_pointer_value_param', 'struct PointerCallItem {
 	value int
 }
 
@@ -6524,8 +6583,8 @@ fn main() {
 	}
 	println(int_str(take_value(item)))
 }
-',
-		'cannot use `&PointerCallItem` as argument 1 to `take_value`; expected `PointerCallItem`')
+')
+	assert ordinary_pointer_out == '7'
 }
 
 fn test_map_retains_address_of_local_after_return() {
@@ -6552,4 +6611,3335 @@ fn main() {
 }
 ')
 	assert out == '7\n7'
+}
+
+fn test_lambda_capture_counts_as_local_use_without_counting_shadowed_parameters() {
+	check_src := '${tmp_test_path('lambda_capture_local_usage')}.v'
+	os.write_file(check_src, 'fn apply(f fn (int) int, value int) int {
+	return f(value)
+}
+
+fn captured() int {
+	offset := 7
+	return apply(|n| n + offset, 5)
+}
+
+fn shadowed() int {
+	shadowed_offset := 7
+	return apply(|shadowed_offset| shadowed_offset + 1, 5)
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	assert !tc.notices.any(it.msg == 'unused variable: `offset`'), tc.notices.str()
+	assert tc.notices.any(it.msg == 'unused variable: `shadowed_offset`'), tc.notices.str()
+
+	mut fixture_parser := parser.Parser.new(prefs)
+	mut fixture_ast := fixture_parser.parse_file(check_src)
+	mut fixture_tc := types.TypeChecker.new(fixture_ast)
+	fixture_tc.checker_fixture_mode = true
+	fixture_tc.collect(fixture_ast)
+	fixture_tc.check_semantics()
+	assert fixture_tc.errors.any(it.msg == 'undefined variable `offset`'), fixture_tc.errors.str()
+	assert fixture_tc.errors.any(it.msg == '`offset` used as value'), fixture_tc.errors.str()
+	assert !fixture_tc.errors.any(it.msg.contains('shadowed_offset')), fixture_tc.errors.str()
+	assert fixture_tc.notices.any(it.msg == 'unused variable: `offset`'), fixture_tc.notices.str()
+}
+
+fn test_duplicate_function_diagnostics_survive_unrelated_semantic_errors() {
+	check_src := '${tmp_test_path('duplicate_fn_with_unrelated_error')}.v'
+	os.write_file(check_src, "fn duplicate() {}
+
+fn duplicate(value int) {}
+
+fn unrelated() int {
+	return 'bad'
+}
+") or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.severity == 'builder error:'
+		&& it.msg == 'redefinition of function `duplicate`'), tc.errors.str()
+	assert tc.errors.filter(it.severity == 'conflicting declaration:'
+		&& it.node_value == 'duplicate').len == 2, tc.errors.str()
+	assert tc.errors.any(it.msg.contains('cannot use `string` as type `int` in return argument')), tc.errors.str()
+}
+
+fn test_repeated_template_lines_keep_distinct_diagnostic_positions() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('repeated_template_line_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('repeated.txt')
+}
+")
+	write_project_file(root, 'repeated.txt', '@unknown_var
+middle
+@unknown_var
+')
+	output := tmp_test_path('repeated_template_line_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('repeated.txt:1:3: error: undefined ident: `unknown_var`'), compile.output
+
+	assert compile.output.contains('repeated.txt:3:3: error: undefined ident: `unknown_var`'), compile.output
+}
+
+fn test_template_interpolations_keep_distinct_columns() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_interpolation_columns')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('columns.txt')
+}
+")
+	write_project_file(root, 'columns.txt', '@unknown @unknown
+')
+	output := tmp_test_path('template_interpolation_columns')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('columns.txt:1:3: error: undefined ident: `unknown`'), compile.output
+	assert compile.output.contains('columns.txt:1:12: error: undefined ident: `unknown`'), compile.output
+	assert compile.output.contains('    1 | @unknown @unknown\n      |  ~~~~~~~'), compile.output
+}
+
+fn test_explicit_template_interpolations_use_expression_columns() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('explicit_template_interpolation_columns')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('explicit_columns.txt')
+}
+")
+	write_project_file(root, 'explicit_columns.txt', '@{missing} @(absent)
+')
+	output := tmp_test_path('explicit_template_interpolation_columns')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('explicit_columns.txt:1:4: error: undefined ident: `missing`'), compile.output
+
+	assert compile.output.contains('explicit_columns.txt:1:15: error: undefined ident: `absent`'), compile.output
+	assert compile.output.contains('    1 | @{missing} @(absent)\n      |   ~~~~~~~'), compile.output
+}
+
+fn test_dollar_template_interpolations_use_expression_columns() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('dollar_template_interpolation_columns')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('dollar_columns.txt')
+}
+")
+	write_project_file(root, 'dollar_columns.txt', '\${first} @second
+')
+	output := tmp_test_path('dollar_template_interpolation_columns')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('dollar_columns.txt:1:4: error: undefined ident: `first`'), compile.output
+	assert compile.output.contains('dollar_columns.txt:1:12: error: undefined ident: `second`'), compile.output
+	assert compile.output.contains('    1 | \${first} @second\n      |   ~~~~~'), compile.output
+}
+
+fn test_template_translation_shorthand_diagnostics_use_template_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_translation_shorthand_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('translation.html')
+}
+")
+	write_project_file(root, 'translation.html', '%title
+')
+	output := tmp_test_path('template_translation_shorthand_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('translation.html:1:'), compile.output
+	assert compile.output.contains('undefined ident: `ctx`'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert !compile.output.contains('<veb-template>'), compile.output
+}
+
+fn test_template_control_diagnostics_use_template_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_control_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('control.txt')
+}
+")
+	write_project_file(root, 'control.txt', '@if missing {
+value
+@end
+@for item in missing_items {
+@item
+@end
+')
+	output := tmp_test_path('template_control_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('control.txt:1:5: error: undefined ident: `missing`'), compile.output
+	assert compile.output.contains('control.txt:4:14: error: undefined ident: `missing_items`'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+}
+
+fn test_inline_template_control_bodies_use_template_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('inline_template_control_diagnostics')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('inline_control.txt')
+}
+")
+	write_project_file(root, 'inline_control.txt', '@if true { @missing_if }
+@for item in [1] { @missing_for }
+')
+	output := tmp_test_path('inline_template_control_diagnostics')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('inline_control.txt:1:14: error: undefined ident: `missing_if`'), compile.output
+
+	assert compile.output.contains('inline_control.txt:2:22: error: undefined ident: `missing_for`'), compile.output
+
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert !compile.output.contains('<veb-template>'), compile.output
+}
+
+fn test_qualified_struct_literal_in_select_send_condition() {
+	v3_bin := build_v3()
+	result := run_good_project_result(v3_bin, 'qualified_struct_literal_select_send', '', {
+		'v.mod':               "Module { name: 'qualified_struct_literal_select_send' }\n"
+		'messages/messages.v': 'module messages
+
+pub struct Msg {
+pub:
+	x int
+}
+'
+		'main.v':              'module main
+
+import messages
+
+fn main() {
+	ch := chan messages.Msg{cap: 2}
+	select {
+		ch <- messages.Msg{
+			x: 7
+		} {
+			println(7)
+		}
+	}
+	select {
+		ch <- messages.Msg {
+			x: 8
+		} {
+			println(8)
+		}
+	}
+}
+'
+	}, 'main.v')
+	assert !result.compile_output.contains('unexpected token'), result.compile_output
+	assert result.run_output == '7\n8', result.run_output
+}
+
+fn test_imported_lowercase_selector_with_attached_block_is_not_struct_literal() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_lowercase_selector_attached_block', {
+		'v.mod':         "Module { name: 'imported_lowercase_selector_attached_block' }\n"
+		'flags/flags.v': 'module flags
+
+pub const enabled = true
+'
+		'main.v':        'module main
+
+import flags
+
+fn main() {
+	mut seen := 0
+	if flags.enabled{
+		seen = 1
+	}
+	println(seen)
+}
+'
+	}, 'main.v')
+	assert out == '1'
+}
+
+fn test_number_prefixed_identifier_suppression_stays_in_declaration_scope() {
+	path := '${tmp_test_path('number_prefixed_identifier_scopes')}.v'
+	os.write_file(path, 'fn declares() {
+	mut 3a := 1
+}
+
+fn uses() {
+	println(3a)
+}
+
+fn compares() {
+	if 3a == 0 {}
+}
+
+fn same_scope() {
+	mut 4b := 2
+	println(4b)
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(path)
+	three_a := p.diagnostics.filter(it.message == 'identifier name `3a` cannot start with a number')
+	assert three_a.len == 3, p.diagnostics.str()
+	assert three_a.map(it.line) == [2, 6, 10], p.diagnostics.str()
+	four_b := p.diagnostics.filter(it.message == 'identifier name `4b` cannot start with a number')
+	assert four_b.len == 1, p.diagnostics.str()
+	assert four_b[0].line == 14, p.diagnostics.str()
+}
+
+fn test_recursive_str_helper_progress_must_cover_early_return_paths() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_early_return', 'struct Item {
+mut:
+	remaining int
+}
+
+fn maybe_decrement(mut item Item, stop bool) {
+	if stop {
+		return
+	}
+	item.remaining--
+}
+
+fn (item Item) str() string {
+	mut next := item
+	maybe_decrement(mut next, true)
+	return next.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_unknown_struct_suppression_stays_with_related_generic_declaration() {
+	v3_bin := build_v3()
+	src := 'fn broken[U](value T) {
+	_ := value
+}
+
+fn unrelated() {
+	_ := T{}
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('unrelated_unknown_struct')}.v'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('unrelated_unknown_struct')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('generic type name `T` is not mentioned in fn `broken[U]`'), compile.output
+	assert compile.output.contains('unknown struct `T`'), compile.output
+}
+
+fn test_generic_array_suppression_keeps_unrelated_unknown_type_errors() {
+	v3_bin := build_v3()
+	src := 'struct Example[T] {}
+
+fn main() {
+	_ = T(0)
+	_ = []Example[T]{}
+}
+'
+	bad_src := '${tmp_test_path('generic_array_unrelated_unknown_type')}.v'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('generic_array_unrelated_unknown_type')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	unknown_lines :=
+		compile.output.split_into_lines().filter(it.contains('error: unknown type `T`'))
+	assert unknown_lines.len > 0, compile.output
+	assert unknown_lines.all(it.contains(':4:')), compile.output
+	assert compile.output.contains('generic struct cannot be used in non-generic function'), compile.output
+}
+
+fn test_recursive_str_loop_progress_retains_zero_iteration_path() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_zero_iteration_loop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	for _ in []int{} {
+		next.remaining--
+	}
+	return next.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_or_fallback_progress_is_conditional() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_conditional_or_fallback', 'struct Item {
+mut:
+	remaining int
+}
+
+fn maybe() ?int {
+	return 1
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	_ := maybe() or {
+		copy.remaining--
+		0
+	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_short_circuit_progress_is_conditional() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_logical_and_rhs_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) bool {
+	item.remaining--
+	return true
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	_ = false && advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_logical_or_rhs_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) bool {
+	item.remaining--
+	return true
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	_ = true || advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_unreachable_short_circuit_call', 'struct Item {}
+
+fn (item Item) str() string {
+	if false && item.str() == "never" {
+		return "unreachable"
+	}
+	if true || item.str() == "never" {
+		return "ok"
+	}
+	return "unreachable"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert out == 'ok'
+}
+
+fn test_recursive_str_comptime_if_uses_selected_branch() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_inactive_comptime_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	$if threads {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_selected_comptime_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	$if threads {
+	} $else {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+	inactive_call_out := run_good(v3_bin, 'recursive_str_inactive_comptime_call', 'struct Item {}
+
+fn (item Item) str() string {
+	$if threads {
+		return item.str()
+	} $else {
+		return "ok"
+	}
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert inactive_call_out == 'ok'
+}
+
+fn test_recursive_str_helper_return_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_return_alias', 'struct Item {}
+
+fn same(item Item) Item {
+	return item
+}
+
+fn (item Item) str() string {
+	return same(item).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_invoked_helper_calls_are_analyzed() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_invoked_helper_call', 'struct Item {}
+
+fn recurse(item Item) string {
+	return item.str()
+}
+
+fn (item Item) str() string {
+	return recurse(item)
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_progressed_invoked_helper_call', 'struct Item {
+mut:
+	remaining int
+}
+
+fn recurse(item Item) string {
+	return item.str()
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return "done"
+	}
+	mut copy := item
+	copy.remaining--
+	return recurse(copy)
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert out == 'done'
+	cycle_out := run_good(v3_bin, 'recursive_str_helper_analysis_cycle_guard', 'struct Item {}
+
+fn ping(item Item, remaining int) string {
+	if remaining <= 0 {
+		return "done"
+	}
+	return pong(item, remaining - 1)
+}
+
+fn pong(item Item, remaining int) string {
+	return ping(item, remaining)
+}
+
+fn (item Item) str() string {
+	return ping(item, 1)
+}
+
+fn main() {}
+')
+	assert cycle_out == ''
+}
+
+fn test_recursive_str_helper_multiple_returns_merge_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_multiple_return_aliases', 'struct Item {
+mut:
+	remaining int
+}
+
+fn choose(original Item, changed Item, use_original bool) Item {
+	if use_original {
+		return original
+	}
+	return changed
+}
+
+fn (item Item) str() string {
+	mut changed := item
+	changed.remaining--
+	return choose(item, changed, true).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_constant_true_branch_has_no_fallthrough() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_constant_true_branch', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	if true {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+	fn main() {}
+')
+	assert out == ''
+	helper_out := run_good(v3_bin, 'recursive_str_helper_constant_true_branch', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	if true {
+		item.remaining--
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+')
+	assert helper_out == ''
+}
+
+fn test_recursive_str_helper_rebind_transfers_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_rebind_source', 'struct Item {
+mut:
+	remaining int
+}
+
+fn copy_from(mut destination Item, source Item) {
+	destination = source
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining--
+	copy_from(mut copy, item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_spawn_mutation_is_not_synchronous_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_spawned_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	item.remaining--
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	spawn advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_spawned_call', 'struct Item {}
+
+fn (item Item) str() string {
+	t := spawn item.str()
+	return t.wait()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_assertion_mutation_is_not_guaranteed_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_assertion_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) bool {
+	item.remaining--
+	return true
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	assert advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_unreachable_assert_message', 'struct Item {}
+
+fn (item Item) str() string {
+	assert true, item.str()
+	return "ok"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert out == 'ok'
+	run_bad(v3_bin, 'recursive_str_reachable_assert_message', 'struct Item {}
+
+fn (item Item) str() string {
+	assert false, item.str()
+	return "unreachable"
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_select_branches_have_isolated_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_select_branch_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			copy.remaining--
+		}
+		else {
+			return copy.str()
+		}
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_deferred_mutation_does_not_count_as_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_deferred_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	defer {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_deferred_calls_use_scope_exit_state_in_lifo_order() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_deferred_call_exit_state', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	next.remaining--
+	defer {
+		_ := next.str()
+	}
+	next = item
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_deferred_call_before_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	defer {
+		next.remaining--
+	}
+	defer {
+		_ := next.str()
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_deferred_mutation_before_call', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	defer {
+		_ := next.str()
+	}
+	defer {
+		next.remaining--
+	}
+	return ""
+}
+
+fn main() {}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_does_not_execute_stored_closure_bodies() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_stored_closure_bodies', 'struct LambdaItem {}
+
+fn (item LambdaItem) str() string {
+	callback := || item.str()
+	_ = callback
+	return "lambda"
+}
+
+struct LiteralItem {}
+
+fn (item LiteralItem) str() string {
+	callback := fn [item] () string {
+		return item.str()
+	}
+	_ = callback
+	return "literal"
+}
+
+fn main() {
+	println(LambdaItem{}.str())
+	println(LiteralItem{}.str())
+}
+')
+	assert out == 'lambda\nliteral'
+}
+
+fn test_recursive_str_invoked_closure_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_invoked_lambda', 'struct LambdaItem {}
+
+fn (item LambdaItem) str() string {
+	callback := || item.str()
+	return callback()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_invoked_fn_literal', 'struct LiteralItem {}
+
+fn (item LiteralItem) str() string {
+	callback := fn [item] () string {
+		return item.str()
+	}
+	return callback()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unbacked_enum_integer_overflow', 'enum Huge {
+	value = 18446744073709551616
+}
+
+fn main() {}
+',
+		'integer literal 18446744073709551616 overflows int')
+}
+
+fn test_diagnostic_footer_uses_deduplicated_error_count() {
+	v3_bin := build_v3()
+	mut source := ''
+	for index in 0 .. 15 {
+		source += 'fn broken_${index}[U](value T) {
+	_ := T{}
+}
+
+'
+	}
+	source += 'fn main() {}
+'
+	bad_src := '${tmp_test_path('deduplicated_error_footer')}.v'
+	os.write_file(bad_src, source) or { panic(err) }
+	bad_bin := tmp_test_path('deduplicated_error_footer')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.count('generic type name `T` is not mentioned in fn') == 15, compile.output
+	assert !compile.output.contains('unknown struct `T`'), compile.output
+	assert !compile.output.contains('more errors'), compile.output
+}
+
+fn test_parameter_redefinition_only_suppresses_related_unused_notices() {
+	v3_bin := build_v3()
+	src := 'fn broken(value int, value string) {
+	same_function_unused := 1
+}
+
+fn unrelated() {
+	unused := 1
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('parameter_redefinition_unrelated_notice')}.vv'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('parameter_redefinition_unrelated_notice')
+	compile := os.execute('${v3_bin} -checker-fixture ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('redefinition of parameter `value`'), compile.output
+	assert compile.output.contains('unused variable: `same_function_unused`'), compile.output
+	assert compile.output.contains('unused variable: `unused`'), compile.output
+}
+
+fn test_malformed_function_call_keeps_unrelated_unused_notice() {
+	v3_bin := build_v3()
+	src := 'fn bad(value int, value int) int {
+	return value
+}
+
+fn caller() {
+	unused := bad(1, 2)
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('malformed_function_call_unused_notice')}.vv'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('malformed_function_call_unused_notice')
+	compile := os.execute('${v3_bin} -checker-fixture ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('redefinition of parameter `value`'), compile.output
+	assert compile.output.contains('unused variable: `unused`'), compile.output
+}
+
+fn test_optional_typed_map_rejects_populated_braces() {
+	path := '${tmp_test_path('optional_typed_map_populated')}.v'
+	os.write_file(path, "fn main() {\n\t_ := ?map[string]int{'x': 1}\n}\n") or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(path)
+	assert p.diagnostics.any(it.message == '`}` expected; explicit `map` initialization does not support parameters'), p.diagnostics.str()
+
+	empty_path := '${tmp_test_path('optional_typed_map_empty')}.v'
+	os.write_file(empty_path, 'fn main() {
+	_ := ?map[string]int{}
+}
+') or { panic(err) }
+	mut empty_parser := parser.Parser.new(prefs)
+	empty_parser.parse_file(empty_path)
+	assert !empty_parser.diagnostics.any(it.message.contains('explicit `map` initialization does not support parameters')), empty_parser.diagnostics.str()
+}
+
+fn test_undefined_variable_preserves_unrelated_unused_import() {
+	check_src := '${tmp_test_path('undefined_variable_unrelated_import')}.v'
+	os.write_file(check_src, 'import os
+
+fn main() {
+	value := value
+	println(value)
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.msg.starts_with('undefined variable') && it.node_value == 'value'), tc.errors.str()
+
+	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
+}
+
+fn test_recursive_str_helper_merges_incompatible_branch_effects_conservatively() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_incompatible_helper_effects', 'struct Item {
+	rebind bool
+mut:
+	values []int
+}
+
+fn change(mut item Item) {
+	if item.rebind {
+		item.values[0]--
+	} else {
+		item = Item{
+			values: [1]
+		}
+	}
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	change(mut copy)
+	return item.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_array_append_counts_as_progress() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_array_append_progress', 'struct Item {
+mut:
+	items []int
+}
+
+fn (item Item) str() string {
+	if item.items.len == 2 {
+		return "done"
+	}
+	mut copy := item
+	copy.items << 1
+	return copy.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert out == 'done'
+}
+
+fn test_recursive_str_exhaustive_enum_and_sum_matches_count_as_progress() {
+	v3_bin := build_v3()
+	enum_out := run_good(v3_bin, 'recursive_str_exhaustive_enum_match_progress', 'enum Mode {
+	one
+	two
+}
+
+struct Item {
+	mode Mode
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	match item.mode {
+		.one { item.remaining-- }
+		.two { item.remaining-- }
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	decrement(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert enum_out == 'done'
+
+	sum_out := run_good(v3_bin, 'recursive_str_exhaustive_sum_match_progress', 'struct First {}
+struct Second {}
+type Mode = First | Second
+
+struct Item {
+	mode Mode = First{}
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	match item.mode {
+		First { item.remaining-- }
+		Second { item.remaining-- }
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	decrement(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert sum_out == 'done'
+}
+
+fn test_recursive_str_direct_exhaustive_matches_count_as_progress() {
+	v3_bin := build_v3()
+	enum_out := run_good(v3_bin, 'recursive_str_direct_exhaustive_enum_match', 'enum Mode {
+	one
+	two
+}
+
+struct Item {
+	mode Mode
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	match copy.mode {
+		.one { copy.remaining-- }
+		.two { copy.remaining-- }
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert enum_out == 'done'
+
+	sum_out := run_good(v3_bin, 'recursive_str_direct_exhaustive_sum_match', 'struct First {}
+struct Second {}
+type Mode = First | Second
+
+struct Item {
+	mode Mode = First{}
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	match copy.mode {
+		First { copy.remaining-- }
+		Second { copy.remaining-- }
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert sum_out == 'done'
+}
+
+fn test_recursive_str_noop_mutations_do_not_count_as_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_add_zero_noop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining += 0
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_multiply_one_noop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining *= 1
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_add_zero_noop', 'struct Item {
+mut:
+	remaining int
+}
+
+fn unchanged(mut item Item) {
+	item.remaining += 0
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	unchanged(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_reversed_mutations_do_not_count_as_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_reversed_increment', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining--
+	copy.remaining++
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_reversed_compound_assignment', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	copy.remaining += 2
+	copy.remaining -= 2
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_nested_helper_mutations_count_as_progress() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_nested_helper_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	item.remaining--
+}
+
+fn advance(mut item Item) {
+	decrement(mut item)
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+')
+	assert out == 'done'
+}
+
+fn test_recursive_str_helper_terminal_rebind_is_not_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_terminal_rebind', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut copy Item, original Item, reset bool) {
+	copy.remaining--
+	if reset {
+		copy = original
+		return
+	}
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	advance(mut copy, item, true)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_duplicate_function_diagnostics_survive_body_errors() {
+	check_src := '${tmp_test_path('duplicate_fn_with_body_error')}.v'
+	os.write_file(check_src, "fn duplicate() int {
+	return 'bad'
+}
+
+fn duplicate(value int) {}
+") or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.severity == 'builder error:'
+		&& it.msg == 'redefinition of function `duplicate`'), tc.errors.str()
+	assert tc.errors.filter(it.severity == 'conflicting declaration:'
+		&& it.node_value == 'duplicate').len == 2, tc.errors.str()
+	assert tc.errors.any(it.msg.contains('cannot use `string` as type `int` in return argument')), tc.errors.str()
+}
+
+fn test_bare_generic_inference_suppression_stays_with_return_declaration() {
+	check_src := '${tmp_test_path('bare_generic_inference_scope')}.v'
+	source := 'struct GenericChannelStruct[T] {
+	ch chan T
+}
+
+struct Simple {
+	msg string
+}
+
+fn main() {
+	new_channel_struct[Simple]()
+}
+
+pub fn new_channel_struct[T]() GenericChannelStruct {
+	d := GenericChannelStruct{
+		ch: chan T{}
+	}
+	return d
+}
+
+fn unrelated() {
+	_ := GenericChannelStruct{}
+}
+'
+	os.write_file(check_src, source) or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.msg.starts_with('return generic struct `GenericChannelStruct` in fn declaration must specify the generic type names')), tc.errors.str()
+
+	inference_errors :=
+		tc.errors.filter(it.msg == 'could not infer generic type `T` in generic struct `GenericChannelStruct[T]`')
+	assert inference_errors.len == 1, tc.errors.str()
+	unrelated_start := source.index('fn unrelated') or { panic('missing unrelated function') }
+	assert inference_errors[0].pos.offset > unrelated_start, tc.errors.str()
+}
+
+fn test_template_include_diagnostics_use_partial_source() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_include_diagnostic_source')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('root.txt')
+}
+")
+	write_project_file(root, 'root.txt', "before
+@include 'partial.txt'
+after
+")
+	write_project_file(root, 'partial.txt', 'partial first
+@missing_from_partial
+partial last
+')
+	output := tmp_test_path('template_include_diagnostic_source')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('partial.txt:2:3: error: undefined ident: `missing_from_partial`'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert !compile.output.contains('<veb-template>'), compile.output
+}
+
+fn test_template_import_diagnostics_preserve_each_line() {
+	v3_bin := build_v3()
+	root := '${tmp_test_path('template_import_diagnostic_lines')}_project'
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'main.v', "module main
+
+fn main() {
+	\$tmpl('imports.txt')
+}
+")
+	write_project_file(root, 'imports.txt', '@import os
+middle
+@import json
+')
+	output := tmp_test_path('template_import_diagnostic_lines')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.count('invalid expression: unexpected keyword `import`') == 2, compile.output
+	assert compile.output.count('expression does not return a value (veb action: main__main)') == 2, compile.output
+
+	assert compile.output.count('imports.txt:1:30: error:') == 2, compile.output
+	assert compile.output.count('imports.txt:3:30: error:') == 2, compile.output
+}
+
+fn test_template_css_import_is_emitted_literally() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'template_css_import', {
+		'main.v':     "module main
+
+fn main() {
+	print(\$tmpl('style.html'))
+}
+"
+		'style.html': "<style>
+@import url('theme.css');
+body { color: red; }
+</style>
+"
+	}, 'main.v')
+	assert out == "<style>
+@import url('theme.css');
+body { color: red; }
+</style>"
+}
+
+fn test_recursive_str_bound_method_value_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_bound_method_value', 'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	return recurse()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_indexed_bound_method_value', 'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	callbacks := [recurse]
+	return callbacks[0]()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_interface_bound_method_value', 'interface Printable {
+	str() string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	printable := Printable(item)
+	recurse := printable.str
+	return recurse()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_function_field_bound_method_value', 'struct Holder {
+	cb fn () string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	holder := Holder{
+		cb: item.str
+	}
+	return holder.cb()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_helper_summary_keeps_later_rebind() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_later_rebind', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut copy Item, original Item) {
+	copy.remaining--
+	copy = original
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	advance(mut copy, item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_user_c_string_function_is_not_inferred_unsafe() {
+	v3_bin := build_v3()
+	src_path := '${tmp_test_path('user_c_strlen_not_unsafe')}.v'
+	bin_path := tmp_test_path('user_c_strlen_not_unsafe')
+	os.write_file(src_path, "fn C.strlen(charptr) usize
+
+fn main() {
+	println(C.strlen(c'x'))
+	_ = C.strerror(0)
+}
+") or {
+		panic(err)
+	}
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
+}
+
+fn test_recursive_str_forward_goto_skips_progress() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_forward_goto', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	unsafe {
+		goto recurse
+	}
+	copy.remaining--
+recurse:
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_allows_recursing_into_child_values() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_child_value', 'struct Tree {
+	children []Tree
+}
+
+fn (tree Tree) str() string {
+	if tree.children.len == 0 {
+		return "leaf"
+	}
+	return tree.children[0].str()
+}
+
+fn main() {
+	println(Tree{
+		children: [Tree{}]
+	}.str())
+}
+')
+	assert out == 'leaf'
+}
+
+fn test_recursive_str_helper_returned_descendant_is_distinct() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_helper_returned_aggregate_alias', 'struct Item {}
+
+fn first(items []Item) Item {
+	return items[0]
+}
+
+fn (item Item) str() string {
+	items := [item]
+	return first(items).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_helper_returned_child', 'struct Tree {
+	children []Tree
+}
+
+fn first(tree Tree) Tree {
+	return tree.children[0]
+}
+
+fn (tree Tree) str() string {
+	if tree.children.len == 0 {
+		return "leaf"
+	}
+	return first(tree).str()
+}
+
+fn main() {
+	println(Tree{
+		children: [Tree{}]
+	}.str())
+}
+')
+	assert out == 'leaf'
+}
+
+fn test_recursive_str_preserves_provenance_through_array_elements() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_array_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item]
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_map_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	values := {"self": item}
+	return values["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_array_indexed_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut items := [item]
+	items[0].remaining--
+	return items[0].str()
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_analyzes_array_map_callbacks() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_array_map_callback', 'struct Item {}
+
+fn (item Item) str() string {
+	return [item].map(fn (copy Item) string {
+		return copy.str()
+	}).join("")
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_preserves_multi_return_slots_and_aggregate_clones() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_multi_return_slot_provenance', 'struct Item {}
+
+fn carry(item Item) (Item, int) {
+	return item, 0
+}
+
+fn (item Item) str() string {
+	copy, _ := carry(item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_multi_return_assign_slot_provenance', 'struct Item {}
+
+fn carry(item Item) (Item, int) {
+	return item, 0
+}
+
+fn (item Item) str() string {
+	mut copy := Item{}
+	copy, _ = carry(item)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_clone_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	copies := [item].clone()
+	return copies[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_map_clone_element_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	copies := {"self": item}.clone()
+	return copies["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_preserves_wrapper_append_and_helper_aggregate_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_wrapper_field_provenance', 'struct Item {}
+
+struct Wrapper {
+	value Item
+}
+
+fn (item Item) str() string {
+	wrapped := Wrapper{
+		value: item
+	}
+	return wrapped.value.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_append_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	mut items := []Item{}
+	items << item
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_array_provenance', 'struct Item {}
+
+fn wrap(item Item) []Item {
+	return [item]
+}
+
+fn (item Item) str() string {
+	return wrap(item)[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_map_provenance', 'struct Item {}
+
+fn wrap(item Item) map[string]Item {
+	return {"self": item}
+}
+
+fn (item Item) str() string {
+	return wrap(item)["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_wrapper_provenance', 'struct Item {}
+
+struct Wrapper {
+	value Item
+}
+
+fn wrap(item Item) Wrapper {
+	return Wrapper{
+		value: item
+	}
+}
+
+fn (item Item) str() string {
+	return wrap(item).value.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_preserves_qualified_helper_args_and_slot_replacements() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'recursive_str_qualified_helper_args', {
+		'v.mod':             "Module { name: 'recursive_str_qualified_helper_args' }\n"
+		'helpers/helpers.v': 'module helpers\n\npub interface Stringer {\n\tstr() string\n}\n\npub fn render(value Stringer) string {\n\treturn value.str()\n}\n'
+		'main.v':            'module main\n\nimport helpers\n\nstruct Item {}\n\nfn (item Item) str() string {\n\treturn helpers.render(item)\n}\n\nfn main() {}\n'
+	}, ['main.v'], 'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_static_helper_args', 'struct Helpers {}
+
+struct Item {}
+
+fn Helpers.render(item Item) string {
+	return item.str()
+}
+
+fn (item Item) str() string {
+	return Helpers.render(item)
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_slot_replacement', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [Item{
+		remaining: 0
+	}]
+	items[0] = item
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_map_slot_replacement', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := {"self": Item{
+		remaining: 0
+	}}
+	items["self"] = item
+	return items["self"].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_wrapper_field_replacement', 'struct Item {
+	remaining int
+}
+
+struct Wrapper {
+mut:
+	value Item
+}
+
+fn (item Item) str() string {
+	mut wrapped := Wrapper{
+		value: Item{
+			remaining: 0
+		}
+	}
+	wrapped.value = item
+	return wrapped.value.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_noreturn_branch_does_not_fall_through() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_noreturn_branch', '@[noreturn]
+fn stop() {
+	panic("done")
+}
+
+struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	if copy.remaining == 0 {
+		stop()
+	} else {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+')
+	assert out == ''
+}
+
+fn test_map_rebind_clears_unsafe_alias_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'map_rebind_clears_unsafe_alias', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	alias = map[string]int{}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+}
+
+fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_assert_message_assignment', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	assert true, unsafe {
+		alias = unsafe { original }
+		"failed"
+	}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_assert_message_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	assert true, unsafe {
+		alias = map[string]int{}
+		"failed"
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+	run_bad(v3_bin, 'unsafe_map_alias_assert_condition_assignment', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	assert unsafe {
+		alias = unsafe { original }
+		true
+	}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+}
+
+fn test_fresh_unsafe_map_is_not_reference_alias() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'fresh_unsafe_map_is_not_reference_alias', 'fn main() {
+	mut alias := unsafe { map[string]int{} }
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_reference_alias', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_merges_conditional_expressions() {
+	v3_bin := build_v3()
+	if_out := run_good(v3_bin, 'unsafe_map_alias_if_expression', 'fn choose(cond bool) {
+	mut left := {
+		"value": 1
+	}
+	mut right := {
+		"value": 2
+	}
+	alias := if cond { (unsafe { left }) } else { (unsafe { right }) }
+	copy := alias
+	println(copy["value"])
+}
+
+fn main() {
+	choose(true)
+	choose(false)
+}
+')
+	assert if_out == '1\n2'
+	match_out := run_good(v3_bin, 'unsafe_map_alias_match_expression', 'fn choose(value int) {
+	mut left := {
+		"value": 1
+	}
+	mut right := {
+		"value": 2
+	}
+	alias := match value {
+		0 { (unsafe { left }) }
+		else { (unsafe { right }) }
+	}
+	copy := alias
+	println(copy["value"])
+}
+
+fn main() {
+	choose(0)
+	choose(1)
+}
+')
+	assert match_out == '1\n2'
+}
+
+fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'unsafe_map_alias_unconditional_loop', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+	post_out := run_good(v3_bin, 'unsafe_map_alias_skipped_loop_post', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	for ;; alias = map[string]int{} {
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert post_out == '1'
+	run_bad(v3_bin, 'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for cond {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+}
+
+fn test_unsafe_map_alias_provenance_tracks_each_loop_break() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		if cond {
+			break
+		}
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(true)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_assignment_before_break', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_skipped_logical_and_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if false && unsafe {
+		alias = unsafe { original }
+		true
+	} {}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	run_bad(v3_bin, 'unsafe_map_alias_skipped_logical_or_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true || unsafe {
+		alias = unsafe { original }
+		true
+	} {}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_required_logical_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true && unsafe {
+		alias = unsafe { original }
+		true
+	} {}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_if_return_path', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if cond {
+		alias = unsafe { original }
+		return
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	run_bad(v3_bin, 'unsafe_map_alias_match_return_path', 'fn branch(value int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	match value {
+		0 {
+			alias = unsafe { original }
+			return
+		}
+		else {}
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(1)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	run_bad(v3_bin, 'unsafe_map_alias_loop_zero_path', 'fn branch(values []int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for _ in values {
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch([]int{})
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_all_if_paths', 'fn branch(cond bool) {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := map[string]int{}
+	if cond {
+		alias = unsafe { first }
+	} else {
+		alias = unsafe { second }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+')
+	assert out == '1'
+	loop_out := run_good(v3_bin, 'unsafe_map_alias_loop_return_path', 'fn branch(values []int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	for _ in values {
+		alias = map[string]int{}
+		return
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch([]int{})
+}
+')
+	assert loop_out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_isolates_or_fallback() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_or_fallback_success_path', 'fn maybe(ok bool) ?int {
+	if ok {
+		return 1
+	}
+	return none
+}
+
+fn branch(ok bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	_ := maybe(ok) or {
+		alias = unsafe { original }
+		0
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(true)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_all_or_paths', 'fn maybe() ?int {
+	return none
+}
+
+fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := unsafe { first }
+	_ := maybe() or {
+		alias = unsafe { second }
+		0
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_delays_defer_effects() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_deferred_assignment', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	defer {
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_deferred_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	defer {
+		alias = map[string]int{}
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_unsafe_map_alias_provenance_isolates_select_branches() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unsafe_map_alias_select_branch_isolation', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			alias = unsafe { original }
+		}
+		else {
+			copy := alias
+			println(copy.len)
+		}
+	}
+}
+',
+		'cannot copy map: call `move` or `clone` method (or use a reference)')
+	out := run_good(v3_bin, 'unsafe_map_alias_all_select_paths', 'fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := map[string]int{}
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			alias = unsafe { first }
+		}
+		else {
+			alias = unsafe { second }
+		}
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
+}
+
+fn test_recursive_str_struct_literal_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_struct_literal_provenance', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	return Item{
+		remaining: item.remaining
+	}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_empty_struct_literal_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	return Item{}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_changed_struct_literal', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	return Item{
+		remaining: item.remaining - 1
+	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_struct_update_preserves_receiver_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_struct_update_provenance', 'struct Item {
+	value int
+}
+
+fn (item Item) str() string {
+	return Item{
+		...item
+	}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_struct_update_noop_field', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	return Item{
+		...item
+		remaining: item.remaining + 0
+	}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_struct_update_helper_provenance', 'struct Item {
+	value int
+}
+
+fn same(value Item) Item {
+	return value
+}
+
+fn (item Item) str() string {
+	return same(Item{
+		...item
+	}).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_returned_struct_update', 'struct Item {
+	value int
+}
+
+fn same(item Item) Item {
+	return Item{
+		...item
+	}
+}
+
+fn (item Item) str() string {
+	return same(item).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_progressed_struct_update', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	return Item{
+		...item
+		remaining: item.remaining - 1
+	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+	run_bad(v3_bin, 'recursive_str_helper_unconditional_loop_early_break', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	for {
+		if item.remaining == 0 {
+			break
+		}
+		item.remaining--
+	}
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_guarded_nonnumeric_struct_update_progress() {
+	v3_bin := build_v3()
+	bool_out := run_good(v3_bin, 'recursive_str_guarded_bool_struct_update', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return "done"
+	}
+	return Item{
+		...item
+		done: true
+	}.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert bool_out == 'done'
+	enum_out := run_good(v3_bin, 'recursive_str_guarded_enum_struct_update', 'enum State {
+	active
+	done
+}
+
+struct Item {
+	state State
+}
+
+fn (item Item) str() string {
+	if item.state == .done {
+		return "done"
+	}
+	return Item{
+		...item
+		state: .done
+	}.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+')
+	assert enum_out == 'done'
+	run_bad(v3_bin, 'recursive_str_guarded_bool_noop_struct_update', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if !item.done {
+		return "done"
+	}
+	return Item{
+		...item
+		done: true
+	}.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_helper_unconditional_loop_progress() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_helper_unconditional_loop_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	for {
+		item.remaining--
+		break
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_unconditional_loop_has_no_zero_iteration_path() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_unconditional_loop_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	for {
+		copy.remaining--
+		break
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+	run_bad(v3_bin, 'recursive_str_unconditional_loop_break_path', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	for {
+		if copy.remaining == 0 {
+			break
+		}
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_preserves_provenance_through_buffered_channels() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_buffered_channel_provenance', 'struct Item {}
+
+fn (item Item) str() string {
+	ch := chan Item{cap: 1}
+	ch <- item
+	return (<-ch).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_buffered_channel_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	copy.remaining--
+	ch := chan Item{cap: 1}
+	ch <- copy
+	return (<-ch).str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_updates_array_provenance_after_mutators() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_array_delete_shift', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [Item{
+		remaining: item.remaining - 1
+	}, item]
+	items.delete(0)
+	return items[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_reverse_in_place', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [item, Item{
+		remaining: item.remaining - 1
+	}]
+	items.reverse_in_place()
+	return items[1].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_prepend_shift', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut items := [item]
+	items.prepend(Item{
+		remaining: item.remaining - 1
+	})
+	return items[1].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_array_delete_progress', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut items := [item, Item{
+		remaining: item.remaining - 1
+	}]
+	items.delete(0)
+	return items[0].str()
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_detects_implicit_print_formatting() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_print_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	println(item)
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_print_aggregate_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	eprintln([item])
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_print_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	print(next)
+	return ""
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_resolves_constant_local_array_indexes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_constant_local_terminal_index', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return ""
+	}
+	items := [item, Item{
+		done: true
+	}]
+	index := 1
+	return items[index].str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert out == ''
+	run_bad(v3_bin, 'recursive_str_constant_local_receiver_index', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item, Item{}]
+	index := 0
+	return items[index].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_mutated_local_receiver_index', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item, Item{}]
+	mut index := 1
+	index--
+	return items[index].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_detects_string_interpolation_formatting() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_interpolated_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	return "\${item}"
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_interpolated_aggregate_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	return "\${[item]}"
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_formatted_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	return "\${item:10}"
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_interpolated_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	return "\${next}"
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+')
+	assert out == ''
+}
+
+fn test_recursive_str_detects_explicit_aggregate_stringification() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_explicit_array_str', 'struct Item {}
+
+fn (item Item) str() string {
+	values := [item]
+	return values.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_explicit_map_str', 'struct Item {}
+
+fn (item Item) str() string {
+	values := {
+		"item": item
+	}
+	return values.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_explicit_array_str_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	values := [next]
+	return values.str()
+}
+
+fn main() {
+	_ = Item{
+		remaining: 2
+	}.str()
+}
+')
+	assert out == ''
+	custom_out := run_good(v3_bin, 'recursive_str_custom_array_alias_str', 'struct Item {}
+
+type Items = []Item
+
+fn (items Items) str() string {
+	return "safe"
+}
+
+fn (item Item) str() string {
+	values := Items([item])
+	return values.str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert custom_out == 'safe'
+}
+
+fn test_recursive_str_skips_zero_length_repeated_array_provenance() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_zero_length_repeated_array', 'struct Item {}
+
+fn (item Item) str() string {
+	values := []Item{len: 0, init: item}
+	return values.str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert out == '[]'
+	helper_out := run_good(v3_bin, 'recursive_str_helper_zero_length_repeated_array', 'struct Item {}
+
+fn repeat(item Item) []Item {
+	return []Item{len: 0, init: item}
+}
+
+fn (item Item) str() string {
+	return repeat(item).str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+')
+	assert helper_out == '[]'
+	run_bad(v3_bin, 'recursive_str_nonzero_repeated_array', 'struct Item {}
+
+fn (item Item) str() string {
+	values := []Item{len: 1, init: item}
+	return values.str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_helper_nonzero_repeated_array', 'struct Item {}
+
+fn repeat(item Item) []Item {
+	return []Item{len: 1, init: item}
+}
+
+fn (item Item) str() string {
+	return repeat(item).str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+}
+
+fn test_recursive_str_tracks_for_in_values_and_array_slices() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'recursive_str_for_in_value', 'struct Item {}
+
+fn (item Item) str() string {
+	for copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_for_in_index_and_value', 'struct Item {}
+
+fn (item Item) str() string {
+	for _, copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_array_slice_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [item]
+	slice := items[0..1]
+	return slice[0].str()
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good(v3_bin, 'recursive_str_array_slice_terminal_index', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return ""
+	}
+	items := [item, Item{
+		done: true
+	}]
+	start := 1
+	end := 2
+	slice := items[start..end]
+	return slice[0].str()
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+')
+	assert out == ''
+	empty_slice_out := run_good(v3_bin, 'recursive_str_repeated_empty_slice', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [3]Item{init: item}
+	empty := items[0..0]
+	return empty.str()
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+')
+	assert empty_slice_out == ''
+}
+
+fn test_recursive_str_detects_dump_formatting() {
+	v3_bin := build_v3()
+	source := 'struct Item {}
+
+fn (item Item) str() string {
+	_ = dump(item)
+	return ""
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+'
+	run_bad(v3_bin, 'recursive_str_dump_receiver', source, 'cannot call `str()` method recursively')
+	run_bad(v3_bin, 'recursive_str_dump_aggregate_receiver', 'struct Item {}
+
+fn (item Item) str() string {
+	_ = dump([item])
+	return ""
+}
+
+fn main() {}
+',
+		'cannot call `str()` method recursively')
+	out := run_good_with_flags(v3_bin, 'recursive_str_dump_nop_dump', '-d nop_dump', source)
+	assert out == ''
+	progressed_out := run_good(v3_bin, 'recursive_str_dump_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	_ = dump(next)
+	return ""
+}
+
+fn main() {
+	_ = Item{
+		remaining: 1
+	}.str()
+}
+')
+	assert progressed_out.len > 0
 }

@@ -18,6 +18,44 @@ enum CWideIndexKind {
 	unsigned_64
 }
 
+// A failing `a[i] or {..}` / `m[k] or {..}` lookup only needs a real IError when
+// the or block can observe `err` (directly, or via the implicit main/test panic
+// wrapper). Otherwise the static `none` instance keeps the option fully
+// initialized without allocating a MessageError + interface box on every miss.
+fn (g &Gen) index_or_skips_err(node ast.IndexExpr) bool {
+	if node.is_option || node.or_expr.kind != .block {
+		return false
+	}
+	if g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test) {
+		return false
+	}
+	if node.or_expr.stmts.len == 0 {
+		return true
+	}
+	// Mirror or_block()'s `or_block_needs_err`: the lookup's own `.err` is only
+	// read when the or block scope binds a special `err` var that the block uses.
+	// An index or block does not declare its own `err` (referencing one resolves
+	// to an enclosing or block's binding), so `err_used` inherited from an outer
+	// scope must not force the allocation here.
+	mut has_special_err := false
+	if err_obj := node.or_expr.scope.objects['err'] {
+		if err_obj is ast.Var {
+			has_special_err = err_obj.is_special
+		}
+	}
+	if !has_special_err {
+		return true
+	}
+	return !node.or_expr.err_used && !or_block_last_stmt_is_err(node.or_expr.stmts)
+}
+
+fn (mut g Gen) index_or_err_init(node ast.IndexExpr, msg string) string {
+	if g.index_or_skips_err(node) {
+		return '_const_none__'
+	}
+	return 'builtin___v_error(_S("${msg}"))'
+}
+
 fn (mut g Gen) c_wide_index_kind(index_type ast.Type) CWideIndexKind {
 	if g.pref.backend != .c || index_type == 0 {
 		return .plain
@@ -608,7 +646,8 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.writeln('\t*((${elem_type_str}*)&${tmp_opt}.data) = *((${elem_type_str}*)${tmp_opt_ptr});')
 			}
 			g.writeln('} else {')
-			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("array index out of range"));')
+			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node,
+				'array index out of range')};')
 			g.writeln('}')
 			if !node.is_option {
 				if keep_option_result {
@@ -918,7 +957,8 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.writeln('if (${tmp_opt_ptr}) {')
 				g.writeln('\t${tmp_opt} = *${tmp_opt_ptr};')
 				g.writeln('} else {')
-				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("map key does not exist"));')
+				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node,
+					'map key does not exist')};')
 				g.writeln('}')
 				if !node.is_option {
 					g.or_block_on_value(tmp_opt, node.or_expr, val_type)
@@ -942,7 +982,8 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 					g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
 				}
 				g.writeln('} else {')
-				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("map key does not exist"));')
+				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node,
+					'map key does not exist')};')
 				g.writeln('}')
 				if !node.is_option {
 					if keep_option_result {

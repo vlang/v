@@ -19,9 +19,15 @@ fn (mut g Gen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTe
 
 fn (mut g Gen) expr_to_ctemp_before_stmt(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
 	mut stmt_str := if g.inside_ternary > 0 {
-		g.go_before_ternary().trim_space()
+		g.go_before_ternary()
 	} else {
-		g.go_before_last_stmt().trim_space()
+		g.go_before_last_stmt()
+	}
+	if g.pref.is_vlines {
+		// A nested statement offset can split `#line` from its number.
+		stmt_str = stmt_str.trim_right(' \n\t\v\f\r').trim_left('\n\t\v\f\r')
+	} else {
+		stmt_str = stmt_str.trim_space()
 	}
 	if g.inside_return && stmt_str.ends_with('return') {
 		stmt_str += ' '

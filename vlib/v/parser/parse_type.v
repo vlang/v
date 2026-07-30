@@ -145,6 +145,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			p.chan_type_error()
 			return 0
 		}
+		if elem_type.idx() == ast.map_type_idx {
+			p.map_type_error()
+			return 0
+		}
 		// has been explicitly resolved, but size is 0
 		if fixed_size <= 0 && !size_unresolved {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
@@ -172,6 +176,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 		p.chan_type_error()
 		return 0
 	}
+	if elem_type.idx() == ast.map_type_idx {
+		p.map_type_error()
+		return 0
+	}
 	if elem_type.idx() == ast.thread_type_idx {
 		p.register_auto_import('sync.threads')
 	}
@@ -190,8 +198,7 @@ fn (mut p Parser) parse_map_type() ast.Type {
 	p.next()
 	if p.tok.kind != .lsbr {
 		if p.inside_struct_field_decl {
-			p.error_with_pos('cannot use the map type without key and value definition',
-				p.prev_tok.pos())
+			p.map_type_error()
 			return 0
 		}
 		return ast.map_type

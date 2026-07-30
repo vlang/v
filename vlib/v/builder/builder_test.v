@@ -105,6 +105,19 @@ fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 	assert warm_cache_res.exit_code == 0, warm_cache_res.output
 	assert warm_cache_res.output.trim_space() == 'Hello from cached vsh'
 
+	replacement_source := os.join_path(project_dir, 'replacement.v')
+	os.write_file(replacement_source, "fn main() {
+	println('foreign executable')
+}
+")!
+	replacement_res :=
+		os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(executable)} ${os.quoted_path(replacement_source)}')
+	assert replacement_res.exit_code == 0, replacement_res.output
+	assert os.execute(os.quoted_path(executable)).output.trim_space() == 'foreign executable'
+	rebound_cache_res := os.execute(cmd)
+	assert rebound_cache_res.exit_code == 0, rebound_cache_res.output
+	assert rebound_cache_res.output.trim_space() == 'Hello from cached vsh'
+
 	cache_stamp := os.file_last_mod_unix(executable) + 3600
 	os.utime(executable, cache_stamp, cache_stamp)!
 

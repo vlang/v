@@ -1,5 +1,10 @@
 module c
 
+import os
+import v3.flat
+import v3.pref
+import v3.types
+
 fn test_late_source_does_not_reemit_multiline_header_context() {
 	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' +
 		'#endif'
@@ -28,6 +33,52 @@ fn test_multiline_inlined_c_function_definition_is_collected() {
 
 	assert 'qrcodegen_encodeText' in g.inlined_c_fns
 	assert 'declared_with_anon_param' !in g.inlined_c_fns
+}
+
+fn test_preserved_header_trees_scan_shared_files_once() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_headers_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	shared_header := os.join_path(root, 'shared.h')
+	first := os.join_path(root, 'first.h')
+	second := os.join_path(root, 'second.h')
+	os.write_file(shared_header, 'int shared_header_fn(void);\n')!
+	os.write_file(first, '#include "shared.h"\n')!
+	os.write_file(second, '#include "shared.h"\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(first, [root])
+	g.collect_preserved_header_file(second, [root])
+
+	assert 'shared_header_fn' in g.inlined_c_declared_fns
+	assert g.preserved_header_files_seen.len == 3
+}
+
+fn test_large_nested_angle_header_stays_an_include() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_large_header_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	large_header := os.join_path(root, 'large.h')
+	wrapper_header := os.join_path(root, 'wrapper.h')
+	os.write_file(large_header, '#ifndef LARGE_H\n#define LARGE_H\n' + ' '.repeat(263_000) +
+		'\nint large_header_fn(void);\n#endif\n')!
+	os.write_file(wrapper_header, '#include <large.h>\nint wrapper_header_fn(void);\n')!
+
+	header := c_inline_header_text('"${wrapper_header}"', '', wrapper_header, [root], false) or {
+		panic('failed to inline wrapper header')
+	}
+
+	assert header.text.contains('#include <large.h>')
+	assert !header.text.contains('int large_header_fn(void);')
+	assert header.text.contains('int wrapper_header_fn(void);')
+	assert header.preserved_headers.len == 1
+	assert header.preserved_headers[0].include_arg == '<large.h>'
 }
 
 fn test_cache_tracks_omitted_native_function_definitions() {
@@ -66,6 +117,68 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	// of cache-split mode; only the listed math externs are affected.
 	assert c_macro_safe_extern_decl('exp', 'double exp(double x);') == 'double (exp)(double x);'
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
+}
+
+fn test_cache_extern_filter_uses_pthread_preamble_declarations() {
+	mut preamble_gen := FlatGen.new()
+	preamble_gen.preamble()
+	preamble := preamble_gen.sb.str()
+	assert preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
+	assert preamble.contains('void* pthread_getspecific(pthread_key_t key);')
+	assert preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
+	assert !preamble.contains('pthread_key_delete(')
+
+	mut g := FlatGen.new()
+	g.set_cache_split(true)
+
+	assert !g.should_emit_c_extern_decl('pthread_key_create')
+	assert !g.should_emit_c_extern_decl('pthread_getspecific')
+	assert !g.should_emit_c_extern_decl('pthread_setspecific')
+	assert g.should_emit_c_extern_decl('pthread_key_delete')
+}
+
+fn posix_declaration_filter_gen(target_os string, system_libc bool) FlatGen {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from(target_os, 'amd64') or { panic(err) })
+	if system_libc {
+		g.add_c_directive('main', '#include <semaphore.h>', false)
+	}
+	return g
+}
+
+fn test_linux_family_system_libc_owns_itimerspec_and_semaphore_declarations() {
+	for target_os in ['linux', 'android', 'termux'] {
+		g := posix_declaration_filter_gen(target_os, true)
+		assert g.c_directives_use_system_libc()
+		assert g.skip_builtin_struct('C.itimerspec'), target_os
+		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
+			'sem_wait'] {
+			assert !g.should_emit_c_extern_decl(name), '${target_os}: ${name}'
+		}
+	}
+}
+
+fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations() {
+	for target_os in ['linux', 'android', 'termux'] {
+		headerless := posix_declaration_filter_gen(target_os, false)
+		assert !headerless.c_directives_use_system_libc()
+		assert !headerless.skip_builtin_struct('C.itimerspec'), target_os
+		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
+			'sem_wait'] {
+			assert headerless.should_emit_c_extern_decl(name), '${target_os}: ${name}'
+		}
+	}
+
+	cross_target := posix_declaration_filter_gen('freebsd', true)
+	assert cross_target.c_directives_use_system_libc()
+	assert !cross_target.skip_builtin_struct('C.itimerspec')
+	for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait'] {
+		assert cross_target.should_emit_c_extern_decl(name), name
+	}
 }
 
 fn test_builtin_abi_compat_macros_precede_late_c_source() {

@@ -11,6 +11,20 @@ enum SpawnGoMode {
 	go_
 }
 
+fn (mut g Gen) mark_spawn_arg_option_or_result_type(typ ast.Type) {
+	if typ.has_flag(.option) {
+		_, base := g.option_type_name(typ)
+		if base !in g.spawn_arg_options {
+			g.spawn_arg_options << base
+		}
+	} else if typ.has_flag(.result) {
+		_, base := g.result_type_name(typ)
+		if base !in g.spawn_arg_results {
+			g.spawn_arg_results << base
+		}
+	}
+}
+
 fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	if node.call_expr.should_be_skipped {
 		return
@@ -139,9 +153,25 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('${arg_tmp_var}${dot}arg${i + 1} = ')
-		g.expr(arg.expr)
-		g.writeln(';')
+		arg_field := '${arg_tmp_var}${dot}arg${i + 1}'
+		arg_type := g.unwrap_generic(g.recheck_concrete_type(arg.typ))
+		if !arg_type.is_ptr() && !arg_type.has_option_or_result()
+			&& g.table.final_sym(arg_type).kind == .array_fixed {
+			g.write('memcpy(${arg_field}, ')
+			g.expr(arg.expr)
+			g.writeln(', sizeof(${arg_field}));')
+		} else {
+			g.write('${arg_field} = ')
+			if arg_type.has_option_or_result() {
+				old_inside_opt_or_res := g.inside_opt_or_res
+				g.inside_opt_or_res = true
+				g.expr(arg.expr)
+				g.inside_opt_or_res = old_inside_opt_or_res
+			} else {
+				g.expr(arg.expr)
+			}
+			g.writeln(';')
+		}
 	}
 	if is_spawn && g.pref.prealloc {
 		g.writeln('${arg_tmp_var}->prealloc_scope = builtin__prealloc_scope_retain_current();')
@@ -356,6 +386,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					arg_sym.info.func.params.map(it.typ), 'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
+				g.mark_spawn_arg_option_or_result_type(arg_typ)
 				styp := g.styp(arg_typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
@@ -492,6 +523,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			} else {
 				g.gowrappers.writeln('\tbuiltin___v_free(arg);')
 			}
+		}
+		if is_spawn && g.pref.prealloc && wrapper_return_type == ast.void_type {
+			g.gowrappers.writeln('\tbuiltin__prealloc_thread_cleanup();')
 		}
 		if g.pref.os != .windows && wrapper_return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')

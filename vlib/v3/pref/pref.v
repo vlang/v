@@ -4,22 +4,46 @@ import os
 import time
 import v3.cmdexec
 
+const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
+const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
+const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
+const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
+const macos_v3_private_environment_names = [
+	'V_MACOS_V3_FALLBACK_FILE',
+	'V_MACOS_V3_C_ERROR_DIR',
+	'V_MACOS_V3_VHASH',
+	'V_MACOS_V3_VCURRENT_HASH',
+	'V_MACOS_V3_EMBEDDED',
+	'V_MACOS_V3_RETRY',
+	'V3_CRUN_BUILD_IDENTITY',
+	'V3_INTERNAL_RESTART',
+	macos_v3_caller_vexe_env,
+	macos_v3_caller_vexe_present_env,
+	macos_v3_caller_vchild_env,
+	macos_v3_caller_vchild_present_env,
+]
+
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose      bool
-	output_file  string
-	target       Target = host_target()
-	user_defines []string
-	backend      string = 'c'
-	c99          bool
-	vroot        string = detect_vroot()
-	vexe         string = detect_vexe()
-	selfhost     bool
-	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
-	is_prod      bool
-	is_debug     bool
-	is_test      bool // at least one compatible user test file is being compiled
+	verbose           bool
+	output_file       string
+	target            Target = host_target()
+	user_defines      []string
+	compile_values    map[string]string
+	backend           string = 'c'
+	ccompiler         string = 'gcc'
+	c99               bool
+	vroot             string = detect_vroot()
+	vexe              string = detect_vexe()
+	vhash             string
+	vcurrent_hash     string
+	selfhost          bool
+	building_v        bool // compiling the V compiler itself: no generics, skip monomorphization
+	is_prod           bool
+	is_debug          bool
+	is_test           bool // at least one compatible user test file is being compiled
+	thread_stack_size int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm bool
@@ -77,6 +101,11 @@ pub fn host_target() Target {
 	}
 }
 
+// default_thread_stack_size returns the target-specific spawned-thread stack size.
+pub fn (target Target) default_thread_stack_size() int {
+	return if target.pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
+}
+
 // target_from validates and canonicalizes an OS/architecture pair.
 pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())
@@ -127,6 +156,61 @@ pub fn new_preferences() &Preferences {
 		build_date:      build_time.strftime('%Y-%m-%d')
 		build_time:      build_time.strftime('%H:%M:%S')
 		build_timestamp: build_time.unix().str()
+	}
+}
+
+// has_macos_v3_caller_environment reports whether the macOS driver transported
+// the environment that should remain visible to compiled programs.
+pub fn has_macos_v3_caller_environment() bool {
+	return os.getenv(macos_v3_caller_vexe_present_env) in ['0', '1']
+		&& os.getenv(macos_v3_caller_vchild_present_env) in ['0', '1']
+}
+
+// macos_v3_caller_env_value returns the caller-visible value for compile-time `$env`.
+pub fn macos_v3_caller_env_value(name string) string {
+	if name in macos_v3_private_environment_names {
+		return ''
+	}
+	if !has_macos_v3_caller_environment() {
+		return os.getenv(name)
+	}
+	if name == 'VEXE' {
+		return if os.getenv(macos_v3_caller_vexe_present_env) == '1' {
+			os.getenv(macos_v3_caller_vexe_env)
+		} else {
+			''
+		}
+	}
+	if name == 'VCHILD' {
+		return if os.getenv(macos_v3_caller_vchild_present_env) == '1' {
+			os.getenv(macos_v3_caller_vchild_env)
+		} else {
+			''
+		}
+	}
+	return os.getenv(name)
+}
+
+// macos_v3_caller_environment returns the environment that delegated run children should see.
+pub fn macos_v3_caller_environment() map[string]string {
+	mut environment := os.environ()
+	if has_macos_v3_caller_environment() {
+		restore_macos_v3_caller_environment_value(mut environment, 'VEXE',
+			macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD',
+			macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	}
+	for name in macos_v3_private_environment_names {
+		environment.delete(name)
+	}
+	return environment
+}
+
+fn restore_macos_v3_caller_environment_value(mut environment map[string]string, name string, value_name string, present_name string) {
+	if os.getenv(present_name) == '1' {
+		environment[name] = os.getenv(value_name)
+	} else {
+		environment.delete(name)
 	}
 }
 
@@ -761,6 +845,15 @@ pub fn (p &Preferences) normalized_target_arch() string {
 	return p.target.arch
 }
 
+// comptime_platform returns the established @PLATFORM name for the selected target.
+pub fn (p &Preferences) comptime_platform() string {
+	return match p.target.arch {
+		'x86' { 'i386' }
+		'riscv64' { 'rv64' }
+		else { p.target.arch }
+	}
+}
+
 // is_cross_target reports whether is cross target applies in pref.
 pub fn (p &Preferences) is_cross_target() bool {
 	host := host_target()
@@ -853,8 +946,11 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'builtin_write_buf_to_fd_should_use_c_write' {
 			return p.backend == 'arm64'
 		}
+		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
+			return p.backend == 'c' && p.ccompiler == name
+		}
 		'tinyc' {
-			return p.backend == 'arm64'
+			return p.backend == 'arm64' || (p.backend == 'c' && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
 			return p.backend == 'arm64' || name in p.user_defines

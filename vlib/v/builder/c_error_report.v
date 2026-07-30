@@ -50,15 +50,67 @@ pub:
 	v_source       string // a small chunk of V source around the failing line (bounded), never the whole file
 }
 
+// ExternalCErrorBugReport describes a generated-C failure produced by another compiler
+// implementation and confirmed by a successful build with the established compiler.
+pub struct ExternalCErrorBugReport {
+pub:
+	ccompiler   string
+	c_output    string
+	c_file      string
+	tag         string
+	cleanup_dir string
+}
+
+@[unsafe]
+fn external_c_error_report_cleanup_dir(dir string, update bool) string {
+	mut static pending_dir := ''
+	if update {
+		pending_dir = dir
+	}
+	return pending_dir
+}
+
+fn register_external_c_error_report_cleanup(dir string) {
+	if dir == '' {
+		return
+	}
+	unsafe {
+		external_c_error_report_cleanup_dir(dir, true)
+	}
+	at_exit(cleanup_pending_external_c_error_report) or {}
+}
+
+fn cleanup_external_c_error_report(dir string) {
+	if dir == '' {
+		return
+	}
+	os.rmdir_all(dir) or { return }
+	pending_dir := unsafe { external_c_error_report_cleanup_dir('', false) }
+	if pending_dir == dir {
+		unsafe {
+			external_c_error_report_cleanup_dir('', true)
+		}
+	}
+}
+
+fn cleanup_pending_external_c_error_report() {
+	pending_dir := unsafe { external_c_error_report_cleanup_dir('', false) }
+	cleanup_external_c_error_report(pending_dir)
+}
+
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
+	v.submit_c_error_bug_report_with_tag(ccompiler, c_output, '', true)
+}
+
+fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output string, tag string, retry_with_vlines bool) {
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		return
 	}
 	// Snapshot the user's real flags now: the vlines fallback below temporarily flips
 	// `pref.is_vlines`, so computing this after it would misreport `vlines` for plain builds.
-	build_options := codegen_build_options(v.pref)
+	build_options := c_error_report_build_options(v.pref, tag)
 	mut raw_report := v.new_c_error_bug_report(ccompiler, c_output)
-	if raw_report.v_file == '' {
+	if retry_with_vlines && raw_report.v_file == '' {
 		// The default `.tmp.c` has no `#line` directives, so the C error could not be
 		// traced back to a V line. Regenerate the C with `#line` info (as `-g` would),
 		// recompile, and reuse the richer report when it does map to a V source line.
@@ -85,6 +137,37 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 	println('='.repeat('================== C compiler bug report =============='.len))
 }
 
+// submit_external_c_error_bug_report submits C diagnostics and generated source produced by
+// another compiler implementation after the established compiler has confirmed the build.
+pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, c_file string, tag string) {
+	if !c_error_should_send_bug_report(c_output) {
+		return
+	}
+	mut b := new_builder(prefs)
+	b.out_name_c = c_file
+	b.submit_c_error_bug_report_with_tag(ccompiler, c_output, tag, false)
+}
+
+fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalCErrorBugReport) {
+	defer {
+		cleanup_external_c_error_report(report.cleanup_dir)
+	}
+	submit_external_c_error_bug_report(prefs, report.ccompiler, report.c_output, report.c_file,
+		report.tag)
+}
+
+fn c_error_report_build_options(prefs &pref.Preferences, tag string) string {
+	options := codegen_build_options(prefs)
+	trimmed_tag := tag.trim_space()
+	if trimmed_tag == '' {
+		return options
+	}
+	if options == '' {
+		return trimmed_tag
+	}
+	return '${trimmed_tag} ${options}'
+}
+
 fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CErrorBugReport {
 	c_source := os.read_file(v.out_name_c) or { '' }
 	c_lines := c_source.split_into_lines()
@@ -109,7 +192,16 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
-	v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
+	// Prefer a self-contained reproducer (the failing declaration plus the closure of the user
+	// declarations it references). It already keeps itself within the byte budget, returning ''
+	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
+	repro := v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
+	v_source := if repro != '' {
+		repro
+	} else {
+		v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
+		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
+	}
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -126,8 +218,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		v_line:         v_line
 		v_context:      numbered_context_lines(mapped_source.split_into_lines(), v_line,
 			c_error_context_radius)
-		v_source:       bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes,
-			v_chunk.focus)
+		v_source:       v_source
 	}
 }
 

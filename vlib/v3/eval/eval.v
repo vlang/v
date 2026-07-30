@@ -2482,6 +2482,9 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 				name: e.runtime_type_name(value)
 			}
 		}
+		.defer_result {
+			return error('`$res()` is not supported by the V3 eval backend')
+		}
 		.fn_literal {
 			return Value(e.eval_fn_literal(id, node)!)
 		}

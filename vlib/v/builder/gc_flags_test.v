@@ -39,8 +39,17 @@ fn test_linux_musl_tcc_boehm_uses_system_libgc() {
 	$if !linux {
 		return
 	}
+	test_root := os.join_path(os.vtmp_dir(), 'builder_gc_flags_musl_${os.getpid()}')
+	fake_tcc := os.join_path(test_root, 'fake-tcc')
+	exe_path := os.join_path(test_root, 'hello_world')
 	source_path := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
-	cmd := '${os.quoted_path(@VEXE)} -dump-c-flags - -cc tcc -musl ${os.quoted_path(source_path)}'
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.write_file(fake_tcc, '#!/bin/sh\nexit 0\n') or { panic(err) }
+	os.chmod(fake_tcc, 0o700) or { panic(err) }
+	cmd := '${os.quoted_path(@VEXE)} -dump-c-flags - -cc ${os.quoted_path(fake_tcc)} -no-retry-compilation -musl -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
 	res := execute_without_vflags(cmd)
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('-lgc')

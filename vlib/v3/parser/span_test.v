@@ -24,6 +24,58 @@ fn span_text(src string, node flat.Node) string {
 	return src[node.pos.offset..node.pos.end]
 }
 
+fn test_statement_map_literals_accept_compound_keys() {
+	ast, _ := parse_span_source('statement_map_compound_keys', "fn make_key() string {
+	return 'key'
+}
+
+fn main() {
+	{make_key(): 1}
+	{('key'): 2}
+	{
+		make_key(): 3
+	}
+}
+")
+	map_inits := ast.nodes.filter(it.kind == .map_init)
+	assert map_inits.len == 3
+	assert map_inits.all(it.children_count == 2)
+}
+
+fn test_standalone_block_preserves_leading_label() {
+	ast, _ := parse_span_source('standalone_block_label', "fn main() {
+	{
+		retry: println('x')
+	}
+}
+")
+	labels := ast.nodes.filter(it.kind == .label_stmt)
+	assert labels.len == 1
+	assert labels[0].value == 'retry'
+	assert ast.nodes.all(it.kind != .map_init)
+}
+
+fn test_supported_unix_comptime_aliases_have_no_diagnostics() {
+	path := os.join_path(os.temp_dir(), 'v3_comptime_unix_aliases_${os.getpid()}.v')
+	os.write_file(path, "fn main() {
+	\$if unix {
+		println('unix')
+	}
+	\$if posix {
+		println('posix')
+	}
+}
+") or {
+		panic(err)
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+}
+
 // Literal nodes must carry their own span, not the span of the token that
 // happens to follow them after p.next().
 fn test_literal_nodes_span_their_own_source() {
@@ -578,4 +630,39 @@ fn main() {
 	}
 	assert saw_map
 	assert saw_generic
+}
+
+// The local-binding scope powers template-closure callee classification: a bare callee is
+// captured only when it names an in-scope local binding, never a module/top-level function.
+fn test_local_binding_scopes_track_shadowing_and_nesting() {
+	mut p := Parser.new(pref.new_preferences())
+	assert !p.is_local_binding('render')
+	// declare_local_binding is a no-op until a scope is open.
+	p.declare_local_binding('render')
+	assert !p.is_local_binding('render')
+
+	p.begin_local_binding_scope()
+	p.declare_local_binding('render')
+	p.declare_local_binding('row')
+	assert p.is_local_binding('render')
+	assert p.is_local_binding('row')
+	// A module/top-level function name is never an in-scope binding.
+	assert !p.is_local_binding('helper')
+	// `_` and empty names are not bindings.
+	p.declare_local_binding('_')
+	assert !p.is_local_binding('_')
+
+	// A nested scope's bindings disappear when it closes; the outer binding survives.
+	p.begin_local_binding_scope()
+	p.declare_local_binding('render')
+	p.declare_local_binding('inner')
+	assert p.is_local_binding('render')
+	assert p.is_local_binding('inner')
+	p.end_local_binding_scope()
+	assert p.is_local_binding('render')
+	assert !p.is_local_binding('inner')
+
+	p.end_local_binding_scope()
+	assert !p.is_local_binding('render')
+	assert !p.is_local_binding('row')
 }

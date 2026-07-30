@@ -24,6 +24,31 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	assert g.needed_optional_types.len == 1
 }
 
+fn test_optional_payload_qualifies_concrete_generic_struct() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['json2.StructKeyDecodeResult_TestEchoArgs'] = []types.StructField{}
+	tc.structs['async.Task_mcp__Response'] = []types.StructField{}
+	tc.structs['types.Array'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	value_type := types.Type(types.Struct{
+		name: 'StructKeyDecodeResult_TestEchoArgs'
+	})
+	pointer_type := types.Type(types.Pointer{
+		base_type: types.Type(types.Struct{
+			name: 'Task_mcp__Response'
+		})
+	})
+	assert g.optional_payload_c_type(value_type) == 'json2__StructKeyDecodeResult_TestEchoArgs'
+	assert g.optional_payload_c_type(pointer_type) == 'async__Task_mcp__Response*'
+	assert g.optional_payload_c_type(types.Type(types.Array{
+		elem_type: types.Type(types.int_)
+	})) == 'Array'
+}
+
 fn test_enum_decls_resets_checker_module_at_file_boundary() {
 	test_dir := os.join_path(os.vtmp_dir(), 'v3_enum_decls_module_reset_${os.getpid()}')
 	os.rmdir_all(test_dir) or {}

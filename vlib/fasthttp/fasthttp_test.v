@@ -216,7 +216,7 @@ fn send_raw_response(handle usize, response string) {
 	} $else $if bsd {
 		C.send(int(handle), response.str, response.len, send_flags)
 	} $else {
-		C.send(C.SOCKET(handle), response.str, response.len, 0)
+		C.v_fasthttp_send(C.SOCKET(handle), response.str, response.len, 0)
 	}
 }
 

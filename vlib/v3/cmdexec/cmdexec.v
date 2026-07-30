@@ -11,17 +11,25 @@ pub fn run(program string, args []string) os.Result {
 
 // run_in executes program in work_folder with an exact argument vector.
 pub fn run_in(program string, args []string, work_folder string) os.Result {
+	return run_in_mode(program, args, work_folder, false)
+}
+
+fn run_in_mode(program string, args []string, work_folder string, merge_output bool) os.Result {
 	mut process := os.new_process(program)
 	process.set_args(args)
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
 	}
-	process.set_redirect_stdio()
+	if merge_output {
+		process.set_redirect_stdio_merged()
+	} else {
+		process.set_redirect_stdio()
+	}
 	process.run()
 	mut output := strings.new_builder(1024)
 	for process.is_alive() {
 		stdout := process.stdout_read()
-		stderr := process.stderr_read()
+		stderr := if merge_output { '' } else { process.stderr_read() }
 		output.write_string(stdout)
 		output.write_string(stderr)
 		if stdout.len == 0 && stderr.len == 0 {
@@ -30,7 +38,9 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 	}
 	process.wait()
 	output.write_string(process.stdout_slurp())
-	output.write_string(process.stderr_slurp())
+	if !merge_output {
+		output.write_string(process.stderr_slurp())
+	}
 	if process.err.len > 0 {
 		output.writeln(process.err)
 	}
@@ -40,6 +50,12 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 		exit_code: exit_code
 		output:    output.str()
 	}
+}
+
+// run_in_merged executes a command with an exact argument vector and captures
+// both stdout and stderr.
+pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
+	return run_in_mode(program, args, work_folder, true)
 }
 
 // split_args parses a directive or tool response into literal argv elements.

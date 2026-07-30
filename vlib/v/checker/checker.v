@@ -5490,6 +5490,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		return node.typ
 	}
 
+	unaliased_from_type := c.table.fully_unaliased_type(from_type)
+	unaliased_to_type := c.table.fully_unaliased_type(to_type)
+	if unaliased_from_type.is_any_kind_of_pointer() && !unaliased_to_type.is_any_kind_of_pointer()
+		&& final_to_sym.kind in [.array, .array_fixed] {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast pointer type `${ft}` to array type `${tt}`', node.pos)
+	}
+
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
 	c.markused_castexpr(mut node, to_type, mut final_to_sym)
 	if to_type.has_flag(.result) {

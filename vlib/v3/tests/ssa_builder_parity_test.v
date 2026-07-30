@@ -586,3 +586,68 @@ fn main() {
 	assert !has_call_to(m, 'main', 'SortedMap.set')
 	assert has_instr_op(m, 'main', .or_)
 }
+
+// test_transformed_string_const_remains_a_string_argument validates this v3 regression case.
+fn test_transformed_string_const_remains_a_string_argument() {
+	m := build_transformed_source('string_const_argument', "
+const suffix = '.vvmrc'
+
+fn consume(base string, elem string) string {
+	return base + elem
+}
+
+fn main() {
+	_ = consume('base', suffix)
+}
+")
+	for instr in func_instrs(m, 'main') {
+		if instr.op != .call || instr.operands.len != 3 {
+			continue
+		}
+		callee := m.values[instr.operands[0]]
+		if callee.kind != .func_ref || callee.name != 'consume' {
+			continue
+		}
+		suffix := m.values[instr.operands[2]]
+		assert suffix.name == '.vvmrc'
+		assert suffix.kind == .string_literal
+		assert suffix.typ == m.values[instr.operands[1]].typ
+		return
+	}
+	assert false, 'missing call to consume'
+}
+
+fn test_native_darwin_pthread_mutex_uses_opaque_abi_size() {
+	m := build_source('darwin_pthread_mutex_size', '@[typedef]
+struct C.pthread_mutex_t {}
+
+fn pthread_mutex_size() int {
+	return sizeof(C.pthread_mutex_t)
+}
+')
+	result := ret_operand(m, 'pthread_mutex_size')
+	value := m.values[result]
+	assert value.kind == .constant
+	assert value.name == '64'
+}
+
+fn test_native_struct_fixed_array_field_uses_inline_storage() {
+	m := build_source('struct_fixed_array_storage', 'struct Cache {
+	recent [4]string
+}
+
+fn cache_size() int {
+	return sizeof(Cache)
+}
+
+fn cache_item(cache &Cache) string {
+	return cache.recent[2]
+}
+')
+	result := ret_operand(m, 'cache_size')
+	value := m.values[result]
+	assert value.kind == .constant
+	assert value.name == '64'
+	assert !has_call_to(m, 'cache_item', 'array_get')
+	assert has_instr_op(m, 'cache_item', .load)
+}

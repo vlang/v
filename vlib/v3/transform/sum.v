@@ -1051,7 +1051,9 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 
 fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name string) []int {
 	mut ids := []int{}
-	for candidate in t.interface_alias_equivalent_names(concrete_name) {
+	// Runtime interface IDs preserve the concrete declared type. An alias and its
+	// base have compatible storage, but they remain distinct targets for `is`.
+	for candidate in [concrete_name] {
 		id := t.interface_impl_type_id(iface_name, candidate) or { continue }
 		if id !in ids {
 			ids << id
@@ -1352,20 +1354,22 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				return converted
 			}
 		}
-		if qv := t.resolve_interface_pattern(node.value, clean_type0) {
-			if sc := t.find_smartcast(t.expr_key(expr_id)) {
-				target := t.trim_pointer_type(t.smartcast_target_type(sc))
-				if t.variant_names_match(target, qv) {
-					return t.transform_expr(expr_id)
+		if !interface_pattern_is_collapsed_container_type(node.value) {
+			if qv := t.resolve_interface_pattern(node.value, clean_type0) {
+				if sc := t.find_smartcast(t.expr_key(expr_id)) {
+					target := t.trim_pointer_type(t.smartcast_target_type(sc))
+					if t.variant_names_match(target, qv) {
+						return t.transform_expr(expr_id)
+					}
 				}
+				child := t.transform_expr(expr_id)
+				field_op := if expr_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+				object := t.make_selector_op(child, '_object', 'voidptr', field_op)
+				cast := t.make_cast('&${qv}', object, '&${qv}')
+				current := t.make_prefix(.mul, cast)
+				t.set_node_typ(int(current), qv)
+				return current
 			}
-			child := t.transform_expr(expr_id)
-			field_op := if expr_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
-			object := t.make_selector_op(child, '_object', 'voidptr', field_op)
-			cast := t.make_cast('&${qv}', object, '&${qv}')
-			current := t.make_prefix(.mul, cast)
-			t.set_node_typ(int(current), qv)
-			return current
 		}
 		if interface_pattern_is_collapsed_container_type(node.value)
 			&& t.tc.interface_abstract_method_names(clean_type0).len == 0

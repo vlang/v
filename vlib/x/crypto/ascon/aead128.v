@@ -7,7 +7,7 @@
 module ascon
 
 import encoding.binary
-import crypto.internal.subtle
+import crypto.subtle
 
 // The constants for Ascon-AEAD128
 //

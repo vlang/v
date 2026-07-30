@@ -373,6 +373,9 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #if defined(_MSC_VER) && !defined(__clang__)
 	#define V_CRT_LINKAGE __declspec(dllimport)
 	#define V_CRT_CALL VCALLCONV(cdecl)
+#elif defined(__MINGW32__) || defined(__MINGW64__)
+	#define V_CRT_LINKAGE __declspec(dllimport)
+	#define V_CRT_CALL
 #else
 	#define V_CRT_LINKAGE
 	#define V_CRT_CALL
@@ -667,8 +670,14 @@ V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle)
 V_CRT_LINKAGE int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
 V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #if defined(_WIN32) || defined(_WIN64)
+V_CRT_LINKAGE int V_CRT_CALL _fseeki64(FILE *stream, i64 offset, int whence);
+V_CRT_LINKAGE int V_CRT_CALL fgetpos(FILE *stream, i64 *pos);
 V_CRT_LINKAGE int V_CRT_CALL _fileno(FILE *stream);
 V_CRT_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);
+V_CRT_LINKAGE int V_CRT_CALL freopen_s(FILE **new_stream, const char *filename, const char *mode, FILE *stream);
+V_CRT_LINKAGE FILE * V_CRT_CALL _wfreopen(const unsigned short *filename, const unsigned short *mode, FILE *stream);
+V_CRT_LINKAGE FILE * V_CRT_CALL _wpopen(const unsigned short *command, const unsigned short *mode);
+V_CRT_LINKAGE int V_CRT_CALL _pclose(FILE *stream);
 V_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);
 V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);
 V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);

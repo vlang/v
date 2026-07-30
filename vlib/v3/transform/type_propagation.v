@@ -115,7 +115,7 @@ fn decl_type_is_usable(typ string) bool {
 	if typ.len == 0 || typ in ['unknown', 'array', 'map'] || typ.contains('unknown') {
 		return false
 	}
-	if typ.contains('typeof(') {
+	if types.type_text_contains_typeof(typ) {
 		return false
 	}
 	clean := typ.replace(' ', '')
@@ -129,7 +129,7 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
 	}
 	if typ := t.tc.expr_type(id) {
 		mut name := t.normalize_type_alias(typ.name())
-		if name.contains('typeof(') {
+		if types.type_text_contains_typeof(name) {
 			name = t.normalize_type_alias(t.tc.resolve_type(id).name())
 		}
 		if decl_type_is_usable(name) && name != 'void' {
@@ -1144,7 +1144,15 @@ fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
 		if params.len != args.len {
 			continue
 		}
-		return substitute_generic_type_text_with_params(target, args, params)
+		expanded := substitute_generic_type_text_with_params(target, args, params)
+		if candidate.contains('.') {
+			// Alias targets are written in the alias declaration's module.
+			// Qualify a bare target there before the caller recursively
+			// normalizes it, otherwise `a.Box[T] = Inner[T]` can bind to a
+			// colliding `main.Inner[T]` at the use site.
+			return t.normalize_type_in_module(expanded, candidate.all_before_last('.'))
+		}
+		return expanded
 	}
 	return none
 }
@@ -1464,6 +1472,7 @@ fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
 // transform) and falling back to the transformer's local heuristics. This is the
 // bridge that makes the transformer type-aware, so type-dependent lowering lives
 // here rather than in the backend.
+@[direct_array_access]
 fn (t &Transformer) node_type(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
@@ -1484,7 +1493,7 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 				return checked
 			}
 		}
-		if resolved.contains('typeof(') && !isnil(t.tc) {
+		if types.type_text_contains_typeof(resolved) && !isnil(t.tc) {
 			if typ := t.tc.expr_type(id) {
 				name := t.normalize_type_alias(typ.name())
 				if decl_type_is_usable(name) {
@@ -1575,7 +1584,7 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		if typ := t.tc.expr_type(id) {
 			name = typ.name()
 		}
-		if name.contains('typeof(') {
+		if types.type_text_contains_typeof(name) {
 			name = t.tc.resolve_type(id).name()
 		}
 		if name.len == 0 || name == 'unknown' {
@@ -1753,10 +1762,8 @@ fn (t &Transformer) array_map_callback_return_type_name(map_expr_id flat.NodeId)
 		} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
 			return ret_type
 		}
-	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
-		if ret_type := t.fn_value_return_type_name(map_expr_id) {
-			return ret_type
-		}
+	} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
+		return ret_type
 	}
 	return none
 }

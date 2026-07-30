@@ -758,7 +758,7 @@ $if darwin {
 		for i in 0 .. native_event.dropped_file_count {
 			path := unsafe { native_event.dropped_files[i] }
 			if path != unsafe { nil } {
-				files << unsafe { tos_clone(&u8(path)) }
+				files << clone_native_path(path)
 			}
 		}
 		return files

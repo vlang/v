@@ -20,8 +20,12 @@ fn struct_alias_write_project() string {
 	os.rmdir_all(root) or {}
 	gg_dir := os.join_path(root, 'gg')
 	sgl_dir := os.join_path(root, 'sgl_like')
+	common_dir := os.join_path(root, 'common')
+	data_dir := os.join_path(root, 'data')
 	os.mkdir_all(gg_dir) or { panic(err) }
 	os.mkdir_all(sgl_dir) or { panic(err) }
+	os.mkdir_all(common_dir) or { panic(err) }
+	os.mkdir_all(data_dir) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), 'Module {
 	name: "v3_struct_alias_fixture"
 }
@@ -80,8 +84,58 @@ pub fn context_score() int {
 ') or {
 		panic(err)
 	}
+	os.write_file(os.join_path(common_dir, 'common.v'), 'module common
+
+pub struct ID {
+pub:
+	value int
+}
+
+pub interface Translation {
+	locale_id() ID
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(data_dir, 'data.v'), 'module data
+
+import common
+
+pub type ID = common.ID
+
+fn check_translation_locale_ids(translations []common.Translation) ! {
+	for translation in translations {
+		if translation.locale_id().value < 0 {
+			return error("invalid locale")
+		}
+	}
+}
+
+pub struct CategoryTranslationParams {
+pub:
+	locale_id ID
+}
+
+fn (p CategoryTranslationParams) locale_id() ID {
+	return p.locale_id
+}
+
+pub struct CategoryCreateParams {
+pub:
+	translations ?[]CategoryTranslationParams
+}
+
+pub fn (p CategoryCreateParams) check() ! {
+	if translations := p.translations {
+		check_translation_locale_ids(translations)!
+	}
+}
+') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
+import data
 import sgl_like
 
 struct Context {
@@ -90,6 +144,15 @@ struct Context {
 }
 
 fn main() {
+	data.CategoryCreateParams{
+		translations: [
+			data.CategoryTranslationParams{
+				locale_id: data.ID{
+					value: 1
+				}
+			},
+		]
+	}.check()!
 	println(int_str(sgl_like.context_score()))
 }
 ') or {

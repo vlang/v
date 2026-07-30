@@ -2,7 +2,7 @@ module edwards25519
 
 import rand
 import encoding.binary
-import crypto.internal.subtle
+import crypto.subtle
 
 // A Scalar is an integer modulo
 //

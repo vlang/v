@@ -8,7 +8,7 @@ import os
 import time
 
 // C.open declares the C open symbol used by arm64.
-fn C.open(charptr, int, int) int
+fn C.open(charptr, int, ...int) int
 
 // C.write declares the C write symbol used by arm64.
 fn C.write(int, voidptr, int) int
@@ -93,7 +93,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_time', '_localtime_r', '_gmtime_r', '_mktime', '_gettimeofday', '_clock',
 	'_clock_gettime_nsec_np', '_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep',
 	'_usleep', '_strftime',
-	'_task_info', '_mach_task_self', '_mach_task_self_', '_getrusage',
+	'_task_info', '_mach_task_self', '_mach_task_self_', '_getrusage', '_proc_pid_rusage',
 	// Other
 	'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
 	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',

@@ -1,6 +1,6 @@
 module modulecache
 
-#include "@VEXEROOT/vlib/v3/modulecache/file_metadata.h"
+#include "@VEXEROOT/vlib/v3/modulecache/file_metadata.c"
 
 fn C.v3_modulecache_file_metadata(&char, &u64, &u64, &u64, &u64, &u64, &u64, &u64) int
 

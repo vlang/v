@@ -75,7 +75,7 @@ fn main() {
 	_ := raw_object(logger)
 }
 ')
-	assert c_code.contains('void* pobject = ((struct log__Logger*)logger)->_object;')
+	assert c_code.contains('void* pobject = ((log__Logger*)logger)->_object;')
 	assert !c_code.contains('void** pobject')
 	assert !c_code.contains('__addr_')
 }

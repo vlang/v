@@ -15,6 +15,15 @@ fn table_fn_lookup(table &ast.Table, name string) (ast.Fn, bool) {
 	return unsafe { table.fns[name] }, true
 }
 
+fn table_call_fn_lookup(table &ast.Table, name string, mod string, language ast.Language) (ast.Fn, bool) {
+	if language == .c {
+		if f := table.find_c_fn_in_module(name, mod) {
+			return f, true
+		}
+	}
+	return table_fn_lookup(table, name)
+}
+
 fn comptime_define_idx(attrs []ast.Attr) int {
 	for idx in 0 .. attrs.len {
 		if attrs[idx].kind == .comptime_define {
@@ -81,7 +90,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	args_trailing_comma := p.call_args_trailing_comma
 	if p.tok.kind != .rpar && !p.pref.is_vls {
 		mut params := []ast.Param{}
-		fn_info, has_fn_info := table_fn_lookup(p.table, fn_name)
+		fn_info, has_fn_info := table_call_fn_lookup(p.table, fn_name, p.mod, language)
 		if has_fn_info {
 			params = fn_info.params.clone()
 		} else {
@@ -1073,7 +1082,7 @@ run them via `v file.v` instead',
 				}
 			}
 		}
-		p.table.register_fn(ast.Fn{
+		new_fn := ast.Fn{
 			name:                  name
 			file_mode:             file_mode
 			params:                params
@@ -1107,7 +1116,23 @@ run them via `v file.v` instead',
 			language: language
 			//
 			is_expand_simple_interpolation: is_expand_simple_interpolation
-		})
+		}
+		mut should_register := true
+		if language == .c {
+			p.table.register_c_fn_in_module(new_fn)
+			existing, has_existing := table_fn_lookup(p.table, name)
+			if has_existing && existing.mod != new_fn.mod && existing.mod != 'builtin'
+				&& new_fn.mod != 'builtin' {
+				should_register = false
+				if !p.table.c_fn_declarations_are_compatible(&existing, &new_fn) {
+					p.error_with_pos_no_advance('C function `${name}` was already declared with a different signature',
+						name_pos)
+				}
+			}
+		}
+		if should_register {
+			p.table.register_fn(new_fn)
+		}
 	}
 	/*
 	// Register implicit context var

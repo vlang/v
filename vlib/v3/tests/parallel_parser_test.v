@@ -79,6 +79,80 @@ fn test_parallel_parse_matches_serial() {
 	}
 }
 
+fn test_parallel_parser_preserves_template_metadata_and_warning_severity() {
+	$if windows {
+		return
+	}
+	if runtime.nr_jobs() <= 1 {
+		return
+	}
+	dir := os.join_path(os.temp_dir(), 'v3_parallel_template_metadata_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'worker.txt'), 'first\n@missing\nthird\n') or { panic(err) }
+	mut files := []string{cap: 4}
+	for file_index in 0 .. 4 {
+		mut src := strings.new_builder(64_000)
+		src.writeln('module main')
+		src.writeln('')
+		if file_index == 0 {
+			src.writeln('fn templated_action() {')
+			src.writeln("\t\$tmpl('worker.txt')")
+			src.writeln('}')
+			src.writeln('')
+		}
+		if file_index == 3 {
+			src.writeln('fn malformed_array() {')
+			src.writeln('\ta2 := [][][]f32[][]{}')
+			src.writeln('\t_ = a2')
+			src.writeln('}')
+			src.writeln('')
+		}
+		for i in 0 .. 1000 {
+			src.writeln('fn template_padding_${file_index}_${i}() int { return ${i} }')
+		}
+		path := os.join_path(dir, '${file_index}.v')
+		os.write_file(path, src.str()) or { panic(err) }
+		files << path
+	}
+	prefs := pref.new_preferences()
+	mut serial := parser.Parser.new(prefs)
+	serial.parse_files_with_starts(files)
+	mut parallel := parser.Parser.new(prefs)
+	_, was_parallel := parallel.parse_files_dispatch(files, true)
+	assert was_parallel
+
+	warnings :=
+		parallel.diagnostics.filter(it.message == 'use `x := []Type{}` instead of `x := []Type`')
+	assert warnings.len == 1, parallel.diagnostics.str()
+	assert warnings[0].severity == 'warning:', warnings.str()
+
+	mut template_ids := serial.a.template_actions.keys()
+	template_ids.sort()
+	mut parallel_template_ids := parallel.a.template_actions.keys()
+	parallel_template_ids.sort()
+	assert parallel_template_ids == template_ids
+	assert template_ids.len > 0
+	for template_id in template_ids {
+		assert parallel.a.template_actions[template_id] == serial.a.template_actions[template_id]
+		assert parallel.a.template_call_sites[template_id] == serial.a.template_call_sites[template_id]
+		serial_file := serial.a.source_files[template_id] or {
+			panic('missing serial template file')
+		}
+		parallel_file := parallel.a.source_files[template_id] or {
+			panic('missing parallel template file')
+		}
+		assert parallel_file.name == serial_file.name
+		assert parallel_file.line_count() == serial_file.line_count()
+		for line in 1 .. serial_file.line_count() + 1 {
+			assert parallel_file.line_start(line) == serial_file.line_start(line)
+		}
+	}
+}
+
 fn test_parser_counts_v_header_files() {
 	path := os.join_path(os.temp_dir(), 'v3_parser_header_count_${os.getpid()}.vh')
 	os.write_file(path, 'module sample\n\npub fn value() int\n') or { panic(err) }

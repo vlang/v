@@ -2,6 +2,7 @@ module parser
 
 import os
 import runtime
+import time
 import v3.flat
 import v3.scanner
 import v3.token
@@ -18,7 +19,9 @@ import v3.workers
 
 const min_parallel_parse_files = 4
 const min_parallel_parse_bytes = 131072
-const max_parallel_parse_jobs = 8
+const max_parallel_parse_jobs = 10
+const max_parallel_parse_chunks = 32
+const parallel_parse_chunks_per_job = 2
 const comptime_const_prepass_alias_prefix = '\x00v3-comptime-alias:'
 
 struct ComptimeConstPrepassToken {
@@ -54,6 +57,7 @@ $if !windows {
 	// parse_chunk_thread parses one worker's contiguous range of files into the
 	// worker's private FlatAst, recording each file's worker-local first node id
 	// into its own preallocated slot of the shared starts array.
+	@[direct_array_access]
 	fn parse_chunk_thread(arg voidptr) voidptr {
 		mut a := unsafe { &ParseChunkArgs(arg) }
 		mut w := unsafe { &Parser(a.worker) }
@@ -121,9 +125,16 @@ fn parser_worker_scope_free(scope voidptr) {
 	}
 }
 
+fn (p &Parser) timing_profile(message string) {
+	if p.prefs.verbose {
+		eprintln(message)
+	}
+}
+
 // parse_files_dispatch parses paths in order, appending to p.a exactly like a
 // serial parse_into loop, across worker threads when there is enough work.
 // Returns each file's first node id in p.a and whether threads were used.
+@[direct_array_access]
 pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) ([]int, bool) {
 	$if windows {
 		return p.parse_files_with_starts(paths), false
@@ -131,6 +142,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		if !allow_parallel || paths.len < min_parallel_parse_files {
 			return p.parse_files_with_starts(paths), false
 		}
+		pdsw := time.new_stopwatch()
 		mut sizes := []i64{cap: paths.len}
 		mut total_bytes := i64(0)
 		for path in paths {
@@ -145,12 +157,24 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		if n_jobs <= 1 || total_bytes < min_parallel_parse_bytes {
 			return p.parse_files_with_starts(paths), false
 		}
-		bounds := parse_chunk_bounds(sizes, n_jobs)
-		thread_count := n_jobs - 1
+		// More chunks than workers: the pool queue packs them dynamically, so
+		// one oversized source file no longer pins a whole equal-share chunk.
+		mut n_chunks := n_jobs * parallel_parse_chunks_per_job
+		if n_chunks > max_parallel_parse_chunks {
+			n_chunks = max_parallel_parse_chunks
+		}
+		if n_chunks > paths.len {
+			n_chunks = paths.len
+		}
+		if n_chunks < n_jobs {
+			n_chunks = n_jobs
+		}
+		bounds := parse_chunk_bounds(sizes, n_chunks)
+		thread_count := n_chunks - 1
 		dispatch_file_id_start := p.next_file_id
 		mut starts := []int{len: paths.len}
-		mut prepass_chunks := []&ComptimeConstPrepassChunk{cap: n_jobs}
-		for _ in 0 .. n_jobs {
+		mut prepass_chunks := []&ComptimeConstPrepassChunk{cap: n_chunks}
+		for _ in 0 .. n_chunks {
 			prepass_chunks << &ComptimeConstPrepassChunk{}
 		}
 		// Worker parsers are cheap to build (no AST clone: parse output is
@@ -168,7 +192,11 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			worker_chunk_bytes[ci] = int(chunk_bytes)
 			parser_workers << w
 		}
-		mut args := []ParseChunkArgs{cap: n_jobs}
+		mut master_chunk_bytes := i64(0)
+		for i in bounds[0] .. bounds[1] {
+			master_chunk_bytes += sizes[i]
+		}
+		mut args := []ParseChunkArgs{cap: n_chunks}
 		args << ParseChunkArgs{
 			worker:        voidptr(p)
 			paths_ptr:     unsafe { voidptr(&paths) }
@@ -176,7 +204,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			prepass_chunk: voidptr(prepass_chunks[0])
 			start:         bounds[0]
 			end:           bounds[1]
-			chunk_bytes:   0
+			chunk_bytes:   int(master_chunk_bytes)
 			scope_enabled: false
 		}
 		for ci in 0 .. thread_count {
@@ -196,8 +224,8 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		// chunk is scanned, replay the declarations in input order to make a
 		// prefix snapshot for each worker: later chunks inherit earlier consts,
 		// while no chunk can see declarations from its own or a later range.
-		mut prepass_tasks := []workers.Task{cap: n_jobs}
-		for ci in 0 .. n_jobs {
+		mut prepass_tasks := []workers.Task{cap: n_chunks}
+		for ci in 0 .. n_chunks {
 			helper_idx := ci - 1
 			prepass_tasks << workers.Task{
 				run:        precollect_const_chunk_thread
@@ -205,8 +233,10 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 				force_sync: ci == 0 || fail == 'parser:all' || fail == 'parser:${helper_idx}'
 			}
 		}
+		ppsw := time.new_stopwatch()
 		p.a.worker_pool.run(prepass_tasks)
-		for ci in 1 .. n_jobs {
+		p.timing_profile('  [ttime]   pp prepass pool  ${f64(ppsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		for ci in 1 .. n_chunks {
 			if args[ci].scope != unsafe { nil } {
 				prepass_chunks[ci].decls =
 					clone_comptime_const_prepass_decls(prepass_chunks[ci].decls)
@@ -215,34 +245,130 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			}
 		}
 		mut prefix_values := p.comptime_const_values.clone()
-		for chunk_idx in 0 .. n_jobs {
+		for chunk_idx in 0 .. n_chunks {
 			if chunk_idx > 0 {
 				parser_workers[chunk_idx - 1].comptime_const_values = prefix_values.clone()
 			}
 			apply_parallel_comptime_const_decls(mut prefix_values, prepass_chunks[chunk_idx].decls)
 		}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for ci in 0 .. n_jobs {
+		// Largest chunks first: the queue is drained in submission order, so
+		// front-loading the heavy chunks minimizes the tail.
+		mut order := []int{cap: thread_count}
+		for ci in 1 .. n_chunks {
+			order << ci
+		}
+		order.sort_with_compare(fn [worker_chunk_bytes] (a &int, b &int) int {
+			return worker_chunk_bytes[*b - 1] - worker_chunk_bytes[*a - 1]
+		})
+		mut tasks := []workers.Task{cap: n_chunks}
+		for ci in order {
 			helper_idx := ci - 1
 			tasks << workers.Task{
 				run:        parse_chunk_thread
 				arg:        unsafe { voidptr(&args[ci]) }
-				force_sync: ci == 0 || fail == 'parser:all' || fail == 'parser:${helper_idx}'
+				force_sync: fail == 'parser:all' || fail == 'parser:${helper_idx}'
 			}
 		}
+		tasks << workers.Task{
+			run:        parse_chunk_thread
+			arg:        unsafe { voidptr(&args[0]) }
+			force_sync: true
+		}
+		ppsw2 := time.new_stopwatch()
 		any_started := p.a.worker_pool.run(tasks)
+		p.timing_profile('  [ttime]   pp parse pool    ${f64(ppsw2.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		// A template can allocate extra source IDs inside any chunk. Rebase later
+		// chunks in input order so those IDs remain identical to serial parsing
+		// and cannot collide with a later source file.
+		mut next_chunk_file_id := p.next_file_id
+		for ci in 0 .. thread_count {
+			worker_first_file_id := dispatch_file_id_start + bounds[ci + 1]
+			parser_workers[ci].remap_worker_file_ids(worker_first_file_id,
+				next_chunk_file_id - worker_first_file_id)
+			next_chunk_file_id = parser_workers[ci].next_file_id
+		}
 		// Merge each helper in fixed chunk order (input file order),
 		// so node numbering stays deterministic and byte-identical to serial.
-		for ci in 0 .. thread_count {
-			p.merge_parsed_worker(mut parser_workers[ci], mut starts, bounds[ci + 1],
-				bounds[ci + 2], args[ci + 1].scope)
-			parser_worker_scope_free(args[ci + 1].scope)
+		ppsw3 := time.new_stopwatch()
+		if par_parse_merge_enabled() {
+			p.merge_parsed_workers_parallel(mut parser_workers, mut starts, bounds, mut args)
+		} else {
+			for ci in 0 .. thread_count {
+				p.merge_parsed_worker(mut parser_workers[ci], mut starts, bounds[ci + 1], bounds[
+					ci + 2], args[ci + 1].scope)
+				parser_worker_scope_free(args[ci + 1].scope)
+			}
 		}
-		p.next_file_id = dispatch_file_id_start + paths.len
+		p.timing_profile('  [ttime]   pp merge         ${f64(ppsw3.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		p.next_file_id = next_chunk_file_id
+		p.timing_profile('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len})')
 		return starts, any_started
 	}
 }
 
+fn remap_worker_pos(pos token.Pos, first_file_id int, next_file_id int, delta int) token.Pos {
+	if delta == 0 || pos.id < first_file_id || pos.id >= next_file_id {
+		return pos
+	}
+	return token.Pos{
+		...pos
+		id: pos.id + delta
+	}
+}
+
+fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
+	if delta == 0 {
+		return
+	}
+	old_next_file_id := p.next_file_id
+	for i in 0 .. p.a.nodes.len {
+		pos := remap_worker_pos(p.a.nodes[i].pos, first_file_id, old_next_file_id, delta)
+		p.a.nodes[i] = p.a.nodes[i].with_pos(pos)
+	}
+	mut source_files := map[int]&token.File{}
+	for file_id, file in p.a.source_files {
+		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+			file_id + delta
+		} else {
+			file_id
+		}
+		source_files[shifted_id] = file
+	}
+	p.a.source_files = source_files.move()
+	mut template_call_sites := map[int]token.Pos{}
+	for file_id, call_site in p.a.template_call_sites {
+		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+			file_id + delta
+		} else {
+			file_id
+		}
+		template_call_sites[shifted_id] = remap_worker_pos(call_site, first_file_id,
+			old_next_file_id, delta)
+	}
+	p.a.template_call_sites = template_call_sites.move()
+	mut template_actions := map[int]string{}
+	for file_id, action in p.a.template_actions {
+		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+			file_id + delta
+		} else {
+			file_id
+		}
+		template_actions[shifted_id] = action
+	}
+	p.a.template_actions = template_actions.move()
+	for i in 0 .. p.diagnostics.len {
+		p.diagnostics[i] = Diagnostic{
+			...p.diagnostics[i]
+			pos: remap_worker_pos(p.diagnostics[i].pos, first_file_id, old_next_file_id, delta)
+		}
+	}
+	if p.cur_file_id >= first_file_id && p.cur_file_id < old_next_file_id {
+		p.cur_file_id += delta
+	}
+	p.next_file_id += delta
+}
+
+@[direct_array_access]
 fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
 	mut values := p.comptime_const_values.clone()
 	for path in paths[start..end] {
@@ -807,6 +933,169 @@ fn apply_parallel_comptime_const_decls(mut values map[string]string, decls []Com
 // from an empty FlatAst), so every node-id reference moves by the master's
 // node count and every children_start by the master's children count at merge
 // time. Negative child slots (flat.empty_node sentinels) are left untouched.
+struct PendingSourceFile {
+	file_id int
+	file    &token.File
+}
+
+struct ParseMergeCopyArgs {
+	master       voidptr
+	worker       voidptr
+	node_offset  int
+	child_offset int
+	has_scope    bool
+mut:
+	miss_nodes    []int
+	pending_files []PendingSourceFile
+}
+
+// parse_merge_copy_thread copies one worker's nodes/children into the master
+// arrays at precomputed offsets, applying the same id relocations as the
+// serial merge. Chunks write disjoint master ranges, so the copies run
+// concurrently; string payloads stay in the worker scopes until the serial
+// intern pass rebinds them.
+@[direct_array_access]
+fn parse_merge_copy_thread(arg voidptr) voidptr {
+	mut ma := unsafe { &ParseMergeCopyArgs(arg) }
+	mut p := unsafe { &Parser(ma.master) }
+	mut w := unsafe { &Parser(ma.worker) }
+	node_shift := ma.node_offset
+	child_shift := i32(ma.child_offset)
+	for k in 0 .. w.a.children.len {
+		cid := w.a.children[k]
+		p.a.children[ma.child_offset + k] = if int(cid) >= 0 {
+			flat.NodeId(int(cid) + node_shift)
+		} else {
+			cid
+		}
+	}
+	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
+	mut cache_vals := []string{len: 4096}
+	for k in 0 .. w.a.nodes.len {
+		mut node := w.a.nodes[k]
+		if node.children_count != 0 {
+			node.children_start += child_shift
+		}
+		// Declaration attributes are linked by an internal directive whose value
+		// embeds the worker-local declaration id; relocate it like a child id.
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			local_id := node.value['@attributes:'.len..].int()
+			node.value = '@attributes:${local_id + node_shift}'
+		}
+		// Probe-intern against the (currently frozen) master text table: hits
+		// are rebound here; missing texts go to the ordered serial tail so the
+		// canonical table's insertion order matches the serial merge.
+		mut all_hit := true
+		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
+		mut hit := true
+		node.typ, hit = p.a.probe_text_ptr_cached(node.typ, mut cache_ptrs, mut cache_vals)
+		all_hit = all_hit && hit
+		params := node.generic_params()
+		if params.len > 0 {
+			mut canonical_params := []string{cap: params.len}
+			mut params_hit := true
+			for item in params {
+				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut cache_ptrs, mut
+					cache_vals)
+				canonical_params << canonical
+				params_hit = params_hit && item_hit
+			}
+			if params_hit {
+				// The rebuilt array persists: pool-thread arenas outlive the merge.
+				node.set_generic_params(canonical_params)
+			} else {
+				all_hit = false
+			}
+		}
+		if !all_hit {
+			ma.miss_nodes << node_shift + k
+		}
+		p.a.nodes[node_shift + k] = node
+	}
+	unsafe {
+		// Ownership of the copied elements moved to the master.
+		w.a.children.len = 0
+		w.a.nodes.len = 0
+	}
+	if ma.has_scope {
+		// Clone diagnostic line tables while the scoped worker still owns them.
+		// A source file does not necessarily have a matching source buffer:
+		// template parsing stores the generated V source separately from the
+		// real template file registered for diagnostic remapping.
+		for file_id, file in w.a.source_files {
+			ma.pending_files << PendingSourceFile{
+				file_id: file_id
+				file:    clone_parser_source_file(file)
+			}
+		}
+	}
+	return unsafe { nil }
+}
+
+fn clone_parser_source_file(file &token.File) &token.File {
+	mut file_set := token.FileSet.new()
+	mut stored_file := file_set.add_file(file.name.clone(), file.size)
+	for line in 2 .. file.line_count() + 1 {
+		stored_file.add_line(file.line_start(line))
+	}
+	return stored_file
+}
+
+fn par_parse_merge_enabled() bool {
+	return os.getenv('V3_NO_PAR_PARSE_MERGE') == ''
+}
+
+// merge_parsed_workers_parallel is the pooled equivalent of the ordered
+// merge_parsed_worker loop: the node/children copies land in precomputed
+// disjoint ranges across the pool, then the order-sensitive tail (interning,
+// exports, diagnostics) runs serially in chunk order exactly like the serial
+// merge.
+@[direct_array_access]
+fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mut starts []int, bounds []int, mut args []ParseChunkArgs) {
+	thread_count := parser_workers.len
+	base_nodes := p.a.nodes.len
+	base_children := p.a.children.len
+	mut node_offsets := []int{len: thread_count + 1}
+	mut child_offsets := []int{len: thread_count + 1}
+	node_offsets[0] = base_nodes
+	child_offsets[0] = base_children
+	for ci in 0 .. thread_count {
+		node_offsets[ci + 1] = node_offsets[ci] + parser_workers[ci].a.nodes.len
+		child_offsets[ci + 1] = child_offsets[ci] + parser_workers[ci].a.children.len
+	}
+	unsafe {
+		p.a.nodes.grow_len(node_offsets[thread_count] - base_nodes)
+		p.a.children.grow_len(child_offsets[thread_count] - base_children)
+	}
+	mut margs := []ParseMergeCopyArgs{cap: thread_count}
+	for ci in 0 .. thread_count {
+		margs << ParseMergeCopyArgs{
+			master:       voidptr(p)
+			worker:       voidptr(parser_workers[ci])
+			node_offset:  node_offsets[ci]
+			child_offset: child_offsets[ci]
+			has_scope:    args[ci + 1].scope != unsafe { nil }
+			miss_nodes:   []int{cap: 4096}
+		}
+	}
+	mut tasks := []workers.Task{cap: thread_count}
+	for ci in 0 .. thread_count {
+		tasks << workers.Task{
+			run:        parse_merge_copy_thread
+			arg:        unsafe { voidptr(&margs[ci]) }
+			force_sync: ci == 0
+		}
+	}
+	p.a.worker_pool.run(tasks)
+	for ci in 0 .. thread_count {
+		p.a.intern_node_texts_at(margs[ci].miss_nodes)
+		p.merge_parsed_worker_bookkeeping(mut *parser_workers[ci], mut starts, bounds[ci + 1], bounds[
+			ci + 2], args[ci + 1].scope, node_offsets[ci], margs[ci].pending_files,
+			margs[ci].has_scope)
+		parser_worker_scope_free(args[ci + 1].scope)
+	}
+}
+
 fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_start int, chunk_end int, worker_scope voidptr) {
 	node_shift := p.a.nodes.len
 	child_shift := i32(p.a.children.len)
@@ -853,14 +1142,37 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 				}
 			}
 		}
-		// Worker text tables are private. Rebind every moved payload to the
-		// master's compilation-wide canonical text table before the worker dies.
-		p.a.intern_node_texts_from(nodes_old_len)
 	}
+	p.merge_parsed_worker_tail(mut w, mut starts, chunk_start, chunk_end, worker_scope, node_shift,
+		p.a.nodes.len)
+}
+
+// merge_parsed_worker_tail runs the serial per-chunk bookkeeping that follows
+// the node/children copy: text interning (order-sensitive — canonical table
+// ids must match the serial merge), starts relocation and export/diagnostic
+// merging. node_end bounds the intern range so the parallel merge (where all
+// chunks are already present in the master arrays) interns only this chunk.
+fn (mut p Parser) merge_parsed_worker_tail(mut w Parser, mut starts []int, chunk_start int, chunk_end int, worker_scope voidptr, node_shift int, node_end int) {
+	// Worker text tables are private. Rebind every moved payload to the
+	// master's compilation-wide canonical text table before the worker dies.
+	p.a.intern_node_texts_range(node_shift, node_end)
+	p.merge_parsed_worker_bookkeeping(mut w, mut starts, chunk_start, chunk_end, worker_scope,
+		node_shift, [], false)
+}
+
+@[direct_array_access]
+fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int, chunk_start int, chunk_end int, worker_scope voidptr, node_shift int, pending_files []PendingSourceFile, use_pending bool) {
 	// Per-file region starts move by the merge offset.
 	for i in chunk_start .. chunk_end {
 		starts[i] += node_shift
 	}
+	for fid in w.a.file_node_ids {
+		p.a.file_node_ids << fid + node_shift
+	}
+	unsafe {
+		w.a.file_node_ids.len = 0
+	}
+	p.a.file_index_incomplete = p.a.file_index_incomplete || w.a.file_index_incomplete
 	// The worker validated its exports against its own files only; revalidate
 	// them here against disabled fns accumulated from earlier chunks, exactly
 	// like the serial parse where register_pending_export sees every previously
@@ -889,14 +1201,28 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 	}
 	for diagnostic in w.diagnostics {
 		p.append_diagnostic(Diagnostic{
-			file:    diagnostic.file.clone()
-			pos:     diagnostic.pos
-			line:    diagnostic.line
-			column:  diagnostic.column
-			message: diagnostic.message.clone()
+			file:     diagnostic.file.clone()
+			pos:      diagnostic.pos
+			line:     diagnostic.line
+			column:   diagnostic.column
+			message:  diagnostic.message.clone()
+			severity: diagnostic.severity.clone()
 		})
 	}
-	if worker_scope == unsafe { nil } {
+	for file_id, call_site in w.a.template_call_sites {
+		p.a.template_call_sites[file_id] = call_site
+	}
+	for file_id, action in w.a.template_actions {
+		_, canonical := p.a.intern_text(action)
+		p.a.template_actions[file_id] = canonical
+	}
+	if use_pending {
+		// Line tables were indexed on the copy thread; only the map inserts
+		// remain order-sensitive.
+		for pf in pending_files {
+			p.a.source_files[pf.file_id] = pf.file
+		}
+	} else if worker_scope == unsafe { nil } {
 		for source in w.a.source_buffers {
 			p.a.source_buffers << source
 		}
@@ -910,20 +1236,10 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 		}
 	} else {
 		// Node and metadata text has already been promoted into the master text
-		// table. Rebuild only the compact line indexes needed by diagnostics and
-		// let the much larger worker source buffers die with the task arena.
-		mut file_ids := w.a.source_files.keys()
-		file_ids.sort()
-		for source_idx, file_id in file_ids {
-			file := w.a.source_files[file_id] or { continue }
-			if source_idx >= w.a.source_buffers.len {
-				continue
-			}
-			source := w.a.source_buffers[source_idx]
-			mut file_set := token.FileSet.new()
-			mut stored_file := file_set.add_file(file.name.clone(), file.size)
-			stored_file.index_lines(source)
-			p.a.source_files[file_id] = stored_file
+		// table. Keep only the compact line indexes needed by diagnostics and let
+		// the much larger worker source buffers die with the task arena.
+		for file_id, file in w.a.source_files {
+			p.a.source_files[file_id] = clone_parser_source_file(file)
 		}
 	}
 	for key, value in w.comptime_const_values {
@@ -960,6 +1276,7 @@ fn parse_job_count(n_runtime_jobs int, n_files int) int {
 // parse_chunk_bounds splits the file list into n contiguous ranges of roughly
 // equal source byte count (parse time tracks source size closely). Contiguity
 // in input order is required so the ordered merge reproduces the serial layout.
+@[direct_array_access]
 fn parse_chunk_bounds(sizes []i64, n int) []int {
 	mut total := i64(0)
 	for size in sizes {

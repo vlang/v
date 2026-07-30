@@ -333,6 +333,12 @@ fn window_extent_for_minimum(value int, minimum int) int {
 	return value
 }
 
+// Marked used because native callbacks inside top-level compile-time blocks are emitted directly by cgen.
+@[markused]
+fn clone_native_path(path &char) string {
+	return unsafe { tos_clone(&u8(path)) }
+}
+
 fn dropped_files_from_uri_list(payload string) []string {
 	mut files := []string{}
 	for raw_line in payload.split('\n') {

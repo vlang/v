@@ -1197,8 +1197,14 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				|| resolved_node_typ.has_flag(.shared_f)) {
 				g.expected_cast_type = resolved_node_typ
 			}
+			// A containing if/match expression can suppress statement positions while
+			// emitting this if as its final expression. Its branches and branch defers
+			// still need their own positions so option/result preludes stay in scope.
+			prev_skip_stmt_pos := g.skip_stmt_pos
+			g.skip_stmt_pos = false
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 			g.write_defer_stmts(branch.scope, false, node.pos)
+			g.skip_stmt_pos = prev_skip_stmt_pos
 			g.expected_cast_type = prev_expected_cast_type
 			if !is_else
 				&& (branch.stmts.len > 0 && branch.stmts.last() !in [ast.Return, ast.BranchStmt]) {

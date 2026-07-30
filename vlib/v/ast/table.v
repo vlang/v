@@ -75,6 +75,8 @@ pub mut:
 	type_symbols                []&TypeSymbol
 	type_idxs                   map[string]int
 	fns                         map[string]Fn
+	c_fns_by_module             map[string]Fn
+	c_fns_with_local_returns    map[string]bool
 	iface_types                 map[string][]Type
 	dumps                       map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports                     []string       // List of all imports
@@ -143,6 +145,8 @@ pub fn (mut t Table) free() {
 		t.type_symbols.free()
 		t.type_idxs.free()
 		t.fns.free()
+		t.c_fns_by_module.free()
+		t.c_fns_with_local_returns.free()
 		t.dumps.free()
 		t.imports.free()
 		t.modules.free()
@@ -268,8 +272,305 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	return sig
 }
 
+fn fn_type_calling_convention(f &Fn) string {
+	for attr in f.attrs {
+		if attr.name == 'callconv' {
+			return attr.arg
+		}
+	}
+	return 'cdecl'
+}
+
+fn (t &Table) fn_types_are_compatible(left &Fn, right &Fn, depth int) bool {
+	if left.params.len != right.params.len || left.is_variadic != right.is_variadic
+		|| left.is_c_variadic != right.is_c_variadic
+		|| fn_type_calling_convention(left) != fn_type_calling_convention(right) {
+		return false
+	}
+	if depth >= max_alias_chain_depth {
+		return false
+	}
+	for i, param in left.params {
+		right_param := right.params[i]
+		if param.is_mut != right_param.is_mut || param.is_shared != right_param.is_shared
+			|| param.is_atomic != right_param.is_atomic
+			|| !t.fn_type_components_are_compatible(param.typ, right_param.typ, depth + 1) {
+			return false
+		}
+	}
+	return t.fn_type_components_are_compatible(left.return_type, right.return_type, depth + 1)
+}
+
+// c_fn_declarations_are_compatible reports whether two declarations describe the same C ABI.
+pub fn (t &Table) c_fn_declarations_are_compatible(left &Fn, right &Fn) bool {
+	return t.c_fn_declarations_are_compatible_at_depth(left, right, 0)
+}
+
+fn (t &Table) c_fn_declarations_are_compatible_at_depth(left &Fn, right &Fn, depth int) bool {
+	if depth >= max_alias_chain_depth {
+		return false
+	}
+	if fn_type_calling_convention(left) != fn_type_calling_convention(right) {
+		return false
+	}
+	if left.is_variadic != right.is_variadic {
+		return false
+	}
+	mut compared_params := left.params.len
+	left_fixed_params := left.params.len - if left.is_variadic && !left.is_c_variadic {
+		1
+	} else {
+		0
+	}
+	right_fixed_params := right.params.len - if right.is_variadic && !right.is_c_variadic {
+		1
+	} else {
+		0
+	}
+	if left.is_variadic {
+		if left_fixed_params != right_fixed_params {
+			return false
+		}
+		compared_params = left_fixed_params
+	} else if left.params.len != right.params.len {
+		return false
+	}
+	for i in 0 .. compared_params {
+		param := left.params[i]
+		right_param := right.params[i]
+		if param.is_shared != right_param.is_shared || param.is_atomic != right_param.is_atomic
+			|| !t.c_fn_type_components_are_compatible(param.typ, right_param.typ, depth + 1) {
+			return false
+		}
+	}
+	return t.c_fn_type_components_are_compatible(left.return_type, right.return_type, depth + 1)
+}
+
+fn (t &Table) c_fn_type_components_are_compatible(left_type Type, right_type Type, depth int) bool {
+	if left_type == right_type {
+		return true
+	}
+	left := t.fully_unaliased_type(left_type)
+	right := t.fully_unaliased_type(right_type)
+	if left.has_option_or_result() || right.has_option_or_result() {
+		return false
+	}
+	if left == right {
+		return true
+	}
+	if (left in voidptr_types && right in voidptr_types)
+		|| (left in byteptr_types && right in byteptr_types)
+		|| (left in charptr_types && right in charptr_types) {
+		return true
+	}
+	// C APIs often use `void *` and an opaque object pointer interchangeably
+	// across headers. Calls remain ABI-compatible when one declaration uses
+	// `voidptr` and the other uses a typed object pointer.
+	if (left in voidptr_types && right.is_any_kind_of_pointer())
+		|| (right in voidptr_types && left.is_any_kind_of_pointer()) {
+		return true
+	}
+	if left.flags() == right.flags() {
+		if left.idx() in [int_type_idx, i32_type_idx] && right.idx() in [int_type_idx, i32_type_idx] {
+			return true
+		}
+		if t.pointer_size == 8 {
+			if (left.idx() in [isize_type_idx, i64_type_idx]
+				&& right.idx() in [isize_type_idx, i64_type_idx])
+				|| (left.idx() in [usize_type_idx, u64_type_idx]
+				&& right.idx() in [usize_type_idx, u64_type_idx]) {
+				return true
+			}
+		} else if t.pointer_size == 4 {
+			if (left.idx() in [isize_type_idx, int_type_idx, i32_type_idx]
+				&& right.idx() in [isize_type_idx, int_type_idx, i32_type_idx])
+				|| (left.idx() in [usize_type_idx, u32_type_idx]
+				&& right.idx() in [usize_type_idx, u32_type_idx]) {
+				return true
+			}
+		}
+	}
+	if depth >= max_alias_chain_depth || left.flags() != right.flags() {
+		return false
+	}
+	left_sym := t.sym(left)
+	right_sym := t.sym(right)
+	if left_sym.language == .c && right_sym.language == .c && left_sym.cname == right_sym.cname {
+		return true
+	}
+	if left_sym.info is FnType && right_sym.info is FnType {
+		left_info := left_sym.info as FnType
+		right_info := right_sym.info as FnType
+		return t.c_fn_declarations_are_compatible_at_depth(left_info.func, right_info.func, depth +
+			1)
+	}
+	return t.fn_type_components_are_compatible(left, right, depth + 1)
+}
+
+fn (t &Table) fn_type_components_are_compatible(left_type Type, right_type Type, depth int) bool {
+	if left_type == right_type {
+		return true
+	}
+	left := t.fully_unaliased_type(left_type)
+	right := t.fully_unaliased_type(right_type)
+	if left.has_option_or_result() || right.has_option_or_result() {
+		return false
+	}
+	if left == right {
+		return true
+	}
+	if depth >= max_alias_chain_depth {
+		return false
+	}
+	if left.flags() != right.flags() {
+		return false
+	}
+	left_sym := t.sym(left)
+	right_sym := t.sym(right)
+	if left_sym.kind != right_sym.kind {
+		return false
+	}
+	if left_sym.info is FnType {
+		if right_sym.info !is FnType {
+			return false
+		}
+		left_info := left_sym.info as FnType
+		right_info := right_sym.info as FnType
+		return t.fn_types_are_compatible(left_info.func, right_info.func, depth)
+	}
+	if left_sym.info is Array {
+		if right_sym.info !is Array {
+			return false
+		}
+		left_info := left_sym.info as Array
+		right_info := right_sym.info as Array
+		return left_info.nr_dims == right_info.nr_dims
+			&& t.fn_type_components_are_compatible(left_info.elem_type, right_info.elem_type, depth + 1)
+	}
+	if left_sym.info is ArrayFixed {
+		if right_sym.info !is ArrayFixed {
+			return false
+		}
+		left_info := left_sym.info as ArrayFixed
+		right_info := right_sym.info as ArrayFixed
+		return left_info.size == right_info.size
+			&& t.fn_type_components_are_compatible(left_info.elem_type, right_info.elem_type, depth + 1)
+	}
+	if left_sym.info is Map {
+		if right_sym.info !is Map {
+			return false
+		}
+		left_info := left_sym.info as Map
+		right_info := right_sym.info as Map
+		return
+			t.fn_type_components_are_compatible(left_info.key_type, right_info.key_type, depth + 1)
+			&& t.fn_type_components_are_compatible(left_info.value_type, right_info.value_type, depth + 1)
+	}
+	if left_sym.info is Chan {
+		if right_sym.info !is Chan {
+			return false
+		}
+		left_info := left_sym.info as Chan
+		right_info := right_sym.info as Chan
+		return left_info.is_mut == right_info.is_mut
+			&& t.fn_type_components_are_compatible(left_info.elem_type, right_info.elem_type, depth + 1)
+	}
+	if left_sym.info is Thread {
+		if right_sym.info !is Thread {
+			return false
+		}
+		left_info := left_sym.info as Thread
+		right_info := right_sym.info as Thread
+		return_type_matches := t.fn_type_components_are_compatible(left_info.return_type,
+			right_info.return_type, depth + 1)
+		return return_type_matches
+	}
+	if left_sym.info is MultiReturn {
+		if right_sym.info !is MultiReturn {
+			return false
+		}
+		left_info := left_sym.info as MultiReturn
+		right_info := right_sym.info as MultiReturn
+		if left_info.types.len != right_info.types.len {
+			return false
+		}
+		for i, typ in left_info.types {
+			if !t.fn_type_components_are_compatible(typ, right_info.types[i], depth + 1) {
+				return false
+			}
+		}
+		return true
+	}
+	if left_sym.info is GenericInst {
+		if right_sym.info !is GenericInst {
+			return false
+		}
+		left_info := left_sym.info as GenericInst
+		right_info := right_sym.info as GenericInst
+		if left_info.parent_idx != right_info.parent_idx
+			|| left_info.concrete_types.len != right_info.concrete_types.len {
+			return false
+		}
+		for i, typ in left_info.concrete_types {
+			if !t.fn_type_components_are_compatible(typ, right_info.concrete_types[i], depth + 1) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+fn (t &Table) method_types_are_equal(left Type, right Type) bool {
+	if left == right {
+		return true
+	}
+	unaliased_left := t.fully_unaliased_type(left)
+	unaliased_right := t.fully_unaliased_type(right)
+	if unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result() {
+		return false
+	}
+	return unaliased_left == unaliased_right
+}
+
+fn (t &Table) method_return_types_are_compatible(left Type, right Type) bool {
+	if t.method_types_are_equal(left, right) {
+		return true
+	}
+	unaliased_left := t.fully_unaliased_type(left)
+	unaliased_right := t.fully_unaliased_type(right)
+	if unaliased_left.nr_muls() != unaliased_right.nr_muls() {
+		return false
+	}
+	has_wrapper := unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result()
+	if has_wrapper && unaliased_left.flags() != unaliased_right.flags() {
+		return false
+	}
+	left_sym := t.sym(unaliased_left)
+	right_sym := t.sym(unaliased_right)
+	if left_sym.info is FnType && right_sym.info is FnType {
+		if has_wrapper
+			&& t.fn_type_signature(left_sym.info.func) != t.fn_type_signature(right_sym.info.func) {
+			return false
+		}
+		return t.fn_types_are_compatible(left_sym.info.func, right_sym.info.func, 0)
+	}
+	if left_sym.info is MultiReturn && right_sym.info is MultiReturn {
+		if left_sym.info.types.len != right_sym.info.types.len {
+			return false
+		}
+		for i, typ in left_sym.info.types {
+			if !t.method_return_types_are_compatible(typ, right_sym.info.types[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
-	if f.return_type != func.return_type {
+	if !t.method_return_types_are_compatible(f.return_type, func.return_type) {
 		s := t.type_to_str(f.return_type)
 		return 'expected return type `${s}`'
 	}
@@ -282,7 +583,7 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	for i in 0 .. f.params.len {
 		// don't check receiver for `.typ`
 		has_unexpected_type := i > 0
-			&& t.unaliased_type(f.params[i].typ) != t.unaliased_type(func.params[i].typ)
+			&& !t.method_types_are_equal(f.params[i].typ, func.params[i].typ)
 		// temporary hack for JS ifaces
 		lsym := t.sym(f.params[i].typ)
 		rsym := t.sym(func.params[i].typ)
@@ -376,9 +677,38 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 	return none
 }
 
+fn c_fn_module_key(name string, mod string) string {
+	return '${mod}\x01${name}'
+}
+
+// find_c_fn_in_module returns the declaration of a C function visible in `mod`.
+// C ABI-compatible declarations can retain different V-only call metadata.
+pub fn (t &Table) find_c_fn_in_module(name string, mod string) ?Fn {
+	if f := t.c_fns_by_module[c_fn_module_key(name, mod)] {
+		return f
+	}
+	return t.find_fn(name)
+}
+
+// c_fn_has_local_return_types reports whether compatible declarations of a C
+// function retain different V return types.
+pub fn (t &Table) c_fn_has_local_return_types(name string) bool {
+	return t.c_fns_with_local_returns[name]
+}
+
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
+}
+
+// register_c_fn_in_module records module-local call metadata for a C declaration.
+pub fn (mut t Table) register_c_fn_in_module(new_fn Fn) {
+	if existing := t.find_fn(new_fn.name) {
+		if existing.return_type != new_fn.return_type {
+			t.c_fns_with_local_returns[new_fn.name] = true
+		}
+	}
+	t.c_fns_by_module[c_fn_module_key(new_fn.name, new_fn.mod)] = new_fn
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {

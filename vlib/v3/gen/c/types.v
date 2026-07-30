@@ -299,7 +299,31 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 	if t is types.ArrayFixed {
 		return g.fixed_array_c_type(t)
 	}
-	return g.value_c_type(t)
+	mut ct := g.value_c_type(t)
+	mut pointer_suffix := ''
+	for ct.ends_with('*') {
+		ct = ct[..ct.len - 1]
+		pointer_suffix += '*'
+	}
+	// A concrete generic type can reach this collector through a stale bare
+	// specialization spelling while its declaration is module-qualified
+	// (`StructKeyDecodeResult_T` vs `json2__StructKeyDecodeResult_T`). Resolve
+	// the unique declaration here so we neither emit an unusable phantom
+	// Optional typedef nor duplicate the correctly qualified one.
+	if optional_payload_is_bare_struct(t) {
+		if qualified := g.unique_qualified_struct_c_type(ct) {
+			return qualified + pointer_suffix
+		}
+	}
+	return ct + pointer_suffix
+}
+
+fn optional_payload_is_bare_struct(t types.Type) bool {
+	mut clean := t
+	for clean is types.Pointer {
+		clean = clean.base_type
+	}
+	return clean is types.Struct && !clean.name.contains('.')
 }
 
 // optional_typedefs supports optional typedefs handling for FlatGen.
@@ -374,10 +398,20 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	if g.decl_types_ready {
 		return
 	}
-	for _, ret in g.tc.fn_ret_types {
+	for name, ret in g.tc.fn_ret_types {
+		// Generic template signatures keep unspecialized placeholder types
+		// (`!&Tls[T]`); their typedefs would reference C types that are never
+		// emitted. Specializations register concrete signatures under their
+		// own suffixed names.
+		if name in g.tc.fn_generic_params {
+			continue
+		}
 		g.collect_declaration_signature_type(ret)
 	}
-	for _, params in g.tc.fn_param_types {
+	for name, params in g.tc.fn_param_types {
+		if name in g.tc.fn_generic_params {
+			continue
+		}
 		for param in params {
 			g.collect_declaration_signature_type(param)
 		}
@@ -409,7 +443,15 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 }
 
 fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
-	if g.type_contains_generic_placeholder(t) {
+	// Erased-template signatures keep their placeholder spellings in the
+	// checker tables even when the program itself uses no generics
+	// (skip_generics); force the placeholder check so an unused template's
+	// `!&Tls[T]` return cannot leave an Optional_..._T typedef referencing a
+	// C type that is never emitted.
+	g.placeholder_check_forced = true
+	skip := g.type_contains_generic_placeholder(t)
+	g.placeholder_check_forced = false
+	if skip {
 		return
 	}
 	g.collect_concrete_optional_typedef_type(t)
@@ -584,6 +626,9 @@ fn type_name_is_unbound_generic_decl(name string, params []string, materialized 
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder(name string) bool {
+	if g.skip_generics && !g.placeholder_check_forced {
+		return false
+	}
 	clean := trimmed_space(name)
 	if clean.len == 0 {
 		return false
@@ -672,20 +717,16 @@ fn (mut g FlatGen) enum_decls() {
 		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
-				cur_module = 'main'
+				cur_module = g.tc.file_modules[node.value] or { '' }
 				g.tc.cur_file = node.value
-				g.tc.cur_module = 'main'
+				g.tc.cur_module = cur_module
 			}
 			.module_decl {
 				cur_module = node.value
 				g.tc.cur_module = node.value
 			}
 			.enum_decl {
-				name := if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-					'${cur_module}.${node.value}'
-				} else {
-					node.value
-				}
+				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
 				if emitted[cn] {
 					continue
@@ -860,17 +901,13 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
-				cur_module = ''
+				cur_module = g.tc.file_modules[node.value] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
 			}
 			.enum_decl {
-				name := if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-					'${cur_module}.${node.value}'
-				} else {
-					node.value
-				}
+				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
 				if emitted[cn] {
 					continue
@@ -895,17 +932,13 @@ fn (mut g FlatGen) enum_str_defs() {
 		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
-				cur_module = ''
+				cur_module = g.tc.file_modules[node.value] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
 			}
 			.enum_decl {
-				name := if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-					'${cur_module}.${node.value}'
-				} else {
-					node.value
-				}
+				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
 				if emitted[cn] {
 					continue
@@ -952,6 +985,69 @@ fn (mut g FlatGen) enum_str_defs() {
 			else {}
 		}
 	}
+}
+
+fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
+	if node.value.contains('.') {
+		return node.value
+	}
+	candidate := if module_name.len > 0 && module_name !in ['main', 'builtin'] {
+		'${module_name}.${node.value}'
+	} else {
+		node.value
+	}
+	if candidate in g.tc.enum_names {
+		return candidate
+	}
+	mut resolved := ''
+	for name in g.tc.enum_names.keys() {
+		if name.all_after_last('.') != node.value {
+			continue
+		}
+		if resolved.len > 0 && resolved != name {
+			return candidate
+		}
+		resolved = name
+	}
+	return if resolved.len > 0 { resolved } else { candidate }
+}
+
+fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
+	mut name := type_name
+	if name.starts_with('main.') {
+		name = name['main.'.len..]
+	}
+	if name in g.tc.enum_names {
+		return g.cname(name)
+	}
+	if !name.contains('.') && g.tc.cur_module.len > 0 {
+		qualified := '${g.tc.cur_module}.${name}'
+		if qualified in g.tc.enum_names {
+			return g.cname(qualified)
+		}
+	}
+	short_name := name.all_after_last('.')
+	if short_name in g.tc.enum_names {
+		return g.cname(short_name)
+	}
+	if !name.contains('.') {
+		suffix := '.${name}'
+		mut match_name := ''
+		mut matches := 0
+		for enum_name, _ in g.tc.enum_names {
+			if enum_name.ends_with(suffix) {
+				match_name = enum_name
+				matches++
+				if matches > 1 {
+					break
+				}
+			}
+		}
+		if matches == 1 {
+			return g.cname(match_name)
+		}
+	}
+	return g.cname(name)
 }
 
 // emit_flag_enum_autostr emits the `<Enum>__autostr` helper for a `[flag]` enum.

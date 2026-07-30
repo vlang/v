@@ -300,3 +300,66 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 29\n31\ndrop 30\n32\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 32\nconverted none\ndrop 31\n33:34\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }
+
+fn test_drop_codegen_recurses_through_owned_container_elements() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_${pid}')
+	src := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_${pid}.v')
+	out := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_program_${pid}')
+	os.rm(v3_bin) or {}
+	os.rm(src) or {}
+	os.rm(out) or {}
+	os.rm(out + '.c') or {}
+	defer {
+		os.rm(v3_bin) or {}
+		os.rm(src) or {}
+		os.rm(out) or {}
+		os.rm(out + '.c') or {}
+	}
+	build :=
+		os.execute('${drop_codegen_vexe} -gc none -d ownership -path "${drop_codegen_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${drop_codegen_v3_src}')
+	assert build.exit_code == 0, build.output
+	os.write_file(src, "module main
+
+struct Resource implements Drop {
+	id int
+}
+
+fn (mut r Resource) drop() {
+	println('drop \${r.id}')
+}
+
+struct Node {
+	name     string
+	resource Resource
+	children []Node
+}
+
+fn main() {
+	tree := Node{
+		name: 'root'.clone()
+		resource: Resource{1}
+		children: [
+			Node{
+				name: 'child'.clone()
+				resource: Resource{2}
+				children: [
+					Node{
+						name: 'grandchild'.clone()
+						resource: Resource{3}
+					},
+				]
+			},
+		]
+	}
+	println(tree.name)
+}
+") or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output == 'root\ndrop 1\ndrop 2\ndrop 3\n', run.output
+}

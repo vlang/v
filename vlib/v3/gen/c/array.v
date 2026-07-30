@@ -442,7 +442,14 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	} else if is_fixed_array {
 		c_elem := g.fixed_array_elem_c_type(fixed.elem_type)
 		mut data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
-		literal := g.fixed_array_compound_literal_expr(base_id, fixed)
+		base_node := g.a.nodes[int(base_id)]
+		local_fixed_array := base_node.kind == .ident
+			&& g.const_ref_name_from_node(base_node).len == 0
+		literal := if local_fixed_array {
+			''
+		} else {
+			g.fixed_array_compound_literal_expr(base_id, fixed)
+		}
 		if trimmed_space(literal).len > 0 {
 			data_str = literal
 		}
@@ -1588,29 +1595,15 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			g.gen_index_overload_set(node, lhs, base_id, base_type, info)
 			return
 		}
-		if base_type is types.Pointer {
-			ptr_type := base_type
-			if ptr_type.base_type is types.Void {
-				g.write('((u8*)')
-				g.gen_expr(base_id)
-				g.write(')[')
-				g.gen_expr(g.a.child(&lhs, 1))
-				g.write('] = ')
-				g.gen_expr(g.a.child(&node, 1))
-				g.writeln(';')
-				return
-			}
-		}
 		mut arr_type := types.Array{}
 		mut is_array_base := false
-		if base_type is types.Array {
-			arr_type = base_type
+		if arr := array_like_type(base_type) {
+			arr_type = arr
 			is_array_base = true
 		} else if base_type is types.Pointer {
 			ptr_type := base_type
-			ptr_base := ptr_type.base_type
-			if ptr_base is types.Array {
-				arr_type = ptr_base
+			if arr := array_like_type(ptr_type.base_type) {
+				arr_type = arr
 				is_array_base = true
 			}
 		}
@@ -1681,6 +1674,30 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
 			}
 			g.writeln('}); }')
+			return
+		}
+		if base_type is types.Pointer {
+			ptr_type := base_type
+			mut expected_type := ptr_type.base_type
+			if fixed := array_fixed_type(ptr_type.base_type) {
+				g.write('(*')
+				g.gen_expr(base_id)
+				g.write(')')
+				expected_type = fixed.elem_type
+			} else if ptr_type.base_type is types.Void {
+				g.write('((u8*)')
+				g.gen_expr(base_id)
+				g.write(')')
+			} else {
+				g.write('(')
+				g.gen_expr(base_id)
+				g.write(')')
+			}
+			g.write('[')
+			g.gen_expr(g.a.child(&lhs, 1))
+			g.write('] ${g.op_str(node.op)} ')
+			g.gen_expr_with_expected_type(g.a.child(&node, 1), expected_type)
+			g.writeln(';')
 			return
 		}
 	}

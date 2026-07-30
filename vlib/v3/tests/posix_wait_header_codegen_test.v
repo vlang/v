@@ -11,6 +11,18 @@ struct WaitHeaderProgram {
 	out    string
 }
 
+fn wait_header_execute_without_vflags(command string) os.Result {
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	result := os.execute(command)
+	if vflags := old_vflags {
+		os.setenv('VFLAGS', vflags, true)
+	} else {
+		os.unsetenv('VFLAGS')
+	}
+	return result
+}
+
 fn wait_header_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_wait_header_test_${pid}')
@@ -28,8 +40,10 @@ fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProg
 	os.write_file(src, source) or { panic(err) }
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := wait_header_execute_without_vflags('${v3_bin} -b c -o ${out} ${src}')
 	assert compile.exit_code == 0, compile.output
+	gen_c := wait_header_execute_without_vflags('${v3_bin} -b c -o ${out}.c ${src}')
+	assert gen_c.exit_code == 0, gen_c.output
 	return WaitHeaderProgram{
 		c_code: os.read_file(out + '.c') or { panic(err) }
 		out:    out
@@ -42,7 +56,7 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 	c_path := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.c')
 	os.write_file(src, source) or { panic(err) }
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	compile := wait_header_execute_without_vflags('${v3_bin} -b c -o ${c_path} ${src}')
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -640,7 +654,7 @@ fn test_filelock_uses_headerless_fcntl_helpers() {
 
 import os
 
-fn C.open(&char, i32, i32) i32
+fn C.open(&char, i32, ...int) i32
 fn C.close(i32) i32
 fn C.v_filelock_lock(i32, i32, i32, u64, u64) i32
 fn C.v_filelock_unlock(i32, u64, u64) i32

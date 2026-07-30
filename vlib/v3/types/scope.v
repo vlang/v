@@ -4,10 +4,16 @@ module types
 @[heap]
 pub struct Scope {
 pub mut:
-	parent          &Scope = unsafe { nil }
-	names           []string
-	types           []Type
-	name_indexes    map[string]int
+	parent       &Scope = unsafe { nil }
+	names        []string
+	types        []Type
+	name_indexes map[string]int
+	// name_mask is a conservative bloom filter over this scope's own binding
+	// names: a cleared bit proves the name is absent, letting chain walks skip
+	// the per-level map probe (most lookups walk many levels that do not bind
+	// the name at all). False positives only cost the probe they would have
+	// paid anyway.
+	name_mask       u64
 	generations     []int
 	storage_keys    []string
 	next_generation int
@@ -21,6 +27,12 @@ pub struct ScopeBindingOwner {
 	lifetime    int
 	name        string
 	storage_key string
+}
+
+@[inline]
+fn scope_name_bit(name string) u64 {
+	first := if name.len > 0 { u32(name[0]) } else { 0 }
+	return u64(1) << ((first * 33 + u32(name.len)) & 63)
 }
 
 // new_scope returns a reusable type-checker scope with an optional parent.
@@ -45,6 +57,7 @@ pub fn (mut s Scope) reset(parent &Scope) {
 	// occupant from the new one, so binding identity (storage_key,
 	// nearest_binding_owned_by) stays exact in every build mode.
 	s.lifetime++
+	s.name_mask = 0
 	$if !ownership ? {
 		s.name_indexes.clear()
 	}
@@ -61,10 +74,13 @@ pub fn (s &Scope) lookup(name string) ?Type {
 	}
 	$if !ownership ? {
 		// Only the local pointer is reassigned; the scopes remain read-only.
+		bit := scope_name_bit(name)
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
-			if i := scope.name_indexes[name] {
-				return scope.types[i]
+			if scope.name_mask & bit != 0 {
+				if i := scope.name_indexes[name] {
+					return scope.types[i]
+				}
 			}
 			scope = scope.parent
 		}
@@ -88,8 +104,13 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	}
 	$if !ownership ? {
 		// Only the local pointer is reassigned; the scopes remain read-only.
+		bit := scope_name_bit(name)
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
+			if scope.name_mask & bit == 0 {
+				scope = scope.parent
+				continue
+			}
 			if i := scope.name_indexes[name] {
 				return ScopeBindingOwner{
 					scope:       scope
@@ -211,6 +232,7 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 		}
 		s.names << name
 		s.types << typ
+		s.name_mask |= scope_name_bit(name)
 		s.name_indexes[name] = s.names.len - 1
 		index := s.names.len - 1
 		storage_key := scope_binding_storage_key(s, s.lifetime, index, 0)

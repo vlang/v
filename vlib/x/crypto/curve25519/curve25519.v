@@ -7,7 +7,7 @@
 module curve25519
 
 import crypto.rand
-import crypto.internal.subtle
+import crypto.subtle
 import crypto.ed25519.internal.edwards25519
 
 // scalar_size is the size of the Curve25519 key

@@ -3600,6 +3600,23 @@ red := Color{
 println(red)
 ```
 
+**Note:** Calling `.str()` on an unchanged receiver, or an unchanged alias of it,
+inside a custom `str()` method is not allowed because it causes infinite recursion.
+Use string interpolation of the individual fields instead, or for type aliases,
+cast to the underlying type first:
+
+```v failcompile
+struct Color {
+	r int
+	g int
+	b int
+}
+
+fn (c Color) str() string {
+	return c.str() // error: cannot call `str()` method recursively
+}
+```
+
 ### Dumping expressions at runtime
 
 You can dump/trace the value of any V expression using `dump(expr)`.
@@ -6700,7 +6717,8 @@ that are substituted at compile time:
 - `@DIR` => replaced with the absolute path of the *folder*, where the V source file is.
 - `@LINE` => replaced with the V line number where it appears (as a string).
 - `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path.
-- `@LOCATION` => file, line and name of the current type + method; suitable for logging.
+- `@LOCATION` => file, line and name of the current module + function or method;
+  suitable for logging.
 - `@COLUMN` => replaced with the column where it appears (as a string).
 - `@VEXE` => replaced with the path to the V compiler.
 - `@VEXEROOT`  => will be substituted with the *folder*,

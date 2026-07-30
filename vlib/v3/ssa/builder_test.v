@@ -46,6 +46,22 @@ fn test_native_rusage_uses_the_platform_abi_layout() {
 	assert abi.field_names[4] == 'ru_maxrss'
 	assert abi.field_types.len == 18
 	assert abi.field_types.all(it == 'i64')
+	assert '_proc_pid_rusage' in arm64_force_external_syms
+}
+
+fn test_native_darwin_pthread_types_use_the_platform_abi_layout() {
+	expected := {
+		'C.pthread_mutex_t':      '[8]u64'
+		'C.pthread_rwlock_t':     '[25]u64'
+		'C.pthread_rwlockattr_t': '[3]u64'
+		'C.pthread_cond_t':       '[6]u64'
+		'C.pthread_condattr_t':   '[2]u64'
+	}
+	for name, field_type in expected {
+		abi := native_c_struct_abi(name) or { panic('missing ${name} ABI') }
+		assert abi.field_names == ['opaque']
+		assert abi.field_types == [field_type]
+	}
 }
 
 // test_builtin_ownership_drop_names_are_ssa_intrinsics validates this v3 regression case.
@@ -147,6 +163,20 @@ fn test_map_clone_uses_the_runtime_pointer_abi() {
 	assert false, 'missing native map clone helper'
 }
 
+fn test_native_modulecache_metadata_helper_uses_hash_fallback() {
+	a := &flat.FlatAst{}
+	m := build(a)
+	for f in m.funcs {
+		if f.name == 'v3_modulecache_file_metadata' {
+			assert !f.is_c_extern
+			assert f.params.len == 8
+			assert f.blocks.len == 1
+			return
+		}
+	}
+	assert false, 'missing native module-cache metadata fallback'
+}
+
 // test_release_codegen_analysis_metadata_keeps_codegen_data validates this v3 regression case.
 fn test_release_codegen_analysis_metadata_keeps_codegen_data() {
 	a := &flat.FlatAst{}
@@ -170,4 +200,46 @@ fn test_build_can_skip_optimizer_use_lists() {
 	})
 	assert !m.track_uses
 	assert m.values.all(it.uses.len == 0)
+}
+
+fn test_type_size_reuses_module_layout_cache() {
+	mut m := Module.new()
+	i32_type := m.type_store.get_int(32)
+	array_type := m.type_store.get_array(i32_type, 5)
+	struct_type := m.type_store.register(Type{
+		kind:        .struct_t
+		fields:      [i32_type, array_type]
+		field_names: ['number', 'items']
+	})
+	assert m.type_size(array_type) == 20
+	assert m.struct_field_offset(struct_type, 1) == 4
+	assert m.struct_field_size(struct_type, 1) == 20
+	assert m.type_size_cache.len == m.type_store.types.len
+	cache_capacity := m.type_size_cache.cap
+	for _ in 0 .. 100 {
+		assert m.type_size(array_type) == 20
+		assert m.struct_field_offset(struct_type, 1) == 4
+		assert m.struct_field_size(struct_type, 1) == 20
+	}
+	assert m.type_size_cache.cap == cache_capacity
+}
+
+fn test_used_function_alias_lookups_are_precomputed() {
+	mut b := Builder{
+		used_fns:           {
+			'alpha.beta.gamma':      true
+			'delta__Thing__run':     true
+			'leaf':                  true
+			'outer.inner.operation': true
+		}
+		used_fn_normalized: map[string]bool{}
+		used_fn_suffixes:   map[string]bool{}
+	}
+	b.prepare_used_fn_lookups()
+	for name in ['gamma', 'beta.gamma', 'Thing.run', 'run', 'pkg.leaf', 'scope.outer.inner.operation'] {
+		assert b.fn_is_used(name), 'expected `${name}` to match a used function alias'
+	}
+	for name in ['missing', 'beta.missing', 'scope.outer.other'] {
+		assert !b.fn_is_used(name), 'did not expect `${name}` to match a used function alias'
+	}
 }

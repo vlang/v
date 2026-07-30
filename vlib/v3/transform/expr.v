@@ -291,6 +291,8 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	} else {
 		t.transform_expr(rhs_id)
 	}
+	new_lhs = t.preserve_array_comparison_deref(lhs_id, new_lhs, lhs_type)
+	new_rhs = t.preserve_array_comparison_deref(rhs_id, new_rhs, rhs_type)
 	new_lhs_type := t.membership_container_type(t.node_type(new_lhs))
 	new_rhs_type := t.membership_container_type(t.node_type(new_rhs))
 	if new_lhs_type.starts_with('[]') {
@@ -321,6 +323,26 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (mut t Transformer) preserve_array_comparison_deref(source_id flat.NodeId, transformed_id flat.NodeId, array_type string) flat.NodeId {
+	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(transformed_id) < 0
+		|| int(transformed_id) >= t.a.nodes.len {
+		return transformed_id
+	}
+	source := t.a.nodes[int(source_id)]
+	transformed := t.a.nodes[int(transformed_id)]
+	if source.kind != .prefix || source.op != .mul || source.children_count == 0
+		|| (transformed.kind == .prefix && transformed.op == .mul) {
+		return transformed_id
+	}
+	source_child_type := t.node_type(t.a.child(&source, 0))
+	if !source_child_type.starts_with('&') {
+		return transformed_id
+	}
+	deref := t.make_prefix(.mul, transformed_id)
+	t.set_node_typ(int(deref), array_type)
+	return deref
 }
 
 fn (t &Transformer) array_comparison_map_index_value_type(id flat.NodeId) ?string {
@@ -573,13 +595,17 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 				}
 				lhs_addr := t.make_prefix(.amp, lhs_err)
 				rhs_addr := t.make_prefix(.amp, rhs_err)
+				lhs_typ := t.make_selector(lhs_err, '_typ', 'int')
+				rhs_typ := t.make_selector(rhs_err, '_typ', 'int')
+				type_eq := t.make_infix(.eq, lhs_typ, rhs_typ)
 				lhs_msg := t.make_call_typed('IError__msg', arr1(lhs_addr), 'string')
 				rhs_msg := t.make_call_typed('IError__msg', arr1(rhs_addr), 'string')
 				msg_eq := t.make_call_typed('string__eq', arr2(lhs_msg, rhs_msg), 'bool')
 				lhs_code := t.make_call_typed('IError__code', arr1(lhs_addr), 'int')
 				rhs_code := t.make_call_typed('IError__code', arr1(rhs_addr), 'int')
 				code_eq := t.make_infix(.eq, lhs_code, rhs_code)
-				err_eq := t.make_infix(.logical_and, msg_eq, code_eq)
+				err_eq := t.make_infix(.logical_and, type_eq, t.make_infix(.logical_and, msg_eq,
+					code_eq))
 				if node.op == .ne {
 					return t.make_prefix(.not, err_eq)
 				}
@@ -1059,9 +1085,8 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 	}
 	if !isnil(t.type_alias_name_cache) {
 		mut cache := t.type_alias_name_cache
-		if cache.module != t.cur_module || cache.file != t.cur_file {
+		if cache.module != t.cur_module {
 			cache.module = t.cur_module
-			cache.file = t.cur_file
 			cache.entries.clear()
 		}
 		if cached := cache.entries[name] {
@@ -1078,11 +1103,11 @@ fn (t &Transformer) is_type_alias_name_uncached(name string) bool {
 	if name in t.tc.type_aliases {
 		return true
 	}
-	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
+	has_dot := name.index_u8(`.`) >= 0
+	if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		return '${t.cur_module}.${name}' in t.tc.type_aliases
 	}
-	if !name.contains('.') {
+	if !has_dot {
 		for aname, _ in t.tc.type_aliases {
 			if aname.all_after_last('.') == name {
 				return true
@@ -1358,13 +1383,20 @@ fn (t &Transformer) generic_struct_operator_fn_name(struct_type string, op_name 
 	if !ok {
 		return none
 	}
-	params := t.generic_struct_params_for_base(base) or { return none }
-	if params.len == 0 {
-		return none
-	}
-	generic_key := '${base}[${params.join(', ')}].${op_name}'
-	if generic_key in t.tc.fn_ret_types || generic_key in t.tc.fn_param_types {
-		return '${struct_type}.${op_name}'
+	for candidate_base in [base, base.all_after_last('.')] {
+		params := t.generic_struct_params_for_base(candidate_base) or { continue }
+		if params.len == 0 {
+			continue
+		}
+		generic_key := '${candidate_base}[${params.join(', ')}].${op_name}'
+		if generic_key in t.tc.fn_ret_types || generic_key in t.tc.fn_param_types {
+			call_receiver := if struct_type.starts_with('main.') {
+				struct_type['main.'.len..]
+			} else {
+				struct_type
+			}
+			return '${call_receiver}.${op_name}'
+		}
 	}
 	return none
 }
@@ -3459,15 +3491,36 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum string, owner_mod 
 			return qname
 		}
 	}
+	cache_key := '${owner_mod}\n${t.cur_module}\n${clean}'
+	if !isnil(t.enum_expected_cache) {
+		if cached := t.enum_expected_cache.entries[cache_key] {
+			return cached
+		}
+		if t.enum_expected_cache.misses[cache_key] {
+			return ''
+		}
+	}
 	mut found := ''
 	for enum_name, _ in t.enum_types {
 		if enum_name.all_after_last('.') != clean {
 			continue
 		}
 		if found.len > 0 && found != enum_name {
+			if !isnil(t.enum_expected_cache) {
+				mut cache := t.enum_expected_cache
+				cache.misses[cache_key] = true
+			}
 			return ''
 		}
 		found = enum_name
+	}
+	if !isnil(t.enum_expected_cache) {
+		mut cache := t.enum_expected_cache
+		if found.len > 0 {
+			cache.entries[cache_key] = found
+		} else {
+			cache.misses[cache_key] = true
+		}
 	}
 	return found
 }

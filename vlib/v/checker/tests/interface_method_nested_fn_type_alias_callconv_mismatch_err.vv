@@ -1,0 +1,29 @@
+@[callconv: stdcall]
+type StdcallNestedCallback = fn (int) int
+
+@[callconv: cdecl]
+type CdeclNestedCallback = fn (int) int
+
+@[callconv: cdecl]
+type StdcallFactory = fn () StdcallNestedCallback
+
+@[callconv: cdecl]
+type CdeclFactory = fn () CdeclNestedCallback
+
+interface FactoryProvider {
+	factory() StdcallFactory
+}
+
+struct CdeclFactoryProvider {}
+
+fn (_ CdeclFactoryProvider) factory() CdeclFactory {
+	return fn () CdeclNestedCallback {
+		return fn (value int) int {
+			return value
+		}
+	}
+}
+
+fn main() {
+	_ := FactoryProvider(CdeclFactoryProvider{})
+}

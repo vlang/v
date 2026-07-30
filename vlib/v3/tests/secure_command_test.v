@@ -19,6 +19,44 @@ fn secure_temp_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}_${rand.ulid()}')
 }
 
+fn test_run_in_merged_sets_the_child_work_folder() {
+	work_folder := secure_temp_path('merged_work_folder')
+	os.mkdir_all(work_folder) or { panic(err) }
+	defer {
+		os.rmdir_all(work_folder) or {}
+	}
+	result := $if windows {
+		comspec := os.getenv('COMSPEC')
+		shell := if comspec.len > 0 { comspec } else { 'cmd.exe' }
+		cmdexec.run_in_merged(shell, ['/D', '/S', '/C', 'cd'], work_folder)
+	} $else {
+		cmdexec.run_in_merged('/bin/pwd', []string{}, work_folder)
+	}
+	assert result.exit_code == 0, result.output
+	assert os.real_path(result.output.trim_space()) == os.real_path(work_folder), result.output
+}
+
+fn test_run_in_merged_preserves_exact_arguments() {
+	$if windows {
+		return
+	}
+	arg := r'-IC:\SDK\include'
+	result := cmdexec.run_in_merged('/bin/sh', ['-c', 'printf %s "\$1"; printf %s "\$1" >&2', 'sh',
+		arg], '')
+	assert result.exit_code == 0, result.output
+	assert result.output == arg + arg, result.output
+}
+
+fn test_run_in_merged_preserves_child_stream_order() {
+	$if windows {
+		return
+	}
+	result := cmdexec.run_in_merged('/bin/sh', ['-c',
+		'printf err1 >&2; printf out1; printf err2 >&2; printf out2'], '')
+	assert result.exit_code == 0, result.output
+	assert result.output == 'err1out1err2out2', result.output
+}
+
 fn test_command_argument_parser_preserves_quoted_values() {
 	args := cmdexec.split_args('-I "dir with spaces" -DNAME=\'quoted value\' plain\\ value') or {
 		panic(err)

@@ -153,13 +153,13 @@ fn create_server_socket(server &Server) !C.SOCKET {
 	}
 
 	opt := 1
-	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEADDR, voidptr(&opt), sizeof(opt)) < 0 {
+	if C.v_fasthttp_setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEADDR, voidptr(&opt), sizeof(opt)) < 0 {
 		close_socket(server_fd)
 		return error(wsa_error_message('setsockopt SO_REUSEADDR'))
 	}
 	if server.family == .ip6 {
 		ipv6_only := 0
-		C.setsockopt(server_fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, voidptr(&ipv6_only),
+		C.v_fasthttp_setsockopt(server_fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, voidptr(&ipv6_only),
 			sizeof(ipv6_only))
 	}
 
@@ -168,11 +168,11 @@ fn create_server_socket(server &Server) !C.SOCKET {
 	} else {
 		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
 	}
-	if C.bind(server_fd, voidptr(&addr), int(addr.len())) < 0 {
+	if C.v_fasthttp_bind(server_fd, voidptr(&addr), int(addr.len())) < 0 {
 		close_socket(server_fd)
 		return error(wsa_error_message('bind'))
 	}
-	if C.listen(server_fd, max_connection_size) < 0 {
+	if C.v_fasthttp_listen(server_fd, max_connection_size) < 0 {
 		close_socket(server_fd)
 		return error(wsa_error_message('listen'))
 	}
@@ -214,7 +214,7 @@ fn (mut conn IocpConn) take_op(overlapped &C.OVERLAPPED) bool {
 }
 
 fn close_conn_socket(fd C.SOCKET) {
-	C.shutdown(fd, C.SD_BOTH)
+	C.v_fasthttp_shutdown(fd, C.SD_BOTH)
 	close_socket(fd)
 }
 
@@ -271,7 +271,7 @@ fn (mut registry IocpConnRegistry) sweep_timed_out_io(timeout_ns i64) {
 		}
 		if !conn.request_active && conn.read_start > 0 && now - conn.read_start >= timeout_ns
 			&& conn.mark_closing() {
-			C.send(conn.fd, status_408_response.data, status_408_response.len, 0)
+			C.v_fasthttp_send(conn.fd, status_408_response.data, status_408_response.len, 0)
 			close_conn_socket(conn.fd)
 		}
 		if conn.write_start > 0 && now - conn.write_start >= timeout_ns && conn.mark_closing() {
@@ -771,7 +771,7 @@ fn accept_loop(server &Server) {
 			continue
 		}
 		opt := 1
-		C.setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, voidptr(&opt), sizeof(opt))
+		C.v_fasthttp_setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, voidptr(&opt), sizeof(opt))
 		mut conn := &IocpConn{
 			server:      server
 			fd:          client_fd
@@ -794,7 +794,7 @@ fn accept_loop(server &Server) {
 
 fn (mut server Server) stop_accepting() {
 	if server.listen_fd != iocp_invalid_socket {
-		C.shutdown(server.listen_fd, C.SD_BOTH)
+		C.v_fasthttp_shutdown(server.listen_fd, C.SD_BOTH)
 		close_socket(server.listen_fd)
 		server.listen_fd = iocp_invalid_socket
 	}

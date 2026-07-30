@@ -51,10 +51,20 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	result := os.execute('${v3_bin} -nocache ${bad_src} -b c -o ${bad_bin}')
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
+}
+
+fn run_bad_backend(v3_bin string, name string, backend string, src string, expected string) {
+	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	result := os.execute('${v3_bin} -nocache -b ${backend} ${bad_src} -o ${bad_bin}')
+	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
+	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
+	assert !result.output.contains('build_expr: unsupported expr kind'), '${name}: reached SSA lowering\n${result.output}'
 }
 
 fn run_good(v3_bin string, name string, src string) string {
@@ -65,7 +75,7 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${flags} ${good_src} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} -nocache ${flags} ${good_src} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.execute(good_bin)
@@ -77,7 +87,7 @@ fn run_good_with_env(v3_bin string, name string, env string, src string) string 
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${env} ${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.execute('${env} ${v3_bin} -nocache ${good_src} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.execute(good_bin)
@@ -330,6 +340,88 @@ fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	assert out == '7'
 }
 
+fn test_auto_str_preserves_distinct_structs_beyond_inline_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'auto_str_distinct_struct_depth', 'struct D {
+	value int
+}
+
+struct C {
+	d D
+}
+
+struct B {
+	c C
+}
+
+struct A {
+	b B
+}
+
+fn main() {
+	value := A{
+		b: B{
+			c: C{
+				d: D{
+					value: 42
+				}
+			}
+		}
+	}
+	println(value)
+}
+')
+	assert out == 'A{
+    b: B{
+        c: C{
+            d: D{
+                value: 42
+            }
+        }
+    }
+}'
+}
+
+fn test_auto_str_preserves_distinct_sum_beyond_inline_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'auto_str_distinct_sum_depth', 'struct Leaf {
+	answer int
+}
+
+struct Other {
+	text string
+}
+
+type Value = Leaf | Other
+
+struct C {
+	value Value
+}
+
+struct B {
+	c C
+}
+
+struct A {
+	b B
+}
+
+fn main() {
+	println(A{
+		b: B{
+			c: C{
+				value: Value(Leaf{
+					answer: 42
+				})
+			}
+		}
+	})
+}
+')
+	assert out.contains('answer: 42'), out
+	assert !out.contains('Value(...)'), out
+}
+
 fn test_interface_fn_field_argument_keeps_parameter_offset_zero() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'interface_fn_field_argument_offset', 'interface Value {
@@ -580,6 +672,36 @@ fn test_same_generic_specialization_name_in_different_modules_keeps_both_bodies(
 	assert out == '1\n12'
 }
 
+fn test_imported_module_generic_function_value_prefers_local_declaration() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_function_value_module_collision', {
+		'v.mod':  "Module { name: 'generic_function_value_module_collision' }\n"
+		'a/a.v':  'module a\n\nfn pick[T](value T) T {\n\treturn value + 1\n}\n\npub fn make_picker() fn (int) int {\n\treturn pick[int]\n}\n'
+		'main.v': 'module main\n\nimport a\n\nfn pick[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\timported := a.make_picker()\n\tlocal := pick[int]\n\tprintln(int_str(imported(1)))\n\tprintln(int_str(local(1)))\n}\n'
+	}, 'main.v')
+	assert out == '2\n101'
+}
+
+fn test_imported_selector_generic_function_value_is_specialized() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'selector_generic_function_value', {
+		'v.mod':           "Module { name: 'selector_generic_function_value' }\n"
+		'worker/worker.v': 'module worker\n\npub fn identity[T](value T) T {\n\treturn value\n}\n'
+		'main.v':          'module main\n\nimport worker\n\nfn identity[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\tcallback := worker.identity[int]\n\tlocal := identity[int]\n\tprintln(int_str(callback(42)))\n\tprintln(int_str(local(1)))\n}\n'
+	}, 'main.v')
+	assert out == '42\n101'
+}
+
+fn test_selectively_imported_generic_function_value_is_specialized() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'selective_import_generic_function_value', {
+		'v.mod':     "Module { name: 'selective_import_generic_function_value' }\n"
+		'lib/lib.v': 'module lib\n\npub fn id[T](value T) T {\n\treturn value + 1\n}\n'
+		'main.v':    'module main\n\nimport lib { id }\n\nfn main() {\n\tcallback := id[int]\n\tprintln(int_str(callback(41)))\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
@@ -700,6 +822,22 @@ fn test_array_equality_uses_semantic_element_comparison() {
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
 }
 
+fn test_explicitly_dereferenced_array_equality_is_not_double_dereferenced() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	values := [1, 2, 3]
+	p := &values
+	assert *p == values
+	assert values == *p
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'explicit_array_deref_equality_c', source)
+	assert !c_source.contains('**p'), c_source
+	out := run_good(v3_bin, 'explicit_array_deref_equality', source)
+	assert out == 'ok'
+}
+
 fn test_array_map_fn_value_uses_callback_return_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'array_map_fn_value_return_type',
@@ -761,6 +899,1838 @@ fn test_mut_pointer_capture_is_not_over_dereferenced() {
 	assert out == '5'
 }
 
+fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	for i in 0 .. 50_000 {
+		value := i
+		callback := fn [value] () int {
+			return value
+		}
+		assert callback() == value
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_closure_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'local_closure_hot_loop', source)
+	assert out == 'ok'
+}
+
+fn test_branch_selected_local_method_closures_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn exercise(flag bool) int {
+	mut first := Counter{
+		value: 1
+	}
+	mut second := Counter{
+		value: 10
+	}
+	callback_if := if flag { first.read } else { second.read }
+	callback_match := match flag {
+		true { first.read }
+		else { second.read }
+	}
+	first.value = 2
+	second.value = 20
+	return callback_if() + callback_match()
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		total += exercise(i % 2 == 0)
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'branch_selected_local_method_closures_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback_if);'), c_source
+	assert c_source.contains('closure__closure_try_destroy(callback_match);'), c_source
+	out := run_good(v3_bin, 'branch_selected_local_method_closures', source)
+	assert out == '1100000'
+}
+
+fn test_discarded_returned_closures_are_reclaimed_in_hot_loop() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn make_counter() fn () int {
+	mut n := 0
+	return fn [mut n] () int {
+		n++
+		return n
+	}
+}
+
+fn identity(callback fn () int) fn () int {
+	return callback
+}
+
+fn main() {
+	kept := make_counter()
+	_ = identity(kept)
+	assert kept() == 1
+	for _ in 0 .. 50_000 {
+		_ = make_counter()
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'discarded_returned_closure_hot_loop_c', source)
+	assert !c_source.contains('closure__closure_generation_snapshot();'), c_source
+	assert c_source.count('closure__closure_try_destroy(__discarded_closure_') == 1, c_source
+
+	out := run_good(v3_bin, 'discarded_returned_closure_hot_loop', source)
+	assert out == 'ok'
+}
+
+fn test_discarded_branch_fresh_closure_returns_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn make_if(flag bool) fn () int {
+	x := 41
+	return if flag {
+		fn [x] () int {
+			return x + 1
+		}
+	} else {
+		fn [x] () int {
+			return x + 2
+		}
+	}
+}
+
+fn make_match(flag bool) fn () int {
+	x := 40
+	return match flag {
+		true {
+			fn [x] () int {
+				return x + 2
+			}
+		}
+		else {
+			fn [x] () int {
+				return x + 3
+			}
+		}
+	}
+}
+
+fn main() {
+	for i in 0 .. 50_000 {
+		_ = make_if(i % 2 == 0)
+		_ = make_match(i % 2 == 0)
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'discarded_branch_fresh_closure_returns_c', source)
+	assert c_source.count('closure__closure_try_destroy(__discarded_closure_') == 2, c_source
+	out := run_good(v3_bin, 'discarded_branch_fresh_closure_returns', source)
+	assert out == 'ok'
+}
+
+fn test_discarded_returned_closure_with_retained_alias_is_not_destroyed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Holder {
+mut:
+	callback fn () int
+}
+
+fn factory(mut holder Holder) fn () int {
+	mut n := 41
+	cb := fn [mut n] () int {
+		n++
+		return n
+	}
+	holder.callback = cb
+	return cb
+}
+
+fn main() {
+	mut holder := Holder{}
+	_ = factory(mut holder)
+	println(int_str(holder.callback()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'discarded_returned_closure_retained_alias_c', source)
+	assert !c_source.contains('closure__closure_try_destroy(__discarded_closure_'), c_source
+	out := run_good(v3_bin, 'discarded_returned_closure_retained_alias', source)
+	assert out == '42'
+}
+
+fn test_discarded_static_fn_return_does_not_require_closure_runtime() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn answer() int {
+	return 42
+}
+
+fn callback() fn () int {
+	return answer
+}
+
+fn main() {
+	_ = callback()
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'discarded_static_fn_return_c', source)
+	assert !c_source.contains('closure__closure_try_destroy(__discarded_closure_'), c_source
+	out := run_good(v3_bin, 'discarded_static_fn_return', source)
+	assert out == 'ok'
+}
+
+fn test_non_escaping_bound_method_closures_are_reclaimed_in_hot_loop() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	for i in 0 .. 50_000 {
+		value := Value{
+			n: i
+		}
+		callback := value.get
+		assert callback() == i
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_bound_method_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'local_bound_method_hot_loop', source)
+	assert out == 'ok'
+}
+
+fn test_deferred_local_bound_method_closures_remain_scope_owned() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn deferred_read(value int) {
+	mut counter := Counter{
+		value: value
+	}
+	callback := counter.read
+	defer {
+		assert callback() == value + 1
+	}
+	counter.value++
+}
+
+fn main() {
+	for i in 0 .. 50_000 {
+		deferred_read(i)
+	}
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'deferred_local_bound_method_c', source)
+	body := c_fn_body(c_source, 'void deferred_read(int value) {')
+	assert body.contains('closure__closure_try_destroy(callback);'), body
+	out := run_good(v3_bin, 'deferred_local_bound_method', source)
+	assert out == 'ok'
+}
+
+fn test_locally_aliased_bound_method_closures_remain_scope_owned_until_the_alias_escapes() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn make_callback(value int) fn () int {
+	mut counter := Counter{
+		value: value
+	}
+	callback := counter.read
+	alias := callback
+	counter.value++
+	return alias
+}
+
+fn main() {
+	escaped := make_callback(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callback := counter.read
+		alias := callback
+		counter.value++
+		total += alias()
+		assert counter.value == i + 1
+	}
+	assert escaped() == 78
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'locally_aliased_bound_method_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'locally_aliased_bound_method_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_fields_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn zero() int {
+	return 0
+}
+
+struct Holder {
+mut:
+	callback fn () int
+}
+
+fn make_holder(value int) Holder {
+	mut counter := Counter{
+		value: value
+	}
+	mut holder := Holder{
+		callback: zero
+	}
+	holder.callback = counter.read
+	return holder
+}
+
+fn main() {
+	escaped := make_holder(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut holder := Holder{
+			callback: zero
+		}
+		holder.callback = counter.read
+		counter.value++
+		total += holder.callback()
+	}
+	assert escaped.callback() == 77
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_field_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	make_body := c_fn_body(c_source, 'main__Holder main__make_holder(')
+	assert !make_body.contains('__field_closure_'), make_body
+	out := run_good(v3_bin, 'local_callback_field_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_initializer_fields_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callback fn () int
+}
+
+fn make_holder(value int) Holder {
+	mut counter := Counter{
+		value: value
+	}
+	holder := Holder{
+		callback: counter.read
+	}
+	counter.value++
+	return holder
+}
+
+fn main() {
+	escaped := make_holder(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		holder := Holder{
+			callback: counter.read
+		}
+		counter.value++
+		total += holder.callback()
+		assert counter.value == i + 1
+	}
+	assert escaped.callback() == 78
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_initializer_field_hot_loop_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('closure__closure_try_destroy(__field_closure_'), main_body
+	make_body := c_fn_body(c_source, 'main__Holder main__make_holder(')
+	assert !make_body.contains('__field_closure_'), make_body
+	out := run_good(v3_bin, 'local_callback_initializer_field_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_whole_aggregate_reassignments_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn zero() int {
+	return 0
+}
+
+struct Holder {
+	callback fn () int
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut holder := Holder{
+			callback: zero
+		}
+		holder = Holder{
+			callback: counter.read
+		}
+		counter.value++
+		total += holder.callback()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_aggregate_reassign_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_aggregate_reassign_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_array_initializers_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn make_callbacks(value int) []fn () int {
+	mut counter := Counter{
+		value: value
+	}
+	callbacks := [counter.read]
+	counter.value++
+	return callbacks
+}
+
+fn main() {
+	escaped := make_callbacks(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := [counter.read]
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	assert escaped[0]() == 78
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_initializer_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_initializer_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_locally_extracted_callback_array_fields_remain_scope_owned() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn make_callback(value int) fn () int {
+	counter := Counter{
+		value: value
+	}
+	callbacks := [counter.read]
+	callback := callbacks[0]
+	return callback
+}
+
+fn main() {
+	escaped := make_callback(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := [counter.read]
+		callback := callbacks[0]
+		counter.value++
+		total += callback()
+		assert counter.value == i + 1
+	}
+	assert escaped() == 77
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_field_alias_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_field_alias_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_array_index_assignments_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn zero() int {
+	return 0
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := [zero]
+		callbacks[0] = counter.read
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_index_assign_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_index_assign_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_dynamic_callback_array_index_assignments_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn zero() int {
+	return 0
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := [zero]
+		index := i % callbacks.len
+		callbacks[index] = counter.read
+		counter.value++
+		total += counter.value
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_dynamic_callback_array_index_assign_hot_loop_c',
+		source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	assert c_source.contains('.receiver = &(counter)'), c_source
+	out := run_good(v3_bin, 'local_dynamic_callback_array_index_assign_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_array_appends_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := []fn () int{}
+		callbacks << counter.read
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_append_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__arr_val_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_append_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_bulk_callback_array_appends_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := []fn () int{}
+		callbacks << [counter.read]
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_bulk_callback_array_append_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_bulk_callback_array_append_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_fixed_array_initializers_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := [counter.read]!
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_fixed_array_initializer_hot_loop_c',
+		source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_fixed_array_initializer_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_multi_variable_callback_declarations_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		unused, callback := 0, counter.read
+		counter.value++
+		total += unused + callback()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_multi_callback_decl_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	out := run_good(v3_bin, 'local_multi_callback_decl_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_callback_array_prefix_before_spread_preserves_receiver_identity_and_is_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	other_callbacks := []fn () int{}
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := [counter.read, ...other_callbacks]
+		counter.value++
+		total += callbacks[0]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_array_spread_prefix_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
+	out := run_good(v3_bin, 'local_callback_array_spread_prefix_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_callback_map_initializers_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn make_callbacks(value int) map[string]fn () int {
+	mut counter := Counter{
+		value: value
+	}
+	callbacks := {
+		"read": counter.read
+	}
+	counter.value++
+	return callbacks
+}
+
+fn main() {
+	escaped := make_callbacks(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callbacks := {
+			"read": counter.read
+		}
+		counter.value++
+		total += callbacks["read"]()
+		assert counter.value == i + 1
+	}
+	assert escaped["read"]() == 78
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_callback_map_initializer_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
+	out := run_good(v3_bin, 'local_callback_map_initializer_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_computed_key_callback_maps_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		key := "read"
+		callbacks := {
+			key: counter.read
+		}
+		counter.value++
+		total += counter.value
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_computed_key_callback_map_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
+	assert c_source.contains('.receiver = &(counter)'), c_source
+	out := run_good(v3_bin, 'local_computed_key_callback_map_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_scope_local_dynamic_callback_map_index_assignments_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn zero() int {
+	return 0
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		mut callbacks := {
+			"read": zero
+		}
+		key := "read"
+		callbacks[key] = counter.read
+		counter.value++
+		total += callbacks["read"]()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_dynamic_callback_map_index_assign_hot_loop_c',
+		source)
+	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
+	out := run_good(v3_bin, 'local_dynamic_callback_map_index_assign_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_callback_map_initializer_captures_each_overwritten_entry_for_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut first := Counter{
+			value: i
+		}
+		mut second := Counter{
+			value: i
+		}
+		key := "read"
+		callbacks := {
+			"read": first.read
+			key:    second.read
+		}
+		first.value += 10
+		second.value++
+		total += callbacks["read"]()
+		assert first.value == i + 10
+		assert second.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'overwritten_callback_map_entries_hot_loop_c', source)
+	assert c_source.count('closure__closure_try_destroy(__map_val_') == 2, c_source
+	out := run_good(v3_bin, 'overwritten_callback_map_entries_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_computed_key_map_nested_callbacks_preserve_receiver_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callback fn () int
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		key := "read"
+		callbacks := {
+			key: Holder{
+				callback: counter.read
+			}
+		}
+		counter.value++
+		total += callbacks["read"].callback()
+		assert counter.value == i + 1
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'computed_key_nested_callback_map_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	out := run_good(v3_bin, 'computed_key_nested_callback_map_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 1
+		}
+		mut callback := first.get
+		callback = second.get
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'reassigned_local_bound_method_hot_loop_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'reassigned_local_bound_method_hot_loop', source)
+	assert out == '1250025000'
+}
+
+fn test_conditionally_self_reassigned_bound_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 1
+		}
+		mut callback := first.get
+		callback = if i % 2 == 0 { callback } else { second.get }
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'conditionally_reassigned_bound_method_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'conditionally_reassigned_bound_method', source)
+	assert out == '1250000000'
+}
+
+fn test_match_self_reassigned_bound_method_closures_remain_scope_owned() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut first := Counter{
+			value: i
+		}
+		other := Counter{
+			value: i + 1
+		}
+		keep := i % 2 == 0
+		mut callback := first.read
+		callback = match keep {
+			true { callback }
+			else { other.read }
+		}
+		first.value += 10
+		if keep {
+			assert callback() == i + 10
+		} else {
+			assert callback() == i + 1
+		}
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'match_self_reassigned_bound_method_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'match_self_reassigned_bound_method', source)
+	assert out == '1250250000'
+}
+
+fn test_immediately_invoked_bound_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		value := Value{
+			n: i
+		}
+		total += (value.get)()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_hot_loop_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
+	out := run_good(v3_bin, 'immediate_bound_method_hot_loop', source)
+	assert out == '1249975000'
+}
+
+fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+mut:
+	n int
+}
+
+fn (value &Value) read() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 10_000 {
+		if i >= 0 {
+			mut first := Value{
+				n: i
+			}
+			callback := first.read
+			first.n += 10
+			total += callback()
+		}
+		if i < 10_000 {
+			mut second := Value{
+				n: i + 1
+			}
+			callback := second.read
+			second.n += 20
+			total += callback()
+		}
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'disjoint_same_name_closure_bindings_c', source)
+	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
+	out := run_good(v3_bin, 'disjoint_same_name_closure_bindings', source)
+	assert out == '100300000'
+}
+
+fn test_branch_produced_immediate_method_closures_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+	n int
+}
+
+fn (value &Value) read() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 20_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 100
+		}
+		keep := i % 2 == 0
+		total += (if keep { first.read } else { second.read })()
+		total += (match keep {
+			true { first.read }
+			else { second.read }
+		})()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'branch_immediate_method_closures_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.count('closure__closure_try_destroy(') >= 2, main_body
+	out := run_good(v3_bin, 'branch_immediate_method_closures', source)
+	assert out == '401980000'
+}
+
+fn test_fixed_array_defer_results_use_semantic_array_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn fixed_array_result() [2]int {
+	defer {
+		assert $res()[0] == 1
+		assert $res()[1] == 2
+	}
+	return [1, 2]!
+}
+
+fn multi_result() ([2]int, int) {
+	defer {
+		assert $res(0)[0] == 3
+		assert $res(0)[1] == 4
+	}
+	return [3, 4]!, 5
+}
+
+fn main() {
+	array := fixed_array_result()
+	values, n := multi_result()
+	assert array == [1, 2]!
+	assert values == [3, 4]!
+	assert n == 5
+	println("ok")
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'fixed_array_defer_result_c', source)
+	assert c_source.contains('(_t1.ret_arr)[0]'), c_source
+	assert c_source.contains('(_t1.arg0)[0]'), c_source
+	out := run_good(v3_bin, 'fixed_array_defer_result', source)
+	assert out == 'ok'
+}
+
+fn test_arm64_backend_rejects_defer_results_before_ssa() {
+	v3_bin := build_v3_review_transform()
+	run_bad_backend(v3_bin, 'arm64_defer_result', 'arm64', 'fn f() int {
+	defer {
+		assert $res() == 42
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(f()))
+}
+',
+		'`$res()` is not supported by the V3 arm64 backend')
+}
+
+fn test_eval_backend_rejects_active_defer_results() {
+	v3_bin := build_v3_review_transform()
+	run_bad_backend(v3_bin, 'eval_defer_result', 'eval', 'fn f() int {
+	defer {
+		assert $res() == 42
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(f()))
+}
+',
+		'`$res()` is not supported by the V3 eval backend')
+}
+
+fn test_wasm_backend_rejects_defer_results_before_codegen() {
+	v3_bin := build_v3_review_transform()
+	run_bad_backend(v3_bin, 'wasm_defer_result', 'wasm', 'fn f() int {
+	defer {
+		assert $res() == 42
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(f()))
+}
+',
+		'`$res()` is not supported by the V3 wasm backend')
+}
+
+fn test_thread_handle_equality_uses_platform_comparison() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn answer() int {
+	return 42
+}
+
+fn main() {
+	thread := spawn answer()
+	copy := thread
+	assert thread == copy
+	assert !(thread != copy)
+	println(int_str(thread.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'thread_handle_equality_c', source)
+	assert c_source.contains('pthread_equal(a.handle, b.handle) != 0'), c_source
+	assert c_source.contains('return a.handle == b.handle;'), c_source
+	assert !c_source.contains('memcmp(&__thread_'), c_source
+	out := run_good(v3_bin, 'thread_handle_equality', source)
+	assert out == '42'
+}
+
+fn test_c_flag_d_macro_uses_cli_override() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'c_flag_d_override', '-d N=42', "module main
+
+#flag -DCNUMBER=$d('N', 1234)
+
+fn main() {
+	println(int_str(int(C.CNUMBER)))
+}
+")
+	assert out == '42'
+}
+
+fn test_synthetic_closure_runtime_import_preserves_user_alias() {
+	v3_bin := build_v3_review_transform()
+	aliased := run_good_project(v3_bin, 'closure_runtime_user_alias', {
+		'main.v':                    'module main
+
+import app.callbacks as closure
+
+fn main() {
+	value := 3
+	callback := fn [value] () int {
+		return value
+	}
+	println(int_str(closure.answer() + callback()))
+}
+'
+		'app/callbacks/callbacks.v': 'module callbacks
+
+pub fn answer() int {
+	return 39
+}
+'
+	}, 'main.v')
+	assert aliased == '42'
+	natural := run_good_project(v3_bin, 'closure_runtime_natural_alias', {
+		'main.v':                'module main
+
+import app.closure
+
+fn main() {
+	println(int_str(closure.answer()))
+}
+'
+		'app/closure/closure.v': 'module closure
+
+pub fn answer() int {
+	return 42
+}
+'
+	}, 'main.v')
+	assert natural == '42'
+	imported_capture := run_good_project(v3_bin, 'closure_runtime_imported_capture', {
+		'main.v':              'module main
+
+import app.worker
+
+fn main() {
+	println(int_str(worker.answer()))
+}
+'
+		'app/worker/worker.v': 'module worker
+
+pub fn answer() int {
+	value := 42
+	callback := fn [value] () int {
+		return value
+	}
+	return callback()
+}
+'
+	}, 'main.v')
+	assert imported_capture == '42'
+}
+
+fn test_escaping_mut_method_value_rejects_stack_receiver() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+'
+	run_bad(v3_bin, 'mut_method_value_stack_receiver_direct', source +
+		'fn make() fn () int {
+	mut counter := Counter{}
+	return counter.next
+}
+
+fn main() {
+	_ = make()
+}
+',
+		'mutable local receiver cannot escape')
+	run_bad(v3_bin, 'mut_method_value_stack_receiver_alias', source +
+		'fn make() fn () int {
+	mut counter := Counter{}
+	callback := counter.next
+	return callback
+}
+
+fn main() {
+	_ = make()
+}
+',
+		'mutable local receiver cannot escape')
+	in_scope := run_good(v3_bin, 'mut_method_value_in_scope_borrows_receiver', source +
+		'fn main() {
+	mut counter := Counter{}
+	callback := counter.next
+	println(int_str(callback()))
+	println(int_str(counter.value))
+}
+')
+	assert in_scope == '1\n1'
+	safe := run_good(v3_bin, 'value_method_value_escape', 'struct ValueCounter {
+	value int
+}
+
+fn (counter ValueCounter) current() int {
+	return counter.value
+}
+
+fn make(value int) fn () int {
+	return ValueCounter{
+		value: value
+	}.current
+}
+
+fn main() {
+	first := make(11)
+	second := make(22)
+	println(int_str(first()))
+	println(int_str(second()))
+}
+')
+	assert safe == '11\n22'
+}
+
+fn test_local_immutable_pointer_receiver_method_value_borrows_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'local_immutable_pointer_receiver_borrows', 'struct Foo {
+mut:
+	value int
+}
+
+fn (foo &Foo) read() int {
+	return foo.value
+}
+
+fn main() {
+	mut foo := Foo{
+		value: 1
+	}
+	callback := foo.read
+	foo.value = 2
+	println(int_str(callback()))
+}
+')
+	assert out == '2'
+}
+
+fn test_escaping_pointer_receiver_method_value_copies_addressable_local() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Foo {
+mut:
+	value int
+}
+
+fn (foo &Foo) read() int {
+	return foo.value
+}
+
+fn make(value int) fn () int {
+	foo := Foo{
+		value: value
+	}
+	return foo.read
+}
+
+fn make_via_pointer_alias(value int) fn () int {
+	foo := Foo{
+		value: value
+	}
+	p := &foo
+	cb := p.read
+	return cb
+}
+
+fn make_from_pointer(foo &Foo) fn () int {
+	return foo.read
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	first := make(11)
+	second := make(22)
+	aliased := make_via_pointer_alias(55)
+	mut durable := &Foo{
+		value: 33
+	}
+	third := make_from_pointer(durable)
+	durable.value = 44
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(first()))
+	println(int_str(second()))
+	println(int_str(third()))
+	println(int_str(aliased()))
+}
+'
+	out := run_good(v3_bin, 'escaped_pointer_receiver_addressable_local', source)
+	assert out == '11\n22\n44\n55'
+}
+
+fn test_stored_pointer_receiver_method_value_keeps_local_pointee_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Foo {
+	value int
+}
+
+fn (foo &Foo) read() int {
+	return foo.value
+}
+
+struct Holder {
+mut:
+	callback fn () int
+}
+
+fn install(mut holder Holder, value int) {
+	local := Foo{
+		value: value
+	}
+	p := &local
+	holder.callback = p.read
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	mut holder := Holder{
+		callback: fn () int {
+			return 0
+		}
+	}
+	install(mut holder, 73)
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(holder.callback()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'stored_pointer_receiver_local_pointee_c', source)
+	assert !c_source.contains('p = &local;'), c_source
+	out := run_good(v3_bin, 'stored_pointer_receiver_local_pointee', source)
+	assert out == '73'
+}
+
+fn test_callback_argument_method_value_keeps_mutable_local_receiver_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+
+struct Holder {
+mut:
+	callback fn () int
+}
+
+fn install(mut holder Holder, callback fn () int) {
+	holder.callback = callback
+}
+
+fn make_callback(mut holder Holder) {
+	mut counter := Counter{
+		value: 40
+	}
+	install(mut holder, counter.next)
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	mut holder := Holder{
+		callback: fn () int {
+			return 0
+		}
+	}
+	make_callback(mut holder)
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(holder.callback()))
+	println(int_str(holder.callback()))
+}
+'
+	out := run_good(v3_bin, 'callback_argument_mutable_local_receiver', source)
+	assert out == '41\n42'
+}
+
+fn test_callback_argument_method_value_preserves_mutable_receiver_identity() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+
+fn invoke(callback fn () int) int {
+	return callback()
+}
+
+fn main() {
+	mut counter := Counter{}
+	println(int_str(invoke(counter.next)))
+	println(int_str(counter.value))
+}
+'
+	out := run_good(v3_bin, 'callback_argument_mutable_receiver_identity', source)
+	assert out == '1\n1'
+}
+
+fn test_callback_aggregate_argument_preserves_pointer_receiver_identity() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callback fn () int
+}
+
+fn invoke(holder Holder, mut counter Counter) int {
+	counter.value++
+	return holder.callback()
+}
+
+fn main() {
+	mut counter := Counter{}
+	value := invoke(Holder{
+		callback: counter.read
+	}, mut counter)
+	println(int_str(value))
+	println(int_str(counter.value))
+}
+'
+	out := run_good(v3_bin, 'callback_aggregate_argument_receiver_identity', source)
+	assert out == '1\n1'
+}
+
+fn test_returned_mut_fixed_array_capture_uses_durable_context_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn make_counter() fn () int {
+	mut values := [1, 20]!
+	return fn [mut values] () int {
+		values[0]++
+		return values[0] + values[1]
+	}
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	callback := make_counter()
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(callback()))
+	println(int_str(callback()))
+}
+'
+	out := run_good(v3_bin, 'returned_mut_fixed_array_capture', source)
+	assert out == '22\n23'
+}
+
+fn test_void_installer_mut_fixed_array_capture_uses_durable_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Holder {
+mut:
+	callback fn () int
+}
+
+fn install(mut holder Holder) {
+	mut values := [1, 20]!
+	holder.callback = fn [mut values] () int {
+		values[0]++
+		return values[0] + values[1]
+	}
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	mut holder := Holder{
+		callback: fn () int {
+			return 0
+		}
+	}
+	install(mut holder)
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(holder.callback()))
+	println(int_str(holder.callback()))
+}
+'
+	out := run_good(v3_bin, 'void_installer_mut_fixed_array_capture', source)
+	assert out == '22\n23'
+}
+
+fn test_local_mut_fixed_array_capture_is_not_heap_promoted() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn exercise() int {
+	for i in 0 .. 50_000 {
+		mut values := [i, 0]!
+		callback := fn [mut values] () int {
+			values[0]++
+			return values[0]
+		}
+		assert callback() == i + 1
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(exercise()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'local_mut_fixed_array_capture_c', source)
+	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
+	assert !c_source.contains('memdup(&__esc'), c_source
+	out := run_good(v3_bin, 'local_mut_fixed_array_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_mut_fixed_array_capture_is_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn exercise() int {
+	for i in 0 .. 50_000 {
+		mut values := [i, 0]!
+		value := fn [mut values] () int {
+			values[0]++
+			return values[0]
+		}()
+		assert value == i + 1
+	}
+	return 42
+}
+
+fn main() {
+	println(int_str(exercise()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_mut_fixed_array_capture_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
+	assert !c_source.contains('memdup(&__esc'), c_source
+	out := run_good(v3_bin, 'immediate_mut_fixed_array_capture', source)
+	assert out == '42'
+}
+
+fn test_mut_fixed_array_capture_shares_durable_outer_storage() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut values := [2]int{}
+	update := fn [mut values] () int {
+		values[0]++
+		return values[0]
+	}
+	assert update() == 1
+	assert values[0] == 1
+	values[0] = 41
+	assert update() == 42
+	assert values[0] == 42
+	println("ok")
+}
+'
+	out := run_good(v3_bin, 'mut_fixed_array_capture_shared_storage', source)
+	assert out == 'ok'
+}
+
+fn test_mutable_method_call_rejects_constant_receiver() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'mut_method_constant_receiver', 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) increment() {
+	counter.value++
+}
+
+const counter = Counter{}
+
+fn main() {
+	counter.increment()
+}
+',
+		'cannot modify constant `counter`')
+}
+
 fn test_mut_value_capture_in_call_under_selector_base() {
 	v3_bin := build_v3_review_transform()
 	// A `[mut s]` value capture used as a call argument nested inside a selector base
@@ -792,6 +2762,49 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	out := run_good(v3_bin, 'heap_escaping_amp_alias',
 		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
 	assert out == '2'
+}
+
+fn test_returned_closure_alias_heap_promotes_captured_pointer_source() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Value {
+mut:
+	n int
+}
+
+fn make(initial int) fn () int {
+	mut value := Value{
+		n: initial
+	}
+	p := &value
+	cb := fn [p] () int {
+		return p.n
+	}
+	value.n++
+	return cb
+}
+
+fn overwrite_stack(seed int) {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = seed + i
+	}
+}
+
+fn main() {
+	first := make(10)
+	second := make(20)
+	for i in 0 .. 100 {
+		overwrite_stack(i)
+	}
+	println(int_str(first()))
+	println(int_str(second()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'returned_closure_alias_pointer_capture_c', source)
+	body := c_fn_body(c_source, ' make(int initial) {')
+	assert body.contains('Value* value = (Value*)memdup'), body
+	out := run_good(v3_bin, 'returned_closure_alias_pointer_capture', source)
+	assert out == '11\n21'
 }
 
 fn test_heap_escaping_amp_reassignment_moves_current_source() {
@@ -908,6 +2921,121 @@ fn test_string_to_owned_compiles_under_ownership_cgen() {
 	out := run_good_with_flags(v3_bin, 'string_to_owned_ownership_cgen', '-ownership',
 		"fn main() {\n\tname := 'owned'.to_owned()\n\tcopy := name.to_owned()\n\tprintln(copy)\n}\n")
 	assert out == 'owned'
+}
+
+fn test_owned_value_receiver_method_closure_clones_and_drops_context() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Holder implements IClone {
+	text   string
+	values []int
+}
+
+fn (holder Holder) read() string {
+	return holder.text + ":" + int_str(holder.values[0])
+}
+
+fn make_holder_reader() fn () string {
+	holder := Holder{
+		text:   "owned".to_owned()
+		values: [7]
+	}
+	return holder.read
+}
+
+fn use_callbacks() {
+	holder_cb := make_holder_reader()
+	println(holder_cb())
+	println(holder_cb())
+}
+
+fn main() {
+	use_callbacks()
+}
+'
+	src_path := os.join_path(os.temp_dir(), 'v3_owned_value_receiver_method_closure.v')
+	c_path := os.join_path(os.temp_dir(), 'v3_owned_value_receiver_method_closure.c')
+	os.write_file(src_path, source) or { panic(err) }
+	gen := os.execute('${v3_bin} -nocache -ownership ${src_path} -b c -o ${c_path}')
+	assert gen.exit_code == 0, gen.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.contains('closure__closure_create_with_data_and_drop'), c_source
+	assert c_source.contains('string__free(&((ctx->receiver).text));'), c_source
+	assert c_source.contains('.receiver = __v3_method_receiver_clone_'), c_source
+	assert c_source.contains('Holder__read(__v3_method_receiver_clone_'), c_source
+	out := run_good_with_flags(v3_bin, 'owned_value_receiver_method_closure', '-ownership', source)
+	assert out == 'owned:7\nowned:7'
+}
+
+fn test_owned_rvalue_method_receiver_is_materialized_before_cloning() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Holder implements IClone {
+	text   string
+	values []int
+}
+
+fn (holder Holder) read() string {
+	return holder.text + ":" + int_str(holder.values[0])
+}
+
+fn make_holder() Holder {
+	return Holder{
+		text:   "owned".to_owned()
+		values: [7]
+	}
+}
+
+fn main() {
+	callback := make_holder().read
+	println(callback())
+	println(callback())
+}
+'
+	src_path := os.join_path(os.temp_dir(), 'v3_owned_rvalue_method_receiver.v')
+	c_path := os.join_path(os.temp_dir(), 'v3_owned_rvalue_method_receiver.c')
+	os.write_file(src_path, source) or { panic(err) }
+	gen := os.execute('${v3_bin} -nocache -ownership ${src_path} -b c -o ${c_path}')
+	assert gen.exit_code == 0, gen.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('((void*)&__method_receiver_'), main_body
+	assert main_body.contains('string__free(&((__method_receiver_'), main_body
+	assert !main_body.contains('&(make_holder())'), main_body
+	out := run_good_with_flags(v3_bin, 'owned_rvalue_method_receiver', '-ownership', source)
+	assert out == 'owned:7\nowned:7'
+}
+
+fn test_owned_fn_literal_capture_context_has_type_aware_drop() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'fn exercise() int {
+	mut total := 0
+	for i in 0 .. 10 {
+		text := ("item" + int_str(i)).to_owned()
+		values := [i]
+		callback := fn [text, values] () int {
+			return text.len + values[0]
+		}
+		total += callback()
+	}
+	return total
+}
+
+fn main() {
+	println(int_str(exercise()))
+}
+'
+	src_path := os.join_path(os.temp_dir(), 'v3_owned_fn_literal_capture_context.v')
+	c_path := os.join_path(os.temp_dir(), 'v3_owned_fn_literal_capture_context.c')
+	os.write_file(src_path, source) or { panic(err) }
+	gen := os.execute('${v3_bin} -nocache -ownership -gc none ${src_path} -b c -o ${c_path}')
+	assert gen.exit_code == 0, gen.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.contains('static void _flctxdrop_'), c_source
+	assert c_source.contains('closure__closure_create_with_data_and_drop'), c_source
+	assert c_source.contains('string__free(&((*ctx).text));'), c_source
+	assert c_source.contains('array__free(&((*ctx).values));'), c_source
+	out := run_good_with_flags(v3_bin, 'owned_fn_literal_capture_context', '-ownership -gc none',
+		source)
+	assert out == '95'
 }
 
 fn test_generic_interface_method_body_marks_log_debug_dispatch() {
@@ -2186,4 +4314,194 @@ fn test_moved_module_alias_uses_target_module_identity() {
 		'main.v':                     'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '42'
+}
+
+fn test_array_filter_and_map_reuse_capturing_callback_state() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_filter_map_capturing_callback_state', 'fn main() {
+	mut filter_calls := 0
+	filtered := [1, 2, 3].filter(fn [mut filter_calls] (value int) bool {
+		filter_calls++
+		return filter_calls > 1
+	})
+	mut map_calls := 0
+	mapped := [10, 20, 30].map(fn [mut map_calls] (value int) int {
+		map_calls++
+		return value + map_calls
+	})
+	println(filtered)
+	println(mapped)
+}
+')
+	assert out == '[2, 3]\n[11, 22, 33]'
+}
+
+fn test_array_filter_and_map_hoist_bound_method_callbacks() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Rule {
+	min    int
+	offset int
+mut:
+	calls int
+}
+
+fn (mut rule Rule) accept(value int) bool {
+	rule.calls++
+	return value >= rule.min
+}
+
+fn (mut rule Rule) shift(value int) int {
+	rule.calls++
+	return value + rule.offset
+}
+
+fn main() {
+	mut total := 0
+	for _ in 0 .. 20_000 {
+		rule := Rule{
+			min: 3
+			offset: 10
+		}
+		filtered := [1, 2, 3, 4].filter(rule.accept)
+		mapped := [1, 2, 3].map(rule.shift)
+		assert filtered.len == 2
+		assert filtered[0] == 3
+		assert filtered[1] == 4
+		assert mapped[0] == 11
+		assert mapped[1] == 12
+		assert mapped[2] == 13
+		assert rule.calls == 7
+		total += filtered[0] + filtered[1] + mapped[0] + mapped[1] + mapped[2]
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'array_bound_method_callbacks_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.count('closure__closure_create_with_data(') == 2, main_body
+	assert main_body.contains('closure__closure_try_destroy(__filter_callback_'), main_body
+	assert main_body.contains('closure__closure_try_destroy(__map_callback_'), main_body
+	out := run_good(v3_bin, 'array_bound_method_callbacks', source)
+	assert out == '860000'
+}
+
+fn test_array_filter_and_map_invoke_branch_selected_function_values() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn is_even(value int) bool {
+	return value % 2 == 0
+}
+
+fn is_odd(value int) bool {
+	return value % 2 != 0
+}
+
+fn double(value int) int {
+	return value * 2
+}
+
+fn increment(value int) int {
+	return value + 1
+}
+
+fn main() {
+	use_even := true
+	filtered := [1, 2, 3, 4].filter(if use_even { is_even } else { is_odd })
+	mode := 1
+	mapped := [1, 2, 3].map(match mode {
+		1 { double }
+		else { increment }
+	})
+	assert filtered == [2, 4]
+	assert mapped == [2, 4, 6]
+	println(int_str(filtered.len + mapped[2]))
+}
+'
+	out := run_good(v3_bin, 'array_branch_selected_function_values', source)
+	assert out == '8'
+}
+
+fn test_array_filter_and_map_reclaim_branch_selected_bound_methods() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Rule {
+	min    int
+	offset int
+mut:
+	calls int
+}
+
+fn (mut rule Rule) accept(value int) bool {
+	rule.calls++
+	return value >= rule.min
+}
+
+fn (mut rule Rule) shift(value int) int {
+	rule.calls++
+	return value + rule.offset
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 20_000 {
+		first := Rule{
+			min: 3
+			offset: 10
+		}
+		second := Rule{
+			min: 2
+			offset: 20
+		}
+		use_first := i % 2 == 0
+		filtered := [1, 2, 3, 4].filter(if use_first { first.accept } else { second.accept })
+		mapped := [1, 2, 3].map(match use_first {
+			true { first.shift }
+			else { second.shift }
+		})
+		assert first.calls + second.calls == 7
+		total += filtered.len + mapped[0]
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'array_branch_bound_method_callbacks_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.count('closure__closure_try_destroy(') >= 2, main_body
+	out := run_good(v3_bin, 'array_branch_bound_method_callbacks', source)
+	assert out == '370000'
+}
+
+fn test_nested_callback_array_fields_preserve_receiver_identity_and_are_reclaimed() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (counter &Counter) read() int {
+	return counter.value
+}
+
+struct Holder {
+	callbacks []fn () int
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		holder := Holder{
+			callbacks: [counter.read]
+		}
+		counter.value++
+		total += holder.callbacks[0]()
+	}
+	println(int_str(total))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'nested_callback_array_field_hot_loop_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('closure__closure_try_destroy(__array_closure_'), main_body
+	out := run_good(v3_bin, 'nested_callback_array_field_hot_loop', source)
+	assert out == '1250025000'
 }

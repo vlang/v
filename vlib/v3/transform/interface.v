@@ -231,6 +231,12 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_expr(id)
 	}
 	mut source_type := t.node_type(id)
+	if node.kind == .call {
+		concrete_return_type := t.concrete_generic_call_return_type(id, node)
+		if concrete_return_type.len > 0 {
+			source_type = concrete_return_type
+		}
+	}
 	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		mut child_type := t.node_type(child_id)
@@ -510,21 +516,20 @@ fn (t &Transformer) resolve_interface_pattern_interface(pattern string) ?string 
 
 // transform_global_amp_interface_cast supports transform_global_amp_interface_cast handling.
 fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, target_type string) ?flat.NodeId {
-	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+	mut cast := node
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		cast = t.a.nodes[int(t.a.child(&node, 0))]
+	}
+	if cast.kind != .cast_expr || cast.children_count == 0 {
 		return none
 	}
-	child_id := t.a.child(&node, 0)
-	child := t.a.nodes[int(child_id)]
-	if child.kind != .cast_expr || child.children_count == 0 {
-		return none
-	}
-	iface_name := t.resolve_interface_type_name(child.value)
+	iface_name := t.resolve_interface_type_name(cast.value)
 	if iface_name.len == 0 || t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
 	old_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name, false) or {
+	literal := t.make_interface_literal_from_expr(t.a.child(&cast, 0), iface_name, false) or {
 		t.pending_stmts = old_pending
 		return none
 	}

@@ -31,6 +31,7 @@ export CURRENT_SCRIPT_PATH=$(realpath "$0")
 
 export TCC_COMMIT="${TCC_COMMIT:-mob}"
 export TCC_FOLDER="${TCC_FOLDER:-thirdparty/tcc.$TCC_COMMIT}"
+export TCC_REPO="${TCC_REPO:-https://repo.or.cz/tinycc.git}"
 export CC="${CC:-gcc}"
 
 echo " BUILD_CMD: \`$BUILD_CMD\`"
@@ -46,7 +47,7 @@ rsync -a thirdparty/tcc/ thirdparty/tcc.original/
 
 pushd .
 
-git clone https://repo.or.cz/tinycc.git
+git clone "$TCC_REPO" tinycc
 
 cd tinycc
 
@@ -72,7 +73,7 @@ gmake install
 
 popd
 
-rsync -a --delete tinycc/$TCC_FOLDER/                 $TCC_FOLDER/
+rsync -a --delete --exclude='/.github/' tinycc/$TCC_FOLDER/                 $TCC_FOLDER/
 rsync -a          thirdparty/tcc.original/.git/       $TCC_FOLDER/.git/
 rsync -a          thirdparty/tcc.original/lib/libgc*  $TCC_FOLDER/lib/
 rsync -a          thirdparty/tcc.original/lib/build*  $TCC_FOLDER/lib/

@@ -85,7 +85,8 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 		else {}
 	}
 
-	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}' ${ts.info}")
+	g.v_error('the wasm backend does not support type `${g.table.type_to_str(typ)}` yet',
+		g.current_pos)
 }
 
 pub fn (mut g Gen) infix_param_type(typ ast.Type, op token.Kind) {
@@ -94,8 +95,8 @@ pub fn (mut g Gen) infix_param_type(typ ast.Type, op token.Kind) {
 			g.handle_string_operation(op)
 		}
 		else {
-			eprintln(*g.table.sym(typ))
-			panic('unimplemented infix operation for type')
+			g.v_error('the wasm backend does not support `${op}` for type `${g.table.type_to_str(typ)}` yet',
+				g.current_pos)
 		}
 	}
 }

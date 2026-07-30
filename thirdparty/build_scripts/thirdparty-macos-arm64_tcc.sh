@@ -35,6 +35,7 @@ export CURRENT_SCRIPT_PATH=$(realpath "$0")
 
 export TCC_COMMIT="${TCC_COMMIT:-mob}"
 export TCC_FOLDER="${TCC_FOLDER:-thirdparty/tcc.$TCC_COMMIT}"
+export TCC_REPO="${TCC_REPO:-https://repo.or.cz/tinycc.git}"
 export CC="${CC:-clang}"
 
 echo " BUILD_CMD: \`$BUILD_CMD\`"
@@ -50,7 +51,7 @@ rsync -a thirdparty/tcc/ thirdparty/tcc.original/
 
 pushd .
 
-git clone https://repo.or.cz/tinycc.git
+git clone "$TCC_REPO" tinycc
 
 cd tinycc
 

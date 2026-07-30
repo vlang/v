@@ -25,6 +25,30 @@ builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until v3
 can compile the full builtin map.v.
 
+## macOS V3 dispatch
+
+On macOS, the top-level `v` command runs supported native C source builds through the V3 driver
+linked into `cmd/v`. It does not build or launch a second V3 compiler process. For example,
+`v file.v`, `v app_directory`, `v run file.v`, and `v script.vsh` are eligible. V3 currently
+compiles these unflagged builds without a garbage collector; `-gc none` and `-prealloc` are also
+eligible. An explicit non-none `-gc` mode stays on the established compiler. The in-process path
+currently uses serial stages and disables the split module cache, whose invalidation protocol
+still relies on restarting the standalone V3 executable.
+
+`cmd/v` remains the CLI and compatibility dispatcher. Tests, command tools, self-hosted temporary
+compilers, cross-compilation, and modes not yet supported by V3 continue through the established
+compiler. Pass `-old-compiler` to explicitly use that compatibility path for an otherwise
+eligible macOS build. Other operating systems are unchanged.
+
+When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
+retries the command through the established compiler. Exit codes from successfully compiled
+`run` programs are returned unchanged and do not trigger a retry.
+
+When V3's generated C fails to compile, `cmd/v` automatically retries the command through the
+established compiler. If that retry succeeds, the existing automatic C-error reporter submits the
+V3 diagnostics to bugs.vlang.io with `V3` in the report's build options. The usual
+`V_C_ERROR_BUG_REPORT_DISABLED` and GitHub CI safeguards still apply.
+
 ## Target selection
 
 The C backend accepts `-os <name>` and `-arch <name>`. The target controls source-file suffix
@@ -38,15 +62,20 @@ The command line rejects unknown options, missing option values, unsupported bac
 multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
 currently supported collector mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
-The driver monitors compiler memory throughout the build and exits when it reaches 10 GiB.
+Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
+two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
+backtraces while plain `-g` retains its V-source debug behavior.
+The driver monitors compiler memory throughout the build and exits when it reaches 2 GiB.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
 On macOS, each stage benchmark prints physical footprint immediately after RSS.
 
-Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` uses the
-platform's default thread stack and checks allocation, thread creation, and join failures. Since
-V's `spawn` expression has no error return, these runtime failures print a diagnostic and abort;
-packed arguments are released if thread creation fails.
+Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
+detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
+and 2 MiB on 32-bit targets); `-thread-stack-size <bytes>` overrides it. Thread allocation,
+creation, and join failures are checked. Since V's `spawn` expression has no error return, these
+runtime failures print a diagnostic and abort; packed arguments are released if thread creation
+fails.
 
 The type system (`types/`) uses a `Type` sum type with 20 variants instead of
 string-based type checks. Primitive types use a `Properties` flag enum with
@@ -100,15 +129,16 @@ Third-party C objects retain dependency manifests, so warm builds verify each un
 header once without launching a dependency-scanner process per object. Unchanged inputs use
 nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
 This work is reported as the separate `C object cache` benchmark stage before `cc`.
-On macOS, cached non-production executable builds combine the imported-module objects and
+On macOS, cached non-production implicit `run` builds combine the imported-module objects and
 generated runtime prefix into a content-keyed dylib with the system C compiler. The remaining
 current-directory program unit is compiled and linked against that dylib with bundled TinyCC.
 Objective-C and framework compilation flags stay on the cached dylib side. This work is reported
-as `C dylib cache`; the resulting development executable retains an absolute runtime dependency
-on that cache artifact. An exact warm plan also restores its content-keyed TinyCC executable and
-reports `cc (cached)`; project source, module object, C dependency, TinyCC input, argument, or
-dylib changes invalidate it. Production, shared-library, self-host, explicit `-cc`, and
-`-nocache` builds keep their existing direct-link behavior.
+as `C dylib cache`; the temporary executable retains an absolute runtime dependency on that cache
+artifact and is removed after the run. An exact warm plan also restores its content-keyed TinyCC
+executable and reports `cc (cached)`; project source, module object, C dependency, TinyCC input,
+argument, or dylib changes invalidate it. Persistent outputs—including ordinary compilation,
+explicit `run -o` output, and `-keepc` runs—are standalone. Production, shared-library, self-host,
+explicit `-cc`, and `-nocache` builds also keep their existing direct-link behavior.
 When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
 the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
 cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.

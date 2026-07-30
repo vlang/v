@@ -3,6 +3,7 @@ import os
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // test_at_mod_codegen validates that v3 lowers @MOD to the current module name.
@@ -27,17 +28,19 @@ fn test_at_mod_codegen() {
 
 fn test_at_file_line_codegen_uses_source_line() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_file_line_codegen_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	main_src := os.join_path(os.temp_dir(), 'v3_file_line_main.v')
 	main_bin := os.join_path(os.temp_dir(), 'v3_file_line_main')
 	os.write_file(main_src,
-		"fn main() {\n\tgot, expected := @FILE_LINE, @FILE + ':' + @LINE.str()\n\tassert got == expected\n\tassert !got.ends_with(':0')\n}\n")!
-	main_result := os.execute('${v3_bin} ${main_src} -o ${main_bin}')
+		"fn main() {\n\tgot := @FILE_LINE\n\texpected := 'v3_file_line_main.v:' + @LINE.str()\n\tprintln(got)\n\tprintln(expected)\n}\n")!
+	main_result := os.execute('${v3_bin} -nocache -o ${main_bin} ${main_src}')
 	assert main_result.exit_code == 0, main_result.output
 	run := os.execute(main_bin)
 	assert run.exit_code == 0, run.output
+	assert run.output == 'v3_file_line_main.v:2\nv3_file_line_main.v:3\n', run.output
 }
 
 fn test_quoted_comptime_pseudo_vars_are_not_expanded() {
