@@ -1,0 +1,15 @@
+module main
+
+type Bytes4 = [4]u8
+
+struct Holder {
+	value ?&Bytes4
+}
+
+fn main() {
+	bytes := Bytes4{}
+	pointer := unsafe { &bytes }
+	_ := Holder{
+		value: pointer
+	}
+}

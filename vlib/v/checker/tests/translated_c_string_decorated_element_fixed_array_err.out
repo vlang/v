@@ -1,0 +1,28 @@
+vlib/v/checker/tests/translated_c_string_decorated_element_fixed_array_err.vv:16:3: error: cannot assign to field `pointers`: expected `[2]&u8`, not `&u8`
+   14 | fn main() {
+   15 |     _ := DecoratedElements{
+   16 |         pointers:        c'ab'
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   17 |         pointer_aliases: c'ab'
+   18 |         options:         c'ab'
+vlib/v/checker/tests/translated_c_string_decorated_element_fixed_array_err.vv:17:3: error: cannot assign to field `pointer_aliases`: expected `[2]BytePointer`, not `&u8`
+   15 |     _ := DecoratedElements{
+   16 |         pointers:        c'ab'
+   17 |         pointer_aliases: c'ab'
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   18 |         options:         c'ab'
+   19 |         option_aliases:  c'ab'
+vlib/v/checker/tests/translated_c_string_decorated_element_fixed_array_err.vv:18:3: error: cannot assign to field `options`: expected `[2]?u8`, not `&u8`
+   16 |         pointers:        c'ab'
+   17 |         pointer_aliases: c'ab'
+   18 |         options:         c'ab'
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   19 |         option_aliases:  c'ab'
+   20 |     }
+vlib/v/checker/tests/translated_c_string_decorated_element_fixed_array_err.vv:19:3: error: cannot assign to field `option_aliases`: expected `[2]OptionalByte`, not `&u8`
+   17 |         pointer_aliases: c'ab'
+   18 |         options:         c'ab'
+   19 |         option_aliases:  c'ab'
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   20 |     }
+   21 | }

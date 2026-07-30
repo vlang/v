@@ -3,6 +3,29 @@ module main
 import os
 import v.pref
 
+fn test_macos_v3_embedded_driver_matches_cross_source_selection() {
+	$if cross ? {
+		assert !macos_v3_driver_is_available()
+	} $else $if macos {
+		assert macos_v3_driver_is_available()
+	}
+}
+
+fn test_macos_v3_driver_source_selection_matches_cross_define() {
+	driver_files := ['macos_v3_driver_d_cross.v', 'macos_v3_driver_notd_cross.v']
+	native_prefs := &pref.Preferences{}
+	native_files :=
+		native_prefs.should_compile_filtered_files('cmd/v', driver_files).map(os.base(it))
+	assert native_files == ['macos_v3_driver_notd_cross.v']
+
+	cross_prefs := &pref.Preferences{
+		compile_defines:     ['cross']
+		compile_defines_all: ['cross']
+	}
+	cross_files := cross_prefs.should_compile_filtered_files('cmd/v', driver_files).map(os.base(it))
+	assert cross_files == ['macos_v3_driver_d_cross.v']
+}
+
 fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 	$if macos {
 		mut prefs := &pref.Preferences{
@@ -73,6 +96,10 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		prefs.path = 'version'
 		assert !is_macos_v3_relevant_command('version', prefs)
 		prefs.path = 'vlib/v3'
+		assert is_macos_v3_relevant_command('vlib/v3', prefs)
+		prefs.output_cross_c = true
+		assert !is_macos_v3_relevant_command('vlib/v3', prefs)
+		prefs.output_cross_c = false
 		assert is_macos_v3_relevant_command('vlib/v3', prefs)
 		prefs.path = 'fixture.vv'
 		assert !is_macos_v3_relevant_command('run', prefs)

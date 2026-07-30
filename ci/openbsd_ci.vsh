@@ -119,6 +119,21 @@ fn run_essential_tests() {
 	}
 }
 
+fn test_vwatch_stdin() {
+	if common.is_github_job {
+		println('::group::Test vwatch terminal input')
+	} else {
+		println('### Test vwatch terminal input')
+	}
+	for tool in ['script', 'sh', 'sleep', 'stty'] {
+		exec('command -v ${tool}')
+	}
+	exec('v -silent test cmd/tools/vwatch_stdin_test.v')
+	if common.is_github_job {
+		println('::endgroup::')
+	}
+}
+
 fn build_examples() {
 	if common.is_github_job {
 		println('::group::Build examples')
@@ -139,6 +154,7 @@ const all_tasks = {
 	'check_compress':        Task{check_compress, 'Check the `compress` module works'}
 	'test_inline_assembly':  Task{test_inline_assembly, 'Test inline Assembly'}
 	'run_essential_tests':   Task{run_essential_tests, 'Run only the essential tests'}
+	'test_vwatch_stdin':     Task{test_vwatch_stdin, 'Test vwatch terminal input'}
 	'build_examples':        Task{build_examples, 'Build examples'}
 }
 

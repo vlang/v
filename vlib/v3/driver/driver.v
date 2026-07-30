@@ -3789,6 +3789,7 @@ fn suppress_minimal_literal_output_builtin_imports(mut a flat.FlatAst) {
 }
 
 // run executes the V3 compiler driver with `args`.
+@[markused]
 pub fn run(args []string) {
 	if args.len == 0 {
 		eprintln(cli_usage())

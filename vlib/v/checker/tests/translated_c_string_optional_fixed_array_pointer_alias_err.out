@@ -1,0 +1,14 @@
+vlib/v/checker/tests/translated_c_string_optional_fixed_array_pointer_alias_err.vv:15:3: error: cannot assign a pointer to option struct field
+   13 | fn main() {
+   14 |     _ := OptionalPointerAliases{
+   15 |         option_pointer_alias: c'abcd'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   16 |         option_parent_alias:  c'abcd'
+   17 |     }
+vlib/v/checker/tests/translated_c_string_optional_fixed_array_pointer_alias_err.vv:16:3: error: cannot assign to field `option_parent_alias`: expected `OptionalFixedBytesPointer`, not `&u8`
+   14 |     _ := OptionalPointerAliases{
+   15 |         option_pointer_alias: c'abcd'
+   16 |         option_parent_alias:  c'abcd'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 |     }
+   18 | }

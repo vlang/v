@@ -765,11 +765,11 @@ fn main() {
 
 	for_c_init_labeled_break_fn := function_window(generated,
 		'int main__local_for_c_init_closure_labeled_break_cleanup(int n) {')
-	for_c_init_labeled_break_goto_pos := for_c_init_labeled_break_fn.index('goto closure_init_break__break;') or {
+	for_c_init_labeled_break_goto_pos := for_c_init_labeled_break_fn.index('goto __v_user_goto_0__break;') or {
 		assert false, for_c_init_labeled_break_fn
 		return
 	}
-	for_c_init_labeled_break_label_pos := for_c_init_labeled_break_fn.index('closure_init_break__break: {}') or {
+	for_c_init_labeled_break_label_pos := for_c_init_labeled_break_fn.index('__v_user_goto_0__break: {}') or {
 		assert false, for_c_init_labeled_break_fn
 		return
 	}
@@ -790,7 +790,7 @@ fn main() {
 		assert false, nested_continue_fn
 		return
 	}
-	nested_continue_goto_pos := nested_continue_fn.index('goto nested_continue_outer__continue_entry;') or {
+	nested_continue_goto_pos := nested_continue_fn.index('goto __v_user_goto_0__continue_entry;') or {
 		assert false, nested_continue_fn
 		return
 	}
@@ -807,11 +807,11 @@ fn main() {
 		assert false, nested_break_fn
 		return
 	}
-	nested_break_goto_pos := nested_break_fn.index('goto nested_break_outer__break;') or {
+	nested_break_goto_pos := nested_break_fn.index('goto __v_user_goto_0__break;') or {
 		assert false, nested_break_fn
 		return
 	}
-	nested_break_label_pos := nested_break_fn.index('nested_break_outer__break: {}') or {
+	nested_break_label_pos := nested_break_fn.index('__v_user_goto_0__break: {}') or {
 		assert false, nested_break_fn
 		return
 	}
@@ -859,7 +859,7 @@ fn main() {
 		assert false, labeled_break_fn
 		return
 	}
-	labeled_break_goto_pos := labeled_break_fn.index('goto closure_break__break;') or {
+	labeled_break_goto_pos := labeled_break_fn.index('goto __v_user_goto_0__break;') or {
 		assert false, labeled_break_fn
 		return
 	}
@@ -871,7 +871,7 @@ fn main() {
 		assert false, labeled_continue_fn
 		return
 	}
-	labeled_continue_goto_pos := labeled_continue_fn.index('goto closure_continue__continue_entry;') or {
+	labeled_continue_goto_pos := labeled_continue_fn.index('goto __v_user_goto_0__continue_entry;') or {
 		assert false, labeled_continue_fn
 		return
 	}
