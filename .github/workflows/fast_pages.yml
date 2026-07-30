@@ -30,12 +30,18 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          rsync -a --exclude='.git' --exclude='.github' site/ _site/
-      - name: Ensure GNU tar is available
-        run: command -v gtar >/dev/null || brew install gnu-tar
+          rsync -aL --exclude='.git' --exclude='.github' site/ _site/
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Archive Pages artifact
+        run: |
+          chmod -R a+rX _site
+          /usr/bin/tar -C _site -cvf "$RUNNER_TEMP/artifact.tar" .
+      - name: Upload Pages artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: _site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
       - id: deployment
         uses: actions/deploy-pages@v4
