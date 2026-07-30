@@ -5,10 +5,6 @@ import v.pref
 import v.util
 import v3.driver
 
-#include <sys/sysctl.h>
-
-fn C.sysctlbyname(&char, voidptr, &usize, voidptr, usize) int
-
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
@@ -26,8 +22,6 @@ const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
-const macos_v3_enabled_product_version_major = 26
-const macos_v3_enabled_product_version_minor = 2
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	if os.getenv(macos_v3_retry_env) == '1' {
@@ -40,48 +34,12 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
 	if !is_macos_v3_default_executable(os.executable())
-		|| !is_macos_v3_relevant_command(command, prefs) || !macos_v3_default_is_enabled_for_host()
+		|| !is_macos_v3_relevant_command(command, prefs)
 		|| !macos_v3_environment_flags_are_supported(os.getenv('CFLAGS'), os.getenv('LDFLAGS'))
 		|| !macos_v3_args_are_supported(forwarded_args) {
 		return none
 	}
 	return launch_macos_v3_compiler(prefs, forwarded_args)
-}
-
-fn macos_v3_default_is_enabled_for_host() bool {
-	if os.getenv('GITHUB_ACTIONS') == 'true' {
-		return true
-	}
-	version := macos_product_version()
-	if version == '' {
-		return false
-	}
-	return macos_v3_default_is_enabled(version, '')
-}
-
-fn macos_product_version() string {
-	mut size := usize(0)
-	if C.sysctlbyname(c'kern.osproductversion', unsafe { nil }, &size, unsafe { nil }, 0) != 0
-		|| size < 2 {
-		return ''
-	}
-	mut buf := []u8{len: int(size)}
-	if C.sysctlbyname(c'kern.osproductversion', buf.data, &size, unsafe { nil }, 0) != 0 {
-		return ''
-	}
-	return unsafe { cstring_to_vstring(&char(buf.data)) }
-}
-
-fn macos_v3_default_is_enabled(product_version string, github_actions string) bool {
-	if github_actions == 'true' {
-		return true
-	}
-	parts := product_version.trim_space().split('.')
-	if parts.len < 2 || !parts[0].is_int() || !parts[1].is_int() {
-		return false
-	}
-	return parts[0].int() == macos_v3_enabled_product_version_major
-		&& parts[1].int() == macos_v3_enabled_product_version_minor
 }
 
 fn macos_v3_environment_flags_are_supported(cflags string, ldflags string) bool {
@@ -97,6 +55,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
+	is_directory := os.is_dir(prefs.path)
 	is_direct_vsh := normalized_path.ends_with('.vsh') && command != 'crun'
 	if command in external_tools
 		|| command in ['help', 'version', 'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'interpret', 'get', 'translate'] {
@@ -121,18 +80,17 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		|| normalized_path.starts_with('cmd/tools/')
 		|| normalized_path.contains('/cmd/tools/')
 		|| normalized_path.ends_with('.vv')
-		|| (!normalized_path.ends_with('.v') && !normalized_path.ends_with('.vsh'))
-		|| os.is_dir(prefs.path)
+		|| (!is_directory && !normalized_path.ends_with('.v') && !normalized_path.ends_with('.vsh'))
 		|| macos_v3_source_path_resolves_differently(prefs.path)
 		|| macos_v3_needs_compatible_default_output(prefs.path) {
 		// Keep the established compiler available as the compatibility fallback.
 		// V3 does not compile all of cmd/v yet, and command tools are built on
 		// demand while dispatching CLI commands such as `fmt` and `test`. Legacy
-		// .vv fixtures, directory/non-V builds, and sources needing compatibility
-		// output-name derivation also retain established semantics.
+		// .vv fixtures, non-V builds, and sources needing compatibility output-name
+		// derivation also retain established semantics.
 		return false
 	}
-	return command == 'run' || command == 'build' || prefs.is_script
+	return is_directory || command == 'run' || command == 'build' || prefs.is_script
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
 }
 
@@ -260,6 +218,11 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	}
 	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings {
 		forwarded_args.insert(0, '-silent')
+	}
+	// The compatibility fallback must not select a different compiler merely
+	// because a valid V3 build crosses the standalone driver's safety cap.
+	if '-no-memory-limit' !in forwarded_args && '--no-memory-limit' !in forwarded_args {
+		forwarded_args.insert(0, '-no-memory-limit')
 	}
 	// An embedded V3 driver cannot restart itself by replacing the cmd/v process.
 	// Keep its first in-process rollout monolithic until cache invalidation can

@@ -87,6 +87,137 @@ fn test_reject_fixed_array_decay_to_pointer() {
 	assert out == '1'
 }
 
+fn test_enum_in_list_and_nested_array_address_match_v1() {
+	v3_bin := build_v3_review_checker()
+	insert_header := os.join_path(os.temp_dir(), 'v3_review_checker_insert.h')
+	os.write_file(insert_header,
+		'static inline int v3_review_checker_inserted(void) { return 6; }\n') or { panic(err) }
+	out := run_good(v3_bin, 'good_enum_in_list_and_nested_array_address', '
+#insert "@DIR/v3_review_checker_insert.h"
+
+fn C.v3_review_checker_inserted() int
+
+const max_bytes = 32 * 1024 * 1024
+
+enum FormulaKind {
+	text
+	number
+	date_time
+}
+
+struct Sheet {
+	value int
+}
+
+struct Workbook {
+	sheets []Sheet
+}
+
+struct Evaluator {
+	workbook &Workbook
+}
+
+struct LocalHolder {
+	evaluator &Evaluator
+}
+
+struct CopyValue {
+	value int
+}
+
+fn pair() (int, int) {
+	return 4, 5
+}
+
+fn number_value(value f64) f64 {
+	return value
+}
+
+fn parse_number(text string) !f64 {
+	return match text {
+		"42" { text.f64() }
+		else { error("not a number") }
+	}
+}
+
+fn clone_value(original &CopyValue) CopyValue {
+	return CopyValue{
+		...original
+	}
+}
+
+fn contains_value(value string, mut values []string) bool {
+	return value in values
+}
+
+fn item_count(values []int) int {
+	return values.len
+}
+
+fn shifted_value(base string) ?string {
+	shifted := {
+		"a": "A"
+	}
+	return shifted[base] or { none }
+}
+
+fn (mut evaluator Evaluator) keep_pointer_locally() {
+	holder := LocalHolder{
+		evaluator: evaluator
+	}
+	println(holder.evaluator.workbook.sheets[0].value)
+}
+
+fn inspect(evaluator &Evaluator, kind FormulaKind) {
+	if kind in [.number, .date_time] {
+		println("enum")
+	}
+	sheet := &evaluator.workbook.sheets[0]
+	println(sheet.value)
+	ch := "a"[0]
+	assert ch >= `a` && ch <= `z`
+	assert ch in [`a`, `b`]
+	quote := `a`
+	assert ch == quote
+	assert u64(10) < max_bytes
+	first, second := if ch == `a` {
+		pair()
+	} else {
+		1, 2
+	}
+	println(first + second)
+}
+
+fn main() {
+	workbook := &Workbook{
+		sheets: [Sheet{
+			value: 42
+		}]
+	}
+	mut evaluator := Evaluator{
+		workbook: workbook
+	}
+	mut values := ["value"]
+	inspect(&evaluator, .number)
+	evaluator.keep_pointer_locally()
+	println(number_value(values.len))
+	println(parse_number("42") or { 0 })
+	println(clone_value(&CopyValue{
+		value: 8
+	}).value)
+	println(contains_value("value", mut values))
+	println(item_count([]))
+	println(shifted_value("a") or { "none" })
+	println(shifted_value("b") or { "none" })
+	println(C.v3_review_checker_inserted())
+}
+')
+	assert out == 'enum\n42\n9\n42\n1.0\n42.0\n8\ntrue\n0\nA\nnone\n6'
+	run_bad(v3_bin, 'bad_address_mutable_array_element',
+		'fn main() {\n\tmut values := [1]\n\t_ := &values[0]\n}\n',
+		'cannot take the address of mutable array elements outside unsafe blocks')
+}
+
 fn test_reject_cross_wrapper_option_result_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_result_value_in_option_return',

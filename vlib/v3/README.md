@@ -27,19 +27,18 @@ can compile the full builtin map.v.
 
 ## macOS V3 dispatch
 
-On macOS 26.2, or in a macOS GitHub Actions job, the top-level `v` command runs supported native C
-source builds through the V3 driver linked into `cmd/v`. It does not build or launch a second V3
-compiler process. For example, `v file.v`, `v run file.v`, and `v script.vsh` are eligible. V3
-currently compiles these unflagged builds without a garbage collector; `-gc none` and `-prealloc`
-are also eligible. An explicit non-none `-gc` mode stays on the established compiler. The
-in-process path currently uses serial stages and disables the split module cache, whose
-invalidation protocol still relies on restarting the standalone V3 executable.
+On macOS, the top-level `v` command runs supported native C source builds through the V3 driver
+linked into `cmd/v`. It does not build or launch a second V3 compiler process. For example,
+`v file.v`, `v app_directory`, `v run file.v`, and `v script.vsh` are eligible. V3 currently
+compiles these unflagged builds without a garbage collector; `-gc none` and `-prealloc` are also
+eligible. An explicit non-none `-gc` mode stays on the established compiler. The in-process path
+currently uses serial stages and disables the split module cache, whose invalidation protocol
+still relies on restarting the standalone V3 executable.
 
 `cmd/v` remains the CLI and compatibility dispatcher. Tests, command tools, self-hosted temporary
 compilers, cross-compilation, and modes not yet supported by V3 continue through the established
 compiler. Pass `-old-compiler` to explicitly use that compatibility path for an otherwise
-eligible macOS build. Local macOS releases other than 26.2 also use the established compiler.
-Other operating systems are unchanged.
+eligible macOS build. Other operating systems are unchanged.
 
 When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
 retries the command through the established compiler. Exit codes from successfully compiled

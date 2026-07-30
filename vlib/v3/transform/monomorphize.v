@@ -3316,13 +3316,14 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	generic_params := t.generic_fn_param_names(decl.node, decl.module)
 	validate_return := t.generic_fn_return_depends_on_comptime_if(decl.node, generic_params)
 	mut concrete_error_count := 0
-	if !isnil(t.tc) {
+	check_fixture_semantics := !isnil(t.tc) && t.tc.checker_fixture_mode
+	if check_fixture_semantics {
 		concrete_error_count = t.tc.errors.len
 		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
 	}
 	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, generic_params,
 		concrete_args, decl.node.value, validate_return)
-	if !isnil(t.tc) && t.tc.errors.len == concrete_error_count {
+	if check_fixture_semantics && t.tc.errors.len == concrete_error_count {
 		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
 	}
 	t.ensure_node_context_map_capacity()

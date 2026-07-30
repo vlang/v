@@ -3,18 +3,6 @@ module main
 import os
 import v.pref
 
-fn test_macos_v3_default_is_limited_to_macos_26_2_or_github_actions() {
-	$if macos {
-		assert macos_v3_default_is_enabled('26.2', '')
-		assert macos_v3_default_is_enabled('26.2.1', '')
-		for version in ['', '26', '25.7', '26.1', '26.3', '27.0', 'invalid'] {
-			assert !macos_v3_default_is_enabled(version, '')
-		}
-		assert macos_v3_default_is_enabled('', 'true')
-		assert macos_v3_default_is_enabled('25.7', 'true')
-	}
-}
-
 fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 	$if macos {
 		mut prefs := &pref.Preferences{
@@ -85,7 +73,7 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		prefs.path = 'version'
 		assert !is_macos_v3_relevant_command('version', prefs)
 		prefs.path = 'vlib/v3'
-		assert !is_macos_v3_relevant_command('vlib/v3', prefs)
+		assert is_macos_v3_relevant_command('vlib/v3', prefs)
 		prefs.path = 'fixture.vv'
 		assert !is_macos_v3_relevant_command('run', prefs)
 		prefs.path = 'program.txt'
@@ -157,11 +145,15 @@ fn test_macos_v3_forwards_compatibility_c99_mode() {
 		forwarded := macos_v3_forwarded_args(prefs, ['main.v'])
 		assert macos_v3_compat_c99_flag in forwarded
 		assert '-nocache' in forwarded
+		assert '-no-memory-limit' in forwarded
 		assert '-no-parallel' !in forwarded
 		assert forwarded.count(it == macos_v3_compat_c99_flag) == 1
 		already_present := macos_v3_forwarded_args(prefs, [macos_v3_compat_c99_flag, 'main.v'])
 		assert already_present.count(it == macos_v3_compat_c99_flag) == 1
 		assert already_present.count(it == '-nocache') == 1
+		assert already_present.count(it == '-no-memory-limit') == 1
+		explicit_memory_limit := macos_v3_forwarded_args(prefs, ['--no-memory-limit', 'main.v'])
+		assert explicit_memory_limit.count(it in ['-no-memory-limit', '--no-memory-limit']) == 1
 	}
 }
 
@@ -169,6 +161,7 @@ fn test_macos_v3_args_only_accept_options_implemented_by_v3() {
 	$if macos {
 		assert macos_v3_args_are_supported(['main.v'])
 		assert macos_v3_args_are_supported(['-keepc', '-o', 'main', 'build', 'main.v'])
+		assert macos_v3_args_are_supported(['-o', 'new.c', 'cmd/excel'])
 		assert macos_v3_args_are_supported(['-d', 'spaced_define', 'main.v'])
 		assert macos_v3_args_are_supported(['-dcompact_define', 'main.v'])
 		assert !macos_v3_args_are_supported(['-d', 'spaced_value=enabled', 'main.v'])
@@ -335,6 +328,48 @@ fn main() {}
 		failing_report_dir := os.join_path(os.vtmp_dir(),
 			'macos_v3_fallback_${failing_compiler_pid}.c_error')
 		assert !os.exists(failing_report_dir), 'failed compatibility build left staged report directory: ${failing_report_dir}'
+	}
+}
+
+fn test_macos_v3_directory_c_output_differs_from_old_compiler() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_directory_${os.getpid()}')
+		source_dir := os.join_path(root, 'app')
+		v3_output := os.join_path(root, 'new.c')
+		old_output := os.join_path(root, 'old.c')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(source_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(source_dir, 'main.v'), 'fn main() {\n\tprintln("v3")\n}\n')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut v3_process := os.new_process(@VEXE)
+		v3_process.set_args(['-v', '-o', v3_output, source_dir])
+		v3_process.set_environment(environment)
+		v3_process.set_redirect_stdio()
+		v3_process.run()
+		v3_process.wait()
+		v3_build_output := v3_process.stdout_slurp() + v3_process.stderr_slurp()
+		v3_exit_code := v3_process.code
+		v3_process.close()
+		assert v3_exit_code == 0, v3_build_output
+		assert v3_build_output.contains('Running macOS V3 compiler in process:'), v3_build_output
+		mut old_process := os.new_process(@VEXE)
+		old_process.set_args(['-o', old_output, '-old-compiler', source_dir])
+		old_process.set_environment(environment)
+		old_process.set_redirect_stdio()
+		old_process.run()
+		old_process.wait()
+		old_build_output := old_process.stdout_slurp() + old_process.stderr_slurp()
+		old_exit_code := old_process.code
+		old_process.close()
+		assert old_exit_code == 0, old_build_output
+		assert os.read_file(v3_output)! != os.read_file(old_output)!
 	}
 }
 

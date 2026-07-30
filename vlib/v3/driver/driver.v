@@ -1842,6 +1842,28 @@ fn clone_string_list(values []string) []string {
 	return cloned
 }
 
+fn clone_type_errors(values []types.TypeError) []types.TypeError {
+	if values.len == 0 {
+		return []types.TypeError{}
+	}
+	mut cloned := []types.TypeError{cap: values.len}
+	for value in values {
+		cloned << types.TypeError{
+			msg:        value.msg.clone()
+			kind:       value.kind
+			node:       value.node
+			file:       value.file.clone()
+			node_kind:  value.node_kind.clone()
+			node_value: value.node_value.clone()
+			node_pos:   value.node_pos.clone()
+			pos:        value.pos
+			details:    clone_string_list(value.details)
+			severity:   value.severity.clone()
+		}
+	}
+	return cloned
+}
+
 fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_flags []string) V3CgenCacheInput {
 	mut source_set := map[string]bool{}
 	mut user_source_dirs := map[string]bool{}
@@ -5329,6 +5351,8 @@ pub fn run(args []string) {
 			pre_tc.rebuild_scoped_transform_signature_maps()
 			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
 			promote_scoped_type_metadata(mut pre_tc)
+			pre_tc.errors = clone_type_errors(pre_tc.errors)
+			pre_tc.notices = clone_type_errors(pre_tc.notices)
 			monomorph_used_fns = clone_string_bool_map(monomorph_used_fns)
 			monomorph_errors = clone_string_list(monomorph_errors)
 			generated_monomorph_specs = clone_monomorph_cache_specs(generated_monomorph_specs)
