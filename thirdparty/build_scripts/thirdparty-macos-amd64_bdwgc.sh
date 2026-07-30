@@ -26,6 +26,12 @@ export TCC_FOLDER="${TCC_FOLDER:-thirdparty/tcc}"
 ## in between). The `master` default here exists only for local/manual
 ## invocation outside that workflow.
 export LIBGC_COMMIT="${LIBGC_COMMIT:-master}"
+## Same reasoning as LIBGC_COMMIT above: pass the already-resolved
+## libatomic_ops SHA through explicitly and check it out, rather than
+## just cloning its default branch and recording whatever HEAD happens
+## to land - otherwise the resolved hash the caller fingerprinted and
+## the commit actually built could silently disagree.
+export LIBATOMIC_OPS_COMMIT="${LIBATOMIC_OPS_COMMIT:-master}"
 ## Neither half of the tcc.exe/libgc pair pins a deployment target
 ## today, so a rebuilt binary silently inherits the CI runner's own
 ## macOS floor. Pin one explicitly here; thirdparty-macos-amd64_tcc.sh
@@ -42,6 +48,7 @@ mkdir -p $TCC_FOLDER/lib/
 echo "                      CC: $CC"
 echo "              TCC_FOLDER: $TCC_FOLDER"
 echo "            LIBGC_COMMIT: $LIBGC_COMMIT"
+echo "   LIBATOMIC_OPS_COMMIT: $LIBATOMIC_OPS_COMMIT"
 echo "MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
 echo "          RECIPE_VERSION: $RECIPE_VERSION"
 echo ===============================================================
@@ -63,11 +70,13 @@ cd bdwgc/
 git checkout $LIBGC_COMMIT
 export LIBGC_COMMIT_FULL_HASH=$(git rev-parse HEAD)
 
-## libatomic_ops is cloned from its moving default branch and gets
-## compiled into the resulting archive/dylib - record its resolved
-## commit too, so the pair's provenance covers everything that was
-## actually linked in, not just bdwgc's own commit.
+## Check out the explicitly-resolved commit, same as LIBGC_COMMIT
+## above - previously this cloned the default branch and recorded
+## whatever HEAD it happened to land on, which could silently disagree
+## with whatever hash the caller's rebuild-fingerprint check resolved
+## and recorded moments earlier.
 git clone https://github.com/bdwgc/libatomic_ops
+git -C libatomic_ops checkout $LIBATOMIC_OPS_COMMIT
 export LIBATOMIC_OPS_COMMIT_FULL_HASH=$(git -C libatomic_ops rev-parse HEAD)
 
 ./autogen.sh

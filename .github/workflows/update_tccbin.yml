@@ -143,9 +143,10 @@ jobs:
             fi
             sleep "$((attempt * 5))"
           done
+          git -C /tmp/libatomic_ops-ref checkout --quiet master
           libatomic_ops_hash="$(git -C /tmp/libatomic_ops-ref rev-parse HEAD)"
           echo "libatomic_ops_hash=$libatomic_ops_hash" >> "$GITHUB_OUTPUT"
-          echo "libatomic_ops default branch resolves to $libatomic_ops_hash"
+          echo "libatomic_ops master resolves to $libatomic_ops_hash"
 
       - name: Clone tccbin branch
         id: tccbin
@@ -266,6 +267,7 @@ jobs:
           CC: clang
           TCC_FOLDER: thirdparty/tcc
           LIBGC_COMMIT: ${{ steps.bdwgc.outputs.libgc_hash }}
+          LIBATOMIC_OPS_COMMIT: ${{ steps.bdwgc.outputs.libatomic_ops_hash }}
           RECIPE_VERSION: ${{ env.MACOS_AMD64_RECIPE_VERSION }}
         run: bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc.sh
 
@@ -281,7 +283,13 @@ jobs:
           set -euo pipefail
           cd thirdparty/tcc
           libgc_dylib_target=$(readlink lib/libgc.dylib)
-          shasum -a 256 tcc.exe "lib/$libgc_dylib_target" lib/libgc.a lib/libtcc.a lib/libtcc1.a > bundle_checksums.txt
+          # lib/libgc.dylib is a symlink - shasum follows it and hashes
+          # the same content as lib/$libgc_dylib_target, but recording
+          # it under this name too matters: it's the exact path V's
+          # #flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib references,
+          # so a consumer verifying the bundle checks the path that
+          # actually gets used, not just its resolved target.
+          shasum -a 256 tcc.exe lib/libgc.dylib "lib/$libgc_dylib_target" lib/libgc.a lib/libtcc.a lib/libtcc1.a > bundle_checksums.txt
           cat bundle_checksums.txt
 
       - name: Commit paired libgc rebuild
