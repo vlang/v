@@ -39,8 +39,12 @@ fn test_prepared_interface_indexes_do_not_stale_late_implementers() {
 	mut tc := TypeChecker.new(&a)
 	tc.interface_names['Any'] = true
 	tc.prepare_interface_query_indexes()
+	pre_transform := tc.pre_transform_interface_impl_names('Any') or {
+		panic('missing prepared interface implementer index')
+	}
 	tc.structs['LateType'] = []StructField{}
-	tc.freeze_interface_impl_names()
+	tc.freeze_pre_transform_interface_impl_names()
+	assert 'LateType' !in pre_transform
 	assert 'LateType' in tc.interface_impl_names('Any')
 }
 

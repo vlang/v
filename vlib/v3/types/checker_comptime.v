@@ -6662,6 +6662,22 @@ fn (tc &TypeChecker) array_append_is_standalone_statement(id flat.NodeId) bool {
 	if tc.is_statement_node(id) {
 		return true
 	}
+	// Source ASTs already have a direct-parent index. Nearly every `<<` expression
+	// wrapped by an expr_stmt can be answered from it, without walking the entire
+	// program once per append. Keep the scan below as a fallback for shared or
+	// transform-created nodes after the index is no longer authoritative.
+	if tc.direct_parent_index_trusted {
+		idx := int(id)
+		if idx >= 0 && idx < tc.direct_parent_ids.len {
+			parent_id := tc.direct_parent_ids[idx]
+			if tc.valid_node_id(parent_id) {
+				parent := tc.a.node(parent_id)
+				return parent.kind == .expr_stmt && parent.children_count == 1
+					&& tc.a.child(parent, 0) == id && tc.is_statement_node(parent_id)
+			}
+		}
+		return false
+	}
 	for index, candidate in tc.a.nodes {
 		if candidate.kind == .expr_stmt && candidate.children_count == 1
 			&& tc.a.child(&candidate, 0) == id {

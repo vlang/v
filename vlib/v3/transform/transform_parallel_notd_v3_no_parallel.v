@@ -652,7 +652,7 @@ $if !windows {
 			for i in spec_nodes_start .. w.a.nodes.len {
 				node := w.a.nodes[i]
 				w.collect_generic_struct_specs_from_node(node, spec.decl.module, spec.decl.file,
-					a.struct_decls, mut struct_specs)
+					true, a.struct_decls, mut struct_specs)
 				w.collect_generic_sum_specs_from_node(node, spec.decl.module, spec.decl.file,
 					a.sum_decls, mut sum_specs)
 			}

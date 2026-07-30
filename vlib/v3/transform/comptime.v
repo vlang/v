@@ -381,10 +381,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 			return []flat.NodeId{}
 		}
 		// One block per iteration so per-field temps get their own scope.
-		block := t.make_block(cloned)
-		for s in t.transform_stmt(block) {
-			out << s
-		}
+		out << t.make_block(t.transform_stmts(cloned))
 	}
 	return out
 }
@@ -396,10 +393,7 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 		for sid in body_stmts {
 			cloned << t.clone_attribute_subst(sid, var_name, attr)
 		}
-		block := t.make_block(cloned)
-		for stmt in t.transform_stmt(block) {
-			out << stmt
-		}
+		out << t.make_block(t.transform_stmts(cloned))
 	}
 	return out
 }
@@ -715,7 +709,7 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 	for child in children {
 		t.a.children << child
 	}
-	return t.a.add_node(flat.Node{
+	result := t.a.add_node(flat.Node{
 		kind:           node.kind
 		op:             node.op
 		pos:            node.pos
@@ -726,6 +720,13 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
+	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
+		lhs := t.a.nodes[int(children[0])]
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			t.specialization_decl_nodes_by_name[lhs.value] << int(result)
+		}
+	}
+	return result
 }
 
 fn (mut t Transformer) make_attribute_literal(attr AttributeMeta) flat.NodeId {
@@ -759,10 +760,7 @@ fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name strin
 				cloned << cid
 			}
 		}
-		block := t.make_block(cloned)
-		for stmt in t.transform_stmt(block) {
-			out << stmt
-		}
+		out << t.make_block(t.transform_stmts(cloned))
 	}
 	return out
 }
@@ -1037,10 +1035,7 @@ fn (mut t Transformer) expand_comptime_for_methods(var_name string, base_type st
 				cloned << cid
 			}
 		}
-		block := t.make_block(cloned)
-		for stmt in t.transform_stmt(block) {
-			out << stmt
-		}
+		out << t.make_block(t.transform_stmts(cloned))
 	}
 	return out
 }
@@ -1532,10 +1527,7 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 				cloned << cid
 			}
 		}
-		block := t.make_block(cloned)
-		for s in t.transform_stmt(block) {
-			out << s
-		}
+		out << t.make_block(t.transform_stmts(cloned))
 	}
 	return out
 }
@@ -1552,10 +1544,7 @@ fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type s
 				cloned << cid
 			}
 		}
-		block := t.make_block(cloned)
-		for s in t.transform_stmt(block) {
-			out << s
-		}
+		out << t.make_block(t.transform_stmts(cloned))
 	}
 	return out
 }
@@ -2339,7 +2328,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			typ = local_type
 		}
 	}
-	if node.kind == .decl_assign && children.len >= 2 {
+	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		rhs := t.a.nodes[int(children[1])]
 		rhs_typ := if rhs.kind == .ident && smartcast_name.len > 0 && rhs.value == smartcast_name
 			&& rhs.typ.len > 0 {
@@ -3508,7 +3497,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 	for c in children {
 		t.a.children << c
 	}
-	return t.a.add_node(flat.Node{
+	result := t.a.add_node(flat.Node{
 		kind:           node.kind
 		op:             node.op
 		pos:            node.pos
@@ -3518,6 +3507,13 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
+	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
+		lhs := t.a.nodes[int(children[0])]
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			t.specialization_decl_nodes_by_name[lhs.value] << int(result)
+		}
+	}
+	return result
 }
 
 fn (mut t Transformer) comptime_field_type_accessor(id flat.NodeId, var_name string, fm FieldMeta) ?string {

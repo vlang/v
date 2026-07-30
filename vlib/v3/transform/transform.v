@@ -188,6 +188,7 @@ mut:
 	resolved_call_return_cache      &ResolvedCallReturnCache = unsafe { nil }
 	variant_match_cache             &VariantMatchCache       = unsafe { nil }
 	interface_type_cache            &ContextLookupCache      = unsafe { nil }
+	enum_expected_cache             &LookupCache             = unsafe { nil }
 	type_alias_name_cache           &ContextBoolLookupCache  = unsafe { nil }
 	interface_box_param_cache       &BoolLookupCache         = unsafe { nil }
 	alias_receiver_method_cache     &LookupCache             = unsafe { nil }
@@ -253,7 +254,8 @@ mut:
 	ignored_comptime_log_active bool
 	// cloning_generic_fn_depth > 0 while a generic specialization is cloned with a live,
 	// seeded parameter scope. Ident inference should use that scope rather than scan annotations.
-	cloning_generic_fn_depth int
+	cloning_generic_fn_depth  int
+	specialization_node_start int = -1
 	// escaping_amp_ptrs holds the names of pointer locals `p` declared as `p := &v`
 	// (v a value local) whose pointer escapes the function (is returned or retained
 	// in nonlocal storage). V semantics auto-heap such a `v`; v3 otherwise takes the
@@ -298,12 +300,15 @@ mut:
 	mut_fixed_array_capture_sources    map[string]bool
 	active_specialization_args         []string
 	active_specialization_main_types   map[string]bool
+	specialization_main_type_closures  map[string]map[string]bool
 	generic_specialization_args        map[string][]string
 	generic_specialization_args_parent &map[string][]string = unsafe { nil }
 	generic_fn_specs_in_progress       map[string]bool
 	generic_fn_spec_nodes              map[string]flat.NodeId
 	monomorph_cache_specs              map[string]MonomorphCacheSpec
 	generic_clone_children             []flat.NodeId
+	node_context_stack                 []flat.NodeId
+	specialization_decl_nodes_by_name  map[string][]int
 	defer_nested_generic_emissions     bool
 	parallel_monomorphize              bool
 	parallel_monomorph_worker          bool
@@ -1142,71 +1147,72 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 // only the frozen program indexes they are allowed to share.
 fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
 	return Transformer{
-		a:                                a
-		tc:                               unsafe { tc }
-		has_spawn_expr:                   tc.threads_condition_value()
-		refined_node_types:               map[int]string{}
-		fn_value_locals:                  map[string]string{}
-		mut_param_values:                 map[string]bool{}
-		fixed_array_param_values:         map[string]bool{}
-		mut_value_ident_nodes:            map[int]bool{}
-		pointer_value_lvalues:            map[string]bool{}
-		pointer_value_rvalues:            map[string]bool{}
-		addr_lvalue_pointer_locals:       map[string]bool{}
-		orm_initialized_fields:           map[string][]string{}
-		sql_query_data_aliases:           map[string][]string{}
-		bound_method_arrays:              map[string]BoundMethodArrayInfo{}
-		comptime_field_metas_cache:       map[string][]FieldMeta{}
-		const_array_fixed_storage_cache:  map[string]i8{}
-		invalidated_smartcasts:           map[string]bool{}
-		escaping_amp_ptrs:                map[string]bool{}
-		escaping_amp_sources:             map[string]bool{}
-		heaped_amp_locals:                map[string]bool{}
-		escaping_interface_box_locals:    map[string]bool{}
-		local_closure_cleanup_decls:      map[int]string{}
-		local_closure_cleanup_values:     map[int]string{}
-		local_closure_cleanup_assigns:    map[int]string{}
-		local_closure_field_cleanups:     map[int]bool{}
-		exclusive_closure_return_fns:     map[string]bool{}
-		mut_fixed_array_capture_sources:  map[string]bool{}
-		generic_specialization_args:      map[string][]string{}
-		generic_fn_specs_in_progress:     map[string]bool{}
-		generic_fn_spec_nodes:            map[string]flat.NodeId{}
-		monomorph_cache_specs:            map[string]MonomorphCacheSpec{}
-		pending_generic_fn_spec_keys:     map[string]bool{}
-		generic_receiver_methods_by_name: map[string][]string{}
-		generic_call_spec_cache:          map[int]GenericCallSpec{}
-		generic_call_spec_misses:         map[int]bool{}
-		monomorph_error_seen:             map[string]bool{}
-		call_param_types_decl_cache:      map[int][]types.Type{}
-		call_param_types_decl_misses:     map[string]bool{}
-		call_param_types_decl_index:      map[string]FnParamDeclRef{}
-		enum_backing_types:               map[string]string{}
-		sum_variant_names:                map[string]bool{}
-		receiver_method_suffix_index:     map[string]string{}
-		variadic_suffix_index:            map[string]i8{}
-		used_fns:                         used_fns.clone()
-		comptime_reflected_params:        map[string][]ParamMeta{}
-		interface_boxed_types:            map[string]bool{}
-		interface_impl_indexes:           map[string]&types.InterfaceImplIndex{}
-		interface_var_concrete_types:     map[string]string{}
-		interface_box_param_cache:        &BoolLookupCache{
+		a:                                 a
+		tc:                                unsafe { tc }
+		has_spawn_expr:                    tc.threads_condition_value()
+		refined_node_types:                map[int]string{}
+		fn_value_locals:                   map[string]string{}
+		mut_param_values:                  map[string]bool{}
+		fixed_array_param_values:          map[string]bool{}
+		mut_value_ident_nodes:             map[int]bool{}
+		pointer_value_lvalues:             map[string]bool{}
+		pointer_value_rvalues:             map[string]bool{}
+		addr_lvalue_pointer_locals:        map[string]bool{}
+		orm_initialized_fields:            map[string][]string{}
+		sql_query_data_aliases:            map[string][]string{}
+		bound_method_arrays:               map[string]BoundMethodArrayInfo{}
+		comptime_field_metas_cache:        map[string][]FieldMeta{}
+		const_array_fixed_storage_cache:   map[string]i8{}
+		invalidated_smartcasts:            map[string]bool{}
+		escaping_amp_ptrs:                 map[string]bool{}
+		escaping_amp_sources:              map[string]bool{}
+		heaped_amp_locals:                 map[string]bool{}
+		escaping_interface_box_locals:     map[string]bool{}
+		local_closure_cleanup_decls:       map[int]string{}
+		local_closure_cleanup_values:      map[int]string{}
+		local_closure_cleanup_assigns:     map[int]string{}
+		local_closure_field_cleanups:      map[int]bool{}
+		exclusive_closure_return_fns:      map[string]bool{}
+		mut_fixed_array_capture_sources:   map[string]bool{}
+		generic_specialization_args:       map[string][]string{}
+		generic_fn_specs_in_progress:      map[string]bool{}
+		generic_fn_spec_nodes:             map[string]flat.NodeId{}
+		monomorph_cache_specs:             map[string]MonomorphCacheSpec{}
+		specialization_decl_nodes_by_name: map[string][]int{}
+		pending_generic_fn_spec_keys:      map[string]bool{}
+		generic_receiver_methods_by_name:  map[string][]string{}
+		generic_call_spec_cache:           map[int]GenericCallSpec{}
+		generic_call_spec_misses:          map[int]bool{}
+		monomorph_error_seen:              map[string]bool{}
+		call_param_types_decl_cache:       map[int][]types.Type{}
+		call_param_types_decl_misses:      map[string]bool{}
+		call_param_types_decl_index:       map[string]FnParamDeclRef{}
+		enum_backing_types:                map[string]string{}
+		sum_variant_names:                 map[string]bool{}
+		receiver_method_suffix_index:      map[string]string{}
+		variadic_suffix_index:             map[string]i8{}
+		used_fns:                          used_fns.clone()
+		comptime_reflected_params:         map[string][]ParamMeta{}
+		interface_boxed_types:             map[string]bool{}
+		interface_impl_indexes:            map[string]&types.InterfaceImplIndex{}
+		interface_var_concrete_types:      map[string]string{}
+		interface_box_param_cache:         &BoolLookupCache{
 			entries: map[string]i8{}
 		}
-		alias_receiver_method_cache:      &LookupCache{
+		alias_receiver_method_cache:       &LookupCache{
 			entries: map[string]string{}
 			misses:  map[string]bool{}
 		}
-		call_variadic_cache:              &BoolLookupCache{
+		call_variadic_cache:               &BoolLookupCache{
 			entries: map[string]i8{}
 		}
-		str_alias_cache:                  &LookupCache{
+		str_alias_cache:                   &LookupCache{
 			entries: map[string]string{}
 			misses:  map[string]bool{}
 		}
-		var_type_indices:                 map[string]int{}
-		scoped_owned_base_nodes:          map[int]bool{}
-		scoped_promoted_texts:            map[string]string{}
+		var_type_indices:                  map[string]int{}
+		scoped_owned_base_nodes:           map[int]bool{}
+		scoped_promoted_texts:             map[string]string{}
 	}
 }
 
@@ -1346,6 +1352,10 @@ fn (mut t Transformer) prepare() {
 	t.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	t.variant_match_cache = &VariantMatchCache{}
 	t.interface_type_cache = &ContextLookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
+	t.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
@@ -3013,6 +3023,10 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.enum_expected_cache = &LookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
 	w.type_alias_name_cache = &ContextBoolLookupCache{
 		entries: map[string]i8{}
 	}
@@ -3127,6 +3141,10 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	w.variant_match_cache = &VariantMatchCache{}
 	w.interface_type_cache = &ContextLookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
+	w.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
@@ -3278,6 +3296,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		mut_fixed_array_capture_sources:    map[string]bool{}
 		generic_fn_specs_in_progress:       map[string]bool{}
 		generic_fn_spec_nodes:              map[string]flat.NodeId{}
+		specialization_decl_nodes_by_name:  map[string][]int{}
 		pending_generic_fn_spec_keys:       map[string]bool{}
 		generic_receiver_methods_by_name:   map[string][]string{}
 		generic_call_spec_cache:            map[int]GenericCallSpec{}

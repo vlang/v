@@ -5762,11 +5762,7 @@ fn (t &Transformer) normalize_runtime_array_stringify_type(typ string) string {
 }
 
 fn (mut t Transformer) mark_interface_method_implementers_used(iface_name string, method string) {
-	impls := if t.is_builtin_ierror_interface_name(iface_name) {
-		t.tc.ierror_impl_names()
-	} else {
-		t.tc.interface_impl_names(iface_name)
-	}
+	impls := t.interface_impl_index_for_transform(iface_name).names
 	for concrete in impls {
 		if t.has_used_fn_filter() && !t.interface_boxed_type_used(iface_name, concrete) {
 			continue
@@ -5785,11 +5781,7 @@ fn (t &Transformer) interface_method_implementer_names(iface_name string, method
 	if isnil(t.tc) {
 		return []string{}
 	}
-	impls := if t.is_builtin_ierror_interface_name(iface_name) {
-		t.tc.ierror_impl_names()
-	} else {
-		t.tc.interface_impl_names(iface_name)
-	}
+	impls := t.interface_impl_index_for_transform(iface_name).names
 	mut names := []string{cap: impls.len * 2}
 	for concrete in impls {
 		concrete_method := '${concrete}.${method}'

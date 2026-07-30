@@ -592,6 +592,7 @@ pub mut:
 	interface_abstract_methods            map[string][]string // iface -> abstract (declared) method names
 	interface_impl_name_snapshots         map[string][]string
 	interface_impl_candidates_at_snapshot map[string]bool
+	interface_impl_candidates_at_index    map[string]bool
 	interface_method_names_index          map[string][]string
 	interface_abstract_index              map[string][]string
 	interface_field_list_index            map[string][]StructField
@@ -853,6 +854,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		interface_abstract_methods:            map[string][]string{}
 		interface_impl_name_snapshots:         map[string][]string{}
 		interface_impl_candidates_at_snapshot: map[string]bool{}
+		interface_impl_candidates_at_index:    map[string]bool{}
 		interface_method_names_index:          map[string][]string{}
 		interface_abstract_index:              map[string][]string{}
 		interface_field_list_index:            map[string][]StructField{}
@@ -993,6 +995,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		interface_fields:                   tc.interface_fields
 		interface_embeds:                   tc.interface_embeds
 		interface_abstract_methods:         tc.interface_abstract_methods
+		interface_impl_candidates_at_index: tc.interface_impl_candidates_at_index
 		interface_method_names_index:       tc.interface_method_names_index
 		interface_abstract_index:           tc.interface_abstract_index
 		interface_field_list_index:         tc.interface_field_list_index

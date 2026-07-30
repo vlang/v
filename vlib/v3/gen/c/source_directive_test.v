@@ -1,5 +1,6 @@
 module c
 
+import os
 import v3.flat
 import v3.pref
 import v3.types
@@ -32,6 +33,52 @@ fn test_multiline_inlined_c_function_definition_is_collected() {
 
 	assert 'qrcodegen_encodeText' in g.inlined_c_fns
 	assert 'declared_with_anon_param' !in g.inlined_c_fns
+}
+
+fn test_preserved_header_trees_scan_shared_files_once() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_headers_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	shared_header := os.join_path(root, 'shared.h')
+	first := os.join_path(root, 'first.h')
+	second := os.join_path(root, 'second.h')
+	os.write_file(shared_header, 'int shared_header_fn(void);\n')!
+	os.write_file(first, '#include "shared.h"\n')!
+	os.write_file(second, '#include "shared.h"\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(first, [root])
+	g.collect_preserved_header_file(second, [root])
+
+	assert 'shared_header_fn' in g.inlined_c_declared_fns
+	assert g.preserved_header_files_seen.len == 3
+}
+
+fn test_large_nested_angle_header_stays_an_include() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_large_header_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	large_header := os.join_path(root, 'large.h')
+	wrapper_header := os.join_path(root, 'wrapper.h')
+	os.write_file(large_header, '#ifndef LARGE_H\n#define LARGE_H\n' + ' '.repeat(263_000) +
+		'\nint large_header_fn(void);\n#endif\n')!
+	os.write_file(wrapper_header, '#include <large.h>\nint wrapper_header_fn(void);\n')!
+
+	header := c_inline_header_text('"${wrapper_header}"', '', wrapper_header, [root], false) or {
+		panic('failed to inline wrapper header')
+	}
+
+	assert header.text.contains('#include <large.h>')
+	assert !header.text.contains('int large_header_fn(void);')
+	assert header.text.contains('int wrapper_header_fn(void);')
+	assert header.preserved_headers.len == 1
+	assert header.preserved_headers[0].include_arg == '<large.h>'
 }
 
 fn test_cache_tracks_omitted_native_function_definitions() {
