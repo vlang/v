@@ -579,3 +579,38 @@ fn main() {
 	assert saw_map
 	assert saw_generic
 }
+
+// The local-binding scope powers template-closure callee classification: a bare callee is
+// captured only when it names an in-scope local binding, never a module/top-level function.
+fn test_local_binding_scopes_track_shadowing_and_nesting() {
+	mut p := Parser.new(pref.new_preferences())
+	assert !p.is_local_binding('render')
+	// declare_local_binding is a no-op until a scope is open.
+	p.declare_local_binding('render')
+	assert !p.is_local_binding('render')
+
+	p.begin_local_binding_scope()
+	p.declare_local_binding('render')
+	p.declare_local_binding('row')
+	assert p.is_local_binding('render')
+	assert p.is_local_binding('row')
+	// A module/top-level function name is never an in-scope binding.
+	assert !p.is_local_binding('helper')
+	// `_` and empty names are not bindings.
+	p.declare_local_binding('_')
+	assert !p.is_local_binding('_')
+
+	// A nested scope's bindings disappear when it closes; the outer binding survives.
+	p.begin_local_binding_scope()
+	p.declare_local_binding('render')
+	p.declare_local_binding('inner')
+	assert p.is_local_binding('render')
+	assert p.is_local_binding('inner')
+	p.end_local_binding_scope()
+	assert p.is_local_binding('render')
+	assert !p.is_local_binding('inner')
+
+	p.end_local_binding_scope()
+	assert !p.is_local_binding('render')
+	assert !p.is_local_binding('row')
+}
