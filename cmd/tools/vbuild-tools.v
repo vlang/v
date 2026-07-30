@@ -11,7 +11,7 @@ import v.util
 // should be compiled (v folder).
 // To implement that, these folders are initially skipped, then added
 // as a whole *after the testing.prepare_test_session call*.
-const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vsqlite', 'vsymlink', 'vvet',
+const tools_in_subfolders = ['fast', 'vast', 'vcreate', 'vdoc', 'vpm', 'vsqlite', 'vsymlink', 'vvet',
 	'vwhere', 'vcover']
 
 // v2 is temporarily disabled, so tools that depend on it are skipped too.

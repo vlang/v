@@ -14,6 +14,73 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	}
 }
 
+fn c_string_literal_payload_units(value string) ?[]string {
+	mut units := []string{cap: value.len}
+	mut i := 0
+	for i < value.len {
+		start := i
+		if value[i] != `\\` {
+			i++
+			units << value[start..i]
+			continue
+		}
+		if i + 1 >= value.len {
+			return none
+		}
+		escape := value[i + 1]
+		match escape {
+			`'`, `"`, `?`, `\\`, `a`, `b`, `e`, `f`, `n`, `r`, `t`, `v` {
+				i += 2
+			}
+			`0`...`7` {
+				i += 2
+				mut digits := 1
+				for digits < 3 && i < value.len && value[i].is_oct_digit() {
+					i++
+					digits++
+				}
+			}
+			`x` {
+				i += 2
+				digits_start := i
+				for i < value.len && value[i].is_hex_digit() {
+					i++
+				}
+				if i == digits_start {
+					return none
+				}
+			}
+			else {
+				return none
+			}
+		}
+		units << value[start..i]
+	}
+	return units
+}
+
+fn (mut g Gen) write_c_string_literal_exact_array_initializer(value string, size int, elem_styp string) bool {
+	units := c_string_literal_payload_units(value) or { return false }
+	if units.len != size {
+		return false
+	}
+	g.write('{')
+	for i, unit in units {
+		if i > 0 {
+			g.write(', ')
+		}
+		mut escaped_unit := cescape_nonascii(unit)
+		if unit == "'" {
+			escaped_unit = "\\'"
+		} else if unit == r'\' {
+			escaped_unit = r'\\'
+		}
+		g.write("(${elem_styp})'${escaped_unit}'")
+	}
+	g.write('}')
+	return true
+}
+
 // optimize string interpolation in string builders:
 // `sb.writeln('a=${a}')` =>
 // `sb.writeln('a='); sb.writeln(a.str())`

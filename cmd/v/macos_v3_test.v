@@ -3,6 +3,29 @@ module main
 import os
 import v.pref
 
+fn test_macos_v3_embedded_driver_matches_cross_source_selection() {
+	$if cross ? {
+		assert !macos_v3_driver_is_available()
+	} $else $if macos {
+		assert macos_v3_driver_is_available()
+	}
+}
+
+fn test_macos_v3_driver_source_selection_matches_cross_define() {
+	driver_files := ['macos_v3_driver_d_cross.v', 'macos_v3_driver_notd_cross.v']
+	native_prefs := &pref.Preferences{}
+	native_files :=
+		native_prefs.should_compile_filtered_files('cmd/v', driver_files).map(os.base(it))
+	assert native_files == ['macos_v3_driver_notd_cross.v']
+
+	cross_prefs := &pref.Preferences{
+		compile_defines:     ['cross']
+		compile_defines_all: ['cross']
+	}
+	cross_files := cross_prefs.should_compile_filtered_files('cmd/v', driver_files).map(os.base(it))
+	assert cross_files == ['macos_v3_driver_d_cross.v']
+}
+
 fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	$if macos {
 		mut prefs := &pref.Preferences{
@@ -80,7 +103,7 @@ fn test_macos_v3_forwards_driver_defaults_once() {
 		}
 		forwarded := macos_v3_forwarded_args(prefs, ['-showcc', 'script.vsh'])
 		for flag in [macos_v3_compat_c99_flag, '-skip-running', '-silent', '-nocache',
-			'-no-memory-limit', '-no-parallel', '-showcc'] {
+			'-no-memory-limit', '-showcc'] {
 			assert flag in forwarded
 			assert forwarded.count(it == flag) == 1
 		}
@@ -88,13 +111,9 @@ fn test_macos_v3_forwards_driver_defaults_once() {
 			'--no-parallel', '-silent', '-skip-running', macos_v3_compat_c99_flag, 'script.vsh'])
 		assert already_explicit.count(it in ['-nocache', '--no-cache']) == 1
 		assert already_explicit.count(it in ['-no-memory-limit', '--no-memory-limit']) == 1
-		assert already_explicit.count(it in ['-no-parallel', '--no-parallel']) == 1
 		assert already_explicit.count(it == '-silent') == 1
 		assert already_explicit.count(it == '-skip-running') == 1
 		assert already_explicit.count(it == macos_v3_compat_c99_flag) == 1
-		explicit_parallel := macos_v3_forwarded_args(prefs, ['-parallel-transform', 'script.vsh'])
-		assert '-no-parallel' !in explicit_parallel
-		assert '--no-parallel' !in explicit_parallel
 	}
 }
 

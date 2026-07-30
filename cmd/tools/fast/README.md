@@ -134,8 +134,9 @@ cd /path/to/v/cmd/tools/fast && ./fast serve -port 8080   # in tmux/screen or a 
 **Publishing fast.vlang.io.** The public site is served statically from GitHub
 Pages, so `fast run` alone (which only writes `fast.db`) does **not** update it —
 you must also `export` the static site and push it. Point `$SITE` at a checkout of
-the Pages branch (`github.com/vlang/website`, branch `gh-pages`); a GitHub Actions
-workflow in that branch redeploys on every push:
+the generated-site branch (`github.com/vlang/website`, branch `gh-pages`). The
+`fast_pages.yml` workflow in `vlang/v` fetches that branch and deploys it from the
+self-hosted macOS runner. It also runs hourly as a fallback:
 
 ```cron
 # hourly: sample new commits, regenerate the static site, and publish it.
@@ -148,7 +149,8 @@ workflow in that branch redeploys on every push:
   && ./fast export -o "$SITE" \
   && git -C "$SITE" add -A \
   && { git -C "$SITE" diff --cached --quiet || git -C "$SITE" commit -m "update fast.vlang.io" ; } \
-  && git -C "$SITE" push ; } >> /path/to/v/cmd/tools/fast/fast.log 2>&1
+  && git -C "$SITE" push \
+  && gh workflow run fast_pages.yml -R vlang/v ; } >> /path/to/v/cmd/tools/fast/fast.log 2>&1
 ```
 
 (The old `fast_job.v` daemon and its `-upload` step have been removed; this
@@ -158,16 +160,19 @@ export-and-push is their replacement.)
 
 | Column      | Command                          | Meaning                          |
 |-------------|----------------------------------|----------------------------------|
-| `v -o v.c`  | `vprod -o v.c cmd/v`             | self-compile to C                |
-| `v -o v`    | `vprod -o v cmd/v`               | self-compile to a binary         |
+| `v -o v.c`  | `vprod -o v.c cmd/v` / v3 self  | self-compile to C                |
+| `v -o v`    | `vprod -o v cmd/v` / v3 self    | self-compile to a binary         |
 | `V lines / s` | derived                        | V lines per second (`v -o v.c`)  |
 | `V lines`   | `-stats`                          | number of V source lines         |
 | `v hello.v` | `vprod examples/hello_world.v`   | compile a tiny program           |
 | `v.c size`  | –                                | size of the generated `v.c`      |
-| scan/parse/check/cgen | `-show-timings`        | per-stage compiler times (min)   |
+| scan/parse/check/cgen | v3 self `-show-timings` | per-stage time and RSS (min) |
 
 Wall-clock timings take `max_samples` measurements after a couple of warmups and
 discard the slowest ones to cut noise (see the constants in `fast.v`).
+Phase RSS is available for commits measured from 2026-07-30 onward; older rows
+remain timing-only. Starting on that date, self-compile measurements compile
+`vlib/v3/v3.v`; older measurements compile `cmd/v`.
 
 ## Database
 

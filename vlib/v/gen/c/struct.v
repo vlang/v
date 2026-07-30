@@ -586,7 +586,10 @@ fn (mut g Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.Type
 		return false
 	}
 	for init_field in node.init_fields {
-		if g.need_tmp_var_in_expr(init_field.expr) {
+		// C string literals can initialize arrays only as part of an initializer.
+		// This path assigns fields after allocation, so keep the compound initializer instead.
+		if g.need_tmp_var_in_expr(init_field.expr)
+			|| g.is_translated_c_string_fixed_char_array_field(init_field) {
 			return false
 		}
 	}
@@ -595,6 +598,79 @@ fn (mut g Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.Type
 	}
 	field_names := info.fields.map(it.name)
 	return node.init_fields.all(it.name in field_names)
+}
+
+fn (mut g Gen) is_translated_c_string_fixed_char_array_field(field ast.StructInitField) bool {
+	if !(g.file.is_translated || g.pref.translated) {
+		return false
+	}
+	literal := match field.expr {
+		ast.StringLiteral { field.expr }
+		else { return false }
+	}
+	if literal.language != .c || field.expected_type == 0 {
+		return false
+	}
+	resolved_expected := g.table.fully_unaliased_type(g.unwrap_generic(field.expected_type))
+	if resolved_expected != resolved_expected.clear_flags()
+		|| resolved_expected.is_any_kind_of_pointer() {
+		return false
+	}
+	expected_sym := g.table.final_sym(resolved_expected)
+	array_info := match expected_sym.info {
+		ast.ArrayFixed { expected_sym.info }
+		else { return false }
+	}
+	resolved_elem_type := g.table.fully_unaliased_type(g.unwrap_generic(array_info.elem_type))
+	return resolved_elem_type == resolved_elem_type.clear_flags()
+		&& !resolved_elem_type.is_any_kind_of_pointer()
+		&& resolved_elem_type.idx() in [ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx]
+}
+
+fn (mut g Gen) translated_c_string_fixed_char_array_pointer_type(field ast.StructInitField) ?ast.Type {
+	if !(g.file.is_translated || g.pref.translated) {
+		return none
+	}
+	literal := match field.expr {
+		ast.StringLiteral { field.expr }
+		else { return none }
+	}
+	if literal.language != .c || field.expected_type == 0 {
+		return none
+	}
+	surface_expected := g.unwrap_generic(field.expected_type)
+	resolved_expected := g.table.fully_unaliased_type(surface_expected)
+	resolved_pointer := resolved_expected.clear_flag(.option)
+	if resolved_pointer != resolved_expected.clear_flags() || resolved_pointer.nr_muls() != 1 {
+		return none
+	}
+	if resolved_expected.has_flag(.option)
+		&& (!surface_expected.has_flag(.option) || surface_expected.nr_muls() != 1) {
+		return none
+	}
+	pointee_sym := g.table.final_sym(resolved_pointer.set_nr_muls(0))
+	array_info := match pointee_sym.info {
+		ast.ArrayFixed { pointee_sym.info }
+		else { return none }
+	}
+	resolved_elem_type := g.table.fully_unaliased_type(g.unwrap_generic(array_info.elem_type))
+	if resolved_elem_type != resolved_elem_type.clear_flags()
+		|| resolved_elem_type.is_any_kind_of_pointer()
+		|| resolved_elem_type.idx() !in [ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx] {
+		return none
+	}
+	return resolved_pointer
+}
+
+fn (mut g Gen) write_translated_c_string_exact_fixed_char_array_field(field ast.StructInitField) bool {
+	if !g.is_translated_c_string_fixed_char_array_field(field) {
+		return false
+	}
+	literal := field.expr as ast.StringLiteral
+	expected_sym := g.table.final_sym(g.unwrap_generic(field.expected_type))
+	array_info := expected_sym.info as ast.ArrayFixed
+	elem_styp := g.styp(g.unwrap_generic(array_info.elem_type))
+	return g.write_c_string_literal_exact_array_initializer(literal.val, array_info.size, elem_styp)
 }
 
 fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info ast.Struct, language ast.Language) {
@@ -770,10 +846,15 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	g.write('.${field_name} = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface] {
-			if field.typ.has_flag(.option) {
-				g.expr_with_opt(field.default_expr, field.default_expr_typ, field.typ)
+			default_expr_typ := if field.default_expr is ast.None {
+				ast.none_type
 			} else {
-				g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+				field.default_expr_typ
+			}
+			if field.typ.has_flag(.option) {
+				g.expr_with_opt(field.default_expr, default_expr_typ, field.typ)
+			} else {
+				g.expr_with_cast(field.default_expr, default_expr_typ, field.typ)
 			}
 			return true
 		}
@@ -1119,7 +1200,23 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 		expected_unwrap_typ := g.unwrap_generic(sfield.expected_type)
 		expected_unwrap_sym := g.table.final_sym(expected_unwrap_typ)
 		is_auto_deref_var := sfield.expr.is_auto_deref_var()
-		if expected_unwrap_sym.kind == .map && sfield.expr is ast.MapInit
+		if g.write_translated_c_string_exact_fixed_char_array_field(sfield) {
+			// GCC 15 warns about C-valid exact-size string initializers because they omit
+			// the implicit NUL. Emit the payload units explicitly for this boundary case.
+		} else if pointer_type := g.translated_c_string_fixed_char_array_pointer_type(sfield) {
+			cast_expr := ast.CastExpr{
+				typ:       pointer_type
+				typname:   g.table.type_to_str(pointer_type)
+				expr:      sfield.expr
+				expr_type: field_unwrap_typ
+				pos:       sfield.pos
+			}
+			if sfield.expected_type.has_flag(.option) {
+				g.expr_with_opt(cast_expr, pointer_type, sfield.expected_type)
+			} else {
+				g.expr(cast_expr)
+			}
+		} else if expected_unwrap_sym.kind == .map && sfield.expr is ast.MapInit
 			&& !sfield.expected_type.has_option_or_result()
 			&& !sfield.expected_type.has_flag(.shared_f)
 			&& !sfield.expected_type.has_flag(.atomic_f) && !sfield.expected_type.is_ptr() {

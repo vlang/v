@@ -100,7 +100,9 @@ mut:
 	unique_file_path_hash                u64 // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                              &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name                       string
-	tmp_count                            int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count                            int // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	user_goto_label_ids                  map[string]int
+	user_goto_label_count                int
 	tmp_count_af                         int  // a separate tmp var counter for autofree fn calls
 	tmp_count_declarations               int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
 	global_tmp_count                     int  // like tmp_count but global and not reset in each function
@@ -4562,7 +4564,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& expr.right is ast.StructInit
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('builtin___option_none(&(${styp}[]) { ')
-				} else if final_expr_sym.kind == .array_fixed {
+				} else if final_expr_sym.kind == .array_fixed && !expr_typ.is_ptr() {
 					expr_is_fixed_array_var = true
 					info := final_expr_sym.array_fixed_info()
 					mut no_cast := false
@@ -4974,11 +4976,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.GotoLabel {
-			g.writeln('${c_name(node.name)}: {}')
+			g.writeln('${g.user_goto_label_name(node.name)}: {}')
 		}
 		ast.GotoStmt {
 			g.write_v_source_line_info_stmt(node)
-			g.writeln('goto ${c_name(node.name)};')
+			g.writeln('goto ${g.user_goto_label_name(node.name)};')
 		}
 		ast.AsmStmt {
 			if g.is_cc_msvc && !g.pref.output_cross_c {
@@ -11313,14 +11315,6 @@ fn (mut g Gen) gen_hash_stmts_in_top() {
 	g.postinclude_nodes.clear()
 }
 
-fn labeled_continue_flag_name(label string) string {
-	return 'v__labeled_continue_${label}'
-}
-
-fn labeled_continue_entry_label_name(label string) string {
-	return '${label}__continue_entry'
-}
-
 fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 	if node.label != '' {
 		x := g.labeled_loops[node.label] or {
@@ -11372,10 +11366,10 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 			}
 		}
 		if node.kind == .key_break {
-			g.writeln('goto ${node.label}__break;')
+			g.writeln('goto ${g.user_goto_label_control_name(node.label, 'break')};')
 		} else {
-			continue_flag := labeled_continue_flag_name(node.label)
-			continue_entry_label := labeled_continue_entry_label_name(node.label)
+			continue_flag := g.user_goto_label_control_name(node.label, 'continue_flag')
+			continue_entry_label := g.user_goto_label_control_name(node.label, 'continue_entry')
 			g.writeln('${continue_flag} = true;')
 			g.writeln('goto ${continue_entry_label};')
 		}
@@ -11536,7 +11530,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			// return a zero-initialized Result here. Other tmpl kinds
 			// (`$tmpl(...)`) yield a string in `_tmpl_res_*`.
 			if expr0.kind == .html {
-				g.writeln('return (${ret_typ}){0};')
+				g.writeln('return (${ret_typ}){E_STRUCT};')
 			} else if fn_ret_type.has_option_or_result() {
 				tmp := g.new_tmp_var()
 				g.writeln('${ret_typ} ${tmp} = {0};')
@@ -13486,6 +13480,23 @@ fn c_name(name_ string) string {
 		return '__v_${name}'
 	}
 	return name
+}
+
+// Keep user goto labels short enough for MSVC's significant-identifier limit,
+// and isolate them in C's implementation namespace. IDs are allocated lazily
+// from the raw AST spelling and reset for each generated function.
+fn (mut g Gen) user_goto_label_name(name string) string {
+	if id := g.user_goto_label_ids[name] {
+		return '__v_user_goto_${id}'
+	}
+	id := g.user_goto_label_count
+	g.user_goto_label_ids[name] = id
+	g.user_goto_label_count++
+	return '__v_user_goto_${id}'
+}
+
+fn (mut g Gen) user_goto_label_control_name(name string, suffix string) string {
+	return '${g.user_goto_label_name(name)}__${suffix}'
 }
 
 @[inline]

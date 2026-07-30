@@ -35,7 +35,7 @@ fn cmd_export(args []string) ! {
 		r.message = html.escape(r.message)
 	}
 	count := rows.len
-	latest := if count > 0 { rows[0].timestamp } else { '—' }
+	latest := if count > 0 { '${rows[0].commit_hash} · ${rows[0].timestamp}' } else { '—' }
 	generated := time.now().format_ss()
 	page := $tmpl('templates/index.html')
 

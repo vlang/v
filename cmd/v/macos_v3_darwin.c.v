@@ -3,7 +3,6 @@ module main
 import os
 import v.pref
 import v.util
-import v3.driver
 
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
@@ -16,6 +15,9 @@ const macos_v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	if prefs.old_compiler {
+		return none
+	}
+	if !macos_v3_driver_is_available() {
 		return none
 	}
 	all_args := util.join_env_vflags_and_os_args()
@@ -82,12 +84,6 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if '-no-memory-limit' !in forwarded_args && '--no-memory-limit' !in forwarded_args {
 		forwarded_args.insert(0, '-no-memory-limit')
 	}
-	if '-no-parallel' !in forwarded_args && '--no-parallel' !in forwarded_args
-		&& '-parallel-transform' !in forwarded_args && '--parallel-transform' !in forwarded_args {
-		// Parallel transform is still opt-in while its worker merge can corrupt the
-		// used-function table on large module graphs.
-		forwarded_args.insert(0, '-no-parallel')
-	}
 	// An embedded V3 driver cannot restart itself by replacing the cmd/v process.
 	if '-nocache' !in forwarded_args && '--no-cache' !in forwarded_args {
 		forwarded_args.insert(0, '-nocache')
@@ -105,7 +101,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	}
 	environment := macos_v3_child_environment(vexe, os.environ())
 	replace_macos_v3_process_environment(environment)
-	driver.run(forwarded_args)
+	macos_v3_driver_run(forwarded_args)
 	exit(0)
 }
 

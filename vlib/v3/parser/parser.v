@@ -8,8 +8,7 @@ import v3.flat
 import v3.pref
 import v3.scanner
 import v3.token
-import v.util
-import v.util.version
+import v3.util
 
 const max_parse_diagnostics = 100
 
@@ -637,7 +636,7 @@ fn vmod_hash_for_file(path string) !string {
 	if !os.is_file(os.join_path_single(root, 'v.mod')) {
 		return error('@VMODHASH can only be used in projects that have a v.mod file')
 	}
-	return version.githash(root)
+	return util.githash(root)
 }
 
 // next supports next handling for Parser.

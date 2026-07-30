@@ -12,24 +12,28 @@ import db.sqlite
 @[table: 'benchmarks']
 struct Benchmark {
 mut:
-	id          int    @[primary; sql: serial]
-	commit_hash string @[unique] // short (8 char) hash; unique so concurrent runs cannot insert duplicates
-	git_ref     string    // the history this row belongs to (e.g. origin/master); mixing is rejected
-	message     string    // commit subject line
-	commit_date time.Time // committer date (%ct); monotonic along first-parent
-	created_at  time.Time // when this benchmark was actually run
-	v_c_ms      int       // `v -o v.c cmd/v`   : self compile to C
-	v_self_ms   int       // `v -o v cmd/v`     : self compile to a binary
-	hello_ms    int       // `v hello_world.v`  : compile a tiny program
-	vc_size_kb  int       // size of the generated v.c, in KB
-	scan_ms     int       // scanner time
-	parse_ms    int       // parser time
-	check_ms    int       // checker time
-	cgen_ms     int       // C generation time
-	vlines      int       // number of V source lines compiled
-	lines_per_s int       // V lines / second for the `v -o v.c` step
+	id           int    @[primary; sql: serial]
+	commit_hash  string @[unique] // short (8 char) hash; unique so concurrent runs cannot insert duplicates
+	git_ref      string    // the history this row belongs to (e.g. origin/master); mixing is rejected
+	message      string    // commit subject line
+	commit_date  time.Time // committer date (%ct); monotonic along first-parent
+	created_at   time.Time // when this benchmark was actually run
+	v_c_ms       int       // self compile to C (`cmd/v` historically, `vlib/v3/v3.v` now)
+	v_self_ms    int       // self compile to a binary (same source selection as v_c_ms)
+	hello_ms     int       // `v hello_world.v`  : compile a tiny program
+	vc_size_kb   int       // size of the generated v.c, in KB
+	scan_ms      int       // scanner time
+	parse_ms     int       // parser time
+	check_ms     int       // checker time
+	cgen_ms      int       // C generation time
+	scan_rss_kb  int       // RSS reported after the scan/setup stage (v3 output)
+	parse_rss_kb int       // RSS reported after parsing (v3 output)
+	check_rss_kb int       // RSS reported after checking (v3 output)
+	cgen_rss_kb  int       // RSS reported after C generation (v3 output)
+	vlines       int       // number of V source lines compiled
+	lines_per_s  int       // V lines / second for the `v -o v.c` step
 	// peak resident-set-size (RSS) five-number summary (KB) across rss_samples runs,
-	// for a box-and-whisker view. self_* = V self-compiling cmd/v, hello_* = hello.v.
+	// for a box-and-whisker view. self_* = V self-compiling, hello_* = hello.v.
 	self_rss_min_kb  int
 	self_rss_q1_kb   int
 	self_rss_med_kb  int
@@ -75,7 +79,7 @@ fn migrate_exec(mut db sqlite.DB, query string) ! {
 // PRAGMA user_version rather than the presence of a table/column, so a database
 // left half-migrated by an intermediate release (e.g. one that created fast_meta
 // but never seeded/canonicalized the history) is still upgraded.
-const schema_version = 2
+const schema_version = 3
 
 // migrate_schema upgrades a database created by an older version of the tool. It
 // is transactional and idempotent (a no-op once applied), and propagates errors
@@ -106,7 +110,8 @@ fn migrate_schema(mut db sqlite.DB) ! {
 fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	rss_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
 		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb',
-		'hello_rss_q3_kb', 'hello_rss_max_kb']
+		'hello_rss_q3_kb', 'hello_rss_max_kb', 'scan_rss_kb', 'parse_rss_kb', 'check_rss_kb',
+		'cgen_rss_kb']
 	for c in rss_columns {
 		if c !in existing {
 			migrate_exec(mut db,
@@ -426,6 +431,10 @@ mut:
 	parse       int
 	check       int
 	cgen        int
+	scan_rss    int
+	parse_rss   int
+	check_rss   int
+	cgen_rss    int
 	vlines      int
 	lines_per_s int
 	d_v_c       Delta
@@ -472,6 +481,10 @@ fn build_rows(list []Benchmark) []Row {
 			parse:       b.parse_ms
 			check:       b.check_ms
 			cgen:        b.cgen_ms
+			scan_rss:    b.scan_rss_kb / 1024
+			parse_rss:   b.parse_rss_kb / 1024
+			check_rss:   b.check_rss_kb / 1024
+			cgen_rss:    b.cgen_rss_kb / 1024
 			vlines:      b.vlines
 			lines_per_s: b.lines_per_s
 			d_v_c:       delta(b.v_c_ms, prev.v_c_ms, 18)

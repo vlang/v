@@ -1,7 +1,6 @@
 module driver
 
 import os
-import rand
 import strings
 import time
 import v3.bench
@@ -15,6 +14,7 @@ import v3.markused
 import v3.modulecache
 import v3.parser
 import v3.pref
+import v3.tempname
 import v3.transform
 import v3.types
 import v.vmod
@@ -426,7 +426,7 @@ fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats)
 		out.writeln('dependency=${dependency}\t${metadata}\t${stats.file_signatures[dependency]}')
 	}
 	out.writeln('complete=1')
-	temp_path := '${plan_path}.tmp.${os.getpid()}.${rand.ulid()}'
+	temp_path := '${plan_path}.tmp.${tempname.unique_token()}'
 	defer {
 		os.rm(temp_path) or {}
 	}
@@ -857,7 +857,7 @@ fn compile_v3_program_prefix(source string, source_identity string, external_inp
 	if source.len == 0 {
 		return error('cached program prefix object is unavailable')
 	}
-	unique := '${os.getpid()}.${rand.ulid()}'
+	unique := tempname.unique_token()
 	tmp_source := '${source_path}.tmp.${unique}'
 	tmp_object := '${object_path}.tmp.${unique}'
 	defer {
@@ -948,7 +948,7 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 	if os.is_file(dylib_path) {
 		return dylib_path
 	}
-	tmp_dylib := '${dylib_path}.tmp.${os.getpid()}.${rand.ulid()}'
+	tmp_dylib := '${dylib_path}.tmp.${tempname.unique_token()}'
 	response_path := os.join_path(build_dir, 'dev_dylib.rsp')
 	defer {
 		os.rm(tmp_dylib) or {}
@@ -1018,7 +1018,7 @@ fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity s
 }
 
 fn publish_v3_cached_executable(source string, destination string) {
-	tmp := '${destination}.tmp.${os.getpid()}.${rand.ulid()}'
+	tmp := '${destination}.tmp.${tempname.unique_token()}'
 	defer {
 		os.rm(tmp) or {}
 	}
@@ -1120,7 +1120,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if dependencies.used_fallback {
 		stats.dependency_scan_fallbacks++
 		uncached_obj := os.join_path(uncached_dir,
-			'dependency_scan_fallback_${os.getpid()}_${rand.ulid()}.o')
+			'dependency_scan_fallback_${tempname.unique_token()}.o')
 		trace_c_object_cache('bypass', os.base(obj_path),
 			'dependency scan failed; using build-local object', dependencies.files.len)
 		args << ['-o', uncached_obj, '-c', source_file]
@@ -1148,7 +1148,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// Snapshot the exact arguments that produced cache_key so the post-compile
 	// digest is computed over the same inputs (temp_obj/-c must not perturb it).
 	key_args := args.clone()
-	temp_obj := '${cached_obj}.tmp.${os.getpid()}.${rand.ulid()}'
+	temp_obj := '${cached_obj}.tmp.${tempname.unique_token()}'
 	args << ['-o', temp_obj, '-c', source_file]
 	res := cmdexec.run(compiler, args)
 	if res.exit_code != 0 {
@@ -1166,7 +1166,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		trace_c_object_cache('bypass', cache_key,
 			'inputs changed during compilation; using build-local object', dependencies.files.len)
 		uncached_obj := os.join_path(uncached_dir,
-			'input_snapshot_race_${os.getpid()}_${rand.ulid()}.o')
+			'input_snapshot_race_${tempname.unique_token()}.o')
 		os.mv(temp_obj, uncached_obj) or {
 			os.rm(temp_obj) or {}
 			return error('failed to stage build-local C object ${uncached_obj}: ${err}')
@@ -1248,7 +1248,7 @@ fn write_c_object_manifest(manifest_path string, object_path string, dependencie
 		}
 		out.writeln('dependency=${dependency}\t${signature}')
 	}
-	temp_path := '${manifest_path}.tmp.${os.getpid()}.${rand.ulid()}'
+	temp_path := '${manifest_path}.tmp.${tempname.unique_token()}'
 	defer {
 		os.rm(temp_path) or {}
 	}
@@ -1609,7 +1609,8 @@ fn input_is_cmd_v(input_file string) bool {
 
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
-		return os.base(os.real_path(input_file))
+		real_input := os.real_path(input_file)
+		return os.join_path_single(real_input, os.base(real_input))
 	}
 	if input_file.ends_with('.vv') {
 		return input_file.all_before_last('.vv')
@@ -1681,7 +1682,8 @@ fn keep_c_output_file(bin_file string) string {
 	if base in ['', '.', '..'] {
 		base = 'vtmp'
 	}
-	return os.real_path(os.join_path_single(os.vtmp_dir(), '${base}.${rand.ulid()}.tmp.c'))
+	return os.real_path(os.join_path_single(os.vtmp_dir(),
+		'${base}.${tempname.unique_token()}.tmp.c'))
 }
 
 fn v3_crun_cache_marker_path(bin_file string) string {
@@ -1711,7 +1713,7 @@ fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
 	}
 	marker := v3_crun_cache_marker_path(bin_file)
 	os.mkdir_all(os.dir(marker), mode: 0o700)!
-	staged := '${marker}.stage.${os.getpid()}.${rand.ulid()}'
+	staged := '${marker}.stage.${tempname.unique_token()}'
 	os.write_file(staged, '${build_identity}\n${binary_signature}')!
 	os.mv(staged, marker) or {
 		os.rm(staged) or {}
@@ -3835,6 +3837,7 @@ fn suppress_minimal_literal_output_builtin_imports(mut a flat.FlatAst) {
 }
 
 // run executes the V3 compiler driver with `args`.
+@[markused]
 pub fn run(args []string) {
 	if args.len == 0 {
 		eprintln(cli_usage())
@@ -4560,6 +4563,9 @@ pub fn run(args []string) {
 		if request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
 			exit(1)
 		}
+		if macos_v3_fallback_file != '' {
+			exit(1)
+		}
 		for diagnostic in p.diagnostics {
 			if file := a.source_files[diagnostic.pos.id] {
 				_ = file
@@ -4597,11 +4603,13 @@ pub fn run(args []string) {
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		return
 	}
-	// Parallel transform is disabled for larger embedded imports to stay below
-	// 2 GiB. Cgen workers reconcile their local string IDs during the ordered
-	// merge, so embedded generation remains deterministic in parallel.
+	// Parallel transform is disabled for larger embedded imports when worker
+	// scratch allocations live for the whole compilation. Scoped preallocation
+	// releases that scratch after each stage, so it can retain parallel transform
+	// without the former memory growth. Cgen workers reconcile their local string
+	// IDs during the ordered merge, so embedded generation remains deterministic.
 	if !current_no_parallel && os.getenv(v3_embedded_env) == '1' {
-		if a.nodes.len >= embedded_parallel_transform_node_limit {
+		if !scope_prealloc_transform && a.nodes.len >= embedded_parallel_transform_node_limit {
 			current_parallel_transform = false
 		}
 	}
@@ -4894,7 +4902,9 @@ pub fn run(args []string) {
 			cvsw.restart()
 		}
 		if pre_tc.check_interface_embedding_limits() {
-			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			if macos_v3_fallback_file == '' {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
 			exit(1)
 		}
 		if verbose {
@@ -4988,7 +4998,9 @@ pub fn run(args []string) {
 						fixture_used_fns, false)
 				}
 			}
-			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			if macos_v3_fallback_file == '' {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {
@@ -5353,7 +5365,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if !incremental_cache_hit {
-			pre_tc.freeze_interface_impl_names()
+			pre_tc.freeze_pre_transform_interface_impl_names()
 		}
 		b.metric('AST nodes after transform', a.nodes.len, 'nodes')
 		b.metric('AST children after transform', a.children.len, 'edges')
@@ -5405,6 +5417,9 @@ pub fn run(args []string) {
 		b.step('annotate types (cached)')
 	}
 	if pre_tc.errors.len > 0 {
+		if macos_v3_fallback_file != '' {
+			exit(1)
+		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 		exit(1)
 	}
@@ -5551,7 +5566,9 @@ pub fn run(args []string) {
 			used_fns = monomorph_used_fns.move()
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
-			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			if pre_tc.errors.len == 0 || macos_v3_fallback_file == '' {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {
@@ -5673,7 +5690,7 @@ pub fn run(args []string) {
 				os.getwd()
 			}
 			cc_dir = os.join_path_single(bin_dir,
-				'.${os.base(bin_file)}.v3cc.${os.getpid()}.${rand.ulid()}')
+				'.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
 			os.mkdir(cc_dir) or {
 				eprintln('failed to create C build directory ${cc_dir}: ${err}')
 				exit(1)
@@ -5853,6 +5870,15 @@ pub fn run(args []string) {
 		}
 		b.step('C object cache')
 		link_uses_non_c_language := c_link_flags_use_non_c_language(resolved_c_flags)
+		mut tcc_link_has_incompatible_objects := false
+		if prefs.normalized_target_os() == 'macos' {
+			for flag in resolved_c_flags {
+				if c_flag_is_object_file(flag.trim_space()) {
+					tcc_link_has_incompatible_objects = true
+					break
+				}
+			}
+		}
 		link_c_standard := if link_uses_non_c_language {
 			''
 		} else {
@@ -6130,7 +6156,7 @@ pub fn run(args []string) {
 		b.metric('generated C size', os.file_size(published_c_source), 'bytes')
 		if keep_c {
 			keep_c_file := keep_c_output_file(bin_file)
-			staged_c := '${keep_c_file}.stage.${os.getpid()}.${rand.ulid()}'
+			staged_c := '${keep_c_file}.stage.${tempname.unique_token()}'
 			os.cp(published_c_source, staged_c) or {
 				eprintln('failed to stage generated C output ${keep_c_file}: ${err}')
 				cleanup_c_build_dir(cc_dir)
@@ -6211,10 +6237,13 @@ pub fn run(args []string) {
 		// Cached module objects can make tcc accept an unresolved call in the
 		// program translation unit and emit a broken executable. Compile and link
 		// the much smaller cached main unit with the system C compiler so the same
-		// undeclared-function diagnostics remain enforced.
+		// undeclared-function diagnostics remain enforced. Bundled tcc also cannot
+		// link the Mach-O objects supplied by macOS system and third-party modules;
+		// avoid compiling the whole translation unit once before that guaranteed
+		// link failure.
 		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
-			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
-			&& !cache_state.manager.enabled && !is_c_debug {
+			&& !tcc_link_has_incompatible_objects && target_args.len == 0
+			&& (!c_compiler_explicit || explicit_tcc) && !cache_state.manager.enabled && !is_c_debug {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -7231,7 +7260,7 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_sig
 }
 
 fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) ! {
-	unique := '${os.getpid()}.${rand.ulid()}'
+	unique := tempname.unique_token()
 	tmp_source := '${entry.c_source}.tmp.${unique}.c'
 	defer {
 		os.rm(tmp_source) or {}

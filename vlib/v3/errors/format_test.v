@@ -1,8 +1,20 @@
 module errors
 
+import encoding.utf8.east_asian
 import os
 import v3.flat
 import v3.token
+
+fn test_diagnostic_display_width_matches_east_asian_boundaries() {
+	assert diagnostic_display_width('ascii') == 5
+	assert diagnostic_display_width('\xffx') == 2
+	for entry in diagnostic_wide_ranges {
+		for codepoint in [entry.start - 1, entry.start, entry.end, entry.end + 1] {
+			text := rune(codepoint).str()
+			assert diagnostic_display_width(text) == east_asian.display_width(text, 1)
+		}
+	}
+}
 
 fn test_relative_error_path_honors_absolute_path_requests() {
 	old_value := os.getenv_opt('VERROR_PATHS')

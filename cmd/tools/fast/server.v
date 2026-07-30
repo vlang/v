@@ -55,7 +55,7 @@ pub fn (mut app App) index(mut ctx Context) veb.Result {
 
 	rows := build_rows(list)
 	count := rows.len
-	latest := if count > 0 { rows[0].timestamp } else { '—' }
+	latest := if count > 0 { '${rows[0].commit_hash} · ${rows[0].timestamp}' } else { '—' }
 	generated := time.now().format_ss()
 	return $veb.html()
 }

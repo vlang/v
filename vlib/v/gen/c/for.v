@@ -85,11 +85,12 @@ fn (mut g Gen) write_labeled_continue_gate(label string, prefix string) {
 	if label.len == 0 {
 		return
 	}
-	continue_flag := labeled_continue_flag_name(label)
-	continue_entry_label := labeled_continue_entry_label_name(label)
+	continue_flag := g.user_goto_label_control_name(label, 'continue_flag')
+	continue_entry_label := g.user_goto_label_control_name(label, 'continue_entry')
+	continue_label := g.user_goto_label_control_name(label, 'continue')
 	g.writeln('${prefix}bool ${continue_flag} = false;')
 	g.writeln('${prefix}${continue_entry_label}: {}')
-	g.writeln('${prefix}if (${continue_flag}) goto ${label}__continue;')
+	g.writeln('${prefix}if (${continue_flag}) goto ${continue_label};')
 }
 
 fn for_c_ident_name(expr ast.Expr) string {
@@ -319,7 +320,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
 		if node.label.len > 0 {
-			g.writeln('${node.label}:')
+			g.writeln('${g.user_goto_label_name(node.label)}:')
 		}
 		g.writeln('{')
 		g.indent++
@@ -363,7 +364,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
 				ends_with_branch)
 			g.writeln('}')
-			g.writeln('${node.label}__continue: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 		} else {
 			g.write_defer_stmts(node.scope, false, node.pos)
 			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
@@ -373,14 +374,14 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
 		g.writeln('}')
 		if has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
 		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
 		g.indent--
 		g.writeln('}')
 		if !has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 	} else {
 		overflow_guard := g.for_c_unsigned_overflow_guard(node) or { ForCOverflowGuard{} }
@@ -403,7 +404,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('bool ${overflow_guard_flag} = false;')
 		}
 		if node.label.len > 0 {
-			g.writeln('${node.label}:')
+			g.writeln('${g.user_goto_label_name(node.label)}:')
 		}
 		g.set_current_pos_as_last_stmt_pos()
 		g.skip_stmt_pos = true
@@ -460,7 +461,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
 				ends_with_branch)
 			g.writeln('}')
-			g.writeln('${node.label}__continue: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 		} else {
 			g.write_defer_stmts(node.scope, false, node.pos)
 			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
@@ -470,7 +471,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
 		g.writeln('}')
 		if has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
 		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
@@ -479,7 +480,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('}')
 		}
 		if !has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 	}
 	g.loop_depth--
@@ -489,7 +490,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.loop_depth++
 	g.is_vlines_enabled = false
 	if node.label.len > 0 {
-		g.writeln('${node.label}:')
+		g.writeln('${g.user_goto_label_name(node.label)}:')
 	}
 	g.writeln('for (;;) {')
 	if !node.is_inf {
@@ -512,14 +513,14 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		g.writeln('\t}')
-		g.writeln('\t${node.label}__continue: {}')
+		g.writeln('\t${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 	} else {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 	}
 	g.writeln('}')
 	if node.label.len > 0 {
-		g.writeln('${node.label}__break: {}')
+		g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 	}
 	g.loop_depth--
 }
@@ -711,7 +712,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	g.loop_depth++
 	mut array_debug_value_scope_opened := false
 	if node.label.len > 0 {
-		g.writeln('\t${node.label}: {}')
+		g.writeln('\t${g.user_goto_label_name(node.label)}: {}')
 	}
 	if node.is_range {
 		// `for x in 1..10 {`
@@ -1213,7 +1214,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		g.writeln('\t}')
-		g.writeln('\t${node.label}__continue: {}')
+		g.writeln('\t${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 	} else {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
@@ -1224,7 +1225,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('}')
 	}
 	if node.label.len > 0 {
-		g.writeln('\t${node.label}__break: {}')
+		g.writeln('\t${g.user_goto_label_control_name(node.label, 'break')}: {}')
 	}
 	g.loop_depth--
 }

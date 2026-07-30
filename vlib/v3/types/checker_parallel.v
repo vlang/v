@@ -402,7 +402,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 			.struct_decl {
 				node_id := flat.NodeId(i)
 				if do_signatures {
-					if 'typedef' in node.typ.split(',') && !node.value.starts_with('C.') {
+					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch,
 							'`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id,
 							'struct'))
