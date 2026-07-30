@@ -106,7 +106,12 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		g.write('array_new(sizeof(${sizeof_elem}), 0, 0)')
 		return
 	}
-	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[]){')
+	new_fn := if count == 1 && array_literal_elem_can_use_noscan(elem_type) {
+		'new_array_from_c_array_noscan'
+	} else {
+		'new_array_from_c_array'
+	}
+	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[]){')
 	for i in 0 .. count {
 		if i > 0 {
 			g.write(', ')
@@ -127,6 +132,28 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		g.gen_expr_with_expected_type(child_id, elem_type)
 	}
 	g.write('})')
+}
+
+fn array_literal_elem_can_use_noscan(elem_type types.Type) bool {
+	clean := cgen_unalias_type(elem_type)
+	return clean is types.Primitive || clean is types.Char || clean is types.Rune
+		|| clean is types.ISize || clean is types.USize || clean is types.Enum
+}
+
+fn (mut g FlatGen) gen_array_equality_literal_arg(names []string, arg_idx int, arg_id flat.NodeId, node flat.Node) bool {
+	if arg_idx !in [0, 1] || node.kind != .array_literal
+		|| !names.any(it in ['array_eq_raw', 'array_eq_string', 'array_eq_array']) {
+		return false
+	}
+	if arr := array_like_type(g.usable_expr_type(arg_id)) {
+		g.gen_array_literal_value(node, arr.elem_type)
+		return true
+	}
+	if arr := array_like_type(g.tc.parse_type(node.typ)) {
+		g.gen_array_literal_value(node, arr.elem_type)
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_array_literal_ptr_arg(node flat.Node, elem_type types.Type) {

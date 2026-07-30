@@ -1034,7 +1034,15 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			p.next()
 		}
 		receiver_name = p.expect_name()
-		receiver_type = p.parse_type_name()
+		if p.tok == .rpar {
+			// V permits an unnamed type-only receiver, e.g. `fn (File) read()`.
+			// Keep an explicit ignored receiver binding so downstream method
+			// signature and dispatch indexes still receive parameter 0.
+			receiver_type = receiver_name
+			receiver_name = '_'
+		} else {
+			receiver_type = p.parse_type_name()
+		}
 		if receiver_type.starts_with('mut ') {
 			receiver_is_mut = true
 			receiver_type = receiver_type[4..].trim_space()
@@ -2335,11 +2343,12 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					ptype = '&' + ptype
 				}
 				params << p.add_node(flat.Node{
-					kind:  .param
-					value: param_name
-					typ:   ptype
-					op:    if param_is_mut { .amp } else { .none }
-					pos:   param_pos
+					kind:   .param
+					value:  param_name
+					typ:    ptype
+					op:     if param_is_mut { .amp } else { .none }
+					is_mut: param_is_mut
+					pos:    param_pos
 				})
 				if p.tok == .comma {
 					p.next()
@@ -7514,6 +7523,7 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) assert_stmt() flat.NodeId {
+	assert_start := p.span_start()
 	p.next() // skip 'assert'
 	cond := p.expr(.lowest)
 	mut ids := []flat.NodeId{}
@@ -7531,6 +7541,7 @@ fn (mut p Parser) assert_stmt() flat.NodeId {
 		kind:           .assert_stmt
 		children_start: astart
 		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(assert_start)
 	})
 }
 
@@ -11420,7 +11431,7 @@ fn (mut p Parser) parse_fn_type_param() string {
 	if p.tok != .comma && p.tok != .rpar && p.tok != .eof && p.can_start_type_name() {
 		second := p.parse_type_name_progress()
 		if second.len > 0 {
-			return '${first} ${fn_type_param_with_mut(second, is_mut)}'
+			return fn_type_param_with_mut('${first} ${second}', is_mut)
 		}
 	}
 	return fn_type_param_with_mut(first, is_mut)
@@ -12012,23 +12023,32 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 	mut ids := []flat.NodeId{}
 	mut field_names := []string{}
 	mut field_types := []string{}
+	mut sect_is_pub := false
+	mut sect_is_mut := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon || p.tok == .comma {
 			p.next()
 			continue
 		}
-		if p.tok.is_keyword() && p.lit in ['mut', 'pub'] && p.peek() == .colon {
+		if p.tok == .key_pub && p.peek() in [.colon, .key_mut] {
 			p.next()
-			p.next()
-			continue
-		}
-		if p.tok.is_keyword() && p.lit == 'pub' && p.peek() == .key_mut {
-			p.next()
-			p.next()
+			sect_is_pub = true
+			sect_is_mut = false
+			if p.tok == .key_mut {
+				sect_is_mut = true
+				p.next()
+			}
 			if p.tok == .colon {
 				p.next()
-				continue
 			}
+			continue
+		}
+		if p.tok == .key_mut && p.peek() == .colon {
+			p.next()
+			p.next()
+			sect_is_pub = false
+			sect_is_mut = true
+			continue
 		}
 		if p.tok != .name && !p.tok.is_keyword() {
 			p.next()
@@ -12060,7 +12080,7 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 					typ:   field_type
 					pos:   p.span_to(name_starts[index])
 				})
-				p.apply_field_meta(fid, false, false, attrs)
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, attrs)
 				ids << fid
 				field_names << name
 				field_types << field_type
@@ -12091,7 +12111,9 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			children_count: flat.child_count(children_count)
 		})
 		if p.tok == .attribute || p.tok == .lsbr {
-			p.apply_field_meta(fid, false, false, p.parse_field_attrs())
+			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, p.parse_field_attrs())
+		} else {
+			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, [])
 		}
 		ids << fid
 		field_names << field_name

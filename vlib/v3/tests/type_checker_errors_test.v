@@ -182,6 +182,116 @@ fn test_parallel_checker_preserves_diagnostic_order() {
 	assert second < third
 }
 
+// test_type_checker_c_extern_suffix_does_not_hide_v_fn validates this v3 regression case.
+fn test_type_checker_c_extern_suffix_does_not_hide_v_fn() {
+	v3_bin := build_v3()
+	c_suffix_out := run_good(v3_bin, 'c_extern_suffix_does_not_hide_v_fn', 'fn C.answer() int
+
+fn answer() int {
+	return 42
+}
+
+fn main() {
+	println(answer())
+}
+')
+	assert c_suffix_out == '42'
+}
+
+fn test_type_checker_accepts_v_numeric_coercions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'v_numeric_coercions', 'fn takes_f64(value f64) f64 {
+	return value
+}
+
+fn takes_i64(value i64) i64 {
+	return value
+}
+
+fn negative_one() f64 {
+	return -1
+}
+
+fn main() {
+	mut result := 2.0
+	sign := -1
+	result *= sign
+	small := f32(1.5)
+	base := 2
+	println(takes_f64(small))
+	println(takes_i64(base))
+	println(result)
+	println(negative_one())
+}
+')
+	assert out == '1.5\n2\n-2.0\n-1.0'
+}
+
+fn test_type_checker_accepts_v_array_and_interface_mut_compatibility() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'v_array_and_interface_mut_compatibility', 'interface Writer {
+	write(mut dst []u8)
+}
+
+struct ByteWriter {}
+
+fn (w ByteWriter) write(mut dst []u8) {
+	dst[0] = 7
+}
+
+interface Sized {
+	size() int
+}
+
+struct Item {}
+
+fn (i Item) size() int {
+	return 3
+}
+
+fn item_size(item Item) int {
+	return item.size()
+}
+
+fn interface_size(item Sized) int {
+	return item.size()
+}
+
+fn sum(values []int) int {
+	return values[0]
+}
+
+fn modify(mut values []int) {
+	assert sum(values) == 1
+	values[0] = 9
+}
+
+fn first(values &[]int) int {
+	return values[0]
+}
+
+fn main() {
+	mut bytes := [u8(0)]
+	writer := Writer(ByteWriter{})
+	writer.write(mut bytes)
+	mut values := [1, 2]
+	modify(mut values[..1])
+	assert values == [9, 2]
+	assert []int{} == []
+	unsafe {
+		ptr := &values
+		assert ptr == [9, 2]
+	}
+	item := Item{}
+	println(int(bytes[0]))
+	println(first(&values))
+	println(item_size(&item))
+	println(interface_size(&item))
+}
+')
+	assert out == '7\n9\n3\n3'
+}
+
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.
 fn test_type_checker_reports_core_semantic_errors() {
 	v3_bin := build_v3()
@@ -1100,6 +1210,35 @@ fn test_multi_return_if_tail_infers_common_type() {
 	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign',
 		'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n',
 		'multi-return assignment mismatch')
+}
+
+fn test_multi_return_or_block_accepts_tuple_fallback() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_multi_return_or_tuple_fallback', '
+fn pair() !(string, string) {
+	return error("no pair")
+}
+
+fn main() {
+	first, second := pair() or { "first", "second" }
+	println("\${first} \${second}")
+}
+')
+	assert output == 'first second'
+}
+
+fn test_or_block_accepts_assert_false_fallback() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_or_assert_false_fallback', '
+fn main() {
+	values := {
+		"answer": u64(42)
+	}
+	answer := values["answer"] or { assert false, "missing answer" }
+	println(answer)
+}
+')
+	assert output == '42'
 }
 
 fn test_multi_return_if_assignment_uses_lhs_context() {

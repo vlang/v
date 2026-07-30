@@ -138,6 +138,12 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
 	if is_generic {
 		clean = base
 	}
+	if t.is_builtin_ierror_interface_name(clean) {
+		if 'builtin.IError' in t.tc.interface_names {
+			return 'builtin.IError'
+		}
+		return 'IError'
+	}
 	if clean in t.tc.interface_names {
 		return clean
 	}
@@ -875,30 +881,27 @@ fn (mut t Transformer) transform_interface_cast(id flat.NodeId, node flat.Node) 
 	})
 }
 
-// transform_interface_method_call transforms method calls on interface values.
-// This is a hook for vtable dispatch lowering where `iface.method(args)`
-// needs to be rewritten to indirect calls through the interface vtable.
-// Currently passes through unchanged.
+// transform_interface_method_call transforms the arguments of a vtable-dispatched
+// interface call using the abstract method's signature.
 fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat.Node) flat.NodeId {
-	if node.children_count == 0 {
-		return id
+	if node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			base_id := t.a.child(callee, 0)
+			if _ := t.raw_const_type_name_for_expr(base_id) {
+				// A module-qualified interface constant (`net.err_foo.code()`) is
+				// syntactically a selector chain. Lower it to the interface wrapper
+				// explicitly so C generation cannot mistake the constant name for a
+				// concrete receiver type.
+				method_name := t.tc.resolved_call_name(id) or { '' }
+				if method_name.len > 0 && t.is_known_fn_name(method_name) {
+					args := t.transform_receiver_method_args(node, base_id, method_name)
+					ret_type := t.receiver_method_return_type(method_name, node.typ)
+					t.mark_fn_used_name(method_name)
+					return t.make_receiver_method_call_typed(node, method_name, args, ret_type)
+				}
+			}
+		}
 	}
-	mut new_children := []flat.NodeId{cap: int(node.children_count)}
-	for i in 0 .. node.children_count {
-		child_id := t.a.child(&node, i)
-		new_children << t.transform_expr(child_id)
-	}
-	start := t.a.children.len
-	for nc in new_children {
-		t.a.children << nc
-	}
-	return t.a.add_node(flat.Node{
-		kind:           node.kind
-		op:             node.op
-		children_start: start
-		children_count: node.children_count
-		pos:            node.pos
-		value:          node.value
-		typ:            node.typ
-	})
+	return t.transform_call_args(id, node)
 }

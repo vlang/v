@@ -74,6 +74,24 @@ fn test_strings_similarity_len_fields_do_not_require_closure_runtime() {
 	assert !scan.needs_closure
 }
 
+fn test_shared_parameter_and_local_require_sync_runtime() {
+	param_scan := scan_implicit_import_source('shared_param', '
+struct State {}
+
+fn use(shared state State) {}
+')
+	assert param_scan.needs_sync
+
+	local_scan := scan_implicit_import_source('shared_local', '
+struct State {}
+
+fn main() {
+	shared state := State{}
+}
+')
+	assert local_scan.needs_sync
+}
+
 fn test_known_fields_and_call_returns_do_not_require_closure_runtime() {
 	scan := scan_implicit_import_source('known_fields', '
 type Builder = []u8

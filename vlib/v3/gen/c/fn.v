@@ -1,14 +1,17 @@
 module c
 
+import os
 import strings
 import v3.flat
 import v3.gen.c.naming
 import v3.types
 
 struct TestHarnessFn {
-	name   string
-	c_name string
-	ret    types.Type
+	node_id flat.NodeId
+	name    string
+	c_name  string
+	ret     types.Type
+	file    string
 }
 
 struct TestHarnessHooks {
@@ -1054,6 +1057,13 @@ fn (mut g FlatGen) direct_call_name_for_call_node(id flat.NodeId, node flat.Node
 			}
 		}
 		return g.direct_call_name(specialized)
+	}
+	// A transformed method call already carries the exact non-generic declaration
+	// selected by the checker/transformer. Do not reinterpret it as a same-spelled
+	// generic receiver method from another module (for example,
+	// decoder2.Decoder.decode_string vs json2.Decoder[T].decode_string).
+	if (name in g.tc.fn_ret_types || name in g.tc.fn_param_types) && name !in g.tc.fn_generic_params {
+		return g.direct_call_name(name)
 	}
 	if specialized := g.specialized_generic_method_name_for_call_args(node, name,
 		int(node.children_count) - 1)
@@ -2846,8 +2856,11 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	}
 	ctx_receiver_needs_drop := g.tc.ownership_type_requires_destruction(ctx_receiver_type)
 	// The wrapper has translation-unit scope, so name it from the stable selector
-	// site instead of the function-local temporary counter.
-	idx := int(base_id)
+	// site and signature instead of the function-local temporary counter. Comptime
+	// expansion can reuse one selector node for methods with different concrete
+	// signatures, so the node id alone is not unique.
+	wrapper_key := '${method_key}|${ctx_receiver_ct}|${ret_ct}|${params.map(it.name()).join(',')}'
+	idx := '${int(base_id)}_${callback_stable_key_hash(wrapper_key)}'
 	ctx_name := '_mvctx_${idx}'
 	wrap_name := '_mvwrap_${idx}'
 	drop_name := '_mvdrop_${idx}'
@@ -3890,7 +3903,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 		if p.kind == .param {
 			decl_param_type := g.tc.parse_resolution_type(p.typ)
 			param_type := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
-				typed_params[param_idx]
+				g.fn_node_effective_param_type(p, typed_params[param_idx])
 			} else if shared_alias_ptr := g.shared_alias_pointer_type_from_text(p.typ) {
 				shared_alias_ptr
 			} else if !concrete_optional_params && p.typ.len > 0
@@ -4163,17 +4176,29 @@ fn (mut g FlatGen) gen_test_main() {
 	if hooks.testsuite_begin.len > 0 {
 		g.writeln('${hooks.testsuite_begin}();')
 	}
+	if g.show_test_stats && tests.len > 0 {
+		g.writeln('printf("running tests in: ${c_escape(tests[0].file)}\\n");')
+	}
 	for idx, test_fn in tests {
 		if hooks.before_each.len > 0 {
 			g.writeln('${hooks.before_each}();')
 		}
 		g.gen_test_fn_call(test_fn, hooks, idx)
+		if g.show_test_stats {
+			assert_count := g.test_fn_assert_count(test_fn.node_id)
+			assert_word := if assert_count == 1 { 'assert ' } else { 'asserts' }
+			g.writeln('printf("     OK    [${idx + 1}/${tests.len}]     0.000 ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n");')
+		}
 		if hooks.after_each.len > 0 {
 			g.writeln('${hooks.after_each}();')
 		}
 	}
 	if hooks.testsuite_end.len > 0 {
 		g.writeln('${hooks.testsuite_end}();')
+	}
+	if g.show_test_stats && tests.len > 0 {
+		file_name := os.file_name(tests[0].file)
+		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": ${tests.len} passed, ${tests.len} total. Elapsed time: 0 ms.\\n\");")
 	}
 	g.writeln('return 0;')
 	g.indent--
@@ -4241,9 +4266,11 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 				else {
 					if child.value.starts_with('test_') && g.is_supported_test_fn_decl(child) {
 						tests << TestHarnessFn{
-							name:   child.value
-							c_name: cname
-							ret:    g.tc.parse_type(child.typ)
+							node_id: child_id
+							name:    child.value
+							c_name:  cname
+							ret:     g.tc.parse_type(child.typ)
+							file:    file_node.value
 						}
 					}
 				}
@@ -4251,6 +4278,23 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 		}
 	}
 	return tests, hooks
+}
+
+fn (g &FlatGen) test_fn_assert_count(id flat.NodeId) int {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return 0
+	}
+	node := g.a.nodes[int(id)]
+	mut count := if node.kind == .assert_stmt { 1 } else { 0 }
+	for i in 0 .. node.children_count {
+		child_id := g.a.child(&node, i)
+		child := g.a.nodes[int(child_id)]
+		if child.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+			continue
+		}
+		count += g.test_fn_assert_count(child_id)
+	}
+	return count
 }
 
 fn (g &FlatGen) collect_test_harness_decl_ids(node flat.Node, mut ids []flat.NodeId) {
@@ -5902,6 +5946,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				}
 				if arg_node.kind == .sizeof_expr {
 					g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+					continue
+				}
+				if g.gen_array_equality_literal_arg([emitted_callee_name, actual_fn, fn_name],
+					arg_idx, arg_id, arg_node)
+				{
 					continue
 				}
 				if !is_c_call && arg_idx < typed_param_count {
@@ -11517,6 +11566,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			g.gen_params_struct_arg(ptyp, node, i)
 			break
 		}
+		if g.gen_array_equality_literal_arg([fn_name, callee_name], arg_idx, arg_id, arg_node) {
+			continue
+		}
 		if !is_c_call && arg_idx == 0 && start == 1 && arg_node.kind == .ident
 			&& (g.mut_receiver_arg_wants_addr(fn_name, arg_id)
 			|| (!callee_is_module_selector && g.mut_receiver_arg_wants_addr(callee_name, arg_id))) {
@@ -14144,6 +14196,21 @@ fn (mut g FlatGen) fn_node_signature_names(node flat.Node, module_name string) [
 	return deduped
 }
 
+fn (mut g FlatGen) fn_node_effective_param_type(param flat.Node, typed types.Type) types.Type {
+	if !param.is_mut || param.op != .amp || typed !is types.Pointer {
+		return typed
+	}
+	declared := g.tc.parse_resolution_type(param.typ)
+	if declared.name() != typed.name() {
+		// Generic specialization already records the mutable caller-slot pointer in
+		// its concrete signature.
+		return typed
+	}
+	return types.Type(types.Pointer{
+		base_type: typed
+	})
+}
+
 // write_fn_node_params writes fn node params output for c.
 fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 	mut params_len := 0
@@ -14172,11 +14239,12 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		if p.kind != .param {
 			continue
 		}
-		pt := if param_idx < typed_params.len {
+		raw_pt := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
 			g.tc.parse_resolution_type(p.typ)
 		}
+		pt := g.fn_node_effective_param_type(p, raw_pt)
 		param_idx++
 		if concrete_optional_params && type_is_optional_result(pt) && p.value.len > 0 {
 			g.cur_concrete_optional_params[p.value] = true

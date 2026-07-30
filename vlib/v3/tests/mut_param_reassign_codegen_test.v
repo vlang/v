@@ -303,7 +303,8 @@ fn main() {
 ')
 	assert out_lvalues == '9\n7'
 	out_forwarded := mut_param_reassign_run_good(v3_bin, 'mut_pointer_param_forward_and_index', 'fn write_byte(mut bytes &u8, value u8) {
-	bytes[0] = value
+	mut raw := &u8(bytes)
+	raw[0] = value
 }
 
 fn terminate(mut bytes &u8) {

@@ -1145,6 +1145,12 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
 
+	path_output := os.join_path(root, 'hello_path')
+	path_compile := cmdexec.run(v3_bin, ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o',
+		path_output, source])
+	assert path_compile.exit_code == 0, path_compile.output
+	assert os.is_file(path_output)
+
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')

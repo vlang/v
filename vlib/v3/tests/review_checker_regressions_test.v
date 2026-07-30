@@ -51,39 +51,41 @@ fn run_runtime_bad(v3_bin string, name string, src string) string {
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
-		'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `int`')
+		'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n',
+		'you are returning `&int` instead')
 	run_bad(v3_bin, 'bad_result_return_pointer_to_value',
-		'fn f() !int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `!int`')
+		'fn f() !int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n',
+		'you are returning `&int` instead')
 	run_bad(v3_bin, 'bad_field_pointer_to_value',
 		'struct S {\n\tx int\n}\n\nfn main() {\n\tx := 1\n\t_ := S{\n\t\tx: &x\n\t}\n}\n',
-		'cannot initialize field `x` with `&int`; expected `int`')
+		'cannot assign to field `x`: expected `int`, not `&int`')
 }
 
 fn test_reject_fixed_array_decay_to_pointer() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fixed_array_pointer_argument',
 		'fn consume(value &int) {}\n\nfn main() {\n\tconsume([1, 2]!)\n}\n',
-		'cannot use `[2]int` as argument 1 to `consume`; expected `&int`')
+		'cannot use `[2]int` as `&int` in argument 1 to `consume`')
 	run_bad(v3_bin, 'bad_fixed_array_pointer_return',
 		'fn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
-		'cannot return `[2]int` as `&int`')
+		'you are returning `[2]int` instead')
 	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
 		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
-		'cannot return `[2]int` as `&int`')
+		'you are returning `[2]int` instead')
 	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_temporary_assignment',
 		'@[translated]\nmodule main\n\nfn main() {\n\tmut ptr := &int(0)\n\tptr = [1, 2]!\n}\n',
-		'cannot assign `[2]int` to `&int`')
+		'cannot assign to `ptr`: expected `&int`, not `[2]int`')
 	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
 		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
-		'cannot use `&[2]u8` as argument 1 to `consume`; expected `&u8`')
+		'cannot use `&[2]u8` as `&u8` in argument 1 to `consume`')
 	run_bad(v3_bin, 'bad_fixed_i32_array_byte_pointer_assignment',
 		'fn main() {\n\tbuf := [i32(1), 2]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n}\n',
-		'cannot assign `&[2]i32` to `&u8`')
+		'cannot assign to `ptr`: expected `&u8`, not `&[2]i32`')
 	byte_out := run_good(v3_bin, 'good_fixed_u8_array_byte_pointer_assignment',
-		'fn main() {\n\tbuf := [u8(65), 66]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n\tprintln(int_str(int(*ptr)))\n}\n')
+		'fn main() {\n\tbuf := [u8(65), 66]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tunsafe {\n\t\tptr = &buf\n\t}\n\tprintln(int_str(int(*ptr)))\n}\n')
 	assert byte_out == '65'
 	out := run_good(v3_bin, 'good_translated_fixed_array_pointer_assignment',
-		'@[translated]\nmodule main\n\nfn main() {\n\tvalues := [1, 2]!\n\tmut ptr := &int(0)\n\tptr = values\n\tprintln(int_str(*ptr))\n}\n')
+		'@[translated]\nmodule main\n\nfn main() {\n\tmut values := [1, 2]!\n\tmut ptr := unsafe { &values[0] }\n\tprintln(int_str(*ptr))\n}\n')
 	assert out == '1'
 }
 
@@ -222,13 +224,13 @@ fn test_reject_cross_wrapper_option_result_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_result_value_in_option_return',
 		'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n',
-		'cannot return `!int` as `?int`')
+		'cannot use `!int` as type `?int` in return argument')
 	run_bad(v3_bin, 'bad_result_value_in_optional_pointer_return',
 		'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n',
-		'cannot return `!Item` as `?&Item`')
+		'cannot use `!Item` as type `?&Item` in return argument')
 	run_bad(v3_bin, 'bad_option_value_in_result_pointer_return',
 		'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n',
-		'cannot return `?Item` as `&Item`')
+		'cannot use `?Item` as type `!&Item` in return argument')
 	run_bad(v3_bin, 'bad_error_branch_in_option_return',
 		"fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
 		'if-expression branch type mismatch')

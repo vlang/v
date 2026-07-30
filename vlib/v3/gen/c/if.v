@@ -833,7 +833,7 @@ fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node, ret_type types.Type) {
 			}
 			return
 		}
-		g.writeln('{ _ifexpr = (typeof(_ifexpr)){0}; }')
+		g.writeln('{ _ifexpr = (${g.value_c_type(ret_type)}){0}; }')
 		return
 	}
 }

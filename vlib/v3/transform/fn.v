@@ -364,9 +364,54 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		if method_name := t.resolve_specialized_generic_receiver_method(clean_type, method) {
 			return method_name
 		}
+		if !isnil(t.tc) {
+			if method_name := t.tc.concrete_method_signature_key(clean_type, method) {
+				if t.is_known_fn_name(method_name) {
+					return method_name
+				}
+			}
+		}
 		direct := '${clean_type}.${method}'
 		if t.is_known_fn_name(direct) {
 			return direct
+		}
+		if declared := t.declared_receiver_method(clean_type, method) {
+			return declared
+		}
+		if clean_type.starts_with('main.') && !clean_type['main.'.len..].contains('.') {
+			main_receiver := clean_type['main.'.len..]
+			main_method := '${main_receiver}.${method}'
+			if t.is_known_fn_name(main_method) {
+				return main_method
+			}
+			// Test files retain their declared module even though their concrete
+			// types enter an imported generic specialization as `main.Type`.
+			// Resolve the unique module-qualified method for that concrete type.
+			mut matched := ''
+			suffix := '.${main_receiver}.${method}'
+			for candidate, _ in t.fn_ret_types {
+				if candidate.ends_with(suffix) {
+					if matched.len > 0 && matched != candidate {
+						matched = ''
+						break
+					}
+					matched = candidate
+				}
+			}
+			if !isnil(t.tc) {
+				for candidate, _ in t.tc.fn_ret_types {
+					if candidate.ends_with(suffix) {
+						if matched.len > 0 && matched != candidate {
+							matched = ''
+							break
+						}
+						matched = candidate
+					}
+				}
+			}
+			if matched.len > 0 {
+				return matched
+			}
 		}
 		// A bare (unqualified) receiver type reached through a selective import
 		// (`import cli { Command }`, then `cmd.add_flag()`): the method is registered
@@ -462,6 +507,30 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) declared_receiver_method(receiver string, method string) ?string {
+	if receiver.len == 0 || method.len == 0 {
+		return none
+	}
+	clean_receiver := if receiver.starts_with('main.') {
+		receiver['main.'.len..]
+	} else {
+		receiver
+	}
+	target := '${clean_receiver}.${method}'
+	mut found := false
+	mut found_name := ''
+	for node in t.a.nodes {
+		if node.kind == .fn_decl && node.value in [target, c_name(target)] {
+			if found {
+				return none
+			}
+			found = true
+			found_name = node.value
+		}
+	}
+	return if found { found_name } else { none }
 }
 
 fn (t &Transformer) unique_receiver_method_suffix_match(candidates []string) ?string {
@@ -943,8 +1012,14 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				base_id := t.a.child(&selector, 0)
 				base := t.a.nodes[int(base_id)]
 				first := types.unwrap_all_pointers(params[0])
-				base_is_value := base.kind != .ident || t.raw_var_type(base.value).len > 0
-				if first is types.Interface && base_is_value && !t.is_import_alias_ident(base_id) {
+				base_is_value := base.kind != .ident
+					|| t.raw_var_type(base.value).len > 0
+					|| (base.value.len > 0 && base.value[0] >= `a` && base.value[0] <= `z`)
+				if base_is_value && !t.is_import_alias_ident(base_id)
+					&& t.selector_call_name_has_receiver_param(call_name, selector.value, params) {
+					param_offset = 1
+				} else if first is types.Interface && base_is_value
+					&& !t.is_import_alias_ident(base_id) {
 					// Interface method signatures include the receiver in slot zero. A
 					// generic receiver can still be spelled `H` here, so name matching in
 					// call_param_offset cannot recognize it; keep explicit args aligned.
@@ -1011,7 +1086,11 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			t.set_var_type(closure_name, closure_type)
 			t.pending_stmts << t.make_decl_assign_typed(closure_name, transformed_callee,
 				closure_type)
-			t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
+			// A spawned thread owns the immediate closure until it has invoked it.
+			// Reclaiming the trampoline in the spawning thread races the worker.
+			if !t.in_spawn_expr {
+				t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
+			}
 			transformed_callee = t.make_ident(closure_name)
 			t.set_node_typ(int(transformed_callee), closure_type)
 		}
@@ -1521,10 +1600,21 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	if base_node.kind == .ident && (base_node.value == 'C' || t.is_import_alias_ident(base_id)) {
 		return 0
 	}
+	if base_node.kind == .ident && base_node.value.len > 0 && base_node.value[0] >= `a`
+		&& base_node.value[0] <= `z`
+		&& t.selector_call_name_has_receiver_param(call_name, fn_node.value, params) {
+		return 1
+	}
 	// `module.Type.fn(...)` / `Type.fn(...)` is a static associated function call, not a
 	// method: the base names a type, not a value, so no receiver must be prepended.
 	if _ := t.static_assoc_fn_name(base_id, fn_node.value) {
 		return 0
+	}
+	// Generic/comptime clones can lose the receiver's local binding metadata even
+	// though the resolved call name and declaration signature remain exact. Use
+	// that signature to keep explicit arguments one slot past the receiver.
+	if t.selector_call_name_has_receiver_param(call_name, fn_node.value, params) {
+		return 1
 	}
 	method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
 	if method_name.len == 0 {
@@ -1663,6 +1753,12 @@ fn (t &Transformer) is_import_alias_ident(id flat.NodeId) bool {
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind != .ident || node.value !in t.tc.imports {
+		return false
+	}
+	// A local or receiver can shadow an import alias. Generic clones may no longer
+	// retain an expression type for the identifier, but their binding table still
+	// records the value type.
+	if t.raw_var_type(node.value).len > 0 {
 		return false
 	}
 	if typ := t.tc.expr_type(id) {
@@ -3385,6 +3481,9 @@ fn (t &Transformer) selector_const_base_is_value(node flat.Node) bool {
 	if base.kind != .ident {
 		return false
 	}
+	if t.is_import_alias_ident(base_id) {
+		return false
+	}
 	if t.var_type(base.value).len > 0 {
 		return true
 	}
@@ -4516,11 +4615,13 @@ fn auto_str_helper_name(aggregate string) string {
 fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate string) flat.NodeId {
 	helper := auto_str_helper_name(aggregate)
 	if aggregate !in t.auto_str_types {
-		helper_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
 		t.auto_str_types[aggregate] = AutoStrRequest{
-			module:        t.cur_module
-			file:          t.cur_file
-			helper_module: helper_module
+			module: t.cur_module
+			file:   t.cur_file
+			// The helper name already contains the aggregate's fully qualified C
+			// name. Emit it in `main` so every transformed call uses that exact,
+			// module-independent symbol.
+			helper_module: 'main'
 		}
 	}
 	t.mark_fn_used_name(helper)
@@ -7991,7 +8092,8 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		'clone' {
 			method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
 				clean_base_type)
-			if method_name.len > 0 && t.call_resolved_to_method(call_id, method_name)
+			if method_name.len > 0 && method_name != array_builtin_method
+				&& t.call_resolved_to_method(call_id, method_name)
 				&& !t.receiver_method_name_is_open_generic(method_name) {
 				args := t.transform_receiver_method_args(node, base_id, method_name)
 				ret_type := t.receiver_method_return_type(method_name, node.typ)
@@ -8003,7 +8105,8 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		'reverse' {
 			method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
 				clean_base_type)
-			if method_name.len > 0 && t.call_resolved_to_method(call_id, method_name)
+			if method_name.len > 0 && method_name != array_builtin_method
+				&& t.call_resolved_to_method(call_id, method_name)
 				&& !t.receiver_method_name_is_open_generic(method_name) {
 				args := t.transform_receiver_method_args(node, base_id, method_name)
 				ret_type := t.receiver_method_return_type(method_name, node.typ)
@@ -9619,8 +9722,7 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 				if aggregate := t.stringify_aggregate_type_name(target) {
 					value_ptr := t.make_prefix(.amp, args[0])
 					t.set_node_typ(int(value_ptr), '&${aggregate}')
-					return t.lower_ref_str_guarded(value_ptr, aggregate,
-						!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+					return t.lower_ref_str_guarded(value_ptr, aggregate, true, method_name, '&nil')
 				}
 			}
 		}
@@ -10226,10 +10328,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if _ := t.static_assoc_fn_name(base_id, method) {
 		return none
 	}
-	mut base_type := if base_node.kind in [.selector, .index] {
-		t.lvalue_type(base_id)
-	} else {
-		t.node_type(base_id)
+	mut base_type := t.raw_const_type_name_for_expr(base_id) or { '' }
+	if base_type.len == 0 {
+		base_type = if base_node.kind in [.selector, .index] {
+			t.lvalue_type(base_id)
+		} else {
+			t.node_type(base_id)
+		}
 	}
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
@@ -10254,6 +10359,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if iface_name.len > 0 {
 		t.mark_fn_used_name('${iface_name}.${method}')
 		t.mark_interface_method_implementers_used(iface_name, method)
+		if !isnil(t.tc) && method in t.tc.interface_abstract_method_names(iface_name) {
+			return t.transform_interface_method_call(id, node)
+		}
 	}
 	if method == 'close' && !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
@@ -11538,6 +11646,9 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 		return true
 	}
 	if receiver_name == base_type {
+		return true
+	}
+	if base_type.starts_with('main.') && receiver_name == base_type['main.'.len..] {
 		return true
 	}
 	if !base_type.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'

@@ -130,7 +130,7 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)
 	}
-	clean_type := cgen_unalias_type(t)
+	clean_type := g.value_unalias_type(t)
 	if clean_type is types.OptionType || clean_type is types.ResultType {
 		return g.optional_type_name(clean_type)
 	}
@@ -161,7 +161,27 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
+	for candidate in [ct, 'main.${ct}'] {
+		if target := g.tc.type_aliases[candidate] {
+			return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
+		}
+	}
 	return ct
+}
+
+fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
+	clean_type := cgen_unalias_type(typ)
+	if clean_type is types.Struct {
+		// Generic substitution can preserve a caller alias only as its type name
+		// after the specialized body has moved into the generic function's module.
+		// Recover the registered alias before selecting the C storage type.
+		for candidate in [clean_type.name, 'main.${clean_type.name}'] {
+			if target := g.tc.type_aliases[candidate] {
+				return cgen_unalias_type(g.tc.parse_type(target))
+			}
+		}
+	}
+	return clean_type
 }
 
 fn cgen_unalias_type(typ types.Type) types.Type {

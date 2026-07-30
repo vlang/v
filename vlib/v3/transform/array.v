@@ -551,6 +551,9 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	if t.in_const_init {
 		return id
 	}
+	if t.array_literal_can_emit_direct(node) {
+		return id
+	}
 	array_type := if elem_type := t.array_literal_pointer_value_elem_type(node) {
 		'[]${elem_type}'
 	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
@@ -589,6 +592,22 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), array_type)
 	return result
+}
+
+// array_literal_can_emit_direct reports whether C can evaluate the literal elements
+// without changing V's left-to-right expression ordering.
+fn (t &Transformer) array_literal_can_emit_direct(node flat.Node) bool {
+	if node.kind != .array_literal || node.children_count == 0 {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child := t.a.nodes[int(t.a.child(&node, i))]
+		if child.kind !in [.ident, .int_literal, .float_literal, .bool_literal, .char_literal,
+			.string_literal, .enum_val, .nil_literal, .none_expr] {
+			return false
+		}
+	}
+	return true
 }
 
 // append_array_literal_spread appends independent element clones when the destination
@@ -799,6 +818,13 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		return none
 	}
 	elem_type := array_type[2..]
+	if t.array_literal_can_emit_direct(node) {
+		mut values := []flat.NodeId{cap: int(node.children_count)}
+		for i in 0 .. node.children_count {
+			values << t.transform_expr_for_type(t.a.child(&node, i), elem_type)
+		}
+		return t.make_array_literal_typed(values, array_type)
+	}
 	tmp_name := t.new_temp('arr_lit')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(elem_type,
 		t.make_int_literal(0), t.make_int_literal(node.children_count)), array_type)
@@ -3064,6 +3090,12 @@ fn (mut t Transformer) stable_array_compare_fn(cmp_id flat.NodeId, elem_type str
 
 // make_array_default_sort_stmt builds make array default sort stmt data for transform.
 fn (mut t Transformer) make_array_default_sort_stmt(base flat.NodeId, elem_type string, src flat.Node, cmp_id flat.NodeId) flat.NodeId {
+	if int(cmp_id) < 0 {
+		if helper := t.array_default_sort_runtime_helper(elem_type) {
+			base_addr := t.make_prefix(.amp, base)
+			return t.make_expr_stmt(t.make_call_typed(helper, arr1(base_addr), 'void'))
+		}
+	}
 	i_name := t.new_temp('sort_i')
 	j_name := t.new_temp('sort_j')
 	tmp_name := t.new_temp('sort_tmp')
@@ -3088,6 +3120,15 @@ fn (mut t Transformer) make_array_default_sort_stmt(base flat.NodeId, elem_type 
 	inner_body := [tmp_decl, assign_cur, assign_prev, dec_j]
 	inner_for := t.make_for_stmt(t.make_empty(), inner_cond, t.make_empty(), inner_body, src)
 	return t.make_for_stmt(init, cond, post, [j_decl, inner_for], src)
+}
+
+fn (t &Transformer) array_default_sort_runtime_helper(elem_type string) ?string {
+	clean := t.normalize_type_alias(elem_type)
+	if clean in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32',
+		'f64', 'rune', 'char'] {
+		return 'v3_array_sort_${clean}'
+	}
+	return none
 }
 
 // make_array_compare_sort_stmt builds make array compare sort stmt data for transform.

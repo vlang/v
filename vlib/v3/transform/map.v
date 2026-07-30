@@ -232,6 +232,13 @@ fn (mut t Transformer) make_map_set_stmt(map_expr flat.NodeId, base_type string,
 	return t.make_expr_stmt(call)
 }
 
+fn (mut t Transformer) stable_map_lvalue_for_reuse(id flat.NodeId) flat.NodeId {
+	if t.expr_can_take_address(id) {
+		return t.transform_lvalue(id)
+	}
+	return t.stable_expr_for_reuse(id)
+}
+
 // const_expr_for_ident supports const expr for ident handling for Transformer.
 fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 || isnil(t.tc) {
@@ -627,7 +634,7 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 		return none
 	}
 	info := t.map_index_info(t.a.child(&node, 0)) or { return none }
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -838,7 +845,7 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	if inner_key_type.len == 0 || inner_value_type.len == 0 {
 		return none
 	}
-	map_expr := t.stable_expr_for_reuse(outer_info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(outer_info.base_id)
 	outer_key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -917,7 +924,7 @@ fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[
 	}
 	lhs_id := t.a.child(&node, 0)
 	path := t.map_fixed_array_index_path(lhs_id) or { return none }
-	map_expr := t.stable_expr_for_reuse(path.map_info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(path.map_info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1006,7 +1013,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	if field_type.len == 0 {
 		return none
 	}
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1184,7 +1191,7 @@ fn (mut t Transformer) try_lower_map_index_postfix_stmt(id flat.NodeId) ?[]flat.
 		return none
 	}
 	info := t.map_index_info(t.a.child(&node, 0)) or { return none }
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1212,7 +1219,7 @@ fn (mut t Transformer) try_lower_map_index_append_stmt_with_prelude(id flat.Node
 	if !info.value_type.starts_with('[]') {
 		return none
 	}
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)

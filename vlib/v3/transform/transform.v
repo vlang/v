@@ -770,12 +770,13 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	// resolve before narrowing and other type-aware lowering. This is needed for
 	// non-generic programs too: a call on a narrowed sum-type variant can become a
 	// concrete primitive method only after transform.
-	mut late_names := if building_v {
-		[]string{}
-	} else {
-		t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
+	mut late_names := newly_used_fn_names(used_fns, t.used_fns)
+	if !building_v {
+		// Interface implementers can become reachable while their interface calls
+		// are transformed. Include them in the type-aware call scan so dependencies
+		// from their already-transformed bodies are queued too.
+		late_names << t.new_call_names_from_used_fn_bodies(t.used_fns, t.a.nodes.len)
 	}
-	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.timing_profile('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${late_names.len})')
 	impl_sw.restart()
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
@@ -17063,7 +17064,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		mut new_children := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
 			child_id := t.a.child(&node, i)
-			new_children << t.transform_expr(child_id)
+			new_children << t.transform_expr_preserving_pointer_value(child_id)
 		}
 		start := t.a.children.len
 		for nc in new_children {
@@ -17233,12 +17234,25 @@ fn (mut t Transformer) transform_expr_preserving_pointer_value(id flat.NodeId) f
 		return t.transform_expr(id)
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind != .ident || !t.pointer_value_rvalues[node.value] {
+	if node.kind != .ident
+		|| (!t.pointer_value_rvalues[node.value] && !t.mut_param_values[node.value]) {
 		return t.transform_expr(id)
 	}
-	t.pointer_value_rvalues.delete(node.value)
+	had_pointer_value := t.pointer_value_rvalues[node.value]
+	had_mut_param := t.mut_param_values[node.value]
+	if had_pointer_value {
+		t.pointer_value_rvalues.delete(node.value)
+	}
+	if had_mut_param {
+		t.mut_param_values.delete(node.value)
+	}
 	transformed := t.transform_expr(id)
-	t.pointer_value_rvalues[node.value] = true
+	if had_pointer_value {
+		t.pointer_value_rvalues[node.value] = true
+	}
+	if had_mut_param {
+		t.mut_param_values[node.value] = true
+	}
 	return transformed
 }
 

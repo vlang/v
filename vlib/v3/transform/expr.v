@@ -275,8 +275,18 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if elem_type.len == 0 {
 		elem_type = 'int'
 	}
-	lhs_target_type := t.contextual_array_comparison_type(lhs_id, lhs_type, rhs_type)
-	rhs_target_type := t.contextual_array_comparison_type(rhs_id, rhs_type, lhs_type)
+	mut lhs_target_type := t.contextual_array_comparison_type(lhs_id, lhs_type, rhs_type)
+	mut rhs_target_type := t.contextual_array_comparison_type(rhs_id, rhs_type, lhs_type)
+	if nested_elem := t.array_comparison_literal_elem_type(lhs_id) {
+		elem_type = nested_elem
+		lhs_type = '[]${nested_elem}'
+		lhs_target_type = lhs_type
+	}
+	if nested_elem := t.array_comparison_literal_elem_type(rhs_id) {
+		elem_type = nested_elem
+		rhs_type = '[]${nested_elem}'
+		rhs_target_type = rhs_type
+	}
 	mut new_lhs := if int(fixed_lhs_as_array) >= 0 {
 		fixed_lhs_as_array
 	} else if lhs_target_type.starts_with('[]') {
@@ -295,10 +305,13 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	new_rhs = t.preserve_array_comparison_deref(rhs_id, new_rhs, rhs_type)
 	new_lhs_type := t.membership_container_type(t.node_type(new_lhs))
 	new_rhs_type := t.membership_container_type(t.node_type(new_rhs))
-	if new_lhs_type.starts_with('[]') {
+	// Keep an already resolved nested element type. Generic method calls can retain a
+	// coarse scalar return type on the transformed node even though contextual typing
+	// resolved the comparison itself to `[][]T`.
+	if !elem_type.starts_with('[]') && new_lhs_type.starts_with('[]') {
 		elem_type = new_lhs_type[2..]
 		lhs_type = new_lhs_type
-	} else if new_rhs_type.starts_with('[]') {
+	} else if !elem_type.starts_with('[]') && new_rhs_type.starts_with('[]') {
 		elem_type = new_rhs_type[2..]
 		rhs_type = new_rhs_type
 	}
@@ -323,6 +336,34 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .array_literal || node.children_count == 0 {
+		return none
+	}
+	first_id := t.a.child(&node, 0)
+	first := t.a.nodes[int(first_id)]
+	if first.kind !in [.array_literal, .array_init] {
+		return none
+	}
+	for candidate in [t.raw_checker_node_type(first_id), t.node_type(first_id), first.typ] {
+		clean := t.membership_container_type(t.normalize_type_alias(candidate))
+		if clean.starts_with('[]') {
+			return clean
+		}
+	}
+	if first.kind == .array_literal && first.children_count > 0 {
+		inner := t.array_literal_elem_type(first)
+		if inner.len > 0 && inner != 'unknown' {
+			return '[]${inner}'
+		}
+	}
+	return none
 }
 
 fn (mut t Transformer) preserve_array_comparison_deref(source_id flat.NodeId, transformed_id flat.NodeId, array_type string) flat.NodeId {
@@ -1130,9 +1171,8 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 			if elem.starts_with('mut ') {
 				elem = elem[4..].trim_space()
 			}
-			elem = t.normalize_type_alias(elem)
 			if elem.starts_with('&') {
-				elem = t.normalize_type_alias(elem[1..].trim_space())
+				elem = elem[1..].trim_space()
 			}
 			if elem.starts_with('[]') {
 				elem = elem[2..].trim_space()
@@ -1142,9 +1182,11 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 				}
 			}
 			clean := t.trim_pointer_type(elem)
-			if clean.len > 0 && t.is_type_alias_name(clean) {
-				if _ := t.struct_operator_call_info_any(clean, op) {
-					return clean
+			for candidate in [clean, t.normalize_type_alias(clean)] {
+				if candidate.len > 0 && t.is_type_alias_name(candidate) {
+					if _ := t.struct_operator_call_info_any(candidate, op) {
+						return candidate
+					}
 				}
 			}
 			return none
@@ -1586,13 +1628,13 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	lhs_type = t.normalize_type_alias(lhs_type)
 	rhs_type = t.normalize_type_alias(rhs_type)
-	if !t.is_sum_type_name(lhs_type) {
+	if !t.is_sum_type_name(lhs_type) && t.generic_arg_is_unresolved(lhs_type) {
 		lhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(lhs_id)))
 		if t.is_sum_type_name(lhs_original) {
 			lhs_type = lhs_original
 		}
 	}
-	if !t.is_sum_type_name(rhs_type) {
+	if !t.is_sum_type_name(rhs_type) && t.generic_arg_is_unresolved(rhs_type) {
 		rhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(rhs_id)))
 		if t.is_sum_type_name(rhs_original) {
 			rhs_type = rhs_original

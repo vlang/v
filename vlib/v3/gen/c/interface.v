@@ -1193,10 +1193,14 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
 	actual_base := cgen_unalias_type(actual_clean)
-	if actual_base is types.Interface {
+	actual_name := actual_base.name()
+	if actual_base is types.Interface || actual_name == iface.name
+		|| (actual_name.starts_with('main.') && actual_name['main.'.len..] == iface.name)
+		|| (iface.name.starts_with('main.') && iface.name['main.'.len..] == actual_name)
+		|| g.interface_unknown_qualified_name_matches(actual_name, iface.name) {
 		return false
 	}
-	concrete_name := actual_base.name()
+	concrete_name := actual_name
 	if concrete_name.len == 0 {
 		return false
 	}
@@ -1243,6 +1247,20 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	g.write('}')
 	return true
+}
+
+fn (g &FlatGen) interface_unknown_qualified_name_matches(actual_name string, iface_name string) bool {
+	if !actual_name.contains('.')
+		|| actual_name.all_after_last('.') != iface_name.all_after_last('.') {
+		return false
+	}
+	actual_known := actual_name in g.tc.structs || actual_name in g.tc.interface_names
+		|| actual_name in g.tc.type_aliases || actual_name in g.tc.sum_types
+	if actual_known {
+		return false
+	}
+	return iface_name in g.tc.interface_names
+		|| g.tc.qualify_name(iface_name) in g.tc.interface_names
 }
 
 // is_interface_type_name reports whether is interface type name applies in c.

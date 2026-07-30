@@ -914,7 +914,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 				param_type := unalias_type(raw_param_type)
 				if !is_specialized && param_type !is Array && param_type !is ArrayFixed
 					&& param_type !is Interface && param_type !is Map && param_type !is Pointer
-					&& param_type !is Struct && param_type !is SumType && param_type !is Unknown {
+					&& param_type !is Struct && param_type !is SumType && param_type !is Enum
+					&& raw_param_type !is Alias && param_type !is Unknown {
 					if !(param.op == .dot && param_type is OptionType) {
 						type_name := param_type.name()
 						tc.record_error_at(.call_arg_mismatch,

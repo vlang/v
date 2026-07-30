@@ -1,5 +1,6 @@
 module c
 
+import os
 import strings
 import v3.flat
 import v3.types
@@ -2670,7 +2671,16 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_expr(g.a.child(&node, 0))
 			g.writeln(')) {')
 			g.indent++
-			g.writeln('v3_eprint_lit("assert failed\\n");')
+			g.writeln('v3_eprint_lit("V panic: Assertion failed...\\n");')
+			if detail := g.assert_failure_detail(node, g.a.child(&node, 0)) {
+				g.writeln('v3_eprint_lit("${c_escape(detail)}\\n");')
+			}
+			g.gen_assert_infix_values(g.a.child(&node, 0))
+			if node.children_count > 1 {
+				g.write('v3_eprintln_string(')
+				g.gen_expr(g.a.child(&node, 1))
+				g.writeln(');')
+			}
 			g.writeln('exit(1);')
 			g.indent--
 			g.writeln('}')
@@ -2703,6 +2713,75 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			eprintln('gen_node: unsupported node kind: ${node.kind}')
 		}
 	}
+}
+
+fn (g &FlatGen) assert_failure_detail(assert_node flat.Node, condition_id flat.NodeId) ?string {
+	condition := g.a.node(condition_id)
+	pos := if assert_node.pos.is_valid() { assert_node.pos } else { condition.pos }
+	if !pos.is_valid() {
+		return none
+	}
+	file := g.a.source_files[pos.id] or { return none }
+	source := os.read_file(file.name) or { return none }
+	start := int_max(0, int_min(source.len, pos.offset))
+	end := int_max(start, int_min(source.len, pos.end))
+	if start >= end {
+		return none
+	}
+	line := source[..start].count('\n') + 1
+	mut expression := source[start..end].trim_space()
+	if expression.starts_with('assert ') {
+		expression = expression['assert '.len..]
+	}
+	return '${file.name}:${line}: assert ${expression}'
+}
+
+fn (mut g FlatGen) gen_assert_infix_values(condition_id flat.NodeId) {
+	condition := g.a.node(condition_id)
+	if condition.kind != .infix || condition.children_count < 2 {
+		return
+	}
+	lhs_id := g.a.child(condition, 0)
+	rhs_id := g.a.child(condition, 1)
+	g.gen_assert_numeric_value('   left value', lhs_id)
+	g.gen_assert_numeric_value('  right value', rhs_id)
+}
+
+fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
+	node := g.a.node(id)
+	label := g.assert_source_text(id)
+	if label.len == 0 {
+		return
+	}
+	if node.kind in [.int_literal, .float_literal, .char_literal] {
+		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
+		return
+	}
+	typ := g.tc.resolve_type(id)
+	if typ.is_float() {
+		g.write('fprintf(stderr, "${c_escape(prefix)}: ${c_escape(label)} = %.17g\\n", (double)(')
+		g.gen_expr(id)
+		g.writeln('));')
+	} else if typ.is_integer() {
+		g.write('fprintf(stderr, "${c_escape(prefix)}: ${c_escape(label)} = %lld\\n", (long long)(')
+		g.gen_expr(id)
+		g.writeln('));')
+	}
+}
+
+fn (g &FlatGen) assert_source_text(id flat.NodeId) string {
+	node := g.a.node(id)
+	if !node.pos.is_valid() {
+		return ''
+	}
+	file := g.a.source_files[node.pos.id] or { return '' }
+	source := os.read_file(file.name) or { return '' }
+	start := int_max(0, node.pos.offset)
+	end := int_min(source.len, node.pos.end)
+	if start >= end {
+		return ''
+	}
+	return source[start..end].trim_space()
 }
 
 // has_pending_defers reports whether has pending defers applies in c.

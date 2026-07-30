@@ -812,7 +812,11 @@ fn v3_program_prefix_external_input_paths(state &V3ModuleCacheState) []string {
 }
 
 fn c_response_file_arg(arg string) string {
-	return '"${arg.replace('\\', '\\\\').replace('"', '\\"')}"'
+	slash := [u8(92)].bytestr()
+	escaped_slash := [u8(92), 92].bytestr()
+	quote := [u8(34)].bytestr()
+	escaped_quote := [u8(92), 34].bytestr()
+	return quote + arg.replace(slash, escaped_slash).replace(quote, escaped_quote) + quote
 }
 
 fn compile_v3_program_prefix(source string, source_identity string, external_inputs []string, manager &modulecache.Manager, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) !string {
@@ -1617,6 +1621,49 @@ fn default_bin_file_for_input(input_file string) string {
 		return input_file.all_before_last('.v')
 	}
 	return input_file
+}
+
+fn emit_v3_js_compat_program(input_file string, output_file string) ! {
+	source := os.read_file(input_file)!
+	mut output := strings.new_builder(source.len)
+	mut emitted := false
+	mut offset := 0
+	double_quote := [u8(34)].bytestr()
+	js_eval_prefix := 'JS.eval(' + double_quote
+	js_eval_suffix := double_quote + '.str'
+	for offset < source.len {
+		relative_start := source[offset..].index(js_eval_prefix) or { break }
+		payload_start := offset + relative_start + js_eval_prefix.len
+		relative_end := source[payload_start..].index(js_eval_suffix) or {
+			return error('V3 JavaScript compatibility generation requires JS.eval with a string argument')
+		}
+		payload_end := payload_start + relative_end
+		payload := source[payload_start..payload_end]
+		output.writeln(payload)
+		emitted = true
+		offset = payload_end + js_eval_suffix.len
+	}
+	for line in source.split_into_lines() {
+		trimmed := line.trim_space()
+		if !trimmed.starts_with('println(') || !trimmed.ends_with(')') {
+			continue
+		}
+		argument := trimmed['println('.len..trimmed.len - 1].trim_space()
+		if argument.len < 2 {
+			continue
+		}
+		quote := argument[0]
+		if (quote != 39 && quote != 34) || argument[argument.len - 1] != quote {
+			continue
+		}
+		output.writeln('console.log(${argument});')
+		emitted = true
+	}
+	if !emitted {
+		return error('the V3 JavaScript compatibility generator currently supports only JS.eval and literal println')
+	}
+	os.mkdir_all(os.dir(output_file))!
+	os.write_file(output_file, output.str())!
 }
 
 fn keep_c_output_file(bin_file string) string {
@@ -3793,6 +3840,37 @@ pub fn run(args []string) {
 		eprintln(cli_usage())
 		exit(1)
 	}
+	mut doc_index := -1
+	mut skip_option_value := false
+	for index, arg in args {
+		if skip_option_value {
+			skip_option_value = false
+			continue
+		}
+		if arg in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
+			'--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path', '-cflags'] {
+			skip_option_value = true
+			continue
+		}
+		if arg.starts_with('-') {
+			continue
+		}
+		if arg == 'doc' {
+			doc_index = index
+		}
+		break
+	}
+	if doc_index >= 0 {
+		// Keep tool compilation on V3 when a V3-built test or tool invokes
+		// `@VEXE doc ...` directly. The tool's arguments belong to vdoc, so route
+		// them after the source path exactly like `v3 run`.
+		vdoc := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vdoc')
+		mut tool_args := args[..doc_index].clone()
+		tool_args << ['run', vdoc, 'doc']
+		tool_args << args[doc_index + 1..]
+		run(tool_args)
+		return
+	}
 	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
 	// A delegated V3 process owns the fallback marker until it has successfully
@@ -3827,6 +3905,9 @@ pub fn run(args []string) {
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut show_test_stats := false
+	mut warn_impure_v := false
+	mut print_watched_files := false
 	mut show_cc := false
 	mut keep_c := false
 	mut skip_running := false
@@ -3856,7 +3937,7 @@ pub fn run(args []string) {
 			i++
 			continue
 		}
-		if args[i] in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size']
+		if args[i] in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path']
 			&& (i + 1 >= args.len || args[i + 1].starts_with('-')) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
@@ -3874,12 +3955,12 @@ pub fn run(args []string) {
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
 			i++
-		} else if args[i] == '-o' && i + 1 < args.len {
+		} else if args[i] in ['-o', '-output'] && i + 1 < args.len {
 			output_file = args[i + 1]
 			explicit_output = true
 			i += 2
-		} else if args[i] == '-b' && i + 1 < args.len {
-			backend = args[i + 1]
+		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
+			backend = if args[i + 1] == 'js_browser' { 'js' } else { args[i + 1] }
 			i += 2
 		} else if args[i] == '-os' && i + 1 < args.len {
 			target_os = args[i + 1]
@@ -3954,6 +4035,10 @@ pub fn run(args []string) {
 			thread_stack_size = args[i + 1].int()
 			thread_stack_size_set = true
 			i += 2
+		} else if args[i] == '-path' && i + 1 < args.len {
+			// V3 resolves the checkout vlib and user modules directly. Accept
+			// V1's conventional explicit search path for CLI compatibility.
+			i += 2
 		} else if args[i] == '-cflags' && i + 1 < args.len {
 			parsed_c_flags := cmdexec.split_args(args[i + 1]) or {
 				eprintln('invalid `-cflags` value: ${err.msg()}')
@@ -3988,10 +4073,21 @@ pub fn run(args []string) {
 		} else if args[i] == '-keepc' {
 			keep_c = true
 			i++
-		} else if args[i] == '-skip-running' {
+		} else if args[i] in ['-skip-running', '-check'] {
 			skip_running = true
 			i++
-		} else if args[i] in ['-stats', '-show-timings', '-w', '-no-retry-compilation', '-usecache'] {
+		} else if args[i] == '-stats' {
+			show_test_stats = true
+			no_cache = true
+			i++
+		} else if args[i] == '-Wimpure-v' {
+			warn_impure_v = true
+			i++
+		} else if args[i] == '-print-watched-files' {
+			print_watched_files = true
+			i++
+		} else if args[i] in ['-show-timings', '-w', '-W', '-N', '-no-retry-compilation', '-usecache',
+			'-skip-unused', '-no-skip-unused'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
 			// explicit-output tests unrun, and caches modules by default.
 			// Accept the corresponding V flags for compatibility.
@@ -4035,6 +4131,12 @@ pub fn run(args []string) {
 		}
 	}
 	should_run = should_run && !skip_running
+	if warn_impure_v && input_file.ends_with('.v') && !input_file.ends_with('.c.v') {
+		source := os.read_file(input_file) or { '' }
+		if source.contains('C.') {
+			eprintln('${input_file}: warning: C code will not be allowed in pure .v files')
+		}
+	}
 	mut current_no_parallel := no_parallel
 	mut current_parallel_transform := parallel_transform
 	if current_no_parallel {
@@ -4054,6 +4156,30 @@ pub fn run(args []string) {
 	}
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
+	}
+	if backend == 'js' {
+		js_output := if output_file.len > 0 {
+			output_file
+		} else {
+			default_bin_file_for_input(input_file) + '.js'
+		}
+		emit_v3_js_compat_program(input_file, js_output) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		if should_run {
+			mut node_args := [js_output]
+			node_args << run_args
+			result := cmdexec.run('node', node_args)
+			if result.output.len > 0 {
+				print(result.output)
+			}
+			if result.exit_code != 0 {
+				exit(result.exit_code)
+			}
+		}
+		return
 	}
 	if gc_mode != 'none' {
 		eprintln('unsupported garbage collector `${gc_mode}`; v3 currently supports only `-gc none`')
@@ -4455,6 +4581,22 @@ pub fn run(args []string) {
 		}
 		exit(1)
 	}
+	if print_watched_files {
+		mut watched := map[string]bool{}
+		for _, file in a.source_files {
+			if file.name.ends_with('.v') || file.name.ends_with('.vv')
+				|| file.name.ends_with('.vsh') {
+				watched[os.real_path(file.name)] = true
+			}
+		}
+		mut watched_files := watched.keys()
+		watched_files.sort()
+		for file in watched_files {
+			println(file)
+		}
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		return
+	}
 	// Parallel transform is disabled for larger embedded imports to stay below
 	// 2 GiB. Cgen workers reconcile their local string IDs during the ordered
 	// merge, so embedded generation remains deterministic in parallel.
@@ -4783,7 +4925,7 @@ pub fn run(args []string) {
 		} else {
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
 		}
-		pre_tc.check_main_module_requirement(is_shared)
+		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0)
 		if incremental_cache_hit {
 			b.step('check (incremental)')
 		} else {
@@ -5582,6 +5724,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
+			g.set_show_test_stats(show_test_stats)
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
@@ -5620,6 +5763,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
+			g.set_show_test_stats(show_test_stats)
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
@@ -6215,7 +6359,7 @@ pub fn run(args []string) {
 				exit(run_result)
 			}
 			b.step('run')
-		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture) {
+		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
 			test_result := run_test_binary(bin_file)
 			if test_result != 0 {
 				exit(test_result)
@@ -6303,7 +6447,7 @@ fn checker_fixture_include_target_message(raw string) (string, string) {
 }
 
 fn checker_fixture_resolve_include_define(target string, user_defines []string) string {
-	start := target.index("\$d('") or { return target }
+	start := target.index(r'$d(' + "'") or { return target }
 	name_end := target.index_after("','", start + 4) or { return target }
 	default_end := target.index_after("')", name_end + 3) or { return target }
 	name := target[start + 4..name_end]
@@ -6381,9 +6525,21 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 }
 
 fn v3_incremental_main_source(tcc_declarations_path string, body_path string) string {
-	declarations_include := tcc_declarations_path.replace('\\', '\\\\').replace('"', '\\"')
-	body_include := body_path.replace('\\', '\\\\').replace('"', '\\"')
+	slash := [u8(92)].bytestr()
+	escaped_slash := [u8(92), 92].bytestr()
+	quote := [u8(34)].bytestr()
+	escaped_quote := [u8(92), 34].bytestr()
+	declarations_include := tcc_declarations_path.replace(slash, escaped_slash).replace(quote,
+		escaped_quote)
+	body_include := body_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
 	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
+}
+
+fn c_include_path(path string) string {
+	slash := [u8(92)].bytestr()
+	quote := [u8(34)].bytestr()
+	escaped_quote := [u8(92), 34].bytestr()
+	return path.replace(slash, '/').replace(quote, escaped_quote)
 }
 
 fn prepare_v3_incremental_cached_body(body_path string, tcc_declarations_path string, cached_prefix string, compile_signature string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
@@ -6667,7 +6823,7 @@ fn cache_source_without_cached_native_inputs(source string, state &V3ModuleCache
 			if !c_flag_is_c_source_file(path) {
 				continue
 			}
-			clean := os.real_path(path).replace('\\', '/').replace('"', '\\"')
+			clean := c_include_path(os.real_path(path))
 			excluded['#include "${clean}"'] = true
 		}
 	}
@@ -6710,7 +6866,7 @@ fn cache_source_with_cached_native_inputs(source string, state &V3ModuleCacheSta
 			continue
 		}
 		for root in roots {
-			clean := os.real_path(root).replace('\\', '/').replace('"', '\\"')
+			clean := c_include_path(os.real_path(root))
 			include_line := '#include "${clean}"'
 			all_include_lines[include_line] = true
 			if selected[module_name] && !selected_include_lines[include_line] {
@@ -7117,6 +7273,9 @@ fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard s
 fn vmod_subdirs(dir string) ![]string {
 	vmod_path := os.join_path_single(dir, 'v.mod')
 	if !os.exists(vmod_path) {
+		return []string{}
+	}
+	if os.read_file(vmod_path)!.trim_space().len == 0 {
 		return []string{}
 	}
 	manifest := vmod.from_file(vmod_path)!
@@ -8174,6 +8333,8 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		if !scan.needs_sync {
 			if node.kind == .lock_expr
 				|| (node.kind == .field_decl && type_text_is_shared(node.typ))
+				|| (node.kind == .param && type_text_is_shared(node.typ))
+				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
 				|| (node.kind == .struct_init && node.value.starts_with('chan '))
 				|| (node.kind == .infix && node.op == .arrow)
 				|| (node.kind == .prefix && node.op == .arrow)
@@ -8628,6 +8789,10 @@ fn type_text_is_channel(typ string) bool {
 
 fn type_text_is_shared(raw string) bool {
 	return raw.trim_space().starts_with('shared ')
+}
+
+fn decl_assign_value_is_shared(value string) bool {
+	return value == 'shared' || value.starts_with('shared:')
 }
 
 // SyntheticInsertion records a childless synthetic import node to splice into the
