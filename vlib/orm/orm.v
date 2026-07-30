@@ -1417,6 +1417,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		}
 		mut default_val := field.default_val
 		mut has_default := default_val != ''
+		mut is_str_default := false
 		mut nullable := field.nullable
 		mut is_unique := false
 		mut is_skip := false
@@ -1469,6 +1470,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				}
 				'default' {
 					has_default = true
+					is_str_default = attr.kind == .string
 					if default_val == '' {
 						default_val = attr.arg.trim_space()
 					}
@@ -1525,7 +1527,11 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && has_default {
 			if default_val != '' {
-				stmt += ' DEFAULT ${default_val}'
+				if is_str_default {
+					stmt += " DEFAULT '${default_val}'"
+				} else {
+					stmt += ' DEFAULT ${default_val}'
+				}
 			} else {
 				// Handle @[default: ''] - explicitly set DEFAULT '' for the column
 				stmt += " DEFAULT ''"

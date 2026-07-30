@@ -106,7 +106,7 @@ struct Foo {
 mut:
 	id u64 @[primary; sql: serial]
 	a  string
-	b  string @[default: '"yes"']
+	b  string @[default: 'yes']
 	c  ?string
 	d  ?string = 'hi'
 	e  int
@@ -139,7 +139,7 @@ fn test_option_struct_fields_and_none() {
 	sql db {
 		create table Foo
 	}!
-	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `foo` (`id` serial-type NOT NULL, `a` string-type NOT NULL, `b` string-type DEFAULT "yes" NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `f` int-type DEFAULT 33 NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));'
+	assert db.st.last == "CREATE TABLE IF NOT EXISTS `foo` (`id` serial-type NOT NULL, `a` string-type NOT NULL, `b` string-type DEFAULT 'yes' NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `f` int-type DEFAULT 33 NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));"
 
 	_ := sql db {
 		select from Foo where e > 5 && c is none && c !is none && h == 2

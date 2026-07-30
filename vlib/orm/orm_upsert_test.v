@@ -32,7 +32,7 @@ mut:
 struct DefaultUpsertUser {
 mut:
 	id     int    @[primary]
-	status string @[default: '"active"']
+	status string @[default: 'active']
 }
 
 fn test_upsert_updates_existing_row_using_unique_field() {

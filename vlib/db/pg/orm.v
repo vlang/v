@@ -311,9 +311,10 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 1
 		}
 		u8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(u8))
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(data))
+			vals << &char(&num)
+			lens << int(sizeof(u16))
 			formats << 1
 		}
 		u16 {
@@ -338,9 +339,10 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 1
 		}
 		i8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(i8))
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(data))
+			vals << &char(&num)
+			lens << int(sizeof(i16))
 			formats << 1
 		}
 		i16 {

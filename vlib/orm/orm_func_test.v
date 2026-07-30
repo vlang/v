@@ -64,7 +64,7 @@ struct UserPart {
 
 struct UrlDefaultAttr {
 	id  int    @[primary; sql: serial]
-	url string @[default: '"https://example.test"']
+	url string @[default: 'https://example.test']
 }
 
 fn test_orm_func_field_attribute_argument_with_colon() {
