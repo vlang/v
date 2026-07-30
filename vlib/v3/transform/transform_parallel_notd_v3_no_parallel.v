@@ -44,7 +44,7 @@ $if !windows {
 	// shared_chunk_thread runs one shared-base worker's chunk. No clone, no
 	// chain: every worker was fully built by the master before spawning.
 	fn shared_chunk_thread(arg voidptr) voidptr {
-		a := unsafe { &SharedChunkArgs(arg) }
+		mut a := unsafe { &SharedChunkArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
 		mut csw := time.new_stopwatch()
@@ -63,7 +63,8 @@ $if !windows {
 			for it in *items {
 				cost += i64(it.cost) + 1
 			}
-			w.timing_profile('  [ttime]     chunk items=${items.len:4} cost=${cost:8} master=${a.is_master} ${f64(csw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			a.cost = cost
+			a.elapsed_us = csw.elapsed().microseconds()
 		}
 		return unsafe { nil }
 	}
@@ -74,6 +75,9 @@ struct SharedChunkArgs {
 	worker    voidptr // &Transformer
 	items_ptr voidptr // &[]FnWorkItem
 	is_master bool
+mut:
+	cost       i64
+	elapsed_us i64
 }
 
 // ScopedTextScanArgs is the payload for one scoped-text flag-scan worker.
@@ -145,6 +149,56 @@ struct TopLevelKindScanArgs {
 }
 
 $if !windows {
+	// literal_decl_scan_thread marks the sparse node kinds needed to associate
+	// a function literal with its containing top-level declaration. The low
+	// nibble is also a cheap transform-cost weight used to balance fn workers.
+	fn literal_decl_scan_thread(arg voidptr) voidptr {
+		a := unsafe { &TopLevelKindScanArgs(arg) }
+		flags := unsafe { &u8(a.flags) }
+		for i in a.start .. a.end {
+			node := unsafe { &a.a.nodes[i] }
+			mut flag := match node.kind {
+				.call, .struct_init {
+					u8(8)
+				}
+				.selector {
+					u8(6)
+				}
+				.assign, .decl_assign, .selector_assign, .index_assign {
+					u8(5)
+				}
+				.array_literal, .array_init, .map_init, .fn_literal, .lambda_expr, .string_interp {
+					u8(4)
+				}
+				.index, .if_expr, .match_stmt, .for_stmt, .for_in_stmt, .select_stmt {
+					u8(3)
+				}
+				.infix, .cast_expr, .as_expr, .or_expr, .return_stmt {
+					u8(2)
+				}
+				else {
+					u8(1)
+				}
+			}
+			if node.kind in [.fn_literal, .lambda_expr] {
+				flag |= 16
+			}
+			if node.kind == .fn_decl {
+				flag |= 32
+			} else if node.kind in [.const_decl, .global_decl] {
+				flag |= 64
+			}
+			if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl,
+				.enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
+				flag |= 128
+			}
+			unsafe {
+				flags[i - a.base] = flag
+			}
+		}
+		return unsafe { nil }
+	}
+
 	// top_level_kind_scan_thread flags file/module nodes and generic-candidate
 	// fn decls in this worker's range. Pure reads plus byte writes into a
 	// disjoint flag range: no allocations, so it is safe on pool threads in any
@@ -166,6 +220,48 @@ $if !windows {
 			}
 		}
 		return unsafe { nil }
+	}
+}
+
+// scan_literal_decl_flags_parallel fills the sparse literal/declaration flags
+// used by collect_literal_fn_decls. The master can then word-scan the compact
+// byte array instead of streaming every full AST node header.
+fn scan_literal_decl_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) bool {
+	$if windows {
+		return false
+	} $else {
+		if isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len || flags.len < limit {
+			return false
+		}
+		n_jobs := a.worker_pool.size() + 1
+		chunk := (limit + n_jobs - 1) / n_jobs
+		mut args := []TopLevelKindScanArgs{cap: n_jobs}
+		for ji in 0 .. n_jobs {
+			start := ji * chunk
+			mut end := start + chunk
+			if end > limit {
+				end = limit
+			}
+			if start >= end {
+				break
+			}
+			args << TopLevelKindScanArgs{
+				a:     a
+				start: start
+				end:   end
+				flags: flags.data
+			}
+		}
+		mut tasks := []workers.Task{cap: args.len}
+		for ji in 0 .. args.len {
+			tasks << workers.Task{
+				run:        literal_decl_scan_thread
+				arg:        unsafe { voidptr(&args[ji]) }
+				force_sync: ji == 0
+			}
+		}
+		a.worker_pool.run(tasks)
+		return true
 	}
 }
 
@@ -1272,6 +1368,7 @@ fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
 // promote_scoped_node_to_current copies only fields owned by `scope`. The
 // caller has already left the scratch scope, so clones land in its small result
 // arena and survive until the master merges this worker.
+@[direct_array_access]
 fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if idx < 0 || idx >= t.a.nodes.len {
 		return
@@ -1893,6 +1990,12 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		ttsw.restart()
 		any_started := t.a.worker_pool.run(tasks)
 		t.timing_profile('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		$if v3_ttime ? {
+			for ci, arg in args {
+				items_arg := unsafe { &[]FnWorkItem(arg.items_ptr) }
+				t.timing_profile('  [ttime]     chunk ${ci:2} items=${items_arg.len:4} cost=${arg.cost:8} master=${arg.is_master} ${f64(arg.elapsed_us) / 1000.0:7.2f} ms')
+			}
+		}
 		ttsw.restart()
 		unsafe {
 			t.a.nodes.cap = orig_nodes_cap

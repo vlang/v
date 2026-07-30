@@ -21,6 +21,7 @@ const min_parallel_parse_files = 4
 const min_parallel_parse_bytes = 131072
 const max_parallel_parse_jobs = 10
 const max_parallel_parse_chunks = 32
+const parallel_parse_chunks_per_job = 2
 const comptime_const_prepass_alias_prefix = '\x00v3-comptime-alias:'
 
 struct ComptimeConstPrepassToken {
@@ -56,6 +57,7 @@ $if !windows {
 	// parse_chunk_thread parses one worker's contiguous range of files into the
 	// worker's private FlatAst, recording each file's worker-local first node id
 	// into its own preallocated slot of the shared starts array.
+	@[direct_array_access]
 	fn parse_chunk_thread(arg voidptr) voidptr {
 		mut a := unsafe { &ParseChunkArgs(arg) }
 		mut w := unsafe { &Parser(a.worker) }
@@ -132,6 +134,7 @@ fn (p &Parser) timing_profile(message string) {
 // parse_files_dispatch parses paths in order, appending to p.a exactly like a
 // serial parse_into loop, across worker threads when there is enough work.
 // Returns each file's first node id in p.a and whether threads were used.
+@[direct_array_access]
 pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) ([]int, bool) {
 	$if windows {
 		return p.parse_files_with_starts(paths), false
@@ -156,7 +159,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 		// More chunks than workers: the pool queue packs them dynamically, so
 		// one oversized source file no longer pins a whole equal-share chunk.
-		mut n_chunks := n_jobs * 2
+		mut n_chunks := n_jobs * parallel_parse_chunks_per_job
 		if n_chunks > max_parallel_parse_chunks {
 			n_chunks = max_parallel_parse_chunks
 		}
@@ -365,6 +368,7 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 	p.next_file_id += delta
 }
 
+@[direct_array_access]
 fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
 	mut values := p.comptime_const_values.clone()
 	for path in paths[start..end] {
@@ -950,6 +954,7 @@ mut:
 // serial merge. Chunks write disjoint master ranges, so the copies run
 // concurrently; string payloads stay in the worker scopes until the serial
 // intern pass rebinds them.
+@[direct_array_access]
 fn parse_merge_copy_thread(arg voidptr) voidptr {
 	mut ma := unsafe { &ParseMergeCopyArgs(arg) }
 	mut p := unsafe { &Parser(ma.master) }
@@ -1045,6 +1050,7 @@ fn par_parse_merge_enabled() bool {
 // disjoint ranges across the pool, then the order-sensitive tail (interning,
 // exports, diagnostics) runs serially in chunk order exactly like the serial
 // merge.
+@[direct_array_access]
 fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mut starts []int, bounds []int, mut args []ParseChunkArgs) {
 	thread_count := parser_workers.len
 	base_nodes := p.a.nodes.len
@@ -1154,6 +1160,7 @@ fn (mut p Parser) merge_parsed_worker_tail(mut w Parser, mut starts []int, chunk
 		node_shift, [], false)
 }
 
+@[direct_array_access]
 fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int, chunk_start int, chunk_end int, worker_scope voidptr, node_shift int, pending_files []PendingSourceFile, use_pending bool) {
 	// Per-file region starts move by the merge offset.
 	for i in chunk_start .. chunk_end {
@@ -1269,6 +1276,7 @@ fn parse_job_count(n_runtime_jobs int, n_files int) int {
 // parse_chunk_bounds splits the file list into n contiguous ranges of roughly
 // equal source byte count (parse time tracks source size closely). Contiguity
 // in input order is required so the ordered merge reproduces the serial layout.
+@[direct_array_access]
 fn parse_chunk_bounds(sizes []i64, n int) []int {
 	mut total := i64(0)
 	for size in sizes {

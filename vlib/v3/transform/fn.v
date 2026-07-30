@@ -9304,6 +9304,12 @@ fn (mut t Transformer) new_fn_literal_name() string {
 }
 
 fn (t &Transformer) fn_literal_name_exists(name string) bool {
+	if name in t.fn_ret_types {
+		return true
+	}
+	if !isnil(t.tc) {
+		return t.tc.has_fn_decl_short_name(name) || name in t.tc.fn_ret_types
+	}
 	for node in t.a.nodes {
 		if node.kind == .fn_decl && (node.value == name || node.value.all_after_last('.') == name) {
 			return true

@@ -112,6 +112,8 @@ mut:
 	used_fn_names                  []string
 	fn_gen_items                   []FlatFnGenItem
 	top_level_node_ids             []int
+	ast_string_literals            []string
+	ast_string_literals_ready      bool
 	fn_segs                        []string
 	fn_seg_chunk_indexes           []int
 	parallel_chunk_wrapper_defs    []ParallelChunkWrapperDefs
@@ -1605,6 +1607,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
 	g.top_level_node_ids = []int{}
+	g.ast_string_literals = []string{}
+	g.ast_string_literals_ready = false
 	g.direct_array_access = false
 	g.unsafe_depth = 0
 	g.fn_segs = []string{}
@@ -2309,6 +2313,7 @@ mut:
 	texts  map[string]bool
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) collect_gen_info() {
 	g.unused_param_seen = &UnusedParamSeen{}
 	g.reserve_collect_gen_info_maps()
@@ -2317,6 +2322,7 @@ fn (mut g FlatGen) collect_gen_info() {
 	}
 	g.c_flags << g.initial_c_flags
 	g.use_system_stdint = g.translation_unit_uses_inttypes()
+	profile := !isnil(g.tc) && g.tc.verbose
 	cisw := time.new_stopwatch()
 	mut ci_fn_ns := u64(0)
 	mut ci_reg_ns := u64(0)
@@ -2357,17 +2363,19 @@ fn (mut g FlatGen) collect_gen_info() {
 			continue
 		}
 		if kind_id == 61 {
-			ci_t0 := time.sys_mono_now()
+			ci_t0 := if profile { time.sys_mono_now() } else { u64(0) }
 			full_name := qualify_name_in_module(cur_module, node.value)
 			if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module) {
 				if g.incremental_fn_names.len == 0 {
 					g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
 				}
-				ci_fn_ns += time.sys_mono_now() - ci_t0
+				if profile {
+					ci_fn_ns += time.sys_mono_now() - ci_t0
+				}
 				continue
 			}
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
-			ci_p0 := time.sys_mono_now()
+			ci_p0 := if profile { time.sys_mono_now() } else { u64(0) }
 			typed_params := g.fn_node_param_types(node, cur_module)
 			param_cap := if node.children_count < 64 { int(node.children_count) } else { 64 }
 			mut ptypes := []types.Type{cap: param_cap}
@@ -2435,7 +2443,9 @@ fn (mut g FlatGen) collect_gen_info() {
 					}
 				}
 			}
-			ci_ptypes_ns += time.sys_mono_now() - ci_p0
+			if profile {
+				ci_ptypes_ns += time.sys_mono_now() - ci_p0
+			}
 			ptypes = g.fn_param_types_with_implicit_veb_ctx(node, ptypes)
 			if shared_params.len > 0 {
 				shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
@@ -2457,12 +2467,16 @@ fn (mut g FlatGen) collect_gen_info() {
 				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
 				nonshared_fn_node_indexes << node_idx
 			}
-			ci_r0 := time.sys_mono_now()
+			ci_r0 := if profile { time.sys_mono_now() } else { u64(0) }
 			return_type := g.fn_node_return_type(node, cur_module)
-			ci_ret_ns += time.sys_mono_now() - ci_r0
+			if profile {
+				ci_ret_ns += time.sys_mono_now() - ci_r0
+			}
 			g.register_fn_decl_signature_type(node.value, full_name, ptypes, shared_params,
 				decl_is_variadic, first_param_is_mut, return_type)
-			ci_reg_ns += time.sys_mono_now() - ci_r0
+			if profile {
+				ci_reg_ns += time.sys_mono_now() - ci_r0
+			}
 			// Module-level `init()` functions run once at startup. Collect their C
 			// names so _vinit can invoke them (V semantics).
 			is_builtin_init := cur_module == 'builtin' && node.value == 'builtin_init'
@@ -2474,7 +2488,9 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 				g.module_init_fn_modules[init_cname] = cur_module
 			}
-			ci_fn_ns += time.sys_mono_now() - ci_t0
+			if profile {
+				ci_fn_ns += time.sys_mono_now() - ci_t0
+			}
 			continue
 		}
 		if g.incremental_fn_names.len > 0 && node.kind == .directive {
@@ -2651,15 +2667,18 @@ fn (mut g FlatGen) collect_gen_info() {
 	g.materialize_objective_cpp_sources()
 	ccio_sw := time.new_stopwatch()
 	g.collect_const_init_order_from_files()
-	ci_total_ms := f64(cisw.elapsed().microseconds()) / 1000.0
-	ci_fn_ms := f64(ci_fn_ns) / 1e6
-	ccio_ms := f64(ccio_sw.elapsed().microseconds()) / 1000.0
-	ci_reg_ms := f64(ci_reg_ns) / 1e6
-	ci_ret_ms := f64(ci_ret_ns) / 1e6
-	ci_ptypes_ms := f64(ci_ptypes_ns) / 1e6
-	g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
+	if profile {
+		ci_total_ms := f64(cisw.elapsed().microseconds()) / 1000.0
+		ci_fn_ms := f64(ci_fn_ns) / 1e6
+		ccio_ms := f64(ccio_sw.elapsed().microseconds()) / 1000.0
+		ci_reg_ms := f64(ci_reg_ns) / 1e6
+		ci_ret_ms := f64(ci_ret_ns) / 1e6
+		ci_ptypes_ms := f64(ci_ptypes_ns) / 1e6
+		g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
+	}
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) reserve_collect_gen_info_maps() {
 	mut fn_count := 0
 	mut struct_count := 0
@@ -2669,7 +2688,14 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps() {
 	mut interface_count := 0
 	mut import_count := 0
 	incremental := g.incremental_fn_names.len > 0
+	g.ast_string_literals = []string{cap: 4096}
 	for node_idx, node in g.a.nodes {
+		if node.kind == .string_literal {
+			// The parallel pre-dispatch pass needs these in exact AST order.
+			// Retain the small value list while this unavoidable sizing scan is
+			// hot, avoiding another pass over the multi-million-node AST.
+			g.ast_string_literals << node.value
+		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
 			.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
 			g.top_level_node_ids << node_idx
@@ -2701,6 +2727,7 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps() {
 			else {}
 		}
 	}
+	g.ast_string_literals_ready = true
 	if incremental && fn_count < g.incremental_fn_names.len {
 		fn_count = g.incremental_fn_names.len
 	}
@@ -9002,11 +9029,12 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 }
 
 fn (g &FlatGen) fixed_storage_candidate_short_name(name string) string {
-	if name.contains('.') {
-		return name.all_after_last('.')
+	dot := name.last_index_u8(`.`)
+	if dot >= 0 {
+		return unsafe { name.substr_unsafe(dot + 1, name.len) }
 	}
-	if name.contains('__') {
-		return name.all_after_last('__')
+	if sep := name.last_index('__') {
+		return unsafe { name.substr_unsafe(sep + 2, name.len) }
 	}
 	return name
 }
@@ -9046,11 +9074,9 @@ fn (g &FlatGen) const_ref_node_may_match_fixed_candidate(node &flat.Node, ident_
 		if node.value in ident_refs {
 			return true
 		}
-		if node.value.contains('.') {
-			return node.value.all_after_last('.') in shorts
-		}
-		if node.value.contains('__') {
-			return node.value.all_after_last('__') in shorts
+		short_name := g.fixed_storage_candidate_short_name(node.value)
+		if short_name.len != node.value.len {
+			return short_name in shorts
 		}
 		return false
 	}
@@ -9998,6 +10024,7 @@ fn (g &FlatGen) infix_channel_type(id flat.NodeId, fallback types.Type) types.Ty
 }
 
 // gen_expr emits expr output for c.
+@[direct_array_access]
 fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	if int(id) < 0 {
 		g.write('0')

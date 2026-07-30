@@ -130,80 +130,83 @@ mut:
 	receiver_method_suffix_index  map[string]string
 	variadic_suffix_index         map[string]i8
 	const_suffixes                map[string]string
-	enum_types                    map[string][]string
-	enum_backing_types            map[string]string
-	runtime_type_indexes          map[string]int
-	cur_file                      string
-	cur_module                    string
-	cur_fn_name                   string
-	cur_fn_ret_type               string
-	cur_fn_is_generic             bool
-	cur_fn_variadic_param         string
-	skip_generics                 bool
-	building_v                    bool
-	var_types                     []VarTypeBinding
-	var_type_indices              map[string]int
-	var_type_cache                &VarTypeIndexCache = unsafe { nil }
-	refined_node_types            map[int]string
-	fn_value_locals               map[string]string
-	mut_param_values              map[string]bool
-	fixed_array_param_values      map[string]bool
-	mut_value_ident_nodes         map[int]bool
-	pointer_value_lvalues         map[string]bool
-	pointer_value_rvalues         map[string]bool
-	addr_lvalue_pointer_locals    map[string]bool
-	orm_initialized_fields        map[string][]string
-	sql_query_data_aliases        map[string][]string
-	bound_method_arrays           map[string]BoundMethodArrayInfo
-	temp_counter                  int
-	global_temp_counter           int
-	pending_stmts                 []flat.NodeId
-	smartcast_stack               []SmartcastContext
-	invalidated_smartcasts        map[string]bool
-	in_call_callee                bool
-	in_monomorphize_scan          bool
-	validating_generic_spec       bool
-	monomorph_errors              []string
-	monomorph_error_seen          map[string]bool
-	in_spawn_expr                 bool
-	has_spawn_expr                bool
-	in_const_init                 bool
-	in_return_expr                bool
-	in_string_interp_part         bool
-	expected_expr_node            int = -1
-	expected_expr_type            string
-	in_selector_base              bool
-	autolock_depth                int
-	alias_cache                   &AliasCache              = unsafe { nil }
-	sum_cache                     &AliasCache              = unsafe { nil }
-	module_type_cache             &AliasCache              = unsafe { nil }
-	struct_guess_cache            &AliasCache              = unsafe { nil }
-	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
-	struct_field_type_cache       &LookupCache             = unsafe { nil }
-	variant_short_name_cache      &AliasCache              = unsafe { nil }
-	selector_type_cache           &SelectorTypeCache       = unsafe { nil }
-	resolved_call_return_cache    &ResolvedCallReturnCache = unsafe { nil }
-	variant_match_cache           &VariantMatchCache       = unsafe { nil }
-	interface_type_cache          &ContextLookupCache      = unsafe { nil }
-	type_alias_name_cache         &ContextBoolLookupCache  = unsafe { nil }
-	interface_box_param_cache     &BoolLookupCache         = unsafe { nil }
-	alias_receiver_method_cache   &LookupCache             = unsafe { nil }
-	receiver_method_cache         &ReceiverMethodCache     = unsafe { nil }
-	promote_text_cache            &PromoteTextCache        = unsafe { nil }
-	call_variadic_cache           &BoolLookupCache         = unsafe { nil }
-	str_alias_cache               &LookupCache             = unsafe { nil }
-	generic_alias_names           map[string]bool
-	local_decl_nodes_by_name      map[string][]int
-	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
-	comptime_field_metas_cache    map[string][]FieldMeta
-	call_param_types_decl_cache   map[int][]types.Type
-	call_param_types_decl_misses  map[string]bool
-	call_param_types_decl_index   map[string]FnParamDeclRef
-	call_param_types_index_ready  bool
-	used_fns                      map[string]bool
-	used_fns_parent               &map[string]bool = unsafe { nil }
-	used_fns_root                 &map[string]bool = unsafe { nil }
-	comptime_reflected_params     map[string][]ParamMeta
+	// const_array_fixed_storage_cache avoids rescanning the complete AST for
+	// repeated uses of the same array constant in one transform worker.
+	const_array_fixed_storage_cache map[string]i8
+	enum_types                      map[string][]string
+	enum_backing_types              map[string]string
+	runtime_type_indexes            map[string]int
+	cur_file                        string
+	cur_module                      string
+	cur_fn_name                     string
+	cur_fn_ret_type                 string
+	cur_fn_is_generic               bool
+	cur_fn_variadic_param           string
+	skip_generics                   bool
+	building_v                      bool
+	var_types                       []VarTypeBinding
+	var_type_indices                map[string]int
+	var_type_cache                  &VarTypeIndexCache = unsafe { nil }
+	refined_node_types              map[int]string
+	fn_value_locals                 map[string]string
+	mut_param_values                map[string]bool
+	fixed_array_param_values        map[string]bool
+	mut_value_ident_nodes           map[int]bool
+	pointer_value_lvalues           map[string]bool
+	pointer_value_rvalues           map[string]bool
+	addr_lvalue_pointer_locals      map[string]bool
+	orm_initialized_fields          map[string][]string
+	sql_query_data_aliases          map[string][]string
+	bound_method_arrays             map[string]BoundMethodArrayInfo
+	temp_counter                    int
+	global_temp_counter             int
+	pending_stmts                   []flat.NodeId
+	smartcast_stack                 []SmartcastContext
+	invalidated_smartcasts          map[string]bool
+	in_call_callee                  bool
+	in_monomorphize_scan            bool
+	validating_generic_spec         bool
+	monomorph_errors                []string
+	monomorph_error_seen            map[string]bool
+	in_spawn_expr                   bool
+	has_spawn_expr                  bool
+	in_const_init                   bool
+	in_return_expr                  bool
+	in_string_interp_part           bool
+	expected_expr_node              int = -1
+	expected_expr_type              string
+	in_selector_base                bool
+	autolock_depth                  int
+	alias_cache                     &AliasCache              = unsafe { nil }
+	sum_cache                       &AliasCache              = unsafe { nil }
+	module_type_cache               &AliasCache              = unsafe { nil }
+	struct_guess_cache              &AliasCache              = unsafe { nil }
+	generic_unresolved_cache        &GenericUnresolvedCache  = unsafe { nil }
+	struct_field_type_cache         &LookupCache             = unsafe { nil }
+	variant_short_name_cache        &AliasCache              = unsafe { nil }
+	selector_type_cache             &SelectorTypeCache       = unsafe { nil }
+	resolved_call_return_cache      &ResolvedCallReturnCache = unsafe { nil }
+	variant_match_cache             &VariantMatchCache       = unsafe { nil }
+	interface_type_cache            &ContextLookupCache      = unsafe { nil }
+	type_alias_name_cache           &ContextBoolLookupCache  = unsafe { nil }
+	interface_box_param_cache       &BoolLookupCache         = unsafe { nil }
+	alias_receiver_method_cache     &LookupCache             = unsafe { nil }
+	receiver_method_cache           &ReceiverMethodCache     = unsafe { nil }
+	promote_text_cache              &PromoteTextCache        = unsafe { nil }
+	call_variadic_cache             &BoolLookupCache         = unsafe { nil }
+	str_alias_cache                 &LookupCache             = unsafe { nil }
+	generic_alias_names             map[string]bool
+	local_decl_nodes_by_name        map[string][]int
+	struct_field_decl_metas_cache   map[string]map[string]FieldDeclMeta
+	comptime_field_metas_cache      map[string][]FieldMeta
+	call_param_types_decl_cache     map[int][]types.Type
+	call_param_types_decl_misses    map[string]bool
+	call_param_types_decl_index     map[string]FnParamDeclRef
+	call_param_types_index_ready    bool
+	used_fns                        map[string]bool
+	used_fns_parent                 &map[string]bool = unsafe { nil }
+	used_fns_root                   &map[string]bool = unsafe { nil }
+	comptime_reflected_params       map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -317,6 +320,7 @@ mut:
 	parallel_monomorph_scan_nodes      []int
 	parallel_monomorph_scan_start      int
 	parallel_monomorph_scan_end        int
+	fn_scan_costs                      []int
 	parallel_monomorph_struct_specs    map[string]string
 	parallel_monomorph_sum_specs       map[string]GenericSpecContext
 	generic_call_spec_cache            map[int]GenericCallSpec
@@ -383,15 +387,15 @@ mut:
 	module             string
 	file               string
 	recent_generation  u32 = 1
-	recent_types       [256]string
-	recent_results     [256]string
-	recent_generations [256]u32
+	recent_types       [1024]string
+	recent_results     [1024]string
+	recent_generations [1024]u32
 	entries            map[string]string
 }
 
 @[inline]
 fn alias_cache_slot(typ string) int {
-	return int((u64(voidptr(typ.str)) >> 4 ^ u64(typ.len)) & 255)
+	return int((u64(voidptr(typ.str)) >> 4 ^ u64(typ.len)) & 1023)
 }
 
 @[inline]
@@ -462,7 +466,6 @@ mut:
 struct ContextBoolLookupCache {
 mut:
 	module  string
-	file    string
 	entries map[string]i8 // 1 = true, -1 = false
 }
 
@@ -1154,6 +1157,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		sql_query_data_aliases:           map[string][]string{}
 		bound_method_arrays:              map[string]BoundMethodArrayInfo{}
 		comptime_field_metas_cache:       map[string][]FieldMeta{}
+		const_array_fixed_storage_cache:  map[string]i8{}
 		invalidated_smartcasts:           map[string]bool{}
 		escaping_amp_ptrs:                map[string]bool{}
 		escaping_amp_sources:             map[string]bool{}
@@ -1702,6 +1706,9 @@ fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
 		return
 	}
 	for name, _ in t.tc.fn_ret_types {
+		if name in t.fn_ret_types {
+			continue
+		}
 		t.add_receiver_method_suffix_index(name)
 	}
 }
@@ -2066,6 +2073,7 @@ fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
 // --- type collection ---
 
 // collect_types updates collect types state for transform.
+@[direct_array_access]
 fn (mut t Transformer) collect_types() {
 	// All matched kinds are top-level declarations; when the checker's
 	// top-level index covers the AST, iterate it instead of streaming every
@@ -2326,7 +2334,7 @@ fn (mut t Transformer) collect_alias_methods() {
 		return
 	}
 	for name, params in t.tc.fn_param_types {
-		if params.len == 0 || !name.contains('.') {
+		if params.len == 0 || name.index_u8(`.`) < 0 {
 			continue
 		}
 		receiver_name := name.all_before_last('.')
@@ -2453,6 +2461,9 @@ fn (mut t Transformer) transform_all() {
 }
 
 fn (t &Transformer) has_entry_main() bool {
+	if !isnil(t.tc) {
+		return 'main' in t.tc.fn_ret_types
+	}
 	mut cur_module := ''
 	for node in t.a.nodes {
 		kind_id := node_kind_id(node)
@@ -2706,24 +2717,33 @@ fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool
 // and returns work items for the closure-free functions left to transform.
 fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) []FnWorkItem {
 	mut pure := []FnWorkItem{}
-	original_len := t.a.nodes.len
 	mut literal_decl_idx := 0
 	scan_fn_literals := literal_decls.len > 0
 	// The checker's top-level index gives the exact subtree range of each fn
 	// ((previous top-level decl of ANY kind, fn_idx]); the shared-base parallel
 	// transform relies on those ranges being disjoint per item.
-	tl := if !isnil(t.tc) { t.tc.top_level_idx } else { []int{} }
-	mut ti := 0
+	use_checker_tl := t.tc.top_level_idx.len > 0 && t.tc.top_level_idx_nodes_len == t.a.nodes.len
+	mut rebuilt_tl := []int{}
+	if !use_checker_tl {
+		// Hand-built test ASTs and transforms after declaration synthesis do not
+		// have a current checker index. Rebuild only in that uncommon case.
+		rebuilt_tl = []int{cap: 1024}
+		for i, node in t.a.nodes {
+			if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl,
+				.enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
+				rebuilt_tl << i
+			}
+		}
+	}
+	tl := if use_checker_tl { t.tc.top_level_idx } else { rebuilt_tl }
 	mut prev_tl_any := -1
-	mut prev_decl_end := 0
 	mut const_ms := f64(0)
 	mut lit_ms := f64(0)
 	mut scsw := time.new_stopwatch()
-	for i in 0 .. original_len {
-		for ti < tl.len && tl[ti] < i {
-			prev_tl_any = tl[ti]
-			ti++
-		}
+	for i in tl {
+		range_lo := prev_tl_any + 1
+		span_cost := i - prev_tl_any
+		prev_tl_any = i
 		node := t.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
@@ -2733,10 +2753,9 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			t.cur_module = node.value
 		} else if kind_id == 61 {
 			// The parser builds nodes bottom-up, so a declaration's subtree
-			// precedes its node: the span since the previous top-level
-			// declaration approximates this function's subtree size.
-			span_cost := i - prev_decl_end
-			prev_decl_end = i
+			// precedes its node. Use the checker's exact top-level boundary:
+			// counting from the previous function/const/global also included
+			// intervening type declarations and badly skewed worker loads.
 			for literal_decl_idx < literal_decls.len && literal_decls[literal_decl_idx] < i {
 				literal_decl_idx++
 			}
@@ -2751,7 +2770,10 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			if !t.should_transform_fn(node) {
 				continue
 			}
-			cost := if scan_fn_literals {
+			scan_cost := if i < t.fn_scan_costs.len { t.fn_scan_costs[i] } else { 0 }
+			cost := if scan_cost > 0 {
+				scan_cost
+			} else if scan_fn_literals {
 				if span_cost > 0 { span_cost } else { 1 }
 			} else {
 				int(node.children_count) + 1
@@ -2759,7 +2781,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			if has_literal {
 				old_range_lo := t.item_range_lo
 				old_range_hi := t.item_range_hi
-				t.item_range_lo = prev_tl_any + 1
+				t.item_range_lo = range_lo
 				t.item_range_hi = i
 				scsw.restart()
 				t.transform_fn_body(i)
@@ -2775,11 +2797,11 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				// folds into this item's cost so its region is sized to fit. The
 				// estimate is 0 for every type v3 self-host interpolates, so its work
 				// items and node numbering are untouched.
-				str_est := t.fn_span_interp_estimate(prev_tl_any + 1, i)
+				str_est := t.fn_span_interp_estimate(range_lo, i)
 				if str_est > deferred_str_expansion_threshold {
 					t.deferred_str_items << FnWorkItem{
 						fn_idx:   i
-						range_lo: prev_tl_any + 1
+						range_lo: range_lo
 						file:     t.cur_file
 						module:   t.cur_module
 						cost:     cost
@@ -2789,7 +2811,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 					adj_cost := cost + str_est
 					pure << FnWorkItem{
 						fn_idx:   i
-						range_lo: prev_tl_any + 1
+						range_lo: range_lo
 						file:     t.cur_file
 						module:   t.cur_module
 						cost:     adj_cost
@@ -2798,17 +2820,16 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				}
 			}
 		} else if kind_id == 65 {
-			prev_decl_end = i
 			scsw.restart()
 			t.transform_const_decl(node)
 			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		} else if kind_id == 64 {
-			prev_decl_end = i
 			scsw.restart()
 			t.transform_global_decl(node)
 			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		}
 	}
+	t.fn_scan_costs = []int{}
 	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms')
 	return pure
 }
@@ -2821,8 +2842,34 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 // walks. Literals inside const/global initializers reset at their decl; any
 // other stray attribution can only route an extra function to the serial
 // transform path, which is always safe.
-fn (t &Transformer) collect_literal_fn_decls(limit int) []int {
+fn (mut t Transformer) collect_literal_fn_decls(limit int) []int {
 	mut result := []int{cap: 64}
+	mut flags := []u8{len: limit}
+	if scan_literal_decl_flags_parallel(t.a, limit, mut flags) {
+		mut literal_pending := false
+		mut span_cost := 0
+		t.fn_scan_costs = []int{len: limit}
+		for i in 0 .. flags.len {
+			flag := flags[i]
+			span_cost += int(flag & 15)
+			if flag & 16 != 0 {
+				literal_pending = true
+			}
+			if flag & 32 != 0 {
+				if literal_pending {
+					result << i
+				}
+				literal_pending = false
+				t.fn_scan_costs[i] = span_cost
+			} else if flag & 64 != 0 {
+				literal_pending = false
+			}
+			if flag & 128 != 0 {
+				span_cost = 0
+			}
+		}
+		return result
+	}
 	mut literal_pending := false
 	for i in 0 .. limit {
 		node := t.a.nodes[i]
@@ -2851,6 +2898,15 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 		t.cur_module = it.module
 		t.item_range_lo = it.range_lo
 		t.item_range_hi = it.fn_idx
+		$if v3_ttime ? {
+			mut item_sw := time.new_stopwatch()
+			t.transform_fn_body(it.fn_idx)
+			elapsed_us := item_sw.elapsed().microseconds()
+			if elapsed_us >= 5_000 {
+				eprintln('  [ttime]       item ${it.module}.${t.a.nodes[it.fn_idx].value} cost=${it.cost} ${f64(elapsed_us) / 1000.0:.2f} ms')
+			}
+			continue
+		}
 		t.transform_fn_body(it.fn_idx)
 	}
 	t.item_range_lo = -1
@@ -3160,6 +3216,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		receiver_method_suffix_index:       t.receiver_method_suffix_index
 		variadic_suffix_index:              t.variadic_suffix_index
 		const_suffixes:                     t.const_suffixes
+		const_array_fixed_storage_cache:    map[string]i8{}
 		enum_types:                         t.enum_types
 		enum_backing_types:                 t.enum_backing_types
 		runtime_type_indexes:               t.runtime_type_indexes
@@ -5260,6 +5317,7 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	}
 }
 
+@[direct_array_access]
 fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -6563,6 +6621,7 @@ fn (t &Transformer) escape_fn_literal_capture_names(id flat.NodeId) []string {
 // `method_value_receivers`, (d) captured names in `cb := fn [p]` into
 // `closure_capture_aliases`, and (e) every ident name appearing inside a return
 // statement, map value assignment, or nonlocal field store into `returned`.
+@[direct_array_access]
 fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut method_value_receivers map[string]string, mut closure_capture_aliases map[string][]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -7559,6 +7618,7 @@ fn (mut t Transformer) transform_labeled_multi_init_loop(label string, block_id 
 }
 
 // transform_stmt transforms transform stmt data for transform.
+@[direct_array_access]
 pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 	if int(id) < 0 {
 		return arr1(id)
@@ -7651,6 +7711,7 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 }
 
 // transform_expr transforms transform expr data for transform.
+@[direct_array_access]
 pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if int(id) < 0 {
 		return id
@@ -9159,7 +9220,7 @@ fn (mut t Transformer) fixed_array_value_to_dynamic(value_id flat.NodeId, target
 	return t.fixed_array_value_to_array(value_id, child_type, array_type)
 }
 
-fn (t &Transformer) const_array_literal_storage_type_name_for_expr(id flat.NodeId) ?string {
+fn (mut t Transformer) const_array_literal_storage_type_name_for_expr(id flat.NodeId) ?string {
 	if int(id) < 0 || isnil(t.tc) {
 		return none
 	}
@@ -9205,7 +9266,16 @@ fn (t &Transformer) const_array_literal_storage_elem_excluded(raw_type types.Typ
 		|| elem_type is types.Unknown
 }
 
-fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool {
+fn (mut t Transformer) const_array_literal_requires_fixed_storage(key string) bool {
+	if cached := t.const_array_fixed_storage_cache[key] {
+		return cached > 0
+	}
+	result := t.const_array_literal_requires_fixed_storage_uncached(key)
+	t.const_array_fixed_storage_cache[key] = if result { i8(1) } else { i8(-1) }
+	return result
+}
+
+fn (t &Transformer) const_array_literal_requires_fixed_storage_uncached(key string) bool {
 	// 0 = unseen, 1 = fixed-storage-safe context, 2 = unmatched reference.
 	// Parents normally follow their children, but rewritten ASTs can contain
 	// forward edges; retaining both states makes this equivalent to the old
@@ -9215,6 +9285,12 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool 
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut fixed_candidate := false
+	key_dot := key.last_index_u8(`.`)
+	key_short := if key_dot >= 0 {
+		unsafe { key.substr_unsafe(key_dot + 1, key.len) }
+	} else {
+		key
+	}
 	for idx, node in t.a.nodes {
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
@@ -9230,13 +9306,15 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool 
 			fn_node := t.a.child_node(&node, 0)
 			if fn_node.kind == .selector && fn_node.children_count > 0 {
 				base_id := t.a.child(fn_node, 0)
-				if t.const_ref_matches_key_in_context(base_id, cur_module, cur_file, key) {
+				if t.const_ref_matches_key_in_context(base_id, cur_module, cur_file, key, key_short) {
 					return false
 				}
 			}
 		}
 		if node.kind in [.ident, .selector, .as_expr, .paren] {
-			if t.const_ref_matches_key_in_context(flat.NodeId(idx), cur_module, cur_file, key) {
+			if t.const_ref_matches_key_in_context(flat.NodeId(idx), cur_module, cur_file, key,
+				key_short)
+			{
 				if ref_states[idx] != 1 {
 					ref_states[idx] = 2
 					unmatched_count++
@@ -9250,7 +9328,7 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool 
 		if node.kind == .index && node.children_count > 0 {
 			base_id := t.a.child(&node, 0)
 			unmatched_count -= t.mark_const_ref_descendants_safe(mut ref_states, base_id)
-			if t.const_ref_matches_key_in_context(base_id, cur_module, cur_file, key) {
+			if t.const_ref_matches_key_in_context(base_id, cur_module, cur_file, key, key_short) {
 				fixed_candidate = true
 			}
 		}
@@ -9258,7 +9336,9 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool 
 			container_id := t.a.child(&node, 2)
 			if int(container_id) >= 0 && t.a.nodes[int(container_id)].kind != .range {
 				unmatched_count -= t.mark_const_ref_descendants_safe(mut ref_states, container_id)
-				if t.const_ref_matches_key_in_context(container_id, cur_module, cur_file, key) {
+				if t.const_ref_matches_key_in_context(container_id, cur_module, cur_file, key,
+					key_short)
+				{
 					fixed_candidate = true
 				}
 			}
@@ -9285,8 +9365,8 @@ fn (t &Transformer) mark_const_ref_descendants_safe(mut states []u8, id flat.Nod
 	return cleared
 }
 
-fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name string, file string, key string) bool {
-	if !t.const_ref_may_match_key(id, key, file) {
+fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name string, file string, key string, key_short string) bool {
+	if !t.const_ref_may_match_key(id, key, key_short, file) {
 		return false
 	}
 	name := t.expr_key(id)
@@ -9322,24 +9402,31 @@ fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name
 	return false
 }
 
-fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string, file string) bool {
+fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string, key_short string, file string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || key.len == 0 {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind in [.as_expr, .paren] && node.children_count > 0 {
-		return t.const_ref_may_match_key(t.a.child(&node, 0), key, file)
+		return t.const_ref_may_match_key(t.a.child(&node, 0), key, key_short, file)
 	}
 	if node.kind !in [.ident, .selector] || node.value.len == 0 {
 		return false
 	}
-	if key == node.value || (key.len > node.value.len && key[key.len - node.value.len - 1] == `.`
-		&& key.ends_with(node.value)) {
+	if key == node.value {
+		return true
+	}
+	has_dot := node.value.index_u8(`.`) >= 0
+	if !has_dot {
+		return node.value == key_short
+	}
+	if key.len > node.value.len && key[key.len - 1] == node.value[node.value.len - 1]
+		&& key[key.len - node.value.len - 1] == `.` && key.ends_with(node.value) {
 		return true
 	}
 	// const_suffixes contains only dot-delimited suffixes of `key`, all covered by
 	// the comparison above. Avoid hashing nearly every identifier in the AST here.
-	if node.kind == .ident && node.value.contains('.') && !isnil(t.tc) {
+	if node.kind == .ident && !isnil(t.tc) {
 		base := node.value.all_before_last('.')
 		if resolved_base := t.tc.file_imports[file_import_key(file, base)] {
 			return qualified_const_key_matches(key, resolved_base, node.value.all_after_last('.'))
@@ -16990,6 +17077,7 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 }
 
 // transform_cast_expr transforms transform cast expr data for transform.
+@[direct_array_access]
 fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id

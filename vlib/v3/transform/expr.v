@@ -1085,9 +1085,8 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 	}
 	if !isnil(t.type_alias_name_cache) {
 		mut cache := t.type_alias_name_cache
-		if cache.module != t.cur_module || cache.file != t.cur_file {
+		if cache.module != t.cur_module {
 			cache.module = t.cur_module
-			cache.file = t.cur_file
 			cache.entries.clear()
 		}
 		if cached := cache.entries[name] {
@@ -1104,11 +1103,11 @@ fn (t &Transformer) is_type_alias_name_uncached(name string) bool {
 	if name in t.tc.type_aliases {
 		return true
 	}
-	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
+	has_dot := name.index_u8(`.`) >= 0
+	if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		return '${t.cur_module}.${name}' in t.tc.type_aliases
 	}
-	if !name.contains('.') {
+	if !has_dot {
 		for aname, _ in t.tc.type_aliases {
 			if aname.all_after_last('.') == name {
 				return true

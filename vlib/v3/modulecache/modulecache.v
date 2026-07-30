@@ -1,12 +1,12 @@
 module modulecache
 
 import os
-import rand
 import strings
 import v3.flat
 import v3.pref
+import v3.tempname
 import v3.types
-import v.util.version
+import v3.util
 
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
@@ -715,7 +715,7 @@ fn signature_vmod_hash(root string, vmod_file string) string {
 	if vmod_file.len == 0 {
 		return ''
 	}
-	return version.githash(root) or { '' }
+	return util.githash(root) or { '' }
 }
 
 fn compile_time_env_names(source string) []string {
@@ -1305,7 +1305,7 @@ fn write_atomic(path string, content string) ! {
 	// The temporary name must be unique per writer, not just per process: a
 	// persistent worker pool can publish the same cache path from several
 	// threads at once, and `${path}.tmp.${pid}` would collide between them.
-	tmp := '${path}.tmp.${os.getpid()}.${rand.ulid()}'
+	tmp := '${path}.tmp.${tempname.unique_token()}'
 	defer {
 		os.rm(tmp) or {}
 	}

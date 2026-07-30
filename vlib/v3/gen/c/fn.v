@@ -590,7 +590,7 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 	if node.generic_params().len > 0 {
 		return true
 	}
-	if !node.value.contains('.') {
+	if node.value.index_u8(`.`) < 0 {
 		return false
 	}
 	receiver := node.value.all_before_last('.')
@@ -14001,6 +14001,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 	return none
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []types.Type {
 	if g.fn_needs_implicit_veb_ctx(node) {
 		return []types.Type{}

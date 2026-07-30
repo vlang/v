@@ -1976,16 +1976,8 @@ fn (tc &TypeChecker) recursive_str_receiver_is_concrete_match_variant(call_id fl
 }
 
 fn (tc &TypeChecker) recursive_str_has_concrete_fn_decl(name string) bool {
-	for idx in tc.top_level_idx {
-		node := tc.a.node(flat.NodeId(idx))
-		if node.kind != .fn_decl {
-			continue
-		}
-		if tc.recursive_str_fn_decl_matches(*node, name) {
-			return true
-		}
-	}
-	return false
+	_ := tc.recursive_str_fn_decl_id(name) or { return false }
+	return true
 }
 
 fn (mut tc TypeChecker) recursive_str_process_if_stmt(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) bool {
@@ -3448,6 +3440,16 @@ fn (mut tc TypeChecker) recursive_str_apply_effect_to_target(target_id flat.Node
 }
 
 fn (tc &TypeChecker) recursive_str_fn_decl_id(name string) ?flat.NodeId {
+	short_name := name.all_after_last('.')
+	if idx := tc.fn_decl_short_name_ids[short_name] {
+		id := flat.NodeId(idx)
+		if tc.recursive_str_fn_decl_matches(*tc.a.node(id), name) {
+			return id
+		}
+	}
+	// Colliding short names are uncommon. Preserve declaration-order semantics
+	// for them with the old scan only when the indexed first declaration did
+	// not match the requested qualified name.
 	for idx in tc.top_level_idx {
 		id := flat.NodeId(idx)
 		node := tc.a.node(id)

@@ -1472,6 +1472,7 @@ fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
 // transform) and falling back to the transformer's local heuristics. This is the
 // bridge that makes the transformer type-aware, so type-dependent lowering lives
 // here rather than in the backend.
+@[direct_array_access]
 fn (t &Transformer) node_type(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
