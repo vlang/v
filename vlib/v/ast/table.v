@@ -533,7 +533,10 @@ fn (t &Table) method_types_are_equal(left Type, right Type) bool {
 	return unaliased_left == unaliased_right
 }
 
-fn (t &Table) method_fn_return_types_are_compatible(left Type, right Type) bool {
+fn (t &Table) method_return_types_are_compatible(left Type, right Type) bool {
+	if t.method_types_are_equal(left, right) {
+		return true
+	}
 	unaliased_left := t.fully_unaliased_type(left)
 	unaliased_right := t.fully_unaliased_type(right)
 	if unaliased_left.nr_muls() != unaliased_right.nr_muls() {
@@ -552,15 +555,22 @@ fn (t &Table) method_fn_return_types_are_compatible(left Type, right Type) bool 
 		}
 		return t.fn_types_are_compatible(left_sym.info.func, right_sym.info.func, 0)
 	}
+	if left_sym.info is MultiReturn && right_sym.info is MultiReturn {
+		if left_sym.info.types.len != right_sym.info.types.len {
+			return false
+		}
+		for i, typ in left_sym.info.types {
+			if !t.method_return_types_are_compatible(typ, right_sym.info.types[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	return false
 }
 
 pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
-	mut same_return_type := t.method_types_are_equal(f.return_type, func.return_type)
-	if !same_return_type {
-		same_return_type = t.method_fn_return_types_are_compatible(f.return_type, func.return_type)
-	}
-	if !same_return_type {
+	if !t.method_return_types_are_compatible(f.return_type, func.return_type) {
 		s := t.type_to_str(f.return_type)
 		return 'expected return type `${s}`'
 	}
