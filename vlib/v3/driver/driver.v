@@ -4455,11 +4455,13 @@ pub fn run(args []string) {
 		}
 		exit(1)
 	}
-	// Parallel transform is disabled for larger embedded imports to stay below
-	// 2 GiB. Cgen workers reconcile their local string IDs during the ordered
-	// merge, so embedded generation remains deterministic in parallel.
+	// Parallel transform is disabled for larger embedded imports when worker
+	// scratch allocations live for the whole compilation. Scoped preallocation
+	// releases that scratch after each stage, so it can retain parallel transform
+	// without the former memory growth. Cgen workers reconcile their local string
+	// IDs during the ordered merge, so embedded generation remains deterministic.
 	if !current_no_parallel && os.getenv(v3_embedded_env) == '1' {
-		if a.nodes.len >= embedded_parallel_transform_node_limit {
+		if !scope_prealloc_transform && a.nodes.len >= embedded_parallel_transform_node_limit {
 			current_parallel_transform = false
 		}
 	}
