@@ -31,6 +31,8 @@ jobs:
         run: |
           mkdir -p _site
           rsync -a --exclude='.git' --exclude='.github' site/ _site/
+      - name: Ensure GNU tar is available
+        run: command -v gtar >/dev/null || brew install gnu-tar
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
