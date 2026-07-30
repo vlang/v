@@ -30,6 +30,19 @@ set -euo pipefail
 
 TCC_FOLDER="${1:?usage: $0 <TCC_FOLDER>}"
 
+# TCC_FOLDER is passed both as a relative path (the in-tree build
+# directory, "thirdparty/tcc") and as an already-absolute path (the
+# fresh-checkout clone under /tmp) by the two call sites in
+# update_tccbin.yml - blindly prefixing $PWD onto it (as an earlier
+# version of this script did) is only correct for the relative case;
+# for the absolute case "$PWD/$TCC_FOLDER" collapses the leading slash
+# into "$PWD/tmp/..." instead of "/tmp/...", pointing the dylib/rpath
+# args below at a path that doesn't exist.
+case "$TCC_FOLDER" in
+  /*) TCC_FOLDER_ABS="$TCC_FOLDER" ;;
+  *) TCC_FOLDER_ABS="$PWD/$TCC_FOLDER" ;;
+esac
+
 echo "== independently re-verifying the dylib itself (build script's own check is not trusted blindly) =="
 if [ ! -L "$TCC_FOLDER/lib/libgc.dylib" ]; then
   echo "::error::$TCC_FOLDER/lib/libgc.dylib is not a symlink - expected a symlink to a versioned file (e.g. libgc.1.dylib)."
@@ -84,8 +97,8 @@ chmod +x "$run_sh"
 "$run_sh" "$TCC_FOLDER/tcc.exe" macos -- \
     "${GC_CFLAGS[@]}" \
     -I thirdparty/libgc/include \
-    "$PWD/$TCC_FOLDER/lib/libgc.dylib" \
-    -Wl,-rpath,"$PWD/$TCC_FOLDER/lib" \
+    "$TCC_FOLDER_ABS/lib/libgc.dylib" \
+    -Wl,-rpath,"$TCC_FOLDER_ABS/lib" \
     -ldl -lpthread
 
 echo "== no-GC fallback lane (ported verbatim) =="

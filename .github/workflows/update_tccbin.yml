@@ -299,7 +299,31 @@ jobs:
           set -euo pipefail
           cd thirdparty/tcc
           libgc_dylib_target=$(readlink lib/libgc.dylib)
-          git add lib/libgc.a "lib/libgc.dylib" "lib/$libgc_dylib_target" lib/libgc_build_*.txt bundle_checksums.txt build_macosx_deployment_target.txt build_toolchain_identity.txt
+          # -A (not a hardcoded file list) against these exact globs:
+          # if bdwgc's SONAME bumped this run (e.g. libgc.1.dylib ->
+          # libgc.2.dylib), the old versioned file was already removed
+          # from disk by thirdparty-macos-amd64_bdwgc.sh's own cleanup
+          # step, but a plain `git add <new-file-list>` never mentions
+          # the old path, so its deletion would never get staged - the
+          # stale file would keep reappearing from history on every
+          # future checkout. `git add -A -- <pathspec>` stages adds AND
+          # deletions matching the glob, so whatever SONAME disappeared
+          # this run is captured without needing to know its name.
+          #
+          # Deliberately only libgc*.dylib/libgc*.a here, NOT libgc.la/
+          # libgc.lai (which thirdparty-macos-amd64_bdwgc.sh's own
+          # cleanup line also removes defensively, but rsyncs only from
+          # bdwgc/.libs/ - libtool's .la/.lai wrapper files live one
+          # level up and are never actually staged into lib/ in the
+          # first place). `git add -A -- <pathspecs>` fails its ENTIRE
+          # invocation (stages nothing, not even the globs that do
+          # match) if even one pathspec matches zero files either
+          # on disk or in the index - confirmed by testing. A glob for
+          # a file that plausibly never exists here would turn this
+          # into a hard failure on every single normal run, not just a
+          # SONAME bump.
+          git add -A -- 'lib/libgc*.dylib' 'lib/libgc*.a' lib/libgc_build_*.txt bundle_checksums.txt build_macosx_deployment_target.txt build_toolchain_identity.txt
+          git status --porcelain
           git commit -m "pair libgc rebuild (bdwgc $LIBGC_COMMIT) with this tcc.exe rebuild"
         env:
           LIBGC_COMMIT: ${{ steps.bdwgc.outputs.libgc_hash }}
@@ -339,6 +363,20 @@ jobs:
       # so letting `make`'s default target bootstrap it normally here
       # is safe - unlike running `make` against the staged checkout
       # itself, which would `git clean -xf` away everything just built.
+      #
+      # Plain `make -j4`, deliberately NOT `make local=1`: both vc/ and
+      # thirdparty/tcc are gitignored, so this fresh `git clone` starts
+      # with neither. `local=1` makes the `latest_vc`/`latest_tcc`
+      # targets skip their own git-clone bootstrap entirely (see
+      # GNUmakefile's `ifndef local` branches) on the assumption that
+      # vc/v.c already exists from an earlier step in the same
+      # job - true in bootstrapping_ci.yml, which runs a plain `make`
+      # first, but not true here. `make local=1` here would fail
+      # outright with no vc/v.c to bootstrap v1 from. `latest_tcc`
+      # cloning its own stock thirdparty/tcc under plain `make` is
+      # harmless: the next step wholesale-replaces it with the staged,
+      # fresh-checkout-validated bundle only after this `make` already
+      # finished building ./v.
       - name: Build V from source in an isolated workspace
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
         shell: bash
@@ -372,7 +410,7 @@ jobs:
           print("smoke-test-only selector patch applied in isolated workspace")
           PYEOF
 
-          (cd /tmp/v-bootstrap-workspace && make local=1 -j4)
+          (cd /tmp/v-bootstrap-workspace && make -j4)
 
       - name: Real V + tcc + boehm compile-and-execute smoke test
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
@@ -463,8 +501,23 @@ jobs:
           name: tccbin-${{ matrix.id }}
           path: thirdparty/tcc
 
+      # macos-amd64 additionally requires an explicit unlock: vlang/tccbin's
+      # thirdparty-macos-amd64 build-and-test.yml currently hard-fails if the
+      # checked-in package unexpectedly starts passing (today it's supposed
+      # to still be broken) - that gate must flip to "must pass" (deliverable
+      # B) BEFORE a working pair is ever pushed here, or the very next green
+      # publish breaks that CI for the opposite reason. PUBLISH alone isn't
+      # a safe gate for this platform: it's true unconditionally on every
+      # monthly schedule run, and also on any manual dispatch with
+      # publish=true, regardless of whether B has landed yet. Repo variable
+      # MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED defaults to unset (falsy), so
+      # this stays closed until a maintainer sets it to 'true' after
+      # confirming B is live and green - see the "Sequence" section of the
+      # PR description.
       - name: Push tccbin branch
-        if: steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true'
+        if: >-
+          steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true' &&
+          (matrix.id != 'macos-amd64' || vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED == 'true')
         shell: bash
         run: |
           set -euo pipefail
