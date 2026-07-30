@@ -1,5 +1,15 @@
 module transform
 
+import v3.flat
+
+fn scan_literal_decl_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
+	return false
+}
+
+fn scan_top_level_kind_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
+	return false
+}
+
 // collect_interface_boxed_types_parallel keeps the interface scan serial when
 // v3 is built with the internal `v3_no_parallel` define.
 fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {

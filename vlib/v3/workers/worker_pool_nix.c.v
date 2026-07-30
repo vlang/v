@@ -125,9 +125,14 @@ fn pool_worker(arg voidptr) voidptr {
 // the available parallelism; run executes synchronously if none launch.
 pub fn new(size int) &Pool {
 	wanted := if size < 0 { 0 } else { size }
+	// Compiler phases deliberately oversubscribe the workers with small chunks
+	// so that uneven AST bodies do not leave cores idle. Buffer the whole normal
+	// batch: otherwise Pool.run has to wait for early completions while it is
+	// still submitting work, delaying the caller's force_sync chunk.
+	queue_cap := if wanted > 0 { wanted * 16 } else { 1 }
 	mut pool := &Pool{
-		jobs:                 chan Task{cap: if wanted > 0 { wanted * 2 } else { 1 }}
-		done:                 chan Completion{cap: if wanted > 0 { wanted * 2 } else { 1 }}
+		jobs:                 chan Task{cap: queue_cap}
+		done:                 chan Completion{cap: queue_cap}
 		launch_attempt_count: u64(wanted)
 		started_at_ns:        time.sys_mono_now()
 	}

@@ -1192,7 +1192,7 @@ fn for_iter_optional_payload_type(iter_type string) ?string {
 	return none
 }
 
-fn (t &Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?string {
+fn (mut t Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?string {
 	if int(id) < 0 {
 		return none
 	}

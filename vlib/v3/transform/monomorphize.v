@@ -6874,6 +6874,7 @@ fn (mut t Transformer) build_generic_alias_name_index() {
 	t.generic_alias_names = names.move()
 }
 
+@[direct_array_access]
 fn (mut t Transformer) build_local_decl_index() {
 	mut decls := map[string][]int{}
 	for idx, node in t.a.nodes {

@@ -2643,8 +2643,16 @@ fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 	mut cache := map[string]map[string]FieldDeclMeta{}
 	mut cur_mod := ''
 	mut cur_file_id := 0
-	for node in t.a.nodes {
-		if node.pos.id > 0 && node.pos.id != cur_file_id {
+	use_idx := !isnil(t.tc) && t.tc.top_level_idx.len > 0
+		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
+	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
+	for ii in 0 .. count {
+		node := if use_idx { t.a.nodes[t.tc.top_level_idx[ii]] } else { t.a.nodes[ii] }
+		if use_idx && node.kind == .file {
+			cur_mod = t.tc.file_modules[node.value] or { 'main' }
+			continue
+		}
+		if !use_idx && node.pos.id > 0 && node.pos.id != cur_file_id {
 			cur_file_id = node.pos.id
 			// Files without an explicit module declaration belong to main.
 			cur_mod = 'main'

@@ -12,6 +12,7 @@ import v3.workers
 const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 128
 const scoped_cgen_worker_batches = 1
+const flat_cgen_chunks_per_job = 12
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -61,8 +62,8 @@ $if !windows {
 						text_cache.generation++
 					}
 					cost, needs_prelude_scan := exact_flat_fn_gen_item_cost_and_prep(g,
-						items[idx].node_id, mut a.refs, mut stack, mut a.cands, item_module,
-						item_file, mut text_cache, mut type_seen)
+						items[idx].node_id, idx, mut a.refs, mut stack, mut a.cands, mut
+						text_cache, mut type_seen)
 					items[idx].cost = cost
 					items[idx].skip_prelude_scan = !needs_prelude_scan
 				}
@@ -266,10 +267,11 @@ fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
 	mut replay_seen := &PreseedTypeSeen{}
 	for arg in args {
 		for cand in arg.cands {
-			if cand.file != g.tc.cur_file || cand.module != g.tc.cur_module {
+			item := g.fn_gen_items[cand.item_idx]
+			if item.file != g.tc.cur_file || item.module != g.tc.cur_module {
 				type_text_cache.clear()
-				g.tc.cur_file = cand.file
-				g.tc.cur_module = cand.module
+				g.tc.cur_file = item.file
+				g.tc.cur_module = item.module
 			}
 			if cand.is_expr {
 				w0, w1, slot := preseed_type_words(cand.typ)
@@ -289,7 +291,14 @@ fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
 	}
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) preintern_ast_string_literals() {
+	if g.ast_string_literals_ready {
+		for value in g.ast_string_literals {
+			g.intern_string(value)
+		}
+		return
+	}
 	for i in 0 .. g.a.nodes.len {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind == .string_literal {
@@ -723,17 +732,12 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
 		available_jobs := g.a.worker_pool.size() + 1
-		// With only the master and one helper, reserving the helper for type
-		// declarations would make body generation serial. Generate declarations
-		// normally in that case and keep both jobs available for function bodies.
+		// Type declarations use one pool task. Once it finishes, that same worker
+		// can drain a queued body task instead of staying reserved for the whole
+		// function-generation phase.
 		parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
 			&& !g.program_body_only && g.incremental_fn_names.len == 0
-		body_jobs := available_jobs - if parallel_type_decls && available_jobs <= max_flat_cgen_jobs {
-			1
-		} else {
-			0
-		}
-		n_jobs := flat_cgen_job_count(body_jobs, n_items)
+		n_jobs := flat_cgen_job_count(available_jobs, n_items)
 		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
 				if n_items < min_flat_cgen_parallel_items {
@@ -756,7 +760,11 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		if !g.parallel_prepared {
 			g.prepare_parallel_items(items)
 		}
-		chunk_jobs := if parallel_type_decls { n_jobs * 12 } else { n_jobs }
+		chunk_jobs := if parallel_type_decls {
+			n_jobs * flat_cgen_chunks_per_job
+		} else {
+			n_jobs
+		}
 		mut chunk_items := split_flat_cgen_items(items, chunk_jobs)
 		chunk_count := chunk_items.len
 		if parallel_type_decls {
@@ -811,8 +819,11 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				}
 				reserve_cost := total_cost / i64(worker_count) + 1
 				mut args := []FlatCgenDynamicArgs{cap: worker_count}
-				type_decls_thread := spawn parallel_type_decls_thread(voidptr(g))
-				mut tasks := []workers.Task{cap: worker_count}
+				mut tasks := []workers.Task{cap: worker_count + 1}
+				tasks << workers.Task{
+					run: parallel_type_decls_thread
+					arg: voidptr(g)
+				}
 				for ci in 0 .. worker_count {
 					args << FlatCgenDynamicArgs{
 						worker:          cgen_workers[ci]
@@ -828,9 +839,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				}
 				g.parallel_used = g.a.worker_pool.run(tasks)
 				g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
-				dsw.restart()
-				_ = type_decls_thread.wait()
-				g.timing_profile('  [ttime]   cg decls wait    ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
 			// The declaration thread disables the master's caches while body
 			// workers use their private copies. Restore them for synthetic output.
@@ -1077,6 +1085,11 @@ fn balance_flat_cgen_chunks(chunks [][]FlatFnGenItem, n_jobs int) [][]FlatFnGenI
 // fn_item_cost_and_prep computes the split cost, collects C-extern refs, and
 // pre-seeds function-pointer types in one subtree traversal.
 fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.NodeId, mut type_text_cache map[string]bool) int {
+	// Direct users of this helper (including small standalone generators) may
+	// not have run collect_gen_info's fused literal collection.
+	if !g.ast_string_literals_ready {
+		g.preintern_ast_string_literals()
+	}
 	mut cost := 0
 	stack.clear()
 	stack << node_id
@@ -1236,11 +1249,10 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?type
 // parallel prep worker, replayed by the master in source order so the typedef
 // registration order matches the former serial walk exactly.
 struct FlatCgenPrepCandidate {
-	is_expr bool
-	text    string // node.typ text (is_expr == false)
-	module  string
-	file    string
-	typ     types.Type // checker-cached expr type (is_expr == true)
+	is_expr  bool
+	text     string     // node.typ text (is_expr == false)
+	typ      types.Type // checker-cached expr type (is_expr == true)
+	item_idx int
 }
 
 // exact_flat_fn_gen_item_cost_and_prep is exact_flat_fn_gen_item_cost plus the
@@ -1248,7 +1260,8 @@ struct FlatCgenPrepCandidate {
 // texts and distinct cached expression types, in encounter order. All FlatGen
 // and checker access is read-only (nothing writes the dense expr caches during
 // cgen; every remember_expr_type caller is a mut check-phase path).
-fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, mut c_extern_refs map[string]bool, mut stack []flat.NodeId, mut cands []FlatCgenPrepCandidate, item_module string, item_file string, mut text_cache PrepTypTextCache, mut type_seen PreseedTypeSeen) (int, bool) {
+@[direct_array_access]
+fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_idx int, mut c_extern_refs map[string]bool, mut stack []flat.NodeId, mut cands []FlatCgenPrepCandidate, mut text_cache PrepTypTextCache, mut type_seen PreseedTypeSeen) (int, bool) {
 	a := g.a
 	mut cost := 0
 	mut needs_prelude_scan := false
@@ -1288,9 +1301,8 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, mut c_e
 				text_cache.gens[slot] = text_cache.generation
 				text_cache.lens[slot] = node.typ.len
 				cands << FlatCgenPrepCandidate{
-					text:   node.typ
-					module: item_module
-					file:   item_file
+					text:     node.typ
+					item_idx: item_idx
 				}
 			}
 		}
@@ -1301,10 +1313,9 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, mut c_e
 				type_seen.w1[slot] = w1
 				type_seen.seen[slot] = true
 				cands << FlatCgenPrepCandidate{
-					is_expr: true
-					module:  item_module
-					file:    item_file
-					typ:     expr_type
+					is_expr:  true
+					typ:      expr_type
+					item_idx: item_idx
 				}
 			}
 		}

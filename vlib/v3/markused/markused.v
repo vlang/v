@@ -143,6 +143,7 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 	return result
 }
 
+@[direct_array_access]
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
 	trivial_literal_output := is_trivial_literal_output_program(a, tc.diagnostic_files)
@@ -252,7 +253,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			body_ids << node_idx
 			body_modules << cur_module
 			body_import_contexts << cur_import_context
-			has_dot := node.value.contains('.')
+			has_dot := node.value.index_u8(`.`) >= 0
 			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
 				fn_count++
@@ -313,7 +314,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					add_suffix_candidate(mut suffix_map, short, qname)
 				}
 			}
-			if qname != node.value && qname.contains('.') && can_suffix_match {
+			if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
 				short := qname.all_after_last('.')
 				add_suffix_candidate(mut suffix_map, short, qname)
 			}
@@ -345,7 +346,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		used['strconv.format_int'] = true
 	}
 	if !trivial_literal_output {
-		enqueue_export_roots(a, mut used, mut queue)
+		enqueue_export_roots(a, tc, mut used, mut queue)
 		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
 		enqueue_test_file_roots(a, test_files, mut used, mut queue)
 		for seed in ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue',
@@ -523,6 +524,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut calls := []string{cap: 128}
 	mut initializer_calls := []string{cap: 32}
 	mut initializer_refs := []string{cap: 32}
+	// Reuse one epoch table across the BFS instead of allocating and reserving
+	// a fresh map for every reachable body. A callee is unique within a body
+	// when its stored epoch matches the current body epoch.
+	mut call_seen_epoch := map[string]u32{}
+	call_seen_epoch.reserve(32_768)
+	mut call_epoch := u32(0)
 	// Global per-callee dedup for the body-independent parts of callee
 	// processing. The same callee name (`println`, `array.get`, ...) appears in
 	// thousands of bodies; its decl-alias expansion depends only on `fn_decls`
@@ -605,16 +612,23 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				initializer_refs << body.refs
 				uses_generics = uses_generics || body.uses_generics
 			}
-			mut call_set := map[string]bool{}
+			call_epoch++
+			mut unique_call_count := 0
 			for call in calls {
-				call_set[call] = true
+				if call_seen_epoch[call] == call_epoch {
+					continue
+				}
+				call_seen_epoch[call] = call_epoch
+				calls[unique_call_count] = call
+				unique_call_count++
 			}
 			for initializer_ref in initializer_refs {
 				enqueue_initializer_ref_calls(a, collector, fn_decls, initializer_ref, mut
 					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
 			}
-			total_callees += calls.len
-			for callee in calls {
+			total_callees += unique_call_count
+			for call_idx in 0 .. unique_call_count {
+				callee := calls[call_idx]
 				if !valid_symbol_name(callee) {
 					continue
 				}
@@ -664,7 +678,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				if !found_direct {
 					short := callee.all_after_last('.')
 					qcallee := qualify_fn(fn_info.module, callee)
-					if qcallee == callee || !call_set[qcallee] {
+					if qcallee == callee || call_seen_epoch[qcallee] != call_epoch {
 						if suffix_candidates := suffix_map[short] {
 							for candidate in suffix_candidates {
 								if candidate in fn_decls || candidate in tc.fn_ret_types {
@@ -676,7 +690,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						}
 					}
 				}
-				iface_tail_key := '${fn_info.module}\x01${callee}'
+				// Qualified call names resolve independently of the caller's module.
+				// Reuse the call itself as the cache key and avoid allocating the
+				// composite module key on the overwhelmingly common exact path.
+				iface_tail_key := if callee.index_u8(`.`) >= 0 {
+					callee
+				} else {
+					'${fn_info.module}\x01${callee}'
+				}
 				if !iface_tail_done[iface_tail_key] {
 					iface_tail_done[iface_tail_key] = true
 					mut iface_callee := callee
@@ -1595,12 +1616,13 @@ fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, reachable_modules map[stri
 	}
 }
 
-fn enqueue_export_roots(a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
+fn enqueue_export_roots(a &flat.FlatAst, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	if a.export_fn_names.len == 0 {
 		return
 	}
 	mut cur_module := ''
-	for node in a.nodes {
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
@@ -1621,7 +1643,8 @@ fn enqueue_export_roots(a &flat.FlatAst, mut used map[string]bool, mut queue []s
 
 fn enqueue_veb_handler_roots(a &flat.FlatAst, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	mut cur_module := ''
-	for node in a.nodes {
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
@@ -3916,14 +3939,13 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 	}
 	result.uses_generics = c.collect_calls_with_locals_and_generics(node, cur_module, imports,
 		receiver_name, receiver_struct, local_values, local_types, visible_local_idents,
-		c.detect_generics, result.uses_generics, mut result.calls)
-	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values,
-		visible_local_idents, mut result.refs)
+		c.detect_generics, result.uses_generics, mut result.calls, mut result.refs, true)
 	return result
 }
 
 // collect_bodies_range fills results[start..end] for the given body list; the
 // per-worker unit of the parallel precollection (also the serial fallback).
+@[direct_array_access]
 fn (c &CallCollector) collect_bodies_range(body_ids []int, body_modules []string, body_import_contexts []int, start int, end int, mut results []BodyCalls) {
 	for i in start .. end {
 		node := c.a.node(flat.NodeId(body_ids[i]))
@@ -3970,9 +3992,10 @@ fn (c &CallCollector) collect_calls_with_generic_usage(node &flat.Node, cur_modu
 		map[int]bool{}
 	}
 	uses_generics := c.node_uses_generics(node, cur_module, imports)
+	mut no_refs := []string{}
 	return c.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name,
 		receiver_struct, local_values, local_types, visible_local_idents, true, uses_generics, mut
-		calls)
+		calls, mut no_refs, false)
 }
 
 // collect_calls_with_locals is collect_calls with the per-body local-value
@@ -3981,12 +4004,14 @@ fn (c &CallCollector) collect_calls_with_generic_usage(node &flat.Node, cur_modu
 // subtree twice more.
 fn (c &CallCollector) collect_calls_with_locals(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, local_values map[string]bool, local_types map[string]string, visible_local_idents map[int]bool, mut calls []string) {
 	uses_generics := false
+	mut no_refs := []string{}
 	_ = c.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name,
 		receiver_struct, local_values, local_types, visible_local_idents, false, uses_generics, mut
-		calls)
+		calls, mut no_refs, false)
 }
 
-fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, local_values map[string]bool, local_types map[string]string, visible_local_idents map[int]bool, detect_generics bool, initial_uses_generics bool, mut calls []string) bool {
+@[direct_array_access]
+fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, local_values map[string]bool, local_types map[string]string, visible_local_idents map[int]bool, detect_generics bool, initial_uses_generics bool, mut calls []string, mut initializer_refs []string, collect_initializer_refs bool) bool {
 	mut uses_generics := initial_uses_generics
 	if cur_module == 'ast' && node.value == 'TypeSymbol.find_method_with_generic_parent' {
 		c.add_typed_receiver_method_name('ast.Table.find_structured_receiver_method', mut calls)
@@ -3999,7 +4024,13 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 		}
 	}
 	for stack.len > 0 {
-		child_id := stack.pop()
+		raw_child_id := stack.pop()
+		collect_initializer_ref := collect_initializer_refs && int(raw_child_id) >= 0
+		child_id := if int(raw_child_id) >= 0 {
+			raw_child_id
+		} else {
+			flat.NodeId(-int(raw_child_id) - 1)
+		}
 		child := &c.a.nodes[int(child_id)]
 		if detect_generics && !uses_generics && c.node_uses_generics(child, cur_module, imports) {
 			uses_generics = true
@@ -4013,10 +4044,22 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			.ident {
 				name_is_local := markused_ident_is_visible_local(child_id, child.value,
 					local_values, visible_local_idents)
+				if collect_initializer_ref && !name_is_local {
+					c.add_initializer_ref_candidates(child.value, cur_module, imports, mut
+						initializer_refs)
+				}
 				c.collect_fn_value_ident(child_id, child.value, cur_module, imports, name_is_local, mut
 					calls)
 			}
 			.selector {
+				if collect_initializer_ref && !c.selector_base_is_local(child, local_values)
+					&& child.children_count > 0 {
+					base := c.a.child_node(child, 0)
+					if base.kind == .ident && base.value.len > 0 && child.value.len > 0 {
+						c.add_initializer_ref_candidates('${base.value}.${child.value}',
+							cur_module, imports, mut initializer_refs)
+					}
+				}
 				if c.selector_is_enum_value(child, cur_module, imports, local_values) {
 					// Enum fields are values even when a method has the same name.
 				} else if c.collect_interface_method_value_selector(child, mut calls) {
@@ -4329,7 +4372,11 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			for j >= 0 {
 				if child.kind == .call && j == 0 {
 					if callee_expr_id := c.call_callee_expr_to_collect(child) {
-						stack << callee_expr_id
+						stack << if collect_initializer_refs {
+							flat.NodeId(-int(callee_expr_id) - 1)
+						} else {
+							callee_expr_id
+						}
 					}
 					j--
 					continue
@@ -4340,7 +4387,11 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				}
 				next_id := c.a.child(child, j)
 				if int(next_id) >= 0 {
-					stack << next_id
+					stack << if collect_initializer_refs && !collect_initializer_ref {
+						flat.NodeId(-int(next_id) - 1)
+					} else {
+						next_id
+					}
 				}
 				j--
 			}
@@ -4514,6 +4565,7 @@ fn (c &CallCollector) add_initializer_ref_candidates(name string, cur_module str
 	}
 }
 
+@[direct_array_access]
 fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, imports map[string]string) (map[string]bool, map[string]string) {
 	mut names := map[string]bool{}
 	mut type_names := map[string]string{}
@@ -4695,6 +4747,7 @@ fn markused_local_visible(name string, local_values map[string]bool, locals map[
 	return name.len > 0 && name in local_values && (locals[name] or { 0 }) > 0
 }
 
+@[direct_array_access]
 fn markused_collect_visible_local_idents(a &flat.FlatAst, node &flat.Node, local_values map[string]bool, mut locals map[string]int, mut local_stack []string, mut visible_ids map[int]bool) {
 	for i in 0 .. node.children_count {
 		child_id := a.child(node, i)
@@ -6405,6 +6458,7 @@ fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_mo
 }
 
 // collect_fn_value_selector updates collect fn value selector state for markused.
+@[direct_array_access]
 fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
 	if c.collect_interface_method_value_selector(node, mut calls) {
 		return
@@ -6518,6 +6572,7 @@ fn markused_push_fn_value_selector_name(mut names []string, name string) {
 	}
 }
 
+@[direct_array_access]
 fn (c &CallCollector) collect_interface_method_value_selector(node &flat.Node, mut calls []string) bool {
 	if node.children_count == 0 || node.value.len == 0 {
 		return false
@@ -6550,7 +6605,8 @@ fn (c &CallCollector) name_has_fn_decl(name string, cur_module string, imports m
 
 // name_has_candidate_decl returns name has candidate decl data for CallCollector.
 fn (c &CallCollector) name_has_candidate_decl(name string, cur_module string, imports map[string]string, include_consts bool) bool {
-	if !name.contains('.') && !c.fn_suffixes[name] && !(include_consts && c.const_suffixes[name]) {
+	has_dot := name.index_u8(`.`) >= 0
+	if !has_dot && !c.fn_suffixes[name] && !(include_consts && c.const_suffixes[name]) {
 		return false
 	}
 	if c.candidate_matches_decl(name, include_consts) {
@@ -6560,7 +6616,7 @@ fn (c &CallCollector) name_has_candidate_decl(name string, cur_module string, im
 	if qname != name && c.candidate_matches_decl(qname, include_consts) {
 		return true
 	}
-	if name.contains('.') {
+	if has_dot {
 		base := name.all_before_last('.')
 		member := name.all_after_last('.')
 		if base in imports {
