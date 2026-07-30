@@ -414,7 +414,6 @@ struct Delta {
 // here in V (server side), so the template and the browser stay dumb.
 struct Row {
 mut:
-	num         int
 	timestamp   string
 	commit_hash string
 	commit_url  string
@@ -461,9 +460,8 @@ fn build_rows(list []Benchmark) []Row {
 		// the list is newest-first, so the older commit is the next element
 		prev := if i + 1 < list.len { list[i + 1] } else { b }
 		rows << Row{
-			num:         list.len - i
-			timestamp:   b.commit_date.format()
-			commit_hash: b.commit_hash
+			timestamp:   b.commit_date.custom_format('MMM D HH:mm')
+			commit_hash: short_hash(b.commit_hash)
 			commit_url:  'https://github.com/vlang/v/commit/${b.commit_hash}'
 			message:     b.message
 			v_c:         b.v_c_ms

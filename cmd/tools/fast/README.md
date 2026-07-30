@@ -160,11 +160,11 @@ export-and-push is their replacement.)
 |-------------|----------------------------------|----------------------------------|
 | `v -o v.c`  | `vprod -o v.c cmd/v`             | self-compile to C                |
 | `v -o v`    | `vprod -o v cmd/v`               | self-compile to a binary         |
+| `V lines / s` | derived                        | V lines per second (`v -o v.c`)  |
+| `V lines`   | `-stats`                          | number of V source lines         |
 | `v hello.v` | `vprod examples/hello_world.v`   | compile a tiny program           |
 | `v.c size`  | –                                | size of the generated `v.c`      |
 | scan/parse/check/cgen | `-show-timings`        | per-stage compiler times (min)   |
-| V lines     | `-stats`                         | number of V source lines         |
-| lines/s     | derived                          | V lines per second (`v -o v.c`)  |
 
 Wall-clock timings take `max_samples` measurements after a couple of warmups and
 discard the slowest ones to cut noise (see the constants in `fast.v`).
