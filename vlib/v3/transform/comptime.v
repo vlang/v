@@ -3096,6 +3096,18 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	if node.children_count == 0 {
 		return t.a.add_node(node)
 	}
+	// Field attributes are compile-time metadata. Avoid materializing and then
+	// lowering runtime array work for operations whose result is already known
+	// for this unrolled field.
+	if node.kind == .call {
+		if contains := t.comptime_field_attrs_condition(id, var_name, fm) {
+			return t.make_bool_literal(contains)
+		}
+	}
+	if node.kind == .for_in_stmt && node.children_count >= 3 && fm.attrs.len == 0
+		&& t.direct_reflected_field_attrs_selector(t.a.child(&node, 2), var_name) {
+		return none
+	}
 	if node.kind == .match_stmt && node.children_count > 1 {
 		subject := t.a.child_node(&node, 0)
 		if subject.kind == .selector && subject.value == 'typ' && subject.children_count > 0 {
@@ -3271,6 +3283,18 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, cond)
 	}
 	return t.clone_field_subst_children(node, var_name, fm, inner_vars)
+}
+
+fn (t &Transformer) direct_reflected_field_attrs_selector(id flat.NodeId, var_name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .selector || node.value != 'attrs' || node.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(&node, 0)
+	return base.kind == .ident && base.value == var_name
 }
 
 fn (mut t Transformer) clone_field_match_branch_body(branch flat.Node, body_start int, var_name string, fm FieldMeta, inner_vars []string) flat.NodeId {

@@ -6438,6 +6438,14 @@ pub fn (tc &TypeChecker) fn_param_types_for_name(name string) []Type {
 	if name.len == 0 {
 		return []Type{}
 	}
+	if indexed := tc.receiver_method_suffix_index[name] {
+		if indexed == receiver_method_suffix_ambiguous {
+			return []Type{}
+		}
+		if params := tc.fn_param_types[indexed] {
+			return params
+		}
+	}
 	mut found := []Type{}
 	mut matches := 0
 	for candidate, params in tc.fn_param_types {
