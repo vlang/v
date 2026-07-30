@@ -43,11 +43,27 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 	assert wrapped_fn_run.exit_code == 0, wrapped_fn_run.output
 	assert wrapped_fn_run.output.trim_space() == '5', wrapped_fn_run.output
 
+	multi_return_wrapped_fn_compile := compile_interface_return(v3_bin,
+		'multi_return_wrapped_fn_alias',
+		'type Msg = string\n\ntype Cmd = fn () ?Msg\n\ntype EquivalentCmd = fn () ?Msg\n\ninterface Model {\n\tupdate(msg Msg) (Model, ?Cmd)\n}\n\nstruct ExampleModel {}\n\nfn (_ ExampleModel) update(msg Msg) (Model, ?EquivalentCmd) {\n\t_ = msg\n\tpanic("not implemented")\n}\n\nfn main() {\n\t_ := Model(ExampleModel{})\n\tprintln("ok")\n}\n')
+	assert multi_return_wrapped_fn_compile.exit_code == 0, multi_return_wrapped_fn_compile.output
+	multi_return_wrapped_fn_bin := os.join_path(os.temp_dir(),
+		'v3_interface_return_multi_return_wrapped_fn_alias_${os.getpid()}')
+	multi_return_wrapped_fn_run := os.execute(os.quoted_path(multi_return_wrapped_fn_bin))
+	assert multi_return_wrapped_fn_run.exit_code == 0, multi_return_wrapped_fn_run.output
+	assert multi_return_wrapped_fn_run.output.trim_space() == 'ok', multi_return_wrapped_fn_run.output
+
 	wrapped_component_alias_compile := compile_interface_return(v3_bin,
 		'wrapped_fn_component_alias',
 		'type MyInt = int\n\ntype MathOp = fn (int, int) int\n\ntype AliasedMathOp = fn (MyInt, MyInt) MyInt\n\ninterface Calculator {\n\tget_operation() ?AliasedMathOp\n}\n\nstruct SimpleCalc {}\n\nfn (s SimpleCalc) get_operation() ?MathOp {\n\treturn fn (a int, b int) int {\n\t\treturn a + b\n\t}\n}\n\nfn main() {\n\t_ := Calculator(SimpleCalc{})\n}\n')
 	assert wrapped_component_alias_compile.exit_code != 0, wrapped_component_alias_compile.output
 	assert wrapped_component_alias_compile.output.contains('expected return type `?AliasedMathOp`'), wrapped_component_alias_compile.output
+
+	multi_return_wrapped_component_alias_compile := compile_interface_return(v3_bin,
+		'multi_return_wrapped_fn_component_alias',
+		'type MyInt = int\n\ntype MathOp = fn (int, int) int\n\ntype AliasedMathOp = fn (MyInt, MyInt) MyInt\n\ninterface Calculator {\n\tget_operation() (int, ?AliasedMathOp)\n}\n\nstruct SimpleCalc {}\n\nfn (_ SimpleCalc) get_operation() (int, ?MathOp) {\n\tpanic("not implemented")\n}\n\nfn main() {\n\t_ := Calculator(SimpleCalc{})\n}\n')
+	assert multi_return_wrapped_component_alias_compile.exit_code != 0, multi_return_wrapped_component_alias_compile.output
+	assert multi_return_wrapped_component_alias_compile.output.contains('expected return type `(int, ?AliasedMathOp)`'), multi_return_wrapped_component_alias_compile.output
 
 	int_compile := compile_interface_return(v3_bin, 'integer_conversion',
 		'interface Provider {\n\tvalue() int\n}\n\nstruct WideValue {}\n\nfn (w WideValue) value() i64 {\n\treturn 42\n}\n\nfn main() {\n\t_ := Provider(WideValue{})\n}\n')

@@ -10234,6 +10234,17 @@ fn method_return_signature_compatible(actual Type, expected Type) bool {
 	}
 	actual_unaliased := unalias_type(actual)
 	expected_unaliased := unalias_type(expected)
+	if actual_unaliased is MultiReturn && expected_unaliased is MultiReturn {
+		if actual_unaliased.types.len != expected_unaliased.types.len {
+			return false
+		}
+		for i, typ in actual_unaliased.types {
+			if !method_return_signature_compatible(typ, expected_unaliased.types[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	if actual_unaliased is OptionType && expected_unaliased is OptionType {
 		return method_wrapped_fn_return_signature_compatible(actual_unaliased.base_type,
 			expected_unaliased.base_type)
