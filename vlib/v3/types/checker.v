@@ -5151,8 +5151,15 @@ fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, param
 		tc.fn_shared_params.delete(name)
 	}
 	if tc.cur_file.len > 0 {
-		tc.fn_type_files[name] = tc.cur_file
-		tc.fn_type_modules[name] = tc.cur_module
+		// A refined C-extern redeclaration updates the signature tables above
+		// but must not steal ownership: is_builtin_unsafe_c_call keys the
+		// unsafe-block requirement for the C.m*/C.s* memory externs off the
+		// builtin owner, so a module redeclaring C.malloc (json does) would
+		// otherwise suppress that diagnostic program-wide.
+		if !name.starts_with('C.') || name !in tc.fn_type_modules {
+			tc.fn_type_files[name] = tc.cur_file
+			tc.fn_type_modules[name] = tc.cur_module
+		}
 	}
 	tc.fn_variadic[name] = is_variadic
 	if implicit_veb_ctx || tc.fn_implicit_veb_ctx.len > 0 {
