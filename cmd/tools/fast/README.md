@@ -134,8 +134,8 @@ cd /path/to/v/cmd/tools/fast && ./fast serve -port 8080   # in tmux/screen or a 
 **Publishing fast.vlang.io.** The public site is served statically from GitHub
 Pages, so `fast run` alone (which only writes `fast.db`) does **not** update it —
 you must also `export` the static site and push it. Point `$SITE` at a checkout of
-the Pages branch (`github.com/vlang/website`, branch `gh-pages`); a GitHub Actions
-workflow in that branch redeploys on every push:
+the Pages branch (`github.com/vlang/website`, branch `gh-pages`); GitHub Pages
+publishes the branch root directly on every push, without an Actions runner:
 
 ```cron
 # hourly: sample new commits, regenerate the static site, and publish it.
