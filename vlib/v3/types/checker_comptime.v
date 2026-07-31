@@ -7494,6 +7494,8 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	unsafe_alias_success := tc.fn_context.unsafe_reference_alias_owners.clone()
+	pointer_alias_success :=
+		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	$if ownership ? {
 		tc.ownership_begin_value_branch_group()
 		tc.ownership_begin_branch()
@@ -7513,11 +7515,17 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	tc.expected_expr_type = saved_expected_expr_type
 	tc.pop_scope()
 	mut unsafe_alias_paths := [unsafe_alias_success]
+	mut pointer_alias_paths := [
+		clone_pointer_binding_value_keys(pointer_alias_success),
+	]
 	if !tc.stmt_definitely_returns(fallback_id) {
 		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_success)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_success)
 	inner := tc.a.node(inner_id)
 	if inner.kind == .selector {
 		if source := tc.selector_declared_value_type(*inner) {

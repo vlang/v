@@ -3627,6 +3627,25 @@ fn c_line_has_continuation(line string) bool {
 	return line.trim_right(' \t\r').ends_with('\\')
 }
 
+fn c_join_continued_lines(text string) []string {
+	mut lines := []string{}
+	mut logical_line := ''
+	for line in text.split_into_lines() {
+		logical_line += line
+		trimmed := logical_line.trim_right(' \t\r')
+		if trimmed.ends_with('\\') {
+			logical_line = trimmed[..trimmed.len - 1]
+			continue
+		}
+		lines << logical_line
+		logical_line = ''
+	}
+	if logical_line.len > 0 {
+		lines << logical_line
+	}
+	return lines
+}
+
 fn c_preserved_nested_include_directive(include_arg string, context []string, prefix []string) string {
 	if context.len == 0 && prefix.len == 0 {
 		return '#include ${include_arg}'
@@ -3797,7 +3816,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	mut condition_taken := []bool{}
 	mut possible_text := strings.new_builder(text.len)
 	mut in_block_comment := false
-	for line in text.split_into_lines() {
+	for line in c_join_continued_lines(text) {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
