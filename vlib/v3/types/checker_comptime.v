@@ -14230,6 +14230,20 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 	}
 	clean_rhs_id := tc.unwrap_paren_expr_id(rhs_id)
 	rhs := tc.a.node(clean_rhs_id)
+	if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
+		target_id := tc.unwrap_paren_expr_id(tc.a.child(rhs, 0))
+		target := tc.a.node(target_id)
+		if target.kind == .ident && target.value != '_' {
+			target_owner := tc.cur_scope.lookup_owner(target.value) or { return }
+			target_key := target_owner.storage_key()
+			if target_key.len > 0 {
+				// The address identifies the binding's storage, even when that binding
+				// itself contains a pointer with a different pointee identity.
+				tc.fn_context.pointer_binding_value_keys[left_key] = [target_key]
+				return
+			}
+		}
+	}
 	if rhs.kind == .ident && rhs.value != '_' {
 		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return }
 		right_key := rhs_owner.storage_key()
