@@ -3735,6 +3735,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 		'__OBJC__': true
 	}
 	mut uncertain := map[string]bool{}
+	mut macro_values := map[string]string{}
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -3758,9 +3759,15 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			if is_undef {
 				defined.delete(macro_name)
 				undefined[macro_name] = true
+				macro_values.delete(macro_name)
 			} else {
 				undefined.delete(macro_name)
 				defined[macro_name] = true
+				macro_values[macro_name] = if definition.contains('=') {
+					definition.all_after('=').trim_space()
+				} else {
+					'1'
+				}
 			}
 		}
 		i++
@@ -3789,7 +3796,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			condition_taken << (if known { active } else { true })
 		} else if name == 'if' {
 			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined,
-				undefined, uncertain, strict_iso_mode, target)
+				undefined, uncertain, macro_values, strict_iso_mode, target)
 			condition_known << known
 			condition_active << (if known { active } else { true })
 			condition_taken_known << known
@@ -3799,7 +3806,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			prior_known := condition_taken_known[last]
 			prior_taken := condition_taken[last]
 			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined,
-				undefined, uncertain, strict_iso_mode, target)
+				undefined, uncertain, macro_values, strict_iso_mode, target)
 			if (prior_known && prior_taken) || (known && !active) {
 				condition_known[last] = true
 				condition_active[last] = false
@@ -3866,14 +3873,22 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 					if name == 'define' {
 						undefined.delete(macro_name)
 						defined[macro_name] = true
+						macro_values.delete(macro_name)
+						definition := c_directive_arg(clean).trim_space()
+						macro_token := parts[0]
+						if !macro_token.contains('(') && definition.len > macro_token.len {
+							macro_values[macro_name] = definition[macro_token.len..].trim_space()
+						}
 					} else {
 						defined.delete(macro_name)
 						undefined[macro_name] = true
+						macro_values.delete(macro_name)
 					}
 				} else {
 					defined.delete(macro_name)
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
+					macro_values.delete(macro_name)
 				}
 			}
 		}
@@ -3892,14 +3907,14 @@ fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefi
 	return c_preprocessor_macro_state(name, defined, undefined, uncertain, strict_iso_mode, target)
 }
 
-fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
+fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
 	mut clean := c_header_condition_without_outer_parens(raw.trim_space())
 	or_parts := c_header_condition_top_level_parts(clean, '||')
 	if or_parts.len > 1 {
 		mut all_known := true
 		for part in or_parts {
 			known, active := c_header_objective_c_condition_state(part, defined, undefined,
-				uncertain, strict_iso_mode, target)
+				uncertain, macro_values, strict_iso_mode, target)
 			if known && active {
 				return true, true
 			}
@@ -3912,7 +3927,7 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		mut all_known := true
 		for part in and_parts {
 			known, active := c_header_objective_c_condition_state(part, defined, undefined,
-				uncertain, strict_iso_mode, target)
+				uncertain, macro_values, strict_iso_mode, target)
 			if known && !active {
 				return true, false
 			}
@@ -3935,6 +3950,16 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	if clean.len > 0 && c_identifier_start(clean[0]) && c_header_struct_tag(clean) == clean {
 		known, mut active := c_header_objective_c_macro_state(clean, defined, undefined, uncertain,
 			strict_iso_mode, target)
+		if known && active {
+			if replacement := macro_values[clean] {
+				value_known, value_active := c_header_objective_c_integer_macro_state(replacement)
+				if value_known {
+					active = value_active
+				} else {
+					return false, true
+				}
+			}
+		}
 		if negated {
 			active = !active
 		}
@@ -3968,6 +3993,51 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		active = !active
 	}
 	return known, active
+}
+
+fn c_header_objective_c_integer_macro_state(raw string) (bool, bool) {
+	mut clean := c_header_condition_without_outer_parens(raw.trim_space())
+	if clean.len == 0 {
+		return false, true
+	}
+	if clean[0] in [`+`, `-`] {
+		clean = clean[1..]
+	}
+	if clean.len == 0 {
+		return false, true
+	}
+	mut base := 10
+	mut start := 0
+	if clean.len > 2 && clean[0] == `0` && clean[1] in [`x`, `X`] {
+		base = 16
+		start = 2
+	} else if clean.len > 1 && clean[0] == `0` {
+		base = 8
+	}
+	mut saw_digit := false
+	mut nonzero := false
+	for i := start; i < clean.len; i++ {
+		c := clean[i]
+		is_digit := if base == 16 {
+			(c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+		} else if base == 8 {
+			c >= `0` && c <= `7`
+		} else {
+			c >= `0` && c <= `9`
+		}
+		if is_digit {
+			saw_digit = true
+			if c != `0` {
+				nonzero = true
+			}
+			continue
+		}
+		if saw_digit && clean[i..].bytes().all(it in [`u`, `U`, `l`, `L`]) {
+			return true, nonzero
+		}
+		return false, true
+	}
+	return saw_digit, nonzero
 }
 
 fn c_header_condition_without_outer_parens(expression string) string {

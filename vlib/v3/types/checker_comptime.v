@@ -10263,8 +10263,9 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 	}
 	key := tc.expr_key(id)
 	alias_key := tc.locked_shared_base_alias_key(id)
-	owner_alias_key := tc.locked_shared_base_owner_alias_key(id)
-	for dependency_key in [key, alias_key, owner_alias_key] {
+	mut dependency_keys := [key, alias_key]
+	dependency_keys << tc.locked_shared_base_owner_alias_keys(id)
+	for dependency_key in dependency_keys {
 		if dependency_key.len > 0 && dependency_key !in tc.fn_context.locked_shared_base_names {
 			tc.fn_context.locked_shared_base_names[dependency_key] = lock_name
 			added_keys << dependency_key
@@ -10300,32 +10301,23 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 }
 
 fn (tc &TypeChecker) locked_shared_base_alias_key(id flat.NodeId) string {
-	return tc.locked_shared_base_path_key(id, false)
+	return tc.locked_shared_base_path_key(id)
 }
 
-fn (tc &TypeChecker) locked_shared_base_owner_alias_key(id flat.NodeId) string {
-	return tc.locked_shared_base_path_key(id, true)
-}
-
-fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId, use_owner_identity bool) string {
+fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId) string {
 	if !tc.valid_node_id(id) {
 		return ''
 	}
 	node := tc.a.node(id)
 	match node.kind {
 		.ident {
-			if use_owner_identity {
-				owner := tc.cur_scope.lookup_owner(node.value) or { return '' }
-				owner_key := tc.pointer_binding_value_key(owner.storage_key())
-				return if owner_key.len > 0 { '@owner:${owner_key}' } else { '' }
-			}
 			return node.value
 		}
 		.selector {
 			if node.children_count == 0 {
 				return ''
 			}
-			base := tc.locked_shared_base_path_key(tc.a.child(node, 0), use_owner_identity)
+			base := tc.locked_shared_base_path_key(tc.a.child(node, 0))
 			if base.len > 0 && node.value.len > 0 {
 				return '${base}.${node.value}'
 			}
@@ -10334,7 +10326,7 @@ fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId, use_owner_ident
 			if node.children_count < 2 {
 				return ''
 			}
-			base := tc.locked_shared_base_path_key(tc.a.child(node, 0), use_owner_identity)
+			base := tc.locked_shared_base_path_key(tc.a.child(node, 0))
 			if base.len == 0 {
 				return ''
 			}
@@ -10349,12 +10341,65 @@ fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId, use_owner_ident
 		}
 		.paren, .prefix {
 			if node.children_count > 0 {
-				return tc.locked_shared_base_path_key(tc.a.child(node, 0), use_owner_identity)
+				return tc.locked_shared_base_path_key(tc.a.child(node, 0))
 			}
 		}
 		else {}
 	}
 	return ''
+}
+
+fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []string {
+	if !tc.valid_node_id(id) {
+		return []string{}
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			owner := tc.cur_scope.lookup_owner(node.value) or { return []string{} }
+			mut keys := []string{}
+			for value_key in tc.pointer_binding_values(owner.storage_key()) {
+				if value_key.len > 0 {
+					keys << '@owner:${value_key}'
+				}
+			}
+			return keys
+		}
+		.selector {
+			if node.children_count == 0 || node.value.len == 0 {
+				return []string{}
+			}
+			mut keys := []string{}
+			for base in tc.locked_shared_base_owner_alias_keys(tc.a.child(node, 0)) {
+				keys << '${base}.${node.value}'
+			}
+			return keys
+		}
+		.index {
+			if node.children_count < 2 {
+				return []string{}
+			}
+			index_id := tc.unwrap_paren_expr_id(tc.a.child(node, 1))
+			index_node := tc.a.node(index_id)
+			index_key := if index_node.kind in [.int_literal, .enum_val] {
+				index_node.value
+			} else {
+				'*'
+			}
+			mut keys := []string{}
+			for base in tc.locked_shared_base_owner_alias_keys(tc.a.child(node, 0)) {
+				keys << '${base}[${index_key}]'
+			}
+			return keys
+		}
+		.paren, .prefix {
+			if node.children_count > 0 {
+				return tc.locked_shared_base_owner_alias_keys(tc.a.child(node, 0))
+			}
+		}
+		else {}
+	}
+	return []string{}
 }
 
 fn locked_shared_base_keys_may_alias(left string, right string) bool {
@@ -14136,16 +14181,55 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 		right_key := rhs_owner.storage_key()
 		if right_key.len > 0 {
 			tc.fn_context.pointer_binding_value_keys[left_key] =
-				tc.pointer_binding_value_key(right_key)
+				tc.pointer_binding_values(right_key).clone()
 			return
 		}
 	}
 	// A non-copy assignment creates a new pointer value and detaches this binding's old aliases.
-	tc.fn_context.pointer_binding_value_keys[left_key] = '@value:${int(clean_rhs_id)}'
+	tc.fn_context.pointer_binding_value_keys[left_key] = [
+		'@value:${int(clean_rhs_id)}',
+	]
 }
 
-fn (tc &TypeChecker) pointer_binding_value_key(key string) string {
-	return tc.fn_context.pointer_binding_value_keys[key] or { key }
+fn (tc &TypeChecker) pointer_binding_values(key string) []string {
+	return tc.fn_context.pointer_binding_value_keys[key] or { [key] }
+}
+
+fn clone_pointer_binding_value_keys(src map[string][]string) map[string][]string {
+	mut result := map[string][]string{}
+	for key, values in src {
+		result[key] = values.clone()
+	}
+	return result
+}
+
+fn merge_pointer_binding_value_states(states []map[string][]string, fallback map[string][]string) map[string][]string {
+	if states.len == 0 {
+		return clone_pointer_binding_value_keys(fallback)
+	}
+	mut all_keys := map[string]bool{}
+	for key, _ in fallback {
+		all_keys[key] = true
+	}
+	for state in states {
+		for key, _ in state {
+			all_keys[key] = true
+		}
+	}
+	mut result := map[string][]string{}
+	for key, _ in all_keys {
+		mut merged := []string{}
+		for state in states {
+			values := state[key] or { fallback[key] or { [key] } }
+			for value in values {
+				if value !in merged {
+					merged << value
+				}
+			}
+		}
+		result[key] = merged
+	}
+	return result
 }
 
 fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback map[string]bool) map[string]bool {
