@@ -226,9 +226,6 @@ jobs:
 
       - name: Build vlang/adventofcode
         if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
-        env:
-          # Keep this ecosystem suite on the established compiler until V3 reaches feature parity.
-          VFLAGS: ${{ runner.os == 'macOS' && '-old-compiler' || '' }}
         run: |
           echo "Clone the AdventOfCode repo"
           v retry -- git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode

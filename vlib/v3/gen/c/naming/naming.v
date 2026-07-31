@@ -76,10 +76,12 @@ const libc_collisions = {
 	'fmod':     true
 	'fork':     true
 	'getenv':   true
+	'index':    true
 	'j0':       true
 	'j1':       true
 	'jn':       true
 	'ldexp':    true
+	'log':      true
 	'memcmp':   true
 	'memcpy':   true
 	'memmove':  true

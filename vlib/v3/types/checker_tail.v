@@ -466,7 +466,7 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	clean_rhs := unalias_type(rhs_type)
 	clean_expected := unalias_type(expected_type)
 	if clean_rhs.is_integer() && clean_expected.is_float() && tc.a.node(rhs_id).kind != .int_literal {
-		return false
+		return op != .assign
 	}
 	if clean_expected is SumType {
 		return tc.direct_sum_assignment_variant_matches(rhs_type, clean_expected)
@@ -2353,7 +2353,7 @@ fn (tc &TypeChecker) pointer_value_compatible(actual Type, expected Type) bool {
 fn pointer_value_base_can_match(typ Type) bool {
 	clean := if typ is Alias { typ.base_type } else { typ }
 	return clean is Struct || clean is Interface || clean is SumType || clean is Array
-		|| clean is ArrayFixed || clean is Map || clean is Channel
+		|| clean is ArrayFixed || clean is Map || clean is Channel || clean is FnType
 }
 
 fn pointer_value_type_names_match(actual string, expected string) bool {
@@ -3285,7 +3285,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			&& !tc.node_is_in_translated_file(id)
 			&& (info.name in tc.unsafe_fns || tc.is_builtin_unsafe_c_call(node, info.name))
 			&& info.name !in ['map.delete', 'builtin.map.delete'] {
-			callee := tc.a.child_node(&node, 0)
+			callee := tc.a.child_node(node, 0)
 			if info.has_receiver && callee.kind == .selector {
 				method_name := info.name.trim_string_left('main.')
 				name_pos := tc.method_call_name_pos(node, callee)
@@ -9516,6 +9516,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& tc.integer_literal_source(arg_id) == none
 			&& tc.a.node(arg_id).kind !in [.float_literal, .char_literal] && !(expected is Alias
 			&& tc.type_compatible(actual, expected.base_type))
+			&& !(unalias_type(actual).is_integer() && unalias_type(expected).is_integer())
 			&& !(unalias_type(actual).is_integer() && unalias_type(expected).is_float()) {
 			if info.name.starts_with('chan ') && info.name.ends_with('.try_pop') && param_idx == 1 {
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id,
@@ -9537,17 +9538,25 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		actual_pointer_depth, actual_pointer_base :=
 			type_pointer_depth_and_base(pointer_check_actual)
 		expected_pointer_depth, expected_pointer_base := type_pointer_depth_and_base(expected)
+		mut pointer_value_arg := tc.pointer_value_compatible(actual, expected)
+		if base := tc.mut_param_expr_base(arg_id, actual) {
+			pointer_value_arg = pointer_value_arg || tc.type_compatible(base, expected)
+				|| tc.pointer_value_compatible(base, expected)
+		}
 		pointer_depth_mismatch := actual_pointer_depth != expected_pointer_depth
 			&& expected.name() !in ['voidptr', 'byteptr', 'charptr'] && !(arg_node.is_mut
 			&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
 			&& !(expected_pointer_depth == actual_pointer_depth + 1
-			&& tc.expr_can_take_address(arg_id)) && !type_contains_unknown(pointer_check_actual)
-			&& !type_contains_unknown(expected) && !tc.call_arg_is_callee_receiver(node, arg_id)
+			&& (tc.expr_can_take_address(arg_id)
+			|| tc.implicit_ref_arg_compatible(arg_id, pointer_check_actual, expected)))
+			&& !type_contains_unknown(pointer_check_actual) && !type_contains_unknown(expected)
+			&& !tc.call_arg_is_callee_receiver(node, arg_id)
 			&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
+			&& !pointer_value_arg
 		pointer_array_mismatch := actual_pointer_depth > 0 && expected_pointer_depth > 0
 			&& unalias_type(actual_pointer_base) is Array
 			&& unalias_type(expected_pointer_base) is Array
-			&& actual_pointer_base.name() != expected_pointer_base.name()
+			&& actual_pointer_base.name() != expected_pointer_base.name() && !pointer_value_arg
 		if pointer_depth_mismatch || pointer_array_mismatch {
 			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id,
 				actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${target_name}`',
@@ -11152,19 +11161,19 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 			for call_arg_idx in arg_idx .. node.children_count {
 				arg_id := tc.call_arg_value(tc.a.child(&node, call_arg_idx))
 				if spread_id := tc.spread_arg_child(arg_id) {
-					actual := tc.resolve_type(spread_id)
+					actual := tc.resolve_generic_call_arg_type(spread_id)
 					tc.infer_generic_type_text_from_type(param_texts[param_idx], actual,
 						generic_params, mut inferred)
 					continue
 				}
-				actual := tc.resolve_type(arg_id)
+				actual := tc.resolve_generic_call_arg_type(arg_id)
 				tc.infer_generic_type_text_from_type(elem_text, actual, generic_params, mut
 					inferred)
 			}
 			break
 		}
 		arg_id := tc.call_arg_value(tc.a.child(&node, arg_idx))
-		actual := tc.resolve_type(arg_id)
+		actual := tc.resolve_generic_call_arg_type(arg_id)
 		tc.infer_generic_type_text_from_type(param_texts[param_idx], actual, generic_params, mut
 			inferred)
 		tc.infer_generic_type_value_from_type(param_texts[param_idx], actual, generic_params, mut
@@ -11199,7 +11208,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	}
 	ret_text := tc.fn_ret_type_texts[info.name] or { '' }
 	sub_ret := if ret_text.len > 0 {
-		if generic_type_application(ret_text) {
+		if generic_type_application(ret_text) || ret_text.starts_with('(') {
 			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, concrete_args,
 				generic_params))
 		} else {
@@ -11220,6 +11229,31 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		has_implicit_veb_ctx: info.has_implicit_veb_ctx
 		arg_offset:           info.arg_offset
 	}
+}
+
+fn (mut tc TypeChecker) resolve_generic_call_arg_type(id flat.NodeId) Type {
+	mut typ := tc.resolve_type(id)
+	if type_contains_unknown(typ) {
+		node := tc.a.node(id)
+		if node.kind == .call && node.children_count >= 2 {
+			callee := tc.a.child_node(node, 0)
+			if callee.kind == .selector && callee.value == 'map' {
+				elem_type := tc.array_map_return_elem_type(node)
+				if elem_type !is Unknown && elem_type !is Void {
+					typ = Type(Array{
+						elem_type: elem_type
+					})
+					tc.remember_expr_type(id, typ)
+					return typ
+				}
+			}
+		}
+		if node.kind !in [.lambda_expr, .fn_literal] {
+			tc.check_node(id)
+			typ = tc.cached_expr_type(id) or { tc.resolve_type(id) }
+		}
+	}
+	return typ
 }
 
 fn (tc &TypeChecker) call_has_explicit_generic_args(node flat.Node) bool {
@@ -11534,7 +11568,33 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 	}
 	tc.push_array_dsl_scope(node, 'array.map')
 	arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-	elem_type := tc.resolve_type(arg_id)
+	arg := tc.a.node(arg_id)
+	if arg.kind == .lambda_expr && arg.children_count > 0 {
+		arr := tc.call_receiver_array_type(node) or {
+			tc.pop_scope()
+			return Type(void_)
+		}
+		tc.push_scope()
+		for i in 0 .. arg.children_count - 1 {
+			param := tc.a.child_node(arg, i)
+			if param.kind == .ident && param.value.len > 0 {
+				tc.cur_scope.insert(param.value, arr.elem_type)
+			}
+		}
+		body_id := tc.a.child(arg, arg.children_count - 1)
+		elem_type := tc.resolve_type(body_id)
+		tc.pop_scope()
+		tc.pop_scope()
+		return elem_type
+	}
+	// Resolve nested array DSL calls while the outer element binding is visible.
+	// Otherwise chained/nested `.map()` expressions retain a provisional
+	// `[]unknown` type and poison generic inference at their call site. Lambda
+	// bodies are checked separately with their own parameter scope.
+	if arg.kind !in [.lambda_expr, .fn_literal] {
+		tc.check_node(arg_id)
+	}
+	elem_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
 	tc.pop_scope()
 	if fn_typ := fn_type_from_type(elem_type) {
 		if !tc.expr_uses_ident(arg_id, 'it') {
@@ -12398,10 +12458,7 @@ fn (mut tc TypeChecker) expr_receiver_compatible(expr_id flat.NodeId, actual Typ
 	return tc.generic_expected_expr_fields_compatible(expr_id, expected)
 }
 
-fn (tc &TypeChecker) implicit_ref_arg_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
-	if !tc.expr_can_take_address(expr_id) {
-		return false
-	}
+fn (tc &TypeChecker) implicit_ref_arg_compatible(_expr_id flat.NodeId, actual Type, expected Type) bool {
 	actual_depth, actual_base := type_pointer_depth_and_base(actual)
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
 	// V permits implicit reference arguments to add every missing pointer layer.

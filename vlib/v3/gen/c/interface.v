@@ -1206,10 +1206,19 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	if concrete_name.len == 0 {
 		return false
 	}
+	// A specialized generic interface return can retain its placeholder's
+	// struct-shaped annotation while already using the concrete interface ABI.
+	// Equal language type names mean no concrete-to-interface boxing is needed.
+	if concrete_name == iface.name {
+		return false
+	}
 	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
 	fields := g.interface_cached_fields(iface.name)
 	concrete_ct := g.tc.c_type(actual_base)
+	if concrete_ct == ct {
+		return false
+	}
 	if fields.len > 0 {
 		tmp := g.tmp_count
 		g.tmp_count++

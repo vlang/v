@@ -1430,8 +1430,10 @@ fn (mut tc TypeChecker) check_match_range_types(subject_id flat.NodeId, subject_
 		}
 	}
 	clean_subject := unalias_type(subject_type)
+	literal_integer_range := clean_subject.is_integer() && range_type.is_integer()
+		&& tc.range_endpoint_is_literal(low_id) && tc.range_endpoint_is_literal(high_id)
 	if clean_subject !is Unknown && range_type !is Unknown
-		&& clean_subject.name() != range_type.name() {
+		&& clean_subject.name() != range_type.name() && !literal_integer_range {
 		tc.record_error_with_details_at(.condition_mismatch,
 			'the range type and the match condition type should match', cond_id,
 			tc.match_condition_diagnostic_pos(cond_id), [
@@ -5880,7 +5882,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 					tc.type_mismatch(.cannot_index, message, bound_id)
 				} else {
 					if value := tc.index_literal_value(bound_id) {
-						if value < 0 {
+						if value < 0 && node.op != .gated_index {
 							tc.record_error(.cannot_index, 'negative index `${value}`', bound_id)
 						} else if base_type is ArrayFixed {
 							if length := tc.fixed_array_len_value(base_type) {
@@ -6001,7 +6003,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 				tc.type_mismatch(.cannot_index, message, index_id)
 			}
 		} else if value := tc.index_literal_value(index_id) {
-			if value < 0 {
+			if value < 0 && node.op != .gated_index {
 				tc.record_error(.cannot_index, 'negative index `${value}`', index_id)
 			} else if base_type is ArrayFixed {
 				if length := tc.fixed_array_len_value(base_type) {
@@ -10819,8 +10821,11 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(node, 0)
-		if base.kind == .ident {
-			return '${base.value}.${node.value}'
+		if base.kind == .ident && !tc.ident_resolves_to_value(base.value) {
+			pattern := '${base.value}.${node.value}'
+			if tc.type_symbol_known(pattern) || tc.resolve_import_alias(base.value) != none {
+				return pattern
+			}
 		}
 	}
 	return none
@@ -12608,8 +12613,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 	typ := tc.resolve_type_uncached(id)
 	// Unknowns can be provisional (cycle guards, generic placeholders that a
-	// later registration resolves); never memoize them.
-	if typ !is Unknown {
+	// later registration resolves); never memoize them, including when they are
+	// nested inside a collection or wrapper.
+	if !type_contains_unknown(typ) {
 		mut m := unsafe { &BodyResolveMemo(memo) }
 		m.types[mi] = typ
 		m.filled[mi] = 1
@@ -14973,6 +14979,15 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 	if lhs_name.len == 0 {
 		return none
 	}
+	if info := tc.resolve_generic_struct_method(lhs_name, op_name) {
+		if info.params.len > 0 && tc.receiver_compatible(lhs, info.params[0]) {
+			return InfixOperatorSignature{
+				return_type: info.return_type
+				param_type:  if info.params.len > 1 { info.params[1] } else { Type(void_) }
+				param_count: info.params.len
+			}
+		}
+	}
 	method_name := '${lhs_name}.${op_name}'
 	for candidate in [method_name, tc.cached_c_name(method_name)] {
 		ret := tc.fn_ret_types[candidate] or { continue }
@@ -15003,6 +15018,9 @@ fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {
 	type_name := resolve_type_name_for_method(unwrap_pointer(typ))
 	if type_name.len == 0 {
 		return false
+	}
+	if _ := tc.resolve_generic_struct_method(type_name, op_name) {
+		return true
 	}
 	method_name := '${type_name}.${op_name}'
 	return method_name in tc.fn_ret_types || tc.cached_c_name(method_name) in tc.fn_ret_types
