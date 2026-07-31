@@ -436,6 +436,8 @@ fn test_cache_input_scan_keeps_unknown_macro_branches_and_bare_defines() {
 	other_header := os.join_path(dir, 'other.h')
 	enabled_header := os.join_path(dir, 'enabled.h')
 	disabled_header := os.join_path(dir, 'disabled.h')
+	ambiguous_enabled_header := os.join_path(dir, 'ambiguous_enabled.h')
+	ambiguous_disabled_header := os.join_path(dir, 'ambiguous_disabled.h')
 	os.write_file(outer_header, '#ifdef __APPLE__
 #include "apple.h"
 #else
@@ -446,10 +448,19 @@ fn test_cache_input_scan_keeps_unknown_macro_branches_and_bare_defines() {
 #else
 #include "disabled.h"
 #endif
+#ifdef V3_COMPILER_FEATURE
+#define V3_AMBIGUOUS_FEATURE
+#endif
+#ifdef V3_AMBIGUOUS_FEATURE
+#include "ambiguous_enabled.h"
+#else
+#include "ambiguous_disabled.h"
+#endif
 ') or {
 		panic(err)
 	}
-	for path in [apple_header, other_header, enabled_header, disabled_header] {
+	for path in [apple_header, other_header, enabled_header, disabled_header,
+		ambiguous_enabled_header, ambiguous_disabled_header] {
 		os.write_file(path, '#define V3_RECORDED_INPUT 1\n') or { panic(err) }
 	}
 	source := os.join_path(dir, 'sample.v')
@@ -463,7 +474,8 @@ fn test_cache_input_scan_keeps_unknown_macro_branches_and_bare_defines() {
 	}, ['-DV3_BARE_FEATURE'], prefs.target)
 	assert !has_untracked
 	mut expected := [os.real_path(outer_header), os.real_path(apple_header),
-		os.real_path(other_header), os.real_path(enabled_header)]
+		os.real_path(other_header), os.real_path(enabled_header),
+		os.real_path(ambiguous_enabled_header), os.real_path(ambiguous_disabled_header)]
 	expected.sort()
 	assert inputs['sample'] == expected
 	assert os.real_path(disabled_header) !in inputs['sample']

@@ -4846,11 +4846,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 						start_pos.offset, node.pos.end))
 				}
 			} else {
-				start_pos := tc.node_value_diagnostic_pos(base_id)
-				tc.record_error_at(.unknown_type, 'unknown enum `${enum_name}` (type_idx=0)', id, token.new_span(node.pos.id,
-					start_pos.offset, node.pos.end))
-				tc.register_synth_type(id, Type(void_))
-				return
+				qualified_type_name := '${module_name}.${base.value}'
+				if !tc.type_name_known(qualified_type_name)
+					&& !tc.type_symbol_known(qualified_type_name) {
+					start_pos := tc.node_value_diagnostic_pos(base_id)
+					tc.record_error_at(.unknown_type, 'unknown enum `${enum_name}` (type_idx=0)',
+						id, token.new_span(node.pos.id, start_pos.offset, node.pos.end))
+					tc.register_synth_type(id, Type(void_))
+					return
+				}
 			}
 		}
 	}
@@ -4893,13 +4897,16 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if node.value.len > 0 && node.value[0].is_capital() && is_known_type {
-			parent_id := tc.direct_parent_id(id)
-			if tc.valid_node_id(parent_id) {
-				parent := tc.a.node(parent_id)
-				if parent.kind == .selector && parent.children_count > 0
-					&& tc.a.child(parent, 0) == id {
-					tc.register_synth_type(id, tc.parse_type(semantic_type_name))
-					return
+			if tc.resolve_enum_name(semantic_type_name) != none
+				|| tc.resolve_enum_name(display_type_name) != none {
+				parent_id := tc.direct_parent_id(id)
+				if tc.valid_node_id(parent_id) {
+					parent := tc.a.node(parent_id)
+					if parent.kind == .selector && parent.children_count > 0
+						&& tc.a.child(parent, 0) == id {
+						tc.register_synth_type(id, tc.parse_type(semantic_type_name))
+						return
+					}
 				}
 			}
 			tc.record_error_at(.assignment_mismatch, '`${display_type_name}` must be initialized',

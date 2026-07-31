@@ -2096,6 +2096,19 @@ fn test_module_qualified_enum_value_in_if_expression() {
 	assert output == 'ok'
 }
 
+fn test_module_qualified_type_chaining_only_allows_enums() {
+	v3_bin := build_v3()
+	output := run_good_project(v3_bin, 'good_module_qualified_enum_alias_selector', {
+		'main.v':      "module main\n\nimport mode\n\nfn main() {\n\tvalue := mode.KindAlias.hybrid\n\tassert value == .hybrid\n\tprintln('ok')\n}\n"
+		'mode/mode.v': 'module mode\n\npub enum Kind {\n\tportable\n\thybrid\n}\n\npub type KindAlias = Kind\n'
+	}, 'main.v')
+	assert output == 'ok'
+	run_bad_project(v3_bin, 'bad_module_qualified_struct_field_selector', {
+		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tprintln(model.Item.value)\n}\n'
+		'model/model.v': 'module model\n\npub struct Item {\npub:\n\tvalue int\n}\n'
+	}, 'main.v', '`model.Item` must be initialized')
+}
+
 fn test_option_or_error_literal_in_result_match_branch() {
 	v3_bin := build_v3()
 	output := run_good(v3_bin, 'good_option_or_error_in_result_match',

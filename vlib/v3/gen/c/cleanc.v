@@ -1247,6 +1247,7 @@ struct CCacheConditional {
 mut:
 	condition int
 	inactive  bool
+	ambiguous bool
 }
 
 fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) bool {
@@ -1269,11 +1270,13 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		directive_name := c_directive_name(clean)
 		if directive_name in ['if', 'ifdef', 'ifndef'] {
 			parent_inactive := conditionals.any(it.inactive)
+			parent_ambiguous := conditionals.any(it.ambiguous)
 			condition := c_cache_known_condition(clean, include_macros, dynamic_include_macros)
 			conditionals << CCacheConditional{
 				parent_inactive: parent_inactive
 				condition:       condition
 				inactive:        parent_inactive || condition < 0
+				ambiguous:       parent_ambiguous || condition == 0
 			}
 			continue
 		}
@@ -1285,8 +1288,10 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			} else if conditional.condition > 0 {
 				conditional.inactive = true
 			} else {
-				conditional.condition = c_cache_known_condition(clean, include_macros,
+				next_condition := c_cache_known_condition(clean, include_macros,
 					dynamic_include_macros)
+				conditional.condition = next_condition
+				conditional.ambiguous = conditional.ambiguous || next_condition == 0
 				conditional.inactive = conditional.parent_inactive || conditional.condition < 0
 			}
 			conditionals[conditional_idx] = conditional
@@ -1302,7 +1307,8 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			continue
 		}
 		if directive_name !in ['include', 'import'] {
-			c_record_include_macro_definition(clean, mut include_macros, mut dynamic_include_macros)
+			c_record_include_macro_definition(clean, conditionals.any(it.ambiguous), mut
+				include_macros, mut dynamic_include_macros)
 			continue
 		}
 		mut include_args := [c_include_arg(c_directive_arg(clean), vroot, real_path)]
@@ -1344,6 +1350,7 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	return has_untracked_include
 }
 
+// A false dynamic_include_macros value marks a macro whose defined state is ambiguous.
 fn c_cache_known_condition(directive string, include_macros map[string][]string, dynamic_include_macros map[string]bool) int {
 	name := c_directive_name(directive)
 	mut expression := c_directive_arg(directive).trim_space()
@@ -1446,7 +1453,7 @@ fn c_flag_include_macro_definitions(flags []string) (map[string][]string, map[st
 	return include_macros, dynamic_include_macros
 }
 
-fn c_record_include_macro_definition(directive string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
+fn c_record_include_macro_definition(directive string, ambiguous bool, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
 	directive_name := c_directive_name(directive)
 	if directive_name == 'undef' {
 		fields := c_directive_arg(directive).fields()
@@ -1455,7 +1462,11 @@ fn c_record_include_macro_definition(directive string, mut include_macros map[st
 		}
 		macro_name := fields[0]
 		include_macros.delete(macro_name)
-		dynamic_include_macros.delete(macro_name)
+		if ambiguous {
+			dynamic_include_macros[macro_name] = false
+		} else {
+			dynamic_include_macros.delete(macro_name)
+		}
 		return
 	}
 	if directive_name != 'define' {
@@ -1467,6 +1478,11 @@ fn c_record_include_macro_definition(directive string, mut include_macros map[st
 		return
 	}
 	name := parts[0]
+	if ambiguous {
+		include_macros.delete(name)
+		dynamic_include_macros[name] = false
+		return
+	}
 	value := definition[name.len..].trim_space()
 	c_record_include_macro_value(name, value, mut include_macros, mut dynamic_include_macros)
 }
@@ -1476,13 +1492,16 @@ fn c_record_include_macro_value(name string, value string, mut include_macros ma
 		return
 	}
 	if value.len == 0 {
+		dynamic_include_macros.delete(name)
 		include_macros[name] = []string{}
 		return
 	}
 	if !c_include_arg_is_literal(value) {
+		include_macros.delete(name)
 		dynamic_include_macros[name] = true
 		return
 	}
+	dynamic_include_macros.delete(name)
 	mut values := include_macros[name]
 	if value !in values {
 		values << value

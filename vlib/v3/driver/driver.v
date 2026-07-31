@@ -2051,12 +2051,10 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState) {
 			if !c_flag_is_c_source_file(real_root) {
 				continue
 			}
-			source := os.read_file(real_root) or { continue }
-			if !modulecache.c_source_declares_types(source) {
-				continue
+			declarations := cache_native_type_declarations_for_path(real_root, allowed_paths)
+			if declarations.len > 0 {
+				state.native_type_declarations[real_root] = declarations
 			}
-			state.native_type_declarations[real_root] = cache_native_type_declarations_for_path(real_root,
-				allowed_paths)
 		}
 	}
 }
