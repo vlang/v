@@ -3715,13 +3715,79 @@ fn c_is_apple_framework_include(include_arg string) bool {
 }
 
 fn c_header_text_needs_objective_c(text string) bool {
-	if text.contains('@interface') || text.contains('@implementation') || text.contains('__bridge') {
+	if c_header_text_has_objective_c_tokens(text) {
 		return true
 	}
+	mut in_block_comment := false
 	for line in text.split_into_lines() {
-		clean := trimmed_space(line)
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) == 'import'
 			&& c_is_apple_framework_include(c_directive_arg(clean)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_header_text_has_objective_c_tokens(text string) bool {
+	mut i := 0
+	for i < text.len {
+		if text[i] in [`"`, `'`] {
+			quote := text[i]
+			i++
+			for i < text.len {
+				if text[i] == `\\` && i + 1 < text.len {
+					i += 2
+					continue
+				}
+				i++
+				if text[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if i + 1 < text.len && text[i] == `/` && text[i + 1] == `/` {
+			i += 2
+			for i < text.len && text[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if i + 1 < text.len && text[i] == `/` && text[i + 1] == `*` {
+			i += 2
+			for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < text.len {
+				i += 2
+			} else {
+				i = text.len
+			}
+			continue
+		}
+		if text[i] == `@` {
+			for keyword in ['interface', 'implementation'] {
+				end := i + 1 + keyword.len
+				if end <= text.len && text[i + 1..end] == keyword
+					&& (end == text.len || !c_identifier_continue(text[end])) {
+					return true
+				}
+			}
+			i++
+			continue
+		}
+		if !c_identifier_start(text[i]) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < text.len && c_identifier_continue(text[i]) {
+			i++
+		}
+		if text[start..i] == '__bridge' {
 			return true
 		}
 	}

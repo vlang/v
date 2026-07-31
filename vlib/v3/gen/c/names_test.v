@@ -194,6 +194,7 @@ fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c('id value = (__bridge id)pointer;\n')
 	assert !c_header_text_needs_objective_c('#include <CoreFoundation/CFString.h>\n')
 	assert !c_header_text_needs_objective_c('#include <X11/Xlib.h>\n')
+	assert !c_header_text_needs_objective_c('// @interface CommentOnly\n/* @implementation CommentOnly\nid value = (__bridge id)pointer;\n#import <Cocoa/Cocoa.h>\n*/\nconst char *description = "@interface string only";\nconst char *cast = "__bridge";\n')
 	imports :=
 		c_header_objective_c_framework_imports('#ifdef _WIN32\n#include <windows.h>\n#endif\n#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>\n')
 	assert imports == '#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>'
