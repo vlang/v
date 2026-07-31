@@ -22,7 +22,7 @@ const type_level_cutoff_limit = 40 // it is very rarely deeper than 4
 const iface_level_cutoff_limit = 100
 const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-const generic_fn_postprocess_iterations_cutoff_limit = 1000
+const generic_fn_postprocess_iterations_cutoff_limit = 50
 
 fn has_ascii_upper(s string) bool {
 	for ch in s {
@@ -1187,7 +1187,7 @@ fn (mut c Checker) fn_type_decl(mut node ast.FnTypeDecl) {
 fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 	if c.pref.is_vls && c.pref.linfo.method == .definition {
-		for variant in node.variants {
+		for mut variant in node.variants {
 			if c.vls_is_the_node(variant.pos) {
 				typ_str := c.table.type_to_str(variant.typ)
 				if np := c.name_pos_gotodef(typ_str) {
@@ -1200,7 +1200,7 @@ fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 		}
 	}
 	mut names_used := []string{}
-	for variant in node.variants {
+	for mut variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
 		sym := c.table.sym(variant.typ)
 		if variant.typ.is_ptr() || (sym.info is ast.Alias && sym.info.parent_type.is_ptr()) {
@@ -1279,6 +1279,8 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 		}
 		if clean_sym_name == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
+			variant.typ = ast.void_type
+			continue
 		} else if sym.kind == .sum_type && sym.info is ast.SumType {
 			// Check for circular references through other sum types
 			mut visited := map[int]bool{}
