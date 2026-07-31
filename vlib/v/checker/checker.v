@@ -22,7 +22,7 @@ const type_level_cutoff_limit = 40 // it is very rarely deeper than 4
 const iface_level_cutoff_limit = 100
 const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
+const generic_fn_postprocess_iterations_cutoff_limit = 1000
 
 fn has_ascii_upper(s string) bool {
 	for ch in s {
@@ -804,6 +804,10 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		if !c.need_recheck_generic_fns {
 			break
 		}
+		if post_process_generic_fns_iterations == generic_fn_postprocess_iterations_cutoff_limit {
+			c.error('generic function post processing reached the cutoff limit of ${generic_fn_postprocess_iterations_cutoff_limit} iterations, probably due to an infinite generic instantiation loop', c.file.generic_fns[0].pos)
+			break
+		}
 		c.need_recheck_generic_fns = false
 		post_process_generic_fns_iterations++
 	}
@@ -1263,7 +1267,13 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 		}
 		c.check_any_type(variant.typ, sym, variant.pos)
 
-		if sym.name.trim_string_left(sym.mod + '.') == node.name {
+		mut clean_sym_name := sym.name.trim_string_left(sym.mod + '.')
+		if clean_sym_name.contains('[') {
+			clean_sym_name = clean_sym_name.all_before('[')
+		} else if clean_sym_name.contains('<') {
+			clean_sym_name = clean_sym_name.all_before('<')
+		}
+		if clean_sym_name == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
 		} else if sym.kind == .sum_type && sym.info is ast.SumType {
 			// Check for circular references through other sum types
