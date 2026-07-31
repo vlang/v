@@ -33,7 +33,7 @@ mut:
 struct TestDefaultAttribute {
 	id         string @[default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
 	name       string
-	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: CURRENT_TIMESTAMP; sql_type: 'TIMESTAMP']
 }
 
 struct TestInsertDefaultValues {
@@ -45,7 +45,7 @@ struct TestInsertDefaultValues {
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
 	name       string @[comment: 'real user name']
-	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: CURRENT_TIMESTAMP; sql_type: 'TIMESTAMP']
 }
 
 fn test_pg_orm() {
