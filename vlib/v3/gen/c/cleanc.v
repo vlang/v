@@ -6,6 +6,7 @@ import time
 import v3.cmdexec
 import v3.flat
 import v3.gen.c.naming
+import v3.modulecache
 import v3.pref
 import v3.types
 
@@ -1067,6 +1068,9 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				continue
 			}
 			if !c_include_arg_is_literal(include_arg) {
+				if os.getenv('V3_CACHE_TRACE') != '' {
+					eprintln('  V3 module cache dynamic source include: file=${cur_file} include=${include_arg}')
+				}
 				has_untracked_include = true
 				continue
 			}
@@ -1077,7 +1081,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 					continue
 				}
 				is_source_input := c_include_arg_is_source_file(include_arg)
-				if is_source_input {
+				if is_source_input || node.value == 'insert' {
 					mut roots := native_source_roots[owner_module]
 					roots << os.real_path(path)
 					native_source_roots[owner_module] = roots
@@ -1092,7 +1096,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				}
 				for file in files {
 					c_add_cache_external_input(mut inputs, owner_module, file)
-					if !is_source_input {
+					if !is_source_input && include_arg.trim_space().starts_with('"') {
 						c_add_cache_external_input(mut unscoped_inputs, owner_module, file)
 					}
 				}
@@ -1238,6 +1242,13 @@ fn c_add_cache_external_input(mut inputs map[string][]string, module_name string
 	}
 }
 
+struct CCacheConditional {
+	parent_inactive bool
+mut:
+	condition int
+	inactive  bool
+}
+
 fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
@@ -1251,10 +1262,46 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	text := os.read_file(real_path) or { return false }
 	mut has_untracked_include := false
 	mut in_block_comment := false
+	mut conditionals := []CCacheConditional{}
 	for line in text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
-		if c_directive_name(clean) !in ['include', 'import'] {
+		directive_name := c_directive_name(clean)
+		if directive_name in ['if', 'ifdef', 'ifndef'] {
+			parent_inactive := conditionals.any(it.inactive)
+			condition := c_cache_known_condition(clean, include_macros, dynamic_include_macros)
+			conditionals << CCacheConditional{
+				parent_inactive: parent_inactive
+				condition:       condition
+				inactive:        parent_inactive || condition < 0
+			}
+			continue
+		}
+		if directive_name in ['else', 'elif'] && conditionals.len > 0 {
+			conditional_idx := conditionals.len - 1
+			mut conditional := conditionals[conditional_idx]
+			if directive_name == 'else' {
+				conditional.inactive = conditional.parent_inactive || conditional.condition > 0
+			} else if conditional.condition > 0 {
+				conditional.inactive = true
+			} else {
+				conditional.condition = c_cache_known_condition(clean, include_macros,
+					dynamic_include_macros)
+				conditional.inactive = conditional.parent_inactive || conditional.condition < 0
+			}
+			conditionals[conditional_idx] = conditional
+			continue
+		}
+		if directive_name == 'endif' {
+			if conditionals.len > 0 {
+				conditionals.delete_last()
+			}
+			continue
+		}
+		if conditionals.any(it.inactive) {
+			continue
+		}
+		if directive_name !in ['include', 'import'] {
 			c_record_include_macro_definition(clean, mut include_macros, mut dynamic_include_macros)
 			continue
 		}
@@ -1262,11 +1309,17 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		if !c_include_arg_is_literal(include_args[0]) {
 			macro_name := include_args[0].trim_space()
 			if dynamic_include_macros[macro_name] {
+				if os.getenv('V3_CACHE_TRACE') != '' {
+					eprintln('  V3 module cache dynamic nested include: file=${real_path} include=${macro_name}')
+				}
 				has_untracked_include = true
 				continue
 			}
 			include_args = include_macros[macro_name].clone()
 			if include_args.len == 0 {
+				if os.getenv('V3_CACHE_TRACE') != '' {
+					eprintln('  V3 module cache unresolved nested include: file=${real_path} include=${macro_name}')
+				}
 				has_untracked_include = true
 				continue
 			}
@@ -1289,6 +1342,46 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		}
 	}
 	return has_untracked_include
+}
+
+fn c_cache_known_condition(directive string, include_macros map[string][]string, dynamic_include_macros map[string]bool) int {
+	name := c_directive_name(directive)
+	mut expression := c_directive_arg(directive).trim_space()
+	mut invert := name == 'ifndef'
+	if name in ['ifdef', 'ifndef'] {
+		defined := expression in include_macros || dynamic_include_macros[expression]
+		return if defined != invert { 1 } else { -1 }
+	}
+	if name == 'elif' {
+		expression = expression.trim_space()
+	}
+	if expression.starts_with('!') {
+		invert = !invert
+		expression = expression[1..].trim_space()
+	}
+	if !expression.starts_with('defined') {
+		return 0
+	}
+	expression = expression['defined'.len..].trim_space()
+	mut macro_name := ''
+	if expression.starts_with('(') {
+		close := expression.index_u8(`)`)
+		if close <= 1 || expression[close + 1..].trim_space().len > 0 {
+			return 0
+		}
+		macro_name = expression[1..close].trim_space()
+	} else {
+		fields := expression.fields()
+		if fields.len != 1 {
+			return 0
+		}
+		macro_name = fields[0]
+	}
+	if macro_name.len == 0 {
+		return 0
+	}
+	defined := macro_name in include_macros || dynamic_include_macros[macro_name]
+	return if defined != invert { 1 } else { -1 }
 }
 
 fn c_record_cache_resolution_path(path string, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) {
@@ -3049,6 +3142,11 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		{
 			header_text := header.text
 			late_source := c_include_is_late_source(include_arg)
+			scoped_static_insert := g.cache_split && node.value == 'insert'
+				&& modulecache.c_source_has_static_storage(header_text)
+			if c_header_text_needs_objective_c(header_text) && 'objective-c' !in g.c_flags {
+				g.c_flags << ['-x', 'objective-c', '-x', 'none']
+			}
 			g.collect_inlined_c_structs(header_text)
 			g.collect_inlined_c_fns_for_cache(header_text, false, true)
 			g.collect_inlined_c_declared_fns(header_text)
@@ -3062,13 +3160,29 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.add_c_directive(module_name, directive, before_import)
 			}
 			if header_text.len > 0 {
-				if late_source {
-					late_includes := c_late_source_system_includes(header_text)
-					if late_includes.len > 0 {
-						g.add_c_directive(module_name, late_includes, before_import)
+				system_includes := if late_source {
+					c_late_source_system_includes(header_text)
+				} else {
+					c_header_objective_c_framework_imports(header_text)
+				}
+				if system_includes.len > 0 {
+					// An inserted header can use Objective-C types supplied by a later
+					// module's header. Lift Apple framework imports before every inlined
+					// body while preserving guarded non-Apple includes in place.
+					g.add_c_directive(module_name, system_includes, before_import)
+				}
+			}
+			if header_text.len > 0 && !scoped_static_insert {
+				g.add_c_directive_at(module_name, header_text, before_import, late_source)
+			} else if scoped_static_insert {
+				for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file,
+					include_dirs) {
+					if os.is_file(path) {
+						g.add_c_directive(module_name,
+							c_native_source_context_include(os.real_path(path)), before_import)
+						break
 					}
 				}
-				g.add_c_directive_at(module_name, header_text, before_import, late_source)
 			}
 		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
 			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
@@ -3558,6 +3672,36 @@ fn c_is_apple_framework_include(include_arg string) bool {
 	return framework.len > 0 && framework[0] >= `A` && framework[0] <= `Z`
 		&& framework.bytes().all((it >= `A` && it <= `Z`)
 		|| (it >= `a` && it <= `z`))
+}
+
+fn c_header_text_needs_objective_c(text string) bool {
+	if text.contains('@interface') || text.contains('@implementation') || text.contains('__bridge') {
+		return true
+	}
+	for line in text.split_into_lines() {
+		clean := trimmed_space(line)
+		if c_directive_name(clean) == 'import'
+			&& c_is_apple_framework_include(c_directive_arg(clean)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_header_objective_c_framework_imports(text string) string {
+	mut imports := []string{}
+	for line in text.split_into_lines() {
+		clean := trimmed_space(line)
+		name := c_directive_name(clean)
+		if name !in ['include', 'import'] {
+			continue
+		}
+		arg := c_directive_arg(clean)
+		if c_is_apple_framework_include(arg) {
+			imports << '#${name} ${arg}'
+		}
+	}
+	return imports.join('\n')
 }
 
 fn c_include_is_late_source(include_arg string) bool {
@@ -12880,6 +13024,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int atexit(void (*f)(void));')
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('const char* _dyld_get_image_name(unsigned int image_index);')
+	g.writeln('struct mach_header;')
+	g.writeln('const struct mach_header* _dyld_get_image_header(unsigned int image_index);')
 	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
 	g.writeln('extern FILE* __stdinp;')

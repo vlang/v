@@ -4893,6 +4893,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if node.value.len > 0 && node.value[0].is_capital() && is_known_type {
+			parent_id := tc.direct_parent_id(id)
+			if tc.valid_node_id(parent_id) {
+				parent := tc.a.node(parent_id)
+				if parent.kind == .selector && parent.children_count > 0
+					&& tc.a.child(parent, 0) == id {
+					tc.register_synth_type(id, tc.parse_type(semantic_type_name))
+					return
+				}
+			}
 			tc.record_error_at(.assignment_mismatch, '`${display_type_name}` must be initialized',
 				id, tc.node_value_diagnostic_pos(id))
 			tc.register_synth_type(id, Type(void_))

@@ -3889,7 +3889,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 		p := g.a.node(param_id)
 		if p.kind == .param {
 			decl_param_type := g.tc.parse_resolution_type(p.typ)
-			param_type := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
+			param_type0 := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
 				typed_params[param_idx]
 			} else if shared_alias_ptr := g.shared_alias_pointer_type_from_text(p.typ) {
 				shared_alias_ptr
@@ -3901,6 +3901,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 			} else {
 				decl_param_type
 			}
+			param_type := cgen_fn_param_storage_type(p, param_type0)
 			param_idx++
 			if p.value.len > 0 {
 				g.cur_param_names << p.value
@@ -14195,11 +14196,12 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		if p.kind != .param {
 			continue
 		}
-		pt := if param_idx < typed_params.len {
+		pt0 := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
 			g.tc.parse_resolution_type(p.typ)
 		}
+		pt := cgen_fn_param_storage_type(p, pt0)
 		param_idx++
 		if concrete_optional_params && type_is_optional_result(pt) && p.value.len > 0 {
 			g.cur_concrete_optional_params[p.value] = true
@@ -14248,6 +14250,15 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 	if needs_implicit_ctx && !implicit_ctx_written {
 		g.write_implicit_veb_ctx_param()
 	}
+}
+
+fn cgen_fn_param_storage_type(param flat.Node, typ types.Type) types.Type {
+	if param.is_mut && param.op == .amp {
+		return types.Type(types.Pointer{
+			base_type: typ
+		})
+	}
+	return typ
 }
 
 fn (g &FlatGen) is_specialized_generic_fn_node(node flat.Node) bool {

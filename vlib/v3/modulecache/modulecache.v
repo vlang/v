@@ -11,7 +11,7 @@ import v3.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-46'
+const cache_format = 'v3-module-cache-47'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -22,11 +22,12 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-2'
+const source_signature_cache_format = 'v3-source-signature-cache-3'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
-	build_pseudo_values string
+	build_pseudo_values   string
+	version_pseudo_values string
 pub:
 	dir     string
 	enabled bool
@@ -105,7 +106,7 @@ pub:
 }
 
 // new_manager creates a configuration-scoped persistent module cache manager.
-pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string) Manager {
+pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string, version_pseudo_values string) Manager {
 	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
 	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or {
@@ -117,10 +118,11 @@ pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values 
 		}
 	})
 	return Manager{
-		dir:                 os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
-		enabled:             enabled
-		salt:                salt
-		build_pseudo_values: build_pseudo_values
+		dir:                   os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		enabled:               enabled
+		salt:                  salt
+		build_pseudo_values:   build_pseudo_values
+		version_pseudo_values: version_pseudo_values
 	}
 }
 
@@ -218,7 +220,7 @@ fn (m &Manager) incremental_program_entry(source_files []string) IncrementalProg
 // source_signature hashes selected source paths, contents, resolved module roots,
 // build/environment values, and pkg-config probe results in stable order.
 pub fn source_signature(source_files []string) string {
-	return source_signature_details(source_files, '').signature
+	return source_signature_details(source_files, '', '').signature
 }
 
 // source_files_use_build_time_pseudo reports whether selected sources depend on build time.
@@ -237,13 +239,14 @@ struct SourceSignatureDetails {
 	validation []string
 }
 
-fn source_signature_details(source_files []string, build_pseudo_values string) SourceSignatureDetails {
+fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
 	mut env_names := map[string]bool{}
 	mut pkgconfig_names := map[string]bool{}
 	mut uses_build_pseudo := false
+	mut uses_version_pseudo := false
 	mut validation := []string{}
 	for file in files {
 		path := os.real_path(file)
@@ -257,11 +260,12 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 			'@BUILD_TIMESTAMP',
 			'@BUILD_DATE',
 			'@BUILD_TIME',
-			'@VHASH',
-			'@VCURRENTHASH',
 		])
 		{
 			uses_build_pseudo = true
+		}
+		if source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']) {
+			uses_version_pseudo = true
 		}
 		uses_vmod_hash := source_uses_pseudo(source, ['@VMODHASH'])
 		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
@@ -304,6 +308,12 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		validation << 'build=${hash_text(build_pseudo_values)}'
 		hash = hash_bytes(hash, [u8(0xfb)])
 		hash = hash_bytes(hash, build_pseudo_values.bytes())
+		hash = hash_bytes(hash, [u8(0xff)])
+	}
+	if uses_version_pseudo {
+		validation << 'version=${hash_text(version_pseudo_values)}'
+		hash = hash_bytes(hash, [u8(0xf9)])
+		hash = hash_bytes(hash, version_pseudo_values.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	mut names := env_names.keys()
@@ -549,16 +559,16 @@ fn quoted_text_mentions_pseudo(source string, from int, to int, names []string) 
 
 fn (m &Manager) source_signature(source_files []string) string {
 	return cached_source_signature_with_build_values(m.dir, 'module', source_files,
-		m.build_pseudo_values)
+		m.build_pseudo_values, m.version_pseudo_values)
 }
 
 // cached_source_signature returns a content signature while using precise file
 // metadata to avoid rereading unchanged inputs on subsequent compiler runs.
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
-	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '')
+	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '', '')
 }
 
-fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string) string {
+fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) string {
 	mut paths := source_files.map(os.real_path(it))
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
@@ -566,11 +576,13 @@ fn cached_source_signature_with_build_values(cache_dir string, namespace string,
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values) {
+		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values,
+			version_pseudo_values)
+		{
 			return signature
 		}
 	}
-	details := source_signature_details(paths, build_pseudo_values)
+	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
 	if details.signature.len == 0 {
 		return ''
 	}
@@ -614,7 +626,7 @@ fn source_files_metadata_signature(paths []string) string {
 	return hash.hex()
 }
 
-fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string) ?string {
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string) ?string {
 	lines := content.split_into_lines()
 	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
 		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
@@ -631,6 +643,12 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		}
 		if line.starts_with('build=') {
 			if line != 'build=${hash_text(build_pseudo_values)}' {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('version=') {
+			if line != 'version=${hash_text(version_pseudo_values)}' {
 				return none
 			}
 			continue
@@ -991,10 +1009,12 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 	}
 	entry := m.entry(cache_name, source_files)
 	if !os.is_file(entry.object_stamp) {
+		cache_trace_module_miss(cache_name, 'object stamp missing')
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
+		cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		return none
 	}
 	return entry
@@ -1088,6 +1108,28 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 	stamp := os.read_file(entry.stamp) or { return none }
 	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) +
 		'generation=${hash_text(generation_signature)}\n'
+	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies,
+		restored_prefixes)
+}
+
+// cached_incremental_dependency_inputs restores dependency records from a
+// declaration-stable program snapshot after the main source bodies change.
+pub fn (m &Manager) cached_incremental_dependency_inputs(source_files []string, declaration_signature string, generation_signature string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
+	if !m.enabled || source_files.len == 0 || declaration_signature.len == 0 {
+		return none
+	}
+	entry := m.incremental_program_entry(source_files)
+	if !os.is_file(entry.stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	expected_head := entry_stamp(m.salt, declaration_signature) +
+		'generation=${hash_text('incremental-v5\n${generation_signature}')}\n'
+	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies,
+		restored_prefixes)
+}
+
+fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
 	if !stamp.starts_with(expected_head) {
 		return none
 	}
@@ -1200,12 +1242,27 @@ pub fn (m &Manager) valid_incremental_program(source_files []string, declaration
 	}
 	objects := os.read_lines(entry.objects) or { return none }
 	if objects.len == 0 || objects.any(it.len == 0 || !os.is_file(it)) {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 incremental cache miss: cached module object is missing')
+		}
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
 	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs,
 		'incremental-v5\n${generation_signature}')
 	if stamp != expected {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			actual_lines := stamp.split_into_lines()
+			expected_lines := expected.split_into_lines()
+			mut line := 0
+			for line < actual_lines.len && line < expected_lines.len
+				&& actual_lines[line] == expected_lines[line] {
+				line++
+			}
+			actual := if line < actual_lines.len { actual_lines[line] } else { '<missing>' }
+			wanted := if line < expected_lines.len { expected_lines[line] } else { '<missing>' }
+			eprintln('  V3 incremental cache miss: stamp line ${line + 1}: cached=${actual} expected=${wanted}')
+		}
 		return none
 	}
 	return entry
@@ -1846,6 +1903,31 @@ pub fn static_string_definitions(source string) string {
 	return out.str()
 }
 
+// without_duplicate_static_string_definitions removes literal storage already
+// supplied by an earlier cached C prefix while retaining new body-only literals.
+pub fn without_duplicate_static_string_definitions(source string, existing_source string) string {
+	if !source.contains('static string _v3_lit_')
+		|| !existing_source.contains('static string _v3_lit_') {
+		return source.clone()
+	}
+	mut existing := map[string]bool{}
+	for line in existing_source.split_into_lines() {
+		if symbol := generated_static_string_definition_symbol(line) {
+			existing[symbol] = true
+		}
+	}
+	mut out := strings.new_builder(source.len)
+	for line in source.split_into_lines() {
+		if symbol := generated_static_string_definition_symbol(line) {
+			if existing[symbol] {
+				continue
+			}
+		}
+		out.writeln(line)
+	}
+	return out.str()
+}
+
 // materialize_cached_body_string_definitions restores body-only string storage
 // recorded as cache marker comments. Real definitions in source take precedence.
 pub fn materialize_cached_body_string_definitions(source string) string {
@@ -2026,7 +2108,149 @@ pub fn c_source_declares_types(source string) bool {
 	return declares_types
 }
 
+// c_source_function_identifiers returns C functions defined or declared at file scope.
+pub fn c_source_function_identifiers(source string) map[string]bool {
+	mut identifiers := map[string]bool{}
+	mut pending := strings.new_builder(256)
+	mut brace_depth := 0
+	mut in_block_comment := false
+	for raw_line in source.split_into_lines() {
+		trimmed := raw_line.trim_space()
+		if brace_depth == 0 && trimmed.starts_with('#') {
+			continue
+		}
+		if brace_depth == 0 {
+			pending.writeln(raw_line)
+		}
+		delta, _, next_comment, last_code, first_open := c_line_braces(raw_line, in_block_comment)
+		in_block_comment = next_comment
+		if brace_depth == 0 && first_open >= 0 {
+			declaration := pending.str()
+			current_line_start := declaration.len - raw_line.len - 1
+			head :=
+				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
+			if c_static_declaration_head_is_function(head) {
+				paren := head.index_u8(`(`)
+				if paren > 0 {
+					mut end := paren
+					for end > 0 && head[end - 1].is_space() {
+						end--
+					}
+					mut start := end
+					for start > 0 && c_generated_identifier_byte(head[start - 1]) {
+						start--
+					}
+					if start < end {
+						identifiers[head[start..end]] = true
+					}
+				}
+			}
+		}
+		brace_depth += delta
+		if brace_depth <= 0 && (first_open >= 0 || last_code == `;`) {
+			brace_depth = 0
+			pending.clear()
+		}
+	}
+	unsafe { pending.free() }
+	return identifiers
+}
+
+// c_source_type_identifiers returns C typedef aliases and named aggregate tags.
+pub fn c_source_type_identifiers(source string) map[string]bool {
+	mut identifiers := map[string]bool{}
+	mut tokens := []string{}
+	mut i := 0
+	for i < source.len {
+		if !c_generated_identifier_byte(source[i]) || source[i].is_digit() {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < source.len && c_generated_identifier_byte(source[i]) {
+			i++
+		}
+		tokens << source[start..i]
+	}
+	for idx, token in tokens {
+		if token in ['struct', 'union', 'enum'] && idx + 1 < tokens.len {
+			identifiers[tokens[idx + 1]] = true
+		}
+	}
+	mut offset := 0
+	for offset < source.len {
+		relative := source[offset..].index('typedef') or { break }
+		start := offset + relative
+		before_ok := start == 0 || !c_generated_identifier_byte(source[start - 1])
+		after := start + 'typedef'.len
+		after_ok := after >= source.len || !c_generated_identifier_byte(source[after])
+		if !before_ok || !after_ok {
+			offset = after
+			continue
+		}
+		mut end := after
+		mut brace_depth := 0
+		mut paren_depth := 0
+		for end < source.len {
+			match source[end] {
+				`{` {
+					brace_depth++
+				}
+				`}` {
+					if brace_depth > 0 {
+						brace_depth--
+					}
+				}
+				`(` {
+					paren_depth++
+				}
+				`)` {
+					if paren_depth > 0 {
+						paren_depth--
+					}
+				}
+				`;` {
+					if brace_depth == 0 && paren_depth == 0 {
+						break
+					}
+				}
+				else {}
+			}
+			end++
+		}
+		if end >= source.len {
+			break
+		}
+		declaration := source[after..end]
+		mut alias_end := declaration.len
+		for alias_end > 0 && !c_generated_identifier_byte(declaration[alias_end - 1]) {
+			alias_end--
+		}
+		mut alias_start := alias_end
+		for alias_start > 0 && c_generated_identifier_byte(declaration[alias_start - 1]) {
+			alias_start--
+		}
+		if alias_start < alias_end {
+			identifiers[declaration[alias_start..alias_end]] = true
+		}
+		offset = end + 1
+	}
+	return identifiers
+}
+
+// c_source_type_declarations keeps preprocessor context and C type declarations,
+// while omitting function bodies, function declarations, and storage.
+pub fn c_source_type_declarations(source string) string {
+	header, _, _ := c_declaration_header_mode(source, true)
+	return header
+}
+
 fn c_declaration_header(prefix string) (string, bool, bool) {
+	return c_declaration_header_mode(prefix, false)
+}
+
+fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut item_head := strings.new_builder(512)
@@ -2156,8 +2380,11 @@ fn c_declaration_header(prefix string) (string, bool, bool) {
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
-		declares_types = declares_types || c_declaration_item_declares_type(declaration, has_brace)
-		out.write_string(c_declaration_item(declaration, has_brace))
+		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
+		declares_types = declares_types || item_declares_type
+		if !types_only || item_declares_type {
+			out.write_string(c_declaration_item(declaration, has_brace, types_only))
+		}
 		item_head.clear()
 		brace_depth = 0
 		has_brace = false
@@ -2169,8 +2396,11 @@ fn c_declaration_header(prefix string) (string, bool, bool) {
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
-		declares_types = declares_types || c_declaration_item_declares_type(declaration, has_brace)
-		out.write_string(c_declaration_item(declaration, has_brace))
+		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
+		declares_types = declares_types || item_declares_type
+		if !types_only || item_declares_type {
+			out.write_string(c_declaration_item(declaration, has_brace, types_only))
+		}
 	}
 	return out.str(), has_static_storage, declares_types
 }
@@ -2214,14 +2444,14 @@ fn c_preprocessor_line_continues(line string) bool {
 	return line.trim_right('\r').ends_with('\\')
 }
 
-fn c_declaration_item(item string, has_brace bool) string {
+fn c_declaration_item(item string, has_brace bool, types_only bool) string {
 	trimmed := item.trim_space()
 	if trimmed.len == 0 {
 		return item
 	}
 	clean := trim_leading_c_comments(trimmed)
 	if block := c_extern_c_block(item) {
-		inner_header, _, _ := c_declaration_header(block.inner)
+		inner_header, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
 		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
 			result += '\n'

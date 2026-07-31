@@ -783,6 +783,20 @@ fn test_shared_field_without_sync_import_compiles_and_locks() {
 	assert out == '7'
 }
 
+fn test_nested_shared_field_lock_allows_member_access() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_shared_field_lock',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tlock coordinator.state {\n\t\tcoordinator.state.value = 7\n\t}\n\tmut value := 0\n\trlock coordinator.state {\n\t\tvalue = coordinator.state.value\n\t}\n\tprintln(int_str(value))\n}\n')
+	assert out == '7'
+}
+
+fn test_reassigned_nil_pointer_can_be_dereferenced() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'reassigned_nil_pointer',
+		'fn main() {\n\tmut pointer := &int(unsafe { nil })\n\tmut value := 7\n\tpointer = &value\n\tprintln(int_str(*pointer))\n}\n')
+	assert out == '7'
+}
+
 fn test_imported_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'imported_shared_field_without_sync_import', {

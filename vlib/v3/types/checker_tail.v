@@ -55,18 +55,21 @@ fn (tc &TypeChecker) pointer_diagnostic_binding_type_name(id flat.NodeId, typ Ty
 			scan_lo = fn_node.pos.offset
 		}
 	}
-	needle := '${node.value} := nil'
-	if last_index_between(source, needle, scan_lo, end) >= 0 {
-		return 'nil'
-	}
 	decl_needle := '${node.value} :='
 	decl_start := last_index_between(source, decl_needle, scan_lo, end)
 	if decl_start >= 0 {
 		decl_end := source.index_after('\n', decl_start) or { end }
-		if source[decl_start..int_min(decl_end, end)].contains('nil') {
+		decl_source := source[decl_start..int_min(decl_end, end)]
+		rhs := decl_source.all_after(':=').all_before('//').trim_space()
+		compact_rhs := rhs.replace(' ', '').replace('\t', '')
+		// Match the established checker: only a binding initialized directly
+		// from nil is known to be nil. A typed pointer cast such as
+		// `&Node(unsafe { nil })` remains a pointer and may be assigned before
+		// it is dereferenced.
+		if compact_rhs in ['nil', 'unsafe{nil}'] {
 			return 'nil'
 		}
-		if source[decl_start..int_min(decl_end, end)].contains('voidptr(') {
+		if compact_rhs.starts_with('voidptr(') {
 			return 'voidptr'
 		}
 	}
@@ -1029,6 +1032,17 @@ fn (mut tc TypeChecker) check_lvalue_field_mutability(id flat.NodeId) {
 	base_id := tc.a.child(&node, 0)
 	tc.check_lvalue_field_mutability(base_id)
 	if tc.selector_is_shared_arg(node) {
+		lock_name := tc.shared_lock_key(id)
+		lock_mode := tc.current_shared_lock_mode(lock_name)
+		if lock_mode == `w` {
+			return
+		}
+		if lock_mode == `r` {
+			tc.record_error_at(.assignment_mismatch,
+				'${lock_name} has an `rlock` but needs a `lock`', id, tc.selector_field_diagnostic_pos(id,
+				node.value))
+			return
+		}
 		tc.record_error_at(.assignment_mismatch,
 			'`${tc.source_text_for_node(id)}` is `shared` and needs explicit lock for `v.ast.SelectorExpr`',
 			id, tc.selector_field_diagnostic_pos(id, node.value))
@@ -8512,7 +8526,8 @@ fn (tc &TypeChecker) unlocked_shared_access(id flat.NodeId) ?SharedAccessDiagnos
 			if access := tc.unlocked_shared_access(tc.a.child(node, 0)) {
 				return access
 			}
-			if tc.selector_is_shared_arg(node) {
+			if tc.selector_is_shared_arg(node)
+				&& tc.current_shared_lock_mode(tc.shared_lock_key(id)) == 0 {
 				return SharedAccessDiagnostic{
 					name: tc.source_text_for_node(id)
 					pos:  tc.selector_field_diagnostic_pos(id, node.value)

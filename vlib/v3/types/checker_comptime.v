@@ -7898,6 +7898,12 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 			tail_id, tc.or_fallback_value_pos(tail_id, tail))
 		return
 	}
+	if is_ierror_type(actual) && tc.branch_tail_is_error_literal(tail_id) {
+		fn_return := unalias_type(tc.fn_context.return_type)
+		if fn_return is ResultType && tc.type_compatible(expected, fn_return.base_type) {
+			return
+		}
+	}
 	is_strict_numeric_mismatch := actual.is_integer() && expected.is_float()
 		&& tail.kind != .int_literal
 	if tc.expr_compatible(tail_id, actual, expected) && !is_strict_numeric_mismatch {
@@ -10163,28 +10169,30 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 		object := tc.a.node(object_id)
 		mode := tc.lock_object_mode(node, i)
 		tc.check_node(object_id)
-		if !tc.expr_is_shared_arg(object_id) {
+		is_shared := tc.expr_is_shared_arg(object_id)
+		if !is_shared {
 			object_type := if object.kind == .ident { 'variable' } else { 'struct element' }
 			tc.record_error_at(.assignment_mismatch,
 				'`${tc.source_text_for_node(object_id)}` must be declared as `shared` ${object_type} to be locked',
 				object_id, object.pos)
 		}
-		if object.kind == .ident && object.value.len > 0 {
-			existing_modes := tc.fn_context.locked_shared_modes[object.value] or { []u8{} }
+		lock_name := tc.shared_lock_key(object_id)
+		if is_shared && lock_name.len > 0 {
+			existing_modes := tc.fn_context.locked_shared_modes[lock_name] or { []u8{} }
 			if existing_modes.len > 0 {
 				message := if existing_modes.last() == `r` {
-					'`${object.value}` is already read-locked'
+					'`${lock_name}` is already read-locked'
 				} else {
-					'`${object.value}` is already locked'
+					'`${lock_name}` is already locked'
 				}
 				tc.record_error_at(.assignment_mismatch, message, object_id,
 					tc.node_value_diagnostic_pos(object_id))
 			}
 			mut modes := existing_modes.clone()
 			modes << mode
-			tc.fn_context.locked_shared_modes[object.value] = modes
-			tc.fn_context.locked_shared_names[object.value]++
-			locked_names << object.value
+			tc.fn_context.locked_shared_modes[lock_name] = modes
+			tc.fn_context.locked_shared_names[lock_name]++
+			locked_names << lock_name
 		}
 	}
 	tc.lock_depth++
@@ -10202,6 +10210,37 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 			tc.fn_context.locked_shared_modes[name] = modes
 		}
 	}
+}
+
+fn (tc &TypeChecker) shared_lock_key(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := tc.shared_lock_key(tc.a.child(node, 0))
+			return if base.len > 0 { '${base}.${node.value}' } else { node.value }
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.shared_lock_key(tc.a.child(node, 0))
+			}
+		}
+		.prefix {
+			if node.value == 'shared' && node.children_count > 0 {
+				return tc.shared_lock_key(tc.a.child(node, 0))
+			}
+		}
+		else {}
+	}
+	return tc.source_text_for_node(id).trim_space()
 }
 
 fn (tc &TypeChecker) lock_object_mode(node flat.Node, index int) u8 {

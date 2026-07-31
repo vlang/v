@@ -166,7 +166,7 @@ fn test_cached_source_signatures_revalidate_changed_inputs() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	manager := modulecache.new_manager(root, 'source-signature-metadata', true, '')
+	manager := modulecache.new_manager(root, 'source-signature-metadata', true, '', '')
 	assert manager.ensure_dir()
 
 	source := os.join_path(root, 'foo.v')
@@ -205,8 +205,10 @@ fn test_cached_source_signatures_revalidate_changed_inputs() {
 	quoted_build_source := os.join_path(root, 'quoted_build.v')
 	write_module_cache_file(root, 'quoted_build.v',
 		"module quoted_build\n\npub const marker = '@BUILD_DATE'\n")
-	first_build_manager := modulecache.new_manager(root, 'quoted-build-pseudo', true, 'first')
-	second_build_manager := modulecache.new_manager(root, 'quoted-build-pseudo', true, 'second')
+	first_build_manager := modulecache.new_manager(root, 'quoted-build-pseudo', true, 'first',
+		'stable-version')
+	second_build_manager := modulecache.new_manager(root, 'quoted-build-pseudo', true, 'second',
+		'stable-version')
 	assert first_build_manager.ensure_dir()
 	first_build_manager.write_header('quoted_build', [quoted_build_source], 'module quoted_build\n') or {
 		panic(err)
@@ -272,7 +274,7 @@ fn test_cached_object_accepts_recorded_dependency_superset() {
 	write_module_cache_file(root, 'first.h', '#define FIRST 1')
 	write_module_cache_file(root, 'extra.h', '#define EXTRA 1')
 	write_module_cache_file(root, 'new.h', '#define NEW 1')
-	manager := modulecache.new_manager(root, 'dependency-superset', true, '')
+	manager := modulecache.new_manager(root, 'dependency-superset', true, '', '')
 	assert manager.ensure_dir()
 	compile_signature := 'flags'
 	entry := manager.object_entry('foo', [source], compile_signature)
@@ -703,7 +705,7 @@ fn test_cached_cgen_dependency_inputs_restore_only_allowed_groups() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	manager := modulecache.new_manager(root, 'cgen-dependency-restore', true, '')
+	manager := modulecache.new_manager(root, 'cgen-dependency-restore', true, '', '')
 	assert manager.ensure_dir()
 	write_module_cache_file(root, 'main.v', 'println(1)\n')
 	source := os.join_path(root, 'main.v')
@@ -4401,7 +4403,6 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '41'
-	// Warm once so the snapshot uses the stable cached-module source set.
 	write_module_cache_file(root, 'main.v', 'module main
 
 import cached
@@ -4415,7 +4416,11 @@ fn main() {
 }
 ')
 	baseline_output := os.join_path(root, 'baseline')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	baseline :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(baseline_output)} ${os.quoted_path(main_file)}')
+	assert baseline.exit_code == 0, baseline.output
+	assert baseline.output.contains('check (incremental)'), baseline.output
+	assert baseline.output.contains('cgen (incremental)'), baseline.output
 	assert run_module_cache_binary(baseline_output) == '42'
 
 	// Populate strict module objects without replacing main.v's non-strict snapshot.
@@ -4453,6 +4458,63 @@ fn main() {
 	assert strict.output.contains('check (incremental)'), strict.output
 	assert strict.output.contains('cgen (incremental)'), strict.output
 	assert run_module_cache_binary(strict_output) == '43'
+}
+
+fn test_incremental_program_cache_keeps_main_native_insert() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_main_native_insert_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'native.h', 'static inline int native_value(void) {
+	return 40;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+#insert "@DIR/native.h"
+
+fn C.native_value() int
+
+fn adjusted_value() int {
+	return C.native_value() + 1
+}
+
+fn main() {
+	println(adjusted_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	write_module_cache_file(root, 'main.v', 'module main
+
+#insert "@DIR/native.h"
+
+fn C.native_value() int
+
+fn adjusted_value() int {
+	return C.native_value() + 2
+}
+
+fn main() {
+	println(adjusted_value())
+}
+')
+	incremental_output := os.join_path(root, 'incremental')
+	incremental :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(incremental_output)} ${os.quoted_path(main_file)}')
+	assert incremental.exit_code == 0, incremental.output
+	assert incremental.output.contains('check (incremental)'), incremental.output
+	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	assert run_module_cache_binary(incremental_output) == '42'
 }
 
 fn test_incremental_program_cache_emits_new_body_support_typedefs() {

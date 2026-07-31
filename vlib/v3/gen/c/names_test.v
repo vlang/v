@@ -188,6 +188,17 @@ fn test_apple_framework_include_does_not_match_x11() {
 	assert !c_is_apple_framework_include('<sys/ptrace.h>')
 }
 
+fn test_objective_c_header_detection() {
+	assert c_header_text_needs_objective_c('#import <Cocoa/Cocoa.h>\n')
+	assert c_header_text_needs_objective_c('@interface AppDelegate : NSObject\n@end\n')
+	assert c_header_text_needs_objective_c('id value = (__bridge id)pointer;\n')
+	assert !c_header_text_needs_objective_c('#include <CoreFoundation/CFString.h>\n')
+	assert !c_header_text_needs_objective_c('#include <X11/Xlib.h>\n')
+	imports :=
+		c_header_objective_c_framework_imports('#ifdef _WIN32\n#include <windows.h>\n#endif\n#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>\n')
+	assert imports == '#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>'
+}
+
 fn test_large_transitive_header_tree_is_preserved() {
 	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
 	os.rmdir_all(root) or {}

@@ -4684,6 +4684,12 @@ fn type_text_contains_qualified_import(text string, alias string) bool {
 }
 
 fn (mut tc TypeChecker) check_deprecated_byte_types() {
+	mut identifier_offsets := map[u64]bool{}
+	for node in tc.a.nodes {
+		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
+			identifier_offsets[deprecated_byte_position_key(node.pos.id, node.pos.offset)] = true
+		}
+	}
 	mut pending_file := ''
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
@@ -4695,12 +4701,17 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 		if pending_file.len == 0 || !node.pos.is_valid() {
 			continue
 		}
-		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file)
+		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file,
+			identifier_offsets)
 		pending_file = ''
 	}
 }
 
-fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string) {
+fn deprecated_byte_position_key(file_id int, offset int) u64 {
+	return (u64(u32(file_id)) << 32) | u64(u32(offset))
+}
+
+fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool) {
 	if tc.diagnostic_files.len > 0 && path !in tc.diagnostic_files {
 		return
 	}
@@ -4740,7 +4751,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 		for i < source.len && (source[i].is_alnum() || source[i] == `_`) {
 			i++
 		}
-		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start) {
+		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
+			|| deprecated_byte_position_key(file_id, start) in identifier_offsets {
 			continue
 		}
 		mut end := i

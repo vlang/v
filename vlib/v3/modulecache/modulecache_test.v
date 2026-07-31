@@ -9,6 +9,19 @@ fn test_cached_file_line_uses_source_file_name() {
 	assert rewritten == "return ['${os.real_path(source_file)}', 'origin.v:5', '5']"
 }
 
+fn test_without_duplicate_static_string_definitions_keeps_new_literals() {
+	existing := '#include <Cocoa/Cocoa.h>
+static string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};
+static inline int native_value(void) { return 42; }
+'
+	source := 'static string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};
+static string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};
+'
+	cleaned := without_duplicate_static_string_definitions(source, existing)
+	assert !cleaned.contains('_v3_lit_1_44bd55d473cd3ef7')
+	assert cleaned.contains('_v3_lit_1_44bd54d473cd3d44')
+}
+
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	details := SourceSignatureDetails{
 		signature:  'content-signature'
@@ -28,6 +41,25 @@ fn test_source_signature_cache_content_requires_stable_metadata() {
 	assert content.contains('metadata=stable\n')
 	assert content.contains('source=content-signature\n')
 	assert content.ends_with('complete=1\n')
+}
+
+fn test_version_pseudo_signature_ignores_build_clock() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_version_pseudo_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'version.v')
+	os.write_file(source, 'module version\n\nconst current = @VCURRENTHASH\n') or { panic(err) }
+
+	first := source_signature_details([source], 'build-clock-1', 'version-1')
+	second := source_signature_details([source], 'build-clock-2', 'version-1')
+	changed := source_signature_details([source], 'build-clock-2', 'version-2')
+	assert first.signature == second.signature
+	assert first.signature != changed.signature
+	assert first.validation.any(it.starts_with('version='))
+	assert !first.validation.any(it.starts_with('build='))
 }
 
 fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
@@ -85,7 +117,7 @@ fn test_vmodhash_changes_cached_source_signature_without_source_edits() {
 
 	first := cached_source_signature(cache_dir, 'vmodhash', [source])
 	assert first.len > 0
-	details := source_signature_details([source], '')
+	details := source_signature_details([source], '', '')
 	assert details.validation.any(it.starts_with('vmodhash='))
 
 	os.write_file(ref_file, 'abcdef0123456789abcdef0123456789abcdef01\n')!
