@@ -14278,6 +14278,25 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 	tc.record_pointer_binding_alias(owner, rhs_id, lhs_type)
 }
 
+fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.NodeId) {
+	node := tc.a.node(tc.unwrap_paren_expr_id(id))
+	if node.kind != .ident || node.value == '_' {
+		return
+	}
+	owner := tc.cur_scope.lookup_owner(node.value) or { return }
+	typ := tc.cur_scope.lookup(node.value) or { return }
+	if unalias_type(typ) !is Pointer {
+		return
+	}
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	tc.fn_context.pointer_binding_value_keys[key] = [
+		pointer_binding_unknown_value(key),
+	]
+}
+
 fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rhs_id flat.NodeId, typ Type) {
 	if unalias_type(typ) !is Pointer {
 		return

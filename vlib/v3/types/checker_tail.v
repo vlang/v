@@ -8938,6 +8938,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 	}
 	mut expanded_arg_offset := 0
+	mut pointer_slot_call_args := []flat.NodeId{}
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		// field_init args are fields of the collapsed `@[params]` struct, not positional params
@@ -9471,6 +9472,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				}
 			}
 		}
+		if requires_mut_pointer_slot && mut_arg_node.is_mut {
+			pointer_slot_call_args << arg_id
+		}
 		// Integer arguments are implicitly converted at a concrete call boundary.
 		// Resolve this before applying the expected type, since contextual resolution
 		// would otherwise diagnose the conversion while resolving the argument itself.
@@ -9760,6 +9764,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error_at(.call_arg_mismatch, message, arg_id,
 				tc.call_argument_diagnostic_pos(arg_id))
 		}
+	}
+	for arg_id in pointer_slot_call_args {
+		tc.invalidate_pointer_binding_alias_after_mut_call(arg_id)
 	}
 }
 
