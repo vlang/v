@@ -7,6 +7,8 @@ import v3.flat
 import v3.token
 import v3.util
 
+const pointer_binding_unknown_value_key = '@unknown'
+
 fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if loop_kind == 'values' {
 		tc.check_comptime_static_value_metadata_if(node, var_name, loop_kind, field_cases,
@@ -10450,6 +10452,10 @@ fn locked_shared_base_keys_may_alias(left string, right string) bool {
 	if left.len == 0 || right.len == 0 {
 		return false
 	}
+	unknown_owner := '@owner:${pointer_binding_unknown_value_key}'
+	if left.starts_with(unknown_owner) || right.starts_with(unknown_owner) {
+		return true
+	}
 	mut left_pos := 0
 	mut right_pos := 0
 	for left_pos < left.len && right_pos < right.len {
@@ -14252,6 +14258,13 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 				tc.pointer_binding_values(right_key).clone()
 			return
 		}
+	}
+	if rhs.kind == .call {
+		// A pointer returned by arbitrary code may be any existing pointer value.
+		tc.fn_context.pointer_binding_value_keys[left_key] = [
+			pointer_binding_unknown_value_key,
+		]
+		return
 	}
 	// A non-copy assignment creates a new pointer value and detaches this binding's old aliases.
 	tc.fn_context.pointer_binding_value_keys[left_key] = [

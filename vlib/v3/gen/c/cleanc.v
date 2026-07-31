@@ -3918,8 +3918,59 @@ fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefi
 	return c_preprocessor_macro_state(name, defined, undefined, uncertain, strict_iso_mode, target)
 }
 
+fn c_header_condition_without_comments(raw string) string {
+	mut result := strings.new_builder(raw.len)
+	mut i := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut in_block_comment := false
+	for i < raw.len {
+		c := raw[i]
+		if in_block_comment {
+			if c == `*` && i + 1 < raw.len && raw[i + 1] == `/` {
+				in_block_comment = false
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		if quote != 0 {
+			result.write_u8(c)
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `"` || c == `'` {
+			quote = c
+			result.write_u8(c)
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < raw.len {
+			if raw[i + 1] == `/` {
+				break
+			}
+			if raw[i + 1] == `*` {
+				in_block_comment = true
+				i += 2
+				continue
+			}
+		}
+		result.write_u8(c)
+		i++
+	}
+	return result.str().trim_space()
+}
+
 fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
-	mut clean := c_header_condition_without_outer_parens(raw.trim_space())
+	mut clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
 	or_parts := c_header_condition_top_level_parts(clean, '||')
 	if or_parts.len > 1 {
 		mut all_known := true
