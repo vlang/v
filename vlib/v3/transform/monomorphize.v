@@ -7491,6 +7491,15 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 			return map_type
 		}
 	}
+	if node.kind == .index && node.value == 'range' && node.children_count > 0 {
+		base_type := t.generic_call_arg_type_for_inference(t.a.child(&node, 0))
+		if base_type.starts_with('[]') || base_type == 'string' {
+			return base_type
+		}
+		if t.is_fixed_array_type(base_type) {
+			return '[]${fixed_array_elem_type(base_type)}'
+		}
+	}
 	if node.kind in [.array_literal, .fn_literal, .lambda_expr] {
 		typ := t.generic_arg_expr_type(id)
 		if typ.len > 0 {

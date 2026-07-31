@@ -62,12 +62,12 @@ jobs:
       ## they call) changes materially, independent of any upstream
       ## SHA - lets "Check whether rebuild is needed" force a rebuild on
       ## a recipe change alone.
-      MACOS_AMD64_RECIPE_VERSION: "1"
+      MACOS_AMD64_RECIPE_VERSION: '1'
       ## Single source of truth for both halves of the macos-amd64
       ## pair - passed explicitly to both scripts below rather than
       ## relying on their own internal defaults, so this check step
       ## and the actual build can never independently drift.
-      MACOSX_DEPLOYMENT_TARGET: "10.13"
+      MACOSX_DEPLOYMENT_TARGET: '10.13'
     steps:
       - uses: actions/checkout@v7
 

@@ -2265,7 +2265,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.substitute_ident(map_source_id, 'it', elem_name)
 	}
 	checker_result_elem_type := t.checker_expr_type_name(map_expr_id) or { '' }
-	mut result_elem_type := if checker_result_elem_type.len > 0 {
+	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type)
+		&& checker_result_elem_type != 'void'
+	mut result_elem_type := if checker_result_elem_type_is_usable {
 		checker_result_elem_type
 	} else {
 		t.node_type(map_expr_id)
@@ -2345,7 +2347,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.unset_var_type(elem_name)
 	}
 	mapped_type := t.node_type(mapped_expr)
-	if checker_result_elem_type.len == 0 && mapped_type.len > 0 && mapped_type != 'unknown' {
+	if !checker_result_elem_type_is_usable && decl_type_is_usable(mapped_type)
+		&& mapped_type != 'void' {
 		result_elem_type = mapped_type
 	}
 	if direct_selector_type.len > 0 && map_fn_name.len == 0 {

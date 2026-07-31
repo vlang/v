@@ -449,4 +449,14 @@ fn main() {
 }
 ')
 	assert explicit_multi_arg_out == '2'
+
+	reused_result_out := run_generic_exec(v3_bin, 'reused_generic_result_keeps_payload_type', '
+import arrays { sum }
+
+fn main() {
+	mapped := [[1, 2], [3, 4]].map(sum(it)!)
+	println(sum(mapped[..2])!)
+}
+')
+	assert reused_result_out == '10'
 }

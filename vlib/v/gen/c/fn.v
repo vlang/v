@@ -955,7 +955,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			// g.write('static ')
 			// g.definitions.write_string('static ')
 		}
-		if !node.is_anon {
+		if !node.is_anon && !g.comptime.inside_comptime_if {
 			g.out_fn_start_pos << g.out.len
 		}
 	}
