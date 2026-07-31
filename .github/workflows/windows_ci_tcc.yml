@@ -38,6 +38,83 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+      - name: Install OpenSSL
+        run: |
+          choco install openssl -y --no-progress
+          # choco's openssl package (Win64OpenSSL installer under the hood)
+          # deploys to `C:\Program Files\OpenSSL\`, matching
+          # ecdsa.c.v/rsa_pss.c.v's SECOND `#flag windows` fallback path --
+          # NOT the first one (`...OpenSSL-Win64\...`), confirmed by an
+          # actual CI run after guessing wrong the first time.
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          if (-not (Test-Path $opensslBin)) {
+            throw "OpenSSL bin directory not found at $opensslBin after choco install"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+          Write-Host "OpenSSL install:"
+          Get-ChildItem 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+
+          Write-Host "OpenSSL bin DLLs:"
+          Get-ChildItem $opensslBin -Filter *.dll
+
+          # TCC resolves `-lcrypto`/`-lssl` by searching the -L dir for
+          # `lib<name>.def` FIRST (confirmed against tinycc's own source,
+          # tcc_add_library's PE search-pattern array: "%s/%s.def",
+          # "%s/lib%s.def", "%s/%s.dll", "%s/lib%s.dll"), and when a .def
+          # file is found, tccpe.c's pe_load_def reads the file's own
+          # `LIBRARY <name>` directive via get_token() to get the DLL
+          # filename to embed in the import table. Confirmed against
+          # tinycc's own source that get_token() does NOT strip surrounding
+          # double quotes, and the extracted name is used AS-IS with no
+          # `.dll` extension appended. This OpenSSL 4.0.1 package's
+          # libcrypto.def/libssl.def declare `LIBRARY "libcrypto-4-x64"` /
+          # `LIBRARY "libssl-4-x64"` -- quoted, no extension -- so TCC
+          # embeds the LITERAL string `"libcrypto-4-x64"` (quote characters
+          # included, no `.dll`) as the runtime DLL name. `"` is illegal in
+          # a Windows filename, so NO real file can ever match that name --
+          # guaranteeing STATUS_DLL_NOT_FOUND (exit -1073741515, empty
+          # output) for every TCC-linked test touching
+          # crypto.ecdsa/crypto.rsa_pss/net.quic, confirmed via an actual CI
+          # failure, regardless of what DLLs actually exist in bin\ (MSVC
+          # is unaffected: it reads the DLL name from the .lib's own
+          # build-time metadata, which is already a valid, unquoted,
+          # extensioned filename). A file-aliasing workaround (mirroring
+          # msvc-windows' crypto.lib/libcrypto.lib alias) CANNOT fix this --
+          # you cannot create a file whose name contains a literal `"` on
+          # Windows. Fix at the source instead: rewrite each .def's LIBRARY
+          # line in place, stripping the quotes and appending `.dll` if
+          # missing, before TCC ever reads it. The rewritten name
+          # (`libcrypto-4-x64.dll`) already exists as a real file in bin\
+          # (this package ships both v3 and v4 runtime DLLs side by side),
+          # so no aliasing is needed once the .def itself is correct.
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          foreach ($name in @('libcrypto', 'libssl')) {
+            $defPath = Join-Path $libDir "$name.def"
+            if (-not (Test-Path $defPath)) {
+              Write-Host "$name.def not found at $defPath, skipping LIBRARY-line fix"
+              continue
+            }
+            $lines = Get-Content $defPath
+            $fixedAny = $false
+            $newLines = $lines | ForEach-Object {
+              if ($_ -match '^(\s*LIBRARY\s+)"?([^"\s]+)"?\s*$') {
+                $dllName = $Matches[2]
+                if ($dllName -notmatch '\.dll$') {
+                  $dllName = "$dllName.dll"
+                }
+                Write-Host "${name}: rewriting LIBRARY line '$_' -> 'LIBRARY $dllName'"
+                $fixedAny = $true
+                "LIBRARY $dllName"
+              } else {
+                $_
+              }
+            }
+            if ($fixedAny) {
+              Set-Content -Path $defPath -Value $newLines
+            } else {
+              Write-Host "${name}: no LIBRARY line found to rewrite in $defPath"
+            }
+          }
       - name: Build with makev.bat -tcc
         run: |
           .\makev.bat -tcc
