@@ -1489,6 +1489,19 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 			}
 			continue
 		}
+		if node.kind == .c_fn_decl {
+			mut param_mutability := []bool{}
+			for child_index in 0 .. node.children_count {
+				param := a.child_node(&node, child_index)
+				if param.kind == .param {
+					param_mutability << param.is_mut
+				}
+			}
+			if node.value !in tc.declaration_param_mutability {
+				tc.declaration_param_mutability[node.value] = param_mutability
+			}
+			continue
+		}
 		if node.kind != .fn_decl {
 			continue
 		}
@@ -5089,7 +5102,10 @@ fn (tc &TypeChecker) unqualified_type_symbol_is_builtin(name string) bool {
 	if mod_name := tc.struct_modules[name] {
 		return mod_name == 'builtin'
 	}
-	return name == 'IError'
+	// Builtin enum declarations use their unqualified source name, just like
+	// builtin structs. Keep that name visible from imported modules unless a
+	// declaration in the active scope shadows it.
+	return name == 'IError' || name in tc.enum_names || name in tc.flag_enums
 }
 
 fn (tc &TypeChecker) unqualified_type_symbol_has_scoped_shadow(name string) bool {
@@ -5792,7 +5808,8 @@ fn (mut tc TypeChecker) annotate_fn_literal(node flat.Node) {
 fn (mut tc TypeChecker) annotate_expected_expr(id flat.NodeId, expected Type) {
 	if int(id) >= 0 && int(id) < tc.a.nodes.len {
 		node := tc.a.nodes[int(id)]
-		if node.kind in [.if_expr, .match_stmt] && expected !is Void && expected !is Unknown {
+		if node.kind in [.if_expr, .match_stmt, .array_literal] && expected !is Void
+			&& expected !is Unknown {
 			_ = tc.resolve_expr(id, expected)
 			return
 		}
@@ -7443,10 +7460,20 @@ fn (mut tc TypeChecker) check_free_method_signature(id flat.NodeId, node flat.No
 }
 
 fn (tc &TypeChecker) should_check_source_name(id flat.NodeId) bool {
-	if int(id) < tc.a.user_code_start || tc.translated_files[tc.cur_file] {
+	if int(id) < tc.a.user_code_start {
 		return false
 	}
-	return tc.diagnostic_files.len == 0 || tc.cur_file in tc.diagnostic_files
+	node := tc.a.node(id)
+	file := tc.a.source_files[node.pos.id] or {
+		if tc.translated_files[tc.cur_file] {
+			return false
+		}
+		return tc.diagnostic_files.len == 0 || tc.cur_file in tc.diagnostic_files
+	}
+	if tc.translated_files[file.name] {
+		return false
+	}
+	return tc.diagnostic_files.len == 0 || file.name in tc.diagnostic_files
 }
 
 fn snake_case_name_is_valid(name string) bool {
@@ -7516,6 +7543,16 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 		tc.record_error_at(.duplicate_decl, 'top level declaration cannot shadow builtin type', id,
 			tc.fn_declaration_diagnostic_pos(node))
 	}
+	// V1 treats os and strconv like builtin modules. Their long-standing private
+	// implementation methods intentionally use a leading underscore.
+	source_module := if file := tc.a.source_files[node.pos.id] {
+		tc.file_modules[file.name] or { '' }
+	} else {
+		''
+	}
+	if source_module in ['os', 'strconv'] {
+		return
+	}
 	if name.len == 0 || (!name[0].is_letter() && name[0] != `_`) || snake_case_name_is_valid(name) {
 		return
 	}
@@ -7582,6 +7619,13 @@ fn (mut tc TypeChecker) check_main_fn_signature(id flat.NodeId, node flat.Node) 
 fn (mut tc TypeChecker) check_init_fn_signature(id flat.NodeId, node flat.Node) {
 	if node.value != 'init' || !tc.should_check_source_name(id) {
 		return
+	}
+	// An `init()` hook has no parameters. A public API can still use the
+	// ordinary name `init` when it takes arguments (for example `term.ui.init`).
+	for i in 0 .. node.children_count {
+		if tc.a.child_node(&node, i).kind == .param {
+			return
+		}
 	}
 	pos := tc.fn_header_declaration_pos(id)
 	if node.op == .arrow {

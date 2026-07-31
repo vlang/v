@@ -262,6 +262,32 @@ fn main() {}
 	assert generated.contains('#include <sys/ptrace.h>'), generated
 }
 
+fn test_for_in_binding_shadows_module_const_during_method_lowering() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'for_in_binding_shadows_module_const', {
+		'main.v':        "import loops
+
+const v = 'global'
+
+fn main() {
+	println(loops.values())
+}
+"
+		'loops/loops.v': 'module loops
+
+pub fn values() string {
+	values := [u16(15), 16]!
+	mut parts := []string{}
+	for v in values {
+		parts << v.hex()
+	}
+	return parts.join(",")
+}
+'
+	}, 'main.v')
+	assert out == 'f,10'
+}
+
 fn gen_c_from_source(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
@@ -2960,7 +2986,7 @@ fn main() {
 fn test_return_address_of_pointer_backed_field_preserves_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'return_pointer_backed_field_address',
-		'struct Node[T] {\nmut:\n\tvalue T\n}\n\nstruct List[T] {\nmut:\n\ttail &Node[T] = unsafe { nil }\n}\n\nfn (list &List[T]) last() &T {\n\treturn &list.tail.value\n}\n\nfn main() {\n\tmut node := &Node[int]{\n\t\tvalue: 1\n\t}\n\tlist := List[int]{\n\t\ttail: node\n\t}\n\tmut last := list.last()\n\t*last = 9\n\tprintln(int_str(node.value))\n}\n')
+		'struct Node[T] {\nmut:\n\tvalue T\n}\n\nstruct List[T] {\nmut:\n\ttail &Node[T] = unsafe { nil }\n}\n\nfn (list &List[T]) last() &T {\n\treturn &list.tail.value\n}\n\nfn main() {\n\tmut node := &Node[int]{\n\t\tvalue: 1\n\t}\n\tlist := List[int]{\n\t\ttail: node\n\t}\n\tmut last := list.last()\n\tunsafe {\n\t\t*last = 9\n\t}\n\tprintln(int_str(node.value))\n}\n')
 	assert out == '9'
 }
 
@@ -4582,4 +4608,214 @@ fn main() {
 	assert main_body.contains('closure__closure_try_destroy(__array_closure_'), main_body
 	out := run_good(v3_bin, 'nested_callback_array_field_hot_loop', source)
 	assert out == '1250025000'
+}
+
+fn test_none_forwarded_to_specialized_generic_method_stays_none() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Item {
+	value string
+}
+
+struct Mapper {}
+
+fn (mapper Mapper) is_none[T](value ?T) bool {
+	return value == none
+}
+
+fn forward_none[T]() bool {
+	mapper := Mapper{}
+	return mapper.is_none[T](none)
+}
+
+fn main() {
+	println(forward_none[Item]())
+}
+'
+	out := run_good(v3_bin, 'generic_method_none_argument', source)
+	assert out == 'true'
+}
+
+fn test_generic_mut_parameter_typeof_keeps_pointer_shape() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_mut_parameter_typeof', 'struct Item {}
+
+fn type_name[T](mut value T) string {
+	_ = value
+	return typeof(value).name
+}
+
+fn main() {
+	mut item := Item{}
+	println(type_name(mut item))
+}
+')
+	assert out == '&Item'
+}
+
+fn test_specialized_generic_or_uses_alias_struct_storage() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'specialized_generic_or_alias_storage', 'type Label = string
+
+struct Box[T] {
+	value T
+}
+
+fn make_box[T](value T) !Box[T] {
+	return Box[T]{
+		value: value
+	}
+}
+
+fn main() {
+	box := make_box[Label](Label("ok")) or { Box[Label]{} }
+	println(box.value)
+}
+')
+	assert out == 'ok'
+}
+
+fn test_result_unwrapped_sum_collections_compare_semantically() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'result_unwrapped_sum_collection_equality', 'type Value = bool | string
+
+fn values() ![]Value {
+	return [Value("ok")]
+}
+
+fn value_map() !map[string]Value {
+	return {
+		"key": Value("ok")
+	}
+}
+
+fn main() {
+	println(values()! == [Value("ok")])
+	println(value_map()! == {
+		"key": Value("ok")
+	})
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_recursive_sum_cast_does_not_select_container_variant() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'recursive_sum_same_type_cast', 'type Tree = int | []Tree
+
+fn leaf(value int) Tree {
+	return Tree(value)
+}
+
+fn main() {
+	tree := Tree([leaf(1), leaf(2)])
+	assert tree == Tree([Tree(1), Tree(2)])
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_explicit_nested_array_generic_argument_keeps_all_dimensions() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'explicit_nested_array_generic_argument', 'fn make[T]() T {
+	return T{}
+}
+
+fn main() {
+	value := make[[][]int]()
+	println(typeof(value).name)
+}
+')
+	assert out == '[][]int'
+}
+
+fn test_flag_enum_struct_field_defaults_to_zero() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'flag_enum_struct_field_default', '@[flag]
+enum Mode {
+	read
+	write
+}
+
+struct Config {
+	mode Mode
+}
+
+fn main() {
+	config := Config{}
+	println(int(config.mode))
+}
+')
+	assert out == '0'
+}
+
+fn test_array_map_in_sum_smartcast_uses_collection_lowering() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_map_in_sum_smartcast', 'type Value = int | []int
+
+fn normalize(value Value) Value {
+	return match value {
+		[]int { Value(value.map(it + 1)) }
+		else { value }
+	}
+}
+
+fn main() {
+	result := normalize(Value([1, 2]))
+	if result is []int {
+		println(result)
+	}
+}
+')
+	assert out == '[2, 3]'
+}
+
+fn test_smartcast_sum_value_in_direct_array_literal_is_reboxed() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'smartcast_sum_direct_array_literal', 'type Value = int | string
+
+fn first(values []Value) Value {
+	return values[0]
+}
+
+fn roundtrip(value Value) Value {
+	return match value {
+		int { first([value]) }
+		string { first([value]) }
+	}
+}
+
+fn main() {
+	println(roundtrip(Value(42)))
+	println(roundtrip(Value("ok")))
+}
+')
+	assert out == "Value(42)\nValue('ok')"
+}
+
+fn test_sum_variant_field_does_not_become_same_named_method_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'sum_variant_field_method_name_collision', 'type Value = int | i32
+
+fn (value Value) i32() i32 {
+	return 0
+}
+
+fn extract[T](value T) i32 {
+	$for variant in T.variants {
+		if value is variant {
+			$if variant.typ is i32 {
+				variant_value := value
+				return variant_value
+			}
+		}
+	}
+	return -1
+}
+
+fn main() {
+	println(extract[Value](Value(i32(42))))
+}
+')
+	assert out == '42'
 }

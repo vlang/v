@@ -2198,13 +2198,15 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	p.pending_decl_pub = false
 	p.next() // skip 'type'
 	// C. or JS. prefix
+	mut language_prefix := ''
 	if p.tok == .name && (p.lit == 'C' || p.lit == 'JS') {
+		language_prefix = p.lit + '.'
 		p.next()
 		if p.tok == .dot {
 			p.next()
 		}
 	}
-	name := p.expect_name()
+	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
 	if p.tok == .lsbr {

@@ -3216,39 +3216,42 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 	// The pre-scan freezes the boxed-type set before skip-generics workers
 	// start, so sharing it below is read-only and avoids one map clone per worker.
 	return Transformer{
-		a:                                  ast
-		tc:                                 wtc
-		structs:                            t.structs
-		embedded_fields:                    t.embedded_fields
-		struct_short_name_index:            t.struct_short_name_index
-		struct_short_name_index_ready:      t.struct_short_name_index_ready
-		unique_fields:                      t.unique_fields
-		alias_methods:                      t.alias_methods
-		globals:                            t.globals
-		sum_types:                          t.sum_types
-		sum_variant_parents:                t.sum_variant_parents
-		sum_variant_names:                  t.sum_variant_names
-		sum_variant_fields:                 t.sum_variant_fields
-		qualified_types:                    t.qualified_types
-		fn_ret_types:                       t.fn_ret_types
-		multi_return_fn_ret_types:          t.multi_return_fn_ret_types
-		receiver_method_suffix_index:       t.receiver_method_suffix_index
-		variadic_suffix_index:              t.variadic_suffix_index
-		const_suffixes:                     t.const_suffixes
-		const_array_fixed_storage_cache:    map[string]i8{}
-		enum_types:                         t.enum_types
-		enum_backing_types:                 t.enum_backing_types
-		runtime_type_indexes:               t.runtime_type_indexes
-		generic_alias_names:                t.generic_alias_names
-		local_decl_nodes_by_name:           t.local_decl_nodes_by_name
-		struct_field_decl_metas_cache:      t.struct_field_decl_metas_cache
-		comptime_field_metas_cache:         map[string][]FieldMeta{}
-		call_param_types_decl_cache:        t.call_param_types_decl_cache
-		call_param_types_decl_misses:       t.call_param_types_decl_misses.clone()
-		call_param_types_decl_index:        t.call_param_types_decl_index
-		call_param_types_index_ready:       t.call_param_types_index_ready
-		comptime_reflected_params:          t.comptime_reflected_params
-		used_struct_operator_fns:           t.used_struct_operator_fns
+		a:                               ast
+		tc:                              wtc
+		structs:                         t.structs
+		embedded_fields:                 t.embedded_fields
+		struct_short_name_index:         t.struct_short_name_index
+		struct_short_name_index_ready:   t.struct_short_name_index_ready
+		unique_fields:                   t.unique_fields
+		alias_methods:                   t.alias_methods
+		globals:                         t.globals
+		sum_types:                       t.sum_types
+		sum_variant_parents:             t.sum_variant_parents
+		sum_variant_names:               t.sum_variant_names
+		sum_variant_fields:              t.sum_variant_fields
+		qualified_types:                 t.qualified_types
+		fn_ret_types:                    t.fn_ret_types
+		multi_return_fn_ret_types:       t.multi_return_fn_ret_types
+		receiver_method_suffix_index:    t.receiver_method_suffix_index
+		variadic_suffix_index:           t.variadic_suffix_index
+		const_suffixes:                  t.const_suffixes
+		const_array_fixed_storage_cache: map[string]i8{}
+		enum_types:                      t.enum_types
+		enum_backing_types:              t.enum_backing_types
+		runtime_type_indexes:            t.runtime_type_indexes
+		generic_alias_names:             t.generic_alias_names
+		local_decl_nodes_by_name:        t.local_decl_nodes_by_name
+		struct_field_decl_metas_cache:   t.struct_field_decl_metas_cache
+		comptime_field_metas_cache:      map[string][]FieldMeta{}
+		call_param_types_decl_cache:     t.call_param_types_decl_cache
+		call_param_types_decl_misses:    t.call_param_types_decl_misses.clone()
+		call_param_types_decl_index:     t.call_param_types_decl_index
+		call_param_types_index_ready:    t.call_param_types_index_ready
+		comptime_reflected_params:       t.comptime_reflected_params
+		// Function-body lowering records operator helpers as used. Each parallel
+		// worker therefore needs private map storage; sharing this map races on
+		// concurrent insertions and can corrupt the allocator.
+		used_struct_operator_fns:           t.used_struct_operator_fns.clone()
 		generic_specialization_args:        if !copy_generic_state {
 			map[string][]string{}
 		} else if t.skip_generics {
@@ -6737,6 +6740,9 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			t.collect_return_escape_idents(t.a.child(&node, i), mut returned)
 		}
 	}
+	if node.kind == .spawn_expr {
+		t.mark_spawn_argument_address_escapes(node, amp_sources, ptr_aliases, local_stack_names)
+	}
 	if node.kind == .call && node.children_count > 1 {
 		for i in 1 .. node.children_count {
 			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources,
@@ -6763,6 +6769,31 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
 			method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut
 			local_stack_names, mut local_stack_added, can_clear_interface_boxes)
+	}
+}
+
+fn (mut t Transformer) mark_spawn_argument_address_escapes(spawn_node flat.Node, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
+	if spawn_node.children_count == 0 {
+		return
+	}
+	call_id := t.a.child(&spawn_node, 0)
+	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len {
+		return
+	}
+	call := t.a.nodes[int(call_id)]
+	if call.kind != .call || call.children_count < 2 {
+		return
+	}
+	for i in 1 .. call.children_count {
+		arg_id := t.a.child(&call, i)
+		for source in t.escape_aggregate_address_sources(arg_id, amp_sources, ptr_aliases) {
+			if source in local_stack_names {
+				// The spawned thread can outlive this frame. Move the original local
+				// to the heap so explicit addresses and pointer aliases keep sharing
+				// the same value instead of copying it into the thread argument block.
+				t.escaping_amp_sources[source] = true
+			}
+		}
 	}
 }
 
@@ -11641,6 +11672,13 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	mut inferred_typ := ''
 	if node.children_count > 2 && !isnil(t.tc) {
 		rhs_id := t.a.child(&node, 1)
+		rhs := t.a.node(rhs_id)
+		if rhs.kind == .call {
+			concrete := t.concrete_generic_call_return_type(rhs_id, *rhs)
+			if concrete.len > 0 {
+				t.set_node_typ(int(rhs_id), concrete)
+			}
+		}
 		if rhs_types := t.multi_return_types_for_expr(rhs_id, node.children_count - 1) {
 			for j, field_type in rhs_types {
 				lhs_idx := if j == 0 { 0 } else { j + 1 }
@@ -12475,6 +12513,11 @@ fn (t &Transformer) multi_return_types_for_expr(id flat.NodeId, expected_count i
 	// checker cache. Prefer the callee declaration so forwarded returns still
 	// see the concrete source slots that need conversion.
 	if node.kind == .call {
+		if node.typ.len > 0 && !t.generic_arg_is_unresolved(node.typ) {
+			if items := multi_return_types_from_type(t.tc.parse_type(node.typ), expected_count) {
+				return items
+			}
+		}
 		ret := t.get_call_return_type(id, node)
 		if ret.len > 0 {
 			if items := multi_return_types_from_type(t.tc.parse_type(ret), expected_count) {
@@ -14947,6 +14990,9 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 		}
 		if t.is_optional_type_name(clean_value) {
 			optional_target := t.qualify_optional_type(clean_value)
+			if t.is_lowered_optional_struct_init(node) {
+				return id
+			}
 			payload_type := t.optional_base_type(optional_target)
 			if t.is_fixed_array_type(payload_type) {
 				if node.children_count == 0 {
@@ -15011,6 +15057,14 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 		}
 	}
 	return t.transform_struct_fields(id, node)
+}
+
+fn (t &Transformer) is_lowered_optional_struct_init(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	first := t.a.child_node(&node, 0)
+	return first.kind == .field_init && first.value == 'ok' && !first.pos.is_valid()
 }
 
 // transform_index_expr transforms transform index expr data for transform.
@@ -15750,6 +15804,13 @@ fn (mut t Transformer) owned_method_receiver_clone_helper(site flat.NodeId, typ 
 // transform_selector_expr transforms transform selector expr data for transform.
 fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
+		return id
+	}
+	// Smartcast payload selectors are already fully lowered and carry a marker
+	// identifying the concrete variant. Reprocessing one such as `sum.i32`
+	// can mistake the storage field for a same-named receiver method and turn
+	// the value access into a bound-method closure.
+	if _ := t.generated_variant_access_type(id) {
 		return id
 	}
 	if node.value in t.sum_variant_fields {

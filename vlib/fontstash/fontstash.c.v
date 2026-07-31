@@ -92,7 +92,24 @@ pub fn (s &Context) add_fallback_font(base int, fallback int) int {
 // The function returns the id of the font on success, `fontstash.invalid` otherwise.
 @[inline]
 pub fn (s &Context) add_font_mem(name string, data []u8, free_data bool) int {
-	return C.fonsAddFontMem(s, &char(name.str), data.data, data.len, int(free_data))
+	if !free_data {
+		return C.fonsAddFontMem(s, &char(name.str), data.data, data.len, 0)
+	}
+	// A V array allocation can store ownership metadata immediately before
+	// `data.data`; fontstash must not pass that interior pointer to C free().
+	// Give it an allocation made by the allocator paired with FONTSTASH_FREE.
+	unsafe {
+		mut owned := &u8(nil)
+		$if gcboehm ? {
+			owned = malloc_noscan(data.len)
+		} $else {
+			owned = &u8(C.malloc(usize(data.len)))
+		}
+		if data.len > 0 {
+			vmemcpy(owned, data.data, data.len)
+		}
+		return C.fonsAddFontMem(s, &char(name.str), owned, data.len, 1)
+	}
 }
 
 // push_state pushes a new state on the state stack.

@@ -12,7 +12,8 @@ const min_eager_markused_bodies = 4096
 
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
+		false)
 	return used
 }
 
@@ -24,13 +25,15 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 // mark_used_with_generic_usage also reports whether reachable code uses a generic
 // function, struct, or sum type and therefore requires monomorphization.
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true)
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
+		false)
 }
 
 // mark_used_without_generic_detection is the self-host variant for inputs whose caller
 // already guarantees that monomorphization is unnecessary.
 pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false,
+		false)
 	return used
 }
 
@@ -41,7 +44,17 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false)
+}
+
+// mark_all_used_with_generic_usage roots every concrete function while preserving
+// ordinary generic reachability and test harness roots.
+pub fn mark_all_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) (map[string]bool, bool) {
+	mut file_map := map[string]bool{}
+	for file in test_files {
+		file_map[file] = true
+	}
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true)
 }
 
 // mark_used_for_cache roots every concrete function in modules being built for the object cache.
@@ -57,7 +70,7 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true)
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false)
 }
 
 // mark_used_for_cache_without_generic_detection is the self-host cache variant for inputs
@@ -67,7 +80,7 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 	for file in test_files {
 		file_map[file] = true
 	}
-	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false)
+	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false)
 	return used
 }
 
@@ -144,7 +157,7 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 }
 
 @[direct_array_access]
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool) (map[string]bool, bool) {
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
 	trivial_literal_output := is_trivial_literal_output_program(a, tc.diagnostic_files)
 	// An exact literal-output program has no user expressions or declarations that
@@ -414,6 +427,15 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	for name in c_interface_roots {
 		enqueue(name, mut used, mut queue)
+	}
+	if all_functions {
+		for index, node_idx in body_ids {
+			node := a.nodes[node_idx]
+			if node.kind != .fn_decl || markused_fn_decl_is_generic_template(node, a) {
+				continue
+			}
+			enqueue(qualify_fn(body_modules[index], node.value), mut used, mut queue)
+		}
 	}
 
 	if trace_markused {

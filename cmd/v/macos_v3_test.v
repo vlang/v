@@ -85,6 +85,8 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 
 		prefs.path = 'cmd/v'
 		assert !is_macos_v3_relevant_command('cmd/v', prefs)
+		prefs.path = 'cmd/v/macos_v3_test.v'
+		assert !is_macos_v3_relevant_command(prefs.path, prefs)
 		prefs.path = 'cmd/tools/vfmt.v'
 		assert is_macos_v3_relevant_command('cmd/tools/vfmt.v', prefs) == (os.getenv('VCHILD') != 'true')
 		assert is_macos_v3_internal_tool_bootstrap('cmd/tools/vfmt.v', true)

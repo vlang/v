@@ -233,10 +233,10 @@ fn test_reject_cross_wrapper_option_result_returns() {
 		'cannot use `?Item` as type `!&Item` in return argument')
 	run_bad(v3_bin, 'bad_error_branch_in_option_return',
 		"fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
-		'if-expression branch type mismatch')
+		'mismatched types `IError` and `int literal`')
 	run_bad(v3_bin, 'bad_constant_error_branch_in_option_return',
 		"fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
-		'if-expression branch type mismatch')
+		'mismatched types `IError` and `int literal`')
 	out := run_good(v3_bin, 'good_error_branch_in_result_return',
 		"fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n")
 	assert out == '1\n-1'
@@ -256,10 +256,10 @@ fn main() {
 	assert out == 'true'
 	run_bad(v3_bin, 'bad_option_void_returned_as_option_int',
 		'fn empty() ? {\n\treturn\n}\n\nfn value() ?int {\n\treturn empty()\n}\n\nfn main() {}\n',
-		'cannot return `?void` as `?int`')
+		'cannot use `?void` as type `?int` in return argument')
 	run_bad(v3_bin, 'bad_option_void_assigned_to_option_int',
 		'fn empty() ? {\n\treturn\n}\n\nfn main() {\n\tmut value := ?int(1)\n\tvalue = empty()\n}\n',
-		'cannot assign `?void` to `?int`')
+		'cannot assign to `value`: expected `?int`, not `?void`')
 }
 
 fn test_optional_address_preserves_wrapper_shape() {
@@ -322,10 +322,10 @@ fn test_multi_return_arguments_must_consume_the_parameter_tail() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_non_tail_multi_return_argument',
 		'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn consume(a int, b int, c int) {}\n\nfn main() {\n\tconsume(pair(), 3)\n}\n',
-		'argument count mismatch for `consume`: expected 3, got 2')
+		'expected 3 arguments, but got 2')
 	run_bad(v3_bin, 'bad_variadic_multi_return_argument',
 		'fn pair() (int, []int) {\n\treturn 1, [2, 3]\n}\n\nfn consume(a int, rest ...int) {}\n\nfn main() {\n\tconsume(pair())\n}\n',
-		'cannot use `(int, []int)` as argument 1 to `consume`; expected `int`')
+		'cannot use `(int, []int)` as `int` in argument 1 to `consume`')
 }
 
 fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
@@ -377,17 +377,17 @@ fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',
 		'struct Foo {}\n\nfn main() {\n\t_ := if true {\n\t\tFoo{}\n\t} else {\n\t\t&Foo{}\n\t}\n}\n',
-		'if-expression branch type mismatch')
+		'mismatched types `Foo` and `&Foo`')
 }
 
 fn test_reject_narrowed_interface_method_parameters() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_narrowed_interface_method_param',
 		'interface Eq {\n\teq(other Eq) bool\n}\n\ninterface Ord {\n\tEq\n\tlt(other Ord) bool\n}\n\nstruct Int {}\n\nfn (Int) eq(other Ord) bool {\n\t_ = other\n\treturn true\n}\n\nfn (Int) lt(other Ord) bool {\n\t_ = other\n\treturn false\n}\n\nfn main() {\n\t_ := Eq(Int{})\n}\n',
-		'type `Int` does not implement interface `Eq`')
+		'`Int` does not implement interface `Eq`')
 	run_bad(v3_bin, 'bad_narrowed_interface_method_param_implementer',
 		'interface Base {\n\tbase() int\n}\n\ninterface Narrow {\n\tBase\n\tnarrow() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct BaseOnly {}\n\nfn (b BaseOnly) base() int {\n\treturn 1\n}\n\nstruct Service {}\n\nfn (s Service) base() int {\n\treturn 2\n}\n\nfn (s Service) narrow() int {\n\treturn 3\n}\n\nfn (s Service) handle(value Narrow) int {\n\treturn value.narrow()\n}\n\nfn invoke(handler Handler, value Base) int {\n\treturn handler.handle(value)\n}\n\nfn main() {\n\tprintln(invoke(Handler(Service{}), Base(BaseOnly{})))\n}\n',
-		'type `Service` does not implement interface `Handler`')
+		'`Service` does not implement interface `Handler`')
 	out := run_good(v3_bin, 'good_exact_interface_method_param',
 		'interface Base {\n\tbase() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct Value {}\n\nfn (v Value) base() int {\n\treturn 7\n}\n\nstruct Service {}\n\nfn (s Service) handle(value Base) int {\n\treturn value.base()\n}\n\nfn main() {\n\tprintln(Handler(Service{}).handle(Base(Value{})))\n}\n')
 	assert out == '7'
@@ -404,7 +404,7 @@ fn test_implicit_str_unsupported_alias_does_not_satisfy_interface() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_implicit_str_fn_alias_interface',
 		'interface Printable {\n\tstr() string\n}\ntype Callback = fn ()\nfn noop() {}\nfn main() {\n\tcb := Callback(noop)\n\t_ := Printable(cb)\n}\n',
-		'does not implement interface')
+		'cannot implement interface `Printable` using function')
 }
 
 fn test_multi_return_tail_slots_use_return_compatibility() {
@@ -436,10 +436,10 @@ fn test_reject_non_optional_or_and_wrapped_string_concat() {
 		'unexpected `or` block, expression of type `bool` is not an Option or a Result')
 	run_bad(v3_bin, 'bad_optional_string_concat',
 		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := 'hello ' + maybe_name()\n}\n",
-		'operator `+` cannot concatenate `string` and `?string`')
+		'`?string` cannot be used as `string`, unwrap the option first')
 	run_bad(v3_bin, 'bad_result_string_concat',
 		"fn result_name() !string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := result_name() + '!'\n}\n",
-		'operator `+` cannot concatenate `!string` and `string`')
+		'unwrapped Result cannot be used in an infix expression')
 	out := run_good(v3_bin, 'good_map_or_and_unwrapped_string_concat',
 		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\tnames := {\n\t\t'first': 'Grace'\n\t}\n\tprintln(names['first'] or { 'unknown' })\n\tprintln('hello ' + (maybe_name() or { 'unknown' }))\n}\n")
 	assert out == 'Grace\nhello Ada'
@@ -456,13 +456,13 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_int_alias_float_return',
 		'type Id = int\n\nfn f() Id {\n\treturn 1.5\n}\n\nfn main() {}\n',
-		'cannot return `f64` as `Id`')
+		'cannot use `float literal` as type `Id` in return argument')
 	run_bad(v3_bin, 'bad_int_alias_float_variable_return',
 		'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n',
-		'cannot return `f64` as `Id`')
+		'cannot use `f64` as type `Id` in return argument')
 	run_bad(v3_bin, 'bad_int_alias_float_expression_return',
 		'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n',
-		'cannot return `f64` as `Id`')
+		'cannot use `f64` as type `Id` in return argument')
 	out := run_good(v3_bin, 'good_float_alias_int_return',
 		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
 	assert out == '1.0'
@@ -475,7 +475,7 @@ fn test_fn_value_integer_returns_require_matching_c_abi() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_integer_return_abi',
 		'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n',
-		'cannot use `fn() u64`')
+		'cannot use `fn () u64` as `fn () u8` in argument 1 to `invoke`')
 	out := run_good(v3_bin, 'good_fn_value_matching_integer_return_abi',
 		'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n')
 	assert out == '65'
@@ -485,7 +485,7 @@ fn test_fn_value_aggregate_returns_require_compatible_payloads() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_array_return_payload',
 		'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n',
-		'cannot use `fn() []int`')
+		'cannot use `fn () []int` as `fn () []string` in argument 1 to `invoke`')
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {
@@ -498,7 +498,7 @@ fn test_alias_with_nested_type_separator_stays_alias() {
 fn test_voidptr_params_reject_non_pointer_values() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n',
-		'cannot use `int` as argument 1 to `f`; expected `&void`')
+		'expression cannot be passed as `voidptr`')
 	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
 		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
 	assert out == '7'
@@ -508,22 +508,22 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_mut_receiver_immutable_value',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n',
-		'method `bump` requires a mutable receiver')
+		'`s` is immutable, declare it with `mut` to make it mutable')
 	run_bad(v3_bin, 'bad_generic_mut_receiver_immutable_value',
 		'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n',
-		'method `set` requires a mutable receiver')
+		'`b` is immutable, declare it with `mut` to make it mutable')
 	run_bad(v3_bin, 'bad_mut_receiver_address_of_immutable_value',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n',
-		'method `bump` requires a mutable receiver')
+		'cannot pass expression as `mut`')
 	immutable_pointer_out := run_good(v3_bin, 'good_mut_receiver_immutable_pointer_binding',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n')
 	assert immutable_pointer_out == '1'
 	run_bad(v3_bin, 'bad_mut_receiver_or_temporary',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut values := {\n\t\t"item": St{}\n\t}\n\t(values["item"] or { St{} }).bump()\n}\n',
-		'method `bump` requires a mutable receiver')
+		'cannot pass expression as `mut`')
 	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
 		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
-		'cannot use non-shared `St` as receiver')
+		'cannot use shared method `f` as `s` is not a shared var')
 	run_bad(v3_bin, 'bad_shared_arg_shadowed_local',
 		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n',
 		'cannot use non-shared `St` as argument 1')
@@ -628,7 +628,7 @@ fn test_restrict_synthetic_hex_fallback_receivers() {
 		'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function')
 	run_bad(v3_bin, 'bad_numeric_hex_arg',
 		'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n',
-		'argument count mismatch')
+		'expected 0 arguments, but got 1')
 	out := run_good(v3_bin, 'supported_hex_methods',
 		"fn main() {\n\tprintln(u8(15).hex())\n\tprintln(i64(255).hex())\n\tprintln([u8(1), 15, 255].hex())\n\tprintln(char(65).hex())\n\tprintln(`A`.hex())\n\tprintln('abc'.hex())\n}\n")
 	assert out == '0f\nff\n010fff\n41\n41\n616263'
@@ -638,7 +638,7 @@ fn test_auto_str_rejects_arguments() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_auto_str_arg',
 		'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n',
-		'argument count mismatch')
+		'expected 0 arguments, but got 1')
 }
 
 fn test_pointer_hex_receiver_methods_are_allowed() {
@@ -651,20 +651,21 @@ fn test_pointer_hex_receiver_methods_are_allowed() {
 fn test_map_keys_and_values_reject_arguments() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_map_keys_arg',
-		'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n', 'argument count mismatch')
+		'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n',
+		'`.keys()` does not have any arguments')
 	run_bad(v3_bin, 'bad_map_values_arg',
 		"fn main() {\n\tm := map[string]int{}\n\t_ := m.values('x')\n}\n",
-		'argument count mismatch')
+		'`.values()` does not have any arguments')
 }
 
 fn test_array_to_void_array_is_not_implicitly_compatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_array_to_void_array_param',
 		'fn take(xs []void) {\n\t_ = xs\n}\n\nfn main() {\n\ttake([1, 2, 3])\n}\n',
-		'cannot use `[]int` as argument 1 to `take`; expected `[]void`')
+		'cannot use `[]int` as `[]void` in argument 1 to `take`')
 	run_bad(v3_bin, 'bad_array_to_void_array_user_receiver',
 		'fn (xs []void) touch() int {\n\treturn xs.len\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tprintln(nums.touch().str())\n}\n',
-		'unknown function `nums.touch`')
+		'unknown function: nums.touch')
 	out := run_good(v3_bin, 'good_array_clone_ignores_void_array_receiver',
 		'fn (xs []void) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n')
 	assert out == '6'
@@ -673,25 +674,32 @@ fn test_array_to_void_array_is_not_implicitly_compatible() {
 fn test_array_insert_and_prepend_reject_wrong_arity() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_array_prepend_missing_arg',
-		'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n', 'argument count mismatch')
+		'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n',
+		'`array.prepend()` should have 1 argument')
 	run_bad(v3_bin, 'bad_array_prepend_extra_arg',
 		'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.prepend(0, side_effect())\n}\n',
-		'argument count mismatch')
+		'`array.prepend()` should have 1 argument')
 	run_bad(v3_bin, 'bad_array_insert_missing_arg',
-		'fn main() {\n\tmut a := [1, 2]\n\ta.insert(0)\n}\n', 'argument count mismatch')
+		'fn main() {\n\tmut a := [1, 2]\n\ta.insert(0)\n}\n',
+		'`array.insert()` should have 2 arguments')
 	run_bad(v3_bin, 'bad_array_insert_extra_arg',
 		'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 1, side_effect())\n}\n',
-		'argument count mismatch')
+		'`array.insert()` should have 2 arguments')
 	run_bad(v3_bin, 'bad_array_prepend_arg_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend('x')\n}\n", 'cannot use')
+		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend('x')\n}\n",
+		'cannot prepend `string` to `[]int`')
 	run_bad(v3_bin, 'bad_array_insert_index_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.insert('0', 3)\n}\n", 'cannot use')
+		"fn main() {\n\tmut a := [1, 2]\n\ta.insert('0', 3)\n}\n",
+		'the first argument of `array.insert()` should be integer')
 	run_bad(v3_bin, 'bad_array_insert_value_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 'x')\n}\n", 'cannot use')
+		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 'x')\n}\n",
+		'cannot insert `string` to `[]int`')
 	run_bad(v3_bin, 'bad_array_prepend_many_arg_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend(['x'])\n}\n", 'cannot use')
+		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend(['x'])\n}\n",
+		'cannot prepend `[]string` to `[]int`')
 	run_bad(v3_bin, 'bad_array_insert_many_arg_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, ['x'])\n}\n", 'cannot use')
+		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, ['x'])\n}\n",
+		'cannot insert `[]string` to `[]int`')
 }
 
 fn test_array_insert_and_prepend_accept_many_operands() {
@@ -705,7 +713,7 @@ fn test_comptime_if_selected_bodies_are_checked() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_concrete_comptime_if_selected_call',
 		'fn main() {\n\t$if int is int {\n\t\tmissing_selected_symbol()\n\t}\n}\n',
-		'unknown function `missing_selected_symbol`')
+		'unknown function: missing_selected_symbol')
 	out := run_good(v3_bin, 'good_generic_comptime_if_unselected_branch_is_not_checked',
 		"fn ok() {}\n\nfn f[T]() {\n\t$if T is int {\n\t\tok()\n\t} $else {\n\t\tonly_for_other_t()\n\t}\n}\n\nfn main() {\n\tf[int]()\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
@@ -721,23 +729,23 @@ fn test_explicit_generic_calls_use_all_type_arguments() {
 	assert nested == 'ok'
 	run_bad(v3_bin, 'bad_explicit_generic_too_many_type_args',
 		'fn id[T](x T) T {\n\treturn x\n}\n\nfn main() {\n\t_ := id[int, string](1)\n}\n',
-		'generic argument count mismatch')
+		'expected 1 generic parameter, got 2')
 }
 
-fn test_reject_escaping_capturing_fn_literals() {
+fn test_capturing_fn_literals_can_escape() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_return_capturing_fn_literal',
-		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_return_capturing_fn_literal_alias',
-		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal_alias',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
+	direct := run_good(v3_bin, 'good_return_capturing_fn_literal',
+		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {\n\tprintln(int_str(make(7)()))\n}\n')
+	assert direct == '7'
+	alias := run_good(v3_bin, 'good_return_capturing_fn_literal_alias',
+		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {\n\tprintln(int_str(make(8)()))\n}\n')
+	assert alias == '8'
+	field := run_good(v3_bin, 'good_struct_field_capturing_fn_literal',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {\n\tprintln(int_str(make(9).cb()))\n}\n')
+	assert field == '9'
+	field_alias := run_good(v3_bin, 'good_struct_field_capturing_fn_literal_alias',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {\n\tprintln(int_str(make(10).cb()))\n}\n')
+	assert field_alias == '10'
 }
 
 fn test_capturing_fn_literal_aliases_are_binding_scoped() {
@@ -748,16 +756,16 @@ fn test_capturing_fn_literal_aliases_are_binding_scoped() {
 	lambda_out := run_good(v3_bin, 'good_lambda_capturing_fn_literal_shadow',
 		'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n')
 	assert lambda_out == '4'
-	run_bad(v3_bin, 'bad_outer_capturing_alias_survives_inner_shadow',
-		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
+	outer := run_good(v3_bin, 'good_outer_capturing_alias_survives_inner_shadow',
+		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {\n\tprintln(int_str(make(5)()))\n}\n')
+	assert outer == '5'
 }
 
 fn test_reject_unsmartcasted_unique_sum_variant_field() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_unsmartcasted_unique_sum_field',
 		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(B{})\n\t_ := k.only_on_a\n}\n',
-		'unknown field `only_on_a`')
+		'field `only_on_a` does not exist or have the same type in these sumtype `K` variants')
 	out := run_good(v3_bin, 'good_smartcasted_unique_sum_field',
 		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(A{\n\t\tonly_on_a: 7\n\t})\n\tif k is A {\n\t\tprintln(int_str(k.only_on_a))\n\t}\n}\n')
 	assert out == '7'
@@ -781,7 +789,7 @@ fn main() {
 	invoke(Callback(no_args))
 }
 ',
-		'argument count mismatch')
+		'expected 0 arguments, but got 1')
 	out := run_good(v3_bin, 'good_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
 
 fn with_arg(value int) int {
@@ -802,21 +810,13 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_generic_functions_report_missing_return() {
+fn test_called_generic_functions_report_missing_return() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
-		'missing return at end of function `f`')
 	run_bad(v3_bin, 'bad_called_generic_missing_return',
 		'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n',
 		'missing return at end of function `f`')
 	run_bad(v3_bin, 'bad_generic_comptime_branch_missing_return',
 		'fn f[T]() int {\n\t$if T is int {\n\t\treturn 1\n\t}\n}\nfn main() {\n\t_ := f[string]()\n}\n',
-		'missing return at end of function `f`')
-	run_bad(v3_bin, 'bad_generic_option_propagation_missing_return',
-		'fn f[T](value ?T) ?T {\n\tvalue?\n}\nfn main() {}\n',
-		'missing return at end of function `f`')
-	run_bad(v3_bin, 'bad_generic_result_propagation_missing_return',
-		'fn f[T](value !T) !T {\n\tvalue!\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
 }
 
@@ -892,11 +892,11 @@ fn test_imported_module_name_shadowed_by_receiver_for_no_return_analysis() {
 		'missing return at end of function `f`')
 }
 
-fn test_returning_shadowed_os_exit_receiver_keeps_value() {
+fn test_import_symbol_parameter_conflict_is_rejected() {
 	v3_bin := build_v3_review_checker()
-	out := run_good(v3_bin, 'good_shadowed_os_exit_return_value',
-		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n')
-	assert out == '5'
+	run_bad(v3_bin, 'bad_shadowed_os_exit_return_value',
+		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n',
+		'duplicate of an import symbol `os`')
 }
 
 fn test_no_return_fixed_array_return_uses_abi_wrapper() {
@@ -932,4 +932,46 @@ fn test_builtin_function_callee_wins_over_unrelated_const_suffix() {
 	out := run_good(v3_bin, 'builtin_fn_unrelated_const_suffix',
 		'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n')
 	assert out == 'true'
+}
+
+fn test_unsafe_can_adjust_array_length_through_immutable_receiver() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'unsafe_array_len_through_receiver',
+		'struct Box {\n\tvalues []int\n}\n\nfn shrink(box &Box) {\n\tunsafe {\n\t\tbox.values.len = 1\n\t}\n}\n\nfn main() {\n\tbox := Box{\n\t\tvalues: [1, 2]\n\t}\n\tshrink(&box)\n\tprintln(int_str(box.values.len))\n}\n')
+	assert out == '1'
+}
+
+fn test_offsetof_field_metadata_does_not_override_usize_type() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'offsetof_field_metadata_usize',
+		'struct Entry {\n\taddr int\n}\n\nconst addr_offset = __offsetof(Entry, addr)\n\nfn main() {\n\tvalue := usize(1) + addr_offset\n\tprintln(value >= 1)\n}\n')
+	assert out == 'true'
+}
+
+fn test_int_expression_can_be_assigned_to_float() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'int_expression_to_float_assignment',
+		'fn integer() int {\n\treturn 7\n}\n\nfn main() {\n\tmut x := 0.0\n\tx = integer()\n\tprintln(x)\n}\n')
+	assert out == '7.0'
+}
+
+fn test_callback_alias_parameter_can_initialize_same_alias_field() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'callback_alias_param_to_field',
+		'type Handler = fn (ctx int, argument string) !string\n\nstruct Registered {\n\thandler Handler = unsafe { nil }\n}\n\nfn register(handler Handler) Registered {\n\treturn Registered{\n\t\thandler: handler\n\t}\n}\n\nfn callback(ctx int, argument string) !string {\n\treturn int_str(ctx) + argument\n}\n\nfn main() {\n\tentry := register(callback)\n\tprintln(entry.handler(7, "ok")!)\n}\n')
+	assert out == '7ok'
+}
+
+fn test_c_function_does_not_inherit_mutability_from_bare_name() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'c_fn_mutability_not_bare_suffix',
+		'fn C.read(fd int, buf voidptr, count usize) int\n\nfn read(mut value []u8) {}\n\nfn main() {\n\tif false {\n\t\tbuffer := []u8{len: 1}\n\t\tunsafe {\n\t\t\tC.read(0, buffer.data, buffer.len)\n\t\t}\n\t}\n\tprintln("ok")\n}\n')
+	assert out == 'ok'
+}
+
+fn test_write_lock_allows_shared_field_mutation_through_immutable_receiver() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'locked_shared_field_immutable_receiver',
+		'struct State {\nmut:\n\tvalues map[string]int\n}\n\nstruct Holder {\n\tstate shared State\n}\n\nfn (holder &Holder) set() {\n\tlock holder.state {\n\t\tholder.state.values["answer"] = 42\n\t}\n}\n\nfn (holder &Holder) get() int {\n\trlock holder.state {\n\t\treturn holder.state.values["answer"]\n\t}\n}\n\nfn main() {\n\tholder := Holder{\n\t\tstate: State{\n\t\t\tvalues: map[string]int{}\n\t\t}\n\t}\n\tholder.set()\n\tprintln(int_str(holder.get()))\n}\n')
+	assert out == '42'
 }

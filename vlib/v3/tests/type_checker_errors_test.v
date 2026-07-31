@@ -175,9 +175,9 @@ fn test_parallel_checker_preserves_diagnostic_order() {
 	}
 	result := os.execute('${v3_bin} -nocache ${src_path} -b c -o ${out}')
 	assert result.exit_code != 0, result.output
-	first := error_index(result.output, 'unknown identifier `missing_0`')
-	second := error_index(result.output, 'unknown identifier `missing_1`')
-	third := error_index(result.output, 'unknown identifier `missing_2`')
+	first := error_index(result.output, 'undefined ident: `missing_0`')
+	second := error_index(result.output, 'undefined ident: `missing_1`')
+	third := error_index(result.output, 'undefined ident: `missing_2`')
 	assert first < second
 	assert second < third
 }

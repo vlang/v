@@ -3902,6 +3902,7 @@ pub fn run(args []string) {
 	mut no_parallel := false
 	mut no_prealloc := false
 	mut no_cache := false
+	mut no_skip_unused := false
 	mut no_memory_limit := false
 	mut parallel_transform := true
 	mut building_v := false
@@ -3928,6 +3929,7 @@ pub fn run(args []string) {
 	mut is_direct_vsh := false
 	mut is_test_command := false
 	mut is_checker_fixture := false
+	mut coverage_dir := ''
 	mut run_args := []string{}
 	mut i := 0
 	for i < args.len {
@@ -3940,7 +3942,7 @@ pub fn run(args []string) {
 			i++
 			continue
 		}
-		if args[i] in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path']
+		if args[i] in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path', '-cov', '-coverage']
 			&& (i + 1 >= args.len || args[i + 1].starts_with('-')) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
@@ -4038,6 +4040,9 @@ pub fn run(args []string) {
 			thread_stack_size = args[i + 1].int()
 			thread_stack_size_set = true
 			i += 2
+		} else if args[i] in ['-cov', '-coverage'] && i + 1 < args.len {
+			coverage_dir = os.real_path(args[i + 1])
+			i += 2
 		} else if args[i] == '-path' && i + 1 < args.len {
 			// V3 resolves the checkout vlib and user modules directly. Accept
 			// V1's conventional explicit search path for CLI compatibility.
@@ -4089,8 +4094,7 @@ pub fn run(args []string) {
 		} else if args[i] == '-print-watched-files' {
 			print_watched_files = true
 			i++
-		} else if args[i] in ['-show-timings', '-w', '-W', '-N', '-no-retry-compilation', '-usecache',
-			'-skip-unused', '-no-skip-unused'] {
+		} else if args[i] in ['-show-timings', '-w', '-W', '-N', '-no-retry-compilation', '-usecache'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
 			// explicit-output tests unrun, and caches modules by default.
 			// Accept the corresponding V flags for compatibility.
@@ -4100,6 +4104,13 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-nocache' || args[i] == '--no-cache' {
 			no_cache = true
+			i++
+		} else if args[i] == '-no-skip-unused' {
+			no_skip_unused = true
+			no_cache = true
+			i++
+		} else if args[i] == '-skip-unused' {
+			no_skip_unused = false
 			i++
 		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
 			no_memory_limit = true
@@ -4141,6 +4152,10 @@ pub fn run(args []string) {
 		}
 	}
 	mut current_no_parallel := no_parallel
+	if coverage_dir.len > 0 {
+		current_no_parallel = true
+		no_cache = true
+	}
 	mut current_parallel_transform := parallel_transform
 	if current_no_parallel {
 		current_parallel_transform = false
@@ -5080,7 +5095,10 @@ pub fn run(args []string) {
 			markused_tc = pre_tc.fork_for_parallel_transform(a)
 			markused_tc.enable_scoped_parallel_workers()
 		}
-		if generic_cache_hit && test_files.len == 0 {
+		if no_skip_unused {
+			used_fns, uses_generics = markused.mark_all_used_with_generic_usage(a, markused_tc,
+				test_files)
+		} else if generic_cache_hit && test_files.len == 0 {
 			used_fns = clone_string_bool_map(cached_program_used_fns)
 			uses_generics = true
 			if incremental_cache_hit
@@ -5742,6 +5760,8 @@ pub fn run(args []string) {
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
+			g.set_show_test_summary(is_test_command)
+			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
@@ -5781,6 +5801,8 @@ pub fn run(args []string) {
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
+			g.set_show_test_summary(is_test_command)
+			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)

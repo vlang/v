@@ -203,6 +203,15 @@ fn (tc &TypeChecker) source_text_for_node(id flat.NodeId) string {
 	return source[start..end].trim_space()
 }
 
+fn (tc &TypeChecker) node_is_c_source(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return tc.cur_file.ends_with('.c.v')
+	}
+	node := tc.a.node(id)
+	file := tc.a.source_files[node.pos.id] or { return tc.cur_file.ends_with('.c.v') }
+	return file.name.ends_with('.c.v')
+}
+
 // node_source_starts_with reports whether the node's source span, after
 // skipping leading whitespace, starts with prefix — the in-place equivalent of
 // source_text_for_node(id).starts_with(prefix), without the span substr copy
@@ -479,6 +488,9 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	}
 	clean_rhs := unalias_type(rhs_type)
 	clean_expected := unalias_type(expected_type)
+	if op == .assign && clean_rhs.name() == 'int' && clean_expected.is_float() {
+		return true
+	}
 	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float()
 		&& tc.a.node(rhs_id).kind != .int_literal {
 		return false
@@ -954,6 +966,9 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 		return
 	}
 	tc.check_lvalue_field_mutability(id)
+	if tc.lvalue_has_write_locked_shared_path(id) {
+		return
+	}
 	root_id := tc.lvalue_root_ident(id) or {
 		tc.check_conditional_lvalue_mutability(id)
 		return
@@ -980,7 +995,8 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 	if tc.ident_is_mutable_lvalue(root.value) {
 		return
 	}
-	if tc.unsafe_depth > 0 && unalias_type(tc.resolve_type(root_id)) is Pointer {
+	if (tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe())
+		&& tc.const_key_for_name(root.value) == none && tc.fn_value_type(root.value) == none {
 		return
 	}
 	if _ := tc.malformed_const_keyword_pos(root_id) {
@@ -1011,6 +1027,21 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 	tc.record_error_at(.assignment_mismatch,
 		'`${root.value}` is immutable, declare it with `mut` to make it mutable', root_id,
 		tc.node_value_diagnostic_pos(root_id))
+}
+
+fn (tc &TypeChecker) lvalue_has_write_locked_shared_path(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .selector && tc.selector_is_shared_arg(node)
+		&& tc.current_shared_expr_lock_mode(id) == `w` {
+		return true
+	}
+	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
+		return tc.lvalue_has_write_locked_shared_path(tc.a.child(node, 0))
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_conditional_lvalue_mutability(id flat.NodeId) {
@@ -1050,6 +1081,9 @@ fn (mut tc TypeChecker) check_lvalue_field_mutability(id flat.NodeId) {
 		tc.record_error_at(.assignment_mismatch,
 			'`${tc.source_text_for_node(id)}` is `shared` and needs explicit lock for `v.ast.SelectorExpr`',
 			id, tc.selector_field_diagnostic_pos(id, node.value))
+		return
+	}
+	if tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe() {
 		return
 	}
 	raw_base_type := unalias_type(tc.resolve_type(base_id))
@@ -1819,7 +1853,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		&& infix_power_type_is_numeric(expected)
 		&& unalias_type(actual).is_integer() != unalias_type(expected).is_integer()
 		&& tc.integer_literal_source(child_id) == none && tc.a.node(child_id).kind != .float_literal
-		&& !(actual.name() == 'int' && expected.name() == 'f32')
+		&& !(unalias_type(actual).is_integer() && unalias_type(expected).is_float())
 	clean_expected_for_reference := unalias_type(expected)
 	expected_accepts_pointer_value := clean_expected_for_reference is Interface
 		|| (clean_expected_for_reference is OptionType
@@ -2261,6 +2295,9 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 
 fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	if tc.expr_compatible(expr_id, actual, expected) {
+		return true
+	}
+	if unalias_type(actual).is_integer() && unalias_type(expected).is_float() {
 		return true
 	}
 	if return_numeric_alias_compatible(actual, expected) {
@@ -3746,6 +3783,9 @@ fn (mut tc TypeChecker) check_js_call_on_non_js_backend(id flat.NodeId, node fla
 
 fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info CallInfo) bool {
 	if info.name.len == 0 {
+		return false
+	}
+	if info.name in ['error', 'error_with_code'] {
 		return false
 	}
 	if _ := tc.private_declaration(info.name) {
@@ -7147,6 +7187,9 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
 			return '${base}[${args.join(', ')}]'
 		}
 		.array_init {
+			if node.typ.len > 0 {
+				return node.typ
+			}
 			if node.value.len > 0 {
 				if node.value.starts_with('[') {
 					return node.value
@@ -7555,6 +7598,10 @@ fn (tc &TypeChecker) expr_can_take_address(id flat.NodeId) bool {
 				return false
 			}
 			return tc.expr_can_take_address(tc.a.child(&node, 0))
+		}
+		.or_expr {
+			return node.value == '?' && node.children_count > 0
+				&& tc.expr_can_take_address(tc.a.child(&node, 0))
 		}
 		else {
 			return false
@@ -8009,6 +8056,9 @@ fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {
 		if params := tc.declaration_param_mutability[name] {
 			return param_idx >= 0 && param_idx < params.len && params[param_idx]
 		}
+		if name.starts_with('C.') {
+			break
+		}
 		dot := name.index_u8(`.`)
 		if dot < 0 {
 			break
@@ -8103,7 +8153,8 @@ fn (tc &TypeChecker) call_fn_typed_param_is_mut(call flat.Node, param_idx int) b
 		if param.kind != .param || param.value != callee.value {
 			continue
 		}
-		modes := fn_diagnostic_parameter_modes(param.typ)
+		raw_type := tc.source_fn_alias_type_text(param.typ) or { param.typ }
+		modes := fn_diagnostic_parameter_modes(raw_type)
 		return param_idx < modes.len && modes[param_idx] == 'mut'
 	}
 	return false
@@ -8851,8 +8902,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
 		logical_arg_count++
 		arg := tc.a.node(arg_id)
-		if !info.is_variadic && arg.kind == .call && arg_type is MultiReturn
-			&& !is_print_style_fn_name(info.name) {
+		if !info.is_variadic && i == node.children_count - 1 && arg.kind == .call
+			&& arg_type is MultiReturn && !is_print_style_fn_name(info.name) {
 			actual_count += arg_type.types.len - 1
 			logical_arg_count += arg_type.types.len - 1
 			expanded_multi_return_arg = true
@@ -13232,11 +13283,11 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 			&& tc.branch_tail_is_none_literal(tail_id)
 	}
 	if is_result_void_type(actual) {
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if is_ierror_type(actual) {
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if expected is OptionType && tc.type_compatible(actual, expected.base_type) {

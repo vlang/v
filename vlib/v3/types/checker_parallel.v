@@ -165,6 +165,11 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_export_attrs()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
+	if tc.diagnostic_files.len > 0 {
+		// Open generic bodies are checked only when reachable from the selected input.
+		// Populate the reachability set before the scoped workers inherit it.
+		tc.collect_selected_file_called_fns()
+	}
 	final_file := tc.cur_file
 	final_module := tc.cur_module
 	tc.check_scoped_batches(items)
@@ -286,6 +291,11 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		cksw.restart()
 		items := tc.collect_parallel_check_items()
 		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
+		if tc.diagnostic_files.len > 0 {
+			// Open generic bodies are checked only when reachable from the selected input.
+			// Populate the reachability set before the parallel workers inherit it.
+			tc.collect_selected_file_called_fns()
+		}
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
@@ -958,7 +968,10 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	qname := checker_qualified_fn_name(module_name, node.value)
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
-	should_check_generic_body := generic_params.len == 0 || qname in tc.selected_file_called_fns
+	// Open generic templates are validated after specialization. Checking their
+	// bodies here treats placeholder operands as unknown and rejects valid code.
+	should_check_generic_body := generic_params.len == 0
+	generic_is_called := generic_params.len > 0 && qname in tc.selected_file_called_fns
 	if should_check_generic_body && !signature_has_bare_generic_type {
 		tc.check_fn_body(node)
 		tc.check_recursive_str_calls(flat.NodeId(fn_idx), node)
@@ -987,7 +1000,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if tc.fn_context.return_type !is Unknown
 		&& !type_allows_implicit_return(tc.fn_context.return_type)
 		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
-		&& should_check_generic_body && !signature_has_bare_generic_type
+		&& (should_check_generic_body || generic_is_called) && !signature_has_bare_generic_type
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		message := 'missing return at end of function `${node.value.all_after_last('.')}`'
 		tc.record_error_at(.return_mismatch, message, flat.NodeId(fn_idx),

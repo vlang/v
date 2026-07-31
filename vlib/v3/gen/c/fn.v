@@ -3945,6 +3945,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 			g.writeln('\tg_main_argv = argv;')
 		}
 		g.gen_compiler_vexe_env_setup()
+		g.gen_coverage_registration()
 		if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 			|| g.global_inits.len > 0 {
 			g.writeln('\t_vinit();')
@@ -4101,6 +4102,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 		g.writeln('\tg_main_argv = argv;')
 	}
 	g.gen_compiler_vexe_env_setup()
+	g.gen_coverage_registration()
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('\t_vinit();')
@@ -4168,6 +4170,7 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('\tg_main_argv = argv;')
 	}
 	g.gen_compiler_vexe_env_setup()
+	g.gen_coverage_registration()
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('\t_vinit();')
@@ -4199,6 +4202,9 @@ fn (mut g FlatGen) gen_test_main() {
 	if g.show_test_stats && tests.len > 0 {
 		file_name := os.file_name(tests[0].file)
 		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": ${tests.len} passed, ${tests.len} total. Elapsed time: 0 ms.\\n\");")
+	}
+	if g.show_test_summary {
+		g.writeln('printf("Summary for all V _test.v files: ${tests.len} passed, ${tests.len} total.\\n");')
 	}
 	g.writeln('return 0;')
 	g.indent--
@@ -11247,23 +11253,35 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 	if base.kind != .ident {
 		return none
 	}
-	if g.selector_base_is_value(base.value) {
-		return none
-	}
 	if source_file := g.a.source_files[fn_node.pos.id] {
 		if lexical_module := g.tc.file_imports[source_file.name + '\n' + base.value] {
-			call_name := '${lexical_module}.${fn_node.value}'
-			arg_start := g.selector_module_call_arg_start(fn_node, node)
-			params := g.tc.fn_param_types[call_name] or {
-				if call_name in g.tc.fn_ret_types && node.children_count == arg_start {
+			// The selector's own source file is authoritative for compiler-cloned
+			// default expressions. A caller local with the same name as the import
+			// must not turn `seed.time_seed_64()` into a receiver call. Conversely,
+			// a real local shadow in that source has a concrete cached value type.
+			mut lexical_base_is_value := false
+			if base_type := g.tc.expr_type(g.a.child(&fn_node, 0)) {
+				lexical_base_is_value = base_type !is types.Unknown && base_type !is types.Void
+			}
+			if !lexical_base_is_value {
+				call_name := '${lexical_module}.${fn_node.value}'
+				arg_start := g.selector_module_call_arg_start(fn_node, node)
+				params := g.tc.fn_param_types[call_name] or {
+					if call_name in g.tc.fn_ret_types && node.children_count == arg_start {
+						return call_name
+					}
+					return none
+				}
+				if g.module_call_arg_count_matches(call_name, params,
+					node.children_count - arg_start)
+				{
 					return call_name
 				}
-				return none
-			}
-			if g.module_call_arg_count_matches(call_name, params, node.children_count - arg_start) {
-				return call_name
 			}
 		}
+	}
+	if g.selector_base_is_value(base.value) {
+		return none
 	}
 	mod_name := g.selector_base_module(base.value) or {
 		if base.value == g.tc.cur_module {

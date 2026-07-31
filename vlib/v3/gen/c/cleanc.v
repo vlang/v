@@ -124,6 +124,11 @@ mut:
 	parallel_support_ready         bool
 	test_files                     map[string]bool
 	show_test_stats                bool
+	show_test_summary              bool
+	coverage_dir                   string
+	coverage_build_options         string
+	coverage_files                 map[string]&CoverageInfo
+	coverage_counter_count         int
 	cache_program_files            map[string]bool
 	incremental_fn_names           map[string]bool
 	str_lits                       []string
@@ -731,6 +736,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_seg_chunk_indexes:            []int{}
 		parallel_chunk_wrapper_defs:     []ParallelChunkWrapperDefs{}
 		test_files:                      map[string]bool{}
+		coverage_files:                  map[string]&CoverageInfo{}
 		cache_program_files:             map[string]bool{}
 		incremental_fn_names:            map[string]bool{}
 		str_lit_ids:                     map[string]int{}
@@ -913,6 +919,11 @@ pub fn (mut g FlatGen) set_thread_stack_size(size int) {
 // set_show_test_stats enables the per-test assertion summary used by `v -stats test`.
 pub fn (mut g FlatGen) set_show_test_stats(enabled bool) {
 	g.show_test_stats = enabled
+}
+
+// set_show_test_summary enables the aggregate report used by the `v test` command.
+pub fn (mut g FlatGen) set_show_test_summary(enabled bool) {
+	g.show_test_summary = enabled
 }
 
 // set_compile_values records explicit `-d` values so `$d(...)` inside `#flag`
@@ -1645,6 +1656,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.parallel_forward_decls = ''
 	g.parallel_const_code = ''
 	g.parallel_support_ready = false
+	g.coverage_files.clear()
+	g.coverage_counter_count = 0
 	g.str_lits = []string{}
 	g.str_lits_shared = false
 	g.defers = []flat.NodeId{}
@@ -2004,6 +2017,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
 	g.global_decls()
+	g.emit_coverage_support()
 	// Objective-C implementation files commonly use complete V structs in their
 	// function signatures and bodies. Their framework imports are lifted above
 	// the headerless preamble, but the implementation itself belongs after the V
@@ -7923,7 +7937,10 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 		// A sum type can itself be a variant of a wider sum type (for example
 		// `ast.Stmt` inside `ast.Node`). Only skip wrapping when the value is
 		// already the expected sum.
-		if g.type_names_match(raw_actual_type, sum_type0) {
+		if g.type_names_match(raw_actual_type, sum_type0)
+			|| g.resolve_sum_name(raw_actual_type.name) == g.resolve_sum_name(sum_type.name)
+			|| (raw_actual_type.name !in g.tc.sum_types
+			&& raw_actual_type.name.all_after_last('.') == sum_type.name.all_after_last('.')) {
 			return false
 		}
 	}
@@ -8075,17 +8092,11 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 				return types.Type(fn_type)
 			}
 		}
-		// The local's declared type wins over checker expected-type
-		// propagation (`return bare` in a `!Sum` fn annotates `bare` as the
-		// sum itself, hiding that it still needs wrapping). Only consulted
-		// when the propagated type is a sum - the case that miswraps.
-		clean_resolved := if actual_type is types.Alias {
-			actual_type.base_type
-		} else {
-			actual_type
-		}
-		if clean_resolved is types.SumType && g.tc != unsafe { nil }
-			&& g.tc.cur_scope != unsafe { nil } {
+		// The local's declared type wins over checker expected-type propagation.
+		// This is most visible for `return bare` in a `!Sum` function, but a sum
+		// variant can also leak back as the apparent type of an already-materialized
+		// sum local (for example `[]Any` onto an `Any` parameter).
+		if g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
 			if scope_type := g.tc.cur_scope.lookup(node.value) {
 				if scope_type !is types.Void && scope_type !is types.Unknown {
 					return scope_type
@@ -8113,6 +8124,11 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.NodeId) {
 	inner := g.a.nodes[int(inner_id)]
 	actual_type := g.sum_cast_actual_type(inner_id)
+	actual_unaliased := cgen_unalias_type(actual_type)
+	if actual_unaliased is types.SumType && g.type_names_match(actual_unaliased, target_type) {
+		g.gen_expr(inner_id)
+		return
+	}
 	actual_clean := types.unwrap_pointer(actual_type)
 	variant_name0 := if inner.kind == .struct_init {
 		inner.value
@@ -8508,7 +8524,7 @@ fn (mut g FlatGen) gen_sum_shared_field_selector(base_id flat.NodeId, base_type0
 	sum_name := g.sum_type_name_for_type(base_type0) or { return false }
 	common_type := g.sum_shared_field_type(base_type0, field) or { return false }
 	ct := g.value_c_type(common_type)
-	sum_ct := g.tc.c_type(g.tc.parse_type(sum_name))
+	sum_ct := g.tc.c_type(g.interface_concrete_type(sum_name))
 	g.write('({ ${sum_ct} __sum = ')
 	if base_type0 is types.Pointer {
 		g.write('*(')
@@ -8525,7 +8541,7 @@ fn (mut g FlatGen) gen_sum_shared_field_selector(base_id flat.NodeId, base_type0
 
 fn (mut g FlatGen) gen_sum_type_tag_selector(base_id flat.NodeId, base_type0 types.Type, op flat.Op) bool {
 	sum_name := g.sum_type_name_for_type(base_type0) or { return false }
-	sum_ct := g.tc.c_type(g.tc.parse_type(sum_name))
+	sum_ct := g.tc.c_type(g.interface_concrete_type(sum_name))
 	g.write('({ ${sum_ct} __sum = ')
 	if op == .arrow || base_type0 is types.Pointer {
 		g.write('*(')
@@ -10816,6 +10832,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			}
 			if enum_selector_qbase.len == 0
+				&& '__v3_generated_variant_access' !in node.generic_params()
 				&& g.gen_method_value_closure(base_id, base_type0, node.value, flat.method_value_borrow_receiver_marker in node.generic_params(), clone_receiver_fn) {
 				return
 			}
@@ -12339,10 +12356,20 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	if !rhs_is_arr {
 		rhs_arr = lhs_arr
 	}
-	elem_type := if lhs_arr.elem_type.name() != 'unknown' {
+	mut elem_type := if lhs_arr.elem_type.name() != 'unknown' {
 		lhs_arr.elem_type
 	} else {
 		rhs_arr.elem_type
+	}
+	// A specialized generic return can retain its unresolved placeholder as the
+	// default `int` type in this late cgen query. A concrete literal on the other
+	// side still carries the real element type and is authoritative after the
+	// checker has accepted the comparison.
+	if literal_elem := g.array_equality_literal_elem_type(lhs_id) {
+		elem_type = literal_elem
+	}
+	if literal_elem := g.array_equality_literal_elem_type(rhs_id) {
+		elem_type = literal_elem
 	}
 	if node.op == .ne {
 		g.write('!')
@@ -12365,6 +12392,46 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	}
 	g.write(')')
 	return true
+}
+
+fn (g &FlatGen) array_equality_literal_elem_type(id flat.NodeId) ?types.Type {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.node(id)
+	if node.kind == .paren && node.children_count == 1 {
+		return g.array_equality_literal_elem_type(g.a.child(node, 0))
+	}
+	if node.kind != .array_literal || node.children_count == 0 {
+		return none
+	}
+	for i in 0 .. node.children_count {
+		child_id := g.a.child(node, i)
+		child := g.a.node(child_id)
+		if child.kind == .prefix && child.value == '...' {
+			continue
+		}
+		match child.kind {
+			.string_literal, .string_interp {
+				return types.Type(types.String{})
+			}
+			.char_literal {
+				return types.Type(types.Rune{})
+			}
+			.float_literal {
+				return g.tc.parse_type(if child.typ == 'f32' { 'f32' } else { 'f64' })
+			}
+			.bool_literal {
+				return g.tc.parse_type('bool')
+			}
+			else {}
+		}
+		typ := g.usable_expr_type(child_id)
+		if typ !is types.Unknown && typ !is types.Void {
+			return typ
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) gen_fixed_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {

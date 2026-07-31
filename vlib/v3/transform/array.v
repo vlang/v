@@ -262,6 +262,13 @@ fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index f
 		'data', 'voidptr'), t.make_selector(rhs_value, 'len', 'int')), 'void')
 }
 
+fn (mut t Transformer) transform_array_many_rhs(id flat.NodeId, node flat.Node, array_type string) flat.NodeId {
+	if node.kind == .array_literal {
+		return t.transform_array_literal_for_type(id, node, array_type) or { t.transform_expr(id) }
+	}
+	return t.transform_expr(id)
+}
+
 fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type string) flat.NodeId {
 	t.mark_fn_used('array__clone')
 	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
@@ -821,7 +828,12 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 	if t.array_literal_can_emit_direct(node) {
 		mut values := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
-			values << t.transform_expr_for_type(t.a.child(&node, i), elem_type)
+			elem_id := t.a.child(&node, i)
+			values << if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+				t.wrap_sum_value(elem_id, elem_type)
+			} else {
+				t.transform_expr_for_type(elem_id, elem_type)
+			}
 		}
 		return t.make_array_literal_typed(values, array_type)
 	}
@@ -1217,7 +1229,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 			}
 		}
 	} else {
-		rhs = t.transform_expr(rhs_id)
+		rhs = t.transform_array_many_rhs(rhs_id, rhs_node, array_type)
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
@@ -1416,7 +1428,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 			}
 		}
 	} else {
-		rhs = t.transform_expr(rhs_id)
+		rhs = t.transform_array_many_rhs(rhs_id, rhs_node, array_type)
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
@@ -1522,7 +1534,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	}
 	base := t.transform_lvalue(base_id)
 	if prepend_many {
-		value := t.transform_expr(value_id)
+		value := t.transform_array_many_rhs(value_id, value_node, base_type)
 		return t.make_array_insert_many_call(t.runtime_addr(base, base_type),
 			t.make_int_literal(0), value, rhs_type)
 	}
@@ -1567,7 +1579,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	base := t.transform_lvalue(base_id)
 	index := t.transform_expr_for_type(index_id, 'int')
 	if insert_many {
-		value := t.transform_expr(value_id)
+		value := t.transform_array_many_rhs(value_id, value_node, base_type)
 		return t.make_array_insert_many_call(t.runtime_addr(base, base_type), index, value,
 			rhs_type)
 	}

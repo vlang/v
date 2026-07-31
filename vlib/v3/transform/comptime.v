@@ -1576,7 +1576,19 @@ fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
 
 fn (t &Transformer) comptime_resolve_sum_type_name(base_type string) string {
 	base := base_type.trim_space()
-	if base.len == 0 || isnil(t.tc) {
+	if base.len == 0 {
+		return base
+	}
+	// Main-module declarations are stored under their bare names. Generic
+	// specialization locks can make that ownership explicit (`main.Sum`), so
+	// normalize the lock before looking up reflection metadata.
+	if base.starts_with('main.') {
+		storage_name := base['main.'.len..]
+		if storage_name in t.sum_types || (!isnil(t.tc) && storage_name in t.tc.sum_types) {
+			return storage_name
+		}
+	}
+	if isnil(t.tc) {
 		return base
 	}
 	if base.contains('.') {
@@ -2148,7 +2160,7 @@ fn (t &Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMe
 		return none
 	}
 	iter_type := t.comptime_normalize_type_alias_chain(fm.comptime_typ)
-	if !iter_type.starts_with('map[') {
+	if !iter_type.starts_with('map[') && !iter_type.starts_with('[]') {
 		return none
 	}
 	for node in t.a.nodes {
@@ -2158,17 +2170,57 @@ fn (t &Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMe
 		key := t.a.child_node(&node, 0)
 		value := t.a.child_node(&node, 1)
 		container_id := t.a.child(&node, 2)
-		if !t.subtree_has_comptime_field_selector(container_id) {
+		if !t.comptime_for_container_uses_reflected_field(container_id) {
 			continue
 		}
-		if key.kind == .ident && key.value == name {
-			return t.map_key_type(iter_type)
-		}
-		if value.kind == .ident && value.value == name {
-			return t.map_value_type(iter_type)
+		has_index := value.kind == .ident && value.value.len > 0
+		if iter_type.starts_with('map[') {
+			if key.kind == .ident && key.value == name {
+				return t.map_key_type(iter_type)
+			}
+			if value.kind == .ident && value.value == name {
+				return t.map_value_type(iter_type)
+			}
+		} else {
+			elem_type := iter_type[2..]
+			if has_index && key.kind == .ident && key.value == name {
+				return 'int'
+			}
+			if (has_index && value.value == name) || (!has_index && key.value == name) {
+				return elem_type
+			}
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) comptime_for_container_uses_reflected_field(container_id flat.NodeId) bool {
+	if t.subtree_has_comptime_field_selector(container_id) {
+		return true
+	}
+	if int(container_id) < 0 || int(container_id) >= t.a.nodes.len {
+		return false
+	}
+	container := t.a.nodes[int(container_id)]
+	if container.kind != .ident || container.value.len == 0 {
+		return false
+	}
+	// A common reflection pattern first saves `value := object.$(field.name)`
+	// and then iterates `value`. Find that source declaration in the template;
+	// its cloned concrete declaration no longer contains the `$` selector.
+	for candidate in t.a.nodes {
+		if candidate.kind != .decl_assign || candidate.children_count < 2 {
+			continue
+		}
+		lhs := t.a.child_node(&candidate, 0)
+		if lhs.kind != .ident || lhs.value != container.value {
+			continue
+		}
+		if t.subtree_has_comptime_field_selector(t.a.child(&candidate, 1)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {

@@ -127,7 +127,7 @@ fn is_anonymous_struct_type_name(name string) bool {
 	return name.all_after_last('.').starts_with('AnonStruct_')
 }
 
-fn (g &FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
+fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
 	if node.value == 'struct' {
 		expected := types.unwrap_pointer(g.expected_expr_type)
 		if expected is types.Struct && is_anonymous_struct_type_name(expected.name) {
@@ -140,10 +140,10 @@ fn (g &FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) 
 	source_base := node.value.trim_left('&?!').all_before('[').all_after_last('.')
 	if source_base.len > 0 {
 		if resolved := g.tc.expr_type(id) {
-			resolved_value := default_init_unalias_type(types.unwrap_pointer(resolved))
+			resolved_value := g.value_unalias_type(types.unwrap_pointer(resolved))
 			if resolved_value is types.Struct
 				&& resolved_value.name.all_before('[').all_after_last('.') == source_base {
-				return resolved.name()
+				return resolved_value.name
 			}
 		}
 	}
@@ -152,7 +152,7 @@ fn (g &FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) 
 	// its qualified name instead of letting cgen's global short-name fallback
 	// select an unrelated declaration (for example gg.Size vs ui.Size).
 	if node.value.len > 0 && !node.value.contains('.') {
-		expected := default_init_unalias_type(types.unwrap_pointer(g.expected_expr_type))
+		expected := g.value_unalias_type(types.unwrap_pointer(g.expected_expr_type))
 		if expected is types.Struct && expected.name.all_after_last('.') == node.value {
 			return expected.name
 		}
@@ -1032,7 +1032,10 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	if sum_name !in g.tc.sum_types || node.children_count == 0 {
 		return false
 	}
-	name := g.tc.c_type(g.tc.parse_type(sum_name))
+	// `sum_name` is an authoritative key from tc.sum_types. Parsing a bare
+	// main-module name again while emitting an imported generic specialization
+	// would rebase it into that module (Animal -> decoder2.Animal).
+	name := g.tc.c_type(g.interface_concrete_type(sum_name))
 	mut pointer_variant_is_owned := false
 	g.write('(${name}){')
 	for i in 0 .. node.children_count {
@@ -1065,7 +1068,7 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 // kept a foreign module's bare spelling: such a name parses as a plain struct,
 // which would otherwise skip the sum-init route and drop the variant boxing.
 fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
-	if node.children_count != 2 || node.value.len == 0 || node.value.contains('.') {
+	if node.children_count != 2 || node.value.len == 0 {
 		return false
 	}
 	first := g.a.child_node(&node, 0)
@@ -1073,7 +1076,7 @@ fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
 		return false
 	}
 	resolved := g.resolve_sum_name(node.value)
-	return resolved != node.value && resolved in g.tc.sum_types && node.value !in g.tc.structs
+	return resolved in g.tc.sum_types
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
@@ -1085,7 +1088,7 @@ fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
 		if candidate.contains('[') {
 			ct := g.tc.c_type(g.tc.parse_type(candidate))
 			for sum_name, _ in g.tc.sum_types {
-				if g.tc.c_type(g.tc.parse_type(sum_name)) == ct {
+				if g.tc.c_type(g.interface_concrete_type(sum_name)) == ct {
 					return sum_name
 				}
 			}
@@ -1161,7 +1164,9 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 	if field.value != 'typ' {
 		is_borrowed_ref := field.typ.starts_with('sum_ref ')
 		if variant := g.lowered_sum_field_variant(sum_name, field) {
-			inner_type := g.tc.parse_type(variant)
+			// Preserve the exact variant selected from the sum declaration for the
+			// same reason as the sum name above.
+			inner_type := g.interface_concrete_type(variant)
 			inner_ct := g.value_c_type(inner_type)
 			if is_borrowed_ref {
 				g.gen_expr(child_id)
@@ -1783,6 +1788,9 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 }
 
 fn (g &FlatGen) enum_default_value_expr_for_type(type_name string) ?string {
+	if g.enum_type_name_is_flag(type_name) {
+		return '0'
+	}
 	fields := g.enum_fields_for_type(type_name) or { return none }
 	if fields.len == 0 {
 		return none
@@ -1791,6 +1799,20 @@ fn (g &FlatGen) enum_default_value_expr_for_type(type_name string) ?string {
 		return expr
 	}
 	return '0'
+}
+
+fn (g &FlatGen) enum_type_name_is_flag(type_name string) bool {
+	if type_name in g.tc.flag_enums || g.tc.qualify_name(type_name) in g.tc.flag_enums {
+		return true
+	}
+	if !type_name.contains('.') {
+		for candidate, _ in g.tc.flag_enums {
+			if candidate.all_after_last('.') == type_name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) enum_fields_for_type(type_name string) ?[]string {
@@ -3352,6 +3374,10 @@ fn (g &FlatGen) generic_struct_init_instance_type(type_name string) ?types.Type 
 
 fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 	init_type_name := g.struct_init_import_alias_type_name(type_name)
+	alias_name := init_type_name.trim_left('?!')
+	if target := g.struct_type_alias_target(alias_name) {
+		return g.value_c_type(g.tc.parse_type(target))
+	}
 	typ := g.tc.parse_type(init_type_name)
 	if typ is types.OptionType || typ is types.ResultType {
 		return g.optional_type_name(typ)
@@ -3360,10 +3386,7 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 		return g.value_c_type(typ)
 	}
 	if typ is types.Alias {
-		base := types.unwrap_pointer(typ.base_type)
-		if base.name().contains('[') {
-			return g.tc.c_type(typ)
-		}
+		return g.value_c_type(typ)
 	}
 	if ct := g.generic_struct_init_app_ct_from_context(init_type_name) {
 		return ct

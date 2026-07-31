@@ -2173,6 +2173,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		g.pending_loop_label = ''
 	}
 	g.in_return = false
+	g.write_coverage_point(node)
 	match node.kind {
 		.fn_decl, .c_fn_decl, .struct_decl, .type_decl, .enum_decl, .interface_decl {
 			return
@@ -4379,7 +4380,7 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 	if a_name == b_name {
 		return true
 	}
-	return a_name.all_after_last('.') == b_name.all_after_last('.')
+	return short_module_type_text(a_name) == short_module_type_text(b_name)
 }
 
 fn (g &FlatGen) array_abi_types_match(a types.Type, b types.Type) bool {
@@ -4922,7 +4923,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					}
 				} else {
 					resolved_init_type := g.tc.parse_resolution_type(init_name)
-					if resolved_init_type is types.Struct {
+					if resolved_init_type is types.Struct || resolved_init_type is types.Alias {
 						v_type = resolved_init_type
 					}
 				}
@@ -5433,12 +5434,15 @@ fn (mut g FlatGen) struct_init_decl_c_type(rhs_id flat.NodeId, rhs flat.Node, v_
 	if g.struct_init_effective_type_name(rhs_id, rhs).starts_with('&') && v_type is types.Pointer {
 		return g.value_c_type(v_type)
 	}
-	clean := default_init_unalias_type(types.unwrap_all_pointers(v_type))
+	clean := g.value_unalias_type(types.unwrap_all_pointers(v_type))
 	if clean is types.Struct {
 		if ct := g.concrete_generic_struct_init_ct(clean.name) {
 			return ct
 		}
 		return g.struct_init_value_c_type(clean)
+	}
+	if clean is types.Enum || clean is types.Primitive || clean is types.String {
+		return g.value_c_type(clean)
 	}
 	if g.struct_init_decl_type_is_bare_generic_instance(rhs, v_type) {
 		return g.struct_init_value_c_type(v_type)

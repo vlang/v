@@ -198,6 +198,12 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			if node.kind != .index {
 				continue
 			}
+			// Synthetic nodes without source context are handled by the pass that
+			// created them. Guessing their module here can request a duplicate
+			// specialization with unqualified type arguments.
+			if t.node_file_or(i, '').len == 0 {
+				continue
+			}
 			decl_key, args := t.explicit_generic_fn_value_specialization(flat.NodeId(i), node,
 				t.node_module_or(i, ''), decls) or { continue }
 			decl := decls[decl_key] or { continue }
@@ -294,6 +300,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			// unreachable. Their concrete generic function values must nevertheless name
 			// valid specializations so the generated translation unit compiles.
 			if node.kind == .index {
+				if t.node_file_or(i, '').len == 0 {
+					continue
+				}
 				if decl_key, args := t.explicit_generic_fn_value_specialization(flat.NodeId(i),
 					node, t.node_module_or(i, ''), decls)
 				{
@@ -4804,7 +4813,7 @@ fn (mut t Transformer) retype_generic_call_literal_arg(arg_id flat.NodeId, param
 			return t.make_optional_none(param_type)
 		}
 	}
-	if node.kind == .struct_init && node.value == 'Optional'
+	if node.kind == .struct_init && (node.value == 'Optional' || t.generic_optional_none_init(node))
 		&& (t.is_optional_type_name(param_type) || param_type.starts_with('Optional_')) {
 		optional_type := if t.is_optional_type_name(param_type) {
 			t.resolve_substituted_type_text(t.qualify_optional_type(param_type))
@@ -4829,6 +4838,28 @@ fn (mut t Transformer) retype_generic_call_literal_arg(arg_id flat.NodeId, param
 		}
 	}
 	return arg_id
+}
+
+fn (t &Transformer) generic_optional_none_init(node flat.Node) bool {
+	if node.kind != .struct_init
+		|| (!t.is_optional_type_name(node.value) && !t.is_optional_type_name(node.typ)) {
+		return false
+	}
+	mut has_false_ok := false
+	for i in 0 .. node.children_count {
+		field := t.a.child_node(&node, i)
+		if field.kind != .field_init {
+			continue
+		}
+		if field.value == 'value' {
+			return false
+		}
+		if field.value == 'ok' && field.children_count > 0 {
+			value := t.a.child_node(field, 0)
+			has_false_ok = value.kind == .bool_literal && value.value != 'true'
+		}
+	}
+	return has_false_ok
 }
 
 fn (mut t Transformer) specialize_generic_fn_value_arg(arg_id flat.NodeId, expected_type string, defer_emit bool) ?flat.NodeId {
@@ -6902,6 +6933,17 @@ fn (t &Transformer) collect_specialization_main_types(typ string, mut types_in_s
 	if struct_name.contains('.') {
 		return
 	}
+	if variants := t.sum_types[struct_name] {
+		types_in_scope[struct_name] = true
+		for variant in variants {
+			t.collect_specialization_main_types(variant, mut types_in_scope, mut seen)
+		}
+		return
+	}
+	if struct_name in t.enum_types {
+		types_in_scope[struct_name] = true
+		return
+	}
 	info := t.structs[struct_name] or { return }
 	if info.module !in ['', 'main'] {
 		return
@@ -8363,7 +8405,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	// Lock it to an explicit `main.` spelling so codegen (and the closure's field
 	// accesses like `ctx.Context`) bind the program type, not the callee module's
 	// homonym — mirroring the struct-init literal lock below.
-	if node.kind == .param && substituted_node_type != node.typ {
+	if substituted_node_type != node.typ && node.kind != .directive {
 		cloned_typ = t.lock_colliding_main_substitution_type_text(node.typ, cloned_typ,
 			t.cur_module, t.active_generic_params)
 	}
@@ -8568,12 +8610,19 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			}
 		}
 	}
-	cloned_value := if node.kind == .struct_init && cloned_typ.len > 0 {
+	mut cloned_value := if node.kind == .struct_init && cloned_typ.len > 0 {
 		cloned_typ
 	} else if is_root {
 		specialized_generic_fn_value(node.value, args)
 	} else {
 		t.subst_node_value(node, args)
+	}
+	if node.kind in [.array_init, .map_init, .cast_expr, .as_expr] {
+		substituted_value := t.subst_type(node.value, args)
+		if substituted_value != node.value {
+			cloned_value = t.lock_colliding_main_substitution_type_text(node.value, cloned_value,
+				t.cur_module, t.active_generic_params)
+		}
 	}
 	if is_root && t.cur_module.len > 0 {
 		t.a.add_node(flat.Node{
@@ -8769,7 +8818,11 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 			return t.generic_comptime_type_member(concrete, child.value)
 		}
 	}
-	return t.generic_comptime_base_type(child_id, args)
+	target := t.generic_comptime_base_type(child_id, args) or { return none }
+	if child.kind == .ident && t.mut_param_values[child.value] && !target.starts_with('&') {
+		return '&${target}'
+	}
+	return target
 }
 
 fn (mut t Transformer) generic_comptime_type_member(raw string, member string) ?string {

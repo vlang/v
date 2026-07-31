@@ -192,6 +192,32 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	mut effective_rhs_raw_type := rhs_raw_type
 	checker_lhs_type := t.raw_checker_node_type(lhs_id)
 	checker_rhs_type := t.raw_checker_node_type(rhs_id)
+	if !t.membership_container_type(effective_lhs_raw_type).starts_with('[]')
+		&& t.membership_container_type(checker_lhs_type).starts_with('[]') {
+		effective_lhs_raw_type = checker_lhs_type
+	}
+	if !t.membership_container_type(effective_rhs_raw_type).starts_with('[]')
+		&& t.membership_container_type(checker_rhs_type).starts_with('[]') {
+		effective_rhs_raw_type = checker_rhs_type
+	}
+	if !t.membership_container_type(effective_lhs_raw_type).starts_with('[]') {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .or_expr && lhs.children_count > 0 {
+			_, value_type := t.or_expr_types(t.a.child(&lhs, 0), lhs.typ)
+			if t.membership_container_type(value_type).starts_with('[]') {
+				effective_lhs_raw_type = value_type
+			}
+		}
+	}
+	if !t.membership_container_type(effective_rhs_raw_type).starts_with('[]') {
+		rhs := t.a.nodes[int(rhs_id)]
+		if rhs.kind == .or_expr && rhs.children_count > 0 {
+			_, value_type := t.or_expr_types(t.a.child(&rhs, 0), rhs.typ)
+			if t.membership_container_type(value_type).starts_with('[]') {
+				effective_rhs_raw_type = value_type
+			}
+		}
+	}
 	if !t.is_fixed_array_type(t.membership_container_type(effective_lhs_raw_type))
 		&& t.is_fixed_array_type(t.membership_container_type(checker_lhs_type)) {
 		effective_lhs_raw_type = checker_lhs_type
@@ -277,15 +303,18 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	}
 	mut lhs_target_type := t.contextual_array_comparison_type(lhs_id, lhs_type, rhs_type)
 	mut rhs_target_type := t.contextual_array_comparison_type(rhs_id, rhs_type, lhs_type)
+	mut literal_elem_resolved := false
 	if nested_elem := t.array_comparison_literal_elem_type(lhs_id) {
 		elem_type = nested_elem
 		lhs_type = '[]${nested_elem}'
 		lhs_target_type = lhs_type
+		literal_elem_resolved = true
 	}
 	if nested_elem := t.array_comparison_literal_elem_type(rhs_id) {
 		elem_type = nested_elem
 		rhs_type = '[]${nested_elem}'
 		rhs_target_type = rhs_type
+		literal_elem_resolved = true
 	}
 	mut new_lhs := if int(fixed_lhs_as_array) >= 0 {
 		fixed_lhs_as_array
@@ -308,10 +337,11 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	// Keep an already resolved nested element type. Generic method calls can retain a
 	// coarse scalar return type on the transformed node even though contextual typing
 	// resolved the comparison itself to `[][]T`.
-	if !elem_type.starts_with('[]') && new_lhs_type.starts_with('[]') {
+	if !literal_elem_resolved && !elem_type.starts_with('[]') && new_lhs_type.starts_with('[]') {
 		elem_type = new_lhs_type[2..]
 		lhs_type = new_lhs_type
-	} else if !elem_type.starts_with('[]') && new_rhs_type.starts_with('[]') {
+	} else if !literal_elem_resolved && !elem_type.starts_with('[]')
+		&& new_rhs_type.starts_with('[]') {
 		elem_type = new_rhs_type[2..]
 		rhs_type = new_rhs_type
 	}
@@ -349,7 +379,41 @@ fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?string {
 	first_id := t.a.child(&node, 0)
 	first := t.a.nodes[int(first_id)]
 	if first.kind !in [.array_literal, .array_init] {
-		return none
+		scalar := if first.kind == .prefix && first.op in [.plus, .minus]
+			&& first.children_count == 1 {
+			t.a.child_node(&first, 0)
+		} else {
+			&first
+		}
+		return match scalar.kind {
+			.string_literal, .string_interp {
+				'string'
+			}
+			.char_literal {
+				'rune'
+			}
+			.float_literal {
+				if scalar.typ == 'f32' {
+					'f32'
+				} else {
+					'f64'
+				}
+			}
+			.bool_literal {
+				'bool'
+			}
+			.cast_expr {
+				clean := t.normalize_type_alias(scalar.value)
+				if clean.len > 0 && clean != 'unknown' {
+					clean
+				} else {
+					none
+				}
+			}
+			else {
+				none
+			}
+		}
 	}
 	for candidate in [t.raw_checker_node_type(first_id), t.node_type(first_id), first.typ] {
 		clean := t.membership_container_type(t.normalize_type_alias(candidate))
@@ -520,6 +584,16 @@ fn (mut t Transformer) map_comparison_expr_type(id flat.NodeId) string {
 		return ''
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .or_expr && node.children_count > 0 {
+		_, value_type := t.or_expr_types(t.a.child(&node, 0), node.typ)
+		if t.clean_map_type(value_type).starts_with('map[') {
+			return value_type
+		}
+		inner_type := t.map_comparison_expr_type(t.a.child(&node, 0))
+		if t.clean_map_type(inner_type).starts_with('map[') {
+			return inner_type
+		}
+	}
 	if node.kind == .call {
 		concrete := t.concrete_generic_call_return_type(id, node)
 		if concrete.len > 0 && t.clean_map_type(concrete).starts_with('map[') {

@@ -957,12 +957,12 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 					return t.canonical_or_expr_types(current_ret)
 				}
 			}
-			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
-				return t.canonical_or_expr_types(decode_ret)
-			}
 			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(concrete_ret) && !t.generic_arg_is_unresolved(concrete_ret) {
-				return t.canonical_or_expr_types(concrete_ret)
+				return specialized_or_expr_types(concrete_ret)
+			}
+			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
+				return t.canonical_or_expr_types(decode_ret)
 			}
 			if typ := t.tc.expr_type(expr_id) {
 				mut prefix := ''

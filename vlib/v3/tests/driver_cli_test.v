@@ -169,7 +169,7 @@ import v3.gen.arm64
 fn main() {}
 ')!
 	output := os.join_path(root, 'arm64_import')
-	compile := cmdexec.run(v3_bin, ['-o', output, source])
+	compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', output, source])
 	assert compile.exit_code == 0, compile.output
 }
 
