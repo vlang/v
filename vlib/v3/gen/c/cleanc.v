@@ -3711,16 +3711,21 @@ fn c_header_text_needs_objective_c(text string) bool {
 
 fn c_header_objective_c_framework_imports(text string) string {
 	mut imports := []string{}
+	mut context := []string{}
+	mut prefix := []string{}
+	mut in_block_comment := false
 	for line in text.split_into_lines() {
-		clean := trimmed_space(line)
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
-		if name !in ['include', 'import'] {
-			continue
+		if name in ['include', 'import'] {
+			arg := c_directive_arg(clean)
+			if c_is_apple_framework_include(arg) {
+				imports << c_wrap_preserved_nested_directive('#${name} ${arg}', context, prefix)
+			}
 		}
-		arg := c_directive_arg(clean)
-		if c_is_apple_framework_include(arg) {
-			imports << '#${name} ${arg}'
-		}
+		c_update_nested_include_context(clean, line, mut context)
+		c_update_nested_include_prefix(clean, line, mut prefix)
 	}
 	return imports.join('\n')
 }

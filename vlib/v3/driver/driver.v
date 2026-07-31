@@ -74,7 +74,7 @@ mut:
 	source_body_modules       map[string]bool
 	native_source_modules     map[string]bool
 	native_type_declarations  map[string]string
-	native_declared_functions map[string]bool
+	native_declared_functions map[string]map[string]bool
 	objects                   map[string]string
 	headers                   map[string]string
 }
@@ -2018,7 +2018,7 @@ fn v3_path_is_within(path string, dir string) bool {
 
 fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState) {
 	state.native_type_declarations = map[string]string{}
-	state.native_declared_functions = map[string]bool{}
+	state.native_declared_functions = map[string]map[string]bool{}
 	mut allowed_paths := map[string]bool{}
 	for paths in state.module_external_inputs.values() {
 		for path in paths {
@@ -2034,13 +2034,17 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState) {
 		if !state.native_source_modules[module_name] {
 			continue
 		}
+		mut declared_functions := state.native_declared_functions[module_name].clone()
 		for path in state.module_external_inputs[raw_module_name] or { []string{} } {
 			source := os.read_file(path) or { continue }
 			for name, declared in modulecache.c_source_function_identifiers(source) {
 				if declared {
-					state.native_declared_functions[name] = true
+					declared_functions[name] = true
 				}
 			}
+		}
+		if declared_functions.len > 0 {
+			state.native_declared_functions[module_name] = declared_functions.clone()
 		}
 		for root in roots {
 			real_root := os.real_path(root)
@@ -4481,7 +4485,7 @@ pub fn run(args []string) {
 		source_body_modules:       map[string]bool{}
 		native_source_modules:     map[string]bool{}
 		native_type_declarations:  map[string]string{}
-		native_declared_functions: map[string]bool{}
+		native_declared_functions: map[string]map[string]bool{}
 		objects:                   map[string]string{}
 		headers:                   map[string]string{}
 	}
@@ -6719,7 +6723,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		}
 	}
 	raw_declarations := if needs_declarations {
-		prune_cached_native_function_prototypes(modulecache.declaration_header(split.prefix), state)
+		modulecache.declaration_header(split.prefix)
 	} else {
 		''
 	}
@@ -6735,14 +6739,14 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	program_support := split.modules['__v3_program_support'] or { '' }
 	program_generated_support := program_specializations + program_support + main_body
 	main_prefix := prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix,
-		state, true), state), cache_used_fns, program_generated_support, tc, state)
+		state, true), state, ['main']), cache_used_fns, program_generated_support, tc, state)
 	dylib_prefix := modulecache.prune_unreferenced_static_string_definitions(main_prefix +
 		program_specializations + program_support)
 	main_source := '#define V3CACHE_PROGRAM_UNIT 1\n' + main_prefix + program_specializations +
 		program_support + main_body
-	main_declarations := prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(
-		split.prefix + program_specializations + program_support), state, false), state),
-		cache_used_fns, program_generated_support, tc, state)
+	main_declarations := prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(
+		split.prefix + program_specializations + program_support), state, false), cache_used_fns,
+		program_generated_support, tc, state)
 	tcc_declarations := tcc_cached_main_source(main_declarations, main_body)
 	tcc_main := '#define V3CACHE_PROGRAM_UNIT 1\n' + tcc_declarations + main_body
 	mut object_paths := state.objects.clone()
@@ -6756,8 +6760,11 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	}
 	if !state.bundle_valid {
 		entry := state.manager.object_entry('builtin', state.bundle_sources, compile_signature)
-		bundle_native := cache_source_with_cached_native_inputs(raw_declarations, state,
-			cache_builtin_bundle_roots(state))
+		bundle_roots := cache_builtin_bundle_roots(state)
+		bundle_declarations := prune_cached_native_function_prototypes(raw_declarations, state,
+			bundle_roots)
+		bundle_native := cache_source_with_cached_native_inputs(bundle_declarations, state,
+			bundle_roots)
 		module_source := if bundle_native.has_native {
 			'#define V3CACHE_PROGRAM_UNIT 1\n' + bundle_native.source +
 				'#undef V3CACHE_PROGRAM_UNIT\n' + bundle_native.remaining_includes +
@@ -6798,7 +6805,10 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		body := split.modules[module_name] or {
 			split.modules[module_name.all_after_last('.')] or { '' }
 		}
-		native := cache_source_with_cached_native_inputs(raw_declarations, state, [
+		module_declarations := prune_cached_native_function_prototypes(raw_declarations, state, [
+			module_name,
+		])
+		native := cache_source_with_cached_native_inputs(module_declarations, state, [
 			module_name,
 		])
 		module_source := if native.has_native {
@@ -6951,8 +6961,16 @@ fn cache_object_paths(object_paths map[string]string) []string {
 	return objects
 }
 
-fn prune_cached_native_function_prototypes(source string, state &V3ModuleCacheState) string {
-	if state.native_declared_functions.len == 0 {
+fn prune_cached_native_function_prototypes(source string, state &V3ModuleCacheState, module_names []string) string {
+	mut declared_functions := map[string]bool{}
+	for module_name in module_names {
+		for name, declared in state.native_declared_functions[module_name] {
+			if declared {
+				declared_functions[name] = true
+			}
+		}
+	}
+	if declared_functions.len == 0 {
 		return source
 	}
 	mut out := strings.new_builder(source.len)
@@ -6968,7 +6986,7 @@ fn prune_cached_native_function_prototypes(source string, state &V3ModuleCacheSt
 			for start > 0 && (clean[start - 1].is_alnum() || clean[start - 1] == `_`) {
 				start--
 			}
-			if start < end && state.native_declared_functions[clean[start..end]] {
+			if start < end && declared_functions[clean[start..end]] {
 				prefix := clean[..start].trim_space()
 				if prefix.len > 0 && !prefix.contains('=') && !prefix.starts_with('return ')
 					&& !prefix.starts_with('if ') && !prefix.starts_with('for ')
