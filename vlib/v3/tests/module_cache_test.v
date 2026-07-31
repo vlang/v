@@ -5903,6 +5903,132 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_cached_native_type_declarations_from_inserted_header_root() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_inserted_header_type_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/native.h"
+
+fn C.v3_inserted_header_make() C.V3InsertedHeaderType
+
+pub fn make() C.V3InsertedHeaderType {
+	return C.v3_inserted_header_make()
+}
+
+pub fn read(value C.V3InsertedHeaderType) int {
+	return value.value
+}
+')
+	write_module_cache_file(root, 'owner/native.h', 'typedef struct {
+	int value;
+} V3InsertedHeaderType;
+
+static int v3_inserted_header_state;
+
+static inline V3InsertedHeaderType v3_inserted_header_make(void) {
+	return (V3InsertedHeaderType){41 + v3_inserted_header_state};
+}
+')
+	write_module_cache_file(root, 'caller/caller.v', 'module caller
+
+import owner
+
+pub fn value() int {
+	value := owner.make()
+	return owner.read(value) + 1
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import caller
+
+fn main() {
+	println(caller.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'caller_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
+fn test_cached_native_type_declarations_use_preceding_root_macros() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_preceding_root_macro_type_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/config.h"
+#include "@DIR/owner.c"
+
+pub fn marker() int {
+	return 1
+}
+')
+	write_module_cache_file(root, 'owner/config.h', '#define V3_PRECEDING_TYPES_HEADER "types.h"\n')
+	write_module_cache_file(root, 'owner/types.h', 'typedef struct {
+	int value;
+} V3PrecedingRootType;
+')
+	write_module_cache_file(root, 'owner/owner.c', '#include V3_PRECEDING_TYPES_HEADER
+
+V3PrecedingRootType v3_make_preceding_root_value(void) {
+	return (V3PrecedingRootType){41};
+}
+
+int v3_read_preceding_root_value(V3PrecedingRootType value) {
+	return value.value;
+}
+')
+	write_module_cache_file(root, 'caller/caller.v', 'module caller
+
+import owner
+
+fn C.v3_make_preceding_root_value() C.V3PrecedingRootType
+fn C.v3_read_preceding_root_value(C.V3PrecedingRootType) int
+
+pub fn value() int {
+	return C.v3_read_preceding_root_value(C.v3_make_preceding_root_value()) + owner.marker()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import caller
+
+fn main() {
+	println(caller.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'caller_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_native_type_declarations_repeat_header_in_unknown_branches() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_native_repeated_branch_type_${os.getpid()}')
