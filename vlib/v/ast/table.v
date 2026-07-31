@@ -4020,6 +4020,9 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 	mut nrt := ''
 	mut c_nrt := ''
 	mut new_depth_guard := []string{}
+	if depth_guard.len > 256 {
+		t.panic('generic instantiation depth limit exceeded')
+	}
 	type_idx := typ.idx()
 	if type_idx == 0 || type_idx >= t.type_symbols.len {
 		return typ
