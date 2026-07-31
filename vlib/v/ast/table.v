@@ -1547,12 +1547,14 @@ pub fn (t &Table) are_payloads_alias_compatible(a Type, b Type) bool {
 pub fn (t &Table) fully_unaliased_type(typ Type) Type {
 	mut unaliased := typ
 	mut extra_flags := u32(typ) & 0xff00_0000
-	for {
+	mut depth := 0
+	for depth < 100 {
 		sym := t.sym(unaliased)
 		if sym.info is Alias {
 			parent_typ := sym.info.parent_type
 			unaliased = Type(u32(parent_typ.set_nr_muls(parent_typ.nr_muls() + unaliased.nr_muls())) | extra_flags)
 			extra_flags |= u32(unaliased) & 0xff00_0000
+			depth++
 			continue
 		}
 		return unaliased
