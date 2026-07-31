@@ -805,7 +805,11 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			break
 		}
 		if post_process_generic_fns_iterations == generic_fn_postprocess_iterations_cutoff_limit {
-			c.error('generic function post processing reached the cutoff limit of ${generic_fn_postprocess_iterations_cutoff_limit} iterations, probably due to an infinite generic instantiation loop', c.file.generic_fns[0].pos)
+			if c.file.generic_fns.len > 0 {
+				c.error('generic function post processing reached the cutoff limit of ${generic_fn_postprocess_iterations_cutoff_limit} iterations, probably due to an infinite generic instantiation loop', c.file.generic_fns[0].pos)
+			} else {
+				c.error('generic function post processing reached the cutoff limit of ${generic_fn_postprocess_iterations_cutoff_limit} iterations, probably due to an infinite generic instantiation loop', token.Pos{})
+			}
 			break
 		}
 		c.need_recheck_generic_fns = false
