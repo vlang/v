@@ -6018,6 +6018,67 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_cached_native_type_declarations_from_macro_invocation() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_macro_native_type_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/native.h"
+
+fn C.v3_macro_type_make() C.V3MacroNativeType
+
+pub fn make() C.V3MacroNativeType {
+	return C.v3_macro_type_make()
+}
+
+pub fn read(value C.V3MacroNativeType) int {
+	return value.value
+}
+')
+	write_module_cache_file(root, 'owner/native.h', '#define V3_DECLARE_NATIVE_TYPE(name) typedef struct { int value; } name
+V3_DECLARE_NATIVE_TYPE(V3MacroNativeType);
+
+static int v3_macro_type_state;
+
+static inline V3MacroNativeType v3_macro_type_make(void) {
+	return (V3MacroNativeType){41 + v3_macro_type_state};
+}
+')
+	write_module_cache_file(root, 'caller/caller.v', 'module caller
+
+import owner
+
+pub fn value() int {
+	value := owner.make()
+	return owner.read(value) + 1
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import caller
+
+fn main() {
+	println(caller.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'caller_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_native_type_declarations_use_preceding_root_macros() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_preceding_root_macro_type_${os.getpid()}')

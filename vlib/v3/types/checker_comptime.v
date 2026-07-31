@@ -10177,6 +10177,13 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 				'`${tc.source_text_for_node(object_id)}` must be declared as `shared` ${object_type} to be locked',
 				object_id, object.pos)
 		}
+		if is_shared {
+			if unstable_id := tc.lock_object_unstable_dependency(object_id) {
+				tc.record_error_at(.assignment_mismatch,
+					'cannot lock `${tc.source_text_for_node(object_id)}`: selector bases and indices must be stable expressions',
+					unstable_id, tc.a.node(unstable_id).pos)
+			}
+		}
 		lock_name := tc.shared_lock_key(object_id)
 		if is_shared && lock_name.len > 0 {
 			existing_modes := tc.fn_context.locked_shared_modes[lock_name] or { []u8{} }
@@ -10215,6 +10222,22 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 	for key in locked_base_keys {
 		tc.fn_context.locked_shared_base_names.delete(key)
 	}
+}
+
+fn (tc &TypeChecker) lock_object_unstable_dependency(id flat.NodeId) ?flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .call {
+		return id
+	}
+	for i in 0 .. node.children_count {
+		if unstable_id := tc.lock_object_unstable_dependency(tc.a.child(node, i)) {
+			return unstable_id
+		}
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) record_locked_shared_base_keys(id flat.NodeId, lock_name string, mut added_keys []string) {

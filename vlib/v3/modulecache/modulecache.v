@@ -2477,15 +2477,23 @@ pub fn c_source_type_identifiers(source string) map[string]bool {
 // c_source_type_declarations keeps preprocessor context and C type declarations,
 // while omitting function bodies, function declarations, and storage.
 pub fn c_source_type_declarations(source string) string {
-	header, _, _ := c_declaration_header_mode(source, true)
+	header, _ := c_source_type_declarations_with_status(source)
 	return header
 }
 
-fn c_declaration_header(prefix string) (string, bool, bool) {
-	return c_declaration_header_mode(prefix, false)
+// c_source_type_declarations_with_status also reports whether every declaration-like
+// file-scope macro invocation could be classified.
+pub fn c_source_type_declarations_with_status(source string) (string, bool) {
+	header, _, _, complete := c_declaration_header_mode(source, true)
+	return header, complete
 }
 
-fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool) {
+fn c_declaration_header(prefix string) (string, bool, bool) {
+	header, has_static_storage, declares_types, _ := c_declaration_header_mode(prefix, false)
+	return header, has_static_storage, declares_types
+}
+
+fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut item_head := strings.new_builder(512)
@@ -2496,10 +2504,12 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 	mut function_conditional_depth := 0
 	mut has_static_storage := false
 	mut declares_types := false
+	mut types_complete := true
 	mut in_block_comment := false
 	mut in_preprocessor_directive := false
 	mut preprocessor_in_item := false
 	mut in_extern_c_block := false
+	type_declaration_macros := c_type_declaration_macro_names(prefix)
 	lines := prefix.split_into_lines()
 	for line_idx, raw_line in lines {
 		line := raw_line + '\n'
@@ -2615,7 +2625,12 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
+		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
 		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
+			|| type_declaration_macros[macro_name]
+		if types_only && macro_name.len > 0 && !item_declares_type {
+			types_complete = false
+		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
 			out.write_string(c_declaration_item(declaration, has_brace, types_only))
@@ -2631,13 +2646,116 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
+		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
 		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
+			|| type_declaration_macros[macro_name]
+		if types_only && macro_name.len > 0 && !item_declares_type {
+			types_complete = false
+		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
 			out.write_string(c_declaration_item(declaration, has_brace, types_only))
 		}
 	}
-	return out.str(), has_static_storage, declares_types
+	return out.str(), has_static_storage, declares_types, types_complete
+}
+
+fn c_type_declaration_macro_names(source string) map[string]bool {
+	mut seen := map[string]bool{}
+	mut type_macros := map[string]bool{}
+	mut directive := strings.new_builder(128)
+	for raw_line in source.split_into_lines() {
+		if directive.len == 0 && !raw_line.trim_space().starts_with('#') {
+			continue
+		}
+		directive.writeln(raw_line)
+		if c_preprocessor_line_continues(raw_line) {
+			continue
+		}
+		clean := directive.str().trim_space()
+		directive.clear()
+		if clean.len < 2 || clean[0] != `#` {
+			continue
+		}
+		body := clean[1..].trim_space()
+		if body.len > 'undef'.len && body.starts_with('undef') && body['undef'.len].is_space() {
+			name := body['undef'.len..].trim_space().fields()[0] or { continue }
+			if seen[name] {
+				type_macros[name] = false
+			}
+			continue
+		}
+		if body.len <= 'define'.len || !body.starts_with('define') || !body['define'.len].is_space() {
+			continue
+		}
+		definition := body['define'.len..].trim_left(' \t')
+		mut name_end := 0
+		for name_end < definition.len && c_generated_identifier_byte(definition[name_end]) {
+			name_end++
+		}
+		if name_end == 0 {
+			continue
+		}
+		name := definition[..name_end]
+		mut replacement_start := name_end
+		is_function_like := replacement_start < definition.len
+			&& definition[replacement_start] == `(`
+		if is_function_like {
+			mut depth := 0
+			for replacement_start < definition.len {
+				if definition[replacement_start] == `(` {
+					depth++
+				} else if definition[replacement_start] == `)` {
+					depth--
+					if depth == 0 {
+						replacement_start++
+						break
+					}
+				}
+				replacement_start++
+			}
+		}
+		replacement := if replacement_start < definition.len {
+			definition[replacement_start..]
+		} else {
+			''
+		}
+		is_type_macro := is_function_like
+			&& c_declaration_item_declares_type(replacement, replacement.contains('{'))
+		if seen[name] {
+			type_macros[name] = type_macros[name] && is_type_macro
+		} else {
+			seen[name] = true
+			type_macros[name] = is_type_macro
+		}
+	}
+	return type_macros
+}
+
+fn c_declaration_macro_invocation_name(item string, has_brace bool) ?string {
+	if has_brace {
+		return none
+	}
+	clean := trim_leading_c_comments(item.trim_space())
+	if clean.len == 0 || !c_generated_identifier_byte(clean[0]) || clean[0].is_digit() {
+		return none
+	}
+	mut name_end := 1
+	for name_end < clean.len && c_generated_identifier_byte(clean[name_end]) {
+		name_end++
+	}
+	name := clean[..name_end]
+	if name in ['_Static_assert', 'static_assert'] {
+		return none
+	}
+	mut paren := name_end
+	for paren < clean.len && clean[paren].is_space() {
+		paren++
+	}
+	if paren >= clean.len || clean[paren] != `(` {
+		return none
+	}
+	return name
 }
 
 fn c_function_block_closes_at_line_start(line string) bool {
@@ -2686,7 +2804,7 @@ fn c_declaration_item(item string, has_brace bool, types_only bool) string {
 	}
 	clean := trim_leading_c_comments(trimmed)
 	if block := c_extern_c_block(item) {
-		inner_header, _, _ := c_declaration_header_mode(block.inner, types_only)
+		inner_header, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
 		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
 			result += '\n'

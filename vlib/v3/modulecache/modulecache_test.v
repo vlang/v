@@ -48,6 +48,19 @@ inline int local_inline_function(void) {
 	assert !types.contains('local_state')
 }
 
+fn test_type_declarations_keep_type_macro_invocations() {
+	source := '#define DECLARE_TYPE(name) typedef struct { int value; } name
+DECLARE_TYPE(Item);
+'
+	types, complete := c_source_type_declarations_with_status(source)
+	assert complete
+	assert types.contains('#define DECLARE_TYPE')
+	assert types.contains('DECLARE_TYPE(Item);')
+
+	_, unknown_complete := c_source_type_declarations_with_status('UNKNOWN_DECL(Item);\n')
+	assert !unknown_complete
+}
+
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	details := SourceSignatureDetails{
 		signature:  'content-signature'

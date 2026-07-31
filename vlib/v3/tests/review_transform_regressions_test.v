@@ -800,6 +800,13 @@ fn test_nested_shared_field_lock_rejects_base_reassignment() {
 		'cannot reassign `i` while it is used to locate locked shared value `items[i].state`')
 }
 
+fn test_nested_shared_field_lock_rejects_call_base() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_call_base',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn pick() &Coordinator {\n\treturn &Coordinator{}\n}\n\nfn main() {\n\tlock pick().state {\n\t\tpick().state.value = 7\n\t}\n}\n',
+		'selector bases and indices must be stable expressions')
+}
+
 fn test_reassigned_nil_pointer_can_be_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'reassigned_nil_pointer',

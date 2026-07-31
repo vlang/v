@@ -2108,7 +2108,10 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 	}
 	source := os.read_file(real_path) or { return '' }
 	active_paths[real_path] = true
-	header := modulecache.c_source_type_declarations(source)
+	header, types_complete := modulecache.c_source_type_declarations_with_status(source)
+	if !types_complete {
+		extraction.complete = false
+	}
 	mut out := strings.new_builder(header.len)
 	mut conditionals := []V3CacheLocalCConditional{}
 	for line in header.split_into_lines() {
