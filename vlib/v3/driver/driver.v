@@ -2078,7 +2078,7 @@ fn cache_native_type_declarations_for_path(path string, allowed_paths map[string
 		complete: true
 	}
 	declarations := cache_native_type_declarations_for_path_rec(real_path, allowed_paths, mut
-		active_paths, mut include_macros, mut extraction)
+		active_paths, mut include_macros, false, mut extraction)
 	return declarations, extraction.complete
 }
 
@@ -2101,7 +2101,7 @@ mut:
 	ambiguous bool
 }
 
-fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut include_macros map[string]V3CacheLocalCMacro, mut extraction V3CacheNativeTypeExtractionState) string {
+fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut include_macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool, mut extraction V3CacheNativeTypeExtractionState) string {
 	real_path := os.real_path(path)
 	if !allowed_paths[real_path] || active_paths[real_path] {
 		return ''
@@ -2158,8 +2158,8 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 			continue
 		}
 		if directive !in ['include', 'import'] {
-			cache_record_local_c_include_macro(directive, arg, conditionals.any(it.ambiguous), mut
-				include_macros)
+			cache_record_local_c_include_macro(directive, arg, ambient_ambiguous
+				|| conditionals.any(it.ambiguous), mut include_macros)
 			out.writeln(line)
 			continue
 		}
@@ -2167,7 +2167,8 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 			real_include := os.real_path(include_path)
 			if allowed_paths[real_include] {
 				out.write_string(cache_native_type_declarations_for_path_rec(real_include,
-					allowed_paths, mut active_paths, mut include_macros, mut extraction))
+					allowed_paths, mut active_paths, mut include_macros, ambient_ambiguous
+					|| conditionals.any(it.ambiguous), mut extraction))
 				continue
 			}
 		}

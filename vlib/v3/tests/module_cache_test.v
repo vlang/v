@@ -6050,6 +6050,81 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_cached_native_type_declarations_propagate_recursive_branch_ambiguity() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_recursive_branch_ambiguity_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#include "@DIR/owner.c"
+
+pub fn marker() int {
+	return 1
+}
+')
+	write_module_cache_file(root, 'owner/choose_a.h',
+		'#define V3_RECURSIVE_BRANCH_TYPES "types_a.h"\n')
+	write_module_cache_file(root, 'owner/choose_b.h',
+		'#define V3_RECURSIVE_BRANCH_TYPES "types_b.h"\n')
+	write_module_cache_file(root, 'owner/types_a.h', 'typedef struct {
+	int value;
+} V3RecursiveBranchType;
+')
+	write_module_cache_file(root, 'owner/types_b.h', 'typedef struct {
+	int inactive;
+} V3InactiveRecursiveBranchType;
+')
+	write_module_cache_file(root, 'owner/owner.c', '#ifdef __LINE__
+#include "choose_a.h"
+#else
+#include "choose_b.h"
+#endif
+#include V3_RECURSIVE_BRANCH_TYPES
+
+V3RecursiveBranchType v3_make_recursive_branch_value(void) {
+	return (V3RecursiveBranchType){41};
+}
+
+int v3_read_recursive_branch_value(V3RecursiveBranchType value) {
+	return value.value;
+}
+')
+	write_module_cache_file(root, 'caller/caller.v', 'module caller
+
+import owner
+
+fn C.v3_make_recursive_branch_value() C.V3RecursiveBranchType
+fn C.v3_read_recursive_branch_value(C.V3RecursiveBranchType) int
+
+pub fn value() int {
+	return C.v3_read_recursive_branch_value(C.v3_make_recursive_branch_value()) + owner.marker()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import caller
+
+fn main() {
+	println(caller.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
+	assert module_cache_artifact(cache_dir, 'caller_', '.o').len == 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_native_type_declarations_from_inserted_header_root() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_inserted_header_type_${os.getpid()}')
