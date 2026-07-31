@@ -862,6 +862,14 @@ fn test_module_cache_static_inline_attributes_are_not_storage() {
 	assert modulecache.c_source_has_static_storage('static int helper(void) {\n\treturn 1;\n}\n')
 	assert modulecache.c_source_has_static_storage('static int state = 1;\n')
 	assert modulecache.c_source_has_static_storage('static inline int next(void) {\n\tstatic int state;\n\treturn ++state;\n}\n')
+	identifiers, complete :=
+		modulecache.c_source_static_variable_identifiers('static int state = 1;\nstatic int helper(void) {\n\treturn 1;\n}\n')
+	assert identifiers['state']
+	assert !identifiers['helper']
+	assert complete
+	_, attributes_complete :=
+		modulecache.c_source_static_variable_identifiers('static int __attribute__((unused)) state = 1;\n')
+	assert !attributes_complete
 }
 
 fn test_module_cache_declaration_header_keeps_directives_inside_static_inline_functions() {
@@ -1034,6 +1042,53 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
 	assert run_module_cache_binary(output) == '83'
 	assert module_cache_artifact(cache_dir, 'native_', '.o').len == 0
+}
+
+fn test_static_storage_variable_used_by_sibling_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_shared_static_variable_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/state.h', 'static int v3_sibling_static_state = 41;
+
+static int v3_unrelated_static_function(void) {
+	return 1;
+}
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/state.h"
+
+pub fn marker() {}
+')
+	write_module_cache_file(root, 'sibling/sibling.v', 'module sibling
+
+import owner
+
+__global C.v3_sibling_static_state int
+
+pub fn value() int {
+	owner.marker()
+	return C.v3_sibling_static_state
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import sibling
+
+fn main() {
+	println(sibling.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '41'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
 }
 
 fn test_mixed_native_root_and_static_header_disables_module_cache_split() {
@@ -5727,17 +5782,26 @@ fn test_cached_native_type_declarations_follow_transitive_headers() {
 	}
 	write_module_cache_file(root, 'owner/owner.v', 'module owner
 
+#flag -DV3_USE_NATIVE_TYPE_A
 #include "@DIR/owner.c"
 
 pub fn marker() int {
 	return 1
 }
 ')
-	write_module_cache_file(root, 'owner/types.h', 'typedef struct {
+	write_module_cache_file(root, 'owner/types_a.h', 'typedef struct {
 	int value;
 } V3TransitiveNativeType;
 ')
-	write_module_cache_file(root, 'owner/owner.c', '#define V3_NATIVE_TYPES_HEADER "types.h"
+	write_module_cache_file(root, 'owner/types_b.h', 'typedef struct {
+	int inactive;
+} V3InactiveNativeType;
+')
+	write_module_cache_file(root, 'owner/owner.c', '#ifdef V3_USE_NATIVE_TYPE_A
+#define V3_NATIVE_TYPES_HEADER "types_a.h"
+#else
+#define V3_NATIVE_TYPES_HEADER "types_b.h"
+#endif
 #include V3_NATIVE_TYPES_HEADER
 
 V3TransitiveNativeType make_transitive_native_value(void) {

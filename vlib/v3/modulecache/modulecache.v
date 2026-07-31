@@ -2156,6 +2156,138 @@ pub fn c_source_function_identifiers(source string) map[string]bool {
 	return identifiers
 }
 
+// c_source_static_variable_identifiers returns file-scope static variable names
+// and whether every such declaration could be classified.
+pub fn c_source_static_variable_identifiers(source string) (map[string]bool, bool) {
+	mut identifiers := map[string]bool{}
+	mut complete := true
+	mut pending := strings.new_builder(256)
+	mut brace_depth := 0
+	mut item_has_brace := false
+	mut item_is_function := false
+	mut in_block_comment := false
+	for raw_line in source.split_into_lines() {
+		trimmed := raw_line.trim_space()
+		if brace_depth == 0 && pending.len == 0 && trimmed.starts_with('#') {
+			continue
+		}
+		if brace_depth == 0 || !item_is_function {
+			pending.writeln(raw_line)
+		}
+		delta, _, next_comment, last_code, first_open := c_line_braces(raw_line, in_block_comment)
+		in_block_comment = next_comment
+		if brace_depth == 0 && first_open >= 0 {
+			declaration := pending.str()
+			current_line_start := declaration.len - raw_line.len - 1
+			head :=
+				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
+			item_is_function = c_static_declaration_head_is_function(head)
+			item_has_brace = true
+		}
+		brace_depth += delta
+		if item_is_function {
+			if brace_depth <= 0 {
+				brace_depth = 0
+				pending.clear()
+				item_has_brace = false
+				item_is_function = false
+			}
+			continue
+		}
+		if brace_depth > 0 || last_code != `;` {
+			continue
+		}
+		declaration := pending.str()
+		if block := c_extern_c_block(declaration) {
+			nested_identifiers, nested_complete := c_source_static_variable_identifiers(block.inner)
+			for identifier, present in nested_identifiers {
+				if present {
+					identifiers[identifier] = true
+				}
+			}
+			complete = complete && nested_complete
+		} else if c_declaration_item_has_static_storage(declaration, item_has_brace) {
+			declaration_identifiers := c_static_variable_declaration_identifiers(declaration)
+			if declaration_identifiers.len == 0 {
+				complete = false
+			}
+			for identifier in declaration_identifiers {
+				identifiers[identifier] = true
+			}
+		}
+		brace_depth = 0
+		pending.clear()
+		item_has_brace = false
+	}
+	unsafe { pending.free() }
+	return identifiers, complete
+}
+
+fn c_static_variable_declaration_identifiers(declaration string) []string {
+	clean := trim_leading_c_comments(declaration.trim_space()).trim_right(';').trim_space()
+	if clean.len == 0 {
+		return []
+	}
+	mut identifiers := []string{}
+	for part in c_split_top_level_declarators(clean) {
+		mut declarator := part.trim_space()
+		if eq := c_top_level_assign_index(declarator) {
+			declarator = declarator[..eq].trim_space()
+		}
+		for suffix in ['__attribute__', '__declspec'] {
+			if pos := declarator.index(suffix) {
+				declarator = declarator[..pos].trim_space()
+			}
+		}
+		bracket := declarator.index_u8(`[`)
+		if bracket > 0 {
+			declarator = declarator[..bracket].trim_space()
+		}
+		if identifier := c_static_variable_declarator_identifier(declarator) {
+			identifiers << identifier
+		}
+	}
+	return identifiers
+}
+
+fn c_static_variable_declarator_identifier(declarator string) ?string {
+	mut offset := 0
+	for offset < declarator.len {
+		relative := declarator[offset..].index('(*') or { break }
+		mut start := offset + relative + 2
+		for start < declarator.len && declarator[start].is_space() {
+			start++
+		}
+		mut end := start
+		for end < declarator.len && c_generated_identifier_byte(declarator[end]) {
+			end++
+		}
+		if end > start {
+			return declarator[start..end]
+		}
+		offset = start
+	}
+	mut candidate := ''
+	mut i := 0
+	for i < declarator.len {
+		if !c_generated_identifier_byte(declarator[i]) || declarator[i].is_digit() {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < declarator.len && c_generated_identifier_byte(declarator[i]) {
+			i++
+		}
+		candidate = declarator[start..i]
+	}
+	if candidate.len == 0
+		|| candidate in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool'] {
+		return none
+	}
+	return candidate
+}
+
 // c_source_type_identifiers returns C typedef aliases and named aggregate tags.
 pub fn c_source_type_identifiers(source string) map[string]bool {
 	mut identifiers := map[string]bool{}
