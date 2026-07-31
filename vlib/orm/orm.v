@@ -499,6 +499,21 @@ fn trim_attr_arg(arg string) string {
 	return out
 }
 
+fn is_sql_expr(val string) bool {
+	// Function calls like gen_random_uuid(), NOW(), etc.
+	if val.contains('(') && val.ends_with(')') {
+		return true
+	}
+	// SQL keywords/constants: all uppercase, digits, and underscores
+	// e.g. CURRENT_TIME, CURRENT_DATE, CURRENT_TIMESTAMP
+	for ch in val {
+		if (ch < `A` || ch > `Z`) && (ch < `0` || ch > `9`) && ch != `_` {
+			return false
+		}
+	}
+	return val.len > 0
+}
+
 fn tenant_filter_array_primitive_type[T](value []T) int {
 	if value.len > 0 {
 		first := value[0]
@@ -1527,7 +1542,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && has_default {
 			if default_val != '' {
-				if is_str_default {
+				if is_str_default && !is_sql_expr(default_val) {
 					stmt += " DEFAULT '${default_val}'"
 				} else {
 					stmt += ' DEFAULT ${default_val}'
