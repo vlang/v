@@ -931,16 +931,16 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 	}
 }
 
-fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
+fn (mut tc TypeChecker) check_locked_shared_base_lvalue_mutation(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
-		return
+		return false
 	}
 	key := tc.expr_key(id)
 	if lock_name := tc.fn_context.locked_shared_base_names[key] {
 		tc.record_error_at(.assignment_mismatch,
 			'cannot reassign `${key}` while it is used to locate locked shared value `${lock_name}`',
 			id, tc.a.node(id).pos)
-		return
+		return true
 	}
 	mut alias_keys := [tc.locked_shared_base_alias_key(id)]
 	alias_keys << tc.locked_shared_base_owner_alias_keys(id)
@@ -954,9 +954,16 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 				tc.record_error_at(.assignment_mismatch,
 					'cannot reassign `${source}`: it may alias locked shared value `${lock_name}`',
 					id, tc.a.node(id).pos)
-				return
+				return true
 			}
 		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
+	if tc.check_locked_shared_base_lvalue_mutation(id) {
+		return
 	}
 	if element_id := tc.shared_array_element_index(id) {
 		tc.record_error_at(.assignment_mismatch,
@@ -8860,6 +8867,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		recv_type := tc.smartcast_type(recv_id) or {
 			tc.cached_expr_type(recv_id) or { tc.resolve_type(recv_id) }
 		}
+		if tc.mut_receiver_methods[info.name] {
+			tc.check_locked_shared_base_lvalue_mutation(recv_id)
+		}
 		receiver_is_shared_param := call_param_is_shared(info, 0)
 		if receiver_is_shared_param && tc.lock_depth > 0 {
 			tc.record_error_at(.call_arg_mismatch,
@@ -9306,6 +9316,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		param_is_mut := tc.call_param_is_mut(info, param_idx)
 			|| tc.explicit_generic_source_param_is_mut(node, info, param_idx)
 			|| tc.call_field_param_is_mut(node, param_idx)
+		if param_is_mut && mut_arg_node.is_mut {
+			tc.check_locked_shared_base_lvalue_mutation(arg_id)
+		}
 		implicit_receiver_arg := tc.call_arg_is_callee_receiver(node, arg_id)
 			|| tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
 		if call_param_is_shared(info, param_idx) && !tc.expr_is_explicit_shared_arg(arg_id) {

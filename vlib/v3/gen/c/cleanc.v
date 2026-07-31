@@ -4024,12 +4024,12 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		negated = !negated
 		clean = c_header_condition_without_outer_parens(clean[1..].trim_space())
 	}
-	if clean in ['0', '1'] {
-		mut active := clean == '1'
+	literal_known, mut literal_active := c_header_objective_c_integer_macro_state(clean)
+	if literal_known {
 		if negated {
-			active = !active
+			literal_active = !literal_active
 		}
-		return true, active
+		return true, literal_active
 	}
 	if clean.len > 0 && c_identifier_start(clean[0]) && c_header_struct_tag(clean) == clean {
 		known, mut active := c_header_objective_c_macro_state(clean, defined, undefined, uncertain,
