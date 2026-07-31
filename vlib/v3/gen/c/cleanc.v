@@ -3184,7 +3184,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			late_source := c_include_is_late_source(include_arg)
 			scoped_static_insert := g.cache_split && node.value == 'insert'
 				&& modulecache.c_source_has_static_storage(header_text)
-			if c_header_text_needs_objective_c(header_text) && 'objective-c' !in g.c_flags {
+			if c_header_text_needs_objective_c_for_target(header_text, g.c_flags, g.c99_mode, g.target)
+				&& 'objective-c' !in g.c_flags {
 				g.c_flags << ['-x', 'objective-c', '-x', 'none']
 			}
 			g.collect_inlined_c_structs(header_text)
@@ -3715,19 +3716,222 @@ fn c_is_apple_framework_include(include_arg string) bool {
 }
 
 fn c_header_text_needs_objective_c(text string) bool {
-	if c_header_text_has_objective_c_tokens(text) {
-		return true
+	return c_header_text_needs_objective_c_for_target(text, []string{}, false, pref.host_target())
+}
+
+fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
+	mut defined := map[string]bool{}
+	mut undefined := {
+		'__OBJC__': true
 	}
+	mut uncertain := map[string]bool{}
+	mut i := 0
+	for i < flags.len {
+		clean := trimmed_space(flags[i])
+		mut definition := ''
+		mut is_undef := false
+		if clean == '-D' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			i++
+		} else if clean.starts_with('-D') {
+			definition = clean[2..]
+		} else if clean == '-U' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			is_undef = true
+			i++
+		} else if clean.starts_with('-U') {
+			definition = clean[2..]
+			is_undef = true
+		}
+		macro_name := definition.all_before('=').trim_space()
+		if macro_name.len > 0 {
+			if is_undef {
+				defined.delete(macro_name)
+				undefined[macro_name] = true
+			} else {
+				undefined.delete(macro_name)
+				defined[macro_name] = true
+			}
+		}
+		i++
+	}
+	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
+	mut condition_known := []bool{}
+	mut condition_active := []bool{}
+	mut condition_taken_known := []bool{}
+	mut condition_taken := []bool{}
+	mut possible_text := strings.new_builder(text.len)
 	mut in_block_comment := false
 	for line in text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
-		if c_directive_name(clean) == 'import'
-			&& c_is_apple_framework_include(c_directive_arg(clean)) {
+		name := c_directive_name(clean)
+		if name in ['ifdef', 'ifndef'] {
+			macro_name := c_directive_arg(clean).fields()[0] or { '' }
+			known, mut active := c_header_objective_c_macro_state(macro_name, defined, undefined,
+				uncertain, strict_iso_mode, target)
+			if name == 'ifndef' {
+				active = !active
+			}
+			condition_known << known
+			condition_active << (if known { active } else { true })
+			condition_taken_known << known
+			condition_taken << (if known { active } else { true })
+		} else if name == 'if' {
+			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined,
+				undefined, uncertain, strict_iso_mode, target)
+			condition_known << known
+			condition_active << (if known { active } else { true })
+			condition_taken_known << known
+			condition_taken << (if known { active } else { true })
+		} else if name == 'elif' && condition_known.len > 0 {
+			last := condition_known.len - 1
+			prior_known := condition_taken_known[last]
+			prior_taken := condition_taken[last]
+			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined,
+				undefined, uncertain, strict_iso_mode, target)
+			if (prior_known && prior_taken) || (known && !active) {
+				condition_known[last] = true
+				condition_active[last] = false
+			} else if prior_known && known {
+				condition_known[last] = true
+				condition_active[last] = true
+			} else {
+				condition_known[last] = false
+				condition_active[last] = true
+			}
+			if (prior_known && prior_taken) || (known && active) {
+				condition_taken_known[last] = true
+				condition_taken[last] = true
+			} else if prior_known && known {
+				condition_taken_known[last] = true
+				condition_taken[last] = false
+			} else {
+				condition_taken_known[last] = false
+				condition_taken[last] = true
+			}
+		} else if name == 'else' && condition_known.len > 0 {
+			last := condition_known.len - 1
+			condition_known[last] = condition_taken_known[last]
+			condition_active[last] = if condition_taken_known[last] {
+				!condition_taken[last]
+			} else {
+				true
+			}
+			condition_taken_known[last] = true
+			condition_taken[last] = true
+		} else if name == 'endif' && condition_known.len > 0 {
+			condition_known.delete_last()
+			condition_active.delete_last()
+			condition_taken_known.delete_last()
+			condition_taken.delete_last()
+		}
+		mut possibly_active := true
+		for depth in 0 .. condition_known.len {
+			if condition_known[depth] && !condition_active[depth] {
+				possibly_active = false
+				break
+			}
+		}
+		if !possibly_active {
+			possible_text.writeln('')
+			continue
+		}
+		if name == 'import' && c_is_apple_framework_include(c_directive_arg(clean)) {
 			return true
 		}
+		if name in ['define', 'undef'] {
+			parts := c_directive_arg(clean).fields()
+			if parts.len > 0 {
+				macro_name := parts[0].all_before('(')
+				mut definitely_active := true
+				for depth in 0 .. condition_known.len {
+					if !condition_known[depth] {
+						definitely_active = false
+						break
+					}
+				}
+				if definitely_active {
+					uncertain.delete(macro_name)
+					if name == 'define' {
+						undefined.delete(macro_name)
+						defined[macro_name] = true
+					} else {
+						defined.delete(macro_name)
+						undefined[macro_name] = true
+					}
+				} else {
+					defined.delete(macro_name)
+					undefined.delete(macro_name)
+					uncertain[macro_name] = true
+				}
+			}
+		}
+		possible_text.writeln(line)
 	}
-	return false
+	return c_header_text_has_objective_c_tokens(possible_text.str())
+}
+
+fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	if name.len == 0 {
+		return false, true
+	}
+	if name !in defined && name !in undefined && name !in uncertain && !name.starts_with('_') {
+		return false, true
+	}
+	return c_preprocessor_macro_state(name, defined, undefined, uncertain, strict_iso_mode, target)
+}
+
+fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	mut clean := raw.trim_space()
+	mut negated := false
+	if clean.starts_with('!') {
+		negated = true
+		clean = clean[1..].trim_space()
+	}
+	if clean in ['0', '1'] {
+		mut active := clean == '1'
+		if negated {
+			active = !active
+		}
+		return true, active
+	}
+	if clean.len > 0 && c_identifier_start(clean[0]) && c_header_struct_tag(clean) == clean {
+		known, mut active := c_header_objective_c_macro_state(clean, defined, undefined, uncertain,
+			strict_iso_mode, target)
+		if negated {
+			active = !active
+		}
+		return known, active
+	}
+	if !clean.starts_with('defined') || (clean.len > 'defined'.len && clean['defined'.len] != `(`
+		&& !clean['defined'.len].is_space()) {
+		return false, true
+	}
+	rest := clean['defined'.len..].trim_space()
+	mut macro_name := ''
+	if rest.starts_with('(') {
+		close := rest.index_u8(`)`)
+		if close < 0 || (close + 1 < rest.len && rest[close + 1..].trim_space().len > 0) {
+			return false, true
+		}
+		macro_name = rest[1..close].trim_space()
+	} else {
+		parts := rest.fields()
+		if parts.len != 1 {
+			return false, true
+		}
+		macro_name = parts[0]
+	}
+	if macro_name.len == 0 || c_header_struct_tag(macro_name) != macro_name {
+		return false, true
+	}
+	known, mut active := c_header_objective_c_macro_state(macro_name, defined, undefined,
+		uncertain, strict_iso_mode, target)
+	if negated {
+		active = !active
+	}
+	return known, active
 }
 
 fn c_header_text_has_objective_c_tokens(text string) bool {

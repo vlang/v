@@ -195,6 +195,10 @@ fn test_objective_c_header_detection() {
 	assert !c_header_text_needs_objective_c('#include <CoreFoundation/CFString.h>\n')
 	assert !c_header_text_needs_objective_c('#include <X11/Xlib.h>\n')
 	assert !c_header_text_needs_objective_c('// @interface CommentOnly\n/* @implementation CommentOnly\nid value = (__bridge id)pointer;\n#import <Cocoa/Cocoa.h>\n*/\nconst char *description = "@interface string only";\nconst char *cast = "__bridge";\n')
+	assert !c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\nid value = (__bridge id)pointer;\n#import <Cocoa/Cocoa.h>\n#endif\n')
+	assert !c_header_text_needs_objective_c('#ifdef __OBJC__\n@implementation Disabled\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\n#else\n@interface Enabled\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#ifdef COMPILER_MACRO\n@interface PossiblyEnabled\n@end\n#endif\n')
 	imports :=
 		c_header_objective_c_framework_imports('#ifdef _WIN32\n#include <windows.h>\n#endif\n#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>\n')
 	assert imports == '#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>'
