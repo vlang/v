@@ -8,6 +8,13 @@ import v.cflag
 import v.util
 import v.token
 
+const alias_unwrap_depth_cutoff_limit = 100
+const generic_inst_depth_cutoff_limit = 256
+const struct_fields_depth_cutoff_limit = 100
+const generic_fn_inst_cutoff_limit = 256
+const generic_inst_name_len_cutoff_limit = 1_024
+
+
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
@@ -1548,7 +1555,7 @@ pub fn (t &Table) fully_unaliased_type(typ Type) Type {
 	mut unaliased := typ
 	mut extra_flags := u32(typ) & 0xff00_0000
 	mut depth := 0
-	for depth < 100 {
+	for depth < alias_unwrap_depth_cutoff_limit {
 		sym := t.sym(unaliased)
 		if sym.info is Alias {
 			parent_typ := sym.info.parent_type
@@ -2308,6 +2315,9 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 		}
 	}
 	inst_name += ']'
+	if inst_name.len > generic_inst_name_len_cutoff_limit {
+		t.panic('generic instantiation name limit exceeded')
+	}
 	existing_idx := t.type_idxs[inst_name]
 	if existing_idx > 0 {
 		if t.type_symbols[existing_idx].kind == .placeholder {
@@ -2411,6 +2421,9 @@ pub fn (mut t Table) register_fn_generic_types(fn_name string) {
 }
 
 pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bool {
+	if t.fn_generic_types[fn_name].len > generic_fn_inst_cutoff_limit {
+		t.panic('generic function instantiation limit exceeded')
+	}
 	if types.len == 0 {
 		return false
 	}
@@ -4020,7 +4033,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 	mut nrt := ''
 	mut c_nrt := ''
 	mut new_depth_guard := []string{}
-	if depth_guard.len > 256 {
+	if depth_guard.len > generic_inst_depth_cutoff_limit {
 		t.panic('generic instantiation depth limit exceeded')
 	}
 	type_idx := typ.idx()
@@ -4054,7 +4067,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Chan {
-			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex_with_depth(ts.info.elem_type, generic_names, concrete_types, recheck_concrete_types, depth_guard)
 			idx := t.find_or_register_chan(unwrap_typ, unwrap_typ.nr_muls() > 0)
 			if idx <= 0 {
 				return typ
@@ -4092,8 +4105,8 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 					has_generic = true
 				}
 				if param.orig_typ.has_flag(.generic) || t.generic_type_names(param.orig_typ).len > 0 {
-					unwrapped_fn.params[i].orig_typ = t.unwrap_generic_type(param.orig_typ,
-						generic_names, concrete_types)
+					unwrapped_fn.params[i].orig_typ = t.unwrap_generic_type_ex_with_depth(param.orig_typ,
+						generic_names, concrete_types, recheck_concrete_types, depth_guard)
 				}
 			}
 			if unwrapped_fn.return_type.has_flag(.generic)
@@ -4139,8 +4152,8 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 					if !t_typ.has_flag(.generic) {
 						t_concrete_types << t_typ
 					} else {
-						t_concrete_types << t.unwrap_generic_type(t_typ, generic_names,
-							concrete_types)
+						t_concrete_types << t.unwrap_generic_type_ex_with_depth(t_typ, generic_names,
+							concrete_types, recheck_concrete_types, depth_guard)
 					}
 				}
 			}
@@ -4892,8 +4905,13 @@ fn (mut t Table) specialize_generic_fn_type_methods(parent_type Type, mut concre
 
 // generic struct instantiations to concrete types
 pub fn (mut t Table) generic_insts_to_concrete() {
+	mut cnt := 0
 	for mut sym in t.type_symbols {
 		if sym.kind == .generic_inst {
+			cnt++
+			if cnt > 100000 {
+				t.panic('generic_insts_to_concrete limit exceeded')
+			}
 			info := sym.info as GenericInst
 			if info.parent_idx <= 0 || info.parent_idx >= t.type_symbols.len {
 				continue
@@ -5045,6 +5063,22 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
 						mut variants := parent_info.variants.clone()
+						
+						// Prevent circular sum types from causing infinite loops
+						for variant in variants {
+							mut sym_name := t.sym(variant).name.trim_string_left(t.sym(variant).mod + '.')
+							if sym_name.contains('[') { sym_name = sym_name.all_before('[') }
+							else if sym_name.contains('<') { sym_name = sym_name.all_before('<') }
+							
+							mut parent_name := parent.name.trim_string_left(parent.mod + '.')
+							if parent_name.contains('[') { parent_name = parent_name.all_before('[') }
+							else if parent_name.contains('<') { parent_name = parent_name.all_before('<') }
+							
+							if sym_name == parent_name {
+								return // Abort early for this sum type
+							}
+						}
+						
 						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.convert_generic_type(fields[i].typ, generic_names,
