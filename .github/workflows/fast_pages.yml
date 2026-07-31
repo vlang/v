@@ -44,4 +44,4 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
