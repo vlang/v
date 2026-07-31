@@ -606,6 +606,15 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 						}
 					}
 				}
+				ast.MatchExpr {
+					// last stmt on block is: match .. { a { foo() } b { bar() } }
+					for mut branch in last_stmt.expr.branches {
+						if branch.stmts.len > 0 {
+							mut last_match_stmt := branch.stmts.last()
+							p.mark_last_call_return_as_used(mut last_match_stmt)
+						}
+					}
+				}
 				ast.InfixExpr {
 					if last_stmt.expr.or_block.stmts.len > 0 {
 						mut or_block_last_stmt := last_stmt.expr.or_block.stmts.last()
