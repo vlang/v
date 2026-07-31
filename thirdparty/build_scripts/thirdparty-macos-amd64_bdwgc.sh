@@ -42,7 +42,39 @@ export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.13}"
 ## the caller's rebuild-fingerprint check force a rebuild on a recipe
 ## change alone, e.g. a fixed configure flag, even when bdwgc/
 ## libatomic_ops/TinyCC haven't moved.
-export RECIPE_VERSION="${RECIPE_VERSION:-1}"
+export RECIPE_VERSION="${RECIPE_VERSION:-2}"
+
+clone_with_retry() {
+  local repo_url=$1
+  local target_dir=$2
+  local attempt
+  local delay
+
+  case "$target_dir" in
+    ''|.|..|/*|*/*)
+      echo "::error::refusing unsafe clone target '$target_dir'" >&2
+      return 1
+      ;;
+  esac
+
+  rm -rf -- "$target_dir"
+  for attempt in 1 2 3; do
+    if git clone "$repo_url" "$target_dir"; then
+      return 0
+    fi
+
+    rm -rf -- "$target_dir"
+    if [ "$attempt" -lt 3 ]; then
+      delay=$((attempt * 5))
+      echo "clone of $repo_url failed (attempt $attempt/3); retrying in ${delay}s" >&2
+      sleep "$delay"
+    fi
+  done
+
+  echo "::error::failed to clone $repo_url into $target_dir after 3 attempts" >&2
+  return 1
+}
+
 mkdir -p $TCC_FOLDER/lib/
 
 echo "                      CC: $CC"
@@ -61,10 +93,8 @@ echo ===============================================================
 ## staging the new build's output below.
 rm -f $TCC_FOLDER/lib/libgc*.dylib $TCC_FOLDER/lib/libgc*.a $TCC_FOLDER/lib/libgc.la $TCC_FOLDER/lib/libgc.lai
 
-rm -rf bdwgc/
-
 pushd .
-git clone https://github.com/ivmai/bdwgc
+clone_with_retry https://github.com/ivmai/bdwgc bdwgc
 cd bdwgc/
 
 git checkout $LIBGC_COMMIT
@@ -75,7 +105,7 @@ export LIBGC_COMMIT_FULL_HASH=$(git rev-parse HEAD)
 ## whatever HEAD it happened to land on, which could silently disagree
 ## with whatever hash the caller's rebuild-fingerprint check resolved
 ## and recorded moments earlier.
-git clone https://github.com/bdwgc/libatomic_ops
+clone_with_retry https://github.com/bdwgc/libatomic_ops libatomic_ops
 git -C libatomic_ops checkout $LIBATOMIC_OPS_COMMIT
 export LIBATOMIC_OPS_COMMIT_FULL_HASH=$(git -C libatomic_ops rev-parse HEAD)
 
