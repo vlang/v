@@ -501,17 +501,12 @@ fn trim_attr_arg(arg string) string {
 
 fn is_sql_expr(val string) bool {
 	// Function calls like gen_random_uuid(), NOW(), etc.
+	// Written as @[default: 'gen_random_uuid()'] — we detect the parens
+	// and treat it as a raw SQL expression rather than a string literal.
 	if val.contains('(') && val.ends_with(')') {
 		return true
 	}
-	// SQL keywords/constants: all uppercase, digits, and underscores
-	// e.g. CURRENT_TIME, CURRENT_DATE, CURRENT_TIMESTAMP
-	for ch in val {
-		if (ch < `A` || ch > `Z`) && (ch < `0` || ch > `9`) && ch != `_` {
-			return false
-		}
-	}
-	return val.len > 0
+	return false
 }
 
 fn tenant_filter_array_primitive_type[T](value []T) int {

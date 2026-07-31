@@ -17,9 +17,9 @@ struct TestCustomSqlType {
 struct TestDefaultAttribute {
 	id          string @[primary; sql: serial]
 	name        string
-	created_at  ?string @[default: 'CURRENT_TIME']
-	created_at1 ?string @[default: 'CURRENT_DATE']
-	created_at2 ?string @[default: 'CURRENT_TIMESTAMP']
+	created_at  ?string @[default: CURRENT_TIME]
+	created_at1 ?string @[default: CURRENT_DATE]
+	created_at2 ?string @[default: CURRENT_TIMESTAMP]
 }
 
 struct TestDurationAlias {
