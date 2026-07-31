@@ -61,6 +61,24 @@ DECLARE_TYPE(Item);
 	assert !unknown_complete
 }
 
+fn test_macro_identifiers_referencing_static_helpers() {
+	wrappers := c_sources_macro_identifiers_referencing([
+		'#define CALL_HELPER() helper()
+#define CALL_OUTER() CALL_HELPER()
+#define COMMENT_ONLY() /* helper() */
+#define STRING_ONLY() "helper"
+',
+		'#define CROSS_FILE() CALL_OUTER()',
+	], {
+		'helper': true
+	})
+	assert wrappers['CALL_HELPER']
+	assert wrappers['CALL_OUTER']
+	assert wrappers['CROSS_FILE']
+	assert !wrappers['COMMENT_ONLY']
+	assert !wrappers['STRING_ONLY']
+}
+
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	details := SourceSignatureDetails{
 		signature:  'content-signature'

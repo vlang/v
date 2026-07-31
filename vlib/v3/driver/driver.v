@@ -7696,6 +7696,18 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 	} else {
 		cache_state_module_name(state, raw_module_name) or { return false }
 	}
+	mut exposed_identifiers := identifiers.clone()
+	owner_paths := state.module_external_inputs[raw_module_name] or { []string{} }
+	mut owner_sources := []string{cap: owner_paths.len}
+	for path in owner_paths {
+		owner_sources << os.read_file(path) or { continue }
+	}
+	for identifier, present in modulecache.c_sources_macro_identifiers_referencing(owner_sources,
+		exposed_identifiers) {
+		if present {
+			exposed_identifiers[identifier] = true
+		}
+	}
 	mut scanned_paths := map[string]bool{}
 	for sibling_raw_module_name, paths in state.module_external_inputs {
 		sibling_module := if sibling_raw_module_name == 'main' {
@@ -7708,7 +7720,7 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 		}
 		for path in paths {
 			source := os.read_file(path) or { continue }
-			if c_source_references_identifiers(source, identifiers) {
+			if c_source_references_identifiers(source, exposed_identifiers) {
 				return false
 			}
 		}
@@ -7719,7 +7731,7 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 			scanned_paths[real_path] = true
 			file_source := os.read_file(real_path) or { continue }
 			for identifier in v_c_identifiers(file_source) {
-				if identifiers[identifier] {
+				if exposed_identifiers[identifier] {
 					return false
 				}
 			}
@@ -7735,7 +7747,7 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 			scanned_paths[real_path] = true
 			file_source := os.read_file(real_path) or { continue }
 			for identifier in v_c_identifiers(file_source) {
-				if identifiers[identifier] {
+				if exposed_identifiers[identifier] {
 					return false
 				}
 			}
@@ -7771,7 +7783,7 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 		}
 		file_source := os.read_file(real_path) or { continue }
 		for identifier in v_c_identifiers(file_source) {
-			if identifiers[identifier] {
+			if exposed_identifiers[identifier] {
 				return false
 			}
 		}

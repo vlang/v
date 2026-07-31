@@ -2732,6 +2732,105 @@ fn c_type_declaration_macro_names(source string) map[string]bool {
 	return type_macros
 }
 
+// c_sources_macro_identifiers_referencing returns macro names whose replacements
+// directly or transitively reference one of the supplied identifiers.
+pub fn c_sources_macro_identifiers_referencing(sources []string, identifiers map[string]bool) map[string]bool {
+	mut replacements := map[string][]string{}
+	for source in sources {
+		for name, bodies in c_source_macro_replacements(source) {
+			replacements[name] << bodies
+		}
+	}
+	mut reachable := identifiers.clone()
+	mut result := map[string]bool{}
+	for _ in 0 .. replacements.len {
+		mut changed := false
+		for name, bodies in replacements {
+			if reachable[name] {
+				continue
+			}
+			for body in bodies {
+				if c_macro_replacement_references_identifiers(body, reachable) {
+					reachable[name] = true
+					result[name] = true
+					changed = true
+					break
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return result
+}
+
+fn c_source_macro_replacements(source string) map[string][]string {
+	mut replacements := map[string][]string{}
+	mut directive := strings.new_builder(128)
+	for raw_line in source.split_into_lines() {
+		if directive.len == 0 && !raw_line.trim_space().starts_with('#') {
+			continue
+		}
+		directive.writeln(raw_line)
+		if c_preprocessor_line_continues(raw_line) {
+			continue
+		}
+		clean := directive.str().trim_space()
+		directive.clear()
+		if clean.len < 2 || clean[0] != `#` {
+			continue
+		}
+		body := clean[1..].trim_space()
+		if body.len <= 'define'.len || !body.starts_with('define') || !body['define'.len].is_space() {
+			continue
+		}
+		definition := body['define'.len..].trim_left(' \t')
+		mut name_end := 0
+		for name_end < definition.len && c_generated_identifier_byte(definition[name_end]) {
+			name_end++
+		}
+		if name_end == 0 {
+			continue
+		}
+		name := definition[..name_end]
+		mut replacement_start := name_end
+		if replacement_start < definition.len && definition[replacement_start] == `(` {
+			mut depth := 0
+			for replacement_start < definition.len {
+				if definition[replacement_start] == `(` {
+					depth++
+				} else if definition[replacement_start] == `)` {
+					depth--
+					if depth == 0 {
+						replacement_start++
+						break
+					}
+				}
+				replacement_start++
+			}
+		}
+		replacement := if replacement_start < definition.len {
+			definition[replacement_start..].trim_left(' \t')
+		} else {
+			''
+		}
+		mut bodies := replacements[name]
+		bodies << replacement
+		replacements[name] = bodies
+	}
+	return replacements
+}
+
+fn c_macro_replacement_references_identifiers(replacement string, identifiers map[string]bool) bool {
+	for identifier, present in identifiers {
+		if present && c_code_contains_identifier(replacement, identifier) {
+			return true
+		}
+	}
+	return false
+}
+
 fn c_declaration_macro_invocation_name(item string, has_brace bool) ?string {
 	if has_brace {
 		return none

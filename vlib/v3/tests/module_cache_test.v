@@ -1150,6 +1150,54 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
 }
 
+fn test_static_helper_exposed_by_owner_macro_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_owner_macro_static_helper_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/native.h', 'static int v3_owner_macro_helper(void) {
+	return 42;
+}
+
+#define v3_call_owner_macro_helper() v3_owner_macro_helper()
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/native.h"
+
+pub fn marker() {}
+')
+	write_module_cache_file(root, 'sibling/sibling.v', 'module sibling
+
+import owner
+
+fn C.v3_call_owner_macro_helper() int
+
+pub fn value() int {
+	owner.marker()
+	return C.v3_call_owner_macro_helper()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import sibling
+
+fn main() {
+	println(sibling.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
+	assert module_cache_artifact(cache_dir, 'sibling_', '.o').len == 0
+}
+
 fn test_static_helper_used_by_sibling_native_input_disables_module_cache_split() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(),

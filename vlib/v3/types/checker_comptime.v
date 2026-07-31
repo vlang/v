@@ -10232,6 +10232,13 @@ fn (tc &TypeChecker) lock_object_unstable_dependency(id flat.NodeId) ?flat.NodeI
 	if node.kind == .call {
 		return id
 	}
+	if node.kind == .index && node.children_count > 0 {
+		base_id := tc.a.child(node, 0)
+		base_type := tc.cached_expr_type(base_id) or { tc.resolve_type(base_id) }
+		if _ := tc.index_overload_call_info(base_type, false) {
+			return id
+		}
+	}
 	for i in 0 .. node.children_count {
 		if unstable_id := tc.lock_object_unstable_dependency(tc.a.child(node, i)) {
 			return unstable_id

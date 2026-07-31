@@ -817,6 +817,13 @@ fn test_nested_shared_field_lock_rejects_call_base() {
 		'selector bases and indices must be stable expressions')
 }
 
+fn test_nested_shared_field_lock_rejects_overloaded_index() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_overloaded_index',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Registry {\n\tentries []&Coordinator\n}\n\nfn (registry Registry) [] (key int) &Coordinator {\n\treturn registry.entries[key]\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tmut registry := Registry{\n\t\tentries: [&coordinator]\n\t}\n\tkey := 0\n\tlock registry[key].state {\n\t\tregistry[key].state.value = 7\n\t}\n}\n',
+		'selector bases and indices must be stable expressions')
+}
+
 fn test_reassigned_nil_pointer_can_be_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'reassigned_nil_pointer',
