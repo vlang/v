@@ -37,7 +37,7 @@ jobs:
           chmod -R a+rX _site
           /usr/bin/tar -C _site -cvf "$RUNNER_TEMP/artifact.tar" .
       - name: Upload Pages artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: github-pages
           path: ${{ runner.temp }}/artifact.tar
