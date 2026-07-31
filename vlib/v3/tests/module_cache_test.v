@@ -1131,7 +1131,7 @@ fn C.v3_macro_helper() int
 
 pub fn value() int {
 	owner.marker()
-	return C.v3_macro_helper()
+	return C /* selector comment */ . v3_macro_helper()
 }
 ')
 	main_file := os.join_path(root, 'main.v')

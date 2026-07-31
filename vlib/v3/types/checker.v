@@ -430,7 +430,7 @@ mut:
 	locked_shared_names                      map[string]int
 	locked_shared_modes                      map[string][]u8
 	locked_shared_base_names                 map[string]string
-	pointer_alias_owner_keys                 map[string]string
+	pointer_binding_value_keys               map[string]string
 	immutable_reference_aliases              map[string]bool
 	unsafe_reference_alias_owners            map[string]bool
 	unsafe_alias_break_states                [][]map[string]bool
@@ -464,7 +464,7 @@ fn new_function_check_context() FunctionCheckContext {
 		locked_shared_names:               map[string]int{}
 		locked_shared_modes:               map[string][]u8{}
 		locked_shared_base_names:          map[string]string{}
-		pointer_alias_owner_keys:          map[string]string{}
+		pointer_binding_value_keys:        map[string]string{}
 		immutable_reference_aliases:       map[string]bool{}
 		unsafe_reference_alias_owners:     map[string]bool{}
 		closure_forbidden_captures:        map[string]bool{}
@@ -494,7 +494,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		locked_shared_names:                      src.locked_shared_names.clone()
 		locked_shared_modes:                      src.locked_shared_modes.clone()
 		locked_shared_base_names:                 src.locked_shared_base_names.clone()
-		pointer_alias_owner_keys:                 src.pointer_alias_owner_keys.clone()
+		pointer_binding_value_keys:               src.pointer_binding_value_keys.clone()
 		immutable_reference_aliases:              src.immutable_reference_aliases.clone()
 		unsafe_reference_alias_owners:            src.unsafe_reference_alias_owners.clone()
 		unsafe_alias_break_states:                clone_unsafe_alias_break_states(src.unsafe_alias_break_states)

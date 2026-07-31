@@ -7844,20 +7844,68 @@ fn c_source_references_identifiers(source string, identifiers map[string]bool) b
 fn v_c_identifiers(source string) []string {
 	mut identifiers := []string{}
 	mut i := 0
-	for i + 2 < source.len {
-		if source[i] != `C` || source[i + 1] != `.` || (!source[i + 2].is_letter()
-			&& source[i + 2] != `_`) {
+	for i < source.len {
+		i = v_skip_space_and_comments(source, i)
+		if i >= source.len {
+			break
+		}
+		if !source[i].is_letter() && source[i] != `_` {
 			i++
 			continue
 		}
-		i += 2
-		start := i
+		token_start := i
+		i++
 		for i < source.len && (source[i].is_alnum() || source[i] == `_`) {
 			i++
 		}
-		identifiers << source[start..i]
+		if source[token_start..i] != 'C' {
+			continue
+		}
+		mut selector_pos := v_skip_space_and_comments(source, i)
+		if selector_pos >= source.len || source[selector_pos] != `.` {
+			continue
+		}
+		selector_pos = v_skip_space_and_comments(source, selector_pos + 1)
+		if selector_pos >= source.len
+			|| (!source[selector_pos].is_letter() && source[selector_pos] != `_`) {
+			continue
+		}
+		i = selector_pos + 1
+		for i < source.len && (source[i].is_alnum() || source[i] == `_`) {
+			i++
+		}
+		identifiers << source[selector_pos..i]
 	}
 	return identifiers
+}
+
+fn v_skip_space_and_comments(source string, start int) int {
+	mut i := start
+	for i < source.len {
+		for i < source.len && source[i].is_space() {
+			i++
+		}
+		if i + 1 >= source.len || source[i] != `/` {
+			break
+		}
+		if source[i + 1] == `/` {
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if source[i + 1] == `*` {
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			i = int_min(i + 2, source.len)
+			continue
+		}
+		break
+	}
+	return i
 }
 
 fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string) string {

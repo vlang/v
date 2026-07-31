@@ -20,3 +20,14 @@ fn test_c_source_references_identifiers_ignores_comments_strings_and_longer_name
 	assert !c_source_references_identifiers('// local_helper()\n/* local_helper */\nconst char *name = "local_helper";\nint local_helper_extra(void);\n',
 		identifiers)
 }
+
+fn test_v_c_identifiers_accepts_spaced_and_commented_selectors() {
+	assert v_c_identifiers('C /* selector */ . helper()\nC\n.\nother()\nC // line comment\n. line_helper()') == [
+		'helper',
+		'other',
+		'line_helper',
+	]
+	assert v_c_identifiers('// C.fake()\nC.real_value') == [
+		'real_value',
+	]
+}

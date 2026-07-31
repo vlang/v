@@ -3893,11 +3893,37 @@ fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefi
 }
 
 fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
-	mut clean := raw.trim_space()
+	mut clean := c_header_condition_without_outer_parens(raw.trim_space())
+	or_parts := c_header_condition_top_level_parts(clean, '||')
+	if or_parts.len > 1 {
+		mut all_known := true
+		for part in or_parts {
+			known, active := c_header_objective_c_condition_state(part, defined, undefined,
+				uncertain, strict_iso_mode, target)
+			if known && active {
+				return true, true
+			}
+			all_known = all_known && known
+		}
+		return if all_known { true, false } else { false, true }
+	}
+	and_parts := c_header_condition_top_level_parts(clean, '&&')
+	if and_parts.len > 1 {
+		mut all_known := true
+		for part in and_parts {
+			known, active := c_header_objective_c_condition_state(part, defined, undefined,
+				uncertain, strict_iso_mode, target)
+			if known && !active {
+				return true, false
+			}
+			all_known = all_known && known
+		}
+		return if all_known { true, true } else { false, true }
+	}
 	mut negated := false
-	if clean.starts_with('!') {
-		negated = true
-		clean = clean[1..].trim_space()
+	for clean.starts_with('!') {
+		negated = !negated
+		clean = c_header_condition_without_outer_parens(clean[1..].trim_space())
 	}
 	if clean in ['0', '1'] {
 		mut active := clean == '1'
@@ -3942,6 +3968,72 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		active = !active
 	}
 	return known, active
+}
+
+fn c_header_condition_without_outer_parens(expression string) string {
+	mut clean := expression.trim_space()
+	for clean.len >= 2 && clean[0] == `(` && clean[clean.len - 1] == `)` {
+		mut depth := 0
+		mut closes_at_end := false
+		for i, c in clean.bytes() {
+			if c == `(` {
+				depth++
+			} else if c == `)` {
+				depth--
+				if depth == 0 {
+					closes_at_end = i == clean.len - 1
+					break
+				}
+			}
+		}
+		if !closes_at_end {
+			break
+		}
+		clean = clean[1..clean.len - 1].trim_space()
+	}
+	return clean
+}
+
+fn c_header_condition_top_level_parts(expression string, operator string) []string {
+	if operator.len != 2 {
+		return [expression]
+	}
+	mut parts := []string{}
+	mut depth := 0
+	mut start := 0
+	mut i := 0
+	for i + 1 < expression.len {
+		if expression[i] == `(` {
+			depth++
+			i++
+			continue
+		}
+		if expression[i] == `)` {
+			depth--
+			i++
+			continue
+		}
+		if depth == 0 && expression[i..i + 2] == operator {
+			part := expression[start..i].trim_space()
+			if part.len == 0 {
+				return [expression]
+			}
+			parts << part
+			i += 2
+			start = i
+			continue
+		}
+		i++
+	}
+	if parts.len == 0 {
+		return [expression]
+	}
+	last := expression[start..].trim_space()
+	if last.len == 0 {
+		return [expression]
+	}
+	parts << last
+	return parts
 }
 
 fn c_header_text_has_objective_c_tokens(text string) bool {

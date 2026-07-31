@@ -10316,7 +10316,7 @@ fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId, use_owner_ident
 		.ident {
 			if use_owner_identity {
 				owner := tc.cur_scope.lookup_owner(node.value) or { return '' }
-				owner_key := tc.pointer_alias_owner_key(owner.storage_key())
+				owner_key := tc.pointer_binding_value_key(owner.storage_key())
 				return if owner_key.len > 0 { '@owner:${owner_key}' } else { '' }
 			}
 			return node.value
@@ -14125,34 +14125,27 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 	if unalias_type(typ) !is Pointer {
 		return
 	}
-	rhs := tc.a.node(tc.unwrap_paren_expr_id(rhs_id))
-	if rhs.kind != .ident || rhs.value == '_' {
-		return
-	}
-	rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return }
 	left_key := owner.storage_key()
-	right_key := rhs_owner.storage_key()
-	if left_key.len == 0 || right_key.len == 0 {
+	if left_key.len == 0 {
 		return
 	}
-	left_root := tc.pointer_alias_owner_key(left_key)
-	right_root := tc.pointer_alias_owner_key(right_key)
-	if left_root != right_root {
-		tc.fn_context.pointer_alias_owner_keys[left_root] = right_root
+	clean_rhs_id := tc.unwrap_paren_expr_id(rhs_id)
+	rhs := tc.a.node(clean_rhs_id)
+	if rhs.kind == .ident && rhs.value != '_' {
+		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return }
+		right_key := rhs_owner.storage_key()
+		if right_key.len > 0 {
+			tc.fn_context.pointer_binding_value_keys[left_key] =
+				tc.pointer_binding_value_key(right_key)
+			return
+		}
 	}
+	// A non-copy assignment creates a new pointer value and detaches this binding's old aliases.
+	tc.fn_context.pointer_binding_value_keys[left_key] = '@value:${int(clean_rhs_id)}'
 }
 
-fn (tc &TypeChecker) pointer_alias_owner_key(key string) string {
-	mut current := key
-	mut seen := map[string]bool{}
-	for _ in 0 .. tc.fn_context.pointer_alias_owner_keys.len + 1 {
-		if current.len == 0 || seen[current] {
-			break
-		}
-		seen[current] = true
-		current = tc.fn_context.pointer_alias_owner_keys[current] or { return current }
-	}
-	return current
+fn (tc &TypeChecker) pointer_binding_value_key(key string) string {
+	return tc.fn_context.pointer_binding_value_keys[key] or { key }
 }
 
 fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback map[string]bool) map[string]bool {
