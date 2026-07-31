@@ -7,7 +7,16 @@ import v3.flat
 import v3.token
 import v3.util
 
-const pointer_binding_unknown_value_key = '@unknown'
+const pointer_binding_unknown_value_prefix = '@unknown:'
+const pointer_binding_parameter_value_prefix = '@parameter:'
+
+fn pointer_binding_unknown_value(storage_key string) string {
+	return '${pointer_binding_unknown_value_prefix}${storage_key}'
+}
+
+fn pointer_binding_parameter_value(storage_key string) string {
+	return '${pointer_binding_parameter_value_prefix}${storage_key}'
+}
 
 fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if loop_kind == 'values' {
@@ -10452,9 +10461,19 @@ fn locked_shared_base_keys_may_alias(left string, right string) bool {
 	if left.len == 0 || right.len == 0 {
 		return false
 	}
-	unknown_owner := '@owner:${pointer_binding_unknown_value_key}'
-	if left.starts_with(unknown_owner) || right.starts_with(unknown_owner) {
-		return true
+	unknown_owner_prefix := '@owner:${pointer_binding_unknown_value_prefix}'
+	parameter_owner_prefix := '@owner:${pointer_binding_parameter_value_prefix}'
+	left_unknown := left.starts_with(unknown_owner_prefix)
+	right_unknown := right.starts_with(unknown_owner_prefix)
+	left_parameter := left.starts_with(parameter_owner_prefix)
+	right_parameter := right.starts_with(parameter_owner_prefix)
+	if left_unknown || right_unknown || (left_parameter && right_parameter) {
+		left_suffix := locked_shared_owner_path_suffix(left) or { return false }
+		right_suffix := locked_shared_owner_path_suffix(right) or { return false }
+		return locked_shared_base_keys_may_alias('@path${left_suffix}', '@path${right_suffix}')
+	}
+	if left_parameter || right_parameter {
+		return false
 	}
 	mut left_pos := 0
 	mut right_pos := 0
@@ -10487,6 +10506,17 @@ fn locked_shared_base_keys_may_alias(left string, right string) bool {
 		right_pos++
 	}
 	return left_pos == left.len && right_pos == right.len
+}
+
+fn locked_shared_owner_path_suffix(key string) ?string {
+	if !key.starts_with('@owner:') {
+		return none
+	}
+	mut pos := '@owner:'.len
+	for pos < key.len && key[pos] !in [`.`, `[`] {
+		pos++
+	}
+	return key[pos..]
 }
 
 fn (tc &TypeChecker) shared_lock_key(id flat.NodeId) string {
@@ -14249,6 +14279,16 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 				return
 			}
 		}
+		if target.kind == .struct_init {
+			tc.fn_context.pointer_binding_value_keys[left_key] = [
+				'@value:${int(clean_rhs_id)}',
+			]
+		} else {
+			tc.fn_context.pointer_binding_value_keys[left_key] = [
+				pointer_binding_unknown_value(left_key),
+			]
+		}
+		return
 	}
 	if rhs.kind == .ident && rhs.value != '_' {
 		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return }
@@ -14259,16 +14299,15 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 			return
 		}
 	}
-	if rhs.kind in [.call, .selector, .index] {
-		// A pointer read through arbitrary code or storage may be any existing pointer value.
+	if rhs.kind == .nil_literal {
 		tc.fn_context.pointer_binding_value_keys[left_key] = [
-			pointer_binding_unknown_value_key,
+			'@value:${int(clean_rhs_id)}',
 		]
 		return
 	}
-	// A non-copy assignment creates a new pointer value and detaches this binding's old aliases.
+	// Any other pointer-producing expression may return or select an existing pointer.
 	tc.fn_context.pointer_binding_value_keys[left_key] = [
-		'@value:${int(clean_rhs_id)}',
+		pointer_binding_unknown_value(left_key),
 	]
 }
 
