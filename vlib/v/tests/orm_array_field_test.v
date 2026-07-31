@@ -7,8 +7,8 @@ struct TaskMetadata {
 	task_id    string
 	key        string
 	value      string
-	created_at time.Time @[default: 'CURRENT_TIME']
-	updated_at time.Time @[default: 'CURRENT_TIME']
+	created_at time.Time @[default: CURRENT_TIME]
+	updated_at time.Time @[default: CURRENT_TIME]
 }
 
 @[table: 'tasks']
