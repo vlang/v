@@ -1709,12 +1709,16 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			}
 		}
 		unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_state :=
+			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		$if ownership ? {
 			tc.ownership_check_defer_stmt(id, node)
 		} $else {
 			tc.check_defer_stmt(node)
 		}
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
+		tc.fn_context.pointer_binding_value_keys =
+			clone_pointer_binding_value_keys(pointer_alias_state)
 		return
 	}
 	if node.kind == .spawn_expr {
@@ -10425,7 +10429,7 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []strin
 				return []string{}
 			}
 			mut keys := []string{}
-			for base in tc.locked_shared_base_owner_alias_keys(tc.a.child(node, 0)) {
+			for base in tc.locked_shared_base_owner_alias_keys_for_base(tc.a.child(node, 0)) {
 				keys << '${base}.${node.value}'
 			}
 			return keys
@@ -10442,7 +10446,7 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []strin
 				'*'
 			}
 			mut keys := []string{}
-			for base in tc.locked_shared_base_owner_alias_keys(tc.a.child(node, 0)) {
+			for base in tc.locked_shared_base_owner_alias_keys_for_base(tc.a.child(node, 0)) {
 				keys << '${base}[${index_key}]'
 			}
 			return keys
@@ -10455,6 +10459,24 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []strin
 		else {}
 	}
 	return []string{}
+}
+
+fn (tc &TypeChecker) locked_shared_base_owner_alias_keys_for_base(id flat.NodeId) []string {
+	clean_id := tc.unwrap_paren_expr_id(id)
+	if !tc.valid_node_id(clean_id) {
+		return []string{}
+	}
+	node := tc.a.node(clean_id)
+	if node.kind != .ident {
+		base_type := tc.cached_expr_type(clean_id) or { tc.resolve_type(clean_id) }
+		if unalias_type(base_type) is Pointer {
+			boundary_key := pointer_binding_unknown_value('@node:${int(clean_id)}')
+			return [
+				'@owner:${boundary_key}',
+			]
+		}
+	}
+	return tc.locked_shared_base_owner_alias_keys(clean_id)
 }
 
 fn locked_shared_base_keys_may_alias(left string, right string) bool {
