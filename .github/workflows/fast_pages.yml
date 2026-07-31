@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir -p _site
           rsync -aL --exclude='.git' --exclude='.github' site/ _site/
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - name: Archive Pages artifact
         run: |
           chmod -R a+rX _site
