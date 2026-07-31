@@ -1091,7 +1091,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				mut files := []string{}
 				if c_collect_external_input_tree(path, vroot, include_dirs, mut active_paths, mut
 					collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
-					resolution_dirs, mut missing_resolution_paths)
+					resolution_dirs, mut missing_resolution_paths, false)
 				{
 					has_untracked_include = true
 				}
@@ -1156,7 +1156,7 @@ fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[str
 			}
 			if c_collect_external_input_tree(path, '', include_dirs, mut active_paths, mut
 				collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
-				resolution_dirs, mut missing_resolution_paths)
+				resolution_dirs, mut missing_resolution_paths, false)
 			{
 				has_untracked_include = true
 			}
@@ -1252,7 +1252,7 @@ mut:
 	ambiguous bool
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, ambient_ambiguous bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
 	}
@@ -1315,8 +1315,8 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			continue
 		}
 		if directive_name !in ['include', 'import'] {
-			c_record_include_macro_definition(clean, conditionals.any(it.ambiguous), mut
-				include_macros, mut dynamic_include_macros)
+			c_record_include_macro_definition(clean, ambient_ambiguous
+				|| conditionals.any(it.ambiguous), mut include_macros, mut dynamic_include_macros)
 			continue
 		}
 		mut include_args := [c_include_arg(c_directive_arg(clean), vroot, real_path)]
@@ -1345,9 +1345,11 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 				if !os.is_file(nested_path) {
 					continue
 				}
+				nested_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
 				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut
 					active_paths, mut collected_paths, mut files, mut include_macros, mut
-					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths)
+					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths,
+					nested_ambiguous)
 				{
 					has_untracked_include = true
 				}

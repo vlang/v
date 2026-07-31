@@ -520,6 +520,47 @@ fn test_cache_input_scan_keeps_unknown_macro_branches_and_bare_defines() {
 	assert os.real_path(disabled_header) !in inputs['sample']
 }
 
+fn test_cache_input_scan_propagates_ambiguity_into_recursive_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_recursive_ambiguous_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	choose_a_header := os.join_path(dir, 'choose_a.h')
+	choose_b_header := os.join_path(dir, 'choose_b.h')
+	types_a_header := os.join_path(dir, 'types_a.h')
+	types_b_header := os.join_path(dir, 'types_b.h')
+	os.write_file(outer_header, '#ifdef __LINE__
+#include "choose_a.h"
+#else
+#include "choose_b.h"
+#endif
+#include V3_RECURSIVE_TYPES
+') or {
+		panic(err)
+	}
+	os.write_file(choose_a_header, '#define V3_RECURSIVE_TYPES "types_a.h"\n') or { panic(err) }
+	os.write_file(choose_b_header, '#define V3_RECURSIVE_TYPES "types_b.h"\n') or { panic(err) }
+	os.write_file(types_a_header, '#define V3_RECURSIVE_TYPE_A 1\n') or { panic(err) }
+	os.write_file(types_b_header, '#define V3_RECURSIVE_TYPE_B 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(choose_a_header),
+		os.real_path(choose_b_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+}
+
 fn test_cache_input_scan_rejects_dynamic_include_macros() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_dynamic_macro_cache_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}

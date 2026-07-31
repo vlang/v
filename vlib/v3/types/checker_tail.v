@@ -942,8 +942,11 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 			id, tc.a.node(id).pos)
 		return
 	}
-	alias_key := tc.locked_shared_base_alias_key(id)
-	if alias_key.len > 0 {
+	alias_keys := [tc.locked_shared_base_alias_key(id), tc.locked_shared_base_owner_alias_key(id)]
+	for alias_key in alias_keys {
+		if alias_key.len == 0 {
+			continue
+		}
 		for locked_key, lock_name in tc.fn_context.locked_shared_base_names {
 			if locked_key != key && locked_shared_base_keys_may_alias(locked_key, alias_key) {
 				source := tc.source_text_for_node(id)

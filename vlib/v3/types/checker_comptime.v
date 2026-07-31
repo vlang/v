@@ -10263,7 +10263,8 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 	}
 	key := tc.expr_key(id)
 	alias_key := tc.locked_shared_base_alias_key(id)
-	for dependency_key in [key, alias_key] {
+	owner_alias_key := tc.locked_shared_base_owner_alias_key(id)
+	for dependency_key in [key, alias_key, owner_alias_key] {
 		if dependency_key.len > 0 && dependency_key !in tc.fn_context.locked_shared_base_names {
 			tc.fn_context.locked_shared_base_names[dependency_key] = lock_name
 			added_keys << dependency_key
@@ -10299,19 +10300,32 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 }
 
 fn (tc &TypeChecker) locked_shared_base_alias_key(id flat.NodeId) string {
+	return tc.locked_shared_base_path_key(id, false)
+}
+
+fn (tc &TypeChecker) locked_shared_base_owner_alias_key(id flat.NodeId) string {
+	return tc.locked_shared_base_path_key(id, true)
+}
+
+fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId, use_owner_identity bool) string {
 	if !tc.valid_node_id(id) {
 		return ''
 	}
 	node := tc.a.node(id)
 	match node.kind {
 		.ident {
+			if use_owner_identity {
+				owner := tc.cur_scope.lookup_owner(node.value) or { return '' }
+				owner_key := tc.pointer_alias_owner_key(owner.storage_key())
+				return if owner_key.len > 0 { '@owner:${owner_key}' } else { '' }
+			}
 			return node.value
 		}
 		.selector {
 			if node.children_count == 0 {
 				return ''
 			}
-			base := tc.locked_shared_base_alias_key(tc.a.child(node, 0))
+			base := tc.locked_shared_base_path_key(tc.a.child(node, 0), use_owner_identity)
 			if base.len > 0 && node.value.len > 0 {
 				return '${base}.${node.value}'
 			}
@@ -10320,7 +10334,7 @@ fn (tc &TypeChecker) locked_shared_base_alias_key(id flat.NodeId) string {
 			if node.children_count < 2 {
 				return ''
 			}
-			base := tc.locked_shared_base_alias_key(tc.a.child(node, 0))
+			base := tc.locked_shared_base_path_key(tc.a.child(node, 0), use_owner_identity)
 			if base.len == 0 {
 				return ''
 			}
@@ -10335,7 +10349,7 @@ fn (tc &TypeChecker) locked_shared_base_alias_key(id flat.NodeId) string {
 		}
 		.paren, .prefix {
 			if node.children_count > 0 {
-				return tc.locked_shared_base_alias_key(tc.a.child(node, 0))
+				return tc.locked_shared_base_path_key(tc.a.child(node, 0), use_owner_identity)
 			}
 		}
 		else {}
@@ -11474,6 +11488,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		owner := tc.insert_decl_lhs(lhs_id, expected, tc.decl_lhs_is_mut(node, lhs_id))
+		tc.record_pointer_binding_alias(owner, rhs_id, expected)
 		if owner.storage_key().len > 0 && unalias_type(expected) is Map
 			&& tc.expr_is_unsafe_reference_alias(rhs_id) {
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
@@ -14047,6 +14062,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.track_variadic_fn_value_local(lhs_id, rhs_id)
 		}
 		tc.update_unsafe_reference_alias_assignment(lhs_id, rhs_id, expected_type, node.op)
+		tc.update_pointer_binding_alias_assignment(lhs_id, rhs_id, expected_type, node.op)
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
 			lhs := tc.a.node(lhs_id)
@@ -14091,6 +14107,52 @@ fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.Nod
 	} else {
 		tc.fn_context.unsafe_reference_alias_owners.delete(key)
 	}
+}
+
+fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op) {
+	if op != .assign || unalias_type(lhs_type) !is Pointer {
+		return
+	}
+	lhs := tc.a.node(tc.unwrap_paren_expr_id(lhs_id))
+	if lhs.kind != .ident || lhs.value == '_' {
+		return
+	}
+	owner := tc.cur_scope.lookup_owner(lhs.value) or { return }
+	tc.record_pointer_binding_alias(owner, rhs_id, lhs_type)
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rhs_id flat.NodeId, typ Type) {
+	if unalias_type(typ) !is Pointer {
+		return
+	}
+	rhs := tc.a.node(tc.unwrap_paren_expr_id(rhs_id))
+	if rhs.kind != .ident || rhs.value == '_' {
+		return
+	}
+	rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return }
+	left_key := owner.storage_key()
+	right_key := rhs_owner.storage_key()
+	if left_key.len == 0 || right_key.len == 0 {
+		return
+	}
+	left_root := tc.pointer_alias_owner_key(left_key)
+	right_root := tc.pointer_alias_owner_key(right_key)
+	if left_root != right_root {
+		tc.fn_context.pointer_alias_owner_keys[left_root] = right_root
+	}
+}
+
+fn (tc &TypeChecker) pointer_alias_owner_key(key string) string {
+	mut current := key
+	mut seen := map[string]bool{}
+	for _ in 0 .. tc.fn_context.pointer_alias_owner_keys.len + 1 {
+		if current.len == 0 || seen[current] {
+			break
+		}
+		seen[current] = true
+		current = tc.fn_context.pointer_alias_owner_keys[current] or { return current }
+	}
+	return current
 }
 
 fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback map[string]bool) map[string]bool {
