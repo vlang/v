@@ -874,6 +874,10 @@ fn test_module_cache_static_inline_attributes_are_not_storage() {
 		modulecache.c_source_static_variable_identifiers('static int cached_state; // retained storage\n')
 	assert commented_identifiers['cached_state']
 	assert commented_complete
+	function_identifiers :=
+		modulecache.c_source_function_identifiers('static __attribute__((noinline)) int cached_helper(void) {\n\treturn 1;\n}\n')
+	assert function_identifiers['cached_helper']
+	assert !function_identifiers['__attribute__']
 }
 
 fn test_module_cache_declaration_header_keeps_directives_inside_static_inline_functions() {
@@ -1014,7 +1018,7 @@ fn test_static_storage_header_disables_module_cache_split() {
 
 static int v3_static_header_state = 40;
 
-static int v3_static_header_next(void) {
+static __attribute__((noinline)) int v3_static_header_next(void) {
 	return ++v3_static_header_state;
 }
 

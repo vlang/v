@@ -2130,19 +2130,8 @@ pub fn c_source_function_identifiers(source string) map[string]bool {
 			head :=
 				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
 			if c_static_declaration_head_is_function(head) {
-				paren := head.index_u8(`(`)
-				if paren > 0 {
-					mut end := paren
-					for end > 0 && head[end - 1].is_space() {
-						end--
-					}
-					mut start := end
-					for start > 0 && c_generated_identifier_byte(head[start - 1]) {
-						start--
-					}
-					if start < end {
-						identifiers[head[start..end]] = true
-					}
+				if identifier := c_function_declaration_identifier(head) {
+					identifiers[identifier] = true
 				}
 			}
 		}
@@ -2154,6 +2143,89 @@ pub fn c_source_function_identifiers(source string) map[string]bool {
 	}
 	unsafe { pending.free() }
 	return identifiers
+}
+
+fn c_function_declaration_identifier(head string) ?string {
+	mut candidate := ''
+	mut paren_depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	mut i := 0
+	for i < head.len {
+		c := head[i]
+		next := if i + 1 < head.len { head[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `(` {
+			if paren_depth == 0 {
+				mut end := i
+				for end > 0 && head[end - 1].is_space() {
+					end--
+				}
+				mut start := end
+				for start > 0 && c_generated_identifier_byte(head[start - 1]) {
+					start--
+				}
+				if start < end {
+					name := head[start..end]
+					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__',
+						'__asm', '__asm__', '_Alignas', 'alignas'] {
+						candidate = name
+					}
+				}
+			}
+			paren_depth++
+		} else if c == `)` && paren_depth > 0 {
+			paren_depth--
+		}
+		i++
+	}
+	if candidate.len == 0 {
+		return none
+	}
+	return candidate
 }
 
 // c_source_static_variable_identifiers returns file-scope static variable names
