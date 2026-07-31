@@ -590,7 +590,7 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 	if node.generic_params().len > 0 {
 		return true
 	}
-	if !node.value.contains('.') {
+	if node.value.index_u8(`.`) < 0 {
 		return false
 	}
 	receiver := node.value.all_before_last('.')
@@ -6575,7 +6575,7 @@ fn (g &FlatGen) c_style_mut_receiver_arg_wants_addr(fn_name string, arg_id flat.
 		return false
 	}
 	receiver_ct := g.tc.c_type(types.unwrap_pointer(arg_type))
-	short_receiver := flattened_generic_struct_c_type_short_name(receiver_ct)
+	short_receiver := g.flattened_generic_struct_c_type_short_name(receiver_ct)
 	if short_receiver.len == 0 || !fn_name.contains(short_receiver) {
 		return false
 	}
@@ -12615,6 +12615,16 @@ fn (g &FlatGen) find_prim_method(method string) string {
 
 // find_alias_method converts find alias method data for c.
 fn (g &FlatGen) find_alias_method(target string, method string) ?string {
+	cache_key := '${target}\n${method}'
+	mut cache := g.alias_method_cache
+	if !isnil(cache) {
+		if cached := cache.entries[cache_key] {
+			if cached.len > 0 {
+				return cached
+			}
+			return none
+		}
+	}
 	mut fallback := ''
 	for alias, alias_target in g.tc.type_aliases {
 		if alias_target != target {
@@ -12625,12 +12635,18 @@ fn (g &FlatGen) find_alias_method(target string, method string) ?string {
 			if alias.contains('.') {
 				short_method := '${alias.all_after_last('.')}.${method}'
 				if short_method in g.tc.fn_param_types {
+					if !isnil(cache) {
+						cache.entries[cache_key] = alias_method
+					}
 					return alias_method
 				}
 			}
 			continue
 		}
 		if alias.contains('.') {
+			if !isnil(cache) {
+				cache.entries[cache_key] = alias_method
+			}
 			return alias_method
 		}
 		if fallback.len == 0 {
@@ -12638,7 +12654,13 @@ fn (g &FlatGen) find_alias_method(target string, method string) ?string {
 		}
 	}
 	if fallback.len > 0 {
+		if !isnil(cache) {
+			cache.entries[cache_key] = fallback
+		}
 		return fallback
+	}
+	if !isnil(cache) {
+		cache.entries[cache_key] = ''
 	}
 	return none
 }
@@ -14001,6 +14023,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 	return none
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []types.Type {
 	if g.fn_needs_implicit_veb_ctx(node) {
 		return []types.Type{}

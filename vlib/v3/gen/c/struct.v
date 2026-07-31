@@ -389,7 +389,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		expected_ct := g.value_c_type(expected_init_type)
 		if g.generic_struct_init_context_matches(init_value, expected_name)
 			|| (init_value.contains('_')
-			&& flattened_generic_struct_c_type_short_name(expected_ct) == init_value) {
+			&& g.flattened_generic_struct_c_type_short_name(expected_ct) == init_value) {
 			// The same semantic nested generic can be materialized once with a
 			// qualified inner argument and once with its in-module shorthand. Emit
 			// the instance required by the call/field context and use its fields.
@@ -651,6 +651,15 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 		|| short_ct.starts_with('union ') {
 		return none
 	}
+	if !isnil(g.unique_struct_ct_cache) {
+		mut cache := g.unique_struct_ct_cache
+		if cached := cache.entries[short_ct] {
+			if cached.len == 0 {
+				return none
+			}
+			return cached
+		}
+	}
 	mut matches := []string{}
 	for type_name, _ in g.tc.structs {
 		candidate_ct := g.struct_cname(type_name)
@@ -662,7 +671,15 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 		}
 	}
 	if matches.len == 1 && matches[0] != short_ct {
+		if !isnil(g.unique_struct_ct_cache) {
+			mut cache := g.unique_struct_ct_cache
+			cache.entries[short_ct] = matches[0]
+		}
 		return matches[0]
+	}
+	if !isnil(g.unique_struct_ct_cache) {
+		mut cache := g.unique_struct_ct_cache
+		cache.entries[short_ct] = ''
 	}
 	return none
 }
@@ -3247,7 +3264,7 @@ fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string
 			if name.contains('[') {
 				if ct := g.concrete_generic_struct_init_ct(name) {
 					if name.all_before('[').all_after_last('.') == node.value.all_after_last('.')
-						|| flattened_generic_struct_c_type_short_name(ct) == node.value {
+						|| g.flattened_generic_struct_c_type_short_name(ct) == node.value {
 						return ct
 					}
 				}
@@ -3497,20 +3514,27 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?strin
 		}
 		if generic_receiver_type_suffixes(candidate_args) == arg_suffix {
 			context_ct := g.tc.c_type(candidate_type)
+			if !isnil(g.generic_struct_context_ct_cache) {
+				if cached := g.generic_struct_context_ct_cache.entries[context_ct] {
+					return cached
+				}
+			}
 			mut matches := []string{}
 			for _, info in g.struct_decl_infos {
 				candidate_ct := g.struct_cname(info.full_name)
 				if candidate_ct == context_ct
-					|| flattened_generic_struct_c_type_short_name(candidate_ct) == context_ct {
+					|| g.flattened_generic_struct_c_type_short_name(candidate_ct) == context_ct {
 					if candidate_ct !in matches {
 						matches << candidate_ct
 					}
 				}
 			}
-			if matches.len == 1 {
-				return matches[0]
+			result := if matches.len == 1 { matches[0] } else { context_ct }
+			if !isnil(g.generic_struct_context_ct_cache) {
+				mut cache := g.generic_struct_context_ct_cache
+				cache.entries[context_ct] = result
 			}
-			return context_ct
+			return result
 		}
 	}
 	return none
@@ -3531,7 +3555,7 @@ fn (g &FlatGen) flattened_generic_struct_init_ct_from_context(type_name string) 
 			continue
 		}
 		ct := g.tc.c_type(base)
-		if flattened_generic_struct_c_type_short_name(ct) == clean {
+		if g.flattened_generic_struct_c_type_short_name(ct) == clean {
 			return ct
 		}
 	}
@@ -3553,7 +3577,7 @@ fn (g &FlatGen) flattened_generic_struct_init_ct(type_name string) ?string {
 		ct := g.tc.c_type(g.tc.parse_type(struct_name))
 		candidates := [
 			'${short_base}_${generic_receiver_type_suffixes(args)}',
-			flattened_generic_struct_c_type_short_name(ct),
+			g.flattened_generic_struct_c_type_short_name(ct),
 		]
 		if clean !in candidates {
 			continue
@@ -3588,7 +3612,12 @@ fn (g &FlatGen) same_module_flattened_generic_struct_ct(clean string) ?string {
 	return '${g.cname(g.tc.cur_module)}__${g.cname(base)}_${g.cname(g.tc.cur_module)}__${suffix}'
 }
 
-fn flattened_generic_struct_c_type_short_name(ct string) string {
+fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
+	if !isnil(g.flattened_generic_name_cache) {
+		if cached := g.flattened_generic_name_cache.entries[ct] {
+			return cached
+		}
+	}
 	clean := trimmed_space(ct)
 	if clean.len == 0 {
 		return clean
@@ -3608,7 +3637,12 @@ fn flattened_generic_struct_c_type_short_name(ct string) string {
 		out << clean[i]
 		i++
 	}
-	return out.bytestr()
+	result := out.bytestr()
+	if !isnil(g.flattened_generic_name_cache) {
+		mut cache := g.flattened_generic_name_cache
+		cache.entries[ct] = result
+	}
+	return result
 }
 
 // find_struct_decl resolves find struct decl information for c.
@@ -4674,9 +4708,19 @@ fn c_struct_needs_typedef(name string) bool {
 }
 
 fn (g &FlatGen) struct_cname(name string) string {
-	return g.tc.c_type(types.Type(types.Struct{
+	if !isnil(g.struct_cname_cache) {
+		if cached := g.struct_cname_cache.entries[name] {
+			return cached
+		}
+	}
+	result := g.tc.c_type(types.Type(types.Struct{
 		name: name
 	}))
+	if !isnil(g.struct_cname_cache) {
+		mut cache := g.struct_cname_cache
+		cache.entries[name] = result
+	}
+	return result
 }
 
 fn (g &FlatGen) struct_decl_head(name string) string {

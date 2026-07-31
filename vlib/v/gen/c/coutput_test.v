@@ -906,6 +906,8 @@ fn test_veb_template_scope_gc_pin_does_not_escape_loop_var() {
 	assert index_body.contains('string p =')
 	assert !index_body.contains('GC_reachable_here(&p);')
 	assert index_body.contains('veb__Context_html(&ctx->Context, _tmpl_res_')
+	assert index_body.contains('return (veb__Result){E_STRUCT};')
+	assert !index_body.contains('return (veb__Result){0};')
 }
 
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {

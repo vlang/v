@@ -543,10 +543,10 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	if !write_file_array_raw(tmp_output_path, l.buf) {
 		panic('failed to write output file')
 	}
-	if C.chmod(tmp_output_path.str, 0o755) != 0 {
+	if C.chmod(&char(tmp_output_path.str), 0o755) != 0 {
 		panic('failed to chmod output file')
 	}
-	if C.rename(tmp_output_path.str, output_path.str) != 0 {
+	if C.rename(&char(tmp_output_path.str), &char(output_path.str)) != 0 {
 		panic('failed to rename output file')
 	}
 
@@ -556,7 +556,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 // write_file_array_raw writes file array raw output for arm64.
 fn write_file_array_raw(path string, data []u8) bool {
-	fd := C.open(path.str, o_wronly_creat_trunc, 0o755)
+	fd := C.open(&char(path.str), o_wronly_creat_trunc, 0o755)
 	if fd < 0 {
 		return false
 	}

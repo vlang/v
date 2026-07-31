@@ -30,7 +30,7 @@ concurrency:
 jobs:
   msvc-windows:
     runs-on: windows-2022
-    timeout-minutes: 70
+    timeout-minutes: 90
     env:
       VFLAGS: -cc msvc
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3

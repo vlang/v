@@ -134,8 +134,9 @@ cd /path/to/v/cmd/tools/fast && ./fast serve -port 8080   # in tmux/screen or a 
 **Publishing fast.vlang.io.** The public site is served statically from GitHub
 Pages, so `fast run` alone (which only writes `fast.db`) does **not** update it —
 you must also `export` the static site and push it. Point `$SITE` at a checkout of
-the Pages branch (`github.com/vlang/website`, branch `gh-pages`); a GitHub Actions
-workflow in that branch redeploys on every push:
+the generated-site branch (`github.com/vlang/website`, branch `gh-pages`). The
+`fast_pages.yml` workflow in `vlang/v` fetches that branch and deploys it from the
+self-hosted macOS runner. It also runs hourly as a fallback:
 
 ```cron
 # hourly: sample new commits, regenerate the static site, and publish it.
@@ -148,7 +149,8 @@ workflow in that branch redeploys on every push:
   && ./fast export -o "$SITE" \
   && git -C "$SITE" add -A \
   && { git -C "$SITE" diff --cached --quiet || git -C "$SITE" commit -m "update fast.vlang.io" ; } \
-  && git -C "$SITE" push ; } >> /path/to/v/cmd/tools/fast/fast.log 2>&1
+  && git -C "$SITE" push \
+  && gh workflow run fast_pages.yml -R vlang/v ; } >> /path/to/v/cmd/tools/fast/fast.log 2>&1
 ```
 
 (The old `fast_job.v` daemon and its `-upload` step have been removed; this

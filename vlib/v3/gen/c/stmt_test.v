@@ -25,6 +25,38 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	})
 }
 
+fn test_primitive_fixed_array_zero_initializer_is_compact() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+
+	large := types.ArrayFixed{
+		elem_type: types.Type(types.u8_)
+		len:       65536
+	}
+	assert g.empty_fixed_array_initializer_string(large) == '{0}'
+
+	nested := types.ArrayFixed{
+		elem_type: types.Type(types.ArrayFixed{
+			elem_type: types.Type(types.i32_)
+			len:       32
+		})
+		len:       32
+	}
+	assert g.empty_fixed_array_initializer_string(nested) == '{0}'
+
+	dynamic_arrays := types.ArrayFixed{
+		elem_type: types.Type(types.Array{
+			elem_type: types.Type(types.int_)
+		})
+		len:       2
+	}
+	dynamic_init := g.empty_fixed_array_initializer_string(dynamic_arrays)
+	assert dynamic_init.count('array_new(') == 2
+}
+
 fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

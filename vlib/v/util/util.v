@@ -278,9 +278,10 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			tlog('another process got the lock')
 			// wait till the other V tool recompilation process finished;
 			// the timeout is intentionally generous, since on slow CI VMs
-			// (e.g. FreeBSD QEMU), recompiling a tool can take >10s, and
-			// falling through with a missing tool_exe leads to ENOENT on exec:
-			if l.wait_acquire(60 * time.second) {
+			// (e.g. Windows GCC or FreeBSD QEMU), recompiling a tool can take
+			// well over a minute, and falling through with a missing tool_exe
+			// leads to ENOENT on exec:
+			if l.wait_acquire(5 * time.minute) {
 				tlog('the other process finished')
 				l.release()
 			} else {

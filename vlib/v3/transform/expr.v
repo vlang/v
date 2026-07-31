@@ -1085,9 +1085,8 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 	}
 	if !isnil(t.type_alias_name_cache) {
 		mut cache := t.type_alias_name_cache
-		if cache.module != t.cur_module || cache.file != t.cur_file {
+		if cache.module != t.cur_module {
 			cache.module = t.cur_module
-			cache.file = t.cur_file
 			cache.entries.clear()
 		}
 		if cached := cache.entries[name] {
@@ -1104,11 +1103,11 @@ fn (t &Transformer) is_type_alias_name_uncached(name string) bool {
 	if name in t.tc.type_aliases {
 		return true
 	}
-	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
+	has_dot := name.index_u8(`.`) >= 0
+	if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		return '${t.cur_module}.${name}' in t.tc.type_aliases
 	}
-	if !name.contains('.') {
+	if !has_dot {
 		for aname, _ in t.tc.type_aliases {
 			if aname.all_after_last('.') == name {
 				return true
@@ -3492,15 +3491,36 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum string, owner_mod 
 			return qname
 		}
 	}
+	cache_key := '${owner_mod}\n${t.cur_module}\n${clean}'
+	if !isnil(t.enum_expected_cache) {
+		if cached := t.enum_expected_cache.entries[cache_key] {
+			return cached
+		}
+		if t.enum_expected_cache.misses[cache_key] {
+			return ''
+		}
+	}
 	mut found := ''
 	for enum_name, _ in t.enum_types {
 		if enum_name.all_after_last('.') != clean {
 			continue
 		}
 		if found.len > 0 && found != enum_name {
+			if !isnil(t.enum_expected_cache) {
+				mut cache := t.enum_expected_cache
+				cache.misses[cache_key] = true
+			}
 			return ''
 		}
 		found = enum_name
+	}
+	if !isnil(t.enum_expected_cache) {
+		mut cache := t.enum_expected_cache
+		if found.len > 0 {
+			cache.entries[cache_key] = found
+		} else {
+			cache.misses[cache_key] = true
+		}
 	}
 	return found
 }

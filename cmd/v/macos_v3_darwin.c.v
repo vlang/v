@@ -3,7 +3,6 @@ module main
 import os
 import v.pref
 import v.util
-import v3.driver
 
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
@@ -29,6 +28,9 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		return take_macos_v3_c_error_report()
 	}
 	if prefs.old_compiler {
+		return take_macos_v3_c_error_report()
+	}
+	if !macos_v3_driver_is_available() {
 		return take_macos_v3_c_error_report()
 	}
 	all_args := util.join_env_vflags_and_os_args()
@@ -60,7 +62,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		|| command in ['help', 'version', 'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'interpret', 'get', 'translate'] {
 		return false
 	}
-	if prefs.is_crun || prefs.is_test || prefs.is_prod || prefs.autofree
+	if prefs.output_cross_c || prefs.is_crun || prefs.is_test || prefs.is_prod || prefs.autofree
 		|| prefs.build_mode == .build_module || prefs.is_cstrict || prefs.use_cache
 		|| prefs.parallel_cc || prefs.out_name_is_dir || prefs.exclude.len > 0
 		|| prefs.coverage_dir != '' || prefs.is_o || prefs.is_vlines || prefs.is_shared {
@@ -255,7 +257,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 		eprintln('cannot register the V3 compatibility fallback: ${err}')
 		exit(1)
 	}
-	driver.run(forwarded_args)
+	macos_v3_driver_run(forwarded_args)
 	os.rm(fallback_file) or {}
 	os.rmdir_all(c_error_dir) or {}
 	exit(0)

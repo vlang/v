@@ -1149,6 +1149,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.expr.pos())
 					}
 				}
+				is_translated_c_string_fixed_char_array := c.is_translated_c_string_fixed_char_array(init_field.expr,
+					exp_type)
+				is_translated_c_string_fixed_char_array_pointer := c.is_translated_c_string_fixed_char_array_pointer(init_field.expr,
+					exp_type)
 				if exp_final_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, init_field.pos) {
 						if !c.inside_unsafe && got_type_sym.kind != .interface
@@ -1157,13 +1161,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						}
 					}
 				} else if c.table.final_sym(exp_type).kind == .array_fixed && got_type.is_ptr()
-					&& !exp_type.is_any_kind_of_pointer() && !init_field.expr.is_auto_deref_var() {
-					if !c.pref.translated && !c.file.is_translated {
-						c.error('cannot assign to field `${field_info.name}`: ${c.expected_msg(got_type,
-							exp_type)}', init_field.pos)
-					}
-				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
-					&& !exp_type.has_flag(.generic) {
+					&& !exp_type.is_any_kind_of_pointer() && !init_field.expr.is_auto_deref_var()
+					&& !is_translated_c_string_fixed_char_array
+					&& !is_translated_c_string_fixed_char_array_pointer {
+					c.error('cannot assign to field `${field_info.name}`: ${c.expected_msg(got_type,
+						exp_type)}', init_field.pos)
+				} else if !is_translated_c_string_fixed_char_array
+					&& !is_translated_c_string_fixed_char_array_pointer && got_type != ast.void_type
+					&& got_type_sym.kind != .placeholder && !exp_type.has_flag(.generic) {
 					mut needs_sum_type_cast := false
 					if exp_type_sym.kind == .placeholder {
 						base_type := c.table.find_type(exp_type_sym.ngname)
@@ -1405,6 +1410,120 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 	}
 	return node.typ
+}
+
+fn (mut c Checker) is_translated_c_string_fixed_char_array(expr ast.Expr, expected ast.Type) bool {
+	if !(c.file.is_translated || c.pref.translated) {
+		return false
+	}
+	resolved_expected := c.table.fully_unaliased_type(c.unwrap_generic(expected))
+	if resolved_expected != resolved_expected.clear_flags()
+		|| resolved_expected.is_any_kind_of_pointer() {
+		return false
+	}
+	literal := match expr {
+		ast.StringLiteral { expr }
+		else { return false }
+	}
+	if literal.language != .c {
+		return false
+	}
+	expected_sym := c.table.final_sym(resolved_expected)
+	array_info := match expected_sym.info {
+		ast.ArrayFixed { expected_sym.info }
+		else { return false }
+	}
+	resolved_elem_type := c.table.fully_unaliased_type(c.unwrap_generic(array_info.elem_type))
+	if resolved_elem_type != resolved_elem_type.clear_flags()
+		|| resolved_elem_type.is_any_kind_of_pointer()
+		|| resolved_elem_type.idx() !in [ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx] {
+		return false
+	}
+	payload_len := c_string_literal_payload_len(literal.val) or { return false }
+	// C permits an exact-size character array initializer without the implicit NUL.
+	return payload_len <= array_info.size
+}
+
+fn (mut c Checker) is_translated_c_string_fixed_char_array_pointer(expr ast.Expr, expected ast.Type) bool {
+	if !(c.file.is_translated || c.pref.translated) {
+		return false
+	}
+	literal := match expr {
+		ast.StringLiteral { expr }
+		else { return false }
+	}
+	if literal.language != .c {
+		return false
+	}
+	surface_expected := c.unwrap_generic(expected)
+	resolved_expected := c.table.fully_unaliased_type(surface_expected)
+	resolved_pointer := resolved_expected.clear_flag(.option)
+	if resolved_pointer != resolved_expected.clear_flags() || resolved_pointer.nr_muls() != 1 {
+		return false
+	}
+	// A surface `?PointerAlias` is rejected above. Still classify it here so the
+	// fixed-array checks do not add a second error; an option hidden in an alias
+	// parent remains unsupported.
+	if resolved_expected.has_flag(.option) && !surface_expected.has_flag(.option) {
+		return false
+	}
+	pointee_sym := c.table.final_sym(resolved_pointer.set_nr_muls(0))
+	array_info := match pointee_sym.info {
+		ast.ArrayFixed { pointee_sym.info }
+		else { return false }
+	}
+	resolved_elem_type := c.table.fully_unaliased_type(c.unwrap_generic(array_info.elem_type))
+	return resolved_elem_type == resolved_elem_type.clear_flags()
+		&& !resolved_elem_type.is_any_kind_of_pointer()
+		&& resolved_elem_type.idx() in [ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx]
+}
+
+fn c_string_literal_payload_len(value string) ?int {
+	mut payload_len := 0
+	mut i := 0
+	for i < value.len {
+		if value[i] != `\\` {
+			payload_len++
+			i++
+			continue
+		}
+		if i + 1 >= value.len {
+			return none
+		}
+		escape := value[i + 1]
+		// Narrow UCN byte length depends on the C compiler's execution character set.
+		// Accept only escapes whose payload width is target-independent.
+		match escape {
+			`'`, `"`, `?`, `\\`, `a`, `b`, `e`, `f`, `n`, `r`, `t`, `v` {
+				i += 2
+				payload_len++
+			}
+			`0`...`7` {
+				i += 2
+				mut digits := 1
+				for digits < 3 && i < value.len && value[i].is_oct_digit() {
+					i++
+					digits++
+				}
+				payload_len++
+			}
+			`x` {
+				i += 2
+				start := i
+				for i < value.len && value[i].is_hex_digit() {
+					i++
+				}
+				if i == start {
+					return none
+				}
+				payload_len++
+			}
+			else {
+				return none
+			}
+		}
+	}
+	return payload_len
 }
 
 fn (c &Checker) has_direct_numeric_alias_struct_init_mismatch(expr ast.Expr, got ast.Type, expected ast.Type) bool {

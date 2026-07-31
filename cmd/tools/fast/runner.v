@@ -322,13 +322,14 @@ fn acquire_build_lock() ?BuildLock {
 				return none
 			}
 			refresh_owner(mut owner, token) // record ownership + first heartbeat
-			mut bl := BuildLock{
+			stop := chan bool{}
+			hb := spawn build_lock_heartbeat(owner, token, stop)
+			return BuildLock{
 				token: token
 				owner: owner
-				stop:  chan bool{}
+				stop:  stop
+				hb:    hb
 			}
-			bl.hb = spawn bl.heartbeat()
-			return bl
 		}
 		if build_lock_age() <= build_lock_stale_secs {
 			return none // held by a live run (or one still stamping a fresh lock)
@@ -351,15 +352,15 @@ fn acquire_build_lock() ?BuildLock {
 // this process was suspended past the stale threshold and a successor took over, our
 // descriptor points at the orphaned inode, so the refresh cannot overwrite the
 // successor's owner file (nor make us later delete its live lock).
-fn (bl BuildLock) heartbeat() {
-	mut owner := bl.owner // shares the underlying descriptor with the returned lock
+fn build_lock_heartbeat(owner_file os.File, token string, stop chan bool) {
+	mut owner := owner_file // shares the underlying descriptor with the returned lock
 	for {
 		select {
-			_ := <-bl.stop {
+			_ := <-stop {
 				return
 			}
 			build_lock_heartbeat_secs * time.second {
-				refresh_owner(mut owner, bl.token)
+				refresh_owner(mut owner, token)
 			}
 		}
 	}
