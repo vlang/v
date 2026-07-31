@@ -57,8 +57,34 @@ DECLARE_TYPE(Item);
 	assert types.contains('#define DECLARE_TYPE')
 	assert types.contains('DECLARE_TYPE(Item);')
 
+	object_source := '#define DECLARE_ITEM typedef int Item
+DECLARE_ITEM;
+'
+	object_types, object_complete := c_source_type_declarations_with_status(object_source)
+	assert object_complete
+	assert object_types.contains('#define DECLARE_ITEM')
+	assert object_types.contains('DECLARE_ITEM;')
+
 	_, unknown_complete := c_source_type_declarations_with_status('UNKNOWN_DECL(Item);\n')
 	assert !unknown_complete
+	_, unknown_object_complete := c_source_type_declarations_with_status('UNKNOWN_DECL;\n')
+	assert !unknown_object_complete
+}
+
+fn test_static_variable_identifiers_ignore_asm_labels() {
+	assert c_static_variable_declaration_identifiers('static int state __asm__("state_alias");') == [
+		'state',
+	]
+	identifiers, complete :=
+		c_source_static_variable_identifiers('static int state __asm__("state_alias");\n')
+	assert complete
+	assert identifiers['state'], identifiers.str()
+	assert !identifiers['state_alias']
+	function_identifiers, function_complete :=
+		c_source_static_variable_identifiers('static int helper(void) __asm__("helper_alias");\n')
+	assert function_complete
+	assert !function_identifiers['helper']
+	assert !function_identifiers['helper_alias']
 }
 
 fn test_macro_identifiers_referencing_static_helpers() {

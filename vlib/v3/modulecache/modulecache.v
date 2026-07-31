@@ -2331,8 +2331,8 @@ fn c_static_variable_declaration_identifiers(declaration string) []string {
 		if eq := c_top_level_assign_index(declarator) {
 			declarator = declarator[..eq].trim_space()
 		}
-		for suffix in ['__attribute__', '__declspec'] {
-			if pos := declarator.index(suffix) {
+		for suffix in ['__attribute__', '__declspec', '__asm__', '__asm', 'asm'] {
+			if pos := c_declaration_annotation_index(declarator, suffix) {
 				declarator = declarator[..pos].trim_space()
 			}
 		}
@@ -2345,6 +2345,21 @@ fn c_static_variable_declaration_identifiers(declaration string) []string {
 		}
 	}
 	return identifiers
+}
+
+fn c_declaration_annotation_index(declaration string, name string) ?int {
+	mut offset := 0
+	for offset < declaration.len {
+		relative := declaration[offset..].index(name) or { return none }
+		pos := offset + relative
+		end := pos + name.len
+		if (pos == 0 || !c_generated_identifier_byte(declaration[pos - 1]))
+			&& (end == declaration.len || !c_generated_identifier_byte(declaration[end])) {
+			return pos
+		}
+		offset = end
+	}
+	return none
 }
 
 fn c_static_variable_declarator_identifier(declarator string) ?string {
@@ -2720,8 +2735,7 @@ fn c_type_declaration_macro_names(source string) map[string]bool {
 		} else {
 			''
 		}
-		is_type_macro := is_function_like
-			&& c_declaration_item_declares_type(replacement, replacement.contains('{'))
+		is_type_macro := c_declaration_item_declares_type(replacement, replacement.contains('{'))
 		if seen[name] {
 			type_macros[name] = type_macros[name] && is_type_macro
 		} else {
@@ -2852,6 +2866,12 @@ fn c_declaration_macro_invocation_name(item string, has_brace bool) ?string {
 		paren++
 	}
 	if paren >= clean.len || clean[paren] != `(` {
+		if paren < clean.len && clean[paren] == `;` {
+			tail := clean[paren + 1..].trim_space()
+			if tail.len == 0 || tail.starts_with('//') || tail.starts_with('/*') {
+				return name
+			}
+		}
 		return none
 	}
 	return name
@@ -2964,7 +2984,13 @@ fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 		return false
 	}
 	if !has_brace {
-		return !c_declaration_head_is_function(clean.trim_right(';'))
+		mut declaration_head := clean.trim_right(';').trim_space()
+		for suffix in ['__attribute__', '__declspec', '__asm__', '__asm', 'asm'] {
+			if pos := c_declaration_annotation_index(declaration_head, suffix) {
+				declaration_head = declaration_head[..pos].trim_space()
+			}
+		}
+		return !c_declaration_head_is_function(declaration_head)
 	}
 	return true
 }
