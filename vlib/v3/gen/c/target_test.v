@@ -424,6 +424,45 @@ fn test_cache_input_scan_tracks_literal_include_macros() {
 	assert inputs['sample'] == expected
 }
 
+fn test_cache_input_scan_rescans_unguarded_headers_after_macro_changes() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_repeated_macro_header_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_source := os.join_path(dir, 'root.c')
+	selector_header := os.join_path(dir, 'selector.h')
+	first_header := os.join_path(dir, 'first.h')
+	second_header := os.join_path(dir, 'second.h')
+	os.write_file(root_source, '#define V3_SELECTED_HEADER "first.h"
+#include "selector.h"
+#undef V3_SELECTED_HEADER
+#define V3_SELECTED_HEADER "second.h"
+#include "selector.h"
+') or {
+		panic(err)
+	}
+	os.write_file(selector_header, '#include V3_SELECTED_HEADER\n') or { panic(err) }
+	os.write_file(first_header, '#define V3_FIRST_VALUE 1\n') or { panic(err) }
+	os.write_file(second_header, '#define V3_SECOND_VALUE 2\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#insert "root.c"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, native_roots, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(root_source), os.real_path(selector_header),
+		os.real_path(first_header), os.real_path(second_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+	assert native_roots['sample'] == [os.real_path(root_source)]
+}
+
 fn test_cache_input_scan_keeps_unknown_macro_branches_and_bare_defines() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_unknown_macro_cache_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}

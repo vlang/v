@@ -2110,7 +2110,15 @@ pub fn c_source_declares_types(source string) bool {
 
 // c_source_function_identifiers returns C functions defined or declared at file scope.
 pub fn c_source_function_identifiers(source string) map[string]bool {
+	identifiers, _ := c_source_function_identifiers_with_status(source)
+	return identifiers
+}
+
+// c_source_function_identifiers_with_status returns file-scope C function names
+// and whether every function declaration could be classified.
+pub fn c_source_function_identifiers_with_status(source string) (map[string]bool, bool) {
 	mut identifiers := map[string]bool{}
+	mut complete := true
 	mut pending := strings.new_builder(256)
 	mut brace_depth := 0
 	mut in_block_comment := false
@@ -2132,6 +2140,11 @@ pub fn c_source_function_identifiers(source string) map[string]bool {
 			if c_static_declaration_head_is_function(head) {
 				if identifier := c_function_declaration_identifier(head) {
 					identifiers[identifier] = true
+					if c_function_declaration_identifier_is_ambiguous(head, identifier) {
+						complete = false
+					}
+				} else {
+					complete = false
 				}
 			}
 		}
@@ -2142,7 +2155,19 @@ pub fn c_source_function_identifiers(source string) map[string]bool {
 		}
 	}
 	unsafe { pending.free() }
-	return identifiers
+	return identifiers, complete
+}
+
+fn c_function_declaration_identifier_is_ambiguous(head string, identifier string) bool {
+	clean := trim_leading_c_comments(head.trim_space())
+	if identifier.len == 0 || !clean.starts_with(identifier) {
+		return false
+	}
+	rest := clean[identifier.len..].trim_left(' \t\r\n')
+	// A definition headed only by `NAME(...)` can be an old implicit-int
+	// declaration, but in cache inputs it is commonly a function-like macro
+	// that emits the real storage class, return type, and function name.
+	return rest.starts_with('(')
 }
 
 fn c_function_declaration_identifier(head string) ?string {

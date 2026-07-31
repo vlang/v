@@ -935,6 +935,13 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
 	}
+	key := tc.expr_key(id)
+	if lock_name := tc.fn_context.locked_shared_base_names[key] {
+		tc.record_error_at(.assignment_mismatch,
+			'cannot reassign `${key}` while it is used to locate locked shared value `${lock_name}`',
+			id, tc.a.node(id).pos)
+		return
+	}
 	if element_id := tc.shared_array_element_index(id) {
 		tc.record_error_at(.assignment_mismatch,
 			'you have to create a handle and `lock` it to modify `shared` array element',

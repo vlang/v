@@ -10164,6 +10164,7 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 			tc.lock_keyword_diagnostic_pos(node))
 	}
 	mut locked_names := []string{}
+	mut locked_base_keys := []string{}
 	for i in 0 .. node.children_count - 1 {
 		object_id := tc.a.child(&node, i)
 		object := tc.a.node(object_id)
@@ -10193,6 +10194,7 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 			tc.fn_context.locked_shared_modes[lock_name] = modes
 			tc.fn_context.locked_shared_names[lock_name]++
 			locked_names << lock_name
+			tc.record_locked_shared_base_keys(object_id, lock_name, mut locked_base_keys)
 		}
 	}
 	tc.lock_depth++
@@ -10208,6 +10210,57 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 			tc.fn_context.locked_shared_modes.delete(name)
 		} else {
 			tc.fn_context.locked_shared_modes[name] = modes
+		}
+	}
+	for key in locked_base_keys {
+		tc.fn_context.locked_shared_base_names.delete(key)
+	}
+}
+
+fn (mut tc TypeChecker) record_locked_shared_base_keys(id flat.NodeId, lock_name string, mut added_keys []string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.node(id)
+	if node.kind == .selector && node.children_count > 0 {
+		tc.record_locked_shared_dependency_keys(tc.a.child(node, 0), lock_name, mut added_keys)
+	}
+}
+
+fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, lock_name string, mut added_keys []string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	key := tc.expr_key(id)
+	if key.len > 0 && key !in tc.fn_context.locked_shared_base_names {
+		tc.fn_context.locked_shared_base_names[key] = lock_name
+		added_keys << key
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.selector {
+			if node.children_count > 0 {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, 0), lock_name, mut
+					added_keys)
+			}
+		}
+		.index {
+			for i in 0 .. int_min(node.children_count, 2) {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, i), lock_name, mut
+					added_keys)
+			}
+		}
+		.paren, .prefix {
+			if node.children_count > 0 {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, 0), lock_name, mut
+					added_keys)
+			}
+		}
+		else {
+			for i in 0 .. node.children_count {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, i), lock_name, mut
+					added_keys)
+			}
 		}
 	}
 }

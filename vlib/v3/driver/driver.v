@@ -7647,7 +7647,11 @@ fn cache_external_input_owner_modules(state &V3ModuleCacheState, a &flat.FlatAst
 
 fn cache_static_input_is_private_to_module(a &flat.FlatAst, state &V3ModuleCacheState, raw_module_name string, path string, user_files []string) bool {
 	source := os.read_file(path) or { return false }
-	mut header_identifiers := modulecache.c_source_function_identifiers(source)
+	mut header_identifiers, function_identifiers_complete :=
+		modulecache.c_source_function_identifiers_with_status(source)
+	if !function_identifiers_complete {
+		return false
+	}
 	static_identifiers, static_identifiers_complete :=
 		modulecache.c_source_static_variable_identifiers(source)
 	if !static_identifiers_complete {

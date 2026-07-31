@@ -1086,11 +1086,12 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 					roots << os.real_path(path)
 					native_source_roots[owner_module] = roots
 				}
-				mut seen := map[string]bool{}
+				mut active_paths := map[string]bool{}
+				mut collected_paths := map[string]bool{}
 				mut files := []string{}
-				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files, mut
-					include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
-					missing_resolution_paths)
+				if c_collect_external_input_tree(path, vroot, include_dirs, mut active_paths, mut
+					collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
+					resolution_dirs, mut missing_resolution_paths)
 				{
 					has_untracked_include = true
 				}
@@ -1140,7 +1141,8 @@ pub fn cache_c_flag_input_files(flags []string) []string {
 
 fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[string][]string, map[string]bool, map[string]bool, map[string]bool) {
 	include_dirs := c_flag_include_dirs(flags)
-	mut seen := map[string]bool{}
+	mut active_paths := map[string]bool{}
+	mut collected_paths := map[string]bool{}
 	mut files := []string{}
 	mut resolution_dirs := map[string]bool{}
 	mut missing_resolution_paths := map[string]bool{}
@@ -1152,9 +1154,9 @@ fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[str
 			if !os.is_file(path) {
 				continue
 			}
-			if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files, mut
-				include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
-				missing_resolution_paths)
+			if c_collect_external_input_tree(path, '', include_dirs, mut active_paths, mut
+				collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
+				resolution_dirs, mut missing_resolution_paths)
 			{
 				has_untracked_include = true
 			}
@@ -1250,16 +1252,22 @@ mut:
 	ambiguous bool
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
 	}
 	real_path := os.real_path(path)
-	if seen[real_path] {
+	if active_paths[real_path] {
 		return false
 	}
-	seen[real_path] = true
-	files << real_path
+	active_paths[real_path] = true
+	defer {
+		active_paths.delete(real_path)
+	}
+	if !collected_paths[real_path] {
+		collected_paths[real_path] = true
+		files << real_path
+	}
 	text := os.read_file(real_path) or { return false }
 	mut has_untracked_include := false
 	mut in_block_comment := false
@@ -1337,9 +1345,9 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 				if !os.is_file(nested_path) {
 					continue
 				}
-				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut
-					files, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
-					missing_resolution_paths)
+				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut
+					active_paths, mut collected_paths, mut files, mut include_macros, mut
+					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths)
 				{
 					has_untracked_include = true
 				}

@@ -790,6 +790,16 @@ fn test_nested_shared_field_lock_allows_member_access() {
 	assert out == '7'
 }
 
+fn test_nested_shared_field_lock_rejects_base_reassignment() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_base_reassignment',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut p := &first\n\tlock p.state {\n\t\tp = &second\n\t\tp.state.value = 7\n\t}\n}\n',
+		'cannot reassign `p` while it is used to locate locked shared value `p.state`')
+	run_bad(v3_bin, 'nested_shared_field_lock_index_reassignment',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\titems := [&first, &second]\n\tmut i := 0\n\tlock items[i].state {\n\t\ti = 1\n\t\titems[i].state.value = 7\n\t}\n}\n',
+		'cannot reassign `i` while it is used to locate locked shared value `items[i].state`')
+}
+
 fn test_reassigned_nil_pointer_can_be_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'reassigned_nil_pointer',

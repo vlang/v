@@ -878,6 +878,10 @@ fn test_module_cache_static_inline_attributes_are_not_storage() {
 		modulecache.c_source_function_identifiers('static __attribute__((noinline)) int cached_helper(void) {\n\treturn 1;\n}\n')
 	assert function_identifiers['cached_helper']
 	assert !function_identifiers['__attribute__']
+	macro_function_identifiers, macro_functions_complete :=
+		modulecache.c_source_function_identifiers_with_status('#define LOCAL_FN(name) static int name(void)\nstatic int state;\nLOCAL_FN(helper) {\n\treturn state;\n}\n')
+	assert macro_function_identifiers['LOCAL_FN']
+	assert !macro_functions_complete
 }
 
 fn test_module_cache_declaration_header_keeps_directives_inside_static_inline_functions() {
@@ -1096,6 +1100,53 @@ fn main() {
 	output := os.join_path(root, 'program')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
 	assert run_module_cache_binary(output) == '0'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
+}
+
+fn test_macro_declared_static_helper_used_by_sibling_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_macro_static_helper_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/native.h', '#define V3_LOCAL_FN(name) static int name(void)
+static int v3_unrelated_macro_state;
+V3_LOCAL_FN(v3_macro_helper) {
+	return 42 + v3_unrelated_macro_state;
+}
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/native.h"
+
+pub fn marker() {}
+')
+	write_module_cache_file(root, 'sibling/sibling.v', 'module sibling
+
+import owner
+
+fn C.v3_macro_helper() int
+
+pub fn value() int {
+	owner.marker()
+	return C.v3_macro_helper()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import sibling
+
+fn main() {
+	println(sibling.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '42'
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
 }
 
