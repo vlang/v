@@ -83,14 +83,15 @@ for i in include/*.h; do echo $i; ln -s $i $(basename $i); done
 	    --config-codesign \
         --cc="$CC" \
         --extra-cflags="$CFLAGS" \
+	    --extra-ldflags="-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET" \
 	    --config-bcheck=yes \
 	    --config-backtrace=yes \
 	    --enable-static \
 	    --dwarf=5 \
         --debug
 
-gmake
-gmake install
+gmake MACOSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET"
+gmake MACOSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" install
 
 popd
 
