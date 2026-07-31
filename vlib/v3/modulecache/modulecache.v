@@ -2251,35 +2251,41 @@ fn c_static_variable_declaration_identifiers(declaration string) []string {
 }
 
 fn c_static_variable_declarator_identifier(declarator string) ?string {
+	mut clean_declarator := declarator
+	for marker in ['//', '/*'] {
+		if pos := clean_declarator.index(marker) {
+			clean_declarator = clean_declarator[..pos]
+		}
+	}
 	mut offset := 0
-	for offset < declarator.len {
-		relative := declarator[offset..].index('(*') or { break }
+	for offset < clean_declarator.len {
+		relative := clean_declarator[offset..].index('(*') or { break }
 		mut start := offset + relative + 2
-		for start < declarator.len && declarator[start].is_space() {
+		for start < clean_declarator.len && clean_declarator[start].is_space() {
 			start++
 		}
 		mut end := start
-		for end < declarator.len && c_generated_identifier_byte(declarator[end]) {
+		for end < clean_declarator.len && c_generated_identifier_byte(clean_declarator[end]) {
 			end++
 		}
 		if end > start {
-			return declarator[start..end]
+			return clean_declarator[start..end]
 		}
 		offset = start
 	}
 	mut candidate := ''
 	mut i := 0
-	for i < declarator.len {
-		if !c_generated_identifier_byte(declarator[i]) || declarator[i].is_digit() {
+	for i < clean_declarator.len {
+		if !c_generated_identifier_byte(clean_declarator[i]) || clean_declarator[i].is_digit() {
 			i++
 			continue
 		}
 		start := i
 		i++
-		for i < declarator.len && c_generated_identifier_byte(declarator[i]) {
+		for i < clean_declarator.len && c_generated_identifier_byte(clean_declarator[i]) {
 			i++
 		}
-		candidate = declarator[start..i]
+		candidate = clean_declarator[start..i]
 	}
 	if candidate.len == 0
 		|| candidate in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool'] {

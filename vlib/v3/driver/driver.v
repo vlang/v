@@ -2068,9 +2068,9 @@ fn cache_native_type_declarations_for_path(path string, allowed_paths map[string
 	if !allowed_paths[real_path] {
 		return ''
 	}
-	mut seen := map[string]bool{}
+	mut active_paths := map[string]bool{}
 	mut include_macros := cache_local_c_flag_macros(c_flags)
-	return cache_native_type_declarations_for_path_rec(real_path, allowed_paths, mut seen, mut
+	return cache_native_type_declarations_for_path_rec(real_path, allowed_paths, mut active_paths, mut
 		include_macros)
 }
 
@@ -2088,13 +2088,13 @@ mut:
 	ambiguous bool
 }
 
-fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[string]bool, mut seen map[string]bool, mut include_macros map[string]V3CacheLocalCMacro) string {
+fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut include_macros map[string]V3CacheLocalCMacro) string {
 	real_path := os.real_path(path)
-	if !allowed_paths[real_path] || seen[real_path] {
+	if !allowed_paths[real_path] || active_paths[real_path] {
 		return ''
 	}
-	seen[real_path] = true
 	source := os.read_file(real_path) or { return '' }
+	active_paths[real_path] = true
 	header := modulecache.c_source_type_declarations(source)
 	mut out := strings.new_builder(header.len)
 	mut conditionals := []V3CacheLocalCConditional{}
@@ -2151,13 +2151,15 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 			real_include := os.real_path(include_path)
 			if allowed_paths[real_include] {
 				out.write_string(cache_native_type_declarations_for_path_rec(real_include,
-					allowed_paths, mut seen, mut include_macros))
+					allowed_paths, mut active_paths, mut include_macros))
 				continue
 			}
 		}
 		out.writeln(line)
 	}
-	return out.str()
+	result := out.str()
+	active_paths.delete(real_path)
+	return result
 }
 
 fn cache_local_c_include_path(line string, source_path string, include_macros map[string]V3CacheLocalCMacro) ?string {

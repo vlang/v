@@ -870,6 +870,10 @@ fn test_module_cache_static_inline_attributes_are_not_storage() {
 	_, attributes_complete :=
 		modulecache.c_source_static_variable_identifiers('static int __attribute__((unused)) state = 1;\n')
 	assert !attributes_complete
+	commented_identifiers, commented_complete :=
+		modulecache.c_source_static_variable_identifiers('static int cached_state; // retained storage\n')
+	assert commented_identifiers['cached_state']
+	assert commented_complete
 }
 
 fn test_module_cache_declaration_header_keeps_directives_inside_static_inline_functions() {
@@ -1052,7 +1056,7 @@ fn test_static_storage_variable_used_by_sibling_disables_module_cache_split() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	write_module_cache_file(root, 'owner/state.h', 'static int v3_sibling_static_state = 41;
+	write_module_cache_file(root, 'owner/state.h', 'static int v3_sibling_static_state; // retained storage
 
 static int v3_unrelated_static_function(void) {
 	return 1;
@@ -1087,7 +1091,7 @@ fn main() {
 	cache_dir := os.join_path(root, 'cache')
 	output := os.join_path(root, 'program')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
-	assert run_module_cache_binary(output) == '41'
+	assert run_module_cache_binary(output) == '0'
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
 }
 
@@ -5821,6 +5825,72 @@ fn C.read_transitive_native_value(C.V3TransitiveNativeType) int
 
 pub fn value() int {
 	return C.read_transitive_native_value(C.make_transitive_native_value()) + owner.marker()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import caller
+
+fn main() {
+	println(caller.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'caller_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
+fn test_cached_native_type_declarations_repeat_header_in_unknown_branches() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_native_repeated_branch_type_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#include "@DIR/owner.c"
+
+pub fn marker() int {
+	return 1
+}
+')
+	write_module_cache_file(root, 'owner/types.h', 'typedef struct {
+	int value;
+} V3RepeatedBranchNativeType;
+')
+	write_module_cache_file(root, 'owner/owner.c', '#ifdef V3_UNKNOWN_NATIVE_TYPE_BRANCH
+#include "types.h"
+#else
+#include "types.h"
+#endif
+
+V3RepeatedBranchNativeType make_repeated_branch_native_value(void) {
+	return (V3RepeatedBranchNativeType){41};
+}
+
+int read_repeated_branch_native_value(V3RepeatedBranchNativeType value) {
+	return value.value;
+}
+')
+	write_module_cache_file(root, 'caller/caller.v', 'module caller
+
+import owner
+
+fn C.make_repeated_branch_native_value() C.V3RepeatedBranchNativeType
+fn C.read_repeated_branch_native_value(C.V3RepeatedBranchNativeType) int
+
+pub fn value() int {
+	return C.read_repeated_branch_native_value(C.make_repeated_branch_native_value()) + owner.marker()
 }
 ')
 	main_file := os.join_path(root, 'main.v')
