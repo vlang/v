@@ -424,6 +424,51 @@ fn test_cache_input_scan_tracks_literal_include_macros() {
 	assert inputs['sample'] == expected
 }
 
+fn test_cache_input_scan_keeps_unknown_macro_branches_and_bare_defines() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_unknown_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	apple_header := os.join_path(dir, 'apple.h')
+	other_header := os.join_path(dir, 'other.h')
+	enabled_header := os.join_path(dir, 'enabled.h')
+	disabled_header := os.join_path(dir, 'disabled.h')
+	os.write_file(outer_header, '#ifdef __APPLE__
+#include "apple.h"
+#else
+#include "other.h"
+#endif
+#ifdef V3_BARE_FEATURE
+#include "enabled.h"
+#else
+#include "disabled.h"
+#endif
+') or {
+		panic(err)
+	}
+	for path in [apple_header, other_header, enabled_header, disabled_header] {
+		os.write_file(path, '#define V3_RECORDED_INPUT 1\n') or { panic(err) }
+	}
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, ['-DV3_BARE_FEATURE'], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(apple_header),
+		os.real_path(other_header), os.real_path(enabled_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+	assert os.real_path(disabled_header) !in inputs['sample']
+}
+
 fn test_cache_input_scan_rejects_dynamic_include_macros() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_dynamic_macro_cache_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}

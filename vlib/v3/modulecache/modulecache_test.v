@@ -22,6 +22,32 @@ static string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};
 	assert cleaned.contains('_v3_lit_1_44bd54d473cd3d44')
 }
 
+fn test_type_declarations_omit_functions_with_local_typedefs() {
+	source := 'typedef struct VisibleType {
+	int value;
+} VisibleType;
+static int local_state = 7;
+static int local_static_function(void) {
+	typedef struct LocalStaticType {
+		int value;
+	} LocalStaticType;
+	LocalStaticType value = {local_state};
+	return value.value;
+}
+inline int local_inline_function(void) {
+	typedef int LocalInlineType;
+	return (LocalInlineType)local_state;
+}
+'
+	types := c_source_type_declarations(source)
+	assert types.contains('VisibleType')
+	assert !types.contains('local_static_function')
+	assert !types.contains('LocalStaticType')
+	assert !types.contains('local_inline_function')
+	assert !types.contains('LocalInlineType')
+	assert !types.contains('local_state')
+}
+
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	details := SourceSignatureDetails{
 		signature:  'content-signature'

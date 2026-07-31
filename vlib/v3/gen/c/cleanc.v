@@ -1349,8 +1349,11 @@ fn c_cache_known_condition(directive string, include_macros map[string][]string,
 	mut expression := c_directive_arg(directive).trim_space()
 	mut invert := name == 'ifndef'
 	if name in ['ifdef', 'ifndef'] {
-		defined := expression in include_macros || dynamic_include_macros[expression]
-		return if defined != invert { 1 } else { -1 }
+		if expression !in include_macros && !dynamic_include_macros[expression] {
+			// Compiler-provided macros are not present in the scanned definitions.
+			return 0
+		}
+		return if invert { -1 } else { 1 }
 	}
 	if name == 'elif' {
 		expression = expression.trim_space()
@@ -1380,8 +1383,11 @@ fn c_cache_known_condition(directive string, include_macros map[string][]string,
 	if macro_name.len == 0 {
 		return 0
 	}
-	defined := macro_name in include_macros || dynamic_include_macros[macro_name]
-	return if defined != invert { 1 } else { -1 }
+	if macro_name !in include_macros && !dynamic_include_macros[macro_name] {
+		// Preserve both branches when the compiler may provide this macro.
+		return 0
+	}
+	return if invert { -1 } else { 1 }
 }
 
 fn c_record_cache_resolution_path(path string, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) {
@@ -1441,12 +1447,23 @@ fn c_flag_include_macro_definitions(flags []string) (map[string][]string, map[st
 }
 
 fn c_record_include_macro_definition(directive string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
-	if c_directive_name(directive) != 'define' {
+	directive_name := c_directive_name(directive)
+	if directive_name == 'undef' {
+		fields := c_directive_arg(directive).fields()
+		if fields.len == 0 {
+			return
+		}
+		macro_name := fields[0]
+		include_macros.delete(macro_name)
+		dynamic_include_macros.delete(macro_name)
+		return
+	}
+	if directive_name != 'define' {
 		return
 	}
 	definition := c_directive_arg(directive)
 	parts := definition.fields()
-	if parts.len < 2 || parts[0].contains('(') {
+	if parts.len == 0 || parts[0].contains('(') {
 		return
 	}
 	name := parts[0]
@@ -1455,7 +1472,11 @@ fn c_record_include_macro_definition(directive string, mut include_macros map[st
 }
 
 fn c_record_include_macro_value(name string, value string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
-	if name.len == 0 || value.len == 0 {
+	if name.len == 0 {
+		return
+	}
+	if value.len == 0 {
+		include_macros[name] = []string{}
 		return
 	}
 	if !c_include_arg_is_literal(value) {

@@ -2523,20 +2523,23 @@ fn c_declaration_item_declares_type(item string, has_brace bool) bool {
 		_, _, declares_types := c_declaration_header(block.inner)
 		return declares_types
 	}
+	mut brace := -1
+	if has_brace {
+		brace = clean.index_u8(`{`)
+		if brace > 0 {
+			head := clean[..brace].trim_space()
+			if c_static_declaration_head_is_function(head) || c_has_top_level_assign(head) {
+				return false
+			}
+		}
+	}
 	if c_code_contains_identifier(clean, 'typedef') {
 		return true
 	}
-	if !has_brace {
-		return false
-	}
-	brace := clean.index_u8(`{`)
 	if brace <= 0 {
 		return false
 	}
 	head := clean[..brace].trim_space()
-	if c_static_declaration_head_is_function(head) || c_has_top_level_assign(head) {
-		return false
-	}
 	return c_code_contains_identifier(head, 'struct') || c_code_contains_identifier(head, 'union')
 		|| c_code_contains_identifier(head, 'enum')
 }
