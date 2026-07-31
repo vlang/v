@@ -571,7 +571,7 @@ fn test_cache_input_scan_rejects_unresolved_include_macros() {
 	assert inputs['sample'] == [os.real_path(outer_header)]
 }
 
-fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
+fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_source_root_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -604,10 +604,7 @@ fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
 	expected_inputs.sort()
 	assert inputs['sample'] == expected_inputs
 	assert native_roots['sample'] == [os.real_path(root_source)]
-	mut expected_unscoped_inputs := [os.real_path(direct_header),
-		os.real_path(nested_header)]
-	expected_unscoped_inputs.sort()
-	assert unscoped_inputs['sample'] == expected_unscoped_inputs
+	assert unscoped_inputs['sample'] == expected_inputs
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

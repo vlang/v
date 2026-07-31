@@ -10255,9 +10255,12 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 		return
 	}
 	key := tc.expr_key(id)
-	if key.len > 0 && key !in tc.fn_context.locked_shared_base_names {
-		tc.fn_context.locked_shared_base_names[key] = lock_name
-		added_keys << key
+	alias_key := tc.locked_shared_base_alias_key(id)
+	for dependency_key in [key, alias_key] {
+		if dependency_key.len > 0 && dependency_key !in tc.fn_context.locked_shared_base_names {
+			tc.fn_context.locked_shared_base_names[dependency_key] = lock_name
+			added_keys << dependency_key
+		}
 	}
 	node := tc.a.node(id)
 	match node.kind {
@@ -10286,6 +10289,88 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 			}
 		}
 	}
+}
+
+fn (tc &TypeChecker) locked_shared_base_alias_key(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return ''
+			}
+			base := tc.locked_shared_base_alias_key(tc.a.child(node, 0))
+			if base.len > 0 && node.value.len > 0 {
+				return '${base}.${node.value}'
+			}
+		}
+		.index {
+			if node.children_count < 2 {
+				return ''
+			}
+			base := tc.locked_shared_base_alias_key(tc.a.child(node, 0))
+			if base.len == 0 {
+				return ''
+			}
+			index_id := tc.unwrap_paren_expr_id(tc.a.child(node, 1))
+			index_node := tc.a.node(index_id)
+			index_key := if index_node.kind in [.int_literal, .enum_val] {
+				index_node.value
+			} else {
+				'*'
+			}
+			return '${base}[${index_key}]'
+		}
+		.paren, .prefix {
+			if node.children_count > 0 {
+				return tc.locked_shared_base_alias_key(tc.a.child(node, 0))
+			}
+		}
+		else {}
+	}
+	return ''
+}
+
+fn locked_shared_base_keys_may_alias(left string, right string) bool {
+	if left.len == 0 || right.len == 0 {
+		return false
+	}
+	mut left_pos := 0
+	mut right_pos := 0
+	for left_pos < left.len && right_pos < right.len {
+		if left[left_pos] == `[` && right[right_pos] == `[` {
+			mut left_end := left_pos + 1
+			for left_end < left.len && left[left_end] != `]` {
+				left_end++
+			}
+			mut right_end := right_pos + 1
+			for right_end < right.len && right[right_end] != `]` {
+				right_end++
+			}
+			if left_end >= left.len || right_end >= right.len {
+				return false
+			}
+			left_index := left[left_pos + 1..left_end]
+			right_index := right[right_pos + 1..right_end]
+			if left_index != '*' && right_index != '*' && left_index != right_index {
+				return false
+			}
+			left_pos = left_end + 1
+			right_pos = right_end + 1
+			continue
+		}
+		if left[left_pos] != right[right_pos] {
+			return false
+		}
+		left_pos++
+		right_pos++
+	}
+	return left_pos == left.len && right_pos == right.len
 }
 
 fn (tc &TypeChecker) shared_lock_key(id flat.NodeId) string {

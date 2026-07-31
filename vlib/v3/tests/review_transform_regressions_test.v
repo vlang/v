@@ -800,6 +800,16 @@ fn test_nested_shared_field_lock_rejects_base_reassignment() {
 		'cannot reassign `i` while it is used to locate locked shared value `items[i].state`')
 }
 
+fn test_nested_shared_field_lock_rejects_aliased_index_mutation() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_aliased_index_mutation',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\ti := 0\n\tlock items[i].state {\n\t\titems[0] = &second\n\t\titems[i].state.value = 7\n\t}\n}\n',
+		'may alias locked shared value `items[i].state`')
+	out := run_good(v3_bin, 'nested_shared_field_lock_distinct_literal_index',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\tlock items[0].state {\n\t\titems[1] = &first\n\t\titems[0].state.value = 7\n\t\tprintln(int_str(items[0].state.value))\n\t}\n}\n')
+	assert out == '7'
+}
+
 fn test_nested_shared_field_lock_rejects_call_base() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'nested_shared_field_lock_call_base',

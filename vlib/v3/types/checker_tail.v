@@ -942,6 +942,18 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 			id, tc.a.node(id).pos)
 		return
 	}
+	alias_key := tc.locked_shared_base_alias_key(id)
+	if alias_key.len > 0 {
+		for locked_key, lock_name in tc.fn_context.locked_shared_base_names {
+			if locked_key != key && locked_shared_base_keys_may_alias(locked_key, alias_key) {
+				source := tc.source_text_for_node(id)
+				tc.record_error_at(.assignment_mismatch,
+					'cannot reassign `${source}`: it may alias locked shared value `${lock_name}`',
+					id, tc.a.node(id).pos)
+				return
+			}
+		}
+	}
 	if element_id := tc.shared_array_element_index(id) {
 		tc.record_error_at(.assignment_mismatch,
 			'you have to create a handle and `lock` it to modify `shared` array element',

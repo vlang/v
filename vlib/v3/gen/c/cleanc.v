@@ -1026,11 +1026,11 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 }
 
 // cache_external_input_files_with_resolved_flags collects cache inputs without
-// resolving source `#flag` directives a second time. unscoped_inputs contains
-// the dependency trees of direct non-source includes that remain in the program
-// unit. resolution_dirs contains every searched include directory whose contents
-// can change path resolution; missing_resolution_paths are the first nonexistent
-// path components searched.
+// resolving source `#flag` directives a second time. unscoped_inputs contains the
+// dependency trees of native source roots and direct non-source includes whose
+// linkage can cross generated units. resolution_dirs contains every searched include
+// directory whose contents can change path resolution; missing_resolution_paths
+// are the first nonexistent path components searched.
 pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target) (map[string][]string, map[string][]string, map[string][]string, []string, []string, bool) {
 	include_dirs := c_flag_include_dirs(c_flags)
 	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths :=
@@ -1097,7 +1097,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				}
 				for file in files {
 					c_add_cache_external_input(mut inputs, owner_module, file)
-					if !is_source_input && include_arg.trim_space().starts_with('"') {
+					if is_source_input || include_arg.trim_space().starts_with('"') {
 						c_add_cache_external_input(mut unscoped_inputs, owner_module, file)
 					}
 				}
