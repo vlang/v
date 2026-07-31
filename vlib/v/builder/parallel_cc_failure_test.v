@@ -91,6 +91,34 @@ fn test_parallel_cc_succeeds_with_array_sort_compare_helper() {
 	assert res.exit_code == 0, res.output
 }
 
+fn test_parallel_cc_keeps_top_level_comptime_function_guards_together() {
+	res := run_parallel_cc_case_with_env('top_level_comptime_function', {
+		'main.v': 'module main
+
+fn before() int {
+	return 1
+}
+
+$if !parallel_cc_guard_disabled ? {
+	fn guarded() int {
+		return 2
+	}
+}
+
+fn after() int {
+	return 3
+}
+
+fn main() {
+	println(before() + guarded() + after())
+}
+'
+	}, {
+		'VJOBS': '2'
+	})
+	assert res.exit_code == 0, res.output
+}
+
 fn test_parallel_cc_uses_resolved_compiler_even_when_cc_env_is_invalid() {
 	res := run_parallel_cc_case_with_env('ignore_invalid_cc_env', {
 		'main.v': 'module main
