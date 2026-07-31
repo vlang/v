@@ -3754,7 +3754,14 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			definition = clean[2..]
 			is_undef = true
 		}
-		macro_name := definition.all_before('=').trim_space()
+		macro_declarator := definition.all_before('=').trim_space()
+		function_open := macro_declarator.index_u8(`(`)
+		is_function_like := function_open > 0 && !macro_declarator[function_open - 1].is_space()
+		macro_name := if is_function_like {
+			macro_declarator[..function_open].trim_space()
+		} else {
+			macro_declarator
+		}
 		if macro_name.len > 0 {
 			if is_undef {
 				defined.delete(macro_name)
@@ -3763,10 +3770,14 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			} else {
 				undefined.delete(macro_name)
 				defined[macro_name] = true
-				macro_values[macro_name] = if definition.contains('=') {
-					definition.all_after('=').trim_space()
+				if is_function_like {
+					macro_values.delete(macro_name)
 				} else {
-					'1'
+					macro_values[macro_name] = if definition.contains('=') {
+						definition.all_after('=').trim_space()
+					} else {
+						'1'
+					}
 				}
 			}
 		}

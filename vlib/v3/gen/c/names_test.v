@@ -206,6 +206,9 @@ fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c_for_target('#if FEATURE\n@interface Enabled\n@end\n#endif\n', [
 		'-DFEATURE=1',
 	], false, pref.host_target())
+	assert !c_header_text_needs_objective_c_for_target('#if !defined(FEATURE)\n@interface Disabled\n@end\n#endif\n', [
+		'-DFEATURE(x)=x',
+	], false, pref.host_target())
 	assert c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\n#else\n@interface Enabled\n@end\n#endif\n')
 	assert c_header_text_needs_objective_c('#ifdef COMPILER_MACRO\n@interface PossiblyEnabled\n@end\n#endif\n')
 	imports :=
