@@ -3736,6 +3736,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	}
 	mut uncertain := map[string]bool{}
 	mut macro_values := map[string]string{}
+	mut bridge_compatibility_macro := false
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -3767,9 +3768,15 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 				defined.delete(macro_name)
 				undefined[macro_name] = true
 				macro_values.delete(macro_name)
+				if macro_name == '__bridge' {
+					bridge_compatibility_macro = false
+				}
 			} else {
 				undefined.delete(macro_name)
 				defined[macro_name] = true
+				if macro_name == '__bridge' {
+					bridge_compatibility_macro = !is_function_like
+				}
 				if is_function_like {
 					macro_values.delete(macro_name)
 				} else {
@@ -3794,6 +3801,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
+		mut directive_macro_name := ''
 		if name in ['ifdef', 'ifndef'] {
 			macro_name := c_directive_arg(clean).fields()[0] or { '' }
 			known, mut active := c_header_objective_c_macro_state(macro_name, defined, undefined,
@@ -3872,6 +3880,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			parts := c_directive_arg(clean).fields()
 			if parts.len > 0 {
 				macro_name := parts[0].all_before('(')
+				directive_macro_name = macro_name
 				mut definitely_active := true
 				for depth in 0 .. condition_known.len {
 					if !condition_known[depth] {
@@ -3887,6 +3896,9 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 						macro_values.delete(macro_name)
 						definition := c_directive_arg(clean).trim_space()
 						macro_token := parts[0]
+						if macro_name == '__bridge' {
+							bridge_compatibility_macro = !macro_token.contains('(')
+						}
 						if !macro_token.contains('(') && definition.len > macro_token.len {
 							macro_values[macro_name] = definition[macro_token.len..].trim_space()
 						}
@@ -3894,16 +3906,26 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 						macro_values.delete(macro_name)
+						if macro_name == '__bridge' {
+							bridge_compatibility_macro = false
+						}
 					}
 				} else {
 					defined.delete(macro_name)
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
 					macro_values.delete(macro_name)
+					if macro_name == '__bridge' {
+						bridge_compatibility_macro = false
+					}
 				}
 			}
 		}
-		possible_text.writeln(line)
+		if bridge_compatibility_macro || directive_macro_name == '__bridge' {
+			possible_text.writeln(c_header_text_without_identifier(line, '__bridge'))
+		} else {
+			possible_text.writeln(line)
+		}
 	}
 	return c_header_text_has_objective_c_tokens(possible_text.str())
 }
@@ -4166,6 +4188,35 @@ fn c_header_condition_top_level_parts(expression string, operator string) []stri
 	}
 	parts << last
 	return parts
+}
+
+fn c_header_text_without_identifier(text string, name string) string {
+	if name.len == 0 {
+		return text
+	}
+	mut result := strings.new_builder(text.len)
+	mut start := 0
+	mut i := 0
+	for i < text.len {
+		if !c_identifier_start(text[i]) {
+			i++
+			continue
+		}
+		token_start := i
+		i++
+		for i < text.len && c_identifier_continue(text[i]) {
+			i++
+		}
+		if text[token_start..i] == name {
+			result.write_string(text[start..token_start])
+			for _ in token_start .. i {
+				result.write_u8(` `)
+			}
+			start = i
+		}
+	}
+	result.write_string(text[start..])
+	return result.str()
 }
 
 fn c_header_text_has_objective_c_tokens(text string) bool {

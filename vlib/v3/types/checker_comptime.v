@@ -14259,8 +14259,8 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 			return
 		}
 	}
-	if rhs.kind == .call {
-		// A pointer returned by arbitrary code may be any existing pointer value.
+	if rhs.kind in [.call, .selector, .index] {
+		// A pointer read through arbitrary code or storage may be any existing pointer value.
 		tc.fn_context.pointer_binding_value_keys[left_key] = [
 			pointer_binding_unknown_value_key,
 		]
