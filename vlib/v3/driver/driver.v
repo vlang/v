@@ -7694,6 +7694,22 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 		cache_state_module_name(state, raw_module_name) or { return false }
 	}
 	mut scanned_paths := map[string]bool{}
+	for sibling_raw_module_name, paths in state.module_external_inputs {
+		sibling_module := if sibling_raw_module_name == 'main' {
+			'main'
+		} else {
+			cache_state_module_name(state, sibling_raw_module_name) or { sibling_raw_module_name }
+		}
+		if sibling_module == owner_module {
+			continue
+		}
+		for path in paths {
+			source := os.read_file(path) or { continue }
+			if c_source_references_identifiers(source, identifiers) {
+				return false
+			}
+		}
+	}
 	if owner_module != 'main' {
 		for path in user_files {
 			real_path := os.real_path(path)
@@ -7758,6 +7774,55 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 		}
 	}
 	return true
+}
+
+fn c_source_references_identifiers(source string, identifiers map[string]bool) bool {
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`"`, `'`] {
+			quote := source[i]
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			i = int_min(i + 2, source.len)
+			continue
+		}
+		if !source[i].is_letter() && source[i] != `_` {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < source.len && (source[i].is_alnum() || source[i] == `_`) {
+			i++
+		}
+		if identifiers[source[start..i]] {
+			return true
+		}
+	}
+	return false
 }
 
 fn v_c_identifiers(source string) []string {
