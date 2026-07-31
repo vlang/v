@@ -1929,6 +1929,60 @@ fn main() {
 	assert changed.any(it.starts_with('wrapper_')), changed.str()
 }
 
+fn test_cached_main_object_rebuilds_when_imported_preserved_header_changes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_main_imported_header_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	padding := 'x'.repeat(262_200)
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#flag -I @DIR
+#include <api.h>
+
+pub fn marker() {}
+')
+	write_module_cache_file(root, 'wrapper/api.h', '#ifndef V3_IMPORTED_MAIN_API_H
+#define V3_IMPORTED_MAIN_API_H
+static inline int v3_imported_main_header_value(void) {
+	return 41;
+}
+/* ${padding} */
+#endif
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn C.v3_imported_main_header_value() int
+
+fn main() {
+	wrapper.marker()
+	println(C.v3_imported_main_header_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+
+	write_module_cache_file(root, 'wrapper/api.h', '#ifndef V3_IMPORTED_MAIN_API_H
+#define V3_IMPORTED_MAIN_API_H
+static inline int v3_imported_main_header_value(void) {
+	return 42;
+}
+/* ${padding} */
+#endif
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_whole_program_cgen_invalidates_when_main_external_input_changes() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_main_external_input_${os.getpid()}')
@@ -5683,7 +5737,8 @@ pub fn marker() int {
 	int value;
 } V3TransitiveNativeType;
 ')
-	write_module_cache_file(root, 'owner/owner.c', '#include "types.h"
+	write_module_cache_file(root, 'owner/owner.c', '#define V3_NATIVE_TYPES_HEADER "types.h"
+#include V3_NATIVE_TYPES_HEADER
 
 V3TransitiveNativeType make_transitive_native_value(void) {
 	return (V3TransitiveNativeType){41};

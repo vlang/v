@@ -800,12 +800,15 @@ fn tcc_cached_main_source(source string, body string) string {
 	return out.str()
 }
 
-fn v3_program_prefix_external_input_paths(state &V3ModuleCacheState) []string {
+fn v3_program_external_input_paths(state &V3ModuleCacheState) []string {
 	mut paths := map[string]bool{}
-	for input in state.module_external_inputs['main'] or { []string{} } {
-		clean := input.trim_space()
-		if os.is_file(clean) && !c_flag_token_is_link_only(clean) && !c_flag_is_object_file(clean) {
-			paths[os.real_path(clean)] = true
+	for inputs in state.module_external_inputs.values() {
+		for input in inputs {
+			clean := input.trim_space()
+			if os.is_file(clean) && !c_flag_token_is_link_only(clean)
+				&& !c_flag_is_object_file(clean) {
+				paths[os.real_path(clean)] = true
+			}
 		}
 	}
 	mut result := paths.keys()
@@ -2065,10 +2068,12 @@ fn cache_native_type_declarations_for_path(path string, allowed_paths map[string
 		return ''
 	}
 	mut seen := map[string]bool{}
-	return cache_native_type_declarations_for_path_rec(real_path, allowed_paths, mut seen)
+	mut include_macros := map[string]string{}
+	return cache_native_type_declarations_for_path_rec(real_path, allowed_paths, mut seen, mut
+		include_macros)
 }
 
-fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[string]bool, mut seen map[string]bool) string {
+fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[string]bool, mut seen map[string]bool, mut include_macros map[string]string) string {
 	real_path := os.real_path(path)
 	if !allowed_paths[real_path] || seen[real_path] {
 		return ''
@@ -2078,11 +2083,12 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 	header := modulecache.c_source_type_declarations(source)
 	mut out := strings.new_builder(header.len)
 	for line in header.split_into_lines() {
-		if include_path := cache_local_c_include_path(line, real_path) {
+		cache_record_local_c_include_macro(line, mut include_macros)
+		if include_path := cache_local_c_include_path(line, real_path, include_macros) {
 			real_include := os.real_path(include_path)
 			if allowed_paths[real_include] {
 				out.write_string(cache_native_type_declarations_for_path_rec(real_include,
-					allowed_paths, mut seen))
+					allowed_paths, mut seen, mut include_macros))
 				continue
 			}
 		}
@@ -2091,28 +2097,80 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 	return out.str()
 }
 
-fn cache_local_c_include_path(line string, source_path string) ?string {
-	trimmed := line.trim_space()
-	mut rest := ''
-	if trimmed.starts_with('#include') {
-		rest = trimmed['#include'.len..].trim_space()
-	} else if trimmed.starts_with('#import') {
-		rest = trimmed['#import'.len..].trim_space()
-	} else {
+fn cache_local_c_include_path(line string, source_path string, include_macros map[string]string) ?string {
+	directive, raw_arg := cache_local_c_directive(line)
+	if directive !in ['include', 'import'] {
 		return none
 	}
-	if rest.len < 3 || rest[0] != `"` {
+	mut arg := raw_arg
+	if arg.len == 0 {
 		return none
 	}
-	close := rest[1..].index_u8(`"`)
+	if arg[0] != `"` {
+		fields := arg.fields()
+		if fields.len != 1 {
+			return none
+		}
+		arg = include_macros[fields[0]] or { return none }
+	}
+	if arg.len < 3 || arg[0] != `"` {
+		return none
+	}
+	close := arg[1..].index_u8(`"`)
 	if close < 1 {
 		return none
 	}
-	raw_path := rest[1..close + 1]
+	raw_path := arg[1..close + 1]
 	if os.is_abs_path(raw_path) {
 		return raw_path
 	}
 	return os.join_path_single(os.dir(source_path), raw_path)
+}
+
+fn cache_record_local_c_include_macro(line string, mut include_macros map[string]string) {
+	directive, arg := cache_local_c_directive(line)
+	if directive == 'undef' {
+		fields := arg.fields()
+		if fields.len > 0 {
+			include_macros.delete(fields[0])
+		}
+		return
+	}
+	if directive != 'define' {
+		return
+	}
+	fields := arg.fields()
+	if fields.len == 0 {
+		return
+	}
+	raw_name := fields[0]
+	open := raw_name.index_u8(`(`)
+	if open > 0 {
+		include_macros.delete(raw_name[..open])
+		return
+	}
+	value := arg[raw_name.len..].trim_space()
+	if value.len < 3 || value[0] != `"` || value[1..].index_u8(`"`) < 1 {
+		include_macros.delete(raw_name)
+		return
+	}
+	include_macros[raw_name] = value
+}
+
+fn cache_local_c_directive(line string) (string, string) {
+	trimmed := line.trim_space()
+	if trimmed.len < 2 || trimmed[0] != `#` {
+		return '', ''
+	}
+	rest := trimmed[1..].trim_space()
+	mut end := 0
+	for end < rest.len && (rest[end].is_alnum() || rest[end] == `_`) {
+		end++
+	}
+	if end == 0 {
+		return '', ''
+	}
+	return rest[..end], rest[end..].trim_space()
 }
 
 fn v3_external_input_key(module_name string, path string) string {
@@ -6162,7 +6220,7 @@ pub fn run(args []string) {
 				}
 				prefix_object := compile_v3_program_object('prefix',
 					prepared_cache.program_prefix_source, prefix_source_identity,
-					v3_program_prefix_external_input_paths(&cache_state), &cache_state.manager,
+					v3_program_external_input_paths(&cache_state), &cache_state.manager,
 					c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags,
 					needs_objective_c, target_args, prefs.target, c_compiler, mut
 					c_object_cache_stats) or {
@@ -6216,7 +6274,7 @@ pub fn run(args []string) {
 			}
 			program_main_identity := modulecache.file_signature(published_c_source)
 			cached_program_main_object = compile_v3_program_object('main', program_main_source,
-				program_main_identity, v3_program_prefix_external_input_paths(&cache_state),
+				program_main_identity, v3_program_external_input_paths(&cache_state),
 				&cache_state.manager, c_standard, '', pic_flag, warn_args.join(' '),
 				resolved_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut
 				c_object_cache_stats) or {
