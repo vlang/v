@@ -1851,6 +1851,8 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		if smartcasts.len > 0 {
 			tc.check_node(lhs_id)
 			unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_skipped_rhs :=
+				clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
 			for sc in smartcasts {
 				if valid_string_data(sc.name) {
@@ -1860,16 +1862,20 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.check_node(rhs_id)
 			tc.merge_unsafe_reference_alias_short_circuit_state(node.op, lhs_id,
 				unsafe_alias_skipped_rhs)
+			tc.merge_pointer_binding_short_circuit_state(node.op, lhs_id, pointer_alias_skipped_rhs)
 			tc.smartcasts = clone_smartcasts(saved_smartcasts)
 			return
 		}
 	}
 
 	mut unsafe_alias_skipped_rhs := map[string]bool{}
+	mut pointer_alias_skipped_rhs := map[string][]string{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
 			unsafe_alias_skipped_rhs = tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_skipped_rhs =
+				clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		previous_channel_send_or_expr_id := tc.channel_send_or_expr_id
 		if node.kind == .infix && node.op == .arrow && i == 1 {
@@ -1889,6 +1895,8 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
 			tc.merge_unsafe_reference_alias_short_circuit_state(node.op, tc.a.child(&node, 0),
 				unsafe_alias_skipped_rhs)
+			tc.merge_pointer_binding_short_circuit_state(node.op, tc.a.child(&node, 0),
+				pointer_alias_skipped_rhs)
 		}
 		tc.channel_send_or_expr_id = previous_channel_send_or_expr_id
 	}
@@ -6879,8 +6887,12 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	mut invalidated_smartcasts := map[string]bool{}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	mut unsafe_alias_paths := []map[string]bool{}
+	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	mut pointer_alias_paths := []map[string][]string{}
 	for i in 0 .. node.children_count {
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+		tc.fn_context.pointer_binding_value_keys =
+			clone_pointer_binding_value_keys(pointer_alias_base)
 		if base_smartcasts.len > 0 {
 			tc.smartcasts = clone_smartcasts(base_smartcasts)
 		}
@@ -6986,6 +6998,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		}
 		if !tc.stmt_sequence_definitely_returns(&branch, body_start) {
 			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		for key, _ in base_smartcasts {
 			if key !in tc.smartcasts {
@@ -6999,6 +7012,8 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_base)
 	$if ownership ? {
 		tc.ownership_end_branch_group()
 	}
@@ -14457,6 +14472,23 @@ fn (mut tc TypeChecker) merge_unsafe_reference_alias_short_circuit_state(op flat
 		return
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states([
+		skipped_rhs,
+		executed_rhs,
+	], skipped_rhs)
+}
+
+fn (mut tc TypeChecker) merge_pointer_binding_short_circuit_state(op flat.Op, lhs_id flat.NodeId, skipped_rhs map[string][]string) {
+	executed_rhs := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	if lhs := tc.constant_bool_value(lhs_id) {
+		rhs_executes := (op == .logical_and && lhs) || (op == .logical_or && !lhs)
+		tc.fn_context.pointer_binding_value_keys = if rhs_executes {
+			executed_rhs
+		} else {
+			clone_pointer_binding_value_keys(skipped_rhs)
+		}
+		return
+	}
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states([
 		skipped_rhs,
 		executed_rhs,
 	], skipped_rhs)

@@ -347,6 +347,8 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		rhs_id := tc.a.child(&cond, 1)
 		mut bindings := tc.check_condition(lhs_id)
 		unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_skipped_rhs :=
+			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		for sc in tc.extract_smartcasts(lhs_id) {
 			if valid_string_data(sc.name) {
@@ -357,6 +359,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		bindings << rhs_bindings
 		tc.merge_unsafe_reference_alias_short_circuit_state(cond.op, lhs_id,
 			unsafe_alias_skipped_rhs)
+		tc.merge_pointer_binding_short_circuit_state(cond.op, lhs_id, pointer_alias_skipped_rhs)
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 		tc.check_infix(cond_id, cond)
 		has_unresolved_generic_name := tc.expr_has_unresolved_generic_name_ident(cond_id)
