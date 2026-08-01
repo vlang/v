@@ -11,8 +11,8 @@ import v.token
 const alias_unwrap_depth_cutoff_limit = 100
 const generic_inst_depth_cutoff_limit = 256
 const struct_fields_depth_cutoff_limit = 100
-const generic_fn_inst_cutoff_limit = 256
-const generic_inst_name_len_cutoff_limit = 1_024
+const generic_fn_inst_cutoff_limit = 4_096
+const generic_inst_name_len_cutoff_limit = 8_192
 const max_postprocess_iterations = 100_000
 
 @[heap; minify]
