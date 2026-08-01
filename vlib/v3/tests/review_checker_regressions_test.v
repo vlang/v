@@ -1258,3 +1258,35 @@ fn main() {
 ',
 		'is `mut`, so use `mut counter` instead')
 }
+
+fn test_mutable_array_field_copy_requires_clone() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_mutable_array_field_copy', 'struct Holder {
+	items []int
+}
+
+fn main() {
+	holder := Holder{
+		items: [1]
+	}
+	mut copy := holder.items
+	copy << 2
+}
+',
+		'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)')
+	out := run_good(v3_bin, 'good_mutable_array_field_clone', 'struct Holder {
+	items []int
+}
+
+fn main() {
+	holder := Holder{
+		items: [1]
+	}
+	mut copy := holder.items.clone()
+	copy << 2
+	println(int_str(copy.len))
+	println(int_str(holder.items.len))
+}
+')
+	assert out == '2\n1'
+}

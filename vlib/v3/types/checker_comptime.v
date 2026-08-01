@@ -11862,6 +11862,12 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id,
 				rhs_node.pos)
 		}
+		if tc.unsafe_depth == 0 && tc.decl_lhs_is_mut(node, lhs_id)
+			&& unalias_type(rhs_type) is Array && rhs_node.kind == .selector {
+			tc.record_error_at(.assignment_mismatch,
+				'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)',
+				id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
+		}
 		if rhs_type is Void && rhs_node.kind == .infix && rhs_node.op == .left_shift {
 			tc.cur_scope.insert(lhs_node.value, rhs_type)
 			tc.remember_expr_type(lhs_id, rhs_type)

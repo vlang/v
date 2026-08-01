@@ -1584,7 +1584,7 @@ fn test_pr_review_codegen_batch_twelve() {
 	// A positional generic heap literal that omits a default-initialized `[]T` field still
 	// gets that field's default (`array_new(...)`) alongside the positional value.
 	gposdef := run_good(v3_bin, 'good_positional_generic_heap_default',
-		'struct Box[T] {\n\tv     T\n\titems []T\n}\nfn main() {\n\tb := &Box[int]{5}\n\tmut its := b.items\n\tits << 10\n\tprintln(int_str(b.v))\n\tprintln(int_str(its.len))\n}\n')
+		'struct Box[T] {\n\tv     T\n\titems []T\n}\nfn main() {\n\tb := &Box[int]{5}\n\tmut its := b.items.clone()\n\tits << 10\n\tprintln(int_str(b.v))\n\tprintln(int_str(its.len))\n}\n')
 	assert gposdef == '5\n1'
 	// Non-generic positional heap literals keep working (no regression).
 	pos := run_good(v3_bin, 'good_positional_heap_struct',
