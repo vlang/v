@@ -29,9 +29,17 @@ fn test_macos_tcc_boehm_uses_bundled_libgc() {
 	defer {
 		os.rm(exe_path) or {}
 	}
-	assert res.exit_code == 0
-	// macOS amd64 tccbin only ships libgc.a (no .dylib).
-	assert res.output.contains('thirdparty/tcc/lib/libgc.a')
+	assert res.exit_code == 0, res.output
+	normalized := res.output.replace('\\', '/')
+	// tcc cannot reliably link the bundled static archive on macOS, so both
+	// arches link the paired libgc.dylib with an rpath instead. tccbin ships
+	// one for amd64 as of vlang/v#27982; arm64 already did.
+	assert normalized.contains('thirdparty/tcc/lib/libgc.dylib'), res.output
+	assert normalized.contains('-rpath'), res.output
+	// The static archive must be gone from the link line entirely - this is
+	// what actually proves the selector collapsed, rather than the dylib
+	// merely being present alongside it.
+	assert !normalized.contains('thirdparty/tcc/lib/libgc.a'), res.output
 	assert !res.output.contains(' -lgc')
 }
 

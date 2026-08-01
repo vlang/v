@@ -698,13 +698,18 @@ jobs:
             exit 1
           fi
 
-      # Deliverable A (this PR) does not include the V selector change
-      # (deliverable C, vlib/builtin/builtin_d_gcboehm.c.v) - it merges
-      # separately, only after this pair is published and vlang/tccbin's
-      # gate is confirmed green under it. To actually exercise the
-      # dylib pairing here, apply that selector collapse to an entirely
-      # separate, freshly-cloned vlang/v workspace, in memory only -
-      # never written back to this checkout, never committed anywhere.
+      # Build ./v in an entirely separate, freshly-cloned workspace so the
+      # smoke test below runs a real V against the staged bundle.
+      #
+      # This step used to patch vlib/builtin/builtin_d_gcboehm.c.v in memory
+      # to make macOS amd64 select libgc.dylib, because the selector still
+      # chose the static libgc.a and the smoke test would otherwise not have
+      # exercised the dylib pairing at all. That patch is gone: the selector
+      # itself now links the dylib on both macOS arches, so this clone needs
+      # no modification to test the right thing. (Leaving the patch in place
+      # would in fact have broken this job outright - it asserted its search
+      # text occurred exactly once, and that text no longer exists.)
+      #
       # This clone's own thirdparty/tcc has nothing to do with the
       # bundle staged above (a brand new clone doesn't have one yet),
       # so letting `make`'s default target bootstrap it normally here
@@ -732,30 +737,6 @@ jobs:
           rm -rf /tmp/v-bootstrap-workspace
           git clone --quiet "https://github.com/${{ github.repository }}" /tmp/v-bootstrap-workspace
           git -C /tmp/v-bootstrap-workspace checkout --quiet "${{ github.sha }}"
-
-          python3 - <<'PYEOF'
-          path = "/tmp/v-bootstrap-workspace/vlib/builtin/builtin_d_gcboehm.c.v"
-          with open(path, "r", encoding="utf-8", newline="") as f:
-              content = f.read()
-          old = ('\t\t\t\t\t\t$if arm64 {\n'
-                 '\t\t\t\t\t\t\t// tcc on macOS arm64 can leave the bundled GC archive symbols unresolved.\n'
-                 '\t\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib\n'
-                 '\t\t\t\t\t\t\t#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"\n'
-                 '\t\t\t\t\t\t} $else {\n'
-                 '\t\t\t\t\t\t\t// macOS amd64 tccbin only ships libgc.a (no .dylib).\n'
-                 '\t\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a\n'
-                 '\t\t\t\t\t\t}\n')
-          new = ('\t\t\t\t\t\t// SMOKE-TEST-ONLY PATCH (thirdparty-macos-amd64_bdwgc_validate.sh\n'
-                 '\t\t\t\t\t\t// caller) - never committed. Deliverable C applies this for real.\n'
-                 '\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib\n'
-                 '\t\t\t\t\t\t#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"\n')
-          count = content.count(old)
-          assert count == 1, f"expected exactly 1 occurrence of the selector block to patch, found {count}"
-          content = content.replace(old, new)
-          with open(path, "w", encoding="utf-8", newline="") as f:
-              f.write(content)
-          print("smoke-test-only selector patch applied in isolated workspace")
-          PYEOF
 
           (cd /tmp/v-bootstrap-workspace && make -j4)
 

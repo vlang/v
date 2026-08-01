@@ -74,14 +74,15 @@ $if dynamic_boehm ? {
 			$if !use_bundled_libgc ? {
 				$if macos {
 					$if tinyc {
-						$if arm64 {
-							// tcc on macOS arm64 can leave the bundled GC archive symbols unresolved.
-							#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib
-							#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
-						} $else {
-							// macOS amd64 tccbin only ships libgc.a (no .dylib).
-							#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
-						}
+						// tcc cannot reliably link the bundled *static* GC archive on
+						// either macOS arch: its Mach-O archive reader leaves the GC
+						// symbols unresolved against an archive built by a modern
+						// toolchain, even though `nm -g` shows them defined. arm64 has
+						// always used the dynamic library for that reason; amd64 now
+						// does too, because tccbin ships a libgc.dylib rebuilt in
+						// lockstep with each tcc.exe for it as of vlang/v#27982.
+						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib
+						#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
 					} $else {
 						#flag -L@VEXEROOT/thirdparty/tcc/lib
 						#flag -lgc
