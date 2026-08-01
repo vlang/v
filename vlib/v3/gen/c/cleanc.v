@@ -15,8 +15,10 @@ const c_inline_header_size_limit = 262_144
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
 const c_objective_c_ownership_qualifiers = ['__strong', '__weak', '__autoreleasing',
 	'__unsafe_unretained', '__kindof']
+const c_objective_c_contextual_types = ['id', 'Class', 'SEL', 'Protocol', 'instancetype']
 const c_objective_c_compatibility_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer',
-	'__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof']
+	'__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof', 'id', 'Class',
+	'SEL', 'Protocol', 'instancetype']
 
 struct CHeaderTreeSize {
 mut:
@@ -5076,8 +5078,52 @@ fn c_header_token_is_on_directive_line(text string, start int) bool {
 	return line_start < start && text[line_start] == `#`
 }
 
+fn c_header_token_follows_open_parenthesis(text string, start int) bool {
+	mut before := start
+	for {
+		for before > 0 && text[before - 1].is_space() {
+			before--
+		}
+		if before >= 2 && text[before - 2..before] == '*/' {
+			comment_start := text[..before - 2].last_index('/*') or { return false }
+			before = comment_start
+			continue
+		}
+		if before == 0 || text[before - 1] != `(` {
+			return false
+		}
+		mut prefix := before - 1
+		for prefix > 0 && text[prefix - 1].is_space() {
+			prefix--
+		}
+		if prefix > 0 && c_identifier_continue(text[prefix - 1]) {
+			mut identifier_start := prefix - 1
+			for identifier_start > 0 && c_identifier_continue(text[identifier_start - 1]) {
+				identifier_start--
+			}
+			if text[identifier_start..prefix] !in ['return', 'case', 'sizeof', '_Alignof', 'alignof'] {
+				return false
+			}
+		} else if prefix > 0 && text[prefix - 1] in [`)`, `]`] {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+fn c_header_cast_has_operand(text string, close int) bool {
+	after := c_header_skip_space_and_comments(text, close + 1, text.len)
+	if after >= text.len {
+		return false
+	}
+	c := text[after]
+	return c_identifier_start(c) || (c >= `0` && c <= `9`)
+		|| c in [`(`, `*`, `&`, `!`, `~`, `+`, `-`, `"`, `'`, `@`, `[`, `{`]
+}
+
 fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int, previous_identifier string, local_typedefs map[string]bool) bool {
-	if token !in ['id', 'Class', 'SEL', 'Protocol', 'instancetype'] || local_typedefs[token]
+	if token !in c_objective_c_contextual_types || local_typedefs[token]
 		|| previous_identifier in ['struct', 'union', 'enum']
 		|| c_header_token_is_on_directive_line(text, token_start) {
 		return false
@@ -5093,7 +5139,14 @@ fn c_header_has_bare_objective_c_type(text string, token string, token_start int
 		for after < text.len && text[after] == `*` {
 			after = c_header_skip_space_and_comments(text, after + 1, text.len)
 		}
+		if after < text.len && text[after] == `)`
+			&& c_header_token_follows_open_parenthesis(text, token_start) {
+			return c_header_cast_has_operand(text, after)
+		}
 		return after < text.len && c_identifier_start(text[after])
+	}
+	if text[after] == `)` && c_header_token_follows_open_parenthesis(text, token_start) {
+		return c_header_cast_has_operand(text, after)
 	}
 	if text[after] != `(` {
 		return false
