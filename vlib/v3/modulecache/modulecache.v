@@ -2118,6 +2118,7 @@ pub fn c_source_function_identifiers(source string) map[string]bool {
 // and whether every function declaration could be classified.
 pub fn c_source_function_identifiers_with_status(source string) (map[string]bool, bool) {
 	mut identifiers := map[string]bool{}
+	mut parameter_macros := map[string]bool{}
 	mut complete := true
 	mut pending := strings.new_builder(256)
 	mut pending_old_style := false
@@ -2126,6 +2127,7 @@ pub fn c_source_function_identifiers_with_status(source string) (map[string]bool
 	for raw_line in source.split_into_lines() {
 		trimmed := raw_line.trim_space()
 		if brace_depth == 0 && trimmed.starts_with('#') {
+			c_record_function_like_macro(trimmed, mut parameter_macros)
 			continue
 		}
 		if brace_depth == 0 {
@@ -2139,7 +2141,9 @@ pub fn c_source_function_identifiers_with_status(source string) (map[string]bool
 			head :=
 				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
 			if c_static_declaration_head_is_function(head) {
-				if identifier := c_function_declaration_identifier(head) {
+				if identifier := c_function_declaration_identifier_with_parameter_macros(head,
+					parameter_macros)
+				{
 					identifiers[identifier] = true
 					if c_function_declaration_identifier_is_ambiguous(head, identifier) {
 						complete = false
@@ -2167,6 +2171,24 @@ pub fn c_source_function_identifiers_with_status(source string) (map[string]bool
 	}
 	unsafe { pending.free() }
 	return identifiers, complete
+}
+
+fn c_record_function_like_macro(directive string, mut macros map[string]bool) {
+	clean := directive.trim_left('#').trim_space()
+	if clean.starts_with('undef ') {
+		macros.delete(clean['undef '.len..].trim_space().fields()[0] or { '' })
+		return
+	}
+	if !clean.starts_with('define ') {
+		return
+	}
+	declarator := clean['define '.len..].trim_space().fields()[0] or { return }
+	open := declarator.index_u8(`(`)
+	if open > 0 {
+		macros[declarator[..open]] = true
+	} else {
+		macros.delete(declarator)
+	}
 }
 
 fn c_pending_has_old_style_parameter_declaration(declaration string) bool {
@@ -2501,6 +2523,10 @@ fn c_parenthesized_function_declarator_identifier(head string, open int, close i
 }
 
 fn c_function_declaration_identifier(head string) ?string {
+	return c_function_declaration_identifier_with_parameter_macros(head, map[string]bool{})
+}
+
+fn c_function_declaration_identifier_with_parameter_macros(head string, parameter_macros map[string]bool) ?string {
 	mut candidate := ''
 	mut candidate_start := -1
 	mut candidate_tail_end := -1
@@ -2588,9 +2614,9 @@ fn c_function_declaration_identifier(head string) ?string {
 				if start < end {
 					mut name := head[start..end]
 					mut name_start := start
-					macro_arguments := trim_leading_c_comments(head[i + 1..].trim_space())
-					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__', '__asm', '__asm__', '_Alignas', 'alignas']
-						&& macro_arguments.starts_with('(') && last_top_level_identifier == name
+					if parameter_macros[name]
+						&& name !in ['__attribute', '__attribute__', '__declspec', '__declspec__', '__asm', '__asm__', '_Alignas', 'alignas']
+						&& last_top_level_identifier == name
 						&& previous_top_level_identifier.len > 0
 						&& previous_top_level_identifier !in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool']
 						&& c_function_candidate_has_return_type(head, previous_top_level_identifier_start) {

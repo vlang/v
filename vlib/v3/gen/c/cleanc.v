@@ -5089,6 +5089,18 @@ fn c_header_token_follows_open_parenthesis(text string, start int) bool {
 			before = comment_start
 			continue
 		}
+		if before > 0 && c_identifier_continue(text[before - 1]) {
+			mut qualifier_start := before - 1
+			for qualifier_start > 0 && c_identifier_continue(text[qualifier_start - 1]) {
+				qualifier_start--
+			}
+			if text[qualifier_start..before] in ['const', 'volatile', 'restrict', '__restrict',
+				'__restrict__', '_Atomic'] {
+				before = qualifier_start
+				continue
+			}
+			return false
+		}
 		if before == 0 || text[before - 1] != `(` {
 			return false
 		}

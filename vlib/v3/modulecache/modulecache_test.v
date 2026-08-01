@@ -124,6 +124,16 @@ fn test_function_identifiers_keep_name_before_parameter_list_macro() {
 	assert complete
 	assert identifiers['api']
 	assert !identifiers['P_']
+	single_identifiers, single_complete :=
+		c_source_function_identifiers_with_status('#define P(x) (x)\nstatic int api P(void) {\n\treturn 1;\n}\n')
+	assert single_complete
+	assert single_identifiers['api']
+	assert !single_identifiers['P']
+	old_style_identifiers, old_style_complete :=
+		c_source_function_identifiers_with_status('#define EXPORT\ntypedef int MyType;\nEXPORT MyType API(foo)\nint foo;\n{\n\treturn foo;\n}\n')
+	assert old_style_complete
+	assert old_style_identifiers['API']
+	assert !old_style_identifiers['MyType']
 }
 
 fn test_function_identifiers_unwrap_parenthesized_declarator() {
