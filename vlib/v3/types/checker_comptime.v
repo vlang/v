@@ -1963,7 +1963,14 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 
 fn (mut tc TypeChecker) check_loop_control_statement(id flat.NodeId, node flat.Node) {
 	if node.value.len > 0 {
-		if tc.diagnostic_files.len == 0 && !tc.valid_labelled_loop_control(id, node.value) {
+		if depth := tc.labelled_loop_control_depth(id, node.value) {
+			if node.kind == .break_stmt {
+				tc.record_unsafe_reference_alias_loop_break_state_at_depth(depth)
+				tc.record_pointer_binding_loop_break_state_at_depth(depth)
+			} else {
+				tc.record_pointer_binding_loop_continue_state_at_depth(depth)
+			}
+		} else if tc.diagnostic_files.len == 0 {
 			tc.record_invalid_loop_label(id, node)
 		}
 		return
@@ -2046,22 +2053,32 @@ fn (mut tc TypeChecker) record_invalid_loop_label(id flat.NodeId, node flat.Node
 // brace-matched raw source text, which multiplied into full-AST scans for every
 // labelled loop control statement.
 fn (tc &TypeChecker) valid_labelled_loop_control(id flat.NodeId, name string) bool {
+	return tc.labelled_loop_control_depth(id, name) != none
+}
+
+// labelled_loop_control_depth returns the target loop's depth from the
+// innermost active loop, which mirrors the loop alias-state stack ordering.
+fn (tc &TypeChecker) labelled_loop_control_depth(id flat.NodeId, name string) ?int {
 	mut current := id
+	mut depth := 0
 	for _ in 0 .. 256 {
 		parent_id := tc.direct_parent_id(current)
 		if !tc.valid_node_id(parent_id) {
-			return false
+			return none
 		}
 		parent := tc.a.node(parent_id)
 		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-			return false
+			return none
 		}
-		if parent.kind in [.for_stmt, .for_in_stmt] && tc.loop_has_label(parent_id, name) {
-			return true
+		if parent.kind in [.for_stmt, .for_in_stmt] {
+			if tc.loop_has_label(parent_id, name) {
+				return depth
+			}
+			depth++
 		}
 		current = parent_id
 	}
-	return false
+	return none
 }
 
 // loop_has_label reports whether the label statement immediately preceding
@@ -10098,10 +10115,14 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 }
 
 fn (mut tc TypeChecker) record_unsafe_reference_alias_loop_break_state() {
-	if tc.fn_context.unsafe_alias_break_states.len == 0 {
+	tc.record_unsafe_reference_alias_loop_break_state_at_depth(0)
+}
+
+fn (mut tc TypeChecker) record_unsafe_reference_alias_loop_break_state_at_depth(depth int) {
+	index := tc.fn_context.unsafe_alias_break_states.len - 1 - depth
+	if index < 0 {
 		return
 	}
-	index := tc.fn_context.unsafe_alias_break_states.len - 1
 	tc.fn_context.unsafe_alias_break_states[index] << tc.fn_context.unsafe_reference_alias_owners.clone()
 }
 
@@ -10119,10 +10140,14 @@ fn (mut tc TypeChecker) take_unsafe_reference_alias_loop_break_states() []map[st
 }
 
 fn (mut tc TypeChecker) record_pointer_binding_loop_break_state() {
-	if tc.fn_context.pointer_alias_break_states.len == 0 {
+	tc.record_pointer_binding_loop_break_state_at_depth(0)
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_loop_break_state_at_depth(depth int) {
+	index := tc.fn_context.pointer_alias_break_states.len - 1 - depth
+	if index < 0 {
 		return
 	}
-	index := tc.fn_context.pointer_alias_break_states.len - 1
 	tc.fn_context.pointer_alias_break_states[index] << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 }
 
@@ -10140,10 +10165,14 @@ fn (mut tc TypeChecker) take_pointer_binding_loop_break_states() []map[string][]
 }
 
 fn (mut tc TypeChecker) record_pointer_binding_loop_continue_state() {
-	if tc.fn_context.pointer_alias_continue_states.len == 0 {
+	tc.record_pointer_binding_loop_continue_state_at_depth(0)
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_loop_continue_state_at_depth(depth int) {
+	index := tc.fn_context.pointer_alias_continue_states.len - 1 - depth
+	if index < 0 {
 		return
 	}
-	index := tc.fn_context.pointer_alias_continue_states.len - 1
 	tc.fn_context.pointer_alias_continue_states[index] << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 }
 
