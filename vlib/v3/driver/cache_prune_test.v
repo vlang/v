@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v3.pref
 
 fn test_cache_function_reference_counts_scans_source_once() {
 	candidates := {
@@ -57,15 +58,29 @@ fn test_cache_c_source_definitely_active_code_filters_conditional_definitions() 
 
 fn test_cache_c_source_definitely_active_code_uses_compiler_predefined_macros() {
 	source := '#ifdef __clang__\nstatic int compiler_api(void) { return 1; }\n#else\nint fallback_api(void) { return 2; }\n#endif\n'
-	mut clang_macros := cache_local_c_compiler_macros([]string{}, 'clang')
+	mut clang_macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
 	clang_source := cache_c_source_definitely_active_code(source, mut clang_macros)
 	assert clang_source.contains('compiler_api')
 	assert !clang_source.contains('fallback_api')
 
-	mut undefined_macros := cache_local_c_compiler_macros(['-U__clang__'], 'clang')
+	mut undefined_macros := cache_local_c_compiler_macros(['-U__clang__'], 'clang',
+		pref.host_target())
 	undefined_source := cache_c_source_definitely_active_code(source, mut undefined_macros)
 	assert !undefined_source.contains('compiler_api')
 	assert undefined_source.contains('fallback_api')
+}
+
+fn test_cache_c_source_definitely_active_code_uses_target_predefined_macros() {
+	target := pref.target_from('macos', 'arm64') or { panic(err) }
+	mut macros := cache_local_c_compiler_macros([]string{}, 'clang', target)
+	source := '#ifdef __APPLE__\nstatic int apple_api(void) { return 1; }\n#endif\n#if defined(__MACH__) && defined(__aarch64__) && defined(__arm64__) && defined(__LP64__)\nstatic int target_api(void) { return 2; }\n#endif\n'
+	active := cache_c_source_definitely_active_code(source, mut macros)
+	assert active.contains('apple_api')
+	assert active.contains('target_api')
+
+	mut overridden := cache_local_c_compiler_macros(['-U__APPLE__'], 'clang', target)
+	disabled := cache_c_source_definitely_active_code(source, mut overridden)
+	assert !disabled.contains('apple_api')
 }
 
 fn test_cache_c_source_definitely_active_code_evaluates_compound_known_guards() {

@@ -5045,7 +5045,8 @@ fn c_header_token_is_on_directive_line(text string, start int) bool {
 }
 
 fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int) bool {
-	if token !in ['id', 'instancetype'] || c_header_token_is_on_directive_line(text, token_start) {
+	if token !in ['id', 'Class', 'instancetype']
+		|| c_header_token_is_on_directive_line(text, token_start) {
 		return false
 	}
 	mut after := c_header_skip_space_and_comments(text, token_end, text.len)
