@@ -968,27 +968,17 @@ fn main() {
 	assert out == 'ok|ok'
 }
 
-fn test_enum_value_static_pruning_resolves_forward_refs() {
+fn test_enum_value_static_pruning_rejects_forward_refs() {
 	v3_bin := round4_build_v3()
-	out := round4_run_good(v3_bin, 'enum_value_static_pruning_forward_refs', "@[_allow_multiple_values]
+	round4_run_bad(v3_bin, 'enum_value_static_pruning_forward_refs', '@[_allow_multiple_values]
 enum ForwardValue {
 	a = .c
 	c = 2
 }
 
-fn main() {
-	mut rows := []string{}
-	$for item in ForwardValue.values {
-		$if item.value == 2 {
-			rows << item.name
-		} $else {
-			missing_fn()
-		}
-	}
-	println(rows.join('|'))
-}
-")
-	assert out == 'a|c'
+fn main() {}
+',
+		'`ForwardValue.c` should be declared before using it')
 }
 
 fn test_cross_module_dynamic_field_selector_uses_qualified_type() {

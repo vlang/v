@@ -12446,6 +12446,14 @@ fn (mut tc TypeChecker) check_const_reference_assignment(lhs_id flat.NodeId, rhs
 				tc.address_operator_pos(rhs_id))
 		}
 	}
+	addressed_id := tc.addressed_ident(rhs_id) or { return }
+	addressed := tc.a.node(addressed_id)
+	if tc.assignment_target_requests_mutable_reference(lhs_id, is_decl)
+		&& !tc.ident_is_mutable_lvalue(addressed.value) {
+		tc.record_error_at(.assignment_mismatch,
+			'`${addressed.value}` is immutable, cannot have a mutable reference to it', rhs_id,
+			tc.address_operator_pos(rhs_id))
+	}
 }
 
 fn (tc &TypeChecker) addressed_const_ident(id flat.NodeId) ?flat.NodeId {

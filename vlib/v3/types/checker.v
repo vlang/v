@@ -12217,7 +12217,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 			value_id := tc.a.child(field, 0)
 			value_pos = tc.a.node(value_id).pos
 			if referenced := tc.find_enum_value_in_node(value_id, node.value) {
-				if referenced != field.value && !seen_names[referenced] && !allow_multiple {
+				if referenced != field.value && !seen_names[referenced] {
 					tc.record_error_at(.unknown_ident,
 						'`${node.value}.${referenced}` should be declared before using it',
 						value_id, value_pos)
@@ -12248,7 +12248,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					}
 					continue
 				}
-				if !seen_names[value_node.value] && !allow_multiple {
+				if !seen_names[value_node.value] {
 					tc.record_error_at(.unknown_ident,
 						'`${node.value}.${value_node.value}` should be declared before using it',
 						field_id, value_pos)

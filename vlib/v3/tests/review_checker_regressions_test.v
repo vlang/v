@@ -223,6 +223,63 @@ fn main() {
 	assert out == '2'
 }
 
+fn test_mutable_references_and_enum_order_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'mutable_reference_to_immutable_local_declaration', 'struct Foo {
+mut:
+	value int
+}
+
+fn main() {
+	f := Foo{}
+	mut pf := &f
+	pf.value = 1
+}
+',
+		'`f` is immutable, cannot have a mutable reference to it')
+	run_bad(v3_bin, 'mutable_reference_to_immutable_local_reassignment', 'struct Foo {
+mut:
+	value int
+}
+
+fn main() {
+	f := Foo{}
+	mut other := Foo{}
+	mut pf := &other
+	pf = &f
+}
+',
+		'`f` is immutable, cannot have a mutable reference to it')
+	run_bad(v3_bin, 'duplicate_value_enum_forward_reference', '@[_allow_multiple_values]
+enum ForwardValue {
+	a = .c
+	c = 2
+}
+
+fn main() {}
+',
+		'`ForwardValue.c` should be declared before using it')
+	out := run_good(v3_bin, 'immutable_reference_and_previous_enum_value', '@[_allow_multiple_values]
+enum Value {
+	a = 1
+	b = .a
+}
+
+struct Foo {
+	value int
+}
+
+fn main() {
+	f := Foo{
+		value: 2
+	}
+	pf := &f
+	println(pf.value + int(Value.b))
+}
+')
+	assert out == '3'
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
