@@ -3824,6 +3824,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	mut condition_taken_known := []bool{}
 	mut condition_taken := []bool{}
 	mut possible_text := strings.new_builder(text.len)
+	mut definite_text := strings.new_builder(text.len / 4)
 	mut in_block_comment := false
 	for line in c_join_continued_lines(text) {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
@@ -3891,14 +3892,17 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			condition_taken.delete_last()
 		}
 		mut possibly_active := true
+		mut definitely_active := true
 		for depth in 0 .. condition_known.len {
 			if condition_known[depth] && !condition_active[depth] {
 				possibly_active = false
-				break
 			}
+			definitely_active = definitely_active && condition_known[depth]
+				&& condition_active[depth]
 		}
 		if !possibly_active {
 			possible_text.writeln('')
+			definite_text.writeln('')
 			continue
 		}
 		if name == 'import' && c_is_apple_framework_include(c_directive_arg(clean)) {
@@ -3909,13 +3913,6 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			if parts.len > 0 {
 				macro_name := parts[0].all_before('(')
 				directive_macro_name = macro_name
-				mut definitely_active := true
-				for depth in 0 .. condition_known.len {
-					if !condition_known[depth] {
-						definitely_active = false
-						break
-					}
-				}
 				if definitely_active {
 					uncertain.delete(macro_name)
 					if name == 'define' {
@@ -3960,8 +3957,10 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			}
 		}
 		possible_text.writeln(possible_line)
+		definite_text.writeln(if definitely_active { possible_line } else { '' })
 	}
-	return c_header_text_has_objective_c_tokens(possible_text.str())
+	local_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
+	return c_header_text_has_objective_c_tokens(possible_text.str(), local_typedefs)
 }
 
 fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
@@ -5005,7 +5004,10 @@ fn c_header_bracket_has_objective_c_message(text string, start int) bool {
 	return false
 }
 
-fn c_header_has_objective_c_qualified_type(text string, token string, token_end int) bool {
+fn c_header_has_objective_c_qualified_type(text string, token string, token_end int, local_typedefs map[string]bool) bool {
+	if local_typedefs[token] {
+		return false
+	}
 	open := c_header_skip_space_and_comments(text, token_end, text.len)
 	if open >= text.len || text[open] != `<` {
 		return false
@@ -5074,8 +5076,8 @@ fn c_header_token_is_on_directive_line(text string, start int) bool {
 	return line_start < start && text[line_start] == `#`
 }
 
-fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int) bool {
-	if token !in ['id', 'Class', 'SEL', 'Protocol', 'instancetype']
+fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int, local_typedefs map[string]bool) bool {
+	if token !in ['id', 'Class', 'SEL', 'Protocol', 'instancetype'] || local_typedefs[token]
 		|| c_header_token_is_on_directive_line(text, token_start) {
 		return false
 	}
@@ -5099,7 +5101,7 @@ fn c_header_has_bare_objective_c_type(text string, token string, token_start int
 	return after < text.len && text[after] == `*`
 }
 
-fn c_header_text_has_objective_c_tokens(text string) bool {
+fn c_header_text_has_objective_c_tokens(text string, local_typedefs map[string]bool) bool {
 	mut i := 0
 	mut previous_can_end_expression := false
 	for i < text.len {
@@ -5201,10 +5203,10 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 			&& !c_header_token_is_on_directive_line(text, start) {
 			return true
 		}
-		if c_header_has_bare_objective_c_type(text, token, start, i) {
+		if c_header_has_bare_objective_c_type(text, token, start, i, local_typedefs) {
 			return true
 		}
-		if c_header_has_objective_c_qualified_type(text, token, i) {
+		if c_header_has_objective_c_qualified_type(text, token, i, local_typedefs) {
 			return true
 		}
 		previous_can_end_expression = token !in ['return', 'throw', 'case']

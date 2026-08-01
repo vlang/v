@@ -2762,6 +2762,183 @@ fn c_static_variable_declarator_identifier(declarator string) ?string {
 	return candidate
 }
 
+// c_source_typedef_identifiers returns file-scope C typedef aliases.
+pub fn c_source_typedef_identifiers(source string) map[string]bool {
+	mut identifiers := map[string]bool{}
+	mut brace_depth := 0
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut function_depth := 0
+	mut item_start := 0
+	mut typedef_start := -1
+	mut typedef_brace_depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut in_block_comment := false
+	mut line_comment := false
+	mut i := 0
+	for i < source.len {
+		c := source[i]
+		next := if i + 1 < source.len { source[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if in_block_comment {
+			if c == `*` && next == `/` {
+				in_block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			in_block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `#` && c_source_line_prefix_is_space(source, i) {
+			for i < source.len {
+				for i < source.len && source[i] != `\n` {
+					i++
+				}
+				mut last := i
+				for last > 0 && source[last - 1] in [` `, `\t`, `\r`] {
+					last--
+				}
+				if last == 0 || source[last - 1] != `\\` || i >= source.len {
+					break
+				}
+				i++
+			}
+			item_start = i
+			continue
+		}
+		if c_generated_identifier_byte(c) && !c.is_digit() {
+			start := i
+			i++
+			for i < source.len && c_generated_identifier_byte(source[i]) {
+				i++
+			}
+			if function_depth == 0 && typedef_start < 0 && source[start..i] == 'typedef' {
+				typedef_start = start
+				typedef_brace_depth = brace_depth
+			}
+			continue
+		}
+		match c {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				paren_depth--
+			}
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				bracket_depth--
+			}
+			`{` {
+				if function_depth == 0 && typedef_start < 0 {
+					head := trim_leading_c_comments(source[item_start..i].trim_space())
+					if c_static_declaration_head_is_function(head) {
+						function_depth = 1
+					}
+				} else if function_depth > 0 {
+					function_depth++
+				}
+				brace_depth++
+			}
+			`}` {
+				if brace_depth > 0 {
+					brace_depth--
+				}
+				if function_depth > 0 {
+					function_depth--
+					if function_depth == 0 {
+						item_start = i + 1
+					}
+				}
+			}
+			`;` {
+				if typedef_start >= 0 && brace_depth == typedef_brace_depth && paren_depth == 0
+					&& bracket_depth == 0 {
+					for identifier in c_typedef_declaration_identifiers(source[typedef_start..i + 1]) {
+						identifiers[identifier] = true
+					}
+					typedef_start = -1
+				}
+				if function_depth == 0 {
+					item_start = i + 1
+				}
+			}
+			else {}
+		}
+		i++
+	}
+	return identifiers
+}
+
+fn c_source_line_prefix_is_space(source string, pos int) bool {
+	mut start := pos
+	for start > 0 && source[start - 1] != `\n` {
+		start--
+	}
+	return source[start..pos].trim_space().len == 0
+}
+
+fn c_typedef_declaration_identifiers(declaration string) []string {
+	clean := trim_leading_c_comments(declaration.trim_space()).trim_right(';').trim_space()
+	if clean.len == 0 {
+		return []
+	}
+	mut identifiers := []string{}
+	for part in c_split_top_level_declarators(clean) {
+		mut declarator := part.trim_space()
+		for suffix in ['__attribute__', '__declspec', '__asm__', '__asm', 'asm'] {
+			if pos := c_declaration_annotation_index(declarator, suffix) {
+				declarator = declarator[..pos].trim_space()
+			}
+		}
+		bracket := declarator.index_u8(`[`)
+		if bracket > 0 {
+			declarator = declarator[..bracket].trim_space()
+		}
+		if identifier := c_static_variable_declarator_identifier(declarator) {
+			identifiers << identifier
+		} else if identifier := c_function_declaration_identifier(declarator) {
+			identifiers << identifier
+		}
+	}
+	return identifiers
+}
+
 // c_source_type_identifiers returns C typedef aliases and named aggregate tags.
 pub fn c_source_type_identifiers(source string) map[string]bool {
 	mut identifiers := map[string]bool{}

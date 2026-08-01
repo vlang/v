@@ -71,6 +71,20 @@ DECLARE_ITEM;
 	assert !unknown_object_complete
 }
 
+fn test_source_typedef_identifiers_ignore_comments_and_parse_declarators() {
+	source := '// typedef unsigned CommentOnly;\n#define TYPE_MACRO typedef unsigned MacroOnly\nconst char *text = "typedef unsigned StringOnly";\ntypedef unsigned id; static inline id identity(id value) { return value; }\ntypedef void *Class;\ntypedef void (*SEL)(void);\ntypedef int Protocol(void);\nstatic inline void helper(void) { typedef unsigned LocalOnly; }\nextern "C" { typedef unsigned External; }\n'
+	identifiers := c_source_typedef_identifiers(source)
+	assert identifiers['id']
+	assert identifiers['Class']
+	assert identifiers['SEL']
+	assert identifiers['Protocol']
+	assert identifiers['External']
+	assert !identifiers['CommentOnly']
+	assert !identifiers['LocalOnly']
+	assert !identifiers['MacroOnly']
+	assert !identifiers['StringOnly']
+}
+
 fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert c_static_variable_declaration_identifiers('static int state __asm__("state_alias");') == [
 		'state',
