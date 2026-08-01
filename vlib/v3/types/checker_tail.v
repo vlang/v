@@ -942,6 +942,29 @@ fn (mut tc TypeChecker) check_locked_shared_base_lvalue_mutation(id flat.NodeId)
 			id, tc.a.node(id).pos)
 		return true
 	}
+	node := tc.a.node(tc.unwrap_paren_expr_id(id))
+	if node.kind == .prefix && node.op == .mul {
+		if target_keys := tc.indirect_pointer_lvalue_storage_keys(id) {
+			for target_key in target_keys {
+				if lock_name := tc.fn_context.locked_shared_base_names[locked_shared_storage_key(target_key)] {
+					source := tc.source_text_for_node(id)
+					tc.record_error_at(.assignment_mismatch,
+						'cannot reassign `${source}`: it may alias locked shared value `${lock_name}`',
+						id, tc.a.node(id).pos)
+					return true
+				}
+			}
+		} else if tc.indirect_lvalue_stores_pointer(id)
+			&& tc.fn_context.locked_shared_base_names.len > 0 {
+			mut lock_names := tc.fn_context.locked_shared_base_names.values()
+			lock_names.sort()
+			source := tc.source_text_for_node(id)
+			tc.record_error_at(.assignment_mismatch,
+				'cannot reassign `${source}`: it may alias locked shared value `${lock_names[0]}`',
+				id, tc.a.node(id).pos)
+			return true
+		}
+	}
 	mut alias_keys := [tc.locked_shared_base_alias_key(id)]
 	alias_keys << tc.locked_shared_base_owner_alias_keys(id)
 	for alias_key in alias_keys {
@@ -959,6 +982,15 @@ fn (mut tc TypeChecker) check_locked_shared_base_lvalue_mutation(id flat.NodeId)
 		}
 	}
 	return false
+}
+
+fn (mut tc TypeChecker) indirect_lvalue_stores_pointer(id flat.NodeId) bool {
+	lhs := tc.a.node(tc.unwrap_paren_expr_id(id))
+	if lhs.kind != .prefix || lhs.op != .mul || lhs.children_count == 0 {
+		return false
+	}
+	inner_type := unalias_type(tc.resolve_type(tc.a.child(lhs, 0)))
+	return inner_type is Pointer && unalias_type(inner_type.base_type) is Pointer
 }
 
 fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {

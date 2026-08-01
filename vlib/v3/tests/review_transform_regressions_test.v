@@ -955,6 +955,19 @@ fn test_nested_shared_field_lock_merges_pointer_aliases_at_goto_target() {
 		'may alias locked shared value `holder.current.state`')
 }
 
+fn test_nested_shared_field_lock_tracks_indirect_pointer_writes() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_indirect_pointer_write',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut slot := &holder\n\tlock holder.current.state {\n\t\tunsafe {\n\t\t\t*slot = unrelated\n\t\t}\n\t\tholder.current.state.value++\n\t}\n\t_ = replacement\n}\n',
+		'may alias locked shared value `holder.current.state`')
+	run_bad(v3_bin, 'nested_shared_field_lock_prior_indirect_pointer_write',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := unrelated\n\tmut slot := &alias\n\tunsafe {\n\t\t*slot = holder\n\t}\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n',
+		'may alias locked shared value `holder.current.state`')
+	out := run_good(v3_bin, 'nested_shared_field_lock_distinct_indirect_pointer_write',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut slot := &unrelated\n\tlock holder.current.state {\n\t\tunsafe {\n\t\t\t*slot = &Holder{\n\t\t\t\tcurrent: &replacement\n\t\t\t}\n\t\t}\n\t\tholder.current.state.value = 23\n\t\tprintln(int_str(holder.current.state.value))\n\t}\n}\n')
+	assert out == '23'
+}
+
 fn test_nested_shared_field_lock_preserves_labelled_loop_exit_pointer_aliases() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'nested_shared_field_lock_labelled_break_pointer_alias_mutation',

@@ -10,6 +10,7 @@ import v3.util
 const pointer_binding_unknown_value_prefix = '@unknown:'
 const pointer_binding_parameter_value_prefix = '@parameter:'
 const pointer_binding_global_value_prefix = '@global:'
+const locked_shared_storage_key_prefix = '@storage:'
 
 fn pointer_binding_unknown_value(storage_key string) string {
 	return '${pointer_binding_unknown_value_prefix}${storage_key}'
@@ -21,6 +22,10 @@ fn pointer_binding_parameter_value(storage_key string) string {
 
 fn pointer_binding_global_value(storage_key string) string {
 	return '${pointer_binding_global_value_prefix}${storage_key}'
+}
+
+fn locked_shared_storage_key(storage_key string) string {
+	return '${locked_shared_storage_key_prefix}${storage_key}'
 }
 
 fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingOwner, typ Type) {
@@ -10431,17 +10436,25 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 	if !tc.valid_node_id(id) {
 		return
 	}
+	node := tc.a.node(id)
 	key := tc.expr_key(id)
 	alias_key := tc.locked_shared_base_alias_key(id)
 	mut dependency_keys := [key, alias_key]
 	dependency_keys << tc.locked_shared_base_owner_alias_keys(id)
+	if node.kind == .ident {
+		if owner := tc.cur_scope.lookup_owner(node.value) {
+			storage_key := owner.storage_key()
+			if storage_key.len > 0 {
+				dependency_keys << locked_shared_storage_key(storage_key)
+			}
+		}
+	}
 	for dependency_key in dependency_keys {
 		if dependency_key.len > 0 && dependency_key !in tc.fn_context.locked_shared_base_names {
 			tc.fn_context.locked_shared_base_names[dependency_key] = lock_name
 			added_keys << dependency_key
 		}
 	}
-	node := tc.a.node(id)
 	match node.kind {
 		.selector {
 			if node.children_count > 0 {
@@ -14405,6 +14418,20 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 		return
 	}
 	lhs := tc.a.node(tc.unwrap_paren_expr_id(lhs_id))
+	if lhs.kind == .prefix && lhs.op == .mul {
+		target_keys := tc.indirect_pointer_lvalue_storage_keys(lhs_id) or {
+			tc.invalidate_all_pointer_binding_aliases()
+			return
+		}
+		for target_key in target_keys {
+			values := tc.pointer_binding_alias_values(target_key, rhs_id, lhs_type, rhs_alias_state) or {
+				tc.invalidate_all_pointer_binding_aliases()
+				return
+			}
+			tc.fn_context.pointer_binding_value_keys[target_key] = values
+		}
+		return
+	}
 	if lhs.kind != .ident || lhs.value == '_' {
 		return
 	}
@@ -14414,6 +14441,32 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 		return
 	}
 	tc.fn_context.pointer_binding_value_keys[left_key] = values
+}
+
+fn (tc &TypeChecker) indirect_pointer_lvalue_storage_keys(id flat.NodeId) ?[]string {
+	lhs := tc.a.node(tc.unwrap_paren_expr_id(id))
+	if lhs.kind != .prefix || lhs.op != .mul || lhs.children_count == 0 {
+		return none
+	}
+	target_id := tc.unwrap_paren_expr_id(tc.a.child(lhs, 0))
+	target := tc.a.node(target_id)
+	if target.kind != .ident || target.value == '_' {
+		return none
+	}
+	owner := tc.cur_scope.lookup_owner(target.value) or { return none }
+	values := tc.pointer_binding_ident_values(owner, tc.fn_context.pointer_binding_value_keys)
+	if values.len == 0 || values.any(it.starts_with('@')) {
+		return none
+	}
+	return values
+}
+
+fn (mut tc TypeChecker) invalidate_all_pointer_binding_aliases() {
+	for key, _ in tc.fn_context.pointer_binding_value_keys {
+		tc.fn_context.pointer_binding_value_keys[key] = [
+			pointer_binding_unknown_value(key),
+		]
+	}
 }
 
 fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.NodeId) {

@@ -4038,6 +4038,11 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		}
 		return if all_known { true, true } else { false, true }
 	}
+	if value := c_header_objective_c_integer_operand_value(clean, defined, undefined, uncertain,
+		macro_values, strict_iso_mode, target)
+	{
+		return true, value != 0
+	}
 	has_comparison, left_text, operator, right_text :=
 		c_header_condition_top_level_comparison(clean)
 	if has_comparison {
@@ -4059,11 +4064,6 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 			else { return false, true }
 		}
 		return true, active
-	}
-	if value := c_header_objective_c_integer_operand_value(clean, defined, undefined, uncertain,
-		macro_values, strict_iso_mode, target)
-	{
-		return true, value != 0
 	}
 	if clean.starts_with('!') {
 		known, active := c_header_objective_c_condition_state(clean[1..], defined, undefined,
@@ -4131,8 +4131,18 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 	if value := c_header_objective_c_integer_value(clean) {
 		return value
 	}
-	for operators in ['+-', '*/%'] {
-		has_operator, left_text, operator, right_text := c_header_condition_top_level_arithmetic(clean,
+	operator_groups := [
+		['|'],
+		['^'],
+		['&'],
+		['==', '!='],
+		['<=', '>=', '<', '>'],
+		['<<', '>>'],
+		['+', '-'],
+		['*', '/', '%'],
+	]
+	for operators in operator_groups {
+		has_operator, left_text, operator, right_text := c_header_condition_top_level_binary(clean,
 			operators)
 		if !has_operator {
 			continue
@@ -4145,15 +4155,21 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 			uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
 			return none
 		}
-		return c_header_objective_c_checked_arithmetic(left, right, operator)
+		return c_header_objective_c_checked_integer_binary(left, right, operator)
 	}
-	if clean.len > 1 && clean[0] in [`+`, `-`] {
+	if clean.len > 1 && clean[0] in [`+`, `-`, `!`, `~`] {
 		value := c_header_objective_c_integer_expression_value(clean[1..], defined, undefined,
 			uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
 			return none
 		}
 		if clean[0] == `+` {
 			return value
+		}
+		if clean[0] == `!` {
+			return if value == 0 { i64(1) } else { i64(0) }
+		}
+		if clean[0] == `~` {
+			return ~value
 		}
 		if value == i64(-0x7fffffffffffffff - 1) {
 			return none
@@ -4180,19 +4196,48 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 	return value
 }
 
-fn c_header_condition_top_level_arithmetic(expression string, operators string) (bool, string, u8, string) {
+fn c_header_condition_top_level_binary(expression string, operators []string) (bool, string, string, string) {
 	mut depth := 0
 	mut operator_index := -1
-	for i, c in expression.bytes() {
+	mut selected_operator := ''
+	mut i := 0
+	for i < expression.len {
+		c := expression[i]
 		if c == `(` {
 			depth++
+			i++
 			continue
 		}
 		if c == `)` {
 			depth--
+			i++
 			continue
 		}
-		if depth != 0 || c !in operators.bytes() {
+		if depth != 0 {
+			i++
+			continue
+		}
+		mut matched := ''
+		for operator in operators {
+			if expression[i..].starts_with(operator) {
+				matched = operator
+				break
+			}
+		}
+		if matched.len == 0 {
+			i++
+			continue
+		}
+		if matched.len == 1 && matched[0] in [`&`, `|`]
+			&& ((i > 0 && expression[i - 1] == matched[0])
+			|| (i + 1 < expression.len && expression[i + 1] == matched[0])) {
+			i++
+			continue
+		}
+		if matched.len == 1 && matched[0] in [`<`, `>`]
+			&& ((i > 0 && expression[i - 1] == matched[0])
+			|| (i + 1 < expression.len && expression[i + 1] == matched[0])) {
+			i++
 			continue
 		}
 		mut previous := i - 1
@@ -4202,17 +4247,79 @@ fn c_header_condition_top_level_arithmetic(expression string, operators string) 
 		if previous >= 0
 			&& (c_identifier_continue(expression[previous]) || expression[previous] == `)`) {
 			operator_index = i
+			selected_operator = matched
 		}
+		i += matched.len
 	}
 	if operator_index < 0 {
-		return false, '', u8(0), ''
+		return false, '', '', ''
 	}
 	left := expression[..operator_index].trim_space()
-	right := expression[operator_index + 1..].trim_space()
+	right := expression[operator_index + selected_operator.len..].trim_space()
 	if left.len == 0 || right.len == 0 {
-		return false, '', u8(0), ''
+		return false, '', '', ''
 	}
-	return true, left, expression[operator_index], right
+	return true, left, selected_operator, right
+}
+
+fn c_header_objective_c_checked_integer_binary(left i64, right i64, operator string) ?i64 {
+	match operator {
+		'|' {
+			if left < 0 || right < 0 {
+				return none
+			}
+			return left | right
+		}
+		'^' {
+			if left < 0 || right < 0 {
+				return none
+			}
+			return left ^ right
+		}
+		'&' {
+			if left < 0 || right < 0 {
+				return none
+			}
+			return left & right
+		}
+		'==' {
+			return if left == right { i64(1) } else { i64(0) }
+		}
+		'!=' {
+			return if left != right { i64(1) } else { i64(0) }
+		}
+		'<', '<=', '>', '>=' {
+			if left < 0 || right < 0 {
+				return none
+			}
+			active := match operator {
+				'<' { left < right }
+				'<=' { left <= right }
+				'>' { left > right }
+				else { left >= right }
+			}
+			return if active { i64(1) } else { i64(0) }
+		}
+		'<<', '>>' {
+			if left < 0 || right < 0 || right >= 63 {
+				return none
+			}
+			shift := u32(right)
+			if operator == '<<' {
+				if left > i64(0x7fffffffffffffff) >> shift {
+					return none
+				}
+				return i64(u64(left) << shift)
+			}
+			return left >> shift
+		}
+		'+', '-', '*', '/', '%' {
+			return c_header_objective_c_checked_arithmetic(left, right, operator[0])
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn c_header_objective_c_checked_arithmetic(left i64, right i64, operator u8) ?i64 {
