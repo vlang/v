@@ -3889,8 +3889,8 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 		p := g.a.node(param_id)
 		if p.kind == .param {
 			decl_param_type := g.tc.parse_resolution_type(p.typ)
-			param_type0 := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
-				typed_params[param_idx]
+			param_type := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
+				g.explicit_mut_pointer_param_type(p, typed_params[param_idx])
 			} else if shared_alias_ptr := g.shared_alias_pointer_type_from_text(p.typ) {
 				shared_alias_ptr
 			} else if !concrete_optional_params && p.typ.len > 0
@@ -3901,7 +3901,6 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 			} else {
 				decl_param_type
 			}
-			param_type := cgen_fn_param_storage_type(p, param_type0)
 			param_idx++
 			if p.value.len > 0 {
 				g.cur_param_names << p.value
@@ -14195,29 +14194,30 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		if p.kind != .param {
 			continue
 		}
-		pt0 := if param_idx < typed_params.len {
+		pt := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
 			g.tc.parse_resolution_type(p.typ)
 		}
-		pt := cgen_fn_param_storage_type(p, pt0)
+		effective_pt := g.explicit_mut_pointer_param_type(p, pt)
 		param_idx++
-		if concrete_optional_params && type_is_optional_result(pt) && p.value.len > 0 {
+		if concrete_optional_params && type_is_optional_result(effective_pt) && p.value.len > 0 {
 			g.cur_concrete_optional_params[p.value] = true
 		}
 		ct := if shared_ct := g.shared_param_c_type(p.typ) {
 			shared_ct
-		} else if concrete_optional_params && (pt is types.OptionType || pt is types.ResultType) {
-			g.concrete_optional_type_name(pt)
-		} else if pt is types.Pointer
-			&& (pt.base_type is types.OptionType || pt.base_type is types.ResultType) {
-			g.optional_type_name(pt)
-		} else if pt is types.ArrayFixed {
-			'${g.fixed_array_elem_c_type(pt.elem_type)}*'
-		} else if pt is types.OptionType || pt is types.ResultType {
-			g.optional_type_name(pt)
+		} else if concrete_optional_params
+			&& (effective_pt is types.OptionType || effective_pt is types.ResultType) {
+			g.concrete_optional_type_name(effective_pt)
+		} else if effective_pt is types.Pointer && (effective_pt.base_type is types.OptionType
+			|| effective_pt.base_type is types.ResultType) {
+			g.optional_type_name(effective_pt)
+		} else if effective_pt is types.ArrayFixed {
+			'${g.fixed_array_elem_c_type(effective_pt.elem_type)}*'
+		} else if effective_pt is types.OptionType || effective_pt is types.ResultType {
+			g.optional_type_name(effective_pt)
 		} else {
-			g.tc.c_type(pt)
+			g.tc.c_type(effective_pt)
 		}
 		if ct.starts_with('fn_ptr:') {
 			g.write(g.resolve_fn_ptr_type(ct))
@@ -14251,13 +14251,29 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 	}
 }
 
-fn cgen_fn_param_storage_type(param flat.Node, typ types.Type) types.Type {
-	if param.is_mut && param.op == .amp {
-		return types.Type(types.Pointer{
-			base_type: typ
-		})
+fn (mut g FlatGen) explicit_mut_pointer_param_type(param flat.Node, typ types.Type) types.Type {
+	if !param.is_mut || param.op != .amp || typ !is types.Pointer {
+		return typ
 	}
-	return typ
+	decl_type := g.tc.parse_resolution_type(param.typ)
+	mut decl_depth := 0
+	mut decl_base := decl_type
+	for decl_base is types.Pointer {
+		decl_depth++
+		decl_base = decl_base.base_type
+	}
+	mut actual_depth := 0
+	mut actual_base := typ
+	for actual_base is types.Pointer {
+		actual_depth++
+		actual_base = actual_base.base_type
+	}
+	if actual_depth > decl_depth {
+		return typ
+	}
+	return types.Type(types.Pointer{
+		base_type: typ
+	})
 }
 
 fn (g &FlatGen) is_specialized_generic_fn_node(node flat.Node) bool {

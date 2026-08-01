@@ -3243,6 +3243,7 @@ struct CFnDeclSignature {
 fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 	mut signatures := map[string]CFnDeclSignature{}
 	mut modules := map[string]string{}
+	mut positions := map[string]string{}
 	tc.cur_module = ''
 	tc.cur_file = ''
 	for node_idx in tc.top_level_idx {
@@ -3279,15 +3280,19 @@ fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 					if existing_module == 'builtin' || existing_module == tc.cur_module {
 						signatures[name] = signature
 						modules[name] = tc.cur_module
+						positions[name] = tc.node_position_string(flat.NodeId(node_idx))
 					} else if tc.cur_module != 'builtin'
 						&& !c_fn_decl_signatures_compatible(existing, signature) {
+						existing_pos := positions[name] or { '' }
+						location := if existing_pos.len > 0 { ' at ${existing_pos}' } else { '' }
 						tc.record_error_unfiltered(.duplicate_decl,
-							'C function `${name}` was already declared with a different signature',
+							'C function `${name}` was already declared with a different signature in module `${existing_module}`${location}',
 							flat.NodeId(node_idx))
 					}
 				} else {
 					signatures[name] = signature
 					modules[name] = tc.cur_module
+					positions[name] = tc.node_position_string(flat.NodeId(node_idx))
 				}
 			}
 			else {}
@@ -11466,7 +11471,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				continue
 			}
 		}
-		tc.check_node(default_id)
+		tc.check_node_with_expected_context(default_id, expected)
 		actual := tc.resolve_expr(default_id, expected)
 		if type_is_unsigned_integer(expected) && tc.expr_is_negative_integer_literal(default_id) {
 			tc.record_error_at(.assignment_mismatch,

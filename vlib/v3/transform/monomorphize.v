@@ -7337,7 +7337,7 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		if map_type.len > 0 {
 			return map_type
 		}
-		if array_type := t.array_call_type_name(node) {
+		if array_type := t.array_call_type_name(id, node) {
 			return array_type
 		}
 		concrete_ret := t.concrete_generic_call_return_type(id, node)
@@ -7359,6 +7359,15 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		map_type := t.infer_map_init_entry_type(node)
 		if map_type.len > 0 {
 			return map_type
+		}
+	}
+	if node.kind == .index && node.value == 'range' && node.children_count > 0 {
+		base_type := t.generic_call_arg_type_for_inference(t.a.child(&node, 0))
+		if base_type.starts_with('[]') || base_type == 'string' {
+			return base_type
+		}
+		if t.is_fixed_array_type(base_type) {
+			return '[]${fixed_array_elem_type(base_type)}'
 		}
 	}
 	if node.kind in [.array_literal, .fn_literal, .lambda_expr] {
@@ -8299,7 +8308,18 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		cloned_typ = t.cur_fn_ret_type
 	}
 	if node.kind == .array_init && node.value.len > 0 {
-		array_value := t.resolve_substituted_type_text(t.subst_type(node.value, args))
+		array_substituted := t.subst_type(node.value, args)
+		array_locked := if array_substituted != node.value {
+			t.lock_colliding_main_substitution_type_text(node.value, array_substituted,
+				t.cur_module, t.active_generic_params)
+		} else {
+			array_substituted
+		}
+		array_value := if array_locked.contains('main.') {
+			array_locked
+		} else {
+			t.resolve_substituted_type_text(array_locked)
+		}
 		cloned_typ = if t.is_fixed_array_type(array_value)
 			|| (array_value.starts_with('[') && !array_value.starts_with('[]')) {
 			array_value

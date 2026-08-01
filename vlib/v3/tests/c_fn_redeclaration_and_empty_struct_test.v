@@ -49,6 +49,8 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('C function `C.getpid` was already declared with a different signature'), result.output
 	assert result.output.contains('C function `C.variadic_probe` was already declared with a different signature'), result.output
+	// the error references where the other signature was defined
+	assert result.output.contains('in module `moda`') || result.output.contains('in module `modb`'), result.output
 
 	assert !result.output.contains('C compilation failed'), result.output
 

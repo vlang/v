@@ -1919,7 +1919,16 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				&& unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array
 			tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
 		} $else {
-			tc.check_node(child_id)
+			if node.kind == .array_literal {
+				expected_array := tc.expected_context_for_expr(id) or { Type(void_) }
+				if expected_elem := array_like_elem_type(expected_array) {
+					tc.check_node_with_expected_context(child_id, expected_elem)
+				} else {
+					tc.check_node(child_id)
+				}
+			} else {
+				tc.check_node(child_id)
+			}
 		}
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
 			tc.merge_unsafe_reference_alias_short_circuit_state(node.op, tc.a.child(&node, 0),
@@ -4873,6 +4882,9 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 	clean_child := unalias_type(unwrap_pointer(as_child_type))
 	if clean_child !is SumType && clean_child !is Interface {
 		target := unalias_type(tc.parse_type(node.value))
+		if tc.type_compatible(clean_child, target) || tc.type_compatible(target, clean_child) {
+			return
+		}
 		suffix := if target is SumType {
 			' - use e.g. `${node.value}(some_expr)` instead.'
 		} else {
@@ -6213,7 +6225,12 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 					'cannot have mutable reference to const `${const_node.value}`', const_id,
 					tc.node_value_diagnostic_pos(const_id))
 			}
-			append_rhs_type := tc.array_append_diagnostic_rhs_type(rhs_id, rhs_type)
+			append_rhs_type := if rhs_node.kind == .enum_val
+				&& unalias_type(lhs_array.elem_type) is Enum {
+				tc.resolve_expr(rhs_id, lhs_array.elem_type)
+			} else {
+				tc.array_append_diagnostic_rhs_type(rhs_id, rhs_type)
+			}
 			if !tc.array_append_rhs_compatible(rhs_id, append_rhs_type, lhs_array.elem_type)
 				|| (unalias_type(append_rhs_type) is ArrayFixed
 				&& unalias_type(lhs_array.elem_type) is Interface) {
@@ -6577,6 +6594,9 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 	if !lhs_clean.is_integer() || !rhs_clean.is_integer() || lhs_unsigned == rhs_unsigned {
 		return false
 	}
+	if !lhs_negative && !rhs_negative {
+		return false
+	}
 	if ((lhs_clean is Char || lhs_clean is Rune) && rhs_clean.name() == 'u8')
 		|| ((rhs_clean is Char || rhs_clean is Rune) && lhs_clean.name() == 'u8') {
 		return false
@@ -6709,7 +6729,8 @@ fn (tc &TypeChecker) array_append_diagnostic_rhs_type(rhs_id flat.NodeId, fallba
 }
 
 fn (tc &TypeChecker) array_append_rhs_compatible(rhs_id flat.NodeId, rhs_type Type, elem_type Type) bool {
-	if tc.expr_compatible(rhs_id, rhs_type, elem_type) {
+	if tc.expr_compatible(rhs_id, rhs_type, elem_type)
+		|| tc.pointer_value_compatible(rhs_type, elem_type) {
 		return true
 	}
 	clean_rhs := unalias_type(rhs_type)
@@ -7747,6 +7768,9 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 	source := tc.a.node(source_id)
 	source_type := tc.resolve_type(source_id)
 	if source_type is OptionType {
+		if tc.current_fn_is_main() {
+			return
+		}
 		tc.record_error_at(.return_mismatch,
 			'to propagate a Result, the call must also return a Result type', id, tc.propagation_operator_pos(source_id,
 			id, '!'))
@@ -7777,7 +7801,8 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 fn (tc &TypeChecker) current_fn_is_main() bool {
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if !tc.valid_node_id(fn_id) {
-		return false
+		// Top-level statements are emitted as the program's generated main.
+		return true
 	}
 	node := tc.a.node(fn_id)
 	return node.kind == .fn_decl && node.value.all_after_last('.') == 'main'
@@ -7952,6 +7977,7 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 						values[0], tc.a.node(values[0]).pos)
 					return
 				}
+				return
 			}
 		}
 	}
@@ -9448,12 +9474,14 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 				param.pos)
 			continue
 		}
-		if param_names[param.value] {
+		if param.value != '_' && param_names[param.value] {
 			tc.record_error_at(.duplicate_decl, 'redefinition of parameter `${param.value}`',
 				param_id, tc.node_value_diagnostic_pos(param_id))
 			continue
 		}
-		param_names[param.value] = true
+		if param.value != '_' {
+			param_names[param.value] = true
+		}
 		tc.check_import_symbol_conflict(param_id, param.value)
 	}
 	mut closure_copy_owners := map[string]ScopeBindingOwner{}
@@ -10953,6 +10981,10 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 				tc.insert_loop_var(key_id, unknown_type('unbounded iterator generic'))
 			}
 		} else if elem_type := tc.iterator_for_in_elem_type(clean) {
+			if info := tc.iterator_for_in_next_call_info(clean) {
+				symbol_id, _ := tc.intern_symbol(info.name)
+				tc.record_direct_dependency(symbol_id)
+			}
 			if unalias_type(elem_type) is MultiReturn {
 				tc.record_error_at(.cannot_index,
 					'iterator method `next()` must not return multiple values', container_id,
@@ -12369,6 +12401,9 @@ fn (tc &TypeChecker) unresolved_multi_assign_method_call_name(id flat.NodeId) ?s
 	}
 	base := tc.a.child_node(callee, 0)
 	if base.kind == .ident && !tc.lvalue_ident_is_known(base.value) {
+		if tc.resolve_import_alias(base.value) != none {
+			return none
+		}
 		return callee.value
 	}
 	return none
@@ -13228,7 +13263,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 			return true
 		}
 	}
-	mut rhs_type := tc.resolve_type(rhs_id)
+	mut rhs_type := tc.multi_assign_rhs_type(rhs_id, rhs)
 	mut rhs_checked := false
 	mut rhs_multi := MultiReturn{}
 	mut found_multi := false
@@ -13248,7 +13283,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		}
 		tc.check_node(rhs_id)
 		rhs_checked = true
-		rhs_type = tc.resolve_type(rhs_id)
+		rhs_type = tc.multi_assign_rhs_type(rhs_id, rhs)
 	}
 	rhs_type_name := rhs_type.name()
 	invalid_return_count := rhs_type is Unknown
@@ -13326,6 +13361,18 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		return true
 	}
 	return false
+}
+
+fn (mut tc TypeChecker) multi_assign_rhs_type(rhs_id flat.NodeId, rhs flat.Node) Type {
+	if rhs.kind == .call {
+		if info0 := tc.resolve_call_info(rhs_id, rhs) {
+			info := tc.specialized_plain_generic_call_info(rhs, info0)
+			if info.return_type !is Unknown && info.return_type !is Void {
+				return info.return_type
+			}
+		}
+	}
+	return tc.resolve_type(rhs_id)
 }
 
 fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Type {

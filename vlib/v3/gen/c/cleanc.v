@@ -12666,7 +12666,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if base_type0 is types.String && node.value == 'len' {
 				// A smartcast variant base is a deref (`*f._string`); without parens
 				// the member access would bind first (`*f._string.len`).
-				str_needs_paren := base.kind !in [.ident, .selector, .call, .index]
+				// Array string indexing also emits a dereference (`*(string*)array_get(...)`).
+				str_needs_paren := base.kind !in [.ident, .selector]
 				if str_needs_paren {
 					g.write('(')
 				}
