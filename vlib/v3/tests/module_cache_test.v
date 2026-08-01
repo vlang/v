@@ -2038,6 +2038,63 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '73'
 }
 
+fn test_cached_native_inactive_definition_keeps_generated_prototype() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_native_inactive_definition_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	library_dir := os.join_path(root, 'wrapper')
+	write_module_cache_file(root, 'wrapper/library.c', 'int cached_conditional_api(void) {
+	return 42;
+}
+')
+	library_object := os.join_path(library_dir, 'library.o')
+	library := os.join_path(library_dir, 'libconditionalapi.a')
+	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir,
+		'library.c'))}')
+	assert cc_result.exit_code == 0, cc_result.output
+	ar_result := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
+	assert ar_result.exit_code == 0, ar_result.output
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#flag -DUSE_BUNDLED=0
+#flag -L@DIR
+#flag -lconditionalapi
+#include "@DIR/fallback.c"
+
+fn C.cached_conditional_api() int
+
+pub fn value() int {
+	return C.cached_conditional_api()
+}
+')
+	write_module_cache_file(root, 'wrapper/fallback.c', '#if USE_BUNDLED
+static int cached_conditional_api(void) {
+	return 100;
+}
+#endif
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_objects_honor_strict_c_warnings() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_strict_c_${os.getpid()}')

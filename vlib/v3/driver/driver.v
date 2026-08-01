@@ -1,6 +1,7 @@
 module driver
 
 import os
+import strconv
 import strings
 import time
 import v3.bench
@@ -2038,9 +2039,11 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 			continue
 		}
 		mut declared_functions := state.native_declared_functions[module_name].clone()
+		mut declaration_macros := cache_local_c_flag_macros(c_flags)
 		for path in state.module_external_inputs[raw_module_name] or { []string{} } {
 			source := os.read_file(path) or { continue }
-			for name, declared in modulecache.c_source_function_identifiers(source) {
+			active_source := cache_c_source_definitely_active_code(source, mut declaration_macros)
+			for name, declared in modulecache.c_source_function_identifiers(active_source) {
 				if declared {
 					declared_functions[name] = true
 				}
@@ -2091,6 +2094,7 @@ struct V3CacheLocalCMacro {
 	known      bool
 	is_defined bool
 	literal    string
+	truth      int
 }
 
 struct V3CacheLocalCConditional {
@@ -2223,6 +2227,7 @@ fn cache_record_local_c_include_macro(directive string, arg string, ambiguous bo
 			include_macros[fields[0]] = V3CacheLocalCMacro{
 				known:      !ambiguous
 				is_defined: false
+				truth:      -1
 			}
 		}
 		return
@@ -2240,17 +2245,16 @@ fn cache_record_local_c_include_macro(directive string, arg string, ambiguous bo
 	if name.len == 0 {
 		return
 	}
+	value := if open < 0 { arg[raw_name.len..].trim_space() } else { '' }
 	mut literal := ''
-	if open < 0 {
-		value := arg[raw_name.len..].trim_space()
-		if cache_local_c_is_literal_include_value(value) {
-			literal = value
-		}
+	if cache_local_c_is_literal_include_value(value) {
+		literal = value
 	}
 	include_macros[name] = V3CacheLocalCMacro{
 		known:      !ambiguous
 		is_defined: true
 		literal:    literal
+		truth:      cache_local_c_integer_condition(value)
 	}
 }
 
@@ -2273,11 +2277,13 @@ fn cache_local_c_flag_macros(flags []string) map[string]V3CacheLocalCMacro {
 			undefinition = flag[2..].trim_space()
 		}
 		if definition.len > 0 {
-			name := definition.all_before('=').trim_space()
+			declarator := definition.all_before('=').trim_space()
+			open := declarator.index_u8(`(`)
+			name := if open > 0 { declarator[..open].trim_space() } else { declarator }
 			value := if definition.contains('=') {
 				definition.all_after('=').trim_space()
 			} else {
-				''
+				'1'
 			}
 			if name.len > 0 {
 				macros[name] = V3CacheLocalCMacro{
@@ -2288,12 +2294,14 @@ fn cache_local_c_flag_macros(flags []string) map[string]V3CacheLocalCMacro {
 					} else {
 						''
 					}
+					truth:      if open > 0 { 0 } else { cache_local_c_integer_condition(value) }
 				}
 			}
 		} else if undefinition.len > 0 {
 			macros[undefinition] = V3CacheLocalCMacro{
 				known:      true
 				is_defined: false
+				truth:      -1
 			}
 		}
 		i++
@@ -2305,21 +2313,38 @@ fn cache_local_c_is_literal_include_value(value string) bool {
 	return value.len >= 3 && value[0] == `"` && value[1..].index_u8(`"`) >= 1
 }
 
+fn cache_local_c_integer_condition(raw string) int {
+	mut clean := raw.trim_space().trim_right('uUlL')
+	if clean.len == 0 {
+		return 0
+	}
+	if clean.starts_with('+') {
+		clean = clean[1..]
+	}
+	value := strconv.parse_int(clean, 0, 64) or { return 0 }
+	return if value == 0 { -1 } else { 1 }
+}
+
 fn cache_local_c_known_condition(directive string, raw_arg string, include_macros map[string]V3CacheLocalCMacro) int {
 	mut expression := raw_arg.trim_space()
 	mut invert := directive == 'ifndef'
 	if directive in ['ifdef', 'ifndef'] {
 		return cache_local_c_macro_condition(expression, invert, include_macros)
 	}
-	if expression == '0' {
-		return -1
-	}
-	if expression == '1' {
-		return 1
-	}
 	if expression.starts_with('!') {
 		invert = !invert
 		expression = expression[1..].trim_space()
+	}
+	literal_condition := cache_local_c_integer_condition(expression)
+	if literal_condition != 0 {
+		return if invert { -literal_condition } else { literal_condition }
+	}
+	if macro := include_macros[expression] {
+		if !macro.known {
+			return 0
+		}
+		result := if macro.is_defined { macro.truth } else { -1 }
+		return if invert { -result } else { result }
 	}
 	if !expression.starts_with('defined') {
 		return 0
@@ -2365,6 +2390,65 @@ fn cache_local_c_directive(line string) (string, string) {
 		return '', ''
 	}
 	return rest[..end], rest[end..].trim_space()
+}
+
+fn cache_c_source_definitely_active_code(source string, mut macros map[string]V3CacheLocalCMacro) string {
+	mut out := strings.new_builder(source.len)
+	mut conditionals := []V3CacheLocalCConditional{}
+	for line in source.split_into_lines() {
+		directive, arg := cache_local_c_directive(line)
+		if directive in ['if', 'ifdef', 'ifndef'] {
+			parent_inactive := conditionals.any(it.inactive)
+			parent_ambiguous := conditionals.any(it.ambiguous)
+			condition := cache_local_c_known_condition(directive, arg, macros)
+			conditionals << V3CacheLocalCConditional{
+				parent_inactive: parent_inactive
+				condition:       condition
+				inactive:        parent_inactive || condition < 0
+				ambiguous:       parent_ambiguous || condition == 0
+			}
+			out.writeln('')
+			continue
+		}
+		if directive in ['else', 'elif'] && conditionals.len > 0 {
+			idx := conditionals.len - 1
+			mut conditional := conditionals[idx]
+			if directive == 'else' {
+				conditional.inactive = conditional.parent_inactive || conditional.condition > 0
+			} else if conditional.condition > 0 {
+				conditional.inactive = true
+			} else {
+				next_condition := cache_local_c_known_condition(directive, arg, macros)
+				conditional.condition = next_condition
+				conditional.ambiguous = conditional.ambiguous || next_condition == 0
+				conditional.inactive = conditional.parent_inactive || next_condition < 0
+			}
+			conditionals[idx] = conditional
+			out.writeln('')
+			continue
+		}
+		if directive == 'endif' {
+			if conditionals.len > 0 {
+				conditionals.delete_last()
+			}
+			out.writeln('')
+			continue
+		}
+		if conditionals.any(it.inactive) {
+			out.writeln('')
+			continue
+		}
+		ambiguous := conditionals.any(it.ambiguous)
+		if directive in ['define', 'undef'] {
+			cache_record_local_c_include_macro(directive, arg, ambiguous, mut macros)
+		}
+		if ambiguous || directive.len > 0 {
+			out.writeln('')
+		} else {
+			out.writeln(line)
+		}
+	}
+	return out.str()
 }
 
 fn v3_external_input_key(module_name string, path string) string {
@@ -7224,34 +7308,55 @@ fn prune_cached_native_function_prototypes(source string, state &V3ModuleCacheSt
 			}
 		}
 	}
-	if declared_functions.len == 0 {
-		return source
-	}
+	lines := source.split_into_lines()
 	mut out := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
-		clean := line.trim_space()
-		if clean.ends_with(';') && clean.contains('(') && !clean.starts_with('#') {
-			paren := clean.index_u8(`(`)
-			mut end := paren
-			for end > 0 && clean[end - 1].is_space() {
-				end--
-			}
-			mut start := end
-			for start > 0 && (clean[start - 1].is_alnum() || clean[start - 1] == `_`) {
-				start--
-			}
-			if start < end && declared_functions[clean[start..end]] {
-				prefix := clean[..start].trim_space()
-				if prefix.len > 0 && !prefix.contains('=') && !prefix.starts_with('return ')
-					&& !prefix.starts_with('if ') && !prefix.starts_with('for ')
-					&& !prefix.starts_with('while ') && !prefix.starts_with('switch ') {
-					continue
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
+		if line.trim_space() == '#ifndef V3CACHE_PROGRAM_UNIT' && i + 2 < lines.len
+			&& lines[i + 2].trim_space() == '#endif' {
+			name := cached_native_function_prototype_name(lines[i + 1])
+			if name.len > 0 {
+				if !declared_functions[name] {
+					out.writeln(lines[i + 1])
 				}
+				i += 3
+				continue
 			}
 		}
-		out.writeln(line)
+		name := cached_native_function_prototype_name(line)
+		if name.len == 0 || !declared_functions[name] {
+			out.writeln(line)
+		}
+		i++
 	}
 	return out.str()
+}
+
+fn cached_native_function_prototype_name(line string) string {
+	clean := line.trim_space()
+	if !clean.ends_with(';') || !clean.contains('(') || clean.starts_with('#') {
+		return ''
+	}
+	paren := clean.index_u8(`(`)
+	mut end := paren
+	for end > 0 && clean[end - 1].is_space() {
+		end--
+	}
+	mut start := end
+	for start > 0 && (clean[start - 1].is_alnum() || clean[start - 1] == `_`) {
+		start--
+	}
+	if start >= end {
+		return ''
+	}
+	prefix := clean[..start].trim_space()
+	if prefix.len == 0 || prefix.contains('=') || prefix.starts_with('return ')
+		|| prefix.starts_with('if ') || prefix.starts_with('for ') || prefix.starts_with('while ')
+		|| prefix.starts_with('switch ') {
+		return ''
+	}
+	return clean[start..end]
 }
 
 fn cache_source_without_cached_native_inputs(source string, state &V3ModuleCacheState, keep_main bool) string {
