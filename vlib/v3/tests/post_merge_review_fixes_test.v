@@ -3395,6 +3395,22 @@ fn main() {
 		'cannot redefine builtin public function `exit`')
 }
 
+fn test_enum_initializer_helper_keeps_noreturn_validation() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'enum_helper_noreturn_validation', '@[noreturn]
+fn value() int {
+	return 1
+}
+
+enum E {
+	item = value()
+}
+
+fn main() {}
+',
+		'[noreturn] functions cannot use return statements')
+}
+
 fn test_json_decode_enum_accepts_name_and_label() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'json_decode_enum_name_and_label', 'import json

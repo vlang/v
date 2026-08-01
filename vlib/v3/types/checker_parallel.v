@@ -948,9 +948,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_deferred_generic_receiver_comparisons(node)
 	}
-	if !tc.enum_initializer_calls_helper(node.value, module_name) {
-		tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
-	}
+	tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
 	tc.check_unreachable_after_noreturn_call(node)
 	if !is_specialized {
 		if tc.should_diagnose(flat.NodeId(fn_idx)) {
