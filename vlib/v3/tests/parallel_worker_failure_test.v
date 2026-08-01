@@ -20,12 +20,13 @@ fn write_parallel_failure_source() string {
 	mut src := strings.new_builder(320_000)
 	src.writeln('module main')
 	src.writeln('')
+	src.writeln('struct SharedHost {}')
 	// Reusing the same shared parameter name across independently checked
 	// functions exposes accidental sharing of per-function checker maps.
 	// Exceed mark-used's eager-precollection threshold as well as the checker's
 	// parallel threshold, so failure injection reaches both worker pools.
 	for i in 0 .. 3100 {
-		src.writeln('fn shared_helper_${i}(shared value int) int {')
+		src.writeln('fn (_host SharedHost) shared_helper_${i}(shared _value int) int {')
 		src.writeln('\treturn ${i}')
 		src.writeln('}')
 	}
@@ -50,7 +51,7 @@ fn generate_parallel_failure_c(v3_bin string, source string, stage string) strin
 		'v3_parallel_failure_${stage}_${os.getpid()}_${rand.ulid()}.c')
 	env := if stage.len > 0 { 'V3_TEST_PTHREAD_CREATE_FAIL=${stage}:all ' } else { '' }
 	result :=
-		os.execute('${env}VJOBS=4 ${os.quoted_path(v3_bin)} ${os.quoted_path(source)} -o ${os.quoted_path(out)}')
+		os.execute('${env}VJOBS=4 ${os.quoted_path(v3_bin)} -silent ${os.quoted_path(source)} -o ${os.quoted_path(out)}')
 	assert result.exit_code == 0, '${stage}: ${result.output}'
 	return os.read_file(out) or { panic(err) }
 }

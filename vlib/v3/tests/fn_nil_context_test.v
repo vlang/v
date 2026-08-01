@@ -39,6 +39,7 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 fn test_unsafe_nil_contextually_matches_fn_fields() {
 	v3_bin := build_v3()
 	default_out := run_good(v3_bin, 'fn_nil_default', 'struct S {
+mut:
 	f fn (int) ! = unsafe { nil }
 }
 
@@ -74,7 +75,7 @@ fn main() {
 	}
 }
 ',
-		'cannot initialize field `f` with `&void`; expected `fn(int) !void`')
+		'cannot assign to field `f`: expected `fn(int) !void`, not `voidptr`')
 	run_bad(v3_bin, 'fn_field_assignment_rejects_voidptr_variable', 'struct S {
 	mut:
 		f fn (int) !
@@ -86,7 +87,7 @@ fn main() {
 	value.f = v
 }
 ',
-		'cannot assign `&void` to `fn(int) !void`')
+		'cannot assign to `value.f`: expected `fn (int) !void`, not `voidptr`')
 	run_bad(v3_bin, 'fn_field_rejects_non_nil_unsafe_pointer', 'struct S {
 	f fn (int) !
 }
@@ -97,7 +98,7 @@ fn main() {
 	}
 }
 ',
-		'cannot initialize field `f` with `&int`; expected `fn(int) !void`')
+		'cannot assign to field `f`: expected `fn(int) !void`, not `&int`')
 	run_bad(v3_bin, 'fn_field_rejects_voidptr_zero', 'struct S {
 	f fn (int) !
 }
@@ -108,7 +109,7 @@ fn main() {
 	}
 }
 ',
-		'cannot initialize field `f` with `&void`; expected `fn(int) !void`')
+		'cannot assign to field `f`: expected `fn(int) !void`, not `voidptr`')
 	run_bad(v3_bin, 'fn_field_rejects_integer_zero', 'struct S {
 	f fn (int) !
 }
@@ -119,7 +120,7 @@ fn main() {
 	}
 }
 ',
-		'cannot initialize field `f` with `int`; expected `fn(int) !void`')
+		'cannot assign to field `f`: expected `fn(int) !void`, not `int literal`')
 	run_bad(v3_bin, 'fn_field_rejects_wrong_arity', 'fn no_args() ! {
 	return
 }
@@ -134,7 +135,7 @@ fn main() {
 	}
 }
 ',
-		'cannot initialize field `f` with `fn() !void`; expected `fn(int) !void`')
+		'cannot assign to field `f`: expected `fn (int) !`, not `fn () !`')
 	run_bad(v3_bin, 'fn_field_rejects_wrong_return', 'fn returns_int(i int) !int {
 	return i
 }
@@ -149,7 +150,7 @@ fn main() {
 	}
 }
 ',
-		'cannot initialize field `f` with `fn(int) !int`; expected `fn(int) !void`')
+		'cannot assign to field `f`: expected `fn (int) !`, not `fn (int) !int`')
 	run_bad(v3_bin, 'fn_alias_field_rejects_wrong_arity', 'type Callback = fn (int) !
 
 fn no_args() ! {
@@ -166,5 +167,5 @@ fn main() {
 	}
 }
 ',
-		'cannot initialize field `f` with `fn() !void`; expected `Callback`')
+		'cannot assign to field `f`: expected `fn (int) !`, not `fn () !`')
 }

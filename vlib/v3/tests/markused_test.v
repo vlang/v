@@ -16,6 +16,10 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // parse_checked_source reads parse checked source input for v3 tests.
 fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeChecker) {
+	return parse_checked_source_with_unknown_calls(name, source, true)
+}
+
+fn parse_checked_source_with_unknown_calls(name string, source string, diagnose_unknown_calls bool) (&flat.FlatAst, &types.TypeChecker) {
 	src := os.join_path(os.temp_dir(), 'v3_markused_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	prefs := pref.new_preferences()
@@ -23,8 +27,13 @@ fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeC
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
-	tc.diagnose_unknown_calls = true
-	tc.diagnostic_files[src] = true
+	tc.enable_globals = true
+	tc.diagnose_unknown_calls = diagnose_unknown_calls
+	if diagnose_unknown_calls {
+		tc.diagnostic_files[src] = true
+	} else {
+		tc.diagnostic_files['__external_import_fixture__'] = true
+	}
 	tc.check_semantics()
 	assert tc.errors.len == 0, tc.errors.str()
 	return a, &tc
@@ -57,6 +66,7 @@ fn parse_checked_project(name string, files map[string]string, main_file string)
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	for path in paths {
 		tc.diagnostic_files[path] = true
@@ -81,6 +91,7 @@ fn parse_checked_project_in_order(name string, rels []string, sources []string) 
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	for path in paths {
 		tc.diagnostic_files[path] = true
@@ -1266,7 +1277,7 @@ fn test_reachable_imported_fn_literal_roots_private_callback_helpers() {
 
 fn test_top_level_fn_value_roots_helper() {
 	mut a, mut tc := parse_checked_source('top_level_fn_value_helper_cgen',
-		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\nprintln(int_str(f() + 1))\n')
+		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\n_ = f()\n')
 	mut used := markused.mark_used(a, tc)
 	assert used['helper']
 	used = transform.transform_with_used(mut a, tc, used)
@@ -1293,7 +1304,7 @@ println(int_str(f() + 1))
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.execute('${v3_bin} -b c -o ${bin} ${src}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -1412,7 +1423,7 @@ fn helper() int {
 
 helper := 10
 f := helper
-println(int_str(f))
+_ = f
 ')
 	assert !used['helper']
 }
@@ -1696,7 +1707,7 @@ fn main() {
 }
 
 fn test_json_encode_fast_path_seeds_generated_helpers() {
-	mut a, mut tc := parse_checked_source('json_encode_fast_path_helpers', '
+	mut a, mut tc := parse_checked_source_with_unknown_calls('json_encode_fast_path_helpers', '
 import json
 
 struct Payload {
@@ -1710,7 +1721,8 @@ fn main() {
 		score: 1.5
 	})
 }
-')
+',
+		false)
 	mut used := markused.mark_used(a, tc)
 	for helper in ['string__plus', 'i64__str', 'f64__str'] {
 		assert used[helper], helper

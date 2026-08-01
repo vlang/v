@@ -2168,6 +2168,13 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		if body.kind == .none_expr && t.is_optional_type_name(t.cur_fn_ret_type) {
 			return arr1(t.make_none_return_stmt())
 		}
+		if body.kind == .call && t.is_noreturn_call(body_id) {
+			value := t.transform_expr(body_id)
+			mut result := []flat.NodeId{}
+			t.drain_pending(mut result)
+			result << t.make_expr_stmt(value)
+			return result
+		}
 		if target_name.len == 0 {
 			value := t.transform_expr(body_id)
 			mut result := []flat.NodeId{}
@@ -2289,8 +2296,15 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	if node.kind != .call || node.children_count == 0 {
 		return false
 	}
-	if t.tc.resolved_call_name(id) != none {
-		return t.tc.resolved_call_never_returns(id)
+	if resolved := t.tc.resolved_call_name(id) {
+		if t.tc.resolved_call_never_returns(id) || resolved in t.a.noreturn_fns {
+			return true
+		}
+		for candidate, _ in t.a.noreturn_fns {
+			if candidate.ends_with('.${resolved}') || resolved.ends_with('.${candidate}') {
+				return true
+			}
+		}
 	}
 	callee := t.a.child_node(&node, 0)
 	if callee.kind == .ident && callee.value in ['panic', 'exit', 'v_panic'] {
@@ -2298,4 +2312,5 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	}
 	name := t.resolve_call_name(node)
 	return name in ['panic', 'exit', 'os.exit', 'C.exit', 'builtin.panic']
+		|| name in t.a.noreturn_fns
 }

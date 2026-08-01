@@ -4,7 +4,7 @@ const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
-const hello_src = os.join_path(tests_dir, 'hello.v')
+const hello_src = os.join_path(tests_dir, 'testdata', 'hello.v')
 
 fn has_non_runtime_include(c_code string) bool {
 	for line in c_code.split_into_lines() {

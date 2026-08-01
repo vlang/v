@@ -227,16 +227,28 @@ fn encode_quic_transport_parameters_extension(params QuicTransportParameters) ![
 // followed by its bytes. `protocols` must be non-empty (RFC 7301 §3.1:
 // "the list of protocols MUST NOT be empty") and each entry must fit in a
 // single byte length (RFC 7301 §3.1's own <1..255> bound on ProtocolName).
+// Duplicate entries are rejected too -- RFC 7301 itself has no uniqueness
+// requirement (checked directly, Codex P2 on vlang/v#27680
+// pullrequestreview-4822597219, correctly refuted as an RFC violation), but
+// a maintainer requested it anyway as hygiene: a duplicate wastes bytes on
+// the wire for no negotiation benefit (the server picks at most one match
+// regardless of how many times it appears), so it's rejected here as a
+// caller-input-validation choice, not a protocol-conformance one.
 fn encode_alpn_extension(protocols []string) ![]u8 {
 	if protocols.len == 0 {
 		return error('quic: ALPN protocol list must not be empty')
 	}
 	mut list := []u8{}
+	mut seen := map[string]bool{}
 	for p in protocols {
 		name_bytes := p.bytes()
 		if name_bytes.len == 0 || name_bytes.len > 0xff {
 			return error('quic: ALPN protocol name length ${name_bytes.len} out of range (1..255)')
 		}
+		if p in seen {
+			return error('quic: ALPN protocol list contains duplicate entry "${p}"')
+		}
+		seen[p] = true
 		list << u8(name_bytes.len)
 		list << name_bytes
 	}

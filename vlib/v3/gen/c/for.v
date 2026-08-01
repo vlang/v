@@ -331,13 +331,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
 				if node.op == .amp {
-					g.write('${c_elem}* ${elem_var} = (')
-					g.write(c_elem)
-					g.writeln('*)array_get(${container_str}, ${idx_var});')
+					g.writeln('${c_elem}* ${elem_var} = (${c_elem}*)array_get(${container_str}, ${idx_var});')
 				} else {
-					g.write('${c_elem} ${elem_var} = *(')
-					g.write(c_elem)
-					g.writeln('*)array_get(${container_str}, ${idx_var});')
+					g.writeln('${c_elem} ${elem_var} = *(${c_elem}*)array_get(${container_str}, ${idx_var});')
 				}
 				elem_scope_type := if node.op == .amp {
 					types.Type(types.Pointer{

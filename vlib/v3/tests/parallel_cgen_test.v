@@ -107,13 +107,27 @@ fn test_parallel_cgen_main_emits_module_init_call() {
 fn test_parallel_cgen_remaps_worker_string_ids() {
 	v3_bin := build_parallel_v3()
 	source := os.join_path(os.temp_dir(), 'v3_parallel_string_ids_${os.getpid()}.v')
-	os.write_file(source, "fn main() { println('parallel strings') }\n") or { panic(err) }
+	mut source_text := strings.new_builder(128_000)
+	source_text.writeln('module main')
+	source_text.writeln('')
+	for i in 0 .. 1050 {
+		source_text.writeln("fn helper_${i}() string { return 'parallel string ${i}' }")
+	}
+	source_text.writeln('')
+	source_text.writeln('fn main() {')
+	source_text.writeln('\tmut total := 0')
+	for i in 0 .. 1050 {
+		source_text.writeln('\ttotal += helper_${i}().len')
+	}
+	source_text.writeln('\tprintln(int_str(total))')
+	source_text.writeln('}')
+	os.write_file(source, source_text.str()) or { panic(err) }
 	defer {
 		os.rm(source) or {}
 	}
 	parallel_output := os.join_path(os.temp_dir(), 'v3_parallel_string_ids_${os.getpid()}.c')
 	serial_output := os.join_path(os.temp_dir(), 'v3_serial_string_ids_${os.getpid()}.c')
-	parallel_compile := os.execute('VJOBS=2 ${v3_bin} -nocache -o ${parallel_output} ${source}')
+	parallel_compile := os.execute('VJOBS=4 ${v3_bin} -nocache -o ${parallel_output} ${source}')
 	assert parallel_compile.exit_code == 0, parallel_compile.output
 	assert parallel_compile.output.contains('cgen (parallel)'), parallel_compile.output
 	serial_compile :=
@@ -435,7 +449,7 @@ fn test_no_parallel_directory_selfhost_omits_parallel_support() {
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	compile :=
-		os.execute('VJOBS=2 ${v3_bin} --no-parallel -selfhost -o ${bin_out} ${parallel_v3_dir}')
+		os.execute('VJOBS=2 ${v3_bin} --no-parallel -nocache -no-memory-limit -selfhost -b c -o ${bin_out} ${parallel_v3_dir}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output

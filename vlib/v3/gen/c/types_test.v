@@ -58,11 +58,13 @@ fn test_enum_decls_resets_checker_module_at_file_boundary() {
 	}
 	main_path := os.join_path(test_dir, 'main.v')
 	shadow_path := os.join_path(test_dir, 'shadow.v')
-	os.write_file(main_path, 'type Storage = u64
+	os.write_file(main_path, 'module main
+
+type Storage = u64
 
 const base = 300
 
-enum E as Storage {
+enum Example as Storage {
 	a = base + 2
 	b
 }
@@ -93,7 +95,7 @@ const base = 4
 	g.tc = &tc
 	g.enum_decls()
 	c_source := g.sb.str()
-	assert c_source.contains('typedef u64 E;'), c_source
-	assert c_source.contains('#define E__a ((E)(302))'), c_source
+	assert c_source.contains('typedef u64 Example;'), c_source
+	assert c_source.contains('#define Example__a ((Example)(302))'), c_source
 	assert tc.cur_module == 'shadow'
 }

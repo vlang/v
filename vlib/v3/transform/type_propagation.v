@@ -127,14 +127,19 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
 	if isnil(t.tc) || int(id) < 0 {
 		return none
 	}
-	if typ := t.tc.expr_type(id) {
-		mut name := t.normalize_type_alias(typ.name())
-		if types.type_text_contains_typeof(name) {
-			name = t.normalize_type_alias(t.tc.resolve_type(id).name())
+	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
+	mut name := typ.name()
+	if name in t.tc.type_aliases {
+		name = t.normalize_type_alias(name)
+	}
+	if types.type_text_contains_typeof(name) {
+		name = t.tc.resolve_type(id).name()
+		if name in t.tc.type_aliases {
+			name = t.normalize_type_alias(name)
 		}
-		if decl_type_is_usable(name) && name != 'void' {
-			return name
-		}
+	}
+	if decl_type_is_usable(name) && name != 'void' {
+		return name
 	}
 	return none
 }
@@ -691,10 +696,14 @@ fn (t &Transformer) lookup_struct_field_type_uncached(type_name string, field_na
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
 	for f in lookup.info.fields {
 		if f.name == field_name {
-			if checker_typ := t.checker_struct_field_type_name(lookup.owner_type, field_name) {
-				if field_type_needs_checker_authority(f.typ) {
-					return checker_typ
+			if lookup.owner_type.contains('[') {
+				specialized := t.normalize_field_type(f.typ, lookup.owner_type)
+				if decl_type_is_usable(specialized) && !t.generic_arg_is_unresolved(specialized) {
+					return specialized
 				}
+			}
+			if checker_typ := t.checker_struct_field_type_name(lookup.owner_type, field_name) {
+				return checker_typ
 			}
 			if !lookup.owner_type.contains('[') {
 				return f.typ
@@ -736,34 +745,29 @@ fn (t &Transformer) lookup_struct_field_raw_type_with_owner(type_name string, fi
 	return none
 }
 
-fn field_type_needs_checker_authority(typ string) bool {
-	return typ in ['Option', 'Result', 'Optional'] || typ.starts_with('Option_')
-		|| typ.starts_with('Result_') || typ.starts_with('Optional_')
-}
-
 fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name string) ?string {
 	if isnil(t.tc) {
 		return none
 	}
 	mut lookup_type := if type_name.starts_with('&') { type_name[1..] } else { type_name }
 	if checker_typ := t.tc.struct_field_type_name(lookup_type, field_name) {
-		return t.normalize_type_alias(checker_typ)
+		return checker_typ
 	}
 	if lookup_type.contains('.') {
 		short := lookup_type.all_after_last('.')
 		if checker_typ := t.tc.struct_field_type_name(short, field_name) {
-			return t.normalize_type_alias(checker_typ)
+			return checker_typ
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qtype := '${t.cur_module}.${lookup_type}'
 		if checker_typ := t.tc.struct_field_type_name(qtype, field_name) {
-			return t.normalize_type_alias(checker_typ)
+			return checker_typ
 		}
 	}
 	normalized := t.normalize_type_alias(lookup_type)
 	if normalized != lookup_type {
 		if checker_typ := t.tc.struct_field_type_name(normalized, field_name) {
-			return t.normalize_type_alias(checker_typ)
+			return checker_typ
 		}
 	}
 	return none
@@ -1481,6 +1485,11 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 	if node.kind == .fn_literal || node.kind == .lambda_expr {
 		if fn_type := t.fn_value_type_name(id) {
 			return fn_type
+		}
+	}
+	if node.kind == .struct_init {
+		if checker_type := t.checker_expr_type_name(id) {
+			return checker_type
 		}
 	}
 	resolved := t.resolve_expr_type(id)

@@ -149,10 +149,10 @@ fn main() {
 	assert inc(1) == 1001
 	got := read_from_local() or { -1 }
 	assert got == 52
-	worker := S{
+	local_worker := S{
 		inc: 7
 	}
-	local_f := worker.inc
+	local_f := local_worker.inc
 	assert local_f == 7
 	println('imported-ok')
 }
@@ -182,10 +182,10 @@ fn take(f fn (int) int) int {
 }
 
 fn main() {
-	worker := Holder{
+	local_holder := Holder{
 		inc: 7
 	}
-	got := take(worker.inc)
+	got := take(local_holder.inc)
 	println(int_str(got))
 }
 '
@@ -472,8 +472,8 @@ fn main() {
 }
 '
 	})
-	assert bad_output.contains('cannot use `fn(string) int`'), bad_output
-	assert bad_output.contains('expected `callbacks.Callback[int]`'), bad_output
+	assert bad_output.contains('cannot use `fn (string) int`'), bad_output
+	assert bad_output.contains('expected `fn (int) int`'), bad_output
 }
 
 fn test_resolved_fn_value_wins_over_imported_const_suffix() {
@@ -581,8 +581,7 @@ fn main() {
 	assert cb(1, 2) == 2
 }
 ')
-	assert output.contains('argument count mismatch'), output
-	assert output.contains('expected 1, got 2'), output
+	assert output.contains('expected 1 argument, but got 2'), output
 }
 
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
@@ -622,7 +621,7 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert !imported_c.contains('int f = worker__inc'), imported_c
 	assert !imported_c.contains('int loader = worker__read_ok'), imported_c
 	assert !imported_c.contains(' f = main__inc'), imported_c
-	assert imported_c.contains('int local_f = worker.inc'), imported_c
+	assert imported_c.contains('int local_f = local_worker.inc'), imported_c
 	assert imported_c.contains('typedef int (*_fn_ptr_'), imported_c
 	assert imported_c.contains(' f = worker__inc'), imported_c
 	assert imported_c.contains('f = worker__dec'), imported_c

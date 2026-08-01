@@ -57,6 +57,32 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 	assert dynamic_init.count('array_new(') == 2
 }
 
+fn test_usable_resolved_sum_type_requires_exact_qualified_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['bar.Result'] = ['bar.Failed', 'bar.Ok']
+	tc.sum_types['foo.Choice'] = ['foo.Left', 'foo.Right']
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+
+	preserved := g.usable_resolved_sum_type(types.Type(types.Struct{
+		name: 'foo.Result'
+	}))
+	assert preserved is types.Struct
+	if preserved is types.Struct {
+		assert preserved.name == 'foo.Result'
+	}
+
+	exact := g.usable_resolved_sum_type(types.Type(types.Struct{
+		name: 'foo.Choice'
+	}))
+	assert exact is types.SumType
+	if exact is types.SumType {
+		assert exact.name == 'foo.Choice'
+	}
+}
+
 fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -5,6 +5,7 @@ import time
 
 const total_steps = 8
 const temp_prefix = 'v3_test_all'
+const unit_test_batch_size = 16
 const requested_vlib_tests = [
 	'vlib/builtin/string_test.v',
 	'vlib/math/math_test.v',
@@ -102,7 +103,7 @@ fn main() {
 	}
 
 	section(4, 'C backend hello world')
-	hello_v := os.join_path(cfg.tests_dir, 'hello.v')
+	hello_v := os.join_path(cfg.tests_dir, 'testdata', 'hello.v')
 	run('${q(v3_bin)} ${cfg.c99_flag} ${q(hello_v)} -b c -o ${q(hello_c_bin)}')
 	run(q(hello_c_bin))
 	cleanup_files([hello_c_bin, hello_c_bin + '.c'])
@@ -135,7 +136,7 @@ fn main() {
 	cleanup_files([v4_bin, v4_bin + '.c', v5_bin, v5_bin + '.c', v6_bin, v6_bin + '.c'])
 
 	section(8, 'Language feature parity')
-	lang_v := os.join_path(cfg.tests_dir, 'test_all_lang_features.v')
+	lang_v := os.join_path(cfg.tests_dir, 'testdata', 'test_all_lang_features.v')
 	lang_out := os.join_path(cfg.tests_dir, 'test_all_lang_features.out')
 	run('${q(v3_bin)} ${cfg.c99_flag} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
 	v3_c_out := run_output(cfg, q(v3_lang_bin))
@@ -151,21 +152,51 @@ fn main() {
 
 fn run_v3_unit_tests(cfg Config) {
 	old_vflags := os.getenv('VFLAGS')
-	old_cache_isolation := os.getenv_opt('V3_TEST_ISOLATE_CACHE')
+	old_vjobs := os.getenv('VJOBS')
+	old_v3cache := os.getenv_opt('V3CACHE')
+	unit_cache := temp_path(cfg, 'unit_cache')
 	os.setenv('VFLAGS', '${old_vflags} -gc none'.trim_space(), true)
-	// Give every test executable a private default module cache while preserving
-	// parallel stages inside the V3 compilers that those tests build.
-	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
-	run('${host_v_cmd(cfg)} -enable-globals -silent test ${q(cfg.script_dir)}')
+	// Many V3 tests build compilers that share V3CACHE. Keep the outer test runner
+	// serial so two nested compilers cannot publish overlapping cache generations.
+	// Tests of parallel phases set VJOBS explicitly on their own subprocesses.
+	os.setenv('VJOBS', '1', true)
+	// A single cache across every test retains generated C for hundreds of unrelated
+	// programs. Run bounded batches and reset only this suite-owned cache between them.
+	// Cache regression tests use their own roots and still exercise reuse within a test.
+	os.setenv('V3CACHE', unit_cache, true)
+	test_files := os.walk_ext(cfg.script_dir, '_test.v').sorted()
+	for start := 0; start < test_files.len; start += unit_test_batch_size {
+		end := if start + unit_test_batch_size < test_files.len {
+			start + unit_test_batch_size
+		} else {
+			test_files.len
+		}
+		println('  Unit test batch ${start / unit_test_batch_size + 1}: ${start + 1}-${end}/${test_files.len}')
+		mut quoted_files := []string{cap: end - start}
+		for path in test_files[start..end] {
+			quoted_files << q(path)
+		}
+		run('${host_v_cmd(cfg)} -enable-globals -silent test ${quoted_files.join(' ')}')
+		if os.exists(unit_cache) {
+			os.rmdir_all(unit_cache) or {
+				fail('failed to reset V3 unit-test cache ${unit_cache}: ${err}')
+			}
+		}
+	}
 	if old_vflags == '' {
 		os.unsetenv('VFLAGS')
 	} else {
 		os.setenv('VFLAGS', old_vflags, true)
 	}
-	if value := old_cache_isolation {
-		os.setenv('V3_TEST_ISOLATE_CACHE', value, true)
+	if old_vjobs == '' {
+		os.unsetenv('VJOBS')
 	} else {
-		os.unsetenv('V3_TEST_ISOLATE_CACHE')
+		os.setenv('VJOBS', old_vjobs, true)
+	}
+	if value := old_v3cache {
+		os.setenv('V3CACHE', value, true)
+	} else {
+		os.unsetenv('V3CACHE')
 	}
 }
 
@@ -175,6 +206,9 @@ fn setup_isolated_vtmp() string {
 		os.rmdir_all(path) or { fail('failed to reset isolated VTMP ${path}: ${err}') }
 	}
 	os.mkdir_all(path) or { fail('failed to create isolated VTMP ${path}: ${err}') }
+	// Several unit tests use os.temp_dir() for helper binaries with stable names.
+	// Isolate those paths too, so concurrent V3 test runs cannot overwrite them.
+	os.setenv('TMPDIR', path, true)
 	os.setenv('VTMP', path, true)
 	return path
 }

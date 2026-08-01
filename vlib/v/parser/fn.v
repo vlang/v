@@ -1125,7 +1125,11 @@ run them via `v file.v` instead',
 				&& new_fn.mod != 'builtin' {
 				should_register = false
 				if !p.table.c_fn_declarations_are_compatible(&existing, &new_fn) {
-					p.error_with_pos_no_advance('C function `${name}` was already declared with a different signature',
+					existing_path := util.path_styled_for_error_messages(existing.file)
+					existing_line := existing.name_pos.line_nr + 1
+					existing_col := existing.name_pos.col + 1
+					existing_pos := '${existing_path}:${existing_line}:${existing_col}'
+					p.error_with_pos_no_advance('C function `${name}` was already declared with a different signature in module `${existing.mod}` at ${existing_pos}',
 						name_pos)
 				}
 			}

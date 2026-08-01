@@ -1421,7 +1421,7 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 			expected := result[idx + op.len..].trim_space()
 			normalized := if !isnil(t.tc)
 				&& (expected.starts_with('fn(') || expected.starts_with('fn (')) {
-				t.tc.parse_type(expected).name()
+				t.comptime_field_type_id_key(expected, t.cur_module)
 			} else {
 				t.comptime_normalize_type_alias_chain(expected)
 			}
@@ -1765,7 +1765,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 			parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
 			return parsed
 		}
-		.paren {
+		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
@@ -2975,8 +2975,11 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 		return core
 	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
-		|| core.contains(' ') || decl_module.len == 0 || decl_module in ['main', 'builtin'] {
+		|| core.contains(' ') || decl_module == 'builtin' {
 		return core
+	}
+	if decl_module in ['', 'main'] {
+		return if t.type_authority_has(core) { 'main.${core}' } else { core }
 	}
 	return '${decl_module}.${core}'
 }

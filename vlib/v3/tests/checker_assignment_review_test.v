@@ -61,35 +61,37 @@ fn main() {
 	}
 }
 ',
-		'unknown field `foo`')
+		'field `foo` does not exist')
 }
 
-fn test_reject_container_stored_capturing_fn_literals() {
+fn test_container_stored_capturing_fn_literals() {
 	v3_bin := checker_assignment_build_v3()
-	checker_assignment_run_bad(v3_bin, 'bad_append_alias_capturing_fn_literal', 'fn main() {
+	alias_out := checker_assignment_run_good(v3_bin, 'append_alias_capturing_fn_literal', 'fn main() {
 	x := 1
 	f := fn [x] () int {
 		return x
 	}
 	mut callbacks := []fn () int{}
 	callbacks << f
+	println(int_str(callbacks[0]()))
 }
-',
-		'capturing fn literal cannot be stored in a container')
-	checker_assignment_run_bad(v3_bin, 'bad_append_direct_capturing_fn_literal', 'fn main() {
+')
+	assert alias_out == '1'
+	direct_out := checker_assignment_run_good(v3_bin, 'append_direct_capturing_fn_literal', 'fn main() {
 	x := 1
 	mut callbacks := []fn () int{}
 	callbacks << fn [x] () int {
 		return x
 	}
+	println(int_str(callbacks[0]()))
 }
-',
-		'capturing fn literal cannot be stored in a container')
+')
+	assert direct_out == '1'
 }
 
-fn test_reject_nonlocal_assigned_capturing_fn_literals() {
+fn test_nonlocal_assigned_capturing_fn_literals() {
 	v3_bin := checker_assignment_build_v3()
-	checker_assignment_run_bad(v3_bin, 'bad_field_assign_direct_capturing_fn_literal', 'struct Holder {
+	direct_out := checker_assignment_run_good(v3_bin, 'field_assign_direct_capturing_fn_literal', 'struct Holder {
 mut:
 	cb fn () int
 }
@@ -106,10 +108,11 @@ fn main() {
 	holder.cb = fn [x] () int {
 		return x
 	}
+	println(int_str(holder.cb()))
 }
-',
-		'capturing fn literal cannot be stored or returned')
-	checker_assignment_run_bad(v3_bin, 'bad_field_assign_alias_capturing_fn_literal', 'struct Holder {
+')
+	assert direct_out == '1'
+	alias_out := checker_assignment_run_good(v3_bin, 'field_assign_alias_capturing_fn_literal', 'struct Holder {
 mut:
 	cb fn () int
 }
@@ -127,10 +130,11 @@ fn main() {
 		cb: plain
 	}
 	holder.cb = f
+	println(int_str(holder.cb()))
 }
-',
-		'capturing fn literal cannot be stored or returned')
-	checker_assignment_run_bad(v3_bin, 'bad_index_assign_capturing_fn_literal', 'fn plain() int {
+')
+	assert alias_out == '1'
+	index_out := checker_assignment_run_good(v3_bin, 'index_assign_capturing_fn_literal', 'fn plain() int {
 	return 0
 }
 
@@ -140,9 +144,10 @@ fn main() {
 	callbacks[0] = fn [x] () int {
 		return x
 	}
+	println(int_str(callbacks[0]()))
 }
-',
-		'capturing fn literal cannot be stored in a container')
+')
+	assert index_out == '1'
 }
 
 fn test_shadowed_capturing_fn_literal_marker_uses_nearest_binding() {
@@ -167,7 +172,8 @@ fn main() {
 }
 ')
 	assert out == 'ok'
-	checker_assignment_run_bad(v3_bin, 'capturing_fn_literal_outer_marker_survives_shadow', 'fn plain() int {
+	outer_out := checker_assignment_run_good(v3_bin,
+		'capturing_fn_literal_outer_marker_survives_shadow', 'fn plain() int {
 	return 2
 }
 
@@ -182,7 +188,10 @@ fn main() {
 		callbacks << f
 	}
 	callbacks << f
+	assert callbacks[0]() == 2
+	assert callbacks[1]() == 1
+	println("ok")
 }
-',
-		'capturing fn literal cannot be stored in a container')
+')
+	assert outer_out == 'ok'
 }

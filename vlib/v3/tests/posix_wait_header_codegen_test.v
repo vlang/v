@@ -90,7 +90,8 @@ fn main() {
 	entries := os.ls(os.dir(@FILE)) or { panic(err) }
 	usage := os.disk_usage(os.dir(@FILE)) or { panic(err) }
 	os.signal_ignore(.pipe)
-	signals_ok := C.SIGSTOP > 0 && C.SIGCONT > 0 && C.SIGTERM == 15 && C.SIGKILL == 9
+	signals_ok := (C.SIGSTOP > 0) && (C.SIGCONT > 0) && (C.SIGTERM == 15)
+		&& (C.SIGKILL == 9)
 	println('waitpid-ok')
 	println((entries.len > 0 && usage.total > 0 && signals_ok).str())
 }
