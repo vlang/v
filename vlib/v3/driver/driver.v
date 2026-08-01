@@ -2043,8 +2043,14 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 		mut declaration_macros := cache_local_c_compiler_macros(c_flags, ccompiler, target)
 		mut declaration_active_paths := map[string]bool{}
 		for root in roots {
-			active_source := cache_c_source_definitely_active_code_for_path(root, allowed_paths, mut
-				declaration_active_paths, mut declaration_macros, false)
+			active_source, declarations_complete := cache_c_source_definitely_active_code_for_path_with_status(root,
+				allowed_paths, mut declaration_active_paths, mut declaration_macros, false)
+			if !declarations_complete {
+				if os.getenv('V3_CACHE_TRACE') != '' {
+					eprintln('  V3 module cache unresolved native declaration guard: module=${module_name} path=${root}')
+				}
+				return false
+			}
 			for name, declared in modulecache.c_source_function_identifiers(active_source) {
 				if declared {
 					declared_functions[name] = true
@@ -2895,18 +2901,64 @@ fn cache_local_c_directive(line string) (string, string) {
 	return rest[..end], rest[end..].trim_space()
 }
 
+// V3CacheActiveCSourceScan retains a possible-code view after the first unresolved guard,
+// so native declaration discovery can detect definitions omitted from the active view.
+struct V3CacheActiveCSourceScan {
+	active        string
+	possible      string
+	has_ambiguity bool
+}
+
+fn cache_c_source_native_declarations_complete(scan V3CacheActiveCSourceScan) bool {
+	if !scan.has_ambiguity {
+		return true
+	}
+	active_functions, active_complete :=
+		modulecache.c_source_function_identifiers_with_status(scan.active)
+	possible_functions, possible_complete :=
+		modulecache.c_source_function_identifiers_with_status(scan.possible)
+	if !active_complete || !possible_complete {
+		return false
+	}
+	for name, declared in possible_functions {
+		if declared && !active_functions[name] {
+			return false
+		}
+	}
+	return true
+}
+
 fn cache_c_source_definitely_active_code(source string, mut macros map[string]V3CacheLocalCMacro) string {
 	mut active_paths := map[string]bool{}
-	return cache_c_source_definitely_active_code_rec(source, '', map[string]bool{}, mut
+	scan := cache_c_source_definitely_active_code_rec(source, '', map[string]bool{}, mut
 		active_paths, mut macros, false)
+	return scan.active
+}
+
+fn cache_c_source_definitely_active_code_with_status(source string, mut macros map[string]V3CacheLocalCMacro) (string, bool) {
+	mut active_paths := map[string]bool{}
+	scan := cache_c_source_definitely_active_code_rec(source, '', map[string]bool{}, mut
+		active_paths, mut macros, false)
+	return scan.active, cache_c_source_native_declarations_complete(scan)
 }
 
 fn cache_c_source_definitely_active_code_for_path(path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) string {
+	return cache_c_source_active_code_scan_for_path(path, allowed_paths, mut active_paths, mut
+		macros, ambient_ambiguous).active
+}
+
+fn cache_c_source_definitely_active_code_for_path_with_status(path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) (string, bool) {
+	scan := cache_c_source_active_code_scan_for_path(path, allowed_paths, mut active_paths, mut
+		macros, ambient_ambiguous)
+	return scan.active, cache_c_source_native_declarations_complete(scan)
+}
+
+fn cache_c_source_active_code_scan_for_path(path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) V3CacheActiveCSourceScan {
 	real_path := os.real_path(path)
 	if !allowed_paths[real_path] || active_paths[real_path] {
-		return ''
+		return V3CacheActiveCSourceScan{}
 	}
-	source := os.read_file(real_path) or { return '' }
+	source := os.read_file(real_path) or { return V3CacheActiveCSourceScan{} }
 	active_paths[real_path] = true
 	result := cache_c_source_definitely_active_code_rec(source, real_path, allowed_paths, mut
 		active_paths, mut macros, ambient_ambiguous)
@@ -2914,8 +2966,10 @@ fn cache_c_source_definitely_active_code_for_path(path string, allowed_paths map
 	return result
 }
 
-fn cache_c_source_definitely_active_code_rec(source string, source_path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) string {
+fn cache_c_source_definitely_active_code_rec(source string, source_path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) V3CacheActiveCSourceScan {
 	mut out := strings.new_builder(source.len)
+	mut possible := strings.new_builder(256)
+	mut has_ambiguity := false
 	mut conditionals := []V3CacheLocalCConditional{}
 	for line in source.split_into_lines() {
 		directive, arg := cache_local_c_directive(line)
@@ -2930,6 +2984,9 @@ fn cache_c_source_definitely_active_code_rec(source string, source_path string, 
 				ambiguous:       parent_ambiguous || condition == 0
 			}
 			out.writeln('')
+			if has_ambiguity {
+				possible.writeln('')
+			}
 			continue
 		}
 		if directive in ['else', 'elif'] && conditionals.len > 0 {
@@ -2947,6 +3004,9 @@ fn cache_c_source_definitely_active_code_rec(source string, source_path string, 
 			}
 			conditionals[idx] = conditional
 			out.writeln('')
+			if has_ambiguity {
+				possible.writeln('')
+			}
 			continue
 		}
 		if directive == 'endif' {
@@ -2954,10 +3014,16 @@ fn cache_c_source_definitely_active_code_rec(source string, source_path string, 
 				conditionals.delete_last()
 			}
 			out.writeln('')
+			if has_ambiguity {
+				possible.writeln('')
+			}
 			continue
 		}
 		if conditionals.any(it.inactive) {
 			out.writeln('')
+			if has_ambiguity {
+				possible.writeln('')
+			}
 			continue
 		}
 		ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
@@ -2965,8 +3031,18 @@ fn cache_c_source_definitely_active_code_rec(source string, source_path string, 
 			if include_path := cache_local_c_include_path(line, source_path, macros) {
 				real_include := os.real_path(include_path)
 				if allowed_paths[real_include] {
-					out.write_string(cache_c_source_definitely_active_code_for_path(real_include,
-						allowed_paths, mut active_paths, mut macros, ambiguous))
+					include_scan := cache_c_source_active_code_scan_for_path(real_include,
+						allowed_paths, mut active_paths, mut macros, ambiguous)
+					if include_scan.has_ambiguity {
+						if !has_ambiguity {
+							possible.write_string(out.after(0))
+							has_ambiguity = true
+						}
+						possible.write_string(include_scan.possible)
+					} else if has_ambiguity {
+						possible.write_string(include_scan.active)
+					}
+					out.write_string(include_scan.active)
 					continue
 				}
 			}
@@ -2974,13 +3050,30 @@ fn cache_c_source_definitely_active_code_rec(source string, source_path string, 
 		if directive in ['define', 'undef'] {
 			cache_record_local_c_include_macro(directive, arg, ambiguous, mut macros)
 		}
-		if ambiguous || directive.len > 0 {
+		if ambiguous {
+			if !has_ambiguity {
+				possible.write_string(out.after(0))
+				has_ambiguity = true
+			}
+			possible.writeln(if directive.len > 0 { '' } else { line })
 			out.writeln('')
+		} else if directive.len > 0 {
+			out.writeln('')
+			if has_ambiguity {
+				possible.writeln('')
+			}
 		} else {
 			out.writeln(line)
+			if has_ambiguity {
+				possible.writeln(line)
+			}
 		}
 	}
-	return out.str()
+	return V3CacheActiveCSourceScan{
+		active:        out.str()
+		possible:      possible.str()
+		has_ambiguity: has_ambiguity
+	}
 }
 
 fn v3_external_input_key(module_name string, path string) string {

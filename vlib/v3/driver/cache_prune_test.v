@@ -119,6 +119,21 @@ fn test_cache_c_source_definitely_active_code_evaluates_known_comparisons() {
 	assert !active.contains('zero_arithmetic_api')
 }
 
+fn test_cache_c_source_definitely_active_code_rejects_unresolved_definition_guards() {
+	source := '#if __has_builtin(__builtin_add_overflow)\nstatic int builtin_api(void) { return 1; }\n#else\nstatic int fallback_api(void) { return 0; }\n#endif\n'
+	mut macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
+	active, complete := cache_c_source_definitely_active_code_with_status(source, mut macros)
+	assert !active.contains('builtin_api')
+	assert !active.contains('fallback_api')
+	assert !complete
+
+	body_guard_source := 'static int builtin_api(void) {\n#if __has_builtin(__builtin_add_overflow)\n\treturn 1;\n#else\n\treturn 0;\n#endif\n}\n'
+	mut body_macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
+	_, body_complete := cache_c_source_definitely_active_code_with_status(body_guard_source, mut
+		body_macros)
+	assert body_complete
+}
+
 fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
 	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
 	os.rmdir_all(root_dir) or {}
@@ -144,6 +159,16 @@ fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
 		active_paths, mut macros, false)
 	assert !active.contains('bundled_api')
 	assert macros['FEATURE'].truth == 1
+
+	os.write_file(header_path,
+		'#if __has_builtin(__builtin_add_overflow)\nstatic int builtin_api(void) { return 2; }\n#endif\n') or {
+		panic(err)
+	}
+	mut uncertain_paths := map[string]bool{}
+	mut uncertain_macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
+	_, declarations_complete := cache_c_source_definitely_active_code_for_path_with_status(root_path,
+		allowed_paths, mut uncertain_paths, mut uncertain_macros, false)
+	assert !declarations_complete
 }
 
 fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {
