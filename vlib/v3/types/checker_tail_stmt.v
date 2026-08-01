@@ -10,6 +10,9 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
 	}
+	if tc.has_goto_nodes {
+		tc.update_pointer_alias_goto_state(id)
+	}
 	idx := int(id)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.statement_nodes.len {
@@ -86,6 +89,76 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
+}
+
+fn (mut tc TypeChecker) initialize_pointer_alias_goto_targets() {
+	tc.fn_context.pointer_alias_goto_states = map[string][]map[string][]string{}
+	tc.fn_context.pointer_alias_backward_goto_targets = map[string]bool{}
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if !tc.valid_node_id(fn_id) {
+		return
+	}
+	mut label_offsets := map[string]int{}
+	mut goto_offsets := map[string][]int{}
+	tc.collect_pointer_alias_goto_offsets(fn_id, mut label_offsets, mut goto_offsets)
+	for label, offsets in goto_offsets {
+		label_offset := label_offsets[label] or { continue }
+		if offsets.any(it > label_offset) {
+			tc.fn_context.pointer_alias_backward_goto_targets[label] = true
+		}
+	}
+}
+
+fn (tc &TypeChecker) collect_pointer_alias_goto_offsets(id flat.NodeId, mut label_offsets map[string]int, mut goto_offsets map[string][]int) {
+	node := tc.a.node(id)
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(node, i)
+		child := tc.a.node(child_id)
+		if child.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			continue
+		}
+		if child.kind == .label_stmt {
+			label_offsets[child.value] = child.pos.offset
+		} else if child.kind == .goto_stmt {
+			mut offsets := goto_offsets[child.value] or { []int{} }
+			offsets << child.pos.offset
+			goto_offsets[child.value] = offsets
+		}
+		tc.collect_pointer_alias_goto_offsets(child_id, mut label_offsets, mut goto_offsets)
+	}
+}
+
+fn (mut tc TypeChecker) update_pointer_alias_goto_state(id flat.NodeId) {
+	node := tc.a.node(id)
+	if node.kind == .goto_stmt {
+		mut states := tc.fn_context.pointer_alias_goto_states[node.value] or {
+			[]map[string][]string{}
+		}
+		states << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		tc.fn_context.pointer_alias_goto_states[node.value] = states
+		return
+	}
+	if node.kind != .label_stmt {
+		return
+	}
+	if tc.fn_context.pointer_alias_backward_goto_targets[node.value] {
+		for key, _ in tc.fn_context.pointer_binding_value_keys {
+			tc.fn_context.pointer_binding_value_keys[key] = [
+				pointer_binding_unknown_value(key),
+			]
+		}
+		return
+	}
+	incoming := tc.fn_context.pointer_alias_goto_states[node.value] or { return }
+	mut paths := [
+		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys),
+	]
+	for state in incoming {
+		paths << clone_pointer_binding_value_keys(state)
+	}
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(paths,
+		tc.fn_context.pointer_binding_value_keys)
+	tc.fn_context.pointer_alias_goto_states.delete(node.value)
 }
 
 fn (tc &TypeChecker) unreachable_statement_diagnostic_pos(id flat.NodeId) token.Pos {
@@ -347,6 +420,8 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		rhs_id := tc.a.child(&cond, 1)
 		mut bindings := tc.check_condition(lhs_id)
 		unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_skipped_rhs :=
+			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		for sc in tc.extract_smartcasts(lhs_id) {
 			if valid_string_data(sc.name) {
@@ -357,6 +432,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		bindings << rhs_bindings
 		tc.merge_unsafe_reference_alias_short_circuit_state(cond.op, lhs_id,
 			unsafe_alias_skipped_rhs)
+		tc.merge_pointer_binding_short_circuit_state(cond.op, lhs_id, pointer_alias_skipped_rhs)
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 		tc.check_infix(cond_id, cond)
 		has_unresolved_generic_name := tc.expr_has_unresolved_generic_name_ident(cond_id)
@@ -678,6 +754,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	mut seen_match_patterns := map[string]int{}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	mut unsafe_alias_paths := []map[string]bool{}
+	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	mut pointer_alias_paths := []map[string][]string{}
 	// One in-place scan for the whole match: the old per-condition
 	// source_text_for_node(...).contains(...) copied the entire match span
 	// (thousands of lines for dispatch tables) once per condition.
@@ -693,6 +771,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		branch_id := tc.a.child(&node, i)
 		branch := tc.a.child_node(&node, i)
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+		tc.fn_context.pointer_binding_value_keys =
+			clone_pointer_binding_value_keys(pointer_alias_base)
 		if branch.kind != .match_branch {
 			tc.check_node(branch_id)
 			continue
@@ -833,6 +913,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			}
 			for j in 0 .. n_conds {
 				tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+				tc.fn_context.pointer_binding_value_keys =
+					clone_pointer_binding_value_keys(pointer_alias_base)
 				cond := tc.a.node(tc.a.child(branch, j))
 				pattern := tc.match_type_pattern(cond) or { continue }
 				smartcast_type := tc.sum_variant_type_for_pattern(subject_type.name, pattern) or {
@@ -850,6 +932,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			}
 			if !tc.match_branch_definitely_returns(branch) {
 				unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+				pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 			}
 			continue
 		}
@@ -902,13 +985,17 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		}
 		if !tc.match_branch_definitely_returns(branch) {
 			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 	}
 	if !tc.match_has_else_or_exhaustive_coverage(node) {
 		unsafe_alias_paths << unsafe_alias_base.clone()
+		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_base)
 	if missing_non_else {
 		tc.record_match_requires_non_else(node)
 	}
@@ -4848,11 +4935,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 						start_pos.offset, node.pos.end))
 				}
 			} else {
-				start_pos := tc.node_value_diagnostic_pos(base_id)
-				tc.record_error_at(.unknown_type, 'unknown enum `${enum_name}` (type_idx=0)', id, token.new_span(node.pos.id,
-					start_pos.offset, node.pos.end))
-				tc.register_synth_type(id, Type(void_))
-				return
+				qualified_type_name := '${module_name}.${base.value}'
+				if !tc.type_name_known(qualified_type_name)
+					&& !tc.type_symbol_known(qualified_type_name) {
+					start_pos := tc.node_value_diagnostic_pos(base_id)
+					tc.record_error_at(.unknown_type, 'unknown enum `${enum_name}` (type_idx=0)',
+						id, token.new_span(node.pos.id, start_pos.offset, node.pos.end))
+					tc.register_synth_type(id, Type(void_))
+					return
+				}
 			}
 		}
 	}
@@ -4895,6 +4986,18 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if node.value.len > 0 && node.value[0].is_capital() && is_known_type {
+			if tc.resolve_enum_name(semantic_type_name) != none
+				|| tc.resolve_enum_name(display_type_name) != none {
+				parent_id := tc.direct_parent_id(id)
+				if tc.valid_node_id(parent_id) {
+					parent := tc.a.node(parent_id)
+					if parent.kind == .selector && parent.children_count > 0
+						&& tc.a.child(parent, 0) == id {
+						tc.register_synth_type(id, tc.parse_type(semantic_type_name))
+						return
+					}
+				}
+			}
 			tc.record_error_at(.assignment_mismatch, '`${display_type_name}` must be initialized',
 				id, tc.node_value_diagnostic_pos(id))
 			tc.register_synth_type(id, Type(void_))

@@ -171,14 +171,17 @@ fn test_macos_v3_forwards_compatibility_c99_mode() {
 		prefs := &pref.Preferences{}
 		forwarded := macos_v3_forwarded_args(prefs, ['main.v'])
 		assert macos_v3_compat_c99_flag in forwarded
-		assert '-nocache' in forwarded
+		assert '-nocache' !in forwarded
+		assert '--no-cache' !in forwarded
 		assert '-no-memory-limit' in forwarded
 		assert '-no-parallel' !in forwarded
 		assert forwarded.count(it == macos_v3_compat_c99_flag) == 1
 		already_present := macos_v3_forwarded_args(prefs, [macos_v3_compat_c99_flag, 'main.v'])
 		assert already_present.count(it == macos_v3_compat_c99_flag) == 1
-		assert already_present.count(it == '-nocache') == 1
+		assert already_present.count(it in ['-nocache', '--no-cache']) == 0
 		assert already_present.count(it == '-no-memory-limit') == 1
+		explicit_no_cache := macos_v3_forwarded_args(prefs, ['--no-cache', 'main.v'])
+		assert explicit_no_cache.count(it in ['-nocache', '--no-cache']) == 1
 		explicit_memory_limit := macos_v3_forwarded_args(prefs, ['--no-memory-limit', 'main.v'])
 		assert explicit_memory_limit.count(it in ['-no-memory-limit', '--no-memory-limit']) == 1
 	}
@@ -255,6 +258,62 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert unset_environment[macos_v3_caller_vexe_env] == ''
 		assert unset_environment[macos_v3_caller_vchild_present_env] == '0'
 		assert unset_environment[macos_v3_caller_vchild_env] == ''
+	}
+}
+
+fn test_macos_v3_embedded_driver_reuses_module_cache() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_embedded_cache_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(os.join_path(root, 'wrapper')) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(os.join_path(root, 'wrapper', 'wrapper.v'), 'module wrapper
+
+pub fn value() int {
+	return 42
+}
+')!
+		os.write_file(main_file, 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['V3CACHE'] = os.join_path(root, 'cache')
+		environment['V3_CACHE_TRACE'] = '1'
+		mut outputs := []string{}
+		for name in ['first', 'second'] {
+			output := os.join_path(root, name)
+			mut process := os.new_process(@VEXE)
+			process.set_args(['-gc', 'none', '-o', output, main_file])
+			process.set_environment(environment)
+			process.set_redirect_stdio()
+			process.run()
+			process.wait()
+			compiler_output := process.stdout_slurp() + process.stderr_slurp()
+			exit_code := process.code
+			process.close()
+			assert exit_code == 0, compiler_output
+			assert os.is_executable(output)
+			outputs << compiler_output
+		}
+		assert outputs[0].contains('V3 module cache miss:'), outputs[0]
+		assert !outputs[1].contains('V3 module cache miss:'), outputs[1]
+		cache_headers := os.walk_ext(environment['V3CACHE'], '.vh')
+		assert cache_headers.any(os.base(it).starts_with('wrapper_')), cache_headers.str()
+		run := os.execute(os.quoted_path(os.join_path(root, 'second')))
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '42'
 	}
 }
 

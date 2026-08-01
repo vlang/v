@@ -7,6 +7,46 @@ import v3.flat
 import v3.token
 import v3.util
 
+const pointer_binding_unknown_value_prefix = '@unknown:'
+const pointer_binding_parameter_value_prefix = '@parameter:'
+const pointer_binding_global_value_prefix = '@global:'
+const locked_shared_storage_key_prefix = '@storage:'
+
+fn pointer_binding_unknown_value(storage_key string) string {
+	return '${pointer_binding_unknown_value_prefix}${storage_key}'
+}
+
+fn pointer_binding_parameter_value(storage_key string) string {
+	return '${pointer_binding_parameter_value_prefix}${storage_key}'
+}
+
+fn pointer_binding_global_value(storage_key string) string {
+	return '${pointer_binding_global_value_prefix}${storage_key}'
+}
+
+fn locked_shared_storage_key(storage_key string) string {
+	return '${locked_shared_storage_key_prefix}${storage_key}'
+}
+
+fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingOwner, typ Type) {
+	key := owner.storage_key()
+	if unalias_type(typ) is Pointer && key.len > 0 {
+		// Distinct parameter bindings may receive the same pointer at a call site.
+		tc.fn_context.pointer_binding_value_keys[key] = [
+			pointer_binding_parameter_value(key),
+		]
+	}
+}
+
+fn (mut tc TypeChecker) initialize_unknown_pointer_binding(owner ScopeBindingOwner, typ Type) {
+	key := owner.storage_key()
+	if unalias_type(typ) is Pointer && key.len > 0 {
+		tc.fn_context.pointer_binding_value_keys[key] = [
+			pointer_binding_unknown_value(key),
+		]
+	}
+}
+
 fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if loop_kind == 'values' {
 		tc.check_comptime_static_value_metadata_if(node, var_name, loop_kind, field_cases,
@@ -1698,12 +1738,16 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			}
 		}
 		unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_state :=
+			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		$if ownership ? {
 			tc.ownership_check_defer_stmt(id, node)
 		} $else {
 			tc.check_defer_stmt(node)
 		}
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
+		tc.fn_context.pointer_binding_value_keys =
+			clone_pointer_binding_value_keys(pointer_alias_state)
 		return
 	}
 	if node.kind == .spawn_expr {
@@ -1836,6 +1880,8 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		if smartcasts.len > 0 {
 			tc.check_node(lhs_id)
 			unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_skipped_rhs :=
+				clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
 			for sc in smartcasts {
 				if valid_string_data(sc.name) {
@@ -1845,16 +1891,20 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.check_node(rhs_id)
 			tc.merge_unsafe_reference_alias_short_circuit_state(node.op, lhs_id,
 				unsafe_alias_skipped_rhs)
+			tc.merge_pointer_binding_short_circuit_state(node.op, lhs_id, pointer_alias_skipped_rhs)
 			tc.smartcasts = clone_smartcasts(saved_smartcasts)
 			return
 		}
 	}
 
 	mut unsafe_alias_skipped_rhs := map[string]bool{}
+	mut pointer_alias_skipped_rhs := map[string][]string{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
 			unsafe_alias_skipped_rhs = tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_skipped_rhs =
+				clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		previous_channel_send_or_expr_id := tc.channel_send_or_expr_id
 		if node.kind == .infix && node.op == .arrow && i == 1 {
@@ -1883,6 +1933,8 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
 			tc.merge_unsafe_reference_alias_short_circuit_state(node.op, tc.a.child(&node, 0),
 				unsafe_alias_skipped_rhs)
+			tc.merge_pointer_binding_short_circuit_state(node.op, tc.a.child(&node, 0),
+				pointer_alias_skipped_rhs)
 		}
 		tc.channel_send_or_expr_id = previous_channel_send_or_expr_id
 	}
@@ -1944,7 +1996,14 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 
 fn (mut tc TypeChecker) check_loop_control_statement(id flat.NodeId, node flat.Node) {
 	if node.value.len > 0 {
-		if tc.diagnostic_files.len == 0 && !tc.valid_labelled_loop_control(id, node.value) {
+		if depth := tc.labelled_loop_control_depth(id, node.value) {
+			if node.kind == .break_stmt {
+				tc.record_unsafe_reference_alias_loop_break_state_at_depth(depth)
+				tc.record_pointer_binding_loop_break_state_at_depth(depth)
+			} else {
+				tc.record_pointer_binding_loop_continue_state_at_depth(depth)
+			}
+		} else if tc.diagnostic_files.len == 0 {
 			tc.record_invalid_loop_label(id, node)
 		}
 		return
@@ -1959,6 +2018,9 @@ fn (mut tc TypeChecker) check_loop_control_statement(id flat.NodeId, node flat.N
 		if parent.kind in [.for_stmt, .for_in_stmt] {
 			if node.kind == .break_stmt {
 				tc.record_unsafe_reference_alias_loop_break_state()
+				tc.record_pointer_binding_loop_break_state()
+			} else {
+				tc.record_pointer_binding_loop_continue_state()
 			}
 			return
 		}
@@ -2024,22 +2086,32 @@ fn (mut tc TypeChecker) record_invalid_loop_label(id flat.NodeId, node flat.Node
 // brace-matched raw source text, which multiplied into full-AST scans for every
 // labelled loop control statement.
 fn (tc &TypeChecker) valid_labelled_loop_control(id flat.NodeId, name string) bool {
+	return tc.labelled_loop_control_depth(id, name) != none
+}
+
+// labelled_loop_control_depth returns the target loop's depth from the
+// innermost active loop, which mirrors the loop alias-state stack ordering.
+fn (tc &TypeChecker) labelled_loop_control_depth(id flat.NodeId, name string) ?int {
 	mut current := id
+	mut depth := 0
 	for _ in 0 .. 256 {
 		parent_id := tc.direct_parent_id(current)
 		if !tc.valid_node_id(parent_id) {
-			return false
+			return none
 		}
 		parent := tc.a.node(parent_id)
 		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-			return false
+			return none
 		}
-		if parent.kind in [.for_stmt, .for_in_stmt] && tc.loop_has_label(parent_id, name) {
-			return true
+		if parent.kind in [.for_stmt, .for_in_stmt] {
+			if tc.loop_has_label(parent_id, name) {
+				return depth
+			}
+			depth++
 		}
 		current = parent_id
 	}
-	return false
+	return none
 }
 
 // loop_has_label reports whether the label statement immediately preceding
@@ -6884,8 +6956,12 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	mut invalidated_smartcasts := map[string]bool{}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	mut unsafe_alias_paths := []map[string]bool{}
+	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	mut pointer_alias_paths := []map[string][]string{}
 	for i in 0 .. node.children_count {
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+		tc.fn_context.pointer_binding_value_keys =
+			clone_pointer_binding_value_keys(pointer_alias_base)
 		if base_smartcasts.len > 0 {
 			tc.smartcasts = clone_smartcasts(base_smartcasts)
 		}
@@ -6946,7 +7022,8 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 				if tc.valid_node_id(var_id) {
 					var_node := tc.a.nodes[int(var_id)]
 					if var_node.kind == .ident && var_node.value.len > 0 {
-						tc.cur_scope.insert(var_node.value, elem_type)
+						owner := tc.cur_scope.insert_with_owner(var_node.value, elem_type)
+						tc.initialize_unknown_pointer_binding(owner, elem_type)
 						tc.remember_expr_type(var_id, elem_type)
 						$if ownership ? {
 							tc.ownership_note_binding(var_node.value, elem_type, var_id)
@@ -6980,6 +7057,8 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 					if lhs_key.len > 0 {
 						tc.smartcasts.delete(lhs_key)
 					}
+					tc.update_pointer_binding_alias_assignment(var_id, recv_id, lhs_type, .assign,
+						tc.fn_context.pointer_binding_value_keys)
 				}
 			}
 			body_start = 2
@@ -6991,6 +7070,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		}
 		if !tc.stmt_sequence_definitely_returns(&branch, body_start) {
 			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		for key, _ in base_smartcasts {
 			if key !in tc.smartcasts {
@@ -7004,6 +7084,8 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_base)
 	$if ownership ? {
 		tc.ownership_end_branch_group()
 	}
@@ -7499,6 +7581,8 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	unsafe_alias_success := tc.fn_context.unsafe_reference_alias_owners.clone()
+	pointer_alias_success :=
+		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	$if ownership ? {
 		tc.ownership_begin_value_branch_group()
 		tc.ownership_begin_branch()
@@ -7518,11 +7602,17 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	tc.expected_expr_type = saved_expected_expr_type
 	tc.pop_scope()
 	mut unsafe_alias_paths := [unsafe_alias_success]
+	mut pointer_alias_paths := [
+		clone_pointer_binding_value_keys(pointer_alias_success),
+	]
 	if !tc.stmt_definitely_returns(fallback_id) {
 		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_success)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_success)
 	inner := tc.a.node(inner_id)
 	if inner.kind == .selector {
 		if source := tc.selector_declared_value_type(*inner) {
@@ -7923,6 +8013,12 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 			'wrong return type `${actual_name}` in the `or {}` block, expected `shared ${expected.name()}`',
 			tail_id, tc.or_fallback_value_pos(tail_id, tail))
 		return
+	}
+	if is_ierror_type(actual) && tc.branch_tail_is_error_literal(tail_id) {
+		fn_return := unalias_type(tc.fn_context.return_type)
+		if fn_return is ResultType && tc.type_compatible(expected, fn_return.base_type) {
+			return
+		}
 	}
 	is_strict_numeric_mismatch := actual.is_integer() && expected.is_float()
 		&& tail.kind != .int_literal
@@ -9457,6 +9553,23 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		outer_scope = outer_scope.parent
 	}
 	saved_fn_context := tc.fn_context
+	mut captured_pointer_values := map[string][]string{}
+	for i in 0 .. node.children_count {
+		capture := tc.a.child_node(&node, i)
+		if capture.kind != .ident || capture.value.len == 0 {
+			continue
+		}
+		capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+		if unalias_type(capture_type) !is Pointer {
+			continue
+		}
+		owner := tc.cur_scope.lookup_owner(capture.value) or { continue }
+		key := owner.storage_key()
+		if key.len > 0 {
+			captured_pointer_values[key] = tc.pointer_binding_ident_values(owner,
+				saved_fn_context.pointer_binding_value_keys)
+		}
+	}
 	// Keep the enclosing function id so lambda dependencies are attributed to
 	// the declaration that owns the generated closure.
 	tc.fn_context = new_function_check_context()
@@ -9471,6 +9584,8 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	tc.fn_context.closure_forbidden_captures = forbidden_captures.clone()
 	tc.fn_context.method_value_stack_mut_owners =
 		saved_fn_context.method_value_stack_mut_owners.clone()
+	tc.fn_context.pointer_binding_value_keys =
+		clone_pointer_binding_value_keys(captured_pointer_values)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(id, node)
 	}
@@ -9734,6 +9849,7 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 				unknown_type('lambda parameter `${child.value}`')
 			}
 			owner := tc.cur_scope.insert_with_owner(child.value, param_type)
+			tc.initialize_pointer_parameter_binding(owner, param_type)
 			if child.is_mut {
 				tc.fn_context.mut_param_base_types[child.value] = mut_param_base_type(param_type)
 				tc.fn_context.mut_param_owners[child.value] = owner
@@ -9931,6 +10047,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
+	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	loop_may_skip_body := node.children_count > 1 && tc.a.child_node(&node, 1).kind != .empty
 	$if ownership ? {
 		if node.children_count > 2 {
@@ -9967,8 +10084,12 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_post := tc.fn_context.unsafe_reference_alias_owners.clone()
+	pointer_alias_post := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
 	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
+	tc.fn_context.pointer_alias_break_states << []map[string][]string{}
+	tc.fn_context.pointer_alias_continue_states << []map[string][]string{}
 	mut sequence_exited := false
 	mut unreachable_id := flat.empty_node
 	for i in 3 .. node.children_count {
@@ -9986,7 +10107,10 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
+	pointer_alias_break_states := tc.take_pointer_binding_loop_break_states()
+	pointer_alias_continue_states := tc.take_pointer_binding_loop_continue_states()
 	unsafe_alias_body := tc.fn_context.unsafe_reference_alias_owners.clone()
+	pointer_alias_body := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
@@ -10018,8 +10142,10 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	body_may_break := tc.unsafe_alias_statement_sequence_may_break(node, 3)
 	body_reaches_post := tc.unsafe_alias_statement_sequence_can_reach_loop_post(node, 3)
 	mut unsafe_alias_paths := []map[string]bool{}
+	mut pointer_alias_paths := []map[string][]string{}
 	if loop_may_skip_body {
 		unsafe_alias_paths << unsafe_alias_base
+		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
 	}
 	if unsafe_alias_break_states.len > 0 {
 		for state in unsafe_alias_break_states {
@@ -10028,15 +10154,35 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	} else if body_may_break {
 		unsafe_alias_paths << unsafe_alias_body
 	}
+	if pointer_alias_break_states.len > 0 {
+		for state in pointer_alias_break_states {
+			pointer_alias_paths << clone_pointer_binding_value_keys(state)
+		}
+	} else if body_may_break {
+		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_body)
+	}
+	if loop_may_skip_body || body_may_break {
+		for state in pointer_alias_continue_states {
+			pointer_alias_paths << tc.pointer_binding_state_after_loop_post(node, state,
+				pointer_alias_base, pointer_alias_post, has_cond_smartcasts, saved_smartcasts)
+		}
+	}
 	if body_reaches_post && (loop_may_skip_body || body_may_break) {
 		unsafe_alias_paths << apply_unsafe_reference_alias_state_delta(unsafe_alias_base,
 			unsafe_alias_post, unsafe_alias_body)
+		pointer_alias_paths << tc.pointer_binding_state_after_loop_post(node, pointer_alias_body,
+			pointer_alias_base, pointer_alias_post, has_cond_smartcasts, saved_smartcasts)
 	}
 	if unsafe_alias_paths.len == 0 {
 		unsafe_alias_paths << unsafe_alias_base
 	}
+	if pointer_alias_paths.len == 0 {
+		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
+	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_base)
 	if has_cond_smartcasts {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
@@ -10044,10 +10190,14 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 }
 
 fn (mut tc TypeChecker) record_unsafe_reference_alias_loop_break_state() {
-	if tc.fn_context.unsafe_alias_break_states.len == 0 {
+	tc.record_unsafe_reference_alias_loop_break_state_at_depth(0)
+}
+
+fn (mut tc TypeChecker) record_unsafe_reference_alias_loop_break_state_at_depth(depth int) {
+	index := tc.fn_context.unsafe_alias_break_states.len - 1 - depth
+	if index < 0 {
 		return
 	}
-	index := tc.fn_context.unsafe_alias_break_states.len - 1
 	tc.fn_context.unsafe_alias_break_states[index] << tc.fn_context.unsafe_reference_alias_owners.clone()
 }
 
@@ -10061,6 +10211,56 @@ fn (mut tc TypeChecker) take_unsafe_reference_alias_loop_break_states() []map[st
 		result << state.clone()
 	}
 	tc.fn_context.unsafe_alias_break_states.delete_last()
+	return result
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_loop_break_state() {
+	tc.record_pointer_binding_loop_break_state_at_depth(0)
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_loop_break_state_at_depth(depth int) {
+	index := tc.fn_context.pointer_alias_break_states.len - 1 - depth
+	if index < 0 {
+		return
+	}
+	tc.fn_context.pointer_alias_break_states[index] << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+}
+
+fn (mut tc TypeChecker) take_pointer_binding_loop_break_states() []map[string][]string {
+	if tc.fn_context.pointer_alias_break_states.len == 0 {
+		return []map[string][]string{}
+	}
+	index := tc.fn_context.pointer_alias_break_states.len - 1
+	mut result := []map[string][]string{cap: tc.fn_context.pointer_alias_break_states[index].len}
+	for state in tc.fn_context.pointer_alias_break_states[index] {
+		result << clone_pointer_binding_value_keys(state)
+	}
+	tc.fn_context.pointer_alias_break_states.delete_last()
+	return result
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_loop_continue_state() {
+	tc.record_pointer_binding_loop_continue_state_at_depth(0)
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_loop_continue_state_at_depth(depth int) {
+	index := tc.fn_context.pointer_alias_continue_states.len - 1 - depth
+	if index < 0 {
+		return
+	}
+	tc.fn_context.pointer_alias_continue_states[index] << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+}
+
+fn (mut tc TypeChecker) take_pointer_binding_loop_continue_states() []map[string][]string {
+	if tc.fn_context.pointer_alias_continue_states.len == 0 {
+		return []map[string][]string{}
+	}
+	index := tc.fn_context.pointer_alias_continue_states.len - 1
+	mut result := []map[string][]string{cap: tc.fn_context.pointer_alias_continue_states[index].len}
+	for state in tc.fn_context.pointer_alias_continue_states[index] {
+		result << clone_pointer_binding_value_keys(state)
+	}
+	tc.fn_context.pointer_alias_continue_states.delete_last()
 	return result
 }
 
@@ -10186,33 +10386,44 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 			tc.lock_keyword_diagnostic_pos(node))
 	}
 	mut locked_names := []string{}
+	mut locked_base_keys := []string{}
 	for i in 0 .. node.children_count - 1 {
 		object_id := tc.a.child(&node, i)
 		object := tc.a.node(object_id)
 		mode := tc.lock_object_mode(node, i)
 		tc.check_node(object_id)
-		if !tc.expr_is_shared_arg(object_id) {
+		is_shared := tc.expr_is_shared_arg(object_id)
+		if !is_shared {
 			object_type := if object.kind == .ident { 'variable' } else { 'struct element' }
 			tc.record_error_at(.assignment_mismatch,
 				'`${tc.source_text_for_node(object_id)}` must be declared as `shared` ${object_type} to be locked',
 				object_id, object.pos)
 		}
-		if object.kind == .ident && object.value.len > 0 {
-			existing_modes := tc.fn_context.locked_shared_modes[object.value] or { []u8{} }
+		if is_shared {
+			if unstable_id := tc.lock_object_unstable_dependency(object_id) {
+				tc.record_error_at(.assignment_mismatch,
+					'cannot lock `${tc.source_text_for_node(object_id)}`: selector bases and indices must be stable expressions',
+					unstable_id, tc.a.node(unstable_id).pos)
+			}
+		}
+		lock_name := tc.shared_lock_key(object_id)
+		if is_shared && lock_name.len > 0 {
+			existing_modes := tc.fn_context.locked_shared_modes[lock_name] or { []u8{} }
 			if existing_modes.len > 0 {
 				message := if existing_modes.last() == `r` {
-					'`${object.value}` is already read-locked'
+					'`${lock_name}` is already read-locked'
 				} else {
-					'`${object.value}` is already locked'
+					'`${lock_name}` is already locked'
 				}
 				tc.record_error_at(.assignment_mismatch, message, object_id,
 					tc.node_value_diagnostic_pos(object_id))
 			}
 			mut modes := existing_modes.clone()
 			modes << mode
-			tc.fn_context.locked_shared_modes[object.value] = modes
-			tc.fn_context.locked_shared_names[object.value]++
-			locked_names << object.value
+			tc.fn_context.locked_shared_modes[lock_name] = modes
+			tc.fn_context.locked_shared_names[lock_name]++
+			locked_names << lock_name
+			tc.record_locked_shared_base_keys(object_id, lock_name, mut locked_base_keys)
 		}
 	}
 	tc.lock_depth++
@@ -10230,6 +10441,363 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 			tc.fn_context.locked_shared_modes[name] = modes
 		}
 	}
+	for key in locked_base_keys {
+		tc.fn_context.locked_shared_base_names.delete(key)
+	}
+}
+
+fn (tc &TypeChecker) lock_object_unstable_dependency(id flat.NodeId) ?flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .call {
+		return id
+	}
+	if node.kind == .index && node.children_count > 0 {
+		base_id := tc.a.child(node, 0)
+		base_type := tc.cached_expr_type(base_id) or { tc.resolve_type(base_id) }
+		if _ := tc.index_overload_call_info(base_type, false) {
+			return id
+		}
+	}
+	for i in 0 .. node.children_count {
+		if unstable_id := tc.lock_object_unstable_dependency(tc.a.child(node, i)) {
+			return unstable_id
+		}
+	}
+	return none
+}
+
+fn (mut tc TypeChecker) record_locked_shared_base_keys(id flat.NodeId, lock_name string, mut added_keys []string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.node(id)
+	if node.kind == .selector && node.children_count > 0 {
+		tc.record_locked_shared_dependency_keys(tc.a.child(node, 0), lock_name, mut added_keys)
+	}
+}
+
+fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, lock_name string, mut added_keys []string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.node(id)
+	key := tc.expr_key(id)
+	alias_key := tc.locked_shared_base_alias_key(id)
+	mut dependency_keys := [key, alias_key]
+	dependency_keys << tc.locked_shared_base_owner_alias_keys(id)
+	if node.kind == .ident {
+		if owner := tc.cur_scope.lookup_owner(node.value) {
+			storage_key := owner.storage_key()
+			if storage_key.len > 0 {
+				dependency_keys << locked_shared_storage_key(storage_key)
+			}
+		}
+	}
+	for dependency_key in dependency_keys {
+		if dependency_key.len > 0 && dependency_key !in tc.fn_context.locked_shared_base_names {
+			tc.fn_context.locked_shared_base_names[dependency_key] = lock_name
+			added_keys << dependency_key
+		}
+	}
+	match node.kind {
+		.selector {
+			if node.children_count > 0 {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, 0), lock_name, mut
+					added_keys)
+			}
+		}
+		.index {
+			for i in 0 .. int_min(node.children_count, 2) {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, i), lock_name, mut
+					added_keys)
+			}
+		}
+		.paren, .prefix {
+			if node.children_count > 0 {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, 0), lock_name, mut
+					added_keys)
+			}
+		}
+		else {
+			for i in 0 .. node.children_count {
+				tc.record_locked_shared_dependency_keys(tc.a.child(node, i), lock_name, mut
+					added_keys)
+			}
+		}
+	}
+}
+
+fn (tc &TypeChecker) locked_shared_base_alias_key(id flat.NodeId) string {
+	return tc.locked_shared_base_path_key(id)
+}
+
+fn locked_shared_index_key(node flat.Node) string {
+	if node.kind == .int_literal {
+		if value := v_int_literal_value(node.value) {
+			return value.str()
+		}
+	}
+	if node.kind == .enum_val {
+		return node.value
+	}
+	return '*'
+}
+
+fn (tc &TypeChecker) locked_shared_selector_suffix(base_id flat.NodeId, field_name string) string {
+	base_type := unalias_and_unwrap_pointer_type(tc.cached_expr_type(base_id) or {
+		tc.resolve_type(base_id)
+	})
+	mut suffix := ''
+	if base_type is Struct {
+		mut seen := map[string]bool{}
+		if path := tc.locked_shared_struct_field_path(base_type.name, field_name, mut seen) {
+			for field in path {
+				suffix += '.${field.name}'
+			}
+		}
+	}
+	return '${suffix}.${field_name}'
+}
+
+fn (tc &TypeChecker) locked_shared_struct_field_path(struct_name string, field_name string, mut seen map[string]bool) ?[]StructField {
+	if struct_name in seen {
+		return none
+	}
+	seen[struct_name] = true
+	fields := tc.structs[struct_name] or { return none }
+	for field in fields {
+		if field.name == field_name {
+			return []StructField{}
+		}
+	}
+	for field in fields {
+		embedded_type := embedded_field_type(field) or { continue }
+		clean_embedded_type := unalias_and_unwrap_pointer_type(embedded_type)
+		if clean_embedded_type is Struct {
+			if path := tc.locked_shared_struct_field_path(clean_embedded_type.name, field_name, mut
+				seen)
+			{
+				mut result := []StructField{cap: path.len + 1}
+				result << field
+				result << path
+				return result
+			}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return ''
+			}
+			base_id := tc.a.child(node, 0)
+			base := tc.locked_shared_base_path_key(base_id)
+			if base.len > 0 && node.value.len > 0 {
+				return '${base}${tc.locked_shared_selector_suffix(base_id, node.value)}'
+			}
+		}
+		.index {
+			if node.children_count < 2 {
+				return ''
+			}
+			base := tc.locked_shared_base_path_key(tc.a.child(node, 0))
+			if base.len == 0 {
+				return ''
+			}
+			index_id := tc.unwrap_paren_expr_id(tc.a.child(node, 1))
+			index_node := tc.a.node(index_id)
+			index_key := locked_shared_index_key(index_node)
+			return '${base}[${index_key}]'
+		}
+		.paren, .prefix {
+			if node.children_count > 0 {
+				return tc.locked_shared_base_path_key(tc.a.child(node, 0))
+			}
+		}
+		else {}
+	}
+	return ''
+}
+
+fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []string {
+	if !tc.valid_node_id(id) {
+		return []string{}
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			owner := tc.cur_scope.lookup_owner(node.value) or { return []string{} }
+			mut keys := []string{}
+			for value_key in tc.pointer_binding_ident_values(owner,
+				tc.fn_context.pointer_binding_value_keys) {
+				if value_key.len > 0 {
+					keys << '@owner:${value_key}'
+				}
+			}
+			return keys
+		}
+		.selector {
+			if node.children_count == 0 || node.value.len == 0 {
+				return []string{}
+			}
+			base_id := tc.a.child(node, 0)
+			suffix := tc.locked_shared_selector_suffix(base_id, node.value)
+			mut keys := []string{}
+			for base in tc.locked_shared_base_owner_alias_keys_for_base(base_id) {
+				keys << '${base}${suffix}'
+			}
+			return keys
+		}
+		.index {
+			if node.children_count < 2 {
+				return []string{}
+			}
+			index_id := tc.unwrap_paren_expr_id(tc.a.child(node, 1))
+			index_node := tc.a.node(index_id)
+			index_key := locked_shared_index_key(index_node)
+			mut keys := []string{}
+			for base in tc.locked_shared_base_owner_alias_keys_for_base(tc.a.child(node, 0)) {
+				keys << '${base}[${index_key}]'
+			}
+			return keys
+		}
+		.paren, .prefix {
+			if node.children_count > 0 {
+				return tc.locked_shared_base_owner_alias_keys(tc.a.child(node, 0))
+			}
+		}
+		else {}
+	}
+	return []string{}
+}
+
+fn (tc &TypeChecker) locked_shared_base_owner_alias_keys_for_base(id flat.NodeId) []string {
+	clean_id := tc.unwrap_paren_expr_id(id)
+	if !tc.valid_node_id(clean_id) {
+		return []string{}
+	}
+	node := tc.a.node(clean_id)
+	if node.kind != .ident {
+		base_type := tc.cached_expr_type(clean_id) or { tc.resolve_type(clean_id) }
+		if unalias_type(base_type) is Pointer {
+			boundary_key := pointer_binding_unknown_value('@node:${int(clean_id)}')
+			return [
+				'@owner:${boundary_key}',
+			]
+		}
+	}
+	return tc.locked_shared_base_owner_alias_keys(clean_id)
+}
+
+fn locked_shared_base_keys_may_alias(left string, right string) bool {
+	if left.len == 0 || right.len == 0 {
+		return false
+	}
+	unknown_owner_prefix := '@owner:${pointer_binding_unknown_value_prefix}'
+	parameter_owner_prefix := '@owner:${pointer_binding_parameter_value_prefix}'
+	global_owner_prefix := '@owner:${pointer_binding_global_value_prefix}'
+	left_unknown := left.starts_with(unknown_owner_prefix)
+	right_unknown := right.starts_with(unknown_owner_prefix)
+	left_parameter := left.starts_with(parameter_owner_prefix)
+	right_parameter := right.starts_with(parameter_owner_prefix)
+	left_global := left.starts_with(global_owner_prefix)
+	right_global := right.starts_with(global_owner_prefix)
+	if left_unknown || right_unknown
+		|| (left_parameter && (right_parameter || right_global))
+		|| (right_parameter && left_global) || (left_global && right_global) {
+		left_suffix := locked_shared_owner_path_suffix(left) or { return false }
+		right_suffix := locked_shared_owner_path_suffix(right) or { return false }
+		return locked_shared_base_keys_may_alias('@path${left_suffix}', '@path${right_suffix}')
+	}
+	if left_parameter || right_parameter {
+		return false
+	}
+	mut left_pos := 0
+	mut right_pos := 0
+	for left_pos < left.len && right_pos < right.len {
+		if left[left_pos] == `[` && right[right_pos] == `[` {
+			mut left_end := left_pos + 1
+			for left_end < left.len && left[left_end] != `]` {
+				left_end++
+			}
+			mut right_end := right_pos + 1
+			for right_end < right.len && right[right_end] != `]` {
+				right_end++
+			}
+			if left_end >= left.len || right_end >= right.len {
+				return false
+			}
+			left_index := left[left_pos + 1..left_end]
+			right_index := right[right_pos + 1..right_end]
+			if left_index != '*' && right_index != '*' && left_index != right_index {
+				return false
+			}
+			left_pos = left_end + 1
+			right_pos = right_end + 1
+			continue
+		}
+		if left[left_pos] != right[right_pos] {
+			return false
+		}
+		left_pos++
+		right_pos++
+	}
+	return left_pos == left.len && right_pos == right.len
+}
+
+fn locked_shared_owner_path_suffix(key string) ?string {
+	if !key.starts_with('@owner:') {
+		return none
+	}
+	mut pos := '@owner:'.len
+	for pos < key.len && key[pos] !in [`.`, `[`] {
+		pos++
+	}
+	return key[pos..]
+}
+
+fn (tc &TypeChecker) shared_lock_key(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := tc.shared_lock_key(tc.a.child(node, 0))
+			return if base.len > 0 { '${base}.${node.value}' } else { node.value }
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.shared_lock_key(tc.a.child(node, 0))
+			}
+		}
+		.prefix {
+			if node.value == 'shared' && node.children_count > 0 {
+				return tc.shared_lock_key(tc.a.child(node, 0))
+			}
+		}
+		else {}
+	}
+	return tc.source_text_for_node(id).trim_space()
 }
 
 fn (tc &TypeChecker) lock_object_mode(node flat.Node, index int) u8 {
@@ -10479,7 +11047,10 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
+	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
+	tc.fn_context.pointer_alias_break_states << []map[string][]string{}
+	tc.fn_context.pointer_alias_continue_states << []map[string][]string{}
 	$if ownership ? {
 		tc.ownership_begin_loop_branch_group()
 		if node.op != .amp {
@@ -10505,6 +11076,8 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
+	pointer_alias_break_states := tc.take_pointer_binding_loop_break_states()
+	pointer_alias_continue_states := tc.take_pointer_binding_loop_continue_states()
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
@@ -10517,14 +11090,24 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.ownership_end_branch_group()
 	}
 	mut unsafe_alias_paths := [unsafe_alias_base]
+	mut pointer_alias_paths := [clone_pointer_binding_value_keys(pointer_alias_base)]
 	for state in unsafe_alias_break_states {
 		unsafe_alias_paths << state.clone()
 	}
+	for state in pointer_alias_break_states {
+		pointer_alias_paths << clone_pointer_binding_value_keys(state)
+	}
+	for state in pointer_alias_continue_states {
+		pointer_alias_paths << clone_pointer_binding_value_keys(state)
+	}
 	if !tc.stmt_sequence_definitely_returns(&node, header) {
 		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_base)
 	tc.pop_scope()
 }
 
@@ -11299,6 +11882,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		owner := tc.insert_decl_lhs(lhs_id, expected, tc.decl_lhs_is_mut(node, lhs_id))
+		tc.record_pointer_binding_alias(owner, rhs_id, expected)
 		if owner.storage_key().len > 0 && unalias_type(expected) is Map
 			&& tc.expr_is_unsafe_reference_alias(rhs_id) {
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
@@ -13492,6 +14076,12 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_lhs_types := []Type{}
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
+	is_cross_assignment := node.op == .assign && node.children_count > 2
+	pointer_alias_assignment_rhs := if is_cross_assignment {
+		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	} else {
+		map[string][]string{}
+	}
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
@@ -13887,6 +14477,13 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.track_variadic_fn_value_local(lhs_id, rhs_id)
 		}
 		tc.update_unsafe_reference_alias_assignment(lhs_id, rhs_id, expected_type, node.op)
+		rhs_alias_state := if is_cross_assignment {
+			pointer_alias_assignment_rhs
+		} else {
+			tc.fn_context.pointer_binding_value_keys
+		}
+		tc.update_pointer_binding_alias_assignment(lhs_id, rhs_id, expected_type, node.op,
+			rhs_alias_state)
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
 			lhs := tc.a.node(lhs_id)
@@ -13933,6 +14530,246 @@ fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.Nod
 	}
 }
 
+fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op, rhs_alias_state map[string][]string) {
+	if op != .assign || unalias_type(lhs_type) !is Pointer {
+		return
+	}
+	lhs := tc.a.node(tc.unwrap_paren_expr_id(lhs_id))
+	if lhs.kind == .prefix && lhs.op == .mul {
+		target_keys := tc.indirect_pointer_lvalue_storage_keys(lhs_id) or {
+			tc.invalidate_all_pointer_binding_aliases()
+			return
+		}
+		for target_key in target_keys {
+			values := tc.pointer_binding_alias_values(target_key, rhs_id, lhs_type, rhs_alias_state) or {
+				tc.invalidate_all_pointer_binding_aliases()
+				return
+			}
+			tc.fn_context.pointer_binding_value_keys[target_key] = values
+		}
+		return
+	}
+	if lhs.kind != .ident || lhs.value == '_' {
+		return
+	}
+	owner := tc.cur_scope.lookup_owner(lhs.value) or { return }
+	left_key := owner.storage_key()
+	values := tc.pointer_binding_alias_values(left_key, rhs_id, lhs_type, rhs_alias_state) or {
+		return
+	}
+	tc.fn_context.pointer_binding_value_keys[left_key] = values
+}
+
+fn (tc &TypeChecker) indirect_pointer_lvalue_storage_keys(id flat.NodeId) ?[]string {
+	lhs := tc.a.node(tc.unwrap_paren_expr_id(id))
+	if lhs.kind != .prefix || lhs.op != .mul || lhs.children_count == 0 {
+		return none
+	}
+	target_id := tc.unwrap_paren_expr_id(tc.a.child(lhs, 0))
+	target := tc.a.node(target_id)
+	if target.kind != .ident || target.value == '_' {
+		return none
+	}
+	owner := tc.cur_scope.lookup_owner(target.value) or { return none }
+	values := tc.pointer_binding_ident_values(owner, tc.fn_context.pointer_binding_value_keys)
+	if values.len == 0 || values.any(it.starts_with('@')) {
+		return none
+	}
+	return values
+}
+
+fn (mut tc TypeChecker) invalidate_all_pointer_binding_aliases() {
+	for key, _ in tc.fn_context.pointer_binding_value_keys {
+		tc.fn_context.pointer_binding_value_keys[key] = [
+			pointer_binding_unknown_value(key),
+		]
+	}
+}
+
+fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.NodeId) {
+	node := tc.a.node(tc.unwrap_paren_expr_id(id))
+	if node.kind != .ident || node.value == '_' {
+		return
+	}
+	owner := tc.cur_scope.lookup_owner(node.value) or { return }
+	typ := tc.cur_scope.lookup(node.value) or { return }
+	if unalias_type(typ) !is Pointer {
+		return
+	}
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	tc.fn_context.pointer_binding_value_keys[key] = [
+		pointer_binding_unknown_value(key),
+	]
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rhs_id flat.NodeId, typ Type) {
+	if unalias_type(typ) !is Pointer {
+		return
+	}
+	left_key := owner.storage_key()
+	if left_key.len == 0 {
+		return
+	}
+	values := tc.pointer_binding_alias_values(left_key, rhs_id, typ,
+		tc.fn_context.pointer_binding_value_keys) or { return }
+	tc.fn_context.pointer_binding_value_keys[left_key] = values
+}
+
+fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.NodeId, typ Type, rhs_alias_state map[string][]string) ?[]string {
+	if unalias_type(typ) !is Pointer || left_key.len == 0 {
+		return none
+	}
+	clean_rhs_id := tc.unwrap_paren_expr_id(rhs_id)
+	rhs := tc.a.node(clean_rhs_id)
+	if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
+		target_id := tc.unwrap_paren_expr_id(tc.a.child(rhs, 0))
+		target := tc.a.node(target_id)
+		if target.kind == .ident && target.value != '_' {
+			target_owner := tc.cur_scope.lookup_owner(target.value) or { return none }
+			target_value := tc.pointer_binding_storage_value(target_owner)
+			if target_value.len > 0 {
+				// The address identifies the binding's storage, even when that binding
+				// itself contains a pointer with a different pointee identity.
+				return [target_value]
+			}
+		}
+		if target.kind == .struct_init {
+			return [
+				'@value:${int(clean_rhs_id)}',
+			]
+		}
+		return [pointer_binding_unknown_value(left_key)]
+	}
+	if rhs.kind == .ident && rhs.value != '_' {
+		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return none }
+		values := tc.pointer_binding_ident_values(rhs_owner, rhs_alias_state)
+		if values.len > 0 {
+			return values
+		}
+	}
+	if rhs.kind == .nil_literal {
+		return [
+			'@value:${int(clean_rhs_id)}',
+		]
+	}
+	// Any other pointer-producing expression may return or select an existing pointer.
+	return [pointer_binding_unknown_value(left_key)]
+}
+
+fn (tc &TypeChecker) pointer_binding_storage_value(owner ScopeBindingOwner) string {
+	key := owner.storage_key()
+	if key.len > 0 && tc.binding_owner_is_global(owner) {
+		return pointer_binding_global_value(key)
+	}
+	return key
+}
+
+fn (tc &TypeChecker) pointer_binding_ident_values(owner ScopeBindingOwner, state map[string][]string) []string {
+	key := owner.storage_key()
+	if key.len == 0 {
+		return []string{}
+	}
+	return (state[key] or { [tc.pointer_binding_storage_value(owner)] }).clone()
+}
+
+fn clone_pointer_binding_value_keys(src map[string][]string) map[string][]string {
+	mut result := map[string][]string{}
+	for key, values in src {
+		result[key] = values.clone()
+	}
+	return result
+}
+
+fn merge_pointer_binding_value_states(states []map[string][]string, fallback map[string][]string) map[string][]string {
+	if states.len == 0 {
+		return clone_pointer_binding_value_keys(fallback)
+	}
+	mut all_keys := map[string]bool{}
+	for key, _ in fallback {
+		all_keys[key] = true
+	}
+	for state in states {
+		for key, _ in state {
+			all_keys[key] = true
+		}
+	}
+	mut result := map[string][]string{}
+	for key, _ in all_keys {
+		mut merged := []string{}
+		for state in states {
+			values := state[key] or { fallback[key] or { [key] } }
+			for value in values {
+				if value !in merged {
+					merged << value
+				}
+			}
+		}
+		result[key] = merged
+	}
+	return result
+}
+
+fn (mut tc TypeChecker) pointer_binding_state_after_loop_post(loop_node flat.Node, incoming map[string][]string, base map[string][]string, precomputed map[string][]string, has_cond_smartcasts bool, precondition_smartcasts map[string]Type) map[string][]string {
+	if incoming == base {
+		return apply_pointer_binding_value_state_delta(base, precomputed, incoming)
+	}
+	if loop_node.children_count <= 2 {
+		return clone_pointer_binding_value_keys(incoming)
+	}
+	post_id := tc.a.child(&loop_node, 2)
+	if !tc.valid_node_id(post_id) || tc.a.node(post_id).kind == .empty {
+		return clone_pointer_binding_value_keys(incoming)
+	}
+	saved_fn_context := clone_function_check_context(tc.fn_context)
+	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	error_count := tc.errors.len
+	notice_count := tc.notices.len
+	pending_ierror_count := tc.pending_ierror_errors.len
+	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(incoming)
+	if has_cond_smartcasts {
+		tc.smartcasts = clone_smartcasts(precondition_smartcasts)
+	}
+	$if ownership ? {
+		tc.ownership_begin_suppressed_checks()
+	}
+	tc.check_node(post_id)
+	$if ownership ? {
+		tc.ownership_end_suppressed_checks()
+	}
+	result := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	tc.fn_context = saved_fn_context
+	tc.smartcasts = clone_smartcasts(saved_smartcasts)
+	if tc.errors.len > error_count {
+		tc.errors.trim(error_count)
+	}
+	if tc.notices.len > notice_count {
+		tc.notices.trim(notice_count)
+	}
+	if tc.pending_ierror_errors.len > pending_ierror_count {
+		tc.pending_ierror_errors.trim(pending_ierror_count)
+	}
+	return result
+}
+
+fn apply_pointer_binding_value_state_delta(before map[string][]string, after map[string][]string, target map[string][]string) map[string][]string {
+	mut result := clone_pointer_binding_value_keys(target)
+	for key, _ in before {
+		if key !in after {
+			result.delete(key)
+		}
+	}
+	for key, values in after {
+		before_values := before[key] or { []string{} }
+		if values != before_values {
+			result[key] = values.clone()
+		}
+	}
+	return result
+}
+
 fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback map[string]bool) map[string]bool {
 	if states.len == 0 {
 		return fallback.clone()
@@ -13973,6 +14810,23 @@ fn (mut tc TypeChecker) merge_unsafe_reference_alias_short_circuit_state(op flat
 		return
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states([
+		skipped_rhs,
+		executed_rhs,
+	], skipped_rhs)
+}
+
+fn (mut tc TypeChecker) merge_pointer_binding_short_circuit_state(op flat.Op, lhs_id flat.NodeId, skipped_rhs map[string][]string) {
+	executed_rhs := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	if lhs := tc.constant_bool_value(lhs_id) {
+		rhs_executes := (op == .logical_and && lhs) || (op == .logical_or && !lhs)
+		tc.fn_context.pointer_binding_value_keys = if rhs_executes {
+			executed_rhs
+		} else {
+			clone_pointer_binding_value_keys(skipped_rhs)
+		}
+		return
+	}
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states([
 		skipped_rhs,
 		executed_rhs,
 	], skipped_rhs)
