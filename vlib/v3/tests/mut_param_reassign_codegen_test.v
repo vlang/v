@@ -263,6 +263,8 @@ fn main() {
 	}
 	mut current := &first
 	replace(mut current, &second)
+	assert current == &second
+	assert first.value == 1
 	println(int_str(current.value))
 }
 ')

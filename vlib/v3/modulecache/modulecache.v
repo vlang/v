@@ -11,7 +11,7 @@ import v3.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-46'
+const cache_format = 'v3-module-cache-47'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -23,11 +23,11 @@ const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
 const source_signature_cache_format = 'v3-source-signature-cache-3'
-const structured_pseudo_values_prefix = 'v3-pseudo-values-v1\x00'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
-	build_pseudo_values string
+	build_pseudo_values   string
+	version_pseudo_values string
 pub:
 	dir     string
 	enabled bool
@@ -106,7 +106,7 @@ pub:
 }
 
 // new_manager creates a configuration-scoped persistent module cache manager.
-pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string) Manager {
+pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string, version_pseudo_values string) Manager {
 	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
 	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or {
@@ -118,10 +118,11 @@ pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values 
 		}
 	})
 	return Manager{
-		dir:                 os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
-		enabled:             enabled
-		salt:                salt
-		build_pseudo_values: build_pseudo_values
+		dir:                   os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		enabled:               enabled
+		salt:                  salt
+		build_pseudo_values:   build_pseudo_values
+		version_pseudo_values: version_pseudo_values
 	}
 }
 
@@ -219,7 +220,7 @@ fn (m &Manager) incremental_program_entry(source_files []string) IncrementalProg
 // source_signature hashes selected source paths, contents, resolved module roots,
 // build/environment values, and pkg-config probe results in stable order.
 pub fn source_signature(source_files []string) string {
-	return source_signature_details(source_files, '').signature
+	return source_signature_details(source_files, '', '').signature
 }
 
 // source_files_use_build_time_pseudo reports whether selected sources depend on build time.
@@ -238,14 +239,14 @@ struct SourceSignatureDetails {
 	validation []string
 }
 
-fn source_signature_details(source_files []string, build_pseudo_values string) SourceSignatureDetails {
+fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
 	mut env_names := map[string]bool{}
 	mut pkgconfig_names := map[string]bool{}
-	mut uses_build_time_pseudo := false
-	mut uses_compiler_hash_pseudo := false
+	mut uses_build_pseudo := false
+	mut uses_version_pseudo := false
 	mut validation := []string{}
 	for file in files {
 		path := os.real_path(file)
@@ -255,11 +256,16 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
-			uses_build_time_pseudo = true
+		if source_uses_pseudo(source, [
+			'@BUILD_TIMESTAMP',
+			'@BUILD_DATE',
+			'@BUILD_TIME',
+		])
+		{
+			uses_build_pseudo = true
 		}
 		if source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']) {
-			uses_compiler_hash_pseudo = true
+			uses_version_pseudo = true
 		}
 		uses_vmod_hash := source_uses_pseudo(source, ['@VMODHASH'])
 		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
@@ -298,13 +304,16 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 			pkgconfig_names[name] = true
 		}
 	}
-	if uses_build_time_pseudo || uses_compiler_hash_pseudo {
-		pseudo_mask := '${int(uses_build_time_pseudo)}${int(uses_compiler_hash_pseudo)}'
-		pseudo_values := selected_pseudo_values(build_pseudo_values, uses_build_time_pseudo,
-			uses_compiler_hash_pseudo)
-		validation << 'pseudo=${pseudo_mask}\t${hash_text(pseudo_values)}'
+	if uses_build_pseudo {
+		validation << 'build=${hash_text(build_pseudo_values)}'
 		hash = hash_bytes(hash, [u8(0xfb)])
-		hash = hash_bytes(hash, pseudo_values.bytes())
+		hash = hash_bytes(hash, build_pseudo_values.bytes())
+		hash = hash_bytes(hash, [u8(0xff)])
+	}
+	if uses_version_pseudo {
+		validation << 'version=${hash_text(version_pseudo_values)}'
+		hash = hash_bytes(hash, [u8(0xf9)])
+		hash = hash_bytes(hash, version_pseudo_values.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	mut names := env_names.keys()
@@ -333,24 +342,6 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		signature:  hash.hex()
 		validation: validation
 	}
-}
-
-fn selected_pseudo_values(values string, uses_build_time bool, uses_compiler_hash bool) string {
-	if !values.starts_with(structured_pseudo_values_prefix) {
-		return values
-	}
-	parts := values[structured_pseudo_values_prefix.len..].split('\x00')
-	if parts.len != 2 {
-		return values
-	}
-	mut selected := []string{cap: 2}
-	if uses_build_time {
-		selected << parts[0]
-	}
-	if uses_compiler_hash {
-		selected << parts[1]
-	}
-	return selected.join('\x00')
 }
 
 fn source_uses_pseudo(source string, names []string) bool {
@@ -568,16 +559,16 @@ fn quoted_text_mentions_pseudo(source string, from int, to int, names []string) 
 
 fn (m &Manager) source_signature(source_files []string) string {
 	return cached_source_signature_with_build_values(m.dir, 'module', source_files,
-		m.build_pseudo_values)
+		m.build_pseudo_values, m.version_pseudo_values)
 }
 
 // cached_source_signature returns a content signature while using precise file
 // metadata to avoid rereading unchanged inputs on subsequent compiler runs.
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
-	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '')
+	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '', '')
 }
 
-fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string) string {
+fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) string {
 	mut paths := source_files.map(os.real_path(it))
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
@@ -585,11 +576,13 @@ fn cached_source_signature_with_build_values(cache_dir string, namespace string,
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values) {
+		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values,
+			version_pseudo_values)
+		{
 			return signature
 		}
 	}
-	details := source_signature_details(paths, build_pseudo_values)
+	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
 	if details.signature.len == 0 {
 		return ''
 	}
@@ -633,7 +626,7 @@ fn source_files_metadata_signature(paths []string) string {
 	return hash.hex()
 }
 
-fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string) ?string {
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string) ?string {
 	lines := content.split_into_lines()
 	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
 		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
@@ -648,20 +641,14 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			signature = line.all_after('source=')
 			continue
 		}
-		if line.starts_with('pseudo=') {
-			parts := line['pseudo='.len..].split('\t')
-			if parts.len != 2 || parts[0].len != 2 {
+		if line.starts_with('build=') {
+			if line != 'build=${hash_text(build_pseudo_values)}' {
 				return none
 			}
-			uses_build_time := parts[0][0] == `1`
-			uses_compiler_hash := parts[0][1] == `1`
-			if (!uses_build_time && parts[0][0] != `0`)
-				|| (!uses_compiler_hash && parts[0][1] != `0`) {
-				return none
-			}
-			pseudo_values := selected_pseudo_values(build_pseudo_values, uses_build_time,
-				uses_compiler_hash)
-			if parts[1] != hash_text(pseudo_values) {
+			continue
+		}
+		if line.starts_with('version=') {
+			if line != 'version=${hash_text(version_pseudo_values)}' {
 				return none
 			}
 			continue
@@ -1022,10 +1009,12 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 	}
 	entry := m.entry(cache_name, source_files)
 	if !os.is_file(entry.object_stamp) {
+		cache_trace_module_miss(cache_name, 'object stamp missing')
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
+		cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		return none
 	}
 	return entry
@@ -1119,6 +1108,28 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 	stamp := os.read_file(entry.stamp) or { return none }
 	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) +
 		'generation=${hash_text(generation_signature)}\n'
+	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies,
+		restored_prefixes)
+}
+
+// cached_incremental_dependency_inputs restores dependency records from a
+// declaration-stable program snapshot after the main source bodies change.
+pub fn (m &Manager) cached_incremental_dependency_inputs(source_files []string, declaration_signature string, generation_signature string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
+	if !m.enabled || source_files.len == 0 || declaration_signature.len == 0 {
+		return none
+	}
+	entry := m.incremental_program_entry(source_files)
+	if !os.is_file(entry.stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	expected_head := entry_stamp(m.salt, declaration_signature) +
+		'generation=${hash_text('incremental-v5\n${generation_signature}')}\n'
+	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies,
+		restored_prefixes)
+}
+
+fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
 	if !stamp.starts_with(expected_head) {
 		return none
 	}
@@ -1231,12 +1242,27 @@ pub fn (m &Manager) valid_incremental_program(source_files []string, declaration
 	}
 	objects := os.read_lines(entry.objects) or { return none }
 	if objects.len == 0 || objects.any(it.len == 0 || !os.is_file(it)) {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 incremental cache miss: cached module object is missing')
+		}
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
 	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs,
 		'incremental-v5\n${generation_signature}')
 	if stamp != expected {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			actual_lines := stamp.split_into_lines()
+			expected_lines := expected.split_into_lines()
+			mut line := 0
+			for line < actual_lines.len && line < expected_lines.len
+				&& actual_lines[line] == expected_lines[line] {
+				line++
+			}
+			actual := if line < actual_lines.len { actual_lines[line] } else { '<missing>' }
+			wanted := if line < expected_lines.len { expected_lines[line] } else { '<missing>' }
+			eprintln('  V3 incremental cache miss: stamp line ${line + 1}: cached=${actual} expected=${wanted}')
+		}
 		return none
 	}
 	return entry
@@ -1877,6 +1903,31 @@ pub fn static_string_definitions(source string) string {
 	return out.str()
 }
 
+// without_duplicate_static_string_definitions removes literal storage already
+// supplied by an earlier cached C prefix while retaining new body-only literals.
+pub fn without_duplicate_static_string_definitions(source string, existing_source string) string {
+	if !source.contains('static string _v3_lit_')
+		|| !existing_source.contains('static string _v3_lit_') {
+		return source.clone()
+	}
+	mut existing := map[string]bool{}
+	for line in existing_source.split_into_lines() {
+		if symbol := generated_static_string_definition_symbol(line) {
+			existing[symbol] = true
+		}
+	}
+	mut out := strings.new_builder(source.len)
+	for line in source.split_into_lines() {
+		if symbol := generated_static_string_definition_symbol(line) {
+			if existing[symbol] {
+				continue
+			}
+		}
+		out.writeln(line)
+	}
+	return out.str()
+}
+
 // materialize_cached_body_string_definitions restores body-only string storage
 // recorded as cache marker comments. Real definitions in source take precedence.
 pub fn materialize_cached_body_string_definitions(source string) string {
@@ -2057,7 +2108,993 @@ pub fn c_source_declares_types(source string) bool {
 	return declares_types
 }
 
+// c_source_function_identifiers returns C functions defined or declared at file scope.
+pub fn c_source_function_identifiers(source string) map[string]bool {
+	identifiers, _ := c_source_function_identifiers_with_status(source)
+	return identifiers
+}
+
+// c_source_function_identifiers_with_status returns file-scope C function names
+// and whether every function declaration could be classified.
+pub fn c_source_function_identifiers_with_status(source string) (map[string]bool, bool) {
+	mut identifiers := map[string]bool{}
+	mut parameter_macros := map[string]bool{}
+	mut complete := true
+	mut pending := strings.new_builder(256)
+	mut pending_old_style := false
+	mut brace_depth := 0
+	mut in_block_comment := false
+	for raw_line in source.split_into_lines() {
+		trimmed := raw_line.trim_space()
+		if brace_depth == 0 && trimmed.starts_with('#') {
+			c_record_function_like_macro(trimmed, mut parameter_macros)
+			continue
+		}
+		if brace_depth == 0 {
+			pending.writeln(raw_line)
+		}
+		delta, _, next_comment, last_code, first_open := c_line_braces(raw_line, in_block_comment)
+		in_block_comment = next_comment
+		if brace_depth == 0 && first_open >= 0 {
+			declaration := pending.str()
+			current_line_start := declaration.len - raw_line.len - 1
+			head :=
+				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
+			if c_static_declaration_head_is_function(head) {
+				if identifier := c_function_declaration_identifier_with_parameter_macros(head,
+					parameter_macros)
+				{
+					identifiers[identifier] = true
+					if c_function_declaration_identifier_is_ambiguous(head, identifier) {
+						complete = false
+					}
+				} else {
+					complete = false
+				}
+			}
+			pending_old_style = false
+		}
+		brace_depth += delta
+		if brace_depth <= 0 && (first_open >= 0 || last_code == `;`) {
+			brace_depth = 0
+			if first_open < 0 && last_code == `;`
+				&& c_pending_has_old_style_parameter_declaration(pending.after(0)) {
+				pending_old_style = true
+			} else {
+				pending.clear()
+				pending_old_style = false
+			}
+		}
+	}
+	if pending_old_style {
+		complete = false
+	}
+	unsafe { pending.free() }
+	return identifiers, complete
+}
+
+fn c_record_function_like_macro(directive string, mut macros map[string]bool) {
+	clean := directive.trim_left('#').trim_space()
+	if clean.starts_with('undef ') {
+		macros.delete(clean['undef '.len..].trim_space().fields()[0] or { '' })
+		return
+	}
+	if !clean.starts_with('define ') {
+		return
+	}
+	declarator := clean['define '.len..].trim_space().fields()[0] or { return }
+	open := declarator.index_u8(`(`)
+	if open > 0 {
+		macros[declarator[..open]] = true
+	} else {
+		macros.delete(declarator)
+	}
+}
+
+fn c_pending_has_old_style_parameter_declaration(declaration string) bool {
+	clean := trim_leading_c_comments(declaration.trim_space())
+	identifier := c_function_declaration_identifier(clean) or { return false }
+	mut open := -1
+	mut i := 0
+	for i + identifier.len <= clean.len {
+		if clean[i..i + identifier.len] != identifier {
+			i++
+			continue
+		}
+		before := if i > 0 { clean[i - 1] } else { u8(0) }
+		after_name := if i + identifier.len < clean.len {
+			clean[i + identifier.len]
+		} else {
+			u8(0)
+		}
+		if c_generated_identifier_byte(before) || c_generated_identifier_byte(after_name) {
+			i += identifier.len
+			continue
+		}
+		mut after := i + identifier.len
+		for after < clean.len && clean[after].is_space() {
+			after++
+		}
+		if after < clean.len && clean[after] == `(` {
+			open = after
+			break
+		}
+		i += identifier.len
+	}
+	if open < 0 {
+		return false
+	}
+	mut close := -1
+	mut depth := 0
+	for pos in open .. clean.len {
+		if clean[pos] == `(` {
+			depth++
+		} else if clean[pos] == `)` {
+			depth--
+			if depth == 0 {
+				close = pos
+				break
+			}
+		}
+	}
+	if close < 0 {
+		return false
+	}
+	mut parameter_names := []string{}
+	for raw_parameter in c_split_top_level_declarators(clean[open + 1..close]) {
+		parameter := trim_leading_c_comments(raw_parameter.trim_space())
+		if parameter.len == 0 || !((parameter[0] >= `a` && parameter[0] <= `z`)
+			|| (parameter[0] >= `A` && parameter[0] <= `Z`) || parameter[0] == `_`) {
+			return false
+		}
+		for c in parameter.bytes() {
+			if !c_generated_identifier_byte(c) {
+				return false
+			}
+		}
+		parameter_names << parameter
+	}
+	if parameter_names.len == 0 {
+		return false
+	}
+	declarations := clean[close + 1..].trim_space()
+	if declarations.len == 0 {
+		return false
+	}
+	return parameter_names.any(c_code_contains_identifier(declarations, it))
+}
+
+fn c_function_declaration_identifier_is_ambiguous(head string, identifier string) bool {
+	clean := trim_leading_c_comments(head.trim_space())
+	if identifier.len == 0 || !clean.starts_with(identifier) {
+		return false
+	}
+	rest := clean[identifier.len..].trim_left(' \t\r\n')
+	// A definition headed only by `NAME(...)` can be an old implicit-int
+	// declaration, but in cache inputs it is commonly a function-like macro
+	// that emits the real storage class, return type, and function name.
+	return rest.starts_with('(')
+}
+
+fn c_function_candidate_has_return_type(head string, candidate_start int) bool {
+	if candidate_start <= 0 {
+		return false
+	}
+	prefix := head[..candidate_start]
+	mut paren_depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	mut i := 0
+	for i < prefix.len {
+		c := prefix[i]
+		next := if i + 1 < prefix.len { prefix[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `(` {
+			paren_depth++
+			i++
+			continue
+		}
+		if c == `)` && paren_depth > 0 {
+			paren_depth--
+			i++
+			continue
+		}
+		if paren_depth == 0 && ((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`) {
+			mut end := i + 1
+			for end < prefix.len && c_generated_identifier_byte(prefix[end]) {
+				end++
+			}
+			name := prefix[i..end]
+			if name !in ['static', 'extern', 'inline', '__inline', '__inline__', '_Noreturn', 'const',
+				'volatile', 'restrict', '__restrict', '__restrict__', 'register', 'auto', 'constexpr',
+				'thread_local', '_Thread_local', '__thread', '__attribute', '__attribute__',
+				'__declspec', '__declspec__', '_Alignas', 'alignas'] {
+				return true
+			}
+			i = end
+			continue
+		}
+		i++
+	}
+	return false
+}
+
+fn c_balanced_parenthesis_close(value string, open int) ?int {
+	if open < 0 || open >= value.len || value[open] != `(` {
+		return none
+	}
+	mut depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	mut i := open
+	for i < value.len {
+		c := value[i]
+		next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `(` {
+			depth++
+		} else if c == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+		i++
+	}
+	return none
+}
+
+fn c_unwrap_redundant_declarator_parentheses(value string) string {
+	mut clean := trim_leading_c_comments(value.trim_space())
+	for clean.starts_with('(') {
+		close := c_balanced_parenthesis_close(clean, 0) or { break }
+		if trim_leading_c_comments(clean[close + 1..].trim_space()).len != 0 {
+			break
+		}
+		clean = trim_leading_c_comments(clean[1..close].trim_space())
+	}
+	return clean
+}
+
+fn c_declarator_without_leading_attributes(value string) ?string {
+	mut clean := trim_leading_c_comments(value.trim_space())
+	for {
+		mut attribute_len := 0
+		for attribute in ['__attribute__', '__attribute', '__declspec__', '__declspec'] {
+			if clean.starts_with(attribute) && (clean.len == attribute.len
+				|| !c_generated_identifier_byte(clean[attribute.len])) {
+				attribute_len = attribute.len
+				break
+			}
+		}
+		if attribute_len == 0 {
+			return clean
+		}
+		rest := trim_leading_c_comments(clean[attribute_len..].trim_space())
+		if !rest.starts_with('(') {
+			return none
+		}
+		close := c_balanced_parenthesis_close(rest, 0) or { return none }
+		clean = trim_leading_c_comments(rest[close + 1..].trim_space())
+	}
+	return clean
+}
+
+fn c_attributed_declarator_identifier(value string) ?string {
+	mut clean := c_unwrap_redundant_declarator_parentheses(value)
+	clean = c_declarator_without_leading_attributes(clean) or { return none }
+	clean = c_unwrap_redundant_declarator_parentheses(clean)
+	if clean.len == 0 || !((clean[0] >= `a` && clean[0] <= `z`)
+		|| (clean[0] >= `A` && clean[0] <= `Z`) || clean[0] == `_`) {
+		return none
+	}
+	mut name_end := 1
+	for name_end < clean.len && c_generated_identifier_byte(clean[name_end]) {
+		name_end++
+	}
+	rest := c_declarator_without_leading_attributes(clean[name_end..]) or { return none }
+	if rest.len != 0 {
+		return none
+	}
+	return clean[..name_end]
+}
+
+fn c_pointer_return_function_declarator_identifier(value string) ?string {
+	mut clean := c_declarator_without_leading_attributes(value) or { return none }
+	for clean.starts_with('*') {
+		clean = c_declarator_without_leading_attributes(clean[1..]) or { return none }
+	}
+	if !clean.starts_with('(') {
+		return c_function_declaration_identifier(clean)
+	}
+	close := c_balanced_parenthesis_close(clean, 0) or { return none }
+	if !trim_leading_c_comments(clean[close + 1..].trim_space()).starts_with('(') {
+		return none
+	}
+	return c_attributed_declarator_identifier(clean[..close + 1])
+}
+
+fn c_parenthesized_function_declarator_identifier(head string, open int, close int) ?string {
+	if open < 0 || close <= open + 1 || !c_function_candidate_has_return_type(head, open) {
+		return none
+	}
+	mut inner := c_unwrap_redundant_declarator_parentheses(head[open + 1..close])
+	inner = c_declarator_without_leading_attributes(inner) or { return none }
+	if inner.starts_with('*') {
+		identifier := c_pointer_return_function_declarator_identifier(inner) or { return none }
+		tail := trim_leading_c_comments(head[close + 1..].trim_space())
+		if !tail.starts_with('(') {
+			return none
+		}
+		return identifier
+	}
+	identifier := c_attributed_declarator_identifier(inner) or { return none }
+	tail := trim_leading_c_comments(head[close + 1..].trim_space())
+	if !tail.starts_with('(') {
+		return none
+	}
+	return identifier
+}
+
+fn c_function_declaration_identifier(head string) ?string {
+	return c_function_declaration_identifier_with_parameter_macros(head, map[string]bool{})
+}
+
+fn c_function_declaration_identifier_with_parameter_macros(head string, parameter_macros map[string]bool) ?string {
+	mut candidate := ''
+	mut candidate_start := -1
+	mut candidate_tail_end := -1
+	mut top_level_open := -1
+	mut paren_depth := 0
+	mut top_level_updates_candidate_tail := false
+	mut previous_top_level_identifier := ''
+	mut previous_top_level_identifier_start := -1
+	mut last_top_level_identifier := ''
+	mut last_top_level_identifier_start := -1
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	mut i := 0
+	for i < head.len {
+		c := head[i]
+		next := if i + 1 < head.len { head[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if paren_depth == 0 && ((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`) {
+			start := i
+			i++
+			for i < head.len && c_generated_identifier_byte(head[i]) {
+				i++
+			}
+			previous_top_level_identifier = last_top_level_identifier
+			previous_top_level_identifier_start = last_top_level_identifier_start
+			last_top_level_identifier = head[start..i]
+			last_top_level_identifier_start = start
+			continue
+		}
+		if c == `(` {
+			if paren_depth == 0 {
+				top_level_open = i
+				top_level_updates_candidate_tail = candidate.len > 0
+				mut end := i
+				for end > 0 && head[end - 1].is_space() {
+					end--
+				}
+				mut start := end
+				for start > 0 && c_generated_identifier_byte(head[start - 1]) {
+					start--
+				}
+				if start < end {
+					mut name := head[start..end]
+					mut name_start := start
+					if parameter_macros[name]
+						&& name !in ['__attribute', '__attribute__', '__declspec', '__declspec__', '__asm', '__asm__', '_Alignas', 'alignas']
+						&& last_top_level_identifier == name
+						&& previous_top_level_identifier.len > 0
+						&& previous_top_level_identifier !in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool']
+						&& c_function_candidate_has_return_type(head, previous_top_level_identifier_start) {
+						name = previous_top_level_identifier
+						name_start = previous_top_level_identifier_start
+					}
+					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__',
+						'__asm', '__asm__', '_Alignas', 'alignas'] {
+						is_suffix := candidate.len > 0 && candidate_tail_end >= 0
+							&& trim_leading_c_comments(head[candidate_tail_end + 1..i].trim_space()).trim_space() == name
+							&& c_function_candidate_has_return_type(head, candidate_start)
+						if !is_suffix {
+							candidate = name
+							candidate_start = name_start
+						}
+						top_level_updates_candidate_tail = true
+					}
+				}
+			}
+			paren_depth++
+		} else if c == `)` && paren_depth > 0 {
+			paren_depth--
+			if paren_depth == 0 {
+				if identifier := c_parenthesized_function_declarator_identifier(head,
+					top_level_open, i)
+				{
+					candidate = identifier
+					candidate_start = top_level_open
+					candidate_tail_end = i
+					top_level_updates_candidate_tail = false
+				} else if top_level_updates_candidate_tail {
+					candidate_tail_end = i
+					top_level_updates_candidate_tail = false
+				}
+			}
+		}
+		i++
+	}
+	if candidate.len == 0 {
+		return none
+	}
+	return candidate
+}
+
+// c_source_static_variable_identifiers returns file-scope static variable names
+// and whether every such declaration could be classified.
+pub fn c_source_static_variable_identifiers(source string) (map[string]bool, bool) {
+	mut identifiers := map[string]bool{}
+	mut complete := true
+	mut pending := strings.new_builder(256)
+	mut brace_depth := 0
+	mut item_has_brace := false
+	mut item_is_function := false
+	mut in_block_comment := false
+	for raw_line in source.split_into_lines() {
+		trimmed := raw_line.trim_space()
+		if brace_depth == 0 && pending.len == 0 && trimmed.starts_with('#') {
+			continue
+		}
+		if brace_depth == 0 || !item_is_function {
+			pending.writeln(raw_line)
+		}
+		delta, _, next_comment, last_code, first_open := c_line_braces(raw_line, in_block_comment)
+		in_block_comment = next_comment
+		if brace_depth == 0 && first_open >= 0 {
+			declaration := pending.str()
+			current_line_start := declaration.len - raw_line.len - 1
+			head :=
+				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
+			item_is_function = c_static_declaration_head_is_function(head)
+			item_has_brace = true
+		}
+		brace_depth += delta
+		if item_is_function {
+			if brace_depth <= 0 {
+				brace_depth = 0
+				pending.clear()
+				item_has_brace = false
+				item_is_function = false
+			}
+			continue
+		}
+		if brace_depth > 0 || last_code != `;` {
+			continue
+		}
+		declaration := pending.str()
+		if block := c_extern_c_block(declaration) {
+			nested_identifiers, nested_complete := c_source_static_variable_identifiers(block.inner)
+			for identifier, present in nested_identifiers {
+				if present {
+					identifiers[identifier] = true
+				}
+			}
+			complete = complete && nested_complete
+		} else if c_declaration_item_has_static_storage(declaration, item_has_brace) {
+			declaration_identifiers := c_static_variable_declaration_identifiers(declaration)
+			if declaration_identifiers.len == 0 {
+				complete = false
+			}
+			for identifier in declaration_identifiers {
+				identifiers[identifier] = true
+			}
+		}
+		brace_depth = 0
+		pending.clear()
+		item_has_brace = false
+	}
+	unsafe { pending.free() }
+	return identifiers, complete
+}
+
+fn c_static_variable_declaration_identifiers(declaration string) []string {
+	clean := trim_leading_c_comments(declaration.trim_space()).trim_right(';').trim_space()
+	if clean.len == 0 {
+		return []
+	}
+	mut identifiers := []string{}
+	for part in c_split_top_level_declarators(clean) {
+		mut declarator := part.trim_space()
+		if eq := c_top_level_assign_index(declarator) {
+			declarator = declarator[..eq].trim_space()
+		}
+		for suffix in ['__attribute__', '__declspec', '__asm__', '__asm', 'asm'] {
+			if pos := c_declaration_annotation_index(declarator, suffix) {
+				declarator = declarator[..pos].trim_space()
+			}
+		}
+		bracket := declarator.index_u8(`[`)
+		if bracket > 0 {
+			declarator = declarator[..bracket].trim_space()
+		}
+		if identifier := c_static_variable_declarator_identifier(declarator) {
+			identifiers << identifier
+		}
+	}
+	return identifiers
+}
+
+fn c_declaration_annotation_index(declaration string, name string) ?int {
+	mut offset := 0
+	for offset < declaration.len {
+		relative := declaration[offset..].index(name) or { return none }
+		pos := offset + relative
+		end := pos + name.len
+		if (pos == 0 || !c_generated_identifier_byte(declaration[pos - 1]))
+			&& (end == declaration.len || !c_generated_identifier_byte(declaration[end])) {
+			return pos
+		}
+		offset = end
+	}
+	return none
+}
+
+fn c_static_variable_declarator_identifier(declarator string) ?string {
+	mut clean_declarator := declarator
+	for marker in ['//', '/*'] {
+		if pos := clean_declarator.index(marker) {
+			clean_declarator = clean_declarator[..pos]
+		}
+	}
+	mut offset := 0
+	for offset < clean_declarator.len {
+		relative := clean_declarator[offset..].index('(*') or { break }
+		mut start := offset + relative + 2
+		for start < clean_declarator.len && clean_declarator[start].is_space() {
+			start++
+		}
+		mut end := start
+		for end < clean_declarator.len && c_generated_identifier_byte(clean_declarator[end]) {
+			end++
+		}
+		if end > start {
+			return clean_declarator[start..end]
+		}
+		offset = start
+	}
+	mut candidate := ''
+	mut i := 0
+	for i < clean_declarator.len {
+		if !c_generated_identifier_byte(clean_declarator[i]) || clean_declarator[i].is_digit() {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < clean_declarator.len && c_generated_identifier_byte(clean_declarator[i]) {
+			i++
+		}
+		candidate = clean_declarator[start..i]
+	}
+	if candidate.len == 0
+		|| candidate in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool'] {
+		return none
+	}
+	return candidate
+}
+
+// c_source_typedef_identifiers returns file-scope C typedef aliases.
+pub fn c_source_typedef_identifiers(source string) map[string]bool {
+	mut identifiers := map[string]bool{}
+	mut brace_depth := 0
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut function_depth := 0
+	mut item_start := 0
+	mut typedef_start := -1
+	mut typedef_brace_depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut in_block_comment := false
+	mut line_comment := false
+	mut i := 0
+	for i < source.len {
+		c := source[i]
+		next := if i + 1 < source.len { source[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if in_block_comment {
+			if c == `*` && next == `/` {
+				in_block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			in_block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `#` && c_source_line_prefix_is_space(source, i) {
+			for i < source.len {
+				for i < source.len && source[i] != `\n` {
+					i++
+				}
+				mut last := i
+				for last > 0 && source[last - 1] in [` `, `\t`, `\r`] {
+					last--
+				}
+				if last == 0 || source[last - 1] != `\\` || i >= source.len {
+					break
+				}
+				i++
+			}
+			item_start = i
+			continue
+		}
+		if c_generated_identifier_byte(c) && !c.is_digit() {
+			start := i
+			i++
+			for i < source.len && c_generated_identifier_byte(source[i]) {
+				i++
+			}
+			if function_depth == 0 && paren_depth == 0 && bracket_depth == 0 && typedef_start < 0
+				&& source[start..i] == 'typedef' {
+				typedef_start = start
+				typedef_brace_depth = brace_depth
+			}
+			continue
+		}
+		match c {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				paren_depth--
+			}
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				bracket_depth--
+			}
+			`{` {
+				if function_depth == 0 && typedef_start < 0 {
+					head := trim_leading_c_comments(source[item_start..i].trim_space())
+					if c_static_declaration_head_is_function(head) {
+						function_depth = 1
+					}
+				} else if function_depth > 0 {
+					function_depth++
+				}
+				brace_depth++
+			}
+			`}` {
+				if brace_depth > 0 {
+					brace_depth--
+				}
+				if function_depth > 0 {
+					function_depth--
+					if function_depth == 0 {
+						item_start = i + 1
+					}
+				}
+			}
+			`;` {
+				if typedef_start >= 0 && brace_depth == typedef_brace_depth && paren_depth == 0
+					&& bracket_depth == 0 {
+					for identifier in c_typedef_declaration_identifiers(source[typedef_start..i + 1]) {
+						identifiers[identifier] = true
+					}
+					typedef_start = -1
+				}
+				if function_depth == 0 {
+					item_start = i + 1
+				}
+			}
+			else {}
+		}
+		i++
+	}
+	return identifiers
+}
+
+fn c_source_line_prefix_is_space(source string, pos int) bool {
+	mut start := pos
+	for start > 0 && source[start - 1] != `\n` {
+		start--
+	}
+	return source[start..pos].trim_space().len == 0
+}
+
+fn c_typedef_declaration_identifiers(declaration string) []string {
+	clean := trim_leading_c_comments(declaration.trim_space()).trim_right(';').trim_space()
+	if clean.len == 0 {
+		return []
+	}
+	mut identifiers := []string{}
+	for part in c_split_top_level_declarators(clean) {
+		mut declarator := part.trim_space()
+		for suffix in ['__attribute__', '__declspec', '__asm__', '__asm', 'asm'] {
+			if pos := c_declaration_annotation_index(declarator, suffix) {
+				declarator = declarator[..pos].trim_space()
+			}
+		}
+		bracket := declarator.index_u8(`[`)
+		if bracket > 0 {
+			declarator = declarator[..bracket].trim_space()
+		}
+		if identifier := c_static_variable_declarator_identifier(declarator) {
+			identifiers << identifier
+		} else if identifier := c_function_declaration_identifier(declarator) {
+			identifiers << identifier
+		}
+	}
+	return identifiers
+}
+
+// c_source_type_identifiers returns C typedef aliases and named aggregate tags.
+pub fn c_source_type_identifiers(source string) map[string]bool {
+	mut identifiers := map[string]bool{}
+	mut tokens := []string{}
+	mut i := 0
+	for i < source.len {
+		if !c_generated_identifier_byte(source[i]) || source[i].is_digit() {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < source.len && c_generated_identifier_byte(source[i]) {
+			i++
+		}
+		tokens << source[start..i]
+	}
+	for idx, token in tokens {
+		if token in ['struct', 'union', 'enum'] && idx + 1 < tokens.len {
+			identifiers[tokens[idx + 1]] = true
+		}
+	}
+	mut offset := 0
+	for offset < source.len {
+		relative := source[offset..].index('typedef') or { break }
+		start := offset + relative
+		before_ok := start == 0 || !c_generated_identifier_byte(source[start - 1])
+		after := start + 'typedef'.len
+		after_ok := after >= source.len || !c_generated_identifier_byte(source[after])
+		if !before_ok || !after_ok {
+			offset = after
+			continue
+		}
+		mut end := after
+		mut brace_depth := 0
+		mut paren_depth := 0
+		for end < source.len {
+			match source[end] {
+				`{` {
+					brace_depth++
+				}
+				`}` {
+					if brace_depth > 0 {
+						brace_depth--
+					}
+				}
+				`(` {
+					paren_depth++
+				}
+				`)` {
+					if paren_depth > 0 {
+						paren_depth--
+					}
+				}
+				`;` {
+					if brace_depth == 0 && paren_depth == 0 {
+						break
+					}
+				}
+				else {}
+			}
+			end++
+		}
+		if end >= source.len {
+			break
+		}
+		declaration := source[after..end]
+		mut alias_end := declaration.len
+		for alias_end > 0 && !c_generated_identifier_byte(declaration[alias_end - 1]) {
+			alias_end--
+		}
+		mut alias_start := alias_end
+		for alias_start > 0 && c_generated_identifier_byte(declaration[alias_start - 1]) {
+			alias_start--
+		}
+		if alias_start < alias_end {
+			identifiers[declaration[alias_start..alias_end]] = true
+		}
+		offset = end + 1
+	}
+	return identifiers
+}
+
+// c_source_type_declarations keeps preprocessor context and C type declarations,
+// while omitting function bodies, function declarations, and storage.
+pub fn c_source_type_declarations(source string) string {
+	header, _ := c_source_type_declarations_with_status(source)
+	return header
+}
+
+// c_source_type_declarations_with_status also reports whether every declaration-like
+// file-scope macro invocation could be classified.
+pub fn c_source_type_declarations_with_status(source string) (string, bool) {
+	header, _, _, complete := c_declaration_header_mode(source, true)
+	return header, complete
+}
+
 fn c_declaration_header(prefix string) (string, bool, bool) {
+	header, has_static_storage, declares_types, _ := c_declaration_header_mode(prefix, false)
+	return header, has_static_storage, declares_types
+}
+
+fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut item_head := strings.new_builder(512)
@@ -2068,10 +3105,12 @@ fn c_declaration_header(prefix string) (string, bool, bool) {
 	mut function_conditional_depth := 0
 	mut has_static_storage := false
 	mut declares_types := false
+	mut types_complete := true
 	mut in_block_comment := false
 	mut in_preprocessor_directive := false
 	mut preprocessor_in_item := false
 	mut in_extern_c_block := false
+	type_declaration_macros := c_type_declaration_macro_names(prefix)
 	lines := prefix.split_into_lines()
 	for line_idx, raw_line in lines {
 		line := raw_line + '\n'
@@ -2187,8 +3226,16 @@ fn c_declaration_header(prefix string) (string, bool, bool) {
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
-		declares_types = declares_types || c_declaration_item_declares_type(declaration, has_brace)
-		out.write_string(c_declaration_item(declaration, has_brace))
+		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
+		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
+			|| type_declaration_macros[macro_name]
+		if types_only && macro_name.len > 0 && !item_declares_type {
+			types_complete = false
+		}
+		declares_types = declares_types || item_declares_type
+		if !types_only || item_declares_type {
+			out.write_string(c_declaration_item(declaration, has_brace, types_only))
+		}
 		item_head.clear()
 		brace_depth = 0
 		has_brace = false
@@ -2200,10 +3247,220 @@ fn c_declaration_header(prefix string) (string, bool, bool) {
 		declaration := item.str()
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
-		declares_types = declares_types || c_declaration_item_declares_type(declaration, has_brace)
-		out.write_string(c_declaration_item(declaration, has_brace))
+		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
+		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
+			|| type_declaration_macros[macro_name]
+		if types_only && macro_name.len > 0 && !item_declares_type {
+			types_complete = false
+		}
+		declares_types = declares_types || item_declares_type
+		if !types_only || item_declares_type {
+			out.write_string(c_declaration_item(declaration, has_brace, types_only))
+		}
 	}
-	return out.str(), has_static_storage, declares_types
+	return out.str(), has_static_storage, declares_types, types_complete
+}
+
+fn c_type_declaration_macro_names(source string) map[string]bool {
+	mut seen := map[string]bool{}
+	mut type_macros := map[string]bool{}
+	mut directive := strings.new_builder(128)
+	for raw_line in source.split_into_lines() {
+		if directive.len == 0 && !raw_line.trim_space().starts_with('#') {
+			continue
+		}
+		directive.writeln(raw_line)
+		if c_preprocessor_line_continues(raw_line) {
+			continue
+		}
+		clean := directive.str().trim_space()
+		directive.clear()
+		if clean.len < 2 || clean[0] != `#` {
+			continue
+		}
+		body := clean[1..].trim_space()
+		if body.len > 'undef'.len && body.starts_with('undef') && body['undef'.len].is_space() {
+			name := body['undef'.len..].trim_space().fields()[0] or { continue }
+			if seen[name] {
+				type_macros[name] = false
+			}
+			continue
+		}
+		if body.len <= 'define'.len || !body.starts_with('define') || !body['define'.len].is_space() {
+			continue
+		}
+		definition := body['define'.len..].trim_left(' \t')
+		mut name_end := 0
+		for name_end < definition.len && c_generated_identifier_byte(definition[name_end]) {
+			name_end++
+		}
+		if name_end == 0 {
+			continue
+		}
+		name := definition[..name_end]
+		mut replacement_start := name_end
+		is_function_like := replacement_start < definition.len
+			&& definition[replacement_start] == `(`
+		if is_function_like {
+			mut depth := 0
+			for replacement_start < definition.len {
+				if definition[replacement_start] == `(` {
+					depth++
+				} else if definition[replacement_start] == `)` {
+					depth--
+					if depth == 0 {
+						replacement_start++
+						break
+					}
+				}
+				replacement_start++
+			}
+		}
+		replacement := if replacement_start < definition.len {
+			definition[replacement_start..]
+		} else {
+			''
+		}
+		is_type_macro := c_declaration_item_declares_type(replacement, replacement.contains('{'))
+		if seen[name] {
+			type_macros[name] = type_macros[name] && is_type_macro
+		} else {
+			seen[name] = true
+			type_macros[name] = is_type_macro
+		}
+	}
+	return type_macros
+}
+
+// c_sources_macro_identifiers_referencing returns macro names whose replacements
+// directly or transitively reference one of the supplied identifiers.
+pub fn c_sources_macro_identifiers_referencing(sources []string, identifiers map[string]bool) map[string]bool {
+	mut replacements := map[string][]string{}
+	for source in sources {
+		for name, bodies in c_source_macro_replacements(source) {
+			replacements[name] << bodies
+		}
+	}
+	mut reachable := identifiers.clone()
+	mut result := map[string]bool{}
+	for _ in 0 .. replacements.len {
+		mut changed := false
+		for name, bodies in replacements {
+			if reachable[name] {
+				continue
+			}
+			for body in bodies {
+				if c_macro_replacement_references_identifiers(body, reachable) {
+					reachable[name] = true
+					result[name] = true
+					changed = true
+					break
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return result
+}
+
+fn c_source_macro_replacements(source string) map[string][]string {
+	mut replacements := map[string][]string{}
+	mut directive := strings.new_builder(128)
+	for raw_line in source.split_into_lines() {
+		if directive.len == 0 && !raw_line.trim_space().starts_with('#') {
+			continue
+		}
+		directive.writeln(raw_line)
+		if c_preprocessor_line_continues(raw_line) {
+			continue
+		}
+		clean := directive.str().trim_space()
+		directive.clear()
+		if clean.len < 2 || clean[0] != `#` {
+			continue
+		}
+		body := clean[1..].trim_space()
+		if body.len <= 'define'.len || !body.starts_with('define') || !body['define'.len].is_space() {
+			continue
+		}
+		definition := body['define'.len..].trim_left(' \t')
+		mut name_end := 0
+		for name_end < definition.len && c_generated_identifier_byte(definition[name_end]) {
+			name_end++
+		}
+		if name_end == 0 {
+			continue
+		}
+		name := definition[..name_end]
+		mut replacement_start := name_end
+		if replacement_start < definition.len && definition[replacement_start] == `(` {
+			mut depth := 0
+			for replacement_start < definition.len {
+				if definition[replacement_start] == `(` {
+					depth++
+				} else if definition[replacement_start] == `)` {
+					depth--
+					if depth == 0 {
+						replacement_start++
+						break
+					}
+				}
+				replacement_start++
+			}
+		}
+		replacement := if replacement_start < definition.len {
+			definition[replacement_start..].trim_left(' \t')
+		} else {
+			''
+		}
+		mut bodies := replacements[name]
+		bodies << replacement
+		replacements[name] = bodies
+	}
+	return replacements
+}
+
+fn c_macro_replacement_references_identifiers(replacement string, identifiers map[string]bool) bool {
+	for identifier, present in identifiers {
+		if present && c_code_contains_identifier(replacement, identifier) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_declaration_macro_invocation_name(item string, has_brace bool) ?string {
+	if has_brace {
+		return none
+	}
+	clean := trim_leading_c_comments(item.trim_space())
+	if clean.len == 0 || !c_generated_identifier_byte(clean[0]) || clean[0].is_digit() {
+		return none
+	}
+	mut name_end := 1
+	for name_end < clean.len && c_generated_identifier_byte(clean[name_end]) {
+		name_end++
+	}
+	name := clean[..name_end]
+	if name in ['_Static_assert', 'static_assert'] {
+		return none
+	}
+	mut paren := name_end
+	for paren < clean.len && clean[paren].is_space() {
+		paren++
+	}
+	if paren >= clean.len || clean[paren] != `(` {
+		if paren < clean.len && clean[paren] == `;` {
+			tail := clean[paren + 1..].trim_space()
+			if tail.len == 0 || tail.starts_with('//') || tail.starts_with('/*') {
+				return name
+			}
+		}
+		return none
+	}
+	return name
 }
 
 fn c_function_block_closes_at_line_start(line string) bool {
@@ -2245,14 +3502,14 @@ fn c_preprocessor_line_continues(line string) bool {
 	return line.trim_right('\r').ends_with('\\')
 }
 
-fn c_declaration_item(item string, has_brace bool) string {
+fn c_declaration_item(item string, has_brace bool, types_only bool) string {
 	trimmed := item.trim_space()
 	if trimmed.len == 0 {
 		return item
 	}
 	clean := trim_leading_c_comments(trimmed)
 	if block := c_extern_c_block(item) {
-		inner_header, _, _ := c_declaration_header(block.inner)
+		inner_header, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
 		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
 			result += '\n'
@@ -2313,7 +3570,13 @@ fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 		return false
 	}
 	if !has_brace {
-		return !c_declaration_head_is_function(clean.trim_right(';'))
+		mut declaration_head := clean.trim_right(';').trim_space()
+		for suffix in ['__attribute__', '__declspec', '__asm__', '__asm', 'asm'] {
+			if pos := c_declaration_annotation_index(declaration_head, suffix) {
+				declaration_head = declaration_head[..pos].trim_space()
+			}
+		}
+		return !c_declaration_head_is_function(declaration_head)
 	}
 	return true
 }
@@ -2324,20 +3587,23 @@ fn c_declaration_item_declares_type(item string, has_brace bool) bool {
 		_, _, declares_types := c_declaration_header(block.inner)
 		return declares_types
 	}
+	mut brace := -1
+	if has_brace {
+		brace = clean.index_u8(`{`)
+		if brace > 0 {
+			head := clean[..brace].trim_space()
+			if c_static_declaration_head_is_function(head) || c_has_top_level_assign(head) {
+				return false
+			}
+		}
+	}
 	if c_code_contains_identifier(clean, 'typedef') {
 		return true
 	}
-	if !has_brace {
-		return false
-	}
-	brace := clean.index_u8(`{`)
 	if brace <= 0 {
 		return false
 	}
 	head := clean[..brace].trim_space()
-	if c_static_declaration_head_is_function(head) || c_has_top_level_assign(head) {
-		return false
-	}
 	return c_code_contains_identifier(head, 'struct') || c_code_contains_identifier(head, 'union')
 		|| c_code_contains_identifier(head, 'enum')
 }
@@ -2490,8 +3756,34 @@ fn c_contains_top_level_parenthesized_pointer_declarator(value string) bool {
 			pos++
 		}
 		if pos < value.len && value[pos] == `*` {
+			if c_parenthesized_pointer_declarator_is_function(value, i) {
+				continue
+			}
 			return true
 		}
+	}
+	return false
+}
+
+fn c_parenthesized_pointer_declarator_is_function(value string, open int) bool {
+	mut depth := 0
+	for i in open .. value.len {
+		if value[i] == `(` {
+			depth++
+			continue
+		}
+		if value[i] != `)` {
+			continue
+		}
+		depth--
+		if depth != 0 {
+			continue
+		}
+		inner := value[open + 1..i]
+		if _ := c_pointer_return_function_declarator_identifier(inner) {
+			return true
+		}
+		return false
 	}
 	return false
 }

@@ -3908,7 +3908,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 		if p.kind == .param {
 			decl_param_type := g.tc.parse_resolution_type(p.typ)
 			param_type := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
-				mut_pointer_param_abi_type(typed_params[param_idx])
+				g.explicit_mut_pointer_param_type(p, typed_params[param_idx])
 			} else if shared_alias_ptr := g.shared_alias_pointer_type_from_text(p.typ) {
 				shared_alias_ptr
 			} else if !concrete_optional_params && p.typ.len > 0
@@ -13215,8 +13215,7 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	if cfn in g.inlined_c_fns {
-		if g.cache_split && cfn in g.cache_omitted_c_fns && cfn !in g.inlined_c_static_fns
-			&& cfn !in g.inlined_c_declared_fns {
+		if g.cache_split && cfn in g.cache_omitted_c_fns && cfn !in g.inlined_c_declared_fns {
 			return true
 		}
 		return false
@@ -13229,7 +13228,7 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 
 fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
 	return g.cache_split && cfn in g.inlined_c_fns && cfn in g.cache_omitted_c_fns
-		&& cfn !in g.inlined_c_static_fns && cfn !in g.inlined_c_declared_fns
+		&& cfn !in g.inlined_c_declared_fns
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string) bool {
@@ -14287,33 +14286,30 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		if p.kind != .param {
 			continue
 		}
-		raw_pt := if param_idx < typed_params.len {
+		pt := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
 			g.tc.parse_resolution_type(p.typ)
 		}
-		pt := if p.is_mut && p.op == .amp {
-			mut_pointer_param_abi_type(raw_pt)
-		} else {
-			raw_pt
-		}
+		effective_pt := g.explicit_mut_pointer_param_type(p, pt)
 		param_idx++
-		if concrete_optional_params && type_is_optional_result(pt) && p.value.len > 0 {
+		if concrete_optional_params && type_is_optional_result(effective_pt) && p.value.len > 0 {
 			g.cur_concrete_optional_params[p.value] = true
 		}
 		ct := if shared_ct := g.shared_param_c_type(p.typ) {
 			shared_ct
-		} else if concrete_optional_params && (pt is types.OptionType || pt is types.ResultType) {
-			g.concrete_optional_type_name(pt)
-		} else if pt is types.Pointer
-			&& (pt.base_type is types.OptionType || pt.base_type is types.ResultType) {
-			g.optional_type_name(pt)
-		} else if pt is types.ArrayFixed {
-			'${g.fixed_array_elem_c_type(pt.elem_type)}*'
-		} else if pt is types.OptionType || pt is types.ResultType {
-			g.optional_type_name(pt)
+		} else if concrete_optional_params
+			&& (effective_pt is types.OptionType || effective_pt is types.ResultType) {
+			g.concrete_optional_type_name(effective_pt)
+		} else if effective_pt is types.Pointer && (effective_pt.base_type is types.OptionType
+			|| effective_pt.base_type is types.ResultType) {
+			g.optional_type_name(effective_pt)
+		} else if effective_pt is types.ArrayFixed {
+			'${g.fixed_array_elem_c_type(effective_pt.elem_type)}*'
+		} else if effective_pt is types.OptionType || effective_pt is types.ResultType {
+			g.optional_type_name(effective_pt)
 		} else {
-			g.tc.c_type(pt)
+			g.tc.c_type(effective_pt)
 		}
 		if ct.starts_with('fn_ptr:') {
 			g.write(g.resolve_fn_ptr_type(ct))
@@ -14347,8 +14343,24 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 	}
 }
 
-fn mut_pointer_param_abi_type(typ types.Type) types.Type {
-	if typ is types.Pointer && typ.base_type is types.Pointer {
+fn (mut g FlatGen) explicit_mut_pointer_param_type(param flat.Node, typ types.Type) types.Type {
+	if !param.is_mut || param.op != .amp || typ !is types.Pointer {
+		return typ
+	}
+	decl_type := g.tc.parse_resolution_type(param.typ)
+	mut decl_depth := 0
+	mut decl_base := decl_type
+	for decl_base is types.Pointer {
+		decl_depth++
+		decl_base = decl_base.base_type
+	}
+	mut actual_depth := 0
+	mut actual_base := typ
+	for actual_base is types.Pointer {
+		actual_depth++
+		actual_base = actual_base.base_type
+	}
+	if actual_depth > decl_depth {
 		return typ
 	}
 	return types.Type(types.Pointer{

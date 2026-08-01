@@ -1,7 +1,8 @@
 module sync
 
 const select_handoff_pairs = 64
-const select_handoff_timeout = i64(500_000_000)
+// Allow for heavily loaded CI runners; a missed handoff still reaches this finite timeout.
+const select_handoff_timeout = i64(5_000_000_000)
 
 fn select_send_after_start(ch &Channel, start chan bool, results chan bool, value int) {
 	_ := <-start

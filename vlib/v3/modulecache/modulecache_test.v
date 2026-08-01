@@ -9,6 +9,192 @@ fn test_cached_file_line_uses_source_file_name() {
 	assert rewritten == "return ['${os.real_path(source_file)}', 'origin.v:5', '5']"
 }
 
+fn test_without_duplicate_static_string_definitions_keeps_new_literals() {
+	existing := '#include <Cocoa/Cocoa.h>
+static string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};
+static inline int native_value(void) { return 42; }
+'
+	source := 'static string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};
+static string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};
+'
+	cleaned := without_duplicate_static_string_definitions(source, existing)
+	assert !cleaned.contains('_v3_lit_1_44bd55d473cd3ef7')
+	assert cleaned.contains('_v3_lit_1_44bd54d473cd3d44')
+}
+
+fn test_type_declarations_omit_functions_with_local_typedefs() {
+	source := 'typedef struct VisibleType {
+	int value;
+} VisibleType;
+static int local_state = 7;
+static int local_static_function(void) {
+	typedef struct LocalStaticType {
+		int value;
+	} LocalStaticType;
+	LocalStaticType value = {local_state};
+	return value.value;
+}
+inline int local_inline_function(void) {
+	typedef int LocalInlineType;
+	return (LocalInlineType)local_state;
+}
+'
+	types := c_source_type_declarations(source)
+	assert types.contains('VisibleType')
+	assert !types.contains('local_static_function')
+	assert !types.contains('LocalStaticType')
+	assert !types.contains('local_inline_function')
+	assert !types.contains('LocalInlineType')
+	assert !types.contains('local_state')
+}
+
+fn test_type_declarations_keep_type_macro_invocations() {
+	source := '#define DECLARE_TYPE(name) typedef struct { int value; } name
+DECLARE_TYPE(Item);
+'
+	types, complete := c_source_type_declarations_with_status(source)
+	assert complete
+	assert types.contains('#define DECLARE_TYPE')
+	assert types.contains('DECLARE_TYPE(Item);')
+
+	object_source := '#define DECLARE_ITEM typedef int Item
+DECLARE_ITEM;
+'
+	object_types, object_complete := c_source_type_declarations_with_status(object_source)
+	assert object_complete
+	assert object_types.contains('#define DECLARE_ITEM')
+	assert object_types.contains('DECLARE_ITEM;')
+
+	_, unknown_complete := c_source_type_declarations_with_status('UNKNOWN_DECL(Item);\n')
+	assert !unknown_complete
+	_, unknown_object_complete := c_source_type_declarations_with_status('UNKNOWN_DECL;\n')
+	assert !unknown_object_complete
+}
+
+fn test_source_typedef_identifiers_ignore_comments_and_parse_declarators() {
+	source := '// typedef unsigned CommentOnly;\n#define TYPE_MACRO typedef unsigned MacroOnly\n#define IGNORE(...)\nIGNORE(typedef unsigned MacroArgument);\nconst char *text = "typedef unsigned StringOnly";\ntypedef unsigned id; static inline id identity(id value) { return value; }\ntypedef void *Class;\ntypedef void (*SEL)(void);\ntypedef int Protocol(void);\nstatic inline void helper(void) { typedef unsigned LocalOnly; }\nextern "C" { typedef unsigned External; }\n'
+	identifiers := c_source_typedef_identifiers(source)
+	assert identifiers['id']
+	assert identifiers['Class']
+	assert identifiers['SEL']
+	assert identifiers['Protocol']
+	assert identifiers['External']
+	assert !identifiers['CommentOnly']
+	assert !identifiers['LocalOnly']
+	assert !identifiers['MacroOnly']
+	assert !identifiers['MacroArgument']
+	assert !identifiers['StringOnly']
+}
+
+fn test_static_variable_identifiers_ignore_asm_labels() {
+	assert c_static_variable_declaration_identifiers('static int state __asm__("state_alias");') == [
+		'state',
+	]
+	identifiers, complete :=
+		c_source_static_variable_identifiers('static int state __asm__("state_alias");\n')
+	assert complete
+	assert identifiers['state'], identifiers.str()
+	assert !identifiers['state_alias']
+	function_identifiers, function_complete :=
+		c_source_static_variable_identifiers('static int helper(void) __asm__("helper_alias");\n')
+	assert function_complete
+	assert !function_identifiers['helper']
+	assert !function_identifiers['helper_alias']
+}
+
+fn test_function_identifiers_keep_name_before_suffix_macro() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('#define API_SUFFIX(tag)\nstatic int api(void) API_SUFFIX(tag) {\n\treturn 1;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['API_SUFFIX']
+}
+
+fn test_function_identifiers_keep_name_after_return_type_macro() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('#define RET(T) T\nRET(int) api(void) {\n\treturn 1;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['RET']
+}
+
+fn test_function_identifiers_keep_name_before_parameter_list_macro() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('#define P_(x) x\nstatic int api P_((void)) {\n\treturn 1;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['P_']
+	single_identifiers, single_complete :=
+		c_source_function_identifiers_with_status('#define P(x) (x)\nstatic int api P(void) {\n\treturn 1;\n}\n')
+	assert single_complete
+	assert single_identifiers['api']
+	assert !single_identifiers['P']
+	old_style_identifiers, old_style_complete :=
+		c_source_function_identifiers_with_status('#define EXPORT\ntypedef int MyType;\nEXPORT MyType API(foo)\nint foo;\n{\n\treturn foo;\n}\n')
+	assert old_style_complete
+	assert old_style_identifiers['API']
+	assert !old_style_identifiers['MyType']
+}
+
+fn test_function_identifiers_unwrap_parenthesized_declarator() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('static int (api)(void) {\n\treturn 1;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['int']
+	nested_identifiers, nested_complete :=
+		c_source_function_identifiers_with_status('static int ((api))(void) {\n\treturn 1;\n}\n')
+	assert nested_complete
+	assert nested_identifiers['api']
+	assert !nested_identifiers['int']
+	attributed_identifiers, attributed_complete :=
+		c_source_function_identifiers_with_status('static int (__attribute__((noinline)) api)(void) {\n\treturn 1;\n}\n')
+	assert attributed_complete
+	assert attributed_identifiers['api']
+	assert !attributed_identifiers['int']
+}
+
+fn test_function_identifiers_recognize_function_pointer_return() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('static int (*api(void))(int) {\n\treturn 0;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['int']
+	assert c_static_declaration_head_is_function('static int (*api(void))(int)')
+	assert !c_static_declaration_head_is_function('static int (*callback)(int)')
+	redundant_identifiers, redundant_complete :=
+		c_source_function_identifiers_with_status('static int (*((api))(void))(int) {\n\treturn 0;\n}\n')
+	assert redundant_complete
+	assert redundant_identifiers['api']
+	assert !redundant_identifiers['int']
+	assert c_static_declaration_head_is_function('static int (*((api))(void))(int)')
+}
+
+fn test_function_identifiers_preserve_old_style_parameter_declarations() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('static int api(a)\nint a;\n{\n\treturn a;\n}\n')
+	assert complete
+	assert identifiers['api']
+}
+
+fn test_macro_identifiers_referencing_static_helpers() {
+	wrappers := c_sources_macro_identifiers_referencing([
+		'#define CALL_HELPER() helper()
+#define CALL_OUTER() CALL_HELPER()
+#define COMMENT_ONLY() /* helper() */
+#define STRING_ONLY() "helper"
+',
+		'#define CROSS_FILE() CALL_OUTER()',
+	], {
+		'helper': true
+	})
+	assert wrappers['CALL_HELPER']
+	assert wrappers['CALL_OUTER']
+	assert wrappers['CROSS_FILE']
+	assert !wrappers['COMMENT_ONLY']
+	assert !wrappers['STRING_ONLY']
+}
+
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	details := SourceSignatureDetails{
 		signature:  'content-signature'
@@ -30,33 +216,23 @@ fn test_source_signature_cache_content_requires_stable_metadata() {
 	assert content.ends_with('complete=1\n')
 }
 
-fn test_source_signature_selects_only_referenced_pseudo_values() {
-	root := os.join_path(os.vtmp_dir(), 'v3_pseudo_signature_${os.getpid()}')
+fn test_version_pseudo_signature_ignores_build_clock() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_version_pseudo_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'module main\n\nconst compiler_hash = @VCURRENTHASH\n')!
-	first := source_signature_details([source],
-		'${structured_pseudo_values_prefix}time-a\x00hash-a').signature
-	time_changed := source_signature_details([source],
-		'${structured_pseudo_values_prefix}time-b\x00hash-a').signature
-	hash_changed := source_signature_details([source],
-		'${structured_pseudo_values_prefix}time-a\x00hash-b').signature
-	assert first == time_changed
-	assert first != hash_changed
+	source := os.join_path(root, 'version.v')
+	os.write_file(source, 'module version\n\nconst current = @VCURRENTHASH\n') or { panic(err) }
 
-	os.write_file(source, 'module main\n\nconst build_date = @BUILD_DATE\n')!
-	build_first := source_signature_details([source],
-		'${structured_pseudo_values_prefix}time-a\x00hash-a').signature
-	build_time_changed := source_signature_details([source],
-		'${structured_pseudo_values_prefix}time-b\x00hash-a').signature
-	build_hash_changed := source_signature_details([source],
-		'${structured_pseudo_values_prefix}time-a\x00hash-b').signature
-	assert build_first != build_time_changed
-	assert build_first == build_hash_changed
+	first := source_signature_details([source], 'build-clock-1', 'version-1')
+	second := source_signature_details([source], 'build-clock-2', 'version-1')
+	changed := source_signature_details([source], 'build-clock-2', 'version-2')
+	assert first.signature == second.signature
+	assert first.signature != changed.signature
+	assert first.validation.any(it.starts_with('version='))
+	assert !first.validation.any(it.starts_with('build='))
 }
 
 fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
@@ -114,7 +290,7 @@ fn test_vmodhash_changes_cached_source_signature_without_source_edits() {
 
 	first := cached_source_signature(cache_dir, 'vmodhash', [source])
 	assert first.len > 0
-	details := source_signature_details([source], '')
+	details := source_signature_details([source], '', '')
 	assert details.validation.any(it.starts_with('vmodhash='))
 
 	os.write_file(ref_file, 'abcdef0123456789abcdef0123456789abcdef01\n')!

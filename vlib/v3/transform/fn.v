@@ -8614,6 +8614,11 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		return t.make_compiler_default_map_clone_value(source, clean_type,
 			source_is_owned_temporary)
 	}
+	if fn_node.value == 'delete' {
+		if nested_delete := t.try_lower_nested_map_delete_call(node, base_id, clean_type) {
+			return nested_delete
+		}
+	}
 	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	base := t.stable_expr_for_reuse(base_id)
 	if map_method_needs_runtime_addr_only(fn_node.value) {
@@ -12453,7 +12458,7 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 	}
 	if method !in ['replace', 'replace_once', 'trim', 'trim_left', 'trim_right', 'all_before',
 		'all_after', 'all_before_last', 'all_after_last', 'contains', 'starts_with', 'ends_with',
-		'bytes', 'substr', 'substr_unsafe', 'repeat', 'plus_two'] {
+		'bytes', 'substr', 'substr_unsafe', 'repeat', 'plus_two', 'count'] {
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
@@ -12469,9 +12474,11 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 	ret_type := match method {
 		'contains', 'starts_with', 'ends_with' { 'bool' }
 		'bytes' { '[]u8' }
+		'count' { 'int' }
 		else { 'string' }
 	}
 
+	t.mark_fn_used_name('string.${method}')
 	return t.make_call_typed('string__${method}', args, ret_type)
 }
 

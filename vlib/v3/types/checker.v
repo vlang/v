@@ -429,9 +429,15 @@ mut:
 	shared_array_owners                      map[string][]ScopeBindingOwner
 	locked_shared_names                      map[string]int
 	locked_shared_modes                      map[string][]u8
+	locked_shared_base_names                 map[string]string
+	pointer_binding_value_keys               map[string][]string
 	immutable_reference_aliases              map[string]bool
 	unsafe_reference_alias_owners            map[string]bool
 	unsafe_alias_break_states                [][]map[string]bool
+	pointer_alias_break_states               [][]map[string][]string
+	pointer_alias_continue_states            [][]map[string][]string
+	pointer_alias_goto_states                map[string][]map[string][]string
+	pointer_alias_backward_goto_targets      map[string]bool
 	closure_forbidden_captures               map[string]bool
 	closure_scope                            &Scope = unsafe { nil }
 	lambda_no_captures                       bool
@@ -443,27 +449,31 @@ mut:
 
 fn new_function_check_context() FunctionCheckContext {
 	return FunctionCheckContext{
-		method_value_locals:               map[string]bool{}
-		method_value_local_owners:         map[string][]ScopeBindingOwner{}
-		method_value_local_depth:          map[string]int{}
-		method_value_stack_mut_owners:     map[string]bool{}
-		fn_value_variadic_locals:          map[string]bool{}
-		fn_value_variadic_local_owners:    map[string][]ScopeBindingOwner{}
-		fn_value_variadic_local_depth:     map[string]int{}
-		capturing_fn_literal_locals:       map[string]bool{}
-		capturing_fn_literal_local_owners: map[string][]ScopeBindingOwner{}
-		capturing_fn_literal_local_depth:  map[string]int{}
-		mut_param_base_types:              map[string]Type{}
-		mut_param_owners:                  map[string]ScopeBindingOwner{}
-		mut_local_owners:                  map[string]ScopeBindingOwner{}
-		closure_copy_owners:               map[string]ScopeBindingOwner{}
-		shared_owners:                     map[string][]ScopeBindingOwner{}
-		shared_array_owners:               map[string][]ScopeBindingOwner{}
-		locked_shared_names:               map[string]int{}
-		locked_shared_modes:               map[string][]u8{}
-		immutable_reference_aliases:       map[string]bool{}
-		unsafe_reference_alias_owners:     map[string]bool{}
-		closure_forbidden_captures:        map[string]bool{}
+		method_value_locals:                 map[string]bool{}
+		method_value_local_owners:           map[string][]ScopeBindingOwner{}
+		method_value_local_depth:            map[string]int{}
+		method_value_stack_mut_owners:       map[string]bool{}
+		fn_value_variadic_locals:            map[string]bool{}
+		fn_value_variadic_local_owners:      map[string][]ScopeBindingOwner{}
+		fn_value_variadic_local_depth:       map[string]int{}
+		capturing_fn_literal_locals:         map[string]bool{}
+		capturing_fn_literal_local_owners:   map[string][]ScopeBindingOwner{}
+		capturing_fn_literal_local_depth:    map[string]int{}
+		mut_param_base_types:                map[string]Type{}
+		mut_param_owners:                    map[string]ScopeBindingOwner{}
+		mut_local_owners:                    map[string]ScopeBindingOwner{}
+		closure_copy_owners:                 map[string]ScopeBindingOwner{}
+		shared_owners:                       map[string][]ScopeBindingOwner{}
+		shared_array_owners:                 map[string][]ScopeBindingOwner{}
+		locked_shared_names:                 map[string]int{}
+		locked_shared_modes:                 map[string][]u8{}
+		locked_shared_base_names:            map[string]string{}
+		pointer_binding_value_keys:          map[string][]string{}
+		immutable_reference_aliases:         map[string]bool{}
+		unsafe_reference_alias_owners:       map[string]bool{}
+		pointer_alias_goto_states:           map[string][]map[string][]string{}
+		pointer_alias_backward_goto_targets: map[string]bool{}
+		closure_forbidden_captures:          map[string]bool{}
 	}
 }
 
@@ -489,9 +499,15 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		shared_array_owners:                      src.shared_array_owners.clone()
 		locked_shared_names:                      src.locked_shared_names.clone()
 		locked_shared_modes:                      src.locked_shared_modes.clone()
+		locked_shared_base_names:                 src.locked_shared_base_names.clone()
+		pointer_binding_value_keys:               clone_pointer_binding_value_keys(src.pointer_binding_value_keys)
 		immutable_reference_aliases:              src.immutable_reference_aliases.clone()
 		unsafe_reference_alias_owners:            src.unsafe_reference_alias_owners.clone()
 		unsafe_alias_break_states:                clone_unsafe_alias_break_states(src.unsafe_alias_break_states)
+		pointer_alias_break_states:               clone_pointer_alias_loop_states(src.pointer_alias_break_states)
+		pointer_alias_continue_states:            clone_pointer_alias_loop_states(src.pointer_alias_continue_states)
+		pointer_alias_goto_states:                clone_pointer_alias_goto_states(src.pointer_alias_goto_states)
+		pointer_alias_backward_goto_targets:      src.pointer_alias_backward_goto_targets.clone()
 		closure_forbidden_captures:               src.closure_forbidden_captures.clone()
 		closure_scope:                            src.closure_scope
 		lambda_no_captures:                       src.lambda_no_captures
@@ -510,6 +526,30 @@ fn clone_unsafe_alias_break_states(states [][]map[string]bool) [][]map[string]bo
 			cloned_loop_states << state.clone()
 		}
 		result << cloned_loop_states
+	}
+	return result
+}
+
+fn clone_pointer_alias_loop_states(states [][]map[string][]string) [][]map[string][]string {
+	mut result := [][]map[string][]string{cap: states.len}
+	for loop_states in states {
+		mut cloned_loop_states := []map[string][]string{cap: loop_states.len}
+		for state in loop_states {
+			cloned_loop_states << clone_pointer_binding_value_keys(state)
+		}
+		result << cloned_loop_states
+	}
+	return result
+}
+
+fn clone_pointer_alias_goto_states(states map[string][]map[string][]string) map[string][]map[string][]string {
+	mut result := map[string][]map[string][]string{}
+	for label, label_states in states {
+		mut cloned_label_states := []map[string][]string{cap: label_states.len}
+		for state in label_states {
+			cloned_label_states << clone_pointer_binding_value_keys(state)
+		}
+		result[label] = cloned_label_states
 	}
 	return result
 }
@@ -3308,6 +3348,7 @@ struct CFnDeclSignature {
 fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 	mut signatures := map[string]CFnDeclSignature{}
 	mut modules := map[string]string{}
+	mut positions := map[string]string{}
 	tc.cur_module = ''
 	tc.cur_file = ''
 	for node_idx in tc.top_level_idx {
@@ -3344,15 +3385,19 @@ fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 					if existing_module == 'builtin' || existing_module == tc.cur_module {
 						signatures[name] = signature
 						modules[name] = tc.cur_module
+						positions[name] = tc.node_position_string(flat.NodeId(node_idx))
 					} else if tc.cur_module != 'builtin'
 						&& !c_fn_decl_signatures_compatible(existing, signature) {
+						existing_pos := positions[name] or { '' }
+						location := if existing_pos.len > 0 { ' at ${existing_pos}' } else { '' }
 						tc.record_error_unfiltered(.duplicate_decl,
-							'C function `${name}` was already declared with a different signature',
+							'C function `${name}` was already declared with a different signature in module `${existing_module}`${location}',
 							flat.NodeId(node_idx))
 					}
 				} else {
 					signatures[name] = signature
 					modules[name] = tc.cur_module
+					positions[name] = tc.node_position_string(flat.NodeId(node_idx))
 				}
 			}
 			else {}
@@ -4810,6 +4855,12 @@ fn type_text_contains_qualified_import(text string, alias string) bool {
 }
 
 fn (mut tc TypeChecker) check_deprecated_byte_types() {
+	mut identifier_offsets := map[u64]bool{}
+	for node in tc.a.nodes {
+		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
+			identifier_offsets[deprecated_byte_position_key(node.pos.id, node.pos.offset)] = true
+		}
+	}
 	mut pending_file := ''
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
@@ -4821,12 +4872,17 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 		if pending_file.len == 0 || !node.pos.is_valid() {
 			continue
 		}
-		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file)
+		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file,
+			identifier_offsets)
 		pending_file = ''
 	}
 }
 
-fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string) {
+fn deprecated_byte_position_key(file_id int, offset int) u64 {
+	return (u64(u32(file_id)) << 32) | u64(u32(offset))
+}
+
+fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool) {
 	if tc.diagnostic_files.len > 0 && path !in tc.diagnostic_files {
 		return
 	}
@@ -4866,7 +4922,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 		for i < source.len && (source[i].is_alnum() || source[i] == `_`) {
 			i++
 		}
-		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start) {
+		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
+			|| deprecated_byte_position_key(file_id, start) in identifier_offsets {
 			continue
 		}
 		mut end := i
@@ -5451,6 +5508,7 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 	}
 	typ := if p.is_mut { mut_param_semantic_type(parsed_type) } else { parsed_type }
 	owner := tc.cur_scope.insert_with_owner(p.value, typ)
+	tc.initialize_pointer_parameter_binding(owner, typ)
 	if p.is_mut {
 		tc.fn_context.mut_param_base_types[p.value] = if p.op == .amp {
 			typ
@@ -6435,6 +6493,7 @@ fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) ScopeBindingOw
 	v := tc.a.nodes[int(id)]
 	if v.kind == .ident && v.value.len > 0 {
 		owner := tc.cur_scope.insert_with_owner(v.value, typ)
+		tc.initialize_unknown_pointer_binding(owner, typ)
 		tc.remember_expr_type(id, typ)
 		return owner
 	}
@@ -9115,6 +9174,9 @@ fn (tc &TypeChecker) type_has_veb_context(typ Type) bool {
 
 // check_fn_body validates check fn body state for types.
 fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
+	if tc.has_goto_nodes {
+		tc.initialize_pointer_alias_goto_targets()
+	}
 	saved_smartcasts := clone_smartcasts(tc.smartcasts)
 	defer {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
@@ -11663,7 +11725,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				continue
 			}
 		}
-		tc.check_node(default_id)
+		tc.check_node_with_expected_context(default_id, expected)
 		actual := tc.resolve_expr(default_id, expected)
 		if type_is_unsigned_integer(expected) && tc.expr_is_negative_integer_literal(default_id) {
 			tc.record_error_at(.assignment_mismatch,

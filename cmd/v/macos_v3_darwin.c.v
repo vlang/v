@@ -35,13 +35,28 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 	}
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
-	if !is_macos_v3_default_executable(os.executable())
-		|| !is_macos_v3_relevant_command(command, prefs)
-		|| !macos_v3_environment_flags_are_supported(os.getenv('CFLAGS'), os.getenv('LDFLAGS'))
-		|| !macos_v3_args_are_supported(forwarded_args) {
+	if !is_macos_v3_default_executable(os.executable()) {
+		trace_macos_v3_skip('non-default compiler executable `${os.executable()}`')
+		return none
+	}
+	if !is_macos_v3_relevant_command(command, prefs) {
+		return none
+	}
+	if !macos_v3_environment_flags_are_supported(os.getenv('CFLAGS'), os.getenv('LDFLAGS')) {
+		trace_macos_v3_skip('CFLAGS or LDFLAGS is set')
+		return none
+	}
+	if !macos_v3_args_are_supported(forwarded_args) {
+		trace_macos_v3_skip('unsupported command-line arguments')
 		return none
 	}
 	return launch_macos_v3_compiler(prefs, forwarded_args)
+}
+
+fn trace_macos_v3_skip(reason string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  macOS V3 dispatch skipped: ${reason}')
+	}
 }
 
 fn macos_v3_environment_flags_are_supported(cflags string, ldflags string) bool {
@@ -54,18 +69,21 @@ fn is_macos_v3_default_executable(vexe string) bool {
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.old_compiler || prefs.path == '' || prefs.backend != .c || prefs.os != .macos {
+		trace_macos_v3_skip('incompatible command, input, backend, or target')
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
 	is_directory := os.is_dir(prefs.path)
 	if command in external_tools
 		|| command in ['help', 'version', 'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'interpret', 'get', 'translate'] {
+		trace_macos_v3_skip('external or compatibility-only command `${command}`')
 		return false
 	}
 	if prefs.output_cross_c || prefs.is_crun || prefs.is_test || prefs.is_prod || prefs.autofree
 		|| prefs.build_mode == .build_module || prefs.is_cstrict || prefs.use_cache
 		|| prefs.parallel_cc || prefs.out_name_is_dir || prefs.exclude.len > 0
 		|| prefs.coverage_dir != '' || prefs.is_o || prefs.is_vlines || prefs.is_shared {
+		trace_macos_v3_skip('incompatible compiler preferences')
 		return false
 	}
 	// The established preference defaults select Boehm before dispatch runs,
@@ -73,6 +91,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	// as part of the V3 default; preserve explicit non-none `-gc` selections by
 	// keeping them on the compatibility compiler.
 	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+		trace_macos_v3_skip('explicit non-none GC mode')
 		return false
 	}
 	if normalized_path.starts_with('cmd/tools/')
@@ -85,10 +104,15 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		// Command tools are built on demand while dispatching CLI commands such as
 		// `fmt` and `test`. Legacy .vv fixtures, non-V builds, and sources needing
 		// compatibility output-name derivation also retain established semantics.
+		trace_macos_v3_skip('compatibility-only input or output path `${prefs.path}`')
 		return false
 	}
-	return is_directory || command == 'run' || command == 'build' || prefs.is_script
+	is_relevant := is_directory || command == 'run' || command == 'build' || prefs.is_script
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+	if !is_relevant {
+		trace_macos_v3_skip('unsupported source command `${command}`')
+	}
+	return is_relevant
 }
 
 fn macos_v3_source_path_resolves_differently(path string) bool {
@@ -221,12 +245,6 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if '-no-memory-limit' !in forwarded_args && '--no-memory-limit' !in forwarded_args {
 		forwarded_args.insert(0, '-no-memory-limit')
 	}
-	// An embedded V3 driver cannot restart itself by replacing the cmd/v process.
-	// Keep its first in-process rollout monolithic until cache invalidation can
-	// restart the driver through an ordinary function return.
-	if '-nocache' !in forwarded_args && '--no-cache' !in forwarded_args {
-		forwarded_args.insert(0, '-nocache')
-	}
 	return forwarded_args
 }
 
@@ -281,6 +299,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		return
 	}
 	replace_macos_v3_process_environment(caller_environment)
+	should_report := is_verbose || os.getenv('V3_CACHE_TRACE') != ''
 	if fallback_reason == macos_v3_c_error_fallback {
 		report := read_macos_v3_c_error_report(c_error_dir) or {
 			os.rmdir_all(c_error_dir) or {}
@@ -288,7 +307,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 			return
 		}
 		os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
-		if is_verbose {
+		if should_report {
 			eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
 			if report.c_output != '' {
 				eprintln(report.c_output.trim_right('\r\n'))
@@ -297,11 +316,11 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 	} else {
 		os.rmdir_all(c_error_dir) or {}
 		if fallback_reason == macos_v3_inline_asm_fallback {
-			if is_verbose {
+			if should_report {
 				println('V3 requested the compatibility compiler for inline assembly')
 			}
 		} else {
-			if is_verbose {
+			if should_report {
 				eprintln('V3 compilation failed; retrying with `-old-compiler`.')
 			}
 		}

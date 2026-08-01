@@ -763,12 +763,19 @@ fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
 	info := t.tc.iterator_for_in_next_call_info_text(clean) or { return none }
 	elem_type := t.iterator_for_in_elem_type_from_next_return(info.return_type) or { return none }
 	mut next_method := info.name
-	generic_base, _, is_generic := generic_app_parts(clean)
+	generic_base, generic_args, is_generic := generic_app_parts(clean)
 	is_generic_interface := is_generic && (generic_base in t.tc.interface_names
 		|| t.tc.qualify_name(generic_base) in t.tc.interface_names)
 	if !is_generic_interface && !for_iter_type_has_generic_placeholder(clean)
 		&& info.name.contains('.') {
-		next_method = '${clean}.${info.name.all_after_last('.')}'
+		info_receiver := info.name.all_before_last('.')
+		info_base, _, info_is_generic := generic_app_parts(info_receiver)
+		concrete_receiver := if info_is_generic && generic_args.len > 0 {
+			'${info_base}[${generic_args.join(', ')}]'
+		} else {
+			clean
+		}
+		next_method = '${concrete_receiver}.${info.name.all_after_last('.')}'
 	}
 	return IteratorForInInfo{
 		elem_type:   elem_type
@@ -853,6 +860,7 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	}
 	elem_type := info.elem_type
 	t.set_var_type(elem_name, elem_type)
+	t.mark_fn_used_name(info.next_method)
 	next_call := t.make_call_typed(info.next_method, arr1(t.make_prefix(.amp,
 		t.make_ident(iter_name))), '?${elem_type}')
 	next_decl := t.make_decl_assign_typed(next_name, next_call, '?${elem_type}')
@@ -1324,6 +1332,20 @@ fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
 fn for_in_fixed_array_elem_type(s string) string {
 	clean := s.trim_space()
 	if clean.starts_with('[') {
+		mut pos := 0
+		for pos < clean.len && clean[pos] == `[` {
+			close_rel := clean[pos + 1..].index_u8(`]`)
+			if close_rel < 0 {
+				return ''
+			}
+			pos += close_rel + 2
+		}
+		if clean[pos..].contains('[') {
+			open := clean.last_index_u8(`[`)
+			if open >= pos {
+				return clean[..open]
+			}
+		}
 		return clean.all_after(']')
 	}
 	open := clean.last_index_u8(`[`)
@@ -1336,6 +1358,21 @@ fn for_in_fixed_array_elem_type(s string) string {
 fn for_in_fixed_array_len_text(s string) string {
 	clean := s.trim_space()
 	if clean.starts_with('[') {
+		mut pos := 0
+		for pos < clean.len && clean[pos] == `[` {
+			close_rel := clean[pos + 1..].index_u8(`]`)
+			if close_rel < 0 {
+				return ''
+			}
+			pos += close_rel + 2
+		}
+		if clean[pos..].contains('[') {
+			open := clean.last_index_u8(`[`)
+			close_rel := clean[open + 1..].index_u8(`]`)
+			if open >= pos && close_rel >= 0 {
+				return clean[open + 1..open + 1 + close_rel].trim_space()
+			}
+		}
 		return clean.all_after('[').all_before(']').trim_space()
 	}
 	open := clean.last_index_u8(`[`)

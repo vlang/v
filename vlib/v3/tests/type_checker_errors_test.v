@@ -2077,3 +2077,39 @@ fn test_if_guard_rejects_or_handled_value() {
 		'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\tif value := maybe() or { return } {\n\t\tprintln(int_str(value))\n\t}\n}\n',
 		'if guard expression must be optional or result')
 }
+
+fn test_byte_identifier_is_not_treated_as_deprecated_type() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_byte_identifier',
+		'fn main() {\n\tbytes := [u8(2), 3]\n\tmut total := 0\n\tfor index, byte in bytes {\n\t\ttotal += index + int(byte)\n\t}\n\tprintln(int_str(total))\n}\n')
+	assert output == '6'
+}
+
+fn test_module_qualified_enum_value_in_if_expression() {
+	v3_bin := build_v3()
+	output := run_good_project(v3_bin, 'good_module_qualified_enum_if_expression', {
+		'main.v':      "module main\n\nimport mode\n\nfn selected() mode.Kind {\n\treturn if true {\n\t\tmode.Kind.hybrid\n\t} else {\n\t\tmode.Kind.portable\n\t}\n}\n\nfn main() {\n\tassert selected() == .hybrid\n\tprintln('ok')\n}\n"
+		'mode/mode.v': 'module mode\n\npub enum Kind {\n\tportable\n\thybrid\n}\n'
+	}, 'main.v')
+	assert output == 'ok'
+}
+
+fn test_module_qualified_type_chaining_only_allows_enums() {
+	v3_bin := build_v3()
+	output := run_good_project(v3_bin, 'good_module_qualified_enum_alias_selector', {
+		'main.v':      "module main\n\nimport mode\n\nfn main() {\n\tvalue := mode.KindAlias.hybrid\n\tassert value == .hybrid\n\tprintln('ok')\n}\n"
+		'mode/mode.v': 'module mode\n\npub enum Kind {\n\tportable\n\thybrid\n}\n\npub type KindAlias = Kind\n'
+	}, 'main.v')
+	assert output == 'ok'
+	run_bad_project(v3_bin, 'bad_module_qualified_struct_field_selector', {
+		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tprintln(model.Item.value)\n}\n'
+		'model/model.v': 'module model\n\npub struct Item {\npub:\n\tvalue int\n}\n'
+	}, 'main.v', '`model.Item` must be initialized')
+}
+
+fn test_option_or_error_literal_in_result_match_branch() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_option_or_error_in_result_match',
+		"fn maybe_number(text string) ?f64 {\n\treturn text.f64()\n}\n\nfn convert(text string) !f64 {\n\treturn match text {\n\t\t'' { 0.0 }\n\t\telse { maybe_number(text) or { error('bad number') } }\n\t}\n}\n\nfn main() {\n\tprintln(convert('2.5') or { 0.0 })\n}\n")
+	assert output == '2.5'
+}

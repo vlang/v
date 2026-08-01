@@ -8830,8 +8830,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
 			// runtime structs like array{} and string{}.
-			if p.tok == .lcbr && local_type_name.len > 0 && (!p.in_for_container
-				|| (p.tok_pos == name_pos + name.len && p.current_lcbr_looks_struct_init()))
+			if p.tok == .lcbr && local_type_name.len > 0
+				&& (!p.in_for_container || p.current_lcbr_is_attached())
 				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
 				|| name in ['any', 'array', 'string', 'map', 'mapnode', '_result', '_option']) {
 				return p.struct_init(local_type_name)

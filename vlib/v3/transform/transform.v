@@ -10914,42 +10914,6 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 				return t.lower_map_init_to_runtime(id, map_node)
 			}
 		}
-		if target_type in ['f32', 'f64'] && node.kind == .infix
-			&& node.op in [.plus, .minus, .mul, .div] && node.children_count >= 2 {
-			lhs_id := t.a.child(&node, 0)
-			mut lhs_type := t.node_type(lhs_id)
-			if lhs_type.len == 0 {
-				lhs_type = t.resolve_expr_type(lhs_id)
-			}
-			if t.infix_struct_operator_result_type(node, lhs_type).len == 0 {
-				// Mutable for-in values are pointer-backed locals. Inside an infix
-				// expression there is no outer expected-type load for each operand,
-				// so keep the explicit rvalue dereference produced by transform_expr.
-				lhs := if _ := t.pointer_value_expr_type(lhs_id) {
-					t.transform_expr(lhs_id)
-				} else {
-					t.transform_expr_for_type(lhs_id, target_type)
-				}
-				rhs_id := t.a.child(&node, 1)
-				rhs := if _ := t.pointer_value_expr_type(rhs_id) {
-					t.transform_expr(rhs_id)
-				} else {
-					t.transform_expr_for_type(rhs_id, target_type)
-				}
-				start := t.a.children.len
-				t.a.children << lhs
-				t.a.children << rhs
-				return t.a.add_node(flat.Node{
-					kind:           .infix
-					op:             node.op
-					children_start: start
-					children_count: 2
-					pos:            node.pos
-					value:          node.value
-					typ:            target_type
-				})
-			}
-		}
 	}
 	expr := t.transform_expr(id)
 	source_node := if int(id) >= 0 && int(id) < t.a.nodes.len {
@@ -11011,13 +10975,20 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 			return none
 		}
 	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .index && node.value == 'range' {
+		actual_type_name := t.generic_call_arg_type_for_inference(id)
+		if t.normalize_type_alias(actual_type_name) == t.normalize_type_alias(expected_type_name) {
+			t.set_node_typ(int(id), expected_type_name)
+			return none
+		}
+	}
 	expected_type := t.tc.parse_type(expected_type_name)
 	if forwarded_return_type_is_unresolved(expected_type) {
 		return none
 	}
 	expected_base := forwarded_return_unalias_type(expected_type)
 	if expected_base is types.Array {
-		node := t.a.nodes[int(id)]
 		concrete_call_type := if node.kind == .call {
 			t.concrete_generic_call_return_type(id, node)
 		} else {
@@ -11885,12 +11856,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 		} else {
 			lhs_id := t.a.child(&node, 0)
-			lhs_type := if inferred_typ.len > 0 {
+			mut lhs_type := if inferred_typ.len > 0 {
 				inferred_typ
 			} else if decl_type_is_usable(node.typ) {
 				node.typ
 			} else {
 				t.lvalue_type(lhs_id)
+			}
+			if t.array_map_decl_type_needs_refinement(child_id, lhs_type) {
+				lhs_type = ''
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if sum_target.len > 0 && !t.expr_has_smartcast(child_id) {
@@ -11900,14 +11874,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 		}
 	}
-	if node.children_count == 2 && !decl_type_is_usable(node.typ) {
+	if node.children_count == 2 {
 		lhs := t.a.nodes[int(new_children[0])]
 		if lhs.kind == .ident && lhs.value.len > 0 {
 			rhs_typ := t.node_type(new_children[1])
-			if decl_type_is_usable(rhs_typ) && (inferred_typ.len == 0
+			unusable_decl_refined := !decl_type_is_usable(node.typ) && (inferred_typ.len == 0
 				|| inferred_typ in ['array', 'map', 'unknown']
 				|| t.generic_arg_is_unresolved(inferred_typ)
-				|| t.concrete_generic_type_refines(inferred_typ, rhs_typ)
+				|| t.concrete_generic_type_refines(inferred_typ, rhs_typ))
+			if decl_type_is_usable(rhs_typ) && (unusable_decl_refined
 				|| t.decl_should_adopt_lowered_rhs_type(t.a.child(&node, 1), inferred_typ, rhs_typ)) {
 				t.set_decl_var_type(node, lhs.value, rhs_typ)
 				t.set_node_typ(int(new_children[0]), rhs_typ)
@@ -12161,6 +12136,26 @@ fn (t &Transformer) decl_should_adopt_lowered_rhs_type(rhs_id flat.NodeId, infer
 	if rhs.kind == .map_init {
 		return rhs_typ.starts_with('map[')
 	}
+	if rhs.kind != .call || rhs.children_count == 0 {
+		return false
+	}
+	callee := t.a.child_node(&rhs, 0)
+	return callee.kind == .selector && callee.value == 'map'
+}
+
+fn (t &Transformer) array_map_decl_type_needs_refinement(rhs_id flat.NodeId, typ string) bool {
+	if !typ.starts_with('[]') {
+		return false
+	}
+	elem_type := typ[2..]
+	if elem_type != 'void' && decl_type_is_usable(elem_type)
+		&& !t.generic_arg_is_unresolved(elem_type) {
+		return false
+	}
+	if int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
+		return false
+	}
+	rhs := t.a.nodes[int(rhs_id)]
 	if rhs.kind != .call || rhs.children_count == 0 {
 		return false
 	}
@@ -13412,6 +13407,9 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 		return t.transform_lock_stmt(child_id, child)
 	}
 	if lowered := t.try_lower_map_index_append_stmt(child_id) {
+		return lowered
+	}
+	if lowered := t.try_lower_nested_map_index_postfix_stmt(child_id) {
 		return lowered
 	}
 	if lowered := t.try_lower_map_index_postfix_stmt(child_id) {
@@ -14727,7 +14725,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
 	if resolved_typ.len == 0 {
-		if array_typ := t.array_call_type_name(call_node) {
+		if array_typ := t.array_call_type_name(call_id, call_node) {
 			resolved_typ = array_typ
 		}
 	}
@@ -19443,7 +19441,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if new_map_typ.len > 0 {
 				return new_map_typ
 			}
-			if array_typ := t.array_call_type_name(node) {
+			if array_typ := t.array_call_type_name(id, node) {
 				return array_typ
 			}
 			if call_is_wait_selector(t.a, node) {

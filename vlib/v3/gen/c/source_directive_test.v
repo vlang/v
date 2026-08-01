@@ -98,6 +98,8 @@ fn test_cache_tracks_omitted_native_function_definitions() {
 		false, true)
 	g.collect_inlined_c_fns_for_cache('static int native_static_fn(void) { return 3; }', false,
 		true)
+	g.collect_inlined_c_fns_for_cache('static int static_source_fn(void) { return 8; }', true,
+		false)
 
 	assert 'native_source_fn' in g.cache_omitted_c_fns
 	assert 'native_header_fn' !in g.cache_omitted_c_fns
@@ -109,6 +111,9 @@ fn test_cache_tracks_omitted_native_function_definitions() {
 	assert 'spaced_negated_guard_fn' in g.cache_omitted_c_fns
 	assert g.should_emit_c_extern_decl('spaced_negated_guard_fn')
 	assert 'native_static_fn' in g.inlined_c_static_fns
+	assert 'static_source_fn' in g.cache_omitted_c_fns
+	assert g.should_emit_c_extern_decl('static_source_fn')
+	assert g.c_extern_decl_is_cached_object_fallback('static_source_fn')
 }
 
 fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
