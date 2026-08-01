@@ -1012,22 +1012,9 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 			return
 		}
 	}
-	if tc.current_fn_is_enum_initializer_helper() {
-		return
-	}
 	tc.record_error_at(.assignment_mismatch,
 		'`${root.value}` is immutable, declare it with `mut` to make it mutable', root_id,
 		tc.node_value_diagnostic_pos(root_id))
-}
-
-fn (tc &TypeChecker) current_fn_is_enum_initializer_helper() bool {
-	fn_id := flat.NodeId(tc.fn_context.node_id)
-	if !tc.valid_node_id(fn_id) {
-		return false
-	}
-	fn_node := tc.a.node(fn_id)
-	return fn_node.kind == .fn_decl
-		&& tc.enum_initializer_calls_helper(fn_node.value, tc.cur_module)
 }
 
 fn (tc &TypeChecker) enum_initializer_calls_helper(fn_name string, module_name string) bool {

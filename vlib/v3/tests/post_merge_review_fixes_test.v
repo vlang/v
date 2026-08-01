@@ -3334,9 +3334,22 @@ fn main() {
 
 fn test_enum_helper_folding_tracks_local_declarations() {
 	v3_bin := build_v3()
+	run_bad(v3_bin, 'enum_helper_immutable_local_assignment', 'fn value() int {
+	x := 1
+	x = 2
+	return x
+}
+
+enum E {
+	item = value()
+}
+
+fn main() {}
+',
+		'immutable, declare it with `mut`')
 	source := 'fn make_local() int {
 	x := 4
-	y := x + 2
+	mut y := x + 2
 	y = y + 1
 	return y
 }
@@ -3364,9 +3377,9 @@ fn main() {
 	assert macro == ['#define Backed__local ((Backed)(7))']
 }
 
-fn test_enum_helper_scan_resets_module_at_file_boundary() {
+fn test_enum_initializer_helper_cannot_redefine_builtin() {
 	v3_bin := build_v3()
-	source := 'fn exit() int {
+	run_bad(v3_bin, 'enum_helper_builtin_redefinition', 'fn exit() int {
 	return 9
 }
 
@@ -3376,13 +3389,10 @@ enum E {
 }
 
 fn main() {
-	println(E.a.str())
-	println(E.b.str())
+	println(E.a)
 }
-'
-	c_source := gen_c(v3_bin, 'enum_helper_main_file_module_reset_c', source)
-	assert c_source.contains('\tE__a = 9,')
-	assert c_source.contains('\tE__b = 10,')
+',
+		'cannot redefine builtin public function `exit`')
 }
 
 fn test_json_decode_enum_accepts_name_and_label() {

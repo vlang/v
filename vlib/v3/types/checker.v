@@ -2224,30 +2224,16 @@ fn checker_vmod_root_for_file(file string) string {
 }
 
 fn checker_flag_include_dir(raw string) ?string {
-	clean := raw.trim_space()
-	for marker in ['-isystem', '-I'] {
-		mut offset := 0
-		for offset < clean.len {
-			relative := clean[offset..].index(marker) or { break }
-			index := offset + relative
-			before_ok := index == 0 || clean[index - 1].is_space()
-			after := index + marker.len
-			after_ok := after == clean.len || clean[after].is_space() || marker == '-I'
-			if before_ok && after_ok {
-				mut value := clean[after..].trim_space()
-				if value.len == 0 {
-					return none
-				}
-				if value[0] in [`'`, `"`] {
-					quote := value[0]
-					close := value[1..].index_u8(quote)
-					if close >= 0 {
-						return value[1..close + 1]
-					}
-				}
-				return value.trim('"\'')
+	tokens := util.tokenize_c_flag(raw.trim_space())
+	for i, token in tokens {
+		if token in ['-I', '-isystem'] {
+			if i + 1 >= tokens.len {
+				return none
 			}
-			offset = after
+			return tokens[i + 1].trim('"\'')
+		}
+		if token.starts_with('-I') && token.len > 2 {
+			return token[2..].trim('"\'')
 		}
 	}
 	return none

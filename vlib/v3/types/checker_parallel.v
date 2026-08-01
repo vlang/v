@@ -844,7 +844,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_module = module_name
 	if module_name in ['', 'main'] && !node.value.contains('.') {
 		if visibility := tc.declaration_visibility['builtin.${node.value}'] {
-			if visibility.is_pub && !tc.enum_initializer_calls_helper(node.value, module_name) {
+			if visibility.is_pub {
 				tc.record_error_at(.duplicate_decl,
 					'cannot redefine builtin public function `${node.value}`', flat.NodeId(fn_idx),
 					tc.fn_declaration_diagnostic_pos(node))

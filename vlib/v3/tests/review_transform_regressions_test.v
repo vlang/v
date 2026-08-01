@@ -3967,7 +3967,7 @@ fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
 	}
 	write_project_file(root, 'v.mod', "Module { name: 'flag_pseudo_path' }\n")
 	write_project_file(root, 'main.v',
-		'module main\n\n#flag -I @VMODROOT/include\n#insert "flag_value.c"\n\nfn C.flag_value() int\n\nfn main() {\n\tprintln(int_str(C.flag_value()))\n}\n')
+		'module main\n\n#flag -I @VMODROOT/include -D FEATURE\n#insert "flag_value.c"\n\nfn C.flag_value() int\n\nfn main() {\n\tprintln(int_str(C.flag_value()))\n}\n')
 	write_project_file(root, 'include/flag_value.c',
 		'#include <flag_value.h>\n\nstatic inline int flag_value(void) {\n\treturn flag_value_inner();\n}\n')
 	write_project_file(root, 'include/flag_value.h',

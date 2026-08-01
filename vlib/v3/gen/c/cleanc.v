@@ -8,6 +8,7 @@ import v3.flat
 import v3.gen.c.naming
 import v3.pref
 import v3.types
+import v3.util
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const c_inline_header_size_limit = 262_144
@@ -1225,44 +1226,7 @@ fn c_forced_include_inputs(flags []string) []string {
 
 // tokenize_c_flag splits a C flag on unquoted whitespace while preserving quotes.
 pub fn tokenize_c_flag(value string) []string {
-	mut tokens := []string{}
-	mut start := -1
-	mut quote := u8(0)
-	mut escaped := false
-	for i, c in value.bytes() {
-		if start < 0 {
-			if c.is_space() {
-				continue
-			}
-			start = i
-		}
-		if escaped {
-			escaped = false
-			continue
-		}
-		if c == `\\` {
-			escaped = true
-			continue
-		}
-		if quote != 0 {
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-		if c in [`'`, `\"`] {
-			quote = c
-			continue
-		}
-		if c.is_space() {
-			tokens << value[start..i]
-			start = -1
-		}
-	}
-	if start >= 0 {
-		tokens << value[start..]
-	}
-	return tokens
+	return util.tokenize_c_flag(value)
 }
 
 fn c_add_cache_external_input(mut inputs map[string][]string, module_name string, path string) {
