@@ -435,6 +435,7 @@ mut:
 	unsafe_reference_alias_owners            map[string]bool
 	unsafe_alias_break_states                [][]map[string]bool
 	pointer_alias_break_states               [][]map[string][]string
+	pointer_alias_continue_states            [][]map[string][]string
 	closure_forbidden_captures               map[string]bool
 	closure_scope                            &Scope = unsafe { nil }
 	lambda_no_captures                       bool
@@ -499,7 +500,8 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		immutable_reference_aliases:              src.immutable_reference_aliases.clone()
 		unsafe_reference_alias_owners:            src.unsafe_reference_alias_owners.clone()
 		unsafe_alias_break_states:                clone_unsafe_alias_break_states(src.unsafe_alias_break_states)
-		pointer_alias_break_states:               clone_pointer_alias_break_states(src.pointer_alias_break_states)
+		pointer_alias_break_states:               clone_pointer_alias_loop_states(src.pointer_alias_break_states)
+		pointer_alias_continue_states:            clone_pointer_alias_loop_states(src.pointer_alias_continue_states)
 		closure_forbidden_captures:               src.closure_forbidden_captures.clone()
 		closure_scope:                            src.closure_scope
 		lambda_no_captures:                       src.lambda_no_captures
@@ -522,7 +524,7 @@ fn clone_unsafe_alias_break_states(states [][]map[string]bool) [][]map[string]bo
 	return result
 }
 
-fn clone_pointer_alias_break_states(states [][]map[string][]string) [][]map[string][]string {
+fn clone_pointer_alias_loop_states(states [][]map[string][]string) [][]map[string][]string {
 	mut result := [][]map[string][]string{cap: states.len}
 	for loop_states in states {
 		mut cloned_loop_states := []map[string][]string{cap: loop_states.len}

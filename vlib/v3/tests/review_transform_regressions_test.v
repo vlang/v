@@ -903,6 +903,13 @@ fn test_nested_shared_field_lock_rejects_pointer_alias_mutation() {
 	assert loop_out == '10'
 }
 
+fn test_nested_shared_field_lock_preserves_continue_pointer_aliases() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_continue_pointer_alias_mutation',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn choose() bool {\n\treturn true\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := unrelated\n\tfor i := 0; i < 1; i++ {\n\t\tif choose() {\n\t\t\talias = holder\n\t\t\tcontinue\n\t\t}\n\t\talias = unrelated\n\t}\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n',
+		'may alias locked shared value `holder.current.state`')
+}
+
 fn test_nested_shared_field_lock_rejects_call_base() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'nested_shared_field_lock_call_base',

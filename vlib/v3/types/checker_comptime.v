@@ -1974,6 +1974,8 @@ fn (mut tc TypeChecker) check_loop_control_statement(id flat.NodeId, node flat.N
 			if node.kind == .break_stmt {
 				tc.record_unsafe_reference_alias_loop_break_state()
 				tc.record_pointer_binding_loop_break_state()
+			} else {
+				tc.record_pointer_binding_loop_continue_state()
 			}
 			return
 		}
@@ -9990,6 +9992,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
 	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
 	tc.fn_context.pointer_alias_break_states << []map[string][]string{}
+	tc.fn_context.pointer_alias_continue_states << []map[string][]string{}
 	mut sequence_exited := false
 	mut unreachable_id := flat.empty_node
 	for i in 3 .. node.children_count {
@@ -10008,6 +10011,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	}
 	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
 	pointer_alias_break_states := tc.take_pointer_binding_loop_break_states()
+	pointer_alias_continue_states := tc.take_pointer_binding_loop_continue_states()
 	unsafe_alias_body := tc.fn_context.unsafe_reference_alias_owners.clone()
 	pointer_alias_body := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
@@ -10059,6 +10063,12 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	} else if body_may_break {
 		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_body)
+	}
+	if loop_may_skip_body || body_may_break {
+		for state in pointer_alias_continue_states {
+			pointer_alias_paths << apply_pointer_binding_value_state_delta(pointer_alias_base,
+				pointer_alias_post, state)
+		}
 	}
 	if body_reaches_post && (loop_may_skip_body || body_may_break) {
 		unsafe_alias_paths << apply_unsafe_reference_alias_state_delta(unsafe_alias_base,
@@ -10121,6 +10131,27 @@ fn (mut tc TypeChecker) take_pointer_binding_loop_break_states() []map[string][]
 		result << clone_pointer_binding_value_keys(state)
 	}
 	tc.fn_context.pointer_alias_break_states.delete_last()
+	return result
+}
+
+fn (mut tc TypeChecker) record_pointer_binding_loop_continue_state() {
+	if tc.fn_context.pointer_alias_continue_states.len == 0 {
+		return
+	}
+	index := tc.fn_context.pointer_alias_continue_states.len - 1
+	tc.fn_context.pointer_alias_continue_states[index] << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+}
+
+fn (mut tc TypeChecker) take_pointer_binding_loop_continue_states() []map[string][]string {
+	if tc.fn_context.pointer_alias_continue_states.len == 0 {
+		return []map[string][]string{}
+	}
+	index := tc.fn_context.pointer_alias_continue_states.len - 1
+	mut result := []map[string][]string{cap: tc.fn_context.pointer_alias_continue_states[index].len}
+	for state in tc.fn_context.pointer_alias_continue_states[index] {
+		result << clone_pointer_binding_value_keys(state)
+	}
+	tc.fn_context.pointer_alias_continue_states.delete_last()
 	return result
 }
 
@@ -10841,6 +10872,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
 	tc.fn_context.pointer_alias_break_states << []map[string][]string{}
+	tc.fn_context.pointer_alias_continue_states << []map[string][]string{}
 	$if ownership ? {
 		tc.ownership_begin_loop_branch_group()
 		if node.op != .amp {
@@ -10867,6 +10899,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	}
 	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
 	pointer_alias_break_states := tc.take_pointer_binding_loop_break_states()
+	pointer_alias_continue_states := tc.take_pointer_binding_loop_continue_states()
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
@@ -10884,6 +10917,9 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		unsafe_alias_paths << state.clone()
 	}
 	for state in pointer_alias_break_states {
+		pointer_alias_paths << clone_pointer_binding_value_keys(state)
+	}
+	for state in pointer_alias_continue_states {
 		pointer_alias_paths << clone_pointer_binding_value_keys(state)
 	}
 	if !tc.stmt_sequence_definitely_returns(&node, header) {
