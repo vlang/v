@@ -938,6 +938,13 @@ fn test_nested_shared_field_lock_treats_lambda_pointer_parameters_as_aliases() {
 		'may alias locked shared value `locked.current.state`')
 }
 
+fn test_nested_shared_field_lock_treats_if_guard_pointer_binding_as_alias() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_if_guard_pointer_alias_mutation',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn maybe_holder(holder &Holder) ?&Holder {\n\treturn holder\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tif mut alias := maybe_holder(holder) {\n\t\tlock holder.current.state {\n\t\t\talias.current = &replacement\n\t\t\tholder.current.state.value++\n\t\t}\n\t}\n}\n',
+		'may alias locked shared value `holder.current.state`')
+}
+
 fn test_nested_shared_field_lock_preserves_labelled_loop_exit_pointer_aliases() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'nested_shared_field_lock_labelled_break_pointer_alias_mutation',

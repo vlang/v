@@ -13570,6 +13570,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			tc.ownership_note_binding(binding.name, binding.typ, cond_id)
 		}
 		owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+		tc.initialize_unknown_pointer_binding(owner, binding.typ)
 		if binding.is_mut {
 			tc.fn_context.mut_local_owners[binding.name] = owner
 		}
