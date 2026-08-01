@@ -532,6 +532,7 @@ mut:
 pub struct TypeChecker {
 pub mut:
 	a                            &flat.FlatAst = unsafe { nil }
+	compiler_vroot               string
 	verbose                      bool
 	enable_globals               bool
 	fn_ret_types                 map[string]Type
@@ -950,6 +951,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 	fs := new_scope(tc.file_scope)
 	return TypeChecker{
 		a:                                  ast
+		compiler_vroot:                     tc.compiler_vroot
 		enable_globals:                     tc.enable_globals
 		fn_ret_types:                       tc.fn_ret_types
 		fn_param_types:                     tc.fn_param_types
@@ -2190,10 +2192,7 @@ fn (mut tc TypeChecker) check_insert_directive(id flat.NodeId, node flat.Node, f
 fn (tc &TypeChecker) resolve_insert_path(target string, file string) string {
 	mut resolved := target
 	if resolved.contains('@VEXEROOT') {
-		absolute_file := os.real_path(file)
-		if marker := absolute_file.index('/vlib/') {
-			resolved = resolved.replace('@VEXEROOT', absolute_file[..marker])
-		}
+		resolved = resolved.replace('@VEXEROOT', tc.compiler_vroot)
 	}
 	if resolved.contains('@VMODROOT') {
 		resolved = resolved.replace('@VMODROOT', checker_vmod_root_for_file(file))
@@ -7552,9 +7551,6 @@ fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, ident
 	if name.starts_with('__v3_') || source_name_is_numbered_string_symbol(name) {
 		return
 	}
-	if identifier == 'function name' && name.contains('_T_') {
-		return
-	}
 	if name.len > 1 && (name[0] == `_` || name.contains('._')) {
 		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot start with `_`', id,
 			pos)
@@ -7583,7 +7579,8 @@ fn (mut tc TypeChecker) check_pascal_case_name(id flat.NodeId, name string, iden
 }
 
 fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node) {
-	if !tc.should_check_source_name(id) || local_fn_decl_is_transform_created(node.value) {
+	if !tc.should_check_source_name(id) || local_fn_decl_is_transform_created(node.value)
+		|| tc.a.specialized_fn_nodes[int(id)] {
 		return
 	}
 	tc.check_fn_if_attribute_return(id, node)

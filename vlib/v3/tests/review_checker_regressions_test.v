@@ -1374,3 +1374,30 @@ fn main() {
 ',
 		'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value')
 }
+
+fn test_vexeroot_insert_and_generated_function_name_exemptions() {
+	v3_bin := build_v3_review_checker()
+	insert_out := run_good(v3_bin, 'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v3/tests/testdata/vexeroot_insert.h"
+
+fn C.v3_vexeroot_insert_value() int
+
+fn main() {
+	println(int_str(C.v3_vexeroot_insert_value()))
+}
+')
+	assert insert_out == '37'
+	run_bad(v3_bin, 'bad_source_function_name_with_generic_marker', 'fn bad_T_Name() {}
+
+fn main() {}
+',
+		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
+	generic_out := run_good(v3_bin, 'good_generated_generic_function_name', 'fn identity[T](value T) T {
+	return value
+}
+
+fn main() {
+	println(int_str(identity[int](7)))
+}
+')
+	assert generic_out == '7'
+}
