@@ -9525,6 +9525,23 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		outer_scope = outer_scope.parent
 	}
 	saved_fn_context := tc.fn_context
+	mut captured_pointer_values := map[string][]string{}
+	for i in 0 .. node.children_count {
+		capture := tc.a.child_node(&node, i)
+		if capture.kind != .ident || capture.value.len == 0 {
+			continue
+		}
+		capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+		if unalias_type(capture_type) !is Pointer {
+			continue
+		}
+		owner := tc.cur_scope.lookup_owner(capture.value) or { continue }
+		key := owner.storage_key()
+		if key.len > 0 {
+			captured_pointer_values[key] = tc.pointer_binding_ident_values(owner,
+				saved_fn_context.pointer_binding_value_keys)
+		}
+	}
 	// Keep the enclosing function id so lambda dependencies are attributed to
 	// the declaration that owns the generated closure.
 	tc.fn_context = new_function_check_context()
@@ -9539,6 +9556,8 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	tc.fn_context.closure_forbidden_captures = forbidden_captures.clone()
 	tc.fn_context.method_value_stack_mut_owners =
 		saved_fn_context.method_value_stack_mut_owners.clone()
+	tc.fn_context.pointer_binding_value_keys =
+		clone_pointer_binding_value_keys(captured_pointer_values)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(id, node)
 	}

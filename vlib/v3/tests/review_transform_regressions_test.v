@@ -948,6 +948,16 @@ fn test_nested_shared_field_lock_treats_lambda_pointer_parameters_as_aliases() {
 		'may alias locked shared value `locked.current.state`')
 }
 
+fn test_nested_shared_field_lock_preserves_explicit_capture_pointer_aliases() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_explicit_capture_pointer_alias_mutation',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\tcallback := fn [mut holder, mut alias, replacement] () {\n\t\tlock holder.current.state {\n\t\t\talias.current = &replacement\n\t\t\tholder.current.state.value++\n\t\t}\n\t}\n\tcallback()\n}\n',
+		'may alias locked shared value `holder.current.state`')
+	out := run_good(v3_bin, 'nested_shared_field_lock_distinct_explicit_capture_pointer',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tcallback := fn [mut holder, mut unrelated, replacement] () {\n\t\tlock holder.current.state {\n\t\t\tunrelated.current = &replacement\n\t\t\tholder.current.state.value = 31\n\t\t\tprintln(int_str(holder.current.state.value))\n\t\t}\n\t}\n\tcallback()\n}\n')
+	assert out == '31'
+}
+
 fn test_nested_shared_field_lock_treats_if_guard_pointer_binding_as_alias() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'nested_shared_field_lock_if_guard_pointer_alias_mutation',

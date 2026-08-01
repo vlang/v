@@ -2367,46 +2367,136 @@ fn cache_local_c_integer_condition(raw string) int {
 	return if value == 0 { -1 } else { 1 }
 }
 
-fn cache_local_c_known_condition(directive string, raw_arg string, include_macros map[string]V3CacheLocalCMacro) int {
-	mut expression := raw_arg.trim_space()
-	mut invert := directive == 'ifndef'
-	if directive in ['ifdef', 'ifndef'] {
-		return cache_local_c_macro_condition(expression, invert, include_macros)
+fn cache_local_c_condition_without_outer_parens(raw string) string {
+	mut expression := raw.trim_space()
+	for expression.len >= 2 && expression[0] == `(` && expression[expression.len - 1] == `)` {
+		mut depth := 0
+		mut closes_at_end := false
+		for i, c in expression.bytes() {
+			if c == `(` {
+				depth++
+			} else if c == `)` {
+				depth--
+				if depth == 0 {
+					closes_at_end = i == expression.len - 1
+					break
+				}
+			}
+		}
+		if !closes_at_end {
+			break
+		}
+		expression = expression[1..expression.len - 1].trim_space()
+	}
+	return expression
+}
+
+fn cache_local_c_condition_top_level_parts(expression string, operator string) []string {
+	mut parts := []string{}
+	mut depth := 0
+	mut start := 0
+	mut i := 0
+	for i + 1 < expression.len {
+		if expression[i] == `(` {
+			depth++
+			i++
+			continue
+		}
+		if expression[i] == `)` {
+			depth--
+			i++
+			continue
+		}
+		if depth == 0 && expression[i..i + 2] == operator {
+			part := expression[start..i].trim_space()
+			if part.len == 0 {
+				return [expression]
+			}
+			parts << part
+			i += 2
+			start = i
+			continue
+		}
+		i++
+	}
+	if parts.len == 0 {
+		return [expression]
+	}
+	last := expression[start..].trim_space()
+	if last.len == 0 {
+		return [expression]
+	}
+	parts << last
+	return parts
+}
+
+fn cache_local_c_known_expression(raw string, include_macros map[string]V3CacheLocalCMacro) int {
+	expression := cache_local_c_condition_without_outer_parens(raw)
+	or_parts := cache_local_c_condition_top_level_parts(expression, '||')
+	if or_parts.len > 1 {
+		mut all_false := true
+		for part in or_parts {
+			condition := cache_local_c_known_expression(part, include_macros)
+			if condition == 1 {
+				return 1
+			}
+			all_false = all_false && condition == -1
+		}
+		return if all_false { -1 } else { 0 }
+	}
+	and_parts := cache_local_c_condition_top_level_parts(expression, '&&')
+	if and_parts.len > 1 {
+		mut all_true := true
+		for part in and_parts {
+			condition := cache_local_c_known_expression(part, include_macros)
+			if condition == -1 {
+				return -1
+			}
+			all_true = all_true && condition == 1
+		}
+		return if all_true { 1 } else { 0 }
 	}
 	if expression.starts_with('!') {
-		invert = !invert
-		expression = expression[1..].trim_space()
+		condition := cache_local_c_known_expression(expression[1..], include_macros)
+		return if condition == 0 { 0 } else { -condition }
 	}
 	literal_condition := cache_local_c_integer_condition(expression)
 	if literal_condition != 0 {
-		return if invert { -literal_condition } else { literal_condition }
+		return literal_condition
 	}
 	if macro := include_macros[expression] {
 		if !macro.known {
 			return 0
 		}
-		result := if macro.is_defined { macro.truth } else { -1 }
-		return if invert { -result } else { result }
+		return if macro.is_defined { macro.truth } else { -1 }
 	}
 	if !expression.starts_with('defined') {
 		return 0
 	}
-	expression = expression['defined'.len..].trim_space()
+	rest := expression['defined'.len..].trim_space()
 	mut macro_name := ''
-	if expression.starts_with('(') {
-		close := expression.index_u8(`)`)
-		if close <= 1 || expression[close + 1..].trim_space().len > 0 {
+	if rest.starts_with('(') {
+		close := rest.index_u8(`)`)
+		if close <= 1 || rest[close + 1..].trim_space().len > 0 {
 			return 0
 		}
-		macro_name = expression[1..close].trim_space()
+		macro_name = rest[1..close].trim_space()
 	} else {
-		fields := expression.fields()
+		fields := rest.fields()
 		if fields.len != 1 {
 			return 0
 		}
 		macro_name = fields[0]
 	}
-	return cache_local_c_macro_condition(macro_name, invert, include_macros)
+	return cache_local_c_macro_condition(macro_name, false, include_macros)
+}
+
+fn cache_local_c_known_condition(directive string, raw_arg string, include_macros map[string]V3CacheLocalCMacro) int {
+	expression := raw_arg.trim_space()
+	if directive in ['ifdef', 'ifndef'] {
+		return cache_local_c_macro_condition(expression, directive == 'ifndef', include_macros)
+	}
+	return cache_local_c_known_expression(expression, include_macros)
 }
 
 fn cache_local_c_macro_condition(name string, invert bool, include_macros map[string]V3CacheLocalCMacro) int {

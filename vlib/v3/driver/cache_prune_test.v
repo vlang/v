@@ -68,6 +68,19 @@ fn test_cache_c_source_definitely_active_code_uses_compiler_predefined_macros() 
 	assert undefined_source.contains('fallback_api')
 }
 
+fn test_cache_c_source_definitely_active_code_evaluates_compound_known_guards() {
+	source := '#if FOO && BAR\nstatic int compound_api(void) { return 1; }\n#else\nint fallback_api(void) { return 2; }\n#endif\n'
+	mut enabled_macros := cache_local_c_flag_macros(['-DFOO=1', '-DBAR=1'])
+	enabled := cache_c_source_definitely_active_code(source, mut enabled_macros)
+	assert enabled.contains('compound_api')
+	assert !enabled.contains('fallback_api')
+
+	mut short_circuit_macros := cache_local_c_flag_macros(['-DFOO=0'])
+	disabled := cache_c_source_definitely_active_code(source, mut short_circuit_macros)
+	assert !disabled.contains('compound_api')
+	assert disabled.contains('fallback_api')
+}
+
 fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
 	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
 	os.rmdir_all(root_dir) or {}
