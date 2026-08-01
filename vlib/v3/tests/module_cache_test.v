@@ -8,8 +8,18 @@ const module_cache_v3_dir = os.dir(module_cache_tests_dir)
 const module_cache_vlib_dir = os.dir(module_cache_v3_dir)
 const module_cache_v3_src = os.join_path(module_cache_v3_dir, 'v3.v')
 
+fn module_cache_v3_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_module_cache_test_${os.getpid()}')
+}
+
+fn testsuite_begin() {
+	v3_bin := module_cache_v3_bin_path()
+	os.rm(v3_bin) or {}
+	_ = build_module_cache_v3()
+}
+
 fn build_module_cache_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_module_cache_test_${os.getpid()}')
+	v3_bin := module_cache_v3_bin_path()
 	if os.is_file(v3_bin) {
 		return v3_bin
 	}
@@ -409,9 +419,8 @@ fn main() {
 	assert second.output.contains('C module plan (cached)'), second.output
 	assert second.output.contains('cgen (cached)'), second.output
 	assert second.output.contains('monomorphize (cached)'), second.output
-	$if macos {
-		assert second.output.contains('tcc (cached)'), second.output
-	}
+	assert second.output.contains('> cc '), second.output
+	assert !second.output.contains('tcc.exe'), second.output
 	assert run_module_cache_binary(second_output) == '42'
 
 	write_module_cache_file(root, 'main.v', 'module main
@@ -2351,20 +2360,10 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert result.exit_code == 0, result.output
 	assert run_module_cache_binary(second_output) == '77'
-	mut link_lines := []string{}
-	$if macos {
-		link_lines = result.output.split_into_lines().filter(it.contains('tcc.exe'))
-	} $else {
-		link_lines = result.output.split_into_lines().filter(it.contains('> cc '))
-	}
+	link_lines := result.output.split_into_lines().filter(it.contains('> cc '))
 	assert link_lines.len > 0, result.output
 	link_line := link_lines.last()
-	mut object_pos := -1
-	$if macos {
-		object_pos = link_line.index('.dylib') or { -1 }
-	} $else {
-		object_pos = link_line.index(cache_dir) or { -1 }
-	}
+	object_pos := link_line.index(cache_dir) or { -1 }
 	library_pos := link_line.index('-lcacheorder') or { -1 }
 	assert object_pos >= 0, link_line
 	assert library_pos >= 0, link_line
@@ -4585,7 +4584,8 @@ fn main() {
 	write_module_cache_file(root, 'main.v', "module main
 
 fn main() {
-	println('haha')
+	message := 'haha'
+	println(message)
 }
 ")
 	incremental_output := os.join_path(root, 'incremental')
@@ -5346,7 +5346,7 @@ fn main() {
 	assert run_module_cache_binary(output) == '73'
 }
 
-fn test_cached_dev_tcc_links_plain_c_source_flags() {
+fn test_cached_standalone_links_plain_c_source_flags() {
 	$if !macos {
 		return
 	}
@@ -5378,18 +5378,20 @@ fn main() {
 	first :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
 	assert first.exit_code == 0, first.output
-	assert first.output.contains('tcc.exe'), first.output
+	assert first.output.contains('> cc '), first.output
+	assert !first.output.contains('tcc.exe'), first.output
 	assert run_module_cache_binary(first_output) == '79'
 
 	second_output := os.join_path(root, 'second')
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
-	assert second.output.contains('tcc.exe'), second.output
+	assert second.output.contains('> cc '), second.output
+	assert !second.output.contains('tcc.exe'), second.output
 	assert run_module_cache_binary(second_output) == '79'
 }
 
-fn test_cached_dev_tcc_links_forced_c_source_operands() {
+fn test_cached_standalone_links_forced_c_source_operands() {
 	$if !macos {
 		return
 	}
@@ -5421,14 +5423,16 @@ fn main() {
 	first :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
 	assert first.exit_code == 0, first.output
-	assert first.output.contains('tcc.exe'), first.output
+	assert first.output.contains('> cc '), first.output
+	assert !first.output.contains('tcc.exe'), first.output
 	assert run_module_cache_binary(first_output) == '83'
 
 	second_output := os.join_path(root, 'second')
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
-	assert second.output.contains('tcc.exe'), second.output
+	assert second.output.contains('> cc '), second.output
+	assert !second.output.contains('tcc.exe'), second.output
 	assert run_module_cache_binary(second_output) == '83'
 }
 

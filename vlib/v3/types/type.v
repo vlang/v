@@ -127,6 +127,7 @@ pub:
 pub struct FnType {
 pub:
 	params      []Type
+	params_mut  []bool
 	return_type Type
 }
 

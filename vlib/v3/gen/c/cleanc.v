@@ -102,6 +102,43 @@ mut:
 	callback []string
 }
 
+// PreseedTypeSeen deduplicates type walks during C generation. It is part of
+// FlatGen even in serial-only builds because declaration preseeding is shared.
+struct PreseedTypeSeen {
+mut:
+	w0   [4096]u64
+	w1   [4096]u64
+	seen [4096]bool
+}
+
+// PrepTypTextCache caches type-text preseed verdicts for one generation pass.
+struct PrepTypTextCache {
+mut:
+	generation u32 = 1
+	ptrs       [4096]voidptr
+	gens       [4096]u32
+	lens       [4096]int
+	verdicts   [4096]bool
+}
+
+fn (mut g FlatGen) preseed_type_first_seen(typ &types.Type) bool {
+	mut cache := g.preseed_type_seen
+	if isnil(cache) {
+		return true
+	}
+	words := unsafe { &u64(voidptr(typ)) }
+	w0 := unsafe { words[0] }
+	w1 := unsafe { words[1] }
+	slot := int(((w0 >> 4) ^ w1) & 4095)
+	if cache.seen[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
+		return false
+	}
+	cache.w0[slot] = w0
+	cache.w1[slot] = w1
+	cache.seen[slot] = true
+	return true
+}
+
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
@@ -250,6 +287,7 @@ mut:
 	skip_enum_autostr            bool
 	placeholder_check_forced     bool
 	cur_fn_name                  string
+	cur_fn_is_specialized        bool
 	current_decl_is_mut          bool
 	direct_array_access          bool
 	struct_default_module        string
@@ -934,6 +972,7 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 	g.cache_program_files = map[string]bool{}
 	for file in files {
 		g.cache_program_files[file] = true
+		g.cache_program_files[os.real_path(file)] = true
 	}
 }
 
@@ -1428,6 +1467,7 @@ pub fn (mut g FlatGen) gen_with_used_test_options(a &flat.FlatAst, used_fns map[
 	g.test_files = map[string]bool{}
 	for file in test_files {
 		g.test_files[file] = true
+		g.test_files[os.real_path(file)] = true
 	}
 	return g.gen_with_used_options(a, used_fns, tc, no_parallel)
 }
@@ -2444,6 +2484,9 @@ fn (mut g FlatGen) collect_gen_info() {
 					} else if raw_pt !is types.Pointer && param_idx < typed_params.len {
 						pt = typed_params[param_idx]
 					}
+					if child.is_mut && child.op == .amp {
+						pt = mut_pointer_param_abi_type(pt)
+					}
 					mut is_shared_param := false
 					if child.typ.len > 0 && child.typ[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
 						if _ := shared_inner_type_text(child.typ) {
@@ -3227,6 +3270,19 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) in ['include', 'import'] {
 			include_arg := c_include_arg(c_directive_arg(clean), vroot, source_file)
+			// The headerless preamble already supplies the pthread/stdlib ABI used
+			// by these runtime helpers. Keeping their nested system includes would
+			// make an otherwise headerless translation unit redeclare those types.
+			clean_source_file := source_file.replace('\\', '/')
+			clean_include_arg := trimmed_space(include_arg)
+			if (clean_include_arg == '<pthread.h>'
+				&& clean_source_file.ends_with('/builtin/closure/closure_once_nix.h'))
+				|| (clean_include_arg == '<windows.h>'
+				&& clean_source_file.ends_with('/builtin/closure/closure_once_windows.h'))
+				|| (clean_include_arg in ['<pthread.h>', '<stdlib.h>', '<windows.h>']
+				&& clean_source_file.ends_with('/sync/thread_helper.h')) {
+				continue
+			}
 			if replacement := c_system_include_replacement(include_arg, use_system_stdint) {
 				output.writeln(replacement)
 				continue
@@ -5534,7 +5590,34 @@ fn (mut g FlatGen) ordered_c_directives(late bool) []string {
 	for mod in module_order {
 		g.visit_c_directive_module(mod, directives_by_module, mut visiting, mut visited, mut result)
 	}
-	return dedupe_top_level_c_includes(result)
+	ordered := dedupe_top_level_c_includes(result)
+	if g.c_directives_use_system_libc() {
+		return ordered
+	}
+	mut headerless := []string{cap: ordered.len}
+	for directive in ordered {
+		filtered := c_without_headerless_pthread_include(directive)
+		if filtered.trim_space().len > 0 {
+			headerless << filtered
+		}
+	}
+	return headerless
+}
+
+fn c_without_headerless_pthread_include(directive string) string {
+	if !directive.contains('pthread.h') {
+		return directive
+	}
+	mut lines := []string{}
+	for line in directive.split_into_lines() {
+		clean := trimmed_space(line)
+		if c_directive_name(clean) in ['include', 'import']
+			&& c_directive_arg(clean) == '<pthread.h>' {
+			continue
+		}
+		lines << line
+	}
+	return lines.join('\n')
 }
 
 fn (mut g FlatGen) emit_c_directives(late bool) {
@@ -8311,9 +8394,14 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 types.Type) ?string {
 	}
 	if clean is types.Struct {
 		for candidate in [g.shared_qualify_type_text(clean.name, g.tc.cur_module), clean.name] {
-			sum_name := g.resolve_sum_name(candidate)
-			if sum_name in g.tc.sum_types {
-				return sum_name
+			if candidate in g.tc.sum_types {
+				return candidate
+			}
+			if !candidate.contains('.') {
+				sum_name := g.resolve_sum_name(candidate)
+				if sum_name in g.tc.sum_types {
+					return sum_name
+				}
 			}
 		}
 	}
@@ -8391,7 +8479,7 @@ fn (g &FlatGen) struct_promoted_field_suffix(type_name string, field string, ini
 	for embedded in path {
 		suffix += if is_ptr { '->' } else { '.' }
 		suffix += g.cname(embedded.name)
-		is_ptr = embedded.typ is types.Pointer
+		is_ptr = embedded.typ is types.Pointer || cgen_unalias_type(embedded.typ) is types.Pointer
 	}
 	suffix += if is_ptr { '->' } else { '.' }
 	suffix += g.cname(field)
@@ -10356,7 +10444,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.expected_enum = old_expected_enum
 						return
 					}
-					elem_ct := g.tc.c_type(channel_type.elem_type)
+					elem_ct := g.value_c_type(channel_type.elem_type)
 					g.write('sync__Channel__push(')
 					g.gen_channel_try_receiver(lhs_id)
 					g.write(', &(${elem_ct}[]){')
@@ -10791,7 +10879,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			}
 			if enum_selector_qbase.len == 0
-				&& g.gen_method_value_closure(base_id, base_type0, node.value, flat.method_value_borrow_receiver_marker in node.generic_params(), clone_receiver_fn) {
+				&& g.gen_method_value_closure(id, base_id, base_type0, node.value, flat.method_value_borrow_receiver_marker in node.generic_params(), clone_receiver_fn) {
 				return
 			}
 			// The expected type belongs to the selected field, not to its base. In
@@ -10832,6 +10920,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// handled
 			} else if node.value == 'len' && g.gen_const_fixed_storage_len(base) {
 				// handled
+			} else if node.value == 'len' && array_fixed_type(base_type_clean) != none {
+				fixed := array_fixed_type(base_type_clean) or { types.ArrayFixed{} }
+				g.write(g.fixed_array_len_value(fixed))
 			} else if base_type0 is types.String && node.value == 'len' {
 				// A smartcast variant base is a deref (`*f._string`); without parens
 				// the member access would bind first (`*f._string.len`).
@@ -11003,6 +11094,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					op := if is_ptr { '->' } else { '.' }
 					g.write('${op}${g.cname(embedded.name)}')
 					is_ptr = embedded.typ is types.Pointer
+						|| cgen_unalias_type(embedded.typ) is types.Pointer
 					embedded_owner = types.unwrap_pointer(embedded.typ)
 				}
 				final_op := if is_ptr { '->' } else { '.' }
@@ -11031,9 +11123,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else if base.kind == .selector {
 					if declared := g.selector_declared_type(base_id) {
 						is_ptr = declared is types.Pointer
+							|| cgen_unalias_type(declared) is types.Pointer
 					} else {
 						resolved := g.tc.resolve_type(base_id)
 						is_ptr = resolved is types.Pointer
+							|| cgen_unalias_type(resolved) is types.Pointer
 					}
 				} else {
 					mut stable_base_type := base_type0
@@ -12623,6 +12717,12 @@ fn (mut g FlatGen) preamble() {
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
 	for directive in g.c_directives {
+		// Core runtime modules are implemented against the standalone declarations
+		// in headerless_libc_preamble(). Their helper headers must not force the
+		// entire generated unit back to the platform libc preamble.
+		if directive.module in ['builtin', 'builtin.closure', 'closure'] {
+			continue
+		}
 		for line in directive.text.split_into_lines() {
 			clean := trimmed_space(line)
 			if c_directive_name(clean) in ['include', 'import'] {
@@ -12834,6 +12934,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int fseek(FILE* stream, long offset, int whence);')
 	g.writeln('char* getenv(const char* name);')
 	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
+	g.writeln('int unsetenv(const char* name);')
 	g.writeln('void abort(void);')
 	for name in c_function_like_macro_decl_names() {
 		g.writeln('#ifdef ${name}')
@@ -12879,6 +12980,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('void* signal(int sig, void* handler);')
 	g.writeln('int atexit(void (*f)(void));')
 	g.writeln('#ifdef __APPLE__')
+	g.writeln('void* _dyld_get_image_header(unsigned int image_index);')
 	g.writeln('const char* _dyld_get_image_name(unsigned int image_index);')
 	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
@@ -12962,6 +13064,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
 	g.writeln('#endif')
+	g.writeln('int ptrace(int request, pid_t pid, void* addr, int data);')
+	g.writeln('int sigaddset(sigset_t* set, int signal_number);')
+	g.writeln('int sigprocmask(int how, const sigset_t* set, sigset_t* old_set);')
 	g.headerless_stdarg_decls()
 	g.writeln('#ifndef PTHREAD_MUTEX_INITIALIZER')
 	g.writeln('#ifdef __APPLE__')
@@ -12973,6 +13078,14 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_setstacksize(pthread_attr_t* attr, size_t stacksize);')
+	g.writeln('int pthread_attr_setdetachstate(pthread_attr_t* attr, int detachstate);')
+	g.writeln('#ifndef PTHREAD_CREATE_DETACHED')
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('#define PTHREAD_CREATE_DETACHED 2')
+	g.writeln('#else')
+	g.writeln('#define PTHREAD_CREATE_DETACHED 1')
+	g.writeln('#endif')
+	g.writeln('#endif')
 	g.writeln('int pthread_equal(pthread_t t1, pthread_t t2);')
 	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
 	g.writeln('int pthread_mutex_lock(void* mutex);')
@@ -13001,6 +13114,39 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('void free(void* ptr);')
 	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
 	g.writeln('int fflush(FILE* stream);')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#ifndef INFINITE')
+	g.writeln('#define INFINITE 0xFFFFFFFF')
+	g.writeln('#endif')
+	g.writeln('HANDLE CreateThread(void* attributes, size_t stack_size, DWORD (WINAPI *start)(void*), void* parameter, DWORD flags, DWORD* thread_id);')
+	g.writeln('DWORD WaitForSingleObject(HANDLE handle, DWORD milliseconds);')
+	g.writeln('BOOL CloseHandle(HANDLE handle);')
+	g.writeln('DWORD GetLastError(void);')
+	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; void* result; } __v_windows_thread_context;')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
+	g.writeln('static DWORD WINAPI __v_windows_thread_start(void* raw_context) { __v_windows_thread_context* context = (__v_windows_thread_context*)raw_context; context->result = context->start(context->arg); return 0; }')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_thread result;')
+	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
+	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
+	g.writeln('\tresult.context = context;')
+	g.writeln('\tresult.handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_thread_start, context, 0, NULL);')
+	g.writeln('\tif (!result.handle) { DWORD error = GetLastError(); free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('static void* __v_thread_join(__v_thread thread) {')
+	g.writeln('\tDWORD rc = WaitForSingleObject(thread.handle, INFINITE);')
+	g.writeln('\tif (rc != 0) { fprintf(stderr, "V thread join failed: %lu\\n", (unsigned long)rc); abort(); }')
+	g.writeln('\tvoid* result = ((__v_windows_thread_context*)thread.context)->result;')
+	g.writeln('\tif (!CloseHandle(thread.handle)) { DWORD error = GetLastError(); free(thread.context); fprintf(stderr, "V thread handle cleanup failed: %lu\\n", (unsigned long)error); abort(); }')
+	g.writeln('\tfree(thread.context);')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('#else')
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -13020,6 +13166,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('\treturn result;')
 	g.writeln('}')
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+	g.writeln('#endif')
 	// Signature shape covers both the BSD (thunk before compar) and GNU
 	// (compar before arg) qsort_r orders; callers pass fn pointers as void*.
 	g.writeln('void qsort_r(void* base, size_t nel, size_t width, void* a, void* b);')
@@ -13120,6 +13267,7 @@ const c_headerless_libc_declared_fns = [
 	'fseek',
 	'getenv',
 	'setenv',
+	'unsetenv',
 	'abort',
 	'memset',
 	'memcpy',
@@ -13158,11 +13306,15 @@ const c_headerless_libc_declared_fns = [
 	'close',
 	'signal',
 	'atexit',
+	'_dyld_get_image_header',
 	'_dyld_get_image_name',
 	'__error',
 	'__errno',
 	'__errno_location',
 	'_errno',
+	'ptrace',
+	'sigaddset',
+	'sigprocmask',
 	'pthread_attr_init',
 	'pthread_attr_destroy',
 	'pthread_attr_setstacksize',

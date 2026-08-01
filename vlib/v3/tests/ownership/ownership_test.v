@@ -2981,10 +2981,10 @@ fn main() {
 		cond = false
 		_ = j
 	}
-}
+	}
 ')
 	assert fail_loop_post_body_local.exit_code != 0
-	assert fail_loop_post_body_local.output.contains('unknown identifier `j`'), fail_loop_post_body_local.output
+	assert fail_loop_post_body_local.output.contains('undefined variable `j`'), fail_loop_post_body_local.output
 
 	ok_labeled_break := run_ownership_check(v3_bin, 'labeled_break_targets_outer_loop', "
 fn main() {

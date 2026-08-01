@@ -138,6 +138,14 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	// A module-local generic base must stay local even when one of its concrete arguments
 	// is a colliding main type. `callee.MiddlewareOptions` is not `main.MiddlewareOptions`.
 	assert t.lock_colliding_main_generic_type_text('MiddlewareOptions[Context]', 'callee') == 'MiddlewareOptions[main.Context]'
+	// When the generic base itself is an active caller type, caller provenance wins over the
+	// otherwise ambiguous pair of main/callee generic declarations.
+	t.structs['Box'] = StructInfo{}
+	t.structs['callee.Box'] = StructInfo{}
+	tc.struct_generic_params['Box'] = ['T']
+	tc.struct_generic_params['callee.Box'] = ['T']
+	t.active_specialization_main_types['Box'] = true
+	assert t.lock_colliding_main_generic_type_text('Box[string]', 'callee') == 'main.Box[string]'
 	// A main type that is active in the specialization is locked even without a
 	// callee homonym, since a different imported module can own the same short name.
 	t.structs['Event'] = StructInfo{}
@@ -171,6 +179,11 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	assert t.lock_colliding_main_substitution_type_text('([]T, []T)', '([]int, []int)', 'arrays', [
 		'T',
 	]) == '([]int, []int)'
+	t.structs['Context'] = StructInfo{}
+	t.structs['arc.Context'] = StructInfo{}
+	t.active_specialization_main_types['Context'] = true
+	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]',
+		'other.Box[map[other.Key]Context]', 'arc', ['T']) == 'other.Box[map[other.Key]main.Context]'
 }
 
 fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
@@ -193,6 +206,7 @@ fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
 	assert t.resolve_substituted_type_text('&Node[json2.ValueInfo]') == '&json2.Node[json2.ValueInfo]'
 	t.active_specialization_main_types['Node'] = true
 	assert t.resolve_substituted_type_text('Node[int]') == 'Node[int]'
+	assert t.resolve_substituted_type_text('main.Node') == 'main.Node'
 }
 
 fn test_imported_generic_alias_target_uses_declaration_module() {

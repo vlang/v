@@ -52,7 +52,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_ctx.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} ${src_file} -o ${c_out}')
+	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	// No-arg delegation forwards the enclosing ctx in the ctx slot.

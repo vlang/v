@@ -147,7 +147,7 @@ fn gen_c_project(v3_bin string, name string, files map[string]string, input stri
 	c_out := unique_temp_path(name) + '.c'
 	os.rm(c_out) or {}
 	compile := os.execute('${v3_bin} ${input_path} -o ${c_out}')
-	assert compile.exit_code == 0
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_out)
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -257,7 +257,7 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'`Bird` is not a variant of sum type `Animal`')
 	run_bad(v3_bin, 'bad_sum_match_variant',
 		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tmatch a {\n\t\tBird {}\n\t\telse {}\n\t}\n}\n',
-		'`Bird` is not a variant of sum type `Animal`')
+		'`Animal` has no variant `Bird`')
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg',
 		'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n',
 		'argument count mismatch for `Tree[int]`: expected 1, got 2')
@@ -418,13 +418,11 @@ fn test_type_checker_reports_core_semantic_errors() {
 	function_defer_loop_out := run_good(v3_bin, 'function_defer_runs_each_loop_execution',
 		'__global hit int\n\nfn run() {\n\tfor _ in 0 .. 3 {\n\t\tdefer(fn) {\n\t\t\thit += 100\n\t\t}\n\t}\n}\n\nfn main() {\n\trun()\n\tprintln(int_str(hit))\n}\n')
 	assert function_defer_loop_out == '300'
-	cross_module_array_append_c := gen_c_project(v3_bin, 'array_append_distinct_module_types', {
+	run_bad_project(v3_bin, 'array_append_distinct_module_types', {
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
 		'moda/moda.v': 'module moda\n\nstruct Foo {\n\ta int\n}\n'
 		'modb/modb.v': 'module modb\n\nstruct Foo {\n\tb int\n}\n'
-	}, 'main.v')
-	assert !cross_module_array_append_c.contains('array_push_many(&xs')
-	assert cross_module_array_append_c.contains('array_push(&xs')
+	}, 'main.v', 'cannot append `[]modb.Foo` to `[]moda.Foo`')
 }
 
 fn test_interface_container_as_cast_requirements() {
@@ -1066,15 +1064,15 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch',
 		'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n',
 		'if-expression branch type mismatch')
-	option_if_error := run_good(v3_bin, 'good_option_if_error_branch',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n")
-	assert option_if_error == ''
-	option_const_if_error := run_good(v3_bin, 'good_option_const_if_error_branch',
-		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n")
-	assert option_const_if_error == ''
-	option_return_error := run_good(v3_bin, 'good_option_return_error',
-		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n")
-	assert option_return_error == ''
+	run_bad(v3_bin, 'bad_option_if_error_branch',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_const_if_error_branch',
+		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_return_error',
+		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n",
+		'Option and Result types have been split')
 }
 
 fn test_multi_return_if_tail_infers_common_type() {
@@ -1084,7 +1082,7 @@ fn test_multi_return_if_tail_infers_common_type() {
 	assert result_error == '3\nx'
 	if_tail := run_good(v3_bin, 'good_multi_return_if_common_pointer_tail',
 		'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n')
-	assert if_tail == '&void\n1'
+	assert if_tail == 'voidptr\n1'
 	numeric_tail := run_good(v3_bin, 'good_multi_return_if_promoted_numeric_tail',
 		'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n')
 	assert numeric_tail == 'f64\ntrue'

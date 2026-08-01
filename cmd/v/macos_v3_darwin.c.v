@@ -75,19 +75,16 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
 		return false
 	}
-	if normalized_path == 'cmd/v' || normalized_path.ends_with('/cmd/v')
-		|| normalized_path.ends_with('/cmd/v/v.v')
-		|| normalized_path.starts_with('cmd/tools/')
+	if normalized_path.starts_with('cmd/tools/')
 		|| normalized_path.contains('/cmd/tools/')
 		|| normalized_path.ends_with('.vv')
 		|| (!is_directory && !normalized_path.ends_with('.v') && !normalized_path.ends_with('.vsh'))
 		|| macos_v3_source_path_resolves_differently(prefs.path)
 		|| macos_v3_needs_compatible_default_output(prefs.path) {
 		// Keep the established compiler available as the compatibility fallback.
-		// V3 does not compile all of cmd/v yet, and command tools are built on
-		// demand while dispatching CLI commands such as `fmt` and `test`. Legacy
-		// .vv fixtures, non-V builds, and sources needing compatibility output-name
-		// derivation also retain established semantics.
+		// Command tools are built on demand while dispatching CLI commands such as
+		// `fmt` and `test`. Legacy .vv fixtures, non-V builds, and sources needing
+		// compatibility output-name derivation also retain established semantics.
 		return false
 	}
 	return is_directory || command == 'run' || command == 'build' || prefs.is_script

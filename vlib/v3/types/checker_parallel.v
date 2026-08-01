@@ -844,7 +844,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_module = module_name
 	if module_name in ['', 'main'] && !node.value.contains('.') {
 		if visibility := tc.declaration_visibility['builtin.${node.value}'] {
-			if visibility.is_pub {
+			if visibility.is_pub && !tc.enum_initializer_calls_helper(node.value, module_name) {
 				tc.record_error_at(.duplicate_decl,
 					'cannot redefine builtin public function `${node.value}`', flat.NodeId(fn_idx),
 					tc.fn_declaration_diagnostic_pos(node))
@@ -911,25 +911,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 						'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed',
 						param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 				}
-				param_type := unalias_type(raw_param_type)
-				if !is_specialized && param_type !is Array && param_type !is ArrayFixed
-					&& param_type !is Interface && param_type !is Map && param_type !is Pointer
-					&& param_type !is Struct && param_type !is SumType && param_type !is Unknown {
-					if !(param.op == .dot && param_type is OptionType) {
-						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch,
-							'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`',
-							param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
-					}
-				}
 			}
 			tc.check_reserved_parameter_name(param_id)
-			if param.op == .dot {
-				tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node,
-					param.value))
-			} else {
-				tc.check_import_symbol_conflict(param_id, param.value)
-			}
 			tc.check_module_name_conflict(param_id, param.value)
 		}
 	}
@@ -965,7 +948,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_deferred_generic_receiver_comparisons(node)
 	}
-	tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
+	if !tc.enum_initializer_calls_helper(node.value, module_name) {
+		tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
+	}
 	tc.check_unreachable_after_noreturn_call(node)
 	if !is_specialized {
 		if tc.should_diagnose(flat.NodeId(fn_idx)) {
@@ -986,7 +971,6 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if tc.fn_context.return_type !is Unknown
 		&& !type_allows_implicit_return(tc.fn_context.return_type)
 		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
-		&& should_check_generic_body && !signature_has_bare_generic_type
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		message := 'missing return at end of function `${node.value.all_after_last('.')}`'
 		tc.record_error_at(.return_mismatch, message, flat.NodeId(fn_idx),
@@ -1014,10 +998,6 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if raw_return_type.starts_with('!?') || raw_return_type.starts_with('?!') {
 		tc.record_error_at(.return_mismatch, 'the type must be Option or Result', id,
 			tc.nested_option_result_marker_pos(node))
-	}
-	if raw_return_type == '?void' {
-		tc.record_error_at(.return_mismatch, 'use `?` instead of `?void`', id,
-			tc.option_void_payload_diagnostic_pos(node))
 	}
 	if raw_return_type.ends_with('?') && !raw_return_type.starts_with('?') {
 		tc.record_error_at(.return_mismatch,
@@ -1108,7 +1088,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 					'the receiver type `${receiver.typ}` should be the same type as the operand `${param.typ}`',
 					id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() {
+			if receiver_type.name() != param_type.name() && param_type !is FnType {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch,
 					'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading',

@@ -666,6 +666,11 @@ fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?string {
 			return '[]${local_elem}'
 		}
 	}
+	source_name := t.a.nodes[int(id)].typ
+	if elem.contains('.') && source_name.starts_with('[]')
+		&& source_name[2..].all_after_last('.') == elem.all_after_last('.') {
+		return name
+	}
 	if !t.generic_arg_is_alias_name(elem, t.cur_module) {
 		return none
 	}

@@ -146,7 +146,20 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	}
 	base_id := t.a.child(&lhs, 0)
 	key_id := t.a.child(&lhs, 1)
-	base_type := t.node_type(base_id)
+	mut base_type := t.node_type(base_id)
+	checker_base_type := t.raw_checker_node_type(base_id)
+	checker_map_type := t.clean_map_type(checker_base_type)
+	local_map_type := t.clean_map_type(base_type)
+	local_map_is_concrete := local_map_type.starts_with('map[')
+		&& !local_map_type.contains('unknown') && !t.generic_arg_is_unresolved(local_map_type)
+	if !local_map_is_concrete && checker_map_type.starts_with('map[')
+		&& !checker_map_type.contains('unknown') {
+		base_type = if checker_base_type.trim_space().starts_with('&') {
+			'&${checker_map_type}'
+		} else {
+			checker_map_type
+		}
+	}
 	map_type := t.clean_map_type(base_type)
 	if !map_type.starts_with('map[') {
 		return none

@@ -278,8 +278,8 @@ pub fn (g Good) fail() int {
 import bad
 
 fn main() {
-	bad := bad.make_good()
-	_ := bad.fail()
+	worker := bad.make_good()
+	_ := worker.fail()
 }
 '
 }
@@ -290,7 +290,7 @@ fn test_invalid_ierror_result_return_respects_diagnostic_files() {
 	])
 	assert bad_errors.len == 1, bad_errors.str()
 	assert bad_errors[0].msg.contains('bad.NotError')
-	assert bad_errors[0].msg.contains('as `int`')
+	assert bad_errors[0].msg.contains('`!int`')
 
 	main_errors := check_diagnostic_project('ierror_return_filtered',
 		invalid_ierror_return_project, ['main.v'])
@@ -303,7 +303,7 @@ fn test_selected_file_calling_invalid_ierror_result_return_reports_dependency_er
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('as `int`')
+	assert main_errors[0].msg.contains('`!int`')
 }
 
 fn test_selected_file_calling_transitive_invalid_ierror_result_return_reports_dependency_error() {
@@ -312,7 +312,7 @@ fn test_selected_file_calling_transitive_invalid_ierror_result_return_reports_de
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('as `int`')
+	assert main_errors[0].msg.contains('`!int`')
 }
 
 fn test_selected_file_calling_invalid_ierror_local_method_return_reports_dependency_error() {
@@ -321,7 +321,7 @@ fn test_selected_file_calling_invalid_ierror_local_method_return_reports_depende
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('as `int`')
+	assert main_errors[0].msg.contains('`!int`')
 }
 
 fn test_selected_file_multi_return_local_receiver_reports_dependency_error() {
@@ -330,7 +330,7 @@ fn test_selected_file_multi_return_local_receiver_reports_dependency_error() {
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('as `int`')
+	assert main_errors[0].msg.contains('`!int`')
 }
 
 fn test_selected_file_for_in_local_receiver_reports_dependency_error() {
@@ -339,7 +339,7 @@ fn test_selected_file_for_in_local_receiver_reports_dependency_error() {
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('as `int`')
+	assert main_errors[0].msg.contains('`!int`')
 }
 
 fn test_selected_file_local_receiver_different_method_receiver_stays_filtered() {
@@ -348,7 +348,7 @@ fn test_selected_file_local_receiver_different_method_receiver_stays_filtered() 
 	assert main_errors.len == 0, main_errors.str()
 }
 
-fn test_selected_file_local_receiver_shadows_import_alias() {
+fn test_selected_file_local_receiver_uses_distinct_import_alias() {
 	main_errors := check_diagnostic_project('ierror_import_alias_shadowed_by_local_receiver',
 		local_receiver_shadows_import_alias_project, ['main.v'])
 	assert main_errors.len == 0, main_errors.str()
@@ -382,5 +382,5 @@ fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_er
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('as `int`')
+	assert main_errors[0].msg.contains('`!int`')
 }

@@ -417,6 +417,11 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 	if resolved := g.sum_name_lookup[sum_name] {
 		return resolved
 	}
+	if sum_name.contains('.') {
+		if resolved := g.sum_name_lookup[sum_name.all_after_last('.')] {
+			return resolved
+		}
+	}
 	return sum_name
 }
 

@@ -30,6 +30,35 @@ fn test_source_signature_cache_content_requires_stable_metadata() {
 	assert content.ends_with('complete=1\n')
 }
 
+fn test_source_signature_selects_only_referenced_pseudo_values() {
+	root := os.join_path(os.vtmp_dir(), 'v3_pseudo_signature_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main\n\nconst compiler_hash = @VCURRENTHASH\n')!
+	first := source_signature_details([source],
+		'${structured_pseudo_values_prefix}time-a\x00hash-a').signature
+	time_changed := source_signature_details([source],
+		'${structured_pseudo_values_prefix}time-b\x00hash-a').signature
+	hash_changed := source_signature_details([source],
+		'${structured_pseudo_values_prefix}time-a\x00hash-b').signature
+	assert first == time_changed
+	assert first != hash_changed
+
+	os.write_file(source, 'module main\n\nconst build_date = @BUILD_DATE\n')!
+	build_first := source_signature_details([source],
+		'${structured_pseudo_values_prefix}time-a\x00hash-a').signature
+	build_time_changed := source_signature_details([source],
+		'${structured_pseudo_values_prefix}time-b\x00hash-a').signature
+	build_hash_changed := source_signature_details([source],
+		'${structured_pseudo_values_prefix}time-a\x00hash-b').signature
+	assert build_first != build_time_changed
+	assert build_first == build_hash_changed
+}
+
 fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	roots := ['@VMODROOT', '@VMOD_FILE', '@VROOT']
 	assert source_uses_pseudo("module m\n\nconst data = \$embed_file('@VMODROOT/data.bin')", roots)

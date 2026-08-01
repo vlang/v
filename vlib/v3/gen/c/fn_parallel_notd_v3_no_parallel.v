@@ -1343,53 +1343,6 @@ fn par_cgen_prep_enabled() bool {
 	return os.getenv('V3_NO_PAR_CGEN_PREP') == ''
 }
 
-// PreseedTypeSeen dedups fn-ptr preseed traversals of checker-cached
-// expression types during the fused prep walk. Keys are the opaque 16-byte
-// Type value (variant box pointer + tag): identical bytes always denote the
-// same type, so a hit safely skips the traversal; collisions just evict. The
-// cache lives only for one item-selection walk, within the selection scope
-// that owns any non-canonical type values it may reference.
-struct PreseedTypeSeen {
-mut:
-	w0   [4096]u64
-	w1   [4096]u64
-	seen [4096]bool
-}
-
-// preseed_type_first_seen reports whether this exact type value has not been
-// preseeded yet during the current prep walk, recording it as seen.
-fn (mut g FlatGen) preseed_type_first_seen(typ &types.Type) bool {
-	mut cache := g.preseed_type_seen
-	if isnil(cache) {
-		return true
-	}
-	words := unsafe { &u64(voidptr(typ)) }
-	w0 := unsafe { words[0] }
-	w1 := unsafe { words[1] }
-	slot := int(((w0 >> 4) ^ w1) & 4095)
-	if cache.seen[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
-		return false
-	}
-	cache.w0[slot] = w0
-	cache.w1[slot] = w1
-	cache.seen[slot] = true
-	return true
-}
-
-// PrepTypTextCache short-circuits repeated preseed verdicts for the SAME type
-// text instance during the fused item prep walk: node.typ strings are shared
-// instances, so a pointer probe replaces most content-hash map lookups. The
-// generation is bumped whenever the file/module context changes (verdicts
-// depend on qualify_name), matching the map cache's clear.
-struct PrepTypTextCache {
-mut:
-	generation u32 = 1
-	ptrs       [4096]voidptr
-	gens       [4096]u32
-	lens       [4096]int
-	verdicts   [4096]bool
-}
-
 fn (mut g FlatGen) should_preseed_parallel_type_text_ptr_cached(typ string, mut cache map[string]bool) bool {
 	mut tcache := g.prep_typ_text_cache
 	if isnil(tcache) {

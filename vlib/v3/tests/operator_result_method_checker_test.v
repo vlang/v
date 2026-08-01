@@ -135,7 +135,7 @@ fn main() {
 '
 	bad_res := check_to_c(v3_bin, 'bad', bad)
 	assert bad_res.exit_code != 0, bad_res.output
-	assert bad_res.output.contains('unknown function'), bad_res.output
+	assert bad_res.output.contains('unknown method or field: `Span.bogus_method`'), bad_res.output
 	assert bad_res.output.contains('bogus_method'), bad_res.output
 }
 

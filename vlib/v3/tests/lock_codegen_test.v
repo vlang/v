@@ -326,7 +326,7 @@ fn lock_question_defer(mut c Counter) !int {
 		defer {
 			c.a = 2
 		}
-		may_fail()?
+		may_fail()!
 	}
 	return 0
 }

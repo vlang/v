@@ -77,7 +77,7 @@ fn test_macos_v3_relevant_command_only_selects_supported_native_c_builds() {
 		assert !is_macos_v3_relevant_command('run', prefs)
 		prefs.os = .macos
 		prefs.path = 'cmd/v'
-		assert !is_macos_v3_relevant_command('cmd/v', prefs)
+		assert is_macos_v3_relevant_command('cmd/v', prefs)
 		prefs.path = 'cmd/tools/vfmt.v'
 		assert !is_macos_v3_relevant_command('cmd/tools/vfmt.v', prefs)
 		prefs.path = 'main.v'

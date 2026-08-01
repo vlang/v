@@ -23,6 +23,10 @@ fn testsuite_begin() {
 	if os.exists(ownership_bin) {
 		os.rm(ownership_bin) or {}
 	}
+	// The test runner executes test functions in parallel. Build both shared
+	// compiler fixtures here so workers never race while replacing the same bin.
+	_ = build_v3_review_transform()
+	_ = build_v3_review_transform_ownership()
 }
 
 fn build_v3_review_transform() string {

@@ -7,7 +7,10 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn build_v3_review_checker() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test_${os.getpid()}')
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
@@ -473,7 +476,7 @@ fn test_fn_value_integer_returns_require_matching_c_abi() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_integer_return_abi',
 		'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n',
-		'cannot use `fn() u64`')
+		'cannot use `fn () u64`')
 	out := run_good(v3_bin, 'good_fn_value_matching_integer_return_abi',
 		'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n')
 	assert out == '65'
@@ -483,7 +486,7 @@ fn test_fn_value_aggregate_returns_require_compatible_payloads() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_array_return_payload',
 		'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n',
-		'cannot use `fn() []int`')
+		'cannot use `fn () []int`')
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {
@@ -722,20 +725,20 @@ fn test_explicit_generic_calls_use_all_type_arguments() {
 		'generic argument count mismatch')
 }
 
-fn test_reject_escaping_capturing_fn_literals() {
+fn test_escaping_capturing_fn_literals_use_runtime_closures() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_return_capturing_fn_literal',
-		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_return_capturing_fn_literal_alias',
-		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal_alias',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
+	out := run_good(v3_bin, 'return_capturing_fn_literal',
+		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n')
+	assert out == ''
+	alias_out := run_good(v3_bin, 'return_capturing_fn_literal_alias',
+		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n')
+	assert alias_out == ''
+	field_out := run_good(v3_bin, 'struct_field_capturing_fn_literal',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n')
+	assert field_out == ''
+	field_alias_out := run_good(v3_bin, 'struct_field_capturing_fn_literal_alias',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n')
+	assert field_alias_out == ''
 }
 
 fn test_capturing_fn_literal_aliases_are_binding_scoped() {
@@ -746,9 +749,9 @@ fn test_capturing_fn_literal_aliases_are_binding_scoped() {
 	lambda_out := run_good(v3_bin, 'good_lambda_capturing_fn_literal_shadow',
 		'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n')
 	assert lambda_out == '4'
-	run_bad(v3_bin, 'bad_outer_capturing_alias_survives_inner_shadow',
-		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
+	outer_out := run_good(v3_bin, 'outer_capturing_alias_survives_inner_shadow',
+		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n')
+	assert outer_out == ''
 }
 
 fn test_reject_unsmartcasted_unique_sum_variant_field() {

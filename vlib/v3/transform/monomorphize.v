@@ -3977,7 +3977,8 @@ fn (mut t Transformer) specialized_fn_return_display_type_text(decl GenericFnDec
 
 fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ string, args []string, params []string) string {
 	if direct := t.specialized_direct_generic_type_text(typ, args, params) {
-		return t.lock_colliding_main_generic_type_text(direct, decl.module)
+		pinned := t.pin_direct_main_generic_arg_type_text(direct)
+		return t.lock_colliding_main_generic_type_text(pinned, decl.module)
 	}
 	substituted := substitute_generic_type_text_with_params(typ, args, params)
 	// The scalar `direct` branch above pins a colliding main type to `main.` before it can be
@@ -4027,6 +4028,37 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 		return qualified
 	}
 	return specialized_signature_storage_type_name(parsed)
+}
+
+fn (t &Transformer) pin_direct_main_generic_arg_type_text(typ string) string {
+	clean := typ.trim_space()
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
+		if clean.starts_with(prefix) {
+			return prefix + t.pin_direct_main_generic_arg_type_text(clean[prefix.len..])
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := t.pin_direct_main_generic_arg_type_text(clean[4..bracket_end])
+			value := t.pin_direct_main_generic_arg_type_text(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 1 && bracket_end < clean.len - 1 {
+			return clean[..bracket_end + 1] +
+				t.pin_direct_main_generic_arg_type_text(clean[bracket_end + 1..])
+		}
+	}
+	if types.is_builtin_type_name(clean) {
+		return clean
+	}
+	if !clean.contains('.') && t.substituted_type_belongs_to_main_generic(clean) {
+		return 'main.' + clean
+	}
+	return clean
 }
 
 fn (t &Transformer) specialized_direct_generic_type_text(typ string, args []string, params []string) ?string {
@@ -8310,7 +8342,13 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		// The checker can annotate `T{}` with its surrounding optional/result
 		// context. For a concrete clone the literal itself is authoritative.
 		struct_subst := t.subst_type(node.value, args)
-		struct_value_pre := t.resolve_substituted_type_text(struct_subst)
+		struct_subst_locked := if struct_subst != node.value {
+			t.lock_colliding_main_substitution_type_text(node.value, struct_subst, t.cur_module,
+				t.active_generic_params)
+		} else {
+			struct_subst
+		}
+		struct_value_pre := t.resolve_substituted_type_text(struct_subst_locked)
 		mut struct_value0 := struct_value_pre
 		if struct_subst != node.value {
 			// Only a `T{}` literal whose type came from substituting a generic
@@ -8321,7 +8359,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			struct_value0 = t.lock_colliding_main_substitution_type_text(node.value,
 				struct_value_pre, t.cur_module, t.active_generic_params)
 		}
-		if struct_value0.contains('main.') && struct_value0 != struct_value_pre {
+		if struct_value0.contains('main.') {
 			// Keep the explicit `main.` lock as the literal's type: parsing it back to
 			// its bare program name here would let codegen rebase it into the callee
 			// module (the very collision the lock prevents). The lock may be nested inside
@@ -8396,6 +8434,9 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			}
 			mut rhs_typ := if rhs_raw_typ.len > 0 {
 				rhs_raw_typ
+			} else if decl_type_is_usable(rhs_node.typ)
+				&& !t.generic_arg_is_unresolved(rhs_node.typ) {
+				rhs_node.typ
 			} else {
 				t.concrete_node_type_name(rhs_node)
 			}
@@ -8418,7 +8459,12 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 				t.set_node_typ(int(children[0]), cloned_typ)
 			}
 			if lhs_typ.len > 0 && !t.generic_arg_is_unresolved(lhs_typ) {
-				t.set_var_type_with_raw(lhs_clone.value, t.normalize_type_alias(lhs_typ), lhs_typ)
+				normalized_lhs_typ := if lhs_typ.contains('main.') {
+					lhs_typ
+				} else {
+					t.normalize_type_alias(lhs_typ)
+				}
+				t.set_var_type_with_raw(lhs_clone.value, normalized_lhs_typ, lhs_typ)
 			}
 		}
 	}
@@ -10339,6 +10385,12 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	if clean.starts_with('atomic ') {
 		return 'atomic ' + t.resolve_substituted_type_text(clean[7..])
 	}
+	if clean.starts_with('main.') && !t.ident_is_import_alias('main') {
+		bare := clean['main.'.len..]
+		if !bare.contains('.') && t.type_name_is_declared(bare) {
+			return clean
+		}
+	}
 	if t.substituted_type_belongs_to_main_generic(clean) {
 		return clean
 	}
@@ -10649,12 +10701,25 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 	if !(clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
 		return clean
 	}
-	// A main-module type substituted into an imported specialization needs an
-	// explicit lock even when the callee has no homonym. Another imported module
-	// can still make the bare short name ambiguous during the later C type pass.
+	// An active specialization type has caller provenance: even when both main and the
+	// callee declare this generic base, this spelling is the caller's main type. Check it
+	// before the declaration-local ambiguity guard below. Source-owned generic bases are
+	// preserved by lock_colliding_main_substitution_type_text without reaching this branch.
 	if t.active_specialization_main_types[clean] {
 		return 'main.' + clean
 	}
+	if info := t.structs[clean] {
+		if info.module in ['', 'main'] {
+			if !isnil(t.tc) && clean in t.tc.struct_generic_params
+				&& '${module_name}.${clean}' in t.tc.struct_generic_params {
+				return clean
+			}
+			return 'main.' + clean
+		}
+	}
+	// A main-module type substituted into an imported specialization needs an
+	// explicit lock even when the callee has no homonym. Another imported module
+	// can still make the bare short name ambiguous during the later C type pass.
 	if !isnil(t.tc) && clean in t.structs {
 		decl_module := t.tc.struct_modules[clean] or { '' }
 		if decl_module !in ['', 'main'] {

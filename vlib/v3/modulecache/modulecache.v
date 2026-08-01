@@ -22,7 +22,8 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-2'
+const source_signature_cache_format = 'v3-source-signature-cache-3'
+const structured_pseudo_values_prefix = 'v3-pseudo-values-v1\x00'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -243,7 +244,8 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 	mut hash := u64(1469598103934665603)
 	mut env_names := map[string]bool{}
 	mut pkgconfig_names := map[string]bool{}
-	mut uses_build_pseudo := false
+	mut uses_build_time_pseudo := false
+	mut uses_compiler_hash_pseudo := false
 	mut validation := []string{}
 	for file in files {
 		path := os.real_path(file)
@@ -253,15 +255,11 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		if source_uses_pseudo(source, [
-			'@BUILD_TIMESTAMP',
-			'@BUILD_DATE',
-			'@BUILD_TIME',
-			'@VHASH',
-			'@VCURRENTHASH',
-		])
-		{
-			uses_build_pseudo = true
+		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
+			uses_build_time_pseudo = true
+		}
+		if source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']) {
+			uses_compiler_hash_pseudo = true
 		}
 		uses_vmod_hash := source_uses_pseudo(source, ['@VMODHASH'])
 		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
@@ -300,10 +298,13 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 			pkgconfig_names[name] = true
 		}
 	}
-	if uses_build_pseudo {
-		validation << 'build=${hash_text(build_pseudo_values)}'
+	if uses_build_time_pseudo || uses_compiler_hash_pseudo {
+		pseudo_mask := '${int(uses_build_time_pseudo)}${int(uses_compiler_hash_pseudo)}'
+		pseudo_values := selected_pseudo_values(build_pseudo_values, uses_build_time_pseudo,
+			uses_compiler_hash_pseudo)
+		validation << 'pseudo=${pseudo_mask}\t${hash_text(pseudo_values)}'
 		hash = hash_bytes(hash, [u8(0xfb)])
-		hash = hash_bytes(hash, build_pseudo_values.bytes())
+		hash = hash_bytes(hash, pseudo_values.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	mut names := env_names.keys()
@@ -332,6 +333,24 @@ fn source_signature_details(source_files []string, build_pseudo_values string) S
 		signature:  hash.hex()
 		validation: validation
 	}
+}
+
+fn selected_pseudo_values(values string, uses_build_time bool, uses_compiler_hash bool) string {
+	if !values.starts_with(structured_pseudo_values_prefix) {
+		return values
+	}
+	parts := values[structured_pseudo_values_prefix.len..].split('\x00')
+	if parts.len != 2 {
+		return values
+	}
+	mut selected := []string{cap: 2}
+	if uses_build_time {
+		selected << parts[0]
+	}
+	if uses_compiler_hash {
+		selected << parts[1]
+	}
+	return selected.join('\x00')
 }
 
 fn source_uses_pseudo(source string, names []string) bool {
@@ -629,8 +648,20 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			signature = line.all_after('source=')
 			continue
 		}
-		if line.starts_with('build=') {
-			if line != 'build=${hash_text(build_pseudo_values)}' {
+		if line.starts_with('pseudo=') {
+			parts := line['pseudo='.len..].split('\t')
+			if parts.len != 2 || parts[0].len != 2 {
+				return none
+			}
+			uses_build_time := parts[0][0] == `1`
+			uses_compiler_hash := parts[0][1] == `1`
+			if (!uses_build_time && parts[0][0] != `0`)
+				|| (!uses_compiler_hash && parts[0][1] != `0`) {
+				return none
+			}
+			pseudo_values := selected_pseudo_values(build_pseudo_values, uses_build_time,
+				uses_compiler_hash)
+			if parts[1] != hash_text(pseudo_values) {
 				return none
 			}
 			continue
@@ -2803,6 +2834,23 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 		out.writeln(source_body_marker)
 	}
 	out.writeln('')
+	mut trusted_c_fns := map[string]bool{}
+	for file_node in a.nodes {
+		if file_node.kind != .file || file_node.children_count == 0
+			|| file_module_name(a, file_node) != module_name {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			mut decl_ids := []flat.NodeId{}
+			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			for id in decl_ids {
+				node := a.nodes[int(id)]
+				if node.kind == .c_fn_decl && node.is_mut {
+					trusted_c_fns[node.value] = true
+				}
+			}
+		}
+	}
 	mut seen := map[string]bool{}
 	declaration_attrs := cached_declaration_attrs(a)
 	for file_node in a.nodes {
@@ -2859,6 +2907,14 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 				mut attrs_text := source_attrs_text
 				if attrs_text.len == 0 {
 					attrs_text = cached_declaration_attrs_text(attrs)
+				}
+				if node.kind == .c_fn_decl && trusted_c_fns[node.value]
+					&& !cached_declaration_has_attr(declaration_source_attr_values(attrs_text), 'trusted') {
+					attrs_text = if attrs_text.len > 0 {
+						'@[trusted]\n${attrs_text}'
+					} else {
+						'@[trusted]'
+					}
 				}
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'
