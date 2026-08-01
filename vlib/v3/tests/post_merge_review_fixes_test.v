@@ -297,25 +297,30 @@ fn test_empty_fixed_array_of_function_arrays_resolves_element_type() {
 
 fn test_indexed_shift_assignments_guard_oversized_counts() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'indexed_shift_assign_oversized_counts', 'fn next(mut calls int) int {
-	calls++
+	out := run_good(v3_bin, 'indexed_shift_assign_oversized_counts', 'struct Counter {
+mut:
+	value int
+}
+
+fn next(mut calls Counter) int {
+	calls.value++
 	return 0
 }
 
-fn shift(mut calls int) u64 {
-	calls++
+fn shift(mut calls Counter) u64 {
+	calls.value++
 	return 64
 }
 
 fn main() {
-	mut calls := 0
+	mut calls := Counter{}
 	mut left := [u64(1)]
 	left[next(mut calls)] <<= shift(mut calls)
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(left[0].str())
 	mut right := [u64(8)]
 	right[next(mut calls)] >>= shift(mut calls)
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(right[0].str())
 }
 ')
@@ -4292,7 +4297,7 @@ fn test_callback_lambda_lift_forwards_optional_void_failures() {
 		'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
 	assert result_out == 'fail'
 	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward',
-		'fn takes(cb fn () ?void) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ?void {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
+		'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
 	assert option_out == 'none'
 }
 
@@ -4690,16 +4695,21 @@ fn main() {
 ')
 	assert ierror_sum_field == 'true\nfalse'
 
-	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'fn next(mut calls int) int {
-	calls++
+	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'struct Counter {
+mut:
+	value int
+}
+
+fn next(mut calls Counter) int {
+	calls.value++
 	return 0
 }
 
 fn main() {
-	mut calls := 0
+	mut calls := Counter{}
 	mut values := [8, 16]
 	values[next(mut calls)] >>>= 1
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(int_str(values[0]))
 	println(int_str(values[1]))
 	mut signed_values := [i8(-5)]
@@ -4708,7 +4718,7 @@ fn main() {
 	mut shifted_map := map[int]i8{}
 	shifted_map[0] = i8(-5)
 	shifted_map[next(mut calls)] >>>= 1
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(int_str(shifted_map[0]))
 }
 ')
@@ -5846,11 +5856,20 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 		'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
 	assert call_ptr_out == '20'
 	mut_param_alias_out := run_good(v3_bin, 'review_mut_param_pointer_alias_return',
-		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain(mut x int) &int {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep(mut a)\n\t*p = 7\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain(mut b)\n\t*q = 8\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n')
+		'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\t*p = 7\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\t*q = 8\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n')
 	assert mut_param_alias_out == '7\n7\n8\n8'
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array',
-		'const n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
+		'@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
+}
+
+fn test_imported_private_free_function_is_rejected() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'review_imported_private_free_function', {
+		'v.mod':         "Module { name: 'review_imported_private_free_function' }\n"
+		'other/other.v': 'module other\n\nfn hidden() int {\n\treturn 7\n}\n'
+		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tprintln(int_str(other.hidden()))\n}\n'
+	}, ['main.v'], 'function `other.hidden` is private')
 }
 
 fn test_cross_module_mut_receiver_checks_visible_mutation() {

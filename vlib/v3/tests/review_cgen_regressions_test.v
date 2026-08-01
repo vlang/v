@@ -225,14 +225,21 @@ fn main() {
 
 fn test_mut_parameter_power_assign_uses_scalar_type() {
 	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'mut_parameter_power_assign', 'fn square(mut value int) {
-	value **= 2
+	out := review_cgen_run_good(v3_bin, 'mut_parameter_power_assign', 'struct Number {
+mut:
+	value int
+}
+
+fn square(mut number Number) {
+	number.value **= 2
 }
 
 fn main() {
-	mut value := 3
-	square(mut value)
-	println(int_str(value))
+	mut number := Number{
+		value: 3
+	}
+	square(mut number)
+	println(int_str(number.value))
 }
 ')
 	assert out == '9'

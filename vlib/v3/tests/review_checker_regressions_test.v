@@ -68,6 +68,75 @@ fn test_immutable_fields_and_result_storage_are_rejected() {
 		'cannot use chan with Result type')
 }
 
+fn test_declaration_mutability_and_storage_restrictions_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'immutable_reference_in_mut_field', 'struct Holder {
+mut:
+	ptr &int
+}
+
+fn main() {
+	value := 1
+	_ := Holder{
+		ptr: &value
+	}
+}
+',
+		'`value` is immutable, cannot have a mutable reference to an immutable object')
+	run_bad(v3_bin, 'result_struct_field', 'struct Holder {
+	value !int
+}
+
+fn main() {}
+',
+		'struct field does not support storing Result')
+	run_bad(v3_bin, 'mutable_primitive_parameter', 'fn update(mut value int) {
+	value++
+}
+
+fn main() {}
+',
+		'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases')
+	run_bad(v3_bin, 'parameter_shadows_import', 'import arrays
+
+fn update(arrays int) {
+	_ = arrays
+}
+
+fn main() {}
+',
+		'duplicate of an import symbol `arrays`')
+	run_bad(v3_bin, 'mutable_interface_smartcast', 'interface Value {}
+
+struct Concrete {}
+
+fn main() {
+	mut value := Value(Concrete{})
+	if value is Concrete {}
+}
+',
+		'smart casting a mutable interface value requires `if mut value is ...`')
+	run_bad(v3_bin, 'explicit_option_void_return', 'fn work() ?void {
+	return none
+}
+
+fn main() {}
+',
+		'use `?` instead of `?void`')
+	out := run_good(v3_bin, 'canonical_option_void_return', 'fn work() ? {
+	return none
+}
+
+fn main() {
+	work() or {
+		println("none")
+		return
+	}
+}
+')
+	assert out == 'none'
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
@@ -954,12 +1023,17 @@ fn test_builtin_function_callee_wins_over_unrelated_const_suffix() {
 
 fn test_fn_field_param_mutability_survives_type_identity_paths() {
 	v3_bin := build_v3_review_checker()
-	source_prefix := 'struct Holder {
-	callback fn (mut int)
+	source_prefix := 'struct Counter {
+mut:
+	value int
 }
 
-fn increment(mut value int) {
-	value++
+struct Holder {
+	callback fn (mut Counter)
+}
+
+fn increment(mut counter Counter) {
+	counter.value++
 }
 '
 	out := run_good(v3_bin, 'good_fn_field_mut_param', source_prefix +
@@ -968,9 +1042,11 @@ fn main() {
 	holder := Holder{
 		callback: increment
 	}
-	mut value := 4
-	holder.callback(mut value)
-	println(int_str(value))
+	mut counter := Counter{
+		value: 4
+	}
+	holder.callback(mut counter)
+	println(int_str(counter.value))
 }
 ')
 	assert out == '5'
@@ -980,9 +1056,11 @@ fn main() {
 	holder := Holder{
 		callback: increment
 	}
-	mut value := 4
-	holder.callback(value)
+	mut counter := Counter{
+		value: 4
+	}
+	holder.callback(counter)
 }
 ',
-		'is `mut`, so use `mut value` instead')
+		'is `mut`, so use `mut counter` instead')
 }

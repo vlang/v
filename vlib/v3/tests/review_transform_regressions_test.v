@@ -340,7 +340,7 @@ fn gen_c_from_project(v3_bin string, name string, files map[string]string, input
 fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation',
-		'fn main() {\n\tmut n := 7\n\tf := fn (mut x int) {\n\t\tprintln("\${x}")\n\t}\n\tf(mut n)\n}\n')
+		'struct Counter {\n\tvalue int\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 7\n\t}\n\tf := fn (mut value Counter) {\n\t\tprintln("\${value.value}")\n\t}\n\tf(mut counter)\n}\n')
 	assert out == '7'
 }
 
@@ -3362,7 +3362,7 @@ fn test_map_literal_declaration_evaluates_entries_once() {
 fn test_fn_literal_preserves_mut_param_string_interpolation() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'fn_literal_mut_param_interp',
-		"fn show(mut x int) {\n\t_ := fn () {}\n\tprintln('\${x}')\n}\n\nfn main() {\n\tmut n := 42\n\tshow(mut n)\n}\n")
+		"struct Counter {\n\tvalue int\n}\n\nfn show(mut counter Counter) {\n\t_ := fn () {}\n\tprintln('\${counter.value}')\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 42\n\t}\n\tshow(mut counter)\n}\n")
 	assert out == '42'
 }
 
@@ -4054,7 +4054,7 @@ fn main() {
 fn test_optional_map_append_evaluates_key_before_rhs() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_map_append_evaluation_order',
-		'fn select_key(key string, mut trace string) string {\n\ttrace += "key"\n\treturn key\n}\n\nfn next_value(mut key string, mut trace string) ?int {\n\ttrace += "rhs"\n\tkey = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut trace := ""\n\tmut key := "original"\n\tmut values := map[string][]int{}\n\tvalues[select_key(key, mut trace)] << next_value(mut key, mut trace) or { return }\n\tprintln(trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n')
+		'struct State {\nmut:\n\tkey   string\n\ttrace string\n}\n\nfn select_key(key string, mut state State) string {\n\tstate.trace += "key"\n\treturn key\n}\n\nfn next_value(mut state State) ?int {\n\tstate.trace += "rhs"\n\tstate.key = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut state := State{\n\t\tkey: "original"\n\t}\n\tmut values := map[string][]int{}\n\tvalues[select_key(state.key, mut state)] << next_value(mut state) or { return }\n\tprintln(state.trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n')
 	assert out == 'keyrhs\n7\nfalse'
 }
 
@@ -4081,16 +4081,21 @@ fn main() {
 
 fn test_failed_optional_append_probe_does_not_evaluate_rhs_twice() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_shift_rhs_evaluated_once', 'fn next_value(mut calls int) ?int {
-	calls++
+	out := run_good(v3_bin, 'optional_shift_rhs_evaluated_once', 'struct Counter {
+mut:
+	value int
+}
+
+fn next_value(mut calls Counter) ?int {
+	calls.value++
 	return 1
 }
 
 fn main() {
-	mut calls := 0
+	mut calls := Counter{}
 	flags := 2
 	flags << next_value(mut calls) or { return }
-	println(int_str(calls))
+	println(int_str(calls.value))
 }
 ')
 	assert out == '1'

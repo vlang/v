@@ -11549,6 +11549,12 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				'cannot initialize a fixed size array field that uses `$d()` as size quantifier since the size may change via -d',
 				default_id, tc.a.node(default_id).pos)
 		}
+		if field_type is ResultType {
+			type_pos := tc.struct_field_type_pos(*field)
+			tc.record_error_at(.assignment_mismatch,
+				'struct field does not support storing Result', field_id, token.new_span(type_pos.id,
+				type_pos.offset, type_pos.offset + 1))
+		}
 		if field.children_count > 0 {
 			default_id := tc.a.child(field, 0)
 			default := tc.a.node(default_id)

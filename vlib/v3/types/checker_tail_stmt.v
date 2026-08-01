@@ -2138,6 +2138,16 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut expr_type := unalias_type(unwrap_pointer(raw_expr_type))
+	if expr_type is Interface && tc.nonmut_mutable_interface_smartcast(expr_id) {
+		if tc.interface_has_no_requirements(expr_type.name) {
+			tc.record_notice_at(.condition_mismatch,
+				'smartcasting requires either an immutable value, or an explicit mut keyword before the value',
+				expr_id, expr_node.pos)
+		}
+		tc.record_error_at(.condition_mismatch,
+			'smart casting a mutable interface value requires `if mut ${tc.source_text_for_node(expr_id)} is ...`',
+			expr_id, expr_node.pos)
+	}
 	// A previous branch can narrow a variable to one variant and then assign it
 	// another value. A later `is` still applies to the variable's declared sum
 	// type, not only to the stale narrowed variant.
@@ -3139,6 +3149,16 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				tc.record_error_at(.assignment_mismatch,
 					'cannot assign a const map to mut struct field, call `clone` method (or use a reference)',
 					value_id, value_node.pos)
+			}
+			if tc.unsafe_depth == 0 && field_is_mut {
+				if addressed_id := tc.addressed_ident(value_id) {
+					addressed := tc.a.node(addressed_id)
+					if !tc.ident_is_mutable_lvalue(addressed.value) {
+						tc.record_error_at(.assignment_mismatch,
+							'`${addressed.value}` is immutable, cannot have a mutable reference to an immutable object',
+							addressed_id, addressed.pos)
+					}
+				}
 			}
 			if expected !is Void {
 				mut actual := tc.resolve_expr(value_id, expected)

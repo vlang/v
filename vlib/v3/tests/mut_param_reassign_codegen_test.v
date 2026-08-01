@@ -61,13 +61,19 @@ fn main() {
 
 fn test_mut_string_param_concat_reads_as_string() {
 	v3_bin := mut_param_reassign_build_v3()
-	out := mut_param_reassign_run_good(v3_bin, 'mut_string_param_concat', "fn add(mut s string) string {
-	return s + '!'
+	out := mut_param_reassign_run_good(v3_bin, 'mut_string_param_concat', "struct Text {
+	value string
+}
+
+fn add(mut text Text) string {
+	return text.value + '!'
 }
 
 fn main() {
-	mut s := 'hi'
-	println(add(mut s))
+	mut text := Text{
+		value: 'hi'
+	}
+	println(add(mut text))
 }
 ")
 	assert out == 'hi!'
@@ -193,15 +199,22 @@ fn main() {
 
 fn test_mut_param_compound_assign_and_postfix_store_through_pointer() {
 	v3_bin := mut_param_reassign_build_v3()
-	out := mut_param_reassign_run_good(v3_bin, 'mut_param_compound_assign', 'fn inc(mut n int) {
-	n += 1
-	n++
+	out := mut_param_reassign_run_good(v3_bin, 'mut_param_compound_assign', 'struct Counter {
+mut:
+	value int
+}
+
+fn inc(mut counter Counter) {
+	counter.value += 1
+	counter.value++
 }
 
 fn main() {
-	mut x := 1
-	inc(mut x)
-	assert x == 3
+	mut counter := Counter{
+		value: 1
+	}
+	inc(mut counter)
+	assert counter.value == 3
 	println("ok")
 }
 ')
@@ -210,14 +223,21 @@ fn main() {
 
 fn test_mut_param_unsigned_right_shift_assign_stores_through_pointer() {
 	v3_bin := mut_param_reassign_build_v3()
-	out := mut_param_reassign_run_good(v3_bin, 'mut_param_unsigned_right_shift_assign', 'fn shift(mut n int) {
-	n >>>= 1
+	out := mut_param_reassign_run_good(v3_bin, 'mut_param_unsigned_right_shift_assign', 'struct Counter {
+mut:
+	value int
+}
+
+fn shift(mut counter Counter) {
+	counter.value >>>= 1
 }
 
 fn main() {
-	mut x := 8
-	shift(mut x)
-	assert x == 4
+	mut counter := Counter{
+		value: 8
+	}
+	shift(mut counter)
+	assert counter.value == 4
 	println("ok")
 }
 ')
@@ -348,17 +368,25 @@ fn main() {
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
 	v3_bin := mut_param_reassign_build_v3()
-	mut_param_reassign_run_bad(v3_bin, 'bad_same_scope_mut_string_param_redeclare', "fn shadow_read(mut s string) string {
-	mut s := 'local'
-	return s + '!'
+	mut_param_reassign_run_bad(v3_bin, 'bad_same_scope_mut_string_param_redeclare', "struct Text {
+	value string
+}
+
+fn shadow_read(mut text Text) string {
+	mut text := Text{
+		value: 'local'
+	}
+	return text.value + '!'
 }
 
 fn main() {
-	mut s := 'param'
-	_ = shadow_read(mut s)
+	mut text := Text{
+		value: 'param'
+	}
+	_ = shadow_read(mut text)
 }
 ",
-		'redefinition of s')
+		'redefinition of text')
 	mut_param_reassign_run_bad(v3_bin, 'bad_mut_array_param_reassign_elem', "fn bad(mut xs []int) {
 	mut ys := []string{}
 	ys << 'bad'

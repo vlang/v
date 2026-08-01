@@ -911,8 +911,25 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 						'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed',
 						param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 				}
+				param_type := unalias_type(raw_param_type)
+				if !is_specialized && param_type !is Array && param_type !is ArrayFixed
+					&& param_type !is Interface && param_type !is Map && param_type !is Pointer
+					&& param_type !is Struct && param_type !is SumType && param_type !is Unknown {
+					if !(param.op == .dot && param_type is OptionType) {
+						type_name := param_type.name()
+						tc.record_error_at(.call_arg_mismatch,
+							'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`',
+							param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
+					}
+				}
 			}
 			tc.check_reserved_parameter_name(param_id)
+			if param.op == .dot {
+				tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node,
+					param.value))
+			} else {
+				tc.check_import_symbol_conflict(param_id, param.value)
+			}
 			tc.check_module_name_conflict(param_id, param.value)
 		}
 	}
@@ -996,6 +1013,10 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if raw_return_type.starts_with('!?') || raw_return_type.starts_with('?!') {
 		tc.record_error_at(.return_mismatch, 'the type must be Option or Result', id,
 			tc.nested_option_result_marker_pos(node))
+	}
+	if raw_return_type == '?void' {
+		tc.record_error_at(.return_mismatch, 'use `?` instead of `?void`', id,
+			tc.option_void_payload_diagnostic_pos(node))
 	}
 	if raw_return_type.ends_with('?') && !raw_return_type.starts_with('?') {
 		tc.record_error_at(.return_mismatch,

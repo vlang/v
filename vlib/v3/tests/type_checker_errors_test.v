@@ -1993,7 +1993,7 @@ fn test_pr_review_codegen_batch_twentynine() {
 	// A pointer alias of a mut parameter already points at caller-owned storage. Returning the
 	// alias must preserve that identity instead of heap-copying the current pointee.
 	mut_param_alias := run_good(v3_bin, 'good_returned_mut_param_pointer_alias_identity',
-		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep(mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n')
+		'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep[int](mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n')
 	assert mut_param_alias == '7'
 	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
 	// the free path for `&Aligned` values.
@@ -2010,7 +2010,7 @@ fn test_pr_review_codegen_batch_twentynine() {
 	// A capitalized field followed by a const-sized fixed array is a named field whose type is
 	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
 	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',
-		'const n = 2\nstruct S {\n\tFoo [n]int\n}\nfn main() {\n\ts := S{\n\t\tFoo: [1, 2]!\n\t}\n\tprintln(int_str(s.Foo.len) + ":" + int_str(s.Foo[1]))\n}\n')
+		'@[translated]\nmodule main\n\nconst n = 2\nstruct S {\n\tFoo [n]int\n}\nfn main() {\n\ts := S{\n\t\tFoo: [1, 2]!\n\t}\n\tprintln(int_str(s.Foo.len) + ":" + int_str(s.Foo[1]))\n}\n')
 	assert fixed_field == '2:2'
 }
 

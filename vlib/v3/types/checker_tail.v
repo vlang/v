@@ -3843,9 +3843,6 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 		return false
 	}
 	if _ := tc.private_declaration(info.name) {
-		if !info.has_receiver {
-			return false
-		}
 		callee := tc.a.child_node(&node, 0)
 		if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
@@ -3865,6 +3862,8 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 				name_pos.offset, node.pos.end))
 			return true
 		}
+		tc.record_error_at(.unknown_fn, 'function `${info.name}` is private', id, node.pos)
+		return true
 	}
 	return false
 }
