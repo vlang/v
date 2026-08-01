@@ -4237,6 +4237,21 @@ fn c_header_condition_top_level_binary(expression string, operators []string) (b
 	mut i := 0
 	for i < expression.len {
 		c := expression[i]
+		if c in [`"`, `'`] {
+			quote := c
+			i++
+			for i < expression.len {
+				if expression[i] == `\\` && i + 1 < expression.len {
+					i += 2
+					continue
+				}
+				i++
+				if expression[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
 		if c == `(` {
 			depth++
 			i++
@@ -4279,7 +4294,7 @@ fn c_header_condition_top_level_binary(expression string, operators []string) (b
 			previous--
 		}
 		if previous >= 0
-			&& (c_identifier_continue(expression[previous]) || expression[previous] == `)`) {
+			&& (c_identifier_continue(expression[previous]) || expression[previous] in [`)`, `'`]) {
 			operator_index = i
 			selected_operator = matched
 		}

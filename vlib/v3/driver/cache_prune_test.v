@@ -106,6 +106,16 @@ fn test_cache_c_source_definitely_active_code_expands_local_macro_values() {
 	assert !active.contains('cyclic_api')
 }
 
+fn test_cache_c_source_definitely_active_code_evaluates_known_comparisons() {
+	source := '#define FEATURE 1\n#define LEVEL 2\n#if FEATURE == 1\nstatic int matching_api(void) { return 1; }\n#endif\n#if FEATURE != 1\nstatic int mismatched_api(void) { return 2; }\n#else\nstatic int comparison_fallback_api(void) { return 3; }\n#endif\n#if LEVEL >= 2\nstatic int ordered_api(void) { return 4; }\n#endif\n'
+	mut macros := cache_local_c_flag_macros([]string{})
+	active := cache_c_source_definitely_active_code(source, mut macros)
+	assert active.contains('matching_api')
+	assert !active.contains('mismatched_api')
+	assert active.contains('comparison_fallback_api')
+	assert active.contains('ordered_api')
+}
+
 fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
 	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
 	os.rmdir_all(root_dir) or {}

@@ -2455,15 +2455,19 @@ fn cache_local_c_is_literal_include_value(value string) bool {
 }
 
 fn cache_local_c_integer_condition(raw string) int {
+	value := cache_local_c_integer_value(raw) or { return 0 }
+	return if value == 0 { -1 } else { 1 }
+}
+
+fn cache_local_c_integer_value(raw string) ?i64 {
 	mut clean := raw.trim_space().trim_right('uUlL')
 	if clean.len == 0 {
-		return 0
+		return none
 	}
 	if clean.starts_with('+') {
 		clean = clean[1..]
 	}
-	value := strconv.parse_int(clean, 0, 64) or { return 0 }
-	return if value == 0 { -1 } else { 1 }
+	return strconv.parse_int(clean, 0, 64) or { return none }
 }
 
 fn cache_local_c_condition_without_outer_parens(raw string) string {
@@ -2529,6 +2533,128 @@ fn cache_local_c_condition_top_level_parts(expression string, operator string) [
 	return parts
 }
 
+fn cache_local_c_condition_top_level_comparison(expression string) (bool, string, string, string) {
+	mut depth := 0
+	mut found_at := -1
+	mut found_operator := ''
+	mut i := 0
+	for i < expression.len {
+		if expression[i] in [`"`, `'`] {
+			quote := expression[i]
+			i++
+			for i < expression.len {
+				if expression[i] == `\\` && i + 1 < expression.len {
+					i += 2
+					continue
+				}
+				i++
+				if expression[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if expression[i] == `(` {
+			depth++
+			i++
+			continue
+		}
+		if expression[i] == `)` {
+			depth--
+			i++
+			continue
+		}
+		if depth != 0 {
+			i++
+			continue
+		}
+		mut operator := ''
+		if i + 1 < expression.len && expression[i..i + 2] in ['==', '!=', '<=', '>='] {
+			operator = expression[i..i + 2]
+		} else if expression[i] in [`<`, `>`]
+			&& (i + 1 >= expression.len || expression[i + 1] != expression[i]) {
+			operator = expression[i..i + 1]
+		}
+		if operator.len == 0 {
+			i++
+			continue
+		}
+		if found_at >= 0 {
+			return false, '', '', ''
+		}
+		found_at = i
+		found_operator = operator
+		i += operator.len
+	}
+	if found_at < 0 {
+		return false, '', '', ''
+	}
+	left := expression[..found_at].trim_space()
+	right := expression[found_at + found_operator.len..].trim_space()
+	if left.len == 0 || right.len == 0 {
+		return false, '', '', ''
+	}
+	return true, left, found_operator, right
+}
+
+fn cache_local_c_defined_macro_name(expression string) ?string {
+	if !expression.starts_with('defined') || (expression.len > 'defined'.len
+		&& expression['defined'.len] != `(` && !expression['defined'.len].is_space()) {
+		return none
+	}
+	rest := expression['defined'.len..].trim_space()
+	if rest.starts_with('(') {
+		close := rest.index_u8(`)`)
+		if close <= 1 || rest[close + 1..].trim_space().len > 0 {
+			return none
+		}
+		return rest[1..close].trim_space()
+	}
+	fields := rest.fields()
+	if fields.len != 1 {
+		return none
+	}
+	return fields[0]
+}
+
+fn cache_local_c_known_integer_value_rec(raw string, macros map[string]V3CacheLocalCMacro, mut seen map[string]bool, depth int) ?i64 {
+	if depth >= 64 {
+		return none
+	}
+	expression := cache_local_c_condition_without_outer_parens(raw)
+	if value := cache_local_c_integer_value(expression) {
+		return value
+	}
+	if expression.starts_with('!') {
+		value := cache_local_c_known_integer_value_rec(expression[1..], macros, mut seen, depth + 1) or {
+			return none
+		}
+		return if value == 0 { i64(1) } else { i64(0) }
+	}
+	if macro_name := cache_local_c_defined_macro_name(expression) {
+		condition := cache_local_c_macro_condition(macro_name, false, macros)
+		if condition == 0 {
+			return none
+		}
+		return if condition > 0 { i64(1) } else { i64(0) }
+	}
+	macro := macros[expression] or { return none }
+	if !macro.known {
+		return none
+	}
+	if !macro.is_defined {
+		return i64(0)
+	}
+	if macro.replacement.len == 0 || seen[expression] {
+		return none
+	}
+	seen[expression] = true
+	replacement := macro.replacement
+	value := cache_local_c_known_integer_value_rec(replacement, macros, mut seen, depth + 1)
+	seen.delete(expression)
+	return value
+}
+
 fn cache_local_c_known_expression(raw string, macros map[string]V3CacheLocalCMacro) int {
 	mut seen := map[string]bool{}
 	return cache_local_c_known_expression_rec(raw, macros, mut seen, 0)
@@ -2563,6 +2689,29 @@ fn cache_local_c_known_expression_rec(raw string, macros map[string]V3CacheLocal
 		}
 		return if all_true { 1 } else { 0 }
 	}
+	has_comparison, left_text, operator, right_text :=
+		cache_local_c_condition_top_level_comparison(expression)
+	if has_comparison {
+		left := cache_local_c_known_integer_value_rec(left_text, macros, mut seen, depth + 1) or {
+			return 0
+		}
+		right := cache_local_c_known_integer_value_rec(right_text, macros, mut seen, depth + 1) or {
+			return 0
+		}
+		if operator in ['<', '<=', '>', '>='] && (left < 0 || right < 0) {
+			return 0
+		}
+		active := match operator {
+			'==' { left == right }
+			'!=' { left != right }
+			'<' { left < right }
+			'<=' { left <= right }
+			'>' { left > right }
+			'>=' { left >= right }
+			else { return 0 }
+		}
+		return if active { 1 } else { -1 }
+	}
 	if expression.starts_with('!') {
 		condition := cache_local_c_known_expression_rec(expression[1..], macros, mut seen,
 			depth + 1)
@@ -2591,24 +2740,7 @@ fn cache_local_c_known_expression_rec(raw string, macros map[string]V3CacheLocal
 		seen.delete(expression)
 		return condition
 	}
-	if !expression.starts_with('defined') {
-		return 0
-	}
-	rest := expression['defined'.len..].trim_space()
-	mut macro_name := ''
-	if rest.starts_with('(') {
-		close := rest.index_u8(`)`)
-		if close <= 1 || rest[close + 1..].trim_space().len > 0 {
-			return 0
-		}
-		macro_name = rest[1..close].trim_space()
-	} else {
-		fields := rest.fields()
-		if fields.len != 1 {
-			return 0
-		}
-		macro_name = fields[0]
-	}
+	macro_name := cache_local_c_defined_macro_name(expression) or { return 0 }
 	return cache_local_c_macro_condition(macro_name, false, macros)
 }
 
