@@ -2955,9 +2955,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				named_fields++
 			}
 		}
-		if positional_fields > 0 && named_fields == 0 && positional_fields > fields.len {
+		if positional_fields > 0 && named_fields == 0 && positional_fields != fields.len {
+			amount := if positional_fields < fields.len { 'few' } else { 'many' }
 			tc.record_error_at(.assignment_mismatch,
-				'too many fields in `${init_type_text.all_after_last('.')}` literal (expecting ${fields.len}, got ${positional_fields})',
+				'too ${amount} fields in `${init_type_text.all_after_last('.')}` literal (expecting ${fields.len}, got ${positional_fields})',
 				id, node.pos)
 		}
 		if unknown_message := tc.generic_struct_field_unknown_type_message(init_name) {
@@ -3039,6 +3040,19 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		for missing in tc.missing_required_struct_fields(init_name, supplied_fields, []string{}) {
 			tc.record_error_at(.assignment_mismatch, 'field `${missing}` must be initialized', id,
 				tc.struct_init_head_pos(node))
+		}
+		mut seen_missing_references := map[string]bool{}
+		for missing in tc.missing_reference_struct_fields(init_name, supplied_fields, []string{}) {
+			if seen_missing_references[missing.path] {
+				continue
+			}
+			seen_missing_references[missing.path] = true
+			message := if missing.has_part {
+				'reference field `${missing.path}` must be initialized (part of struct `${missing.owner}`)'
+			} else {
+				'reference field `${missing.path}` must be initialized'
+			}
+			tc.record_error_at(.assignment_mismatch, message, id, tc.struct_init_head_pos(node))
 		}
 		for i in 0 .. node.children_count {
 			field_id := tc.a.child(&node, i)

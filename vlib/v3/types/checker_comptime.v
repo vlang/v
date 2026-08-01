@@ -2465,6 +2465,33 @@ fn (mut tc TypeChecker) check_spawn_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.call_arg_mismatch, 'expression in `spawn` must be a function call',
 			child_id, child.pos)
 	}
+	if child.kind == .call {
+		if info := tc.resolve_call_info(child_id, *child) {
+			callee := tc.a.child_node(child, 0)
+			if callee.kind == .selector && callee.children_count > 0
+				&& tc.mut_receiver_methods[info.name] {
+				receiver_id := tc.a.child(callee, 0)
+				receiver_type := unalias_type(tc.resolve_type(receiver_id))
+				if receiver_type !is Pointer {
+					tc.record_error_at(.call_arg_mismatch,
+						'method in `spawn` statement cannot have non-reference mutable receiver',
+						receiver_id, tc.a.node(receiver_id).pos)
+				}
+			}
+			for i in 1 .. child.children_count {
+				arg_id := tc.call_arg_value(tc.a.child(child, i))
+				arg := tc.a.node(arg_id)
+				param_idx := i - 1 + if info.has_receiver { 1 } else { 0 }
+				if arg.is_mut && tc.call_param_is_mut(info, param_idx)
+					&& !tc.call_param_requires_mut_pointer_slot(info, param_idx)
+					&& unalias_type(tc.resolve_type(arg_id)) !is Pointer {
+					tc.record_error_at(.call_arg_mismatch,
+						'function in `spawn` statement cannot contain mutable non-reference arguments',
+						arg_id, arg.pos)
+				}
+			}
+		}
+	}
 	tc.check_node(child_id)
 	if child.kind == .call && tc.new_error_kind_since(error_count, .unknown_fn)
 		&& !tc.call_targets_later_local_binding(child) {
@@ -11577,6 +11604,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				'static variables are supported only in -translated mode, `unsafe{}` blocks, or in `@[unsafe] fn`',
 				lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 		}
+		tc.check_import_symbol_conflict(lhs_id, lhs_node.value)
 		tc.check_module_name_conflict(lhs_id, lhs_node.value)
 		if reserved_const_type_name(lhs_node.value) && tc.should_diagnose(lhs_id) {
 			tc.record_error_at(.duplicate_decl,
@@ -14107,6 +14135,11 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				tc.record_error_at(.assignment_mismatch,
 					'cannot dereference a function call on the left side of an assignment, use a temporary variable',
 					effective_lhs_id, tc.prefix_operator_pos(effective_lhs_id, '*'))
+			}
+			if tc.unsafe_depth == 0 {
+				tc.record_error_at(.assignment_mismatch,
+					'modifying variables via dereferencing can only be done in `unsafe` blocks',
+					id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 			}
 		}
 		if lhs_node.kind == .selector && lhs_node.children_count > 0 {

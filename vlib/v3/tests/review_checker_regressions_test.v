@@ -137,6 +137,92 @@ fn main() {
 	assert out == 'none'
 }
 
+fn test_pointer_struct_and_spawn_safety_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'unparenthesized_pointer_write', 'fn main() {
+	value := 0
+	p := &value
+	*p = 1
+}
+',
+		'modifying variables via dereferencing can only be done in `unsafe` blocks')
+	run_bad(v3_bin, 'parenthesized_pointer_write', 'fn main() {
+	value := 0
+	p := &value
+	(*p) = 1
+}
+',
+		'modifying variables via dereferencing can only be done in `unsafe` blocks')
+	run_bad(v3_bin, 'uninitialized_reference_field', 'struct Holder {
+	value &int
+}
+
+fn main() {
+	_ := Holder{}
+}
+',
+		'reference field `Holder.value` must be initialized')
+	run_bad(v3_bin, 'partial_positional_struct_literal', 'struct Pair {
+	first int
+	second int
+}
+
+fn main() {
+	_ := Pair{1}
+}
+',
+		'too few fields in `Pair` literal (expecting 2, got 1)')
+	run_bad(v3_bin, 'local_shadows_import', 'import arrays
+
+fn main() {
+	arrays := 1
+	_ = arrays
+}
+',
+		'duplicate of an import symbol `arrays`')
+	run_bad(v3_bin, 'spawn_mutable_value_argument', 'struct State {
+mut:
+	value int
+}
+
+fn change(mut state State) {
+	state.value++
+}
+
+fn main() {
+	mut state := State{}
+	spawn change(mut state)
+}
+',
+		'function in `spawn` statement cannot contain mutable non-reference arguments')
+	run_bad(v3_bin, 'spawn_mutable_value_receiver', 'struct State {
+mut:
+	value int
+}
+
+fn (mut state State) change() {
+	state.value++
+}
+
+fn main() {
+	mut state := State{}
+	spawn state.change()
+}
+',
+		'method in `spawn` statement cannot have non-reference mutable receiver')
+	out := run_good(v3_bin, 'unsafe_pointer_write', 'fn main() {
+	mut value := 0
+	p := &value
+	unsafe {
+		*p = 1
+		(*p) = 2
+	}
+	println(value)
+}
+')
+	assert out == '2'
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
