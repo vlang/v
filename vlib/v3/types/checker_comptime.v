@@ -10487,6 +10487,62 @@ fn (tc &TypeChecker) locked_shared_base_alias_key(id flat.NodeId) string {
 	return tc.locked_shared_base_path_key(id)
 }
 
+fn locked_shared_index_key(node flat.Node) string {
+	if node.kind == .int_literal {
+		if value := v_int_literal_value(node.value) {
+			return value.str()
+		}
+	}
+	if node.kind == .enum_val {
+		return node.value
+	}
+	return '*'
+}
+
+fn (tc &TypeChecker) locked_shared_selector_suffix(base_id flat.NodeId, field_name string) string {
+	base_type := unalias_and_unwrap_pointer_type(tc.cached_expr_type(base_id) or {
+		tc.resolve_type(base_id)
+	})
+	mut suffix := ''
+	if base_type is Struct {
+		mut seen := map[string]bool{}
+		if path := tc.locked_shared_struct_field_path(base_type.name, field_name, mut seen) {
+			for field in path {
+				suffix += '.${field.name}'
+			}
+		}
+	}
+	return '${suffix}.${field_name}'
+}
+
+fn (tc &TypeChecker) locked_shared_struct_field_path(struct_name string, field_name string, mut seen map[string]bool) ?[]StructField {
+	if struct_name in seen {
+		return none
+	}
+	seen[struct_name] = true
+	fields := tc.structs[struct_name] or { return none }
+	for field in fields {
+		if field.name == field_name {
+			return []StructField{}
+		}
+	}
+	for field in fields {
+		embedded_type := embedded_field_type(field) or { continue }
+		clean_embedded_type := unalias_and_unwrap_pointer_type(embedded_type)
+		if clean_embedded_type is Struct {
+			if path := tc.locked_shared_struct_field_path(clean_embedded_type.name, field_name, mut
+				seen)
+			{
+				mut result := []StructField{cap: path.len + 1}
+				result << field
+				result << path
+				return result
+			}
+		}
+	}
+	return none
+}
+
 fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId) string {
 	if !tc.valid_node_id(id) {
 		return ''
@@ -10500,9 +10556,10 @@ fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId) string {
 			if node.children_count == 0 {
 				return ''
 			}
-			base := tc.locked_shared_base_path_key(tc.a.child(node, 0))
+			base_id := tc.a.child(node, 0)
+			base := tc.locked_shared_base_path_key(base_id)
 			if base.len > 0 && node.value.len > 0 {
-				return '${base}.${node.value}'
+				return '${base}${tc.locked_shared_selector_suffix(base_id, node.value)}'
 			}
 		}
 		.index {
@@ -10515,11 +10572,7 @@ fn (tc &TypeChecker) locked_shared_base_path_key(id flat.NodeId) string {
 			}
 			index_id := tc.unwrap_paren_expr_id(tc.a.child(node, 1))
 			index_node := tc.a.node(index_id)
-			index_key := if index_node.kind in [.int_literal, .enum_val] {
-				index_node.value
-			} else {
-				'*'
-			}
+			index_key := locked_shared_index_key(index_node)
 			return '${base}[${index_key}]'
 		}
 		.paren, .prefix {
@@ -10553,9 +10606,11 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []strin
 			if node.children_count == 0 || node.value.len == 0 {
 				return []string{}
 			}
+			base_id := tc.a.child(node, 0)
+			suffix := tc.locked_shared_selector_suffix(base_id, node.value)
 			mut keys := []string{}
-			for base in tc.locked_shared_base_owner_alias_keys_for_base(tc.a.child(node, 0)) {
-				keys << '${base}.${node.value}'
+			for base in tc.locked_shared_base_owner_alias_keys_for_base(base_id) {
+				keys << '${base}${suffix}'
 			}
 			return keys
 		}
@@ -10565,11 +10620,7 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []strin
 			}
 			index_id := tc.unwrap_paren_expr_id(tc.a.child(node, 1))
 			index_node := tc.a.node(index_id)
-			index_key := if index_node.kind in [.int_literal, .enum_val] {
-				index_node.value
-			} else {
-				'*'
-			}
+			index_key := locked_shared_index_key(index_node)
 			mut keys := []string{}
 			for base in tc.locked_shared_base_owner_alias_keys_for_base(tc.a.child(node, 0)) {
 				keys << '${base}[${index_key}]'

@@ -805,9 +805,19 @@ fn test_nested_shared_field_lock_rejects_aliased_index_mutation() {
 	run_bad(v3_bin, 'nested_shared_field_lock_aliased_index_mutation',
 		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\ti := 0\n\tlock items[i].state {\n\t\titems[0] = &second\n\t\titems[i].state.value = 7\n\t}\n}\n',
 		'may alias locked shared value `items[i].state`')
+	run_bad(v3_bin, 'nested_shared_field_lock_equivalent_literal_index_mutation',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut items := [&first]\n\tlock items[0].state {\n\t\titems[0x0] = &replacement\n\t\titems[0].state.value++\n\t}\n}\n',
+		'may alias locked shared value `items[0].state`')
 	out := run_good(v3_bin, 'nested_shared_field_lock_distinct_literal_index',
 		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\tlock items[0].state {\n\t\titems[1] = &first\n\t\titems[0].state.value = 7\n\t\tprintln(int_str(items[0].state.value))\n\t}\n}\n')
 	assert out == '7'
+}
+
+fn test_nested_shared_field_lock_rejects_promoted_field_alias_mutation() {
+	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_promoted_field_alias_mutation',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator = unsafe { nil }\n}\n\nstruct Wrapper {\nmut:\n\tHolder\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut wrapper := Wrapper{}\n\twrapper.Holder.current = &first\n\tlock wrapper.current.state {\n\t\twrapper.Holder.current = &replacement\n\t\twrapper.current.state.value++\n\t}\n}\n',
+		'used to locate locked shared value `wrapper.current.state`')
 }
 
 fn test_nested_shared_field_lock_rejects_pointer_alias_mutation() {
