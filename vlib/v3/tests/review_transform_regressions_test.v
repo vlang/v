@@ -924,7 +924,8 @@ fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
 
 fn test_branch_selected_local_method_closures_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1121,7 +1122,8 @@ fn main() {
 
 fn test_deferred_local_bound_method_closures_remain_scope_owned() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1157,7 +1159,8 @@ fn main() {
 
 fn test_locally_aliased_bound_method_closures_remain_scope_owned_until_the_alias_escapes() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1201,7 +1204,8 @@ fn main() {
 
 fn test_scope_local_callback_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1258,7 +1262,8 @@ fn main() {
 
 fn test_scope_local_callback_initializer_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1311,7 +1316,8 @@ fn main() {
 
 fn test_scope_local_callback_whole_aggregate_reassignments_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1355,7 +1361,8 @@ fn main() {
 
 fn test_scope_local_callback_array_initializers_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1397,7 +1404,8 @@ fn main() {
 
 fn test_locally_extracted_callback_array_fields_remain_scope_owned() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1440,7 +1448,8 @@ fn main() {
 
 fn test_scope_local_callback_array_index_assignments_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1476,7 +1485,8 @@ fn main() {
 
 fn test_scope_local_dynamic_callback_array_index_assignments_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1515,7 +1525,8 @@ fn main() {
 
 fn test_scope_local_callback_array_appends_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1547,7 +1558,8 @@ fn main() {
 
 fn test_scope_local_bulk_callback_array_appends_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1579,7 +1591,8 @@ fn main() {
 
 fn test_scope_local_callback_fixed_array_initializers_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1611,7 +1624,8 @@ fn main() {
 
 fn test_multi_variable_callback_declarations_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1642,7 +1656,8 @@ fn main() {
 
 fn test_callback_array_prefix_before_spread_preserves_receiver_identity_and_is_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1674,7 +1689,8 @@ fn main() {
 
 fn test_scope_local_callback_map_initializers_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1720,7 +1736,8 @@ fn main() {
 
 fn test_scope_local_computed_key_callback_maps_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1755,7 +1772,8 @@ fn main() {
 
 fn test_scope_local_dynamic_callback_map_index_assignments_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1795,7 +1813,8 @@ fn main() {
 
 fn test_callback_map_initializer_captures_each_overwritten_entry_for_cleanup() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1835,7 +1854,8 @@ fn main() {
 
 fn test_computed_key_map_nested_callbacks_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1939,7 +1959,8 @@ fn main() {
 
 fn test_match_self_reassigned_bound_method_closures_remain_scope_owned() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2009,7 +2030,8 @@ fn main() {
 
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Value {
+	source := '@[heap]
+struct Value {
 mut:
 	n int
 }
@@ -2049,7 +2071,8 @@ fn main() {
 
 fn test_branch_produced_immediate_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Value {
+	source := '@[heap]
+struct Value {
 	n int
 }
 
@@ -2265,7 +2288,8 @@ pub fn answer() int {
 
 fn test_escaping_mut_method_value_rejects_stack_receiver() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2346,7 +2370,7 @@ fn main() {
 	mut foo := Foo{
 		value: 1
 	}
-	callback := foo.read
+	callback := unsafe { foo.read }
 	foo.value = 2
 	println(int_str(callback()))
 }
@@ -2369,7 +2393,7 @@ fn make(value int) fn () int {
 	foo := Foo{
 		value: value
 	}
-	return foo.read
+	return unsafe { foo.read }
 }
 
 fn make_via_pointer_alias(value int) fn () int {
@@ -2377,12 +2401,12 @@ fn make_via_pointer_alias(value int) fn () int {
 		value: value
 	}
 	p := &foo
-	cb := p.read
+	cb := unsafe { p.read }
 	return cb
 }
 
 fn make_from_pointer(foo &Foo) fn () int {
-	return foo.read
+	return unsafe { foo.read }
 }
 
 fn overwrite_stack() {
@@ -2434,7 +2458,7 @@ fn install(mut holder Holder, value int) {
 		value: value
 	}
 	p := &local
-	holder.callback = p.read
+	holder.callback = unsafe { p.read }
 }
 
 fn overwrite_stack() {
@@ -2465,7 +2489,8 @@ fn main() {
 
 fn test_callback_argument_method_value_keeps_mutable_local_receiver_alive() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2518,7 +2543,8 @@ fn main() {
 
 fn test_callback_argument_method_value_preserves_mutable_receiver_identity() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2544,7 +2570,8 @@ fn main() {
 
 fn test_callback_aggregate_argument_preserves_pointer_receiver_identity() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -4480,7 +4507,8 @@ fn main() {
 
 fn test_nested_callback_array_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }

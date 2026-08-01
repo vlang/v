@@ -3664,6 +3664,11 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
+	if target is Alias && target.base_type is OptionType {
+		tc.record_error(.assignment_mismatch,
+			'alias to Option type requires to be used as Option type (?${node.value}(...))', id)
+		return
+	}
 	actual := tc.resolve_type(child_id)
 	if actual is Void {
 		tc.record_error_at(.assignment_mismatch,

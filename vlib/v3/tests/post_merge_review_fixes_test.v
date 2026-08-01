@@ -5390,7 +5390,10 @@ fn main() {}
 
 fn test_for_in_uppercase_const_body_not_struct_init() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'for_in_uppercase_const_body_not_struct_init', "const Foo = [1, 2]
+	out := run_good(v3_bin, 'for_in_uppercase_const_body_not_struct_init', "@[translated]
+module main
+
+const Foo = [1, 2]
 
 fn main() {
 	mut sum := 0
@@ -5408,7 +5411,10 @@ fn main() {
 
 fn test_amp_uppercase_index_operand_preserves_postfix() {
 	v3_bin := build_v3()
-	source := 'const Foo = [1, 2]
+	source := '@[translated]
+module main
+
+const Foo = [1, 2]
 
 fn main() {
 	mut p := &Foo[0]

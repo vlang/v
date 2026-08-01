@@ -280,6 +280,57 @@ fn main() {
 	assert out == '3'
 }
 
+fn test_method_value_option_alias_and_const_names_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'non_heap_pointer_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn make() fn () int {
+	foo := Foo{}
+	return foo.ref
+}
+
+fn main() {}
+',
+		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
+	run_bad(v3_bin, 'direct_option_alias_cast', 'type MaybeInt = ?int
+
+fn main() {
+	_ := MaybeInt(none)
+}
+',
+		'alias to Option type requires to be used as Option type (?MaybeInt(...))')
+	run_bad(v3_bin, 'uppercase_const_name', 'const Red = 1
+
+fn main() {
+	println(Red)
+}
+',
+		'const names cannot contain uppercase letters, use snake_case instead')
+	out := run_good(v3_bin, 'heap_method_value_and_translated_const', '@[translated]
+module main
+
+const Red = 2
+
+@[heap]
+struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn main() {
+	foo := Foo{}
+	callback := foo.ref
+	println(callback() + Red)
+}
+')
+	assert out == '3'
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',

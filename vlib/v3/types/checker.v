@@ -12489,6 +12489,11 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 		if field.value == '_' {
 			tc.record_error_at(.duplicate_decl, 'cannot use `_` as a const name', field_id,
 				tc.node_value_diagnostic_pos(field_id))
+		} else if tc.should_check_source_name(field_id) && !field.value.starts_with('C.')
+			&& field.value != field.value.to_lower() {
+			tc.record_error_at(.duplicate_decl,
+				'const names cannot contain uppercase letters, use snake_case instead', field_id,
+				tc.node_value_diagnostic_pos(field_id))
 		}
 		if tc.has_active_import(field.value) {
 			tc.record_error_at(.duplicate_decl,
