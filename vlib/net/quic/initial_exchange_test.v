@@ -26,6 +26,7 @@ fn test_full_initial_round_trip_over_fake_transport() {
 		random:               client_hello_random
 		server_name:          'example.com'
 		ecdhe_public_key:     ecdhe_public_key
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: scid
 		}
@@ -116,6 +117,7 @@ fn test_full_initial_round_trip_rejects_tampered_datagram() {
 		random:               rand.bytes(32)!
 		server_name:          'example.com'
 		ecdhe_public_key:     ecdhe_public_key
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: scid
 		}

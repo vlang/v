@@ -108,6 +108,24 @@ fn test_split_coalesced_datagram_rejects_length_exceeding_buffer() {
 	assert false, 'expected an oversized Length field to be rejected'
 }
 
+fn test_split_coalesced_datagram_rejects_non_v1_version_with_retry_shaped_type_bits() {
+	// peek_long_header_type's bit mapping (bits 4-5 of byte 0) is QUIC-v1-
+	// specific -- a non-v1 packet whose type bits happen to be 0b11 (v1's
+	// "retry") must be rejected for its wrong version BEFORE the retry
+	// branch ever inspects those bits, not silently misclassified as a
+	// real Retry packet (which would consume the rest of the datagram and
+	// hide any real packets coalesced after it).
+	mut buf := []u8{}
+	buf << u8(0x80 | 0x40 | 0x30) // long header, fixed bit set, type bits = 0b11 (retry under v1)
+	buf << [u8(0xaa), 0xbb, 0xcc, 0xdd] // version: not 0 (not VN), not quic_v1
+
+	split_coalesced_datagram(buf) or {
+		assert err.msg().contains('unsupported QUIC version')
+		return
+	}
+	assert false, 'expected a non-v1 version to be rejected before retry-type dispatch'
+}
+
 fn test_pad_datagram_for_initial_pads_to_minimum() {
 	short := []u8{len: 50, init: 0x42}
 	padded := pad_datagram_for_initial(short)

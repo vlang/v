@@ -78,6 +78,19 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 			break
 		}
 
+		// peek_long_header_type's bit mapping is QUIC-v1-specific (see its
+		// own doc comment in header.v) -- interpreting a non-v1 version's
+		// type bits under the v1 mapping could misclassify it as `.retry`
+		// below and consume the rest of the datagram, silently dropping any
+		// real coalesced packets that follow. The length-having branch
+		// below is already protected transitively (parse_long_header checks
+		// this internally), but the retry branch calls peek_long_header_type
+		// directly, so this check must run before EITHER branch, not just
+		// be left to parse_long_header.
+		if version != quic_v1 {
+			return error('quic: coalesced packet has unsupported QUIC version 0x${version:08x}: only QUIC v1 (0x00000001) is supported')
+		}
+
 		typ := peek_long_header_type(remaining[0])!
 		if typ == .retry {
 			// Retry: also no Length field, also always consumes the rest

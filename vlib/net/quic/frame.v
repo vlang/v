@@ -302,6 +302,11 @@ pub fn encode_ack_frame(ranges []AckRange, ack_delay u64, ecn_counts ?EcnCounts)
 	if ranges.len == 0 {
 		return error('quic: encode_ack_frame: at least one range is required')
 	}
+	for i, r in ranges {
+		if r.largest < r.smallest {
+			return error('quic: encode_ack_frame: ranges[${i}] has largest (${r.largest}) < smallest (${r.smallest})')
+		}
+	}
 	for i in 1 .. ranges.len {
 		if ranges[i - 1].smallest < ranges[i].largest + 2 {
 			return error('quic: encode_ack_frame: ranges[${i - 1}] and ranges[${i}] are not properly separated (need at least one unacknowledged packet number between them)')

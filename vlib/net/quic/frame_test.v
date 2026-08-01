@@ -200,6 +200,26 @@ fn test_encode_ack_frame_rejects_empty_ranges() {
 	assert false, 'expected empty ranges to be rejected'
 }
 
+fn test_encode_ack_frame_rejects_range_with_largest_less_than_smallest() {
+	// A single self-inconsistent range (largest < smallest) is not caught
+	// by the cross-range separation check above, which only compares
+	// ADJACENT ranges to each other -- each range's own internal ordering
+	// must also be validated, or range_length's subtraction below would
+	// silently underflow (wrap) instead of failing cleanly.
+	bad_ranges := [
+		AckRange{
+			smallest: 10
+			largest:  5
+		},
+	]
+	encode_ack_frame(bad_ranges, 0, none) or {
+		assert err.msg().contains('largest')
+		assert err.msg().contains('smallest')
+		return
+	}
+	assert false, 'expected largest < smallest to be rejected'
+}
+
 fn test_parse_frame_rejects_unimplemented_frame_type() {
 	// 0x08 (MAX_DATA) is a real, valid QUIC frame type this module simply
 	// doesn't implement yet (Phase 6) -- must be a clear "not implemented"
