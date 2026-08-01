@@ -2170,8 +2170,95 @@ fn c_function_declaration_identifier_is_ambiguous(head string, identifier string
 	return rest.starts_with('(')
 }
 
+fn c_function_candidate_has_return_type(head string, candidate_start int) bool {
+	if candidate_start <= 0 {
+		return false
+	}
+	prefix := head[..candidate_start]
+	mut paren_depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	mut i := 0
+	for i < prefix.len {
+		c := prefix[i]
+		next := if i + 1 < prefix.len { prefix[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `(` {
+			paren_depth++
+			i++
+			continue
+		}
+		if c == `)` && paren_depth > 0 {
+			paren_depth--
+			i++
+			continue
+		}
+		if paren_depth == 0 && ((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`) {
+			mut end := i + 1
+			for end < prefix.len && c_generated_identifier_byte(prefix[end]) {
+				end++
+			}
+			name := prefix[i..end]
+			if name !in ['static', 'extern', 'inline', '__inline', '__inline__', '_Noreturn', 'const',
+				'volatile', 'restrict', '__restrict', '__restrict__', 'register', 'auto', 'constexpr',
+				'thread_local', '_Thread_local', '__thread', '__attribute', '__attribute__',
+				'__declspec', '__declspec__', '_Alignas', 'alignas'] {
+				return true
+			}
+			i = end
+			continue
+		}
+		i++
+	}
+	return false
+}
+
 fn c_function_declaration_identifier(head string) ?string {
 	mut candidate := ''
+	mut candidate_start := -1
 	mut candidate_tail_end := -1
 	mut paren_depth := 0
 	mut top_level_updates_candidate_tail := false
@@ -2242,8 +2329,10 @@ fn c_function_declaration_identifier(head string) ?string {
 						'__asm', '__asm__', '_Alignas', 'alignas'] {
 						is_suffix := candidate.len > 0 && candidate_tail_end >= 0
 							&& trim_leading_c_comments(head[candidate_tail_end + 1..i].trim_space()).trim_space() == name
+							&& c_function_candidate_has_return_type(head, candidate_start)
 						if !is_suffix {
 							candidate = name
+							candidate_start = start
 						}
 						top_level_updates_candidate_tail = true
 					}
