@@ -19,6 +19,10 @@ const c_objective_c_contextual_types = ['id', 'Class', 'SEL', 'Protocol', 'insta
 const c_objective_c_compatibility_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer',
 	'__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof', 'id', 'Class',
 	'SEL', 'Protocol', 'instancetype']
+const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'const', 'constructor',
+	'deprecated', 'destructor', 'format', 'hot', 'malloc', 'may_alias', 'noinline', 'nonnull',
+	'noreturn', 'packed', 'pure', 'returns_nonnull', 'section', 'sentinel', 'unused', 'used',
+	'visibility', 'warn_unused_result', 'weak']
 
 struct CHeaderTreeSize {
 mut:
@@ -3826,6 +3830,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	mut condition_taken_known := []bool{}
 	mut condition_taken := []bool{}
 	mut possible_text := strings.new_builder(text.len)
+	mut definite_text := strings.new_builder(text.len / 4)
 	mut in_block_comment := false
 	for line in c_join_continued_lines(text) {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
@@ -3903,6 +3908,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 		}
 		if !possibly_active {
 			possible_text.writeln('')
+			definite_text.writeln('')
 			continue
 		}
 		if name == 'import' && c_is_apple_framework_include(c_directive_arg(clean)) {
@@ -3957,10 +3963,11 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			}
 		}
 		possible_text.writeln(possible_line)
+		definite_text.writeln(if definitely_active { possible_line } else { '' })
 	}
 	possible_source := possible_text.str()
-	possible_typedefs := modulecache.c_source_typedef_identifiers(possible_source)
-	return c_header_text_has_objective_c_tokens(possible_source, possible_typedefs)
+	definite_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
+	return c_header_text_has_objective_c_tokens(possible_source, definite_typedefs)
 }
 
 fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
@@ -4026,6 +4033,9 @@ fn c_header_condition_without_comments(raw string) string {
 
 fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
+	if active := c_header_objective_c_compiler_predicate_state(clean) {
+		return true, active
+	}
 	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
 	if has_conditional {
 		known, active := c_header_objective_c_condition_state(condition, defined, undefined,
@@ -4120,6 +4130,22 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	return known, active
 }
 
+fn c_header_objective_c_compiler_predicate_state(clean string) ?bool {
+	predicate := '__has_attribute'
+	if !clean.starts_with(predicate) {
+		return none
+	}
+	rest := clean[predicate.len..].trim_space()
+	if rest.len < 3 || rest[0] != `(` || rest[rest.len - 1] != `)` {
+		return none
+	}
+	attribute := rest[1..rest.len - 1].trim_space()
+	if attribute.len == 0 || c_header_struct_tag(attribute) != attribute {
+		return none
+	}
+	return attribute.trim('_') in c_common_c_attributes
+}
+
 fn c_header_defined_macro_name(clean string) ?string {
 	if !clean.starts_with('defined') || (clean.len > 'defined'.len && clean['defined'.len] != `(`
 		&& !clean['defined'.len].is_space()) {
@@ -4157,6 +4183,9 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 		return none
 	}
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
+	if active := c_header_objective_c_compiler_predicate_state(clean) {
+		return if active { i64(1) } else { i64(0) }
+	}
 	if value := c_header_objective_c_integer_value(clean) {
 		return value
 	}
