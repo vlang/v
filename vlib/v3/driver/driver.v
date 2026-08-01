@@ -4054,6 +4054,9 @@ pub fn run(args []string) {
 	mut is_repl := false
 	mut show_test_stats := false
 	mut warn_impure_v := false
+	mut warns_are_errors := false
+	mut notes_are_errors := false
+	mut check_overflow := false
 	mut print_v_files := false
 	mut print_watched_files := false
 	mut only_check_syntax := false
@@ -4303,8 +4306,11 @@ pub fn run(args []string) {
 			// unused-code notices while the snippet is being assembled.
 			is_repl = true
 			i++
-		} else if args[i] in ['-apk', '-check-overflow', '-cross', '-manualfree', '-experimental',
-			'-show-c-output', '-nocolor'] {
+		} else if args[i] == '-check-overflow' {
+			check_overflow = true
+			i++
+		} else if args[i] in ['-apk', '-cross', '-manualfree', '-experimental', '-show-c-output',
+			'-nocolor'] {
 			// Accepted V1 compatibility switches. V3 always emits direct C,
 			// applies ownership cleanup, and forwards C failures.
 			i++
@@ -4341,6 +4347,12 @@ pub fn run(args []string) {
 		} else if args[i] == '-Wimpure-v' {
 			warn_impure_v = true
 			i++
+		} else if args[i] == '-W' {
+			warns_are_errors = true
+			i++
+		} else if args[i] == '-N' {
+			notes_are_errors = true
+			i++
 		} else if args[i] == '-print-v-files' {
 			print_v_files = true
 			i++
@@ -4354,7 +4366,7 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-retry-compilation' {
 			retry_compilation = false
 			i++
-		} else if args[i] in ['-show-timings', '-w', '-W', '-N', '-usecache', '-new-generic-solver'] {
+		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
 			// explicit-output tests unrun, caches modules by default, and uses
 			// its current generic solver without a legacy selection switch.
@@ -4425,7 +4437,11 @@ pub fn run(args []string) {
 	if warn_impure_v && input_file.ends_with('.v') && !input_file.ends_with('.c.v') {
 		source := os.read_file(input_file) or { '' }
 		if source.contains('C.') {
-			eprintln('${input_file}: warning: C code will not be allowed in pure .v files')
+			severity := if warns_are_errors { 'error' } else { 'warning' }
+			eprintln('${input_file}: ${severity}: C code will not be allowed in pure .v files')
+			if warns_are_errors {
+				exit(1)
+			}
 		}
 	}
 	if !is_checker_fixture && input_is_legacy_diagnostic_fixture(input_file) {
@@ -4797,6 +4813,9 @@ pub fn run(args []string) {
 		'module_search_paths=${prefs.module_search_paths.join(',')}',
 		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
 		'ownership=${ownership_mode}',
+		'check_overflow=${check_overflow}',
+		'warns_are_errors=${warns_are_errors}',
+		'notes_are_errors=${notes_are_errors}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
@@ -4975,8 +4994,11 @@ pub fn run(args []string) {
 		return
 	}
 	if p.diagnostics.len > 0 {
-		parser_has_errors := p.diagnostics.any(it.severity.len == 0 || it.severity == 'error:')
-		if parser_has_errors
+		parser_has_native_errors := p.diagnostics.any(it.severity.len == 0
+			|| it.severity == 'error:')
+		parser_has_errors := parser_has_native_errors
+			|| (warns_are_errors && p.diagnostics.any(it.severity == 'warning:'))
+		if parser_has_native_errors
 			&& request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
 			exit(1)
 		}
@@ -4987,7 +5009,9 @@ pub fn run(args []string) {
 			for diagnostic in p.diagnostics {
 				if file := a.source_files[diagnostic.pos.id] {
 					_ = file
-					severity := if diagnostic.severity.len > 0 {
+					severity := if warns_are_errors && diagnostic.severity == 'warning:' {
+						'error:'
+					} else if diagnostic.severity.len > 0 {
 						diagnostic.severity
 					} else {
 						'error:'
@@ -4995,7 +5019,9 @@ pub fn run(args []string) {
 					eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
 						diagnostic.pos))
 				} else {
-					severity := if diagnostic.severity.len > 0 {
+					severity := if warns_are_errors && diagnostic.severity == 'warning:' {
+						'error:'
+					} else if diagnostic.severity.len > 0 {
 						diagnostic.severity
 					} else {
 						'error:'
@@ -5291,6 +5317,8 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
+	pre_tc.warns_are_errors = warns_are_errors
+	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
 	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
@@ -6199,6 +6227,7 @@ pub fn run(args []string) {
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
+			g.set_check_overflow(check_overflow)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
@@ -6246,6 +6275,7 @@ pub fn run(args []string) {
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
+			g.set_check_overflow(check_overflow)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)

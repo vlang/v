@@ -685,6 +685,8 @@ pub mut:
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
 	autofree_mode                 bool
+	warns_are_errors              bool
+	notes_are_errors              bool
 	is_prod                       bool
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
@@ -1054,6 +1056,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unsupported_generics:        tc.reject_unsupported_generics
 		checker_fixture_mode:               tc.checker_fixture_mode
 		autofree_mode:                      tc.autofree_mode
+		warns_are_errors:                   tc.warns_are_errors
+		notes_are_errors:                   tc.notes_are_errors
 		is_prod:                            tc.is_prod
 		suppress_dump_output:               tc.suppress_dump_output
 		diagnostic_files:                   tc.diagnostic_files
@@ -1951,6 +1955,17 @@ fn (mut tc TypeChecker) record_notice_at(kind TypeErrorKind, msg string, node fl
 	if !tc.should_diagnose(node) {
 		return
 	}
+	if tc.notes_are_errors {
+		if tc.errors.any(it.kind == kind && it.msg == msg && it.pos == pos) {
+			return
+		}
+		base := tc.make_type_error_at(kind, msg, node, pos)
+		tc.errors << TypeError{
+			...base
+			severity: 'error:'
+		}
+		return
+	}
 	if tc.notices.any(it.kind == kind && it.msg == msg && it.pos == pos) {
 		return
 	}
@@ -1959,6 +1974,18 @@ fn (mut tc TypeChecker) record_notice_at(kind TypeErrorKind, msg string, node fl
 
 fn (mut tc TypeChecker) record_notice_with_details_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, details []string) {
 	if !tc.should_diagnose(node) {
+		return
+	}
+	if tc.notes_are_errors {
+		if tc.errors.any(it.kind == kind && it.msg == msg && it.pos == pos) {
+			return
+		}
+		base := tc.make_type_error_at(kind, msg, node, pos)
+		tc.errors << TypeError{
+			...base
+			details:  details.clone()
+			severity: 'error:'
+		}
 		return
 	}
 	if tc.notices.any(it.kind == kind && it.msg == msg && it.pos == pos) {
@@ -1973,6 +2000,17 @@ fn (mut tc TypeChecker) record_notice_with_details_at(kind TypeErrorKind, msg st
 
 fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) {
 	if !tc.should_diagnose(node) {
+		return
+	}
+	if tc.warns_are_errors {
+		if tc.errors.any(it.kind == kind && it.msg == msg && it.pos == pos) {
+			return
+		}
+		base := tc.make_type_error_at(kind, msg, node, pos)
+		tc.errors << TypeError{
+			...base
+			severity: 'error:'
+		}
 		return
 	}
 	if tc.notices.any(it.kind == kind && it.msg == msg && it.pos == pos && it.severity == 'warning:') {
@@ -7600,9 +7638,16 @@ fn (mut tc TypeChecker) record_goto_diagnostic(id flat.NodeId, warning bool, mes
 	node := tc.a.node(id)
 	base := tc.make_type_error_at(.unknown_ident, message, id, node.pos)
 	if warning {
-		tc.notices << TypeError{
-			...base
-			severity: 'warning:'
+		if tc.warns_are_errors {
+			tc.errors << TypeError{
+				...base
+				severity: 'error:'
+			}
+		} else {
+			tc.notices << TypeError{
+				...base
+				severity: 'warning:'
+			}
 		}
 	} else {
 		tc.errors << base

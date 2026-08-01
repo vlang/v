@@ -185,4 +185,60 @@ fn main() {
 		driver_review_environment())
 	assert js_compile.exit_code == 0, js_compile.output
 	assert os.is_file(js_output)
+
+	overflow_cases := {
+		'add': 'fn checked(a i8, b i8) i8 { return a + b }\nfn main() { println(checked(i8(127), i8(1))) }\n'
+		'sub': 'fn checked(a i8, b i8) i8 { return a - b }\nfn main() { println(checked(i8(-128), i8(1))) }\n'
+		'mul': 'fn checked(a i8, b i8) i8 { return a * b }\nfn main() { println(checked(i8(64), i8(2))) }\n'
+	}
+	for operation, source in overflow_cases {
+		overflow_source := os.join_path(root, 'overflow_${operation}.v')
+		overflow_output := os.join_path(root, 'overflow_${operation}')
+		os.write_file(overflow_source, source)!
+		overflow_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache',
+			'-check-overflow', '-o', overflow_output, overflow_source], driver_review_environment())
+		assert overflow_compile.exit_code == 0, overflow_compile.output
+		overflow_run := cmdexec.run(overflow_output, [])
+		assert overflow_run.exit_code != 0, '${operation}: ${overflow_run.output}'
+		assert overflow_run.output.contains('integer overflow'), '${operation}: ${overflow_run.output}'
+	}
+
+	warning_source := os.join_path(root, 'warning.v')
+	os.write_file(warning_source, '@[deprecated]\nfn old() {}\n\nfn main() {\n\told()\n}\n')!
+	warning_output := os.join_path(root, 'warning')
+	warning_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-o', warning_output,
+		warning_source], driver_review_environment())
+	assert warning_compile.exit_code == 0, warning_compile.output
+	assert warning_compile.output.contains('warning:'), warning_compile.output
+	warning_error := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-W', '-o',
+		warning_output, warning_source], driver_review_environment())
+	assert warning_error.exit_code != 0, warning_error.output
+	assert warning_error.output.contains('error:'), warning_error.output
+	assert warning_error.output.contains('has been deprecated'), warning_error.output
+
+	parser_warning_source := os.join_path(root, 'parser_warning.v')
+	os.write_file(parser_warning_source, 'fn main() {\n\t_ := typeof(1)\n}\n')!
+	parser_warning_output := os.join_path(root, 'parser_warning')
+	parser_warning := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-o',
+		parser_warning_output, parser_warning_source], driver_review_environment())
+	assert parser_warning.exit_code == 0, parser_warning.output
+	assert parser_warning.output.contains('warning:'), parser_warning.output
+	parser_warning_error := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-W', '-o',
+		parser_warning_output, parser_warning_source], driver_review_environment())
+	assert parser_warning_error.exit_code != 0, parser_warning_error.output
+	assert parser_warning_error.output.contains('error:'), parser_warning_error.output
+	assert parser_warning_error.output.contains('use e.g. `typeof(expr).name`'), parser_warning_error.output
+
+	notice_source := os.join_path(root, 'notice.v')
+	os.write_file(notice_source, 'fn unused() {}\n\nfn main() {}\n')!
+	notice_output := os.join_path(root, 'notice')
+	notice_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-o', notice_output,
+		notice_source], driver_review_environment())
+	assert notice_compile.exit_code == 0, notice_compile.output
+	assert notice_compile.output.contains('notice:'), notice_compile.output
+	notice_error := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-N', '-o',
+		notice_output, notice_source], driver_review_environment())
+	assert notice_error.exit_code != 0, notice_error.output
+	assert notice_error.output.contains('error:'), notice_error.output
+	assert notice_error.output.contains('unused function'), notice_error.output
 }

@@ -223,6 +223,12 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences) {
 		return
 	}
 	if !is_ownership_relevant_command(command, prefs) {
+		// `-autofree` is also an established option for command modes such as
+		// `run` and `test`. Leave modes that do not compile directly on the regular
+		// command path instead of rejecting them in the ownership dispatcher.
+		if is_autofree && !is_ownership {
+			return
+		}
 		mode := if is_autofree { '-autofree' } else { '-ownership' }
 		eprintln('v: `${mode}` currently supports direct compilation only. Use `v ${mode} module_dir`.')
 		exit(1)

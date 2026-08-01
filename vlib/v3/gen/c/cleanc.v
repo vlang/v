@@ -141,6 +141,7 @@ mut:
 	test_run_only                  []string
 	print_fn_names                 []string
 	is_prod                        bool
+	check_overflow                 bool
 	is_shared                      bool
 	object_file_mode               bool
 	coverage_dir                   string
@@ -465,6 +466,11 @@ pub fn (mut g FlatGen) set_ccompiler(name string) {
 // set_prod controls production-only code generation such as removing assertions.
 pub fn (mut g FlatGen) set_prod(enabled bool) {
 	g.is_prod = enabled
+}
+
+// set_check_overflow enables runtime checks for integer addition, subtraction, and multiplication.
+pub fn (mut g FlatGen) set_check_overflow(enabled bool) {
+	g.check_overflow = enabled
 }
 
 // set_prealloc marks the build as using the -prealloc bump arena.
@@ -10697,6 +10703,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
+			if g.gen_checked_integer_infix(node, lhs_id, rhs_id, lhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			lhs_node := g.a.nodes[int(lhs_id)]
 			rhs_node := g.a.nodes[int(rhs_id)]
 			if node.op in [.eq, .ne, .lt, .gt, .le, .ge]
@@ -18099,6 +18109,106 @@ fn integer_sign_kind(typ types.Type) int {
 		return if typ.props.has(.unsigned) { 1 } else { -1 }
 	}
 	return 0
+}
+
+struct CheckedIntegerBounds {
+	is_unsigned bool
+	min_value   string
+	max_value   string
+}
+
+fn checked_integer_bounds(typ types.Type) ?CheckedIntegerBounds {
+	if typ is types.Alias {
+		return checked_integer_bounds(typ.base_type)
+	}
+	if typ is types.Rune {
+		return CheckedIntegerBounds{
+			is_unsigned: true
+			max_value:   'UINT32_MAX'
+		}
+	}
+	if typ is types.ISize {
+		return CheckedIntegerBounds{
+			min_value: '(-((isize)(((usize)-1) >> 1)) - 1)'
+			max_value: '((isize)(((usize)-1) >> 1))'
+		}
+	}
+	if typ is types.USize {
+		return CheckedIntegerBounds{
+			is_unsigned: true
+			max_value:   '((usize)-1)'
+		}
+	}
+	if typ !is types.Primitive || !typ.props.has(.integer) {
+		return none
+	}
+	bits := if typ.size == 0 { 32 } else { int(typ.size) }
+	if typ.props.has(.unsigned) {
+		max_value := match bits {
+			8 { 'UINT8_MAX' }
+			16 { 'UINT16_MAX' }
+			32 { 'UINT32_MAX' }
+			64 { 'UINT64_MAX' }
+			else { return none }
+		}
+		return CheckedIntegerBounds{
+			is_unsigned: true
+			max_value:   max_value
+		}
+	}
+	min_value, max_value := match bits {
+		8 { 'INT8_MIN', 'INT8_MAX' }
+		16 { 'INT16_MIN', 'INT16_MAX' }
+		32 { 'INT32_MIN', 'INT32_MAX' }
+		64 { 'INT64_MIN', 'INT64_MAX' }
+		else { return none }
+	}
+	return CheckedIntegerBounds{
+		min_value: min_value
+		max_value: max_value
+	}
+}
+
+fn (mut g FlatGen) gen_checked_integer_infix(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type) bool {
+	if !g.check_overflow || node.op !in [.plus, .minus, .mul] {
+		return false
+	}
+	bounds := checked_integer_bounds(lhs_type) or { return false }
+	c_type := g.value_c_type(lhs_type)
+	if c_type.len == 0 {
+		return false
+	}
+	lhs_tmp := g.tmp_name()
+	rhs_tmp := g.tmp_name()
+	result_tmp := g.tmp_name()
+	g.write('({ ${c_type} ${lhs_tmp} = (${c_type})(')
+	g.gen_expr(lhs_id)
+	g.write('); ${c_type} ${rhs_tmp} = (${c_type})(')
+	g.gen_expr(rhs_id)
+	g.write('); if (')
+	if bounds.is_unsigned {
+		match node.op {
+			.plus { g.write('${lhs_tmp} > (${bounds.max_value}) - ${rhs_tmp}') }
+			.minus { g.write('${lhs_tmp} < ${rhs_tmp}') }
+			.mul { g.write('${rhs_tmp} != 0 && ${lhs_tmp} > (${bounds.max_value}) / ${rhs_tmp}') }
+			else {}
+		}
+	} else {
+		match node.op {
+			.plus {
+				g.write('(${rhs_tmp} > 0 && ${lhs_tmp} > (${bounds.max_value}) - ${rhs_tmp}) || (${rhs_tmp} < 0 && ${lhs_tmp} < (${bounds.min_value}) - ${rhs_tmp})')
+			}
+			.minus {
+				g.write('(${rhs_tmp} < 0 && ${lhs_tmp} > (${bounds.max_value}) + ${rhs_tmp}) || (${rhs_tmp} > 0 && ${lhs_tmp} < (${bounds.min_value}) + ${rhs_tmp})')
+			}
+			.mul {
+				g.write('(${lhs_tmp} > 0 ? (${rhs_tmp} > 0 ? ${lhs_tmp} > (${bounds.max_value}) / ${rhs_tmp} : ${rhs_tmp} < (${bounds.min_value}) / ${lhs_tmp}) : (${lhs_tmp} < 0 ? (${rhs_tmp} > 0 ? ${lhs_tmp} < (${bounds.min_value}) / ${rhs_tmp} : (${rhs_tmp} != 0 && ${lhs_tmp} < (${bounds.max_value}) / ${rhs_tmp})) : false))')
+			}
+			else {}
+		}
+	}
+	g.write(') v_panic(_S("integer overflow")); ${c_type} ${result_tmp} = (${c_type})(${lhs_tmp} ${g.op_str(node.op)} ${rhs_tmp}); ${result_tmp}; })')
+	return true
 }
 
 fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {

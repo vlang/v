@@ -118,7 +118,31 @@ fn test_macos_v3_forwards_driver_defaults_once() {
 		assert already_explicit.count(it == '-silent') == 1
 		assert already_explicit.count(it == '-skip-running') == 1
 		assert already_explicit.count(it == macos_v3_compat_c99_flag) == 1
+
+		prefs.backend = .js_node
+		inferred_js := macos_v3_forwarded_args(prefs, ['-o', 'app.js', 'app.v'])
+		assert inferred_js[..2] == ['-nocache', '-no-memory-limit']
+		backend_index := inferred_js.index('-b')
+		assert backend_index >= 0
+		assert inferred_js[backend_index + 1] == 'js_node'
+		prefs.backend_set_by_flag = true
+		explicit_js := macos_v3_forwarded_args(prefs, ['-b', 'js_browser', '-o', 'app.js', 'app.v'])
+		assert explicit_js.count(it in ['-b', '-backend']) == 1
 	}
+}
+
+fn test_autofree_non_direct_commands_stay_on_the_standard_command_path() {
+	mut prefs := &pref.Preferences{
+		path:   'app.v'
+		is_run: true
+	}
+	assert !is_ownership_relevant_command('run', prefs)
+	assert !is_ownership_relevant_command('test', prefs)
+	prefs.autofree = true
+	assert !is_macos_v3_relevant_command('run', prefs)
+	prefs.autofree = false
+	prefs.is_run = false
+	assert is_ownership_relevant_command('app.v', prefs)
 }
 
 fn test_macos_v3_child_environment_preserves_caller_without_fallback_state() {
