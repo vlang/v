@@ -14,7 +14,6 @@ const struct_fields_depth_cutoff_limit = 100
 const generic_fn_inst_cutoff_limit = 256
 const generic_inst_name_len_cutoff_limit = 1_024
 
-
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
@@ -4067,7 +4066,8 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Chan {
-			unwrap_typ := t.unwrap_generic_type_ex_with_depth(ts.info.elem_type, generic_names, concrete_types, recheck_concrete_types, depth_guard)
+			unwrap_typ := t.unwrap_generic_type_ex_with_depth(ts.info.elem_type, generic_names,
+				concrete_types, recheck_concrete_types, depth_guard)
 			idx := t.find_or_register_chan(unwrap_typ, unwrap_typ.nr_muls() > 0)
 			if idx <= 0 {
 				return typ
@@ -4152,8 +4152,8 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 					if !t_typ.has_flag(.generic) {
 						t_concrete_types << t_typ
 					} else {
-						t_concrete_types << t.unwrap_generic_type_ex_with_depth(t_typ, generic_names,
-							concrete_types, recheck_concrete_types, depth_guard)
+						t_concrete_types << t.unwrap_generic_type_ex_with_depth(t_typ,
+							generic_names, concrete_types, recheck_concrete_types, depth_guard)
 					}
 				}
 			}
@@ -5063,22 +5063,29 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
 						mut variants := parent_info.variants.clone()
-						
+
 						// Prevent circular sum types from causing infinite loops
 						for variant in variants {
-							mut sym_name := t.sym(variant).name.trim_string_left(t.sym(variant).mod + '.')
-							if sym_name.contains('[') { sym_name = sym_name.all_before('[') }
-							else if sym_name.contains('<') { sym_name = sym_name.all_before('<') }
-							
+							mut sym_name := t.sym(variant).name.trim_string_left(
+								t.sym(variant).mod + '.')
+							if sym_name.contains('[') {
+								sym_name = sym_name.all_before('[')
+							} else if sym_name.contains('<') {
+								sym_name = sym_name.all_before('<')
+							}
+
 							mut parent_name := parent.name.trim_string_left(parent.mod + '.')
-							if parent_name.contains('[') { parent_name = parent_name.all_before('[') }
-							else if parent_name.contains('<') { parent_name = parent_name.all_before('<') }
-							
+							if parent_name.contains('[') {
+								parent_name = parent_name.all_before('[')
+							} else if parent_name.contains('<') {
+								parent_name = parent_name.all_before('<')
+							}
+
 							if sym_name == parent_name {
-								return // Abort early for this sum type
+								return
 							}
 						}
-						
+
 						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.convert_generic_type(fields[i].typ, generic_names,
