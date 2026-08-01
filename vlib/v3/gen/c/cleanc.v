@@ -4403,6 +4403,9 @@ fn c_header_objective_c_integer_value(raw string) ?i64 {
 	if clean.len == 0 {
 		return none
 	}
+	if value := c_header_objective_c_character_value(clean) {
+		return value
+	}
 	mut i := 0
 	mut negative := false
 	if clean[i] in [`+`, `-`] {
@@ -4452,6 +4455,87 @@ fn c_header_objective_c_integer_value(raw string) ?i64 {
 		return none
 	}
 	return if negative { -value } else { value }
+}
+
+fn c_header_objective_c_character_value(raw string) ?i64 {
+	mut i := 0
+	if raw.starts_with('u8') {
+		i = 2
+	} else if raw.len > 0 && raw[0] in [`L`, `u`, `U`] {
+		i = 1
+	}
+	if i >= raw.len || raw[i] != `'` {
+		return none
+	}
+	i++
+	if i >= raw.len {
+		return none
+	}
+	mut value := i64(0)
+	if raw[i] != `\\` {
+		value = i64(raw[i])
+		i++
+	} else {
+		i++
+		if i >= raw.len {
+			return none
+		}
+		escape := raw[i]
+		if escape >= `0` && escape <= `7` {
+			mut digits := 0
+			for i < raw.len && digits < 3 && raw[i] >= `0` && raw[i] <= `7` {
+				value = value * 8 + i64(raw[i] - `0`)
+				i++
+				digits++
+			}
+		} else if escape == `x` {
+			i++
+			mut digits := 0
+			for i < raw.len {
+				c := raw[i]
+				mut digit := -1
+				if c >= `0` && c <= `9` {
+					digit = int(c - `0`)
+				} else if c >= `a` && c <= `f` {
+					digit = int(c - `a`) + 10
+				} else if c >= `A` && c <= `F` {
+					digit = int(c - `A`) + 10
+				}
+				if digit < 0 {
+					break
+				}
+				if value > (i64(0x7fffffffffffffff) - i64(digit)) / 16 {
+					return none
+				}
+				value = value * 16 + i64(digit)
+				i++
+				digits++
+			}
+			if digits == 0 {
+				return none
+			}
+		} else {
+			value = match escape {
+				`a` { i64(7) }
+				`b` { i64(8) }
+				`f` { i64(12) }
+				`n` { i64(10) }
+				`r` { i64(13) }
+				`t` { i64(9) }
+				`v` { i64(11) }
+				`\\` { i64(`\\`) }
+				`'` { i64(`'`) }
+				`"` { i64(`"`) }
+				`?` { i64(`?`) }
+				else { return none }
+			}
+			i++
+		}
+	}
+	if i >= raw.len || raw[i] != `'` || i + 1 != raw.len {
+		return none
+	}
+	return value
 }
 
 fn c_header_condition_without_outer_parens(expression string) string {
@@ -4793,6 +4877,71 @@ fn c_header_bracket_has_objective_c_message(text string, start int) bool {
 	return false
 }
 
+fn c_header_has_objective_c_qualified_type(text string, token string, token_end int) bool {
+	open := c_header_skip_space_and_comments(text, token_end, text.len)
+	if open >= text.len || text[open] != `<` {
+		return false
+	}
+	mut i := open + 1
+	mut depth := 1
+	mut identifiers := 0
+	mut has_pointer_argument := false
+	mut has_object_keyword := false
+	mut close := -1
+	for i < text.len {
+		next := c_header_skip_space_and_comments(text, i, text.len)
+		if next != i {
+			i = next
+			continue
+		}
+		if c_identifier_start(text[i]) {
+			start := i
+			i++
+			for i < text.len && c_identifier_continue(text[i]) {
+				i++
+			}
+			identifiers++
+			if text[start..i] in ['id', 'Class'] {
+				has_object_keyword = true
+			}
+			continue
+		}
+		if text[i] == `<` {
+			depth++
+			i++
+			continue
+		}
+		if text[i] == `>` {
+			depth--
+			if depth == 0 {
+				close = i
+				break
+			}
+			i++
+			continue
+		}
+		if text[i] == `*` {
+			has_pointer_argument = true
+			i++
+			continue
+		}
+		if text[i] == `,` {
+			i++
+			continue
+		}
+		return false
+	}
+	if close < 0 || identifiers == 0 {
+		return false
+	}
+	if token in ['id', 'Class'] {
+		return true
+	}
+	after := c_header_skip_space_and_comments(text, close + 1, text.len)
+	return token.len > 0 && token[0] >= `A` && token[0] <= `Z`
+		&& (has_pointer_argument || has_object_keyword) && after < text.len && text[after] == `*`
+}
+
 fn c_header_text_has_objective_c_tokens(text string) bool {
 	mut i := 0
 	mut previous_can_end_expression := false
@@ -4889,6 +5038,9 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 		}
 		token := text[start..i]
 		if token == '__bridge' {
+			return true
+		}
+		if c_header_has_objective_c_qualified_type(text, token, i) {
 			return true
 		}
 		previous_can_end_expression = token !in ['return', 'throw', 'case']
