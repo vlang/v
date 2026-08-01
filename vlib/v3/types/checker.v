@@ -5349,12 +5349,7 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 	parsed_type := tc.parse_scope_param_type(p.typ)
 	typ := if p.is_mut { mut_param_semantic_type(parsed_type) } else { parsed_type }
 	owner := tc.cur_scope.insert_with_owner(p.value, typ)
-	if unalias_type(typ) is Pointer && owner.storage_key().len > 0 {
-		// Distinct parameter bindings may receive the same pointer at a call site.
-		tc.fn_context.pointer_binding_value_keys[owner.storage_key()] = [
-			pointer_binding_parameter_value(owner.storage_key()),
-		]
-	}
+	tc.initialize_pointer_parameter_binding(owner, typ)
 	if p.is_mut {
 		tc.fn_context.mut_param_base_types[p.value] = if p.op == .amp {
 			typ
@@ -6334,6 +6329,7 @@ fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) ScopeBindingOw
 	v := tc.a.nodes[int(id)]
 	if v.kind == .ident && v.value.len > 0 {
 		owner := tc.cur_scope.insert_with_owner(v.value, typ)
+		tc.initialize_unknown_pointer_binding(owner, typ)
 		tc.remember_expr_type(id, typ)
 		return owner
 	}

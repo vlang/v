@@ -23,6 +23,25 @@ fn pointer_binding_global_value(storage_key string) string {
 	return '${pointer_binding_global_value_prefix}${storage_key}'
 }
 
+fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingOwner, typ Type) {
+	key := owner.storage_key()
+	if unalias_type(typ) is Pointer && key.len > 0 {
+		// Distinct parameter bindings may receive the same pointer at a call site.
+		tc.fn_context.pointer_binding_value_keys[key] = [
+			pointer_binding_parameter_value(key),
+		]
+	}
+}
+
+fn (mut tc TypeChecker) initialize_unknown_pointer_binding(owner ScopeBindingOwner, typ Type) {
+	key := owner.storage_key()
+	if unalias_type(typ) is Pointer && key.len > 0 {
+		tc.fn_context.pointer_binding_value_keys[key] = [
+			pointer_binding_unknown_value(key),
+		]
+	}
+}
+
 fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if loop_kind == 'values' {
 		tc.check_comptime_static_value_metadata_if(node, var_name, loop_kind, field_cases,
@@ -6977,7 +6996,8 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 				if tc.valid_node_id(var_id) {
 					var_node := tc.a.nodes[int(var_id)]
 					if var_node.kind == .ident && var_node.value.len > 0 {
-						tc.cur_scope.insert(var_node.value, elem_type)
+						owner := tc.cur_scope.insert_with_owner(var_node.value, elem_type)
+						tc.initialize_unknown_pointer_binding(owner, elem_type)
 						tc.remember_expr_type(var_id, elem_type)
 						$if ownership ? {
 							tc.ownership_note_binding(var_node.value, elem_type, var_id)
@@ -7011,6 +7031,8 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 					if lhs_key.len > 0 {
 						tc.smartcasts.delete(lhs_key)
 					}
+					tc.update_pointer_binding_alias_assignment(var_id, recv_id, lhs_type, .assign,
+						tc.fn_context.pointer_binding_value_keys)
 				}
 			}
 			body_start = 2
@@ -9775,6 +9797,7 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 				unknown_type('lambda parameter `${child.value}`')
 			}
 			owner := tc.cur_scope.insert_with_owner(child.value, param_type)
+			tc.initialize_pointer_parameter_binding(owner, param_type)
 			if child.is_mut {
 				tc.fn_context.mut_param_base_types[child.value] = mut_param_base_type(param_type)
 				tc.fn_context.mut_param_owners[child.value] = owner
