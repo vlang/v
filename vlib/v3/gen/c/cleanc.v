@@ -4615,8 +4615,20 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 			continue
 		}
 		if text[i] == `@` {
-			if i + 1 < text.len && text[i + 1] == `"` {
-				return true
+			if i + 1 < text.len {
+				next := text[i + 1]
+				if next in [`"`, `'`, `[`, `{`, `(`] || (next >= `0` && next <= `9`)
+					|| (next in [`+`, `-`] && i + 2 < text.len && text[i + 2] >= `0`
+					&& text[i + 2] <= `9`) {
+					return true
+				}
+				for literal in ['YES', 'NO', 'true', 'false'] {
+					end := i + 1 + literal.len
+					if end <= text.len && text[i + 1..end] == literal
+						&& (end == text.len || !c_identifier_continue(text[end])) {
+						return true
+					}
+				}
 			}
 			for keyword in ['interface', 'implementation', 'class', 'protocol', 'property',
 				'synthesize', 'dynamic', 'selector', 'encode', 'defs', 'compatibility_alias',
