@@ -26,8 +26,12 @@ fn test_conflicting_c_fn_redeclarations_across_modules_are_reported_at_declarati
 	}
 	result := os.execute('${c_fn_redeclaration_vexe} -check ${os.quoted_path(root)}')
 	assert result.exit_code != 0, result.output
-	assert result.output.contains('moda/moda.v:3:') || result.output.contains('modb/modb.v:3:')
 	assert result.output.contains('C function `C.getpid` was already declared with a different signature')
+	// the error points at the conflicting declaration and references where the other
+	// signature was defined, so both module locations appear in the output
+	assert result.output.contains('moda/moda.v:3:'), result.output
+	assert result.output.contains('modb/modb.v:3:'), result.output
+	assert result.output.contains('in module `moda`') || result.output.contains('in module `modb`'), result.output
 	assert !result.output.contains('cannot use `u64` as `int`'), result.output
 }
 
