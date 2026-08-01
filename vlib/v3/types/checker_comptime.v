@@ -13847,6 +13847,12 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_lhs_types := []Type{}
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
+	is_cross_assignment := node.op == .assign && node.children_count > 2
+	pointer_alias_assignment_rhs := if is_cross_assignment {
+		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	} else {
+		map[string][]string{}
+	}
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
@@ -14242,7 +14248,13 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.track_variadic_fn_value_local(lhs_id, rhs_id)
 		}
 		tc.update_unsafe_reference_alias_assignment(lhs_id, rhs_id, expected_type, node.op)
-		tc.update_pointer_binding_alias_assignment(lhs_id, rhs_id, expected_type, node.op)
+		rhs_alias_state := if is_cross_assignment {
+			pointer_alias_assignment_rhs
+		} else {
+			tc.fn_context.pointer_binding_value_keys
+		}
+		tc.update_pointer_binding_alias_assignment(lhs_id, rhs_id, expected_type, node.op,
+			rhs_alias_state)
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
 			lhs := tc.a.node(lhs_id)
@@ -14289,7 +14301,7 @@ fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.Nod
 	}
 }
 
-fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op) {
+fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op, rhs_alias_state map[string][]string) {
 	if op != .assign || unalias_type(lhs_type) !is Pointer {
 		return
 	}
@@ -14298,7 +14310,11 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 		return
 	}
 	owner := tc.cur_scope.lookup_owner(lhs.value) or { return }
-	tc.record_pointer_binding_alias(owner, rhs_id, lhs_type)
+	left_key := owner.storage_key()
+	values := tc.pointer_binding_alias_values(left_key, rhs_id, lhs_type, rhs_alias_state) or {
+		return
+	}
+	tc.fn_context.pointer_binding_value_keys[left_key] = values
 }
 
 fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.NodeId) {
@@ -14328,51 +14344,50 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 	if left_key.len == 0 {
 		return
 	}
+	values := tc.pointer_binding_alias_values(left_key, rhs_id, typ,
+		tc.fn_context.pointer_binding_value_keys) or { return }
+	tc.fn_context.pointer_binding_value_keys[left_key] = values
+}
+
+fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.NodeId, typ Type, rhs_alias_state map[string][]string) ?[]string {
+	if unalias_type(typ) !is Pointer || left_key.len == 0 {
+		return none
+	}
 	clean_rhs_id := tc.unwrap_paren_expr_id(rhs_id)
 	rhs := tc.a.node(clean_rhs_id)
 	if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
 		target_id := tc.unwrap_paren_expr_id(tc.a.child(rhs, 0))
 		target := tc.a.node(target_id)
 		if target.kind == .ident && target.value != '_' {
-			target_owner := tc.cur_scope.lookup_owner(target.value) or { return }
+			target_owner := tc.cur_scope.lookup_owner(target.value) or { return none }
 			target_key := target_owner.storage_key()
 			if target_key.len > 0 {
 				// The address identifies the binding's storage, even when that binding
 				// itself contains a pointer with a different pointee identity.
-				tc.fn_context.pointer_binding_value_keys[left_key] = [target_key]
-				return
+				return [target_key]
 			}
 		}
 		if target.kind == .struct_init {
-			tc.fn_context.pointer_binding_value_keys[left_key] = [
+			return [
 				'@value:${int(clean_rhs_id)}',
 			]
-		} else {
-			tc.fn_context.pointer_binding_value_keys[left_key] = [
-				pointer_binding_unknown_value(left_key),
-			]
 		}
-		return
+		return [pointer_binding_unknown_value(left_key)]
 	}
 	if rhs.kind == .ident && rhs.value != '_' {
-		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return }
+		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return none }
 		right_key := rhs_owner.storage_key()
 		if right_key.len > 0 {
-			tc.fn_context.pointer_binding_value_keys[left_key] =
-				tc.pointer_binding_values(right_key).clone()
-			return
+			return (rhs_alias_state[right_key] or { [right_key] }).clone()
 		}
 	}
 	if rhs.kind == .nil_literal {
-		tc.fn_context.pointer_binding_value_keys[left_key] = [
+		return [
 			'@value:${int(clean_rhs_id)}',
 		]
-		return
 	}
 	// Any other pointer-producing expression may return or select an existing pointer.
-	tc.fn_context.pointer_binding_value_keys[left_key] = [
-		pointer_binding_unknown_value(left_key),
-	]
+	return [pointer_binding_unknown_value(left_key)]
 }
 
 fn (tc &TypeChecker) pointer_binding_values(key string) []string {

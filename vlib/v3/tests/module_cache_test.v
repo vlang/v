@@ -2038,7 +2038,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '73'
 }
 
-fn test_cached_native_inactive_definition_keeps_generated_prototype() {
+fn test_cached_native_inactive_definition_uses_include_site_macros() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_native_inactive_definition_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -2063,7 +2063,7 @@ fn test_cached_native_inactive_definition_keeps_generated_prototype() {
 #flag -DUSE_BUNDLED=0
 #flag -L@DIR
 #flag -lconditionalapi
-#include "@DIR/fallback.c"
+#include "@DIR/a_root.c"
 
 fn C.cached_conditional_api() int
 
@@ -2071,7 +2071,11 @@ pub fn value() int {
 	return C.cached_conditional_api()
 }
 ')
-	write_module_cache_file(root, 'wrapper/fallback.c', '#if USE_BUNDLED
+	write_module_cache_file(root, 'wrapper/a_root.c', '#include "z_api.h"
+#undef USE_BUNDLED
+#define USE_BUNDLED 1
+')
+	write_module_cache_file(root, 'wrapper/z_api.h', '#if USE_BUNDLED
 static int cached_conditional_api(void) {
 	return 100;
 }

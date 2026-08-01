@@ -812,6 +812,9 @@ fn test_nested_shared_field_lock_rejects_aliased_index_mutation() {
 
 fn test_nested_shared_field_lock_rejects_pointer_alias_mutation() {
 	v3_bin := build_v3_review_transform()
+	run_bad(v3_bin, 'nested_shared_field_lock_cross_assignment_alias_mutation',
+		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\talias, unrelated = unrelated, alias\n\tlock holder.current.state {\n\t\tunrelated.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n',
+		'may alias locked shared value `holder.current.state`')
 	run_bad(v3_bin, 'nested_shared_field_lock_pointer_alias_mutation',
 		'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\tlock holder.current.state {\n\t\talias.current = &second\n\t\tholder.current.state.value = 7\n\t}\n}\n',
 		'may alias locked shared value `holder.current.state`')

@@ -2040,9 +2040,10 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 		}
 		mut declared_functions := state.native_declared_functions[module_name].clone()
 		mut declaration_macros := cache_local_c_flag_macros(c_flags)
-		for path in state.module_external_inputs[raw_module_name] or { []string{} } {
-			source := os.read_file(path) or { continue }
-			active_source := cache_c_source_definitely_active_code(source, mut declaration_macros)
+		mut declaration_active_paths := map[string]bool{}
+		for root in roots {
+			active_source := cache_c_source_definitely_active_code_for_path(root, allowed_paths, mut
+				declaration_active_paths, mut declaration_macros, false)
 			for name, declared in modulecache.c_source_function_identifiers(active_source) {
 				if declared {
 					declared_functions[name] = true
@@ -2393,6 +2394,25 @@ fn cache_local_c_directive(line string) (string, string) {
 }
 
 fn cache_c_source_definitely_active_code(source string, mut macros map[string]V3CacheLocalCMacro) string {
+	mut active_paths := map[string]bool{}
+	return cache_c_source_definitely_active_code_rec(source, '', map[string]bool{}, mut
+		active_paths, mut macros, false)
+}
+
+fn cache_c_source_definitely_active_code_for_path(path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) string {
+	real_path := os.real_path(path)
+	if !allowed_paths[real_path] || active_paths[real_path] {
+		return ''
+	}
+	source := os.read_file(real_path) or { return '' }
+	active_paths[real_path] = true
+	result := cache_c_source_definitely_active_code_rec(source, real_path, allowed_paths, mut
+		active_paths, mut macros, ambient_ambiguous)
+	active_paths.delete(real_path)
+	return result
+}
+
+fn cache_c_source_definitely_active_code_rec(source string, source_path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) string {
 	mut out := strings.new_builder(source.len)
 	mut conditionals := []V3CacheLocalCConditional{}
 	for line in source.split_into_lines() {
@@ -2438,7 +2458,17 @@ fn cache_c_source_definitely_active_code(source string, mut macros map[string]V3
 			out.writeln('')
 			continue
 		}
-		ambiguous := conditionals.any(it.ambiguous)
+		ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
+		if source_path.len > 0 && directive in ['include', 'import'] {
+			if include_path := cache_local_c_include_path(line, source_path, macros) {
+				real_include := os.real_path(include_path)
+				if allowed_paths[real_include] {
+					out.write_string(cache_c_source_definitely_active_code_for_path(real_include,
+						allowed_paths, mut active_paths, mut macros, ambiguous))
+					continue
+				}
+			}
+		}
 		if directive in ['define', 'undef'] {
 			cache_record_local_c_include_macro(directive, arg, ambiguous, mut macros)
 		}

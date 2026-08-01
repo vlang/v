@@ -1,5 +1,7 @@
 module driver
 
+import os
+
 fn test_cache_function_reference_counts_scans_source_once() {
 	candidates := {
 		'alpha__one': true
@@ -51,6 +53,33 @@ fn test_cache_c_source_definitely_active_code_filters_conditional_definitions() 
 	assert unknown.contains('always_active')
 	assert !unknown.contains('bundled_api')
 	assert !unknown.contains('library_api')
+}
+
+fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
+	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
+	os.rmdir_all(root_dir) or {}
+	os.mkdir_all(root_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root_dir) or {}
+	}
+	root_path := os.join_path(root_dir, 'a_root.c')
+	header_path := os.join_path(root_dir, 'z_api.h')
+	os.write_file(root_path, '#include "z_api.h"\n#undef FEATURE\n#define FEATURE 1\n') or {
+		panic(err)
+	}
+	os.write_file(header_path, '#if FEATURE\nstatic int bundled_api(void) { return 2; }\n#endif\n') or {
+		panic(err)
+	}
+	allowed_paths := {
+		os.real_path(root_path):   true
+		os.real_path(header_path): true
+	}
+	mut active_paths := map[string]bool{}
+	mut macros := cache_local_c_flag_macros(['-DFEATURE=0'])
+	active := cache_c_source_definitely_active_code_for_path(root_path, allowed_paths, mut
+		active_paths, mut macros, false)
+	assert !active.contains('bundled_api')
+	assert macros['FEATURE'].truth == 1
 }
 
 fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {
