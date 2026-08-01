@@ -116,6 +116,16 @@ fn test_function_identifiers_unwrap_parenthesized_declarator() {
 	assert !nested_identifiers['int']
 }
 
+fn test_function_identifiers_recognize_function_pointer_return() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('static int (*api(void))(int) {\n\treturn 0;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['int']
+	assert c_static_declaration_head_is_function('static int (*api(void))(int)')
+	assert !c_static_declaration_head_is_function('static int (*callback)(int)')
+}
+
 fn test_macro_identifiers_referencing_static_helpers() {
 	wrappers := c_sources_macro_identifiers_referencing([
 		'#define CALL_HELPER() helper()

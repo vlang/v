@@ -2335,6 +2335,14 @@ fn c_parenthesized_function_declarator_identifier(head string, open int, close i
 		return none
 	}
 	inner := c_unwrap_redundant_declarator_parentheses(head[open + 1..close])
+	if inner.starts_with('*') {
+		identifier := c_function_declaration_identifier(inner) or { return none }
+		tail := trim_leading_c_comments(head[close + 1..].trim_space())
+		if !tail.starts_with('(') {
+			return none
+		}
+		return identifier
+	}
 	if inner.len == 0 || !((inner[0] >= `a` && inner[0] <= `z`)
 		|| (inner[0] >= `A` && inner[0] <= `Z`) || inner[0] == `_`) {
 		return none
@@ -3379,8 +3387,34 @@ fn c_contains_top_level_parenthesized_pointer_declarator(value string) bool {
 			pos++
 		}
 		if pos < value.len && value[pos] == `*` {
+			if c_parenthesized_pointer_declarator_is_function(value, i) {
+				continue
+			}
 			return true
 		}
+	}
+	return false
+}
+
+fn c_parenthesized_pointer_declarator_is_function(value string, open int) bool {
+	mut depth := 0
+	for i in open .. value.len {
+		if value[i] == `(` {
+			depth++
+			continue
+		}
+		if value[i] != `)` {
+			continue
+		}
+		depth--
+		if depth != 0 {
+			continue
+		}
+		inner := value[open + 1..i]
+		if _ := c_function_declaration_identifier(inner) {
+			return true
+		}
+		return false
 	}
 	return false
 }

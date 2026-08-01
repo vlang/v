@@ -5033,6 +5033,41 @@ fn c_header_has_objective_c_qualified_type(text string, token string, token_end 
 		&& text[after] == `*`
 }
 
+fn c_header_token_is_on_directive_line(text string, start int) bool {
+	mut line_start := start
+	for line_start > 0 && text[line_start - 1] != `\n` {
+		line_start--
+	}
+	for line_start < start && text[line_start].is_space() {
+		line_start++
+	}
+	return line_start < start && text[line_start] == `#`
+}
+
+fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int) bool {
+	if token !in ['id', 'instancetype'] || c_header_token_is_on_directive_line(text, token_start) {
+		return false
+	}
+	mut after := c_header_skip_space_and_comments(text, token_end, text.len)
+	if after >= text.len {
+		return false
+	}
+	if c_identifier_start(text[after]) {
+		return true
+	}
+	if text[after] == `*` {
+		for after < text.len && text[after] == `*` {
+			after = c_header_skip_space_and_comments(text, after + 1, text.len)
+		}
+		return after < text.len && c_identifier_start(text[after])
+	}
+	if text[after] != `(` {
+		return false
+	}
+	after = c_header_skip_space_and_comments(text, after + 1, text.len)
+	return after < text.len && text[after] == `*`
+}
+
 fn c_header_text_has_objective_c_tokens(text string) bool {
 	mut i := 0
 	mut previous_can_end_expression := false
@@ -5129,6 +5164,9 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 		}
 		token := text[start..i]
 		if token == '__bridge' {
+			return true
+		}
+		if c_header_has_bare_objective_c_type(text, token, start, i) {
 			return true
 		}
 		if c_header_has_objective_c_qualified_type(text, token, i) {
