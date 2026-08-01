@@ -236,6 +236,8 @@ fn test_objective_c_header_detection() {
 	assert !c_header_text_needs_objective_c('#if __has_attribute(aligned)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('#if __has_attribute(__packed__)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
 	assert c_header_text_needs_objective_c('#if __has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#define __has_attribute(x) 0\n#if __has_attribute(aligned)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#define __has_attribute(x) 1\n#if __has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('#if __has_attribute(aligned) == 1\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('#if !__has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
 	assert c_header_text_needs_objective_c('#define IGNORE(...)\nIGNORE(typedef unsigned id);\nstatic inline id identity(id value) { return value; }\n')

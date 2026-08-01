@@ -23,6 +23,8 @@ const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'con
 	'deprecated', 'destructor', 'format', 'hot', 'malloc', 'may_alias', 'noinline', 'nonnull',
 	'noreturn', 'packed', 'pure', 'returns_nonnull', 'section', 'sentinel', 'unused', 'used',
 	'visibility', 'warn_unused_result', 'weak']
+const c_has_attribute_predicate = '__has_attribute'
+const c_has_attribute_override_key = '@function:__has_attribute'
 
 struct CHeaderTreeSize {
 mut:
@@ -3798,6 +3800,9 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 				defined.delete(macro_name)
 				undefined[macro_name] = true
 				macro_values.delete(macro_name)
+				if macro_name == c_has_attribute_predicate {
+					macro_values.delete(c_has_attribute_override_key)
+				}
 				if macro_name in c_objective_c_compatibility_qualifiers {
 					objective_c_compatibility_macros.delete(macro_name)
 				}
@@ -3813,7 +3818,17 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 				}
 				if is_function_like {
 					macro_values.delete(macro_name)
+					if macro_name == c_has_attribute_predicate {
+						macro_values[c_has_attribute_override_key] = if definition.contains('=') {
+							definition.all_after('=').trim_space()
+						} else {
+							'1'
+						}
+					}
 				} else {
+					if macro_name == c_has_attribute_predicate {
+						macro_values.delete(c_has_attribute_override_key)
+					}
 					macro_values[macro_name] = if definition.contains('=') {
 						definition.all_after('=').trim_space()
 					} else {
@@ -3934,13 +3949,30 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 								objective_c_compatibility_macros[macro_name] = true
 							}
 						}
-						if !macro_token.contains('(') && definition.len > macro_token.len {
-							macro_values[macro_name] = definition[macro_token.len..].trim_space()
+						if macro_token.contains('(') {
+							if macro_name == c_has_attribute_predicate {
+								macro_values[c_has_attribute_override_key] = if definition.len > macro_token.len {
+									definition[macro_token.len..].trim_space()
+								} else {
+									''
+								}
+							}
+						} else {
+							if macro_name == c_has_attribute_predicate {
+								macro_values.delete(c_has_attribute_override_key)
+							}
+							if definition.len > macro_token.len {
+								macro_values[macro_name] =
+									definition[macro_token.len..].trim_space()
+							}
 						}
 					} else {
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 						macro_values.delete(macro_name)
+						if macro_name == c_has_attribute_predicate {
+							macro_values.delete(c_has_attribute_override_key)
+						}
 						if macro_name in c_objective_c_compatibility_qualifiers {
 							objective_c_compatibility_macros.delete(macro_name)
 						}
@@ -3950,6 +3982,9 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
 					macro_values.delete(macro_name)
+					if macro_name == c_has_attribute_predicate {
+						macro_values.delete(c_has_attribute_override_key)
+					}
 					if macro_name in c_objective_c_compatibility_qualifiers {
 						objective_c_compatibility_macros.delete(macro_name)
 					}
@@ -4033,7 +4068,9 @@ fn c_header_condition_without_comments(raw string) string {
 
 fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
-	if active := c_header_objective_c_compiler_predicate_state(clean) {
+	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined,
+		uncertain, macro_values, strict_iso_mode, target)
+	{
 		return true, active
 	}
 	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
@@ -4130,8 +4167,8 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	return known, active
 }
 
-fn c_header_objective_c_compiler_predicate_state(clean string) ?bool {
-	predicate := '__has_attribute'
+fn c_header_objective_c_compiler_predicate_state(clean string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) ?bool {
+	predicate := c_has_attribute_predicate
 	if !clean.starts_with(predicate) {
 		return none
 	}
@@ -4141,6 +4178,26 @@ fn c_header_objective_c_compiler_predicate_state(clean string) ?bool {
 	}
 	attribute := rest[1..rest.len - 1].trim_space()
 	if attribute.len == 0 || c_header_struct_tag(attribute) != attribute {
+		return none
+	}
+	if predicate in uncertain || predicate in undefined {
+		return none
+	}
+	if predicate in defined {
+		replacement := macro_values[c_has_attribute_override_key] or { return none }
+		value :=
+			c_header_condition_without_outer_parens(c_header_condition_without_comments(replacement))
+		literal_known, literal_active := c_header_objective_c_integer_macro_state(value)
+		if literal_known {
+			return literal_active
+		}
+		if value.len > 0 && c_identifier_start(value[0]) && c_header_struct_tag(value) == value {
+			known, active := c_header_objective_c_macro_value_state(value, defined, undefined,
+				uncertain, macro_values, strict_iso_mode, target)
+			if known {
+				return active
+			}
+		}
 		return none
 	}
 	return attribute.trim('_') in c_common_c_attributes
@@ -4183,7 +4240,9 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 		return none
 	}
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
-	if active := c_header_objective_c_compiler_predicate_state(clean) {
+	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined,
+		uncertain, macro_values, strict_iso_mode, target)
+	{
 		return if active { i64(1) } else { i64(0) }
 	}
 	if value := c_header_objective_c_integer_value(clean) {
