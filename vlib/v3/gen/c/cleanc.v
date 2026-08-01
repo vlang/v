@@ -4012,6 +4012,16 @@ fn c_header_condition_without_comments(raw string) string {
 
 fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
+	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
+	if has_conditional {
+		known, active := c_header_objective_c_condition_state(condition, defined, undefined,
+			uncertain, macro_values, strict_iso_mode, target)
+		if !known {
+			return false, true
+		}
+		return c_header_objective_c_condition_state(if active { if_true } else { if_false },
+			defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+	}
 	or_parts := c_header_condition_top_level_parts(clean, '||')
 	if or_parts.len > 1 {
 		mut all_known := true
@@ -4130,6 +4140,17 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
 	if value := c_header_objective_c_integer_value(clean) {
 		return value
+	}
+	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
+	if has_conditional {
+		known, active := c_header_objective_c_condition_state(condition, defined, undefined,
+			uncertain, macro_values, strict_iso_mode, target)
+		if !known {
+			return none
+		}
+		return c_header_objective_c_integer_expression_value(if active { if_true } else { if_false },
+			defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth +
+			1)
 	}
 	operator_groups := [
 		['|'],
@@ -4560,6 +4581,70 @@ fn c_header_condition_without_outer_parens(expression string) string {
 		clean = clean[1..clean.len - 1].trim_space()
 	}
 	return clean
+}
+
+fn c_header_condition_top_level_conditional(expression string) (bool, string, string, string) {
+	mut paren_depth := 0
+	mut question := -1
+	mut nested_conditionals := 0
+	mut colon := -1
+	mut i := 0
+	for i < expression.len {
+		if expression[i] in [`"`, `'`] {
+			quote := expression[i]
+			i++
+			for i < expression.len {
+				if expression[i] == `\\` && i + 1 < expression.len {
+					i += 2
+					continue
+				}
+				i++
+				if expression[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if expression[i] == `(` {
+			paren_depth++
+			i++
+			continue
+		}
+		if expression[i] == `)` {
+			paren_depth--
+			i++
+			continue
+		}
+		if paren_depth != 0 {
+			i++
+			continue
+		}
+		if expression[i] == `?` {
+			if question < 0 {
+				question = i
+			} else {
+				nested_conditionals++
+			}
+		} else if expression[i] == `:` && question >= 0 {
+			if nested_conditionals > 0 {
+				nested_conditionals--
+			} else {
+				colon = i
+				break
+			}
+		}
+		i++
+	}
+	if question < 0 || colon < 0 {
+		return false, '', '', ''
+	}
+	condition := expression[..question].trim_space()
+	if_true := expression[question + 1..colon].trim_space()
+	if_false := expression[colon + 1..].trim_space()
+	if condition.len == 0 || if_true.len == 0 || if_false.len == 0 {
+		return false, '', '', ''
+	}
+	return true, condition, if_true, if_false
 }
 
 fn c_header_condition_top_level_parts(expression string, operator string) []string {

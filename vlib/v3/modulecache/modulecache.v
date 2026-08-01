@@ -2172,7 +2172,9 @@ fn c_function_declaration_identifier_is_ambiguous(head string, identifier string
 
 fn c_function_declaration_identifier(head string) ?string {
 	mut candidate := ''
+	mut candidate_tail_end := -1
 	mut paren_depth := 0
+	mut top_level_updates_candidate_tail := false
 	mut quote := u8(0)
 	mut escaped := false
 	mut block_comment := false
@@ -2225,6 +2227,7 @@ fn c_function_declaration_identifier(head string) ?string {
 		}
 		if c == `(` {
 			if paren_depth == 0 {
+				top_level_updates_candidate_tail = candidate.len > 0
 				mut end := i
 				for end > 0 && head[end - 1].is_space() {
 					end--
@@ -2237,13 +2240,22 @@ fn c_function_declaration_identifier(head string) ?string {
 					name := head[start..end]
 					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__',
 						'__asm', '__asm__', '_Alignas', 'alignas'] {
-						candidate = name
+						is_suffix := candidate.len > 0 && candidate_tail_end >= 0
+							&& trim_leading_c_comments(head[candidate_tail_end + 1..i].trim_space()).trim_space() == name
+						if !is_suffix {
+							candidate = name
+						}
+						top_level_updates_candidate_tail = true
 					}
 				}
 			}
 			paren_depth++
 		} else if c == `)` && paren_depth > 0 {
 			paren_depth--
+			if paren_depth == 0 && top_level_updates_candidate_tail {
+				candidate_tail_end = i
+				top_level_updates_candidate_tail = false
+			}
 		}
 		i++
 	}

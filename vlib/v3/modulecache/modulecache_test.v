@@ -87,6 +87,14 @@ fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert !function_identifiers['helper_alias']
 }
 
+fn test_function_identifiers_keep_name_before_suffix_macro() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('#define API_SUFFIX(tag)\nstatic int api(void) API_SUFFIX(tag) {\n\treturn 1;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['API_SUFFIX']
+}
+
 fn test_macro_identifiers_referencing_static_helpers() {
 	wrappers := c_sources_macro_identifiers_referencing([
 		'#define CALL_HELPER() helper()
