@@ -160,6 +160,46 @@ fn test_build_client_hello_rejects_empty_alpn_protocols() {
 	assert false, 'expected an error for an empty ALPN protocol list'
 }
 
+// test_build_client_hello_rejects_duplicate_alpn_protocols: RFC 7301 itself
+// has no uniqueness requirement for ProtocolNameList entries (checked
+// directly against §3.1's text, Codex P2 on vlang/v#27680
+// pullrequestreview-4822597219, correctly refuted as an RFC violation at the
+// time), but a maintainer requested rejecting duplicates anyway as hygiene
+// (discussion_r3690498809): a repeated entry wastes wire bytes for no
+// negotiation benefit, since the server can select at most one match no
+// matter how many times it appears.
+fn test_build_client_hello_rejects_duplicate_alpn_protocols() {
+	build_client_hello(ClientHelloParams{
+		random:               []u8{len: 32}
+		server_name:          'example.com'
+		ecdhe_public_key:     []u8{len: 65, init: 0x04}
+		alpn_protocols:       ['h3', 'h3']
+		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+		}
+	}) or {
+		assert err.msg().contains('duplicate')
+		return
+	}
+	assert false, 'expected an error for a duplicate ALPN protocol entry'
+}
+
+// test_build_client_hello_accepts_distinct_alpn_protocols is the sibling
+// positive case: multiple DISTINCT protocol names must still succeed
+// unaffected by the duplicate check above.
+fn test_build_client_hello_accepts_distinct_alpn_protocols() {
+	client_hello := build_client_hello(ClientHelloParams{
+		random:               []u8{len: 32}
+		server_name:          'example.com'
+		ecdhe_public_key:     []u8{len: 65, init: 0x04}
+		alpn_protocols:       ['h3', 'http/1.1']
+		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+		}
+	})!
+	assert client_hello.len > 0
+}
+
 // test_build_client_hello_rejects_missing_initial_source_connection_id is a
 // regression test for a gap this session's QUIC conformance-matrix audit
 // found (not a Codex report): build_client_hello validated that four
