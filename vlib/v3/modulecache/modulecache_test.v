@@ -109,6 +109,11 @@ fn test_function_identifiers_unwrap_parenthesized_declarator() {
 	assert complete
 	assert identifiers['api']
 	assert !identifiers['int']
+	nested_identifiers, nested_complete :=
+		c_source_function_identifiers_with_status('static int ((api))(void) {\n\treturn 1;\n}\n')
+	assert nested_complete
+	assert nested_identifiers['api']
+	assert !nested_identifiers['int']
 }
 
 fn test_macro_identifiers_referencing_static_helpers() {

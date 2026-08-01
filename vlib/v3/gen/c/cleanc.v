@@ -4983,8 +4983,6 @@ fn c_header_has_objective_c_qualified_type(text string, token string, token_end 
 	mut i := open + 1
 	mut depth := 1
 	mut identifiers := 0
-	mut has_pointer_argument := false
-	mut has_object_keyword := false
 	mut close := -1
 	for i < text.len {
 		next := c_header_skip_space_and_comments(text, i, text.len)
@@ -4993,15 +4991,11 @@ fn c_header_has_objective_c_qualified_type(text string, token string, token_end 
 			continue
 		}
 		if c_identifier_start(text[i]) {
-			start := i
 			i++
 			for i < text.len && c_identifier_continue(text[i]) {
 				i++
 			}
 			identifiers++
-			if text[start..i] in ['id', 'Class'] {
-				has_object_keyword = true
-			}
 			continue
 		}
 		if text[i] == `<` {
@@ -5019,7 +5013,6 @@ fn c_header_has_objective_c_qualified_type(text string, token string, token_end 
 			continue
 		}
 		if text[i] == `*` {
-			has_pointer_argument = true
 			i++
 			continue
 		}
@@ -5036,8 +5029,8 @@ fn c_header_has_objective_c_qualified_type(text string, token string, token_end 
 		return true
 	}
 	after := c_header_skip_space_and_comments(text, close + 1, text.len)
-	return token.len > 0 && token[0] >= `A` && token[0] <= `Z`
-		&& (has_pointer_argument || has_object_keyword) && after < text.len && text[after] == `*`
+	return token.len > 0 && token[0] >= `A` && token[0] <= `Z` && after < text.len
+		&& text[after] == `*`
 }
 
 fn c_header_text_has_objective_c_tokens(text string) bool {

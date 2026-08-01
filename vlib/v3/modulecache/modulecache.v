@@ -2256,11 +2256,85 @@ fn c_function_candidate_has_return_type(head string, candidate_start int) bool {
 	return false
 }
 
+fn c_unwrap_redundant_declarator_parentheses(value string) string {
+	mut clean := trim_leading_c_comments(value.trim_space())
+	for clean.starts_with('(') {
+		mut depth := 0
+		mut close := -1
+		mut quote := u8(0)
+		mut escaped := false
+		mut block_comment := false
+		mut line_comment := false
+		mut i := 0
+		for i < clean.len {
+			c := clean[i]
+			next := if i + 1 < clean.len { clean[i + 1] } else { u8(0) }
+			if quote != 0 {
+				if escaped {
+					escaped = false
+				} else if c == `\\` {
+					escaped = true
+				} else if c == quote {
+					quote = 0
+				}
+				i++
+				continue
+			}
+			if block_comment {
+				if c == `*` && next == `/` {
+					block_comment = false
+					i += 2
+				} else {
+					i++
+				}
+				continue
+			}
+			if line_comment {
+				if c == `\n` {
+					line_comment = false
+				}
+				i++
+				continue
+			}
+			if c == `/` && next == `*` {
+				block_comment = true
+				i += 2
+				continue
+			}
+			if c == `/` && next == `/` {
+				line_comment = true
+				i += 2
+				continue
+			}
+			if c in [`'`, `"`] {
+				quote = c
+				i++
+				continue
+			}
+			if c == `(` {
+				depth++
+			} else if c == `)` {
+				depth--
+				if depth == 0 {
+					close = i
+					break
+				}
+			}
+			i++
+		}
+		if close < 0 || trim_leading_c_comments(clean[close + 1..].trim_space()).len != 0 {
+			break
+		}
+		clean = trim_leading_c_comments(clean[1..close].trim_space())
+	}
+	return clean
+}
+
 fn c_parenthesized_function_declarator_identifier(head string, open int, close int) ?string {
 	if open < 0 || close <= open + 1 || !c_function_candidate_has_return_type(head, open) {
 		return none
 	}
-	inner := trim_leading_c_comments(head[open + 1..close].trim_space())
+	inner := c_unwrap_redundant_declarator_parentheses(head[open + 1..close])
 	if inner.len == 0 || !((inner[0] >= `a` && inner[0] <= `z`)
 		|| (inner[0] >= `A` && inner[0] <= `Z`) || inner[0] == `_`) {
 		return none

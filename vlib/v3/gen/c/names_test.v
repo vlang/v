@@ -197,6 +197,7 @@ fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c('id value = @"Objective-C string";\n')
 	assert c_header_text_needs_objective_c('static inline id<NSCopying> copy(id<NSCopying> value) { return value; }\n')
 	assert c_header_text_needs_objective_c('static inline NSArray<NSString *> *copy_names(NSArray<NSString *> *value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline NSObject<NSCopying> *copy(NSObject<NSCopying> *value) { return value; }\n')
 	assert c_header_text_needs_objective_c('static inline id answer(void) { return @42; }\n')
 	assert c_header_text_needs_objective_c('static inline id answer(void) { return @YES; }\n')
 	assert c_header_text_needs_objective_c('static inline id answer(void) { return @[]; }\n')
