@@ -2827,6 +2827,9 @@ fn cache_local_c_known_expression_rec(raw string, macros map[string]V3CacheLocal
 		}
 		return if active { 1 } else { -1 }
 	}
+	if value := cache_local_c_known_integer_value_rec(expression, macros, mut seen, depth + 1) {
+		return if value == 0 { -1 } else { 1 }
+	}
 	if expression.starts_with('!') {
 		condition := cache_local_c_known_expression_rec(expression[1..], macros, mut seen,
 			depth + 1)
