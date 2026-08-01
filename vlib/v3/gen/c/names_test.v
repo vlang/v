@@ -208,6 +208,7 @@ fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c('id value = (__bridge id)pointer;\n')
 	assert c_header_text_needs_objective_c('typedef struct objc_class *Class; static __strong Class identity(__strong Class value) { return value; }\n')
 	assert c_header_text_needs_objective_c('static __weak Class weak_value; __autoreleasing Class *out_value; __unsafe_unretained Class unsafe_value;\n')
+	assert c_header_text_needs_objective_c('static __kindof Class identity(__kindof Class value) { return value; }\n')
 	assert c_header_text_needs_objective_c('static inline id helper(id obj) { return [obj description]; }\n')
 	assert !c_header_text_needs_objective_c('static inline int helper(int *values, int i) { return values[i]; }\nint table[4] = {[0] = 1};\n[[gnu::unused]] static int state;\n// [obj description] @42\nconst char *message = "[obj description] @42";\n')
 	assert !c_header_text_needs_objective_c('static inline int id(int obj) { return obj; }\n')

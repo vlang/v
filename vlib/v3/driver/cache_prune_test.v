@@ -55,6 +55,19 @@ fn test_cache_c_source_definitely_active_code_filters_conditional_definitions() 
 	assert !unknown.contains('library_api')
 }
 
+fn test_cache_c_source_definitely_active_code_uses_compiler_predefined_macros() {
+	source := '#ifdef __clang__\nstatic int compiler_api(void) { return 1; }\n#else\nint fallback_api(void) { return 2; }\n#endif\n'
+	mut clang_macros := cache_local_c_compiler_macros([]string{}, 'clang')
+	clang_source := cache_c_source_definitely_active_code(source, mut clang_macros)
+	assert clang_source.contains('compiler_api')
+	assert !clang_source.contains('fallback_api')
+
+	mut undefined_macros := cache_local_c_compiler_macros(['-U__clang__'], 'clang')
+	undefined_source := cache_c_source_definitely_active_code(source, mut undefined_macros)
+	assert !undefined_source.contains('compiler_api')
+	assert undefined_source.contains('fallback_api')
+}
+
 fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
 	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
 	os.rmdir_all(root_dir) or {}

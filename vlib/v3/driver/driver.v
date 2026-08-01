@@ -1968,7 +1968,8 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state, a,
 		unscoped_inputs, user_files)
 	state.native_source_modules = native_source_modules.clone()
-	can_extract_native_types := prepare_v3_cache_native_type_declarations(mut state, user_c_flags)
+	can_extract_native_types := prepare_v3_cache_native_type_declarations(mut state, user_c_flags,
+		prefs.ccompiler)
 	state.external_inputs_ready = true
 	if os.getenv('V3_CACHE_TRACE') != '' {
 		if has_untracked_c_include {
@@ -2020,7 +2021,7 @@ fn v3_path_is_within(path string, dir string) bool {
 	return dir.len > 0 && (path == dir || path.starts_with(dir + os.path_separator))
 }
 
-fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_flags []string) bool {
+fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_flags []string, ccompiler string) bool {
 	state.native_type_declarations = map[string]string{}
 	state.native_declared_functions = map[string]map[string]bool{}
 	mut allowed_paths := map[string]bool{}
@@ -2039,7 +2040,7 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 			continue
 		}
 		mut declared_functions := state.native_declared_functions[module_name].clone()
-		mut declaration_macros := cache_local_c_flag_macros(c_flags)
+		mut declaration_macros := cache_local_c_compiler_macros(c_flags, ccompiler)
 		mut declaration_active_paths := map[string]bool{}
 		for root in roots {
 			active_source := cache_c_source_definitely_active_code_for_path(root, allowed_paths, mut
@@ -2053,7 +2054,7 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 		if declared_functions.len > 0 {
 			state.native_declared_functions[module_name] = declared_functions.clone()
 		}
-		mut include_macros := cache_local_c_flag_macros(c_flags)
+		mut include_macros := cache_local_c_compiler_macros(c_flags, ccompiler)
 		for root in roots {
 			real_root := os.real_path(root)
 			declarations, complete := cache_native_type_declarations_for_path(real_root,
@@ -2310,6 +2311,46 @@ fn cache_local_c_flag_macros(flags []string) map[string]V3CacheLocalCMacro {
 	return macros
 }
 
+fn cache_local_c_compiler_macros(flags []string, ccompiler string) map[string]V3CacheLocalCMacro {
+	mut macros := map[string]V3CacheLocalCMacro{}
+	for name in ['__clang__', '__GNUC__', '_MSC_VER', '__TINYC__'] {
+		macros[name] = V3CacheLocalCMacro{
+			known:      true
+			is_defined: false
+			truth:      -1
+		}
+	}
+	mut defined := []string{}
+	match ccompiler {
+		'clang' {
+			defined = ['__clang__', '__GNUC__']
+		}
+		'gcc', 'mingw', 'cplusplus' {
+			defined = ['__GNUC__']
+		}
+		'msvc' {
+			defined = ['_MSC_VER']
+		}
+		'tinyc' {
+			defined = ['__TINYC__']
+		}
+		else {
+			macros.clear()
+		}
+	}
+	for name in defined {
+		macros[name] = V3CacheLocalCMacro{
+			known:      true
+			is_defined: true
+			truth:      1
+		}
+	}
+	for name, macro in cache_local_c_flag_macros(flags) {
+		macros[name] = macro
+	}
+	return macros
+}
+
 fn cache_local_c_is_literal_include_value(value string) bool {
 	return value.len >= 3 && value[0] == `"` && value[1..].index_u8(`"`) >= 1
 }
@@ -2500,7 +2541,7 @@ fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
 	}
 }
 
-fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string, incremental_declaration_signature string) bool {
+fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string, ccompiler string, incremental_declaration_signature string) bool {
 	base_input := v3_cgen_cache_input(state, user_files, user_c_flags)
 	prefixes := ['external:', 'external-meta:', 'external-root:', 'external-owner:', 'external-dir:',
 		'external-missing:', 'external-state:']
@@ -2621,7 +2662,7 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	state.external_input_signatures = external_signatures.clone()
 	state.module_native_roots = native_roots.clone()
 	state.native_source_modules = native_source_modules.clone()
-	if !prepare_v3_cache_native_type_declarations(mut state, user_c_flags) {
+	if !prepare_v3_cache_native_type_declarations(mut state, user_c_flags, ccompiler) {
 		return false
 	}
 	state.external_resolution_dirs = resolution_dirs.clone()
@@ -5108,7 +5149,7 @@ pub fn run(args []string) {
 	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
 		mut external_inputs_ready := restore_v3_cache_external_inputs(mut cache_state, user_files,
-			cache_c_flags, '')
+			cache_c_flags, prefs.ccompiler, '')
 		if !external_inputs_ready && incremental_cache_enabled {
 			incremental_snapshot = incremental_program_snapshot(a, user_files)
 			incremental_snapshot_ready = true
@@ -5116,7 +5157,7 @@ pub fn run(args []string) {
 				eprintln('  V3 incremental snapshot: declarations=${incremental_snapshot.declaration_signature} functions=${incremental_snapshot.functions.len}')
 			}
 			external_inputs_ready = restore_v3_cache_external_inputs(mut cache_state, user_files,
-				cache_c_flags, incremental_snapshot.declaration_signature)
+				cache_c_flags, prefs.ccompiler, incremental_snapshot.declaration_signature)
 		}
 		if !external_inputs_ready
 			&& !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files, cache_c_flags) {
