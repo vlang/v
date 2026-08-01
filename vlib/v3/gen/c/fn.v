@@ -248,6 +248,9 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 }
 
 fn (g &FlatGen) direct_array_access_fns() DirectArrayAccessFns {
+	if g.force_bounds_checking {
+		return DirectArrayAccessFns{}
+	}
 	mut node_ids := map[int]bool{}
 	mut source_positions := map[u64]bool{}
 	for directive_idx in g.top_level_nodes() {

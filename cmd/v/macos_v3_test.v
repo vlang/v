@@ -44,8 +44,7 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command('test', prefs)
 		prefs.path = 'main.v'
 
-		// V3 owns user compilation modes even when it will reject an option with
-		// its own diagnostic. Unsupported modes no longer silently run V1.
+		// V3 owns supported user compilation modes.
 		prefs.coverage_dir = '/tmp/vcovdir'
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_o = true
@@ -54,7 +53,18 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.gc_mode = .boehm_full_opt
 		prefs.gc_set_by_flag = true
-		assert is_macos_v3_relevant_command('main.v', prefs)
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.gc_mode = .no_gc
+		prefs.gc_set_by_flag = false
+		prefs.sanitize = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.sanitize = false
+		prefs.is_livemain = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_livemain = false
+		prefs.is_liveshared = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_liveshared = false
 		prefs.is_shared = true
 		assert is_macos_v3_relevant_command('run', prefs)
 		prefs.is_cstrict = true

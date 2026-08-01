@@ -1632,7 +1632,11 @@ fn default_bin_file_for_input(input_file string) string {
 		return input_file.all_before_last('.vsh')
 	}
 	if input_file.ends_with('.v') {
-		return input_file.all_before_last('.v')
+		mut base := input_file.all_before_last('.v')
+		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+			base = base.all_before_last('.')
+		}
+		return base
 	}
 	return input_file
 }
@@ -4057,6 +4061,7 @@ pub fn run(args []string) {
 	mut warns_are_errors := false
 	mut notes_are_errors := false
 	mut check_overflow := false
+	mut force_bounds_checking := false
 	mut print_v_files := false
 	mut print_watched_files := false
 	mut only_check_syntax := false
@@ -4325,7 +4330,9 @@ pub fn run(args []string) {
 			}
 			i++
 		} else if args[i] == '-force-bounds-checking' {
-			user_defines = user_defines.filter(it != 'no_bounds_checking')
+			force_bounds_checking = true
+			user_defines =
+				user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
 			i++
 		} else if args[i] == '-checker-fixture' {
 			is_checker_fixture = true
@@ -4427,6 +4434,11 @@ pub fn run(args []string) {
 			}
 			i++
 		}
+	}
+	if force_bounds_checking {
+		// This option wins regardless of its ordering relative to
+		// `-no-bounds-checking`, matching the established parser contract.
+		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
 	}
 	should_run = should_run && !skip_running
 	if is_o && (backend != 'c' || !explicit_output || (!output_file.ends_with('.c')
@@ -4745,6 +4757,7 @@ pub fn run(args []string) {
 		effective_c_compiler_name(c_compiler, target)
 	}
 	prefs.c99 = c99
+	prefs.force_bounds_checking = force_bounds_checking
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
@@ -4814,6 +4827,7 @@ pub fn run(args []string) {
 		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
 		'ownership=${ownership_mode}',
 		'check_overflow=${check_overflow}',
+		'force_bounds_checking=${prefs.force_bounds_checking}',
 		'warns_are_errors=${warns_are_errors}',
 		'notes_are_errors=${notes_are_errors}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
@@ -6228,6 +6242,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
 			g.set_check_overflow(check_overflow)
+			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
@@ -6276,6 +6291,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
 			g.set_check_overflow(check_overflow)
+			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)

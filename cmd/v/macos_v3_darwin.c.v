@@ -37,6 +37,12 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.old_compiler {
 		return false
 	}
+	if prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
+		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
+		// V1 still owns compiler modes whose runtime or C toolchain support has not
+		// been implemented by V3 yet.
+		return false
+	}
 	if prefs.autofree && prefs.is_run {
 		// V1 still owns the established `v -autofree run ...` orchestration.
 		// Direct autofree builds are selected earlier by the ownership dispatcher.

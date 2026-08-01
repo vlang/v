@@ -1533,6 +1533,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
 		is_prod:                        g.is_prod
 		check_overflow:                 g.check_overflow
+		force_bounds_checking:          g.force_bounds_checking
 		object_file_mode:               g.object_file_mode
 		cache_program_files:            g.cache_program_files
 		incremental_fn_names:           g.incremental_fn_names

@@ -142,6 +142,7 @@ mut:
 	print_fn_names                 []string
 	is_prod                        bool
 	check_overflow                 bool
+	force_bounds_checking          bool
 	is_shared                      bool
 	object_file_mode               bool
 	coverage_dir                   string
@@ -471,6 +472,12 @@ pub fn (mut g FlatGen) set_prod(enabled bool) {
 // set_check_overflow enables runtime checks for integer addition, subtraction, and multiplication.
 pub fn (mut g FlatGen) set_check_overflow(enabled bool) {
 	g.check_overflow = enabled
+}
+
+// set_force_bounds_checking ignores direct-array-access attributes so every
+// generated array access retains its runtime bounds check.
+pub fn (mut g FlatGen) set_force_bounds_checking(enabled bool) {
+	g.force_bounds_checking = enabled
 }
 
 // set_prealloc marks the build as using the -prealloc bump arena.

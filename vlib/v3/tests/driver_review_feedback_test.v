@@ -186,6 +186,33 @@ fn main() {
 	assert js_compile.exit_code == 0, js_compile.output
 	assert os.is_file(js_output)
 
+	multi_extension_source := os.join_path(root, 'multi_extension.c.v')
+	multi_extension_output := os.join_path(root, 'multi_extension')
+	os.write_file(multi_extension_source, 'fn main() {}\n')!
+	multi_extension_compile := run_driver_review_process(v3_bin,
+		['-nocache', multi_extension_source], driver_review_environment())
+	assert multi_extension_compile.exit_code == 0, multi_extension_compile.output
+	assert os.is_file(multi_extension_output)
+	assert !os.exists(os.join_path(root, 'multi_extension.c'))
+
+	bounds_source := os.join_path(root, 'forced_bounds.v')
+	bounds_output := os.join_path(root, 'forced_bounds')
+	os.write_file(bounds_source, '@[direct_array_access]
+fn unchecked_at(values []int, index int) int {
+	return values[index]
+}
+
+fn main() {
+	println(unchecked_at([1], 1))
+}
+')!
+	bounds_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache',
+		'-force-bounds-checking', '-o', bounds_output, bounds_source], driver_review_environment())
+	assert bounds_compile.exit_code == 0, bounds_compile.output
+	bounds_run := cmdexec.run(bounds_output, [])
+	assert bounds_run.exit_code != 0, bounds_run.output
+	assert bounds_run.output.contains('index out of range'), bounds_run.output
+
 	overflow_cases := {
 		'add': 'fn checked(a i8, b i8) i8 { return a + b }\nfn main() { println(checked(i8(127), i8(1))) }\n'
 		'sub': 'fn checked(a i8, b i8) i8 { return a - b }\nfn main() { println(checked(i8(-128), i8(1))) }\n'

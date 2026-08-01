@@ -5,6 +5,13 @@ import v3.flat
 import v3.parser
 import v3.pref
 
+fn test_default_bin_file_strips_backend_source_extension() {
+	assert default_bin_file_for_input('foo.c.v') == 'foo'
+	assert default_bin_file_for_input('foo.js.v') == 'foo'
+	assert default_bin_file_for_input('foo.wasm.v') == 'foo'
+	assert default_bin_file_for_input('foo.v') == 'foo'
+}
+
 fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
 	path := os.join_path(os.temp_dir(), 'v3_implicit_import_${name}_${os.getpid()}.v')
 	os.write_file(path, source) or { panic(err) }
