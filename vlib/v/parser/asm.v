@@ -90,7 +90,8 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			if p.tok.kind == .key_lock && arch in [.i386, .amd64] {
 				p.next()
 
-				has_suffix := p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
+				has_suffix := p.tok.lit.len > 0
+					&& p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
 				if !(p.tok.lit in allowed_lock_prefix_ins
 					|| (has_suffix && p.tok.lit[0..p.tok.lit.len - 1] in allowed_lock_prefix_ins)) {
 					p.error('The lock prefix cannot be used on this instruction')
