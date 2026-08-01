@@ -3426,13 +3426,13 @@ pub fn (mut t Table) convert_generic_param_type(param Param, generic_names []str
 }
 
 fn (mut t Table) convert_generic_param_type_with_depth(param Param, generic_names []string, to_types []Type, depth int) ?Type {
-	mut param_type := param.typ
-	if param_type.has_flag(.generic) || t.generic_type_names(param_type).len > 0 {
-		if typ := t.convert_generic_type_with_depth(param_type, generic_names, to_types, depth) {
-			param_type = typ
+	if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
+		&& to_types.all(!it.has_flag(.generic)) {
+		if typ := t.convert_generic_type_with_depth(param.orig_typ, generic_names, to_types, depth) {
+			return t.lower_mut_param_type(typ, param.orig_typ)
 		}
 	}
-	return param_type
+	return t.convert_generic_type_with_depth(param.typ, generic_names, to_types, depth)
 }
 
 // type_contains_placeholder returns true if the given type or any of its inner
@@ -3470,12 +3470,13 @@ pub fn (mut t Table) unwrap_generic_param_type(param Param, generic_names []stri
 }
 
 fn (mut t Table) unwrap_generic_param_type_with_depth(param Param, generic_names []string, concrete_types []Type, depth int) Type {
-	mut param_type := param.typ
-	if param_type.has_flag(.generic) || t.generic_type_names(param_type).len > 0 {
-		param_type = t.unwrap_generic_type_ex_with_depth(param_type, generic_names, concrete_types,
-			true, [], depth)
+	if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
+		&& concrete_types.all(!it.has_flag(.generic)) {
+		return t.lower_mut_param_type(t.unwrap_generic_type_ex_with_depth(param.orig_typ,
+			generic_names, concrete_types, false, [], depth))
 	}
-	return param_type
+	return t.unwrap_generic_type_ex_with_depth(param.typ, generic_names, concrete_types, false, [],
+		depth)
 }
 
 // convert_generic_expr_type resolves generic placeholders stored inside expression metadata.
