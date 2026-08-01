@@ -103,6 +103,8 @@ pub mut:
 	panic_handler               FnPanicHandler = default_table_panic_handler
 	panic_userdata              voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics               int
+	convert_generic_type_depth  int
+	unwrap_generic_type_depth   int
 	cur_fn                      &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_lambda                  &LambdaExpr = unsafe { nil } // current lambda node
 	cur_concrete_types          []Type // current concrete types, e.g. [int, string]
@@ -3030,8 +3032,15 @@ pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_na
 	return void_type, fn_name
 }
 
-// convert_generic_type convert generics to real types (T => int) or other generics type.
 pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []string, to_types []Type) ?Type {
+	t.convert_generic_type_depth++
+	if t.convert_generic_type_depth > generic_inst_depth_cutoff_limit {
+		t.convert_generic_type_depth--
+		return none
+	}
+	defer {
+		t.convert_generic_type_depth--
+	}
 	if generic_names.len != to_types.len {
 		return none
 	}
@@ -4027,6 +4036,14 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 }
 
 fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool, depth_guard []string) Type {
+	t.unwrap_generic_type_depth++
+	if t.unwrap_generic_type_depth > generic_inst_depth_cutoff_limit {
+		t.unwrap_generic_type_depth--
+		t.panic('generic instantiation depth limit exceeded')
+	}
+	defer {
+		t.unwrap_generic_type_depth--
+	}
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
 	mut nrt := ''
