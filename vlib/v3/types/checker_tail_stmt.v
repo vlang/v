@@ -10544,7 +10544,7 @@ fn (tc &TypeChecker) method_wrapped_return_signature_compatible(actual Type, exp
 	if actual_unaliased is FnType && expected_unaliased is FnType {
 		return Type(actual_unaliased).name() == Type(expected_unaliased).name()
 	}
-	return tc.type_compatible(actual_unaliased, expected_unaliased)
+	return false
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {

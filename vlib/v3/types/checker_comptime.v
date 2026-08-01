@@ -3758,6 +3758,24 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		target_pointer := clean_pointer_target as Pointer
 		target_name := if node.value.len > 0 { node.value } else { target.name() }
 		target_base := fn_param_unalias_type(target_pointer.base_type)
+		alias_name := target_name.trim_left('&')
+		alias_target_text := tc.type_aliases[alias_name] or {
+			tc.type_aliases[tc.qualify_name(alias_name)] or { '' }
+		}
+		if target_name.starts_with('&') && alias_target_text.starts_with('map[')
+			&& unalias_type(actual) is Map {
+			tc.record_error_at(.assignment_mismatch,
+				'cannot cast to alias pointer `${target_name}` because `${alias_target_text}` is a value',
+				id, tc.cast_expression_diagnostic_pos(node, target_name))
+			return
+		}
+		if target_base is Alias && unalias_type(target_base.base_type) is Map
+			&& unalias_type(actual) is Map {
+			tc.record_error_at(.assignment_mismatch,
+				'cannot cast to alias pointer `${target_name}` because `${target_base.base_type.name()}` is a value',
+				id, node.pos)
+			return
+		}
 		if infix_power_type_is_numeric(actual) && target_name !in ['voidptr', 'byteptr', 'charptr']
 			&& !tc.translated_files[tc.cur_file] {
 			if tc.cast_operand_is_zero(child_id) {

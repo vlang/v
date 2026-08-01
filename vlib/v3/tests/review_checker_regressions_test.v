@@ -812,7 +812,7 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n',
 		'cannot use non-shared `St` as argument 1')
 	out := run_good(v3_bin, 'good_shared_arg_and_receiver',
-		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(s) + s.f()))\n}\n')
+		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n')
 	assert out == '3'
 	mut_out := run_good(v3_bin, 'good_mut_receiver_mutable_value',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n')
@@ -1289,4 +1289,88 @@ fn main() {
 }
 ')
 	assert out == '2\n1'
+}
+
+fn test_pr_review_parser_and_checker_safety_batch() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shared_parameter_missing_marker', 'struct State {}
+
+fn take(shared state State) {}
+
+fn main() {
+	shared state := State{}
+	take(state)
+}
+',
+		'function `take` parameter `state` is `shared`, so use `shared state` instead')
+	run_bad(v3_bin, 'bad_shared_parameter_forwarded_unlocked', 'struct State {
+	value int
+}
+
+fn read(state State) int {
+	return state.value
+}
+
+fn forward(shared state State) int {
+	return read(state)
+}
+
+fn main() {}
+',
+		'`state` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument')
+	run_bad(v3_bin, 'bad_interface_option_alias_return', 'type MyInt = int
+
+interface Provider {
+	value() ?MyInt
+}
+
+struct IntProvider {}
+
+fn (_ IntProvider) value() ?int {
+	return 1
+}
+
+fn main() {
+	_ := Provider(IntProvider{})
+}
+',
+		'expected return type `?MyInt`')
+	run_bad(v3_bin, 'bad_interface_result_alias_return', 'type MyInt = int
+
+interface Provider {
+	value() !MyInt
+}
+
+struct IntProvider {}
+
+fn (_ IntProvider) value() !int {
+	return 1
+}
+
+fn main() {
+	_ := Provider(IntProvider{})
+}
+',
+		'expected return type `!MyInt`')
+	run_bad(v3_bin, 'bad_operator_if_attribute_return', 'struct Value {
+	n int
+}
+
+@[if debug]
+fn (a Value) +(b Value) Value {
+	return Value{
+		n: a.n + b.n
+	}
+}
+
+fn main() {}
+',
+		'only functions that do NOT return values can have `@[if debug]` tags')
+	run_bad(v3_bin, 'bad_pointer_cast_to_map_alias', 'type FooMap = map[string]int
+
+fn main() {
+	_ := &FooMap(map[string]int{})
+}
+',
+		'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value')
 }

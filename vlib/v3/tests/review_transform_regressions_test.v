@@ -226,14 +226,16 @@ fn test_generic_shared_parameter_value_copy_uses_inner_type() {
 }
 
 fn destroy(shared state State) {
-	drop_owned(state)
+	rlock state {
+		drop_owned(state)
+	}
 }
 
 fn main() {
 	shared state := State{
 		label: "ok"
 	}
-	destroy(state)
+	destroy(shared state)
 	println("done")
 }
 ')
@@ -3100,14 +3102,14 @@ fn main() {
 
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
-	// Comma-, newline-, and blank-line-separated element lists parse with the
-	// expected length. This parser is permissive (it never hard-errors on
-	// malformed input), so the guarantee here is that a missing separator
-	// (`[9 10]`) or a repeated comma (`[11,,12]`) is *not* merged/collapsed into
-	// extra elements: only the leading element is kept, never `len == 2`.
+	// Comma-, newline-, and blank-line-separated element lists parse with the expected length.
 	out := run_good(v3_bin, 'array_literal_separators',
-		'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tmissing := [9 10]\n\tdoubled := [11,,12]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len) + ":" + int_str(missing.len) + ":" + int_str(doubled.len))\n}\n')
-	assert out == '3:2:3:1:1'
+		'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n}\n')
+	assert out == '3:2:3'
+	run_bad(v3_bin, 'array_literal_missing_separator', 'fn main() {\n\t_ := [1 2]\n}\n',
+		'unexpected token `2`, expecting `]`')
+	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n',
+		'unexpected token `,`, expecting `]`')
 }
 
 fn test_container_wrapped_import_alias_type_resolves() {

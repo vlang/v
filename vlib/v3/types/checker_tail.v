@@ -8717,24 +8717,6 @@ fn call_param_is_shared(info CallInfo, param_idx int) bool {
 	return param_idx >= 0 && param_idx < info.shared_params.len && info.shared_params[param_idx]
 }
 
-fn (tc &TypeChecker) current_shared_binding_is_param(name string) bool {
-	fn_id := flat.NodeId(tc.fn_context.node_id)
-	if name.len == 0 || !tc.valid_node_id(fn_id) {
-		return false
-	}
-	fn_node := tc.a.node(fn_id)
-	for i in 0 .. fn_node.children_count {
-		param := tc.a.child_node(fn_node, i)
-		if param.kind != .param {
-			break
-		}
-		if param.value == name && param_type_text_is_shared(param.typ) {
-			return true
-		}
-	}
-	return false
-}
-
 fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
@@ -9561,6 +9543,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		implicit_receiver_arg := tc.call_arg_is_callee_receiver(node, arg_id)
 			|| tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
 		if call_param_is_shared(info, param_idx) && !tc.expr_is_explicit_shared_arg(arg_id) {
+			param_name := tc.source_call_param_name(info.name, param_idx) or {
+				'${param_idx + 1 - (if info.has_receiver { 1 } else { 0 })}'
+			}
 			call_kind := if info.has_receiver { 'method' } else { 'function' }
 			if tc.lock_depth > 0 {
 				tc.record_error_at(.call_arg_mismatch,
@@ -9571,6 +9556,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				}
 				continue
 			}
+			tc.record_error_at(.call_arg_mismatch, '${call_kind} `${tc.call_argument_target_name(node,
+				info).all_after_last('.')}` parameter `${param_name}` is `shared`, so use `shared ${tc.source_text_for_node(arg_id)}` instead',
+				arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			if has_dsl_scope {
+				tc.pop_scope()
+			}
+			continue
 		}
 		if !is_print_style_fn_name(info.name) {
 			if access := tc.unlocked_shared_access(arg_id) {
@@ -9589,15 +9581,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					continue
 				}
 				if !call_param_is_shared(info, param_idx) {
-					if !tc.current_shared_binding_is_param(access.name) {
-						tc.record_error_at(.call_arg_mismatch,
-							'`${access.name}` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument',
-							arg_id, access.pos)
-						if has_dsl_scope {
-							tc.pop_scope()
-						}
-						continue
+					tc.record_error_at(.call_arg_mismatch,
+						'`${access.name}` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument',
+						arg_id, access.pos)
+					if has_dsl_scope {
+						tc.pop_scope()
 					}
+					continue
 				}
 			}
 		}

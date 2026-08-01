@@ -7607,11 +7607,6 @@ fn (mut tc TypeChecker) check_fn_if_attribute_return(id flat.NodeId, node flat.N
 	if tc.parse_type(node.typ) is Void {
 		return
 	}
-	operator := node.value.all_after_last('.')
-	if node.value.contains('.')
-		&& operator in ['+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '<<', '>>', '&', '|', '^'] {
-		return
-	}
 	header_pos := tc.fn_declaration_diagnostic_pos(node)
 	file := tc.a.source_files[header_pos.id] or { return }
 	source := tc.source_texts_by_file[file.name] or { return }

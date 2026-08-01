@@ -10380,8 +10380,12 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		}
 		ids << p.expr(.lowest)
 	}
-	// Keep recovery local to the literal. A missing separator or doubled comma
-	// retains the valid prefix and discards the malformed tail.
+	// Keep recovery local to the literal. Diagnose a missing separator or doubled
+	// comma before discarding the malformed tail.
+	if p.tok != .rsbr {
+		unexpected := if p.lit.len > 0 { p.lit } else { p.tok.str() }
+		p.record_diagnostic('unexpected token `${unexpected}`, expecting `]`', p.tok_pos)
+	}
 	for p.tok != .rsbr && p.tok != .eof {
 		p.next()
 	}
