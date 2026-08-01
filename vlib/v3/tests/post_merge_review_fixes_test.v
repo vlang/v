@@ -2537,19 +2537,34 @@ fn main() {
 	assert out.contains('chan int{\n        cap: 0, closed: false\n    }')
 }
 
-fn test_explicit_return_semicolon_ends_void_return() {
+fn test_explicit_return_semicolon_keeps_unreachable_check() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'explicit_return_semicolon_boundary', 'fn stop() {
+	run_bad(v3_bin, 'explicit_return_semicolon_unreachable', 'fn stop() {
 	return;
+	println("unreachable")
+}
+fn main() {}
+',
+		'unreachable code')
+	run_bad(v3_bin, 'nested_explicit_return_semicolon_unreachable', 'fn stop(ok bool) {
+	if ok {
+		return;
 		println("unreachable")
+	}
 }
-
-fn main() {
-	stop()
-	println("done")
+fn main() {}
+',
+		'unreachable code')
+	run_bad(v3_bin, 'nested_return_semicolon_unreachable', 'fn stop(ok bool) {
+	if ok {
+		return;
+	}
+	return
+	println("unreachable")
 }
-')
-	assert out == 'done'
+fn main() {}
+',
+		'unreachable code')
 }
 
 fn test_qualified_enum_str_requires_exact_receiver() {

@@ -9142,7 +9142,6 @@ fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
 	mut sequence_exited := false
-	mut exit_id := flat.empty_node
 	mut unreachable_id := flat.empty_node
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -9152,7 +9151,6 @@ fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 		}
 		if child.kind == .label_stmt {
 			sequence_exited = false
-			exit_id = flat.empty_node
 			unreachable_id = flat.empty_node
 		} else if sequence_exited && !tc.valid_node_id(unreachable_id) {
 			unreachable_id = child_id
@@ -9165,7 +9163,6 @@ fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 		tc.apply_post_assert_smartcasts(child_id)
 		if tc.statement_exits_sequence(child_id, child) {
 			sequence_exited = true
-			exit_id = child_id
 		}
 		if tc.new_error_kind_since(error_count, .unknown_ident) && child.kind != .comptime_if
 			&& !tc.new_errors_are_forward_decl_unknowns(error_count)
@@ -9173,49 +9170,10 @@ fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 			break
 		}
 	}
-	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id)
-		&& !tc.explicit_semicolon_terminated_return(exit_id)
-		&& !tc.unreachable_follows_semicolon_return(unreachable_id) {
+	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
-}
-
-fn (tc &TypeChecker) unreachable_follows_semicolon_return(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
-		return false
-	}
-	node := tc.a.node(id)
-	file := tc.a.source_files[node.pos.id] or { return false }
-	source := tc.source_texts_by_file[file.name] or { return false }
-	start := int_max(0, int_min(node.pos.offset, source.len))
-	current_line_start := source[..start].last_index('\n') or { return false }
-	if current_line_start > 0 {
-		previous_line_end := current_line_start
-		previous_line_start := source[..previous_line_end].last_index('\n') or { -1 }
-		previous_line := source[previous_line_start + 1..previous_line_end].trim_space()
-		if previous_line.starts_with('return;') {
-			return true
-		}
-	}
-	scope_start := source[..start].last_index('{') or { -1 }
-	return_index := source[..start].last_index('return;') or { return false }
-	return return_index > scope_start
-}
-
-fn (tc &TypeChecker) explicit_semicolon_terminated_return(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
-		return false
-	}
-	node := tc.a.node(id)
-	if node.kind != .return_stmt {
-		return false
-	}
-	file := tc.a.source_files[node.pos.id] or { return false }
-	source := tc.source_texts_by_file[file.name] or { return false }
-	start := int_max(0, int_min(node.pos.offset, source.len))
-	line_end := source.index_after('\n', start) or { source.len }
-	return source[start..line_end].contains(';')
 }
 
 fn (tc &TypeChecker) new_errors_are_forward_decl_unknowns(start int) bool {

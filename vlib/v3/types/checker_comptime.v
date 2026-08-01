@@ -10540,8 +10540,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	}
 	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
 	unsafe_alias_body := tc.fn_context.unsafe_reference_alias_owners.clone()
-	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id)
-		&& !tc.unreachable_follows_semicolon_return(unreachable_id) {
+	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
@@ -11062,8 +11061,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_break_states := tc.take_unsafe_reference_alias_loop_break_states()
-	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id)
-		&& !tc.unreachable_follows_semicolon_return(unreachable_id) {
+	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
