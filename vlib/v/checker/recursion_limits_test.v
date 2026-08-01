@@ -1,7 +1,18 @@
-fn generic_level_1[T](val T) T { return val }
-fn generic_level_2[T](val T) T { return generic_level_1[T](val) }
-fn generic_level_3[T](val T) T { return generic_level_2[T](val) }
-fn generic_level_4[T](val T) T { return generic_level_3[T](val) }
+fn generic_level_1[T](val T) T {
+	return val
+}
+
+fn generic_level_2[T](val T) T {
+	return generic_level_1[T](val)
+}
+
+fn generic_level_3[T](val T) T {
+	return generic_level_2[T](val)
+}
+
+fn generic_level_4[T](val T) T {
+	return generic_level_3[T](val)
+}
 
 fn test_valid_nested_generic_functions() {
 	res_int := generic_level_4[int](42)
@@ -17,10 +28,18 @@ pub:
 }
 
 fn test_valid_nested_generic_structs() {
-	b1 := Box[int]{val: 100}
-	b2 := Box[Box[int]]{val: b1}
-	b3 := Box[Box[Box[int]]]{val: b2}
-	b4 := Box[Box[Box[Box[int]]]]{val: b3}
+	b1 := Box[int]{
+		val: 100
+	}
+	b2 := Box[Box[int]]{
+		val: b1
+	}
+	b3 := Box[Box[Box[int]]]{
+		val: b2
+	}
+	b4 := Box[Box[Box[Box[int]]]]{
+		val: b3
+	}
 
 	assert b4.val.val.val.val == 100
 }
@@ -43,13 +62,16 @@ struct Some[T] {
 pub:
 	val T
 }
+
 struct None {}
 
 type MyOption[T] = None | Some[T]
 type ComplexResult[T, E] = E | Some[T]
 
 fn test_valid_generic_sum_types() {
-	opt_some := MyOption[int](Some[int]{val: 99})
+	opt_some := MyOption[int](Some[int]{
+		val: 99
+	})
 	if opt_some is Some[int] {
 		assert opt_some.val == 99
 	} else {
@@ -63,7 +85,9 @@ fn test_valid_generic_sum_types() {
 		assert false
 	}
 
-	res := ComplexResult[int, string](Some[int]{val: 500})
+	res := ComplexResult[int, string](Some[int]{
+		val: 500
+	})
 	if res is Some[int] {
 		assert res.val == 500
 	} else {
