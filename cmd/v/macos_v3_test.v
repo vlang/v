@@ -200,7 +200,7 @@ fn main() {}
 ')!
 		c_failure := run_macos_v3_process(['-o', failing_output, failing_target], environment)
 		assert c_failure.exit_code != 0, c_failure.output
-		assert c_failure.output.contains('C compilation failed'), c_failure.output
+		assert c_failure.output.contains('macos_v3_missing_library_'), c_failure.output
 		assert !c_failure.output.contains('retrying with `-old-compiler`'), c_failure.output
 	}
 }

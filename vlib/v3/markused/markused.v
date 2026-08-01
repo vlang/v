@@ -2001,7 +2001,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						enqueue('escape_default_string', mut used, mut queue)
 					}
 					if fn_node.kind == .selector
-						&& fn_node.value in ['trim_space', 'trim_space_left', 'trim_space_right', 'to_upper', 'to_upper_ascii', 'to_lower', 'to_lower_ascii'] {
+						&& fn_node.value in ['trim_space', 'trim_space_left', 'trim_space_right', 'to_upper', 'to_upper_ascii', 'to_lower', 'to_lower_ascii', 'contains', 'count'] {
 						enqueue('string.${fn_node.value}', mut used, mut queue)
 					}
 					if markused_call_lowers_to_join_path_single(a, fn_node, imports) {

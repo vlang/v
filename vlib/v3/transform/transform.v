@@ -11100,42 +11100,6 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 				return t.lower_map_init_to_runtime(id, map_node)
 			}
 		}
-		if target_type in ['f32', 'f64'] && node.kind == .infix
-			&& node.op in [.plus, .minus, .mul, .div] && node.children_count >= 2 {
-			lhs_id := t.a.child(&node, 0)
-			mut lhs_type := t.node_type(lhs_id)
-			if lhs_type.len == 0 {
-				lhs_type = t.resolve_expr_type(lhs_id)
-			}
-			if t.infix_struct_operator_result_type(node, lhs_type).len == 0 {
-				// Mutable for-in values are pointer-backed locals. Inside an infix
-				// expression there is no outer expected-type load for each operand,
-				// so keep the explicit rvalue dereference produced by transform_expr.
-				lhs := if _ := t.pointer_value_expr_type(lhs_id) {
-					t.transform_expr(lhs_id)
-				} else {
-					t.transform_expr_for_type(lhs_id, target_type)
-				}
-				rhs_id := t.a.child(&node, 1)
-				rhs := if _ := t.pointer_value_expr_type(rhs_id) {
-					t.transform_expr(rhs_id)
-				} else {
-					t.transform_expr_for_type(rhs_id, target_type)
-				}
-				start := t.a.children.len
-				t.a.children << lhs
-				t.a.children << rhs
-				return t.a.add_node(flat.Node{
-					kind:           .infix
-					op:             node.op
-					children_start: start
-					children_count: 2
-					pos:            node.pos
-					value:          node.value
-					typ:            target_type
-				})
-			}
-		}
 	}
 	expr := t.transform_expr(id)
 	source_node := if int(id) >= 0 && int(id) < t.a.nodes.len {
@@ -13669,6 +13633,9 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	if lowered := t.try_lower_map_index_append_stmt(child_id) {
 		return lowered
 	}
+	if lowered := t.try_lower_nested_map_index_postfix_stmt(child_id) {
+		return lowered
+	}
 	if lowered := t.try_lower_map_index_postfix_stmt(child_id) {
 		return lowered
 	}
@@ -15049,7 +15016,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		call_node = t.a.nodes[int(call_id)]
 	}
 	if resolved_typ.len == 0 {
-		if array_typ := t.array_call_type_name(call_node) {
+		if array_typ := t.array_call_type_name(call_id, call_node) {
 			resolved_typ = array_typ
 		}
 	}
@@ -19861,7 +19828,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if new_map_typ.len > 0 {
 				return new_map_typ
 			}
-			if array_typ := t.array_call_type_name(node) {
+			if array_typ := t.array_call_type_name(id, node) {
 				return array_typ
 			}
 			if call_is_wait_selector(t.a, node) {

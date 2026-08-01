@@ -34,6 +34,10 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('printf') == 'v_printf'
 	assert c_name('C.printf') == 'printf'
 	assert c_name('C.send') == 'send'
+	assert c_name('index') == 'v_index'
+	assert c_name('log') == 'v_log'
+	assert c_name('C.index') == 'index'
+	assert c_name('C.log') == 'log'
 }
 
 fn test_c_name_generated_string_symbol_collision() {

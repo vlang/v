@@ -6581,7 +6581,12 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 					'cannot have mutable reference to const `${const_node.value}`', const_id,
 					tc.node_value_diagnostic_pos(const_id))
 			}
-			append_rhs_type := tc.array_append_diagnostic_rhs_type(rhs_id, rhs_type)
+			append_rhs_type := if rhs_node.kind == .enum_val
+				&& unalias_type(lhs_array.elem_type) is Enum {
+				tc.resolve_expr(rhs_id, lhs_array.elem_type)
+			} else {
+				tc.array_append_diagnostic_rhs_type(rhs_id, rhs_type)
+			}
 			if !tc.array_append_rhs_compatible(rhs_id, append_rhs_type, lhs_array.elem_type)
 				|| (unalias_type(append_rhs_type) is ArrayFixed
 				&& unalias_type(lhs_array.elem_type) is Interface) {
@@ -7080,7 +7085,8 @@ fn (tc &TypeChecker) array_append_diagnostic_rhs_type(rhs_id flat.NodeId, fallba
 }
 
 fn (tc &TypeChecker) array_append_rhs_compatible(rhs_id flat.NodeId, rhs_type Type, elem_type Type) bool {
-	if tc.expr_compatible(rhs_id, rhs_type, elem_type) {
+	if tc.expr_compatible(rhs_id, rhs_type, elem_type)
+		|| tc.pointer_value_compatible(rhs_type, elem_type) {
 		return true
 	}
 	clean_rhs := unalias_type(rhs_type)
@@ -8137,6 +8143,9 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 	clean_source_type := unalias_type(source_type)
 	clean_return_type := unalias_type(tc.fn_context.return_type)
 	if clean_source_type is OptionType {
+		if tc.current_fn_is_main() {
+			return
+		}
 		tc.record_error_at(.return_mismatch,
 			'to propagate a Result, the call must also return a Result type', id, tc.propagation_operator_pos(source_id,
 			id, '!'))
@@ -8167,7 +8176,8 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 fn (tc &TypeChecker) current_fn_is_main() bool {
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if !tc.valid_node_id(fn_id) {
-		return false
+		// Top-level statements are emitted as the program's generated main.
+		return true
 	}
 	node := tc.a.node(fn_id)
 	return node.kind == .fn_decl && node.value.all_after_last('.') == 'main'
@@ -10983,6 +10993,10 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 				tc.insert_loop_var(key_id, unknown_type('unbounded iterator generic'))
 			}
 		} else if elem_type := tc.iterator_for_in_elem_type(clean) {
+			if info := tc.iterator_for_in_next_call_info(clean) {
+				symbol_id, _ := tc.intern_symbol(info.name)
+				tc.record_direct_dependency(symbol_id)
+			}
 			if unalias_type(elem_type) is MultiReturn {
 				tc.record_error_at(.cannot_index,
 					'iterator method `next()` must not return multiple values', container_id,
@@ -13286,7 +13300,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 			return true
 		}
 	}
-	mut rhs_type := tc.resolve_type(rhs_id)
+	mut rhs_type := tc.multi_assign_rhs_type(rhs_id, rhs)
 	mut rhs_checked := false
 	mut rhs_multi := MultiReturn{}
 	mut found_multi := false
@@ -13306,7 +13320,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		}
 		tc.check_node(rhs_id)
 		rhs_checked = true
-		rhs_type = tc.resolve_type(rhs_id)
+		rhs_type = tc.multi_assign_rhs_type(rhs_id, rhs)
 	}
 	rhs_type_name := rhs_type.name()
 	invalid_return_count := rhs_type is Unknown
@@ -13384,6 +13398,18 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		return true
 	}
 	return false
+}
+
+fn (mut tc TypeChecker) multi_assign_rhs_type(rhs_id flat.NodeId, rhs flat.Node) Type {
+	if rhs.kind == .call {
+		if info0 := tc.resolve_call_info(rhs_id, rhs) {
+			info := tc.specialized_plain_generic_call_info(rhs, info0)
+			if info.return_type !is Unknown && info.return_type !is Void {
+				return info.return_type
+			}
+		}
+	}
+	return tc.resolve_type(rhs_id)
 }
 
 fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Type {

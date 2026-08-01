@@ -1582,7 +1582,7 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		}
 	}
 	if node.kind == .call {
-		if array_type := t.array_call_type_name(node) {
+		if array_type := t.array_call_type_name(id, node) {
 			return array_type
 		}
 	}
@@ -1711,8 +1711,8 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed strin
 	return checked
 }
 
-fn (t &Transformer) array_call_type_name(node flat.Node) ?string {
-	if map_type := t.array_map_call_type_name(node) {
+fn (t &Transformer) array_call_type_name(id flat.NodeId, node flat.Node) ?string {
+	if map_type := t.array_map_call_type_name(id, node) {
 		return map_type
 	}
 	if node.children_count == 0 {
@@ -1744,7 +1744,7 @@ fn (t &Transformer) array_call_type_name(node flat.Node) ?string {
 	}
 }
 
-fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
+fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?string {
 	if node.children_count < 2 {
 		return none
 	}
@@ -1752,12 +1752,20 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 	if fn_node.kind != .selector || fn_node.value != 'map' || fn_node.children_count == 0 {
 		return none
 	}
+	map_expr_id := t.a.child(&node, 1)
+	if callback_ret := t.array_map_callback_return_type_name(map_expr_id) {
+		return '[]${callback_ret}'
+	}
+	if checker_type := t.checker_expr_type_name(id) {
+		if checker_type.starts_with('[]') {
+			return checker_type
+		}
+	}
 	base_type0 := t.node_type(t.a.child(fn_node, 0))
 	base_type := if base_type0.starts_with('&') { base_type0[1..] } else { base_type0 }
 	if !base_type.starts_with('[]') {
 		return none
 	}
-	map_expr_id := t.a.child(&node, 1)
 	mut elem_type := if callback_ret := t.array_map_callback_return_type_name(map_expr_id) {
 		callback_ret
 	} else if checker_type := t.checker_expr_type_name(map_expr_id) {
