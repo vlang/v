@@ -10088,15 +10088,15 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	}
 	if loop_may_skip_body || body_may_break {
 		for state in pointer_alias_continue_states {
-			pointer_alias_paths << apply_pointer_binding_value_state_delta(pointer_alias_base,
-				pointer_alias_post, state)
+			pointer_alias_paths << tc.pointer_binding_state_after_loop_post(node, state,
+				pointer_alias_base, pointer_alias_post, has_cond_smartcasts, saved_smartcasts)
 		}
 	}
 	if body_reaches_post && (loop_may_skip_body || body_may_break) {
 		unsafe_alias_paths << apply_unsafe_reference_alias_state_delta(unsafe_alias_base,
 			unsafe_alias_post, unsafe_alias_body)
-		pointer_alias_paths << apply_pointer_binding_value_state_delta(pointer_alias_base,
-			pointer_alias_post, pointer_alias_body)
+		pointer_alias_paths << tc.pointer_binding_state_after_loop_post(node, pointer_alias_body,
+			pointer_alias_base, pointer_alias_post, has_cond_smartcasts, saved_smartcasts)
 	}
 	if unsafe_alias_paths.len == 0 {
 		unsafe_alias_paths << unsafe_alias_base
@@ -10583,7 +10583,7 @@ fn locked_shared_base_keys_may_alias(left string, right string) bool {
 	right_global := right.starts_with(global_owner_prefix)
 	if left_unknown || right_unknown
 		|| (left_parameter && (right_parameter || right_global))
-		|| (right_parameter && left_global) {
+		|| (right_parameter && left_global) || (left_global && right_global) {
 		left_suffix := locked_shared_owner_path_suffix(left) or { return false }
 		right_suffix := locked_shared_owner_path_suffix(right) or { return false }
 		return locked_shared_base_keys_may_alias('@path${left_suffix}', '@path${right_suffix}')
@@ -14515,6 +14515,48 @@ fn merge_pointer_binding_value_states(states []map[string][]string, fallback map
 			}
 		}
 		result[key] = merged
+	}
+	return result
+}
+
+fn (mut tc TypeChecker) pointer_binding_state_after_loop_post(loop_node flat.Node, incoming map[string][]string, base map[string][]string, precomputed map[string][]string, has_cond_smartcasts bool, precondition_smartcasts map[string]Type) map[string][]string {
+	if incoming == base {
+		return apply_pointer_binding_value_state_delta(base, precomputed, incoming)
+	}
+	if loop_node.children_count <= 2 {
+		return clone_pointer_binding_value_keys(incoming)
+	}
+	post_id := tc.a.child(&loop_node, 2)
+	if !tc.valid_node_id(post_id) || tc.a.node(post_id).kind == .empty {
+		return clone_pointer_binding_value_keys(incoming)
+	}
+	saved_fn_context := clone_function_check_context(tc.fn_context)
+	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	error_count := tc.errors.len
+	notice_count := tc.notices.len
+	pending_ierror_count := tc.pending_ierror_errors.len
+	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(incoming)
+	if has_cond_smartcasts {
+		tc.smartcasts = clone_smartcasts(precondition_smartcasts)
+	}
+	$if ownership ? {
+		tc.ownership_begin_suppressed_checks()
+	}
+	tc.check_node(post_id)
+	$if ownership ? {
+		tc.ownership_end_suppressed_checks()
+	}
+	result := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	tc.fn_context = saved_fn_context
+	tc.smartcasts = clone_smartcasts(saved_smartcasts)
+	if tc.errors.len > error_count {
+		tc.errors.trim(error_count)
+	}
+	if tc.notices.len > notice_count {
+		tc.notices.trim(notice_count)
+	}
+	if tc.pending_ierror_errors.len > pending_ierror_count {
+		tc.pending_ierror_errors.trim(pending_ierror_count)
 	}
 	return result
 }
