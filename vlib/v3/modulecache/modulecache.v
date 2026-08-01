@@ -2507,6 +2507,10 @@ fn c_function_declaration_identifier(head string) ?string {
 	mut top_level_open := -1
 	mut paren_depth := 0
 	mut top_level_updates_candidate_tail := false
+	mut previous_top_level_identifier := ''
+	mut previous_top_level_identifier_start := -1
+	mut last_top_level_identifier := ''
+	mut last_top_level_identifier_start := -1
 	mut quote := u8(0)
 	mut escaped := false
 	mut block_comment := false
@@ -2557,6 +2561,18 @@ fn c_function_declaration_identifier(head string) ?string {
 			i++
 			continue
 		}
+		if paren_depth == 0 && ((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`) {
+			start := i
+			i++
+			for i < head.len && c_generated_identifier_byte(head[i]) {
+				i++
+			}
+			previous_top_level_identifier = last_top_level_identifier
+			previous_top_level_identifier_start = last_top_level_identifier_start
+			last_top_level_identifier = head[start..i]
+			last_top_level_identifier_start = start
+			continue
+		}
 		if c == `(` {
 			if paren_depth == 0 {
 				top_level_open = i
@@ -2570,7 +2586,17 @@ fn c_function_declaration_identifier(head string) ?string {
 					start--
 				}
 				if start < end {
-					name := head[start..end]
+					mut name := head[start..end]
+					mut name_start := start
+					macro_arguments := trim_leading_c_comments(head[i + 1..].trim_space())
+					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__', '__asm', '__asm__', '_Alignas', 'alignas']
+						&& macro_arguments.starts_with('(') && last_top_level_identifier == name
+						&& previous_top_level_identifier.len > 0
+						&& previous_top_level_identifier !in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool']
+						&& c_function_candidate_has_return_type(head, previous_top_level_identifier_start) {
+						name = previous_top_level_identifier
+						name_start = previous_top_level_identifier_start
+					}
 					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__',
 						'__asm', '__asm__', '_Alignas', 'alignas'] {
 						is_suffix := candidate.len > 0 && candidate_tail_end >= 0
@@ -2578,7 +2604,7 @@ fn c_function_declaration_identifier(head string) ?string {
 							&& c_function_candidate_has_return_type(head, candidate_start)
 						if !is_suffix {
 							candidate = name
-							candidate_start = start
+							candidate_start = name_start
 						}
 						top_level_updates_candidate_tail = true
 					}
