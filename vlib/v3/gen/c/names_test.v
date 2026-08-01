@@ -221,6 +221,7 @@ fn test_objective_c_header_detection() {
 	assert !c_header_text_needs_objective_c('typedef void *Class; static inline Class identity(Class value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('typedef unsigned SEL; static inline SEL identity(SEL value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('typedef void *Protocol; static inline Protocol identity(Protocol value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('struct Class { int value; }; union id { int value; }; enum SEL { sel_value }; struct Protocol { int value; }; union instancetype { int value; };\nstatic struct Class class_identity(struct Class value) { return value; }\nstatic union id id_identity(union id value) { return value; }\nstatic enum SEL sel_identity(enum SEL value) { return value; }\nstatic struct Protocol protocol_identity(struct Protocol value) { return value; }\nstatic union instancetype instance_identity(union instancetype value) { return value; }\n')
 	assert c_header_text_needs_objective_c('#if 0\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
 	assert c_header_text_needs_objective_c('#define IGNORE(...)\nIGNORE(typedef unsigned id);\nstatic inline id identity(id value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('#define __bridge\nvoid *value = (__bridge void *)pointer;\n')

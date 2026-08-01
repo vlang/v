@@ -5076,8 +5076,9 @@ fn c_header_token_is_on_directive_line(text string, start int) bool {
 	return line_start < start && text[line_start] == `#`
 }
 
-fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int, local_typedefs map[string]bool) bool {
+fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int, previous_identifier string, local_typedefs map[string]bool) bool {
 	if token !in ['id', 'Class', 'SEL', 'Protocol', 'instancetype'] || local_typedefs[token]
+		|| previous_identifier in ['struct', 'union', 'enum']
 		|| c_header_token_is_on_directive_line(text, token_start) {
 		return false
 	}
@@ -5104,6 +5105,7 @@ fn c_header_has_bare_objective_c_type(text string, token string, token_start int
 fn c_header_text_has_objective_c_tokens(text string, local_typedefs map[string]bool) bool {
 	mut i := 0
 	mut previous_can_end_expression := false
+	mut previous_identifier := ''
 	for i < text.len {
 		if text[i] in [`"`, `'`] {
 			quote := text[i]
@@ -5203,13 +5205,16 @@ fn c_header_text_has_objective_c_tokens(text string, local_typedefs map[string]b
 			&& !c_header_token_is_on_directive_line(text, start) {
 			return true
 		}
-		if c_header_has_bare_objective_c_type(text, token, start, i, local_typedefs) {
+		if c_header_has_bare_objective_c_type(text, token, start, i, previous_identifier,
+			local_typedefs)
+		{
 			return true
 		}
 		if c_header_has_objective_c_qualified_type(text, token, i, local_typedefs) {
 			return true
 		}
 		previous_can_end_expression = token !in ['return', 'throw', 'case']
+		previous_identifier = token
 	}
 	return false
 }
