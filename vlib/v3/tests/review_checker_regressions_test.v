@@ -57,6 +57,17 @@ fn test_source_field_names_require_snake_case() {
 		'field name `Foo` cannot contain uppercase letters, use snake_case instead')
 }
 
+fn test_immutable_fields_and_result_storage_are_rejected() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'immutable_struct_field',
+		'struct S {\n\tread_only int\nmut:\n\twritable int\n}\n\nfn main() {\n\tmut s := S{}\n\ts.read_only = 1\n}\n',
+		'field `read_only` of struct `S` is immutable')
+	run_bad(v3_bin, 'result_function_parameter', 'fn consume(value !int) {}\n\nfn main() {}\n',
+		'result type arguments are not supported')
+	run_bad(v3_bin, 'result_channel_element', 'fn main() {\n\t_ := chan !int{}\n}\n',
+		'cannot use chan with Result type')
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',

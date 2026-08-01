@@ -1132,6 +1132,11 @@ fn (mut tc TypeChecker) check_lvalue_field_mutability(id flat.NodeId) {
 		if field.name != node.value {
 			continue
 		}
+		if !field.is_mut {
+			tc.record_error_at(.assignment_mismatch,
+				'field `${node.value}` of struct `${raw_base_type.name()}` is immutable', id, tc.selector_field_diagnostic_pos(id,
+				node.value))
+		}
 		return
 	}
 }

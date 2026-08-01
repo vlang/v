@@ -9299,6 +9299,10 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 					child_id, tc.type_diagnostic_pos(child_id, child.typ))
 			}
 		}
+		if child.kind == .param && child.typ.trim_space().starts_with('!') {
+			tc.record_error_at(.unknown_type, 'result type arguments are not supported', child_id, tc.type_diagnostic_pos(child_id,
+				child.typ.trim_space()))
+		}
 		if node.kind == .struct_decl {
 			tc.check_missing_struct_field_generic_type(child_id, child.typ, generic_params)
 			field_type := unalias_type(tc.parse_type(child.typ))

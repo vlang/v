@@ -8791,6 +8791,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				})
 			}
 			if name == 'chan' && p.can_start_type_name() {
+				if p.tok == .not {
+					p.record_diagnostic_span('cannot use chan with Result type', p.tok_pos,
+
+						p.tok_pos + 1)
+				}
 				elem_type := p.parse_fixed_array_literal_type_name()
 				chan_type := 'chan ${elem_type}'
 				if p.tok == .lcbr {

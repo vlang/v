@@ -12681,16 +12681,17 @@ fn (mut g FlatGen) preamble() {
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
 	for directive in g.c_directives {
-		// Core runtime modules are implemented against the standalone declarations
-		// in headerless_libc_preamble(). Their helper headers must not force the
-		// entire generated unit back to the platform libc preamble.
-		if directive.module in ['builtin', 'builtin.closure', 'closure'] {
-			continue
-		}
 		for line in directive.text.split_into_lines() {
 			clean := trimmed_space(line)
 			if c_directive_name(clean) in ['include', 'import'] {
 				arg := c_directive_arg(clean)
+				// Closure/thread runtime helpers are implemented against the standalone
+				// declarations in headerless_libc_preamble(). Do not let unrelated
+				// builtin headers (for example <gc.h>) inherit this exemption.
+				if directive.module in ['builtin', 'builtin.closure', 'closure']
+					&& arg in ['<pthread.h>', '<sys/mman.h>', '<synchapi.h>'] {
+					continue
+				}
 				// A quoted local header can include system headers itself. Emit the
 				// system preamble first so its declarations do not conflict with the
 				// standalone declarations from the headerless preamble.
