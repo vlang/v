@@ -3202,18 +3202,11 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	if node.op == .amp && tc.node_source_starts_with(id, '&') && tc.unsafe_depth == 0
 		&& !tc.expr_is_inside_unsafe_block(id) {
 		if fixed_array_id := tc.fixed_array_reference_ident(child_id) {
-			fixed_type := unalias_type(tc.resolve_type(fixed_array_id))
-			expected := tc.expected_context_for_expr(id) or { Type(void_) }
-			can_decay_to_expected_pointer := fixed_type is ArrayFixed && expected is Pointer
-				&& (tc.type_compatible(fixed_type, expected.base_type)
-				|| tc.type_compatible(fixed_type.elem_type, expected.base_type))
-			if !can_decay_to_expected_pointer {
-				name := tc.a.node(fixed_array_id).value
-				tc.record_error_at(.assignment_mismatch,
-					'cannot reference fixed array `${name}` outside `unsafe` blocks as it is supposed to be stored on stack',
-					fixed_array_id, tc.node_value_diagnostic_pos(fixed_array_id))
-				return
-			}
+			name := tc.a.node(fixed_array_id).value
+			tc.record_error_at(.assignment_mismatch,
+				'cannot reference fixed array `${name}` outside `unsafe` blocks as it is supposed to be stored on stack',
+				fixed_array_id, tc.node_value_diagnostic_pos(fixed_array_id))
+			return
 		}
 	}
 	if node.op == .arrow {

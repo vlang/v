@@ -138,7 +138,7 @@ import wrapper
 
 fn main() {
 	mut storage := [2]u8{}
-	mut bytes := &storage[0]
+	mut bytes := unsafe { &storage[0] }
 	wrapper.terminate(mut bytes)
 	assert storage[0] == `Z`
 	assert storage[1] == 0

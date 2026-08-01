@@ -8962,6 +8962,16 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	}
 	min_count := tc.min_required_arg_count(info) - ctx_count
 	if info.is_variadic {
+		for i in 1 + info.arg_offset .. node.children_count - 1 {
+			arg_id := tc.call_arg_value(tc.a.child(&node, i))
+			if spread_id := tc.spread_arg_child(arg_id) {
+				spread_pos := tc.a.node(spread_id).pos
+				tc.record_error_at(.call_arg_mismatch,
+					'when forwarding a variadic variable, it must be the final argument', arg_id, token.new_span(spread_pos.id, int_max(0,
+					spread_pos.offset - 3), spread_pos.end))
+				return
+			}
+		}
 		variadic_param_idx := info.params.len - 1
 		for i in 1 + info.arg_offset .. node.children_count {
 			arg_id := tc.call_arg_value(tc.a.child(&node, i))

@@ -4537,7 +4537,7 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	$if macos && arm64 {
 		v3_bin := build_v3()
 		out := run_good_backend(v3_bin, 'native_atomic_pointer_fetch_add_sub', 'arm64',
-			'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(&vals[0])\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(&vals[0]))\n\tprintln(p == voidptr(&vals[1]))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(&vals[1]))\n\tprintln(p == voidptr(&vals[0]))\n}\n')
+			'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(unsafe { &vals[0] })\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(unsafe { &vals[0] }))\n\tprintln(p == voidptr(unsafe { &vals[1] }))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(unsafe { &vals[1] }))\n\tprintln(p == voidptr(unsafe { &vals[0] }))\n}\n')
 		assert out == 'true\ntrue\ntrue\ntrue'
 	}
 }

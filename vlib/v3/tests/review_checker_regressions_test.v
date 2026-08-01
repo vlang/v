@@ -358,12 +358,15 @@ fn test_reject_fixed_array_decay_to_pointer() {
 		'cannot assign `[2]int` to `&int`')
 	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
 		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
-		'cannot use `&[2]u8` as argument 1 to `consume`; expected `&u8`')
+		'cannot reference fixed array `buf` outside `unsafe` blocks as it is supposed to be stored on stack')
+	run_bad(v3_bin, 'bad_addressed_fixed_array_compatible_pointer_argument',
+		'type Fixed = [2]int\n\nfn save(value &Fixed) {}\n\nfn main() {\n\tvalue := Fixed{}\n\tsave(&value)\n}\n',
+		'cannot reference fixed array `value` outside `unsafe` blocks as it is supposed to be stored on stack')
 	run_bad(v3_bin, 'bad_fixed_i32_array_byte_pointer_assignment',
 		'fn main() {\n\tbuf := [i32(1), 2]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n}\n',
-		'cannot assign `&[2]i32` to `&u8`')
-	byte_out := run_good(v3_bin, 'good_fixed_u8_array_byte_pointer_assignment',
-		'fn main() {\n\tbuf := [u8(65), 66]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n\tprintln(int_str(int(*ptr)))\n}\n')
+		'cannot reference fixed array `buf` outside `unsafe` blocks as it is supposed to be stored on stack')
+	byte_out := run_good(v3_bin, 'good_fixed_array_pointer_inside_unsafe',
+		'type Fixed = [2]u8\n\nfn main() {\n\tbuf := Fixed([u8(65), 66]!)\n\tptr := unsafe { &buf }\n\tprintln(int_str(int((*ptr)[0])))\n}\n')
 	assert byte_out == '65'
 	out := run_good(v3_bin, 'good_translated_fixed_array_pointer_assignment',
 		'@[translated]\nmodule main\n\nfn main() {\n\tvalues := [1, 2]!\n\tmut ptr := &int(0)\n\tptr = values\n\tprintln(int_str(*ptr))\n}\n')
@@ -1400,4 +1403,28 @@ fn main() {
 }
 ')
 	assert generic_out == '7'
+}
+
+fn test_forwarded_variadic_arrays_must_be_final() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_forwarded_variadic_function_trailing_arg', 'fn take(values ...int) {}
+
+fn forward(values ...int) {
+	take(...values, 2)
+}
+
+fn main() {}
+',
+		'when forwarding a variadic variable, it must be the final argument')
+	run_bad(v3_bin, 'bad_forwarded_variadic_method_trailing_arg', 'struct Receiver {}
+
+fn (receiver Receiver) take(values ...int) {}
+
+fn (receiver Receiver) forward(values ...int) {
+	receiver.take(...values, 2)
+}
+
+fn main() {}
+',
+		'when forwarding a variadic variable, it must be the final argument')
 }
