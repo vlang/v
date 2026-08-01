@@ -1274,6 +1274,17 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 		}
 	}
 	p.end_local_binding_scope()
+	if p.cur_veb_ctx_name.len > 0 && p.cur_veb_ctx_name != 'ctx' {
+		for index in first_node .. p.a.nodes.len {
+			node := p.a.nodes[index]
+			if node.kind == .ident && node.value == 'ctx' {
+				p.a.nodes[index] = flat.Node{
+					...node
+					value: p.cur_veb_ctx_name
+				}
+			}
+		}
+	}
 	p.remap_template_source(first_node, first_diagnostic, file, stable_src, template_path,
 		call_pos, source_lines)
 
@@ -1892,17 +1903,18 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 	for bid in builder_ids {
 		p.collect_template_free_idents(bid, mut declared, mut seen, mut names, mut mut_names)
 	}
-	value_expr := if tmpl.typ == 'html' { 'ctx.html(${bname})' } else { bname }
+	ctx_name := if p.cur_veb_ctx_name.len > 0 { p.cur_veb_ctx_name } else { 'ctx' }
+	value_expr := if tmpl.typ == 'html' { '${ctx_name}.html(${bname})' } else { bname }
 	ret_type := if tmpl.typ == 'html' { 'veb.Result' } else { 'string' }
 	mut captures := []string{}
 	if tmpl.typ == 'html' {
 		// The html value expression is `ctx.html(...)`, so the closure must capture
 		// `ctx` even when the template body never references it — and mutably, since
 		// `Context.html` has a mut receiver. Put it first (dropping any plain `ctx`).
-		captures << 'mut ctx'
+		captures << 'mut ${ctx_name}'
 	}
 	for name in names {
-		if tmpl.typ == 'html' && name == 'ctx' {
+		if tmpl.typ == 'html' && name == ctx_name {
 			continue
 		}
 		// A name used mutably (`@{fill(mut buf)}`) must be captured `mut`, or the

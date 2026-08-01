@@ -107,6 +107,9 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
 		return
 	}
+	if g.gen_interface_pointer_value_expr(value_id, expected) {
+		return
+	}
 	if g.gen_pointer_value_struct_field(value_id, expected) {
 		return
 	}
@@ -411,6 +414,8 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	} else if init_value == 'Optional'
 		&& (node_type is types.OptionType || node_type is types.ResultType) {
 		name = g.optional_type_name(node_type)
+	} else if is_optional_init && !name.starts_with('Optional_') {
+		name = g.optional_type_name(init_type)
 	}
 	if is_optional_init {
 		if err_id := g.optional_success_error_payload_err_expr(node) {
@@ -3374,10 +3379,6 @@ fn (g &FlatGen) generic_struct_init_instance_type(type_name string) ?types.Type 
 
 fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 	init_type_name := g.struct_init_import_alias_type_name(type_name)
-	alias_name := init_type_name.trim_left('?!')
-	if target := g.struct_type_alias_target(alias_name) {
-		return g.value_c_type(g.tc.parse_type(target))
-	}
 	typ := g.tc.parse_type(init_type_name)
 	if typ is types.OptionType || typ is types.ResultType {
 		return g.optional_type_name(typ)
@@ -4599,6 +4600,11 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	if key_type is types.String {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
+	clean_key := cgen_unalias_type(key_type)
+	if clean_key is types.ArrayFixed {
+		base := '${g.tc.c_type(clean_key)}_map_key'
+		return '${base}_hash', '${base}_eq', '${base}_clone', '${base}_free'
+	}
 	c_key := if key_type is types.Enum {
 		g.enum_storage_c_type(key_type)
 	} else {
@@ -4615,6 +4621,134 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
+}
+
+fn (mut g FlatGen) precompute_fixed_array_map_key_types() {
+	for node in g.a.nodes {
+		if node.kind != .call || node.children_count < 3 {
+			continue
+		}
+		callee := g.a.child_node(&node, 0)
+		key_size := g.a.child_node(&node, 1)
+		if callee.kind != .ident || callee.value != 'new_map' || key_size.kind != .sizeof_expr
+			|| key_size.value.len == 0 {
+			continue
+		}
+		g.register_fixed_array_map_key_type(g.tc.parse_type(key_size.value))
+	}
+}
+
+fn (mut g FlatGen) register_fixed_array_map_key_type(typ types.Type) {
+	clean := cgen_unalias_type(typ)
+	if clean !is types.ArrayFixed {
+		return
+	}
+	fixed := clean as types.ArrayFixed
+	name := g.tc.c_type(fixed)
+	if name in g.fixed_array_map_key_types {
+		return
+	}
+	g.fixed_array_map_key_types[name] = fixed
+	g.register_fixed_array_map_key_type(fixed.elem_type)
+}
+
+fn (mut g FlatGen) fixed_array_map_key_forward_decls() {
+	for name, _ in g.fixed_array_map_key_types {
+		base := '${name}_map_key'
+		g.writeln('static u64 ${base}_hash(void* pkey);')
+		g.writeln('static bool ${base}_eq(void* a, void* b);')
+		g.writeln('static void ${base}_clone(void* dest, void* pkey);')
+		g.writeln('static void ${base}_free(void* pkey);')
+	}
+	if g.fixed_array_map_key_types.len > 0 {
+		g.writeln('')
+	}
+}
+
+fn (mut g FlatGen) fixed_array_map_key_definitions() {
+	for name, info in g.fixed_array_map_key_types {
+		length := g.tc.fixed_array_len_value(info) or { info.len }
+		base := '${name}_map_key'
+		g.writeln('static u64 ${base}_hash(void* pkey) {')
+		g.writeln('\t${name}* key = (${name}*)pkey;')
+		g.writeln('\tu64 hash = 0;')
+		g.writeln('\tfor (int i = 0; i < ${length}; ++i) {')
+		g.writeln('\t\thash = wyhash64(hash, ${g.fixed_array_map_key_hash_expr(info.elem_type,
+			'(*key)[i]')});')
+		g.writeln('\t}')
+		g.writeln('\treturn hash;')
+		g.writeln('}')
+		g.writeln('static bool ${base}_eq(void* a, void* b) {')
+		g.writeln('\t${name}* left = (${name}*)a;')
+		g.writeln('\t${name}* right = (${name}*)b;')
+		g.writeln('\tfor (int i = 0; i < ${length}; ++i) {')
+		g.writeln('\t\tif (!(${g.fixed_array_map_key_eq_expr(info.elem_type, '(*left)[i]',
+			'(*right)[i]')})) return false;')
+		g.writeln('\t}')
+		g.writeln('\treturn true;')
+		g.writeln('}')
+		g.writeln('static void ${base}_clone(void* dest, void* pkey) {')
+		g.writeln('\t${name}* out = (${name}*)dest;')
+		g.writeln('\t${name}* source = (${name}*)pkey;')
+		g.writeln('\tfor (int i = 0; i < ${length}; ++i) {')
+		g.writeln('\t\t${g.fixed_array_map_key_clone_stmt(info.elem_type, '(*out)[i]',
+			'(*source)[i]')}')
+		g.writeln('\t}')
+		g.writeln('}')
+		g.writeln('static void ${base}_free(void* pkey) {')
+		g.writeln('\t${name}* key = (${name}*)pkey;')
+		g.writeln('\tfor (int i = 0; i < ${length}; ++i) {')
+		if stmt := g.fixed_array_map_key_free_stmt(info.elem_type, '(*key)[i]') {
+			g.writeln('\t\t${stmt}')
+		}
+		g.writeln('\t}')
+		g.writeln('}')
+		g.writeln('')
+	}
+}
+
+fn (g &FlatGen) fixed_array_map_key_hash_expr(typ types.Type, expr string) string {
+	clean := cgen_unalias_type(typ)
+	if clean is types.String {
+		return 'map_hash_string(&${expr})'
+	}
+	if clean is types.ArrayFixed {
+		return '${g.tc.c_type(clean)}_map_key_hash(&${expr})'
+	}
+	return 'wyhash((const void*)(&${expr}), sizeof(${g.tc.c_type(clean)}), 0, _wyp)'
+}
+
+fn (g &FlatGen) fixed_array_map_key_eq_expr(typ types.Type, left string, right string) string {
+	clean := cgen_unalias_type(typ)
+	if clean is types.String {
+		return 'fast_string_eq(${left}, ${right})'
+	}
+	if clean is types.ArrayFixed {
+		return '${g.tc.c_type(clean)}_map_key_eq(&${left}, &${right})'
+	}
+	return 'memcmp(&${left}, &${right}, sizeof(${g.tc.c_type(clean)})) == 0'
+}
+
+fn (g &FlatGen) fixed_array_map_key_clone_stmt(typ types.Type, dest string, source string) string {
+	clean := cgen_unalias_type(typ)
+	if clean is types.String {
+		return 'map_clone_string(&${dest}, &${source});'
+	}
+	if clean is types.ArrayFixed {
+		return '${g.tc.c_type(clean)}_map_key_clone(&${dest}, &${source});'
+	}
+	return 'memcpy(&${dest}, &${source}, sizeof(${g.tc.c_type(clean)}));'
+}
+
+fn (g &FlatGen) fixed_array_map_key_free_stmt(typ types.Type, expr string) ?string {
+	clean := cgen_unalias_type(typ)
+	if clean is types.String {
+		return 'map_free_string(&${expr});'
+	}
+	if clean is types.ArrayFixed {
+		return '${g.tc.c_type(clean)}_map_key_free(&${expr});'
+	}
+	return none
 }
 
 // skip_builtin_struct supports skip builtin struct handling for FlatGen.
@@ -4712,6 +4846,7 @@ const c_preamble_defined_structs = {
 	'C.tm':                         true
 	'C.uChar':                      true
 	'C.utsname':                    true
+	'C.va_list':                    true
 	'C.vm_size_t':                  true
 	'C.vm_statistics64_data_t':     true
 	'C.wchar_t':                    true
@@ -4788,6 +4923,7 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	// `_object` either owns a boxed concrete value or borrows a concrete pointer.
 	g.writeln('\tvoid* _object;')
 	g.writeln('\tint _typ;')
+	g.writeln('\tvoid* _methods;')
 	g.writeln('\tbool _object_is_boxed;')
 	if g.is_ierror_type_name(name) {
 		g.writeln('\tstring message;')
@@ -5570,16 +5706,17 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 
 // write_struct_field writes struct field output for c.
 fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) {
+	qualifier := if f.is_volatile { 'volatile ' } else { '' }
 	if f.typ is types.Void {
-		g.writeln('\tint ${g.cname(f.name)};')
+		g.writeln('\t${qualifier}int ${g.cname(f.name)};')
 		return
 	}
 	if info := g.shared_field_info(_struct_name, f.name) {
-		g.writeln('\t${info.wrapper}* ${g.cname(f.name)};')
+		g.writeln('\t${qualifier}${info.wrapper}* ${g.cname(f.name)};')
 		return
 	}
 	if shared_alias_ptr := g.shared_alias_pointer_type(f.typ) {
-		g.writeln('\t${g.tc.c_type(shared_alias_ptr)} ${g.cname(f.name)};')
+		g.writeln('\t${qualifier}${g.tc.c_type(shared_alias_ptr)} ${g.cname(f.name)};')
 		return
 	}
 	mut field_type := f.typ
@@ -5593,7 +5730,7 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 				g.tc.c_type(field_type.base_type)
 			}
 			ct := g.resolve_fn_ptr_type(c_abi_fn)
-			g.writeln('\t${ct}* ${g.cname(f.name)};')
+			g.writeln('\t${qualifier}${ct}* ${g.cname(f.name)};')
 			return
 		}
 	}
@@ -5602,10 +5739,10 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 			g.tc.c_type(raw_field_type)
 		}
 		ct := g.resolve_fn_ptr_type(c_abi_fn)
-		g.writeln('\t${ct} ${g.cname(f.name)};')
+		g.writeln('\t${qualifier}${ct} ${g.cname(f.name)};')
 	} else if field_type is types.ArrayFixed {
 		c_elem, dims := g.fixed_array_decl_parts(field_type)
-		g.writeln('\t${c_elem} ${g.cname(f.name)}${dims};')
+		g.writeln('\t${qualifier}${c_elem} ${g.cname(f.name)}${dims};')
 	} else {
 		mut ct := if field_type is types.OptionType || field_type is types.ResultType {
 			g.optional_type_name(field_type)
@@ -5620,7 +5757,7 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 		if ct == 'void' {
 			ct = 'int'
 		}
-		g.writeln('\t${ct} ${g.cname(f.name)};')
+		g.writeln('\t${qualifier}${ct} ${g.cname(f.name)};')
 	}
 }
 

@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // MapIndexInfo stores map index info metadata used by transform.
 struct MapIndexInfo {
@@ -89,7 +90,7 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
 	key_storage_type := t.map_key_storage_type(key_type)
-	hash_fn, eq_fn, clone_fn, free_fn := map_callback_names(key_storage_type)
+	hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(key_storage_type)
 	mut args := []flat.NodeId{}
 	args << t.make_sizeof_type(key_storage_type)
 	args << t.make_sizeof_type(value_type)
@@ -133,6 +134,17 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
+}
+
+fn (t &Transformer) map_callback_names_for_type(key_type string) (string, string, string, string) {
+	if !isnil(t.tc) {
+		clean := t.tc.parse_type(t.normalize_type_alias(key_type))
+		if clean is types.ArrayFixed {
+			base := '${t.tc.c_type(clean)}_map_key'
+			return '${base}_hash', '${base}_eq', '${base}_clone', '${base}_free'
+		}
+	}
+	return map_callback_names(key_type)
 }
 
 // map_index_info supports map index info handling for Transformer.
@@ -377,9 +389,10 @@ fn (mut t Transformer) lower_owned_map_index_move(source_id flat.NodeId, map_exp
 	body := [t.make_assign(t.make_ident(result_name), stored_read),
 		t.make_clear_map_ptr_value(ptr_name, value_type)]
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	body_block := t.make_block(body)
 	start := t.a.children.len
 	t.a.children << cond
-	t.a.children << t.make_block(body)
+	t.a.children << body_block
 	t.pending_stmts << t.a.add_node(flat.Node{
 		kind:                 .if_expr
 		children_start:       start

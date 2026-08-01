@@ -4819,3 +4819,259 @@ fn main() {
 ')
 	assert out == '42'
 }
+
+fn test_interface_extension_method_uses_match_smartcast_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_extension_match_smartcast_receiver', 'interface Named {
+	number() int
+}
+
+struct Alpha {}
+
+fn (_ &Alpha) number() int {
+	return 1
+}
+
+fn (_ &Alpha) str() string {
+	return "alpha"
+}
+
+fn (value &Named) str() string {
+	match value {
+		Alpha { return value.str() }
+		else { return "unknown" }
+	}
+}
+
+fn main() {
+	value := Named(&Alpha{})
+	println(value.str())
+}
+')
+	assert out == 'alpha'
+}
+
+fn test_struct_literal_implicit_reference_and_option_or_mut_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_literal_ref_and_option_or_mut_receiver', 'import net
+
+struct Reader {
+mut:
+	value int
+}
+
+struct Client {
+	reader ?Reader
+}
+
+fn (mut reader Reader) next() int {
+	reader.value++
+	return reader.value
+}
+
+fn borrow(reader &Reader) int {
+	return reader.value
+}
+
+fn main() {
+	mut client := Client{
+		reader: Reader{
+			value: 4
+		}
+	}
+	println(borrow(Reader{
+		value: 7
+	}))
+	println(client.reader or { return }.next())
+	protocols := [net.Protocol.icmp, net.Protocol.icmpv6, net.Protocol.raw]
+	println(protocols.len)
+	unsafe {
+		null_char := &char(0)
+		println(isnil(null_char))
+	}
+}
+')
+	assert out == '7\n5\n3\ntrue'
+}
+
+fn test_implicit_voidptr_argument_promotes_local_to_heap() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_source(v3_bin, 'implicit_voidptr_argument_heap_escape', 'struct State {
+mut:
+	value int
+}
+
+fn retain(_ voidptr) {}
+
+fn register() {
+	mut state := State{}
+	retain(state)
+	state.value = 7
+}
+
+fn main() {
+	register()
+}
+')
+	body := c_fn_body(generated, 'void main__register')
+	assert body.contains('main__State* state'), body
+	assert body.contains('memdup'), body
+}
+
+fn test_interface_pointer_arg_prefers_current_module_global_over_homonymous_const() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'interface_pointer_global_const_collision', {
+		'v.mod':               "Module { name: 'interface_pointer_global_const_collision' }\n"
+		'api/api.v':           'module api
+
+@[has_globals]
+
+pub interface Logger {
+	value() int
+}
+
+pub struct Impl {
+pub:
+	n int
+}
+
+pub fn (logger &Impl) value() int {
+	return logger.n
+}
+
+__global default_logger &Logger
+
+fn init() {
+	default_logger = &Impl{
+		n: 7
+	}
+}
+
+fn read(logger &Logger) int {
+	return logger.value()
+}
+
+pub fn current() int {
+	return read(default_logger)
+}
+'
+		'consumer/consumer.v': 'module consumer
+
+import api
+
+pub const default_logger = &api.Impl{
+	n: 99
+}
+
+pub fn current() int {
+	return default_logger.value()
+}
+'
+		'main.v':              'module main
+
+import api
+import consumer
+
+fn main() {
+	println(api.current())
+	println(consumer.current())
+}
+'
+	}, 'main.v')
+	assert out == '7\n99'
+}
+
+fn test_array_accessors_are_addressable_append_targets() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_accessor_append_target', 'fn main() {
+	mut nested := [][]int{}
+	nested << []int{}
+	nested.last() << [1, 2, 3]
+	nested.first() << [4, 5, 6]
+	println(nested)
+}
+')
+	assert out == '[[1, 2, 3, 4, 5, 6]]'
+}
+
+fn test_selected_comptime_block_preserves_outer_value_tail() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'selected_comptime_block_value_tail', "fn main() {
+	value := if true {
+		\$if msvc { 'msvc' } \$else { 'other' }
+	} else {
+		''
+	}
+	println(value)
+}
+")
+	assert out == 'other'
+}
+
+fn test_none_literal_str_method() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'none_literal_str', 'fn main() {
+	println(none.str())
+}
+')
+	assert out == '<none>'
+}
+
+fn test_smartcast_sum_value_keeps_sum_method_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'smartcast_sum_method_receiver', 'struct Square {}
+
+struct Circle {}
+
+type Shape = Circle | Square
+
+fn (shape Shape) shape_name() string {
+	return match shape {
+		Circle { "circle" }
+		Square { "square" }
+	}
+}
+
+fn print_name(shape Shape) {
+	if shape is Square {
+		println(shape.shape_name())
+	}
+}
+
+fn main() {
+	print_name(Square{})
+}
+')
+	assert out == 'square'
+}
+
+fn test_smartcast_nested_sum_uses_nested_sum_method_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'smartcast_nested_sum_method_receiver', 'struct Integer {}
+
+struct Text {}
+
+struct Empty {}
+
+type Expr = Integer | Text
+type Node = Empty | Expr
+
+fn (expr Expr) expr_name() string {
+	return match expr {
+		Integer { "integer" }
+		Text { "text" }
+	}
+}
+
+fn print_name(node Node) {
+	if node is Expr {
+		println(node.expr_name())
+	}
+}
+
+fn main() {
+	print_name(Expr(Integer{}))
+}
+')
+	assert out == 'integer'
+}

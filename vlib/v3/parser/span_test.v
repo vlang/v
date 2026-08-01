@@ -76,6 +76,48 @@ fn test_supported_unix_comptime_aliases_have_no_diagnostics() {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 }
 
+fn test_attribute_before_module_preserves_qualified_noreturn_name() {
+	path := os.join_path(os.temp_dir(), 'v3_module_attribute_${os.getpid()}.v')
+	os.write_file(path, '@[has_globals]
+module decorated
+
+@[noreturn]
+fn stop() {
+	exit(1)
+}
+') or {
+		panic(err)
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert 'decorated.stop' in p.a.noreturn_fns
+}
+
+fn test_module_qualified_double_pointer_cast_is_one_cast_expression() {
+	ast, _ := parse_span_source('module_pointer_cast', 'import v.ast
+
+fn cast_file(raw voidptr) &ast.File {
+	return unsafe { *(&&ast.File(raw)) }
+}
+')
+	mut saw := false
+	for node in ast.nodes {
+		if node.kind == .cast_expr && node.value == '&&ast.File' {
+			saw = true
+		}
+	}
+	assert saw
+}
+
+fn test_interpolation_segment_preserves_escaped_trailing_quote() {
+	assert strip_interp_quotes(r'\"', `"`) == '"'
+	assert strip_interp_quotes('tail"', `"`) == 'tail'
+	assert strip_interp_quotes(r'\\"', `"`) == '\\'
+}
+
 // Literal nodes must carry their own span, not the span of the token that
 // happens to follow them after p.next().
 fn test_literal_nodes_span_their_own_source() {

@@ -91,7 +91,11 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 	last_line := int_min(lines.len, position.line + source_context_after)
 	for line_number := first_line; line_number <= last_line; line_number++ {
 		line := lines[line_number - 1]
-		result.writeln('${line_number:5d} | ${line.replace('\t', '    ')}')
+		if line.len == 0 && line_number == last_line {
+			result.writeln('${line_number:5d} |')
+		} else {
+			result.writeln('${line_number:5d} | ${line.replace('\t', '    ')}')
+		}
 		if line_number == position.line {
 			line_start := file.line_start(position.line)
 			start_byte := int_max(0, int_min(pos.offset - line_start, line.len))

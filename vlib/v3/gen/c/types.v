@@ -315,6 +315,26 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 	return 'int', types.Type(types.int_)
 }
 
+fn (mut g FlatGen) optional_value_info(t types.Type, opt_ct string) (string, types.Type) {
+	val_ct0, mut val_type := g.optional_value_ct(t)
+	mut val_ct := if val_type is types.MultiReturn {
+		g.optional_payload_c_type(val_type)
+	} else {
+		val_ct0
+	}
+	val_ct = g.optional_payload_c_type_for_optional_ct(opt_ct, val_ct)
+	if opt_ct.starts_with('Optional_') && opt_ct.ends_with('ptr') {
+		val_ct = '${opt_ct['Optional_'.len..opt_ct.len - 3]}*'
+	}
+	semantic_ct := g.optional_payload_c_type(val_type)
+	if val_ct.ends_with('*') && !semantic_ct.ends_with('*') {
+		val_type = types.Type(types.Pointer{
+			base_type: val_type
+		})
+	}
+	return val_ct, val_type
+}
+
 fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 	if t is types.ArrayFixed {
 		return g.fixed_array_c_type(t)
@@ -1687,18 +1707,43 @@ fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) 
 // type_alias_decls returns type alias decls data for FlatGen.
 fn (mut g FlatGen) type_alias_decls() {
 	mut emitted := false
+	mut main_aliases := map[string]bool{}
+	if g.tc.autofree_mode {
+		mut cur_module := ''
+		for node_idx in g.top_level_nodes() {
+			node := g.a.nodes[node_idx]
+			match node.kind {
+				.file {
+					cur_module = g.tc.file_modules[node.value] or { '' }
+				}
+				.module_decl {
+					cur_module = node.value
+				}
+				.type_decl {
+					if cur_module in ['', 'main'] && node.children_count == 0 {
+						main_aliases[node.value] = true
+					}
+				}
+				else {}
+			}
+		}
+	}
 	for name, target in g.tc.type_aliases {
 		if target.starts_with('fn_ptr:') || target.starts_with('C.') {
 			continue
 		}
-		if g.has_builtins {
+		if g.has_builtins && !g.tc.autofree_mode {
+			continue
+		}
+		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
 		ct := g.tc.c_type(g.tc.parse_type(target))
-		if ct == 'void' || ct == name {
+		alias_cname := if g.tc.autofree_mode { g.cname('main.${name}') } else { g.cname(name) }
+		if ct == 'void' || ct == alias_cname {
 			continue
 		}
-		g.writeln('typedef ${ct} ${g.cname(name)};')
+		g.writeln('typedef ${ct} ${alias_cname};')
 		emitted = true
 	}
 	if emitted {

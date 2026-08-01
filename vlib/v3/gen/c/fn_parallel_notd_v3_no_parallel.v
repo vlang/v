@@ -705,6 +705,7 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 
 // gen_fns_dispatch emits fns dispatch output for c.
 fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
+	g.gen_test_failure_global()
 	if no_parallel {
 		if g.scope_parallel_workers {
 			items := g.ensure_fn_gen_items()
@@ -1530,6 +1531,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_gen_items:                   g.fn_gen_items
 		top_level_node_ids:             g.top_level_node_ids
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
+		is_prod:                        g.is_prod
+		object_file_mode:               g.object_file_mode
 		cache_program_files:            g.cache_program_files
 		incremental_fn_names:           g.incremental_fn_names
 		cached_support_identifiers:     g.cached_support_identifiers
@@ -1560,6 +1563,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_modules:                 g.global_modules
 		global_inits:                   g.global_inits
 		global_init_order:              g.global_init_order
+		c_decl_abi_names:               g.c_decl_abi_names
+		c_extern_global_names:          g.c_extern_global_names
 		enum_backing_infos:             g.enum_backing_infos
 		iface_impls:                    g.iface_impls
 		interface_dispatch_required:    g.interface_dispatch_required
@@ -1588,6 +1593,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		has_builtins:                   g.has_builtins
 		cache_split:                    g.cache_split
+		compile_values:                 g.compile_values
 		skip_generics:                  g.skip_generics
 		tmp_count:                      (worker_id + 1) * 100_000
 		line_start:                     true
@@ -1614,6 +1620,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		generic_fn_key_ordinal:         g.generic_fn_key_ordinal
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
+		decl_attrs:                     g.decl_attrs
 		shared_type_names:              g.shared_type_names
 		shared_alias_pointer_shorts:    g.shared_alias_pointer_shorts
 		default_value_stack:            map[string]bool{}
@@ -1630,6 +1637,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vroot:                 g.compiler_vroot
 		compiler_vexe:                  g.compiler_vexe
 		compiler_vexe_env_setup:        g.compiler_vexe_env_setup
+		ccompiler:                      g.ccompiler
 		cur_param_names:                if result_only {
 			g.cur_param_names
 		} else {
@@ -1664,6 +1672,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_is_optional:         g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                g.cur_fn_ret_base
 		loop_label_depths:              map[string]int{}
+		loop_defer_starts:              []int{}
+		loop_label_defer_starts:        map[string]int{}
+		goto_label_c_names:             map[string]string{}
 		expected_expr_type:             g.expected_expr_type
 		expected_enum:                  g.expected_enum
 		needed_optional_types:          g.needed_optional_types.clone()
@@ -1756,6 +1767,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		struct_field_c_abi_fns:                g.tc.struct_field_c_abi_fns
 		unions:                                g.tc.unions
 		type_aliases:                          g.tc.type_aliases
+		type_alias_modules:                    g.tc.type_alias_modules
 		type_alias_generic_params:             g.tc.type_alias_generic_params
 		type_alias_c_abi_fns:                  g.tc.type_alias_c_abi_fns
 		sum_types:                             g.tc.sum_types

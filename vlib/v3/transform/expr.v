@@ -69,6 +69,12 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	if rhs_is_string_ptr {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
+	if node.op == .plus && lhs_clean_type in ['char', 'rune'] {
+		new_lhs = t.wrap_string_conversion(new_lhs, lhs_clean_type)
+	}
+	if node.op == .plus && rhs_clean_type in ['char', 'rune'] {
+		new_rhs = t.wrap_string_conversion(new_rhs, rhs_clean_type)
+	}
 
 	mut result := flat.empty_node
 	result_type := if node.op == .plus { 'string' } else { 'bool' }
@@ -1253,6 +1259,12 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 				if bracket_end := elem.index(']') {
 					elem = elem[bracket_end + 1..].trim_space()
 				}
+			} else if elem.starts_with('[') {
+				if bracket_end := elem.index(']') {
+					elem = elem[bracket_end + 1..].trim_space()
+				}
+			} else {
+				return none
 			}
 			clean := t.trim_pointer_type(elem)
 			for candidate in [clean, t.normalize_type_alias(clean)] {
@@ -2111,8 +2123,9 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 
 	if is_not_in && result != id {
+		parenthesized := t.make_paren(result)
 		start := t.a.children.len
-		t.a.children << t.make_paren(result)
+		t.a.children << parenthesized
 		return t.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             .not
@@ -2316,12 +2329,10 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(needle_id, elem_type),
-			elem_type, 'contains_needle')
+		needle = t.stable_expr_for_reuse(needle_id)
 		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(needle_id, elem_type),
-			elem_type, 'contains_needle')
+		needle = t.stable_expr_for_reuse(needle_id)
 		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)

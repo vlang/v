@@ -13,7 +13,7 @@ const min_eager_markused_bodies = 4096
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
-		false)
+		false, true)
 	return used
 }
 
@@ -26,14 +26,21 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 // function, struct, or sum type and therefore requires monomorphization.
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
 	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
-		false)
+		false, true)
+}
+
+// mark_used_with_generic_usage_full_runtime disables the literal-output shortcut so
+// compatibility fixtures retain helpers referenced by the complete builtin runtime.
+pub fn mark_used_with_generic_usage_full_runtime(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
+		false, false)
 }
 
 // mark_used_without_generic_detection is the self-host variant for inputs whose caller
 // already guarantees that monomorphization is unnecessary.
 pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false,
-		false)
+		false, true)
 	return used
 }
 
@@ -44,7 +51,7 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false, true)
 }
 
 // mark_all_used_with_generic_usage roots every concrete function while preserving
@@ -54,7 +61,7 @@ pub fn mark_all_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, 
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true, true)
 }
 
 // mark_used_for_cache roots every concrete function in modules being built for the object cache.
@@ -70,7 +77,7 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false)
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false, true)
 }
 
 // mark_used_for_cache_without_generic_detection is the self-host cache variant for inputs
@@ -80,7 +87,7 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 	for file in test_files {
 		file_map[file] = true
 	}
-	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false)
+	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false, true)
 	return used
 }
 
@@ -157,9 +164,10 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 }
 
 @[direct_array_access]
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool) (map[string]bool, bool) {
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
-	trivial_literal_output := is_trivial_literal_output_program(a, tc.diagnostic_files)
+	trivial_literal_output := allow_trivial_literal_output && !cache_mode && cache_modules.len == 0
+		&& test_files.len == 0 && is_trivial_literal_output_program(a, tc.diagnostic_files)
 	// An exact literal-output program has no user expressions or declarations that
 	// can instantiate a generic. Skip generic indexes and per-node generic checks,
 	// just as the known non-generic self-host path does.
@@ -204,6 +212,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_import_contexts := []int{cap: 8192}
 	mut cache_roots := []string{}
 	mut c_interface_roots := []string{}
+	mut marked_roots := []string{}
 
 	mut fn_count := 0
 	mut fn_with_dot := 0
@@ -294,6 +303,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			qname := qualify_fn(cur_module, node.value)
+			if markused_fn_has_attribute(a, node_idx, 'markused') {
+				marked_roots << qname
+			}
 			// Cached headers retain bodies only when the warm pass must recreate
 			// generated specializations or closure support symbols. Root those bodies
 			// even though their ordinary caller can live entirely in another cached
@@ -352,14 +364,21 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	used['main'] = true
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	enqueue_auto_roots(fn_decls, reachable_modules, mut used, mut queue)
+	for root in marked_roots {
+		enqueue(root, mut used, mut queue)
+	}
+	// Exported functions are externally reachable even when the input has no V
+	// entry point (for example `-is_o` modules called from C).
+	enqueue_export_roots(a, tc, mut used, mut queue)
 	if trivial_literal_output {
-		// Primitive signed-integer string wrappers are part of the generated C
-		// prelude even when the user program never calls them.
-		queue << 'strconv.format_int'
-		used['strconv.format_int'] = true
+		// Bounds-checking helpers are part of the generated C prelude even when the
+		// user program only prints a literal. Their diagnostics stringify indexes
+		// and release intermediate concatenations after markused has run.
+		for seed in ['strconv.format_int', 'string.free', 'string__free'] {
+			enqueue(seed, mut used, mut queue)
+		}
 	}
 	if !trivial_literal_output {
-		enqueue_export_roots(a, tc, mut used, mut queue)
 		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
 		enqueue_test_file_roots(a, test_files, mut used, mut queue)
 		for seed in ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue',
@@ -410,7 +429,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		queue << 'array.delete_last'
 		used['array.delete_last'] = true
 		for type_name in tc.ownership_drop_type_names() {
-			method := '${type_name}.drop'
+			method := if tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }
 			enqueue(method, mut used, mut queue)
 			lowered := markused_c_name(method)
 			if lowered != method {
@@ -428,6 +447,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for name in c_interface_roots {
 		enqueue(name, mut used, mut queue)
 	}
+	if a.nodes.any(it.kind == .debugger_stmt) {
+		enqueue('debug.Debugger.interact', mut used, mut queue)
+	}
+	// Trace calls are injected by Cgen after AST reachability has been computed,
+	// so retain their two runtime entry points whenever the debug module exists.
+	enqueue('debug.before_call_hook', mut used, mut queue)
+	enqueue('debug.after_call_hook', mut used, mut queue)
 	if all_functions {
 		for index, node_idx in body_ids {
 			node := a.nodes[node_idx]
@@ -1699,7 +1725,7 @@ fn enqueue_veb_handler_roots(a &flat.FlatAst, tc &types.TypeChecker, mut used ma
 
 fn markused_fn_needs_implicit_veb_ctx(a &flat.FlatAst, tc &types.TypeChecker, cur_module string, node flat.Node) bool {
 	return markused_fn_returns_veb_result(tc, node) && markused_fn_has_receiver_param(a, node)
-		&& !markused_fn_receiver_type_is_context(a, node) && !markused_fn_has_param(a, node, 'ctx')
+		&& !markused_fn_receiver_type_is_context(a, node)
 		&& markused_type_name_known_in_module(tc, cur_module, 'Context')
 }
 
@@ -1730,16 +1756,6 @@ fn markused_fn_receiver_type_is_context(a &flat.FlatAst, node flat.Node) bool {
 	}
 	first := a.child_node(&node, 0)
 	return first.typ.trim_left('&').all_after_last('.') == 'Context'
-}
-
-fn markused_fn_has_param(a &flat.FlatAst, node flat.Node, name string) bool {
-	for i in 0 .. node.children_count {
-		param := a.child_node(&node, i)
-		if param.kind == .param && param.value == name {
-			return true
-		}
-	}
-	return false
 }
 
 fn markused_type_name_known_in_module(tc &types.TypeChecker, module_name string, typ string) bool {
@@ -1886,6 +1902,18 @@ fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string
 fn is_auto_root_fn(name string) bool {
 	short_name := name.all_after_last('.')
 	return short_name in ['init', 'builtin_init']
+}
+
+fn markused_fn_has_attribute(a &flat.FlatAst, node_idx int, name string) bool {
+	attr_idx := node_idx + 1
+	if attr_idx < 0 || attr_idx >= a.nodes.len {
+		return false
+	}
+	attr := a.nodes[attr_idx]
+	if attr.kind != .directive || attr.value != '@attributes:${node_idx}' {
+		return false
+	}
+	return name in attr.generic_params()
 }
 
 // enqueue_detected_runtime_helpers supports enqueue detected runtime helpers handling for markused.

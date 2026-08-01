@@ -43,6 +43,11 @@ pub mut:
 	is_prod           bool
 	is_debug          bool
 	is_test           bool // at least one compatible user test file is being compiled
+	is_livemain       bool
+	is_liveshared     bool
+	is_shared         bool
+	no_builtin        bool
+	no_preludes       bool
 	thread_stack_size int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
@@ -115,15 +120,15 @@ pub fn target_from(os_name string, arch_name string) !Target {
 		'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
-	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'wasm32'] {
+	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'wasm32'] {
 		return error('unsupported target architecture `${arch_name}`')
 	}
 	if target_os == 'wasm32_emscripten' && target_arch != 'wasm32' {
 		return error('target OS `wasm32_emscripten` requires architecture `wasm32`')
 	}
-	endian := if target_arch in ['ppc64', 's390x'] { 'big' } else { 'little' }
-	pointer_bits := if target_arch in ['x86', 'arm32', 'wasm32'] { 32 } else { 64 }
+	endian := if target_arch in ['ppc', 'ppc64', 's390x'] { 'big' } else { 'little' }
+	pointer_bits := if target_arch in ['x86', 'arm32', 'ppc', 'wasm32'] { 32 } else { 64 }
 	abi := match target_os {
 		'windows' { 'windows' }
 		'macos', 'ios' { 'darwin' }
@@ -476,8 +481,8 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 		return true
 	}
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
-		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'wasm32'] {
+		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'wasm32'] {
 		if normalized_arch(arch) != target.arch
 			&& (file.contains('.${arch}.') || file.contains('_${arch}.')) {
 			return true
@@ -925,7 +930,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'rv64', 'riscv64' {
 			return p.target.arch == 'riscv64'
 		}
-		's390x', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
+		's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
 			return p.target.arch == name
 		}
 		'little_endian' {
@@ -936,6 +941,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		}
 		'debug' {
 			return p.is_debug
+		}
+		'prod' {
+			return p.is_prod
 		}
 		'test' {
 			return p.is_test
@@ -967,6 +975,12 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 
 // comptime_optional_flag_value supports comptime optional flag value handling for pref.
 pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
+	// Test mode is added internally to `user_defines` so `_d_test.v` source
+	// selection works, but `$if test ?` only asks whether the user supplied
+	// `-d test`. Explicit `-d` values are recorded in `compile_values`.
+	if name == 'test' && name !in p.compile_values {
+		return false
+	}
 	return name in p.user_defines
 }
 

@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v3.flat
 import v3.parser
 import v3.pref
 
@@ -117,4 +118,31 @@ fn inspect(mut builder Builder, info Info) int {
 }
 ')
 	assert !scan.needs_closure
+}
+
+fn test_synthetic_import_insertion_remaps_declaration_attribute_targets() {
+	mut ast := flat.FlatAst.new()
+	ast.add_node(flat.Node{
+		kind:  .field_decl
+		value: 'value'
+	})
+	struct_id := ast.add_node(flat.Node{
+		kind:  .struct_decl
+		value: 'Packed'
+	})
+	ast.add_node(flat.Node{
+		kind:  .directive
+		value: '@attributes:${int(struct_id)}'
+	})
+	insert_synthetic_imports(mut ast, [
+		SyntheticInsertion{
+			pos:  0
+			node: flat.Node{
+				kind:  .import_decl
+				value: 'builtin'
+			}
+		},
+	])
+	assert ast.nodes[3].kind == .directive
+	assert ast.nodes[3].value == '@attributes:2'
 }

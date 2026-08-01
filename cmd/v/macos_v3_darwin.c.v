@@ -38,7 +38,10 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		return false
 	}
 	if command == 'test' {
-		return true
+		// Keep discovery, per-file isolation, build constraints, and result
+		// aggregation in vtest. Each _test.v file is compiled by this executable
+		// again, so user test code still uses V3 by default.
+		return false
 	}
 	if prefs.path == '' {
 		return false

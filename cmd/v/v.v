@@ -218,11 +218,13 @@ fn invoke_help_and_exit(remaining []string) {
 
 fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences) {
 	is_ownership := '-ownership' in os.args
-	if !is_ownership {
+	is_autofree := '-autofree' in os.args
+	if !is_ownership && !is_autofree {
 		return
 	}
 	if !is_ownership_relevant_command(command, prefs) {
-		eprintln('v: `-ownership` currently supports direct compilation only. Use `v -ownership module_dir`.')
+		mode := if is_autofree { '-autofree' } else { '-ownership' }
+		eprintln('v: `${mode}` currently supports direct compilation only. Use `v ${mode} module_dir`.')
 		exit(1)
 	}
 	launch_v3_ownership_compiler(prefs.is_verbose, os.args[1..].filter(it != '-ownership'))
@@ -250,7 +252,7 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 		exit(1)
 	}
 	if util.should_recompile_tool(vexe, v3_src_dir, tool_name, v3_exe) {
-		compilation_command := '${os.quoted_path(vexe)} -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
+		compilation_command := '${os.quoted_path(vexe)} -nocache -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
 		if is_verbose {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}
@@ -264,6 +266,14 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 		}
 	}
 	mut forwarded_args := ['-ownership']
+	$if macos {
+		// The embedded/default V3 path disables its conservative compiler-memory
+		// guard on macOS too. Keep `-autofree` on the same footing when it uses the
+		// dedicated ownership-enabled V3 binary.
+		if '-no-memory-limit' !in args && '--no-memory-limit' !in args {
+			forwarded_args << '-no-memory-limit'
+		}
+	}
 	for arg in args {
 		forwarded_args << arg
 	}

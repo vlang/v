@@ -237,6 +237,21 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_expr(id)
 	}
 	mut source_type := t.node_type(id)
+	if t.expr_has_option_unwrap_smartcast(id) {
+		if smartcast := t.find_smartcast(t.expr_key(id)) {
+			unwrapped_type := t.smartcast_target_type(smartcast)
+			if unwrapped_type.len > 0 {
+				source_type = unwrapped_type
+			}
+		}
+	}
+	if node.kind == .ident && t.var_type(node.value).len == 0 {
+		if global_type := t.current_module_global_type(node.value) {
+			source_type = global_type
+		} else if const_type := t.raw_const_type_name_for_expr(id) {
+			source_type = const_type
+		}
+	}
 	if node.kind == .call {
 		concrete_return_type := t.concrete_generic_call_return_type(id, node)
 		if concrete_return_type.len > 0 {
@@ -628,6 +643,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	fields := t.interface_runtime_field_list(iface_name)
 	mut source_id := id
 	mut source_type := t.node_type(id)
+	if t.expr_has_option_unwrap_smartcast(id) {
+		if smartcast := t.find_smartcast(t.expr_key(id)) {
+			unwrapped_type := t.smartcast_target_type(smartcast)
+			if unwrapped_type.len > 0 {
+				source_type = unwrapped_type
+			}
+		}
+	}
 	mut source_is_heaped_amp_child := false
 	if heaped_child_id := t.heaped_amp_local_address_child(id) {
 		child := t.a.nodes[int(heaped_child_id)]
@@ -659,7 +682,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if source_type.len == 0 {
 		return none
 	}
-	source_expr := if source_is_heaped_amp_child {
+	source_expr := if source_is_heaped_amp_child || source_type.starts_with('&') {
 		source := t.a.nodes[int(source_id)]
 		had_rvalue := source.kind == .ident && source.value in t.pointer_value_rvalues
 		if had_rvalue {
@@ -805,6 +828,14 @@ fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name
 	if name.len == 0 || iface_name.len == 0 || isnil(t.tc) || t.var_type(name).len > 0 {
 		return false
 	}
+	if t.cur_module.len > 0 {
+		qname := '${t.cur_module}.${name}'
+		if qname != name {
+			if typ := t.tc.file_scope.lookup(qname) {
+				return t.type_is_pointer_to_interface(typ, iface_name)
+			}
+		}
+	}
 	if typ := t.tc.file_scope.lookup(name) {
 		if t.type_is_pointer_to_interface(typ, iface_name) {
 			return true
@@ -812,22 +843,12 @@ fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name
 	}
 	if t.cur_module.len > 0 {
 		qname := '${t.cur_module}.${name}'
-		if qname != name {
-			if typ := t.tc.file_scope.lookup(qname) {
-				if t.type_is_pointer_to_interface(typ, iface_name) {
-					return true
-				}
-			}
+		if typ := t.globals[qname] {
+			return t.type_text_is_pointer_to_interface(typ, iface_name)
 		}
 	}
 	if typ := t.globals[name] {
 		return t.type_text_is_pointer_to_interface(typ, iface_name)
-	}
-	if t.cur_module.len > 0 {
-		qname := '${t.cur_module}.${name}'
-		if typ := t.globals[qname] {
-			return t.type_text_is_pointer_to_interface(typ, iface_name)
-		}
 	}
 	return false
 }

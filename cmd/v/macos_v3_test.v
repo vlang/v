@@ -41,7 +41,7 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.old_compiler = false
 
 		prefs.path = ''
-		assert is_macos_v3_relevant_command('test', prefs)
+		assert !is_macos_v3_relevant_command('test', prefs)
 		prefs.path = 'main.v'
 
 		// V3 owns user compilation modes even when it will reject an option with
@@ -71,7 +71,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 
 		prefs.path = 'vlib/v3'
 		prefs.is_test = true
-		assert is_macos_v3_relevant_command('test', prefs)
+		assert !is_macos_v3_relevant_command('test', prefs)
+		prefs.path = 'vlib/v3/tests/review_transform_regressions_test.v'
+		assert !is_macos_v3_relevant_command('test', prefs)
 		prefs.path = 'program.txt'
 		assert is_macos_v3_relevant_command('run', prefs)
 		assert is_macos_v3_relevant_command('build', prefs)

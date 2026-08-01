@@ -16,14 +16,19 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // parse_checked_source reads parse checked source input for v3 tests.
 fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeChecker) {
+	return parse_checked_source_with_unknown_calls(name, source, true)
+}
+
+fn parse_checked_source_with_unknown_calls(name string, source string, diagnose_unknown_calls bool) (&flat.FlatAst, &types.TypeChecker) {
 	src := os.join_path(os.temp_dir(), 'v3_markused_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
 	tc.collect(a)
-	tc.diagnose_unknown_calls = true
+	tc.diagnose_unknown_calls = diagnose_unknown_calls
 	tc.diagnostic_files[src] = true
 	tc.check_semantics()
 	assert tc.errors.len == 0, tc.errors.str()
@@ -56,6 +61,7 @@ fn parse_checked_project(name string, files map[string]string, main_file string)
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
 	tc.collect(a)
 	tc.diagnose_unknown_calls = true
 	for path in paths {
@@ -80,6 +86,7 @@ fn parse_checked_project_in_order(name string, rels []string, sources []string) 
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
 	tc.collect(a)
 	tc.diagnose_unknown_calls = true
 	for path in paths {
@@ -105,6 +112,7 @@ fn test_trivial_literal_output_prunes_conservative_runtime_helper_seeds() {
 	assert !used['i64.str']
 	assert !used['map.clone']
 	assert !used['strconv.format_uint']
+	assert used['string.free']
 }
 
 fn test_nontrivial_output_keeps_conservative_runtime_helper_seeds() {
@@ -119,6 +127,17 @@ println(message())
 	assert used['strconv.format_uint']
 	assert used['array.delete_last']
 	assert used['i64.str']
+}
+
+fn test_cached_trivial_output_keeps_cached_runtime_helper_seeds() {
+	a, tc := parse_checked_source('cached_trivial_output', "println('Hello, World!')")
+	used := markused.mark_used_for_cache(a, tc, []string{}, {
+		'builtin': true
+	})
+	assert used['__new_array']
+	assert used['array.push']
+	assert used['byteptr.vstring_with_len']
+	assert used['strconv.format_uint']
 }
 
 fn find_fn_node_id(a &flat.FlatAst, name string) int {
@@ -1266,7 +1285,7 @@ fn test_reachable_imported_fn_literal_roots_private_callback_helpers() {
 
 fn test_top_level_fn_value_roots_helper() {
 	mut a, mut tc := parse_checked_source('top_level_fn_value_helper_cgen',
-		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\nprintln(int_str(f() + 1))\n')
+		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\nprintln(f() + 1)\n')
 	mut used := markused.mark_used(a, tc)
 	assert used['helper']
 	used = transform.transform_with_used(mut a, tc, used)
@@ -1289,7 +1308,7 @@ fn helper() int {
 }
 
 f := helper
-println(int_str(f() + 1))
+println(f() + 1)
 ') or {
 		panic(err)
 	}
@@ -1412,7 +1431,7 @@ fn helper() int {
 
 helper := 10
 f := helper
-println(int_str(f))
+println(f)
 ')
 	assert !used['helper']
 }
@@ -1499,7 +1518,7 @@ fn used() int {
 
 fn main() {
 	unused := used
-	println(unused())
+	println((unused)())
 }
 ')
 	mut used := markused.mark_used(a, tc)
@@ -1670,7 +1689,7 @@ fn main() {
 		ratio:  1.25
 		ch:     `x`
 		nums:   [3, 4]
-		lookup: {
+		lookup: map[string]u64{
 			"a": u64(5)
 		}
 		inner:  Inner{
@@ -1696,7 +1715,7 @@ fn main() {
 }
 
 fn test_json_encode_fast_path_seeds_generated_helpers() {
-	mut a, mut tc := parse_checked_source('json_encode_fast_path_helpers', '
+	mut a, mut tc := parse_checked_source_with_unknown_calls('json_encode_fast_path_helpers', '
 import json
 
 struct Payload {
@@ -1710,7 +1729,8 @@ fn main() {
 		score: 1.5
 	})
 }
-')
+',
+		false)
 	mut used := markused.mark_used(a, tc)
 	for helper in ['string__plus', 'i64__str', 'f64__str'] {
 		assert used[helper], helper

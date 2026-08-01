@@ -315,6 +315,7 @@ pub:
 	has_default bool
 	is_embed    bool
 	is_mut      bool
+	is_volatile bool
 }
 
 // unwrap_pointer transforms unwrap pointer data for types.

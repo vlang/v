@@ -1051,9 +1051,7 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 
 fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name string) []int {
 	mut ids := []int{}
-	// Runtime interface IDs preserve the concrete declared type. An alias and its
-	// base have compatible storage, but they remain distinct targets for `is`.
-	for candidate in [concrete_name] {
+	for candidate in t.interface_alias_equivalent_names(concrete_name) {
 		id := t.interface_impl_type_id(iface_name, candidate) or { continue }
 		if id !in ids {
 			ids << id
@@ -1570,6 +1568,13 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 			local_type := t.raw_var_type(expr.value)
 			if local_type.len > 0 && t.sum_target_accepts_variant_type(resolved_sum, local_type) {
 				expr_type = local_type
+			}
+		}
+		if expr.kind == .selector {
+			selector_type := t.resolve_selector_type(expr)
+			if selector_type.len > 0
+				&& t.sum_target_accepts_variant_type(resolved_sum, selector_type) {
+				expr_type = selector_type
 			}
 		}
 		if const_type := t.raw_const_type_name_for_expr(expr_id) {

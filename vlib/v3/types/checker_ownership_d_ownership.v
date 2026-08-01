@@ -1335,7 +1335,7 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			if tc.ownership_type_has_explicit_drop(name) {
 				return name
 			}
-			if !tc.named_type_implements_marker(name, 'IClone') {
+			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone') {
 				return name
 			}
 			if seen[name] {
@@ -1699,6 +1699,18 @@ fn (mut tc TypeChecker) ownership_guard_source_for_binding(cond_id flat.NodeId, 
 
 fn (mut tc TypeChecker) ownership_after_collect() {
 	mut st := tc.ownership_state()
+	if tc.autofree_mode {
+		for method_name, _ in tc.fn_ret_types {
+			if !method_name.ends_with('.free') {
+				continue
+			}
+			receiver := method_name.all_before_last('.')
+			if receiver in tc.structs {
+				st.drop_structs[receiver] = true
+				st.owned_structs[receiver] = true
+			}
+		}
+	}
 	for qname, impls in tc.struct_implements {
 		for iface in impls {
 			short := iface.all_after_last('.')
@@ -2365,7 +2377,7 @@ fn (mut tc TypeChecker) ownership_prescan_fn_return_node(fn_name string, fn_node
 			if child.value.len > 0 {
 				local_types[child.value] = child_type
 			}
-			if tc.ownership_type_is_owned(child_type) {
+			if !tc.autofree_mode && tc.ownership_type_is_owned(child_type) {
 				key := '${fn_name}__param_${param_names.len - 1}'
 				st.ownership_fn_params[key] = true
 				owned_locals[child.value] = true
@@ -3422,6 +3434,9 @@ fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_
 }
 
 fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnScanItem) {
+	if tc.autofree_mode {
+		return
+	}
 	mut changed := true
 	for changed {
 		st := tc.ownership_state()
@@ -4598,7 +4613,8 @@ fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
 		}
 		key := '${fn_name}__param_${i}'
 		child_type := tc.parse_type(child.typ)
-		if key in st.ownership_fn_params || tc.ownership_type_is_owned(child_type) {
+		if !tc.autofree_mode
+			&& (key in st.ownership_fn_params || tc.ownership_type_is_owned(child_type)) {
 			tc.ownership_mark_owned(child.value, child_type, tc.a.child(&node, i))
 		}
 	}
@@ -4659,7 +4675,8 @@ fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Nod
 		}
 		child_type := tc.parse_type(child.typ)
 		key := '${fn_name}__param_${param_idx}'
-		if key in st.ownership_fn_params || tc.ownership_type_is_owned(child_type) {
+		if !tc.autofree_mode
+			&& (key in st.ownership_fn_params || tc.ownership_type_is_owned(child_type)) {
 			tc.ownership_mark_owned(child.value, child_type, tc.a.child(&node, i))
 		}
 		param_idx++
@@ -5244,6 +5261,18 @@ fn (mut tc TypeChecker) ownership_after_stmt_node(id flat.NodeId) {
 					tc.ownership_consume_array_element_method_result(expr_id,
 						'discarded expression', id)
 				}
+				call_id := tc.ownership_unwrap_expr(expr_id)
+				if tc.autofree_mode && tc.valid_node_id(call_id)
+					&& tc.a.nodes[int(call_id)].kind == .call {
+					call_type := tc.resolve_type(call_id)
+					if tc.ownership_type_requires_destruction(call_type) {
+						tc.ownership_note_drop_types(tc.ownership_state().cur_fn, [
+							OwnershipDropEntry{
+								type_name: call_type.name()
+							},
+						])
+					}
+				}
 			}
 		}
 		.label_stmt {
@@ -5372,8 +5401,7 @@ fn (mut tc TypeChecker) ownership_record_loop_control_drops(base OwnershipFrame,
 }
 
 fn (mut tc TypeChecker) ownership_record_labelled_loop_break_drops(base OwnershipFrame, snapshot OwnershipFrame) {
-	mut entries := tc.ownership_drop_entries_since_frame(base, snapshot)
-	entries << tc.ownership_drop_entries_for_loop_base_scope(base, snapshot)
+	entries := tc.ownership_drop_entries_since_frame(base, snapshot)
 	tc.ownership_record_loop_control_entries(entries)
 }
 
@@ -6261,6 +6289,12 @@ fn (mut tc TypeChecker) ownership_check_expr(id flat.NodeId) {
 	if tc.ownership_effects_disabled() {
 		return
 	}
+	// `-autofree` retains V's legacy aliasing semantics. The moved-state data is
+	// still useful for choosing one cleanup owner, but ordinary reads through a
+	// previous alias remain valid until that cleanup runs.
+	if tc.autofree_mode {
+		return
+	}
 	name := tc.ownership_expr_ident_name(id)
 	if name.len == 0 {
 		return
@@ -6279,8 +6313,18 @@ fn (mut tc TypeChecker) ownership_after_decl_assign(lhs_id flat.NodeId, rhs_id f
 		return
 	}
 	if lhs_name == '_' {
-		tc.ownership_consume_expr(rhs_id, 'blank identifier', assign_id)
+		if tc.autofree_mode {
+			tc.ownership_check_expr(rhs_id)
+		} else {
+			tc.ownership_consume_expr(rhs_id, 'blank identifier', assign_id)
+		}
 		return
+	}
+	defer {
+		mut st := tc.ownership_state()
+		if lhs_name in st.owned_vars {
+			st.owned_vars[lhs_name] = lhs_id
+		}
 	}
 	tc.ownership_note_decl(lhs_name)
 	if tc.ownership_assign_shadowing_same_name(lhs_name, rhs_id, lhs_type, assign_id) {
@@ -6383,7 +6427,11 @@ fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.N
 		return
 	}
 	if lhs_name == '_' {
-		tc.ownership_consume_expr(rhs_id, 'blank identifier', assign_id)
+		if tc.autofree_mode {
+			tc.ownership_check_expr(rhs_id)
+		} else {
+			tc.ownership_consume_expr(rhs_id, 'blank identifier', assign_id)
+		}
 		return
 	}
 	tc.ownership_check_reassign(lhs_name, assign_id)
@@ -6414,7 +6462,11 @@ fn (mut tc TypeChecker) ownership_after_assign_pairs(lhs_ids []flat.NodeId, rhs_
 			continue
 		}
 		if lhs_name == '_' {
-			tc.ownership_consume_expr(rhs_ids[i], 'blank identifier', assign_id)
+			if tc.autofree_mode {
+				tc.ownership_check_expr(rhs_ids[i])
+			} else {
+				tc.ownership_consume_expr(rhs_ids[i], 'blank identifier', assign_id)
+			}
 			temp_names << ''
 			continue
 		}
@@ -8515,6 +8567,9 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 	if tc.ownership_effects_disabled() {
 		return
 	}
+	if tc.autofree_mode {
+		return
+	}
 	mut st := tc.ownership_state()
 	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(id) }
 	mut call_borrows := []string{}
@@ -8781,6 +8836,18 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 		tc.ownership_move_conditional_return_sources(st.cur_fn, i, expr_id, id)
 		if tc.ownership_mark_return_from_array_element_method(st.cur_fn, i, expr_id, id) {
 			continue
+		}
+		if tc.autofree_mode && name.contains('.')
+			&& tc.ownership_type_requires_destruction(tc.resolve_type(expr_id)) {
+			base_name := name.all_before_last('.')
+			if base_name in st.owned_vars {
+				st.mark_fn_return_owned(st.cur_fn)
+				for slot_idx in tc.ownership_return_slot_indices(expr_id, i, '') {
+					tc.ownership_add_fn_return_slot(st.cur_fn, slot_idx)
+				}
+				tc.ownership_move_var(base_name, st.cur_fn, id, true, st.cur_fn, false)
+				continue
+			}
 		}
 		if name.len > 0 {
 			tc.ownership_reject_global_move(name, expr_id, st.cur_fn, true)
@@ -10937,12 +11004,10 @@ fn (tc &TypeChecker) ownership_method_keeps_receiver(method_name string) bool {
 }
 
 fn (tc &TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
-	if method_name !in ['first', 'last', 'pop', 'pop_left', 'insert', 'prepend', 'contains', 'index',
-		'last_index', 'join', 'hex', 'equals', 'pointers', 'any', 'all', 'count', 'repeat',
-		'repeat_to_depth', 'reverse', 'sorted', 'sorted_with_compare'] {
+	if unwrap_pointer(tc.resolve_type(recv_id)) !is Array {
 		return false
 	}
-	return unwrap_pointer(tc.resolve_type(recv_id)) is Array
+	return tc.ownership_fn_declared_in_builtin('array.${method_name}')
 }
 
 // ownership_string_builtin_keeps_receiver reports whether a method call whose receiver is a

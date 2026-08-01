@@ -49,6 +49,24 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	})) == 'Array'
 }
 
+fn test_optional_value_info_preserves_pointer_payload_abi() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	option_type := types.Type(types.OptionType{
+		base_type: types.Type(types.Struct{
+			name: 'Data'
+		})
+	})
+	payload_ct, payload_type := g.optional_value_info(option_type, 'Optional_Dataptr')
+	assert payload_ct == 'Data*'
+	assert payload_type is types.Pointer
+	assert (payload_type as types.Pointer).base_type.name() == 'Data'
+}
+
 fn test_enum_decls_resets_checker_module_at_file_boundary() {
 	test_dir := os.join_path(os.vtmp_dir(), 'v3_enum_decls_module_reset_${os.getpid()}')
 	os.rmdir_all(test_dir) or {}

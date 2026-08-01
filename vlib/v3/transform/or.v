@@ -44,6 +44,7 @@ struct EnumFromStringInfo {
 	fields       []string
 	arg_id       flat.NodeId
 	accept_empty bool
+	is_result    bool
 }
 
 fn (t &Transformer) enum_from_string_members(info EnumFromStringInfo) []EnumValueMeta {
@@ -682,6 +683,7 @@ fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStrin
 		fields:       fields.clone()
 		arg_id:       arg_id
 		accept_empty: fn_node.value == 'from' && t.is_flag_enum_type(enum_type)
+		is_result:    fn_node.value == 'from'
 	}
 }
 
@@ -857,7 +859,7 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 	str_name := t.new_temp('enum_str')
 	val_name := t.new_temp('enum_val')
 	ok_name := t.new_temp('enum_ok')
-	optional_type := '?${info.enum_type}'
+	optional_type := if info.is_result { '!${info.enum_type}' } else { '?${info.enum_type}' }
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	arg_expr := t.transform_expr(info.arg_id)
@@ -963,6 +965,12 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			}
 			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
 				return t.canonical_or_expr_types(decode_ret)
+			}
+			if declared_ret := t.call_declared_return_type_text(expr_id) {
+				if t.is_optional_type_name(declared_ret)
+					&& !t.generic_arg_is_unresolved(declared_ret) {
+					return t.canonical_or_expr_types(declared_ret)
+				}
 			}
 			if typ := t.tc.expr_type(expr_id) {
 				mut prefix := ''
@@ -1135,6 +1143,10 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 			base = decoded
 		}
 	}
+	shared_storage := t.shared_alias_storage_type(base)
+	if shared_storage != base {
+		return '${prefix}${shared_storage}', shared_storage
+	}
 	base = t.normalize_or_expr_value_type(base)
 	// Resolve import aliases and nested generic arguments in the payload. The
 	// optional wrapper and its lowered value temporary must use one canonical
@@ -1146,6 +1158,30 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 		}
 	}
 	return '${prefix}${base}', base
+}
+
+fn (t &Transformer) call_declared_return_type_text(id flat.NodeId) ?string {
+	if isnil(t.tc) {
+		return none
+	}
+	name := t.tc.resolved_call_name(id) or { return none }
+	if ret := t.tc.fn_ret_type_texts[name] {
+		resolved := t.tc.fn_signature_type(name, ret)
+		if resolved !is types.Unknown && resolved !is types.Void {
+			return resolved.name()
+		}
+		return ret
+	}
+	short_name := name.all_after_last('.')
+	if ret := t.tc.fn_ret_type_texts[short_name] {
+		return ret
+	}
+	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		if ret := t.tc.fn_ret_type_texts['${t.cur_module}.${short_name}'] {
+			return ret
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) normalize_or_expr_value_type(typ string) string {
@@ -1193,9 +1229,31 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	if isnil(t.tc) || expr_node.kind != .call {
 		return none
 	}
-	name := t.tc.resolved_call_name(expr_id) or { return none }
-	if name !in ['json.decode', 'json2.decode', 'x.json2.decode'] {
+	mut is_decode := t.call_name_for_node(expr_id, expr_node) in ['json.decode', 'json2.decode',
+		'x.json2.decode']
+	if name := t.tc.resolved_call_name(expr_id) {
+		is_decode = ['json.decode', 'json2.decode', 'x.json2.decode'].any(name == it
+			|| name.starts_with('${it}[') || name.starts_with('${it}__'))
+	}
+	if !is_decode && expr_node.children_count > 0 {
+		callee := t.a.child_node(&expr_node, 0)
+		if callee.kind == .selector && callee.value == 'decode' && callee.children_count > 0 {
+			base := t.a.child_node(callee, 0)
+			is_decode = (base.kind == .ident && base.value in ['json', 'json2'])
+				|| (base.kind == .selector && base.value == 'json2')
+		}
+	}
+	if !is_decode {
 		return none
+	}
+	// The established `json.decode(Type, text)` form keeps its type argument as
+	// the first call argument. Its synthetic generic metadata is erased to
+	// `voidptr`, so prefer the source type node before inspecting that metadata.
+	if expr_node.children_count >= 3 {
+		type_arg := t.generic_call_type_arg_name(t.a.child(&expr_node, 1))
+		if type_arg.len > 0 {
+			return '!${type_arg}'
+		}
 	}
 	if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
 		if args.len == 1 && args[0].len > 0 {

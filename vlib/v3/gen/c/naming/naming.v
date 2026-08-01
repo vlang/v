@@ -80,6 +80,7 @@ const libc_collisions = {
 	'j1':       true
 	'jn':       true
 	'ldexp':    true
+	'listen':   true
 	'memcmp':   true
 	'memcpy':   true
 	'memmove':  true
@@ -91,6 +92,7 @@ const libc_collisions = {
 	'read':     true
 	'realpath': true
 	'rint':     true
+	'round':    true
 	'scalb':    true
 	'send':     true
 	'setenv':   true

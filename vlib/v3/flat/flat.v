@@ -107,6 +107,9 @@ pub enum NodeKind as u8 {
 	// A `$res()` / `$res(index)` expression. This must remain distinct from
 	// `.ident` so user-spellable names cannot be reinterpreted as defer results.
 	defer_result
+	// A `$dbg;` statement. Keep new node kinds at the end because the hot phase
+	// dispatchers use stable numeric ids for the older kinds.
+	debugger_stmt
 }
 
 // Op lists op values used by flat.

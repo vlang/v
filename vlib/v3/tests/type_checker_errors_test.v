@@ -88,6 +88,20 @@ fn run_runtime_bad(v3_bin string, name string, src string, expected string) {
 	assert run.output.contains(expected), '${name}: expected `${expected}` in ${run.output}'
 }
 
+fn test_declared_c_alias_call_is_a_type_cast() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_declared_c_alias_cast', '#include <stdint.h>
+
+pub type C.uint32_t = u32
+
+fn main() {
+	value := C.uint32_t(42)
+	print(value)
+}
+')
+	assert output == '42'
+}
+
 // write_project_file writes project file output for v3 tests.
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -290,6 +304,38 @@ fn main() {
 }
 ')
 	assert out == '7\n9\n3\n3'
+}
+
+fn test_embedded_interface_method_keeps_mut_parameter_metadata() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'embedded_interface_mut_parameter', 'interface Reader {
+mut:
+	read(mut buf []u8) int
+}
+
+interface ReaderWriter {
+	Reader
+}
+
+struct Device {}
+
+fn (_ Device) read(mut buf []u8) int {
+	buf[0] = 7
+	return 1
+}
+
+fn fill(mut stream ReaderWriter) int {
+	mut buf := [u8(0)]
+	stream.read(mut buf)
+	return int(buf[0])
+}
+
+fn main() {
+	mut stream := ReaderWriter(Device{})
+	println(fill(mut stream))
+}
+')
+	assert out == '7'
 }
 
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.
@@ -2217,4 +2263,11 @@ fn test_if_guard_rejects_or_handled_value() {
 	run_bad(v3_bin, 'bad_if_guard_or_handled_value',
 		'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\tif value := maybe() or { return } {\n\t\tprintln(int_str(value))\n\t}\n}\n',
 		'if guard expression must be optional or result')
+}
+
+fn test_function_field_mutability_and_unsafe_nil_cast() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_function_field_mutability_and_unsafe_nil_cast',
+		'struct State {\nmut:\n\tvalue int\n\tcallback fn (mut state State) = unsafe { nil }\n}\ntype Callback = fn (mut state State)\nfn increment(mut state State) {\n\tstate.value++\n}\nfn main() {\n\tmut state := State{\n\t\tcallback: increment\n\t}\n\tstate.callback(mut state)\n\t_ := Callback(unsafe { nil })\n\tprintln(int_str(state.value))\n}\n')
+	assert output == '1'
 }

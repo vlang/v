@@ -1767,6 +1767,10 @@ fn (t &Transformer) collect_is_exprs(cond_id flat.NodeId, mut result []IsExprInf
 		return
 	}
 	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		t.collect_is_exprs(t.a.child(&cond, 0), mut result)
+		return
+	}
 	if cond.kind == .is_expr && cond.children_count >= 1 {
 		expr_id := t.a.child(&cond, 0)
 		ek := t.expr_key(expr_id)
@@ -1857,6 +1861,9 @@ fn (t &Transformer) extract_else_branch_smartcasts(cond_id flat.NodeId) []IsExpr
 		return []IsExprInfo{}
 	}
 	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		return t.extract_else_branch_smartcasts(t.a.child(&cond, 0))
+	}
 	if cond.kind == .prefix && cond.op == .not && cond.children_count > 0 {
 		inner_id := t.a.child(&cond, 0)
 		inner := t.a.nodes[int(inner_id)]
