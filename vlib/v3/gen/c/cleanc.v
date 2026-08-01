@@ -3826,7 +3826,6 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	mut condition_taken_known := []bool{}
 	mut condition_taken := []bool{}
 	mut possible_text := strings.new_builder(text.len)
-	mut definite_text := strings.new_builder(text.len / 4)
 	mut in_block_comment := false
 	for line in c_join_continued_lines(text) {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
@@ -3904,7 +3903,6 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 		}
 		if !possibly_active {
 			possible_text.writeln('')
-			definite_text.writeln('')
 			continue
 		}
 		if name == 'import' && c_is_apple_framework_include(c_directive_arg(clean)) {
@@ -3959,10 +3957,10 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			}
 		}
 		possible_text.writeln(possible_line)
-		definite_text.writeln(if definitely_active { possible_line } else { '' })
 	}
-	local_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
-	return c_header_text_has_objective_c_tokens(possible_text.str(), local_typedefs)
+	possible_source := possible_text.str()
+	possible_typedefs := modulecache.c_source_typedef_identifiers(possible_source)
+	return c_header_text_has_objective_c_tokens(possible_source, possible_typedefs)
 }
 
 fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
