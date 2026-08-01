@@ -222,6 +222,7 @@ fn test_objective_c_header_detection() {
 	assert !c_header_text_needs_objective_c('typedef unsigned SEL; static inline SEL identity(SEL value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('typedef void *Protocol; static inline Protocol identity(Protocol value) { return value; }\n')
 	assert c_header_text_needs_objective_c('#if 0\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#define IGNORE(...)\nIGNORE(typedef unsigned id);\nstatic inline id identity(id value) { return value; }\n')
 	assert !c_header_text_needs_objective_c('#define __bridge\nvoid *value = (__bridge void *)pointer;\n')
 	assert !c_header_text_needs_objective_c('#define __bridge_retained\nvoid *value = (__bridge_retained void *)pointer;\n')
 	assert !c_header_text_needs_objective_c('#define __bridge_transfer\nvoid *value = (__bridge_transfer void *)pointer;\n')

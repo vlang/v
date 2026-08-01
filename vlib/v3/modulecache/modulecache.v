@@ -2845,7 +2845,8 @@ pub fn c_source_typedef_identifiers(source string) map[string]bool {
 			for i < source.len && c_generated_identifier_byte(source[i]) {
 				i++
 			}
-			if function_depth == 0 && typedef_start < 0 && source[start..i] == 'typedef' {
+			if function_depth == 0 && paren_depth == 0 && bracket_depth == 0 && typedef_start < 0
+				&& source[start..i] == 'typedef' {
 				typedef_start = start
 				typedef_brace_depth = brace_depth
 			}
