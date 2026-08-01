@@ -225,15 +225,24 @@ fn materialize_tcc_macos_libgc_at(source_dylib string, requested_data_base strin
 }
 
 fn resolve_tcc_macos_libgc_data_base(xdg_data_home string, home string) !string {
-	raw_base := if xdg_data_home != '' {
-		xdg_data_home
-	} else {
-		if home == '' {
-			return error(tcc_macos_libgc_data_root_error('XDG_DATA_HOME="" and HOME=""',
-				'no persistent data root is configured'))
-		}
-		os.join_path(home, '.local', 'share')
+	if xdg_data_home != '' {
+		return resolve_tcc_macos_libgc_existing_data_base(xdg_data_home)
 	}
+	if home == '' {
+		return error(tcc_macos_libgc_data_root_error('XDG_DATA_HOME="" and HOME=""',
+			'no persistent data root is configured'))
+	}
+	if !os.is_abs_path(home) {
+		return error(tcc_macos_libgc_data_root_error(home, 'the path is relative'))
+	}
+	canonical_home := resolve_tcc_macos_libgc_existing_data_base(home)!
+	local_data := ensure_tcc_macos_libgc_fallback_data_directory(os.join_path(canonical_home,
+		'.local'))!
+	ensure_tcc_macos_libgc_fallback_data_directory(os.join_path(local_data, 'share'))!
+	return resolve_tcc_macos_libgc_existing_data_base(os.join_path(home, '.local', 'share'))
+}
+
+fn resolve_tcc_macos_libgc_existing_data_base(raw_base string) !string {
 	if !os.is_abs_path(raw_base) {
 		return error(tcc_macos_libgc_data_root_error(raw_base, 'the path is relative'))
 	}
@@ -260,6 +269,20 @@ fn resolve_tcc_macos_libgc_data_base(xdg_data_home string, home string) !string 
 	validate_tcc_macos_libgc_data_base_stat(canonical_stat,
 		'${raw_base} (canonical: ${canonical_base})', os.geteuid())!
 	return canonical_base
+}
+
+fn ensure_tcc_macos_libgc_fallback_data_directory(path string) !string {
+	_, exists := lstat_tcc_macos_libgc_path(path)!
+	if !exists {
+		os.mkdir(path, mode: 0o700) or {
+			_, concurrent_exists := lstat_tcc_macos_libgc_path(path)!
+			if !concurrent_exists {
+				return error(tcc_macos_libgc_data_root_error(path,
+					'the default directory cannot be created: ${err.msg()}'))
+			}
+		}
+	}
+	return resolve_tcc_macos_libgc_existing_data_base(path)
 }
 
 fn tcc_macos_libgc_data_root_error(rejected string, reason string) string {

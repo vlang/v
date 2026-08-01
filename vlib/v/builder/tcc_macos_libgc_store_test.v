@@ -83,6 +83,37 @@ fn expect_tcc_macos_libgc_data_base_error(xdg_data_home string, home string, rej
 	assert false, 'expected macOS bundled libgc data root validation to fail'
 }
 
+fn assert_tcc_macos_libgc_private_test_directory(path string) ! {
+	stat := os.lstat(path)!
+	assert stat.get_filetype() == .directory
+	assert stat.uid == u32(os.geteuid())
+	assert stat.mode & 0o7777 == 0o700
+}
+
+fn create_tcc_macos_libgc_test_home(root string, name string) !string {
+	home := os.join_path(root, name)
+	os.mkdir(home, mode: 0o700)!
+	return home
+}
+
+fn expect_tcc_macos_libgc_home_fallback_error(home string, rejected string, expected_reason string, absent_path string) {
+	expect_tcc_macos_libgc_data_base_error('', home, rejected, expected_reason)
+	assert !os.exists(absent_path)
+}
+
+fn restore_tcc_macos_libgc_test_environment(name string, old_value ?string) {
+	if value := old_value {
+		os.setenv(name, value, true)
+	} else {
+		os.unsetenv(name)
+	}
+}
+
+fn resolve_tcc_macos_libgc_home_fallback_concurrently(home string, start chan bool) !string {
+	_ := <-start
+	return resolve_tcc_macos_libgc_data_base('', home)
+}
+
 fn prepare_tcc_macos_libgc_test_content_store(fixture TccMacosLibgcTestFixture) !TccMacosLibgcTestContentStore {
 	resolved_source := resolve_tcc_macos_libgc_source(fixture.libgc.source)!
 	expected := hash_tcc_macos_libgc_regular_file(resolved_source)!
@@ -317,7 +348,7 @@ fn test_tcc_macos_libgc_data_base_resolver_is_fallible_and_absolute() ! {
 		'no persistent data root')
 }
 
-fn test_tcc_macos_libgc_data_base_resolver_uses_home_fallback() ! {
+fn test_tcc_macos_libgc_data_base_resolver_creates_and_materializes_home_fallback() ! {
 	$if windows {
 		return
 	}
@@ -325,10 +356,120 @@ fn test_tcc_macos_libgc_data_base_resolver_uses_home_fallback() ! {
 	defer {
 		os.rmdir_all(fixture.root) or {}
 	}
-	home := os.join_path(fixture.root, 'home')
+	home := create_tcc_macos_libgc_test_home(fixture.root, 'home')!
 	fallback := os.join_path(home, '.local', 'share')
-	os.mkdir_all(fallback, mode: 0o700)!
-	assert resolve_tcc_macos_libgc_data_base('', home)! == os.real_path(fallback)
+	assert !os.exists(os.join_path(home, '.local'))
+	old_xdg_data_home := os.getenv_opt('XDG_DATA_HOME')
+	old_home := os.getenv_opt('HOME')
+	defer {
+		restore_tcc_macos_libgc_test_environment('XDG_DATA_HOME', old_xdg_data_home)
+		restore_tcc_macos_libgc_test_environment('HOME', old_home)
+	}
+	os.setenv('XDG_DATA_HOME', '', true)
+	os.setenv('HOME', home, true)
+	stored := materialize_tcc_macos_libgc(fixture.libgc.source)!
+	resolved := os.real_path(fallback)
+	assert os.dir(os.dir(os.dir(stored))) == resolved
+	assert_tcc_macos_libgc_private_test_directory(os.join_path(home, '.local'))!
+	assert_tcc_macos_libgc_private_test_directory(fallback)!
+	assert stored.starts_with(os.join_path(resolved, tcc_macos_libgc_store_name) + os.path_separator)
+	assert os.read_file(stored)! == os.read_file(fixture.libgc.target)!
+}
+
+fn test_tcc_macos_libgc_data_base_home_fallback_creation_is_idempotent_under_concurrency() ! {
+	$if windows {
+		return
+	}
+	fixture := create_tcc_macos_libgc_test_fixture('home_fallback_concurrent',
+		'home-concurrent-content')!
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+	home := create_tcc_macos_libgc_test_home(fixture.root, 'home')!
+	worker_count := 8
+	start := chan bool{cap: worker_count}
+	mut workers := []thread !string{cap: worker_count}
+	for _ in 0 .. worker_count {
+		workers << spawn resolve_tcc_macos_libgc_home_fallback_concurrently(home, start)
+	}
+	for _ in 0 .. worker_count {
+		start <- true
+	}
+	fallback := os.join_path(home, '.local', 'share')
+	for worker in workers {
+		assert worker.wait()! == os.real_path(fallback)
+	}
+	assert_tcc_macos_libgc_private_test_directory(os.join_path(home, '.local'))!
+	assert_tcc_macos_libgc_private_test_directory(fallback)!
+}
+
+fn test_tcc_macos_libgc_data_base_home_fallback_preserves_private_symlink() ! {
+	$if windows {
+		return
+	}
+	fixture := create_tcc_macos_libgc_test_fixture('home_fallback_symlink', 'home-symlink-content')!
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+	home := create_tcc_macos_libgc_test_home(fixture.root, 'home')!
+	local_target := os.join_path(fixture.root, 'private local data')
+	os.mkdir(local_target, mode: 0o700)!
+	os.symlink(local_target, os.join_path(home, '.local'))!
+	fallback_target := os.join_path(local_target, 'share')
+	assert resolve_tcc_macos_libgc_data_base('', home)! == os.real_path(fallback_target)
+	assert os.is_link(os.join_path(home, '.local'))
+	assert_tcc_macos_libgc_private_test_directory(fallback_target)!
+}
+
+fn test_tcc_macos_libgc_data_base_home_fallback_rejects_unsafe_traversal() ! {
+	$if windows {
+		return
+	}
+	fixture := create_tcc_macos_libgc_test_fixture('home_fallback_unsafe', 'unsafe-content')!
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+	unsafe_home := create_tcc_macos_libgc_test_home(fixture.root, 'unsafe home')!
+	os.chmod(unsafe_home, 0o770)!
+	expect_tcc_macos_libgc_home_fallback_error(unsafe_home, unsafe_home, 'unsafe permissions', os.join_path(unsafe_home,
+		'.local'))
+
+	file_home := create_tcc_macos_libgc_test_home(fixture.root, 'file home')!
+	file_local := os.join_path(file_home, '.local')
+	os.write_file(file_local, 'not-a-directory')!
+	expect_tcc_macos_libgc_home_fallback_error(file_home, file_local, 'not a directory', os.join_path(file_local,
+		'share'))
+
+	writable_home := create_tcc_macos_libgc_test_home(fixture.root, 'writable local home')!
+	writable_local := os.join_path(writable_home, '.local')
+	os.mkdir(writable_local, mode: 0o700)!
+	os.chmod(writable_local, 0o770)!
+	expect_tcc_macos_libgc_home_fallback_error(writable_home, writable_local, 'unsafe permissions', os.join_path(writable_local,
+		'share'))
+
+	unsafe_share_home := create_tcc_macos_libgc_test_home(fixture.root, 'unsafe share home')!
+	unsafe_share_local := os.join_path(unsafe_share_home, '.local')
+	unsafe_share := os.join_path(unsafe_share_local, 'share')
+	os.mkdir(unsafe_share_local, mode: 0o700)!
+	os.mkdir(unsafe_share, mode: 0o700)!
+	os.chmod(unsafe_share, 0o770)!
+	expect_tcc_macos_libgc_home_fallback_error(unsafe_share_home, unsafe_share,
+		'unsafe permissions', os.join_path(unsafe_share, tcc_macos_libgc_store_name))
+
+	unsafe_target_home := create_tcc_macos_libgc_test_home(fixture.root, 'unsafe target home')!
+	unsafe_target := os.join_path(fixture.root, 'unsafe local target')
+	os.mkdir(unsafe_target, mode: 0o700)!
+	os.chmod(unsafe_target, 0o770)!
+	os.symlink(unsafe_target, os.join_path(unsafe_target_home, '.local'))!
+	expect_tcc_macos_libgc_home_fallback_error(unsafe_target_home, unsafe_target,
+		'unsafe permissions', os.join_path(unsafe_target, 'share'))
+
+	comma_target_home := create_tcc_macos_libgc_test_home(fixture.root, 'comma target home')!
+	comma_target := os.join_path(fixture.root, 'private,local target')
+	os.mkdir(comma_target, mode: 0o700)!
+	os.symlink(comma_target, os.join_path(comma_target_home, '.local'))!
+	expect_tcc_macos_libgc_home_fallback_error(comma_target_home, comma_target, 'comma-free', os.join_path(comma_target,
+		'share'))
 }
 
 fn test_tcc_macos_libgc_data_base_resolver_rejects_absence() ! {
