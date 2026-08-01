@@ -2414,13 +2414,50 @@ fn c_unwrap_redundant_declarator_parentheses(value string) string {
 	return clean
 }
 
+fn c_pointer_return_function_declarator_identifier(value string) ?string {
+	mut clean := trim_leading_c_comments(value.trim_space())
+	for clean.starts_with('*') {
+		clean = trim_leading_c_comments(clean[1..].trim_space())
+	}
+	if !clean.starts_with('(') {
+		return c_function_declaration_identifier(clean)
+	}
+	mut depth := 0
+	mut close := -1
+	for i, c in clean.bytes() {
+		if c == `(` {
+			depth++
+		} else if c == `)` {
+			depth--
+			if depth == 0 {
+				close = i
+				break
+			}
+		}
+	}
+	if close < 0 || !trim_leading_c_comments(clean[close + 1..].trim_space()).starts_with('(') {
+		return none
+	}
+	identifier := c_unwrap_redundant_declarator_parentheses(clean[..close + 1])
+	if identifier.len == 0 || !((identifier[0] >= `a` && identifier[0] <= `z`)
+		|| (identifier[0] >= `A` && identifier[0] <= `Z`) || identifier[0] == `_`) {
+		return none
+	}
+	for c in identifier.bytes()[1..] {
+		if !c_generated_identifier_byte(c) {
+			return none
+		}
+	}
+	return identifier
+}
+
 fn c_parenthesized_function_declarator_identifier(head string, open int, close int) ?string {
 	if open < 0 || close <= open + 1 || !c_function_candidate_has_return_type(head, open) {
 		return none
 	}
 	inner := c_unwrap_redundant_declarator_parentheses(head[open + 1..close])
 	if inner.starts_with('*') {
-		identifier := c_function_declaration_identifier(inner) or { return none }
+		identifier := c_pointer_return_function_declarator_identifier(inner) or { return none }
 		tail := trim_leading_c_comments(head[close + 1..].trim_space())
 		if !tail.starts_with('(') {
 			return none
@@ -3495,7 +3532,7 @@ fn c_parenthesized_pointer_declarator_is_function(value string, open int) bool {
 			continue
 		}
 		inner := value[open + 1..i]
-		if _ := c_function_declaration_identifier(inner) {
+		if _ := c_pointer_return_function_declarator_identifier(inner) {
 			return true
 		}
 		return false

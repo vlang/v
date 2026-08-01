@@ -199,6 +199,8 @@ fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c('static inline id identity(id obj) { return obj; }\n')
 	assert c_header_text_needs_objective_c('static inline instancetype identity(instancetype obj) { return obj; }\n')
 	assert c_header_text_needs_objective_c('static inline Class identity(Class value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline SEL identity(SEL value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline Protocol *identity(Protocol *value) { return value; }\n')
 	assert c_header_text_needs_objective_c('static inline NSArray<NSString *> *copy_names(NSArray<NSString *> *value) { return value; }\n')
 	assert c_header_text_needs_objective_c('static inline NSObject<NSCopying> *copy(NSObject<NSCopying> *value) { return value; }\n')
 	assert c_header_text_needs_objective_c('static inline id answer(void) { return @42; }\n')

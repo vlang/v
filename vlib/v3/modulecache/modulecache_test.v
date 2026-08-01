@@ -124,6 +124,12 @@ fn test_function_identifiers_recognize_function_pointer_return() {
 	assert !identifiers['int']
 	assert c_static_declaration_head_is_function('static int (*api(void))(int)')
 	assert !c_static_declaration_head_is_function('static int (*callback)(int)')
+	redundant_identifiers, redundant_complete :=
+		c_source_function_identifiers_with_status('static int (*((api))(void))(int) {\n\treturn 0;\n}\n')
+	assert redundant_complete
+	assert redundant_identifiers['api']
+	assert !redundant_identifiers['int']
+	assert c_static_declaration_head_is_function('static int (*((api))(void))(int)')
 }
 
 fn test_function_identifiers_preserve_old_style_parameter_declarations() {

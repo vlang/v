@@ -5060,7 +5060,7 @@ fn c_header_token_is_on_directive_line(text string, start int) bool {
 }
 
 fn c_header_has_bare_objective_c_type(text string, token string, token_start int, token_end int) bool {
-	if token !in ['id', 'Class', 'instancetype']
+	if token !in ['id', 'Class', 'SEL', 'Protocol', 'instancetype']
 		|| c_header_token_is_on_directive_line(text, token_start) {
 		return false
 	}

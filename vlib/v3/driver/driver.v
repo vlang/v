@@ -2597,6 +2597,107 @@ fn cache_local_c_condition_top_level_comparison(expression string) (bool, string
 	return true, left, found_operator, right
 }
 
+fn cache_local_c_condition_top_level_arithmetic(expression string, operators []u8) (bool, string, u8, string) {
+	mut depth := 0
+	mut operator_index := -1
+	mut selected_operator := u8(0)
+	mut i := 0
+	for i < expression.len {
+		c := expression[i]
+		if c in [`"`, `'`] {
+			quote := c
+			i++
+			for i < expression.len {
+				if expression[i] == `\\` && i + 1 < expression.len {
+					i += 2
+					continue
+				}
+				i++
+				if expression[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if c == `(` {
+			depth++
+			i++
+			continue
+		}
+		if c == `)` {
+			depth--
+			i++
+			continue
+		}
+		if depth != 0 || c !in operators {
+			i++
+			continue
+		}
+		mut previous := i - 1
+		for previous >= 0 && expression[previous].is_space() {
+			previous--
+		}
+		if previous >= 0 && (expression[previous].is_alnum()
+			|| expression[previous] == `_` || expression[previous] in [`)`, `'`]) {
+			operator_index = i
+			selected_operator = c
+		}
+		i++
+	}
+	if operator_index < 0 {
+		return false, '', u8(0), ''
+	}
+	left := expression[..operator_index].trim_space()
+	right := expression[operator_index + 1..].trim_space()
+	if left.len == 0 || right.len == 0 {
+		return false, '', u8(0), ''
+	}
+	return true, left, selected_operator, right
+}
+
+fn cache_local_c_checked_arithmetic(left i64, right i64, operator u8) ?i64 {
+	max_value := i64(0x7fffffffffffffff)
+	min_value := i64(-0x7fffffffffffffff - 1)
+	match operator {
+		`+` {
+			if (right > 0 && left > max_value - right) || (right < 0 && left < min_value - right) {
+				return none
+			}
+			return left + right
+		}
+		`-` {
+			if (right > 0 && left < min_value + right) || (right < 0 && left > max_value + right) {
+				return none
+			}
+			return left - right
+		}
+		`*` {
+			if (left > 0 && right > 0 && left > max_value / right)
+				|| (left > 0 && right < 0 && right < min_value / left)
+				|| (left < 0 && right > 0 && left < min_value / right)
+				|| (left < 0 && right < 0 && left < max_value / right) {
+				return none
+			}
+			return left * right
+		}
+		`/` {
+			if right == 0 || (left == min_value && right == -1) {
+				return none
+			}
+			return left / right
+		}
+		`%` {
+			if right == 0 || (left == min_value && right == -1) {
+				return none
+			}
+			return left % right
+		}
+		else {
+			return none
+		}
+	}
+}
+
 fn cache_local_c_defined_macro_name(expression string) ?string {
 	if !expression.starts_with('defined') || (expression.len > 'defined'.len
 		&& expression['defined'.len] != `(` && !expression['defined'.len].is_space()) {
@@ -2624,6 +2725,20 @@ fn cache_local_c_known_integer_value_rec(raw string, macros map[string]V3CacheLo
 	expression := cache_local_c_condition_without_outer_parens(raw)
 	if value := cache_local_c_integer_value(expression) {
 		return value
+	}
+	for operators in [[u8(`+`), `-`], [u8(`*`), `/`, `%`]] {
+		has_operator, left_text, operator, right_text := cache_local_c_condition_top_level_arithmetic(expression,
+			operators)
+		if !has_operator {
+			continue
+		}
+		left := cache_local_c_known_integer_value_rec(left_text, macros, mut seen, depth + 1) or {
+			return none
+		}
+		right := cache_local_c_known_integer_value_rec(right_text, macros, mut seen, depth + 1) or {
+			return none
+		}
+		return cache_local_c_checked_arithmetic(left, right, operator)
 	}
 	if expression.starts_with('!') {
 		value := cache_local_c_known_integer_value_rec(expression[1..], macros, mut seen, depth + 1) or {
