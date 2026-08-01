@@ -1410,7 +1410,7 @@ fn check(value Value) {
 fn main() {}
 ',
 		'`Value` has no variant `field`')
-	round4_run_bad(v3_bin, 'bad_sum_is_enum_value_loop_variable', 'enum E {
+	round4_run_bad(v3_bin, 'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
 	one
 }
 struct A {}
@@ -1418,7 +1418,7 @@ struct B {}
 type Value = A | B
 
 fn check(value Value) {
-	$for item in E.values {
+	$for item in EnumKind.values {
 		if value is item {}
 	}
 }

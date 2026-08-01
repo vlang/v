@@ -10566,6 +10566,7 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 	}
 	mut seen := map[string]bool{}
 	mut result_reported := false
+	mut pointer_reported := false
 	for i, raw_variant in variants {
 		variant_name := trimmed_space(raw_variant)
 		variant_id := variant_ids[i]
@@ -10579,6 +10580,33 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			continue
 		}
 		seen[variant_key] = true
+		is_alias_pointer := variant_type is Alias && unalias_type(variant_type) is Pointer
+		is_builtin_pointer := variant_type.name() in ['voidptr', 'byteptr', 'charptr']
+		if ((variant_type is Pointer && !is_builtin_pointer) || is_alias_pointer)
+			&& !pointer_reported {
+			display_variant := if variant_type is Pointer {
+				variant_name.trim_left('&').trim_space()
+			} else {
+				variant_name
+			}
+			display_type := tc.parse_type(display_variant)
+			left, right := if unalias_type(display_type) is Struct {
+				'{', '}'
+			} else {
+				'(', ')'
+			}
+			message := if is_alias_pointer {
+				'alias as non-reference type'
+			} else {
+				'the sum type with non-reference types'
+			}
+			tc.record_error_with_details_at(.assignment_mismatch,
+				'sum type cannot hold a reference type', variant_id, tc.type_diagnostic_pos(variant_id,
+				variant_name), [
+				'declare ${message}: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
+			])
+			pointer_reported = true
+		}
 		if variant_type is ResultType && !result_reported {
 			tc.record_error_at(.assignment_mismatch, 'sum type cannot hold a Result type',
 				variant_id, tc.type_diagnostic_pos(variant_id, variant_name))
@@ -12130,6 +12158,11 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 	if enum_field_count == 0 {
 		tc.record_error_at(.assignment_mismatch, 'enum cannot be empty', node_id,
 			tc.enum_declaration_diagnostic_pos(node_id))
+	}
+	if node.value.len == 1 && node.value[0] >= `A` && node.value[0] <= `Z` {
+		tc.record_error_at(.duplicate_decl,
+			'single letter capital names are reserved for generic template types.', node_id,
+			tc.node_value_diagnostic_pos(node_id))
 	}
 	if tc.type_declaration_exists_before(node_id, node.value) {
 		tc.record_error_at(.duplicate_decl,

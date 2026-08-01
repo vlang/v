@@ -363,24 +363,25 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_is_check_preserves_pointer_sum_variants() {
+fn test_sum_type_rejects_pointer_variants() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'is_pointer_sum_variant', 'struct Foo {
-		value int
-	}
+	run_bad(v3_bin, 'pointer_sum_variant', 'struct Foo {
+	value int
+}
 
 type Item = &Foo | int
 
-fn main() {
-	item := Item(7)
-	if item is &Foo {
-		println("wrong")
-	} else {
-		println("ok")
-	}
-}
-')
-	assert out == 'ok'
+fn main() {}
+',
+		'sum type cannot hold a reference type')
+	run_bad(v3_bin, 'pointer_alias_sum_variant', 'struct Foo {}
+
+type FooPointer = &Foo
+type Item = FooPointer | int
+
+fn main() {}
+',
+		'sum type cannot hold a reference type')
 	run_bad(v3_bin, 'is_pointer_value_variant_rejected', 'struct Foo {}
 
 type Item = Foo | int
@@ -393,6 +394,17 @@ fn main() {
 }
 ',
 		'`&Foo` is not a variant of sum type `Item`')
+}
+
+fn test_single_letter_enum_names_are_rejected() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'single_letter_enum_name', 'enum E {
+	item
+}
+
+fn main() {}
+',
+		'single letter capital names are reserved for generic template types.')
 }
 
 fn test_nested_sum_is_check_evaluates_subject_once() {
@@ -3240,12 +3252,12 @@ fn make() int {
 	return 4
 }
 
-enum E {
+enum HelperKind {
 	a = make()
 }
 
 fn main() {
-	println(int_str(int(E.a)))
+	println(int_str(int(HelperKind.a)))
 }
 ')
 	assert out == '4'
@@ -3263,16 +3275,16 @@ fn from_param(base int) int {
 	return base
 }
 
-enum E {
+enum HelperKind {
 	a = make()
 	b = from_param(7)
 	c
 }
 
 fn main() {
-	println(int_str(int(E.a)))
-	println(int_str(int(E.b)))
-	println(int_str(int(E.c)))
+	println(int_str(int(HelperKind.a)))
+	println(int_str(int(HelperKind.b)))
+	println(int_str(int(HelperKind.c)))
 }
 ')
 	assert out == '4\n7\n8'
@@ -3282,13 +3294,13 @@ fn test_backed_enum_cast_qualifies_member_reference() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'backed_enum_cast_member_reference', 'const a = 1
 
-enum E as u64 {
+enum BackedKind as u64 {
 	a = 1
 	b = u64(a) + 1
 }
 
 fn main() {
-	println(int_str(int(E.b)))
+	println(int_str(int(BackedKind.b)))
 }
 ')
 	assert out == '2'
@@ -3304,7 +3316,7 @@ fn make_wide() u64 {
 	return u64(1) << 40
 }
 
-enum E as u64 {
+enum FoldedKind as u64 {
 	a = make()
 	b
 	wide = make_wide()
@@ -3312,10 +3324,10 @@ enum E as u64 {
 }
 
 fn main() {
-	println(int_str(int(E.a)))
-	println(int_str(int(E.b)))
-	println(u64(E.wide))
-	match E.a {
+	println(int_str(int(FoldedKind.a)))
+	println(int_str(int(FoldedKind.b)))
+	println(u64(FoldedKind.wide))
+	match FoldedKind.a {
 		.a { println("a") }
 		else { println("other") }
 	}
@@ -3324,12 +3336,14 @@ fn main() {
 	out := run_good(v3_bin, 'backed_enum_helper_initializer', source)
 	assert out == '4\n5\n1099511627776\na'
 	c_source := gen_c(v3_bin, 'backed_enum_helper_initializer_c', source)
-	macro := c_source.split_into_lines().filter(it.starts_with('#define E__a '))
-	assert macro == ['#define E__a ((E)(4))']
-	shift_macro := c_source.split_into_lines().filter(it.starts_with('#define E__wide '))
-	assert shift_macro == ['#define E__wide ((E)(1099511627776))']
-	wide_macro := c_source.split_into_lines().filter(it.starts_with('#define E__max '))
-	assert wide_macro == ['#define E__max ((E)(18446744073709551615))']
+	macro := c_source.split_into_lines().filter(it.starts_with('#define FoldedKind__a '))
+	assert macro == ['#define FoldedKind__a ((FoldedKind)(4))']
+	shift_macro := c_source.split_into_lines().filter(it.starts_with('#define FoldedKind__wide '))
+	assert shift_macro == ['#define FoldedKind__wide ((FoldedKind)(1099511627776))']
+	wide_macro := c_source.split_into_lines().filter(it.starts_with('#define FoldedKind__max '))
+	assert wide_macro == [
+		'#define FoldedKind__max ((FoldedKind)(18446744073709551615))',
+	]
 }
 
 fn test_enum_helper_folding_tracks_local_declarations() {
@@ -3340,7 +3354,7 @@ fn test_enum_helper_folding_tracks_local_declarations() {
 	return x
 }
 
-enum E {
+enum HelperKind {
 	item = value()
 }
 
@@ -3383,13 +3397,13 @@ fn test_enum_initializer_helper_cannot_redefine_builtin() {
 	return 9
 }
 
-enum E {
+enum HelperKind {
 	a = exit()
 	b
 }
 
 fn main() {
-	println(E.a)
+	println(HelperKind.a)
 }
 ',
 		'cannot redefine builtin public function `exit`')
@@ -3402,7 +3416,7 @@ fn value() int {
 	return 1
 }
 
-enum E {
+enum HelperKind {
 	item = value()
 }
 
