@@ -6,8 +6,19 @@ const directive_order_v3_dir = os.dir(directive_order_tests_dir)
 const directive_order_vlib_dir = os.dir(directive_order_v3_dir)
 const directive_order_v3_src = os.join_path(directive_order_v3_dir, 'v3.v')
 
+fn directive_order_v3_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_c_directive_order_test_${os.getpid()}')
+}
+
+fn testsuite_begin() {
+	os.rm(directive_order_v3_bin_path()) or {}
+}
+
 fn directive_order_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_directive_order_test')
+	v3_bin := directive_order_v3_bin_path()
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${directive_order_vexe} -gc none -path "${directive_order_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${directive_order_v3_src}')
 	assert build.exit_code == 0, build.output

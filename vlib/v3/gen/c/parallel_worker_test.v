@@ -84,9 +84,11 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 fn test_parallel_checker_clone_keeps_checked_file_scope_identity() {
 	g, mut tc := parallel_worker_test_gen(true)
 	tc.file_scope.insert('file_value', types.Type(types.int_))
+	tc.resolution_type_mode = true
 	w := g.clone_parallel_type_checker()
 	assert w.file_scope == tc.file_scope
 	assert w.cur_scope != w.file_scope
+	assert w.resolution_type_mode
 	owner := w.cur_scope.lookup_owner('file_value') or { panic('missing file binding') }
 	assert owner.belongs_to_scope(w.file_scope)
 }

@@ -7,7 +7,7 @@ import v3.types
 
 // parse_transform_source reads parse transform source input for v3 tests.
 fn parse_transform_source(source string) &flat.FlatAst {
-	src := os.join_path(os.temp_dir(), 'v3_transformer_parity_test.v')
+	src := os.join_path(os.temp_dir(), 'v3_transformer_parity_input.v')
 	return parse_transform_file(src, source)
 }
 
@@ -26,7 +26,7 @@ fn parse_transform_file(src string, source string) &flat.FlatAst {
 
 // parse_checked_transform_source reads parse checked transform source input for v3 tests.
 fn parse_checked_transform_source(source string) &flat.FlatAst {
-	src := os.join_path(os.temp_dir(), 'v3_transformer_checked_parity_test.v')
+	src := os.join_path(os.temp_dir(), 'v3_transformer_checked_parity_input.v')
 	os.write_file(src, source) or { panic(err) }
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)

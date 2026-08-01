@@ -4126,6 +4126,23 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 		out.writeln(source_body_marker)
 	}
 	out.writeln('')
+	mut trusted_c_fns := map[string]bool{}
+	for file_node in a.nodes {
+		if file_node.kind != .file || file_node.children_count == 0
+			|| file_module_name(a, file_node) != module_name {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			mut decl_ids := []flat.NodeId{}
+			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			for id in decl_ids {
+				node := a.nodes[int(id)]
+				if node.kind == .c_fn_decl && node.is_mut {
+					trusted_c_fns[node.value] = true
+				}
+			}
+		}
+	}
 	mut seen := map[string]bool{}
 	declaration_attrs := cached_declaration_attrs(a)
 	for file_node in a.nodes {
@@ -4182,6 +4199,14 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 				mut attrs_text := source_attrs_text
 				if attrs_text.len == 0 {
 					attrs_text = cached_declaration_attrs_text(attrs)
+				}
+				if node.kind == .c_fn_decl && trusted_c_fns[node.value]
+					&& !cached_declaration_has_attr(declaration_source_attr_values(attrs_text), 'trusted') {
+					attrs_text = if attrs_text.len > 0 {
+						'@[trusted]\n${attrs_text}'
+					} else {
+						'@[trusted]'
+					}
 				}
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'

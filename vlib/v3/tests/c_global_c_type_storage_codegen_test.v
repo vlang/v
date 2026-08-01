@@ -14,6 +14,7 @@ fn gen_c_for_c_global_source(name string, source string) string {
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[src] = true
 	tc.check_semantics()
@@ -45,6 +46,7 @@ fn gen_c_for_c_global_sources(name string, files map[string]string) string {
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[os.join_path(root, 'main.v')] = true
 	tc.check_semantics()
@@ -83,6 +85,7 @@ fn main() {
 fn test_mut_parameter_address_uses_lowered_pointer() {
 	c_code := gen_c_for_c_global_source('mut_parameter_address', 'module main
 
+@[heap]
 struct Reader {
 mut:
 	pos int
@@ -119,6 +122,7 @@ interface Reader {
 	read() int
 }
 
+@[heap]
 struct FileReader {}
 
 fn (r FileReader) read() int {

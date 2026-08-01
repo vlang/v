@@ -37,7 +37,7 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_pointer_assignment_program_${os.getpid()}')
-	compile := os.execute('${v3_bin} -nocache -no-parallel -keepc ${src} -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache -no-parallel -keepc -b c ${src} -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

@@ -186,6 +186,27 @@ fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations()
 	}
 }
 
+fn test_headerless_preamble_keeps_explicit_puts_declaration() {
+	mut headerless := FlatGen.new()
+	assert !headerless.c_directives_use_system_libc()
+	assert headerless.should_emit_c_extern_decl('puts')
+
+	mut system_libc := FlatGen.new()
+	system_libc.add_c_directive('main', '#include <stdio.h>', false)
+	assert system_libc.c_directives_use_system_libc()
+	assert !system_libc.should_emit_c_extern_decl('puts')
+}
+
+fn test_builtin_boehm_directives_use_system_libc() {
+	mut boehm := FlatGen.new()
+	boehm.add_c_directive('builtin', '#include <gc.h>', false)
+	assert boehm.c_directives_use_system_libc()
+
+	mut closure := FlatGen.new()
+	closure.add_c_directive('closure', '#include <sys/mman.h>\n#include <pthread.h>', false)
+	assert !closure.c_directives_use_system_libc()
+}
+
 fn test_builtin_abi_compat_macros_precede_late_c_source() {
 	mut g := FlatGen.new()
 	g.has_builtins = true

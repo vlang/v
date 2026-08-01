@@ -32,7 +32,8 @@ fn test_filter_html_only_trusts_veb_rawhtml() {
 	source := "module main\n\nimport veb\n\ntype RawHtml = string\n\nfn main() {\n\ttrusted := veb.RawHtml('<b>ok</b>')\n\tuntrusted := RawHtml('<script>x</script>')\n\tplain := '<i>p</i>'\n\tprintln(veb.filter_html(trusted))\n\tprintln(veb.filter_html(untrusted))\n\tprintln(veb.filter_html(plain))\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_rawhtml_escape_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile :=
+		os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'main.v')} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(bin)

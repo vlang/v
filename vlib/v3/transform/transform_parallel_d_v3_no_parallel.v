@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 fn scan_literal_decl_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
 	return false
@@ -27,4 +28,16 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, _ int, _ int) 
 // v3 is built with the internal `v3_no_parallel` define.
 fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, used map[string]bool) []string {
 	return t.scan_late_call_names_range(cands, used, 0, cands.len)
+}
+
+pub fn promote_scoped_texts_parallel(mut _ flat.FlatAst, _ voidptr) bool {
+	return false
+}
+
+pub fn promote_scoped_checker_node_caches_parallel(mut _ types.TypeChecker, _ &flat.FlatAst, _ voidptr, _ int) bool {
+	return false
+}
+
+pub fn scan_scoped_text_flags_parallel(_ &flat.FlatAst, _ voidptr, mut _ []u8) bool {
+	return false
 }

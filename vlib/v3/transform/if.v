@@ -1974,6 +1974,23 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 // the given variant, or '' if none is found.
 fn (t &Transformer) find_sum_type_for_variant(variant string) string {
 	mut best := ''
+	if variant.contains('.') {
+		for sum_name, variants in t.sum_types {
+			for v in variants {
+				if v == variant {
+					if sum_name.contains('.') {
+						return sum_name
+					}
+					if best.len == 0 {
+						best = sum_name
+					}
+				}
+			}
+		}
+		if best.len > 0 {
+			return best
+		}
+	}
 	for sum_name, variants in t.sum_types {
 		for v in variants {
 			if t.variant_names_match(v, variant) {

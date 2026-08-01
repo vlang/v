@@ -48,7 +48,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -nocache -no-parallel -keepc ${src} -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache -no-parallel -keepc -b c ${src} -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

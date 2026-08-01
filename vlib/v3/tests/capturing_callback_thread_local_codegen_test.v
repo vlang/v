@@ -6,7 +6,7 @@ const closure_tls_v3_dir = os.dir(closure_tls_tests_dir)
 const closure_tls_vlib_dir = os.dir(closure_tls_v3_dir)
 const closure_tls_v3_src = os.join_path(closure_tls_v3_dir, 'v3.v')
 
-fn test_capturing_callbacks_use_thread_local_capture_slots() {
+fn test_capturing_callbacks_use_owned_capture_contexts() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_closure_tls_${pid}')
 	src := os.join_path(os.temp_dir(), 'v3_closure_tls_${pid}.v')
@@ -45,8 +45,8 @@ fn main() {
 	for base in [0, 1000, 2000, 3000] {
 		threads << spawn worker(base, results)
 	}
-	for thread in threads {
-		thread.wait()
+	for worker_thread in threads {
+		worker_thread.wait()
 	}
 	mut counts := [0, 0, 0, 0]
 	for _ in 0 .. 400 {
@@ -64,13 +64,13 @@ fn main() {
 	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
-	assert c_source.contains('_key_init(void) __attribute__((constructor))')
+	assert c_source.contains('closure__closure_create_with_data')
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_spawned_capturing_literals_use_thread_local_capture_slots() {
+fn test_spawned_capturing_literals_use_owned_capture_contexts() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}')
 	src := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}.v')
@@ -106,8 +106,8 @@ fn main() {
 		assert value >= 0 && value < count
 		seen[value] = true
 	}
-	for thread in threads {
-		_ := thread.wait()
+	for worker_thread in threads {
+		_ := worker_thread.wait()
 	}
 	for i in 0 .. count {
 		assert seen[i]
@@ -120,10 +120,49 @@ fn main() {
 	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
-	assert c_source.contains('_key_init(void) __attribute__((constructor))'), c_source
-	assert c_source.contains('_Thread_local int __anon_fn_'), c_source
+	assert c_source.contains('closure__closure_create_with_data'), c_source
+	assert c_source.contains('__anon_fn_0_Ctx'), c_source
 	assert c_source.contains('_args_thread_wrapper'), c_source
-	assert c_source.contains(' = p->c'), c_source
+	assert c_source.contains(' = p->f'), c_source
+	assert c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
+fn test_spawned_named_capturing_callback_survives_join_and_reuse() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}')
+	src := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}.v')
+	out := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_program_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rm(src) or {}
+		os.rm(out) or {}
+		os.rm(out + '.c') or {}
+	}
+	build :=
+		os.execute('${closure_tls_vexe} -gc none -path "${closure_tls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${closure_tls_v3_src}')
+	assert build.exit_code == 0, build.output
+	os.write_file(src, "module main
+
+fn main() {
+	value := 41
+	callback := fn [value] () int {
+		return value
+	}
+	worker := spawn (callback)()
+	assert worker.wait() == 41
+	assert callback() == 41
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	c_source := os.read_file(out + '.c') or { panic(err) }
+	assert !c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'

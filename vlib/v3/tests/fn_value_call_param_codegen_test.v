@@ -13,7 +13,7 @@ fn test_fn_value_callee_uses_its_own_parameter_types() {
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_fn_value_call_param_input.v')
-	os.write_file(src, 'fn replacement(mut name string, mut out []string) {
+	os.write_file(src, 'fn replacement(name string, mut out []string) {
 	out << name
 }
 

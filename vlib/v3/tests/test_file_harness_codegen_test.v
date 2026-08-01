@@ -236,7 +236,7 @@ fn test_one() {
 fn test_one() {
 }
 ')
-	assert non_main.output.contains('no runnable tests'), non_main.output
+	assert non_main.output.contains('project must include a `main` module'), non_main.output
 
 	result_hook := compile_expect_failure(v3_bin, 'harness_result_hook', '_test.v', 'fn before_each() ! {
 	return

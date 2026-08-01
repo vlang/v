@@ -1919,19 +1919,24 @@ fn sql_table_type_token_from(tokens []string, start int) ?(string, int) {
 	if start < 0 || start >= tokens.len {
 		return none
 	}
-	table := tokens[start]
+	mut table := tokens[start]
+	mut next_idx := start + 1
+	if start + 2 < tokens.len && tokens[start + 1] == '.' {
+		table += '.' + tokens[start + 2]
+		next_idx = start + 3
+	}
 	_, _, is_generic := generic_app_parts(table)
 	if is_generic {
-		return table, start + 1
+		return table, next_idx
 	}
-	if start + 1 < tokens.len && tokens[start + 1] == '[' {
-		close_idx := sql_matching_pair(tokens, start + 1, '[', ']') or { return none }
-		if close_idx <= start + 2 {
+	if next_idx < tokens.len && tokens[next_idx] == '[' {
+		close_idx := sql_matching_pair(tokens, next_idx, '[', ']') or { return none }
+		if close_idx <= next_idx + 1 {
 			return none
 		}
-		return '${table}[${sql_value_token_text(tokens[start + 2..close_idx])}]', close_idx + 1
+		return '${table}[${sql_value_token_text(tokens[next_idx + 1..close_idx])}]', close_idx + 1
 	}
-	return table, start + 1
+	return table, next_idx
 }
 
 fn (t &Transformer) parse_sql_select_stmt(tokens []string, is_dynamic bool) ?SqlTransformStmt {
@@ -3017,7 +3022,7 @@ fn (t &Transformer) sql_table_attributes(table string) []AttributeMeta {
 	}
 	for idx, node in t.a.nodes {
 		if node.kind == .struct_decl && node.value == base {
-			return t.comptime_node_attribute_metas(idx)
+			return t.sql_decl_attribute_metas(idx, node)
 		}
 	}
 	return []AttributeMeta{}
@@ -3025,6 +3030,26 @@ fn (t &Transformer) sql_table_attributes(table string) []AttributeMeta {
 
 fn (t &Transformer) sql_table_attributes_for_decl(module_name string, struct_name string) []AttributeMeta {
 	mut cur_module := ''
+	if !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
+		for idx in t.tc.top_level_idx {
+			node := t.a.nodes[idx]
+			match node.kind {
+				.file {
+					cur_module = t.tc.file_modules[node.value] or { '' }
+				}
+				.module_decl {
+					cur_module = node.value
+				}
+				.struct_decl {
+					if node.value == struct_name && sql_module_name_matches(cur_module, module_name) {
+						return t.sql_decl_attribute_metas(idx, node)
+					}
+				}
+				else {}
+			}
+		}
+		return []AttributeMeta{}
+	}
 	for idx, node in t.a.nodes {
 		match node.kind {
 			.file {
@@ -3039,13 +3064,45 @@ fn (t &Transformer) sql_table_attributes_for_decl(module_name string, struct_nam
 			}
 			.struct_decl {
 				if node.value == struct_name && sql_module_name_matches(cur_module, module_name) {
-					return t.comptime_node_attribute_metas(idx)
+					return t.sql_decl_attribute_metas(idx, node)
 				}
 			}
 			else {}
 		}
 	}
 	return []AttributeMeta{}
+}
+
+fn (t &Transformer) sql_decl_attribute_metas(node_id int, node flat.Node) []AttributeMeta {
+	attrs := t.comptime_node_attribute_metas(node_id)
+	if attrs.len > 0 {
+		return attrs
+	}
+	marker_id := node_id + 1
+	if marker_id >= t.a.nodes.len {
+		return []AttributeMeta{}
+	}
+	marker := t.a.nodes[marker_id]
+	if marker.kind != .directive || !marker.value.starts_with('@attributes:') {
+		return []AttributeMeta{}
+	}
+	target := marker.value['@attributes:'.len..].int()
+	mut targets_decl := target == node_id
+	for i in 0 .. node.children_count {
+		if int(t.a.child(&node, i)) == target {
+			targets_decl = true
+			break
+		}
+	}
+	if !targets_decl {
+		return []AttributeMeta{}
+	}
+	kinds := if marker.typ.len > 0 {
+		marker.typ.split(',').map(it.int())
+	} else {
+		[]int{}
+	}
+	return comptime_attribute_metas_from_raw(marker.generic_params(), kinds)
 }
 
 fn sql_module_name_matches(decl_module string, requested_module string) bool {

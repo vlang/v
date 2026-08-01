@@ -47,11 +47,14 @@ fn result_maybe_defer(flag bool) !&T {
 	return error('no value')
 }
 
-fn check_question_unwrap() ! {
+fn check_question_unwrap() ? {
 	a := maybe(true)?
 	assert a == unsafe { nil }
 	c := maybe_defer(true)?
 	assert c == unsafe { nil }
+}
+
+fn check_result_unwrap() ! {
 	r := result_maybe(true)!
 	assert r == unsafe { nil }
 	rd := result_maybe_defer(true)!
@@ -60,6 +63,7 @@ fn check_question_unwrap() ! {
 
 fn main() {
 	check_question_unwrap() or { panic(err) }
+	check_result_unwrap() or { panic(err) }
 	b := maybe(false) or { unsafe { nil } }
 	assert b == unsafe { nil }
 	d := maybe_defer(false) or { unsafe { nil } }

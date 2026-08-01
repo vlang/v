@@ -40,7 +40,7 @@ fn main() {
 	assert run.output.trim_space() == '278', run.output
 }
 
-fn test_fixed_slot_spread_variadic_call_keeps_trailing_args() {
+fn test_fixed_slot_spread_variadic_call_rejects_trailing_args() {
 	v3_bin := variadic_call_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_fixed_slot_spread_variadic_trailing_${os.getpid()}.v')
 	os.write_file(src, 'fn take(first int, rest ...int) int {
@@ -58,11 +58,8 @@ fn main() {
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '2789', run.output
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('when forwarding a variadic variable, it must be the final argument'), compile.output
 }
 
 fn test_interface_variadic_forwarded_array_is_not_repacked() {

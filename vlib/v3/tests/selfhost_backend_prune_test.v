@@ -19,7 +19,7 @@ fn selfhost_to_c(v3_bin string, name string, flags string) string {
 	out_c := out_bin + '.c'
 	os.rm(out_bin) or {}
 	os.rm(out_c) or {}
-	cmd := '${os.quoted_path(v3_bin)} --no-parallel -selfhost ${flags} -o ${os.quoted_path(out_bin)} ${os.quoted_path(v3_src)}'
+	cmd := '${os.quoted_path(v3_bin)} --no-parallel -nocache -no-memory-limit -selfhost -b c ${flags} -o ${os.quoted_path(out_bin)} ${os.quoted_path(v3_src)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, res.output
 	assert os.exists(out_c), 'missing generated C output ${out_c}'

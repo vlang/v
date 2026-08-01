@@ -26,7 +26,7 @@ struct Some[T] {
 	value T
 }
 
-fn (m Maybe[T]) str() string {
+fn (m Maybe[T]) str[T]() string {
 	return 'maybe'
 }
 

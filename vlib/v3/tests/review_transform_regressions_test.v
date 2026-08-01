@@ -23,6 +23,10 @@ fn testsuite_begin() {
 	if os.exists(ownership_bin) {
 		os.rm(ownership_bin) or {}
 	}
+	// The test runner executes test functions in parallel. Build both shared
+	// compiler fixtures here so workers never race while replacing the same bin.
+	_ = build_v3_review_transform()
+	_ = build_v3_review_transform_ownership()
 }
 
 fn build_v3_review_transform() string {
@@ -222,14 +226,16 @@ fn test_generic_shared_parameter_value_copy_uses_inner_type() {
 }
 
 fn destroy(shared state State) {
-	drop_owned(state)
+	rlock state {
+		drop_owned(state)
+	}
 }
 
 fn main() {
 	shared state := State{
 		label: "ok"
 	}
-	destroy(state)
+	destroy(shared state)
 	println("done")
 }
 ')
@@ -336,7 +342,7 @@ fn gen_c_from_project(v3_bin string, name string, files map[string]string, input
 fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation',
-		'fn main() {\n\tmut n := 7\n\tf := fn (mut x int) {\n\t\tprintln("\${x}")\n\t}\n\tf(mut n)\n}\n')
+		'struct Counter {\n\tvalue int\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 7\n\t}\n\tf := fn (mut value Counter) {\n\t\tprintln("\${value.value}")\n\t}\n\tf(mut counter)\n}\n')
 	assert out == '7'
 }
 
@@ -1173,7 +1179,8 @@ fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
 
 fn test_branch_selected_local_method_closures_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1370,7 +1377,8 @@ fn main() {
 
 fn test_deferred_local_bound_method_closures_remain_scope_owned() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1406,7 +1414,8 @@ fn main() {
 
 fn test_locally_aliased_bound_method_closures_remain_scope_owned_until_the_alias_escapes() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1450,7 +1459,8 @@ fn main() {
 
 fn test_scope_local_callback_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1507,7 +1517,8 @@ fn main() {
 
 fn test_scope_local_callback_initializer_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1560,7 +1571,8 @@ fn main() {
 
 fn test_scope_local_callback_whole_aggregate_reassignments_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1604,7 +1616,8 @@ fn main() {
 
 fn test_scope_local_callback_array_initializers_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1646,7 +1659,8 @@ fn main() {
 
 fn test_locally_extracted_callback_array_fields_remain_scope_owned() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1689,7 +1703,8 @@ fn main() {
 
 fn test_scope_local_callback_array_index_assignments_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1725,7 +1740,8 @@ fn main() {
 
 fn test_scope_local_dynamic_callback_array_index_assignments_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1764,7 +1780,8 @@ fn main() {
 
 fn test_scope_local_callback_array_appends_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1796,7 +1813,8 @@ fn main() {
 
 fn test_scope_local_bulk_callback_array_appends_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1828,7 +1846,8 @@ fn main() {
 
 fn test_scope_local_callback_fixed_array_initializers_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1860,7 +1879,8 @@ fn main() {
 
 fn test_multi_variable_callback_declarations_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1891,7 +1911,8 @@ fn main() {
 
 fn test_callback_array_prefix_before_spread_preserves_receiver_identity_and_is_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1923,7 +1944,8 @@ fn main() {
 
 fn test_scope_local_callback_map_initializers_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -1969,7 +1991,8 @@ fn main() {
 
 fn test_scope_local_computed_key_callback_maps_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2004,7 +2027,8 @@ fn main() {
 
 fn test_scope_local_dynamic_callback_map_index_assignments_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2044,7 +2068,8 @@ fn main() {
 
 fn test_callback_map_initializer_captures_each_overwritten_entry_for_cleanup() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2084,7 +2109,8 @@ fn main() {
 
 fn test_computed_key_map_nested_callbacks_preserve_receiver_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2188,7 +2214,8 @@ fn main() {
 
 fn test_match_self_reassigned_bound_method_closures_remain_scope_owned() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2258,7 +2285,8 @@ fn main() {
 
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Value {
+	source := '@[heap]
+struct Value {
 mut:
 	n int
 }
@@ -2298,7 +2326,8 @@ fn main() {
 
 fn test_branch_produced_immediate_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Value {
+	source := '@[heap]
+struct Value {
 	n int
 }
 
@@ -2514,7 +2543,8 @@ pub fn answer() int {
 
 fn test_escaping_mut_method_value_rejects_stack_receiver() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2595,7 +2625,7 @@ fn main() {
 	mut foo := Foo{
 		value: 1
 	}
-	callback := foo.read
+	callback := unsafe { foo.read }
 	foo.value = 2
 	println(int_str(callback()))
 }
@@ -2618,7 +2648,7 @@ fn make(value int) fn () int {
 	foo := Foo{
 		value: value
 	}
-	return foo.read
+	return unsafe { foo.read }
 }
 
 fn make_via_pointer_alias(value int) fn () int {
@@ -2626,12 +2656,12 @@ fn make_via_pointer_alias(value int) fn () int {
 		value: value
 	}
 	p := &foo
-	cb := p.read
+	cb := unsafe { p.read }
 	return cb
 }
 
 fn make_from_pointer(foo &Foo) fn () int {
-	return foo.read
+	return unsafe { foo.read }
 }
 
 fn overwrite_stack() {
@@ -2683,7 +2713,7 @@ fn install(mut holder Holder, value int) {
 		value: value
 	}
 	p := &local
-	holder.callback = p.read
+	holder.callback = unsafe { p.read }
 }
 
 fn overwrite_stack() {
@@ -2714,7 +2744,8 @@ fn main() {
 
 fn test_callback_argument_method_value_keeps_mutable_local_receiver_alive() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2767,7 +2798,8 @@ fn main() {
 
 fn test_callback_argument_method_value_preserves_mutable_receiver_identity() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -2793,7 +2825,8 @@ fn main() {
 
 fn test_callback_aggregate_argument_preserves_pointer_receiver_identity() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }
@@ -3322,14 +3355,14 @@ fn main() {
 
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
-	// Comma-, newline-, and blank-line-separated element lists parse with the
-	// expected length. This parser is permissive (it never hard-errors on
-	// malformed input), so the guarantee here is that a missing separator
-	// (`[9 10]`) or a repeated comma (`[11,,12]`) is *not* merged/collapsed into
-	// extra elements: only the leading element is kept, never `len == 2`.
+	// Comma-, newline-, and blank-line-separated element lists parse with the expected length.
 	out := run_good(v3_bin, 'array_literal_separators',
-		'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tmissing := [9 10]\n\tdoubled := [11,,12]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len) + ":" + int_str(missing.len) + ":" + int_str(doubled.len))\n}\n')
-	assert out == '3:2:3:1:1'
+		'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n}\n')
+	assert out == '3:2:3'
+	run_bad(v3_bin, 'array_literal_missing_separator', 'fn main() {\n\t_ := [1 2]\n}\n',
+		'unexpected token `2`, expecting `]`')
+	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n',
+		'unexpected token `,`, expecting `]`')
 }
 
 fn test_container_wrapped_import_alias_type_resolves() {
@@ -3611,7 +3644,7 @@ fn test_map_literal_declaration_evaluates_entries_once() {
 fn test_fn_literal_preserves_mut_param_string_interpolation() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'fn_literal_mut_param_interp',
-		"fn show(mut x int) {\n\t_ := fn () {}\n\tprintln('\${x}')\n}\n\nfn main() {\n\tmut n := 42\n\tshow(mut n)\n}\n")
+		"struct Counter {\n\tvalue int\n}\n\nfn show(mut counter Counter) {\n\t_ := fn () {}\n\tprintln('\${counter.value}')\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 42\n\t}\n\tshow(mut counter)\n}\n")
 	assert out == '42'
 }
 
@@ -4216,7 +4249,7 @@ fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
 	}
 	write_project_file(root, 'v.mod', "Module { name: 'flag_pseudo_path' }\n")
 	write_project_file(root, 'main.v',
-		'module main\n\n#flag -I @VMODROOT/include\n#insert "flag_value.c"\n\nfn C.flag_value() int\n\nfn main() {\n\tprintln(int_str(C.flag_value()))\n}\n')
+		'module main\n\n#flag -I @VMODROOT/include -D FEATURE\n#insert "flag_value.c"\n\nfn C.flag_value() int\n\nfn main() {\n\tprintln(int_str(C.flag_value()))\n}\n')
 	write_project_file(root, 'include/flag_value.c',
 		'#include <flag_value.h>\n\nstatic inline int flag_value(void) {\n\treturn flag_value_inner();\n}\n')
 	write_project_file(root, 'include/flag_value.h',
@@ -4303,7 +4336,7 @@ fn main() {
 fn test_optional_map_append_evaluates_key_before_rhs() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_map_append_evaluation_order',
-		'fn select_key(key string, mut trace string) string {\n\ttrace += "key"\n\treturn key\n}\n\nfn next_value(mut key string, mut trace string) ?int {\n\ttrace += "rhs"\n\tkey = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut trace := ""\n\tmut key := "original"\n\tmut values := map[string][]int{}\n\tvalues[select_key(key, mut trace)] << next_value(mut key, mut trace) or { return }\n\tprintln(trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n')
+		'struct State {\nmut:\n\tkey   string\n\ttrace string\n}\n\nfn select_key(key string, mut state State) string {\n\tstate.trace += "key"\n\treturn key\n}\n\nfn next_value(mut state State) ?int {\n\tstate.trace += "rhs"\n\tstate.key = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut state := State{\n\t\tkey: "original"\n\t}\n\tmut values := map[string][]int{}\n\tvalues[select_key(state.key, mut state)] << next_value(mut state) or { return }\n\tprintln(state.trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n')
 	assert out == 'keyrhs\n7\nfalse'
 }
 
@@ -4330,16 +4363,21 @@ fn main() {
 
 fn test_failed_optional_append_probe_does_not_evaluate_rhs_twice() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_shift_rhs_evaluated_once', 'fn next_value(mut calls int) ?int {
-	calls++
+	out := run_good(v3_bin, 'optional_shift_rhs_evaluated_once', 'struct Counter {
+mut:
+	value int
+}
+
+fn next_value(mut calls Counter) ?int {
+	calls.value++
 	return 1
 }
 
 fn main() {
-	mut calls := 0
+	mut calls := Counter{}
 	flags := 2
 	flags << next_value(mut calls) or { return }
-	println(int_str(calls))
+	println(int_str(calls.value))
 }
 ')
 	assert out == '1'
@@ -4724,7 +4762,8 @@ fn main() {
 
 fn test_nested_callback_array_fields_preserve_receiver_identity_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Counter {
+	source := '@[heap]
+struct Counter {
 mut:
 	value int
 }

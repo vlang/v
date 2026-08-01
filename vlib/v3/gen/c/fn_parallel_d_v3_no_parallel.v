@@ -4,6 +4,10 @@ import v3.flat
 
 fn (mut g FlatGen) refine_fn_item_costs(_ bool, _ bool) {}
 
+fn par_cgen_prep_enabled() bool {
+	return false
+}
+
 // gen_fns_dispatch emits all functions serially when v3 is built with the
 // internal `v3_no_parallel` define.
 fn (mut g FlatGen) gen_fns_dispatch(_ bool) {

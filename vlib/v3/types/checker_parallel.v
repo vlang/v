@@ -986,7 +986,6 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if tc.fn_context.return_type !is Unknown
 		&& !type_allows_implicit_return(tc.fn_context.return_type)
 		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
-		&& should_check_generic_body && !signature_has_bare_generic_type
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		message := 'missing return at end of function `${node.value.all_after_last('.')}`'
 		tc.record_error_at(.return_mismatch, message, flat.NodeId(fn_idx),
@@ -1108,7 +1107,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 					'the receiver type `${receiver.typ}` should be the same type as the operand `${param.typ}`',
 					id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() {
+			if receiver_type.name() != param_type.name() && param_type !is FnType {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch,
 					'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading',

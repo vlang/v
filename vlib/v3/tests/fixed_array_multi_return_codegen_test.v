@@ -114,6 +114,7 @@ fn main() {
 	compact := compact_c_whitespace(generated)
 	assert generated.contains('int xs[3];'), generated
 	assert compact.contains('intys[3]={0};')
+		|| compact.contains('intys[3];memmove(ys,(int[3]){0},sizeof(ys));')
 		|| compact.contains('intys[3];memmove(ys,(int[3]){0,0,0},sizeof(ys));'), generated
 	assert generated.contains('int zs[3];'), generated
 	assert generated.contains('int ds[2];'), generated
