@@ -22,7 +22,7 @@ const type_level_cutoff_limit = 40 // it is very rarely deeper than 4
 const iface_level_cutoff_limit = 100
 const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-const generic_fn_postprocess_iterations_cutoff_limit = 256
+const generic_fn_postprocess_iterations_cutoff_limit = 128
 
 fn has_ascii_upper(s string) bool {
 	for ch in s {
