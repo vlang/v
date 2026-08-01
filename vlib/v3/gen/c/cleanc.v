@@ -4060,6 +4060,11 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		}
 		return true, active
 	}
+	if value := c_header_objective_c_integer_operand_value(clean, defined, undefined, uncertain,
+		macro_values, strict_iso_mode, target)
+	{
+		return true, value != 0
+	}
 	if clean.starts_with('!') {
 		known, active := c_header_objective_c_condition_state(clean[1..], defined, undefined,
 			uncertain, macro_values, strict_iso_mode, target)
@@ -4113,30 +4118,144 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 }
 
 fn c_header_objective_c_integer_operand_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) ?i64 {
-	mut current := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
 	mut seen := map[string]bool{}
-	for _ in 0 .. 64 {
-		if value := c_header_objective_c_integer_value(current) {
+	return c_header_objective_c_integer_expression_value(raw, defined, undefined, uncertain,
+		macro_values, strict_iso_mode, target, mut seen, 0)
+}
+
+fn c_header_objective_c_integer_expression_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, mut seen map[string]bool, depth int) ?i64 {
+	if depth >= 64 {
+		return none
+	}
+	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
+	if value := c_header_objective_c_integer_value(clean) {
+		return value
+	}
+	for operators in ['+-', '*/%'] {
+		has_operator, left_text, operator, right_text := c_header_condition_top_level_arithmetic(clean,
+			operators)
+		if !has_operator {
+			continue
+		}
+		left := c_header_objective_c_integer_expression_value(left_text, defined, undefined,
+			uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+			return none
+		}
+		right := c_header_objective_c_integer_expression_value(right_text, defined, undefined,
+			uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+			return none
+		}
+		return c_header_objective_c_checked_arithmetic(left, right, operator)
+	}
+	if clean.len > 1 && clean[0] in [`+`, `-`] {
+		value := c_header_objective_c_integer_expression_value(clean[1..], defined, undefined,
+			uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+			return none
+		}
+		if clean[0] == `+` {
 			return value
 		}
-		if current.len == 0 || !c_identifier_start(current[0])
-			|| c_header_struct_tag(current) != current || seen[current] {
+		if value == i64(-0x7fffffffffffffff - 1) {
 			return none
 		}
-		seen[current] = true
-		known, active := c_header_objective_c_macro_state(current, defined, undefined, uncertain,
-			strict_iso_mode, target)
-		if !known {
-			return none
-		}
-		if !active {
-			return i64(0)
-		}
-		replacement := macro_values[current] or { return none }
-		current =
-			c_header_condition_without_outer_parens(c_header_condition_without_comments(replacement))
+		return -value
 	}
-	return none
+	if clean.len == 0 || !c_identifier_start(clean[0]) || c_header_struct_tag(clean) != clean
+		|| seen[clean] {
+		return none
+	}
+	known, active := c_header_objective_c_macro_state(clean, defined, undefined, uncertain,
+		strict_iso_mode, target)
+	if !known {
+		return none
+	}
+	if !active {
+		return i64(0)
+	}
+	replacement := macro_values[clean] or { return none }
+	seen[clean] = true
+	value := c_header_objective_c_integer_expression_value(replacement, defined, undefined,
+		uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1)
+	seen.delete(clean)
+	return value
+}
+
+fn c_header_condition_top_level_arithmetic(expression string, operators string) (bool, string, u8, string) {
+	mut depth := 0
+	mut operator_index := -1
+	for i, c in expression.bytes() {
+		if c == `(` {
+			depth++
+			continue
+		}
+		if c == `)` {
+			depth--
+			continue
+		}
+		if depth != 0 || c !in operators.bytes() {
+			continue
+		}
+		mut previous := i - 1
+		for previous >= 0 && expression[previous].is_space() {
+			previous--
+		}
+		if previous >= 0
+			&& (c_identifier_continue(expression[previous]) || expression[previous] == `)`) {
+			operator_index = i
+		}
+	}
+	if operator_index < 0 {
+		return false, '', u8(0), ''
+	}
+	left := expression[..operator_index].trim_space()
+	right := expression[operator_index + 1..].trim_space()
+	if left.len == 0 || right.len == 0 {
+		return false, '', u8(0), ''
+	}
+	return true, left, expression[operator_index], right
+}
+
+fn c_header_objective_c_checked_arithmetic(left i64, right i64, operator u8) ?i64 {
+	max_value := i64(0x7fffffffffffffff)
+	min_value := i64(-0x7fffffffffffffff - 1)
+	match operator {
+		`+` {
+			if (right > 0 && left > max_value - right) || (right < 0 && left < min_value - right) {
+				return none
+			}
+			return left + right
+		}
+		`-` {
+			if (right > 0 && left < min_value + right) || (right < 0 && left > max_value + right) {
+				return none
+			}
+			return left - right
+		}
+		`*` {
+			if (left > 0 && right > 0 && left > max_value / right)
+				|| (left > 0 && right < 0 && right < min_value / left)
+				|| (left < 0 && right > 0 && left < min_value / right)
+				|| (left < 0 && right < 0 && left < max_value / right) {
+				return none
+			}
+			return left * right
+		}
+		`/` {
+			if right == 0 || (left == min_value && right == -1) {
+				return none
+			}
+			return left / right
+		}
+		`%` {
+			if right == 0 || (left == min_value && right == -1) {
+				return none
+			}
+			return left % right
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn c_header_objective_c_macro_value_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {

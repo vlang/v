@@ -10,6 +10,9 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
 	}
+	if tc.has_goto_nodes {
+		tc.update_pointer_alias_goto_state(id)
+	}
 	idx := int(id)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.statement_nodes.len {
@@ -86,6 +89,76 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id,
 			tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
+}
+
+fn (mut tc TypeChecker) initialize_pointer_alias_goto_targets() {
+	tc.fn_context.pointer_alias_goto_states = map[string][]map[string][]string{}
+	tc.fn_context.pointer_alias_backward_goto_targets = map[string]bool{}
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if !tc.valid_node_id(fn_id) {
+		return
+	}
+	mut label_offsets := map[string]int{}
+	mut goto_offsets := map[string][]int{}
+	tc.collect_pointer_alias_goto_offsets(fn_id, mut label_offsets, mut goto_offsets)
+	for label, offsets in goto_offsets {
+		label_offset := label_offsets[label] or { continue }
+		if offsets.any(it > label_offset) {
+			tc.fn_context.pointer_alias_backward_goto_targets[label] = true
+		}
+	}
+}
+
+fn (tc &TypeChecker) collect_pointer_alias_goto_offsets(id flat.NodeId, mut label_offsets map[string]int, mut goto_offsets map[string][]int) {
+	node := tc.a.node(id)
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(node, i)
+		child := tc.a.node(child_id)
+		if child.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			continue
+		}
+		if child.kind == .label_stmt {
+			label_offsets[child.value] = child.pos.offset
+		} else if child.kind == .goto_stmt {
+			mut offsets := goto_offsets[child.value] or { []int{} }
+			offsets << child.pos.offset
+			goto_offsets[child.value] = offsets
+		}
+		tc.collect_pointer_alias_goto_offsets(child_id, mut label_offsets, mut goto_offsets)
+	}
+}
+
+fn (mut tc TypeChecker) update_pointer_alias_goto_state(id flat.NodeId) {
+	node := tc.a.node(id)
+	if node.kind == .goto_stmt {
+		mut states := tc.fn_context.pointer_alias_goto_states[node.value] or {
+			[]map[string][]string{}
+		}
+		states << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		tc.fn_context.pointer_alias_goto_states[node.value] = states
+		return
+	}
+	if node.kind != .label_stmt {
+		return
+	}
+	if tc.fn_context.pointer_alias_backward_goto_targets[node.value] {
+		for key, _ in tc.fn_context.pointer_binding_value_keys {
+			tc.fn_context.pointer_binding_value_keys[key] = [
+				pointer_binding_unknown_value(key),
+			]
+		}
+		return
+	}
+	incoming := tc.fn_context.pointer_alias_goto_states[node.value] or { return }
+	mut paths := [
+		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys),
+	]
+	for state in incoming {
+		paths << clone_pointer_binding_value_keys(state)
+	}
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(paths,
+		tc.fn_context.pointer_binding_value_keys)
+	tc.fn_context.pointer_alias_goto_states.delete(node.value)
 }
 
 fn (tc &TypeChecker) unreachable_statement_diagnostic_pos(id flat.NodeId) token.Pos {
