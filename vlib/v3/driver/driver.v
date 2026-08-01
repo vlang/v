@@ -2093,10 +2093,11 @@ mut:
 }
 
 struct V3CacheLocalCMacro {
-	known      bool
-	is_defined bool
-	literal    string
-	truth      int
+	known       bool
+	is_defined  bool
+	literal     string
+	replacement string
+	truth       int
 }
 
 struct V3CacheLocalCConditional {
@@ -2253,10 +2254,11 @@ fn cache_record_local_c_include_macro(directive string, arg string, ambiguous bo
 		literal = value
 	}
 	include_macros[name] = V3CacheLocalCMacro{
-		known:      !ambiguous
-		is_defined: true
-		literal:    literal
-		truth:      cache_local_c_integer_condition(value)
+		known:       !ambiguous
+		is_defined:  true
+		literal:     literal
+		replacement: value
+		truth:       cache_local_c_integer_condition(value)
 	}
 }
 
@@ -2289,14 +2291,15 @@ fn cache_local_c_flag_macros(flags []string) map[string]V3CacheLocalCMacro {
 			}
 			if name.len > 0 {
 				macros[name] = V3CacheLocalCMacro{
-					known:      true
-					is_defined: true
-					literal:    if cache_local_c_is_literal_include_value(value) {
+					known:       true
+					is_defined:  true
+					literal:     if cache_local_c_is_literal_include_value(value) {
 						value
 					} else {
 						''
 					}
-					truth:      if open > 0 { 0 } else { cache_local_c_integer_condition(value) }
+					replacement: if open > 0 { '' } else { value }
+					truth:       if open > 0 { 0 } else { cache_local_c_integer_condition(value) }
 				}
 			}
 		} else if undefinition.len > 0 {
@@ -2526,13 +2529,21 @@ fn cache_local_c_condition_top_level_parts(expression string, operator string) [
 	return parts
 }
 
-fn cache_local_c_known_expression(raw string, include_macros map[string]V3CacheLocalCMacro) int {
+fn cache_local_c_known_expression(raw string, macros map[string]V3CacheLocalCMacro) int {
+	mut seen := map[string]bool{}
+	return cache_local_c_known_expression_rec(raw, macros, mut seen, 0)
+}
+
+fn cache_local_c_known_expression_rec(raw string, macros map[string]V3CacheLocalCMacro, mut seen map[string]bool, depth int) int {
+	if depth >= 64 {
+		return 0
+	}
 	expression := cache_local_c_condition_without_outer_parens(raw)
 	or_parts := cache_local_c_condition_top_level_parts(expression, '||')
 	if or_parts.len > 1 {
 		mut all_false := true
 		for part in or_parts {
-			condition := cache_local_c_known_expression(part, include_macros)
+			condition := cache_local_c_known_expression_rec(part, macros, mut seen, depth + 1)
 			if condition == 1 {
 				return 1
 			}
@@ -2544,7 +2555,7 @@ fn cache_local_c_known_expression(raw string, include_macros map[string]V3CacheL
 	if and_parts.len > 1 {
 		mut all_true := true
 		for part in and_parts {
-			condition := cache_local_c_known_expression(part, include_macros)
+			condition := cache_local_c_known_expression_rec(part, macros, mut seen, depth + 1)
 			if condition == -1 {
 				return -1
 			}
@@ -2553,18 +2564,32 @@ fn cache_local_c_known_expression(raw string, include_macros map[string]V3CacheL
 		return if all_true { 1 } else { 0 }
 	}
 	if expression.starts_with('!') {
-		condition := cache_local_c_known_expression(expression[1..], include_macros)
+		condition := cache_local_c_known_expression_rec(expression[1..], macros, mut seen,
+			depth + 1)
 		return if condition == 0 { 0 } else { -condition }
 	}
 	literal_condition := cache_local_c_integer_condition(expression)
 	if literal_condition != 0 {
 		return literal_condition
 	}
-	if macro := include_macros[expression] {
+	if macro := macros[expression] {
 		if !macro.known {
 			return 0
 		}
-		return if macro.is_defined { macro.truth } else { -1 }
+		if !macro.is_defined {
+			return -1
+		}
+		if macro.truth != 0 {
+			return macro.truth
+		}
+		if macro.replacement.len == 0 || seen[expression] {
+			return 0
+		}
+		seen[expression] = true
+		replacement := macro.replacement
+		condition := cache_local_c_known_expression_rec(replacement, macros, mut seen, depth + 1)
+		seen.delete(expression)
+		return condition
 	}
 	if !expression.starts_with('defined') {
 		return 0
@@ -2584,7 +2609,7 @@ fn cache_local_c_known_expression(raw string, include_macros map[string]V3CacheL
 		}
 		macro_name = fields[0]
 	}
-	return cache_local_c_macro_condition(macro_name, false, include_macros)
+	return cache_local_c_macro_condition(macro_name, false, macros)
 }
 
 fn cache_local_c_known_condition(directive string, raw_arg string, include_macros map[string]V3CacheLocalCMacro) int {

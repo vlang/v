@@ -96,6 +96,16 @@ fn test_cache_c_source_definitely_active_code_evaluates_compound_known_guards() 
 	assert disabled.contains('fallback_api')
 }
 
+fn test_cache_c_source_definitely_active_code_expands_local_macro_values() {
+	source := '#define ENABLED 1\n#define PARENTHESIZED (1)\n#define ALIASED ENABLED\n#define COMPOUND (PARENTHESIZED && ALIASED)\n#if PARENTHESIZED\nstatic int parenthesized_api(void) { return 1; }\n#endif\n#if ALIASED\nstatic int aliased_api(void) { return 2; }\n#endif\n#if COMPOUND\nstatic int compound_macro_api(void) { return 3; }\n#endif\n#define FIRST SECOND\n#define SECOND FIRST\n#if FIRST\nstatic int cyclic_api(void) { return 4; }\n#endif\n'
+	mut macros := cache_local_c_flag_macros([]string{})
+	active := cache_c_source_definitely_active_code(source, mut macros)
+	assert active.contains('parenthesized_api')
+	assert active.contains('aliased_api')
+	assert active.contains('compound_macro_api')
+	assert !active.contains('cyclic_api')
+}
+
 fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
 	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
 	os.rmdir_all(root_dir) or {}
