@@ -5166,6 +5166,10 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 		if token == '__bridge' {
 			return true
 		}
+		if token in ['__strong', '__weak', '__autoreleasing', '__unsafe_unretained']
+			&& !c_header_token_is_on_directive_line(text, start) {
+			return true
+		}
 		if c_header_has_bare_objective_c_type(text, token, start, i) {
 			return true
 		}

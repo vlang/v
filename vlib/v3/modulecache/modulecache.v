@@ -2120,6 +2120,7 @@ pub fn c_source_function_identifiers_with_status(source string) (map[string]bool
 	mut identifiers := map[string]bool{}
 	mut complete := true
 	mut pending := strings.new_builder(256)
+	mut pending_old_style := false
 	mut brace_depth := 0
 	mut in_block_comment := false
 	for raw_line in source.split_into_lines() {
@@ -2147,15 +2148,98 @@ pub fn c_source_function_identifiers_with_status(source string) (map[string]bool
 					complete = false
 				}
 			}
+			pending_old_style = false
 		}
 		brace_depth += delta
 		if brace_depth <= 0 && (first_open >= 0 || last_code == `;`) {
 			brace_depth = 0
-			pending.clear()
+			if first_open < 0 && last_code == `;`
+				&& c_pending_has_old_style_parameter_declaration(pending.after(0)) {
+				pending_old_style = true
+			} else {
+				pending.clear()
+				pending_old_style = false
+			}
 		}
+	}
+	if pending_old_style {
+		complete = false
 	}
 	unsafe { pending.free() }
 	return identifiers, complete
+}
+
+fn c_pending_has_old_style_parameter_declaration(declaration string) bool {
+	clean := trim_leading_c_comments(declaration.trim_space())
+	identifier := c_function_declaration_identifier(clean) or { return false }
+	mut open := -1
+	mut i := 0
+	for i + identifier.len <= clean.len {
+		if clean[i..i + identifier.len] != identifier {
+			i++
+			continue
+		}
+		before := if i > 0 { clean[i - 1] } else { u8(0) }
+		after_name := if i + identifier.len < clean.len {
+			clean[i + identifier.len]
+		} else {
+			u8(0)
+		}
+		if c_generated_identifier_byte(before) || c_generated_identifier_byte(after_name) {
+			i += identifier.len
+			continue
+		}
+		mut after := i + identifier.len
+		for after < clean.len && clean[after].is_space() {
+			after++
+		}
+		if after < clean.len && clean[after] == `(` {
+			open = after
+			break
+		}
+		i += identifier.len
+	}
+	if open < 0 {
+		return false
+	}
+	mut close := -1
+	mut depth := 0
+	for pos in open .. clean.len {
+		if clean[pos] == `(` {
+			depth++
+		} else if clean[pos] == `)` {
+			depth--
+			if depth == 0 {
+				close = pos
+				break
+			}
+		}
+	}
+	if close < 0 {
+		return false
+	}
+	mut parameter_names := []string{}
+	for raw_parameter in c_split_top_level_declarators(clean[open + 1..close]) {
+		parameter := trim_leading_c_comments(raw_parameter.trim_space())
+		if parameter.len == 0 || !((parameter[0] >= `a` && parameter[0] <= `z`)
+			|| (parameter[0] >= `A` && parameter[0] <= `Z`) || parameter[0] == `_`) {
+			return false
+		}
+		for c in parameter.bytes() {
+			if !c_generated_identifier_byte(c) {
+				return false
+			}
+		}
+		parameter_names << parameter
+	}
+	if parameter_names.len == 0 {
+		return false
+	}
+	declarations := clean[close + 1..].trim_space()
+	if declarations.len == 0 {
+		return false
+	}
+	return parameter_names.any(c_code_contains_identifier(declarations, it))
 }
 
 fn c_function_declaration_identifier_is_ambiguous(head string, identifier string) bool {

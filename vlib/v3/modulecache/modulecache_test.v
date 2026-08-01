@@ -126,6 +126,13 @@ fn test_function_identifiers_recognize_function_pointer_return() {
 	assert !c_static_declaration_head_is_function('static int (*callback)(int)')
 }
 
+fn test_function_identifiers_preserve_old_style_parameter_declarations() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('static int api(a)\nint a;\n{\n\treturn a;\n}\n')
+	assert complete
+	assert identifiers['api']
+}
+
 fn test_macro_identifiers_referencing_static_helpers() {
 	wrappers := c_sources_macro_identifiers_referencing([
 		'#define CALL_HELPER() helper()
