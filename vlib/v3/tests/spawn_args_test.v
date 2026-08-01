@@ -226,9 +226,8 @@ fn main() {
 	assert !c_code.contains('pthread_join((pthread_t)'), c_code
 }
 
-// A spawned runtime closure transfers ownership of its thunk and heap context to
-// the worker. The caller no longer destroys it; the worker does so after invoking it.
-fn test_spawn_fn_value_closure_transfers_ownership() {
+// A spawned named closure remains caller-owned because it can be reused after join.
+fn test_spawn_fn_value_closure_keeps_caller_ownership() {
 	v3_bin := build_v3()
 	c_code := gen_c(v3_bin, 'v3_spawn_fn_value_capture', '
 fn main() {
@@ -236,14 +235,15 @@ fn main() {
 	cb := fn [x] () int {
 		return x
 	}
-	_ := spawn (cb)()
-	println("ok")
+	t := spawn (cb)()
+	println(t.wait())
+	println(cb())
 }
 	')
 	c_compact := compact_c(c_code)
 	assert c_code.contains('fn_value_args_thread_wrapper'), c_code
 	assert c_compact.contains('f;}fn_value_thread_args_'), c_code
 	assert c_compact.contains('p->f()'), c_code
-	assert c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
+	assert !c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
 	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
 }

@@ -124,6 +124,45 @@ fn main() {
 	assert c_source.contains('__anon_fn_0_Ctx'), c_source
 	assert c_source.contains('_args_thread_wrapper'), c_source
 	assert c_source.contains(' = p->f'), c_source
+	assert c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
+fn test_spawned_named_capturing_callback_survives_join_and_reuse() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}')
+	src := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}.v')
+	out := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_program_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rm(src) or {}
+		os.rm(out) or {}
+		os.rm(out + '.c') or {}
+	}
+	build :=
+		os.execute('${closure_tls_vexe} -gc none -path "${closure_tls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${closure_tls_v3_src}')
+	assert build.exit_code == 0, build.output
+	os.write_file(src, "module main
+
+fn main() {
+	value := 41
+	callback := fn [value] () int {
+		return value
+	}
+	worker := spawn (callback)()
+	assert worker.wait() == 41
+	assert callback() == 41
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	c_source := os.read_file(out + '.c') or { panic(err) }
+	assert !c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'

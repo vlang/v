@@ -934,3 +934,38 @@ fn test_builtin_function_callee_wins_over_unrelated_const_suffix() {
 		'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n')
 	assert out == 'true'
 }
+
+fn test_fn_field_param_mutability_survives_type_identity_paths() {
+	v3_bin := build_v3_review_checker()
+	source_prefix := 'struct Holder {
+	callback fn (mut int)
+}
+
+fn increment(mut value int) {
+	value++
+}
+'
+	out := run_good(v3_bin, 'good_fn_field_mut_param', source_prefix +
+		'
+fn main() {
+	holder := Holder{
+		callback: increment
+	}
+	mut value := 4
+	holder.callback(mut value)
+	println(int_str(value))
+}
+')
+	assert out == '5'
+	run_bad(v3_bin, 'bad_fn_field_missing_mut_arg', source_prefix +
+		'
+fn main() {
+	holder := Holder{
+		callback: increment
+	}
+	mut value := 4
+	holder.callback(value)
+}
+',
+		'is `mut`, so use `mut value` instead')
+}

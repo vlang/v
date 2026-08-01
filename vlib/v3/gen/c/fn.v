@@ -3267,8 +3267,9 @@ fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.No
 	for callable.kind == .paren && callable.children_count > 0 {
 		callable = g.a.nodes[int(g.a.child(&callable, 0))]
 	}
-	destroys_fn := callable.kind == .ident && (callable.value.starts_with('__immediate_closure_')
-		|| g.local_fn_value_c_name(callable.value) != none)
+	// Only compiler-created immediate closures are consumed by spawn. A named local
+	// remains owned by the caller and may be invoked again after the worker joins.
+	destroys_fn := callable.kind == .ident && callable.value.starts_with('__immediate_closure_')
 	wrapper, struct_name := g.ensure_fn_value_spawn_wrapper(fn_ct, args, ret_ct, captures,
 		destroys_fn)
 	tmp := g.tmp_count
