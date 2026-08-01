@@ -5491,7 +5491,7 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 
 fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node flat.Node) bool {
 	metadata := node.generic_params()
-	if metadata.len < 6 || metadata[0] != '__v3_comptime_match' {
+	if metadata.len < 7 || metadata[0] != '__v3_comptime_match' {
 		return false
 	}
 	subject := metadata[1]
@@ -5499,6 +5499,7 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 	subject_end := metadata[3].int()
 	explicit_mut := metadata[4] == 'true'
 	match_kind := metadata[5]
+	subject_is_unresolved_local := metadata[6] == 'true'
 	subject_pos := token.new_span(node.pos.id, subject_start, subject_end)
 	mut has_error := false
 	if explicit_mut {
@@ -5508,6 +5509,10 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 	} else if tc.ident_is_mutable_lvalue(subject) {
 		tc.record_error_at(.condition_mismatch,
 			'`${subject}` is mut and may have changed since its definition', id, subject_pos)
+		has_error = true
+	} else if subject_is_unresolved_local && match_kind == 'value' {
+		tc.record_error_at(.condition_mismatch,
+			'definition of `${subject}` is unknown at compile time', id, subject_pos)
 		has_error = true
 	}
 	subject_type := if subject.starts_with('$') {
@@ -5521,7 +5526,7 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 	} else {
 		'unknown'
 	}
-	for offset := 6; offset + 3 < metadata.len; offset += 4 {
+	for offset := 7; offset + 3 < metadata.len; offset += 4 {
 		pattern := metadata[offset]
 		pattern_start := metadata[offset + 1].int()
 		pattern_end := metadata[offset + 2].int()

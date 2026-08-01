@@ -995,6 +995,22 @@ fn test_comptime_if_selected_bodies_are_checked() {
 	assert out == 'ok'
 }
 
+fn test_comptime_match_shadowed_const_subject_is_not_folded() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_comptime_match_parameter_shadows_const',
+		"const mode = 'a'\n\nfn choose(mode string) {\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n\nfn main() {}\n",
+		'definition of `mode` is unknown at compile time')
+	run_bad(v3_bin, 'bad_comptime_match_mutable_local_shadows_const',
+		"const mode = 'a'\n\nfn main() {\n\tmut mode := 'b'\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n",
+		'`mode` is mut and may have changed since its definition')
+	out := run_good(v3_bin, 'good_comptime_match_known_local',
+		"fn main() {\n\tmode := 'b'\n\t\$match mode {\n\t\t'b' { println('ok') }\n\t\t\$else { println('bad') }\n\t}\n}\n")
+	assert out == 'ok'
+	type_out := run_good(v3_bin, 'good_comptime_match_generic_parameter_type',
+		"fn classify[T](value T) string {\n\t\$match value {\n\t\tint { return 'int' }\n\t\t\$else { return 'other' }\n\t}\n}\n\nfn main() {\n\tprintln(classify(1))\n}\n")
+	assert type_out == 'int'
+}
+
 fn test_explicit_generic_calls_use_all_type_arguments() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_multi_explicit_generic_call',

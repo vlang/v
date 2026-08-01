@@ -3155,8 +3155,15 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool) flat.NodeId {
 	if subject_is_literal {
 		return p.parse_known_comptime_match_value(subject, is_top_level)
 	}
-	if value := p.comptime_value(subject) {
+	subject_is_unresolved_local := p.is_local_binding(subject)
+		&& subject !in p.comptime_local_values
+	if value := p.comptime_local_values[subject] {
 		return p.parse_known_comptime_match_value(value, is_top_level)
+	}
+	if !subject_is_unresolved_local {
+		if value := p.comptime_value(subject) {
+			return p.parse_known_comptime_match_value(value, is_top_level)
+		}
 	}
 	if subject.starts_with('@') {
 		return p.parse_known_comptime_match_value(p.resolve_comptime_at_values(subject),
@@ -3170,6 +3177,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool) flat.NodeId {
 		subject_start.str(),
 		subject_end.str(),
 		explicit_mut.str(),
+		subject_is_unresolved_local.str(),
 	]
 	mut else_block := flat.empty_node
 	for p.tok != .rcbr && p.tok != .eof {
