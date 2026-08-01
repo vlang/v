@@ -5449,7 +5449,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name string, field_name string) ?t
 
 fn (g &FlatGen) usable_resolved_sum_type(typ types.Type) types.Type {
 	if typ is types.Struct {
-		sum_name := g.resolve_sum_name(typ.name)
+		sum_name := if typ.name.contains('.') { typ.name } else { g.resolve_sum_name(typ.name) }
 		if sum_name in g.tc.sum_types {
 			return types.Type(types.SumType{
 				name: sum_name
