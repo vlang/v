@@ -125,6 +125,8 @@ fn test_macos_v3_child_environment_preserves_caller_without_fallback_state() {
 	$if macos {
 		caller_environment := {
 			'PATH':                     '/usr/bin'
+			'CFLAGS':                   '-I/caller/include -DCALLER_FLAG=1'
+			'LDFLAGS':                  '-L/caller/lib -lcaller'
 			'VEXE':                     'caller-vexe'
 			'VCHILD':                   'caller-vchild'
 			'V_MACOS_V3_FALLBACK_FILE': '/tmp/stale-fallback'
@@ -137,6 +139,8 @@ fn test_macos_v3_child_environment_preserves_caller_without_fallback_state() {
 		assert environment[macos_v3_embedded_env] == '1'
 		assert environment['VEXE'] == os.real_path(@VEXE)
 		assert environment['VCHILD'] == 'true'
+		assert environment['CFLAGS'] == '-I/caller/include -DCALLER_FLAG=1'
+		assert environment['LDFLAGS'] == '-L/caller/lib -lcaller'
 		assert environment[macos_v3_caller_vexe_present_env] == '1'
 		assert environment[macos_v3_caller_vexe_env] == 'caller-vexe'
 		assert environment[macos_v3_caller_vchild_present_env] == '1'

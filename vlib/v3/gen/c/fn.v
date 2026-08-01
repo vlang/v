@@ -4004,6 +4004,16 @@ fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method str
 	return ''
 }
 
+fn (g &FlatGen) print_fn_selector_matches(c_name string, module_name string, source_name string) bool {
+	if c_name in g.print_fn_names {
+		return true
+	}
+	if module_name in ['', 'main'] && 'main__${source_name}' in g.print_fn_names {
+		return true
+	}
+	return false
+}
+
 // gen_fn_in_module emits fn in module output for c.
 fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_name string, skip_prelude_scan bool) {
 	g.tc.cur_module = module_name
@@ -4096,6 +4106,10 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.insert_cur_implicit_veb_ctx_param(node)
 	g.prepare_function_defers(prelude_scan.defer_ids)
 	is_entry_main := is_main_fn_in_main_module(module_name, node.value) && g.test_files.len == 0
+	generated_fn_name := g.fn_c_name_in_module(module_name, node.value)
+	should_print_fn := g.print_fn_selector_matches(generated_fn_name, module_name, node.value)
+		|| (is_entry_main && 'main' in g.print_fn_names)
+	fn_start_pos := g.sb.len
 	if is_entry_main {
 		g.writeln('int main(int argc, char** argv) {')
 		if g.has_builtins {
@@ -4113,7 +4127,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.set_cur_fn_ret(ret_type)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
-		g.write(g.fn_c_name_in_module(module_name, node.value))
+		g.write(generated_fn_name)
 		g.write('(')
 		g.write_fn_node_params(node)
 		g.writeln(')${g.fn_decl_c_attribute(node_id)} {')
@@ -4144,6 +4158,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
+	if should_print_fn {
+		println(g.sb.after(fn_start_pos))
+	}
 	if !is_entry_main && !g.object_file_mode {
 		g.gen_export_wrapper_for_fn(node, module_name)
 	}
@@ -4324,6 +4341,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.prepare_function_defers(prelude_scan.defer_ids)
 	g.goto_label_c_names.clear()
 	g.goto_label_count = 0
+	fn_start_pos := g.sb.len
 	g.writeln('int main(int argc, char** argv) {')
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
@@ -4347,6 +4365,9 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
+	if 'main' in g.print_fn_names || 'main__main' in g.print_fn_names {
+		println(g.sb.after(fn_start_pos))
+	}
 	g.cur_param_names = old_param_names
 	g.cur_param_type_values = old_param_type_values
 	g.cur_param_types = old_param_types.move()
@@ -4392,6 +4413,7 @@ fn (mut g FlatGen) gen_top_level_main_stmt(id flat.NodeId) {
 fn (mut g FlatGen) gen_test_main() {
 	tests, hooks := g.test_harness_fns()
 	g.tc.cur_module = 'main'
+	fn_start_pos := g.sb.len
 	g.writeln('int main(int argc, char** argv) {')
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
@@ -4438,6 +4460,9 @@ fn (mut g FlatGen) gen_test_main() {
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
+	if 'main' in g.print_fn_names {
+		println(g.sb.after(fn_start_pos))
+	}
 }
 
 fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {

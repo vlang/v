@@ -220,7 +220,7 @@ fn cpp_runtime_link_flag(target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
 }
 
-fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
@@ -242,11 +242,12 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 		}
 		return passthrough
 	}
-	support_flags := c_object_compile_support_flags(flags)
+	mut support_flags := environment_c_flags.clone()
+	support_flags << c_object_compile_support_flags(flags)
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	plan_path := c_link_plan_path(cache_dir, flags, c99, pic_flag, target_args, target, c_compiler, mut
-		stats)
+	plan_path := c_link_plan_path(cache_dir, flags, support_flags, c99, pic_flag, target_args,
+		target, c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
 	// object's cache decision remains visible.
 	if os.getenv('V3_CACHE_TRACE') == '' {
@@ -330,12 +331,13 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 	return prepared
 }
 
-fn c_link_plan_path(cache_dir string, flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
+fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
 	for identity in ['v3-c-link-plan-v2', os.getwd(), flags.join('\x00'),
-		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
-		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format] {
+		support_flags.join('\x00'), c99.str(), pic_flag, target_args.join('\x00'), compiler_path,
+		compiler_version, target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
+		target.object_format] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -3941,6 +3943,32 @@ fn suppress_minimal_literal_output_builtin_imports(mut a flat.FlatAst) {
 	}
 }
 
+fn parse_v3_environment_flags(name string) []string {
+	value := os.getenv(name).replace('\r', ' ').replace('\n', ' ')
+	if value.trim_space().len == 0 {
+		return []
+	}
+	return cmdexec.split_args(value) or {
+		eprintln('invalid `${name}` value: ${err.msg()}')
+		exit(1)
+	}
+}
+
+fn expand_v3_module_search_paths(spec string, vroot string) []string {
+	if spec.len == 0 {
+		return []
+	}
+	mut expanded := []string{}
+	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+		match path {
+			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
+			'@vmodules' { expanded << os.vmodules_paths() }
+			else { expanded << path.replace('@vroot', vroot) }
+		}
+	}
+	return expanded
+}
+
 // run executes the V3 compiler driver with `args`.
 @[markused]
 pub fn run(args []string) {
@@ -3957,7 +3985,7 @@ pub fn run(args []string) {
 		}
 		if arg in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 			'--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path', '-cflags',
-			'-test-runner', '-run-only'] {
+			'-printfn', '-test-runner', '-run-only'] {
 			skip_option_value = true
 			continue
 		}
@@ -4051,9 +4079,18 @@ pub fn run(args []string) {
 	mut coverage_dir := ''
 	mut dump_c_flags := ''
 	mut generate_c_project := ''
+	mut module_search_path_spec := ''
 	mut file_list := []string{}
 	mut run_args := []string{}
 	mut run_only := []string{}
+	mut print_fn_names := []string{}
+	environment_c_flags := parse_v3_environment_flags('CFLAGS')
+	environment_ld_flags := parse_v3_environment_flags('LDFLAGS')
+	if environment_c_flags.len > 0 || environment_ld_flags.len > 0 {
+		// Ambient flags can change arbitrary native compilation and link inputs.
+		// Keep those invocations monolithic until the module cache records them.
+		no_cache = true
+	}
 	mut i := 0
 	for i < args.len {
 		// Once `run <file>` has captured its input file, every remaining argument
@@ -4088,9 +4125,13 @@ pub fn run(args []string) {
 		} else if args[i] in ['-o', '-output'] && i + 1 < args.len {
 			output_file = args[i + 1]
 			explicit_output = true
+			if output_file.ends_with('.o') {
+				is_o = true
+				no_cache = true
+			}
 			i += 2
 		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
-			backend = if args[i + 1] == 'js_browser' { 'js' } else { args[i + 1] }
+			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
 			i += 2
 		} else if args[i] == '-os' && i + 1 < args.len {
 			target_os = args[i + 1]
@@ -4218,12 +4259,11 @@ pub fn run(args []string) {
 			}
 			i += 2
 		} else if args[i] == '-printfn' && i + 1 < args.len {
-			// V3 emits the complete translation unit. Accept V1's function-print
-			// selector so cross-output fixtures remain CLI-compatible.
+			print_fn_names << args[i + 1].split(',')
+			no_cache = true
 			i += 2
 		} else if args[i] == '-path' && i + 1 < args.len {
-			// V3 resolves the checkout vlib and user modules directly. Accept
-			// V1's conventional explicit search path for CLI compatibility.
+			module_search_path_spec = args[i + 1]
 			i += 2
 		} else if args[i] == '-cflags' && i + 1 < args.len {
 			parsed_c_flags := cmdexec.split_args(args[i + 1]) or {
@@ -4397,6 +4437,11 @@ pub fn run(args []string) {
 	}
 	mut current_no_parallel := no_parallel
 	if coverage_dir.len > 0 {
+		current_no_parallel = true
+		no_cache = true
+	}
+	if print_fn_names.len > 0 {
+		// Function snippets are emitted to stdout in deterministic generation order.
 		current_no_parallel = true
 		no_cache = true
 	}
@@ -4693,6 +4738,7 @@ pub fn run(args []string) {
 	} else {
 		resolve_vroot_for_input(prefs.vroot, input_file)
 	}
+	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
 		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		if os.is_executable(bundled_tcc) {
@@ -4748,6 +4794,7 @@ pub fn run(args []string) {
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
 		'thread_stack_size=${prefs.thread_stack_size}',
+		'module_search_paths=${prefs.module_search_paths.join(',')}',
 		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
 		'ownership=${ownership_mode}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
@@ -6162,6 +6209,7 @@ pub fn run(args []string) {
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
 			g.set_test_run_only(run_only)
+			g.set_print_fn_names(print_fn_names)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
 			g.set_coverage(coverage_dir, args.join(' '))
@@ -6208,6 +6256,7 @@ pub fn run(args []string) {
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
 			g.set_test_run_only(run_only)
+			g.set_print_fn_names(print_fn_names)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
 			g.set_coverage(coverage_dir, args.join(' '))
@@ -6299,9 +6348,12 @@ pub fn run(args []string) {
 		if wrapv_flag.len > 0 {
 			warn_args << wrapv_flag
 		}
-		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
-		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
-			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
+		mut all_compile_c_flags := environment_c_flags.clone()
+		all_compile_c_flags << generated_c_flags
+		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
+		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
+			prefs.c99, pic_flag, target_args, prefs.target, c_compiler, cc_dir, mut
+			c_object_cache_stats) or {
 			message := err.msg()
 			if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
 				macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
@@ -6316,8 +6368,13 @@ pub fn run(args []string) {
 		}
 		b.step('C object cache')
 		if dump_c_flags.len > 0 {
-			output := if resolved_c_flags.len > 0 {
-				resolved_c_flags.join('\n') + '\n'
+			mut dumped_flags := environment_c_flags.clone()
+			dumped_flags << resolved_c_flags
+			if !is_o {
+				dumped_flags << environment_ld_flags
+			}
+			output := if dumped_flags.len > 0 {
+				dumped_flags.join('\n') + '\n'
 			} else {
 				''
 			}
@@ -6331,7 +6388,7 @@ pub fn run(args []string) {
 				}
 			}
 		}
-		link_uses_non_c_language := c_link_flags_use_non_c_language(resolved_c_flags)
+		link_uses_non_c_language := c_link_flags_use_non_c_language(all_compile_c_flags)
 		mut tcc_link_has_incompatible_objects := false
 		if prefs.normalized_target_os() == 'macos' {
 			for flag in resolved_c_flags {
@@ -6728,7 +6785,7 @@ pub fn run(args []string) {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			mut tcc_args := []string{}
+			mut tcc_args := environment_c_flags.clone()
 			if link_c_standard.len > 0 {
 				tcc_args << link_c_standard
 			}
@@ -6752,6 +6809,9 @@ pub fn run(args []string) {
 			}
 			tcc_args << resolved_c_flags
 			tcc_args << '-lm'
+			if !is_o {
+				tcc_args << environment_ld_flags
+			}
 			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
@@ -6767,7 +6827,7 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
-			mut cc_args := []string{}
+			mut cc_args := environment_c_flags.clone()
 			cc_args << target_args
 			if link_c_standard.len > 0 {
 				cc_args << link_c_standard
@@ -6829,6 +6889,9 @@ pub fn run(args []string) {
 			}
 			cc_args << resolved_c_flags
 			cc_args << '-lm'
+			if !is_o {
+				cc_args << environment_ld_flags
+			}
 			if !silent || show_cc {
 				println('  > ${cmdexec.display(c_compiler, cc_args)}')
 			}
@@ -10437,8 +10500,12 @@ fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, i
 		roots << project_root
 		roots << os.join_path_single(project_root, 'modules')
 	}
-	roots << os.join_path_single(prefs.vroot, 'vlib')
-	roots << (os.getenv_opt('VMODULES') or { os.join_path_single(os.home_dir(), '.vmodules') })
+	if prefs.module_search_paths.len > 0 {
+		roots << prefs.module_search_paths
+	} else {
+		roots << os.join_path_single(prefs.vroot, 'vlib')
+		roots << os.vmodules_paths()
+	}
 	mut seen := map[string]bool{}
 	for root in roots {
 		real_root := os.real_path(root)
@@ -10454,23 +10521,21 @@ fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, i
 }
 
 fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path string) string {
-	vlib_root := os.join_path_single(prefs.vroot, 'vlib')
-	if alias_path := pref.resolve_module_alias_path(vlib_root, mod_name) {
-		return alias_path
+	search_roots := if prefs.module_search_paths.len > 0 {
+		prefs.module_search_paths
+	} else {
+		mut roots := [os.join_path_single(prefs.vroot, 'vlib')]
+		roots << os.vmodules_paths()
+		roots
 	}
-	vlib_path := os.join_path_single(vlib_root, mod_path)
-	if module_path_has_v_sources(vlib_path) {
-		return vlib_path
-	}
-	vmodules_root := os.getenv_opt('VMODULES') or {
-		os.join_path_single(os.home_dir(), '.vmodules')
-	}
-	if alias_path := pref.resolve_module_alias_path(vmodules_root, mod_name) {
-		return alias_path
-	}
-	vmodules_path := os.join_path_single(vmodules_root, mod_path)
-	if module_path_has_v_sources(vmodules_path) {
-		return vmodules_path
+	for root in search_roots {
+		if alias_path := pref.resolve_module_alias_path(root, mod_name) {
+			return alias_path
+		}
+		module_path := os.join_path_single(root, mod_path)
+		if module_path_has_v_sources(module_path) {
+			return module_path
+		}
 	}
 	return ''
 }

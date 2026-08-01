@@ -26,29 +26,30 @@ const macos_v3_private_environment_names = [
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose           bool
-	output_file       string
-	target            Target = host_target()
-	user_defines      []string
-	compile_values    map[string]string
-	backend           string = 'c'
-	ccompiler         string = 'gcc'
-	c99               bool
-	vroot             string = detect_vroot()
-	vexe              string = detect_vexe()
-	vhash             string
-	vcurrent_hash     string
-	selfhost          bool
-	building_v        bool // compiling the V compiler itself: no generics, skip monomorphization
-	is_prod           bool
-	is_debug          bool
-	is_test           bool // at least one compatible user test file is being compiled
-	is_livemain       bool
-	is_liveshared     bool
-	is_shared         bool
-	no_builtin        bool
-	no_preludes       bool
-	thread_stack_size int = 8 * 1024 * 1024
+	verbose             bool
+	output_file         string
+	target              Target = host_target()
+	user_defines        []string
+	compile_values      map[string]string
+	backend             string = 'c'
+	ccompiler           string = 'gcc'
+	c99                 bool
+	vroot               string = detect_vroot()
+	vexe                string = detect_vexe()
+	vhash               string
+	vcurrent_hash       string
+	selfhost            bool
+	building_v          bool // compiling the V compiler itself: no generics, skip monomorphization
+	is_prod             bool
+	is_debug            bool
+	is_test             bool // at least one compatible user test file is being compiled
+	is_livemain         bool
+	is_liveshared       bool
+	is_shared           bool
+	no_builtin          bool
+	no_preludes         bool
+	module_search_paths []string
+	thread_stack_size   int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm bool
@@ -314,16 +315,25 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if local_modules_path := module_path_from_search_root(mod, mod_path, local_modules_root) {
 		return local_modules_path
 	}
-	// 3. vlib
+	// 3. explicitly ordered module search paths, when supplied with `-path`
+	if p.module_search_paths.len > 0 {
+		for search_root in p.module_search_paths {
+			if explicit_path := module_path_from_search_root(mod, mod_path, search_root) {
+				return explicit_path
+			}
+		}
+		return ''
+	}
+	// 4. vlib
 	vlib_root := os.join_path_single(p.vroot, 'vlib')
 	if vlib_path := module_path_from_search_root(mod, mod_path, vlib_root) {
 		return vlib_path
 	}
-	// 4. ~/.vmodules (or $VMODULES)
+	// 5. ~/.vmodules (or $VMODULES)
 	if vmodules_path := module_path_from_search_root(mod, mod_path, vmodules_dir()) {
 		return vmodules_path
 	}
-	// 5. walk up the parent directories of the importing file, like V1's
+	// 6. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
 	mut current_dir := importer_dir

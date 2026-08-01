@@ -139,6 +139,7 @@ mut:
 	show_test_stats                bool
 	show_test_summary              bool
 	test_run_only                  []string
+	print_fn_names                 []string
 	is_prod                        bool
 	is_shared                      bool
 	object_file_mode               bool
@@ -983,6 +984,11 @@ pub fn (mut g FlatGen) set_show_test_summary(enabled bool) {
 // set_test_run_only limits the generated test harness to matching test functions.
 pub fn (mut g FlatGen) set_test_run_only(patterns []string) {
 	g.test_run_only = patterns.clone()
+}
+
+// set_print_fn_names selects generated C functions to print to stdout.
+pub fn (mut g FlatGen) set_print_fn_names(names []string) {
+	g.print_fn_names = names.clone()
 }
 
 // set_shared configures shared-library entry point generation.
@@ -2271,6 +2277,7 @@ fn (mut g FlatGen) gen_vinit() {
 		&& g.global_inits.len == 0 {
 		return
 	}
+	fn_start_pos := g.sb.len
 	g.writeln('void _vinit() {')
 	mut emitted_const := []bool{len: g.const_runtime_inits.len}
 	mut emitted_runtime := []bool{len: g.runtime_inits.len}
@@ -2285,6 +2292,9 @@ fn (mut g FlatGen) gen_vinit() {
 	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
 	g.writeln('}')
 	g.writeln('')
+	if '_vinit' in g.print_fn_names {
+		println(g.sb.after(fn_start_pos))
+	}
 }
 
 // emit_const_referenced_global_defaults initializes implicit global struct
