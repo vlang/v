@@ -13,6 +13,7 @@ const generic_inst_depth_cutoff_limit = 256
 const struct_fields_depth_cutoff_limit = 100
 const generic_fn_inst_cutoff_limit = 256
 const generic_inst_name_len_cutoff_limit = 1_024
+const max_postprocess_iterations = 100_000
 
 @[heap; minify]
 pub struct UsedFeatures {
@@ -4926,7 +4927,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 	for mut sym in t.type_symbols {
 		if sym.kind == .generic_inst {
 			cnt++
-			if cnt > 100000 {
+			if cnt > max_postprocess_iterations {
 				t.panic('generic_insts_to_concrete limit exceeded')
 			}
 			info := sym.info as GenericInst
