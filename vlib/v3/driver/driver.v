@@ -5793,6 +5793,7 @@ pub fn run(args []string) {
 		mut prefix_source_identity := cgen_cache_metadata.prefix_source_identity
 		mut tcc_main_file := ''
 		mut cache_full_tcc_source := ''
+		mut retained_full_c_source := ''
 		mut cached_program_body_source := if cgen_cache_hit { cgen_cache_entry.source } else { '' }
 		if cache_state.manager.enabled {
 			cache_prepare_scope := prealloc_scope_begin_for_v3()
@@ -5811,6 +5812,14 @@ pub fn run(args []string) {
 					cache_full_tcc_source = os.join_path_single(cc_dir, 'full.c')
 					os.cp(cgen_cache_entry.source, cache_full_tcc_source) or {
 						cache_full_tcc_source = ''
+					}
+				}
+				if backend_explicit && os.is_file(cgen_cache_entry.source) {
+					retained_full_c_source = os.join_path_single(cc_dir, 'retained_full.c')
+					os.cp(cgen_cache_entry.source, retained_full_c_source) or {
+						eprintln('error preserving complete cached C source ${cgen_cache_entry.source}: ${err.msg()}')
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
 					}
 				}
 				prefix_source := os.read_file(cgen_prepared_entry.prefix) or {
@@ -5844,6 +5853,14 @@ pub fn run(args []string) {
 					cache_full_tcc_source = os.join_path_single(cc_dir, 'full.c')
 					os.write_file(cache_full_tcc_source, generated_source) or {
 						cache_full_tcc_source = ''
+					}
+				}
+				if backend_explicit {
+					retained_full_c_source = os.join_path_single(cc_dir, 'retained_full.c')
+					os.write_file(retained_full_c_source, generated_source) or {
+						eprintln('error preserving complete generated C source ${retained_full_c_source}: ${err.msg()}')
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
 					}
 				}
 				if generic_cache_hit {
@@ -6012,6 +6029,9 @@ pub fn run(args []string) {
 			if cache_full_tcc_source.len > 0 {
 				cache_full_tcc_source = cache_full_tcc_source.clone()
 			}
+			if retained_full_c_source.len > 0 {
+				retained_full_c_source = retained_full_c_source.clone()
+			}
 			b.step(if cgen_prepared_hit { 'C module plan (cached)' } else { 'C module plan' })
 			cached_objects = clone_string_list(prepared_cache.objects)
 			newly_cached_module_count = prepared_cache.newly_cached_modules
@@ -6087,7 +6107,14 @@ pub fn run(args []string) {
 		if backend_explicit && !c_only {
 			retained_c := bin_file + '.c'
 			staged_c := '${retained_c}.stage.${tempname.unique_token()}'
-			os.cp(published_c_source, staged_c) or {
+			retained_c_source := if retained_full_c_source.len > 0 {
+				retained_full_c_source
+			} else if cache_full_tcc_source.len > 0 {
+				cache_full_tcc_source
+			} else {
+				published_c_source
+			}
+			os.cp(retained_c_source, staged_c) or {
 				eprintln('failed to stage generated C output ${retained_c}: ${err}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
@@ -6316,6 +6343,7 @@ pub fn run(args []string) {
 		}
 		os.rm(tcc_main_file) or {}
 		os.rm(cache_full_tcc_source) or {}
+		os.rm(retained_full_c_source) or {}
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
 		b.step(if tcc_cache_hit {

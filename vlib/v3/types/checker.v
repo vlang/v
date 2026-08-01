@@ -7559,7 +7559,7 @@ fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, ident
 		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot start with `_`', id,
 			pos)
 	}
-	if identifier != 'field name' && util.contains_capital(name) {
+	if util.contains_capital(name) {
 		tc.record_error_at(.duplicate_decl,
 			'${identifier} `${name}` cannot contain uppercase letters, use snake_case instead', id,
 			pos)

@@ -51,6 +51,12 @@ fn run_runtime_bad(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn test_source_field_names_require_snake_case() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'uppercase_struct_field', 'struct S {\n\tFoo int\n}\n\nfn main() {}\n',
+		'field name `Foo` cannot contain uppercase letters, use snake_case instead')
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
