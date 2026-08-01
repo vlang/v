@@ -9,6 +9,7 @@ import v3.util
 
 const pointer_binding_unknown_value_prefix = '@unknown:'
 const pointer_binding_parameter_value_prefix = '@parameter:'
+const pointer_binding_global_value_prefix = '@global:'
 
 fn pointer_binding_unknown_value(storage_key string) string {
 	return '${pointer_binding_unknown_value_prefix}${storage_key}'
@@ -16,6 +17,10 @@ fn pointer_binding_unknown_value(storage_key string) string {
 
 fn pointer_binding_parameter_value(storage_key string) string {
 	return '${pointer_binding_parameter_value_prefix}${storage_key}'
+}
+
+fn pointer_binding_global_value(storage_key string) string {
+	return '${pointer_binding_global_value_prefix}${storage_key}'
 }
 
 fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
@@ -10471,7 +10476,8 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []strin
 		.ident {
 			owner := tc.cur_scope.lookup_owner(node.value) or { return []string{} }
 			mut keys := []string{}
-			for value_key in tc.pointer_binding_values(owner.storage_key()) {
+			for value_key in tc.pointer_binding_ident_values(owner,
+				tc.fn_context.pointer_binding_value_keys) {
 				if value_key.len > 0 {
 					keys << '@owner:${value_key}'
 				}
@@ -10539,11 +10545,16 @@ fn locked_shared_base_keys_may_alias(left string, right string) bool {
 	}
 	unknown_owner_prefix := '@owner:${pointer_binding_unknown_value_prefix}'
 	parameter_owner_prefix := '@owner:${pointer_binding_parameter_value_prefix}'
+	global_owner_prefix := '@owner:${pointer_binding_global_value_prefix}'
 	left_unknown := left.starts_with(unknown_owner_prefix)
 	right_unknown := right.starts_with(unknown_owner_prefix)
 	left_parameter := left.starts_with(parameter_owner_prefix)
 	right_parameter := right.starts_with(parameter_owner_prefix)
-	if left_unknown || right_unknown || (left_parameter && right_parameter) {
+	left_global := left.starts_with(global_owner_prefix)
+	right_global := right.starts_with(global_owner_prefix)
+	if left_unknown || right_unknown
+		|| (left_parameter && (right_parameter || right_global))
+		|| (right_parameter && left_global) {
 		left_suffix := locked_shared_owner_path_suffix(left) or { return false }
 		right_suffix := locked_shared_owner_path_suffix(right) or { return false }
 		return locked_shared_base_keys_may_alias('@path${left_suffix}', '@path${right_suffix}')
@@ -14396,11 +14407,11 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 		target := tc.a.node(target_id)
 		if target.kind == .ident && target.value != '_' {
 			target_owner := tc.cur_scope.lookup_owner(target.value) or { return none }
-			target_key := target_owner.storage_key()
-			if target_key.len > 0 {
+			target_value := tc.pointer_binding_storage_value(target_owner)
+			if target_value.len > 0 {
 				// The address identifies the binding's storage, even when that binding
 				// itself contains a pointer with a different pointee identity.
-				return [target_key]
+				return [target_value]
 			}
 		}
 		if target.kind == .struct_init {
@@ -14412,9 +14423,9 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 	}
 	if rhs.kind == .ident && rhs.value != '_' {
 		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return none }
-		right_key := rhs_owner.storage_key()
-		if right_key.len > 0 {
-			return (rhs_alias_state[right_key] or { [right_key] }).clone()
+		values := tc.pointer_binding_ident_values(rhs_owner, rhs_alias_state)
+		if values.len > 0 {
+			return values
 		}
 	}
 	if rhs.kind == .nil_literal {
@@ -14426,8 +14437,20 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 	return [pointer_binding_unknown_value(left_key)]
 }
 
-fn (tc &TypeChecker) pointer_binding_values(key string) []string {
-	return tc.fn_context.pointer_binding_value_keys[key] or { [key] }
+fn (tc &TypeChecker) pointer_binding_storage_value(owner ScopeBindingOwner) string {
+	key := owner.storage_key()
+	if key.len > 0 && tc.binding_owner_is_global(owner) {
+		return pointer_binding_global_value(key)
+	}
+	return key
+}
+
+fn (tc &TypeChecker) pointer_binding_ident_values(owner ScopeBindingOwner, state map[string][]string) []string {
+	key := owner.storage_key()
+	if key.len == 0 {
+		return []string{}
+	}
+	return (state[key] or { [tc.pointer_binding_storage_value(owner)] }).clone()
 }
 
 fn clone_pointer_binding_value_keys(src map[string][]string) map[string][]string {

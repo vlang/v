@@ -4054,8 +4054,9 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		known, mut active := c_header_objective_c_macro_state(clean, defined, undefined, uncertain,
 			strict_iso_mode, target)
 		if known && active {
-			if replacement := macro_values[clean] {
-				value_known, value_active := c_header_objective_c_integer_macro_state(replacement)
+			if clean in macro_values {
+				value_known, value_active := c_header_objective_c_macro_value_state(clean, defined,
+					undefined, uncertain, macro_values, strict_iso_mode, target)
 				if value_known {
 					active = value_active
 				} else {
@@ -4096,6 +4097,34 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		active = !active
 	}
 	return known, active
+}
+
+fn c_header_objective_c_macro_value_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	mut current := name
+	mut seen := map[string]bool{}
+	for _ in 0 .. 64 {
+		if seen[current] {
+			return false, true
+		}
+		seen[current] = true
+		known, active := c_header_objective_c_macro_state(current, defined, undefined, uncertain,
+			strict_iso_mode, target)
+		if !known || !active {
+			return known, active
+		}
+		replacement := macro_values[current] or { return true, true }
+		clean :=
+			c_header_condition_without_outer_parens(c_header_condition_without_comments(replacement))
+		literal_known, literal_active := c_header_objective_c_integer_macro_state(clean)
+		if literal_known {
+			return true, literal_active
+		}
+		if clean.len == 0 || !c_identifier_start(clean[0]) || c_header_struct_tag(clean) != clean {
+			return false, true
+		}
+		current = clean
+	}
+	return false, true
 }
 
 fn c_header_objective_c_integer_macro_state(raw string) (bool, bool) {
@@ -4276,7 +4305,14 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 			continue
 		}
 		if text[i] == `@` {
-			for keyword in ['interface', 'implementation'] {
+			if i + 1 < text.len && text[i + 1] == `"` {
+				return true
+			}
+			for keyword in ['interface', 'implementation', 'class', 'protocol', 'property',
+				'synthesize', 'dynamic', 'selector', 'encode', 'defs', 'compatibility_alias',
+				'autoreleasepool', 'synchronized', 'try', 'catch', 'finally', 'throw', 'optional',
+				'required', 'public', 'protected', 'private', 'package', 'import', 'available',
+				'end'] {
 				end := i + 1 + keyword.len
 				if end <= text.len && text[i + 1..end] == keyword
 					&& (end == text.len || !c_identifier_continue(text[end])) {

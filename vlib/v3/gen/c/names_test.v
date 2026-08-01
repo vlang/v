@@ -192,6 +192,9 @@ fn test_apple_framework_include_does_not_match_x11() {
 fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c('#import <Cocoa/Cocoa.h>\n')
 	assert c_header_text_needs_objective_c('@interface AppDelegate : NSObject\n@end\n')
+	assert c_header_text_needs_objective_c('@class ForwardDeclaredClass;\n')
+	assert c_header_text_needs_objective_c('@protocol ForwardDeclaredProtocol;\n')
+	assert c_header_text_needs_objective_c('id value = @"Objective-C string";\n')
 	assert c_header_text_needs_objective_c('id value = (__bridge id)pointer;\n')
 	assert !c_header_text_needs_objective_c('#define __bridge\nvoid *value = (__bridge void *)pointer;\n')
 	assert c_header_text_needs_objective_c('#define __bridge\n#undef __bridge\nid value = (__bridge id)pointer;\n')
@@ -216,6 +219,13 @@ fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c_for_target('#if FEATURE\n@interface Enabled\n@end\n#endif\n', [
 		'-DFEATURE=1',
 	], false, pref.host_target())
+	assert !c_header_text_needs_objective_c_for_target('#if FEATURE\n@class DisabledByChainedFlag;\n#endif\n', [
+		'-DOFF=0',
+		'-DFEATURE=OFF',
+	], false, pref.host_target())
+	assert !c_header_text_needs_objective_c('#define OFF 0\n#define FEATURE OFF\n#if FEATURE\n@protocol DisabledByChainedDirective;\n#endif\n')
+	assert c_header_text_needs_objective_c('#define ON 1\n#define FEATURE ON\n#if FEATURE\n@class EnabledByChainedDirective;\n#endif\n')
+	assert c_header_text_needs_objective_c('#define FIRST SECOND\n#define SECOND FIRST\n#if FIRST\n@class ConservativelyEnabledByMacroCycle;\n#endif\n')
 	assert !c_header_text_needs_objective_c_for_target('#if !defined(FEATURE)\n@interface Disabled\n@end\n#endif\n', [
 		'-DFEATURE(x)=x',
 	], false, pref.host_target())
