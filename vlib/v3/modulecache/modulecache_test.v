@@ -103,6 +103,14 @@ fn test_function_identifiers_keep_name_after_return_type_macro() {
 	assert !identifiers['RET']
 }
 
+fn test_function_identifiers_unwrap_parenthesized_declarator() {
+	identifiers, complete :=
+		c_source_function_identifiers_with_status('static int (api)(void) {\n\treturn 1;\n}\n')
+	assert complete
+	assert identifiers['api']
+	assert !identifiers['int']
+}
+
 fn test_macro_identifiers_referencing_static_helpers() {
 	wrappers := c_sources_macro_identifiers_referencing([
 		'#define CALL_HELPER() helper()

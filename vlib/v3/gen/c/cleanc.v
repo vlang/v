@@ -4100,31 +4100,36 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		}
 		return known, active
 	}
+	macro_name := c_header_defined_macro_name(clean) or { return false, true }
+	known, active := c_header_objective_c_macro_state(macro_name, defined, undefined, uncertain,
+		strict_iso_mode, target)
+	return known, active
+}
+
+fn c_header_defined_macro_name(clean string) ?string {
 	if !clean.starts_with('defined') || (clean.len > 'defined'.len && clean['defined'.len] != `(`
 		&& !clean['defined'.len].is_space()) {
-		return false, true
+		return none
 	}
 	rest := clean['defined'.len..].trim_space()
 	mut macro_name := ''
 	if rest.starts_with('(') {
 		close := rest.index_u8(`)`)
 		if close < 0 || (close + 1 < rest.len && rest[close + 1..].trim_space().len > 0) {
-			return false, true
+			return none
 		}
 		macro_name = rest[1..close].trim_space()
 	} else {
 		parts := rest.fields()
 		if parts.len != 1 {
-			return false, true
+			return none
 		}
 		macro_name = parts[0]
 	}
 	if macro_name.len == 0 || c_header_struct_tag(macro_name) != macro_name {
-		return false, true
+		return none
 	}
-	known, active := c_header_objective_c_macro_state(macro_name, defined, undefined, uncertain,
-		strict_iso_mode, target)
-	return known, active
+	return macro_name
 }
 
 fn c_header_objective_c_integer_operand_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) ?i64 {
@@ -4196,6 +4201,14 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 			return none
 		}
 		return -value
+	}
+	if macro_name := c_header_defined_macro_name(clean) {
+		known, active := c_header_objective_c_macro_state(macro_name, defined, undefined,
+			uncertain, strict_iso_mode, target)
+		if !known {
+			return none
+		}
+		return if active { i64(1) } else { i64(0) }
 	}
 	if clean.len == 0 || !c_identifier_start(clean[0]) || c_header_struct_tag(clean) != clean
 		|| seen[clean] {

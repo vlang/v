@@ -227,6 +227,7 @@ fn test_objective_c_header_detection() {
 	assert c_header_text_needs_objective_c('#if 0 ? 0 : 1\n@interface EnabledByConditional\n@end\n#endif\n')
 	assert c_header_text_needs_objective_c('#if (5 - 1) / 2\nstatic inline id enabled(id obj) { return [obj description]; }\n#endif\n')
 	assert !c_header_text_needs_objective_c('#define ONE 1\n#if ONE - 1\n@class DisabledByMacroArithmetic;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#define FOO 1\n#if defined(FOO) - 1\n@class DisabledByDefinedArithmetic;\n#endif\n')
 	assert c_header_text_needs_objective_c('#if 2 + 2 == 4\n@class EnabledByArithmeticComparison;\n#endif\n')
 	assert !c_header_text_needs_objective_c('#if (1 & 0)\n@class DisabledByBitwiseAnd;\n#endif\n')
 	assert !c_header_text_needs_objective_c('#if (0 | 0)\n@class DisabledByBitwiseOr;\n#endif\n')

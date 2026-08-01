@@ -2256,10 +2256,34 @@ fn c_function_candidate_has_return_type(head string, candidate_start int) bool {
 	return false
 }
 
+fn c_parenthesized_function_declarator_identifier(head string, open int, close int) ?string {
+	if open < 0 || close <= open + 1 || !c_function_candidate_has_return_type(head, open) {
+		return none
+	}
+	inner := trim_leading_c_comments(head[open + 1..close].trim_space())
+	if inner.len == 0 || !((inner[0] >= `a` && inner[0] <= `z`)
+		|| (inner[0] >= `A` && inner[0] <= `Z`) || inner[0] == `_`) {
+		return none
+	}
+	mut name_end := 1
+	for name_end < inner.len && c_generated_identifier_byte(inner[name_end]) {
+		name_end++
+	}
+	if trim_leading_c_comments(inner[name_end..].trim_space()).len != 0 {
+		return none
+	}
+	tail := trim_leading_c_comments(head[close + 1..].trim_space())
+	if !tail.starts_with('(') {
+		return none
+	}
+	return inner[..name_end]
+}
+
 fn c_function_declaration_identifier(head string) ?string {
 	mut candidate := ''
 	mut candidate_start := -1
 	mut candidate_tail_end := -1
+	mut top_level_open := -1
 	mut paren_depth := 0
 	mut top_level_updates_candidate_tail := false
 	mut quote := u8(0)
@@ -2314,6 +2338,7 @@ fn c_function_declaration_identifier(head string) ?string {
 		}
 		if c == `(` {
 			if paren_depth == 0 {
+				top_level_open = i
 				top_level_updates_candidate_tail = candidate.len > 0
 				mut end := i
 				for end > 0 && head[end - 1].is_space() {
@@ -2341,9 +2366,18 @@ fn c_function_declaration_identifier(head string) ?string {
 			paren_depth++
 		} else if c == `)` && paren_depth > 0 {
 			paren_depth--
-			if paren_depth == 0 && top_level_updates_candidate_tail {
-				candidate_tail_end = i
-				top_level_updates_candidate_tail = false
+			if paren_depth == 0 {
+				if identifier := c_parenthesized_function_declarator_identifier(head,
+					top_level_open, i)
+				{
+					candidate = identifier
+					candidate_start = top_level_open
+					candidate_tail_end = i
+					top_level_updates_candidate_tail = false
+				} else if top_level_updates_candidate_tail {
+					candidate_tail_end = i
+					top_level_updates_candidate_tail = false
+				}
 			}
 		}
 		i++
