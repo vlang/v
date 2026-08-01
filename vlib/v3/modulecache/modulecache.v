@@ -2340,73 +2340,79 @@ fn c_function_candidate_has_return_type(head string, candidate_start int) bool {
 	return false
 }
 
+fn c_balanced_parenthesis_close(value string, open int) ?int {
+	if open < 0 || open >= value.len || value[open] != `(` {
+		return none
+	}
+	mut depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	mut i := open
+	for i < value.len {
+		c := value[i]
+		next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `(` {
+			depth++
+		} else if c == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+		i++
+	}
+	return none
+}
+
 fn c_unwrap_redundant_declarator_parentheses(value string) string {
 	mut clean := trim_leading_c_comments(value.trim_space())
 	for clean.starts_with('(') {
-		mut depth := 0
-		mut close := -1
-		mut quote := u8(0)
-		mut escaped := false
-		mut block_comment := false
-		mut line_comment := false
-		mut i := 0
-		for i < clean.len {
-			c := clean[i]
-			next := if i + 1 < clean.len { clean[i + 1] } else { u8(0) }
-			if quote != 0 {
-				if escaped {
-					escaped = false
-				} else if c == `\\` {
-					escaped = true
-				} else if c == quote {
-					quote = 0
-				}
-				i++
-				continue
-			}
-			if block_comment {
-				if c == `*` && next == `/` {
-					block_comment = false
-					i += 2
-				} else {
-					i++
-				}
-				continue
-			}
-			if line_comment {
-				if c == `\n` {
-					line_comment = false
-				}
-				i++
-				continue
-			}
-			if c == `/` && next == `*` {
-				block_comment = true
-				i += 2
-				continue
-			}
-			if c == `/` && next == `/` {
-				line_comment = true
-				i += 2
-				continue
-			}
-			if c in [`'`, `"`] {
-				quote = c
-				i++
-				continue
-			}
-			if c == `(` {
-				depth++
-			} else if c == `)` {
-				depth--
-				if depth == 0 {
-					close = i
-					break
-				}
-			}
-			i++
-		}
-		if close < 0 || trim_leading_c_comments(clean[close + 1..].trim_space()).len != 0 {
+		close := c_balanced_parenthesis_close(clean, 0) or { break }
+		if trim_leading_c_comments(clean[close + 1..].trim_space()).len != 0 {
 			break
 		}
 		clean = trim_leading_c_comments(clean[1..close].trim_space())
@@ -2414,48 +2420,70 @@ fn c_unwrap_redundant_declarator_parentheses(value string) string {
 	return clean
 }
 
-fn c_pointer_return_function_declarator_identifier(value string) ?string {
+fn c_declarator_without_leading_attributes(value string) ?string {
 	mut clean := trim_leading_c_comments(value.trim_space())
+	for {
+		mut attribute_len := 0
+		for attribute in ['__attribute__', '__attribute', '__declspec__', '__declspec'] {
+			if clean.starts_with(attribute) && (clean.len == attribute.len
+				|| !c_generated_identifier_byte(clean[attribute.len])) {
+				attribute_len = attribute.len
+				break
+			}
+		}
+		if attribute_len == 0 {
+			return clean
+		}
+		rest := trim_leading_c_comments(clean[attribute_len..].trim_space())
+		if !rest.starts_with('(') {
+			return none
+		}
+		close := c_balanced_parenthesis_close(rest, 0) or { return none }
+		clean = trim_leading_c_comments(rest[close + 1..].trim_space())
+	}
+	return clean
+}
+
+fn c_attributed_declarator_identifier(value string) ?string {
+	mut clean := c_unwrap_redundant_declarator_parentheses(value)
+	clean = c_declarator_without_leading_attributes(clean) or { return none }
+	clean = c_unwrap_redundant_declarator_parentheses(clean)
+	if clean.len == 0 || !((clean[0] >= `a` && clean[0] <= `z`)
+		|| (clean[0] >= `A` && clean[0] <= `Z`) || clean[0] == `_`) {
+		return none
+	}
+	mut name_end := 1
+	for name_end < clean.len && c_generated_identifier_byte(clean[name_end]) {
+		name_end++
+	}
+	rest := c_declarator_without_leading_attributes(clean[name_end..]) or { return none }
+	if rest.len != 0 {
+		return none
+	}
+	return clean[..name_end]
+}
+
+fn c_pointer_return_function_declarator_identifier(value string) ?string {
+	mut clean := c_declarator_without_leading_attributes(value) or { return none }
 	for clean.starts_with('*') {
-		clean = trim_leading_c_comments(clean[1..].trim_space())
+		clean = c_declarator_without_leading_attributes(clean[1..]) or { return none }
 	}
 	if !clean.starts_with('(') {
 		return c_function_declaration_identifier(clean)
 	}
-	mut depth := 0
-	mut close := -1
-	for i, c in clean.bytes() {
-		if c == `(` {
-			depth++
-		} else if c == `)` {
-			depth--
-			if depth == 0 {
-				close = i
-				break
-			}
-		}
-	}
-	if close < 0 || !trim_leading_c_comments(clean[close + 1..].trim_space()).starts_with('(') {
+	close := c_balanced_parenthesis_close(clean, 0) or { return none }
+	if !trim_leading_c_comments(clean[close + 1..].trim_space()).starts_with('(') {
 		return none
 	}
-	identifier := c_unwrap_redundant_declarator_parentheses(clean[..close + 1])
-	if identifier.len == 0 || !((identifier[0] >= `a` && identifier[0] <= `z`)
-		|| (identifier[0] >= `A` && identifier[0] <= `Z`) || identifier[0] == `_`) {
-		return none
-	}
-	for c in identifier.bytes()[1..] {
-		if !c_generated_identifier_byte(c) {
-			return none
-		}
-	}
-	return identifier
+	return c_attributed_declarator_identifier(clean[..close + 1])
 }
 
 fn c_parenthesized_function_declarator_identifier(head string, open int, close int) ?string {
 	if open < 0 || close <= open + 1 || !c_function_candidate_has_return_type(head, open) {
 		return none
 	}
-	inner := c_unwrap_redundant_declarator_parentheses(head[open + 1..close])
+	mut inner := c_unwrap_redundant_declarator_parentheses(head[open + 1..close])
+	inner = c_declarator_without_leading_attributes(inner) or { return none }
 	if inner.starts_with('*') {
 		identifier := c_pointer_return_function_declarator_identifier(inner) or { return none }
 		tail := trim_leading_c_comments(head[close + 1..].trim_space())
@@ -2464,22 +2492,12 @@ fn c_parenthesized_function_declarator_identifier(head string, open int, close i
 		}
 		return identifier
 	}
-	if inner.len == 0 || !((inner[0] >= `a` && inner[0] <= `z`)
-		|| (inner[0] >= `A` && inner[0] <= `Z`) || inner[0] == `_`) {
-		return none
-	}
-	mut name_end := 1
-	for name_end < inner.len && c_generated_identifier_byte(inner[name_end]) {
-		name_end++
-	}
-	if trim_leading_c_comments(inner[name_end..].trim_space()).len != 0 {
-		return none
-	}
+	identifier := c_attributed_declarator_identifier(inner) or { return none }
 	tail := trim_leading_c_comments(head[close + 1..].trim_space())
 	if !tail.starts_with('(') {
 		return none
 	}
-	return inner[..name_end]
+	return identifier
 }
 
 fn c_function_declaration_identifier(head string) ?string {

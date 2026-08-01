@@ -12,6 +12,7 @@ import v3.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const c_inline_header_size_limit = 262_144
+const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
 
 struct CHeaderTreeSize {
 mut:
@@ -3755,7 +3756,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	}
 	mut uncertain := map[string]bool{}
 	mut macro_values := map[string]string{}
-	mut bridge_compatibility_macro := false
+	mut bridge_compatibility_macros := map[string]bool{}
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -3787,14 +3788,18 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 				defined.delete(macro_name)
 				undefined[macro_name] = true
 				macro_values.delete(macro_name)
-				if macro_name == '__bridge' {
-					bridge_compatibility_macro = false
+				if macro_name in c_objective_c_bridge_qualifiers {
+					bridge_compatibility_macros.delete(macro_name)
 				}
 			} else {
 				undefined.delete(macro_name)
 				defined[macro_name] = true
-				if macro_name == '__bridge' {
-					bridge_compatibility_macro = !is_function_like
+				if macro_name in c_objective_c_bridge_qualifiers {
+					if is_function_like {
+						bridge_compatibility_macros.delete(macro_name)
+					} else {
+						bridge_compatibility_macros[macro_name] = true
+					}
 				}
 				if is_function_like {
 					macro_values.delete(macro_name)
@@ -3915,8 +3920,12 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 						macro_values.delete(macro_name)
 						definition := c_directive_arg(clean).trim_space()
 						macro_token := parts[0]
-						if macro_name == '__bridge' {
-							bridge_compatibility_macro = !macro_token.contains('(')
+						if macro_name in c_objective_c_bridge_qualifiers {
+							if macro_token.contains('(') {
+								bridge_compatibility_macros.delete(macro_name)
+							} else {
+								bridge_compatibility_macros[macro_name] = true
+							}
 						}
 						if !macro_token.contains('(') && definition.len > macro_token.len {
 							macro_values[macro_name] = definition[macro_token.len..].trim_space()
@@ -3925,8 +3934,8 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 						macro_values.delete(macro_name)
-						if macro_name == '__bridge' {
-							bridge_compatibility_macro = false
+						if macro_name in c_objective_c_bridge_qualifiers {
+							bridge_compatibility_macros.delete(macro_name)
 						}
 					}
 				} else {
@@ -3934,17 +3943,19 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
 					macro_values.delete(macro_name)
-					if macro_name == '__bridge' {
-						bridge_compatibility_macro = false
+					if macro_name in c_objective_c_bridge_qualifiers {
+						bridge_compatibility_macros.delete(macro_name)
 					}
 				}
 			}
 		}
-		if bridge_compatibility_macro || directive_macro_name == '__bridge' {
-			possible_text.writeln(c_header_text_without_identifier(line, '__bridge'))
-		} else {
-			possible_text.writeln(line)
+		mut possible_line := line
+		for qualifier in c_objective_c_bridge_qualifiers {
+			if bridge_compatibility_macros[qualifier] || directive_macro_name == qualifier {
+				possible_line = c_header_text_without_identifier(possible_line, qualifier)
+			}
 		}
+		possible_text.writeln(possible_line)
 	}
 	return c_header_text_has_objective_c_tokens(possible_text.str())
 }
@@ -5179,7 +5190,7 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 			i++
 		}
 		token := text[start..i]
-		if token == '__bridge' {
+		if token in c_objective_c_bridge_qualifiers {
 			return true
 		}
 		if token in ['__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof']

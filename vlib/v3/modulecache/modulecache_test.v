@@ -114,6 +114,11 @@ fn test_function_identifiers_unwrap_parenthesized_declarator() {
 	assert nested_complete
 	assert nested_identifiers['api']
 	assert !nested_identifiers['int']
+	attributed_identifiers, attributed_complete :=
+		c_source_function_identifiers_with_status('static int (__attribute__((noinline)) api)(void) {\n\treturn 1;\n}\n')
+	assert attributed_complete
+	assert attributed_identifiers['api']
+	assert !attributed_identifiers['int']
 }
 
 fn test_function_identifiers_recognize_function_pointer_return() {
