@@ -13,6 +13,10 @@ import v3.types
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const c_inline_header_size_limit = 262_144
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
+const c_objective_c_ownership_qualifiers = ['__strong', '__weak', '__autoreleasing',
+	'__unsafe_unretained', '__kindof']
+const c_objective_c_compatibility_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer',
+	'__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof']
 
 struct CHeaderTreeSize {
 mut:
@@ -3756,7 +3760,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	}
 	mut uncertain := map[string]bool{}
 	mut macro_values := map[string]string{}
-	mut bridge_compatibility_macros := map[string]bool{}
+	mut objective_c_compatibility_macros := map[string]bool{}
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -3788,17 +3792,17 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 				defined.delete(macro_name)
 				undefined[macro_name] = true
 				macro_values.delete(macro_name)
-				if macro_name in c_objective_c_bridge_qualifiers {
-					bridge_compatibility_macros.delete(macro_name)
+				if macro_name in c_objective_c_compatibility_qualifiers {
+					objective_c_compatibility_macros.delete(macro_name)
 				}
 			} else {
 				undefined.delete(macro_name)
 				defined[macro_name] = true
-				if macro_name in c_objective_c_bridge_qualifiers {
+				if macro_name in c_objective_c_compatibility_qualifiers {
 					if is_function_like {
-						bridge_compatibility_macros.delete(macro_name)
+						objective_c_compatibility_macros.delete(macro_name)
 					} else {
-						bridge_compatibility_macros[macro_name] = true
+						objective_c_compatibility_macros[macro_name] = true
 					}
 				}
 				if is_function_like {
@@ -3920,11 +3924,11 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 						macro_values.delete(macro_name)
 						definition := c_directive_arg(clean).trim_space()
 						macro_token := parts[0]
-						if macro_name in c_objective_c_bridge_qualifiers {
+						if macro_name in c_objective_c_compatibility_qualifiers {
 							if macro_token.contains('(') {
-								bridge_compatibility_macros.delete(macro_name)
+								objective_c_compatibility_macros.delete(macro_name)
 							} else {
-								bridge_compatibility_macros[macro_name] = true
+								objective_c_compatibility_macros[macro_name] = true
 							}
 						}
 						if !macro_token.contains('(') && definition.len > macro_token.len {
@@ -3934,8 +3938,8 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 						macro_values.delete(macro_name)
-						if macro_name in c_objective_c_bridge_qualifiers {
-							bridge_compatibility_macros.delete(macro_name)
+						if macro_name in c_objective_c_compatibility_qualifiers {
+							objective_c_compatibility_macros.delete(macro_name)
 						}
 					}
 				} else {
@@ -3943,15 +3947,15 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
 					macro_values.delete(macro_name)
-					if macro_name in c_objective_c_bridge_qualifiers {
-						bridge_compatibility_macros.delete(macro_name)
+					if macro_name in c_objective_c_compatibility_qualifiers {
+						objective_c_compatibility_macros.delete(macro_name)
 					}
 				}
 			}
 		}
 		mut possible_line := line
-		for qualifier in c_objective_c_bridge_qualifiers {
-			if bridge_compatibility_macros[qualifier] || directive_macro_name == qualifier {
+		for qualifier in c_objective_c_compatibility_qualifiers {
+			if objective_c_compatibility_macros[qualifier] || directive_macro_name == qualifier {
 				possible_line = c_header_text_without_identifier(possible_line, qualifier)
 			}
 		}
@@ -5193,7 +5197,7 @@ fn c_header_text_has_objective_c_tokens(text string) bool {
 		if token in c_objective_c_bridge_qualifiers {
 			return true
 		}
-		if token in ['__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof']
+		if token in c_objective_c_ownership_qualifiers
 			&& !c_header_token_is_on_directive_line(text, start) {
 			return true
 		}
