@@ -14,25 +14,208 @@ fn execute_without_vflags(cmd string) os.Result {
 	return res
 }
 
-fn test_macos_tcc_boehm_uses_bundled_libgc() {
+const showcc_prefix = '> C compiler cmd: '
+
+struct ShowccExpectation {
+	tcc    string
+	dylib  string
+	rpath  string
+	binary string
+}
+
+fn tokenize_showcc_command(command string) ![]string {
+	mut tokens := []string{}
+	mut token := []u8{}
+	mut quote := u8(0)
+	mut started := false
+	mut i := 0
+	for i < command.len {
+		ch := command[i]
+		if quote == 0 && ch in [` `, `\t`, `\r`, `\n`] {
+			if started {
+				tokens << token.bytestr()
+				token = []u8{}
+				started = false
+			}
+			i++
+			continue
+		}
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+				started = true
+				i++
+				continue
+			}
+			if quote == ch {
+				quote = 0
+				i++
+				continue
+			}
+		}
+		if ch == `\\` && quote != `'` && i + 1 < command.len {
+			next := command[i + 1]
+			escapable := if quote == `"` {
+				next in [`"`, `\\`]
+			} else {
+				next in [` `, `\t`, `\r`, `\n`, `'`, `"`, `\\`]
+			}
+			if escapable {
+				token << next
+				started = true
+				i += 2
+				continue
+			}
+		}
+		token << ch
+		started = true
+		i++
+	}
+	if quote != 0 {
+		return error('unterminated quote in -showcc command')
+	}
+	if started {
+		tokens << token.bytestr()
+	}
+	return tokens
+}
+
+fn count_showcc_token(tokens []string, expected string) int {
+	mut count := 0
+	for token in tokens {
+		if token == expected {
+			count++
+		}
+	}
+	return count
+}
+
+fn validate_showcc_output(output string, expected ShowccExpectation) ![]string {
+	lines := output.split_into_lines().filter(it.starts_with(showcc_prefix))
+	if lines.len != 1 {
+		return error('expected exactly one -showcc compiler command, found ${lines.len}')
+	}
+	tokens := tokenize_showcc_command(lines[0][showcc_prefix.len..])!
+	if tokens.len == 0 || tokens[0] != expected.tcc || count_showcc_token(tokens, expected.tcc) != 1 {
+		return error('expected exactly one physical TCC token in compiler position')
+	}
+	if count_showcc_token(tokens, expected.dylib) != 1
+		|| count_showcc_token(tokens, expected.rpath) != 1 {
+		return error('expected exactly one physical dylib/rpath token pair')
+	}
+	if count_showcc_token(tokens, '-o') != 1 {
+		return error('expected exactly one -o token')
+	}
+	output_index := tokens.index('-o')
+	if output_index < 0 || output_index + 1 >= tokens.len
+		|| tokens[output_index + 1] != expected.binary {
+		return error('the compiler command does not target the expected binary')
+	}
+	compiler_names := ['cc', 'gcc', 'clang', 'clang++', 'tcc', 'tcc.exe']
+	for i, token in tokens {
+		if token.starts_with('@') {
+			return error('response-file tokens are forbidden')
+		}
+		if token.contains('libgc.a') || token == '-lgc' {
+			return error('static or implicit libgc linkage is forbidden')
+		}
+		if token != '-o' && token.starts_with('-o') {
+			return error('joined output options are forbidden')
+		}
+		if token != expected.tcc
+			&& (token.starts_with(expected.tcc) || (i > 0 && os.file_name(token) in compiler_names)) {
+			return error('fallback, duplicate, or near-match compiler token')
+		}
+		if token != expected.dylib && token.contains('libgc.dylib') {
+			return error('near-match or duplicate dylib token')
+		}
+		if token != expected.rpath && token.starts_with('-Wl,-rpath,') {
+			return error('near-match or duplicate rpath token')
+		}
+	}
+	lower_output := output.to_lower()
+	for marker in ['falling back', 'retrying with', 'fallback compiler', 'backup compiler'] {
+		if lower_output.contains(marker) {
+			return error('compiler fallback marker found in output')
+		}
+	}
+	return tokens
+}
+
+fn showcc_fixture(tokens []string) string {
+	return showcc_prefix + tokens.map(os.quoted_path(it)).join(' ')
+}
+
+fn showcc_tokens_with_extra(tokens []string, index int, extra string) []string {
+	mut result := tokens.clone()
+	result.insert(index, extra)
+	return result
+}
+
+fn assert_showcc_rejected(output string, expected ShowccExpectation) {
+	validate_showcc_output(output, expected) or { return }
+	assert false, 'invalid -showcc fixture was accepted: ${output}'
+}
+
+fn test_macos_tcc_boehm_showcc_parser_fixtures() {
+	expected := ShowccExpectation{
+		tcc:    '/physical/tcc/tcc.exe'
+		dylib:  '/physical/tcc/lib/libgc.dylib'
+		rpath:  '-Wl,-rpath,/physical/tcc/lib'
+		binary: '/tmp/output'
+	}
+	good := [expected.tcc, expected.rpath, expected.dylib, '-o', expected.binary, '/tmp/input.c']
+	validate_showcc_output(showcc_fixture(good), expected) or { assert false, err.msg() }
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 1, expected.tcc)),
+		expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 1, expected.tcc + '.bad')),
+		expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 3, expected.dylib + '.bad')),
+		expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 3, expected.dylib)),
+		expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 2, expected.rpath + '.bad')),
+		expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 2, expected.rpath)),
+		expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 3, '@/tmp/evil.rsp')),
+		expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 3,
+		'/physical/tcc/lib/libgc.a')), expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, 3, '-lgc')), expected)
+	assert_showcc_rejected(showcc_fixture(showcc_tokens_with_extra(good, good.len, '/usr/bin/clang')),
+		expected)
+	assert_showcc_rejected(showcc_fixture(good) + '\nfalling back to clang', expected)
+}
+
+fn test_macos_amd64_tcc_boehm_uses_bundled_libgc_dylib() {
 	$if !macos {
 		return
 	}
-	$if arm64 {
-		// TCC on macOS arm64 cannot link the i386/asm path that this test exercises.
+	$if !amd64 {
 		return
 	}
-	exe_path := os.join_path(os.vtmp_dir(), 'builder_gc_flags_test')
+	test_root := os.join_path(os.vtmp_dir(), 'builder_gc_flags_test_${os.getpid()}')
+	os.mkdir_all(test_root) or { panic(err) }
+	physical_test_root := os.real_path(test_root)
+	exe_path := os.join_path(physical_test_root, 'hello_world')
 	source_path := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
-	cmd := '${os.quoted_path(@VEXE)} -showcc -cc tcc -no-retry-compilation -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+	tcc_root := os.real_path(os.join_path(@VEXEROOT, 'thirdparty', 'tcc'))
+	expected := ShowccExpectation{
+		tcc:    os.join_path(tcc_root, 'tcc.exe')
+		dylib:  os.join_path(tcc_root, 'lib', 'libgc.dylib')
+		rpath:  '-Wl,-rpath,${os.join_path(tcc_root, 'lib')}'
+		binary: exe_path
+	}
+	cmd := '${os.quoted_path(@VEXE)} -cc tcc -gc boehm -showcc -no-retry-compilation -no-rsp -nocache -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
 	res := execute_without_vflags(cmd)
 	defer {
-		os.rm(exe_path) or {}
+		os.rmdir_all(test_root) or {}
 	}
-	assert res.exit_code == 0
-	// macOS amd64 tccbin only ships libgc.a (no .dylib).
-	assert res.output.contains('thirdparty/tcc/lib/libgc.a')
-	assert !res.output.contains(' -lgc')
+	assert res.exit_code == 0, res.output
+	validate_showcc_output(res.output, expected) or { assert false, '${err.msg()}\n${res.output}' }
+	run_res := os.execute(os.quoted_path(exe_path))
+	assert run_res.exit_code == 0, run_res.output
 }
 
 fn test_linux_musl_tcc_boehm_uses_system_libgc() {
