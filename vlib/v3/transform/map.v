@@ -332,7 +332,16 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	source_is_owned_temporary := !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(map_type))
 		&& !base_type.starts_with('&') && !t.expr_can_take_address(map_source_id)
-	map_expr := t.stable_expr_for_reuse(map_source_id)
+	// Route a value `match`/`if` map-index base through value lowering (e.g.
+	// `(match n { First { make_map_first(n)! } ... })['key']`); otherwise the propagating
+	// arm tail is lowered in a value-less statement context and emits an empty expression.
+	// `transform_value_operand` materializes it into a value temp (stable for the repeated
+	// use below); non-branch bases keep `stable_expr_for_reuse`.
+	map_expr := if t.is_value_match_or_if_operand(map_source_id) {
+		t.transform_value_operand(map_source_id)
+	} else {
+		t.stable_expr_for_reuse(map_source_id)
+	}
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))

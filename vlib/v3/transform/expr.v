@@ -1942,15 +1942,22 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			} else {
 				// dynamic array membership -> array_contains_int/string(arr, val)
 				// (value-aware so a `match`/`if` container is materialized as a value)
-				mut new_rhs := t.transform_value_operand(rhs_id)
-				if rhs_is_ptr_array {
-					new_rhs = t.make_prefix(.mul, new_rhs)
-				}
 				mut elem := if clean_rhs_type.starts_with('[]') { clean_rhs_type[2..] } else { '' }
 				if elem.len == 0 {
 					elem = t.node_type(lhs_id)
 				}
-				new_lhs := t.transform_expr_for_type(lhs_id, elem)
+				// Evaluate the needle before materializing a value-branch container so a
+				// side-effecting needle precedes the container's hoisted prelude.
+				new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+					t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, elem),
+						elem, 'in_lhs')
+				} else {
+					t.transform_expr_for_type(lhs_id, elem)
+				}
+				mut new_rhs := t.transform_value_operand(rhs_id)
+				if rhs_is_ptr_array {
+					new_rhs = t.make_prefix(.mul, new_rhs)
+				}
 				fn_name := array_contains_fn_name(elem)
 				result = t.make_call_typed(fn_name, arr2(new_rhs, new_lhs), 'bool')
 			}
@@ -1974,7 +1981,12 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				result = lowered
 			} else {
 				// fixed array membership -> fixed_array_contains_int/string(arr, len, val)
-				new_lhs := t.transform_expr(lhs_id)
+				// stabilize a side-effecting needle before a value-branch container hoists
+				new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+					t.stable_expr_for_reuse(lhs_id)
+				} else {
+					t.transform_expr(lhs_id)
+				}
 				new_rhs := t.transform_value_operand(rhs_id)
 				elem := fixed_array_elem_type(clean_rhs_type)
 				fn_name := fixed_array_contains_fn_name(elem)
@@ -1982,7 +1994,14 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				result = t.make_call_typed(fn_name, arr3(new_rhs, len_expr, new_lhs), 'bool')
 			}
 		} else if clean_rhs_type == 'string' {
-			new_lhs := t.transform_expr(lhs_id)
+			// If the container is a value branch, its materialization below hoists a
+			// prelude; stabilize a side-effecting needle first so it evaluates before it,
+			// e.g. `tr.needle() in (match n { First { tr.text_first(n)! } ... })`.
+			new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+				t.stable_expr_for_reuse(lhs_id)
+			} else {
+				t.transform_expr(lhs_id)
+			}
 			new_rhs := t.transform_value_operand(rhs_id)
 			fn_name := if t.node_type(lhs_id) in ['u8', 'byte'] {
 				'string__contains_u8'
@@ -1997,7 +2016,12 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 		} else {
 			// Unknown containment is kept as in_expr so the backend can reject or
 			// handle genuinely unresolved cases.
-			new_lhs := t.transform_expr(lhs_id)
+			// stabilize a side-effecting needle before a value-branch container hoists
+			new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+				t.stable_expr_for_reuse(lhs_id)
+			} else {
+				t.transform_expr(lhs_id)
+			}
 			new_rhs := t.transform_value_operand(rhs_id)
 			in_start := t.a.children.len
 			t.a.children << new_lhs

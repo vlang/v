@@ -552,6 +552,55 @@ fn select_value_forin_container(node Node) !int {
 	return sum
 }
 
+fn make_map_first(_ First) !map[string]int {
+	return {
+		"a": 1
+		"b": 2
+	}
+}
+
+fn make_map_second(_ Second) !map[string]int {
+	return {
+		"a": 3
+	}
+}
+
+// Map index whose base is a value match: the propagating arm tail must be lowered
+// as a value. First -> {a:1, b:2}, so ["b"] is 2.
+fn select_value_map_index(node Node) !int {
+	return (match node {
+		First { make_map_first(node)! }
+		Second { make_map_second(node)! }
+	})["b"]
+}
+
+fn (mut tr Tracer) needle_str() string {
+	tr.order << 1
+	return "lo"
+}
+
+fn (mut tr Tracer) text_first(_ First) !string {
+	tr.order << 2
+	return "hello"
+}
+
+fn (mut tr Tracer) text_second(_ Second) !string {
+	tr.order << 2
+	return "world"
+}
+
+// String-membership ordering: the side-effecting needle must run before the
+// hoisting match container. "lo" in "hello" is true; order [1,2] -> 512 (a
+// reversed order would be 521).
+fn select_value_string_membership_order(node Node) !int {
+	mut tr := Tracer{}
+	inside := tr.needle_str() in (match node {
+		First { tr.text_first(node)! }
+		Second { tr.text_second(node)! }
+	})
+	return (if inside { 500 } else { 0 }) + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -603,6 +652,8 @@ fn main() {
 	println(select_value_range_order(First{})!)
 	println(select_value_membership_container(First{})!)
 	println(select_value_forin_container(First{})!)
+	println(select_value_map_index(First{})!)
+	println(select_value_string_membership_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -616,5 +667,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n1'
 }
