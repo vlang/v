@@ -514,14 +514,14 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				// that via a flag rather than a forced expected type, which would
 				// mistype the arms.
 				mut restore_array_elem_flag := false
-				if c.expected_type == ast.void_type && !c.inside_container_value_elem
+				if c.expected_type == ast.void_type && !c.force_value_match_or_if
 					&& operand_is_value_match_or_if(expr) {
-					c.inside_container_value_elem = true
+					c.force_value_match_or_if = true
 					restore_array_elem_flag = true
 				}
 				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
 				if restore_array_elem_flag {
-					c.inside_container_value_elem = false
+					c.force_value_match_or_if = false
 				}
 				sym := c.table.sym(expected_value_type)
 				if sym.kind == .interface {
@@ -961,14 +961,14 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			// that via a flag (leaving the expected type void so the arms infer
 			// their own type), consumed by `match_expr`/`if_expr`.
 			mut restore_container_flag := false
-			if c.expected_type == ast.void_type && !c.inside_container_value_elem
+			if c.expected_type == ast.void_type && !c.force_value_match_or_if
 				&& operand_is_value_match_or_if(val_) {
-				c.inside_container_value_elem = true
+				c.force_value_match_or_if = true
 				restore_container_flag = true
 			}
 			map_val_type = ast.mktyp(c.expr(mut val_))
 			if restore_container_flag {
-				c.inside_container_value_elem = false
+				c.force_value_match_or_if = false
 			}
 			if node.vals[0].is_auto_deref_var() {
 				map_val_type = map_val_type.deref()

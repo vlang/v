@@ -108,7 +108,7 @@ pub mut:
 	inside_ct_attr              bool        // true inside `[if expr]`
 	inside_x_is_type            bool        // true inside the Type expression of `if x is Type {`
 	inside_x_matches_type       bool        // true inside the match branch of `match x.type { Type {} }`
-	inside_container_value_elem bool        // true when checking a value `match`/`if` array element or map value, e.g. `[match x { .. }]` / `{'k': match x { .. }}`
+	force_value_match_or_if     bool        // force a value `match`/`if` in a value-required void context (array element, map value, prefix operand) to be an expression, e.g. `[match x {..}]`, `{'k': match x {..}}`, `-(match x {..})`
 	anon_struct_should_be_mut   bool        // true when `mut var := struct { ... }` is used
 	inside_generic_struct_init  bool
 	inside_integer_literal_cast bool // true inside `int(123)`
@@ -7939,7 +7939,19 @@ fn (mut c Checker) get_base_name(node &ast.Expr) string {
 fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	old_inside_ref_lit := c.inside_ref_lit
 	c.inside_ref_lit = c.inside_ref_lit || node.op == .amp
+	// A value `match`/`if` prefix operand, e.g. `-(match x { ... })`, in a void
+	// context (nested in an if-branch) must be checked as an expression so its arms
+	// produce values, instead of being typed `void` ("value after `-` is void").
+	mut restore_force_value := false
+	if c.expected_type == ast.void_type && !c.force_value_match_or_if
+		&& operand_is_value_match_or_if(node.right) {
+		c.force_value_match_or_if = true
+		restore_force_value = true
+	}
 	right_type := c.expr(mut node.right)
+	if restore_force_value {
+		c.force_value_match_or_if = false
+	}
 	c.inside_ref_lit = old_inside_ref_lit
 	node.right_type = right_type
 	mut expr := node.right

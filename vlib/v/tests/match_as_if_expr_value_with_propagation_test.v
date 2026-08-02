@@ -252,6 +252,19 @@ fn select_value_mapinit(node ?Node) !map[string]int {
 	return result
 }
 
+// match as a prefix-expression operand: `-(match .. { .. })`
+fn select_value_prefix(node ?Node) !int {
+	result := if value := node {
+		-(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})
+	} else {
+		0
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -428,6 +441,12 @@ fn test_map_init_value_match_as_if_expr_value_with_propagation() {
 			'value': -1
 		}
 	})['value'] == 0
+}
+
+fn test_prefix_operand_match_as_if_expr_value_with_propagation() {
+	assert select_value_prefix(First{})! == -1
+	assert select_value_prefix(Second{})! == -2
+	assert select_value_prefix(none) or { 42 } == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

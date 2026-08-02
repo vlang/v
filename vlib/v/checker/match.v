@@ -6,15 +6,16 @@ import v.token
 import strings
 
 fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
-	// `c.inside_container_value_elem` marks a value match used as an array element
-	// or map value in a void context (`[match x { .. }]`, `{'k': match x { .. }}`),
-	// which must be treated as an expression even though the surrounding expected
-	// type is void. Consume the flag here so it applies only to this outer element
-	// node, not to nested statement-level match/if inside the arms.
-	is_container_value_elem := c.inside_container_value_elem
-	c.inside_container_value_elem = false
+	// `c.force_value_match_or_if` marks a value match used in a value-required
+	// position whose surrounding expected type is void (an array element
+	// `[match x { .. }]`, a map value `{'k': match x { .. }}`, or a prefix operand
+	// `-(match x { .. })`), which must be treated as an expression. Consume the
+	// flag here so it applies only to this outer node, not to nested
+	// statement-level match/if inside the arms.
+	force_value := c.force_value_match_or_if
+	c.force_value_match_or_if = false
 	if !node.is_comptime {
-		node.is_expr = c.expected_type != ast.void_type || is_container_value_elem
+		node.is_expr = c.expected_type != ast.void_type || force_value
 	}
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {

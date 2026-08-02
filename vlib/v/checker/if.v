@@ -115,12 +115,12 @@ fn (mut c Checker) gen_branch_context_string() string {
 
 fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
-	// Consume the container-element value flag so it applies only to this outer
-	// node, not to nested statement-level match/if inside the branches. `[if ...]`
-	// or `{'k': if ...}` as a value element in a void context must still be treated
-	// as an expression.
-	is_container_value_elem := c.inside_container_value_elem
-	c.inside_container_value_elem = false
+	// Consume the value-required flag so it applies only to this outer node, not to
+	// nested statement-level match/if inside the branches. A value `if` in a
+	// value-required void context (`[if ...]`, `{'k': if ...}`, `-(if ...)`) must
+	// still be treated as an expression.
+	force_value := c.force_value_match_or_if
+	c.force_value_match_or_if = false
 	mut node_is_expr := false
 	if node.branches.len > 0 && node.has_else {
 		stmts := node.branches[0].stmts
@@ -128,7 +128,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			node_is_expr = true
 		} else if node.is_expr {
 			node_is_expr = true
-		} else if is_container_value_elem {
+		} else if force_value {
 			node_is_expr = true
 		}
 	}

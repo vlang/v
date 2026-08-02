@@ -14515,11 +14515,12 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 	})
 }
 
-// transform_infix_operand transforms an infix operand, routing a value
-// `match`/`if` operand (e.g. `1 + (match x { ... })`) through
-// `transform_expr_for_type` so its (possibly propagating) branch tails are
-// lowered as values instead of in a value-less statement context.
-fn (mut t Transformer) transform_infix_operand(id flat.NodeId) flat.NodeId {
+// transform_value_operand transforms an operand of an infix/prefix expression,
+// routing a value `match`/`if` operand (e.g. `1 + (match x { ... })` or
+// `-(match x { ... })`) through `transform_expr_for_type` so its (possibly
+// propagating) branch tails are lowered as values instead of in a value-less
+// statement context.
+fn (mut t Transformer) transform_value_operand(id flat.NodeId) flat.NodeId {
 	if t.is_value_match_or_if_operand(id) {
 		mut typ := t.node_type(id)
 		if typ.len == 0 {
@@ -14638,13 +14639,13 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
 	pending_start := t.pending_stmts.len
-	new_lhs := t.transform_infix_operand(lhs_id)
+	new_lhs := t.transform_value_operand(lhs_id)
 	mut lhs_pending := []flat.NodeId{}
 	if t.pending_stmts.len > pending_start {
 		lhs_pending = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
-	new_rhs := t.transform_infix_operand(rhs_id)
+	new_rhs := t.transform_value_operand(rhs_id)
 	if lhs_pending.len > 0 {
 		rhs_pending := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
@@ -16651,7 +16652,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		mut new_child := if node.op == .not {
 			t.transform_expr_for_type(child_id, 'bool')
 		} else {
-			t.transform_expr(child_id)
+			// route a value `match`/`if` operand (e.g. `-(match x { ... })`)
+			// through its target type so its propagating arms are lowered as values.
+			t.transform_value_operand(child_id)
 		}
 		if node.op == .not {
 			child := t.a.nodes[int(new_child)]
