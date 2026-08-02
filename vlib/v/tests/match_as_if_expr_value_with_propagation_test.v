@@ -422,6 +422,40 @@ fn select_value_interp(node ?Node) !string {
 	return result
 }
 
+// match as a `dump()` operand: `dump(match .. { .. })`
+fn select_value_dump(node ?Node) !int {
+	result := if value := node {
+		dump(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})
+	} else {
+		0
+	}
+	return result
+}
+
+fn bool_first(_ First) !bool {
+	return true
+}
+
+fn bool_second(_ Second) !bool {
+	return false
+}
+
+// match as a `_likely_()` operand: `_likely_(match .. { .. })`
+fn select_value_likely(node ?Node) !bool {
+	result := if value := node {
+		_likely_(match value {
+			First { bool_first(value)! }
+			Second { bool_second(value)! }
+		})
+	} else {
+		false
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -666,6 +700,18 @@ fn test_string_interp_match_as_if_expr_value_with_propagation() {
 	assert select_value_interp(First{})! == 'x=1'
 	assert select_value_interp(Second{})! == 'x=2'
 	assert select_value_interp(none) or { 'x=z' } == 'x=0'
+}
+
+fn test_dump_operand_match_as_if_expr_value_with_propagation() {
+	assert select_value_dump(First{})! == 1
+	assert select_value_dump(Second{})! == 2
+	assert select_value_dump(none) or { -1 } == 0
+}
+
+fn test_likely_operand_match_as_if_expr_value_with_propagation() {
+	assert select_value_likely(First{})! == true
+	assert select_value_likely(Second{})! == false
+	assert select_value_likely(none) or { true } == false
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

@@ -695,6 +695,14 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			}
 			found
 		}
+		ast.DumpExpr {
+			// e.g. `dump(match value { .. })` as a call argument.
+			p.expr_contains_value_match_or_if(expr.expr)
+		}
+		ast.Likely {
+			// e.g. `_likely_(match value { .. })` as a call argument.
+			p.expr_contains_value_match_or_if(expr.expr)
+		}
 		else {
 			false
 		}
@@ -869,6 +877,16 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 				mut or_block_last_stmt := expr.or_block.stmts.last()
 				p.mark_last_call_return_as_used(mut or_block_last_stmt)
 			}
+		}
+		ast.DumpExpr {
+			// last stmt is `dump(match value { First { foo()! } })`; the dumped
+			// operand is a value, so recurse into it.
+			p.mark_last_call_expr_return_as_used(mut expr.expr)
+		}
+		ast.Likely {
+			// last stmt is `_likely_(match value { First { foo()! } })`; recurse
+			// into the wrapped operand.
+			p.mark_last_call_expr_return_as_used(mut expr.expr)
 		}
 		else {}
 	}

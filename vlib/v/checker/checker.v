@@ -5305,7 +5305,19 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.unsafe_expr(mut node)
 		}
 		ast.Likely {
+			// A value `match`/`if` operand, e.g. `_likely_(match x { ... })`, in a
+			// void context (nested in an if-branch) must be checked as an expression
+			// so its arms produce values, instead of being typed `void`.
+			mut restore_force_value := false
+			if c.expected_type == ast.void_type && !c.force_value_match_or_if
+				&& operand_is_value_match_or_if(node.expr) {
+				c.force_value_match_or_if = true
+				restore_force_value = true
+			}
 			ltype := c.expr(mut node.expr)
+			if restore_force_value {
+				c.force_value_match_or_if = false
+			}
 			if !c.check_types(ltype, ast.bool_type) {
 				ltype_sym := c.table.sym(ltype)
 				lname := if node.is_likely { '_likely_' } else { '_unlikely_' }

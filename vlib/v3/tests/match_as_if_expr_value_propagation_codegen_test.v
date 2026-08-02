@@ -233,6 +233,26 @@ fn select_value_interp(node ?Node) !string {
 	return result
 }
 
+fn bool_first(_ First) !bool {
+	return true
+}
+
+fn bool_second(_ Second) !bool {
+	return false
+}
+
+fn select_value_likely(node ?Node) !bool {
+	result := if value := node {
+		_likely_(match value {
+			First { bool_first(value)! }
+			Second { bool_second(value)! }
+		})
+	} else {
+		false
+	}
+	return result
+}
+
 struct Boxed {
 	value int
 }
@@ -355,6 +375,7 @@ fn main() {
 	println(select_value_selector(First{})!)
 	println(select_value_mapkey(First{})![1])
 	println(select_value_interp(First{})!)
+	println(select_value_likely(First{})!)
 	println(select_value_structinit(First{})!.value)
 	println(select_value_mapinit(Second{})![7])
 	println(select_value_ascast(5)!)
@@ -372,5 +393,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\ntrue\n1\n100\nx=1\n1\n2\n6\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2'
 }

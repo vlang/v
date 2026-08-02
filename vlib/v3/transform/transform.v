@@ -8018,7 +8018,9 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	if typ.len == 0 || typ == 'unknown' {
 		typ = t.resolve_expr_type(child_id)
 	}
-	child := t.transform_expr(child_id)
+	// route a value `match`/`if` dumped operand (e.g. `dump(match x { ... })`)
+	// through its target type so its propagating arms are lowered as values.
+	child := t.transform_value_operand(child_id)
 	temp_name := t.new_temp('dump')
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
 	if isnil(t.tc) || !t.tc.suppress_dump_output {
