@@ -238,7 +238,8 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences) {
 		eprintln('v: `${mode}` currently supports direct compilation only. Use `v ${mode} module_dir`.')
 		exit(1)
 	}
-	launch_v3_ownership_compiler(prefs.is_verbose, os.args[1..].filter(it != '-ownership'))
+	ownership_args := util.join_env_vflags_and_os_args()[1..].filter(it != '-ownership')
+	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
 }
 
 fn is_ownership_relevant_command(command string, prefs &pref.Preferences) bool {
