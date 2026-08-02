@@ -5246,6 +5246,25 @@ fn record_compile_value(mut values map[string]string, define string) {
 	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
 }
 
+fn record_user_define(mut defines []string, mut values map[string]string, define string) {
+	name := define.all_before('=').trim_space()
+	if name.len == 0 {
+		return
+	}
+	has_value := define.contains('=')
+	value := if has_value { define.all_after_first('=') } else { 'true' }
+	if (!has_value || value.len > 0) && name !in defines {
+		defines << name
+	}
+	if has_value {
+		valued_define := '${name}=${value}'
+		if valued_define !in defines {
+			defines << valued_define
+		}
+	}
+	values[name] = value
+}
+
 fn stage_macos_v3_compiler_error_fallback(fallback_file string) {
 	if fallback_file != '' {
 		os.write_file(fallback_file, macos_v3_compiler_error_fallback) or {}
@@ -5863,8 +5882,7 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-d' && i + 1 < args.len {
 			define := args[i + 1]
-			user_defines << define
-			record_compile_value(mut compile_values, define)
+			record_user_define(mut user_defines, mut compile_values, define)
 			i += 2
 		} else if args[i] == '-dump-c-flags' {
 			dump_c_flags = if i + 1 < args.len { args[i + 1] } else { '-' }
@@ -5874,8 +5892,7 @@ pub fn run(args []string) {
 			i += if i + 1 < args.len { 2 } else { 1 }
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
 			define := args[i][2..]
-			user_defines << define
-			record_compile_value(mut compile_values, define)
+			record_user_define(mut user_defines, mut compile_values, define)
 			i++
 		} else if args[i] == '-gc' && i + 1 < args.len {
 			gc_mode = args[i + 1]

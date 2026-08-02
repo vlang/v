@@ -532,6 +532,48 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	}
 }
 
+fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_valued_define_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	project := os.join_path(root, 'project')
+	os.mkdir_all(project)!
+	os.write_file(os.join_path(project, 'main.v'), "module main
+
+fn main() {
+	\$if feature ? {
+		println('optional:on')
+	} \$else {
+		println('optional:off')
+	}
+	println(feature_source())
+	println(\$d('feature', 'missing'))
+}
+")!
+	os.write_file(os.join_path(project, 'source_d_feature.v'), "module main
+
+fn feature_source() string {
+	return 'source:on'
+}
+")!
+	os.write_file(os.join_path(project, 'source_notd_feature.v'), "module main
+
+fn feature_source() string {
+	return 'source:off'
+}
+")!
+	output := os.join_path(root, 'app')
+	compile := cmdexec.run(v3_bin, ['-nocache', '-d', 'feature=enabled', '-o', output, project])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'optional:on\nsource:on\nenabled\n', run.output
+}
+
 fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_silent_define_${os.getpid()}')
 	os.rmdir_all(root) or {}

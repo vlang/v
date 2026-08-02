@@ -153,3 +153,16 @@ fn test_v3_windows_batch_command_uses_windows_quoting() {
 	assert command.ends_with('"100%% ready!"')
 	assert !command.contains("'C:\\Program Files")
 }
+
+fn test_record_user_define_normalizes_nonempty_valued_defines() {
+	mut defines := []string{}
+	mut values := map[string]string{}
+	record_user_define(mut defines, mut values, 'feature=enabled')
+	assert defines == ['feature', 'feature=enabled']
+	assert values['feature'] == 'enabled'
+
+	record_user_define(mut defines, mut values, 'empty=')
+	assert 'empty' !in defines
+	assert 'empty=' in defines
+	assert values['empty'] == ''
+}
