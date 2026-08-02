@@ -583,18 +583,41 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 	}
 }
 
-// expr_is_wrapped_match_or_if reports whether an expression is a `match`/`if`
-// value expression, looking through transparent `(...)`, `unsafe { }`, cast and
-// `as`-cast wrappers. Used to decide whether a call argument holds a block-value
-// match/if whose arm calls must be marked as return-used.
-fn (p &Parser) expr_is_wrapped_match_or_if(expr ast.Expr) bool {
+// expr_contains_value_match_or_if reports whether an expression is (or, through
+// transparent `(...)`/`unsafe { }`/cast/`as`-cast wrappers and nested call
+// arguments, contains) a `match`/`if` value expression. Used to decide whether a
+// call argument holds a block-value match/if whose arm calls must be marked as
+// return-used, including nested compositions like `wrap(wrap(match value { .. }))`.
+fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 	return match expr {
-		ast.MatchExpr, ast.IfExpr { true }
-		ast.ParExpr { p.expr_is_wrapped_match_or_if(expr.expr) }
-		ast.UnsafeExpr { p.expr_is_wrapped_match_or_if(expr.expr) }
-		ast.CastExpr { p.expr_is_wrapped_match_or_if(expr.expr) }
-		ast.AsCast { p.expr_is_wrapped_match_or_if(expr.expr) }
-		else { false }
+		ast.MatchExpr, ast.IfExpr {
+			true
+		}
+		ast.ParExpr {
+			p.expr_contains_value_match_or_if(expr.expr)
+		}
+		ast.UnsafeExpr {
+			p.expr_contains_value_match_or_if(expr.expr)
+		}
+		ast.CastExpr {
+			p.expr_contains_value_match_or_if(expr.expr)
+		}
+		ast.AsCast {
+			p.expr_contains_value_match_or_if(expr.expr)
+		}
+		ast.CallExpr {
+			mut found := false
+			for arg in expr.args {
+				if p.expr_contains_value_match_or_if(arg.expr) {
+					found = true
+					break
+				}
+			}
+			found
+		}
+		else {
+			false
+		}
 	}
 }
 
@@ -607,10 +630,11 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 				mut or_block_last_stmt := expr.or_block.stmts.last()
 				p.mark_last_call_return_as_used(mut or_block_last_stmt)
 			}
-			// an argument may itself be a block-value match/if, e.g.
-			// `wrap(match value { First { foo()! } })`; mark its arm calls too.
+			// an argument may itself be (or nest) a block-value match/if, e.g.
+			// `wrap(match value { First { foo()! } })` or
+			// `wrap(wrap(match value { .. }))`; mark its arm calls too.
 			for mut arg in expr.args {
-				if p.expr_is_wrapped_match_or_if(arg.expr) {
+				if p.expr_contains_value_match_or_if(arg.expr) {
 					p.mark_last_call_expr_return_as_used(mut arg.expr)
 				}
 			}
