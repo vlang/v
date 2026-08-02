@@ -1941,7 +1941,8 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				result = lowered
 			} else {
 				// dynamic array membership -> array_contains_int/string(arr, val)
-				mut new_rhs := t.transform_expr(rhs_id)
+				// (value-aware so a `match`/`if` container is materialized as a value)
+				mut new_rhs := t.transform_value_operand(rhs_id)
 				if rhs_is_ptr_array {
 					new_rhs = t.make_prefix(.mul, new_rhs)
 				}
@@ -1955,7 +1956,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 		} else if rhs.kind in [.ident, .selector] && (rhs_type.len == 0 || rhs_type == 'unknown') {
 			new_lhs := t.transform_expr(lhs_id)
-			new_rhs := t.transform_expr(rhs_id)
+			new_rhs := t.transform_value_operand(rhs_id)
 			mut elem := t.node_type(lhs_id)
 			lhs := t.a.nodes[int(lhs_id)]
 			if elem.len == 0 && lhs.kind == .selector {
@@ -1974,7 +1975,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			} else {
 				// fixed array membership -> fixed_array_contains_int/string(arr, len, val)
 				new_lhs := t.transform_expr(lhs_id)
-				new_rhs := t.transform_expr(rhs_id)
+				new_rhs := t.transform_value_operand(rhs_id)
 				elem := fixed_array_elem_type(clean_rhs_type)
 				fn_name := fixed_array_contains_fn_name(elem)
 				len_expr := t.make_fixed_array_len_expr(clean_rhs_type)
@@ -1982,7 +1983,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 		} else if clean_rhs_type == 'string' {
 			new_lhs := t.transform_expr(lhs_id)
-			new_rhs := t.transform_expr(rhs_id)
+			new_rhs := t.transform_value_operand(rhs_id)
 			fn_name := if t.node_type(lhs_id) in ['u8', 'byte'] {
 				'string__contains_u8'
 			} else {
@@ -1997,7 +1998,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			// Unknown containment is kept as in_expr so the backend can reject or
 			// handle genuinely unresolved cases.
 			new_lhs := t.transform_expr(lhs_id)
-			new_rhs := t.transform_expr(rhs_id)
+			new_rhs := t.transform_value_operand(rhs_id)
 			in_start := t.a.children.len
 			t.a.children << new_lhs
 			t.a.children << new_rhs
@@ -2393,7 +2394,11 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 // stable_array_expr_for_membership
 // supports helper handling in transform.
 fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type string, clean_type string) flat.NodeId {
-	mut expr := t.transform_expr(id)
+	// Route a value `match`/`if` container through value lowering (e.g.
+	// `needle in (match node { ... get_values(node)! ... })`); otherwise the propagating
+	// arm tail is lowered in a value-less statement context and emits an empty expression.
+	// `transform_value_operand` is a no-op for the common non-branch containers.
+	mut expr := t.transform_value_operand(id)
 	if t.membership_container_is_pointer_array(raw_type) {
 		expr = t.make_prefix(.mul, expr)
 	}

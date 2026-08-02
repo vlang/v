@@ -522,6 +522,36 @@ fn select_value_range_order(node Node) !int {
 	return flag * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+fn make_values_first(_ First) ![]int {
+	return [10, 20, 30]
+}
+
+fn make_values_second(_ Second) ![]int {
+	return [40, 50]
+}
+
+// Membership over a value-match container (dynamic array): the propagating match
+// tail must be lowered as a value. First -> [10,20,30], so `20 in ...` is true.
+fn select_value_membership_container(node Node) !bool {
+	return 20 in (match node {
+		First { make_values_first(node)! }
+		Second { make_values_second(node)! }
+	})
+}
+
+// for-in over a value-match container: the propagating match tail must be lowered
+// as a value. First -> [10,20,30] -> sum 60.
+fn select_value_forin_container(node Node) !int {
+	mut sum := 0
+	for v in (match node {
+		First { make_values_first(node)! }
+		Second { make_values_second(node)! }
+	}) {
+		sum += v
+	}
+	return sum
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -571,6 +601,8 @@ fn main() {
 	println(select_value_range_low(First{})!)
 	println(select_value_range_membership(First{})!)
 	println(select_value_range_order(First{})!)
+	println(select_value_membership_container(First{})!)
+	println(select_value_forin_container(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -584,5 +616,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n1'
 }

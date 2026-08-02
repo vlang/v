@@ -289,7 +289,13 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 		return none
 	}
 	map_source_id := t.const_expr_for_ident(map_id) or { map_id }
-	map_expr := t.stable_expr_for_reuse(map_source_id)
+	// Route a value `match`/`if` map container through value lowering so a propagating
+	// arm tail is materialized as a value (no-op for the common non-branch containers).
+	map_expr := if t.is_value_match_or_if_operand(map_source_id) {
+		t.transform_value_operand(map_source_id)
+	} else {
+		t.stable_expr_for_reuse(map_source_id)
+	}
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))

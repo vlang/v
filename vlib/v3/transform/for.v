@@ -445,7 +445,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	body_ids := t.a.children_of(&node)[header_count..].clone()
 	source_is_owned_temporary := !raw_iter_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
-	mut new_container := if map_iter_type.starts_with('map[') && source_is_owned_temporary {
+	// Route a value `match`/`if` for-in container through value lowering (e.g.
+	// `for value in (match node { First { get_values(node)! } ... })`); otherwise the
+	// propagating arm tail is lowered in a value-less statement context and emits an
+	// empty expression. `transform_value_operand` materializes it into a value temp
+	// (stable for the loop's repeated use); non-branch containers keep the existing
+	// `stable_expr_for_reuse` / `transform_expr` lowering.
+	mut new_container := if t.is_value_match_or_if_operand(container_id) {
+		t.transform_value_operand(container_id)
+	} else if map_iter_type.starts_with('map[') && source_is_owned_temporary {
 		t.stable_expr_for_reuse(container_id)
 	} else {
 		t.transform_expr(container_id)
@@ -861,7 +869,9 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	}
 	iter_name := t.new_temp('iter')
 	next_name := t.new_temp('iter_next')
-	iter_expr := t.transform_expr(container_id)
+	// Route a value `match`/`if` iterator container through value lowering so a
+	// propagating arm tail is materialized as a value (no-op for non-branch containers).
+	iter_expr := t.transform_value_operand(container_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	prefix << t.make_decl_assign_typed(iter_name, iter_expr, iter_type)
@@ -925,6 +935,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id
+	} else if t.is_value_match_or_if_operand(container_id) {
+		// Route a value `match`/`if` container through value lowering so a propagating
+		// arm tail is materialized into a value temp (stable for the loop's repeated use);
+		// non-branch containers keep `stable_expr_for_reuse`.
+		t.transform_value_operand(container_id)
 	} else {
 		t.stable_expr_for_reuse(container_id)
 	}
