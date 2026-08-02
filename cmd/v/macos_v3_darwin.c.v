@@ -39,6 +39,9 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		trace_macos_v3_skip('non-default compiler executable `${os.executable()}`')
 		return none
 	}
+	if macos_v3_has_v1_only_leading_option(forwarded_args, command) {
+		return none
+	}
 	if !is_macos_v3_relevant_command(command, prefs) {
 		return none
 	}
@@ -55,6 +58,18 @@ fn is_macos_v3_default_executable(vexe string) bool {
 	return os.base(vexe) in ['v', 'v.exe', 'vnew', 'vnew.exe']
 }
 
+fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
+	for arg in args {
+		if arg == '--' || (command.len > 0 && arg == command) {
+			return false
+		}
+		if arg == '-message-limit' {
+			return true
+		}
+	}
+	return false
+}
+
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.old_compiler {
 		return false
@@ -62,6 +77,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.sanitize || prefs.is_livemain || prefs.is_liveshared || prefs.is_prof
 		|| prefs.output_cross_c || prefs.is_apk || prefs.json_errors
 		|| prefs.no_preludes || prefs.skip_warnings || prefs.print_watched_files
+		|| prefs.is_vlines || prefs.warn_impure_v || prefs.test_runner.len > 0
 		|| prefs.backend.is_js() || (prefs.backend == .wasm && prefs.is_run)
 		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		// V1 still owns compiler modes whose runtime or C toolchain support has not

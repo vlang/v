@@ -49,7 +49,8 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.is_o = true
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_vlines = true
-		assert is_macos_v3_relevant_command('main.v', prefs)
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_vlines = false
 		prefs.gc_mode = .boehm_full_opt
 		prefs.gc_set_by_flag = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
@@ -85,6 +86,12 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.print_watched_files = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.print_watched_files = false
+		prefs.warn_impure_v = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.warn_impure_v = false
+		prefs.test_runner = 'tap'
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.test_runner = ''
 		prefs.is_run = true
 		prefs.autofree = true
 		assert !is_macos_v3_relevant_command('run', prefs)
@@ -137,6 +144,16 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command(prefs.path, prefs)
 		prefs.path = 'version'
 		assert !is_macos_v3_relevant_command('version', prefs)
+	}
+}
+
+fn test_macos_v3_detects_v1_only_leading_options() {
+	$if macos {
+		assert macos_v3_has_v1_only_leading_option(['-message-limit', '0', 'main.v'], 'main.v')
+		assert macos_v3_has_v1_only_leading_option(['-message-limit', '5', 'run', 'main.v'], 'run')
+		assert !macos_v3_has_v1_only_leading_option(['run', 'main.v', '-message-limit', '5'], 'run')
+		assert !macos_v3_has_v1_only_leading_option(['--', '-message-limit', '5', 'main.v'],
+			'main.v')
 	}
 }
 
