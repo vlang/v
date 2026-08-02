@@ -33,6 +33,14 @@ fn test_shared_flag_builds_no_main_module() {
 	assert generated_c.contains('\tshared_flag_module__cleanup();'), generated_c
 	assert generated_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n}'), generated_c
 
+	coverage_dir := os.join_path(tmp_dir, 'coverage')
+	coverage_c := os.join_path(tmp_dir, 'shared_flag_module_coverage.c')
+	compile_coverage_c :=
+		os.execute('${os.quoted_path(v3_bin)} -coverage ${os.quoted_path(coverage_dir)} -shared -o ${os.quoted_path(coverage_c)} ${os.quoted_path(tmp_dir)}')
+	assert compile_coverage_c.exit_code == 0, compile_coverage_c.output
+	generated_coverage_c := os.read_file(coverage_c)!
+	assert generated_coverage_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n\tv3_write_coverage_stats();\n}'), generated_coverage_c
+
 	out_lib := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	out_path := out_lib + shared_flag_library_postfix()
 	os.rm(out_path) or {}
@@ -41,7 +49,7 @@ fn test_shared_flag_builds_no_main_module() {
 	}
 
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -shared -o ${os.quoted_path(out_lib)} ${os.quoted_path(tmp_dir)}')
+		os.execute('${os.quoted_path(v3_bin)} -coverage ${os.quoted_path(coverage_dir)} -shared -o ${os.quoted_path(out_lib)} ${os.quoted_path(tmp_dir)}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('-shared'), compile.output
 	assert !compile.output.contains('_main not defined'), compile.output

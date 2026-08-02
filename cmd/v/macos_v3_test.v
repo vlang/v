@@ -392,6 +392,9 @@ fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
 	prefs.experimental = true
 	assert autofree_requires_standard_compiler(prefs)
 	prefs.experimental = false
+	prefs.macosx_version_min = '11.0'
+	assert autofree_requires_standard_compiler(prefs)
+	prefs.macosx_version_min = '0'
 	prefs.gc_set_by_flag = true
 	prefs.gc_mode = .boehm_full_opt
 	assert autofree_requires_standard_compiler(prefs)
@@ -440,6 +443,22 @@ fn test_macos_v3_keeps_v1_only_autofree_and_experimental_builds_on_v1() {
 		sanitize_process.close()
 		assert sanitize_exit_code == 0, sanitize_build_output
 		assert !sanitize_build_output.contains('Launching v3_ownership:'), sanitize_build_output
+
+		deployment_source := os.join_path(root, 'deployment.v')
+		os.write_file(deployment_source, 'fn main() {}\n')!
+		mut deployment_process := os.new_process(@VEXE)
+		deployment_process.set_args(['-v', '-autofree', '-macosx-version-min', '11.0', '-check',
+			deployment_source])
+		deployment_process.set_environment(environment)
+		deployment_process.set_redirect_stdio()
+		deployment_process.run()
+		deployment_process.wait()
+		deployment_build_output := deployment_process.stdout_slurp() +
+			deployment_process.stderr_slurp()
+		deployment_exit_code := deployment_process.code
+		deployment_process.close()
+		assert deployment_exit_code == 0, deployment_build_output
+		assert !deployment_build_output.contains('Launching v3_ownership:'), deployment_build_output
 
 		experimental_source := os.join_path(root, 'experimental.v')
 		experimental_output := os.join_path(root, 'experimental')

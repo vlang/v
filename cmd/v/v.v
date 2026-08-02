@@ -255,6 +255,7 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| prefs.warn_impure_v || prefs.test_runner.len > 0 || prefs.exclude.len > 0
 		|| prefs.ldflags.len > 0 || prefs.nofloat || prefs.fast_math
 		|| prefs.compress || prefs.is_bare || prefs.assert_failure_mode != .default
+		|| prefs.macosx_version_min != '0'
 		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()
 		|| (prefs.backend == .wasm && prefs.is_run)
 }

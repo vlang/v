@@ -1869,9 +1869,10 @@ fn write_v3_c_project(project_dir string, c_source string, c_compiler string, pl
 	args := plan.compiler_args(output_path, v3_c_source_inputs(c_source, objective_c),
 		support_inputs)
 	posix_command := cmdexec.display(c_compiler, args)
+	make_command := posix_command.replace('$', '$$')
 	windows_command := v3_windows_batch_command(c_compiler, args)
 	os.write_file(os.join_path_single(project_dir, 'build_command.txt'), posix_command + '\n')!
-	os.write_file(os.join_path_single(project_dir, 'Makefile'), 'all:\n\t${posix_command}\n')!
+	os.write_file(os.join_path_single(project_dir, 'Makefile'), 'all:\n\t${make_command}\n')!
 	build_sh := os.join_path_single(project_dir, 'build.sh')
 	os.write_file(build_sh, '#!/bin/sh\nset -eu\n${posix_command}\n')!
 	os.write_file(os.join_path_single(project_dir, 'build.bat'),

@@ -500,6 +500,9 @@ fn (mut g FlatGen) gen_shared_runtime_callers() {
 	g.writeln('\tif (once) { return; }')
 	g.writeln('\tonce = true;')
 	g.writeln('\t_vcleanup();')
+	if g.coverage_dir.len > 0 {
+		g.writeln('\tv3_write_coverage_stats();')
+	}
 	g.writeln('}')
 	g.writeln('')
 }
