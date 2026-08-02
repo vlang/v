@@ -1288,6 +1288,31 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	if node.children_count == 0 {
 		return id
 	}
+	first_child := t.a.child(&node, 0)
+	if t.is_value_match_or_if_operand(first_child) {
+		// A `match`/`if` operand of an `as` cast, e.g. `(match x { ... }) as Variant`,
+		// is a value expression whose (possibly propagating) branch tails must be
+		// lowered as values. Materialize it into a value temp first, then re-run the
+		// `as` conversion over that temp (mirrors the option-source path below).
+		mut operand_type := t.raw_expr_type_without_smartcast(first_child)
+		if operand_type.len == 0 {
+			operand_type = t.node_type(first_child)
+		}
+		if operand_type.len == 0 {
+			operand_type = t.resolve_expr_type(first_child)
+		}
+		value := t.transform_expr_for_type(first_child, operand_type)
+		start := t.a.children.len
+		t.a.children << value
+		return t.transform_as_expr(id, flat.Node{
+			kind:           .as_expr
+			value:          node.value
+			typ:            node.typ
+			children_start: start
+			children_count: 1
+			pos:            node.pos
+		})
+	}
 	expr_id := t.a.child(&node, 0)
 	// `as` converts from the expression's storage type. Inside an `is` branch,
 	// `node_type` reports the smartcast target instead; using that here makes an

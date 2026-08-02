@@ -4635,7 +4635,9 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	t.mark_string_interp_call_part_used(expr_id)
 	saved_in_string_interp_part := t.in_string_interp_part
 	t.in_string_interp_part = true
-	mut transformed := t.transform_expr(expr_id)
+	// route a value `match`/`if` interpolation operand (e.g. `'${match x { ... }}'`)
+	// through its target type so its propagating arms are lowered as values.
+	mut transformed := t.transform_value_operand(expr_id)
 	t.in_string_interp_part = saved_in_string_interp_part
 	mut typ := t.raw_alias_type_for_expr(expr_id)
 	if typ.len == 0 {
@@ -8017,7 +8019,9 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	if typ.len == 0 || typ == 'unknown' {
 		typ = t.resolve_expr_type(child_id)
 	}
-	child := t.transform_expr(child_id)
+	// route a value `match`/`if` dumped operand (e.g. `dump(match x { ... })`)
+	// through its target type so its propagating arms are lowered as values.
+	child := t.transform_value_operand(child_id)
 	temp_name := t.new_temp('dump')
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
 	if isnil(t.tc) || !t.tc.suppress_dump_output {
@@ -11053,7 +11057,11 @@ fn (mut t Transformer) transform_block_expr_for_type(_id flat.NodeId, node flat.
 	last := t.a.nodes[int(last_id)]
 	tail_expr_id := if last.kind == .expr_stmt && last.children_count > 0 {
 		t.a.child(&last, 0)
-	} else if last.kind == .block && t.stmt_value_type(last_id).len > 0 {
+	} else if last.kind in [.block, .match_stmt, .if_expr] && t.stmt_value_type(last_id).len > 0 {
+		// A block whose value tail is a bare `match`/`if` expression, e.g.
+		// `unsafe { match x { ... } }`. Treat the statement-shaped tail as the
+		// value expression so the target type reaches its (possibly propagating)
+		// branch tails instead of lowering them in a value-less statement context.
 		last_id
 	} else if !t.is_stmt_kind(last.kind) {
 		last_id
@@ -14561,6 +14569,24 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 	})
 }
 
+// transform_value_operand transforms an operand of an infix/prefix expression,
+// routing a value `match`/`if` operand (e.g. `1 + (match x { ... })` or
+// `-(match x { ... })`) through `transform_expr_for_type` so its (possibly
+// propagating) branch tails are lowered as values instead of in a value-less
+// statement context.
+fn (mut t Transformer) transform_value_operand(id flat.NodeId) flat.NodeId {
+	if t.is_value_match_or_if_operand(id) {
+		mut typ := t.node_type(id)
+		if typ.len == 0 {
+			typ = t.resolve_expr_type(id)
+		}
+		if typ.len > 0 && typ != 'void' {
+			return t.transform_expr_for_type(id, typ)
+		}
+	}
+	return t.transform_expr(id)
+}
+
 // transform_infix_expr transforms transform infix expr data for transform.
 fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
@@ -14667,13 +14693,13 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
 	pending_start := t.pending_stmts.len
-	new_lhs := t.transform_expr(lhs_id)
+	new_lhs := t.transform_value_operand(lhs_id)
 	mut lhs_pending := []flat.NodeId{}
 	if t.pending_stmts.len > pending_start {
 		lhs_pending = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
-	new_rhs := t.transform_expr(rhs_id)
+	new_rhs := t.transform_value_operand(rhs_id)
 	if lhs_pending.len > 0 {
 		rhs_pending := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
@@ -15142,7 +15168,9 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		mut new_child := t.transform_expr(child_id)
+		// route a value `match`/`if` operand (e.g. `values[match x { ... }]`)
+		// through its target type so its propagating arms are lowered as values.
+		mut new_child := t.transform_value_operand(child_id)
 		if i == 0 {
 			base := t.a.nodes[int(new_child)]
 			if base.kind == .cast_expr {
@@ -15645,7 +15673,9 @@ fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId 
 	// transparent parentheses (`(x).field`, `((x)).field`), where `x` is still the
 	// direct receiver.
 	if !t.selector_base_is_ident_receiver(id) {
-		return t.transform_expr(id)
+		// route a value `match`/`if` receiver (e.g. `(match x { ... }).field`)
+		// through its target type so its propagating arms are lowered as values.
+		return t.transform_value_operand(id)
 	}
 	old_in_selector_base := t.in_selector_base
 	t.in_selector_base = true
@@ -16697,7 +16727,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		mut new_child := if node.op == .not {
 			t.transform_expr_for_type(child_id, 'bool')
 		} else {
-			t.transform_expr(child_id)
+			// route a value `match`/`if` operand (e.g. `-(match x { ... })`)
+			// through its target type so its propagating arms are lowered as values.
+			t.transform_value_operand(child_id)
 		}
 		if node.op == .not {
 			child := t.a.nodes[int(new_child)]
@@ -17160,6 +17192,28 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 	})
 }
 
+// is_value_match_or_if_operand reports whether the node is a `match`/`if`
+// expression used as a value, e.g. a cast operand like `i64(match x { ... })`.
+// It looks through transparent wrappers: `(...)` parens, `unsafe { }` (a `.block`
+// whose value tail is the expression), and a trailing `expr_stmt` — including
+// compositions like `i64(unsafe { match ... })`. Such an operand must be
+// transformed with its target type so its (possibly propagating) branch tails
+// are lowered as values.
+@[direct_array_access]
+fn (t &Transformer) is_value_match_or_if_operand(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.is_value_match_or_if_operand(t.a.child(&node, 0))
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return t.is_value_match_or_if_operand(t.a.child(&node, node.children_count - 1))
+	}
+	return node.kind in [.match_stmt, .if_expr]
+}
+
 // transform_cast_expr transforms transform cast expr data for transform.
 @[direct_array_access]
 fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -17341,6 +17395,12 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			new_children << t.transform_expr_for_type(child_id, target_type)
 		} else if target_type in ['voidptr', 'byteptr', 'charptr'] {
 			new_children << t.transform_expr_preserving_pointer_value(child_id)
+		} else if t.is_value_match_or_if_operand(child_id) {
+			// A `match`/`if` cast operand is a value expression whose (possibly
+			// propagating) branch tails must be lowered as values, e.g.
+			// `i64(match x { ... foo()! ... })`. Plain `transform_expr` would
+			// lower them in statement context and emit an empty ternary.
+			new_children << t.transform_expr_for_type(child_id, target_type)
 		} else {
 			new_children << t.transform_expr(child_id)
 		}
