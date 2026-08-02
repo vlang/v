@@ -20498,11 +20498,12 @@ fn (t &Transformer) pointer_value_expr_type(id flat.NodeId) ?string {
 }
 
 fn (t &Transformer) is_untyped_float_literal_expr(id flat.NodeId) bool {
-	return t.is_untyped_float_literal_expr_with_depth(id, 0)
+	mut const_expr_path := []flat.NodeId{}
+	return t.is_untyped_float_literal_expr_with_const_path(id, mut const_expr_path)
 }
 
-fn (t &Transformer) is_untyped_float_literal_expr_with_depth(id flat.NodeId, depth int) bool {
-	if int(id) < 0 || int(id) >= t.a.nodes.len || depth > 16 {
+fn (t &Transformer) is_untyped_float_literal_expr_with_const_path(id flat.NodeId, mut const_expr_path []flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
@@ -20514,17 +20515,23 @@ fn (t &Transformer) is_untyped_float_literal_expr_with_depth(id flat.NodeId, dep
 			if node.op !in [.plus, .minus] || node.children_count == 0 {
 				return false
 			}
-			return t.is_untyped_float_literal_expr_with_depth(t.a.child(&node, 0), depth + 1)
+			return t.is_untyped_float_literal_expr_with_const_path(t.a.child(&node, 0), mut
+				const_expr_path)
 		}
 		.paren, .expr_stmt {
 			if node.children_count == 0 {
 				return false
 			}
-			return t.is_untyped_float_literal_expr_with_depth(t.a.child(&node, 0), depth + 1)
+			return t.is_untyped_float_literal_expr_with_const_path(t.a.child(&node, 0), mut
+				const_expr_path)
 		}
 		.ident, .selector {
 			expr_id := t.const_expr_for_arg(id) or { return false }
-			return t.is_untyped_float_literal_expr_with_depth(expr_id, depth + 1)
+			if expr_id in const_expr_path {
+				return false
+			}
+			const_expr_path << expr_id
+			return t.is_untyped_float_literal_expr_with_const_path(expr_id, mut const_expr_path)
 		}
 		else {
 			return false
