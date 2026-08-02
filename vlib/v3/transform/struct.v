@@ -50,6 +50,18 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 	mut promoted_paths := map[string][]FieldInfo{}
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
+	// Source (child) position of the last field whose value hoists a value branch. A preceding
+	// field value is snapshotted before that field materializes its branch prelude, so struct
+	// fields evaluate in source order — a nested block/`if`/`match` tail otherwise runs its
+	// prelude before the struct initializer while earlier field values stay inline.
+	mut last_hoisting_field := -1
+	for i in 0 .. node.children_count {
+		child := t.a.nodes[int(t.a.child(&node, i))]
+		if child.kind == .field_init && child.children_count > 0
+			&& t.operand_hoists_value_branch(t.a.child(&child, 0)) {
+			last_hoisting_field = i
+		}
+	}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
@@ -113,6 +125,15 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			}
 			if sum_field_type.len == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
+			}
+			// Snapshot a preceding field value before a later field hoists its branch prelude,
+			// so this value is read in source order rather than after that prelude.
+			if i < last_hoisting_field && !t.is_pure_constant_expr(new_val) {
+				mut snap_typ := t.node_type(new_val)
+				if snap_typ.len == 0 {
+					snap_typ = field_type
+				}
+				new_val = t.snapshot_transformed_expr_for_reuse(new_val, snap_typ, 'struct_field')
 			}
 			t.drain_pending(mut prelude)
 			if int(child_id) in t.local_closure_field_cleanups {

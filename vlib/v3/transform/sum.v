@@ -770,7 +770,11 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	if clean_type.len == 0 || resolved_clean_type !in t.sum_types {
 		return t.make_bool_literal(true)
 	}
-	new_expr := t.transform_expr(expr_id)
+	// Route a value-context `match`/`if` subject (e.g. `(match n { First { make_circle()!
+	// } else { make_square()! } }) is Circle`) through value lowering so a propagating
+	// branch tail is materialized as a value instead of in a value-less statement context.
+	// `transform_value_operand` is a no-op for the common non-branch subjects.
+	new_expr := t.transform_value_operand(expr_id)
 	// Mutable array/map loop bindings are storage pointers, but their rvalue
 	// transform above already loads the sum value. Build the tag/path checks from
 	// the transformed storage type so the value is not dereferenced twice.
@@ -1287,6 +1291,31 @@ fn (mut t Transformer) make_sum_type_pattern_check(expr flat.NodeId, expr_type s
 fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
+	}
+	first_child := t.a.child(&node, 0)
+	if t.is_value_match_or_if_operand(first_child) {
+		// A `match`/`if` operand of an `as` cast, e.g. `(match x { ... }) as Variant`,
+		// is a value expression whose (possibly propagating) branch tails must be
+		// lowered as values. Materialize it into a value temp first, then re-run the
+		// `as` conversion over that temp (mirrors the option-source path below).
+		mut operand_type := t.raw_expr_type_without_smartcast(first_child)
+		if operand_type.len == 0 {
+			operand_type = t.node_type(first_child)
+		}
+		if operand_type.len == 0 {
+			operand_type = t.resolve_expr_type(first_child)
+		}
+		value := t.transform_expr_for_type(first_child, operand_type)
+		start := t.a.children.len
+		t.a.children << value
+		return t.transform_as_expr(id, flat.Node{
+			kind:           .as_expr
+			value:          node.value
+			typ:            node.typ
+			children_start: start
+			children_count: 1
+			pos:            node.pos
+		})
 	}
 	expr_id := t.a.child(&node, 0)
 	// `as` converts from the expression's storage type. Inside an `is` branch,

@@ -1875,11 +1875,38 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 	if rhs.kind == .range {
 		// x in low..high  ->  x >= low && x < high
 		if rhs.children_count >= 2 {
-			new_lhs := t.stable_expr_for_reuse(lhs_id)
+			// Route value `match`/`if` operands (the tested value and the range bounds)
+			// through value lowering so a propagating branch tail is materialized as a
+			// value instead of in a value-less statement context, e.g.
+			// `x in (match node { ... lower(node)! ... }) .. 10`. `transform_value_operand`
+			// is a no-op for the common non-branch operands.
 			low_id := t.a.children[rhs.children_start]
 			high_id := t.a.children[rhs.children_start + 1]
-			new_low := t.transform_expr(low_id)
-			new_high := t.transform_expr(high_id)
+			// The tested value is evaluated first; if either bound hoists a value branch whose
+			// prelude could mutate it, snapshot its source-order value before that prelude.
+			bound_hoists := t.operand_hoists_value_branch(low_id)
+				|| t.operand_hoists_value_branch(high_id)
+			new_lhs := if t.is_value_match_or_if_operand(lhs_id) {
+				t.transform_value_operand(lhs_id)
+			} else if bound_hoists && t.operand_needs_ordering_snapshot(lhs_id) {
+				t.snapshot_expr_for_reuse(lhs_id)
+			} else {
+				t.stable_expr_for_reuse(lhs_id)
+			}
+			// If the high bound hoists a value branch — directly or nested inside a compound
+			// bound (`.. (1 + (match ...))`) — its materialization below queues prelude
+			// statements; snapshot a value-bearing low bound first so it evaluates before them,
+			// preserving low-before-high order, e.g.
+			// `x in low_with_effect() .. (match node { ... high_with_effect()! ... })`.
+			// A value-branch low is materialized in order by `transform_value_operand`.
+			new_low := if !t.is_value_match_or_if_operand(low_id)
+				&& t.operand_hoists_value_branch(high_id)
+				&& t.operand_needs_ordering_snapshot(low_id) {
+				t.snapshot_expr_for_reuse(low_id)
+			} else {
+				t.transform_value_operand(low_id)
+			}
+			new_high := t.transform_value_operand(high_id)
 
 			ge_cmp := t.make_infix(.ge, new_lhs, new_low)
 			lt_cmp := t.make_infix(.lt, new_lhs, new_high)
@@ -1922,21 +1949,29 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				result = lowered
 			} else {
 				// dynamic array membership -> array_contains_int/string(arr, val)
-				mut new_rhs := t.transform_expr(rhs_id)
-				if rhs_is_ptr_array {
-					new_rhs = t.make_prefix(.mul, new_rhs)
-				}
+				// (value-aware so a `match`/`if` container is materialized as a value)
 				mut elem := if clean_rhs_type.starts_with('[]') { clean_rhs_type[2..] } else { '' }
 				if elem.len == 0 {
 					elem = t.node_type(lhs_id)
 				}
-				new_lhs := t.transform_expr_for_type(lhs_id, elem)
+				// Evaluate the needle before materializing a value-branch container so a
+				// side-effecting needle precedes the container's hoisted prelude.
+				new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+					t.snapshot_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, elem),
+						elem, 'in_lhs')
+				} else {
+					t.transform_expr_for_type(lhs_id, elem)
+				}
+				mut new_rhs := t.transform_value_operand(rhs_id)
+				if rhs_is_ptr_array {
+					new_rhs = t.make_prefix(.mul, new_rhs)
+				}
 				fn_name := array_contains_fn_name(elem)
 				result = t.make_call_typed(fn_name, arr2(new_rhs, new_lhs), 'bool')
 			}
 		} else if rhs.kind in [.ident, .selector] && (rhs_type.len == 0 || rhs_type == 'unknown') {
 			new_lhs := t.transform_expr(lhs_id)
-			new_rhs := t.transform_expr(rhs_id)
+			new_rhs := t.transform_value_operand(rhs_id)
 			mut elem := t.node_type(lhs_id)
 			lhs := t.a.nodes[int(lhs_id)]
 			if elem.len == 0 && lhs.kind == .selector {
@@ -1954,16 +1989,29 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				result = lowered
 			} else {
 				// fixed array membership -> fixed_array_contains_int/string(arr, len, val)
-				new_lhs := t.transform_expr(lhs_id)
-				new_rhs := t.transform_expr(rhs_id)
+				// stabilize a side-effecting needle before a value-branch container hoists
+				new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+					t.snapshot_expr_for_reuse(lhs_id)
+				} else {
+					t.transform_expr(lhs_id)
+				}
+				new_rhs := t.transform_value_operand(rhs_id)
 				elem := fixed_array_elem_type(clean_rhs_type)
 				fn_name := fixed_array_contains_fn_name(elem)
 				len_expr := t.make_fixed_array_len_expr(clean_rhs_type)
 				result = t.make_call_typed(fn_name, arr3(new_rhs, len_expr, new_lhs), 'bool')
 			}
 		} else if clean_rhs_type == 'string' {
-			new_lhs := t.transform_expr(lhs_id)
-			new_rhs := t.transform_expr(rhs_id)
+			// If the container hoists a value branch — directly or nested inside a compound
+			// container (`... in wrap(match ...)`) — its materialization below hoists a
+			// prelude; stabilize a side-effecting needle first so it evaluates before it,
+			// e.g. `tr.needle() in (match n { First { tr.text_first(n)! } ... })`.
+			new_lhs := if t.operand_hoists_value_branch(rhs_id) {
+				t.snapshot_expr_for_reuse(lhs_id)
+			} else {
+				t.transform_expr(lhs_id)
+			}
+			new_rhs := t.transform_value_operand(rhs_id)
 			fn_name := if t.node_type(lhs_id) in ['u8', 'byte'] {
 				'string__contains_u8'
 			} else {
@@ -1977,8 +2025,13 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 		} else {
 			// Unknown containment is kept as in_expr so the backend can reject or
 			// handle genuinely unresolved cases.
-			new_lhs := t.transform_expr(lhs_id)
-			new_rhs := t.transform_expr(rhs_id)
+			// stabilize a side-effecting needle before a value-branch container hoists
+			new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+				t.snapshot_expr_for_reuse(lhs_id)
+			} else {
+				t.transform_expr(lhs_id)
+			}
+			new_rhs := t.transform_value_operand(rhs_id)
 			in_start := t.a.children.len
 			t.a.children << new_lhs
 			t.a.children << new_rhs
@@ -2066,7 +2119,11 @@ fn (mut t Transformer) lower_const_string_array_membership_expr(base_id flat.Nod
 			return none
 		}
 	}
-	needle := t.transform_expr(needle_id)
+	// Route the needle through typed value lowering (the container is a string array),
+	// so a value `match`/`if` needle materializes its propagating arm as a value instead
+	// of in a value-less statement context, e.g.
+	// `(match node { First { get_first(node)! } ... }) in allowed_words`.
+	needle := t.transform_expr_for_type(needle_id, 'string')
 	base_value := t.transform_expr(base_id)
 	base_data := t.make_cast('&string', t.make_selector(base_value, 'data', 'voidptr'), '&string')
 	len_expr := t.make_int_literal(expr.children_count)
@@ -2110,7 +2167,16 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	if !t.is_sum_type_name(sum_name) {
 		return none
 	}
-	base := t.stable_expr_for_reuse(lhs_id)
+	// A value-branch subject (`(match node { First { make_foo(node)! } ... }) in [Foo1, Foo3]`)
+	// must be lowered as a typed value so its propagating arms are materialized into a temp;
+	// plain `stable_expr_for_reuse` would lower it with `transform_expr` in a value-less
+	// statement context and emit an empty expression.
+	base := if t.is_value_match_or_if_operand(lhs_id) {
+		t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, sum_name), sum_name,
+			'in_lhs')
+	} else {
+		t.stable_expr_for_reuse(lhs_id)
+	}
 	// A non-trivial lhs is materialized as a value temp above. Use that temp's
 	// storage type for the tag checks; retaining the source pointer type here
 	// makes the generated checks dereference the value temp a second time.
@@ -2204,8 +2270,16 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 			elem_type, 'contains_needle')
 		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(needle_id, elem_type),
-			elem_type, 'contains_needle')
+		// `needle in container`: the needle is evaluated before the container in source order.
+		// If the container hoists a value branch whose prelude can mutate a syntactically stable
+		// needle (`x in (match node { First { change(mut x)! } ... })`), snapshot the needle's
+		// source-order value so the membership loop reads it before that prelude runs.
+		transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
+		needle = if t.operand_hoists_value_branch(base_id) {
+			t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
+		} else {
+			t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
+		}
 		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
@@ -2374,7 +2448,11 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 // stable_array_expr_for_membership
 // supports helper handling in transform.
 fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type string, clean_type string) flat.NodeId {
-	mut expr := t.transform_expr(id)
+	// Route a value `match`/`if` container through value lowering (e.g.
+	// `needle in (match node { ... get_values(node)! ... })`); otherwise the propagating
+	// arm tail is lowered in a value-less statement context and emits an empty expression.
+	// `transform_value_operand` is a no-op for the common non-branch containers.
+	mut expr := t.transform_value_operand(id)
 	if t.membership_container_is_pointer_array(raw_type) {
 		expr = t.make_prefix(.mul, expr)
 	}
@@ -3329,6 +3407,68 @@ fn (mut t Transformer) stable_transformed_expr_for_reuse(expr flat.NodeId, typ s
 	return t.make_ident(tmp_name)
 }
 
+// snapshot_expr_for_reuse materializes `id` into a temp holding its current value, unless it is
+// a pure constant (which cannot change, so needs no snapshot). Ordering guards use it to capture
+// the source-order value of an operand that precedes a value branch whose hoisted prelude might
+// mutate that operand's storage. Unlike stable_expr_for_reuse it does snapshot value-bearing
+// lvalues (idents/selectors/indexes) rather than leaving them inline.
+fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
+	if t.is_ordering_snapshot_temp(id) {
+		return id
+	}
+	expr := if _ := t.generated_variant_access_type(id) {
+		id
+	} else {
+		t.transform_expr(id)
+	}
+	if t.is_pure_constant_expr(expr) || t.is_ordering_snapshot_temp(expr) {
+		return expr
+	}
+	tmp_name := t.new_temp('order_snapshot')
+	mut tmp_typ := t.node_type(expr)
+	if tmp_typ.len == 0 {
+		tmp_typ = t.node_type(id)
+	}
+	decl := t.make_decl_assign(tmp_name, expr)
+	if tmp_typ.len > 0 {
+		t.set_node_typ(int(decl), tmp_typ)
+		t.set_var_type(tmp_name, tmp_typ)
+	}
+	t.ordering_snapshot_names[tmp_name] = true
+	t.pending_stmts << decl
+	return t.make_ident(tmp_name)
+}
+
+// snapshot_transformed_expr_for_reuse is snapshot_expr_for_reuse for an already-transformed
+// expression of known type.
+fn (mut t Transformer) snapshot_transformed_expr_for_reuse(expr flat.NodeId, typ string, prefix string) flat.NodeId {
+	if t.is_pure_constant_expr(expr) || t.is_ordering_snapshot_temp(expr) {
+		return expr
+	}
+	tmp_name := t.new_temp(prefix)
+	t.ordering_snapshot_names[tmp_name] = true
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, typ)
+	return t.make_ident(tmp_name)
+}
+
+// is_ordering_snapshot_temp reports whether `id` is an identifier naming a temp already created
+// by a snapshot_*_for_reuse call. Such a temp holds a captured source-order value that no branch
+// prelude mutates, so it must not be snapshotted again (which would recurse on a re-dispatch).
+fn (t &Transformer) is_ordering_snapshot_temp(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .ident && node.value in t.ordering_snapshot_names
+}
+
+// operand_needs_ordering_snapshot reports whether a preceding operand must be snapshotted to
+// preserve its source-order value before a later value branch's hoisted prelude runs: it is a
+// value-bearing lvalue read (not a pure constant) and is not already a snapshot temp.
+fn (t &Transformer) operand_needs_ordering_snapshot(id flat.NodeId) bool {
+	return !t.is_pure_constant_expr(id) && !t.is_ordering_snapshot_temp(id)
+}
+
 // is_stable_expr_for_reuse reports whether is stable expr for reuse applies in transform.
 fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 	if int(id) < 0 {
@@ -3365,6 +3505,42 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 			node.children_count >= 2
 				&& t.is_stable_expr_for_reuse(t.a.children[node.children_start])
 				&& t.is_stable_expr_for_reuse(t.a.children[node.children_start + 1])
+		}
+		else {
+			false
+		}
+	}
+}
+
+// is_pure_constant_expr reports whether `id`'s value cannot be changed by a later mutation of
+// any variable — a literal, enum value, `sizeof`/`typeof`, or a cast/paren/struct made only of
+// such. Unlike is_stable_expr_for_reuse it returns false for value-bearing lvalue reads
+// (idents, selectors, indexes): those are cheap to re-evaluate, but a hoisted branch prelude
+// can mutate their storage, so reading them after the prelude yields a different value. Ordering
+// guards use this to decide whether a preceding operand must be snapshotted to preserve its
+// source-order value.
+fn (t &Transformer) is_pure_constant_expr(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	return match node.kind {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal,
+		.none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+			true
+		}
+		.cast_expr, .paren {
+			node.children_count == 0 || t.is_pure_constant_expr(t.a.children[node.children_start])
+		}
+		.struct_init, .field_init {
+			mut pure := true
+			for i in 0 .. node.children_count {
+				if !t.is_pure_constant_expr(t.a.child(&node, i)) {
+					pure = false
+					break
+				}
+			}
+			pure
 		}
 		else {
 			false

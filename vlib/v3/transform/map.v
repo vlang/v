@@ -289,10 +289,19 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 		return none
 	}
 	map_source_id := t.const_expr_for_ident(map_id) or { map_id }
-	map_expr := t.stable_expr_for_reuse(map_source_id)
+	// Spill the typed key before materializing the container so a side-effecting key
+	// evaluates before a value-branch map's hoisted propagation prelude, preserving
+	// source order, e.g. `tr.key() in (match node { First { tr.map_first(node)! } ... })`.
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))
+	// Route a value `match`/`if` map container through value lowering so a propagating
+	// arm tail is materialized as a value (no-op for the common non-branch containers).
+	map_expr := if t.is_value_match_or_if_operand(map_source_id) {
+		t.transform_value_operand(map_source_id)
+	} else {
+		t.stable_expr_for_reuse(map_source_id)
+	}
 	exists := t.make_map_exists_expr(map_expr, map_type, key_name)
 	cleanup_key := !isnil(t.tc) && t.map_key_expr_creates_owned_value(key_id, key_type)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
@@ -326,7 +335,22 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	source_is_owned_temporary := !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(map_type))
 		&& !base_type.starts_with('&') && !t.expr_can_take_address(map_source_id)
-	map_expr := t.stable_expr_for_reuse(map_source_id)
+	// Route a value `match`/`if` map-index base through value lowering (e.g.
+	// `(match n { First { make_map_first(n)! } ... })['key']`); otherwise the propagating
+	// arm tail is lowered in a value-less statement context and emits an empty expression.
+	// `transform_value_operand` materializes it into a value temp (stable for the repeated
+	// use below); non-branch bases keep `stable_expr_for_reuse`. The base is evaluated before
+	// the key: if the key hoists a value branch whose prelude can reassign a syntactically
+	// stable base (`items[match node { First { replace(mut items)! } ... }]`), snapshot the
+	// base's source-order value so the lookup uses the map evaluated before that prelude.
+	map_expr := if t.is_value_match_or_if_operand(map_source_id) {
+		t.transform_value_operand(map_source_id)
+	} else if t.operand_hoists_value_branch(key_id)
+		&& t.operand_needs_ordering_snapshot(map_source_id) {
+		t.snapshot_expr_for_reuse(map_source_id)
+	} else {
+		t.stable_expr_for_reuse(map_source_id)
+	}
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))
