@@ -14838,6 +14838,53 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
 	}
+	// Materialize a value `match`/`if` method receiver before builtin/method dispatch, so
+	// builtin lowerings (e.g. `(match node { ... }).clone()` -> make_array_clone_call, which
+	// lowers the receiver with plain `transform_expr`) receive a plain value temp rather than
+	// lowering the propagating arm tail in a value-less statement context. Rebuild the
+	// selector/call over the materialized receiver and re-dispatch; a no-op for the common
+	// non-branch receivers.
+	if node.children_count > 0 {
+		recv_fn_id := t.a.children[node.children_start]
+		recv_fn := t.a.nodes[int(recv_fn_id)]
+		if recv_fn.kind == .selector && recv_fn.children_count > 0 {
+			recv_id := t.a.children[recv_fn.children_start]
+			if t.is_value_match_or_if_operand(recv_id) {
+				new_recv := t.transform_value_operand(recv_id)
+				if new_recv != recv_id {
+					sel_start := t.a.children.len
+					t.a.children << new_recv
+					for i in 1 .. recv_fn.children_count {
+						t.a.children << t.a.child(&recv_fn, i)
+					}
+					new_fn_id := t.a.add_node(flat.Node{
+						kind:           .selector
+						op:             recv_fn.op
+						value:          recv_fn.value
+						typ:            recv_fn.typ
+						children_start: sel_start
+						children_count: recv_fn.children_count
+						pos:            recv_fn.pos
+					})
+					call_start := t.a.children.len
+					t.a.children << new_fn_id
+					for i in 1 .. node.children_count {
+						t.a.children << t.a.child(&node, i)
+					}
+					new_call_id := t.a.add_node(flat.Node{
+						kind:           .call
+						op:             node.op
+						value:          node.value
+						typ:            node.typ
+						children_start: call_start
+						children_count: node.children_count
+						pos:            node.pos
+					})
+					return t.transform_call_expr(new_call_id, t.a.nodes[int(new_call_id)])
+				}
+			}
+		}
+	}
 	if lowered := t.try_lower_bound_method_array_call(node) {
 		return lowered
 	}
