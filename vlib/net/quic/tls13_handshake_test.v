@@ -947,3 +947,61 @@ fn test_free_is_idempotent() {
 	h.free()
 	h.free() // must not double-free
 }
+
+// test_application_secrets_and_handshake_secrets_return_independent_copies is
+// a regression test for a /vreview finding: application_secrets() and
+// handshake_secrets() returned h.application_secrets/h.handshake_secrets
+// directly -- V's plain struct/array assignment shares []u8 backing storage
+// rather than deep-copying it. HandshakeSecrets/ApplicationSecrets fields
+// are `pub:` (read-only), so V's checker blocks the naive
+// `snapshot.client_secret[0] = x` and even `mut arr := snapshot.client_secret`
+// (it demands an explicit `.clone()`) -- but neither guard stops a caller
+// reaching the same backing storage via `unsafe { arr.data }`, the same
+// raw-pointer escape hatch this codebase's own OpenSSL/mbedTLS interop code
+// already uses throughout net.quic. Mirrors crypto_stream_test.v's own
+// test_crypto_stream_reassembler_data_returns_independent_copy for the same
+// bug class.
+fn test_application_secrets_and_handshake_secrets_return_independent_copies() {
+	mut h, _ := Tls13ClientHandshake.start(ClientHandshakeParams{
+		random:        []u8{len: 32, init: 0x11}
+		server_name:   'example.com'
+		ca_bundle_pem: ''
+	})!
+	defer {
+		h.free()
+	}
+	h.handshake_secrets = HandshakeSecrets{
+		handshake_secret: [u8(1), 2, 3]
+		client_secret:    [u8(4), 5, 6]
+		server_secret:    [u8(7), 8, 9]
+	}
+	h.application_secrets = ApplicationSecrets{
+		master_secret: [u8(10), 11, 12]
+		client_secret: [u8(13), 14, 15]
+		server_secret: [u8(16), 17, 18]
+	}
+
+	hs_snapshot := h.handshake_secrets()
+	as_snapshot := h.application_secrets()
+	unsafe {
+		mut hs_handshake_secret := &u8(hs_snapshot.handshake_secret.data)
+		hs_handshake_secret[0] = 0xff
+		mut hs_client_secret := &u8(hs_snapshot.client_secret.data)
+		hs_client_secret[0] = 0xff
+		mut hs_server_secret := &u8(hs_snapshot.server_secret.data)
+		hs_server_secret[0] = 0xff
+
+		mut as_master_secret := &u8(as_snapshot.master_secret.data)
+		as_master_secret[0] = 0xff
+		mut as_client_secret := &u8(as_snapshot.client_secret.data)
+		as_client_secret[0] = 0xff
+		mut as_server_secret := &u8(as_snapshot.server_secret.data)
+		as_server_secret[0] = 0xff
+	}
+	assert h.handshake_secrets.handshake_secret[0] == 1
+	assert h.handshake_secrets.client_secret[0] == 4
+	assert h.handshake_secrets.server_secret[0] == 7
+	assert h.application_secrets.master_secret[0] == 10
+	assert h.application_secrets.client_secret[0] == 13
+	assert h.application_secrets.server_secret[0] == 16
+}
