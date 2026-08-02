@@ -257,7 +257,7 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| prefs.compress || prefs.is_bare || prefs.assert_failure_mode != .default
 		|| prefs.macosx_version_min != '0'
 		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()
-		|| (prefs.backend == .wasm && prefs.is_run)
+		|| (prefs.backend == .wasm && prefs.is_run) || prefs.path.ends_with('.vv')
 }
 
 fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, host_os string) bool {

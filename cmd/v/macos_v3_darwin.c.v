@@ -60,15 +60,37 @@ fn is_macos_v3_default_executable(vexe string) bool {
 }
 
 fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
-	for arg in args {
-		if arg == '--' || (command.len > 0 && arg == command) {
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == '--' {
 			return false
 		}
 		if arg == '-message-limit' {
 			return true
 		}
+		if macos_v3_leading_option_consumes_value(arg) {
+			i += 2
+			continue
+		}
+		if command.len > 0 && arg == command {
+			return false
+		}
+		i++
 	}
 	return false
+}
+
+fn macos_v3_leading_option_consumes_value(option string) bool {
+	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
+		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-cov',
+		'-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
+		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
+		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
+		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
+		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
+		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
 }
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
@@ -112,8 +134,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		return false
 	}
 	return command in ['run', 'build', 'test'] || prefs.is_script || os.is_dir(prefs.path)
-		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vv')
-		|| normalized_path.ends_with('.vsh')
+		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
 }
 
 fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) bool {

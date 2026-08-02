@@ -44,17 +44,11 @@ fn test_out_files() {
 	mut total_oks := 0
 	mut total_oks_panic := 0
 	mut total_skips := 0
-	uses_v3_codegen := vexe_uses_v3_codegen()
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
 	println(term.colorize(term.green,
 		'> testing whether ${paths.len} .out files in ${local_tdata_path} match:'))
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
-		if uses_v3_codegen && relpath.ends_with('json_option_time.vv') {
-			eprintln('> skipping ${relpath} with V3, since the legacy JSON sum/time codec is not supported yet')
-			total_skips++
-			continue
-		}
 		if should_skip(relpath) {
 			total_skips++
 			continue

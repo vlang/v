@@ -154,10 +154,12 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.path = 'script.vsh'
 		assert is_macos_v3_relevant_command('script.vsh', prefs)
 		assert !is_macos_v3_relevant_command('crun', prefs)
-		for path in ['foo.c.v', 'foo.js.v', 'foo.wasm.v', '.v', 'fixture.vv'] {
+		for path in ['foo.c.v', 'foo.js.v', 'foo.wasm.v', '.v'] {
 			prefs.path = path
 			assert is_macos_v3_relevant_command(path, prefs)
 		}
+		prefs.path = 'fixture.vv'
+		assert !is_macos_v3_relevant_command(prefs.path, prefs)
 
 		prefs.path = 'cmd/v'
 		assert !is_macos_v3_relevant_command('cmd/v', prefs)
@@ -198,6 +200,8 @@ fn test_macos_v3_detects_v1_only_leading_options() {
 	$if macos {
 		assert macos_v3_has_v1_only_leading_option(['-message-limit', '0', 'main.v'], 'main.v')
 		assert macos_v3_has_v1_only_leading_option(['-message-limit', '5', 'run', 'main.v'], 'run')
+		assert macos_v3_has_v1_only_leading_option(['-gc', 'none', '-o', 'run', '-message-limit',
+			'0', 'run', 'bad.v'], 'run')
 		assert !macos_v3_has_v1_only_leading_option(['run', 'main.v', '-message-limit', '5'], 'run')
 		assert !macos_v3_has_v1_only_leading_option(['--', '-message-limit', '5', 'main.v'],
 			'main.v')
@@ -383,6 +387,9 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
 	mut prefs := &pref.Preferences{}
 	assert !autofree_requires_standard_compiler(prefs)
+	prefs.path = 'fixture.vv'
+	assert autofree_requires_standard_compiler(prefs)
+	prefs.path = ''
 	prefs.is_quiet = true
 	assert autofree_requires_standard_compiler(prefs)
 	prefs.is_quiet = false
