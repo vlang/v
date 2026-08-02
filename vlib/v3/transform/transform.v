@@ -15034,12 +15034,22 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		recv_fn := t.a.nodes[int(recv_fn_id)]
 		is_method := recv_fn.kind == .selector && recv_fn.children_count > 0
 		recv_id := if is_method { t.a.children[recv_fn.children_start] } else { flat.empty_node }
-		// Position of the last operand that hoists a value branch (0 = method receiver,
-		// 1.. = arguments). An argument counts even when the branch is nested inside a
-		// compound expression (`1 + (match ...)`, `i64(match ...)`): lowering it still
+		// A plain (non-method) call whose callee is itself a value branch —
+		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
+		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the
+		// propagating branch tail in a value-less statement context, emitting an empty callee.
+		callee_is_value_branch := !is_method && t.is_value_match_or_if_operand(recv_fn_id)
+		// Position of the last operand that hoists a value branch (0 = method receiver or a
+		// branch callee, 1.. = arguments). An argument counts even when the branch is nested
+		// inside a compound expression (`1 + (match ...)`, `i64(match ...)`): lowering it still
 		// materializes the inner branch into pending_stmts, so an earlier operand must be
 		// stabilized to keep source order.
-		mut last_branch := if is_method && t.is_value_match_or_if_operand(recv_id) { 0 } else { -1 }
+		mut last_branch := if (is_method && t.is_value_match_or_if_operand(recv_id))
+			|| callee_is_value_branch {
+			0
+		} else {
+			-1
+		}
 		for i in 1 .. node.children_count {
 			if t.operand_hoists_value_branch(t.a.child(&node, i)) {
 				last_branch = i
@@ -15100,6 +15110,12 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					children_count: recv_fn.children_count
 					pos:            recv_fn.pos
 				})
+			} else if callee_is_value_branch {
+				r := t.transform_value_operand(recv_fn_id)
+				if r != recv_fn_id {
+					new_fn_id = r
+					changed = true
+				}
 			}
 			mut new_args := []flat.NodeId{cap: int(node.children_count)}
 			for i in 1 .. node.children_count {

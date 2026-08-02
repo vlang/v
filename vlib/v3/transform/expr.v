@@ -2167,7 +2167,16 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	if !t.is_sum_type_name(sum_name) {
 		return none
 	}
-	base := t.stable_expr_for_reuse(lhs_id)
+	// A value-branch subject (`(match node { First { make_foo(node)! } ... }) in [Foo1, Foo3]`)
+	// must be lowered as a typed value so its propagating arms are materialized into a temp;
+	// plain `stable_expr_for_reuse` would lower it with `transform_expr` in a value-less
+	// statement context and emit an empty expression.
+	base := if t.is_value_match_or_if_operand(lhs_id) {
+		t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, sum_name), sum_name,
+			'in_lhs')
+	} else {
+		t.stable_expr_for_reuse(lhs_id)
+	}
 	// A non-trivial lhs is materialized as a value temp above. Use that temp's
 	// storage type for the tag checks; retaining the source pointer type here
 	// makes the generated checks dereference the value temp a second time.

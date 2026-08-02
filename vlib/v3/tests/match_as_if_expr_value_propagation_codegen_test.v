@@ -1120,6 +1120,42 @@ fn select_value_stable_arg_snapshot(node Node) !int {
 	})
 }
 
+type IntFn = fn () int
+
+struct FnBox {
+	f IntFn
+}
+
+fn cb_a() int {
+	return 41
+}
+
+fn cb_b() int {
+	return 52
+}
+
+fn make_cb_first(_ First) !FnBox {
+	return FnBox{
+		f: cb_a
+	}
+}
+
+fn make_cb_second(_ Second) !FnBox {
+	return FnBox{
+		f: cb_b
+	}
+}
+
+// The call target itself is a value match (with propagating arms) producing a function value,
+// immediately invoked: child 0 (the callee) must be materialized as a value, not lowered with
+// plain transform_expr into an empty callee. First -> cb_a() = 41.
+fn select_value_branch_callee(node Node) !int {
+	return (match node {
+		First { make_cb_first(node)!.f }
+		Second { make_cb_second(node)!.f }
+	})()
+}
+
 fn combine(a int, b int) int {
 	return a * 10 + b
 }
@@ -1391,6 +1427,7 @@ fn main() {
 	println(select_value_nested_cap_order(First{})!)
 	println(select_value_stable_lhs_snapshot(First{})!)
 	println(select_value_stable_arg_snapshot(First{})!)
+	println(select_value_branch_callee(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -1404,5 +1441,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n41\n1'
 }
