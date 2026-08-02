@@ -14996,8 +14996,20 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if node.children_count > 0 {
 		recv_fn_id := t.a.children[node.children_start]
 		recv_fn := t.a.nodes[int(recv_fn_id)]
-		is_method := recv_fn.kind == .selector && recv_fn.children_count > 0
-		recv_id := if is_method { t.a.children[recv_fn.children_start] } else { flat.empty_node }
+		is_selector_call := recv_fn.kind == .selector && recv_fn.children_count > 0
+		recv_sel_base_id := if is_selector_call {
+			t.a.children[recv_fn.children_start]
+		} else {
+			flat.empty_node
+		}
+		// A function-valued field callee (`p.callback(...)`) is a selector but not a method call:
+		// the field holds a function value that an argument prelude can replace (via a
+		// reference-backed holder), so it must be snapshotted whole like any other runtime callee
+		// rather than treated as a method that only stabilizes its receiver.
+		is_fn_field_callee := is_selector_call
+			&& t.receiver_selector_is_fn_field(t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(recv_sel_base_id))), recv_fn.value)
+		is_method := is_selector_call && !is_fn_field_callee
+		recv_id := if is_method { recv_sel_base_id } else { flat.empty_node }
 		// A plain (non-method) call whose callee is itself a value branch —
 		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
 		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the

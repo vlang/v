@@ -1368,6 +1368,38 @@ fn select_value_runtime_callee_order(node Node) !int {
 	return r * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+fn cb_orig(x int) int {
+	return x * 10
+}
+
+fn cb_new(x int) int {
+	return x * 100
+}
+
+struct CbHolder {
+mut:
+	callback ArgFn
+}
+
+fn (mut h CbHolder) install_new(_ First) !int {
+	h.callback = cb_new
+	return 3
+}
+
+// The callee is a function-valued field on a reference-backed holder; the value-match argument
+// prelude replaces the field. The call must invoke the callback evaluated before the arguments
+// (snapshotting the whole callee), not the replacement. First -> cb_orig(3) = 30 (a replaced
+// field would invoke cb_new(3) = 300).
+fn select_value_fn_field_callee_order(node Node) !int {
+	mut p := &CbHolder{
+		callback: cb_orig
+	}
+	return p.callback(match node {
+		First { p.install_new(node)! }
+		Second { 3 }
+	})
+}
+
 fn combine(a int, b int) int {
 	return a * 10 + b
 }
@@ -1648,6 +1680,7 @@ fn main() {
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_runtime_callee_order(First{})!)
+	println(select_value_fn_field_callee_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -1661,5 +1694,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\ntrue\n41\n712\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\ntrue\n41\n712\n30\n1'
 }
