@@ -605,6 +605,10 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			// last stmt on block is parenthesized: ( match .. { a { foo() } } )
 			p.mark_last_call_expr_return_as_used(mut expr.expr)
 		}
+		ast.UnsafeExpr {
+			// last stmt on block is unsafe-wrapped: unsafe { match .. { a { foo() } } }
+			p.mark_last_call_expr_return_as_used(mut expr.expr)
+		}
 		ast.IfExpr {
 			// last stmt on block is: if .. { foo() } else { bar() }
 			for mut branch in expr.branches {

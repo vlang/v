@@ -56,6 +56,20 @@ fn select_value_paren(node ?Node) !int {
 	return result
 }
 
+fn select_value_unsafe(node ?Node) !int {
+	result := if value := node {
+		(unsafe {
+			match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			}
+		})
+	} else {
+		0
+	}
+	return result
+}
+
 fn direct_match(node Node) !int {
 	return match node {
 		First { lower_first(node)! }
@@ -67,6 +81,7 @@ fn main() {
 	println(select_value(First{})!)
 	println(select_value(Second{})!)
 	println(select_value_paren(First{})!)
+	println(select_value_unsafe(Second{})!)
 	println(direct_match(Second{})!)
 }
 ') or {
@@ -80,5 +95,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n2'
 }

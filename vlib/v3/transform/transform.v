@@ -11052,7 +11052,11 @@ fn (mut t Transformer) transform_block_expr_for_type(_id flat.NodeId, node flat.
 	last := t.a.nodes[int(last_id)]
 	tail_expr_id := if last.kind == .expr_stmt && last.children_count > 0 {
 		t.a.child(&last, 0)
-	} else if last.kind == .block && t.stmt_value_type(last_id).len > 0 {
+	} else if last.kind in [.block, .match_stmt, .if_expr] && t.stmt_value_type(last_id).len > 0 {
+		// A block whose value tail is a bare `match`/`if` expression, e.g.
+		// `unsafe { match x { ... } }`. Treat the statement-shaped tail as the
+		// value expression so the target type reaches its (possibly propagating)
+		// branch tails instead of lowering them in a value-less statement context.
 		last_id
 	} else if !t.is_stmt_kind(last.kind) {
 		last_id

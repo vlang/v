@@ -51,6 +51,22 @@ fn select_value_paren(node ?Node) !int {
 	return result
 }
 
+// unsafe-wrapped match value: `( unsafe { match .. { .. } } )` keeps an
+// ast.UnsafeExpr (inside an ast.ParExpr) around the match
+fn select_value_unsafe(node ?Node) !int {
+	result := if value := node {
+		(unsafe {
+			match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			}
+		})
+	} else {
+		0
+	}
+	return result
+}
+
 // match with `?` option propagation
 fn select_opt(node ?Node) ?int {
 	result := if value := node {
@@ -91,6 +107,12 @@ fn test_parenthesized_match_as_if_expr_value_with_propagation() {
 	assert select_value_paren(First{})! == 1
 	assert select_value_paren(Second{})! == 2
 	assert select_value_paren(none) or { -1 } == 0
+}
+
+fn test_unsafe_wrapped_match_as_if_expr_value_with_propagation() {
+	assert select_value_unsafe(First{})! == 1
+	assert select_value_unsafe(Second{})! == 2
+	assert select_value_unsafe(none) or { -1 } == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {
