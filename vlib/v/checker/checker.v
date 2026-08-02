@@ -8543,12 +8543,33 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 	}
 	if mut node.index is ast.RangeExpr { // [1..2]
+		// A value `match`/`if` range bound, e.g. `values[(match x { ... })..]`, in a
+		// void context (nested in an if-branch) must be checked as an expression so
+		// its arms produce values, instead of being typed `void`.
 		if node.index.has_low {
+			mut restore_low := false
+			if c.expected_type == ast.void_type && !c.force_value_match_or_if
+				&& operand_is_value_match_or_if(node.index.low) {
+				c.force_value_match_or_if = true
+				restore_low = true
+			}
 			index_type := c.expr(mut node.index.low)
+			if restore_low {
+				c.force_value_match_or_if = false
+			}
 			c.check_index(typ_sym, node.index.low, index_type, true, node.is_gated)
 		}
 		if node.index.has_high {
+			mut restore_high := false
+			if c.expected_type == ast.void_type && !c.force_value_match_or_if
+				&& operand_is_value_match_or_if(node.index.high) {
+				c.force_value_match_or_if = true
+				restore_high = true
+			}
 			index_type := c.expr(mut node.index.high)
+			if restore_high {
+				c.force_value_match_or_if = false
+			}
 			c.check_index(typ_sym, node.index.high, index_type, true, node.is_gated)
 		}
 		// array[1..2] => array

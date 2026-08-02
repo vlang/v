@@ -606,11 +606,13 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			p.expr_contains_value_match_or_if(expr.expr)
 		}
 		ast.CallExpr {
-			mut found := false
-			for arg in expr.args {
-				if p.expr_contains_value_match_or_if(arg.expr) {
-					found = true
-					break
+			mut found := expr.is_method && p.expr_contains_value_match_or_if(expr.left)
+			if !found {
+				for arg in expr.args {
+					if p.expr_contains_value_match_or_if(arg.expr) {
+						found = true
+						break
+					}
 				}
 			}
 			found
@@ -630,6 +632,12 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 
 			p.expr_contains_value_match_or_if(expr.left)
 				|| p.expr_contains_value_match_or_if(expr.index)
+		}
+		ast.RangeExpr {
+			// e.g. `values[(match value { .. })..]` slice bound.
+
+			(expr.has_low && p.expr_contains_value_match_or_if(expr.low))
+				|| (expr.has_high && p.expr_contains_value_match_or_if(expr.high))
 		}
 		ast.SelectorExpr {
 			// e.g. `(match value { .. }).field` as a call argument.
@@ -726,6 +734,11 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 					p.mark_last_call_expr_return_as_used(mut arg.expr)
 				}
 			}
+			// a method-call receiver may itself be a block-value match/if, e.g.
+			// `(match value { First { foo()! } }).get()`; mark its arm calls too.
+			if expr.is_method && p.expr_contains_value_match_or_if(expr.left) {
+				p.mark_last_call_expr_return_as_used(mut expr.left)
+			}
 		}
 		ast.ConcatExpr {
 			// last stmt on block is a multi-return value list, e.g.
@@ -805,6 +818,17 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			}
 			if p.expr_contains_value_match_or_if(expr.index) {
 				p.mark_last_call_expr_return_as_used(mut expr.index)
+			}
+		}
+		ast.RangeExpr {
+			// last stmt on block is a range/slice bound, e.g.
+			// `values[(match value { .. })..]`; mark either bound that is (or
+			// nests) a block-value match/if.
+			if expr.has_low && p.expr_contains_value_match_or_if(expr.low) {
+				p.mark_last_call_expr_return_as_used(mut expr.low)
+			}
+			if expr.has_high && p.expr_contains_value_match_or_if(expr.high) {
+				p.mark_last_call_expr_return_as_used(mut expr.high)
 			}
 		}
 		ast.ParExpr {

@@ -197,6 +197,19 @@ fn select_value_index(node ?Node) !int {
 	return result
 }
 
+fn select_value_slice_bound(node ?Node) ![]int {
+	values := [10, 20, 30, 40]
+	result := if value := node {
+		values[(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})..]
+	} else {
+		[0]
+	}
+	return result
+}
+
 fn select_value_membership(node ?Node) !bool {
 	result := if value := node {
 		(match value {
@@ -371,6 +384,7 @@ fn main() {
 	println(select_value_arraylit(First{})!)
 	println(select_value_prefix(First{})!)
 	println(select_value_index(First{})!)
+	println(select_value_slice_bound(First{})!)
 	println(select_value_membership(First{})!)
 	println(select_value_selector(First{})!)
 	println(select_value_mapkey(First{})![1])
@@ -393,5 +407,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2'
 }

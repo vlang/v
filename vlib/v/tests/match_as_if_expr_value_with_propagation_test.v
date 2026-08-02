@@ -469,6 +469,49 @@ fn select_value_multiret(node ?Node) !(int, int) {
 	return a, b
 }
 
+struct Getter {
+	value int
+}
+
+fn (g Getter) get() int {
+	return g.value
+}
+
+fn make_getter_first(_ First) !Getter {
+	return Getter{1}
+}
+
+fn make_getter_second(_ Second) !Getter {
+	return Getter{2}
+}
+
+// match as a method-call receiver: `(match .. { .. }).get()`
+fn select_value_method_recv(node ?Node) !int {
+	result := if value := node {
+		(match value {
+			First { make_getter_first(value)! }
+			Second { make_getter_second(value)! }
+		}).get()
+	} else {
+		0
+	}
+	return result
+}
+
+// match as a slice lower bound: `values[(match .. { .. })..]`
+fn select_value_slice_bound(node ?Node) ![]int {
+	values := [10, 20, 30, 40]
+	result := if value := node {
+		values[(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})..]
+	} else {
+		[0]
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -737,6 +780,18 @@ fn test_multi_return_value_match_as_if_expr_value_with_propagation() {
 	a3, b3 := select_value_multiret(none) or { -1, -1 }
 	assert a3 == 0
 	assert b3 == 0
+}
+
+fn test_method_receiver_match_as_if_expr_value_with_propagation() {
+	assert select_value_method_recv(First{})! == 1
+	assert select_value_method_recv(Second{})! == 2
+	assert select_value_method_recv(none) or { -1 } == 0
+}
+
+fn test_slice_bound_match_as_if_expr_value_with_propagation() {
+	assert select_value_slice_bound(First{})! == [20, 30, 40]
+	assert select_value_slice_bound(Second{})! == [30, 40]
+	assert select_value_slice_bound(none) or { [-1] } == [0]
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {
