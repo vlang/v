@@ -104,6 +104,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.fast_math = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.fast_math = false
+		prefs.compress = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.compress = false
 		prefs.is_bare = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_bare = false
