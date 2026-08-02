@@ -89,6 +89,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.skip_warnings = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.skip_warnings = false
+		prefs.skip_notes = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.skip_notes = false
 		prefs.print_watched_files = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.print_watched_files = false
@@ -203,6 +206,13 @@ fn test_macos_v3_dispatch_allows_the_implicit_gc_default() {
 		assert !prealloc.gc_set_by_flag
 		assert is_macos_v3_relevant_command('main.v', prealloc)
 	}
+}
+
+fn test_autofree_notice_suppression_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-n', 'main.v'], false)
+	assert prefs.autofree
+	assert prefs.skip_notes
+	assert autofree_requires_standard_compiler(prefs)
 }
 
 fn test_macos_v3_implicit_gc_default_uses_v3() {
