@@ -1446,26 +1446,27 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_generic_specs(specs ma
 	t.interface_impl_indexes = refreshed.move()
 }
 
-fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_containers() {
+fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 	if isnil(t.tc) {
 		return
 	}
-	mut boxed_containers := map[string][]string{}
+	mut boxed_types := map[string][]string{}
 	mut runtime_type_names := []string{}
 	for key, _ in t.interface_boxed_types {
 		parts := key.split('\n')
-		if parts.len != 2 || (!parts[1].starts_with('[]') && !parts[1].starts_with('map[')) {
+		if parts.len != 2 || t.generic_arg_is_unresolved(parts[1]) {
 			continue
 		}
 		iface := t.resolve_interface_type_name(parts[0])
 		if iface.len == 0 {
 			continue
 		}
-		mut concrete_types := boxed_containers[iface] or { []string{} }
-		if parts[1] !in concrete_types {
-			concrete_types << parts[1]
-			boxed_containers[iface] = concrete_types
-			runtime_type_names << parts[1]
+		concrete := t.interface_concrete_impl_name(parts[1]) or { continue }
+		mut concrete_types := boxed_types[iface] or { []string{} }
+		if concrete !in concrete_types {
+			concrete_types << concrete
+			boxed_types[iface] = concrete_types
+			runtime_type_names << concrete
 		}
 	}
 	types.extend_stable_type_indexes_ref(mut t.runtime_type_indexes, &runtime_type_names)
@@ -1476,7 +1477,7 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_containers() {
 		old_index := t.interface_impl_indexes[iface_name] or { continue }
 		mut impls := old_index.names.clone()
 		resolved_iface := t.resolve_interface_type_name(iface_name)
-		mut concrete_types := boxed_containers[resolved_iface] or { []string{} }
+		mut concrete_types := boxed_types[resolved_iface] or { []string{} }
 		concrete_types.sort()
 		for concrete in concrete_types {
 			if concrete !in impls {
@@ -2655,7 +2656,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	} else {
 		t.collect_interface_boxed_types_dispatch(want_parallel)
 	}
-	t.refresh_interface_impl_indexes_for_boxed_containers()
+	t.refresh_interface_impl_indexes_for_boxed_types()
 	if !want_parallel {
 		if t.scope_parallel_workers && t.retain_worker_results {
 			$if !v3_no_parallel ? {

@@ -1135,6 +1135,18 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 			return short
 		}
 	}
+	base, _, is_generic_app := generic_app_parts(name)
+	if is_generic_app && !t.generic_arg_is_unresolved(name) {
+		if base in t.tc.structs || base in t.tc.type_aliases {
+			return name
+		}
+		if !base.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+			qualified_base := '${t.cur_module}.${base}'
+			if qualified_base in t.tc.structs || qualified_base in t.tc.type_aliases {
+				return '${qualified_base}${name[base.len..]}'
+			}
+		}
+	}
 	if !name.contains('.') {
 		if t.cur_file.len > 0 {
 			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {

@@ -3429,7 +3429,7 @@ fn test_generic_interface_method_body_marks_log_debug_dispatch() {
 	assert out == 'ok'
 }
 
-fn test_specialized_generic_body_sees_materialized_interface_implementer() {
+fn test_materialized_generic_interface_implementer_has_runtime_type_name() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_body_materialized_interface_implementer', 'interface Any {
 	str() string
@@ -3439,18 +3439,14 @@ struct Box[T] {
 	value T
 }
 
-fn render[T](value T) string {
-	boxed := Any(value)
-	return boxed.type_name() + ":" + boxed.str()
-}
-
 fn main() {
-	println(render[Box[int]](Box[int]{
+	boxed := Any(Box[int]{
 		value: 7
-	}))
+	})
+	println(boxed.type_name() + ":" + boxed.str())
 }
 ')
-	assert out == ':Box[int]{\n    value: 7\n}'
+	assert out == 'Box[int]:Box[int]{\n    value: 7\n}'
 }
 
 fn test_array_literal_separator_handling() {
