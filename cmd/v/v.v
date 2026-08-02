@@ -219,7 +219,8 @@ fn invoke_help_and_exit(remaining []string) {
 fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_args []string) {
 	is_ownership := '-ownership' in merged_args
 	is_autofree := prefs.autofree
-	if !is_ownership && !is_autofree {
+	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler,
+		os.user_os()) {
 		return
 	}
 	// V3 ownership mode does not support the explicit Boehm GC variants yet.
@@ -240,6 +241,16 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 	}
 	ownership_args := merged_args.filter(it != '-ownership')
 	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
+}
+
+fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, host_os string) bool {
+	if old_compiler {
+		return false
+	}
+	if is_ownership {
+		return true
+	}
+	return is_autofree && host_os == 'macos'
 }
 
 fn is_ownership_relevant_command(command string, prefs &pref.Preferences) bool {

@@ -296,6 +296,18 @@ fn test_autofree_non_direct_commands_stay_on_the_standard_command_path() {
 	assert is_ownership_relevant_command('app.v', prefs)
 }
 
+fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
+	assert !ownership_delegation_is_requested(false, false, false, 'macos')
+	assert ownership_delegation_is_requested(true, false, false, 'linux')
+	assert ownership_delegation_is_requested(true, false, false, 'windows')
+	assert ownership_delegation_is_requested(true, true, false, 'linux')
+	assert ownership_delegation_is_requested(false, true, false, 'macos')
+	assert !ownership_delegation_is_requested(false, true, false, 'linux')
+	assert !ownership_delegation_is_requested(false, true, false, 'windows')
+	assert !ownership_delegation_is_requested(false, true, true, 'macos')
+	assert !ownership_delegation_is_requested(true, false, true, 'macos')
+}
+
 fn test_macos_v3_manualfree_overrides_vflags_autofree() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_manualfree_${os.getpid()}')
