@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v3.ansi
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {
@@ -48,6 +49,16 @@ fn test_v3_environment_show_test_stats_reads_vtest_show_asserts() {
 	assert !v3_environment_show_test_stats()
 	os.setenv(name, '1', true)
 	assert v3_environment_show_test_stats()
+}
+
+fn test_v3_diagnostic_color_option() {
+	defer {
+		apply_v3_diagnostic_color_option('-color')
+	}
+	apply_v3_diagnostic_color_option('-nocolor')
+	assert ansi.red('error') == 'error'
+	apply_v3_diagnostic_color_option('-color')
+	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
 }
 
 fn test_v3_run_only_cache_identity_distinguishes_patterns() {

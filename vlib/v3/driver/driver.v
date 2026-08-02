@@ -4,6 +4,7 @@ import os
 import strconv
 import strings
 import time
+import v3.ansi
 import v3.bench
 import v3.cmdexec
 import v3.errors as v3errors
@@ -5432,9 +5433,14 @@ fn v3_driver_option_consumes_value(option string) bool {
 	return v3_driver_option_requires_value(option) || option in ['-cflags', '-dump-c-flags']
 }
 
+fn apply_v3_diagnostic_color_option(option string) {
+	ansi.set_colors_enabled(option == '-color')
+}
+
 // run executes the V3 compiler driver with `args`.
 @[markused]
 pub fn run(args []string) {
+	ansi.set_colors_enabled(true)
 	if args.len == 0 {
 		eprintln(cli_usage())
 		exit(1)
@@ -5795,7 +5801,10 @@ pub fn run(args []string) {
 		} else if args[i] == '-show-c-output' {
 			show_c_output = true
 			i++
-		} else if args[i] in ['-apk', '-cross', '-experimental', '-nocolor'] {
+		} else if args[i] in ['-color', '-nocolor'] {
+			apply_v3_diagnostic_color_option(args[i])
+			i++
+		} else if args[i] in ['-apk', '-cross', '-experimental'] {
 			// Accepted V1 compatibility switches. V3 always emits direct C,
 			// applies ownership cleanup, and forwards C failures.
 			i++
