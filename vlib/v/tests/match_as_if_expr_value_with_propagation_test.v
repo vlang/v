@@ -81,6 +81,21 @@ fn select_value_cast(node ?Node) !i64 {
 	return result
 }
 
+// composed wrappers: cast around unsafe around match, `i64(unsafe { match .. })`
+fn select_value_cast_unsafe(node ?Node) !i64 {
+	result := if value := node {
+		i64(unsafe {
+			match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			}
+		})
+	} else {
+		i64(0)
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -102,6 +117,22 @@ fn select_value_ascast(node ?int) !int {
 		(match v {
 			0 { make_circle(v)! }
 			else { make_circle(v + 1)! }
+		}) as Circle
+	} else {
+		Circle{99}
+	}
+	return shape.r
+}
+
+// composed wrappers: as-cast around unsafe around match,
+// `(unsafe { match .. }) as Circle`
+fn select_value_ascast_unsafe(node ?int) !int {
+	shape := if v := node {
+		(unsafe {
+			match v {
+				0 { make_circle(v)! }
+				else { make_circle(v + 1)! }
+			}
 		}) as Circle
 	} else {
 		Circle{99}
@@ -163,10 +194,22 @@ fn test_cast_wrapped_match_as_if_expr_value_with_propagation() {
 	assert select_value_cast(none) or { i64(-1) } == i64(0)
 }
 
+fn test_cast_unsafe_wrapped_match_as_if_expr_value_with_propagation() {
+	assert select_value_cast_unsafe(First{})! == i64(1)
+	assert select_value_cast_unsafe(Second{})! == i64(2)
+	assert select_value_cast_unsafe(none) or { i64(-1) } == i64(0)
+}
+
 fn test_as_cast_wrapped_match_as_if_expr_value_with_propagation() {
 	assert select_value_ascast(0)! == 0
 	assert select_value_ascast(5)! == 6
 	assert select_value_ascast(none) or { -1 } == 99
+}
+
+fn test_as_cast_unsafe_wrapped_match_as_if_expr_value_with_propagation() {
+	assert select_value_ascast_unsafe(0)! == 0
+	assert select_value_ascast_unsafe(5)! == 6
+	assert select_value_ascast_unsafe(none) or { -1 } == 99
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

@@ -13976,6 +13976,9 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 		ast.ParExpr {
 			as_cast_operand_needs_tmp_eval(expr.expr)
 		}
+		ast.UnsafeExpr {
+			as_cast_operand_needs_tmp_eval(expr.expr)
+		}
 		ast.SelectorExpr {
 			as_cast_operand_needs_tmp_eval(expr.expr)
 		}

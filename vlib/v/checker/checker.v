@@ -5425,13 +5425,17 @@ fn integer_literal_from_pointer_cast_expr(expr ast.Expr) ?ast.IntegerLiteral {
 	}
 }
 
-// cast_operand_is_value_match_or_if reports whether the (possibly parenthesized)
-// operand of a cast is a `match`/`if` expression. Such an operand is a value
-// expression that must be checked with a non-void expected type so it is treated
-// as `is_expr`, even when the surrounding expected type is void (e.g. nested
-// inside an if-branch) — otherwise it is mistyped as `void`.
+// cast_operand_is_value_match_or_if reports whether the operand of a cast is a
+// `match`/`if` expression, looking through transparent `(...)` and `unsafe { }`
+// wrappers (including compositions like `i64(unsafe { match ... })`). Such an
+// operand is a value expression that must be checked with a non-void expected
+// type so it is treated as `is_expr`, even when the surrounding expected type is
+// void (e.g. nested inside an if-branch) — otherwise it is mistyped as `void`.
 fn cast_operand_is_value_match_or_if(expr ast.Expr) bool {
 	if expr is ast.ParExpr {
+		return cast_operand_is_value_match_or_if(expr.expr)
+	}
+	if expr is ast.UnsafeExpr {
 		return cast_operand_is_value_match_or_if(expr.expr)
 	}
 	return expr is ast.MatchExpr || expr is ast.IfExpr

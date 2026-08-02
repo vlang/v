@@ -82,6 +82,20 @@ fn select_value_cast(node ?Node) !i64 {
 	return result
 }
 
+fn select_value_cast_unsafe(node ?Node) !i64 {
+	result := if value := node {
+		i64(unsafe {
+			match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			}
+		})
+	} else {
+		i64(0)
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -108,6 +122,20 @@ fn select_value_ascast(node ?int) !int {
 	return shape.r
 }
 
+fn select_value_ascast_unsafe(node ?int) !int {
+	shape := if v := node {
+		(unsafe {
+			match v {
+				0 { make_circle(v)! }
+				else { make_circle(v + 1)! }
+			}
+		}) as Circle
+	} else {
+		Circle{99}
+	}
+	return shape.r
+}
+
 fn direct_match(node Node) !int {
 	return match node {
 		First { lower_first(node)! }
@@ -121,7 +149,9 @@ fn main() {
 	println(select_value_paren(First{})!)
 	println(select_value_unsafe(Second{})!)
 	println(select_value_cast(First{})!)
+	println(select_value_cast_unsafe(Second{})!)
 	println(select_value_ascast(5)!)
+	println(select_value_ascast_unsafe(5)!)
 	println(direct_match(Second{})!)
 }
 ') or {
@@ -135,5 +165,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n6\n6\n2'
 }

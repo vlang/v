@@ -17097,18 +17097,24 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 	})
 }
 
-// is_value_match_or_if_operand reports whether the (possibly parenthesized) node
-// is a `match`/`if` expression used as a value, e.g. a cast operand like
-// `i64(match x { ... })`. Such an operand must be transformed with its target
-// type so its (possibly propagating) branch tails are lowered as values.
+// is_value_match_or_if_operand reports whether the node is a `match`/`if`
+// expression used as a value, e.g. a cast operand like `i64(match x { ... })`.
+// It looks through transparent wrappers: `(...)` parens, `unsafe { }` (a `.block`
+// whose value tail is the expression), and a trailing `expr_stmt` — including
+// compositions like `i64(unsafe { match ... })`. Such an operand must be
+// transformed with its target type so its (possibly propagating) branch tails
+// are lowered as values.
 @[direct_array_access]
 fn (t &Transformer) is_value_match_or_if_operand(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .paren && node.children_count > 0 {
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 		return t.is_value_match_or_if_operand(t.a.child(&node, 0))
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return t.is_value_match_or_if_operand(t.a.child(&node, node.children_count - 1))
 	}
 	return node.kind in [.match_stmt, .if_expr]
 }
