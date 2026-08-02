@@ -1167,7 +1167,15 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 
 	mut result := []flat.NodeId{}
-	lhs := t.transform_lvalue(lhs_id)
+	mut lhs := t.transform_lvalue(lhs_id)
+	// For an append whose RHS is a value `match`/`if` that hoists a prelude, stabilize the
+	// LHS lvalue's dynamic base/index components into temps first — without spilling the
+	// mutated array value — so a side-effecting index (e.g.
+	// `arrays[next(mut trace)] << (match ...)`) evaluates before the RHS prelude below,
+	// preserving source order.
+	if t.is_value_match_or_if_operand(rhs_id) {
+		lhs = t.stabilize_transformed_lvalue_for_reuse(lhs)
+	}
 	t.drain_pending(mut result)
 	mut rhs := flat.empty_node
 	if !push_many {

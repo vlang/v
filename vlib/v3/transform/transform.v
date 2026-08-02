@@ -14661,11 +14661,19 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		// (`rhs_target_type` set) is a mutated lvalue and must not be spilled; a value-branch
 		// LHS is already materialized in order by `transform_value_operand`.
 		rhs_is_value_branch := t.is_value_match_or_if_operand(rhs_id)
-		new_lhs := if rhs_target_type.len == 0 && rhs_is_value_branch
+		mut new_lhs := if rhs_target_type.len == 0 && rhs_is_value_branch
 			&& !t.is_value_match_or_if_operand(lhs_id) && !t.is_stable_expr_for_reuse(lhs_id) {
 			t.stable_expr_for_reuse(lhs_id)
 		} else {
 			t.transform_value_operand(lhs_id)
+		}
+		// For an array append (`rhs_target_type` set) whose RHS is a value branch that
+		// hoists a prelude, stabilize the LHS lvalue's dynamic base/index components into
+		// temps first — without spilling the mutated array value — so a side-effecting
+		// index (e.g. `arrays[next(mut trace)] << (match ...)`) evaluates before the RHS
+		// prelude, preserving source order.
+		if rhs_target_type.len > 0 && rhs_is_value_branch {
+			new_lhs = t.stabilize_transformed_lvalue_for_reuse(new_lhs)
 		}
 		new_rhs := if rhs_target_type.len > 0 {
 			t.transform_expr_for_type(rhs_id, rhs_target_type)

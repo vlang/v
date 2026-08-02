@@ -2110,7 +2110,11 @@ fn (mut t Transformer) lower_const_string_array_membership_expr(base_id flat.Nod
 			return none
 		}
 	}
-	needle := t.transform_expr(needle_id)
+	// Route the needle through typed value lowering (the container is a string array),
+	// so a value `match`/`if` needle materializes its propagating arm as a value instead
+	// of in a value-less statement context, e.g.
+	// `(match node { First { get_first(node)! } ... }) in allowed_words`.
+	needle := t.transform_expr_for_type(needle_id, 'string')
 	base_value := t.transform_expr(base_id)
 	base_data := t.make_cast('&string', t.make_selector(base_value, 'data', 'voidptr'), '&string')
 	len_expr := t.make_int_literal(expr.children_count)
