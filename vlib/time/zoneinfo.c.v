@@ -12,13 +12,15 @@ const zoneinfo_unix_sources = [
 
 const zoneinfo_vroot_zip = os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
 
-__global zoneinfo_loaders = []ZoneinfoLoaderFn{}
+__global zoneinfo_loaders shared []ZoneinfoLoaderFn
 
 // register_zoneinfo_loader registers a fallback loader for IANA time zone data.
 // Registered loaders are used after ZONEINFO, system zoneinfo paths, and V's
 // installed zoneinfo.zip have been tried.
 pub fn register_zoneinfo_loader(loader ZoneinfoLoaderFn) {
-	zoneinfo_loaders << loader
+	lock zoneinfo_loaders {
+		zoneinfo_loaders << loader
+	}
 }
 
 // load_location loads an IANA time zone location from ZONEINFO, system zoneinfo
@@ -39,8 +41,7 @@ pub fn load_location(name string) !&Location {
 			}]
 		}
 	}
-	data := load_zoneinfo_data(name)!
-	return parse_tzif_location(name, data)!
+	return load_zoneinfo_location(name)
 }
 
 // zone_at returns the active zone rule for `unix_time`.
@@ -157,22 +158,50 @@ fn location_from_posix_rule(name string, rule PosixZoneRule) &Location {
 	}
 }
 
-fn load_zoneinfo_data(name string) ![]u8 {
+fn load_zoneinfo_location(name string) !&Location {
 	zoneinfo := os.getenv('ZONEINFO')
+	mut sources := []string{}
 	if zoneinfo != '' {
-		if data := load_zoneinfo_from_source(zoneinfo, name) {
-			return data
-		}
+		sources << zoneinfo
 	}
-	for source in platform_zoneinfo_sources() {
+	sources << platform_zoneinfo_sources()
+	return load_zoneinfo_location_from_sources(name, sources, zoneinfo_loaders_snapshot())
+}
+
+fn zoneinfo_loaders_snapshot() []ZoneinfoLoaderFn {
+	mut loaders := []ZoneinfoLoaderFn{}
+	rlock zoneinfo_loaders {
+		loaders = zoneinfo_loaders.clone()
+	}
+	return loaders
+}
+
+fn load_zoneinfo_location_from_sources(name string, sources []string, loaders []ZoneinfoLoaderFn) !&Location {
+	mut first_parse_error := ?IError(none)
+	for source in sources {
 		if data := load_zoneinfo_from_source(source, name) {
-			return data
+			loc := parse_tzif_location(name, data) or {
+				if first_parse_error == none {
+					first_parse_error = err
+				}
+				continue
+			}
+			return loc
 		}
 	}
-	for loader in zoneinfo_loaders {
+	for loader in loaders {
 		if data := loader(name) {
-			return data
+			loc := parse_tzif_location(name, data) or {
+				if first_parse_error == none {
+					first_parse_error = err
+				}
+				continue
+			}
+			return loc
 		}
+	}
+	if err := first_parse_error {
+		return err
 	}
 	return error('unknown time zone location "${name}"')
 }
@@ -204,53 +233,85 @@ fn read_zoneinfo_zip_entry(zip_path string, name string) ![]u8 {
 
 fn read_uncompressed_zoneinfo_zip_entry(data []u8, name string) ![]u8 {
 	eocd := find_zoneinfo_zip_end_of_central_directory(data)!
+	if read_zip_u16(data, eocd + 4) != 0 || read_zip_u16(data, eocd + 6) != 0
+		|| read_zip_u16(data, eocd + 8) != read_zip_u16(data, eocd + 10) {
+		return error('unsupported multi-disk zoneinfo.zip')
+	}
 	entries := read_zip_u16(data, eocd + 10)
-	mut pos := int(read_zip_u32(data, eocd + 16))
+	central_size := u64(read_zip_u32(data, eocd + 12))
+	central_offset := u64(read_zip_u32(data, eocd + 16))
+	if central_offset > u64(eocd) || central_size > u64(eocd) - central_offset {
+		return error('invalid zoneinfo.zip')
+	}
+	mut pos := int(central_offset)
 	for _ in 0 .. entries {
-		if pos + 46 > data.len || read_zip_u32(data, pos) != 0x0201_4b50 {
+		if pos < 0 || pos > data.len - 46 || read_zip_u32(data, pos) != 0x0201_4b50 {
 			return error('invalid zoneinfo.zip')
 		}
+		flags := read_zip_u16(data, pos + 8)
 		method := read_zip_u16(data, pos + 10)
-		size := int(read_zip_u32(data, pos + 24))
+		compressed_size := u64(read_zip_u32(data, pos + 20))
+		size := u64(read_zip_u32(data, pos + 24))
 		name_len := int(read_zip_u16(data, pos + 28))
 		extra_len := int(read_zip_u16(data, pos + 30))
 		comment_len := int(read_zip_u16(data, pos + 32))
-		local_header := int(read_zip_u32(data, pos + 42))
-		if pos + 46 + name_len > data.len {
+		local_header := u64(read_zip_u32(data, pos + 42))
+		record_len := 46 + name_len + extra_len + comment_len
+		if record_len > data.len - pos {
 			return error('invalid zoneinfo.zip')
 		}
 		entry_name := data[pos + 46..pos + 46 + name_len].bytestr()
-		pos += 46 + name_len + extra_len + comment_len
+		pos += record_len
 		if entry_name != name {
 			continue
 		}
-		if method != 0 {
+		if flags & 1 != 0 {
+			return error('unsupported encrypted time zone entry "${name}"')
+		}
+		if method != 0 || compressed_size != size {
 			return error('unsupported compressed time zone entry "${name}"')
 		}
-		return read_zip_file_data(data, local_header, name, size)
+		if local_header > u64(data.len) || size > u64(data.len) {
+			return error('invalid time zone entry "${name}"')
+		}
+		return read_zip_file_data(data, int(local_header), name, int(size))
 	}
 	return error('unknown time zone location "${name}"')
 }
 
 fn read_zip_file_data(data []u8, pos int, name string, size int) ![]u8 {
-	if pos + 30 > data.len || read_zip_u32(data, pos) != 0x0403_4b50 {
+	if pos < 0 || size < 0 || pos > data.len - 30 || read_zip_u32(data, pos) != 0x0403_4b50 {
+		return error('invalid time zone entry "${name}"')
+	}
+	if read_zip_u16(data, pos + 8) != 0 {
 		return error('invalid time zone entry "${name}"')
 	}
 	name_len := int(read_zip_u16(data, pos + 26))
 	extra_len := int(read_zip_u16(data, pos + 28))
-	data_start := pos + 30 + name_len + extra_len
-	data_end := data_start + size
-	if data_end > data.len {
+	header_len := 30 + name_len + extra_len
+	if header_len > data.len - pos {
+		return error('invalid time zone entry "${name}"')
+	}
+	if data[pos + 30..pos + 30 + name_len].bytestr() != name {
+		return error('invalid time zone entry "${name}"')
+	}
+	data_start := pos + header_len
+	if size > data.len - data_start {
 		return error('truncated time zone entry "${name}"')
 	}
+	data_end := data_start + size
 	return data[data_start..data_end].clone()
 }
 
 fn find_zoneinfo_zip_end_of_central_directory(data []u8) !int {
+	if data.len < 22 {
+		return error('invalid zoneinfo.zip')
+	}
 	max_comment_len := 65_535
 	min_pos := if data.len > max_comment_len + 22 { data.len - max_comment_len - 22 } else { 0 }
 	for pos := data.len - 22; pos >= min_pos; pos-- {
-		if read_zip_u32(data, pos) == 0x0605_4b50 {
+		if read_zip_u32(data, pos) == 0x0605_4b50
+			&& int(read_zip_u16(data, pos + 20)) == data.len - pos - 22 {
 			return pos
 		}
 	}
@@ -258,14 +319,14 @@ fn find_zoneinfo_zip_end_of_central_directory(data []u8) !int {
 }
 
 fn read_zip_u16(data []u8, offset int) int {
-	if offset + 2 > data.len {
+	if offset < 0 || offset > data.len - 2 {
 		return 0
 	}
 	return int(u16(data[offset]) | (u16(data[offset + 1]) << 8))
 }
 
 fn read_zip_u32(data []u8, offset int) u32 {
-	if offset + 4 > data.len {
+	if offset < 0 || offset > data.len - 4 {
 		return 0
 	}
 	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) | (u32(data[
@@ -427,6 +488,17 @@ fn parse_posix_zone_rule(text string) !PosixZoneRule {
 		dst_offset = parsed_dst_offset
 		pos = offset_end
 	}
+	if pos == text.len {
+		return PosixZoneRule{
+			std_name:   std_name
+			std_offset: std_offset
+			dst_name:   dst_name
+			dst_offset: dst_offset
+			start:      default_posix_dst_start_rule()
+			end:        default_posix_dst_end_rule()
+			has_dst:    true
+		}
+	}
 	if pos >= text.len || text[pos] != `,` {
 		return error('unsupported POSIX time zone rule "${text}"')
 	}
@@ -489,7 +561,30 @@ fn parse_posix_offset(text string, start int) !(int, int) {
 	if pos < text.len && text[pos] == `:` {
 		second_value, pos = parse_posix_number(text, pos + 1)!
 	}
+	if hour_value > 168 || minute_value > 59 || second_value > 59 {
+		return error('unsupported POSIX time zone offset "${text[start..pos]}"')
+	}
 	return sign * (hour_value * seconds_per_hour + minute_value * seconds_per_minute + second_value), pos
+}
+
+fn default_posix_dst_start_rule() PosixRule {
+	return PosixRule{
+		kind:    .month_week_day
+		month:   3
+		week:    2
+		weekday: 0
+		seconds: 2 * seconds_per_hour
+	}
+}
+
+fn default_posix_dst_end_rule() PosixRule {
+	return PosixRule{
+		kind:    .month_week_day
+		month:   11
+		week:    1
+		weekday: 0
+		seconds: 2 * seconds_per_hour
+	}
 }
 
 fn parse_posix_rule(text string) !PosixRule {
