@@ -2,6 +2,7 @@ module driver
 
 import os
 import v3.ansi
+import v3.flat
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {
@@ -59,6 +60,34 @@ fn test_v3_diagnostic_color_option() {
 	assert ansi.red('error') == 'error'
 	apply_v3_diagnostic_color_option('-color')
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
+}
+
+fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
+	root := os.join_path(os.temp_dir(), 'v3_parallel_cc_active_directive_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {}\n')!
+	os.write_file(os.join_path(root, 'windows_impl.h'), 'int windows_impl(void) { return 1; }\n')!
+	mut a := &flat.FlatAst{
+		nodes: [
+			flat.Node{
+				kind:  .file
+				value: source
+			},
+			flat.Node{
+				kind:  .directive
+				value: 'include'
+				typ:   '"@DIR/windows_impl.h"'
+			},
+		]
+	}
+	assert v3_parallel_cc_active_sources_include_external_definition(a, [source])
+	a.nodes[1] = flat.Node{}
+	assert !v3_parallel_cc_active_sources_include_external_definition(a, [source])
 }
 
 fn test_v3_run_only_cache_identity_distinguishes_patterns() {

@@ -8407,7 +8407,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
-		if parallel_cc && v3_parallel_cc_sources_include_external_definition(user_files) {
+		if parallel_cc && v3_parallel_cc_active_sources_include_external_definition(a, user_files) {
 			eprintln('failed to link after parallel C compilation')
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
@@ -8784,29 +8784,41 @@ fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
 	return false
 }
 
-fn v3_parallel_cc_sources_include_external_definition(source_files []string) bool {
-	for source_path in source_files {
-		source := os.read_file(source_path) or { continue }
-		for line in source.split_into_lines() {
-			clean := line.trim_space()
-			if !clean.starts_with('#include "') {
+fn v3_parallel_cc_active_sources_include_external_definition(a &flat.FlatAst, source_files []string) bool {
+	mut selected_files := map[string]bool{}
+	for file in source_files {
+		selected_files[os.real_path(file)] = true
+	}
+	mut current_file := ''
+	mut selected := false
+	// Checker/transform pruning replaces directives from inactive `$if` branches with empty
+	// nodes, so this stream matches the target selected for generated C.
+	for node in a.nodes {
+		if node.kind == .file {
+			current_file = node.value
+			selected = os.real_path(current_file) in selected_files
+			continue
+		}
+		if !selected || node.kind != .directive || node.value != 'include' {
+			continue
+		}
+		raw_target, _ := checker_fixture_include_target_message(node.typ)
+		if !raw_target.starts_with('"') {
+			continue
+		}
+		rest := raw_target[1..]
+		end := rest.index('"') or { continue }
+		header_path := rest[..end].replace('@DIR', os.dir(current_file))
+		header := os.read_file(header_path) or { continue }
+		for header_line in header.split_into_lines() {
+			declaration := header_line.trim_space()
+			if declaration.len == 0 || declaration.starts_with('#')
+				|| declaration.starts_with('static ') || declaration.starts_with('inline ')
+				|| declaration.starts_with('typedef ') {
 				continue
 			}
-			rest := clean['#include "'.len..]
-			end := rest.index('"') or { continue }
-			header_path := rest[..end].replace('@DIR', os.dir(source_path))
-			header := os.read_file(header_path) or { continue }
-			for header_line in header.split_into_lines() {
-				declaration := header_line.trim_space()
-				if declaration.len == 0 || declaration.starts_with('#')
-					|| declaration.starts_with('static ') || declaration.starts_with('inline ')
-					|| declaration.starts_with('typedef ') {
-					continue
-				}
-				if declaration.contains('(') && declaration.contains(')')
-					&& declaration.contains('{') {
-					return true
-				}
+			if declaration.contains('(') && declaration.contains(')') && declaration.contains('{') {
+				return true
 			}
 		}
 	}

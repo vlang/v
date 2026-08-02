@@ -284,6 +284,52 @@ fn test_macos_v3_show_c_output_prints_successful_compiler_output() {
 	}
 }
 
+fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_parallel_cc_inactive_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		os.write_file(os.join_path(root, 'windows_impl.h'),
+			'int windows_impl(void) { return 1; }\n')!
+		os.write_file(source, '
+$if windows {
+	#include "@DIR/windows_impl.h"
+}
+
+fn main() {
+	println("active target")
+}
+')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-v', '-gc', 'none', '-parallel-cc', '-nocache', '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
+		assert !compiler_output.contains('failed to link after parallel C compilation'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'active target'
+	}
+}
+
 fn test_macos_v3_forwards_compatibility_c99_mode() {
 	$if macos {
 		mut prefs := &pref.Preferences{}
