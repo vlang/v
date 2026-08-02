@@ -373,6 +373,28 @@ fn test_ack_frame_rejects_range_count_that_cannot_fit_in_buffer() {
 	assert false, 'expected an oversized ack_range_count to be rejected'
 }
 
+fn test_encode_ack_frame_rejects_endpoint_exceeding_varint_max() {
+	// RFC 9000 §12.3: packet numbers are bounded to 2^62-1 -- an endpoint
+	// near max_u64 must be rejected outright, not fed into the
+	// separation-check arithmetic (which silently wraps at that magnitude
+	// and can accept a self-contradictory ordering as if it were valid).
+	bad_ranges := [
+		AckRange{
+			smallest: 100
+			largest:  200
+		},
+		AckRange{
+			smallest: max_u64 - 1
+			largest:  max_u64 - 1
+		},
+	]
+	encode_ack_frame(bad_ranges, 0, none) or {
+		assert err.msg().contains('2^62')
+		return
+	}
+	assert false, 'expected an endpoint exceeding the varint max to be rejected'
+}
+
 fn test_scaled_ack_delay_micros() {
 	assert scaled_ack_delay_micros(5, 3) == 40
 	assert scaled_ack_delay_micros(0, default_ack_delay_exponent) == 0

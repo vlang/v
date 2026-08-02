@@ -328,6 +328,16 @@ pub fn encode_ack_frame(ranges []AckRange, ack_delay u64, ecn_counts ?EcnCounts)
 		return error('quic: encode_ack_frame: at least one range is required')
 	}
 	for i, r in ranges {
+		// RFC 9000 §12.3: packet numbers are bounded to 0..2^62-1. Checking
+		// this BEFORE the separation-check arithmetic below matters: that
+		// arithmetic (`largest + 2`, `smallest - largest - 2`) silently
+		// wraps in u64 when an endpoint sits near max_u64, which can turn a
+		// self-contradictory range ordering into what looks like a valid,
+		// small encoded gap -- an out-of-range endpoint must be rejected
+		// outright, not fed into arithmetic that can wrap around it.
+		if r.largest > max_varint || r.smallest > max_varint {
+			return error('quic: encode_ack_frame: ranges[${i}] has an endpoint exceeding the 2^62-1 packet-number limit (RFC 9000 §12.3)')
+		}
 		if r.largest < r.smallest {
 			return error('quic: encode_ack_frame: ranges[${i}] has largest (${r.largest}) < smallest (${r.smallest})')
 		}

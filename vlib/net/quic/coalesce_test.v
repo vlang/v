@@ -162,6 +162,40 @@ fn test_split_coalesced_datagram_rejects_version_negotiation_after_another_packe
 	assert false, 'expected a VN packet following another packet to be rejected'
 }
 
+fn test_split_coalesced_datagram_rejects_retry_after_another_packet() {
+	// RFC 9000 §12.2's coalescing prohibition covers Retry AND VN
+	// symmetrically -- a real (small) Initial packet followed by
+	// Retry-shaped bytes cannot come from a compliant sender either.
+	h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    []u8{len: 8}
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  2
+	}
+	mut buf := encode_long_header(h, 0, 0)!
+	buf << [u8(0x00), 0x00]
+
+	retry_h := QuicLongHeader{
+		typ:     .retry
+		version: quic_v1
+		dcid:    []u8{len: 8}
+		scid:    []u8{len: 8}
+		token:   []u8{}
+	}
+	mut retry_buf := encode_long_header(retry_h, 0, 0)!
+	retry_buf << 'sometoken'.bytes()
+	retry_buf << []u8{len: 16} // fake integrity tag, irrelevant to this check
+	buf << retry_buf
+
+	split_coalesced_datagram(buf) or {
+		assert err.msg().contains('coalesced after another packet')
+		return
+	}
+	assert false, 'expected a Retry packet following another packet to be rejected'
+}
+
 fn test_pad_initial_payload_pads_to_minimum() {
 	payload := []u8{len: 50, init: 0x42}
 	padded := pad_initial_payload(payload, 20, 16) // header(20) + payload(50) + tag(16) = 86

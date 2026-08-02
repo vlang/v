@@ -514,10 +514,15 @@ The largest, highest-risk phase. Sub-phases, in build order:
       Tracking "at most one Retry per connection attempt" (RFC 9000
       §17.2.5.2) is documented as Phase 9 `QuicConn` state, since this
       module is a stateless verification primitive.
-- [x] `version_negotiation.v` — a VN packet listing v1 itself is a hard
-      PROTOCOL_VIOLATION (RFC 9000 §6.2), not a retry trigger; a VN packet
+- [x] `version_negotiation.v` — a VN packet listing v1 itself MUST be
+      silently discarded (RFC 9000 §6.2), not treated as a protocol
+      violation: the connection attempt continues unchanged. A VN packet
       without v1 fails the connection attempt cleanly, since this client
-      implements only v1 with no lower-version fallback.
+      implements only v1 with no lower-version fallback. Before either
+      check runs, the VN packet's DCID must echo the client's own original
+      SCID (RFC 9000 §17.2.1); a mismatch is discarded as unauthenticated/
+      spoofed rather than treated as a genuine response to this client's
+      Initial packet, mirroring `retry.v`'s analogous anti-spoof CID check.
 - [x] Integration test (`initial_exchange_test.v`): a full simulated
       Initial round trip tying Phases 2+3+4 together — a real ClientHello
       (Phase 2), real CRYPTO framing, real packet+header protection (Phase

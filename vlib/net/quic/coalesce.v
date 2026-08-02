@@ -107,6 +107,15 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 
 		typ := peek_long_header_type(remaining[0])!
 		if typ == .retry {
+			// RFC 9000 §12.2: "there is no situation where a Retry or
+			// Version Negotiation packet is coalesced with another
+			// packet." Same failure-closed treatment as the VN check above
+			// -- a Retry-shaped candidate appearing after this loop has
+			// already collected an earlier real packet cannot be a genuine
+			// Retry from a compliant sender.
+			if offset != 0 {
+				return error('quic: Retry packet cannot be coalesced after another packet (datagram offset ${offset}), per RFC 9000 §12.2')
+			}
 			// Retry: also no Length field, also always consumes the rest
 			// (RFC 9000 §17.2.5) -- the Retry Token has no explicit length
 			// prefix; its extent is implicitly "everything except the

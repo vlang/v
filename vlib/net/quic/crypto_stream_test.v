@@ -37,19 +37,43 @@ fn test_crypto_stream_reassembler_rejects_mismatched_overlap() {
 }
 
 fn test_crypto_stream_reassembler_rejects_mismatch_between_two_pending_fragments() {
-	// Neither fragment has touched r.received yet when both are added (both
-	// offsets are past the current gap) -- the mismatch between them can
-	// only be discovered once the gap closes and they get promoted, in
-	// sequence, through the same validated-append path.
+	// Both fragments are still out-of-order (the offset-0 gap stays open)
+	// when the second is added -- merge_or_add_pending validates overlap
+	// against every existing pending fragment immediately, so the mismatch
+	// is caught right at the second add call, not deferred to promotion.
 	mut r := new_crypto_stream_reassembler()
 	r.add(10, 'AAAA'.bytes())! // covers stream bytes [10,14)
-	r.add(12, 'BBBB'.bytes())! // covers stream bytes [12,16), disagreeing with the
-	// first fragment on the shared [12,14) span ('AA' vs 'BB')
-	r.add(0, '0123456789'.bytes()) or {
+	r.add(12, 'BBBB'.bytes()) or {
+		// covers [12,16), disagreeing with the first fragment on the
+		// shared [12,14) span ('AA' vs 'BB')
 		assert err.msg().contains('retransmission mismatch')
 		return
 	}
-	assert false, 'expected the pending-fragment mismatch to be rejected once promoted'
+	assert false, 'expected the pending-fragment mismatch to be rejected at merge time'
+}
+
+fn test_crypto_stream_reassembler_merges_partially_overlapping_pending_fragments() {
+	// RFC 9000 never requires a sender to retransmit CRYPTO data with
+	// byte-identical frame boundaries -- a retransmission shifted by even
+	// one byte from a previous attempt is ordinary loss-recovery behavior,
+	// not an attack, and must not be treated as a brand new distinct
+	// fragment every time (that would exhaust
+	// max_crypto_stream_pending_fragments on legitimate traffic alone).
+	mut r := new_crypto_stream_reassembler()
+	count := max_crypto_stream_pending_fragments + 10
+	for i in 0 .. count {
+		// fragment i covers [100+i, 200+i) -- heavily overlapping its
+		// immediate predecessor, never identical, never fully containing
+		// or contained by it.
+		r.add(u64(100 + i), []u8{len: 100, init: 0x41})!
+	}
+	assert r.pending.len == 1 // all merged into one entry, never hit the cap
+	assert r.consumed_len() == 0 // gap before offset 100 still open
+
+	r.add(0, []u8{len: 100})! // close the gap
+	// merged pending range is [100, 200+count-1) -- union of every
+	// fragment's span -- plus the 100 bytes explicitly added at offset 0.
+	assert r.data().len == 100 + (200 + count - 1 - 100)
 }
 
 fn test_crypto_stream_reassembler_rejects_data_beyond_buffering_limit() {

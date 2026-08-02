@@ -106,56 +106,89 @@ pub fn (mut r CryptoStreamReassembler) add(offset u64, data []u8) ! {
 
 	if offset <= u64(r.received.len) {
 		r.append_or_validate(offset, data)!
-	} else if !r.pending_fully_covers(offset, data)! {
-		// max_crypto_stream_buffered_bytes bounds the OFFSET range a
-		// fragment may claim, but says nothing about how many DISTINCT
-		// out-of-order fragments can accumulate within that range -- a
-		// peer sending many tiny, non-overlapping fragments could
-		// otherwise inflate r.pending's entry count (and per-entry
-		// overhead) far beyond anything a real lossy/reordering network
-		// would produce for one handshake's CRYPTO stream. Reordering
-		// across dozens of packets is already generous headroom; this
-		// caps it well short of "attacker-chosen number of allocations".
-		// The pending_fully_covers check above keeps ORDINARY
-		// retransmission of an already-buffered fragment (a lost ACK, not
-		// an attack) from ever counting against this cap in the first
-		// place.
-		if r.pending.len >= max_crypto_stream_pending_fragments {
-			return error('quic: CRYPTO stream has too many out-of-order fragments buffered (limit ${max_crypto_stream_pending_fragments})')
-		}
-		r.pending << CryptoFragment{
-			offset: offset
-			data:   data.clone()
-		}
+	} else {
+		r.merge_or_add_pending(offset, data)!
 	}
 	r.promote_ready()!
 }
 
-// pending_fully_covers reports whether an existing entry in r.pending
-// already spans (offset, data) in full, having first verified (like
-// append_or_validate) that the overlapping bytes agree byte-for-byte --
-// a real retransmission of the same handshake bytes always will; a
-// genuine RFC 9000 §19.6 violation (different bytes at the same offset)
-// must still be rejected, not silently treated as "already covered".
-// Ordinary QUIC loss recovery retransmits an UNPROMOTED out-of-order
-// CRYPTO range verbatim (same offset, same length) while its gap remains
-// open; without this check, `add` would append a fresh CryptoFragment for
-// every such retransmission and could exhaust
-// max_crypto_stream_pending_fragments on harmless duplicates alone.
-fn (r &CryptoStreamReassembler) pending_fully_covers(offset u64, data []u8) !bool {
-	end := offset + u64(data.len)
-	for frag in r.pending {
+// merge_or_add_pending merges (offset, data) into every existing r.pending
+// entry it overlaps OR touches (shares a byte, or leaves no gap between
+// them), validating that any shared bytes agree byte-for-byte -- exactly
+// like append_or_validate does for the received-vs-new-data case -- then
+// replaces the consumed entries with one fragment spanning their union.
+//
+// This is what keeps ORDINARY retransmission of an out-of-order CRYPTO
+// range from exhausting max_crypto_stream_pending_fragments: RFC 9000 never
+// requires a sender to retransmit CRYPTO data with byte-identical frame
+// boundaries, so a peer resending the same underlying bytes with a
+// one-byte-earlier offset each time (a completely ordinary shape under loss
+// recovery, not an attack) must be recognized as the SAME logical range,
+// not a fresh distinct fragment every time. Full-containment duplicates
+// (this function's predecessor, pending_fully_covers, only handled that one
+// shape) are just the special case where the union equals an existing
+// entry unchanged.
+//
+// A genuinely disjoint (non-overlapping, non-touching) fragment still adds
+// a new pending entry and is still subject to
+// max_crypto_stream_pending_fragments -- checked BEFORE any mutation, so a
+// rejected fragment never leaves r.pending in a partially-mutated state.
+fn (mut r CryptoStreamReassembler) merge_or_add_pending(offset u64, data []u8) ! {
+	mut merged_offset := offset
+	mut merged_end := offset + u64(data.len)
+	mut merged_data := data.clone()
+	mut consumed := []int{}
+
+	for i, frag in r.pending {
 		frag_end := frag.offset + u64(frag.data.len)
-		if offset < frag.offset || end > frag_end {
+		touches := frag.offset <= merged_end && frag_end >= merged_offset
+		if !touches {
 			continue
 		}
-		rel := offset - frag.offset
-		if frag.data[rel..rel + u64(data.len)] != data {
-			return error('quic: CRYPTO stream retransmission mismatch at offset ${offset}: disagrees with an already-pending out-of-order fragment')
+		overlap_start := if frag.offset > merged_offset { frag.offset } else { merged_offset }
+		overlap_end := if frag_end < merged_end { frag_end } else { merged_end }
+		if overlap_end > overlap_start {
+			a := unsafe { merged_data[overlap_start - merged_offset..overlap_end - merged_offset] }
+			b := unsafe { frag.data[overlap_start - frag.offset..overlap_end - frag.offset] }
+			if a != b {
+				return error('quic: CRYPTO stream retransmission mismatch at offset ${overlap_start}: disagrees with an already-pending out-of-order fragment')
+			}
 		}
-		return true
+		if frag.offset < merged_offset {
+			mut new_data := frag.data[..merged_offset - frag.offset].clone()
+			new_data << merged_data
+			merged_data = new_data.clone()
+			merged_offset = frag.offset
+		}
+		if frag_end > merged_end {
+			merged_data << frag.data[merged_end - frag.offset..]
+			merged_end = frag_end
+		}
+		consumed << i
 	}
-	return false
+
+	// max_crypto_stream_buffered_bytes bounds the OFFSET range a fragment
+	// may claim, but says nothing about how many DISTINCT out-of-order
+	// fragments can accumulate within that range -- a peer sending many
+	// tiny, genuinely disjoint fragments could otherwise inflate
+	// r.pending's entry count far beyond anything a real lossy/reordering
+	// network would produce. Only a genuinely disjoint fragment (consumed
+	// is empty -- it merged with nothing) can grow r.pending's count, so
+	// only that case is checked against the cap; a merge always keeps the
+	// count the same or reduces it.
+	if consumed.len == 0 && r.pending.len >= max_crypto_stream_pending_fragments {
+		return error('quic: CRYPTO stream has too many out-of-order fragments buffered (limit ${max_crypto_stream_pending_fragments})')
+	}
+
+	// Delete consumed entries in reverse index order so an earlier delete
+	// never shifts the index of one still to be removed.
+	for i := consumed.len - 1; i >= 0; i-- {
+		r.pending.delete(consumed[i])
+	}
+	r.pending << CryptoFragment{
+		offset: merged_offset
+		data:   merged_data
+	}
 }
 
 // promote_ready repeatedly scans r.pending for any fragment whose offset
