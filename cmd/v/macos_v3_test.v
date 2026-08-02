@@ -76,6 +76,15 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.json_errors = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.json_errors = false
+		prefs.no_preludes = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.no_preludes = false
+		prefs.skip_warnings = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.skip_warnings = false
+		prefs.print_watched_files = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.print_watched_files = false
 		prefs.is_run = true
 		prefs.autofree = true
 		assert !is_macos_v3_relevant_command('run', prefs)
@@ -188,6 +197,35 @@ fn test_autofree_non_direct_commands_stay_on_the_standard_command_path() {
 	prefs.autofree = false
 	prefs.is_run = false
 	assert is_ownership_relevant_command('app.v', prefs)
+}
+
+fn test_macos_v3_manualfree_overrides_vflags_autofree() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_manualfree_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		os.write_file(source,
+			"\$if autofree {\n\t\$compile_error('autofree remained enabled')\n}\n\nfn main() {}\n")!
+		mut environment := os.environ()
+		environment['VFLAGS'] = '-autofree'
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-manualfree', '-gc', 'none', '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert os.is_executable(output)
+	}
 }
 
 fn test_macos_v3_child_environment_forwards_compiler_hashes() {

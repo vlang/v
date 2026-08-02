@@ -5552,8 +5552,11 @@ pub fn run(args []string) {
 		} else if args[i] == '-check-overflow' {
 			check_overflow = true
 			i++
-		} else if args[i] in ['-apk', '-cross', '-manualfree', '-experimental', '-show-c-output',
-			'-nocolor'] {
+		} else if args[i] == '-manualfree' {
+			ownership_mode = false
+			user_defines = user_defines.filter(it.all_before('=').trim_space() != 'autofree')
+			i++
+		} else if args[i] in ['-apk', '-cross', '-experimental', '-show-c-output', '-nocolor'] {
 			// Accepted V1 compatibility switches. V3 always emits direct C,
 			// applies ownership cleanup, and forwards C failures.
 			i++
