@@ -14838,38 +14838,71 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
 	}
-	// Materialize a value `match`/`if` method receiver before builtin/method dispatch, so
-	// builtin lowerings (e.g. `(match node { ... }).clone()` -> make_array_clone_call, which
-	// lowers the receiver with plain `transform_expr`) receive a plain value temp rather than
+	// Materialize value `match`/`if` method receivers and arguments before builtin/method
+	// dispatch, so builtin lowerings (e.g. `(match ...).clone()` -> make_array_clone_call, or
+	// `values.index(match ...)` -> lower_array_index_expr, which lower the receiver/needle with
+	// plain `transform_expr` / `stable_expr_for_reuse`) receive plain value temps rather than
 	// lowering the propagating arm tail in a value-less statement context. Rebuild the
-	// selector/call over the materialized receiver and re-dispatch; a no-op for the common
-	// non-branch receivers.
+	// selector/call over the materialized operands and re-dispatch; a no-op for the common
+	// non-branch receivers/arguments.
 	if node.children_count > 0 {
 		recv_fn_id := t.a.children[node.children_start]
 		recv_fn := t.a.nodes[int(recv_fn_id)]
 		if recv_fn.kind == .selector && recv_fn.children_count > 0 {
 			recv_id := t.a.children[recv_fn.children_start]
-			if t.is_value_match_or_if_operand(recv_id) {
-				new_recv := t.transform_value_operand(recv_id)
-				if new_recv != recv_id {
-					sel_start := t.a.children.len
-					t.a.children << new_recv
-					for i in 1 .. recv_fn.children_count {
-						t.a.children << t.a.child(&recv_fn, i)
+			recv_is_branch := t.is_value_match_or_if_operand(recv_id)
+			mut has_branch_arg := false
+			for i in 1 .. node.children_count {
+				if t.is_value_match_or_if_operand(t.a.child(&node, i)) {
+					has_branch_arg = true
+					break
+				}
+			}
+			if recv_is_branch || has_branch_arg {
+				// Evaluate the receiver before the arguments (source order), so their
+				// materialization preludes are queued in order.
+				mut changed := false
+				new_recv := if recv_is_branch {
+					r := t.transform_value_operand(recv_id)
+					if r != recv_id {
+						changed = true
 					}
-					new_fn_id := t.a.add_node(flat.Node{
-						kind:           .selector
-						op:             recv_fn.op
-						value:          recv_fn.value
-						typ:            recv_fn.typ
-						children_start: sel_start
-						children_count: recv_fn.children_count
-						pos:            recv_fn.pos
-					})
+					r
+				} else {
+					recv_id
+				}
+				sel_start := t.a.children.len
+				t.a.children << new_recv
+				for i in 1 .. recv_fn.children_count {
+					t.a.children << t.a.child(&recv_fn, i)
+				}
+				new_fn_id := t.a.add_node(flat.Node{
+					kind:           .selector
+					op:             recv_fn.op
+					value:          recv_fn.value
+					typ:            recv_fn.typ
+					children_start: sel_start
+					children_count: recv_fn.children_count
+					pos:            recv_fn.pos
+				})
+				mut new_args := []flat.NodeId{cap: int(node.children_count)}
+				for i in 1 .. node.children_count {
+					arg_id := t.a.child(&node, i)
+					if t.is_value_match_or_if_operand(arg_id) {
+						na := t.transform_value_operand(arg_id)
+						if na != arg_id {
+							changed = true
+						}
+						new_args << na
+					} else {
+						new_args << arg_id
+					}
+				}
+				if changed {
 					call_start := t.a.children.len
 					t.a.children << new_fn_id
-					for i in 1 .. node.children_count {
-						t.a.children << t.a.child(&node, i)
+					for a in new_args {
+						t.a.children << a
 					}
 					new_call_id := t.a.add_node(flat.Node{
 						kind:           .call
