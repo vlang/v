@@ -1637,20 +1637,53 @@ fn default_bin_file_for_input(input_file string) string {
 		real_input := os.real_path(input_file)
 		return os.join_path_single(real_input, os.base(real_input))
 	}
-	if input_file.ends_with('.vv') {
-		return input_file.all_before_last('.vv')
+	if !input_file.ends_with('.v') && !input_file.ends_with('.vv') && !input_file.ends_with('.vsh') {
+		return input_file
 	}
-	if input_file.ends_with('.vsh') {
-		return input_file.all_before_last('.vsh')
+	filename := os.file_name(input_file).trim_space()
+	mut base := filename.all_before_last('.')
+	if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+		base = base.all_before_last('.')
 	}
-	if input_file.ends_with('.v') {
-		mut base := input_file.all_before_last('.v')
-		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
-			base = base.all_before_last('.')
+	if base == '' {
+		base = filename
+	}
+	if default_bin_file_needs_safe_name(base, filename) {
+		base = safe_default_bin_file_name(filename)
+	}
+	input_dir := os.dir(input_file)
+	return if input_dir in ['', '.'] { base } else { os.join_path_single(input_dir, base) }
+}
+
+fn default_bin_file_needs_safe_name(base string, filename string) bool {
+	if base == '' || base in ['.', '..', '-'] {
+		return true
+	}
+	if base == filename && filename.starts_with('.') {
+		return true
+	}
+	if base.ends_with('.c') || base.ends_with('.js') || base.ends_with('.wasm') {
+		return true
+	}
+	for ch in base {
+		if ch < ` ` || ch == 127 {
+			return true
 		}
-		return base
 	}
-	return input_file
+	return false
+}
+
+fn safe_default_bin_file_name(filename string) string {
+	mut sanitized := strings.new_builder(filename.len + 4)
+	for ch in filename {
+		if ch < ` ` || ch == 127 {
+			sanitized.write_u8(`_`)
+		} else {
+			sanitized.write_u8(ch)
+		}
+	}
+	sanitized.write_string('.out')
+	return sanitized.str()
 }
 
 fn input_imports_linux_gg(input_file string) bool {

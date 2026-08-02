@@ -211,6 +211,23 @@ fn test_macos_v3_forwards_environment_driven_skip_running() {
 	}
 }
 
+fn test_macos_v3_normalizes_legacy_x86_arch_alias() {
+	$if macos {
+		mut prefs := &pref.Preferences{
+			arch: .amd64
+		}
+		prefs.build_options << '-arch x86'
+		forwarded := macos_v3_forwarded_args(prefs, ['-arch', 'x86', 'main.v'])
+		arch_index := forwarded.index('-arch')
+		assert arch_index >= 0
+		assert forwarded[arch_index + 1] == 'amd64'
+
+		prefs.build_options.clear()
+		program_args := macos_v3_forwarded_args(prefs, ['run', 'main.v', '-arch', 'x86'])
+		assert program_args.last() == 'x86'
+	}
+}
+
 fn test_macos_v3_forwards_showcc_with_quiet_benchmarks() {
 	$if macos {
 		prefs := &pref.Preferences{

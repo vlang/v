@@ -12,6 +12,15 @@ fn test_default_bin_file_strips_backend_source_extension() {
 	assert default_bin_file_for_input('foo.v') == 'foo'
 }
 
+fn test_default_bin_file_uses_safe_hidden_source_name() {
+	assert default_bin_file_for_input('.v') == '.v.out'
+	assert default_bin_file_for_input('.vv') == '.vv.out'
+	assert default_bin_file_for_input('.vsh') == '.vsh.out'
+	assert default_bin_file_for_input(os.join_path('source', '.v')) == os.join_path('source',
+		'.v.out')
+	assert default_bin_file_for_input('unsafe\t.v') == 'unsafe_.v.out'
+}
+
 fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
 	path := os.join_path(os.temp_dir(), 'v3_implicit_import_${name}_${os.getpid()}.v')
 	os.write_file(path, source) or { panic(err) }
