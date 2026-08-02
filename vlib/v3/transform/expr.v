@@ -1875,11 +1875,20 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 	if rhs.kind == .range {
 		// x in low..high  ->  x >= low && x < high
 		if rhs.children_count >= 2 {
-			new_lhs := t.stable_expr_for_reuse(lhs_id)
+			// Route value `match`/`if` operands (the tested value and the range bounds)
+			// through value lowering so a propagating branch tail is materialized as a
+			// value instead of in a value-less statement context, e.g.
+			// `x in (match node { ... lower(node)! ... }) .. 10`. `transform_value_operand`
+			// is a no-op for the common non-branch operands.
+			new_lhs := if t.is_value_match_or_if_operand(lhs_id) {
+				t.transform_value_operand(lhs_id)
+			} else {
+				t.stable_expr_for_reuse(lhs_id)
+			}
 			low_id := t.a.children[rhs.children_start]
 			high_id := t.a.children[rhs.children_start + 1]
-			new_low := t.transform_expr(low_id)
-			new_high := t.transform_expr(high_id)
+			new_low := t.transform_value_operand(low_id)
+			new_high := t.transform_value_operand(high_id)
 
 			ge_cmp := t.make_infix(.ge, new_lhs, new_low)
 			lt_cmp := t.make_infix(.lt, new_lhs, new_high)

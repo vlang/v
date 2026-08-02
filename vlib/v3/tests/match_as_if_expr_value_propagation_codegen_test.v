@@ -472,6 +472,28 @@ fn select_value_gated_index_order(node Node) !int {
 	return val * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+// A propagating value match as the low bound of a `for in` range loop: the bound
+// must be lowered as a value. First -> low 1, sum of 1..4 = 6.
+fn select_value_range_low(node Node) !int {
+	mut sum := 0
+	for i in (match node {
+		First { lower_first(node)! }
+		Second { lower_second(node)! }
+	}) .. 4 {
+		sum += i
+	}
+	return sum
+}
+
+// A propagating value match as the low bound of an `x in low..high` membership
+// test. First -> low 1, so `3 in 1..4` is true.
+fn select_value_range_membership(node Node) !bool {
+	return 3 in (match node {
+		First { lower_first(node)! }
+		Second { lower_second(node)! }
+	}) .. 4
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -518,6 +540,8 @@ fn main() {
 	println(select_value_shift_order(First{})!)
 	println(select_value_index_order(First{})!)
 	println(select_value_gated_index_order(First{})!)
+	println(select_value_range_low(First{})!)
+	println(select_value_range_membership(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -531,5 +555,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n1'
 }

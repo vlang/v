@@ -800,8 +800,22 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 		return arr1(id)
 	}
 	range_type := t.range_loop_var_type_name(low_id)
-	low := t.stable_expr_for_reuse(low_id)
-	high := t.stable_expr_for_reuse(high_id)
+	// Route value `match`/`if` range bounds through value lowering (e.g.
+	// `for i in (match node { First { lower_first(node)! } ... }) .. 10`); otherwise a
+	// propagating branch tail is lowered in a value-less statement context and emits an
+	// empty expression. `transform_value_operand` materializes such a bound into a value
+	// temp (stable for reuse in the loop condition); non-branch bounds keep
+	// `stable_expr_for_reuse`. The low bound is evaluated before the high bound.
+	low := if t.is_value_match_or_if_operand(low_id) {
+		t.transform_value_operand(low_id)
+	} else {
+		t.stable_expr_for_reuse(low_id)
+	}
+	high := if t.is_value_match_or_if_operand(high_id) {
+		t.transform_value_operand(high_id)
+	} else {
+		t.stable_expr_for_reuse(high_id)
+	}
 	loop_name := if key.value == '_' { '__discard_${int(key_id)}' } else { key.value }
 	t.set_var_type(loop_name, range_type)
 	mut prefix := []flat.NodeId{}
