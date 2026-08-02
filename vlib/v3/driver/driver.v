@@ -5642,6 +5642,7 @@ pub fn run(args []string) {
 		} else if args[i] == '-check' {
 			check_only = true
 			skip_running = true
+			no_cache = true
 			i++
 		} else if args[i] == '-stats' {
 			show_test_stats = true
@@ -6125,6 +6126,8 @@ pub fn run(args []string) {
 		'module_search_paths=${prefs.module_search_paths.join(',')}',
 		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
 		'ownership=${ownership_mode}',
+		'translated=${translated_mode}',
+		'enable_globals=${enable_globals_compat}',
 		'check_overflow=${check_overflow}',
 		'force_bounds_checking=${prefs.force_bounds_checking}',
 		'warns_are_errors=${effective_warns_are_errors}',

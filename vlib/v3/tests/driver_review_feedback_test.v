@@ -269,3 +269,53 @@ fn main() {
 	assert notice_error.output.contains('error:'), notice_error.output
 	assert notice_error.output.contains('unused function'), notice_error.output
 }
+
+fn test_driver_cache_separates_check_and_semantic_modes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cache_review_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_review_v3(root)
+	environment := driver_review_environment()
+
+	check_source := os.join_path(root, 'check_only.v')
+	check_output := os.join_path(root, 'check_only')
+	os.write_file(check_source, "fn main() {\n\tprintln('cached')\n}\n")!
+	warm_check_cache := run_driver_review_process(v3_bin, ['-silent', '-o', check_output,
+		check_source], environment)
+	assert warm_check_cache.exit_code == 0, warm_check_cache.output
+	os.write_file(check_output, 'check-only-sentinel')!
+	check_only := run_driver_review_process(v3_bin, ['-silent', '-check', '-o', check_output,
+		check_source], environment)
+	assert check_only.exit_code == 0, check_only.output
+	assert os.read_file(check_output)! == 'check-only-sentinel'
+
+	globals_source := os.join_path(root, 'globals.v')
+	globals_output := os.join_path(root, 'globals')
+	os.write_file(globals_source,
+		'module main\n\n__global cached_global int\n\nfn main() {\n\tcached_global = 42\n\tprintln(cached_global)\n}\n')!
+	uncached_strict_globals := run_driver_review_process(v3_bin, ['-silent', '-no-parallel',
+		'-nocache', '-o', globals_output, globals_source], environment)
+	assert uncached_strict_globals.exit_code != 0, uncached_strict_globals.output
+	warm_globals_cache := run_driver_review_process(v3_bin, ['-silent', '-no-parallel',
+		'-enable-globals', '-o', globals_output, globals_source], environment)
+	assert warm_globals_cache.exit_code == 0, warm_globals_cache.output
+	strict_globals := run_driver_review_process(v3_bin, ['-silent', '-no-parallel', '-o',
+		globals_output, globals_source], environment)
+	assert strict_globals.exit_code != 0, strict_globals.output
+	assert strict_globals.output.contains('use `v -enable-globals ...` to enable globals'), strict_globals.output
+
+	translated_source := os.join_path(root, 'translated.v')
+	translated_output := os.join_path(root, 'translated')
+	os.write_file(translated_source,
+		'module main\n\nfn next() int {\n\tmut static value := 0\n\tvalue++\n\treturn value\n}\n\nfn main() {\n\tprintln(next())\n}\n')!
+	warm_translated_cache := run_driver_review_process(v3_bin, ['-silent', '-translated', '-o',
+		translated_output, translated_source], environment)
+	assert warm_translated_cache.exit_code == 0, warm_translated_cache.output
+	strict_translated := run_driver_review_process(v3_bin, ['-silent', '-o', translated_output,
+		translated_source], environment)
+	assert strict_translated.exit_code != 0, strict_translated.output
+	assert strict_translated.output.contains('static variables are supported only in -translated mode'), strict_translated.output
+}
