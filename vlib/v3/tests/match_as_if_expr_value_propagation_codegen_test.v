@@ -449,6 +449,19 @@ fn select_value_index_order(node Node) !int {
 	return val * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+// Index ordering with a *nested* branch: the match is buried inside a compound index
+// (`base[1 + (match ...)]`), whose infix lowering still hoists the match prelude. The
+// side-effecting base must run before that prelude. First -> base_values()[1 + 0] = 20,
+// order [1,2] -> 2012 (a reversed order would be 2021).
+fn select_value_nested_index_order(node Node) !int {
+	mut tr := Tracer{}
+	val := tr.base_values()[1 + (match node {
+		First { tr.idx_first(node)! }
+		Second { tr.idx_second(node)! }
+	})]
+	return val * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 fn (mut tr Tracer) gated_first(_ First) !int {
 	tr.order << 2
 	return -1
@@ -623,6 +636,24 @@ fn select_value_append_order(node Node) !int {
 	mut tr := Tracer{}
 	mut arrays := [[]int{}, []int{}]
 	arrays[tr.next_index()] << (match node {
+		First { tr.append_val_first(node)! }
+		Second { tr.append_val_second(node)! }
+	})
+	return arrays[0][0] * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
+fn wrap_append(x int) int {
+	return x + 1
+}
+
+// Array-append ordering with a *nested* RHS branch: the match is wrapped inside a call
+// (`arrays[i] << wrap_append(match ...)`), which still hoists the match prelude. The
+// side-effecting LHS index must run before that prelude while the array is not spilled.
+// First -> arrays[0] << 8, order [1,2] -> 812 (a reversed order would be 821).
+fn select_value_nested_append_order(node Node) !int {
+	mut tr := Tracer{}
+	mut arrays := [[]int{}, []int{}]
+	arrays[tr.next_index()] << wrap_append(match node {
 		First { tr.append_val_first(node)! }
 		Second { tr.append_val_second(node)! }
 	})
@@ -1020,6 +1051,24 @@ fn select_value_array_init_cap_order(node Node) !int {
 	return arr.len * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+fn (mut tr Tracer) tlen2() int {
+	tr.order << 1
+	return 3
+}
+
+// Array initializer field ordering with a *nested* cap branch: the match is buried inside a
+// compound cap (`cap: 1 + (match ...)`), which still hoists the prelude ahead of the
+// allocation call. A side-effecting len must still run before it. First -> len 3, order
+// [1,2] -> 312 (a reversed order would be 321).
+fn select_value_nested_cap_order(node Node) !int {
+	mut tr := Tracer{}
+	arr := []int{len: tr.tlen2(), cap: 1 + (match node {
+		First { tr.tcap_first(node)! }
+		Second { tr.tcap_second(node)! }
+	})}
+	return arr.len * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -1065,6 +1114,7 @@ fn main() {
 	println(select_value_infix_order(First{})!)
 	println(select_value_shift_order(First{})!)
 	println(select_value_index_order(First{})!)
+	println(select_value_nested_index_order(First{})!)
 	println(select_value_gated_index_order(First{})!)
 	println(select_value_range_low(First{})!)
 	println(select_value_range_membership(First{})!)
@@ -1074,6 +1124,7 @@ fn main() {
 	println(select_value_map_index(First{})!)
 	println(select_value_string_membership_order(First{})!)
 	println(select_value_append_order(First{})!)
+	println(select_value_nested_append_order(First{})!)
 	println(select_value_const_membership(First{})!)
 	println(select_value_map_membership_order(First{})!)
 	println(select_value_push_many(First{})!)
@@ -1089,6 +1140,7 @@ fn main() {
 	println(select_value_array_init(First{})!)
 	println(select_value_nonmut_arg_value(First{})!)
 	println(select_value_array_init_cap_order(First{})!)
+	println(select_value_nested_cap_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -1102,5 +1154,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n3512\n7612\n4004\n507\n212\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n2012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
 }

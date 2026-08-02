@@ -388,15 +388,16 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	mut cap_expr := t.make_int_literal(0)
 	mut init_expr := flat.empty_node
 	mut init_expr_id := flat.empty_node
-	// Source (child) position of the last `len`/`cap` field whose value is a value branch,
-	// so an earlier side-effecting `len`/`cap` field can be stabilized before that field
-	// hoists its materialization prelude, preserving field evaluation order (both are
-	// evaluated into `new_call` below; `init` is per-element in the loop body).
+	// Source (child) position of the last `len`/`cap` field whose value hoists a value branch
+	// — directly or nested inside a compound field value (`cap: 1 + (match ...)`) — so an
+	// earlier side-effecting `len`/`cap` field can be stabilized before that field hoists its
+	// materialization prelude, preserving field evaluation order (both are evaluated into
+	// `new_call` below; `init` is per-element in the loop body).
 	mut last_lencap_branch := -1
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
 		if child.kind == .field_init && child.children_count > 0 && child.value in ['len', 'cap'] {
-			if t.is_value_match_or_if_operand(t.a.child(child, 0)) {
+			if t.operand_hoists_value_branch(t.a.child(child, 0)) {
 				last_lencap_branch = i
 			}
 		}
@@ -1191,12 +1192,12 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 
 	mut result := []flat.NodeId{}
 	mut lhs := t.transform_lvalue(lhs_id)
-	// For an append whose RHS is a value `match`/`if` that hoists a prelude, stabilize the
-	// LHS lvalue's dynamic base/index components into temps first — without spilling the
-	// mutated array value — so a side-effecting index (e.g.
-	// `arrays[next(mut trace)] << (match ...)`) evaluates before the RHS prelude below,
-	// preserving source order.
-	if t.is_value_match_or_if_operand(rhs_id) {
+	// For an append whose RHS hoists a value `match`/`if` prelude — directly or nested inside
+	// a compound RHS (`arrays[next(mut trace)] << wrap(match ...)`) — stabilize the LHS
+	// lvalue's dynamic base/index components into temps first — without spilling the mutated
+	// array value — so a side-effecting index (e.g. `arrays[next(mut trace)] << (match ...)`)
+	// evaluates before the RHS prelude below, preserving source order.
+	if t.operand_hoists_value_branch(rhs_id) {
 		lhs = t.stabilize_transformed_lvalue_for_reuse(lhs)
 	}
 	t.drain_pending(mut result)

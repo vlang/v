@@ -15496,15 +15496,16 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	if lowered := t.lower_gated_scalar_index(node) {
 		return t.lower_owned_array_index_move(id, lowered)
 	}
-	// A later child (index / slice bound) that is a value `match`/`if` hoists its
-	// propagation prelude into `pending_stmts`; a preceding side-effecting child left
+	// A later child (index / slice bound) that hoists a value `match`/`if` — directly or
+	// nested inside a compound child (`make_values(mut tr)[1 + (match n { ... })]`) — lifts
+	// its propagation prelude into `pending_stmts`; a preceding side-effecting child left
 	// inline would then run after that prelude. Find the last hoisting child so earlier
 	// children can be stabilized first, preserving left-to-right evaluation order, e.g.
 	// `make_values(mut tr)[match n { ... tr.index_result()! ... }]`. Index reads only
 	// reach here (`.index`); lvalue targets are the separate `.index_assign` kind.
 	mut last_value_branch := -1
 	for i in 0 .. node.children_count {
-		if t.is_value_match_or_if_operand(t.a.child(&node, i)) {
+		if t.operand_hoists_value_branch(t.a.child(&node, i)) {
 			last_value_branch = i
 		}
 	}
