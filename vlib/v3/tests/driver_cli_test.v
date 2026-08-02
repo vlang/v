@@ -406,6 +406,70 @@ fn main() {
 	assert object_run.output == '99\n', object_run.output
 }
 
+fn test_driver_c_project_and_dump_include_effective_dependency_flags() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_effective_c_flags_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	native_source := os.join_path(root, 'native_dependency.c')
+	os.write_file(native_source, '#ifndef V3_REVIEW_DEPENDENCY_FLAG
+#error missing generated dependency flag
+#endif
+
+int v3_review_dependency_value(void) {
+	return 42;
+}
+')!
+	resolved_native_source := os.real_path(native_source)
+	source := os.join_path(root, 'effective_flags.v')
+	os.write_file(source, '#flag -DV3_REVIEW_DEPENDENCY_FLAG=1
+#flag @DIR/native_dependency.o
+
+fn C.v3_review_dependency_value() int
+
+fn main() {
+	println(C.v3_review_dependency_value())
+}
+')!
+	project_dir := os.join_path(root, 'project')
+	project_dump := os.join_path(root, 'project_flags.txt')
+	generate := cmdexec.run(v3_bin, ['-silent', '-prod', '-dump-c-flags', project_dump,
+		'-generate-c-project', project_dir, source])
+	assert generate.exit_code == 0, generate.output
+	build_command := os.read_file(os.join_path(project_dir, 'build_command.txt'))!
+	project_flags := os.read_lines(project_dump)!
+	for expected in ['-std=gnu11', '-O3', '-flto', '-DV3_REVIEW_DEPENDENCY_FLAG=1',
+		resolved_native_source] {
+		assert build_command.contains(expected), build_command
+		assert expected in project_flags, project_flags.str()
+	}
+	assert !build_command.contains(resolved_native_source.all_before_last('.c') + '.o'), build_command
+	project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
+	assert project_build.exit_code == 0, project_build.output
+	project_run := cmdexec.run(os.join_path(project_dir, 'effective_flags'), [])
+	assert project_run.exit_code == 0, project_run.output
+	assert project_run.output == '42\n', project_run.output
+
+	bin_output := os.join_path(root, 'effective_flags')
+	bin_dump := os.join_path(root, 'binary_flags.txt')
+	compile := cmdexec.run(v3_bin, ['-silent', '-prod', '-showcc', '-dump-c-flags', bin_dump, '-o',
+		bin_output, source])
+	assert compile.exit_code == 0, compile.output
+	bin_flags := os.read_lines(bin_dump)!
+	for expected in ['-std=gnu11', '-O3', '-flto', '-w', '-Wno-int-conversion',
+		'-DV3_REVIEW_DEPENDENCY_FLAG=1', '-lm'] {
+		assert expected in bin_flags, bin_flags.str()
+		assert compile.output.contains(expected), compile.output
+	}
+	assert bin_flags.any(it.ends_with('.o')), bin_flags.str()
+	bin_run := cmdexec.run(bin_output, [])
+	assert bin_run.exit_code == 0, bin_run.output
+	assert bin_run.output == '42\n', bin_run.output
+}
+
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 	$if amd64 || arm64 {
 		root := os.join_path(os.vtmp_dir(), 'v3_driver_inline_asm_fallback_${os.getpid()}')

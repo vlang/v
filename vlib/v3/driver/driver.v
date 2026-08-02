@@ -1660,15 +1660,131 @@ fn input_imports_linux_gg(input_file string) bool {
 	return source.contains('import gg') || source.contains('import sokol.sapp')
 }
 
-fn write_v3_c_project(project_dir string, c_source string, c_compiler string, user_c_flags []string, target_os string) ! {
+struct V3CCompilerFlagOptions {
+	environment_c_flags  []string
+	environment_ld_flags []string
+	target_args          []string
+	link_c_standard      string
+	dependencies         []string
+	warn_args            []string
+	vroot                string
+	target_os            string
+	pic_flag             string
+	is_prod              bool
+	no_prod_options      bool
+	is_shared            bool
+	parallel_cc          bool
+	explicit_tcc         bool
+	is_c_debug           bool
+	is_o                 bool
+	is_liveshared        bool
+}
+
+struct V3CCompilerFlagPlan {
+	before_inputs []string
+	after_inputs  []string
+	tcc_includes  string
+}
+
+fn (plan &V3CCompilerFlagPlan) compiler_args(output string, inputs []string, support_inputs []string) []string {
+	mut args := plan.before_inputs.clone()
+	args << ['-o', output]
+	args << inputs
+	args << support_inputs
+	args << plan.after_inputs
+	return args
+}
+
+fn (plan &V3CCompilerFlagPlan) all_flags(support_inputs []string) []string {
+	mut flags := plan.before_inputs.clone()
+	flags << support_inputs
+	flags << plan.after_inputs
+	return flags
+}
+
+fn v3_c_source_inputs(source string, objective_c bool) []string {
+	if objective_c {
+		return ['-x', 'objective-c', source, '-x', 'none']
+	}
+	return [source]
+}
+
+fn v3_c_source_mode_flags(objective_c bool) []string {
+	if objective_c {
+		return ['-x', 'objective-c', '-x', 'none']
+	}
+	return []string{}
+}
+
+fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
+	mut before_inputs := options.environment_c_flags.clone()
+	before_inputs << options.target_args
+	if options.link_c_standard.len > 0 {
+		before_inputs << options.link_c_standard
+	}
+	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options,
+		options.is_shared, options.parallel_cc)
+	if options.pic_flag.len > 0 {
+		before_inputs << options.pic_flag
+	}
+	mut tcc_includes := ''
+	if options.explicit_tcc {
+		tcc_lib_dir := os.join_path(options.vroot, 'thirdparty', 'tcc', 'lib')
+		tcc_includes = '-I${os.join_path_single(tcc_lib_dir, 'include')}'
+		before_inputs << [tcc_includes, '-L${tcc_lib_dir}']
+		if !options.is_shared {
+			before_inputs << '-bt25'
+		}
+	}
+	before_inputs << options.warn_args
+	before_inputs << '-Wno-int-conversion'
+	if options.target_os == 'macos' && !options.is_shared && !options.explicit_tcc {
+		before_inputs << '-Wl,-stack_size,0x4000000'
+	}
+	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared
+		&& !options.explicit_tcc {
+		before_inputs << '-Wl,-export_dynamic'
+	}
+	if options.is_shared {
+		before_inputs << '-shared'
+	} else if options.is_o {
+		before_inputs << '-c'
+	}
+	if options.is_liveshared && options.target_os == 'macos' && !options.explicit_tcc {
+		before_inputs << ['-flat_namespace', '-undefined', 'dynamic_lookup']
+	}
+	mut after_inputs := options.dependencies.clone()
+	after_inputs << '-lm'
+	if !options.is_o {
+		after_inputs << options.environment_ld_flags
+	}
+	return V3CCompilerFlagPlan{
+		before_inputs: before_inputs
+		after_inputs:  after_inputs
+		tcc_includes:  tcc_includes
+	}
+}
+
+fn v3_c_project_dependency_flags(flags []string) []string {
+	mut project_flags := []string{cap: flags.len}
+	for flag in flags {
+		clean := flag.trim(' \t\r\n"\'')
+		if c_flag_is_object_file(clean) && !os.is_file(clean) {
+			if source := c_source_from_object_file(clean) {
+				project_flags << source
+				continue
+			}
+		}
+		project_flags << flag
+	}
+	return project_flags
+}
+
+fn write_v3_c_project(project_dir string, c_source string, c_compiler string, plan V3CCompilerFlagPlan, support_inputs []string, objective_c bool) ! {
 	output_name := os.base(c_source).all_before_last('.c')
 	output_path := os.join_path_single(project_dir, output_name)
-	mut args := ['-std=c99', '-w']
-	args << user_c_flags
-	args << ['-o', output_path, c_source]
-	if target_os !in ['windows', 'msvc'] {
-		args << ['-lpthread', '-lm']
-	}
+	args := plan.compiler_args(output_path, v3_c_source_inputs(c_source, objective_c),
+		support_inputs)
 	command := cmdexec.display(c_compiler, args)
 	os.write_file(os.join_path_single(project_dir, 'build_command.txt'), command + '\n')!
 	os.write_file(os.join_path_single(project_dir, 'Makefile'), 'all:\n\t${command}\n')!
@@ -5503,6 +5619,9 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-dump-c-flags' {
 			dump_c_flags = if i + 1 < args.len { args[i + 1] } else { '-' }
+			// The dump is derived from the monolithic native compiler command below.
+			// Avoid module/TinyCC cache paths that use a different link plan.
+			no_cache = true
 			i += if i + 1 < args.len { 2 } else { 1 }
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
 			define := args[i][2..]
@@ -7661,29 +7780,6 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('cgen', cgen_was_parallel)
 		}
-		if c_only {
-			b.metric('generated C size', os.file_size(cc_src), 'bytes')
-			if c_to_stdout {
-				source := os.read_file(cc_src) or {
-					eprintln('error reading generated C source ${cc_src}: ${err.msg()}')
-					os.rm(cc_src) or {}
-					exit(1)
-				}
-				print(source)
-				os.rm(cc_src) or {}
-			} else if generate_c_project.len > 0 {
-				write_v3_c_project(generate_c_project, cc_src, c_compiler, user_c_flags,
-					prefs.normalized_target_os()) or {
-					eprintln('cannot write generated C project: ${err.msg()}')
-					exit(1)
-				}
-				println('Generated C project in ${generate_c_project}')
-			}
-			b.print_report()
-			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			return
-		}
-
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
 		target_args := c_compiler_target_args(prefs.target, c_compiler_explicit) or {
 			eprintln(err.msg())
@@ -7709,28 +7805,69 @@ pub fn run(args []string) {
 		mut all_compile_c_flags := environment_c_flags.clone()
 		all_compile_c_flags << generated_c_flags
 		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
-		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
-			prefs.c99, pic_flag, target_args, prefs.target, c_compiler, cc_dir, mut
-			c_object_cache_stats) or {
-			message := err.msg()
-			if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
-				macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
-				cc_src])
-			{
+		link_uses_non_c_language := c_link_flags_use_non_c_language(all_compile_c_flags)
+		link_c_standard := if link_uses_non_c_language {
+			''
+		} else {
+			c_standard
+		}
+		mut resolved_c_flags := if generate_c_project.len > 0 {
+			v3_c_project_dependency_flags(generated_c_flags)
+		} else {
+			generated_c_flags.clone()
+		}
+		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
+			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
+				prefs.c99, pic_flag, target_args, prefs.target, c_compiler, cc_dir, mut
+				c_object_cache_stats) or {
+				message := err.msg()
+				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+					macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
+					cc_src])
+				{
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				eprintln(message)
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
-			eprintln(message)
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
+			b.step('C object cache')
 		}
-		b.step('C object cache')
-		if dump_c_flags.len > 0 {
-			mut dumped_flags := environment_c_flags.clone()
-			dumped_flags << resolved_c_flags
-			if !is_o {
-				dumped_flags << environment_ld_flags
+		c_flag_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			environment_c_flags:  environment_c_flags
+			environment_ld_flags: environment_ld_flags
+			target_args:          target_args
+			link_c_standard:      link_c_standard
+			dependencies:         resolved_c_flags
+			warn_args:            warn_args
+			vroot:                prefs.vroot
+			target_os:            prefs.normalized_target_os()
+			pic_flag:             pic_flag
+			is_prod:              is_prod
+			no_prod_options:      no_prod_options
+			is_shared:            is_shared
+			parallel_cc:          parallel_cc
+			explicit_tcc:         explicit_tcc
+			is_c_debug:           is_c_debug
+			is_o:                 is_o
+			is_liveshared:        is_liveshared
+		})
+		mut native_support_inputs := []string{}
+		if explicit_tcc {
+			atomic_input := if generate_c_project.len > 0 {
+				tcc_atomic_s_arg(prefs)
+			} else {
+				tcc_atomic_arg(prefs, c_compiler, c_flag_plan.tcc_includes)
 			}
+			if atomic_input.len > 0 {
+				native_support_inputs << atomic_input
+			}
+		}
+		if dump_c_flags.len > 0 {
+			mut dump_support_flags := v3_c_source_mode_flags(needs_objective_c)
+			dump_support_flags << native_support_inputs
+			dumped_flags := c_flag_plan.all_flags(dump_support_flags)
 			output := if dumped_flags.len > 0 {
 				dumped_flags.join('\n') + '\n'
 			} else {
@@ -7746,7 +7883,28 @@ pub fn run(args []string) {
 				}
 			}
 		}
-		link_uses_non_c_language := c_link_flags_use_non_c_language(all_compile_c_flags)
+		if c_only {
+			b.metric('generated C size', os.file_size(cc_src), 'bytes')
+			if c_to_stdout {
+				source := os.read_file(cc_src) or {
+					eprintln('error reading generated C source ${cc_src}: ${err.msg()}')
+					os.rm(cc_src) or {}
+					exit(1)
+				}
+				print(source)
+				os.rm(cc_src) or {}
+			} else if generate_c_project.len > 0 {
+				write_v3_c_project(generate_c_project, cc_src, c_compiler, c_flag_plan,
+					native_support_inputs, needs_objective_c) or {
+					eprintln('cannot write generated C project: ${err.msg()}')
+					exit(1)
+				}
+				println('Generated C project in ${generate_c_project}')
+			}
+			b.print_report()
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
 		mut tcc_link_has_incompatible_objects := false
 		if prefs.normalized_target_os() == 'macos' {
 			for flag in resolved_c_flags {
@@ -7755,11 +7913,6 @@ pub fn run(args []string) {
 					break
 				}
 			}
-		}
-		link_c_standard := if link_uses_non_c_language {
-			''
-		} else {
-			c_standard
 		}
 		mut cached_objects := []string{}
 		mut cached_dev_dylib := ''
@@ -8254,7 +8407,8 @@ pub fn run(args []string) {
 		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
 			&& (!tcc_link_has_incompatible_objects || cache_full_tcc_source.len > 0)
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
-			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0) && !is_c_debug {
+			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0) && !is_c_debug
+			&& dump_c_flags.len == 0 {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -8317,72 +8471,26 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
-			mut cc_args := environment_c_flags.clone()
-			cc_args << target_args
-			if link_c_standard.len > 0 {
-				cc_args << link_c_standard
-			}
-			cc_args << v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared,
-				parallel_cc)
-			if pic_flag.len > 0 {
-				cc_args << pic_flag
-			}
-			mut explicit_tcc_includes := ''
-			if explicit_tcc {
-				tcc_lib_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'lib')
-				explicit_tcc_includes = '-I${os.join_path_single(tcc_lib_dir, 'include')}'
-				cc_args << [explicit_tcc_includes, '-L${tcc_lib_dir}']
-				if !is_shared {
-					cc_args << '-bt25'
-				}
-			}
-			cc_args << warn_args
-			cc_args << '-Wno-int-conversion'
-			if prefs.normalized_target_os() == 'macos' && !is_shared && !explicit_tcc {
-				cc_args << '-Wl,-stack_size,0x4000000'
-			}
-			if is_c_debug && prefs.normalized_target_os() == 'macos' && !is_shared && !explicit_tcc {
-				cc_args << '-Wl,-export_dynamic'
-			}
-			if is_shared {
-				cc_args << '-shared'
-			} else if is_o {
-				cc_args << '-c'
-			}
-			if is_liveshared && prefs.normalized_target_os() == 'macos' && !explicit_tcc {
-				cc_args << ['-flat_namespace', '-undefined', 'dynamic_lookup']
-			}
-			cc_args << ['-o', 'out']
 			fallback_source := if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 {
 				os.base(tcc_main_file)
 			} else {
 				'src.c'
 			}
+			mut compiler_inputs := []string{}
 			if cached_program_main_object.len > 0 {
-				cc_args << cached_program_main_object
+				compiler_inputs << cached_program_main_object
 			} else if fallback_source == os.base(tcc_main_file) {
-				cc_args << ['-D__TINYC__', '-Wno-implicit-function-declaration']
-				cc_args << fallback_source
-			} else if needs_objective_c {
-				cc_args << ['-x', 'objective-c', fallback_source, '-x', 'none']
+				compiler_inputs << ['-D__TINYC__', '-Wno-implicit-function-declaration',
+					fallback_source]
 			} else {
-				cc_args << fallback_source
+				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
 			}
-			if explicit_tcc {
-				atomic_s := tcc_atomic_arg(prefs, c_compiler, explicit_tcc_includes)
-				if atomic_s.len > 0 {
-					cc_args << atomic_s
-				}
-			}
-			cc_args << cached_objects
+			compiler_inputs << native_support_inputs
+			compiler_inputs << cached_objects
 			if cached_dev_dylib.len > 0 {
-				cc_args << cached_dev_dylib
+				compiler_inputs << cached_dev_dylib
 			}
-			cc_args << resolved_c_flags
-			cc_args << '-lm'
-			if !is_o {
-				cc_args << environment_ld_flags
-			}
+			cc_args := c_flag_plan.compiler_args('out', compiler_inputs, [])
 			if !silent || show_cc {
 				println('  > ${cmdexec.display(c_compiler, cc_args)}')
 			}

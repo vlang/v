@@ -101,6 +101,15 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.nofloat = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.nofloat = false
+		prefs.fast_math = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.fast_math = false
+		prefs.is_bare = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_bare = false
+		prefs.build_options << '-m32'
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.build_options.clear()
 		prefs.is_run = true
 		prefs.autofree = true
 		assert !is_macos_v3_relevant_command('run', prefs)
