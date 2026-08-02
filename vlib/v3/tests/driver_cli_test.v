@@ -555,6 +555,41 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	}
 }
 
+fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_skip_unused_cache_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "fn unused_value() int { return 42 }\n\nfn main() { println('ok') }\n")!
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+
+	cold_output := os.join_path(root, 'cold')
+	cold := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', cold_output, source],
+		environment)
+	assert cold.exit_code == 0, cold.output
+	assert !cold.output.contains('(cached)'), cold.output
+
+	warm_output := os.join_path(root, 'warm')
+	warm := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', warm_output, source],
+		environment)
+	assert warm.exit_code == 0, warm.output
+	assert warm.output.contains('cgen (cached)'), warm.output
+
+	no_skip_output := os.join_path(root, 'no_skip')
+	no_skip := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-o',
+		no_skip_output, source], environment)
+	assert no_skip.exit_code == 0, no_skip.output
+	assert !no_skip.output.contains('(cached)'), no_skip.output
+	no_skip_run := cmdexec.run(no_skip_output, [])
+	assert no_skip_run.exit_code == 0, no_skip_run.output
+	assert no_skip_run.output == 'ok\n', no_skip_run.output
+}
+
 fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_valued_define_${os.getpid()}')
 	os.rmdir_all(root) or {}

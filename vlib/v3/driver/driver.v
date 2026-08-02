@@ -6510,8 +6510,8 @@ pub fn run(args []string) {
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
-	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_builtin && !keep_c
-		&& !backend_explicit && !c_compiler_explicit && !minimal_literal_output
+	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
+		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
 		&& target.os == host_target.os && target.arch == host_target.arch
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }

@@ -128,6 +128,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.trace_fns = ['main.main']
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.trace_fns.clear()
+		prefs.disable_explicit_mutability = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.disable_explicit_mutability = false
 		prefs.compress = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.compress = false
@@ -293,6 +296,15 @@ fn test_autofree_tracing_requires_standard_compiler() {
 	assert trace_fns.autofree
 	assert trace_fns.trace_fns == ['main.main']
 	assert autofree_requires_standard_compiler(trace_fns)
+}
+
+fn test_autofree_relaxed_mutability_requires_standard_compiler() {
+	for option in ['-disable-explicit-mutability', '--disable-explicit-mutability'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', option, 'main.v'], false)
+		assert prefs.autofree
+		assert prefs.disable_explicit_mutability
+		assert autofree_requires_standard_compiler(prefs)
+	}
 }
 
 fn test_macos_v3_implicit_gc_default_uses_v3() {
