@@ -14654,7 +14654,19 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		// lowered with plain `transform_expr` in a value-less statement context and
 		// emit an empty expression. `transform_value_operand` is a no-op for the
 		// common non-branch operands.
-		new_lhs := t.transform_value_operand(lhs_id)
+		// Preserve LHS-before-RHS evaluation order: for a numeric shift whose RHS is a
+		// value branch (its materialization below queues prelude statements), stabilize a
+		// side-effecting LHS first so it runs before that prelude, e.g.
+		// `mark_lhs() << (match x { ... mark_rhs()! ... })`. An array-append LHS
+		// (`rhs_target_type` set) is a mutated lvalue and must not be spilled; a value-branch
+		// LHS is already materialized in order by `transform_value_operand`.
+		rhs_is_value_branch := t.is_value_match_or_if_operand(rhs_id)
+		new_lhs := if rhs_target_type.len == 0 && rhs_is_value_branch
+			&& !t.is_value_match_or_if_operand(lhs_id) && !t.is_stable_expr_for_reuse(lhs_id) {
+			t.stable_expr_for_reuse(lhs_id)
+		} else {
+			t.transform_value_operand(lhs_id)
+		}
 		new_rhs := if rhs_target_type.len > 0 {
 			t.transform_expr_for_type(rhs_id, rhs_target_type)
 		} else {
@@ -15238,13 +15250,30 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	if lowered := t.lower_gated_scalar_index(node) {
 		return t.lower_owned_array_index_move(id, lowered)
 	}
+	// A later child (index / slice bound) that is a value `match`/`if` hoists its
+	// propagation prelude into `pending_stmts`; a preceding side-effecting child left
+	// inline would then run after that prelude. Find the last hoisting child so earlier
+	// children can be stabilized first, preserving left-to-right evaluation order, e.g.
+	// `make_values(mut tr)[match n { ... tr.index_result()! ... }]`. Index reads only
+	// reach here (`.index`); lvalue targets are the separate `.index_assign` kind.
+	mut last_value_branch := -1
+	for i in 0 .. node.children_count {
+		if t.is_value_match_or_if_operand(t.a.child(&node, i)) {
+			last_value_branch = i
+		}
+	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		// route a value `match`/`if` operand (e.g. `values[match x { ... }]`)
 		// through its target type so its propagating arms are lowered as values.
-		mut new_child := t.transform_value_operand(child_id)
+		mut new_child := if i < last_value_branch && !t.is_value_match_or_if_operand(child_id)
+			&& !t.is_stable_expr_for_reuse(child_id) {
+			t.stable_expr_for_reuse(child_id)
+		} else {
+			t.transform_value_operand(child_id)
+		}
 		if i == 0 {
 			base := t.a.nodes[int(new_child)]
 			if base.kind == .cast_expr {
