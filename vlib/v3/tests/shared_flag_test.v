@@ -22,7 +22,16 @@ fn test_shared_flag_builds_no_main_module() {
 
 	os.write_file(os.join_path(tmp_dir, 'v.mod'), 'Module { name: "shared_flag_module" }\n')!
 	os.write_file(os.join_path(tmp_dir, 'module.v'),
-		'module shared_flag_module\n\npub fn answer() int {\n\treturn 42\n}\n')!
+		'module shared_flag_module\n\nfn cleanup() {}\n\npub fn answer() int {\n\treturn 42\n}\n')!
+
+	out_c := os.join_path(tmp_dir, 'shared_flag_module.c')
+	compile_c :=
+		os.execute('${os.quoted_path(v3_bin)} -shared -o ${os.quoted_path(out_c)} ${os.quoted_path(tmp_dir)}')
+	assert compile_c.exit_code == 0, compile_c.output
+	generated_c := os.read_file(out_c)!
+	assert generated_c.contains('void _vcleanup(void) {'), generated_c
+	assert generated_c.contains('\tshared_flag_module__cleanup();'), generated_c
+	assert generated_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n}'), generated_c
 
 	out_lib := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	out_path := out_lib + shared_flag_library_postfix()

@@ -247,6 +247,8 @@ mut:
 	sum_name_lookup                map[string]string   // full/short sum type name -> canonical sum type name
 	module_init_fns                []string            // C names of module-level `init()` fns, in source order
 	module_init_fn_modules         map[string]string   // C init fn name -> V module name
+	module_cleanup_fns             []string            // C names of module-level `cleanup()` fns, in source order
+	module_cleanup_fn_modules      map[string]string   // C cleanup fn name -> V module name
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
 	preinclude_directives          []string
@@ -886,6 +888,8 @@ pub fn FlatGen.new() FlatGen {
 		sum_name_lookup:                 map[string]string{}
 		module_init_fns:                 []string{}
 		module_init_fn_modules:          map[string]string{}
+		module_cleanup_fns:              []string{}
+		module_cleanup_fn_modules:       map[string]string{}
 		module_imports:                  map[string][]string{}
 		c_directives:                    []CDirective{}
 		preinclude_directives:           []string{}
@@ -1962,6 +1966,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.sum_name_lookup.clear()
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules.clear()
+	g.module_cleanup_fns = []string{}
+	g.module_cleanup_fn_modules.clear()
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
 	g.preinclude_directives = []string{}
@@ -2344,6 +2350,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('/* V3CACHE_MODULE __v3_program_support */')
 	}
 	g.gen_vinit()
+	g.gen_vcleanup()
 	if g.cache_split {
 		g.interface_method_stubs()
 	}
@@ -2467,6 +2474,26 @@ fn (mut g FlatGen) gen_vinit() {
 	g.writeln('}')
 	g.writeln('')
 	if '_vinit' in g.print_fn_names {
+		println(g.sb.after(fn_start_pos))
+	}
+}
+
+fn (mut g FlatGen) gen_vcleanup() {
+	if !g.is_shared && g.module_cleanup_fns.len == 0 {
+		return
+	}
+	fn_start_pos := g.sb.len
+	g.writeln('void _vcleanup(void) {')
+	g.writeln('\tstatic bool once = false;')
+	g.writeln('\tif (once) { return; }')
+	g.writeln('\tonce = true;')
+	cleanup_fns := g.ordered_module_cleanup_fns()
+	for i := cleanup_fns.len - 1; i >= 0; i-- {
+		g.writeln('\t${cleanup_fns[i]}();')
+	}
+	g.writeln('}')
+	g.writeln('')
+	if '_vcleanup' in g.print_fn_names {
 		println(g.sb.after(fn_start_pos))
 	}
 }
@@ -2870,6 +2897,14 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 				g.module_init_fn_modules[init_cname] = cur_module
 			}
+			if node.value == 'cleanup' && ptypes.len == 0
+				&& (!g.has_used_fn_filter() || g.used_fn_contains_in_module(node.value, cur_module)) {
+				cleanup_cname := g.qualified_fn_name_in_module_c(cur_module, node.value)
+				if cleanup_cname !in g.module_cleanup_fns {
+					g.module_cleanup_fns << cleanup_cname
+				}
+				g.module_cleanup_fn_modules[cleanup_cname] = cur_module
+			}
 			if profile {
 				ci_fn_ns += time.sys_mono_now() - ci_t0
 			}
@@ -3140,6 +3175,7 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps() {
 	g.fn_decl_nodes_by_short.reserve(u32(fn_count + 256))
 	g.fn_decl_nodes_by_module_short.reserve(fn_name_count)
 	g.module_init_fn_modules.reserve(u32(fn_count / 8 + 64))
+	g.module_cleanup_fn_modules.reserve(u32(fn_count / 8 + 64))
 	g.struct_decl_infos.reserve(u32(struct_count * 2 + 256))
 	g.struct_decl_short_infos.reserve(u32(struct_count + 256))
 	g.global_types.reserve(u32(global_count * 2 + 64))
@@ -7481,6 +7517,27 @@ fn (g &FlatGen) module_init_fn_map() map[string]string {
 		module_to_init[mod] = init_fn
 	}
 	return module_to_init
+}
+
+fn (g &FlatGen) ordered_module_cleanup_fns() []string {
+	module_to_cleanup := g.module_cleanup_fn_map()
+	mut result := []string{}
+	mut visiting := map[string]bool{}
+	mut visited := map[string]bool{}
+	for cleanup_fn in g.module_cleanup_fns {
+		mod := g.module_cleanup_fn_modules[cleanup_fn] or { '' }
+		g.visit_module_init(mod, module_to_cleanup, mut visiting, mut visited, mut result)
+	}
+	return result
+}
+
+fn (g &FlatGen) module_cleanup_fn_map() map[string]string {
+	mut module_to_cleanup := map[string]string{}
+	for cleanup_fn in g.module_cleanup_fns {
+		mod := g.module_cleanup_fn_modules[cleanup_fn] or { '' }
+		module_to_cleanup[mod] = cleanup_fn
+	}
+	return module_to_cleanup
 }
 
 fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []string {
@@ -14586,12 +14643,20 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	g.write(', ')
 	g.gen_array_value_arg(rhs_id, rhs_type, rhs_arr)
 	if clean_elem_type is types.Array {
-		g.write(', 8')
+		g.write(', ${array_equality_depth_from_elem_type(elem_type)}')
 	} else if clean_elem_type !is types.String {
 		g.write(', sizeof(${g.sizeof_target(g.tc.c_type(elem_type))})')
 	}
 	g.write(')')
 	return true
+}
+
+fn array_equality_depth_from_elem_type(elem_type types.Type) int {
+	clean := default_init_unalias_type(elem_type)
+	if clean is types.Array {
+		return 1 + array_equality_depth_from_elem_type(clean.elem_type)
+	}
+	return 1
 }
 
 fn (g &FlatGen) array_equality_literal_elem_type(id flat.NodeId) ?types.Type {

@@ -1534,6 +1534,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		sum_name_lookup:                g.sum_name_lookup
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
+		module_cleanup_fns:             g.module_cleanup_fns
+		module_cleanup_fn_modules:      g.module_cleanup_fn_modules
 		module_imports:                 g.module_imports
 		preserved_header_files_seen:    g.preserved_header_files_seen
 		libc_compat_fns:                g.libc_compat_fns.clone()

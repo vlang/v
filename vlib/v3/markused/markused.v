@@ -377,7 +377,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	queue << 'main'
 	used['main'] = true
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
-	enqueue_auto_roots(fn_decls, reachable_modules, mut used, mut queue)
+	enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
 	for root in marked_roots {
 		enqueue(root, mut used, mut queue)
 	}
@@ -1681,9 +1681,13 @@ fn (c &CallCollector) may_target_interface_params(name string) bool {
 }
 
 // enqueue_auto_roots supports enqueue auto roots handling for markused.
-fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, reachable_modules map[string]bool, mut used map[string]bool, mut queue []string) {
+fn enqueue_auto_roots(a &flat.FlatAst, fn_decls map[string]FnDeclInfo, reachable_modules map[string]bool, mut used map[string]bool, mut queue []string) {
 	for name, info in fn_decls {
 		if !is_auto_root_fn(name) {
+			continue
+		}
+		if name.all_after_last('.') == 'cleanup'
+			&& markused_fn_has_receiver_param(a, a.node(info.node_id)) {
 			continue
 		}
 		if !markused_module_has_reachable_initializer(info.module, reachable_modules) {
@@ -1925,7 +1929,7 @@ fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string
 // is_auto_root_fn reports whether is auto root fn applies in markused.
 fn is_auto_root_fn(name string) bool {
 	short_name := name.all_after_last('.')
-	return short_name in ['init', 'builtin_init']
+	return short_name in ['init', 'builtin_init', 'cleanup']
 }
 
 fn markused_fn_has_attribute(a &flat.FlatAst, node_idx int, name string) bool {

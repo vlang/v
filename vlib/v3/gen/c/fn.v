@@ -488,11 +488,18 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 }
 
 fn (mut g FlatGen) gen_shared_runtime_callers() {
+	if g.cache_split {
+		g.writeln('/* V3CACHE_MODULE main */')
+	}
 	g.writeln('void _vinit_caller(void) {')
 	g.writeln('\t_vno_main_init_caller();')
 	g.writeln('}')
 	g.writeln('')
 	g.writeln('void _vcleanup_caller(void) {')
+	g.writeln('\tstatic bool once = false;')
+	g.writeln('\tif (once) { return; }')
+	g.writeln('\tonce = true;')
+	g.writeln('\t_vcleanup();')
 	g.writeln('}')
 	g.writeln('')
 }
@@ -13671,6 +13678,7 @@ fn (mut g FlatGen) forward_decls() {
 			g.writeln('static void _vno_main_init_caller(void);')
 		}
 		if g.is_shared {
+			g.writeln('void _vcleanup(void);')
 			g.writeln('void _vinit_caller(void);')
 			g.writeln('void _vcleanup_caller(void);')
 		}
@@ -13731,6 +13739,7 @@ fn (mut g FlatGen) forward_decls() {
 		g.writeln('static void _vno_main_init_caller(void);')
 	}
 	if g.is_shared {
+		g.writeln('void _vcleanup(void);')
 		g.writeln('void _vinit_caller(void);')
 		g.writeln('void _vcleanup_caller(void);')
 	}

@@ -67,6 +67,16 @@ fn test_optional_value_info_preserves_pointer_payload_abi() {
 	assert (payload_type as types.Pointer).base_type.name() == 'Data'
 }
 
+fn test_array_equality_depth_follows_the_resolved_element_type() {
+	mut elem_type := types.Type(types.int_)
+	for _ in 0 .. 8 {
+		elem_type = types.Type(types.Array{
+			elem_type: elem_type
+		})
+	}
+	assert array_equality_depth_from_elem_type(elem_type) == 9
+}
+
 fn test_enum_decls_resets_checker_module_at_file_boundary() {
 	test_dir := os.join_path(os.vtmp_dir(), 'v3_enum_decls_module_reset_${os.getpid()}')
 	os.rmdir_all(test_dir) or {}
