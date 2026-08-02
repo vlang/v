@@ -297,6 +297,13 @@ fn test_unsupported_compiler_modes_require_standard_compiler() {
 	assert autofree_requires_standard_compiler(div_by_zero)
 }
 
+fn test_autofree_no_std_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-no-std', 'main.v'], false)
+	assert prefs.autofree
+	assert prefs.no_std
+	assert autofree_requires_standard_compiler(prefs)
+}
+
 fn test_autofree_no_closures_requires_standard_compiler() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-no-closures', 'main.v'],
 		false)
