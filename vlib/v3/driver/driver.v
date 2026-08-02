@@ -6715,7 +6715,7 @@ pub fn run(args []string) {
 		parser_has_native_errors := p.diagnostics.any(it.severity.len == 0
 			|| it.severity == 'error:')
 		parser_has_errors := parser_has_native_errors
-			|| (warns_are_errors && p.diagnostics.any(it.severity == 'warning:'))
+			|| (effective_warns_are_errors && p.diagnostics.any(it.severity == 'warning:'))
 		if parser_has_native_errors
 			&& request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
 			exit(1)
@@ -6727,7 +6727,7 @@ pub fn run(args []string) {
 			for diagnostic in p.diagnostics {
 				if file := a.source_files[diagnostic.pos.id] {
 					_ = file
-					severity := if warns_are_errors && diagnostic.severity == 'warning:' {
+					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
 						'error:'
 					} else if diagnostic.severity.len > 0 {
 						diagnostic.severity
@@ -6737,7 +6737,7 @@ pub fn run(args []string) {
 					eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
 						diagnostic.pos))
 				} else {
-					severity := if warns_are_errors && diagnostic.severity == 'warning:' {
+					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
 						'error:'
 					} else if diagnostic.severity.len > 0 {
 						diagnostic.severity

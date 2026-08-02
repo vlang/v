@@ -253,10 +253,12 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| prefs.use_os_system_to_run || prefs.is_apk || prefs.json_errors
 		|| prefs.no_preludes || prefs.is_quiet || prefs.skip_warnings
 		|| prefs.skip_notes || prefs.fatal_errors || prefs.print_watched_files
-		|| prefs.print_autofree_vars || prefs.is_vlines || prefs.warn_impure_v
-		|| prefs.trace_calls || prefs.trace_fns.len > 0 || prefs.test_runner.len > 0
-		|| prefs.exclude.len > 0 || prefs.ldflags.len > 0 || prefs.nofloat
-		|| prefs.fast_math || prefs.compress || prefs.is_bare || prefs.no_closures
+		|| prefs.dump_modules.len > 0 || prefs.dump_files.len > 0
+		|| prefs.dump_defines.len > 0 || prefs.print_autofree_vars || prefs.is_vlines
+		|| prefs.warn_impure_v || prefs.trace_calls || prefs.trace_fns.len > 0
+		|| prefs.test_runner.len > 0 || prefs.exclude.len > 0
+		|| prefs.ldflags.len > 0 || prefs.nofloat || prefs.fast_math
+		|| prefs.compress || prefs.is_bare || prefs.no_closures
 		|| prefs.disable_explicit_mutability || prefs.assert_failure_mode != .default
 		|| prefs.macosx_version_min != '0'
 		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()

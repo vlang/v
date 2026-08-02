@@ -265,6 +265,11 @@ fn main() {
 	assert parser_warning_error.exit_code != 0, parser_warning_error.output
 	assert parser_warning_error.output.contains('error:'), parser_warning_error.output
 	assert parser_warning_error.output.contains('use e.g. `typeof(expr).name`'), parser_warning_error.output
+	parser_warning_prod := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-prod', '-o',
+		parser_warning_output, parser_warning_source], driver_review_environment())
+	assert parser_warning_prod.exit_code != 0, parser_warning_prod.output
+	assert parser_warning_prod.output.contains('error:'), parser_warning_prod.output
+	assert parser_warning_prod.output.contains('use e.g. `typeof(expr).name`'), parser_warning_prod.output
 
 	clean_impure_text_source := os.join_path(root, 'clean_impure_text.v')
 	clean_impure_text_output := os.join_path(root, 'clean_impure_text')

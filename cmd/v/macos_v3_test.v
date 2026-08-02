@@ -98,6 +98,15 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.print_watched_files = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.print_watched_files = false
+		prefs.dump_modules = 'modules.txt'
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.dump_modules = ''
+		prefs.dump_files = 'files.txt'
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.dump_files = ''
+		prefs.dump_defines = 'defines.txt'
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.dump_defines = ''
 		prefs.warn_impure_v = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.warn_impure_v = false
@@ -303,6 +312,26 @@ fn test_autofree_relaxed_mutability_requires_standard_compiler() {
 		prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', option, 'main.v'], false)
 		assert prefs.autofree
 		assert prefs.disable_explicit_mutability
+		assert autofree_requires_standard_compiler(prefs)
+	}
+}
+
+fn test_autofree_dump_reports_require_standard_compiler() {
+	for option in ['-dump-modules', '-dump-files', '-dump-defines'] {
+		prefs, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			option,
+			'report.txt',
+			'main.v',
+		], false)
+		assert prefs.autofree
+		match option {
+			'-dump-modules' { assert prefs.dump_modules == 'report.txt' }
+			'-dump-files' { assert prefs.dump_files == 'report.txt' }
+			'-dump-defines' { assert prefs.dump_defines == 'report.txt' }
+			else { assert false }
+		}
 		assert autofree_requires_standard_compiler(prefs)
 	}
 }
