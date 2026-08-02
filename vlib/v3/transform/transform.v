@@ -15076,6 +15076,15 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					new_fn_id = r
 					changed = true
 				}
+			} else if last_branch > 0 && t.callee_needs_ordering_snapshot(recv_fn_id) {
+				// A non-method runtime callee (make_cb(mut trace)(match ...), or a function-valued
+				// variable a branch could reassign) must evaluate before a later branch argument's
+				// hoisted prelude, so snapshot it in source order.
+				r := t.snapshot_expr_for_reuse(recv_fn_id)
+				if r != recv_fn_id {
+					new_fn_id = r
+					changed = true
+				}
 			}
 			mut new_args := []flat.NodeId{cap: int(node.children_count)}
 			for i in 1 .. node.children_count {
@@ -20483,6 +20492,28 @@ fn (t &Transformer) is_local_fn_value_call(node flat.Node) bool {
 	}
 	local_type := t.var_type(fn_node.value)
 	return local_type.starts_with('fn ') || t.is_fn_pointer_type_name(local_type)
+}
+
+// callee_needs_ordering_snapshot reports whether a plain-call callee (operand 0) must be
+// snapshotted to keep callee-before-argument order before a later branch argument's hoisted
+// prelude. A runtime callee expression (`make_cb(mut trace)(match ...)`) must evaluate once,
+// in source order; a function-valued local variable can be reassigned by the prelude, so it is
+// snapshotted too. A plain top-level function-name ident is a constant reference that
+// name-based call dispatch relies on, so it is left inline. Already-snapshotted temps are not
+// re-snapshotted.
+fn (t &Transformer) callee_needs_ordering_snapshot(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		if t.is_ordering_snapshot_temp(id) {
+			return false
+		}
+		local_type := t.var_type(node.value)
+		return local_type.starts_with('fn ') || t.is_fn_pointer_type_name(local_type)
+	}
+	return t.operand_needs_ordering_snapshot(id)
 }
 
 // const_type_name supports const type name handling for Transformer.

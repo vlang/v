@@ -1290,6 +1290,39 @@ fn select_value_branch_callee(node Node) !int {
 	})()
 }
 
+type ArgFn = fn (int) int
+
+fn adder(x int) int {
+	return x
+}
+
+fn make_adder_cb(mut tr Tracer) ArgFn {
+	tr.order << 1
+	return adder
+}
+
+fn (mut tr Tracer) cbarg_first(_ First) !int {
+	tr.order << 2
+	return 7
+}
+
+fn (mut tr Tracer) cbarg_second(_ Second) !int {
+	tr.order << 2
+	return 9
+}
+
+// A non-method runtime callee (a call returning a function value) with a value-match argument:
+// the callee must evaluate before the argument prelude. First -> make_adder_cb (order 1) then
+// arg (order 2), adder(7) = 7 -> 712 (a reversed order would be 721).
+fn select_value_runtime_callee_order(node Node) !int {
+	mut tr := Tracer{}
+	r := make_adder_cb(mut tr)(match node {
+		First { tr.cbarg_first(node)! }
+		Second { tr.cbarg_second(node)! }
+	})
+	return r * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 fn combine(a int, b int) int {
 	return a * 10 + b
 }
@@ -1567,6 +1600,7 @@ fn main() {
 	println(select_value_map_base_snapshot(First{})!)
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
+	println(select_value_runtime_callee_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -1580,5 +1614,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\ntrue\n41\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\ntrue\n41\n712\n1'
 }
