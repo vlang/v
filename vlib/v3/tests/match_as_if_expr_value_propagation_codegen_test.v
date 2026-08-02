@@ -1406,6 +1406,32 @@ fn select_value_struct_field_order(node Node) !int {
 	return p.a * 1000 + p.b * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+struct OptHolder {
+mut:
+	values ?[]int
+}
+
+fn (mut h OptHolder) replace_first(_ First) ![]int {
+	h.values = [100, 200]
+	return [7, 8]
+}
+
+// A push-many optional-LHS append whose value-branch RHS reassigns the optional source: the
+// append targets the value-array storage selected before the RHS (captured up front), matching
+// mainline. First -> [100, 200] << [7, 8] = [100, 200, 7, 8], len 4, first 100 -> 4 * 100 + 100
+// = 500.
+fn select_value_optional_append_reassign(node Node) !int {
+	mut h := OptHolder{
+		values: [1, 2]
+	}
+	h.values or { return error("none") } << (match node {
+		First { h.replace_first(node)! }
+		Second { [9] }
+	})
+	got := h.values or { []int{} }
+	return got.len * 100 + got[0]
+}
+
 type IntFn = fn () int
 
 struct FnBox {
@@ -1787,6 +1813,7 @@ fn main() {
 	println(select_value_pointer_receiver_capture(First{})!)
 	println(select_value_array_base_capture(First{})!)
 	println(select_value_struct_field_order(First{})!)
+	println(select_value_optional_append_reassign(First{})!)
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_runtime_callee_order(First{})!)
@@ -1804,5 +1831,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\ntrue\n41\n712\n30\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\n500\ntrue\n41\n712\n30\n1'
 }

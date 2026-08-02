@@ -1405,6 +1405,21 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		source)
 	result << t.make_if(not_ok, t.make_block(guard_stmts), t.make_empty())
 
+	// If the RHS hoists a value branch whose prelude can reassign the optional source
+	// (`holder.values? << (match ... { holder.replace()! } ...)`), capture the optional's
+	// value-array address before lowering the RHS, so the append targets the storage selected in
+	// source order (consistent with the guard above) instead of re-reading the inline source
+	// after the RHS prelude.
+	mut captured_lhs_addr := flat.empty_node
+	mut has_captured_addr := false
+	if t.operand_hoists_value_branch(rhs_id) {
+		addr := t.runtime_addr(t.make_selector(source, 'value', array_type), array_type)
+		captured_lhs_addr = t.stable_transformed_expr_for_reuse(addr, '&${array_type}',
+			'opt_append_target')
+		has_captured_addr = true
+		t.drain_pending(mut result)
+	}
+
 	mut rhs := flat.empty_node
 	if !push_many {
 		if !rhs_is_sum_variant {
@@ -1448,7 +1463,11 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		push_many = t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	}
 
-	lhs_addr := t.runtime_addr(t.make_selector(source, 'value', array_type), array_type)
+	lhs_addr := if has_captured_addr {
+		captured_lhs_addr
+	} else {
+		t.runtime_addr(t.make_selector(source, 'value', array_type), array_type)
+	}
 	if push_many {
 		call := if t.is_fixed_array_type(rhs_type) {
 			t.make_call_typed('array_push_many_ptr', arr3(lhs_addr, rhs,
