@@ -8,6 +8,20 @@ fn test_crypto_stream_reassembler_in_order() {
 	assert r.consumed_len() == 10
 }
 
+fn test_crypto_stream_reassembler_data_returns_independent_copy() {
+	// data() must return a COPY, not a shared view into r.received -- V's
+	// plain array assignment shares backing storage rather than copying it,
+	// so a caller mutating what it believes is an independent snapshot must
+	// never be able to corrupt the reassembler's own contiguous transcript.
+	mut r := new_crypto_stream_reassembler()
+	r.add(0, 'hello'.bytes())!
+
+	mut snapshot := r.data()
+	snapshot[0] = u8(0x58) // 'X'
+
+	assert r.data().bytestr() == 'hello'
+}
+
 fn test_crypto_stream_reassembler_out_of_order() {
 	mut r := new_crypto_stream_reassembler()
 	r.add(5, 'world'.bytes())! // arrives first -> held in pending, gap before it

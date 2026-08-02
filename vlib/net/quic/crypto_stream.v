@@ -58,13 +58,15 @@ pub fn (r &CryptoStreamReassembler) consumed_len() u64 {
 	return u64(r.received.len)
 }
 
-// data returns the currently-contiguous prefix of the reassembled stream.
-// Unlike a typical stream reader, CRYPTO frame offsets are never relative
-// to a "read cursor" -- they are absolute from the start of the encryption
-// level's handshake -- so this is a growing snapshot, not a destructive
-// drain.
+// data returns the currently-contiguous prefix of the reassembled stream,
+// as an independent COPY -- mutating the returned slice must never be able
+// to corrupt r.received, since V's plain array assignment shares backing
+// storage rather than copying it. Unlike a typical stream reader, CRYPTO
+// frame offsets are never relative to a "read cursor" -- they are absolute
+// from the start of the encryption level's handshake -- so this is a
+// growing snapshot, not a destructive drain.
 pub fn (r &CryptoStreamReassembler) data() []u8 {
-	return r.received
+	return r.received.clone()
 }
 
 // append_or_validate appends the not-yet-consumed suffix of (offset, data)
@@ -201,10 +203,12 @@ fn (mut r CryptoStreamReassembler) merge_or_add_pending(offset u64, data []u8) !
 // promote_ready repeatedly scans r.pending for any fragment whose offset
 // has become reachable now that r.received has grown, promoting it via the
 // same validated-append path append_or_validate uses for fresh arrivals.
-// This is what closes the gap where two out-of-order fragments overlap
-// EACH OTHER before either has touched r.received: whichever is promoted
-// second is still checked -- via append_or_validate -- against whatever the
-// first one already wrote, since both go through the identical function.
+// The restart-after-each-promotion loop exists because merge_or_add_pending
+// already keeps every entry in r.pending pairwise non-overlapping/
+// non-touching by construction -- so promoting one entry can grow
+// r.received just far enough to newly reach a DIFFERENT, previously-
+// out-of-reach pending entry, which the next iteration must then also
+// promote, and so on until nothing further is reachable.
 fn (mut r CryptoStreamReassembler) promote_ready() ! {
 	mut advanced := true
 	for advanced {
