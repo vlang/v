@@ -9965,6 +9965,14 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
+	// A receiver/argument whose value is a pointer reaches its target through that pointer; a
+	// later branch prelude can reassign the pointer (`holder.ptr.update(match ... {
+	// retarget(mut holder)! } ...)`) before the rebuilt lvalue is read, retargeting the
+	// mutation. A pointer is a reference handle that needs no lvalue identity, so capture its
+	// value in source order.
+	if t.lvalue_type(id).starts_with('&') {
+		return t.snapshot_expr_for_reuse(id)
+	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.ident {
@@ -10004,7 +10012,19 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 			if node.children_count == 0 {
 				return none
 			}
-			base := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			base_child := t.a.child(&node, 0)
+			// If the container base is a reassignable array/map, snapshot it so a later branch
+			// prelude that replaces the container (`items[i].update(match ... { replace(mut
+			// items)! } ...)`) cannot retarget the in-place mutation — the snapshot shares the
+			// original backing storage, so the element mutation still reaches the source-order
+			// container. (A pointer base is captured by the top-level check above.)
+			base_type := t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_child)))
+			base := if (base_type.starts_with('[]') || base_type.starts_with('map['))
+				&& !t.is_pure_constant_expr(base_child) {
+				t.snapshot_expr_for_reuse(base_child)
+			} else {
+				t.stabilize_original_lvalue_receiver(base_child)?
+			}
 			mut children := [base]
 			for i in 1 .. node.children_count {
 				comp_id := t.a.child(&node, i)

@@ -1299,6 +1299,113 @@ fn select_value_mut_receiver_index_snapshot(node Node) !int {
 	return items[0].v * 100 + items[1].v
 }
 
+struct PtrObj {
+mut:
+	v int
+}
+
+fn (mut o PtrObj) add(x int) {
+	o.v += x
+}
+
+struct PtrHolder {
+mut:
+	ptr &PtrObj
+}
+
+fn (mut h PtrHolder) retarget_first(_ First) !int {
+	h.ptr = &PtrObj{
+		v: 1000
+	}
+	return 5
+}
+
+fn (mut h PtrHolder) retarget_second(_ Second) !int {
+	h.ptr = &PtrObj{
+		v: 2000
+	}
+	return 6
+}
+
+// A pointer-field mutable receiver whose pointer a value-branch argument reassigns: the method
+// must mutate the object selected in source order, not the replacement. First -> orig.v = 15,
+// then h.ptr points to the replacement (v 1000) -> 15 * 1000 + 1000 = 16000 (a retargeted call
+// gives 11005).
+fn select_value_pointer_receiver_capture(node Node) !int {
+	orig := &PtrObj{
+		v: 10
+	}
+	mut h := PtrHolder{
+		ptr: orig
+	}
+	h.ptr.add(match node {
+		First { h.retarget_first(node)! }
+		Second { h.retarget_second(node)! }
+	})
+	return orig.v * 1000 + h.ptr.v
+}
+
+fn replace_cells(mut a []PtrObj) !int {
+	a = [PtrObj{
+		v: 1000
+	}, PtrObj{
+		v: 2000
+	}]
+	return 5
+}
+
+// An indexed mutable receiver whose array base a value-branch argument replaces: the method
+// must mutate the element in the source-order array. First -> orig[0].v = 15, items reassigned
+// -> orig[0].v * 100 + items[0].v = 1500 + 1000 = 2500 (a retargeted call gives 2005).
+fn select_value_array_base_capture(node Node) !int {
+	mut items := [PtrObj{
+		v: 10
+	}, PtrObj{
+		v: 20
+	}]
+	orig := items
+	items[0].add(match node {
+		First { replace_cells(mut items)! }
+		Second { 0 }
+	})
+	return orig[0].v * 100 + items[0].v
+}
+
+fn (mut tr Tracer) sfirst() int {
+	tr.order << 1
+	return 3
+}
+
+fn (mut tr Tracer) ssecond(_ First) !int {
+	tr.order << 2
+	return 4
+}
+
+struct SPair {
+	a int
+	b int
+}
+
+// A later struct field whose value is a nested block/if with a propagating match tail hoists a
+// prelude; earlier field values must be snapshotted so fields evaluate in source order. First
+// -> a=3, b=4, order [1,2] -> 3 * 1000 + 4 * 100 + 12 = 3412 (a reversed order gives 3421).
+fn select_value_struct_field_order(node Node) !int {
+	mut tr := Tracer{}
+	cond := true
+	p := SPair{
+		a: tr.sfirst()
+		b: if cond {
+			match node {
+				First { tr.ssecond(node)! }
+				Second { 0 }
+			}
+		} else {
+			0
+		}
+	}
+	return p.a * 1000 + p.b * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 type IntFn = fn () int
 
 struct FnBox {
@@ -1677,6 +1784,9 @@ fn main() {
 	println(select_value_map_base_snapshot(First{})!)
 	println(select_value_gated_base_snapshot(First{})!)
 	println(select_value_mut_receiver_index_snapshot(First{})!)
+	println(select_value_pointer_receiver_capture(First{})!)
+	println(select_value_array_base_capture(First{})!)
+	println(select_value_struct_field_order(First{})!)
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_runtime_callee_order(First{})!)
@@ -1694,5 +1804,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\ntrue\n41\n712\n30\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\ntrue\n41\n712\n30\n1'
 }
