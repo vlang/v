@@ -4867,7 +4867,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.array_init(mut node)
 		}
 		ast.AsCast {
-			if c.expected_type == ast.void_type && cast_operand_is_value_match_or_if(node.expr) {
+			if c.expected_type == ast.void_type && operand_is_value_match_or_if(node.expr) {
 				// A `match`/`if` operand of an `as` cast is a value expression, e.g.
 				// `(match x { ... }) as Variant`. Give it a non-void expected type so
 				// it is checked as an expression (`is_expr`) even when nested in a
@@ -5425,18 +5425,19 @@ fn integer_literal_from_pointer_cast_expr(expr ast.Expr) ?ast.IntegerLiteral {
 	}
 }
 
-// cast_operand_is_value_match_or_if reports whether the operand of a cast is a
-// `match`/`if` expression, looking through transparent `(...)` and `unsafe { }`
-// wrappers (including compositions like `i64(unsafe { match ... })`). Such an
-// operand is a value expression that must be checked with a non-void expected
-// type so it is treated as `is_expr`, even when the surrounding expected type is
-// void (e.g. nested inside an if-branch) — otherwise it is mistyped as `void`.
-fn cast_operand_is_value_match_or_if(expr ast.Expr) bool {
+// operand_is_value_match_or_if reports whether an expression is a `match`/`if`
+// expression used as a value, looking through transparent `(...)` and
+// `unsafe { }` wrappers (including compositions like `unsafe { match ... }`).
+// Such an operand of a cast or infix expression must be checked with a non-void
+// expected type so it is treated as `is_expr`, even when the surrounding expected
+// type is void (e.g. nested inside an if-branch) — otherwise it is mistyped as
+// `void`.
+fn operand_is_value_match_or_if(expr ast.Expr) bool {
 	if expr is ast.ParExpr {
-		return cast_operand_is_value_match_or_if(expr.expr)
+		return operand_is_value_match_or_if(expr.expr)
 	}
 	if expr is ast.UnsafeExpr {
-		return cast_operand_is_value_match_or_if(expr.expr)
+		return operand_is_value_match_or_if(expr.expr)
 	}
 	return expr is ast.MatchExpr || expr is ast.IfExpr
 }
@@ -5481,7 +5482,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.expected_type = base_to_type
 	} else if node.expr is ast.IndexExpr && to_type.has_flag(.option) {
 		c.expected_type = to_type
-	} else if c.expected_type == ast.void_type && cast_operand_is_value_match_or_if(node.expr) {
+	} else if c.expected_type == ast.void_type && operand_is_value_match_or_if(node.expr) {
 		// A `match`/`if` operand of a cast is a value expression, e.g.
 		// `i64(match x { ... })`. Propagate the cast target as its expected type
 		// so it is checked as an expression (`is_expr`) even in contexts where

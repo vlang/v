@@ -96,6 +96,32 @@ fn select_value_cast_unsafe(node ?Node) !i64 {
 	return result
 }
 
+// match on the right of an infix expression: `1 + (match .. { .. })`
+fn select_value_infix_right(node ?Node) !int {
+	result := if value := node {
+		1 + (match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})
+	} else {
+		0
+	}
+	return result
+}
+
+// match on the left of an infix expression: `(match .. { .. }) + 10`
+fn select_value_infix_left(node ?Node) !int {
+	result := if value := node {
+		(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}) + 10
+	} else {
+		0
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -210,6 +236,18 @@ fn test_as_cast_unsafe_wrapped_match_as_if_expr_value_with_propagation() {
 	assert select_value_ascast_unsafe(0)! == 0
 	assert select_value_ascast_unsafe(5)! == 6
 	assert select_value_ascast_unsafe(none) or { -1 } == 99
+}
+
+fn test_infix_right_match_as_if_expr_value_with_propagation() {
+	assert select_value_infix_right(First{})! == 2
+	assert select_value_infix_right(Second{})! == 3
+	assert select_value_infix_right(none) or { -1 } == 0
+}
+
+fn test_infix_left_match_as_if_expr_value_with_propagation() {
+	assert select_value_infix_left(First{})! == 11
+	assert select_value_infix_left(Second{})! == 12
+	assert select_value_infix_left(none) or { -1 } == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

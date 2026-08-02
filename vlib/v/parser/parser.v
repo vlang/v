@@ -640,29 +640,12 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 				mut or_block_last_stmt := expr.or_block.stmts.last()
 				p.mark_last_call_return_as_used(mut or_block_last_stmt)
 			}
-			// last stmt has infix expr with CallExpr: foo()? + 'a'
-			mut left_expr := expr.left
-			for {
-				mut next_left_expr := ast.Expr(ast.EmptyExpr{})
-				if mut left_expr is ast.InfixExpr {
-					if left_expr.or_block.stmts.len > 0 {
-						mut or_block_last_stmt := left_expr.or_block.stmts.last()
-						p.mark_last_call_return_as_used(mut or_block_last_stmt)
-					}
-					next_left_expr = left_expr.left
-				} else if mut left_expr is ast.CallExpr {
-					left_expr.is_return_used = true
-					if left_expr.or_block.stmts.len > 0 {
-						mut or_block_last_stmt := left_expr.or_block.stmts.last()
-						p.mark_last_call_return_as_used(mut or_block_last_stmt)
-					}
-					break
-				} else {
-					break
-				}
-				left_expr = next_left_expr
-				continue
-			}
+			// last stmt has infix expr with value operands, e.g.
+			// `foo()? + 'a'` or `1 + (match value { First { bar()! } })`.
+			// Recurse into both sides so nested/wrapped match/if/call values on
+			// either operand are marked as return-used.
+			p.mark_last_call_expr_return_as_used(mut expr.left)
+			p.mark_last_call_expr_return_as_used(mut expr.right)
 		}
 		ast.ComptimeCall, ast.ComptimeSelector, ast.PrefixExpr, ast.SelectorExpr {
 			if expr.or_block.stmts.len > 0 {

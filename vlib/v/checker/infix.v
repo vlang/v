@@ -113,20 +113,29 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// In bool contexts like `assert` and `return`, short enum literals on the left
 	// need the right operand type first, so `.a == x` resolves `.a` correctly.
-	mut check_right_type_first_for_left_short_enum := false
+	mut check_right_type_first := false
 	if node.op in [.eq, .ne] && node.left is ast.EnumVal {
 		left_enum := node.left as ast.EnumVal
 		if left_enum.enum_name.len == 0 {
 			if node.right is ast.EnumVal {
 				right_enum := node.right as ast.EnumVal
-				check_right_type_first_for_left_short_enum = right_enum.enum_name.len > 0
+				check_right_type_first = right_enum.enum_name.len > 0
 			} else {
-				check_right_type_first_for_left_short_enum = true
+				check_right_type_first = true
 			}
 		}
 	}
+	if !check_right_type_first && c.expected_type == ast.void_type
+		&& operand_is_value_match_or_if(node.left) {
+		// A `match`/`if` value operand on the left, e.g. `(match x { ... }) + 1`,
+		// would otherwise be checked with the (void) surrounding expected type and
+		// mistyped as a statement (e.g. when nested inside an if-branch). Resolve
+		// the right operand's type first and use it as the expected type so the
+		// left operand is checked as a value expression.
+		check_right_type_first = true
+	}
 	mut right_type := ast.void_type
-	if check_right_type_first_for_left_short_enum {
+	if check_right_type_first {
 		right_type = c.expr(mut node.right)
 		if right_type == ast.no_type {
 			node.right_type = right_type
@@ -229,7 +238,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 	}
-	if !check_right_type_first_for_left_short_enum {
+	if !check_right_type_first {
 		right_type = c.expr(mut node.right)
 		if right_type == ast.no_type {
 			node.right_type = right_type

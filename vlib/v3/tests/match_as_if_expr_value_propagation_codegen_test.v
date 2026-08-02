@@ -96,6 +96,30 @@ fn select_value_cast_unsafe(node ?Node) !i64 {
 	return result
 }
 
+fn select_value_infix_right(node ?Node) !int {
+	result := if value := node {
+		1 + (match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})
+	} else {
+		0
+	}
+	return result
+}
+
+fn select_value_infix_left(node ?Node) !int {
+	result := if value := node {
+		(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}) + 10
+	} else {
+		0
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -150,6 +174,8 @@ fn main() {
 	println(select_value_unsafe(Second{})!)
 	println(select_value_cast(First{})!)
 	println(select_value_cast_unsafe(Second{})!)
+	println(select_value_infix_right(First{})!)
+	println(select_value_infix_left(Second{})!)
 	println(select_value_ascast(5)!)
 	println(select_value_ascast_unsafe(5)!)
 	println(direct_match(Second{})!)
@@ -165,5 +191,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n6\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n6\n6\n2'
 }

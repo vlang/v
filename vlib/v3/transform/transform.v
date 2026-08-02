@@ -14515,6 +14515,23 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 	})
 }
 
+// transform_infix_operand transforms an infix operand, routing a value
+// `match`/`if` operand (e.g. `1 + (match x { ... })`) through
+// `transform_expr_for_type` so its (possibly propagating) branch tails are
+// lowered as values instead of in a value-less statement context.
+fn (mut t Transformer) transform_infix_operand(id flat.NodeId) flat.NodeId {
+	if t.is_value_match_or_if_operand(id) {
+		mut typ := t.node_type(id)
+		if typ.len == 0 {
+			typ = t.resolve_expr_type(id)
+		}
+		if typ.len > 0 && typ != 'void' {
+			return t.transform_expr_for_type(id, typ)
+		}
+	}
+	return t.transform_expr(id)
+}
+
 // transform_infix_expr transforms transform infix expr data for transform.
 fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
@@ -14621,13 +14638,13 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
 	pending_start := t.pending_stmts.len
-	new_lhs := t.transform_expr(lhs_id)
+	new_lhs := t.transform_infix_operand(lhs_id)
 	mut lhs_pending := []flat.NodeId{}
 	if t.pending_stmts.len > pending_start {
 		lhs_pending = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
-	new_rhs := t.transform_expr(rhs_id)
+	new_rhs := t.transform_infix_operand(rhs_id)
 	if lhs_pending.len > 0 {
 		rhs_pending := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
