@@ -578,79 +578,84 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 }
 
 fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
-	match mut last_stmt {
-		ast.ExprStmt {
-			match mut last_stmt.expr {
-				ast.CallExpr {
-					// last stmt on block is CallExpr
-					last_stmt.expr.is_return_used = true
-					if last_stmt.expr.or_block.stmts.len > 0 {
-						mut or_block_last_stmt := last_stmt.expr.or_block.stmts.last()
+	if mut last_stmt is ast.ExprStmt {
+		p.mark_last_call_expr_return_as_used(mut last_stmt.expr)
+	}
+}
+
+fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
+	match mut expr {
+		ast.CallExpr {
+			// last stmt on block is CallExpr
+			expr.is_return_used = true
+			if expr.or_block.stmts.len > 0 {
+				mut or_block_last_stmt := expr.or_block.stmts.last()
+				p.mark_last_call_return_as_used(mut or_block_last_stmt)
+			}
+		}
+		ast.ConcatExpr {
+			// last stmt on block is: a, b, c := ret1(), ret2(), ret3()
+			for mut val in expr.vals {
+				if mut val is ast.CallExpr {
+					val.is_return_used = true
+				}
+			}
+		}
+		ast.ParExpr {
+			// last stmt on block is parenthesized: ( match .. { a { foo() } } )
+			p.mark_last_call_expr_return_as_used(mut expr.expr)
+		}
+		ast.IfExpr {
+			// last stmt on block is: if .. { foo() } else { bar() }
+			for mut branch in expr.branches {
+				if branch.stmts.len > 0 {
+					mut last_if_stmt := branch.stmts.last()
+					p.mark_last_call_return_as_used(mut last_if_stmt)
+				}
+			}
+		}
+		ast.MatchExpr {
+			// last stmt on block is: match .. { a { foo() } b { bar() } }
+			for mut branch in expr.branches {
+				if branch.stmts.len > 0 {
+					mut last_match_stmt := branch.stmts.last()
+					p.mark_last_call_return_as_used(mut last_match_stmt)
+				}
+			}
+		}
+		ast.InfixExpr {
+			if expr.or_block.stmts.len > 0 {
+				mut or_block_last_stmt := expr.or_block.stmts.last()
+				p.mark_last_call_return_as_used(mut or_block_last_stmt)
+			}
+			// last stmt has infix expr with CallExpr: foo()? + 'a'
+			mut left_expr := expr.left
+			for {
+				mut next_left_expr := ast.Expr(ast.EmptyExpr{})
+				if mut left_expr is ast.InfixExpr {
+					if left_expr.or_block.stmts.len > 0 {
+						mut or_block_last_stmt := left_expr.or_block.stmts.last()
 						p.mark_last_call_return_as_used(mut or_block_last_stmt)
 					}
-				}
-				ast.ConcatExpr {
-					// last stmt on block is: a, b, c := ret1(), ret2(), ret3()
-					for mut expr in last_stmt.expr.vals {
-						if mut expr is ast.CallExpr {
-							expr.is_return_used = true
-						}
-					}
-				}
-				ast.IfExpr {
-					// last stmt on block is: if .. { foo() } else { bar() }
-					for mut branch in last_stmt.expr.branches {
-						if branch.stmts.len > 0 {
-							mut last_if_stmt := branch.stmts.last()
-							p.mark_last_call_return_as_used(mut last_if_stmt)
-						}
-					}
-				}
-				ast.MatchExpr {
-					// last stmt on block is: match .. { a { foo() } b { bar() } }
-					for mut branch in last_stmt.expr.branches {
-						if branch.stmts.len > 0 {
-							mut last_match_stmt := branch.stmts.last()
-							p.mark_last_call_return_as_used(mut last_match_stmt)
-						}
-					}
-				}
-				ast.InfixExpr {
-					if last_stmt.expr.or_block.stmts.len > 0 {
-						mut or_block_last_stmt := last_stmt.expr.or_block.stmts.last()
+					next_left_expr = left_expr.left
+				} else if mut left_expr is ast.CallExpr {
+					left_expr.is_return_used = true
+					if left_expr.or_block.stmts.len > 0 {
+						mut or_block_last_stmt := left_expr.or_block.stmts.last()
 						p.mark_last_call_return_as_used(mut or_block_last_stmt)
 					}
-					// last stmt has infix expr with CallExpr: foo()? + 'a'
-					mut left_expr := last_stmt.expr.left
-					for {
-						mut next_left_expr := ast.Expr(ast.EmptyExpr{})
-						if mut left_expr is ast.InfixExpr {
-							if left_expr.or_block.stmts.len > 0 {
-								mut or_block_last_stmt := left_expr.or_block.stmts.last()
-								p.mark_last_call_return_as_used(mut or_block_last_stmt)
-							}
-							next_left_expr = left_expr.left
-						} else if mut left_expr is ast.CallExpr {
-							left_expr.is_return_used = true
-							if left_expr.or_block.stmts.len > 0 {
-								mut or_block_last_stmt := left_expr.or_block.stmts.last()
-								p.mark_last_call_return_as_used(mut or_block_last_stmt)
-							}
-							break
-						} else {
-							break
-						}
-						left_expr = next_left_expr
-						continue
-					}
+					break
+				} else {
+					break
 				}
-				ast.ComptimeCall, ast.ComptimeSelector, ast.PrefixExpr, ast.SelectorExpr {
-					if last_stmt.expr.or_block.stmts.len > 0 {
-						mut or_block_last_stmt := last_stmt.expr.or_block.stmts.last()
-						p.mark_last_call_return_as_used(mut or_block_last_stmt)
-					}
-				}
-				else {}
+				left_expr = next_left_expr
+				continue
+			}
+		}
+		ast.ComptimeCall, ast.ComptimeSelector, ast.PrefixExpr, ast.SelectorExpr {
+			if expr.or_block.stmts.len > 0 {
+				mut or_block_last_stmt := expr.or_block.stmts.last()
+				p.mark_last_call_return_as_used(mut or_block_last_stmt)
 			}
 		}
 		else {}
