@@ -4596,6 +4596,22 @@ fn main() {
 	assert inferred_out == '1\ntyped'
 }
 
+fn test_anonymous_struct_type_allows_volatile_field_name() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'anonymous_struct_volatile_field_name', 'fn read(value struct {
+	volatile u8
+}) u8 {
+	return value.volatile
+}
+
+fn main() {
+	value := struct { volatile: u8(73) }
+	println(read(value))
+}
+')
+	assert out == '73'
+}
+
 fn test_latest_pr_review_codegen_regressions() {
 	v3_bin := build_v3()
 	small_int_comparison := run_good(v3_bin, 'parenthesized_small_int_comparison', 'fn main() {

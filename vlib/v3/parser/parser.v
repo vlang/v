@@ -12374,9 +12374,32 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			sect_is_mut = true
 			continue
 		}
-		field_is_volatile := p.tok == .key_volatile
-		if field_is_volatile {
+		mut field_is_volatile := false
+		if p.tok == .key_volatile {
+			saved_s := p.s
+			saved_tok := p.tok
+			saved_lit := p.lit
+			saved_tok_pos := p.tok_pos
+			saved_peek_tok := p.peek_tok
+			saved_peek_lit := p.peek_lit
+			saved_peek_pos := p.peek_pos
+			saved_peek_end := p.peek_end
+			saved_has_peek := p.has_peek
 			p.next()
+			volatile_is_field_name := p.peek() in [.semicolon, .rcbr, .assign, .attribute]
+			p.s = saved_s
+			p.tok = saved_tok
+			p.lit = saved_lit
+			p.tok_pos = saved_tok_pos
+			p.peek_tok = saved_peek_tok
+			p.peek_lit = saved_peek_lit
+			p.peek_pos = saved_peek_pos
+			p.peek_end = saved_peek_end
+			p.has_peek = saved_has_peek
+			if !volatile_is_field_name {
+				field_is_volatile = true
+				p.next()
+			}
 		}
 		if p.tok != .name && !p.tok.is_keyword() {
 			p.next()
