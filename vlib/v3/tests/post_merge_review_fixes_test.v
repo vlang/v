@@ -3090,6 +3090,31 @@ fn main() {
 	assert decoded == '{}\n[1,2]'
 }
 
+fn test_json_fast_paths_accept_null_strings_and_encode_non_finite_floats() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_null_string_and_non_finite_floats', 'import json
+import math
+
+struct Payload {
+	name string
+	nan  f64
+	pos  f64
+	neg  f32
+}
+
+fn main() {
+	decoded := json.decode(Payload, "{\\"name\\":null}")!
+	println(decoded.name.len)
+	println(json.encode(Payload{
+		nan: math.nan()
+		pos: math.inf(1)
+		neg: f32(math.inf(-1))
+	}))
+}
+')
+	assert out == '0\n{"name":"","nan":null,"pos":null,"neg":null}'
+}
+
 fn test_json_encode_embedded_structs_use_fast_path_flattening() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'json_encode_embedded_struct_flattening', 'import json

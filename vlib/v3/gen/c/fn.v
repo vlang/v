@@ -7823,7 +7823,9 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 			return 'i64__str((i64)(${expr}))'
 		}
 		if clean.props.has(.float) {
-			return 'f64__str((double)(${expr}))'
+			value_name := g.tmp_name()
+			null_sid := g.intern_string('null')
+			return '({ double ${value_name} = (double)(${expr}); isfinite(${value_name}) ? f64__str(${value_name}) : _str_${null_sid}; })'
 		}
 		return none
 	}
@@ -8091,7 +8093,7 @@ fn (mut g FlatGen) json_decode_value_valid_expr(item string, typ types.Type) str
 	// bool fields require booleans, and numeric/enum fields tolerate wrong-typed or
 	// unknown values by falling back to a default.
 	if clean is types.String {
-		return '(${item} == NULL || cJSON_IsString(${item}) || cJSON_IsObject(${item}) || cJSON_IsArray(${item}))'
+		return '(${item} == NULL || cJSON_IsNull(${item}) || cJSON_IsString(${item}) || cJSON_IsObject(${item}) || cJSON_IsArray(${item}))'
 	}
 	if clean is types.Primitive && clean.props.has(.boolean) {
 		return '(${item} == NULL || cJSON_IsBool(${item}))'
