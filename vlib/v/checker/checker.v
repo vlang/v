@@ -6992,7 +6992,19 @@ fn (mut c Checker) check_known_struct_name(ident ast.Ident) ? {
 fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 	mut mr_types := []ast.Type{}
 	for mut expr in node.vals {
+		// A value `match`/`if` multi-return value, e.g. `match x { ... }, 9`, in a
+		// void context (nested in an if-branch) must be checked as an expression so
+		// its arms produce values, instead of being typed `void`.
+		mut restore_force_value := false
+		if c.expected_type == ast.void_type && !c.force_value_match_or_if
+			&& operand_is_value_match_or_if(expr) {
+			c.force_value_match_or_if = true
+			restore_force_value = true
+		}
 		mut typ := c.expr(mut expr)
+		if restore_force_value {
+			c.force_value_match_or_if = false
+		}
 		if typ == ast.nil_type {
 			// nil and voidptr produces the same struct type name
 			typ = ast.voidptr_type

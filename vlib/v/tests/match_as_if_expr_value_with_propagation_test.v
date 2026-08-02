@@ -456,6 +456,19 @@ fn select_value_likely(node ?Node) !bool {
 	return result
 }
 
+// match as one value of a multi-return value list: `match .. { .. }, 9`
+fn select_value_multiret(node ?Node) !(int, int) {
+	a, b := if value := node {
+		match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}, 9
+	} else {
+		0, 0
+	}
+	return a, b
+}
+
 struct Circle {
 	r int
 }
@@ -712,6 +725,18 @@ fn test_likely_operand_match_as_if_expr_value_with_propagation() {
 	assert select_value_likely(First{})! == true
 	assert select_value_likely(Second{})! == false
 	assert select_value_likely(none) or { true } == false
+}
+
+fn test_multi_return_value_match_as_if_expr_value_with_propagation() {
+	a1, b1 := select_value_multiret(First{})!
+	assert a1 == 1
+	assert b1 == 9
+	a2, b2 := select_value_multiret(Second{})!
+	assert a2 == 2
+	assert b2 == 9
+	a3, b3 := select_value_multiret(none) or { -1, -1 }
+	assert a3 == 0
+	assert b3 == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

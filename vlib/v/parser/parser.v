@@ -728,11 +728,12 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			}
 		}
 		ast.ConcatExpr {
-			// last stmt on block is: a, b, c := ret1(), ret2(), ret3()
+			// last stmt on block is a multi-return value list, e.g.
+			// `ret1(), ret2()` or `match value { .. }, 9`; recurse into every
+			// value so nested/wrapped match/if/call values are marked as
+			// return-used, not just direct calls.
 			for mut val in expr.vals {
-				if mut val is ast.CallExpr {
-					val.is_return_used = true
-				}
+				p.mark_last_call_expr_return_as_used(mut val)
 			}
 		}
 		ast.ArrayInit {
