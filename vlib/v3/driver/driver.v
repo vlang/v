@@ -38,6 +38,7 @@ const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
+const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
 const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const macos_v3_compiler_error_fallback = 'compiler_error'
@@ -5716,6 +5717,12 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-silent' {
 			silent = true
+			if 'silent' !in user_defines {
+				user_defines << 'silent'
+			}
+			i++
+		} else if args[i] == macos_v3_internal_quiet_flag {
+			silent = true
 			i++
 		} else if args[i] == '-showcc' {
 			show_cc = true
@@ -8751,7 +8758,7 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 	mut public_args := []string{cap: retry_args.len + 1}
 	public_args << '-no-retry-compilation'
 	for arg in retry_args {
-		if arg != macos_v3_compat_c99_flag {
+		if arg !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag] {
 			public_args << arg
 		}
 	}

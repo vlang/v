@@ -529,6 +529,31 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	}
 }
 
+fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_silent_define_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source,
+		"@[if silent ?]\nfn print_silent_attribute() {\n\tprintln('attribute silent')\n}\n\nfn main() {\n\t\$if silent ? {\n\t\tprintln('silent')\n\t} \$else {\n\t\tprintln('not silent')\n\t}\n\tprint_silent_attribute()\n}\n")!
+
+	for option, expected in {
+		'-silent':                  'silent\nattribute silent\n'
+		'-macos-v3-internal-quiet': 'not silent\n'
+	} {
+		output := os.join_path(root, option.trim_left('-'))
+		compile := cmdexec.run(v3_bin, [option, '-o', output, source])
+		assert compile.exit_code == 0, '${option}: ${compile.output}'
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, '${option}: ${run.output}'
+		assert run.output == expected, '${option}: ${run.output}'
+	}
+}
+
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 	$if amd64 || arm64 {
 		root := os.join_path(os.vtmp_dir(), 'v3_driver_inline_asm_fallback_${os.getpid()}')

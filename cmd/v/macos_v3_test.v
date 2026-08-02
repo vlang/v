@@ -194,8 +194,12 @@ fn test_macos_v3_forwards_showcc_with_quiet_benchmarks() {
 			show_cc: true
 		}
 		forwarded := macos_v3_forwarded_args(prefs, ['-showcc', 'main.v'])
-		assert '-silent' in forwarded
+		assert macos_v3_internal_quiet_flag in forwarded
+		assert '-silent' !in forwarded
 		assert '-showcc' in forwarded
+		explicit_silent := macos_v3_forwarded_args(prefs, ['-silent', '-showcc', 'main.v'])
+		assert '-silent' in explicit_silent
+		assert macos_v3_internal_quiet_flag !in explicit_silent
 	}
 }
 

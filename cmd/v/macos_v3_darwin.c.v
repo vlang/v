@@ -9,6 +9,7 @@ const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
+const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
@@ -136,8 +137,9 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if prefs.skip_running && '-skip-running' !in forwarded_args {
 		forwarded_args.insert(0, '-skip-running')
 	}
-	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && '-silent' !in forwarded_args {
-		forwarded_args.insert(0, '-silent')
+	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && '-silent' !in forwarded_args
+		&& macos_v3_internal_quiet_flag !in forwarded_args {
+		forwarded_args.insert(0, macos_v3_internal_quiet_flag)
 	}
 	// The compatibility fallback must not select a different compiler merely
 	// because a valid V3 build crosses the standalone driver's safety cap.
