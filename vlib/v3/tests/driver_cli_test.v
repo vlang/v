@@ -581,12 +581,15 @@ fn feature_source() string {
 	return 'source:off'
 }
 ")!
-	output := os.join_path(root, 'app')
-	compile := cmdexec.run(v3_bin, ['-nocache', '-d', 'feature=enabled', '-o', output, project])
-	assert compile.exit_code == 0, compile.output
-	run := cmdexec.run(output, [])
-	assert run.exit_code == 0, run.output
-	assert run.output == 'optional:on\nsource:on\nenabled\n', run.output
+	for define_option in ['-d', '-define'] {
+		output := os.join_path(root, 'app_${define_option.trim_left('-')}')
+		compile := cmdexec.run(v3_bin, ['-nocache', define_option, 'feature=enabled', '-o', output,
+			project])
+		assert compile.exit_code == 0, '${define_option}: ${compile.output}'
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, '${define_option}: ${run.output}'
+		assert run.output == 'optional:on\nsource:on\nenabled\n', '${define_option}: ${run.output}'
+	}
 }
 
 fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {

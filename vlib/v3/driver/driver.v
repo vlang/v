@@ -5895,7 +5895,7 @@ pub fn run(args []string) {
 		} else if args[i] in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
 			compile_backends << args[i + 1]
 			i += 2
-		} else if args[i] == '-d' && i + 1 < args.len {
+		} else if args[i] in ['-d', '-define'] && i + 1 < args.len {
 			define := args[i + 1]
 			record_user_define(mut user_defines, mut compile_values, define)
 			i += 2
