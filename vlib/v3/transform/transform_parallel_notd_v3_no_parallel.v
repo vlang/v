@@ -1788,13 +1788,11 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// Clone-free shared-base path: needs the checker's top-level index for
 		// exact per-item subtree ranges, and skip_generics (the generic passes
 		// scan and mutate arbitrary AST regions, which the shared design forbids).
-		$if !macos {
-			if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
-				shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
-				if shared_jobs > 1 {
-					return t.run_parallel_transform_shared(items, base_nodes, base_children,
-						shared_jobs)
-				}
+		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
+			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
+			if shared_jobs > 1 {
+				return t.run_parallel_transform_shared(items, base_nodes, base_children,
+					shared_jobs)
 			}
 		}
 		// Freeze the checker's warm type cache (fully populated by the check

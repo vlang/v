@@ -796,7 +796,6 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
-		_ := g.tc.cur_scope.lookup_owner(entry.name) or { continue }
 		cname := g.cname(entry.name)
 		if entry.optional_wrapper {
 			g.writeln('if (${cname}.ok) {')
@@ -2471,6 +2470,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				if g.cur_fn_ret_is_optional {
 					ct := g.optional_type_name(g.cur_fn_ret)
 					base := g.cur_fn_ret_base
+					if node.value == direct_optional_forward_return_value {
+						g.write('return ')
+						g.gen_expr(ret_id)
+						g.writeln(';')
+						return
+					}
 					if err_id := g.optional_error_payload_err_expr(ret_id) {
 						g.write('return (${ct}){.ok = false, .err = ')
 						if err := g.result_error_from_expr_string(err_id) {
@@ -3317,7 +3322,7 @@ fn (mut g FlatGen) return_c_type() string {
 	if g.cur_fn_ret is types.MultiReturn {
 		return g.value_c_type(g.cur_fn_ret)
 	}
-	return g.tc.c_type(g.cur_fn_ret)
+	return g.fn_return_type_name(g.cur_fn_ret)
 }
 
 // local_ident_type returns the type of an identifier that is local to the
@@ -3644,6 +3649,9 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 	}
 	if g.cur_fn_ret_is_optional {
 		base := g.cur_fn_ret_base
+		if node.value == direct_optional_forward_return_value {
+			return g.expr_to_string(ret_id)
+		}
 		if err_id := g.optional_error_payload_err_expr(ret_id) {
 			err := g.result_error_from_expr_string(err_id) or {
 				g.expr_to_string_with_expected_type(err_id, g.tc.parse_type('IError'))
@@ -3922,6 +3930,9 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 	if fn_node.kind != .ident {
 		return node_type
 	}
+	if ret := g.module_c_fn_return_type(fn_node.value) {
+		return ret
+	}
 	if ret := g.tc.fn_ret_types[fn_node.value] {
 		return ret
 	}
@@ -3966,6 +3977,9 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 			return ret
 		}
 	} else if fn_node.kind == .ident {
+		if ret := g.module_c_fn_return_type(fn_node.value) {
+			return ret
+		}
 		if ret := g.tc.fn_ret_types[fn_node.value] {
 			return ret
 		}
@@ -4000,6 +4014,11 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 	}
 	base_id := g.a.child(&fn_node, 0)
 	base_node := g.a.nodes[int(base_id)]
+	if base_node.kind == .ident && base_node.value == 'C' {
+		if ret := g.module_c_fn_return_type('C.${fn_node.value}') {
+			return ret
+		}
+	}
 	// A selector whose base names a type or an imported module is not a receiver method but a
 	// static method (`Type.make()`) or import-qualified function (`mod.make()`); the base ident
 	// has no value type, so resolve it the same way gen_call does and read the declared return
@@ -4060,6 +4079,11 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) module_c_fn_return_type(name string) ?types.Type {
+	raw_name := if name.starts_with('C.') { name } else { 'C.${name}' }
+	return g.tc.c_fn_module_ret_types['${g.tc.cur_module}\x01${raw_name}'] or { none }
 }
 
 fn (g &FlatGen) selector_fn_field_return_type(fn_node flat.Node) ?types.Type {
@@ -4483,6 +4507,9 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			}
 			if typ := g.sum_shared_field_type(base_type0, node.value) {
 				return typ
+			}
+			if info := g.sum_unique_variant_field_info(base_type0, node.value) {
+				return info.typ
 			}
 		}
 		if node.kind == .index && node.children_count > 0 {
@@ -5212,6 +5239,14 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 						v_type = ret
 					}
 				}
+				rhs_type := g.usable_expr_type(rhs_id)
+				current_value := default_init_unalias_type(types.unwrap_pointer(v_type))
+				rhs_value := default_init_unalias_type(types.unwrap_pointer(rhs_type))
+				if current_value is types.Struct && rhs_value is types.Struct
+					&& rhs_value.name.contains('.')
+					&& current_value.name.all_after_last('.') == rhs_value.name.all_after_last('.') {
+					v_type = rhs_type
+				}
 			}
 			if rhs.kind == .cast_expr && rhs.value.len > 0 {
 				cast_type := g.tc.parse_type(rhs.value)
@@ -5451,7 +5486,25 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 	lhs := g.a.nodes[int(lhs_id)]
 	value_type := shared_local_value_type(inner_type)
 	inner := g.shared_qualify_type_text(value_type.name(), g.tc.cur_module)
-	wrapper := g.shared_wrapper_c_name(inner)
+	mut wrapper := g.shared_wrapper_c_name(inner)
+	if wrapper !in g.shared_type_names {
+		short_inner := inner.all_after_last('.')
+		mut matching_wrapper := ''
+		mut ambiguous := false
+		for candidate, info in g.shared_type_names {
+			if info.inner.all_after_last('.') != short_inner {
+				continue
+			}
+			if matching_wrapper.len > 0 {
+				ambiguous = true
+				break
+			}
+			matching_wrapper = candidate
+		}
+		if !ambiguous && matching_wrapper.len > 0 {
+			wrapper = matching_wrapper
+		}
+	}
 	if storage_expr := g.shared_arg_storage_c_expr(rhs_id) {
 		if !lhs_is_defer_capture {
 			g.write('${decl_prefix}${wrapper}* ')
@@ -5579,11 +5632,23 @@ fn (mut g FlatGen) track_local_fn_value_decl(lhs flat.Node, owner types.ScopeBin
 	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 		return
 	}
-	if rhs.kind == .ident && rhs.value.contains('__anon_fn_') {
-		g.declare_local_fn_value_c_name(owner, g.cname(rhs.value))
+	if c_name := g.runtime_closure_lifted_c_name(rhs) {
+		g.declare_local_fn_value_c_name(owner, c_name)
 	} else {
 		g.declare_local_fn_value_c_name(owner, '')
 	}
+}
+
+fn (g &FlatGen) runtime_closure_lifted_c_name(node flat.Node) ?string {
+	if node.kind == .ident && node.value.contains('__anon_fn_') {
+		return g.cname(node.value)
+	}
+	for i in 0 .. node.children_count {
+		if c_name := g.runtime_closure_lifted_c_name(g.a.child_node(&node, i)) {
+			return c_name
+		}
+	}
+	return none
 }
 
 fn c_type_is_pointer_storage(c_type string) bool {
@@ -5801,10 +5866,22 @@ fn (g &FlatGen) alias_base_matches_type(alias_type types.Alias, typ types.Type) 
 }
 
 fn (g &FlatGen) usable_struct_field_type(type_name string, field_name string) ?types.Type {
-	typ := g.struct_field_type(type_name, field_name) or { return none }
-	if field_type_needs_checker_authority(typ.name()) {
-		if checker_typ := g.checker_struct_field_type(type_name, field_name) {
-			return checker_typ
+	if checker_typ := g.checker_struct_field_type(type_name, field_name) {
+		return g.usable_resolved_sum_type(checker_typ)
+	}
+	if field_typ := g.struct_field_type(type_name, field_name) {
+		return g.usable_resolved_sum_type(field_typ)
+	}
+	return none
+}
+
+fn (g &FlatGen) usable_resolved_sum_type(typ types.Type) types.Type {
+	if typ is types.Struct {
+		sum_name := if typ.name.contains('.') { typ.name } else { g.resolve_sum_name(typ.name) }
+		if sum_name in g.tc.sum_types {
+			return types.Type(types.SumType{
+				name: sum_name
+			})
 		}
 	}
 	return typ

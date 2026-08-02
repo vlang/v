@@ -16,6 +16,7 @@ fn gen_c_for_source(name string, source string) string {
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[src] = true
 	tc.check_semantics()
@@ -48,6 +49,7 @@ fn gen_c_for_sources(name string, files map[string]string) string {
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	for path in paths {
 		tc.diagnostic_files[path] = true
@@ -70,6 +72,7 @@ fn gen_c_for_source_with_scalar_zero_decl(name string, source string, decl_name 
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[src] = true
 	tc.check_semantics()
@@ -115,7 +118,10 @@ fn main() {
 
 // test_mut_static_local_decl_codegen validates this v3 regression case.
 fn test_mut_static_local_decl_codegen() {
-	c_code := gen_c_for_source('static_local_decl', 'fn next_value() int {
+	c_code := gen_c_for_source('static_local_decl', '@[translated]
+module main
+
+fn next_value() int {
 	mut static x := 0
 	x++
 	return x

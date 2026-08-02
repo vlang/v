@@ -127,6 +127,7 @@ pub:
 pub struct FnType {
 pub:
 	params      []Type
+	params_mut  []bool
 	return_type Type
 }
 
@@ -250,6 +251,7 @@ pub fn clone_owned_type(value Type) Type {
 		FnType {
 			Type(FnType{
 				params:      clone_owned_types(value.params)
+				params_mut:  value.params_mut.clone()
 				return_type: clone_owned_type(value.return_type)
 			})
 		}
@@ -445,6 +447,9 @@ pub fn (t Type) name() string {
 			if i > 0 {
 				s += ', '
 			}
+			if fn_type_param_is_mut(t, i) {
+				s += 'mut '
+			}
 			s += nested_type_name(fn_type_param_type(t, i))
 		}
 		s += ')'
@@ -508,6 +513,10 @@ fn nested_type_name(t Type) string {
 // fn_type_param_type supports fn type param type handling for types.
 fn fn_type_param_type(f FnType, idx int) Type {
 	return f.params[idx]
+}
+
+fn fn_type_param_is_mut(f FnType, idx int) bool {
+	return idx >= 0 && idx < f.params_mut.len && f.params_mut[idx]
 }
 
 // prim_name_from supports prim name from handling for types.

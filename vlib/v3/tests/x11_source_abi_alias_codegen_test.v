@@ -68,7 +68,7 @@ fn main() {
 	mut protocols := [1]Atom{}
 	protocols[0] = Atom(1)
 	window := Window(0)
-	C.XSetWMProtocols(display, window, &protocols[0], 1)
+	C.XSetWMProtocols(display, window, unsafe { &protocols[0] }, 1)
 	mut value := &u8(unsafe { nil })
 	count := helper(display, window, &&u8(&value))
 	mut local_id := LocalId(9)

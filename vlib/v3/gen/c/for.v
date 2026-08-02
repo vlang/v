@@ -46,6 +46,9 @@ fn (mut g FlatGen) pop_loop_label_depth(state LoopLabelState) {
 }
 
 fn (mut g FlatGen) user_goto_c_label(label string) string {
+	if label.starts_with('__for_post_') {
+		return g.cname(label)
+	}
 	for suffix in ['_continue', '_break'] {
 		if label.ends_with(suffix) {
 			base := label[..label.len - suffix.len]
@@ -100,10 +103,13 @@ fn (g &FlatGen) is_loop_continue_label(id flat.NodeId, label string) bool {
 	return node.kind == .label_stmt && node.value == '${label}_continue'
 }
 
-fn (mut g FlatGen) gen_loop_body_node(id flat.NodeId, label string) {
-	if !g.is_loop_continue_label(id, label) {
-		g.gen_node(id)
+fn (mut g FlatGen) gen_loop_body_node(id flat.NodeId, label string) bool {
+	if g.is_loop_continue_label(id, label) {
+		g.gen_loop_continue_label(label)
+		return true
 	}
+	g.gen_node(id)
+	return false
 }
 
 fn (mut g FlatGen) gen_loop_continue_label(label string) {
@@ -160,12 +166,16 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.indent++
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
+	mut emitted_continue_label := false
 	for i in 3 .. node.children_count {
-		g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+			|| emitted_continue_label
 	}
 	g.loop_depth--
 	g.gen_defers_from(defer_start)
-	g.gen_loop_continue_label(label_state.label)
+	if !emitted_continue_label {
+		g.gen_loop_continue_label(label_state.label)
+	}
 	if !node.skip_ownership_drops {
 		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
@@ -398,13 +408,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
 				if node.op == .amp {
-					g.write('${c_elem}* ${elem_var} = (')
-					g.write(c_elem)
-					g.writeln('*)array_get(${container_str}, ${idx_var});')
+					g.writeln('${c_elem}* ${elem_var} = (${c_elem}*)array_get(${container_str}, ${idx_var});')
 				} else {
-					g.write('${c_elem} ${elem_var} = *(')
-					g.write(c_elem)
-					g.writeln('*)array_get(${container_str}, ${idx_var});')
+					g.writeln('${c_elem} ${elem_var} = *(${c_elem}*)array_get(${container_str}, ${idx_var});')
 				}
 				elem_scope_type := if node.op == .amp {
 					types.Type(types.Pointer{
@@ -476,8 +482,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					stmt:       map_writeback_stmt
 				}
 			}
+			mut emitted_continue_label := false
 			for i in body_start .. node.children_count {
-				g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+				emitted_continue_label =
+					g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+					|| emitted_continue_label
 			}
 			if map_copyback_guard.dirty_var.len > 0 {
 				g.map_loop_copyback_guards.delete_last()
@@ -487,7 +496,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.loop_control_copybacks.delete_last()
 			}
 			g.gen_defers_from(defer_start)
-			g.gen_loop_continue_label(label_state.label)
+			if !emitted_continue_label {
+				g.gen_loop_continue_label(label_state.label)
+			}
 			if !node.skip_ownership_drops {
 				g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 			}
@@ -508,11 +519,15 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.indent++
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
+	mut emitted_continue_label := false
 	for i in body_start .. node.children_count {
-		g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+			|| emitted_continue_label
 	}
 	g.gen_defers_from(defer_start)
-	g.gen_loop_continue_label(label_state.label)
+	if !emitted_continue_label {
+		g.gen_loop_continue_label(label_state.label)
+	}
 	if !node.skip_ownership_drops {
 		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
@@ -579,8 +594,10 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	g.indent++
 	g.gen_labelled_continue_skip_drops_var(label)
 	g.loop_depth++
+	mut emitted_continue_label := false
 	for i in body_start .. node.children_count {
-		g.gen_loop_body_node(g.a.child(&node, i), label)
+		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label)
+			|| emitted_continue_label
 	}
 	defer_start := if g.loop_defer_starts.len > 0 {
 		g.loop_defer_starts.last()
@@ -588,7 +605,9 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 		g.defers.len
 	}
 	g.gen_defers_from(defer_start)
-	g.gen_loop_continue_label(label)
+	if !emitted_continue_label {
+		g.gen_loop_continue_label(label)
+	}
 	if !node.skip_ownership_drops {
 		g.gen_loop_iteration_ownership_drops_for_label(label)
 	}

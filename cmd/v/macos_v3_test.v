@@ -39,7 +39,6 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.old_compiler = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.old_compiler = false
-
 		prefs.path = ''
 		assert !is_macos_v3_relevant_command('test', prefs)
 		prefs.path = 'main.v'
@@ -65,11 +64,15 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.is_liveshared = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_liveshared = false
-		prefs.is_shared = true
-		assert is_macos_v3_relevant_command('run', prefs)
-		prefs.is_cstrict = true
-		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_run = true
 		prefs.autofree = true
+		assert !is_macos_v3_relevant_command('run', prefs)
+		prefs.autofree = false
+		assert is_macos_v3_relevant_command('run', prefs)
+		prefs.is_run = false
+		prefs.is_shared = true
+		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_cstrict = true
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_prod = true
 		assert is_macos_v3_relevant_command('main.v', prefs)
@@ -110,34 +113,56 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	}
 }
 
-fn test_macos_v3_forwards_driver_defaults_once() {
+fn test_macos_v3_forwards_environment_driven_skip_running() {
 	$if macos {
-		mut prefs := &pref.Preferences{
+		prefs := &pref.Preferences{
 			skip_running: true
 		}
-		forwarded := macos_v3_forwarded_args(prefs, ['-showcc', 'script.vsh'])
-		for flag in [macos_v3_compat_c99_flag, '-skip-running', '-silent', '-nocache',
-			'-no-memory-limit', '-showcc'] {
-			assert flag in forwarded
-			assert forwarded.count(it == flag) == 1
-		}
-		already_explicit := macos_v3_forwarded_args(prefs, ['--no-cache', '--no-memory-limit',
-			'--no-parallel', '-silent', '-skip-running', macos_v3_compat_c99_flag, 'script.vsh'])
-		assert already_explicit.count(it in ['-nocache', '--no-cache']) == 1
-		assert already_explicit.count(it in ['-no-memory-limit', '--no-memory-limit']) == 1
-		assert already_explicit.count(it == '-silent') == 1
+		forwarded := macos_v3_forwarded_args(prefs, ['script.vsh'])
+		assert '-skip-running' in forwarded
+		assert forwarded.count(it == '-skip-running') == 1
+		already_explicit := macos_v3_forwarded_args(prefs, ['-skip-running', 'script.vsh'])
 		assert already_explicit.count(it == '-skip-running') == 1
-		assert already_explicit.count(it == macos_v3_compat_c99_flag) == 1
+	}
+}
 
+fn test_macos_v3_forwards_showcc_with_quiet_benchmarks() {
+	$if macos {
+		prefs := &pref.Preferences{
+			show_cc: true
+		}
+		forwarded := macos_v3_forwarded_args(prefs, ['-showcc', 'main.v'])
+		assert '-silent' in forwarded
+		assert '-showcc' in forwarded
+	}
+}
+
+fn test_macos_v3_forwards_compatibility_c99_mode() {
+	$if macos {
+		mut prefs := &pref.Preferences{}
+		forwarded := macos_v3_forwarded_args(prefs, ['main.v'])
+		assert macos_v3_compat_c99_flag in forwarded
+		assert '-nocache' !in forwarded
+		assert '--no-cache' !in forwarded
+		assert '-no-memory-limit' in forwarded
+		assert '-no-parallel' !in forwarded
+		assert forwarded.count(it == macos_v3_compat_c99_flag) == 1
+		already_present := macos_v3_forwarded_args(prefs, [macos_v3_compat_c99_flag, 'main.v'])
+		assert already_present.count(it == macos_v3_compat_c99_flag) == 1
+		assert already_present.count(it in ['-nocache', '--no-cache']) == 0
+		assert already_present.count(it == '-no-memory-limit') == 1
+		explicit_no_cache := macos_v3_forwarded_args(prefs, ['--no-cache', 'main.v'])
+		assert explicit_no_cache.count(it in ['-nocache', '--no-cache']) == 1
+		explicit_memory_limit := macos_v3_forwarded_args(prefs, ['--no-memory-limit', 'main.v'])
+		assert explicit_memory_limit.count(it in ['-no-memory-limit', '--no-memory-limit']) == 1
 		prefs.backend = .js_node
-		inferred_js := macos_v3_forwarded_args(prefs, ['-o', 'app.js', 'app.v'])
-		assert inferred_js[..2] == ['-nocache', '-no-memory-limit']
-		backend_index := inferred_js.index('-b')
+		inferred_js := macos_v3_forwarded_args(prefs, ['-o', 'main.js', 'main.v'])
+		backend_index := inferred_js.index('-b') or { -1 }
 		assert backend_index >= 0
 		assert inferred_js[backend_index + 1] == 'js_node'
 		prefs.backend_set_by_flag = true
-		explicit_js := macos_v3_forwarded_args(prefs, ['-b', 'js_browser', '-o', 'app.js', 'app.v'])
-		assert explicit_js.count(it in ['-b', '-backend']) == 1
+		explicit_js := macos_v3_forwarded_args(prefs, ['-b', 'js_node', 'main.v'])
+		assert explicit_js.count(it == 'js_node') == 1
 	}
 }
 
@@ -155,7 +180,7 @@ fn test_autofree_non_direct_commands_stay_on_the_standard_command_path() {
 	assert is_ownership_relevant_command('app.v', prefs)
 }
 
-fn test_macos_v3_child_environment_preserves_caller_without_fallback_state() {
+fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 	$if macos {
 		caller_environment := {
 			'PATH':                     '/usr/bin'
@@ -167,9 +192,12 @@ fn test_macos_v3_child_environment_preserves_caller_without_fallback_state() {
 			'V_MACOS_V3_C_ERROR_DIR':   '/tmp/stale-c-error'
 			'V_MACOS_V3_RETRY':         '1'
 		}
-		environment := macos_v3_child_environment(@VEXE, caller_environment)
+		environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback',
+			caller_environment)
 		assert environment[macos_v3_vhash_env] == @VHASH
 		assert environment[macos_v3_vcurrent_hash_env] == @VCURRENTHASH
+		assert environment[macos_v3_c_error_dir_env] == '/tmp/macos_v3_fallback.c_error'
+		assert macos_v3_retry_env !in environment
 		assert environment[macos_v3_embedded_env] == '1'
 		assert environment['VEXE'] == os.real_path(@VEXE)
 		assert environment['VCHILD'] == 'true'
@@ -179,11 +207,8 @@ fn test_macos_v3_child_environment_preserves_caller_without_fallback_state() {
 		assert environment[macos_v3_caller_vexe_env] == 'caller-vexe'
 		assert environment[macos_v3_caller_vchild_present_env] == '1'
 		assert environment[macos_v3_caller_vchild_env] == 'caller-vchild'
-		assert 'V_MACOS_V3_FALLBACK_FILE' !in environment
-		assert 'V_MACOS_V3_C_ERROR_DIR' !in environment
-		assert 'V_MACOS_V3_RETRY' !in environment
 
-		unset_environment := macos_v3_child_environment(@VEXE, {
+		unset_environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback', {
 			'PATH': '/usr/bin'
 		})
 		assert unset_environment[macos_v3_caller_vexe_present_env] == '0'
@@ -193,9 +218,89 @@ fn test_macos_v3_child_environment_preserves_caller_without_fallback_state() {
 	}
 }
 
-fn test_macos_v3_compiler_failures_do_not_fall_back_to_v1() {
+fn test_macos_v3_embedded_driver_reuses_module_cache() {
 	$if macos {
-		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_no_fallback_${os.getpid()}')
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_embedded_cache_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(os.join_path(root, 'wrapper')) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(os.join_path(root, 'wrapper', 'wrapper.v'), 'module wrapper
+
+pub fn value() int {
+	return 42
+}
+')!
+		os.write_file(main_file, 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['V3CACHE'] = os.join_path(root, 'cache')
+		environment['V3_CACHE_TRACE'] = '1'
+		mut outputs := []string{}
+		for name in ['first', 'second'] {
+			output := os.join_path(root, name)
+			mut process := os.new_process(@VEXE)
+			process.set_args(['-gc', 'none', '-o', output, main_file])
+			process.set_environment(environment)
+			process.set_redirect_stdio()
+			process.run()
+			process.wait()
+			compiler_output := process.stdout_slurp() + process.stderr_slurp()
+			exit_code := process.code
+			process.close()
+			assert exit_code == 0, compiler_output
+			assert os.is_executable(output)
+			outputs << compiler_output
+		}
+		assert outputs[0].contains('V3 module cache miss:'), outputs[0]
+		assert !outputs[1].contains('V3 module cache miss:'), outputs[1]
+		cache_headers := os.walk_ext(environment['V3CACHE'], '.vh')
+		assert cache_headers.any(os.base(it).starts_with('wrapper_')), cache_headers.str()
+		run := os.execute(os.quoted_path(os.join_path(root, 'second')))
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '42'
+	}
+}
+
+fn test_macos_v3_reads_c_error_fallback_report() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'macos_v3_c_error_report_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, macos_v3_c_error_source_name_file), 'src.c')!
+		os.write_file(os.join_path(root, macos_v3_c_error_compiler_file), 'clang')!
+		os.write_file(os.join_path(root, macos_v3_c_error_output_file),
+			'src.c:2:1: error: generated failure')!
+		os.write_file(os.join_path(root, 'src.c'), 'int main(void) { return missing; }\n')!
+		report := read_macos_v3_c_error_report(root) or {
+			assert false
+			return
+		}
+		assert report.ccompiler == 'clang'
+		assert report.c_output.contains('generated failure')
+		assert report.c_file == os.join_path(root, 'src.c')
+		assert report.report_dir == root
+	}
+}
+
+fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_c_error_retry_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root) or { panic(err) }
 		defer {
@@ -222,24 +327,51 @@ fn test_macos_v3_compiler_failures_do_not_fall_back_to_v1() {
 	assert output == 1
 }
 ')!
-		mut environment := clean_macos_v3_test_environment()
-		compile := run_macos_v3_process(['-v', '-o', output, target], environment)
-		assert compile.exit_code != 0, compile.output
-		assert compile.output.contains('Running macOS V3 compiler in process:'), compile.output
-		assert compile.output.contains('inline assembly is not supported'), compile.output
-		assert !compile.output.contains('retrying with `-old-compiler`'), compile.output
-		assert !os.exists(output)
+		mut environment := os.environ()
+		environment['GITHUB_ACTIONS'] = 'true'
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-v', '-o', output, target])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
+		assert !compiler_output.contains('Launching macOS V3 compiler:'), compiler_output
+		assert compiler_output.contains('compatibility compiler for inline assembly'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0
 
+		os.rm(output)!
 		failing_target := os.join_path(root, 'failing_target.v')
 		failing_output := os.join_path(root, 'failing_target')
 		os.write_file(failing_target, '#flag -lmacos_v3_missing_library_${os.getpid()}
 
 fn main() {}
 ')!
-		c_failure := run_macos_v3_process(['-o', failing_output, failing_target], environment)
-		assert c_failure.exit_code != 0, c_failure.output
-		assert c_failure.output.contains('macos_v3_missing_library_'), c_failure.output
-		assert !c_failure.output.contains('retrying with `-old-compiler`'), c_failure.output
+		mut failing_process := os.new_process(@VEXE)
+		failing_process.set_args(['-gc', 'none', '-o', failing_output, failing_target])
+		failing_process.set_environment(environment)
+		failing_process.set_redirect_stdio()
+		failing_process.run()
+		failing_compiler_pid := failing_process.pid
+		failing_process.wait()
+		failing_output_text := failing_process.stdout_slurp() + failing_process.stderr_slurp()
+		failing_exit_code := failing_process.code
+		failing_process.close()
+		assert failing_exit_code != 0, failing_output_text
+		assert !failing_output_text.contains('V3 C compilation failed; retrying with `-old-compiler`.')
+		assert failing_output_text.contains('macos_v3_missing_library_')
+		failing_report_dir := os.join_path(os.vtmp_dir(),
+			'macos_v3_fallback_${failing_compiler_pid}.c_error')
+		assert !os.exists(failing_report_dir), 'failed compatibility build left staged report directory: ${failing_report_dir}'
 	}
 }
 
@@ -252,13 +384,23 @@ fn test_macos_v3_test_command_uses_v3() {
 			os.rmdir_all(root) or {}
 		}
 		test_file := os.join_path(root, 'sample_test.v')
-		os.write_file(test_file, 'fn test_v3_default() {
-	assert 2 + 2 == 4
-}
-')!
-		result := run_macos_v3_process(['-v', 'test', test_file], clean_macos_v3_test_environment())
-		assert result.exit_code == 0, result.output
-		assert result.output.contains('Running macOS V3 compiler in process:'), result.output
+		os.write_file(test_file, 'fn test_v3_default() {\n\tassert 2 + 2 == 4\n}\n')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-v', 'test', test_file])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
 	}
 }
 
@@ -274,41 +416,34 @@ fn test_macos_v3_directory_c_output_differs_from_old_compiler() {
 			os.rmdir_all(root) or {}
 		}
 		os.write_file(os.join_path(source_dir, 'main.v'), 'fn main() {\n\tprintln("v3")\n}\n')!
-		environment := clean_macos_v3_test_environment()
-		v3_build := run_macos_v3_process(['-v', '-o', v3_output, source_dir], environment)
-		assert v3_build.exit_code == 0, v3_build.output
-		assert v3_build.output.contains('Running macOS V3 compiler in process:'), v3_build.output
-		old_build := run_macos_v3_process(['-o', old_output, '-old-compiler', source_dir],
-			environment)
-		assert old_build.exit_code == 0, old_build.output
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut v3_process := os.new_process(@VEXE)
+		v3_process.set_args(['-v', '-o', v3_output, source_dir])
+		v3_process.set_environment(environment)
+		v3_process.set_redirect_stdio()
+		v3_process.run()
+		v3_process.wait()
+		v3_build_output := v3_process.stdout_slurp() + v3_process.stderr_slurp()
+		v3_exit_code := v3_process.code
+		v3_process.close()
+		assert v3_exit_code == 0, v3_build_output
+		assert v3_build_output.contains('Running macOS V3 compiler in process:'), v3_build_output
+		mut old_process := os.new_process(@VEXE)
+		old_process.set_args(['-o', old_output, '-old-compiler', source_dir])
+		old_process.set_environment(environment)
+		old_process.set_redirect_stdio()
+		old_process.run()
+		old_process.wait()
+		old_build_output := old_process.stdout_slurp() + old_process.stderr_slurp()
+		old_exit_code := old_process.code
+		old_process.close()
+		assert old_exit_code == 0, old_build_output
 		assert os.read_file(v3_output)! != os.read_file(old_output)!
 	}
-}
-
-fn clean_macos_v3_test_environment() map[string]string {
-	mut environment := os.environ()
-	environment['CFLAGS'] = ''
-	environment['LDFLAGS'] = ''
-	environment['VFLAGS'] = ''
-	environment['VOSARGS'] = ''
-	environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
-	return environment
-}
-
-fn run_macos_v3_process(args []string, environment map[string]string) os.Result {
-	mut process := os.new_process(@VEXE)
-	process.set_args(args)
-	process.set_environment(environment)
-	process.set_redirect_stdio()
-	process.run()
-	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
-	result := os.Result{
-		exit_code: process.code
-		output:    output
-	}
-	process.close()
-	return result
 }
 
 fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {

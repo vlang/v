@@ -5,6 +5,7 @@ import v3.parser
 
 const vexe = @VEXE
 const v3_dir = os.dir(os.dir(@FILE))
+const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn test_eval_function_call_and_for_range() {
@@ -3934,7 +3935,8 @@ fn main() {
 
 fn test_v3_eval_backend_cli() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_eval_backend_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	src := os.join_path(os.temp_dir(), 'v3_eval_backend_sample.v')
 	os.write_file(src, '

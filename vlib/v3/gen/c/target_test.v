@@ -17,6 +17,9 @@ char quote = \'A\';
 	assert !g.cached_support_identifiers['_fn_ptr_block_comment_only']
 	assert !g.cached_support_identifiers['Option_string_only']
 	assert !g.cached_support_identifiers['escaped']
+	assert g.cached_support_has_c_type('ExistingSupport')
+	assert g.cached_support_has_c_type('struct ExistingSupport')
+	assert !g.cached_support_has_c_type('struct MissingSupport')
 }
 
 fn test_c_directive_targets_use_requested_platform() {
@@ -424,6 +427,143 @@ fn test_cache_input_scan_tracks_literal_include_macros() {
 	assert inputs['sample'] == expected
 }
 
+fn test_cache_input_scan_rescans_unguarded_headers_after_macro_changes() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_repeated_macro_header_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_source := os.join_path(dir, 'root.c')
+	selector_header := os.join_path(dir, 'selector.h')
+	first_header := os.join_path(dir, 'first.h')
+	second_header := os.join_path(dir, 'second.h')
+	os.write_file(root_source, '#define V3_SELECTED_HEADER "first.h"
+#include "selector.h"
+#undef V3_SELECTED_HEADER
+#define V3_SELECTED_HEADER "second.h"
+#include "selector.h"
+') or {
+		panic(err)
+	}
+	os.write_file(selector_header, '#include V3_SELECTED_HEADER\n') or { panic(err) }
+	os.write_file(first_header, '#define V3_FIRST_VALUE 1\n') or { panic(err) }
+	os.write_file(second_header, '#define V3_SECOND_VALUE 2\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#insert "root.c"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, native_roots, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(root_source), os.real_path(selector_header),
+		os.real_path(first_header), os.real_path(second_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+	assert native_roots['sample'] == [os.real_path(root_source)]
+}
+
+fn test_cache_input_scan_keeps_unknown_macro_branches_and_bare_defines() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_unknown_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	apple_header := os.join_path(dir, 'apple.h')
+	other_header := os.join_path(dir, 'other.h')
+	enabled_header := os.join_path(dir, 'enabled.h')
+	disabled_header := os.join_path(dir, 'disabled.h')
+	ambiguous_enabled_header := os.join_path(dir, 'ambiguous_enabled.h')
+	ambiguous_disabled_header := os.join_path(dir, 'ambiguous_disabled.h')
+	os.write_file(outer_header, '#ifdef __APPLE__
+#include "apple.h"
+#else
+#include "other.h"
+#endif
+#ifdef V3_BARE_FEATURE
+#include "enabled.h"
+#else
+#include "disabled.h"
+#endif
+#ifdef V3_COMPILER_FEATURE
+#define V3_AMBIGUOUS_FEATURE
+#endif
+#ifdef V3_AMBIGUOUS_FEATURE
+#include "ambiguous_enabled.h"
+#else
+#include "ambiguous_disabled.h"
+#endif
+') or {
+		panic(err)
+	}
+	for path in [apple_header, other_header, enabled_header, disabled_header,
+		ambiguous_enabled_header, ambiguous_disabled_header] {
+		os.write_file(path, '#define V3_RECORDED_INPUT 1\n') or { panic(err) }
+	}
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, ['-DV3_BARE_FEATURE'], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(apple_header),
+		os.real_path(other_header), os.real_path(enabled_header),
+		os.real_path(ambiguous_enabled_header), os.real_path(ambiguous_disabled_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+	assert os.real_path(disabled_header) !in inputs['sample']
+}
+
+fn test_cache_input_scan_propagates_ambiguity_into_recursive_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_recursive_ambiguous_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	choose_a_header := os.join_path(dir, 'choose_a.h')
+	choose_b_header := os.join_path(dir, 'choose_b.h')
+	types_a_header := os.join_path(dir, 'types_a.h')
+	types_b_header := os.join_path(dir, 'types_b.h')
+	os.write_file(outer_header, '#ifdef __LINE__
+#include "choose_a.h"
+#else
+#include "choose_b.h"
+#endif
+#include V3_RECURSIVE_TYPES
+') or {
+		panic(err)
+	}
+	os.write_file(choose_a_header, '#define V3_RECURSIVE_TYPES "types_a.h"\n') or { panic(err) }
+	os.write_file(choose_b_header, '#define V3_RECURSIVE_TYPES "types_b.h"\n') or { panic(err) }
+	os.write_file(types_a_header, '#define V3_RECURSIVE_TYPE_A 1\n') or { panic(err) }
+	os.write_file(types_b_header, '#define V3_RECURSIVE_TYPE_B 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(choose_a_header),
+		os.real_path(choose_b_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+}
+
 fn test_cache_input_scan_rejects_dynamic_include_macros() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_dynamic_macro_cache_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -475,7 +615,7 @@ fn test_cache_input_scan_rejects_unresolved_include_macros() {
 	assert inputs['sample'] == [os.real_path(outer_header)]
 }
 
-fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
+fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_source_root_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -508,10 +648,7 @@ fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
 	expected_inputs.sort()
 	assert inputs['sample'] == expected_inputs
 	assert native_roots['sample'] == [os.real_path(root_source)]
-	mut expected_unscoped_inputs := [os.real_path(direct_header),
-		os.real_path(nested_header)]
-	expected_unscoped_inputs.sort()
-	assert unscoped_inputs['sample'] == expected_unscoped_inputs
+	assert unscoped_inputs['sample'] == expected_inputs
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

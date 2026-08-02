@@ -48,7 +48,7 @@ fn header_count(headers map[Header]string) int {
 	return headers.len
 }
 
-fn value_args(item Token, text string) int {
+fn value_args(item &Token, text &string) int {
 	return item.typeof + text.len
 }
 

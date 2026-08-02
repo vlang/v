@@ -222,6 +222,11 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences) {
 	if !is_ownership && !is_autofree {
 		return
 	}
+	// V3 ownership mode does not support the explicit Boehm GC variants yet.
+	// Keep established autofree+GC invocations on the regular compiler path.
+	if is_autofree && !is_ownership && prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+		return
+	}
 	if !is_ownership_relevant_command(command, prefs) {
 		// `-autofree` is also an established option for command modes such as
 		// `run` and `test`. Leave modes that do not compile directly on the regular

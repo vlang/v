@@ -339,7 +339,13 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 				return t.is_optional_type_name(ret.name())
 			}
 		}
-		return t.is_optional_type_name(t.get_call_return_type(id, node))
+		call_type := t.get_call_return_type(id, node)
+		if t.is_optional_type_name(call_type) {
+			return true
+		}
+		// Interface selector calls can have no canonical call name while their
+		// checker annotation still carries the exact Option/Result return type.
+		return t.is_optional_type_name(t.node_type(id))
 	}
 	if node.kind == .ident {
 		typ := t.var_type(node.value)
@@ -885,7 +891,17 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	} else {
 		tail_expr
 	}
-	ret_val := t.transform_return_child(actual_tail, 0, 1)
+	mut ret_val := t.transform_return_child(actual_tail, 0, 1)
+	direct_fn_value := tail_expr_node.kind == .ident && t.is_optional_type_name(ret_typ)
+		&& t.is_fn_pointer_type_name(t.normalize_type_alias(t.optional_base_type(ret_typ)))
+		&& t.resolved_ident_fn_value(tail_expr, tail_expr_node.value) != none
+	if t.is_optional_type_name(ret_typ) && tail_expr_node.kind != .none_expr
+		&& !t.is_error_call(tail_expr_node) && direct_fn_value {
+		// Match branch tails have already been transformed to the payload type.
+		// Preserve that fact explicitly so C generation does not have to recover
+		// a contextual Option/Result from the original function-value expression.
+		ret_val = t.make_optional_some(ret_val, t.qualify_optional_type(ret_typ))
+	}
 	t.drain_pending(mut all)
 	all << t.make_transformed_return(ret_val, ret_typ, source_return_id)
 	return t.make_block(all)
@@ -1066,7 +1082,8 @@ fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, nod
 	for i in 1 .. val.children_count {
 		branches << t.a.child(&val, i)
 	}
-	result << t.build_return_match_chain(actual_expr_id, match_expr_id, branches, 0, node.typ,
+	ret_typ := if t.cur_fn_ret_type.len > 0 { t.cur_fn_ret_type } else { node.typ }
+	result << t.build_return_match_chain(actual_expr_id, match_expr_id, branches, 0, ret_typ,
 		source_return_id)
 	return result
 }

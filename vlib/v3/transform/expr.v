@@ -990,13 +990,19 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 
 fn (mut t Transformer) transform_struct_pointer_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type string, rhs_type string, lhs_clean string, rhs_clean string) ?flat.NodeId {
 	pending_base := t.pending_stmts.len
-	lhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr(lhs_id), lhs_type, 'ptr_eq_lhs')
-	rhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr(rhs_id), rhs_type, 'ptr_eq_rhs')
+	lhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr_preserving_pointer_value(lhs_id),
+		lhs_type, 'ptr_eq_lhs')
+	rhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr_preserving_pointer_value(rhs_id),
+		rhs_type, 'ptr_eq_rhs')
 	result_name := t.new_temp('ptr_eq')
-	same_ptr := t.make_infix(.eq, lhs_ptr, rhs_ptr)
+	// Compare addresses through voidptr casts so a later transform pass does not
+	// auto-dereference a mutable pointer-value local in the synthesized identity checks.
+	lhs_addr := t.make_cast('voidptr', lhs_ptr, 'voidptr')
+	rhs_addr := t.make_cast('voidptr', rhs_ptr, 'voidptr')
+	same_ptr := t.make_infix(.eq, lhs_addr, rhs_addr)
 	t.pending_stmts << t.make_decl_assign_typed(result_name, same_ptr, 'bool')
-	lhs_not_nil := t.make_infix(.ne, lhs_ptr, t.a.add(.nil_literal))
-	rhs_not_nil := t.make_infix(.ne, rhs_ptr, t.a.add(.nil_literal))
+	lhs_not_nil := t.make_infix(.ne, lhs_addr, t.a.add(.nil_literal))
+	rhs_not_nil := t.make_infix(.ne, rhs_addr, t.a.add(.nil_literal))
 	both_not_nil := t.make_infix(.logical_and, lhs_not_nil, rhs_not_nil)
 	not_same_ptr := t.make_prefix(.not, t.make_ident(result_name))
 	compare_values := t.make_infix(.logical_and, not_same_ptr, both_not_nil)
@@ -1109,6 +1115,19 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 
 fn (t &Transformer) infix_operand_is_pointer(id flat.NodeId) bool {
 	return t.infix_operand_pointer_type(id) != none
+}
+
+fn (t &Transformer) infix_operand_is_language_pointer(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident && t.pointer_value_rvalues[node.value] {
+		// Some value locals use pointer storage (mutable captures, `for mut` bindings,
+		// and heap-promoted locals). Equality still compares their language-level value.
+		return false
+	}
+	return t.infix_operand_is_pointer(id)
 }
 
 fn (t &Transformer) infix_operand_pointer_type(id flat.NodeId) ?string {
@@ -1247,11 +1266,13 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 		base_id := t.a.child(&node, 0)
 		if raw_base := t.raw_var_type_for_expr(base_id) {
 			mut elem := raw_base.trim_space()
+			mut is_pointer_element := false
 			if elem.starts_with('mut ') {
 				elem = elem[4..].trim_space()
 			}
 			if elem.starts_with('&') {
 				elem = elem[1..].trim_space()
+				is_pointer_element = true
 			}
 			if elem.starts_with('[]') {
 				elem = elem[2..].trim_space()
@@ -1263,7 +1284,7 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 				if bracket_end := elem.index(']') {
 					elem = elem[bracket_end + 1..].trim_space()
 				}
-			} else {
+			} else if !is_pointer_element {
 				return none
 			}
 			clean := t.trim_pointer_type(elem)

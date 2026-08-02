@@ -1251,14 +1251,14 @@ fn main() {
 	assert fail_returned_borrow.output.contains('cannot move `s` because it is borrowed by `r`'), fail_returned_borrow.output
 
 	fail_mut_borrow := run_ownership_check(v3_bin, 'mut_param_borrow_twice', "
-fn both(mut a string, mut b string) {
+fn both[T](mut a T, mut b T) {
 	_ = a
 	_ = b
 }
 
 fn main() {
 	mut s := 'hello'.to_owned()
-	both(mut s, mut s)
+	both[string](mut s, mut s)
 }
 ")
 	assert fail_mut_borrow.exit_code != 0
@@ -2981,10 +2981,10 @@ fn main() {
 		cond = false
 		_ = j
 	}
-}
+	}
 ')
 	assert fail_loop_post_body_local.exit_code != 0
-	assert fail_loop_post_body_local.output.contains('unknown identifier `j`'), fail_loop_post_body_local.output
+	assert fail_loop_post_body_local.output.contains('undefined variable `j`'), fail_loop_post_body_local.output
 
 	ok_labeled_break := run_ownership_check(v3_bin, 'labeled_break_targets_outer_loop', "
 fn main() {

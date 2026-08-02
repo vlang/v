@@ -1846,7 +1846,7 @@ fn C.v_prealloc_atomic_store_i32(voidptr, int) int
 fn C.v_prealloc_atomic_cas_i32(voidptr, int, int) int
 
 // C.v_signal_with_handler_cast declares the C v_signal_with_handler_cast symbol used by v3 tests.
-fn C.v_signal_with_handler_cast(i32, voidptr) voidptr
+fn C.v_signal_with_handler_cast(i32, os.SignalHandler) voidptr
 
 // maybe_const119 supports maybe const119 handling for v3 tests.
 fn maybe_const119(ok bool) ?string {
@@ -2328,7 +2328,7 @@ fn prealloc_atomic_helpers119() int {
 
 // signal_handler_cast119 supports signal handler cast119 handling for v3 tests.
 fn signal_handler_cast119() int {
-	prev119 := C.v_signal_with_handler_cast(0, unsafe { nil })
+	prev119 := C.v_signal_with_handler_cast(0, os.SignalHandler(unsafe { nil }))
 	if isnil(prev119) {
 		return 67
 	}

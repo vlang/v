@@ -1760,8 +1760,30 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			continue
 		}
 		if p.tok == .key_volatile {
-			pending_attrs << '__v3_volatile_field'
+			saved_s := p.s
+			saved_tok := p.tok
+			saved_lit := p.lit
+			saved_tok_pos := p.tok_pos
+			saved_peek_tok := p.peek_tok
+			saved_peek_lit := p.peek_lit
+			saved_peek_pos := p.peek_pos
+			saved_peek_end := p.peek_end
+			saved_has_peek := p.has_peek
 			p.next()
+			volatile_is_field_name := p.peek() in [.semicolon, .rcbr, .assign, .attribute]
+			p.s = saved_s
+			p.tok = saved_tok
+			p.lit = saved_lit
+			p.tok_pos = saved_tok_pos
+			p.peek_tok = saved_peek_tok
+			p.peek_lit = saved_peek_lit
+			p.peek_pos = saved_peek_pos
+			p.peek_end = saved_peek_end
+			p.has_peek = saved_has_peek
+			if !volatile_is_field_name {
+				pending_attrs << '__v3_volatile_field'
+				p.next()
+			}
 		}
 		// field: name type [= default] [@[attrs]]
 		if p.tok == .name || p.tok.is_keyword() {
@@ -1951,6 +1973,8 @@ fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_typedef bo
 }
 
 fn (mut p Parser) global_decl() flat.NodeId {
+	is_pub := p.pending_decl_pub
+	p.pending_decl_pub = false
 	global_start := p.span_start()
 	p.next() // skip '__global'
 	is_grouped := p.tok == .lpar
@@ -1974,7 +1998,9 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			}
 			continue
 		}
+		mut field_is_pub := is_pub
 		if p.tok == .key_pub {
+			field_is_pub = true
 			p.next()
 		}
 		if p.tok == .key_mut {
@@ -2010,6 +2036,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					kind:           .field_decl
 					value:          full_name
 					typ:            gtype
+					op:             if field_is_pub { .arrow } else { .none }
 					payload:        flat.node_payload(if is_const { ['const'] } else { []string{} })
 					children_start: vstart
 					children_count: 1
@@ -2020,6 +2047,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					kind:    .field_decl
 					value:   full_name
 					typ:     gtype
+					op:      if field_is_pub { .arrow } else { .none }
 					payload: flat.node_payload(if is_const { ['const'] } else { []string{} })
 					pos:     p.span_to(field_start)
 				})
@@ -2053,6 +2081,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 	start := p.add_children(ids)
 	return p.add_node(flat.Node{
 		kind:           .global_decl
+		op:             if is_pub { .arrow } else { .none }
 		children_start: start
 		children_count: flat.child_count(ids.len)
 		pos:            header_pos
@@ -2336,7 +2365,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			field_name += '.' + p.expect_name_or_keyword()
 		}
 		mut method_generic_params := []string{}
-		if p.tok == .lsbr {
+		if p.tok == .lsbr && p.peek() in [.name, .xor] {
 			if p.peek() == .xor {
 				// Lifetime param list on an interface method: `name[^a](...)`. v3 erases
 				// lifetimes, so consume and drop the `[^a]` list; without this the following
@@ -2381,6 +2410,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					}
 				}
 				mut ptype := p.parse_type_name()
+				explicit_mut_ref := param_is_mut && ptype.starts_with('&')
 				// `mut` params are references, exactly like fn decls record them
 				// (parse_param_group), so implementation signatures compare equal.
 				if param_is_mut && !ptype.starts_with('&') {
@@ -2390,7 +2420,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					kind:   .param
 					value:  param_name
 					typ:    ptype
-					op:     if param_is_mut { .amp } else { .none }
+					op:     if explicit_mut_ref { .amp } else { .none }
 					is_mut: param_is_mut
 					pos:    param_pos
 				})
@@ -3212,6 +3242,16 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 	if subject_is_literal {
 		return p.parse_known_comptime_match_value(subject, is_top_level, is_expr)
 	}
+	subject_is_unresolved_local := p.is_local_binding(subject)
+		&& subject !in p.comptime_local_values
+	if value := p.comptime_local_values[subject] {
+		return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
+	}
+	if !subject_is_unresolved_local {
+		if value := p.comptime_value(subject) {
+			return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
+		}
+	}
 	if subject.starts_with('@') {
 		return p.parse_known_comptime_match_value(p.resolve_comptime_at_values(subject),
 			is_top_level, is_expr)
@@ -3224,6 +3264,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 		subject_start.str(),
 		subject_end.str(),
 		explicit_mut.str(),
+		subject_is_unresolved_local.str(),
 	]
 	mut else_block := flat.empty_node
 	for p.tok != .rcbr && p.tok != .eof {
@@ -3301,8 +3342,8 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 
 fn comptime_match_pattern_kind(pattern string) string {
 	clean := pattern.trim_space()
-	if clean.len == 0 || clean[0].is_digit() || clean[0] in [`'`, `"`] || clean in ['true', 'false']
-		|| clean.starts_with('@') {
+	if clean.len == 0 || clean[0].is_digit() || clean[0] in [`'`, `"`, `\``]
+		|| clean in ['true', 'false'] || clean.starts_with('@') {
 		return 'value'
 	}
 	return 'type'
@@ -3547,7 +3588,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 			i++
 			continue
 		}
-		if c == `'` || c == `"` {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			out.write_u8(c)
 			i++
@@ -3574,14 +3615,9 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 				'@VMOD_FILE' {
 					vmod_file := os.join_path_single(vmod_root_for_file(p.cur_file), 'v.mod')
 					content := os.read_file(vmod_file) or {
-						message := p.a.add_val_id(5,
-							'@VMOD_FILE can only be used in projects that have a v.mod file')
-						// The @VMOD_FILE token has not been consumed here, so derive its
-						// own span from the condition's source offset (pseudo_pos) plus
-						// the token's local bounds within the condition string.
-						call := p.make_compile_error_call(message, pseudo_pos + start, pseudo_pos +
-							i)
-						_ = p.make_top_level_compile_error(call)
+						p.record_diagnostic_span('@VMOD_FILE can only be used in projects that have a v.mod file',
+
+							pseudo_pos + start, pseudo_pos + i)
 						''
 					}
 					write_comptime_cond_string(mut out, content.replace('\r\n', '\n'))
@@ -3729,7 +3765,10 @@ fn (p &Parser) comptime_cond_token_text() string {
 	}
 	tok := p.tok
 	if tok == .char {
-		return comptime_cond_string_token_text(p.lit)
+		if p.lit.len >= 2 && p.lit[0] == `\`` && p.lit[p.lit.len - 1] == `\`` {
+			return p.lit
+		}
+		return '`${p.lit}`'
 	}
 	if tok == .string {
 		return comptime_cond_string_token_text(p.lit)
@@ -3923,7 +3962,7 @@ fn (p &Parser) comptime_cond_references_unresolved_local(cond string) bool {
 			i++
 			continue
 		}
-		if c == `'` || c == `"` {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			i++
 			continue
@@ -4420,7 +4459,7 @@ fn inline_asm_condition_targets_arch(condition string, target_arch string) bool 
 			i++
 			continue
 		}
-		if c in [`'`, `"`] {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			i++
 			continue
@@ -4684,7 +4723,7 @@ fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) 
 			i++
 			continue
 		}
-		if c == `'` || c == `"` {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			out.write_u8(c)
 			i++
@@ -5062,7 +5101,7 @@ fn comptime_cond_strip_outer_parens(cond string) string {
 				}
 				continue
 			}
-			if ch == `'` || ch == `"` {
+			if ch in [`'`, `"`, `\``] {
 				quote = ch
 				continue
 			}
@@ -5101,7 +5140,7 @@ fn comptime_cond_split_top_level(cond string, op string) (string, string, bool) 
 			i++
 			continue
 		}
-		if ch == `'` || ch == `"` {
+		if ch in [`'`, `"`, `\``] {
 			quote = ch
 			i++
 			continue
@@ -5521,9 +5560,14 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 		})
 	}
 	if p.tok == .name && p.peek() == .lsbr {
+		typ := p.parse_type_name()
+		if p.tok == .lcbr && p.peek() == .rcbr {
+			p.next()
+			p.check(.rcbr)
+		}
 		return p.add_node(flat.Node{
 			kind:  .ident
-			value: p.parse_type_name()
+			value: typ
 		})
 	}
 	if p.tok != .lsbr || p.peek() != .rsbr {
@@ -5839,7 +5883,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.const_decl()
 		}
 		.key_match {
-			if p.peek() == .lpar || p.peek() == .lsbr {
+			if p.peek() == .lpar {
 				return p.assign_or_expr_stmt()
 			}
 			return p.match_stmt()
@@ -7903,6 +7947,20 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// function call
 		if p.tok == .lpar {
 			lhs_node := p.a.nodes[int(lhs)]
+			if lhs_node.kind == .index {
+				if full_name := p.generic_struct_init_type_name(lhs) {
+					p.next()
+					inner := p.expr(.lowest)
+					p.check(.rpar)
+					lhs = p.add_node(flat.Node{
+						kind:           .cast_expr
+						value:          full_name
+						children_start: p.add_child(inner)
+						children_count: 1
+					})
+					continue
+				}
+			}
 			if lhs_node.kind == .selector && lhs_node.children_count > 0 && lhs_node.value.len > 0
 				&& lhs_node.value[0] >= `A` && lhs_node.value[0] <= `Z` {
 				base := p.a.child_node(&lhs_node, 0)
@@ -9192,7 +9250,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				p.peek_pos = saved_peek_pos
 				p.peek_end = saved_peek_end
 				p.has_peek = saved_has_peek
-			} else if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
+			} else if p.tok == .name && p.peek() == .dot {
 				if cast := p.pointer_cast_expr_from_current_depth(1) {
 					return cast
 				}
@@ -9297,6 +9355,25 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				})
 			}
 			operand := p.expr(.highest)
+			operand_node := p.a.node(operand)
+			if operand_node.kind == .or_expr && operand_node.value !in ['?', '!']
+				&& operand_node.children_count == 2 {
+				source := p.a.child(operand_node, 0)
+				fallback := p.a.child(operand_node, 1)
+				address := p.add_node(flat.Node{
+					kind:           .prefix
+					op:             .amp
+					children_start: p.add_child(source)
+					children_count: 1
+					pos:            p.span_to(amp_start)
+				})
+				return p.add_node(flat.Node{
+					kind:           .or_expr
+					children_start: p.add_children2(address, fallback)
+					children_count: 2
+					pos:            p.span_to(amp_start)
+				})
+			}
 			pstart := p.add_child(operand)
 			return p.a.add_node(flat.Node{
 				kind:           .prefix
@@ -9413,6 +9490,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.if_stmt()
 		}
 		.key_match {
+			if p.peek() in [.lpar, .lsbr] {
+				return p.keyword_ident_expr()
+			}
 			return p.match_stmt()
 		}
 		.key_fn {
@@ -9428,10 +9508,12 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			} else if name := p.create_anonymous_struct_type_for_literal(init) {
 				p.a.nodes[int(init_id)].value = name
 				p.a.nodes[int(init_id)].typ = name
-			} else if p.tok == .lcbr {
-				if name := p.create_anonymous_struct_type_from_type_init(init) {
+			} else if name := p.create_anonymous_struct_type_from_type_init(init) {
+				if p.tok == .lcbr {
 					return p.struct_init(name)
 				}
+				p.a.nodes[int(init_id)].value = name
+				p.a.nodes[int(init_id)].typ = name
 			}
 			return init_id
 		}
@@ -9904,7 +9986,11 @@ fn (mut p Parser) lambda_body_expr() flat.NodeId {
 	p.defer_depth = 0
 	p.defer_result_allowed = false
 	p.nested_block_depth = 0
-	body := p.expr(.lowest)
+	body := if p.tok == .lcbr {
+		p.block_stmt()
+	} else {
+		p.expr(.lowest)
+	}
 	p.defer_depth = outer_defer_depth
 	p.defer_result_allowed = outer_defer_result_allowed
 	p.nested_block_depth = outer_nested_block_depth
@@ -10176,6 +10262,9 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 				return base
 			}
 			return '${base}[${args.join(', ')}]'
+		}
+		.struct_init {
+			return node.value
 		}
 		.array_init {
 			if node.value.len == 0 {
@@ -10584,6 +10673,15 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			break
 		}
 		ids << p.expr(.lowest)
+	}
+	// Keep recovery local to the literal. Diagnose a missing separator or doubled
+	// comma before discarding the malformed tail.
+	if p.tok != .rsbr {
+		unexpected := if p.lit.len > 0 { p.lit } else { p.tok.str() }
+		p.record_diagnostic('unexpected token `${unexpected}`, expecting `]`', p.tok_pos)
+	}
+	for p.tok != .rsbr && p.tok != .eof {
+		p.next()
 	}
 	p.check(.rsbr)
 	// The literal spans up to `]`; capture it before a postfix `!` is consumed so
@@ -12313,7 +12411,7 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 					typ:   field_type
 					pos:   p.span_to(name_starts[index])
 				})
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, attrs)
+				p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, attrs)
 				ids << fid
 				field_names << name
 				field_types << field_type
@@ -12348,9 +12446,9 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			if field_is_volatile {
 				attrs << '__v3_volatile_field'
 			}
-			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, attrs)
+			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, attrs)
 		} else {
-			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, if field_is_volatile { [
+			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, if field_is_volatile { [
 					'__v3_volatile_field',
 				] } else { []string{} })
 		}

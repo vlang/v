@@ -1620,7 +1620,7 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 			}
 		}
 	}
-	if expr.kind !in [.assoc, .as_expr, .prefix] && !has_expr_smartcast
+	if expr.kind !in [.assoc, .as_expr, .prefix, .struct_init, .cast_expr] && !has_expr_smartcast
 		&& t.resolve_sum_name(expr_type) == resolved_sum {
 		if storage := t.pointer_storage_expr_for_value_target(expr_id, resolved_sum) {
 			return storage

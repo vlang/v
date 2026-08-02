@@ -74,6 +74,7 @@ fn propagated() ! {
 
 fn explicit_error() ! {
 	r := Resource{11}
+	assert r.id == 11
 	return error('explicit')
 }
 
@@ -145,7 +146,7 @@ fn small_pair() (i8, i16) {
 	return i8(33), i16(34)
 }
 
-fn forwarded_multi_return_drop() (int, int) {
+fn forwarded_multi_return_drop() (i8, i16) {
 	r := Resource{31}
 	return small_pair()
 }
@@ -163,7 +164,6 @@ fn labelled_continue_drop_once() {
 		for {
 			inner_r := Resource{21}
 			continue outer
-			println(inner_r.id)
 		}
 		println(outer_r.id)
 	}
@@ -238,21 +238,18 @@ fn loop_exits() {
 	for {
 		r := Resource{6}
 		break
-		println(r.id)
 	}
 	mut i := 0
 	for i < 1 {
 		r := Resource{7}
 		i++
 		continue
-		println(r.id)
 	}
 	outer: for {
 		r := Resource{8}
 		for {
 			inner := Resource{9}
 			break outer
-			println(inner.id)
 		}
 		println(r.id)
 	}

@@ -1503,7 +1503,7 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 			expected := result[idx + op.len..].trim_space()
 			normalized := if !isnil(t.tc)
 				&& (expected.starts_with('fn(') || expected.starts_with('fn (')) {
-				t.tc.parse_type(expected).name()
+				t.comptime_field_type_id_key(expected, t.cur_module)
 			} else {
 				t.comptime_normalize_type_alias_chain(expected)
 			}
@@ -1864,7 +1864,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 			parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
 			return parsed
 		}
-		.paren {
+		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
@@ -2394,11 +2394,8 @@ fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
 }
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
-	return t.a.add_node(flat.Node{
-		kind:  .enum_val
-		value: item.name
-		typ:   item.enum_name
-	})
+	literal := t.make_int_literal_typed(item.value.str(), 'i64')
+	return t.make_cast('i64', literal, 'i64')
 }
 
 // clone_variant_subst clones a `$for variant in Sum.variants` body and gives the variant loop
@@ -2489,7 +2486,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	mut branch_smartcast := ''
 	if node.kind == .if_expr && node.children_count >= 2 {
 		cond := t.a.child_node(&node, 0)
-		if cond.kind == .is_expr && cond.value == var_name && cond.children_count > 0 {
+		if cond.kind == .is_expr && cond.value in [var_name, item.typ] && cond.children_count > 0 {
 			base := t.a.child_node(cond, 0)
 			if base.kind == .ident {
 				branch_smartcast = base.value
@@ -3250,8 +3247,11 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 		return core
 	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
-		|| core.contains(' ') || decl_module.len == 0 || decl_module in ['main', 'builtin'] {
+		|| core.contains(' ') || decl_module == 'builtin' {
 		return core
+	}
+	if decl_module in ['', 'main'] {
+		return if t.type_authority_has(core) { 'main.${core}' } else { core }
 	}
 	return '${decl_module}.${core}'
 }

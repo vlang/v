@@ -29,6 +29,12 @@ fn test_fast_file_index_collects_translated_module_attribute() {
 	assert tc.translated_files[path]
 }
 
+fn test_checker_flag_include_dir_consumes_only_the_operand() {
+	assert checker_flag_include_dir('-I @VMODROOT/include -D FEATURE') or { '' } == '@VMODROOT/include'
+	assert checker_flag_include_dir('-isystem "system includes" -Wall') or { '' } == 'system includes'
+	assert checker_flag_include_dir('-D FEATURE -Ijoined/include') or { '' } == 'joined/include'
+}
+
 fn test_parallel_checker_dependencies_are_private_and_merged() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

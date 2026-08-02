@@ -190,7 +190,7 @@ fn assert_lock_question_defer_runs_before_error_return(c_code string, name strin
 	assert unlock_idx < return_idx, fragment
 }
 
-fn test_lock_codegen_sorts_deduplicates_and_cleans_branch_exits() {
+fn test_lock_codegen_sorts_and_cleans_branch_exits() {
 	c_code := lock_codegen_gen_c('lock_codegen_regression', 'struct Counter {
 mut:
 	a shared int
@@ -198,7 +198,7 @@ mut:
 }
 
 fn multi_lock(mut c Counter) {
-	lock c.b, c.a, c.a {
+	lock c.b, c.a {
 		_ := 1
 	}
 }
@@ -326,7 +326,7 @@ fn lock_question_defer(mut c Counter) !int {
 		defer {
 			c.a = 2
 		}
-		may_fail()?
+		may_fail()!
 	}
 	return 0
 }
@@ -357,13 +357,13 @@ fn main() {
 	assert !c_code.contains('sync__RwMutex__lock(&'), c_code
 	assert_lock_cleanup_before_branch(c_code, 'branch_continue', 'continue;')
 	assert_lock_cleanup_before_branch(c_code, 'branch_break', 'break;')
-	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_break', 'goto outer_break;')
-	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_continue', 'goto outer_continue;')
-	assert_lock_cleanup_before_branch(c_code, 'goto_out_of_lock', 'goto done;')
+	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_break', '__break;')
+	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_continue', '__continue;')
+	assert_lock_cleanup_before_branch(c_code, 'goto_out_of_lock', 'goto __v_user_goto_0;')
 	assert_lock_defer_runs_before_branch(c_code, 'branch_continue', 'continue;')
 	assert_lock_defer_runs_before_branch(c_code, 'branch_break', 'break;')
-	assert_lock_defer_runs_before_branch(c_code, 'goto_out_of_lock', 'goto done;')
-	assert_no_lock_cleanup_before_branch(c_code, 'goto_inside_lock', 'goto inside;')
+	assert_lock_defer_runs_before_branch(c_code, 'goto_out_of_lock', 'goto __v_user_goto_0;')
+	assert_no_lock_cleanup_before_branch(c_code, 'goto_inside_lock', 'goto __v_user_goto_0;')
 	assert_lock_scope_goto_rejected(c_code, 'goto_into_different_lock', 'goto other;')
 	assert c_code.contains(' = (cond ? 1 : 2);'), c_code
 	assert_return_read_before_lock_cleanup(c_code, 'return_shared')
@@ -442,7 +442,6 @@ fn test_shared_option_payload_wrappers_are_unique() {
 mut:
 	a shared ?int
 	b shared ?string
-	c shared !string
 }
 
 fn main() {
@@ -455,6 +454,5 @@ fn main() {
 	assert c_code.contains('\tOptional_string val;'), c_code
 	assert c_code.contains('\t__shared__Optional* a;'), c_code
 	assert c_code.contains('\t__shared__Optional_string* b;'), c_code
-	assert c_code.contains('\t__shared__Optional_string* c;'), c_code
 	assert !c_code.contains('struct __shared__Optional {\n\tsync__RwMutex mtx;\n\tOptional_string val;'), c_code
 }

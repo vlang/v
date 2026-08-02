@@ -922,16 +922,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 						param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 				}
 				param_type := unalias_type(raw_param_type)
-				if !is_specialized && param_type !is Array && param_type !is ArrayFixed
-					&& param_type !is Interface && param_type !is Map && param_type !is Pointer
-					&& param_type !is Struct && param_type !is SumType && param_type !is Enum
-					&& raw_param_type !is Alias && param_type !is Unknown {
-					if !(param.op == .dot && param_type is OptionType) {
-						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch,
-							'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`',
-							param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
-					}
+				if !is_specialized && !mut_param_type_is_allowed(raw_param_type) {
+					type_name := param_type.name()
+					tc.record_error_at(.call_arg_mismatch,
+						'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`',
+						param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 				}
 			}
 			tc.check_reserved_parameter_name(param_id)
@@ -968,10 +963,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	qname := checker_qualified_fn_name(module_name, node.value)
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
-	// Open generic templates are validated after specialization. Checking their
-	// bodies here treats placeholder operands as unknown and rejects valid code.
 	should_check_generic_body := generic_params.len == 0
-	generic_is_called := generic_params.len > 0 && qname in tc.selected_file_called_fns
 	if should_check_generic_body && !signature_has_bare_generic_type {
 		tc.check_fn_body(node)
 		tc.check_recursive_str_calls(flat.NodeId(fn_idx), node)
@@ -1000,7 +992,6 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if tc.fn_context.return_type !is Unknown
 		&& !type_allows_implicit_return(tc.fn_context.return_type)
 		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
-		&& (should_check_generic_body || generic_is_called) && !signature_has_bare_generic_type
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		message := 'missing return at end of function `${node.value.all_after_last('.')}`'
 		tc.record_error_at(.return_mismatch, message, flat.NodeId(fn_idx),
@@ -1052,7 +1043,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if node.children_count > 0 && node.value.contains('.') {
 		receiver := tc.a.child_node(&node, 0)
 		receiver_name := node.value.all_before_last('.').all_after_last('.')
-		if receiver.kind == .param {
+		if receiver.kind == .param && receiver.op == .dot {
 			receiver_type := unalias_type(tc.parse_type(receiver.typ))
 			if receiver_type is Interface
 				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.name) {
@@ -1122,7 +1113,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 					'the receiver type `${receiver.typ}` should be the same type as the operand `${param.typ}`',
 					id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() {
+			if receiver_type.name() != param_type.name() && param_type !is FnType {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch,
 					'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading',

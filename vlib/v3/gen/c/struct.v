@@ -142,12 +142,11 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 	// (`geometry.Box[int]`) for this expression.
 	source_base := node.value.trim_left('&?!').all_before('[').all_after_last('.')
 	if source_base.len > 0 {
-		if resolved := g.tc.expr_type(id) {
-			resolved_value := g.value_unalias_type(types.unwrap_pointer(resolved))
-			if resolved_value is types.Struct
-				&& resolved_value.name.all_before('[').all_after_last('.') == source_base {
-				return resolved_value.name
-			}
+		resolved := g.tc.expr_type(id) or { g.tc.resolve_type(id) }
+		resolved_value := default_init_unalias_type(types.unwrap_pointer(resolved))
+		if resolved_value is types.Struct
+			&& resolved_value.name.all_before('[').all_after_last('.') == source_base {
+			return resolved.name()
 		}
 	}
 	// A bare literal can collide with an imported type of the same short name.
@@ -366,8 +365,10 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		g.gen_heap_struct_init(heap_node)
 		return
 	}
-	effective_type := default_init_unalias_type(types.unwrap_pointer(g.tc.parse_type(init_value)))
-	if (effective_type !is types.Struct || g.struct_init_is_lowered_sum_literal(node))
+	init_semantic_type := g.tc.parse_type(init_value)
+	effective_type := default_init_unalias_type(types.unwrap_pointer(init_semantic_type))
+	if init_semantic_type !is types.OptionType && init_semantic_type !is types.ResultType
+		&& (effective_type !is types.Struct || g.struct_init_is_lowered_sum_literal(node))
 		&& g.gen_lowered_sum_init(node) {
 		return
 	}
@@ -4407,6 +4408,28 @@ fn (mut g FlatGen) gen_assoc_tmp_decl_by_fields(node flat.Node, tmp string, ct s
 }
 
 fn (g &FlatGen) assoc_target_type_name(node flat.Node) string {
+	for contextual_type in [g.expected_expr_type, g.cur_fn_ret] {
+		contextual_name := types.unwrap_pointer(contextual_type).name()
+		if contextual_name.contains('.') && g.assoc_type_is_usable(contextual_type) {
+			for candidate in [node.typ, node.value] {
+				if candidate.len > 0
+					&& candidate.all_after_last('.') == contextual_name.all_after_last('.') {
+					return contextual_name
+				}
+			}
+		}
+	}
+	if node.children_count > 0 {
+		base_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(&node, 0)))
+		base_name := base_type.name()
+		for candidate in [node.typ, node.value] {
+			if base_name.contains('.') && candidate.len > 0
+				&& candidate.all_after_last('.') == base_name.all_after_last('.')
+				&& g.assoc_type_is_usable(base_type) {
+				return base_name
+			}
+		}
+	}
 	for candidate in [node.typ, node.value] {
 		if g.assoc_type_name_is_usable(candidate) {
 			return candidate
@@ -4881,6 +4904,18 @@ fn (g &FlatGen) struct_cname(name string) string {
 	return result
 }
 
+fn (g &FlatGen) cached_support_has_c_type(c_name string) bool {
+	if g.cached_support_identifiers[c_name] {
+		return true
+	}
+	for prefix in ['struct ', 'union '] {
+		if c_name.starts_with(prefix) {
+			return g.cached_support_identifiers[c_name[prefix.len..]]
+		}
+	}
+	return false
+}
+
 fn (g &FlatGen) struct_decl_head(name string) string {
 	cn := g.struct_cname(name)
 	if cn.starts_with('struct ') || cn.starts_with('union ') {
@@ -4983,10 +5018,14 @@ fn (mut g FlatGen) struct_decls() {
 	// structs below (right after the element struct is defined), so struct fields that
 	// reference them resolve. Primitive-element ones were already emitted earlier.
 	fixed_array_needed := g.collect_fixed_array_typedefs_needed()
-	struct_names := g.c_struct_decl_names()
-	mut sum_names := g.tc.sum_types.keys()
+	incremental_support_only := g.program_body_only && g.cached_support_identifiers.len > 0
+	struct_names := g.c_struct_decl_names().filter(!incremental_support_only
+		|| !g.cached_support_has_c_type(g.struct_cname(it)))
+	mut sum_names := g.tc.sum_types.keys().filter(!incremental_support_only
+		|| !g.cached_support_has_c_type(g.cname(it)))
 	sum_names.sort()
-	mut interface_names := g.interfaces.keys()
+	mut interface_names := g.interfaces.keys().filter(!incremental_support_only
+		|| !g.cached_support_has_c_type(g.cname(it)))
 	interface_names.sort()
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
@@ -5037,8 +5076,10 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		g.writeln('typedef struct ${cn} ${cn};')
 	}
-	g.shared_type_forward_decls()
-	if g.has_builtins {
+	if !incremental_support_only {
+		g.shared_type_forward_decls()
+	}
+	if g.has_builtins && !incremental_support_only {
 		g.writeln('typedef array Array;')
 		g.flattened_map_type_alias_decls()
 	}
@@ -5082,9 +5123,11 @@ fn (mut g FlatGen) struct_decls() {
 			break
 		}
 	}
-	err_field := if has_ierror { 'IError err; ' } else { '' }
-	g.writeln('typedef struct Optional { bool ok; ${err_field}int value; } Optional;')
-	g.writeln('')
+	if !incremental_support_only {
+		err_field := if has_ierror { 'IError err; ' } else { '' }
+		g.writeln('typedef struct Optional { bool ok; ${err_field}int value; } Optional;')
+		g.writeln('')
+	}
 	if g.has_builtins && 'array' in remaining {
 		g.emit_struct('array')
 		emitted['array'] = true
@@ -5242,8 +5285,10 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		g.emit_struct(name)
 	}
-	g.soa_companion_decls()
-	g.shared_struct_decls()
+	if !incremental_support_only {
+		g.soa_companion_decls()
+		g.shared_struct_decls()
+	}
 }
 
 fn (mut g FlatGen) by_value_field_dependency_c_type(typ types.Type) string {

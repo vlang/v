@@ -10,30 +10,40 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
 	}
-	idx := int(id)
-	if tc.parallel_check_sparse {
-		if tc.in_check_range(idx) && idx < tc.statement_nodes.len {
-			tc.statement_nodes[idx] = true
-		} else {
-			tc.sparse_statement_nodes[idx] = true
-		}
-		tc.check_node(id)
-		tc.check_unused_expression_statement(id)
-		$if ownership ? {
-			tc.ownership_after_stmt_node(id)
-		}
-		return
+	if tc.has_goto_nodes {
+		tc.update_pointer_alias_goto_state(id)
 	}
-	if idx >= tc.statement_nodes.len {
-		tc.extend_node_caches(tc.a.nodes.len)
-	}
-	if idx < tc.statement_nodes.len {
-		tc.statement_nodes[idx] = true
-	}
+	tc.mark_statement_context(id)
 	tc.check_node(id)
 	tc.check_unused_expression_statement(id)
 	$if ownership ? {
 		tc.ownership_after_stmt_node(id)
+	}
+}
+
+fn (mut tc TypeChecker) mark_statement_context(id flat.NodeId) {
+	mut current := id
+	for tc.valid_node_id(current) {
+		idx := int(current)
+		if tc.parallel_check_sparse {
+			if tc.in_check_range(idx) && idx < tc.statement_nodes.len {
+				tc.statement_nodes[idx] = true
+			} else {
+				tc.sparse_statement_nodes[idx] = true
+			}
+		} else {
+			if idx >= tc.statement_nodes.len {
+				tc.extend_node_caches(tc.a.nodes.len)
+			}
+			if idx < tc.statement_nodes.len {
+				tc.statement_nodes[idx] = true
+			}
+		}
+		node := tc.a.node(current)
+		if node.kind != .expr_stmt || node.children_count != 1 {
+			return
+		}
+		current = tc.a.child(node, 0)
 	}
 }
 
@@ -49,25 +59,39 @@ fn (tc &TypeChecker) is_statement_node(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
-	parent_id := tc.direct_parent_id(id)
-	if tc.valid_node_id(parent_id) {
-		parent := tc.a.node(parent_id)
-		if parent.kind !in [.expr_stmt, .block, .match_branch, .fn_decl, .comptime_for] {
+	mut current := id
+	for _ in 0 .. 64 {
+		idx := int(current)
+		if idx >= 0 && idx < tc.value_used_nodes.len && tc.value_used_nodes[idx] {
 			return true
 		}
-	}
-	// Transform-created and shared nodes can outlive the direct-parent index. Fall back to
-	// finding a value-using parent in the flat arena rather than classifying the expression
-	// from a stale statement wrapper.
-	for candidate in tc.a.nodes {
-		if candidate.kind in [.expr_stmt, .block, .match_branch, .fn_decl, .comptime_for] {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) || parent_id == current {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr, .comptime_for] {
+			return false
+		}
+		if parent.kind == .expr_stmt {
+			current = parent_id
 			continue
 		}
-		for i in 0 .. candidate.children_count {
-			if tc.a.child(&candidate, i) == id {
-				return true
+		if parent.kind in [.block, .match_branch] {
+			if tc.branch_tail_expr_id(parent_id) != id {
+				return false
 			}
+			current = parent_id
+			continue
 		}
+		if parent.kind in [.if_expr, .match_stmt, .comptime_if] {
+			if parent.children_count == 0 || tc.a.child(parent, 0) == current {
+				return false
+			}
+			current = parent_id
+			continue
+		}
+		return true
 	}
 	return false
 }
@@ -112,6 +136,76 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 	}
 }
 
+fn (mut tc TypeChecker) initialize_pointer_alias_goto_targets() {
+	tc.fn_context.pointer_alias_goto_states = map[string][]map[string][]string{}
+	tc.fn_context.pointer_alias_backward_goto_targets = map[string]bool{}
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if !tc.valid_node_id(fn_id) {
+		return
+	}
+	mut label_offsets := map[string]int{}
+	mut goto_offsets := map[string][]int{}
+	tc.collect_pointer_alias_goto_offsets(fn_id, mut label_offsets, mut goto_offsets)
+	for label, offsets in goto_offsets {
+		label_offset := label_offsets[label] or { continue }
+		if offsets.any(it > label_offset) {
+			tc.fn_context.pointer_alias_backward_goto_targets[label] = true
+		}
+	}
+}
+
+fn (tc &TypeChecker) collect_pointer_alias_goto_offsets(id flat.NodeId, mut label_offsets map[string]int, mut goto_offsets map[string][]int) {
+	node := tc.a.node(id)
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(node, i)
+		child := tc.a.node(child_id)
+		if child.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			continue
+		}
+		if child.kind == .label_stmt {
+			label_offsets[child.value] = child.pos.offset
+		} else if child.kind == .goto_stmt {
+			mut offsets := goto_offsets[child.value] or { []int{} }
+			offsets << child.pos.offset
+			goto_offsets[child.value] = offsets
+		}
+		tc.collect_pointer_alias_goto_offsets(child_id, mut label_offsets, mut goto_offsets)
+	}
+}
+
+fn (mut tc TypeChecker) update_pointer_alias_goto_state(id flat.NodeId) {
+	node := tc.a.node(id)
+	if node.kind == .goto_stmt {
+		mut states := tc.fn_context.pointer_alias_goto_states[node.value] or {
+			[]map[string][]string{}
+		}
+		states << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		tc.fn_context.pointer_alias_goto_states[node.value] = states
+		return
+	}
+	if node.kind != .label_stmt {
+		return
+	}
+	if tc.fn_context.pointer_alias_backward_goto_targets[node.value] {
+		for key, _ in tc.fn_context.pointer_binding_value_keys {
+			tc.fn_context.pointer_binding_value_keys[key] = [
+				pointer_binding_unknown_value(key),
+			]
+		}
+		return
+	}
+	incoming := tc.fn_context.pointer_alias_goto_states[node.value] or { return }
+	mut paths := [
+		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys),
+	]
+	for state in incoming {
+		paths << clone_pointer_binding_value_keys(state)
+	}
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(paths,
+		tc.fn_context.pointer_binding_value_keys)
+	tc.fn_context.pointer_alias_goto_states.delete(node.value)
+}
+
 fn (tc &TypeChecker) unreachable_statement_diagnostic_pos(id flat.NodeId) token.Pos {
 	node := tc.a.node(id)
 	if node.kind == .return_stmt {
@@ -140,23 +234,16 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	if tc.expr_subtree_has_error(expr_id) {
 		return
 	}
-	if tc.expr_is_multi_return_tail_value(expr_id) {
+	if tc.expression_node_used_as_value(expr_id) {
 		return
 	}
-	if tc.expr_is_or_block_tail_value(id) {
-		return
-	}
-	if tc.expr_is_lock_block_tail_value(id) {
-		return
-	}
-	if tc.expr_is_nested_value_tail(id) {
+	if tc.expr_is_multi_assignment_tail_value(expr_id) {
 		return
 	}
 	if tc.expr_is_inside_string_interpolation(id) {
 		return
 	}
 	if expr.kind == .empty {
-		// Parser recovery placeholders have no value of their own to diagnose.
 		return
 	}
 	if expr.kind == .call {
@@ -164,7 +251,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 		return
 	}
 	if expr.kind in [.spawn_expr, .dump_expr, .or_expr, .if_expr, .match_stmt, .lock_expr,
-		.select_stmt, .fn_literal, .lambda_expr] {
+		.select_stmt, .sql_expr, .fn_literal, .lambda_expr] {
 		return
 	}
 	if expr.kind == .selector && expr.children_count > 0 {
@@ -226,25 +313,6 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, pos)
 }
 
-fn (tc &TypeChecker) expr_is_inside_string_interpolation(id flat.NodeId) bool {
-	mut current := id
-	for _ in 0 .. 32 {
-		parent_id := tc.direct_parent_id(current)
-		if !tc.valid_node_id(parent_id) {
-			return false
-		}
-		parent := tc.a.node(parent_id)
-		if parent.kind == .string_interp {
-			return true
-		}
-		if parent.kind == .fn_decl {
-			return false
-		}
-		current = parent_id
-	}
-	return false
-}
-
 fn (tc &TypeChecker) unused_literal_has_trailing_token(stmt flat.Node, expr flat.Node) bool {
 	if stmt.pos.id != expr.pos.id || stmt.pos.end <= expr.pos.end {
 		return false
@@ -261,64 +329,19 @@ fn (tc &TypeChecker) unused_literal_has_trailing_token(stmt flat.Node, expr flat
 	return false
 }
 
-fn (tc &TypeChecker) expr_is_or_block_tail_value(stmt_id flat.NodeId) bool {
-	block_id := tc.direct_parent_id(stmt_id)
-	if !tc.valid_node_id(block_id) {
-		return false
-	}
-	block := tc.a.node(block_id)
-	if block.kind != .block || block.children_count == 0
-		|| tc.a.child(block, block.children_count - 1) != stmt_id {
-		return false
-	}
-	or_id := tc.direct_parent_id(block_id)
-	if !tc.valid_node_id(or_id) {
-		return false
-	}
-	or_node := tc.a.node(or_id)
-	return or_node.kind == .or_expr && or_node.children_count > 1
-		&& tc.a.child(or_node, 1) == block_id
-}
-
-fn (tc &TypeChecker) expr_is_lock_block_tail_value(stmt_id flat.NodeId) bool {
-	mut current := stmt_id
+fn (tc &TypeChecker) expr_is_inside_string_interpolation(id flat.NodeId) bool {
+	mut current := id
 	for _ in 0 .. 32 {
 		parent_id := tc.direct_parent_id(current)
 		if !tc.valid_node_id(parent_id) {
 			return false
 		}
 		parent := tc.a.node(parent_id)
-		match parent.kind {
-			.block, .match_branch {
-				if parent.children_count == 0
-					|| tc.a.child(parent, parent.children_count - 1) != current {
-					return false
-				}
-			}
-			.expr_stmt {
-				if parent.children_count != 1 || tc.a.child(parent, 0) != current {
-					return false
-				}
-			}
-			.if_expr, .comptime_if, .match_stmt {
-				mut is_value_branch := false
-				for i in 1 .. parent.children_count {
-					if tc.a.child(parent, i) == current {
-						is_value_branch = true
-						break
-					}
-				}
-				if !is_value_branch {
-					return false
-				}
-			}
-			.lock_expr {
-				return parent.children_count > 0
-					&& tc.a.child(parent, parent.children_count - 1) == current
-			}
-			else {
-				return false
-			}
+		if parent.kind == .string_interp {
+			return true
+		}
+		if parent.kind == .fn_decl {
+			return false
 		}
 		current = parent_id
 	}
@@ -423,32 +446,50 @@ fn (tc &TypeChecker) node_is_inside_for_statement(id flat.NodeId) bool {
 	return false
 }
 
-fn (tc &TypeChecker) expr_is_multi_return_tail_value(expr_id flat.NodeId) bool {
-	multi := multi_return_payload_type(tc.fn_context.return_type) or { return false }
-	mut current_id := expr_id
-	for _ in 0 .. 32 {
-		parent_id := tc.direct_parent_id(current_id)
-		if !tc.valid_node_id(parent_id) {
-			return false
-		}
+fn (tc &TypeChecker) expr_is_multi_assignment_tail_value(expr_id flat.NodeId) bool {
+	mut parent_id := tc.direct_parent_id(expr_id)
+	for tc.valid_node_id(parent_id) {
 		parent := tc.a.node(parent_id)
-		if parent.kind == .return_stmt {
-			if parent.children_count == 0 {
+		if parent.kind == .return_stmt && parent.children_count == 1 {
+			mut expected := unalias_type(tc.fn_context.return_type)
+			if expected is OptionType {
+				expected = unalias_type(expected.base_type)
+			} else if expected is ResultType {
+				expected = unalias_type(expected.base_type)
+			}
+			if expected is MultiReturn {
+				rhs_id := tc.a.child(parent, 0)
+				groups := tc.multi_expr_tail_value_groups(rhs_id, expected.types.len, false) or {
+					return false
+				}
+				for group in groups {
+					if expr_id in group {
+						return true
+					}
+				}
 				return false
 			}
-			return_groups := tc.multi_expr_tail_value_groups(tc.a.child(parent, 0),
-				multi.types.len, false) or { return false }
-			for group in return_groups {
+		}
+		if parent.kind in [.assign, .decl_assign] {
+			lhs_ids := tc.multi_assign_lhs_ids(parent)
+			if lhs_ids.len < 2 || tc.multi_assign_rhs_count(parent) != 1 {
+				return false
+			}
+			rhs_id := tc.a.child(parent, 1)
+			groups := tc.multi_expr_tail_value_groups(rhs_id, lhs_ids.len, false) or {
+				return false
+			}
+			for group in groups {
 				if expr_id in group {
 					return true
 				}
 			}
 			return false
 		}
-		if parent.kind !in [.expr_stmt, .block, .match_branch, .if_expr, .match_stmt, .paren] {
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 			return false
 		}
-		current_id = parent_id
+		parent_id = tc.direct_parent_id(parent_id)
 	}
 	return false
 }
@@ -598,10 +639,8 @@ fn (tc &TypeChecker) branch_has_value_tail(id flat.NodeId) bool {
 			return false
 		}
 		last := tc.a.nodes[int(last_id)]
-		if last.kind == .block {
-			return tc.branch_has_value_tail(last_id)
-		}
-		return last.kind in [.expr_stmt, .if_expr, .match_stmt] || last.kind == .comptime_if
+		return last.kind in [.expr_stmt, .if_expr, .match_stmt]
+			|| (last.kind == .block && tc.branch_has_value_tail(last_id))
 	}
 	if node.kind == .match_branch {
 		body_start := if node.value == 'else' { 0 } else { node.value.int() }
@@ -613,10 +652,8 @@ fn (tc &TypeChecker) branch_has_value_tail(id flat.NodeId) bool {
 			return false
 		}
 		last := tc.a.nodes[int(last_id)]
-		if last.kind == .block {
-			return tc.branch_has_value_tail(last_id)
-		}
-		return last.kind in [.expr_stmt, .if_expr, .match_stmt] || last.kind == .comptime_if
+		return last.kind in [.expr_stmt, .if_expr, .match_stmt]
+			|| (last.kind == .block && tc.branch_has_value_tail(last_id))
 	}
 	return node.kind !in [.assign, .decl_assign, .selector_assign, .index_assign, .return_stmt,
 		.block]
@@ -636,6 +673,8 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		rhs_id := tc.a.child(&cond, 1)
 		mut bindings := tc.check_condition(lhs_id)
 		unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
+		pointer_alias_skipped_rhs :=
+			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		for sc in tc.extract_smartcasts(lhs_id) {
 			if valid_string_data(sc.name) {
@@ -646,6 +685,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		bindings << rhs_bindings
 		tc.merge_unsafe_reference_alias_short_circuit_state(cond.op, lhs_id,
 			unsafe_alias_skipped_rhs)
+		tc.merge_pointer_binding_short_circuit_state(cond.op, lhs_id, pointer_alias_skipped_rhs)
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 		tc.check_infix(cond_id, cond)
 		has_unresolved_generic_name := tc.expr_has_unresolved_generic_name_ident(cond_id)
@@ -676,8 +716,13 @@ fn (mut tc TypeChecker) check_bool_condition(cond_id flat.NodeId) {
 		return
 	}
 	if !tc.condition_type_is_bool_like(cond_type) && tc.should_diagnose(cond_id) {
-		tc.record_error(.condition_mismatch, 'non-bool type `${tc.diagnostic_expr_type_name(cond_id,
-			cond_type)}` used as if condition', cond_id)
+		cond_name := tc.diagnostic_expr_type_name(cond_id, cond_type)
+		message := if unalias_type(cond_type) is Pointer {
+			'non-bool type `${cond_name}` used as if condition'
+		} else {
+			'if condition must be `bool`, not `${cond_type.name()}`'
+		}
+		tc.record_error(.condition_mismatch, message, cond_id)
 	}
 }
 
@@ -811,7 +856,8 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 	if payload is Void && !is_optional_result {
 		if tc.should_diagnose(id) {
 			tc.record_error_at(.condition_mismatch,
-				'expression should either return an Option or a Result', rhs_id, rhs_node.pos)
+				'if guard expression must be optional or result; expression should either return an Option or a Result',
+				rhs_id, rhs_node.pos)
 		}
 		payload = rhs_type
 	}
@@ -983,6 +1029,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	mut seen_match_patterns := map[string]int{}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	mut unsafe_alias_paths := []map[string]bool{}
+	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	mut pointer_alias_paths := []map[string][]string{}
 	// One in-place scan for the whole match: the old per-condition
 	// source_text_for_node(...).contains(...) copied the entire match span
 	// (thousands of lines for dispatch tables) once per condition.
@@ -998,6 +1046,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		branch_id := tc.a.child(&node, i)
 		branch := tc.a.child_node(&node, i)
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+		tc.fn_context.pointer_binding_value_keys =
+			clone_pointer_binding_value_keys(pointer_alias_base)
 		if branch.kind != .match_branch {
 			tc.check_node(branch_id)
 			continue
@@ -1094,7 +1144,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				cond := tc.a.node(cond_id)
 				if pattern := tc.match_type_pattern(cond) {
 					if interface_pattern_is_collapsed_container(pattern) {
-						if tc.should_diagnose(cond_id) {
+						container_type := tc.parse_type(pattern)
+						if !tc.type_implements_interface(container_type, subject_type)
+							&& tc.should_diagnose(cond_id) {
 							tc.record_error(.condition_mismatch,
 								'`${pattern}` is not compatible with interface `${subject_type.name}`',
 								cond_id)
@@ -1115,9 +1167,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 						if concrete_type !is Interface
 							&& !tc.named_type_implements_interface(concrete, subject_type.name)
 							&& tc.should_diagnose(cond_id) {
-							tc.record_interface_implementation_error(.condition_mismatch,
-								concrete_type, subject_type, cond_id,
-								tc.match_condition_diagnostic_pos(cond_id))
+							tc.record_error_at(.condition_mismatch,
+								'`${pattern}` is not compatible with interface `${subject_type.name}`',
+								cond_id, tc.match_condition_diagnostic_pos(cond_id))
 						}
 					} else if tc.should_diagnose(cond_id) {
 						tc.record_error(.condition_mismatch, 'unknown type `${pattern}`', cond_id)
@@ -1138,6 +1190,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			}
 			for j in 0 .. n_conds {
 				tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+				tc.fn_context.pointer_binding_value_keys =
+					clone_pointer_binding_value_keys(pointer_alias_base)
 				cond := tc.a.node(tc.a.child(branch, j))
 				pattern := tc.match_type_pattern(cond) or { continue }
 				smartcast_type := tc.sum_variant_type_for_pattern(subject_type.name, pattern) or {
@@ -1155,6 +1209,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			}
 			if !tc.match_branch_definitely_returns(branch) {
 				unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+				pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 			}
 			continue
 		}
@@ -1208,13 +1263,17 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		}
 		if !tc.match_branch_definitely_returns(branch) {
 			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+			pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 	}
 	if !tc.match_has_else_or_exhaustive_coverage(node) {
 		unsafe_alias_paths << unsafe_alias_base.clone()
+		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths,
 		unsafe_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths,
+		pointer_alias_base)
 	if missing_non_else {
 		tc.record_match_requires_non_else(node)
 	}
@@ -1310,6 +1369,17 @@ fn (mut tc TypeChecker) check_match_type_pattern_subject(subject_id flat.NodeId,
 		|| subject_type is Unknown {
 		return
 	}
+	if tc.valid_node_id(subject_id) {
+		subject := tc.a.node(subject_id)
+		if subject.kind == .ident {
+			declared := unalias_and_unwrap_pointer_type(tc.cur_scope.lookup(subject.value) or {
+				subject_type
+			})
+			if declared is SumType || declared is Interface || is_ierror_type(declared) {
+				return
+			}
+		}
+	}
 	if unalias_and_unwrap_pointer_type(subject_type) is Struct {
 		tc.record_error_at(.condition_mismatch,
 			'struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
@@ -1324,6 +1394,9 @@ fn (mut tc TypeChecker) check_match_type_pattern_subject(subject_id flat.NodeId,
 
 fn (mut tc TypeChecker) check_match_alias_condition(subject_type Type, cond_id flat.NodeId) {
 	if subject_type !is Alias {
+		return
+	}
+	if unalias_type(subject_type) is SumType {
 		return
 	}
 	pattern := tc.match_type_pattern(*tc.a.node(cond_id)) or { return }
@@ -1420,22 +1493,37 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 			pattern := tc.match_type_pattern(cond) or { continue }
 			qpattern := tc.qualify_name(pattern)
 			if matched := tc.sum_variant_type_for_pattern(sum_subject.name, pattern) {
-				leaves := tc.sum_exhaustive_leaf_variants(matched, 0)
+				matched_type := tc.parse_type(matched)
+				matched_sum_name := if matched_type is SumType {
+					matched_type.name
+				} else if matched_type is Alias && matched_type.base_type is SumType {
+					(matched_type.base_type as SumType).name
+				} else {
+					''
+				}
+				leaves := if matched_sum_name.len > 0 {
+					tc.sum_exhaustive_leaf_variants(matched_sum_name, 0)
+				} else {
+					[]string{}
+				}
 				if leaves.len > 0 {
 					for leaf in leaves {
 						covered[leaf] = true
 					}
 				} else {
 					for variant in variants {
-						if tc.generic_type_name_matches(variant, matched) {
+						if variant == matched {
 							covered[variant] = true
 						}
 					}
 				}
 			}
 			for variant in variants {
-				if tc.generic_type_name_matches(variant, pattern)
-					|| tc.generic_type_name_matches(variant, qpattern) {
+				uses_type_arguments := variant.contains('[') || pattern.contains('[')
+					|| qpattern.contains('[')
+				if variant == pattern || variant == qpattern
+					|| (uses_type_arguments && (tc.generic_type_name_matches(variant, pattern)
+					|| tc.generic_type_name_matches(variant, qpattern))) {
 					covered[variant] = true
 				}
 			}
@@ -1467,6 +1555,18 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 		return
 	}
 	if missing.len == 0 {
+		for i in 1 .. node.children_count {
+			branch := tc.a.child_node(node, i)
+			if branch.kind != .match_branch || branch.value == 'else' {
+				continue
+			}
+			for j in 0 .. branch.value.int() {
+				pattern := tc.match_type_pattern(tc.a.child_node(branch, j)) or { continue }
+				if tc.parse_type(pattern) is Alias {
+					return
+				}
+			}
+		}
 		for else_id in else_ids {
 			else_branch := tc.a.node(else_id)
 			tc.record_error_at(.condition_mismatch,
@@ -1553,6 +1653,25 @@ fn (mut tc TypeChecker) check_match_branch_tail_type_diagnostics(id flat.NodeId,
 	if context_type is Void && tc.valid_node_id(parent_id)
 		&& tc.a.node(parent_id).kind == .return_stmt {
 		context_type = tc.fn_context.return_type
+	}
+	mut multi_context := unalias_type(context_type)
+	if multi_context is OptionType {
+		multi_context = unalias_type(multi_context.base_type)
+	} else if multi_context is ResultType {
+		multi_context = unalias_type(multi_context.base_type)
+	}
+	if multi_context is MultiReturn {
+		if context_type is OptionType || context_type is ResultType {
+			if _ := tc.wrapped_multi_return_value_groups(id, multi_context.types.len, false,
+				context_type)
+			{
+				return
+			}
+		} else {
+			if _ := tc.multi_expr_tail_value_groups(id, multi_context.types.len, false) {
+				return
+			}
+		}
 	}
 	if context_type !is Void && tc.branches_compatible_with(id, context_type) {
 		return
@@ -1666,6 +1785,7 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 					false
 				}
 				if actual is Void || actual is Unknown || is_ierror_type(actual)
+					|| tc.type_compatible_with_ierror_payload(actual)
 					|| tc.expr_never_returns(tail_id)
 					|| tc.type_compatible(actual, context_type) || same_wrapper
 					|| (expected_is_option && tc.branch_tail_is_none_literal(tail_id)) {
@@ -1759,6 +1879,24 @@ fn (mut tc TypeChecker) record_match_branch_return_type_mismatch(id flat.NodeId,
 	if expected.name() == tc.diagnostic_expr_type_name(id, actual) {
 		return
 	}
+	expected_multi := multi_return_payload_type(expected)
+	actual_multi := multi_return_payload_type(actual)
+	if expected_multi != none && actual_multi != none {
+		expected_types := expected_multi.types
+		actual_types := actual_multi.types
+		if expected_types.len == actual_types.len {
+			mut compatible := true
+			for i, actual_type in actual_types {
+				if tc.promoted_multi_tail_type(expected_types[i], actual_type) == none {
+					compatible = false
+					break
+				}
+			}
+			if compatible {
+				return
+			}
+		}
+	}
 	node := tc.a.node(id)
 	pos := if node.kind == .prefix && node.op == .amp {
 		tc.prefix_operator_pos(id, '&')
@@ -1768,7 +1906,7 @@ fn (mut tc TypeChecker) record_match_branch_return_type_mismatch(id flat.NodeId,
 		node.pos
 	}
 	tc.record_error_at(.if_branch_mismatch, 'return type mismatch, it should be `${expected.name()}`, but it is instead `${tc.diagnostic_expr_type_name(id,
-		actual)}`', id, pos)
+		actual)}`; cannot return `${actual.name()}` as `${expected.name()}`', id, pos)
 }
 
 fn (tc &TypeChecker) expr_has_match_branch_type_error(id flat.NodeId) bool {
@@ -2431,6 +2569,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if node.value.contains('.') {
 		module_alias := node.value.all_before('.')
 		if module_alias.len > 0 && module_alias[0] >= `a` && module_alias[0] <= `z`
+			&& module_alias.bytes().all(it.is_letter() || it.is_digit() || it == `_`)
 			&& module_alias != tc.cur_module
 			&& tc.current_file_import_path_for_alias(module_alias) == none {
 			tc.record_error_at(.unknown_type, 'unknown module `${module_alias}`', id, tc.type_diagnostic_pos(id,
@@ -2459,15 +2598,17 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut expr_type := unalias_type(unwrap_pointer(raw_expr_type))
-	if expr_type is Interface && tc.nonmut_mutable_interface_smartcast(expr_id) {
+	if expr_type is Interface && node.value != 'none'
+		&& tc.nonmut_mutable_interface_smartcast(expr_id) {
 		if tc.interface_has_no_requirements(expr_type.name) {
 			tc.record_notice_at(.condition_mismatch,
 				'smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				expr_id, expr_node.pos)
+		} else {
+			tc.record_error_at(.condition_mismatch,
+				'smart casting a mutable interface value requires `if mut ${tc.source_text_for_node(expr_id)} is ...`',
+				expr_id, expr_node.pos)
 		}
-		tc.record_error_at(.condition_mismatch,
-			'smart casting a mutable interface value requires `if mut ${tc.source_text_for_node(expr_id)} is ...`',
-			expr_id, expr_node.pos)
 	}
 	// A previous branch can narrow a variable to one variant and then assign it
 	// another value. A later `is` still applies to the variable's declared sum
@@ -2510,9 +2651,11 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 						tc.record_error_at(.unknown_type,
 							'is: type `${diagnostic_pattern}` does not exist', id, diagnostic_pos)
 					}
-					tc.record_error_at(.condition_mismatch,
-						'`${expr_type.name}` has no variant `${diagnostic_pattern}`', id,
-						diagnostic_pos)
+					tc.record_error_at(.condition_mismatch, if tc.comptime_static_depth > 0 {
+						'`${expr_type.name}` has no variant `${diagnostic_pattern}`'
+					} else {
+						'`${diagnostic_pattern}` is not a variant of sum type `${expr_type.name}`'
+					}, id, diagnostic_pos)
 				}
 			}
 		}
@@ -2546,7 +2689,9 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if expr_type is Interface {
 		if node.value.len > 0 {
 			if interface_pattern_is_collapsed_container(node.value) {
-				if tc.should_diagnose(id) {
+				container_type := tc.parse_type(node.value)
+				if !tc.type_implements_interface(container_type, expr_type)
+					&& tc.should_diagnose(id) {
 					tc.record_error(.condition_mismatch,
 						'`${node.value}` is not compatible with interface `${expr_type.name}`', id)
 				}
@@ -2562,10 +2707,9 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 					&& !tc.named_type_implements_interface(concrete, expr_type.name)
 					&& tc.should_diagnose(id) {
 					pos := tc.node_value_diagnostic_pos(id)
-					tc.record_interface_implementation_error(.condition_mismatch, concrete_type,
-						expr_type, id, pos)
 					tc.record_error_at(.condition_mismatch,
-						'`${node.value}` doesn\'t implement interface `${expr_type.name}`', id, pos)
+						'`${node.value}` is not compatible with interface `${expr_type.name}`', id,
+						pos)
 				}
 			} else if tc.should_diagnose(id) {
 				tc.record_error(.condition_mismatch, 'unknown type `${node.value}`', id)
@@ -2908,9 +3052,6 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	}
 	if cond.kind == .is_expr && cond.children_count > 0 {
 		expr_id := tc.a.child(&cond, 0)
-		if tc.nonmut_mutable_interface_smartcast(expr_id) {
-			return []LocalBinding{}
-		}
 		key := tc.expr_key(expr_id)
 		if key.len > 0 && valid_string_data(key) && cond.value.len > 0 {
 			mut result := []LocalBinding{}
@@ -3186,7 +3327,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		&& (!tc.type_name_known(init_type_text) || (init_type_text.starts_with('C.')
 		&& !tc.type_symbol_known(init_type_text))) {
 		if is_bare_generic_param(init_type_text)
-			&& tc.unmentioned_generic_type_was_reported(init_type_text, node.pos.id) {
+			&& tc.unmentioned_generic_type_was_reported(init_type_text, id) {
 			for i in 0 .. node.children_count {
 				tc.check_node(tc.a.child(&node, i))
 			}
@@ -3248,46 +3389,23 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	clean_init_type := unalias_type(init_type)
 	if clean_init_type is Interface {
+		if node.children_count == 0 && tc.interface_has_no_requirements(clean_init_type.name) {
+			tc.register_synth_type(id, init_type)
+			return
+		}
 		tc.record_error_at(.assignment_mismatch,
 			'cannot instantiate interface `${clean_init_type.name.all_after_last('.')}`', id,
 			node.pos)
 		return
 	}
-	if clean_init_type is SumType && node.children_count == 0 {
-		mut seen_missing_references := map[string]bool{}
-		base := tc.sum_base_name(clean_init_type.name)
-		for variant in tc.sum_types[base] or { []string{} } {
-			concrete := tc.concrete_sum_variant_name(clean_init_type.name, variant)
-			variant_type := unalias_type(tc.parse_type(concrete))
-			if variant_type !is Struct {
-				continue
-			}
-			struct_variant := variant_type as Struct
-			for missing in tc.missing_reference_struct_fields(struct_variant.name,
-				map[string]bool{}, []string{}) {
-				if seen_missing_references[missing.path] {
-					continue
-				}
-				seen_missing_references[missing.path] = true
-				message := if missing.has_part {
-					'reference field `${missing.path}` must be initialized (part of struct `${missing.owner}`)'
-				} else {
-					'reference field `${missing.path}` must be initialized'
-				}
-				tc.record_error_at(.assignment_mismatch, message, id, tc.struct_init_head_pos(node))
-			}
-		}
-	}
 	if init_struct := struct_type_from_type(init_type) {
-		if !is_anonymous_struct_name(init_struct.name) {
-			if _ := tc.private_declaration(init_struct.name) {
-				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-				tc.record_error_at(.unknown_type,
-					'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`',
-					id, node.pos)
-				tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id,
-					node.pos)
-			}
+		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
+		if _ := tc.private_declaration(init_struct.name) {
+			inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+			tc.record_error_at(.unknown_type,
+				'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`',
+				id, node.pos)
+			tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id, node.pos)
 		}
 		if deprecation := tc.deprecated_symbols[init_struct.name] {
 			tc.record_deprecation(id, 'struct', deprecation, tc.struct_init_deprecation_pos(node))
@@ -3436,8 +3554,6 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				tc.record_error_at(.assignment_mismatch, message, id, tc.struct_init_head_pos(node))
 			}
 		}
-		is_compiler_embed_literal := init_name == 'embed_file.EmbedFileData'
-			&& tc.node_source_starts_with(id, '$embed_file')
 		for i in 0 .. node.children_count {
 			field_id := tc.a.child(&node, i)
 			field := tc.a.nodes[int(field_id)]
@@ -3457,10 +3573,12 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					expected = typ
 					found = true
 				}
-				if found && tc.unsafe_depth == 0 && !is_compiler_embed_literal {
+				if found && tc.unsafe_depth == 0 && !is_synthetic_embed_file
+					&& tc.resolve_selective_import_type_symbol(init_type_text) == none {
 					owner_base := strip_generic_args_name(init_name)
 					decl_mod := tc.struct_modules[owner_base] or { '' }
-					if decl_mod.len > 0 && decl_mod != tc.cur_module {
+					if decl_mod.len > 0 && decl_mod != tc.cur_module
+						&& !is_anonymous_struct_name(init_name) {
 						is_public := tc.visible_mutation_struct_field_is_public(init_name,
 							field.value, decl_mod) or { true }
 						if !is_public {
@@ -3590,7 +3708,13 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				if value_node.kind == .map_init && tc.map_literal_has_element_diagnostic(value_id) {
 					continue
 				}
-				if tc.expr_is_unsafe_nil(value_id) && clean_expected !is Pointer {
+				optional_pointer_nil := tc.expr_is_unsafe_nil(value_id)
+					&& clean_expected is OptionType
+					&& unalias_type(clean_expected.base_type) is Pointer
+				optional_fn_nil := tc.expr_is_unsafe_nil(value_id) && clean_expected is OptionType
+					&& unalias_type(clean_expected.base_type) is FnType
+				if tc.expr_is_unsafe_nil(value_id) && clean_expected !is Pointer
+					&& clean_expected !is FnType && !optional_pointer_nil && !optional_fn_nil {
 					if expected is String {
 						tc.record_error_at(.assignment_mismatch,
 							'cannot assign to field `${field.value}`: expected `string`, not `voidptr`',
@@ -3616,9 +3740,11 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 						field.value, i) or { '', '' }
 					actual_fn_text := tc.expr_diagnostic_fn_type(value_id) or { '' }
 					if expected_fn_text.len > 0 && actual_fn_text.len > 0
-						&& expected_fn_text != actual_fn_text
-						&& !tc.fn_value_signature_compatible(clean_actual, clean_expected)&& (fn_diagnostic_parameter_modes(expected_fn_text) != fn_diagnostic_parameter_modes(actual_fn_text)
-						|| !tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_actual)) {
+						&& expected_fn_text != actual_fn_text&& (fn_diagnostic_parameter_modes(expected_fn_text) != fn_diagnostic_parameter_modes(actual_fn_text)
+						|| !tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_actual))
+						&& !tc.expr_compatible(value_id, actual, expected)
+						&& !tc.method_value_matches_voidptr_callback(value_id, actual, expected)
+						&& !tc.fn_callback_adapter_compatible(source_actual, clean_expected) {
 						details := tc.fn_assignment_mismatch_details(expected_fn_text,
 							expected_alias, actual_fn_text, value_id)
 						message := 'cannot assign to field `${field.value}`: expected `${expected_fn_text}`, not `${actual_fn_text}`'
@@ -3646,7 +3772,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				} else if clean_expected is OptionType
 					&& unalias_type(clean_expected.base_type) is Pointer
 					&& clean_actual is OptionType
-					&& unalias_type(clean_actual.base_type) !is Pointer {
+					&& unalias_type(clean_actual.base_type) !is Pointer
+					&& !tc.optional_pointer_expr_compatible(value_id, actual, expected) {
 					tc.record_error_at(.assignment_mismatch,
 						'cannot assign to field `${field.value}`: expected a pointer `${expected.name()}`, but got `${actual.name()}`',
 						field_id, tc.struct_init_field_deprecation_pos(field))
@@ -3665,7 +3792,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 						tc.struct_init_field_deprecation_pos(field))
 				} else if clean_actual is FnType && clean_expected is FnType
 					&& actual.name() != expected.name()
-					&& !tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_actual) {
+					&& !tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_actual)
+					&& !tc.expr_compatible(value_id, actual, expected)
+					&& !tc.method_value_matches_voidptr_callback(value_id, actual, expected)
+					&& !tc.fn_callback_adapter_compatible(source_actual, clean_expected) {
 					tc.record_error_at(.assignment_mismatch,
 						'cannot assign to field `${field.value}`: expected `${expected.name()}`, not `${actual.name()}`',
 						field_id, tc.struct_init_field_deprecation_pos(field))
@@ -3724,7 +3854,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 						}
 					} else {
 						tc.record_error_at(.assignment_mismatch,
-							'cannot assign to field `${field.value}`: expected `${expected.name()}`, not `${actual_name}`',
+							'cannot initialize field `${field.value}` with `${actual_name}`; expected `${expected.name()}`; cannot assign to field `${field.value}`: expected `${expected.name()}`, not `${actual_name}`',
 							field_id, field_pos)
 					}
 				}
@@ -3769,12 +3899,40 @@ fn (tc &TypeChecker) fn_types_match_ignoring_module_qualification(expected FnTyp
 	if actual !is FnType || expected.params.len != actual.params.len {
 		return false
 	}
-	for i, param in expected.params {
-		if !tc.types_match_ignoring_module_qualification(param, actual.params[i]) {
+	actual_fn := actual as FnType
+	for i in 0 .. expected.params.len {
+		if !fn_param_modes_compatible(actual_fn, expected, i)
+			|| !tc.types_match_ignoring_module_qualification(fn_compatible_param_type(expected, i), fn_compatible_param_type(actual_fn, i)) {
 			return false
 		}
 	}
-	return tc.types_match_ignoring_module_qualification(expected.return_type, actual.return_type)
+	return tc.fn_return_compatible(actual.return_type, expected.return_type)
+}
+
+fn (tc &TypeChecker) fn_callback_adapter_compatible(actual Type, expected Type) bool {
+	actual_fn := fn_type_from_type(actual) or { return false }
+	expected_fn := fn_type_from_type(expected) or { return false }
+	if actual_fn.params.len != expected_fn.params.len
+		|| !tc.fn_return_compatible(actual_fn.return_type, expected_fn.return_type) {
+		return false
+	}
+	mut needs_adapter := false
+	for i in 0 .. actual_fn.params.len {
+		actual_param := fn_compatible_param_type(actual_fn, i)
+		expected_param := fn_compatible_param_type(expected_fn, i)
+		if !fn_param_modes_compatible(actual_fn, expected_fn, i)
+			&& !fn_param_can_cast_userdata_param(actual_param, expected_param) {
+			return false
+		}
+		if tc.types_match_ignoring_module_qualification(expected_param, actual_param) {
+			continue
+		}
+		if !fn_param_can_cast_userdata_param(actual_param, expected_param) {
+			return false
+		}
+		needs_adapter = true
+	}
+	return needs_adapter
 }
 
 fn (tc &TypeChecker) types_match_ignoring_module_qualification(expected Type, actual Type) bool {
@@ -4454,6 +4612,9 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 		field_type := unalias_type(tc.parse_type(field_type_text))
 		is_embed := source_field_decl_is_embed(field, field_type_text)
 		if field_type is Pointer {
+			if field_type_text in ['charptr', 'byteptr', 'voidptr'] {
+				continue
+			}
 			if unalias_type(field_type.base_type) is Void {
 				continue
 			}
@@ -4663,13 +4824,19 @@ fn (mut tc TypeChecker) infer_generic_struct_init_type(node flat.Node) ?Type {
 	if base_name.len == 0 || base_name.contains('[') {
 		return none
 	}
-	params := tc.struct_generic_params[base_name] or {
-		tc.struct_generic_params[tc.qualify_name(base_name)] or { return none }
+	qualified_name := tc.qualify_name(base_name)
+	params := tc.struct_generic_params[qualified_name] or {
+		// A concrete declaration in the active module shadows an unrelated
+		// bare generic declaration collected from another module.
+		if qualified_name != base_name && qualified_name in tc.structs {
+			return none
+		}
+		tc.struct_generic_params[base_name] or { return none }
 	}
 	if params.len == 0 {
 		return none
 	}
-	inferred := tc.infer_generic_struct_init_param_texts(node, base_name, params)
+	inferred := tc.infer_generic_struct_init_param_texts(node, qualified_name, params)
 	if inferred.len == 0 {
 		return none
 	}
@@ -4678,7 +4845,7 @@ fn (mut tc TypeChecker) infer_generic_struct_init_type(node flat.Node) ?Type {
 		arg := inferred[param] or { return none }
 		args << arg
 	}
-	return tc.parse_type('${base_name}[${args.join(', ')}]')
+	return tc.parse_type('${qualified_name}[${args.join(', ')}]')
 }
 
 fn (mut tc TypeChecker) infer_generic_struct_init_param_texts(node flat.Node, base_name string, params []string) map[string]string {
@@ -5140,7 +5307,8 @@ fn (tc &TypeChecker) method_value_matches_voidptr_callback(id flat.NodeId, actua
 		return false
 	}
 	for i in 0 .. actual_fn.params.len {
-		if !tc.fn_param_compatible(fn_param_type(actual_fn, i), fn_param_type(expected_fn, i + 1)) {
+		if !fn_param_modes_compatible_at(actual_fn, i, expected_fn, i + 1)
+			|| !tc.fn_param_compatible(fn_compatible_param_type(actual_fn, i), fn_compatible_param_type(expected_fn, i + 1)) {
 			return false
 		}
 	}
@@ -5258,8 +5426,10 @@ fn (tc &TypeChecker) fn_literal_return_capture_is_supported(capture flat.Node) b
 }
 
 fn (mut tc TypeChecker) reject_returned_capturing_fn_literal(id flat.NodeId) {
-	_ = tc
-	_ = id
+	if tc.expr_is_unsupported_returned_capturing_fn_literal_value(id) {
+		tc.reject_capturing_fn_literal_escape(id,
+			'capturing fn literal cannot be stored or returned')
+	}
 }
 
 fn (mut tc TypeChecker) reject_stored_capturing_fn_literal(id flat.NodeId) {
@@ -5272,7 +5442,6 @@ fn (mut tc TypeChecker) reject_stored_or_returned_capturing_fn_literal(id flat.N
 }
 
 fn (mut tc TypeChecker) reject_capturing_fn_literal_escape(id flat.NodeId, message string) {
-	_ = tc
 	_ = id
 	_ = message
 }
@@ -5312,13 +5481,21 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 						start_pos.offset, node.pos.end))
 				}
 			} else {
-				start_pos := tc.node_value_diagnostic_pos(base_id)
-				tc.record_error_at(.unknown_type, 'unknown enum `${enum_name}` (type_idx=0)', id, token.new_span(node.pos.id,
-					start_pos.offset, node.pos.end))
-				tc.register_synth_type(id, Type(void_))
-				return
+				qualified_type_name := '${module_name}.${base.value}'
+				if !tc.type_name_known(qualified_type_name)
+					&& !tc.type_symbol_known(qualified_type_name) {
+					start_pos := tc.node_value_diagnostic_pos(base_id)
+					tc.record_error_at(.unknown_type, 'unknown enum `${enum_name}` (type_idx=0)',
+						id, token.new_span(node.pos.id, start_pos.offset, node.pos.end))
+					tc.register_synth_type(id, Type(void_))
+					return
+				}
 			}
 		}
+	}
+	if typ := tc.enum_selector_type(&node) {
+		tc.register_synth_type(id, typ)
+		return
 	}
 	if base.kind == .prefix && base.op == .amp && base.children_count > 0 {
 		addressed := tc.a.child_node(&base, 0)
@@ -5350,6 +5527,21 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				tc.register_synth_type(id, Type(int_))
 				return
 			}
+			if c_upper_constant_is_pointer(qname) {
+				tc.register_synth_type(id, Type(voidptr_))
+				return
+			}
+			if node.value.len > 0 && node.value[0].is_capital()
+				&& !tc.static_assoc_type_known(qname) {
+				tc.register_synth_type(id, Type(int_))
+				return
+			}
+			// C preprocessor constants do not have V declarations. Like V1, infer
+			// conventional all-uppercase macro names as integers.
+			if node.value.len > 0 && !ascii_name_has_lower(node.value) {
+				tc.register_synth_type(id, Type(int_))
+				return
+			}
 		}
 		mut is_known_type := tc.type_name_known(semantic_type_name)
 		if !is_known_type {
@@ -5363,7 +5555,31 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if base.value != 'C' && node.value.len > 0 && node.value[0].is_capital() {
+		if node.value.len > 0 && node.value[0].is_capital() && is_known_type {
+			if tc.resolve_enum_name(semantic_type_name) != none
+				|| tc.resolve_enum_name(display_type_name) != none {
+				parent_id := tc.direct_parent_id(id)
+				if tc.valid_node_id(parent_id) {
+					parent := tc.a.node(parent_id)
+					if parent.kind == .selector && parent.children_count > 0
+						&& tc.a.child(parent, 0) == id {
+						tc.register_synth_type(id, tc.parse_type(semantic_type_name))
+						return
+					}
+				}
+			}
+			if key := tc.selector_fn_value_key(node) {
+				if typ := tc.fn_type_from_key(key) {
+					tc.register_synth_type(id, typ)
+					return
+				}
+			}
+			tc.record_error_at(.assignment_mismatch, '`${display_type_name}` must be initialized',
+				id, tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
+		if node.value.len > 0 && node.value[0].is_capital() {
 			if enum_name := tc.resolve_enum_name('${display_module_name}.${node.value}') {
 				tc.register_synth_type(id, Type(Enum{
 					name:    enum_name
@@ -5389,6 +5605,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		if typ := tc.enum_selector_type(&node) {
 			tc.register_synth_type(id, typ)
 		}
+		if typ := tc.global_type_for_selector(node) {
+			qname := '${display_module_name}.${node.value}'
+			if _ := tc.private_declaration('${module_name}.${node.value}') {
+				tc.record_error_at(.unknown_ident, 'global `${qname}` is private', id,
+					tc.node_value_diagnostic_pos(id))
+			}
+			tc.register_synth_type(id, typ)
+			return
+		}
 		if typ := tc.const_type_for_selector(node) {
 			qname := '${display_module_name}.${node.value}'
 			if _ := tc.private_declaration(qname) {
@@ -5403,7 +5628,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if base.value == 'C' && node.value.len > 0 && node.value[0].is_capital() {
-			tc.register_synth_type(id, c_upper_constant_type('C.${node.value}') or { Type(int_) })
+			constant_type := if c_upper_constant_is_pointer('C.${node.value}') {
+				Type(voidptr_)
+			} else {
+				Type(int_)
+			}
+			tc.register_synth_type(id, constant_type)
 			return
 		}
 		if tc.unknown_import_selector(node) {
@@ -5471,11 +5701,16 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		}
 		if generic_method_key.len > 0
 			&& (tc.fn_generic_params[generic_method_key] or { []string{} }).len > 0 {
-			tc.record_error_at(.unsupported_generic,
-				'cannot use `${tc.source_text_for_node(id)}` as a generic function value', id,
-				tc.node_value_diagnostic_pos(id))
-			tc.register_synth_type(id, tc.fn_type_from_key(generic_method_key) or { Type(void_) })
-			return
+			if receiver !is Struct
+				|| tc.resolve_generic_struct_method(receiver.name(), node.value) == none {
+				tc.record_error_at(.unsupported_generic,
+					'cannot use `${tc.source_text_for_node(id)}` as a generic function value', id,
+					tc.node_value_diagnostic_pos(id))
+				tc.register_synth_type(id, tc.fn_type_from_key(generic_method_key) or {
+					Type(void_)
+				})
+				return
+			}
 		}
 	}
 	// A value-context selector whose name is a method (not a field) of a struct
@@ -5489,6 +5724,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			node.value))
 	}
 	clean_recv := unwrap_pointer(base_type)
+	selector_is_method_value := tc.expr_is_method_value(id)
+		&& !tc.ident_is_call_callee_or_generic_base(id)
 	if clean_recv is Struct {
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
 			tc.record_deprecation(id, 'field', deprecation, tc.node_value_diagnostic_pos(id))
@@ -5506,7 +5743,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
-		if tc.struct_field_type(clean_recv.name, node.value) == none {
+		if selector_is_method_value && tc.struct_field_type(clean_recv.name, node.value) == none {
 			mut mkey := '${clean_recv.name}.${node.value}'
 			mut is_generic_method_value := false
 			if mkey !in tc.fn_param_types {
@@ -5536,7 +5773,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-	} else if clean_recv is Alias {
+	} else if selector_is_method_value && clean_recv is Alias {
 		underlying := unalias_type(clean_recv)
 		has_field := underlying is Struct
 			&& tc.struct_field_type(underlying.name, node.value) != none
@@ -5545,7 +5782,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				tc.method_values_by_fn[tc.fn_context.node_id] << mkey
 			}
 		}
-	} else if clean_recv is Interface {
+	} else if selector_is_method_value && clean_recv is Interface {
 		if tc.interface_field_type(clean_recv.name, node.value) == none
 			&& tc.fn_context.node_id >= 0 {
 			if _ := tc.interface_receiver_method_call_info(clean_recv.name, node.value) {
@@ -5580,12 +5817,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 						candidates << field.name
 					}
 				}
-				message :=
+				message := 'unknown field `${node.value}` on `${clean_base.name}`; ' +
 					util.new_suggestion(node.value, candidates).say('type `${clean_base.name}` has no field named `${node.value}`')
 				tc.record_error_at(.unknown_field, message, id, tc.node_value_diagnostic_pos(id))
 			} else if clean_base is SumType {
 				tc.record_error_at(.unknown_field,
-					'field `${node.value}` does not exist or have the same type in these sumtype `${clean_base.name}` variants:',
+					'unknown field `${node.value}` on `${clean_base.name}`; field `${node.value}` does not exist or have the same type in these sumtype `${clean_base.name}` variants:',
 					id, tc.node_value_diagnostic_pos(id))
 			} else {
 				tc.record_error_at(.unknown_field,
@@ -5600,6 +5837,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 fn ascii_name_has_upper(name string) bool {
 	for ch in name {
 		if ch >= `A` && ch <= `Z` {
+			return true
+		}
+	}
+	return false
+}
+
+fn ascii_name_has_lower(name string) bool {
+	for ch in name {
+		if ch >= `a` && ch <= `z` {
 			return true
 		}
 	}
@@ -5762,8 +6008,8 @@ fn (tc &TypeChecker) unknown_import_selector(node flat.Node) bool {
 	}
 	base := tc.a.child_node(&node, 0)
 	return base.kind == .ident && tc.has_active_import(base.value)
-		&& tc.const_type_for_selector(node) == none && tc.selector_fn_value_key(node) == none
-		&& tc.enum_selector_type(&node) == none
+		&& tc.global_type_for_selector(node) == none && tc.const_type_for_selector(node) == none
+		&& tc.selector_fn_value_key(node) == none && tc.enum_selector_type(&node) == none
 }
 
 // struct_embed_receiver_names returns the embedded receiver type names of a
@@ -6138,10 +6384,23 @@ fn (tc &TypeChecker) sum_unique_variant_field_type_inner(sum_name string, field 
 }
 
 fn (tc &TypeChecker) sum_type_contains_variant(sum SumType, target Type) bool {
+	mut visited := map[string]bool{}
+	return tc.sum_type_contains_variant_seen(sum, target, mut visited)
+}
+
+fn (tc &TypeChecker) sum_type_contains_variant_seen(sum SumType, target Type, mut visited map[string]bool) bool {
 	base := tc.sum_base_name(sum.name)
+	if visited[base] {
+		return false
+	}
+	visited[base] = true
 	for variant in tc.sum_types[base] or { []string{} } {
 		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.name, variant))
-		if concrete.name() == target.name() {
+		if concrete.name() == target.name()
+			|| (target is Alias && tc.type_compatible(concrete, target.base_type)) {
+			return true
+		}
+		if concrete is SumType && tc.sum_type_contains_variant_seen(concrete, target, mut visited) {
 			return true
 		}
 	}
@@ -6270,8 +6529,10 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	}
 	base_id := tc.a.child(&node, 0)
 	tc.check_storage_path_base_node(base_id)
-	base_type_raw := tc.resolve_type(base_id)
-	if base_type_raw is OptionType {
+	mut base_type_raw := tc.resolve_type(base_id)
+	if base_type_raw is OptionType && node.op == .gated_index {
+		base_type_raw = base_type_raw.base_type
+	} else if base_type_raw is OptionType {
 		base_node := tc.a.node(base_id)
 		base_text := tc.source_text_for_node(base_id)
 		base_pos := if base_node.kind == .selector {
@@ -6303,7 +6564,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	}
 	if base_type_raw.name() in ['voidptr', 'nil'] {
 		type_name := tc.pointer_diagnostic_binding_type_name(base_id, base_type_raw)
-		tc.record_error_at(.cannot_index, 'type `${type_name}` does not support indexing', id,
+		tc.record_error_at(.cannot_index, 'cannot index `${type_name}`', id,
 			tc.index_brackets_pos(node))
 		tc.register_synth_type(id, Type(void_))
 		return
@@ -6314,9 +6575,13 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	} else {
 		Type(void_)
 	}
-	implicit_mut_param_pointer := mut_param_base !is Void
+	// Ordinary `mut x T` parameters are represented as pointers in the ABI but retain
+	// value semantics in the function body. An explicitly pointer-typed `mut x &T`
+	// parameter retains pointer semantics, including indexing.
+	implicit_mut_param_pointer := mut_param_base !is Void && mut_param_base !is Pointer
+	outside_unsafe := tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
 	if node.value != 'range' && base_type_raw is Pointer && implicit_mut_param_pointer
-		&& base_type is Struct && tc.unsafe_depth == 0 {
+		&& base_type is Struct && outside_unsafe {
 		if tc.fn_context.generic_params.len > 0 && base_type.name.contains('[') {
 			tc.register_synth_type(id, tc.resolve_index_type(node))
 			return
@@ -6327,9 +6592,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if node.value != 'range' && base_type_raw is Pointer && !implicit_mut_param_pointer
-		&& base_type !is Array && base_type !is ArrayFixed && base_type !is Map
-		&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
-		&& !tc.translated_files[tc.cur_file] && !tc.node_is_in_translated_file(id) {
+		&& mut_param_base !is Pointer && base_type !is Array && base_type !is ArrayFixed
+		&& base_type !is Map && base_type !is String && outside_unsafe {
 		tc.record_error_at(.cannot_index, 'pointer indexing is only allowed in `unsafe` blocks',
 			id, tc.index_brackets_pos(node))
 		tc.register_synth_type(id, tc.resolve_index_type(node))
@@ -6373,16 +6637,19 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 					}
 					tc.type_mismatch(.cannot_index, message, bound_id)
 				} else {
-					if value := tc.index_literal_value(bound_id) {
-						if value < 0 && node.op != .gated_index {
-							tc.record_error(.cannot_index, 'negative index `${value}`', bound_id)
-						} else if base_type is ArrayFixed {
-							if length := tc.fixed_array_len_value(base_type) {
-								if value > length && !range_out_of_bounds_reported {
-									tc.record_error(.cannot_index,
-										'index out of range (index: ${value}, len: ${length})',
-										bound_id)
-									range_out_of_bounds_reported = true
+					if node.op != .gated_index {
+						if value := tc.index_literal_value(bound_id) {
+							if value < 0 {
+								tc.record_error(.cannot_index, 'negative index `${value}`',
+									bound_id)
+							} else if base_type is ArrayFixed {
+								if length := tc.fixed_array_len_value(base_type) {
+									if value > length && !range_out_of_bounds_reported {
+										tc.record_error(.cannot_index,
+											'index out of range (index: ${value}, len: ${length})',
+											bound_id)
+										range_out_of_bounds_reported = true
+									}
 								}
 							}
 						}
@@ -6494,14 +6761,16 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 				}
 				tc.type_mismatch(.cannot_index, message, index_id)
 			}
-		} else if value := tc.index_literal_value(index_id) {
-			if value < 0 && node.op != .gated_index {
-				tc.record_error(.cannot_index, 'negative index `${value}`', index_id)
-			} else if base_type is ArrayFixed {
-				if length := tc.fixed_array_len_value(base_type) {
-					if value >= length {
-						tc.record_error(.cannot_index,
-							'index out of range (index: ${value}, len: ${length})', index_id)
+		} else if node.op != .gated_index {
+			if value := tc.index_literal_value(index_id) {
+				if value < 0 {
+					tc.record_error(.cannot_index, 'negative index `${value}`', index_id)
+				} else if base_type is ArrayFixed {
+					if length := tc.fixed_array_len_value(base_type) {
+						if value >= length {
+							tc.record_error(.cannot_index,
+								'index out of range (index: ${value}, len: ${length})', index_id)
+						}
 					}
 				}
 			}
@@ -6510,8 +6779,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	if !(base_type is Array || base_type is ArrayFixed || base_type is String
 		|| base_type is Map || base_type is Unknown
 		|| (base_type_raw is Pointer && !implicit_mut_param_pointer)) && tc.should_diagnose(id) {
-		tc.record_error_at(.cannot_index, 'type `${base_type.name()}` does not support indexing',
-			id, tc.index_brackets_pos(node))
+		tc.record_error_at(.cannot_index, 'cannot index `${base_type.name()}`', id,
+			tc.index_brackets_pos(node))
 	}
 	tc.register_synth_type(id, tc.resolve_index_type(node))
 }
@@ -6872,7 +7141,8 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if key := tc.generic_fn_value_key(node.value) {
-		if !tc.ident_is_call_callee_or_generic_base(id) {
+		if !tc.ident_is_call_callee_or_generic_base(id) && !tc.expr_is_direct_call_argument(id)
+			&& tc.resolved_fn_value_name(id) == none {
 			message := '`${node.value}` is a generic fn, you should pass its concrete types, e.g. ${node.value}[int]'
 			tc.record_error_at(.unsupported_generic, message, id, tc.node_value_diagnostic_pos(id))
 			if tc.direct_parent_kind(id) == .decl_assign {
@@ -6904,6 +7174,10 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		|| qname in tc.sum_types || qname in tc.interface_names {
 		return
 	}
+	if typ := tc.enclosing_array_dsl_ident_type(id, node.value) {
+		tc.register_synth_type(id, typ)
+		return
+	}
 	if tc.should_diagnose(id) {
 		if _ := tc.future_local_decl_id(node.value, id) {
 			tc.record_error(.unknown_ident,
@@ -6924,11 +7198,20 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		message := if tc.fn_context.undefined_variable_context_depth > 0 && !is_match_subject {
 			'undefined variable: `${node.value}`'
 		} else {
-			'undefined ident: `${node.value}`'
+			'undefined ident: `${node.value}` (unknown identifier `${node.value}`)'
 		}
 		tc.record_error(.unknown_ident, message, id)
 		tc.register_synth_type(id, Type(void_))
 	}
+}
+
+fn (tc &TypeChecker) ident_uses_forbidden_closure_capture(name string) bool {
+	if !tc.fn_context.closure_forbidden_captures[name]
+		|| tc.fn_context.closure_scope == unsafe { nil } {
+		return false
+	}
+	owner := tc.cur_scope.lookup_owner(name) or { return false }
+	return !owner.belongs_to_scope_chain_until(tc.cur_scope, tc.fn_context.closure_scope)
 }
 
 fn (tc &TypeChecker) ident_is_match_subject(id flat.NodeId) bool {
@@ -6972,6 +7255,24 @@ fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat
 	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if !tc.valid_node_id(fn_id) {
+		use_pos := tc.a.node(use_id).pos
+		for i, current in tc.a.nodes {
+			if current.kind != .decl_assign || current.pos.id != use_pos.id
+				|| current.pos.offset <= use_pos.offset {
+				continue
+			}
+			current_id := flat.NodeId(i)
+			if tc.node_has_enclosing_function(current_id) {
+				continue
+			}
+			for child_idx := 0; child_idx < current.children_count; child_idx += 2 {
+				lhs_id := tc.a.child(&current, child_idx)
+				lhs := tc.a.node(lhs_id)
+				if lhs.kind == .ident && lhs.value == name && lhs.pos.offset > use_pos.offset {
+					return lhs_id
+				}
+			}
+		}
 		return none
 	}
 	use_pos := tc.a.node(use_id).pos
@@ -7004,6 +7305,17 @@ fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) node_has_enclosing_function(id flat.NodeId) bool {
+	mut parent_id := tc.direct_parent_id(id)
+	for tc.valid_node_id(parent_id) {
+		if tc.a.node(parent_id).kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return true
+		}
+		parent_id = tc.direct_parent_id(parent_id)
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_defer_result(id flat.NodeId, node flat.Node) {
@@ -7127,6 +7439,14 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	if node.kind == .field_init && node.children_count > 0 {
 		return tc.resolve_expr(tc.a.child(&node, 0), expected)
 	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		actual := tc.resolve_expr(tc.a.child(&node, 0), expected)
+		if tc.type_compatible(actual, expected) {
+			tc.register_synth_type(id, expected)
+			return expected
+		}
+		return actual
+	}
 	if node.kind == .none_expr {
 		if expected is OptionType || expected is ResultType || is_ierror_type(expected) {
 			tc.register_synth_type(id, expected)
@@ -7159,6 +7479,11 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		if tc.type_compatible(actual, payload) {
 			return actual
 		}
+	}
+	if node.kind == .char_literal && node.value.starts_with('c:')
+		&& unalias_type(expected).is_integer() && c_char_literal_scalar_byte(node.value[2..]) {
+		tc.register_synth_type(id, expected_raw)
+		return expected_raw
 	}
 	if node.kind == .enum_val {
 		// The expected type may be the enum directly, or an option/result wrapper around
@@ -7250,6 +7575,11 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			if fixed_expected is ArrayFixed {
 				fixed_actual := tc.resolve_expr(child_id, fixed_expected)
 				if tc.receiver_compatible(fixed_actual, fixed_expected) {
+					tc.register_synth_type(id, expected_raw)
+					return expected_raw
+				}
+				if fixed_actual is ArrayFixed && fixed_actual.len <= fixed_expected.len
+					&& tc.receiver_compatible(fixed_actual.elem_type, fixed_expected.elem_type) {
 					tc.register_synth_type(id, expected_raw)
 					return expected_raw
 				}
@@ -7393,6 +7723,18 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
+		if expected is OptionType && unalias_type(expected.base_type) is Pointer {
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
+	}
+	if node.kind == .call {
+		if call_info := tc.resolve_call_info(id, node) {
+			if call_info.return_type !is Unknown && call_info.return_type !is Void {
+				tc.register_synth_type(id, call_info.return_type)
+				return call_info.return_type
+			}
+		}
 	}
 	actual := tc.resolve_type(id)
 	if tc.branch_tail_is_error_literal(id) && expected is ResultType && is_ierror_type(actual) {
@@ -7422,6 +7764,36 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	return actual
 }
 
+fn c_char_literal_scalar_byte(value string) bool {
+	if value.len == 1 {
+		return true
+	}
+	if value.len < 2 || value[0] != `\\` {
+		return false
+	}
+	if value.len == 2 {
+		return true
+	}
+	if value[1] == `x` {
+		if value.len <= 2 {
+			return false
+		}
+		parsed := v_int_literal_value('0x${value[2..]}') or { return false }
+		return parsed <= 0xff
+	}
+	if value[1] < `0` || value[1] > `7` || value.len > 4 {
+		return false
+	}
+	mut parsed := 0
+	for digit in value[1..].bytes() {
+		if digit < `0` || digit > `7` {
+			return false
+		}
+		parsed = parsed * 8 + int(digit - `0`)
+	}
+	return parsed <= 0xff
+}
+
 // fn_value_match_key returns the single exact function declaration key accepted for a function value.
 fn (tc &TypeChecker) fn_value_match_key(node flat.Node, expected Type) ?string {
 	key := tc.fn_value_key(node) or { return none }
@@ -7439,8 +7811,11 @@ fn (tc &TypeChecker) fn_value_signature_compatible(actual Type, expected Type) b
 		return false
 	}
 	for i in 0 .. actual_fn.params.len {
-		actual_param := fn_param_type(actual_fn, i)
-		expected_param := fn_param_type(expected_fn, i)
+		if !fn_param_modes_compatible(actual_fn, expected_fn, i) {
+			return false
+		}
+		actual_param := fn_compatible_param_type(actual_fn, i)
+		expected_param := fn_compatible_param_type(expected_fn, i)
 		if !tc.fn_param_compatible(actual_param, expected_param) {
 			return false
 		}
@@ -7448,11 +7823,8 @@ fn (tc &TypeChecker) fn_value_signature_compatible(actual Type, expected Type) b
 	return tc.fn_return_compatible(actual_fn.return_type, expected_fn.return_type)
 }
 
-fn c_upper_constant_type(qname string) ?Type {
-	if qname in ['C.NULL', 'C.SIG_DFL', 'C.SIG_ERR', 'C.SIG_IGN'] {
-		return Type(voidptr_)
-	}
-	return none
+fn c_upper_constant_is_pointer(qname string) bool {
+	return qname == 'C.NULL' || qname == 'C.SIG_DFL' || qname == 'C.SIG_ERR' || qname == 'C.SIG_IGN'
 }
 
 fn c_int_selector_name(name string) bool {
@@ -7672,6 +8044,7 @@ fn (tc &TypeChecker) fn_type_from_key(key string) ?Type {
 	ret := tc.fn_ret_types[key] or { return none }
 	return Type(FnType{
 		params:      params.clone()
+		params_mut:  (tc.declaration_param_mutability[key] or { []bool{} }).clone()
 		return_type: ret
 	})
 }
@@ -8064,8 +8437,11 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 				return false
 			}
 			for i in 0 .. actual.params.len {
-				actual_param := fn_param_type(actual, i)
-				expected_param := fn_param_type(expected, i)
+				if !fn_param_modes_compatible(actual, expected, i) {
+					return false
+				}
+				actual_param := fn_compatible_param_type(actual, i)
+				expected_param := fn_compatible_param_type(expected, i)
 				if !tc.fn_param_compatible(actual_param, expected_param) {
 					return false
 				}
@@ -8175,10 +8551,10 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 	if actual.name() == expected.name() {
 		return true
 	}
-	if fn_param_can_cast_userdata_param(actual, expected) {
+	if tc.c_type(actual) == tc.c_type(expected) && tc.type_compatible(actual, expected) {
 		return true
 	}
-	if tc.c_type(actual) == tc.c_type(expected) && tc.type_compatible(actual, expected) {
+	if fn_param_can_cast_userdata_param(actual, expected) {
 		return true
 	}
 	return fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected)
@@ -8226,6 +8602,13 @@ fn call_arg_integer_type(typ Type) bool {
 fn call_arg_numeric_type(typ Type) bool {
 	clean := fn_param_unalias_type(typ)
 	return call_arg_integer_type(clean) || clean.is_float()
+}
+
+fn call_arg_implicit_signed_widening(actual Type, expected Type) bool {
+	actual_name := fn_param_unalias_type(actual).name()
+	expected_name := fn_param_unalias_type(expected).name()
+	return (actual_name in ['int', 'i32'] && expected_name in ['i64', 'isize'])
+		|| (actual_name == 'f32' && expected_name == 'f64')
 }
 
 fn escaped_identifier_name(name string) string {
@@ -8784,32 +9167,34 @@ pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
 	if name.len == 0 {
 		return name
 	}
-	if name in tc.interface_names || name in tc.interface_abstract_methods
-		|| name in tc.interface_embeds || name in tc.interface_fields {
-		return name
+	base, _, is_generic := generic_type_application_parts(name)
+	lookup := if is_generic { base } else { name }
+	if lookup in tc.interface_names || lookup in tc.interface_abstract_methods
+		|| lookup in tc.interface_embeds || lookup in tc.interface_fields {
+		return lookup
 	}
-	if !name.contains('.') {
-		qname := tc.qualify_name(name)
+	if !lookup.contains('.') {
+		qname := tc.qualify_name(lookup)
 		if qname in tc.interface_names || qname in tc.interface_abstract_methods
 			|| qname in tc.interface_embeds || qname in tc.interface_fields {
 			return qname
 		}
 	}
-	short := name.all_after_last('.')
+	short := lookup.all_after_last('.')
 	mut match_name := ''
 	for candidate, _ in tc.interface_names {
 		if candidate.all_after_last('.') != short {
 			continue
 		}
 		if match_name.len > 0 && match_name != candidate {
-			return name
+			return lookup
 		}
 		match_name = candidate
 	}
 	if match_name.len > 0 {
 		return match_name
 	}
-	return name
+	return lookup
 }
 
 // named_type_implements_interface
@@ -8829,20 +9214,22 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 			&& tc.interface_method_is_str_requirement(expected_key) {
 			return false
 		}
-		if concrete_key := tc.concrete_method_signature_key(concrete_name, method) {
-			if !tc.method_signature_compatible(concrete_key, expected_key) {
+		if info := tc.resolve_generic_struct_method(concrete_name, method) {
+			if !tc.method_call_info_signature_compatible_for_interface(info, expected_key,
+				iface_name) {
 				return false
 			}
 			continue
 		}
-		if info := tc.resolve_generic_struct_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible(info, expected_key) {
+		if concrete_key := tc.concrete_method_signature_key(concrete_name, method) {
+			if !tc.method_signature_compatible_for_interface(concrete_key, expected_key, iface_name) {
 				return false
 			}
 			continue
 		}
 		if info := tc.resolve_generic_sum_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible(info, expected_key) {
+			if !tc.method_call_info_signature_compatible_for_interface(info, expected_key,
+				iface_name) {
 				return false
 			}
 			continue
@@ -10272,11 +10659,15 @@ pub fn (tc &TypeChecker) interface_method_signature_key(iface_name string, metho
 }
 
 fn (tc &TypeChecker) interface_receiver_method_call_info(iface_name string, method string) ?CallInfo {
-	if iface_name !in tc.interface_names {
+	metadata_name := tc.interface_metadata_name(iface_name)
+	if metadata_name !in tc.interface_names {
 		return none
 	}
 	decl_key := tc.interface_method_signature_key(iface_name, method) or { return none }
-	decl_params := tc.fn_param_types[decl_key] or { return none }
+	decl_params, return_type := tc.specialized_interface_method_signature(iface_name, decl_key)
+	if decl_params.len == 0 {
+		return none
+	}
 	mut params := []Type{cap: decl_params.len}
 	params << Type(Pointer{
 		base_type: Type(Interface{
@@ -10293,7 +10684,7 @@ fn (tc &TypeChecker) interface_receiver_method_call_info(iface_name string, meth
 		name:          call_name
 		params:        params
 		shared_params: tc.fn_shared_params[decl_key] or { []bool{} }
-		return_type:   tc.fn_ret_types[decl_key] or { Type(void_) }
+		return_type:   return_type
 		has_receiver:  true
 		params_known:  true
 	}
@@ -10416,6 +10807,19 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 }
 
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
+	if !isnil(tc.type_cache) {
+		cache := tc.type_cache
+		if cache.struct_field_last_state != 0
+			&& cache.struct_field_last_struct == usize(struct_name.str)
+			&& cache.struct_field_last_field == usize(field_name.str)
+			&& cache.struct_field_last_struct_n == struct_name.len
+			&& cache.struct_field_last_field_n == field_name.len {
+			if cache.struct_field_last_state > 0 {
+				return cache.struct_field_last_value
+			}
+			return none
+		}
+	}
 	cache_key := '${struct_name}\n${field_name}'
 	if !isnil(tc.type_cache) {
 		mut fallback := tc.type_cache.base
@@ -10449,8 +10853,10 @@ fn (tc &TypeChecker) remember_struct_field_type(struct_name string, field_name s
 		return
 	}
 	mut cache := tc.type_cache
-	cache.struct_field_last_struct = usize(voidptr(struct_name.str))
-	cache.struct_field_last_field = usize(voidptr(field_name.str))
+	struct_ptr := usize(struct_name.str)
+	field_ptr := usize(field_name.str)
+	cache.struct_field_last_struct = struct_ptr
+	cache.struct_field_last_field = field_ptr
 	cache.struct_field_last_struct_n = struct_name.len
 	cache.struct_field_last_field_n = field_name.len
 	cache.struct_field_last_value = typ
@@ -10610,6 +11016,7 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 		}
 		return Type(FnType{
 			params:      params
+			params_mut:  typ.params_mut.clone()
 			return_type: tc.substitute_generic_type(typ.return_type, args, param_names)
 		})
 	}
@@ -10693,6 +11100,7 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		}
 		return Type(FnType{
 			params:      params
+			params_mut:  typ.params_mut.clone()
 			return_type: tc.substitute_generic_type_values(typ.return_type, args, param_names)
 		})
 	}
@@ -10861,11 +11269,8 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 		return false
 	}
 	expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
-	actual_receiver_mut, actual_receiver_shared := tc.method_receiver_flags(actual_key)
+	_, actual_receiver_shared := tc.method_receiver_flags(actual_key)
 	if expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared {
-		return false
-	}
-	if !expected_receiver_mut && actual_receiver_mut && !actual_receiver_shared {
 		return false
 	}
 	for i in 1 .. actual_params.len {
@@ -10875,6 +11280,54 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 	}
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
+	return tc.method_return_signature_compatible(actual_ret, expected_ret)
+}
+
+fn (tc &TypeChecker) specialized_interface_method_signature(iface_name string, expected_key string) ([]Type, Type) {
+	params := tc.fn_param_types[expected_key] or { []Type{} }
+	ret := tc.fn_ret_types[expected_key] or { Type(void_) }
+	base, args, is_generic := generic_type_application_parts(iface_name)
+	if !is_generic || args.len == 0 {
+		return params, ret
+	}
+	meta_base := tc.interface_metadata_name(base)
+	param_names := tc.interface_generic_params[meta_base] or {
+		tc.interface_generic_params[base] or {
+			tc.interface_generic_params[base.all_after_last('.')] or { return params, ret }
+		}
+	}
+	if param_names.len != args.len {
+		return params, ret
+	}
+	mut concrete_types := []Type{cap: args.len}
+	for arg in args {
+		concrete_types << tc.parse_type(trimmed_space(arg))
+	}
+	mut specialized_params := []Type{cap: params.len}
+	for param in params {
+		specialized_params << tc.substitute_generic_type_values(param, concrete_types, param_names)
+	}
+	return specialized_params, tc.substitute_generic_type_values(ret, concrete_types, param_names)
+}
+
+fn (tc &TypeChecker) method_signature_compatible_for_interface(actual_key string, expected_key string, iface_name string) bool {
+	actual_params := tc.fn_param_types[actual_key] or { return false }
+	expected_params, expected_ret := tc.specialized_interface_method_signature(iface_name,
+		expected_key)
+	if actual_params.len != expected_params.len {
+		return false
+	}
+	expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
+	_, actual_receiver_shared := tc.method_receiver_flags(actual_key)
+	if expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared {
+		return false
+	}
+	for i in 1 .. actual_params.len {
+		if !tc.method_param_signature_compatible(actual_params[i], expected_params[i]) {
+			return false
+		}
+	}
+	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 	return tc.method_return_signature_compatible(actual_ret, expected_ret)
 }
 
@@ -10889,6 +11342,20 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 		}
 	}
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
+	return tc.method_return_signature_compatible(actual.return_type, expected_ret)
+}
+
+fn (tc &TypeChecker) method_call_info_signature_compatible_for_interface(actual CallInfo, expected_key string, iface_name string) bool {
+	expected_params, expected_ret := tc.specialized_interface_method_signature(iface_name,
+		expected_key)
+	if actual.params.len != expected_params.len {
+		return false
+	}
+	for i in 1 .. actual.params.len {
+		if !tc.method_param_signature_compatible(actual.params[i], expected_params[i]) {
+			return false
+		}
+	}
 	return tc.method_return_signature_compatible(actual.return_type, expected_ret)
 }
 
@@ -10910,17 +11377,17 @@ fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Ty
 		return true
 	}
 	if actual_unaliased is OptionType && expected_unaliased is OptionType {
-		return tc.method_wrapped_fn_return_signature_compatible(actual_unaliased.base_type,
+		return tc.method_wrapped_return_signature_compatible(actual_unaliased.base_type,
 			expected_unaliased.base_type)
 	}
 	if actual_unaliased is ResultType && expected_unaliased is ResultType {
-		return tc.method_wrapped_fn_return_signature_compatible(actual_unaliased.base_type,
+		return tc.method_wrapped_return_signature_compatible(actual_unaliased.base_type,
 			expected_unaliased.base_type)
 	}
 	return tc.method_interface_return_signature_compatible(actual_unaliased, expected_unaliased)
 }
 
-fn (tc &TypeChecker) method_wrapped_fn_return_signature_compatible(actual Type, expected Type) bool {
+fn (tc &TypeChecker) method_wrapped_return_signature_compatible(actual Type, expected Type) bool {
 	actual_unaliased := unalias_type(actual)
 	expected_unaliased := unalias_type(expected)
 	if actual_unaliased is MultiReturn && expected_unaliased is MultiReturn {
@@ -10952,6 +11419,7 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 	if actual_iface := tc.method_param_interface_name(actual) {
 		expected_iface := tc.method_param_interface_name(expected) or { return false }
 		return actual_iface == expected_iface
+			|| tc.interface_implements_interface(actual_iface, expected_iface)
 	}
 	if _ := tc.method_param_interface_name(expected) {
 		return false
@@ -11459,6 +11927,22 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		return node.typ
 	}
 	if node.kind == .ident {
+		if node.value.starts_with('?') || node.value.starts_with('!') {
+			return node.value
+		}
+		if node.typ.starts_with('?') || node.typ.starts_with('!') {
+			return node.typ
+		}
+		if node.value.len > 0 && node.pos.offset > 0 {
+			file := tc.a.source_files[node.pos.id] or { return none }
+			source := tc.source_texts_by_file[file.name] or { return none }
+			if node.pos.offset < source.len && source[node.pos.offset] in [`?`, `!`] {
+				return source[node.pos.offset..node.pos.offset + 1] + node.value
+			}
+			if node.pos.offset <= source.len && source[node.pos.offset - 1] in [`?`, `!`] {
+				return source[node.pos.offset - 1..node.pos.offset] + node.value
+			}
+		}
 		if node.value.starts_with('fn(') || node.value.starts_with('fn (') {
 			return tc.qualify_type_text(node.value)
 		}
@@ -11474,8 +11958,7 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		if base.kind == .ident && !tc.ident_resolves_to_value(base.value) {
 			pattern := '${base.value}.${node.value}'
 			if (base.value != 'C' && node.value.len > 0 && node.value[0].is_capital())
-				|| tc.type_symbol_known(pattern) || tc.pattern_type_known(pattern)
-				|| tc.resolve_import_alias(base.value) != none {
+				|| tc.type_symbol_known(pattern) || tc.pattern_type_known(pattern) {
 				return pattern
 			}
 		}
@@ -11546,10 +12029,6 @@ fn (tc &TypeChecker) expr_key_part(id flat.NodeId) string {
 
 // smartcast_type supports smartcast type handling for TypeChecker.
 fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
-	if tc.smartcasts.len == 0 {
-		// No active smartcasts: skip building the (allocating) selector key.
-		return none
-	}
 	key := tc.expr_key(id)
 	if key.len == 0 {
 		return none
@@ -11559,6 +12038,107 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	}
 	if typ := tc.smartcasts[key] {
 		return typ
+	}
+	// Lexical smartcasts belong to parsed source nodes. Transform-created nodes
+	// are appended after the parent index was built and carry explicit/synthetic
+	// types; walking the full arena to rediscover a parent for each such lookup
+	// makes self-host transformation quadratic.
+	idx := int(id)
+	if idx < 0 || idx >= tc.direct_parent_ids.len {
+		return none
+	}
+	if typ := tc.lexical_if_smartcast_type(id, key) {
+		return typ
+	}
+	return tc.lexical_match_smartcast_type(id)
+}
+
+fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type {
+	idx := int(id)
+	if idx < 0 || idx >= tc.direct_parent_ids.len {
+		return none
+	}
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .if_expr && parent.children_count >= 2 {
+			mut branch_index := -1
+			for i in 1 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					branch_index = i
+					break
+				}
+			}
+			if branch_index >= 1 {
+				cond_id := tc.a.child(parent, 0)
+				bindings := if branch_index == 1 {
+					tc.extract_smartcasts(cond_id)
+				} else {
+					tc.extract_else_branch_smartcasts(cond_id)
+				}
+				for binding in bindings {
+					if binding.name == key {
+						return binding.typ
+					}
+				}
+			}
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			break
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return none
+}
+
+fn (tc &TypeChecker) lexical_match_smartcast_type(id flat.NodeId) ?Type {
+	idx := int(id)
+	if idx < 0 || idx >= tc.direct_parent_ids.len {
+		return none
+	}
+	key := tc.expr_key(id)
+	if key.len == 0 || !valid_string_data(key) {
+		return none
+	}
+	mut current := id
+	mut branch_id := flat.NodeId(-1)
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return none
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .match_branch {
+			branch_id = parent_id
+		} else if parent.kind == .match_stmt && tc.valid_node_id(branch_id) {
+			branch := tc.a.node(branch_id)
+			if branch.value == 'else' || branch.value.int() != 1 || branch.children_count == 0
+				|| parent.children_count == 0 {
+				return none
+			}
+			subject_id := tc.a.child(parent, 0)
+			if tc.expr_key(subject_id) != key {
+				return none
+			}
+			subject_type := unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
+			cond := tc.a.child_node(branch, 0)
+			pattern := tc.match_type_pattern(cond) or { return none }
+			name := if subject_type is SumType {
+				tc.sum_variant_type_for_pattern(subject_type.name, pattern) or { return none }
+			} else if is_ierror_type(subject_type) {
+				tc.resolve_ierror_match_pattern(pattern) or { return none }
+			} else if subject_type is Interface {
+				tc.resolve_interface_match_pattern(pattern) or { return none }
+			} else {
+				return none
+			}
+			return tc.parse_type(name)
+		} else if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return none
+		}
+		current = parent_id
 	}
 	return none
 }
@@ -12527,7 +13107,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 		if qbase in tc.interface_names {
 			return Type(Interface{
-				name: qbase
+				name: qbase + struct_generic_suffix
 			})
 		}
 		if qbase in tc.sum_types {
@@ -12551,7 +13131,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			}
 			if short in tc.interface_names {
 				return Type(Interface{
-					name: short
+					name: short + struct_generic_suffix
 				})
 			}
 			if short in tc.type_aliases {
@@ -12572,7 +13152,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 				}
 				if resolved in tc.interface_names {
 					return Type(Interface{
-						name: resolved
+						name: resolved + struct_generic_suffix
 					})
 				}
 				if resolved in tc.sum_types {
@@ -12593,7 +13173,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 		if allow_bare_generic_base && resolved_base in tc.interface_names {
 			return Type(Interface{
-				name: resolved_base
+				name: resolved_base + struct_generic_suffix
 			})
 		}
 		if allow_bare_generic_base && resolved_base in tc.sum_types {
@@ -12759,7 +13339,10 @@ fn (tc &TypeChecker) array_literal_child_elem_type(child_id flat.NodeId) Type {
 	if alias_type := tc.explicit_alias_constructor_type(child_id) {
 		return alias_type
 	}
-	return tc.array_literal_child_fn_value_type(child_id) or { tc.resolve_type(child_id) }
+	return tc.array_literal_child_fn_value_type(child_id) or {
+		actual := tc.resolve_type(child_id)
+		tc.mut_param_expr_base(child_id, actual) or { actual }
+	}
 }
 
 fn (tc &TypeChecker) array_literal_child_fn_value_type(child_id flat.NodeId) ?Type {
@@ -13105,12 +13688,14 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	params_str := typ[params_start..params_end]
 	ret_str := typ[params_end + 1..].trim_left(' ')
 	mut params := []Type{}
+	mut params_mut := []bool{}
 	if params_str.trim_space().len > 0 {
 		param_parts := split_params(params_str)
 		for p in param_parts {
 			trimmed := trimmed_space(p)
 			param_type := normalize_fn_type_param_text(trimmed)
 			params << tc.parse_type(param_type)
+			params_mut << trimmed.starts_with('mut ')
 		}
 	}
 	mut ret_type := Type(Void{})
@@ -13119,6 +13704,7 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	}
 	return Type(FnType{
 		params:      params
+		params_mut:  params_mut
 		return_type: ret_type
 	})
 }
@@ -13390,7 +13976,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 
 @[direct_array_access]
 fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
-	if int(id) < 0 {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return unknown_type('missing node')
 	}
 	node := tc.a.nodes[int(id)]
@@ -13529,6 +14115,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 	if kind_id == 14 {
 		return tc.resolve_index_type(node)
 	}
+	if node.kind == .infix && node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+		return Type(bool_)
+	}
 	if !(tc.smartcasts.len > 0 && (kind_id == 7 || kind_id == 13)) {
 		if typ := tc.cached_expr_type(id) {
 			// A resolution-only annotation can cache `void` for a method whose
@@ -13540,6 +14129,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		}
 	}
 	if node.kind == .selector {
+		if typ := tc.global_type_for_selector(node) {
+			return typ
+		}
 		if typ := tc.const_type_for_selector(node) {
 			return typ
 		}
@@ -13692,15 +14284,14 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					})
 				}
 				if base_node.kind == .ident {
-					base_is_value := tc.ident_resolves_to_value(base_node.value)
-					if !base_is_value {
+					if !tc.ident_resolves_to_value(base_node.value) {
 						if resolved := tc.resolve_import_alias(base_node.value) {
-							mod_name := '${resolved}.${fn_node.value}'
-							if mod_name in tc.fn_ret_types {
-								return tc.fn_ret_types[mod_name] or {
-									unknown_type('unknown return type for `${mod_name}`')
+							if imported_name := tc.imported_fn_key(resolved, fn_node.value) {
+								return tc.fn_ret_types[imported_name] or {
+									unknown_type('unknown return type for `${imported_name}`')
 								}
 							}
+							mod_name := '${resolved}.${fn_node.value}'
 							if mod_name in tc.sum_types {
 								return Type(SumType{
 									name: mod_name
@@ -13840,8 +14431,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					if fn_node.value == 'wait' {
 						// `[]thread T`.wait() joins all threads and returns `[]T`. A bare
 						// `[]thread` (threads with no return value) joins to `void`. Any
-						// optional/result thread payload lifts over the whole array, so
-						// `[]thread !T`.wait() is `![]T`, not `[]!T`.
+						// optional/result payloads remain per-thread, so
+						// `[]thread !T`.wait()` is `[]!T`.
 						// other array element type is not a thread and `.wait()` is
 						// unsupported, so reject it rather than mis-typing the call as the
 						// receiver array (which would emit invalid C joining non-handles).
@@ -14109,6 +14700,14 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return lt
 		}
 		.prefix {
+			if node.op == .amp && node.children_count > 0 {
+				child_id := tc.a.child(&node, 0)
+				if inner := tc.smartcast_type(child_id) {
+					return Type(Pointer{
+						base_type: inner
+					})
+				}
+			}
 			if node.typ.len > 0 {
 				return tc.parse_type(node.typ)
 			}
@@ -14118,6 +14717,18 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if node.op == .amp {
 				child_id := tc.a.child(&node, 0)
 				child := tc.a.nodes[int(child_id)]
+				if child.kind == .or_expr && child.children_count > 0 {
+					source := tc.a.child_node(&child, 0)
+					if source.kind == .index && source.children_count > 0 {
+						base_type :=
+							unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(source, 0)))
+						if base_type is Map {
+							return Type(Pointer{
+								base_type: base_type.value_type
+							})
+						}
+					}
+				}
 				if child.kind == .ident && child.value.len > 0 {
 					if base := tc.fn_context.mut_param_base_types[child.value] {
 						if tc.mut_param_binding_matches_lvalue(child.value) {
@@ -14127,26 +14738,23 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						}
 					}
 				}
-				if child.kind == .or_expr && child.value in ['?', '!'] && child.children_count > 0 {
-					source := tc.resolve_type(tc.a.child(&child, 0))
-					if source is OptionType {
-						return Type(OptionType{
-							base_type: Type(Pointer{
-								base_type: source.base_type
-							})
-						})
-					}
-					if source is ResultType {
-						return Type(ResultType{
-							base_type: Type(Pointer{
-								base_type: source.base_type
-							})
-						})
-					}
-				}
-				inner := tc.resolve_type(child_id)
+				inner := tc.smartcast_type(child_id) or { tc.resolve_type(child_id) }
 				if inner is Void && tc.expr_subtree_has_error(child_id) {
 					return Type(void_)
+				}
+				if inner is OptionType {
+					return Type(OptionType{
+						base_type: Type(Pointer{
+							base_type: inner.base_type
+						})
+					})
+				}
+				if inner is ResultType {
+					return Type(ResultType{
+						base_type: Type(Pointer{
+							base_type: inner.base_type
+						})
+					})
 				}
 				return Type(Pointer{
 					base_type: inner
@@ -14260,8 +14868,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					if c_int_selector_name(node.value) {
 						return Type(int_)
 					}
-					if c_type := c_upper_constant_type(qname) {
-						return c_type
+					if c_upper_constant_is_pointer(qname) {
+						return Type(voidptr_)
 					}
 					if gt := tc.c_globals[qname] {
 						return gt
@@ -14512,15 +15120,12 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 // fn_literal_type supports fn literal type handling for TypeChecker.
 fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	mut params := []Type{}
+	mut params_mut := []bool{}
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		if child.kind == .param {
-			mut parsed := tc.parse_type(normalize_fn_type_param_text(child.typ))
-			if child.is_mut && parsed !is Pointer {
-				parsed = Type(Pointer{
-					base_type: parsed
-				})
-			}
+			params_mut << child.is_mut
+			parsed := tc.parse_type(normalize_fn_type_param_text(child.typ))
 			if child.value.len == 0 && child.typ.len > 0 && parsed is Unknown {
 				params << Type(Struct{
 					name: child.typ
@@ -14532,6 +15137,7 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	}
 	return Type(FnType{
 		params:      params
+		params_mut:  params_mut
 		return_type: tc.parse_type(node.typ)
 	})
 }
@@ -14539,9 +15145,11 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 // lambda_expr_type supports lambda expr type handling for TypeChecker.
 fn (tc &TypeChecker) lambda_expr_type(node flat.Node) Type {
 	mut params := []Type{}
+	mut params_mut := []bool{}
 	if node.children_count > 0 {
-		for _ in 0 .. node.children_count - 1 {
+		for i in 0 .. node.children_count - 1 {
 			params << unknown_type('lambda parameter')
+			params_mut << tc.a.child_node(&node, i).is_mut
 		}
 	}
 	ret_type := if node.children_count > 0 {
@@ -14551,6 +15159,7 @@ fn (tc &TypeChecker) lambda_expr_type(node flat.Node) Type {
 	}
 	return Type(FnType{
 		params:      params
+		params_mut:  params_mut
 		return_type: ret_type
 	})
 }

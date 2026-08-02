@@ -26,17 +26,19 @@ fn mixed_lock_gen_c(v3_bin string, name string, source string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn test_duplicate_mixed_lock_upgrades_first_entry_to_write_mode() {
+fn test_mixed_read_and_write_lock_modes_codegen() {
 	v3_bin := mixed_lock_build_v3()
-	c_source := mixed_lock_gen_c(v3_bin, 'duplicate_mixed_lock_upgrade', 'struct St {
+	c_source := mixed_lock_gen_c(v3_bin, 'mixed_lock_modes', 'struct St {
 mut:
 	n int
 }
 
 fn main() {
 	shared a := St{}
-	rlock a, a; lock a {
-		a.n = 1
+	shared b := St{}
+	rlock a; lock b {
+		_ := a.n
+		b.n = 1
 	}
 }
 ')

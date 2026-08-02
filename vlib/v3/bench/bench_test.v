@@ -10,8 +10,8 @@ fn test_memory_limit_error_starts_at_limit() {
 
 	message := memory_limit_error(default_memory_limit_kb, default_memory_limit_kb, 'after parse',
 		'RSS')
-	assert message.contains('2048 MiB RSS after parse')
-	assert message.contains('limit: 2 GiB')
+	assert message.contains('2304 MiB RSS after parse')
+	assert message.contains('limit: 2304 MiB')
 	assert message.contains('`-no-memory-limit`')
 }
 
@@ -20,6 +20,14 @@ fn test_disable_memory_limit() {
 	assert memory_limit_error(default_memory_limit_kb, b.memory_limit_kb, 'after check', 'RSS') != ''
 	b.disable_memory_limit()
 	assert memory_limit_error(default_memory_limit_kb, b.memory_limit_kb, 'after check', 'RSS') == ''
+}
+
+fn test_self_host_memory_limit() {
+	mut b := new()
+	b.use_self_host_memory_limit()
+	assert memory_limit_error(default_memory_limit_kb, b.memory_limit_kb, 'after transform', 'RSS') == ''
+	assert memory_limit_error(self_host_memory_limit_kb, b.memory_limit_kb, 'after transform',
+		'RSS').contains('(limit: 4 GiB)')
 }
 
 fn test_step_parts_record_individual_timings() {

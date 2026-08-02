@@ -158,7 +158,20 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	}
 	base_id := t.a.child(&lhs, 0)
 	key_id := t.a.child(&lhs, 1)
-	base_type := t.node_type(base_id)
+	mut base_type := t.node_type(base_id)
+	checker_base_type := t.raw_checker_node_type(base_id)
+	checker_map_type := t.clean_map_type(checker_base_type)
+	local_map_type := t.clean_map_type(base_type)
+	local_map_is_concrete := local_map_type.starts_with('map[')
+		&& !local_map_type.contains('unknown') && !t.generic_arg_is_unresolved(local_map_type)
+	if !local_map_is_concrete && checker_map_type.starts_with('map[')
+		&& !checker_map_type.contains('unknown') {
+		base_type = if checker_base_type.trim_space().starts_with('&') {
+			'&${checker_map_type}'
+		} else {
+			checker_map_type
+		}
+	}
 	map_type := t.clean_map_type(base_type)
 	if !map_type.starts_with('map[') {
 		return none
@@ -1449,6 +1462,13 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		t.node_type(id)
 	}
 	map_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(map_type))
+	if t.generic_arg_is_unresolved(map_type) {
+		inferred_type :=
+			t.normalize_type_alias(t.resolve_type_text_import_aliases(t.infer_map_init_entry_type(node)))
+		if inferred_type.starts_with('map[') && !t.generic_arg_is_unresolved(inferred_type) {
+			map_type = inferred_type
+		}
+	}
 	if !map_type.starts_with('map[') {
 		return id
 	}
@@ -1491,16 +1511,10 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		key_id := t.a.child(&node, i)
 		key_name := t.new_temp('map_key')
 		value_name := t.new_temp('map_val')
-		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
-			key_type), key_storage_type)
+		key_expr := t.transform_map_entry_expr_for_type(key_id, key_type)
+		t.pending_stmts << t.make_decl_assign_typed(key_name, key_expr, key_storage_type)
 		value_id := t.a.child(&node, i + 1)
-		value := if value_type.starts_with('&') && t.is_sum_type_name(value_type[1..]) {
-			t.transform_expr_for_type(value_id, value_type)
-		} else if value_type in t.sum_types || t.resolve_sum_name(value_type) in t.sum_types {
-			t.transform_sum_value_for_type(value_id, value_type)
-		} else {
-			t.transform_expr_for_type(value_id, value_type)
-		}
+		value := t.transform_map_entry_expr_for_type(value_id, value_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, value_type)
 		mut cleanup_key := false
 		mut existing_key_name := ''
@@ -1531,6 +1545,24 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		}
 	}
 	return t.make_ident(tmp_name)
+}
+
+fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ string) flat.NodeId {
+	prefix := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value := if typ.starts_with('&') && t.is_sum_type_name(typ[1..]) {
+		t.transform_expr_for_type(id, typ)
+	} else if typ in t.sum_types || t.resolve_sum_name(typ) in t.sum_types {
+		t.transform_sum_value_for_type(id, typ)
+	} else {
+		t.transform_expr_for_type(id, typ)
+	}
+	entry_pending := t.pending_stmts.clone()
+	t.pending_stmts = prefix
+	for stmt in entry_pending {
+		t.pending_stmts << stmt
+	}
+	return value
 }
 
 fn (t &Transformer) refine_map_init_fixed_array_value_type(node flat.Node, map_type string) string {

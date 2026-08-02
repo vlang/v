@@ -60,7 +60,7 @@ fn test_value_new_chain_uses_checked_return_type_for_generic_receiver() {
 	v3_bin := review_pr_build_v3()
 	out := review_pr_run_project(v3_bin, 'generic_value_new_chain', {
 		'factory/factory.v': 'module factory\n\npub struct Box[T] {\npub:\n\tvalue T\n}\n\npub fn (box Box[T]) get() T {\n\treturn box.value\n}\n\npub struct Factory {}\n\npub fn (factory Factory) new() Box[int] {\n\t_ = factory\n\treturn Box[int]{\n\t\tvalue: 23\n\t}\n}\n'
-		'main.v':            'module main\n\nimport factory\n\nfn main() {\n\tfactory := factory.Factory{}\n\tprintln(int_str(factory.new().get()))\n}\n'
+		'main.v':            'module main\n\nimport factory\n\nfn main() {\n\tbuilder := factory.Factory{}\n\tprintln(int_str(builder.new().get()))\n}\n'
 	})
 	assert out == '23'
 }

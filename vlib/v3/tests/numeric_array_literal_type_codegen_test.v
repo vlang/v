@@ -132,7 +132,7 @@ fn add_all[T](items []T) T {
 	c_compact := numeric_array_literal_compact_c(c_code)
 	assert c_compact.contains('array_new(sizeof(double),0,6)'), c_code
 	assert c_code.contains('double x = *(double*)(array_get(xs,'), c_code
-	assert c_compact.contains('array_new(sizeof(int),0,3)'), c_code
+	assert c_compact.contains('new_array_from_c_array(3,3,sizeof(int)'), c_code
 	assert !c_code.contains('int x = *(int*)(array_get(xs,'), c_code
 	assert c_compact.contains('array_new(sizeof(float),0,2)'), c_code
 	assert c_code.contains('float z = *(float*)(array_get(zs,'), c_code

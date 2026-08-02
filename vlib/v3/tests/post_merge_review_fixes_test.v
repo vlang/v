@@ -96,29 +96,6 @@ fn gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn test_amp_array_literal_uses_scanned_heap_header() {
-	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'amp_array_literal_scanned_header', 'struct Holder {
-	values &[]int
-}
-
-fn make_holder() Holder {
-	return Holder{
-		values: &[1, 2, 3]
-	}
-}
-
-fn main() {
-	holder := make_holder()
-	println(holder.values[1])
-}
-')
-	assert c_source.contains('void* memdup(void* src, ptrdiff_t sz);\nstatic inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }'), c_source
-
-	assert c_source.count('v3_heap_array(') >= 2, c_source
-	assert !c_source.contains('malloc_noscan(sizeof(Array))'), c_source
-}
-
 fn c_fn_body(c_source string, signature string) string {
 	start := c_source.index(signature) or { return '' }
 	open_rel := c_source[start..].index('{') or { return '' }
@@ -297,25 +274,30 @@ fn test_empty_fixed_array_of_function_arrays_resolves_element_type() {
 
 fn test_indexed_shift_assignments_guard_oversized_counts() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'indexed_shift_assign_oversized_counts', 'fn next(mut calls int) int {
-	calls++
+	out := run_good(v3_bin, 'indexed_shift_assign_oversized_counts', 'struct Counter {
+mut:
+	value int
+}
+
+fn next(mut calls Counter) int {
+	calls.value++
 	return 0
 }
 
-fn shift(mut calls int) u64 {
-	calls++
+fn shift(mut calls Counter) u64 {
+	calls.value++
 	return 64
 }
 
 fn main() {
-	mut calls := 0
+	mut calls := Counter{}
 	mut left := [u64(1)]
 	left[next(mut calls)] <<= shift(mut calls)
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(left[0].str())
 	mut right := [u64(8)]
 	right[next(mut calls)] >>= shift(mut calls)
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(right[0].str())
 }
 ')
@@ -363,24 +345,25 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_is_check_preserves_pointer_sum_variants() {
+fn test_sum_type_rejects_pointer_variants() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'is_pointer_sum_variant', 'struct Foo {
-		value int
-	}
+	run_bad(v3_bin, 'pointer_sum_variant', 'struct Foo {
+	value int
+}
 
 type Item = &Foo | int
 
-fn main() {
-	item := Item(7)
-	if item is &Foo {
-		println("wrong")
-	} else {
-		println("ok")
-	}
-}
-')
-	assert out == 'ok'
+fn main() {}
+',
+		'sum type cannot hold a reference type')
+	run_bad(v3_bin, 'pointer_alias_sum_variant', 'struct Foo {}
+
+type FooPointer = &Foo
+type Item = FooPointer | int
+
+fn main() {}
+',
+		'sum type cannot hold a reference type')
 	run_bad(v3_bin, 'is_pointer_value_variant_rejected', 'struct Foo {}
 
 type Item = Foo | int
@@ -393,6 +376,17 @@ fn main() {
 }
 ',
 		'`&Foo` is not a variant of sum type `Item`')
+}
+
+fn test_single_letter_enum_names_are_rejected() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'single_letter_enum_name', 'enum E {
+	item
+}
+
+fn main() {}
+',
+		'single letter capital names are reserved for generic template types.')
 }
 
 fn test_nested_sum_is_check_evaluates_subject_once() {
@@ -639,17 +633,13 @@ fn same(value IValue) bool {
 	return value == value
 }
 
-fn consume_result(value !IValue) bool {
-	payload := value or { return false }
-	return same(payload)
-}
-
 fn main() {
 	mut option_value := ?IValue(none)
 	option_value = make_option()
 	option_payload := option_value or { panic("missing option") }
 	println(same(option_payload).str())
-	println(consume_result(make_result()).str())
+	result_payload := make_result() or { panic(err) }
+	println(same(result_payload).str())
 }
 ')
 	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
@@ -1331,7 +1321,8 @@ pub fn (app &App) index() veb.Result {
 
 fn main() {
 	mut app := &App{}
-	_ = app.index()
+	mut ctx := Context{}
+	_ = app.index(mut ctx)
 }
 '
 	}, 'main.v')
@@ -2270,9 +2261,9 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context',
 		'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n',
 		'if-expression branch type mismatch')
-	option_error_out := run_good(v3_bin, 'if_error_branch_allowed_for_option_payload',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n")
-	assert option_error_out == ''
+	run_bad(v3_bin, 'if_error_branch_rejected_for_option_payload',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n",
+		'if-expression branch type mismatch')
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
 		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
 		'if-expression branch type mismatch')
@@ -2537,19 +2528,34 @@ fn main() {
 	assert out.contains('chan int{\n        cap: 0, closed: false\n    }')
 }
 
-fn test_explicit_return_semicolon_ends_void_return() {
+fn test_explicit_return_semicolon_keeps_unreachable_check() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'explicit_return_semicolon_boundary', 'fn stop() {
+	run_bad(v3_bin, 'explicit_return_semicolon_unreachable', 'fn stop() {
 	return;
+	println("unreachable")
+}
+fn main() {}
+',
+		'unreachable code')
+	run_bad(v3_bin, 'nested_explicit_return_semicolon_unreachable', 'fn stop(ok bool) {
+	if ok {
+		return;
 		println("unreachable")
+	}
 }
-
-fn main() {
-	stop()
-	println("done")
+fn main() {}
+',
+		'unreachable code')
+	run_bad(v3_bin, 'nested_return_semicolon_unreachable', 'fn stop(ok bool) {
+	if ok {
+		return;
+	}
+	return
+	println("unreachable")
 }
-')
-	assert out == 'done'
+fn main() {}
+',
+		'unreachable code')
 }
 
 fn test_qualified_enum_str_requires_exact_receiver() {
@@ -3225,12 +3231,12 @@ fn make() int {
 	return 4
 }
 
-enum E {
+enum HelperKind {
 	a = make()
 }
 
 fn main() {
-	println(int_str(int(E.a)))
+	println(int_str(int(HelperKind.a)))
 }
 ')
 	assert out == '4'
@@ -3248,16 +3254,16 @@ fn from_param(base int) int {
 	return base
 }
 
-enum E {
+enum HelperKind {
 	a = make()
 	b = from_param(7)
 	c
 }
 
 fn main() {
-	println(int_str(int(E.a)))
-	println(int_str(int(E.b)))
-	println(int_str(int(E.c)))
+	println(int_str(int(HelperKind.a)))
+	println(int_str(int(HelperKind.b)))
+	println(int_str(int(HelperKind.c)))
 }
 ')
 	assert out == '4\n7\n8'
@@ -3267,13 +3273,13 @@ fn test_backed_enum_cast_qualifies_member_reference() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'backed_enum_cast_member_reference', 'const a = 1
 
-enum E as u64 {
+enum BackedKind as u64 {
 	a = 1
 	b = u64(a) + 1
 }
 
 fn main() {
-	println(int_str(int(E.b)))
+	println(int_str(int(BackedKind.b)))
 }
 ')
 	assert out == '2'
@@ -3289,7 +3295,7 @@ fn make_wide() u64 {
 	return u64(1) << 40
 }
 
-enum E as u64 {
+enum FoldedKind as u64 {
 	a = make()
 	b
 	wide = make_wide()
@@ -3297,10 +3303,10 @@ enum E as u64 {
 }
 
 fn main() {
-	println(int_str(int(E.a)))
-	println(int_str(int(E.b)))
-	println(u64(E.wide))
-	match E.a {
+	println(int_str(int(FoldedKind.a)))
+	println(int_str(int(FoldedKind.b)))
+	println(u64(FoldedKind.wide))
+	match FoldedKind.a {
 		.a { println("a") }
 		else { println("other") }
 	}
@@ -3309,19 +3315,34 @@ fn main() {
 	out := run_good(v3_bin, 'backed_enum_helper_initializer', source)
 	assert out == '4\n5\n1099511627776\na'
 	c_source := gen_c(v3_bin, 'backed_enum_helper_initializer_c', source)
-	macro := c_source.split_into_lines().filter(it.starts_with('#define E__a '))
-	assert macro == ['#define E__a ((E)(4))']
-	shift_macro := c_source.split_into_lines().filter(it.starts_with('#define E__wide '))
-	assert shift_macro == ['#define E__wide ((E)(1099511627776))']
-	wide_macro := c_source.split_into_lines().filter(it.starts_with('#define E__max '))
-	assert wide_macro == ['#define E__max ((E)(18446744073709551615))']
+	macro := c_source.split_into_lines().filter(it.starts_with('#define FoldedKind__a '))
+	assert macro == ['#define FoldedKind__a ((FoldedKind)(4))']
+	shift_macro := c_source.split_into_lines().filter(it.starts_with('#define FoldedKind__wide '))
+	assert shift_macro == ['#define FoldedKind__wide ((FoldedKind)(1099511627776))']
+	wide_macro := c_source.split_into_lines().filter(it.starts_with('#define FoldedKind__max '))
+	assert wide_macro == [
+		'#define FoldedKind__max ((FoldedKind)(18446744073709551615))',
+	]
 }
 
 fn test_enum_helper_folding_tracks_local_declarations() {
 	v3_bin := build_v3()
+	run_bad(v3_bin, 'enum_helper_immutable_local_assignment', 'fn value() int {
+	x := 1
+	x = 2
+	return x
+}
+
+enum HelperKind {
+	item = value()
+}
+
+fn main() {}
+',
+		'immutable, declare it with `mut`')
 	source := 'fn make_local() int {
 	x := 4
-	y := x + 2
+	mut y := x + 2
 	y = y + 1
 	return y
 }
@@ -3349,25 +3370,38 @@ fn main() {
 	assert macro == ['#define Backed__local ((Backed)(7))']
 }
 
-fn test_enum_helper_scan_resets_module_at_file_boundary() {
+fn test_enum_initializer_helper_cannot_redefine_builtin() {
 	v3_bin := build_v3()
-	source := 'fn exit() int {
+	run_bad(v3_bin, 'enum_helper_builtin_redefinition', 'fn exit() int {
 	return 9
 }
 
-enum E {
+enum HelperKind {
 	a = exit()
 	b
 }
 
 fn main() {
-	println(E.a.str())
-	println(E.b.str())
+	println(HelperKind.a)
 }
-'
-	c_source := gen_c(v3_bin, 'enum_helper_main_file_module_reset_c', source)
-	assert c_source.contains('\tE__a = 9,')
-	assert c_source.contains('\tE__b = 10,')
+',
+		'cannot redefine builtin public function `exit`')
+}
+
+fn test_enum_initializer_helper_keeps_noreturn_validation() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'enum_helper_noreturn_validation', '@[noreturn]
+fn value() int {
+	return 1
+}
+
+enum HelperKind {
+	item = value()
+}
+
+fn main() {}
+',
+		'[noreturn] functions cannot use return statements')
 }
 
 fn test_json_decode_enum_accepts_name_and_label() {
@@ -4237,7 +4271,7 @@ fn test_callback_lambda_lift_forwards_optional_void_failures() {
 		'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
 	assert result_out == 'fail'
 	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward',
-		'fn takes(cb fn () ?void) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ?void {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
+		'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
 	assert option_out == 'none'
 }
 
@@ -4477,7 +4511,7 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	$if macos && arm64 {
 		v3_bin := build_v3()
 		out := run_good_backend(v3_bin, 'native_atomic_pointer_fetch_add_sub', 'arm64',
-			'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(&vals[0])\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(&vals[0]))\n\tprintln(p == voidptr(&vals[1]))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(&vals[1]))\n\tprintln(p == voidptr(&vals[0]))\n}\n')
+			'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(unsafe { &vals[0] })\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(unsafe { &vals[0] }))\n\tprintln(p == voidptr(unsafe { &vals[1] }))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(unsafe { &vals[1] }))\n\tprintln(p == voidptr(unsafe { &vals[0] }))\n}\n')
 		assert out == 'true\ntrue\ntrue\ntrue'
 	}
 }
@@ -4635,16 +4669,21 @@ fn main() {
 ')
 	assert ierror_sum_field == 'true\nfalse'
 
-	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'fn next(mut calls int) int {
-	calls++
+	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'struct Counter {
+mut:
+	value int
+}
+
+fn next(mut calls Counter) int {
+	calls.value++
 	return 0
 }
 
 fn main() {
-	mut calls := 0
+	mut calls := Counter{}
 	mut values := [8, 16]
 	values[next(mut calls)] >>>= 1
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(int_str(values[0]))
 	println(int_str(values[1]))
 	mut signed_values := [i8(-5)]
@@ -4653,7 +4692,7 @@ fn main() {
 	mut shifted_map := map[int]i8{}
 	shifted_map[0] = i8(-5)
 	shifted_map[next(mut calls)] >>>= 1
-	println(int_str(calls))
+	println(int_str(calls.value))
 	println(int_str(shifted_map[0]))
 }
 ')
@@ -5325,7 +5364,10 @@ fn main() {}
 
 fn test_for_in_uppercase_const_body_not_struct_init() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'for_in_uppercase_const_body_not_struct_init', "const Foo = [1, 2]
+	out := run_good(v3_bin, 'for_in_uppercase_const_body_not_struct_init', "@[translated]
+module main
+
+const Foo = [1, 2]
 
 fn main() {
 	mut sum := 0
@@ -5343,7 +5385,10 @@ fn main() {
 
 fn test_amp_uppercase_index_operand_preserves_postfix() {
 	v3_bin := build_v3()
-	source := 'const Foo = [1, 2]
+	source := '@[translated]
+module main
+
+const Foo = [1, 2]
 
 fn main() {
 	mut p := &Foo[0]
@@ -5791,11 +5836,20 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 		'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
 	assert call_ptr_out == '20'
 	mut_param_alias_out := run_good(v3_bin, 'review_mut_param_pointer_alias_return',
-		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain(mut x int) &int {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep(mut a)\n\t*p = 7\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain(mut b)\n\t*q = 8\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n')
+		'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\t*p = 7\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\t*q = 8\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n')
 	assert mut_param_alias_out == '7\n7\n8\n8'
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array',
-		'const n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
+		'@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
+}
+
+fn test_imported_private_free_function_is_rejected() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'review_imported_private_free_function', {
+		'v.mod':         "Module { name: 'review_imported_private_free_function' }\n"
+		'other/other.v': 'module other\n\nfn hidden() int {\n\treturn 7\n}\n'
+		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tprintln(int_str(other.hidden()))\n}\n'
+	}, ['main.v'], 'function `other.hidden` is private')
 }
 
 fn test_cross_module_mut_receiver_checks_visible_mutation() {
@@ -6337,7 +6391,8 @@ fn test_bare_macro_objective_c_guards_stay_inactive() {
 		'main.v':          'module main\n\n#if V3_NEVER_DEFINED_OBJECTIVE_C\n#include "disabled.m"\n#endif\n\n#if 0\n#include "inactive_defs.c"\n#endif\n\n#if V3_INACTIVE_SOURCE_FEATURE\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(70))\n}\n'
 	}, 'main.v')
 	assert result.run_output == '70'
-	assert result.compile_output.contains('tcc.exe'), result.compile_output
+	assert result.compile_output.contains('> cc '), result.compile_output
+	assert !result.compile_output.contains('tcc.exe'), result.compile_output
 	assert !result.compile_output.contains('v3_native_source_context_'), result.compile_output
 }
 

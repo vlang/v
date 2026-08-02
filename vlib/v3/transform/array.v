@@ -698,6 +698,11 @@ fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?string {
 			return '[]${local_elem}'
 		}
 	}
+	source_name := t.a.nodes[int(id)].typ
+	if elem.contains('.') && source_name.starts_with('[]')
+		&& source_name[2..].all_after_last('.') == elem.all_after_last('.') {
+		return name
+	}
 	if !t.generic_arg_is_alias_name(elem, t.cur_module) {
 		return none
 	}
@@ -2907,12 +2912,42 @@ fn (mut t Transformer) infer_map_init_entry_type(node flat.Node) string {
 	if node.kind != .map_init || node.children_count < 2 {
 		return ''
 	}
-	key_type := t.array_literal_child_value_type(t.a.child(&node, 0))
-	value_type := t.array_literal_child_value_type(t.a.child(&node, 1))
+	key_type := t.map_init_entry_value_type(t.a.child(&node, 0))
+	value_type := t.map_init_entry_value_type(t.a.child(&node, 1))
 	if key_type.len == 0 || value_type.len == 0 {
 		return ''
 	}
 	return 'map[${key_type}]${value_type}'
+}
+
+fn (mut t Transformer) map_init_entry_value_type(id flat.NodeId) string {
+	mut typ := t.array_literal_child_value_type(id)
+	if !t.generic_arg_is_unresolved(typ) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return typ
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .map_init {
+		inferred := t.infer_map_init_entry_type(node)
+		if inferred.len > 0 && !t.generic_arg_is_unresolved(inferred) {
+			return inferred
+		}
+	}
+	if node.kind == .call {
+		concrete := t.concrete_generic_call_return_type(id, node)
+		if concrete.len > 0 && !t.generic_arg_is_unresolved(concrete) {
+			if spec := t.generic_call_spec_cache[int(id)] {
+				decls := t.cached_generic_fn_decls()
+				if decl := decls[spec.decl_key] {
+					display := t.specialized_fn_return_display_type_text(decl, spec.args)
+					if display.len > 0 && !t.generic_arg_is_unresolved(display) {
+						return display
+					}
+				}
+			}
+			typ = concrete
+		}
+	}
+	return typ
 }
 
 fn (t &Transformer) is_array_transform_call(id flat.NodeId) bool {

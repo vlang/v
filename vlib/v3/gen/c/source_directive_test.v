@@ -98,6 +98,8 @@ fn test_cache_tracks_omitted_native_function_definitions() {
 		false, true)
 	g.collect_inlined_c_fns_for_cache('static int native_static_fn(void) { return 3; }', false,
 		true)
+	g.collect_inlined_c_fns_for_cache('static int static_source_fn(void) { return 8; }', true,
+		false)
 
 	assert 'native_source_fn' in g.cache_omitted_c_fns
 	assert 'native_header_fn' !in g.cache_omitted_c_fns
@@ -109,6 +111,9 @@ fn test_cache_tracks_omitted_native_function_definitions() {
 	assert 'spaced_negated_guard_fn' in g.cache_omitted_c_fns
 	assert g.should_emit_c_extern_decl('spaced_negated_guard_fn')
 	assert 'native_static_fn' in g.inlined_c_static_fns
+	assert 'static_source_fn' in g.cache_omitted_c_fns
+	assert g.should_emit_c_extern_decl('static_source_fn')
+	assert g.c_extern_decl_is_cached_object_fallback('static_source_fn')
 }
 
 fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
@@ -179,6 +184,33 @@ fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations()
 	for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait'] {
 		assert cross_target.should_emit_c_extern_decl(name), name
 	}
+}
+
+fn test_cache_split_uses_system_sigaction_declaration() {
+	mut g := posix_declaration_filter_gen('macos', false)
+	g.set_cache_split(true)
+	assert g.skip_builtin_struct('C.sigaction')
+}
+
+fn test_headerless_preamble_keeps_explicit_puts_declaration() {
+	mut headerless := FlatGen.new()
+	assert !headerless.c_directives_use_system_libc()
+	assert headerless.should_emit_c_extern_decl('puts')
+
+	mut system_libc := FlatGen.new()
+	system_libc.add_c_directive('main', '#include <stdio.h>', false)
+	assert system_libc.c_directives_use_system_libc()
+	assert !system_libc.should_emit_c_extern_decl('puts')
+}
+
+fn test_builtin_boehm_directives_use_system_libc() {
+	mut boehm := FlatGen.new()
+	boehm.add_c_directive('builtin', '#include <gc.h>', false)
+	assert boehm.c_directives_use_system_libc()
+
+	mut closure := FlatGen.new()
+	closure.add_c_directive('closure', '#include <sys/mman.h>\n#include <pthread.h>', false)
+	assert !closure.c_directives_use_system_libc()
 }
 
 fn test_builtin_abi_compat_macros_precede_late_c_source() {

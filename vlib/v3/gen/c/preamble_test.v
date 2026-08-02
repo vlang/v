@@ -1,5 +1,12 @@
 module c
 
+fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
+	headers := manual_stdlib_c_headers()
+	for name in ['memcpy', 'memmove', 'memset'] {
+		assert headers.contains('#ifdef ${name}\n#undef ${name}\n#endif'), name
+	}
+}
+
 fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	mut g := FlatGen.new()
 	g.system_libc_preamble()

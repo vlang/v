@@ -112,6 +112,41 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	assert int_alias != string_alias
 }
 
+fn test_fn_param_mutability_participates_in_type_identity() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	immutable := Type(FnType{
+		params:      [Type(int_)]
+		params_mut:  [false]
+		return_type: Type(void_)
+	})
+	mutable := Type(FnType{
+		params:      [Type(int_)]
+		params_mut:  [true]
+		return_type: Type(void_)
+	})
+	legacy_immutable := Type(FnType{
+		params:      [Type(int_)]
+		return_type: Type(void_)
+	})
+
+	assert immutable.name() == 'fn(int)'
+	assert mutable.name() == 'fn(mut int)'
+	assert semantic_types_equal(immutable, legacy_immutable)
+	assert semantic_type_hash(immutable) == semantic_type_hash(legacy_immutable)
+	assert !semantic_types_equal(immutable, mutable)
+	assert semantic_type_hash(immutable) != semantic_type_hash(mutable)
+	immutable_id, _ := tc.intern_type(immutable)
+	mutable_id, _ := tc.intern_type(mutable)
+	assert immutable_id != mutable_id
+
+	cloned := clone_owned_type(mutable)
+	assert cloned is FnType
+	cloned_fn := cloned as FnType
+	assert cloned_fn.params_mut == [true]
+	assert cloned.name() == 'fn(mut int)'
+}
+
 fn test_c_type_cache_keys_composite_types_by_type_id() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

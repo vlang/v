@@ -1070,15 +1070,20 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 	base_node := t.a.nodes[int(base_id)]
 	mut base_type := ''
 	if base_node.kind == .ident {
-		base_type = t.raw_var_type(base_node.value)
+		base_type = t.var_type(base_node.value)
 		if base_type.len == 0 {
-			base_type = t.var_type(base_node.value)
+			base_type = t.raw_var_type(base_node.value)
 		}
 	}
 	if base_type.len == 0 {
 		base_type = t.node_type(base_id)
 	}
 	mut assoc_type := node.value
+	if checked_type := t.checker_expr_type_name(id) {
+		if assoc_type.len == 0 || checked_type.all_after_last('.') == assoc_type.all_after_last('.') {
+			assoc_type = checked_type
+		}
+	}
 	if assoc_type.len == 0 {
 		assoc_type = base_type
 	}
