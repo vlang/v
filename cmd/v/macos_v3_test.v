@@ -92,6 +92,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.test_runner = 'tap'
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.test_runner = ''
+		prefs.exclude = ['@vlib/math/*.c.v']
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.exclude.clear()
 		prefs.is_run = true
 		prefs.autofree = true
 		assert !is_macos_v3_relevant_command('run', prefs)
@@ -178,6 +181,43 @@ fn test_macos_v3_forwards_showcc_with_quiet_benchmarks() {
 		forwarded := macos_v3_forwarded_args(prefs, ['-showcc', 'main.v'])
 		assert '-silent' in forwarded
 		assert '-showcc' in forwarded
+	}
+}
+
+fn test_macos_v3_show_c_output_prints_successful_compiler_output() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_show_c_output_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		compiler := os.join_path(root, 'cc')
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		os.write_file(compiler,
+			'#!/bin/sh\necho "V3_SHOW_C_OUTPUT_MARKER" >&2\nexec /usr/bin/cc "\$@"\n')!
+		os.chmod(compiler, 0o700)!
+		os.write_file(source, 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-v', '-nocache', '-show-c-output', '-cc', compiler, '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
+		assert compiler_output.contains('Output of the C Compiler'), compiler_output
+		assert compiler_output.contains('V3_SHOW_C_OUTPUT_MARKER'), compiler_output
+		assert os.is_executable(output)
 	}
 }
 

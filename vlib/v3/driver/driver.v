@@ -5199,6 +5199,18 @@ fn v3_environment_show_test_stats() bool {
 	return os.getenv('VTEST_SHOW_ASSERTS').len > 0
 }
 
+fn show_v3_c_compiler_output(enabled bool, compiler string, result os.Result) {
+	if !enabled {
+		return
+	}
+	header := '======== Output of the C Compiler (${compiler}) ========'
+	println(header)
+	if result.output.len > 0 {
+		println(result.output.trim_space())
+	}
+	println('='.repeat(header.len))
+}
+
 fn v3_run_only_cache_identity(patterns []string) string {
 	mut parts := []string{cap: patterns.len}
 	for pattern in patterns {
@@ -5321,6 +5333,7 @@ pub fn run(args []string) {
 	mut only_check_syntax := false
 	mut check_only := false
 	mut show_cc := false
+	mut show_c_output := false
 	mut translated_mode := false
 	mut keep_c := false
 	mut skip_running := false
@@ -5574,7 +5587,10 @@ pub fn run(args []string) {
 			ownership_mode = false
 			user_defines = user_defines.filter(it.all_before('=').trim_space() != 'autofree')
 			i++
-		} else if args[i] in ['-apk', '-cross', '-experimental', '-show-c-output', '-nocolor'] {
+		} else if args[i] == '-show-c-output' {
+			show_c_output = true
+			i++
+		} else if args[i] in ['-apk', '-cross', '-experimental', '-nocolor'] {
 			// Accepted V1 compatibility switches. V3 always emits direct C,
 			// applies ownership cleanup, and forwards C failures.
 			i++
@@ -8211,6 +8227,7 @@ pub fn run(args []string) {
 			}
 			if !tcc_cache_hit {
 				result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+				show_v3_c_compiler_output(show_c_output, tcc_path, result)
 				if result.exit_code == 0 {
 					used_tcc = true
 					publish_v3_cached_executable(cc_out, tcc_cached_executable)
@@ -8276,6 +8293,7 @@ pub fn run(args []string) {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
@@ -8358,6 +8376,7 @@ pub fn run(args []string) {
 				println('  > ${cmdexec.display(c_compiler, cc_args)}')
 			}
 			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
+			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
 					fallback := 'cc'
