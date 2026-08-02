@@ -115,6 +115,11 @@ fn (mut c Checker) gen_branch_context_string() string {
 
 fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
+	// Consume the array-element value flag so it applies only to this outer node,
+	// not to nested statement-level match/if inside the branches. `[if ... ]` as a
+	// value array element in a void context must still be treated as an expression.
+	is_array_init_value_elem := c.inside_array_init_value_elem
+	c.inside_array_init_value_elem = false
 	mut node_is_expr := false
 	if node.branches.len > 0 && node.has_else {
 		stmts := node.branches[0].stmts
@@ -122,9 +127,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			node_is_expr = true
 		} else if node.is_expr {
 			node_is_expr = true
-		} else if c.inside_array_init_value_elem {
-			// a value `if` used as an array element in a void context, e.g.
-			// `[if cond { a } else { b }]`, must be treated as an expression.
+		} else if is_array_init_value_elem {
 			node_is_expr = true
 		}
 	}

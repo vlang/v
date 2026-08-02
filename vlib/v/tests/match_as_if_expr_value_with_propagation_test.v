@@ -182,6 +182,59 @@ fn select_value_arraylit(node ?Node) ![]int {
 	return result
 }
 
+fn side_effect() int {
+	return 5
+}
+
+// an array-element match whose arm contains a nested *statement* match/if (with a
+// void/empty branch) before the propagated value. The value-element flag must not
+// leak into the nested statement, which is valid as a statement, not an expression.
+fn select_value_arraylit_nested_stmt(node ?Node, cond bool) ![]int {
+	result := if value := node {
+		[
+			match value {
+				First {
+					match cond {
+						true { side_effect() }
+						else {}
+					}
+					if cond {
+						side_effect()
+					}
+					lower_first(value)!
+				}
+				Second {
+					lower_second(value)!
+				}
+			},
+		]
+	} else {
+		[0]
+	}
+	return result
+}
+
+struct Holder {
+	value int
+	other int
+}
+
+// match as a struct-literal field value: `Holder{ value: match .. { .. } }`
+fn select_value_structinit(node ?Node) !Holder {
+	result := if value := node {
+		Holder{
+			value: match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			}
+			other: 100
+		}
+	} else {
+		Holder{}
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -332,6 +385,22 @@ fn test_array_literal_match_as_if_expr_value_with_propagation() {
 	assert select_value_arraylit(First{})! == [1]
 	assert select_value_arraylit(Second{})! == [2]
 	assert select_value_arraylit(none) or { [-1] } == [0]
+}
+
+fn test_array_literal_match_with_nested_statement_match() {
+	assert select_value_arraylit_nested_stmt(First{}, true)! == [1]
+	assert select_value_arraylit_nested_stmt(Second{}, false)! == [2]
+	assert select_value_arraylit_nested_stmt(none, true) or { [-1] } == [0]
+}
+
+fn test_struct_init_field_match_as_if_expr_value_with_propagation() {
+	assert select_value_structinit(First{})!.value == 1
+	assert select_value_structinit(Second{})!.value == 2
+	assert select_value_structinit(none) or {
+		Holder{
+			value: -1
+		}
+	}.value == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

@@ -632,6 +632,17 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			}
 			found
 		}
+		ast.StructInit {
+			// e.g. `Holder{ value: match value { .. } }` as a call argument.
+			mut found := false
+			for field in expr.init_fields {
+				if p.expr_contains_value_match_or_if(field.expr) {
+					found = true
+					break
+				}
+			}
+			found
+		}
 		else {
 			false
 		}
@@ -670,6 +681,16 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			for mut element in expr.exprs {
 				if p.expr_contains_value_match_or_if(element) {
 					p.mark_last_call_expr_return_as_used(mut element)
+				}
+			}
+		}
+		ast.StructInit {
+			// last stmt on block is a struct literal, e.g.
+			// `Holder{ value: match value { .. } }`; mark any field whose value
+			// is (or nests) a block-value match/if.
+			for mut field in expr.init_fields {
+				if p.expr_contains_value_match_or_if(field.expr) {
+					p.mark_last_call_expr_return_as_used(mut field.expr)
 				}
 			}
 		}
