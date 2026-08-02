@@ -4481,15 +4481,35 @@ fn (mut g FlatGen) gen_test_main() {
 	if g.show_test_stats && tests.len > 0 {
 		g.writeln('printf("running tests in: ${c_escape(tests[0].file)}\\n");')
 	}
+	track_test_results := g.show_test_stats || g.show_test_summary
+	if track_test_results {
+		g.writeln('int __v3_test_passes = 0;')
+	}
 	for idx, test_fn in tests {
 		if hooks.before_each.len > 0 {
 			g.writeln('${hooks.before_each}();')
 		}
+		if track_test_results {
+			g.writeln('int __v3_test_failures_before_${idx} = __v3_test_failures;')
+		}
 		g.gen_test_fn_call(test_fn, idx)
+		if track_test_results {
+			g.writeln('if (__v3_test_failures == __v3_test_failures_before_${idx}) {')
+			g.indent++
+			g.writeln('__v3_test_passes++;')
+		}
 		if g.show_test_stats {
 			assert_count := g.test_fn_assert_count(test_fn.node_id)
 			assert_word := if assert_count == 1 { 'assert ' } else { 'asserts' }
 			g.writeln('printf("     OK    [${idx + 1}/${tests.len}]     0.000 ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n");')
+			g.indent--
+			g.writeln('} else {')
+			g.indent++
+			g.writeln('printf("     FAIL  [${idx + 1}/${tests.len}]     0.000 ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n");')
+		}
+		if track_test_results {
+			g.indent--
+			g.writeln('}')
 		}
 		if hooks.after_each.len > 0 {
 			g.writeln('${hooks.after_each}();')
@@ -4500,10 +4520,26 @@ fn (mut g FlatGen) gen_test_main() {
 	}
 	if g.show_test_stats && tests.len > 0 {
 		file_name := os.file_name(tests[0].file)
-		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": ${tests.len} passed, ${tests.len} total. Elapsed time: 0 ms.\\n\");")
+		g.writeln('if (__v3_test_failures > 0) {')
+		g.indent++
+		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": %d failed, %d passed, ${tests.len} total. Elapsed time: 0 ms.\\n\", __v3_test_failures, __v3_test_passes);")
+		g.indent--
+		g.writeln('} else {')
+		g.indent++
+		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": %d passed, ${tests.len} total. Elapsed time: 0 ms.\\n\", __v3_test_passes);")
+		g.indent--
+		g.writeln('}')
 	}
 	if g.show_test_summary {
-		g.writeln('printf("Summary for all V _test.v files: ${tests.len} passed, ${tests.len} total.\\n");')
+		g.writeln('if (__v3_test_failures > 0) {')
+		g.indent++
+		g.writeln('printf("Summary for all V _test.v files: %d failed, %d passed, ${tests.len} total.\\n", __v3_test_failures, __v3_test_passes);')
+		g.indent--
+		g.writeln('} else {')
+		g.indent++
+		g.writeln('printf("Summary for all V _test.v files: %d passed, ${tests.len} total.\\n", __v3_test_passes);')
+		g.indent--
+		g.writeln('}')
 	}
 	g.writeln('return __v3_test_failures > 0;')
 	g.indent--

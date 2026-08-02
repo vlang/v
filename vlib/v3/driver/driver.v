@@ -5962,9 +5962,9 @@ pub fn run(args []string) {
 			}
 			user_c_flags << parsed_c_flags
 			i += 2
-		} else if args[i] in ['-g', '-cg'] {
+		} else if args[i] in ['-g', '-cg', '-cdebug'] {
 			is_debug = true
-			if args[i] == '-cg' {
+			if args[i] in ['-cg', '-cdebug'] {
 				is_c_debug = true
 			}
 			user_c_flags << '-g'

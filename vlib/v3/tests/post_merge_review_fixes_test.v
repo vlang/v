@@ -1,4 +1,5 @@
 import os
+import v3.cmdexec
 import v3.parser
 import v3.pref
 import v3.types
@@ -3560,6 +3561,37 @@ fn test_formatted_interpolation_integer_alias_character_code() {
 	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code',
 		"type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
 	assert out == 'ABC'
+}
+
+fn test_stats_reports_failed_test_status_and_passed_total() {
+	v3_bin := build_v3()
+	source := '${tmp_test_path('stats_failed_test_status')}_test.v'
+	os.write_file(source,
+		'fn test_fails() {\n\tassert false\n}\n\nfn test_passes() {\n\tassert true\n}\n') or {
+		panic(err)
+	}
+	outer_run_only := os.getenv_opt('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if value := outer_run_only {
+			os.setenv('VTEST_ONLY_FN', value, true)
+		} else {
+			os.unsetenv('VTEST_ONLY_FN')
+		}
+	}
+	result := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-stats', 'test', source])
+	assert result.exit_code != 0
+	assert result.output.contains('     FAIL  [1/2]'), result.output
+	assert result.output.contains('     OK    [2/2]'), result.output
+	assert result.output.contains('1 failed, 1 passed, 2 total'), result.output
+	assert !result.output.contains('2 passed, 2 total'), result.output
+}
+
+fn test_driver_accepts_cdebug_alias() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'cdebug_alias', '-nocache -cdebug',
+		"fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n")
+	assert out == 'debug'
 }
 
 fn test_alias_interface_str_dispatch_marks_alias_method_used() {
