@@ -351,6 +351,77 @@ fn select_value_spread(node ?Node) ![]int {
 	return result
 }
 
+fn make_holder_first(_ First) !Holder {
+	return Holder{
+		value: 1
+	}
+}
+
+fn make_holder_second(_ Second) !Holder {
+	return Holder{
+		value: 2
+	}
+}
+
+// match as a struct update operand: `Holder{ ...(match .. { .. }), other: 9 }`
+fn select_value_struct_update(node ?Node) !Holder {
+	result := if value := node {
+		Holder{
+			...(match value {
+				First { make_holder_first(value)! }
+				Second { make_holder_second(value)! }
+			})
+			other: 9
+		}
+	} else {
+		Holder{}
+	}
+	return result
+}
+
+fn map_first(_ First) !map[string]int {
+	return {
+		'a': 1
+	}
+}
+
+fn map_second(_ Second) !map[string]int {
+	return {
+		'a': 2
+	}
+}
+
+// match as a map update operand: `{ ...(match .. { .. }), 'b': 5 }`
+fn select_value_map_update(node ?Node) !map[string]int {
+	result := if value := node {
+		{
+			...(match value {
+				First { map_first(value)! }
+				Second { map_second(value)! }
+			})
+			'b': 5
+		}
+	} else {
+		{
+			'a': 0
+		}
+	}
+	return result
+}
+
+// match as a string interpolation operand: `'x=${match .. { .. }}'`
+fn select_value_interp(node ?Node) !string {
+	result := if value := node {
+		'x=${match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}}'
+	} else {
+		'x=0'
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -567,6 +638,34 @@ fn test_array_spread_match_as_if_expr_value_with_propagation() {
 	assert select_value_spread(First{})! == [1, 1]
 	assert select_value_spread(Second{})! == [2, 2]
 	assert select_value_spread(none) or { [-1] } == [0]
+}
+
+fn test_struct_update_match_as_if_expr_value_with_propagation() {
+	assert select_value_struct_update(First{})!.value == 1
+	assert select_value_struct_update(First{})!.other == 9
+	assert select_value_struct_update(Second{})!.value == 2
+	assert select_value_struct_update(none) or {
+		Holder{
+			value: -1
+		}
+	}.value == 0
+}
+
+fn test_map_update_match_as_if_expr_value_with_propagation() {
+	assert select_value_map_update(First{})!['a'] == 1
+	assert select_value_map_update(First{})!['b'] == 5
+	assert select_value_map_update(Second{})!['a'] == 2
+	assert (select_value_map_update(none) or {
+		{
+			'a': -1
+		}
+	})['a'] == 0
+}
+
+fn test_string_interp_match_as_if_expr_value_with_propagation() {
+	assert select_value_interp(First{})! == 'x=1'
+	assert select_value_interp(Second{})! == 'x=2'
+	assert select_value_interp(none) or { 'x=z' } == 'x=0'
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

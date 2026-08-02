@@ -649,23 +649,29 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			found
 		}
 		ast.StructInit {
-			// e.g. `Holder{ value: match value { .. } }` as a call argument.
-			mut found := false
-			for field in expr.init_fields {
-				if p.expr_contains_value_match_or_if(field.expr) {
-					found = true
-					break
+			// e.g. `Holder{ value: match value { .. } }` or
+			// `Holder{ ...(match value { .. }), other: 1 }` as a call argument.
+			mut found := expr.has_update_expr && p.expr_contains_value_match_or_if(expr.update_expr)
+			if !found {
+				for field in expr.init_fields {
+					if p.expr_contains_value_match_or_if(field.expr) {
+						found = true
+						break
+					}
 				}
 			}
 			found
 		}
 		ast.MapInit {
-			// e.g. `{'value': match value { .. }}` as a call argument.
-			mut found := false
-			for element in expr.keys {
-				if p.expr_contains_value_match_or_if(element) {
-					found = true
-					break
+			// e.g. `{'value': match value { .. }}` or
+			// `{ ...(match value { .. }), 'k': v }` as a call argument.
+			mut found := expr.has_update_expr && p.expr_contains_value_match_or_if(expr.update_expr)
+			if !found {
+				for element in expr.keys {
+					if p.expr_contains_value_match_or_if(element) {
+						found = true
+						break
+					}
 				}
 			}
 			if !found {
@@ -674,6 +680,17 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 						found = true
 						break
 					}
+				}
+			}
+			found
+		}
+		ast.StringInterLiteral {
+			// e.g. `'x=${match value { .. }}'` as a call argument.
+			mut found := false
+			for e in expr.exprs {
+				if p.expr_contains_value_match_or_if(e) {
+					found = true
+					break
 				}
 			}
 			found
@@ -725,18 +742,23 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 		}
 		ast.StructInit {
 			// last stmt on block is a struct literal, e.g.
-			// `Holder{ value: match value { .. } }`; mark any field whose value
-			// is (or nests) a block-value match/if.
+			// `Holder{ value: match value { .. } }` or an update
+			// `Holder{ ...(match value { .. }), other: 1 }`; mark any field value
+			// or the update operand that is (or nests) a block-value match/if.
 			for mut field in expr.init_fields {
 				if p.expr_contains_value_match_or_if(field.expr) {
 					p.mark_last_call_expr_return_as_used(mut field.expr)
 				}
 			}
+			if expr.has_update_expr && p.expr_contains_value_match_or_if(expr.update_expr) {
+				p.mark_last_call_expr_return_as_used(mut expr.update_expr)
+			}
 		}
 		ast.MapInit {
 			// last stmt on block is a map literal, e.g.
-			// `{'value': match value { .. }}`; mark any key/value that is (or
-			// nests) a block-value match/if.
+			// `{'value': match value { .. }}` or an update
+			// `{ ...(match value { .. }), 'k': v }`; mark any key/value or the
+			// update operand that is (or nests) a block-value match/if.
 			for mut element in expr.keys {
 				if p.expr_contains_value_match_or_if(element) {
 					p.mark_last_call_expr_return_as_used(mut element)
@@ -745,6 +767,19 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			for mut element in expr.vals {
 				if p.expr_contains_value_match_or_if(element) {
 					p.mark_last_call_expr_return_as_used(mut element)
+				}
+			}
+			if expr.has_update_expr && p.expr_contains_value_match_or_if(expr.update_expr) {
+				p.mark_last_call_expr_return_as_used(mut expr.update_expr)
+			}
+		}
+		ast.StringInterLiteral {
+			// last stmt on block is a string interpolation, e.g.
+			// `'x=${match value { .. }}'`; mark any interpolated expression that is
+			// (or nests) a block-value match/if.
+			for mut e in expr.exprs {
+				if p.expr_contains_value_match_or_if(e) {
+					p.mark_last_call_expr_return_as_used(mut e)
 				}
 			}
 		}
@@ -1348,7 +1383,9 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	match p.tok.kind {
 		.lcbr {
 			mut pos := p.tok.pos()
-			mut is_map_lit := p.peek_token(2).kind == .colon
+			// `{ ...m, k: v }` is a map update literal (a block cannot start with
+			// `...`), e.g. `{ ...(match x { .. }), 'k': v }`.
+			mut is_map_lit := p.peek_token(2).kind == .colon || p.peek_tok.kind == .ellipsis
 			if !is_map_lit && p.peek_tok.kind == .lpar {
 				// A parenthesized first key, e.g. `{ (match x { .. }) : v }`, puts the
 				// `:` past the closing `)`, so the single-token `peek_token(2)` check

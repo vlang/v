@@ -4636,7 +4636,9 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	t.mark_string_interp_call_part_used(expr_id)
 	saved_in_string_interp_part := t.in_string_interp_part
 	t.in_string_interp_part = true
-	mut transformed := t.transform_expr(expr_id)
+	// route a value `match`/`if` interpolation operand (e.g. `'${match x { ... }}'`)
+	// through its target type so its propagating arms are lowered as values.
+	mut transformed := t.transform_value_operand(expr_id)
 	t.in_string_interp_part = saved_in_string_interp_part
 	mut typ := t.raw_alias_type_for_expr(expr_id)
 	if typ.len == 0 {

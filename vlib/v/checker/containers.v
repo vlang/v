@@ -938,7 +938,19 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			map_type = c.expected_type
 		}
 		if node.has_update_expr {
+			// A value `match`/`if` map update operand, e.g. `{ ...(match x { .. }), k: v }`,
+			// in a void context must be checked as an expression so its arms produce
+			// values, instead of being typed `void` ("non-map type").
+			mut restore_force_value := false
+			if map_type == ast.void_type && c.expected_type == ast.void_type
+				&& !c.force_value_match_or_if && operand_is_value_match_or_if(node.update_expr) {
+				c.force_value_match_or_if = true
+				restore_force_value = true
+			}
 			update_type := c.expr(mut node.update_expr)
+			if restore_force_value {
+				c.force_value_match_or_if = false
+			}
 			if map_type != ast.void_type {
 				if update_type != map_type {
 					msg := c.expected_msg(update_type, map_type)
