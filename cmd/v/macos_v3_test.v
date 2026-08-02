@@ -336,6 +336,20 @@ fn test_autofree_inspection_requires_standard_compiler() {
 	assert autofree_requires_standard_compiler(function_vars)
 }
 
+fn test_autofree_inspection_output_requires_standard_compiler() {
+	for option in ['-show-asserts', '-show-callgraph', '-show-depgraph'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', option, 'main.v'], false)
+		assert prefs.autofree
+		match option {
+			'-show-asserts' { assert prefs.show_asserts }
+			'-show-callgraph' { assert prefs.show_callgraph }
+			'-show-depgraph' { assert prefs.show_depgraph }
+			else { assert false }
+		}
+		assert autofree_requires_standard_compiler(prefs)
+	}
+}
+
 fn test_autofree_tracing_requires_standard_compiler() {
 	trace_calls, _ := pref.parse_args_and_show_errors([], [
 		'',

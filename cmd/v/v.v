@@ -249,7 +249,8 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
-		|| prefs.div_by_zero_is_zero || prefs.no_std {
+		|| prefs.div_by_zero_is_zero || prefs.no_std || prefs.show_asserts || prefs.show_callgraph
+		|| prefs.show_depgraph {
 		return true
 	}
 	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
