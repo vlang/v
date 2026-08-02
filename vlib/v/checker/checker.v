@@ -4867,7 +4867,18 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.array_init(mut node)
 		}
 		ast.AsCast {
-			node.expr_type = c.expr(mut node.expr)
+			if c.expected_type == ast.void_type && cast_operand_is_value_match_or_if(node.expr) {
+				// A `match`/`if` operand of an `as` cast is a value expression, e.g.
+				// `(match x { ... }) as Variant`. Give it a non-void expected type so
+				// it is checked as an expression (`is_expr`) even when nested in a
+				// void context (e.g. an if-branch), instead of being typed as `void`.
+				old_expected_type := c.expected_type
+				c.expected_type = node.typ
+				node.expr_type = c.expr(mut node.expr)
+				c.expected_type = old_expected_type
+			} else {
+				node.expr_type = c.expr(mut node.expr)
+			}
 			expr_type_sym := c.table.sym(node.expr_type)
 			type_sym := c.table.sym(c.unwrap_generic(node.typ))
 			if mut node.expr is ast.Ident {
@@ -5414,6 +5425,18 @@ fn integer_literal_from_pointer_cast_expr(expr ast.Expr) ?ast.IntegerLiteral {
 	}
 }
 
+// cast_operand_is_value_match_or_if reports whether the (possibly parenthesized)
+// operand of a cast is a `match`/`if` expression. Such an operand is a value
+// expression that must be checked with a non-void expected type so it is treated
+// as `is_expr`, even when the surrounding expected type is void (e.g. nested
+// inside an if-branch) — otherwise it is mistyped as `void`.
+fn cast_operand_is_value_match_or_if(expr ast.Expr) bool {
+	if expr is ast.ParExpr {
+		return cast_operand_is_value_match_or_if(expr.expr)
+	}
+	return expr is ast.MatchExpr || expr is ast.IfExpr
+}
+
 fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	// Given: `Outside( Inside(xyz) )`,
 	//        node.expr_type: `Inside`
@@ -5454,6 +5477,13 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.expected_type = base_to_type
 	} else if node.expr is ast.IndexExpr && to_type.has_flag(.option) {
 		c.expected_type = to_type
+	} else if c.expected_type == ast.void_type && cast_operand_is_value_match_or_if(node.expr) {
+		// A `match`/`if` operand of a cast is a value expression, e.g.
+		// `i64(match x { ... })`. Propagate the cast target as its expected type
+		// so it is checked as an expression (`is_expr`) even in contexts where
+		// the surrounding expected type is void (e.g. nested inside an if-branch),
+		// instead of being mistyped as `void` ("does not return a value").
+		c.expected_type = base_to_type
 	}
 	expr_is_ident_or_cast := node.expr is ast.Ident || node.expr is ast.CastExpr
 	node.expr_type = c.expr(mut node.expr) // type to be casted

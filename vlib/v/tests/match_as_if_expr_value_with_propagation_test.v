@@ -67,6 +67,48 @@ fn select_value_unsafe(node ?Node) !int {
 	return result
 }
 
+// cast-wrapped match value: `i64(match .. { .. })` keeps an ast.CastExpr
+// around the match (which is also nested in a void-context if-branch)
+fn select_value_cast(node ?Node) !i64 {
+	result := if value := node {
+		i64(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})
+	} else {
+		i64(0)
+	}
+	return result
+}
+
+struct Circle {
+	r int
+}
+
+struct Square {
+	s int
+}
+
+type Shape = Circle | Square
+
+fn make_circle(r int) !Shape {
+	return Circle{r}
+}
+
+// as-cast wrapped match value: `(match .. { .. }) as Circle` keeps an
+// ast.AsCast (around an ast.ParExpr) with propagating arms
+fn select_value_ascast(node ?int) !int {
+	shape := if v := node {
+		(match v {
+			0 { make_circle(v)! }
+			else { make_circle(v + 1)! }
+		}) as Circle
+	} else {
+		Circle{99}
+	}
+	return shape.r
+}
+
 // match with `?` option propagation
 fn select_opt(node ?Node) ?int {
 	result := if value := node {
@@ -113,6 +155,18 @@ fn test_unsafe_wrapped_match_as_if_expr_value_with_propagation() {
 	assert select_value_unsafe(First{})! == 1
 	assert select_value_unsafe(Second{})! == 2
 	assert select_value_unsafe(none) or { -1 } == 0
+}
+
+fn test_cast_wrapped_match_as_if_expr_value_with_propagation() {
+	assert select_value_cast(First{})! == i64(1)
+	assert select_value_cast(Second{})! == i64(2)
+	assert select_value_cast(none) or { i64(-1) } == i64(0)
+}
+
+fn test_as_cast_wrapped_match_as_if_expr_value_with_propagation() {
+	assert select_value_ascast(0)! == 0
+	assert select_value_ascast(5)! == 6
+	assert select_value_ascast(none) or { -1 } == 99
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

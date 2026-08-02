@@ -17097,6 +17097,22 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 	})
 }
 
+// is_value_match_or_if_operand reports whether the (possibly parenthesized) node
+// is a `match`/`if` expression used as a value, e.g. a cast operand like
+// `i64(match x { ... })`. Such an operand must be transformed with its target
+// type so its (possibly propagating) branch tails are lowered as values.
+@[direct_array_access]
+fn (t &Transformer) is_value_match_or_if_operand(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.is_value_match_or_if_operand(t.a.child(&node, 0))
+	}
+	return node.kind in [.match_stmt, .if_expr]
+}
+
 // transform_cast_expr transforms transform cast expr data for transform.
 @[direct_array_access]
 fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -17278,6 +17294,12 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			new_children << t.transform_expr_for_type(child_id, target_type)
 		} else if target_type in ['voidptr', 'byteptr', 'charptr'] {
 			new_children << t.transform_expr_preserving_pointer_value(child_id)
+		} else if t.is_value_match_or_if_operand(child_id) {
+			// A `match`/`if` cast operand is a value expression whose (possibly
+			// propagating) branch tails must be lowered as values, e.g.
+			// `i64(match x { ... foo()! ... })`. Plain `transform_expr` would
+			// lower them in statement context and emit an empty ternary.
+			new_children << t.transform_expr_for_type(child_id, target_type)
 		} else {
 			new_children << t.transform_expr(child_id)
 		}

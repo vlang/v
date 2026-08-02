@@ -609,6 +609,14 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			// last stmt on block is unsafe-wrapped: unsafe { match .. { a { foo() } } }
 			p.mark_last_call_expr_return_as_used(mut expr.expr)
 		}
+		ast.CastExpr {
+			// last stmt on block is cast-wrapped: i64(match .. { a { foo() } })
+			p.mark_last_call_expr_return_as_used(mut expr.expr)
+		}
+		ast.AsCast {
+			// last stmt on block is as-cast-wrapped: (match .. { a { foo() } }) as T
+			p.mark_last_call_expr_return_as_used(mut expr.expr)
+		}
 		ast.IfExpr {
 			// last stmt on block is: if .. { foo() } else { bar() }
 			for mut branch in expr.branches {
