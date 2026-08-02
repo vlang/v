@@ -1887,7 +1887,17 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 			low_id := t.a.children[rhs.children_start]
 			high_id := t.a.children[rhs.children_start + 1]
-			new_low := t.transform_value_operand(low_id)
+			// If the high bound is a value branch, its materialization below queues prelude
+			// statements; stabilize a side-effecting low bound first so it evaluates before
+			// them, preserving low-before-high order, e.g.
+			// `x in low_with_effect() .. (match node { ... high_with_effect()! ... })`.
+			// A value-branch low is materialized in order by `transform_value_operand`.
+			new_low := if !t.is_value_match_or_if_operand(low_id)
+				&& t.is_value_match_or_if_operand(high_id) && !t.is_stable_expr_for_reuse(low_id) {
+				t.stable_expr_for_reuse(low_id)
+			} else {
+				t.transform_value_operand(low_id)
+			}
 			new_high := t.transform_value_operand(high_id)
 
 			ge_cmp := t.make_infix(.ge, new_lhs, new_low)

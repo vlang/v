@@ -494,6 +494,34 @@ fn select_value_range_membership(node Node) !bool {
 	}) .. 4
 }
 
+fn (mut tr Tracer) range_low() int {
+	tr.order << 1
+	return 0
+}
+
+fn (mut tr Tracer) range_high_first(_ First) !int {
+	tr.order << 2
+	return 10
+}
+
+fn (mut tr Tracer) range_high_second(_ Second) !int {
+	tr.order << 2
+	return 20
+}
+
+// Membership range ordering: a side-effecting low bound must run before the
+// hoisting match high bound. `5 in 0..10` is true; order [1,2] -> 112 (a reversed
+// order would be 121).
+fn select_value_range_order(node Node) !int {
+	mut tr := Tracer{}
+	inside := 5 in tr.range_low() .. (match node {
+		First { tr.range_high_first(node)! }
+		Second { tr.range_high_second(node)! }
+	})
+	flag := if inside { 1 } else { 0 }
+	return flag * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -542,6 +570,7 @@ fn main() {
 	println(select_value_gated_index_order(First{})!)
 	println(select_value_range_low(First{})!)
 	println(select_value_range_membership(First{})!)
+	println(select_value_range_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -555,5 +584,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\n1'
 }
