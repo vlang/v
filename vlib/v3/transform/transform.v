@@ -152,6 +152,7 @@ mut:
 	mut_param_values                map[string]bool
 	fixed_array_param_values        map[string]bool
 	mut_value_ident_nodes           map[int]bool
+	ordering_snapshot_names         map[string]bool
 	pointer_value_lvalues           map[string]bool
 	pointer_value_rvalues           map[string]bool
 	addr_lvalue_pointer_locals      map[string]bool
@@ -14840,8 +14841,8 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		// LHS is already materialized in order by `transform_value_operand`.
 		rhs_is_value_branch := t.operand_hoists_value_branch(rhs_id)
 		mut new_lhs := if rhs_target_type.len == 0 && rhs_is_value_branch
-			&& !t.is_value_match_or_if_operand(lhs_id) && !t.is_stable_expr_for_reuse(lhs_id) {
-			t.stable_expr_for_reuse(lhs_id)
+			&& !t.is_value_match_or_if_operand(lhs_id) && t.operand_needs_ordering_snapshot(lhs_id) {
+			t.snapshot_expr_for_reuse(lhs_id)
 		} else {
 			t.transform_value_operand(lhs_id)
 		}
@@ -14903,8 +14904,8 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		pending_start := t.pending_stmts.len
 		new_lhs := if lhs_is_value_branch {
 			t.transform_value_operand(infix_lhs_id)
-		} else if rhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_lhs_id) {
-			t.stable_expr_for_reuse(infix_lhs_id)
+		} else if rhs_is_value_branch && t.operand_needs_ordering_snapshot(infix_lhs_id) {
+			t.snapshot_expr_for_reuse(infix_lhs_id)
 		} else {
 			infix_lhs_id
 		}
@@ -15062,7 +15063,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 						changed = true
 					}
 					r
-				} else if last_branch > 0 && !t.is_stable_expr_for_reuse(recv_id) {
+				} else if last_branch > 0 && t.operand_needs_ordering_snapshot(recv_id) {
 					// A `mut`/reference receiver keeps its lvalue identity (only its dynamic
 					// base/index components are spilled) so the call still mutates through the
 					// lvalue. An ordinary by-value receiver is spilled by value, so its value is
@@ -15073,10 +15074,10 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 						if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
 							stabilized
 						} else {
-							t.stable_expr_for_reuse(recv_id)
+							t.snapshot_expr_for_reuse(recv_id)
 						}
 					} else {
-						t.stable_expr_for_reuse(recv_id)
+						t.snapshot_expr_for_reuse(recv_id)
 					}
 					if r != recv_id {
 						changed = true
@@ -15105,7 +15106,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 				arg_id := t.a.child(&node, i)
 				na := if t.is_value_match_or_if_operand(arg_id) {
 					t.transform_value_operand(arg_id)
-				} else if i < last_branch && !t.is_stable_expr_for_reuse(arg_id) {
+				} else if i < last_branch && t.operand_needs_ordering_snapshot(arg_id) {
 					// A `mut` argument keeps its lvalue identity (only its dynamic base/index
 					// components are spilled) so it still mutates through. An ordinary argument is
 					// spilled by value, so its value is read in source order — a later branch
@@ -15114,10 +15115,10 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
 							stabilized
 						} else {
-							t.stable_expr_for_reuse(arg_id)
+							t.snapshot_expr_for_reuse(arg_id)
 						}
 					} else {
-						t.stable_expr_for_reuse(arg_id)
+						t.snapshot_expr_for_reuse(arg_id)
 					}
 				} else {
 					arg_id
@@ -15602,8 +15603,8 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		// route a value `match`/`if` operand (e.g. `values[match x { ... }]`)
 		// through its target type so its propagating arms are lowered as values.
 		mut new_child := if i < last_value_branch && !t.is_value_match_or_if_operand(child_id)
-			&& !t.is_stable_expr_for_reuse(child_id) {
-			t.stable_expr_for_reuse(child_id)
+			&& t.operand_needs_ordering_snapshot(child_id) {
+			t.snapshot_expr_for_reuse(child_id)
 		} else {
 			t.transform_value_operand(child_id)
 		}

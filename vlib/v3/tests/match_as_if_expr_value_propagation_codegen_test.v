@@ -1079,6 +1079,47 @@ fn select_value_composite_rvalue_channel_target(node Node) !int {
 	return got * 100 + f.order[0] * 10 + f.order[1]
 }
 
+struct Counter {
+mut:
+	v int
+}
+
+fn (mut c Counter) bump() !int {
+	c.v = 100
+	return 5
+}
+
+// A syntactically stable LHS lvalue (a struct-field read) whose value the RHS branch prelude
+// mutates: the infix must read the LHS source-order value, not the updated value. First ->
+// c.v (1) + 5 = 6, then c.v is 100 -> 6 * 1000 + 100 = 6100 (a leaked mutation gives 105100).
+fn select_value_stable_lhs_snapshot(node Node) !int {
+	mut c := Counter{
+		v: 1
+	}
+	y := c.v + (match node {
+		First { c.bump()! }
+		Second { c.bump()! }
+	})
+	return y * 1000 + c.v
+}
+
+fn take2(a int, b int) int {
+	return a * 1000 + b
+}
+
+// A stable field-read argument whose value the prelude of a later value-branch argument
+// mutates: the argument must be read in source order. First -> take2(1, 5) = 1005 (a leaked
+// mutation into the first argument gives 100005).
+fn select_value_stable_arg_snapshot(node Node) !int {
+	mut c := Counter{
+		v: 1
+	}
+	return take2(c.v, match node {
+		First { c.bump()! }
+		Second { c.bump()! }
+	})
+}
+
 fn combine(a int, b int) int {
 	return a * 10 + b
 }
@@ -1348,6 +1389,8 @@ fn main() {
 	println(select_value_nonmut_arg_value(First{})!)
 	println(select_value_array_init_cap_order(First{})!)
 	println(select_value_nested_cap_order(First{})!)
+	println(select_value_stable_lhs_snapshot(First{})!)
+	println(select_value_stable_arg_snapshot(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -1361,5 +1404,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n1'
 }

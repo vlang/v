@@ -410,14 +410,14 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 				// `[]int{len: match node { ... lower(node)! ... }}`) is materialized as a
 				// value instead of lowering its propagating arm in a statement context.
 				mut val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
-				if i < last_lencap_branch && !t.is_stable_expr_for_reuse(val) {
-					val = t.stable_transformed_expr_for_reuse(val, 'int', 'arr_len')
+				if i < last_lencap_branch && t.operand_needs_ordering_snapshot(val) {
+					val = t.snapshot_transformed_expr_for_reuse(val, 'int', 'arr_len')
 				}
 				len_expr = val
 			} else if child.value == 'cap' {
 				mut val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
-				if i < last_lencap_branch && !t.is_stable_expr_for_reuse(val) {
-					val = t.stable_transformed_expr_for_reuse(val, 'int', 'arr_cap')
+				if i < last_lencap_branch && t.operand_needs_ordering_snapshot(val) {
+					val = t.snapshot_transformed_expr_for_reuse(val, 'int', 'arr_cap')
 				}
 				cap_expr = val
 			} else if child.value == 'init' {
