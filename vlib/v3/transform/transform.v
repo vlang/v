@@ -9933,6 +9933,88 @@ fn (mut t Transformer) rebuild_transformed_lvalue(node flat.Node, children []fla
 	})
 }
 
+// stabilize_original_lvalue_receiver spills the non-stable dynamic index/base components of
+// an *untransformed* lvalue receiver into temps while preserving the lvalue shape and its
+// untransformed base, so the caller's re-dispatch transforms the receiver exactly once and a
+// mutable receiver keeps its identity (e.g. `items[next()].update(...)` still mutates
+// `items[next()]`). Returns none for a non-lvalue (rvalue) receiver, which the caller spills
+// by value instead.
+fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return id
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			inner := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			return t.rebuild_transformed_lvalue(node, arr1(inner))
+		}
+		.prefix {
+			if node.op != .mul || node.children_count == 0 {
+				return none
+			}
+			child_id := t.a.child(&node, 0)
+			new_child := if t.is_stable_expr_for_reuse(child_id) {
+				child_id
+			} else {
+				t.spill_original_lvalue_component(child_id, 'recv_deref')
+			}
+			return t.rebuild_transformed_lvalue(node, arr1(new_child))
+		}
+		.selector {
+			if node.children_count == 0 {
+				return none
+			}
+			base := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			mut children := [base]
+			for i in 1 .. node.children_count {
+				children << t.a.child(&node, i)
+			}
+			return t.rebuild_transformed_lvalue(node, children)
+		}
+		.index {
+			if node.children_count == 0 {
+				return none
+			}
+			base := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			mut children := [base]
+			for i in 1 .. node.children_count {
+				comp_id := t.a.child(&node, i)
+				children << if t.is_stable_expr_for_reuse(comp_id) {
+					comp_id
+				} else {
+					t.spill_original_lvalue_component(comp_id, 'recv_index')
+				}
+			}
+			return t.rebuild_transformed_lvalue(node, children)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut t Transformer) spill_original_lvalue_component(id flat.NodeId, prefix string) flat.NodeId {
+	transformed := t.transform_expr(id)
+	tmp_name := t.new_temp(prefix)
+	mut typ := t.node_type(transformed)
+	if typ.len == 0 {
+		typ = t.node_type(id)
+	}
+	if typ.len > 0 {
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, transformed, typ)
+	} else {
+		t.pending_stmts << t.make_decl_assign(tmp_name, transformed)
+	}
+	return t.make_ident(tmp_name)
+}
+
 fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 	key := t.expr_key(id)
 	if key.len == 0 || t.smartcast_stack.len == 0 {
@@ -14598,26 +14680,34 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		if rhs.kind == .or_expr && rhs.children_count >= 2 {
 			t.mark_fn_used('sync__Channel__try_push_priv')
 			t.mark_fn_used('sync__Channel__closed_error')
-			lhs := t.transform_expr(t.a.child(&node, 0))
+			send_prelude_start := t.pending_stmts.len
+			mut lhs := t.transform_expr(t.a.child(&node, 0))
+			sent_value_id := t.a.child(&rhs, 0)
+			// Stabilize the channel target's dynamic base/index components before materializing
+			// a value-branch sent value, so a side-effecting target index (e.g.
+			// `channels[next(mut trace)] <- (match ...) or {}`) evaluates before the sent value's
+			// hoisted prelude. Preserves the lvalue shape without spilling the channel value.
+			if t.is_value_match_or_if_operand(sent_value_id) {
+				lhs = t.stabilize_transformed_lvalue_for_reuse(lhs)
+			}
 			// Route a value `match`/`if` sent value through value lowering so its propagating
 			// arm tail is materialized as a value, e.g.
 			// `ch <- (match node { First { get_first(node)! } ... }) or { return }`.
 			// `transform_value_operand` is a no-op for the common non-branch sent values.
-			value_pending_start := t.pending_stmts.len
-			value := t.transform_value_operand(t.a.child(&rhs, 0))
-			// Detach the sent value's materialization prelude so transforming the `or {}`
-			// handler below does not capture it into the handler body; re-queue it afterwards
-			// so it is emitted before the channel send.
-			mut value_prelude := []flat.NodeId{}
-			if t.pending_stmts.len > value_pending_start {
-				value_prelude = t.pending_stmts[value_pending_start..].clone()
-				t.pending_stmts = t.pending_stmts[..value_pending_start].clone()
+			value := t.transform_value_operand(sent_value_id)
+			// Detach the channel target + sent value materialization prelude so transforming the
+			// `or {}` handler below does not capture it into the handler body; re-queue it
+			// afterwards so it is emitted before the channel send (target index before value).
+			mut send_prelude := []flat.NodeId{}
+			if t.pending_stmts.len > send_prelude_start {
+				send_prelude = t.pending_stmts[send_prelude_start..].clone()
+				t.pending_stmts = t.pending_stmts[..send_prelude_start].clone()
 			}
 			saved_var_types := t.var_types.clone()
 			t.set_implicit_err_var_type()
 			body := t.transform_expr(t.a.child(&rhs, 1))
 			t.restore_var_types(saved_var_types)
-			for stmt in value_prelude {
+			for stmt in send_prelude {
 				t.pending_stmts << stmt
 			}
 			or_start := t.a.children.len
@@ -14887,7 +14977,15 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					}
 					r
 				} else if last_branch > 0 && !t.is_stable_expr_for_reuse(recv_id) {
-					r := t.stable_expr_for_reuse(recv_id)
+					// Stabilize a side-effecting receiver before a later branch argument hoists its
+					// prelude. Preserve the lvalue's identity by spilling only its dynamic base/index
+					// components (so a mutable receiver like `items[next()].update(match ...)` still
+					// mutates `items[next()]`); a non-lvalue (rvalue call) receiver is spilled by value.
+					r := if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
+						stabilized
+					} else {
+						t.stable_expr_for_reuse(recv_id)
+					}
 					if r != recv_id {
 						changed = true
 					}

@@ -778,6 +778,77 @@ fn select_value_call_operand_order(node Node) !int {
 	return idx * 1000 + tr.order[0] * 10 + tr.order[1]
 }
 
+struct MutItem {
+mut:
+	v int
+}
+
+fn (mut m MutItem) add(x int) {
+	m.v += x
+}
+
+fn (mut tr Tracer) pick_index() int {
+	tr.order << 1
+	return 0
+}
+
+fn (mut tr Tracer) add_first(_ First) !int {
+	tr.order << 2
+	return 5
+}
+
+fn (mut tr Tracer) add_second(_ Second) !int {
+	tr.order << 2
+	return 7
+}
+
+// Mutable receiver with a value-match argument: the receiver lvalue identity must
+// be preserved (only its index is stabilized), so the mutation reaches items[0], and
+// the index runs before the argument prelude. First -> items[0].v = 40 + 5 = 45,
+// order [1,2] -> 4512 (mutation lost would be 4012; reversed order 4521).
+fn select_value_mut_receiver(node Node) !int {
+	mut tr := Tracer{}
+	mut items := [MutItem{
+		v: 40
+	}, MutItem{
+		v: 50
+	}]
+	items[tr.pick_index()].add(match node {
+		First { tr.add_first(node)! }
+		Second { tr.add_second(node)! }
+	})
+	return items[0].v * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
+fn (mut tr Tracer) ch_index() int {
+	tr.order << 1
+	return 0
+}
+
+fn (mut tr Tracer) ch_rhs_first(_ First) !int {
+	tr.order << 2
+	return 99
+}
+
+fn (mut tr Tracer) ch_rhs_second(_ Second) !int {
+	tr.order << 2
+	return 88
+}
+
+// Channel target with a side-effecting index and a value-match sent value: the
+// target index must run before the sent value prelude. First -> send 99, order [1,2]
+// -> 9912 (reversed order 9921).
+fn select_value_channel_target_order(node Node) !int {
+	mut tr := Tracer{}
+	mut channels := [chan int{cap: 1}, chan int{cap: 1}]
+	channels[tr.ch_index()] <- (match node {
+		First { tr.ch_rhs_first(node)! }
+		Second { tr.ch_rhs_second(node)! }
+	}) or { return -1 }
+	got := <-channels[0]
+	return got * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -839,6 +910,8 @@ fn main() {
 	println(select_value_method_arg(First{})!)
 	println(select_value_channel_send(First{})!)
 	println(select_value_call_operand_order(First{})!)
+	println(select_value_mut_receiver(First{})!)
+	println(select_value_channel_target_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -852,5 +925,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n1'
 }
