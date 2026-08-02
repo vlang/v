@@ -119,6 +119,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.no_closures = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.no_closures = false
+		prefs.print_autofree_vars = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.print_autofree_vars = false
 		prefs.compress = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.compress = false
@@ -233,6 +236,30 @@ fn test_autofree_no_closures_requires_standard_compiler() {
 	assert prefs.autofree
 	assert prefs.no_closures
 	assert autofree_requires_standard_compiler(prefs)
+}
+
+fn test_autofree_inspection_requires_standard_compiler() {
+	all_vars, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-print_autofree_vars',
+		'main.v',
+	], false)
+	assert all_vars.autofree
+	assert all_vars.print_autofree_vars
+	assert autofree_requires_standard_compiler(all_vars)
+
+	function_vars, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-print_autofree_vars_in_fn',
+		'main.main',
+		'main.v',
+	], false)
+	assert function_vars.autofree
+	assert function_vars.print_autofree_vars
+	assert function_vars.print_autofree_vars_in_fn == 'main.main'
+	assert autofree_requires_standard_compiler(function_vars)
 }
 
 fn test_macos_v3_implicit_gc_default_uses_v3() {
