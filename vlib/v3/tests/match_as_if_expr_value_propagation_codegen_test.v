@@ -449,6 +449,29 @@ fn select_value_index_order(node Node) !int {
 	return val * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+fn (mut tr Tracer) gated_first(_ First) !int {
+	tr.order << 2
+	return -1
+}
+
+fn (mut tr Tracer) gated_second(_ Second) !int {
+	tr.order << 2
+	return -2
+}
+
+// Gated index (`#[]`) with a propagating value match: the match tail must be
+// lowered as a value (the gated helper otherwise lowers it with plain
+// `transform_expr`). Encodes the gated value ([10,20,30]#[-1] = 30) and order
+// ([1,2]) as 3012.
+fn select_value_gated_index_order(node Node) !int {
+	mut tr := Tracer{}
+	val := tr.base_values()#[match node {
+		First { tr.gated_first(node)! }
+		Second { tr.gated_second(node)! }
+	}]
+	return val * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -494,6 +517,7 @@ fn main() {
 	println(select_value_infix_order(First{})!)
 	println(select_value_shift_order(First{})!)
 	println(select_value_index_order(First{})!)
+	println(select_value_gated_index_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -507,5 +531,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n1'
 }

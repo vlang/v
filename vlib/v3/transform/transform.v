@@ -15192,8 +15192,24 @@ fn (mut t Transformer) lower_gated_scalar_index(node flat.Node) ?flat.NodeId {
 		return none
 	}
 	base_child := t.a.child(&node, 0)
-	base := t.stable_expr_for_reuse(base_child)
-	idx := t.stable_expr_for_reuse(t.a.child(&node, 1))
+	idx_child := t.a.child(&node, 1)
+	// Route value `match`/`if` operands through value lowering: `stable_expr_for_reuse`
+	// lowers via plain `transform_expr`, which would lower a propagating branch tail in a
+	// value-less statement context and emit an empty expression, e.g.
+	// `values#[match n { First { get_index()! } else { other_index()! } }]`.
+	// `transform_value_operand` materializes such an operand into a value temp (already
+	// stable for the multiple uses below); non-branch operands keep `stable_expr_for_reuse`.
+	// The base is evaluated before the index, preserving base-before-index order.
+	base := if t.is_value_match_or_if_operand(base_child) {
+		t.transform_value_operand(base_child)
+	} else {
+		t.stable_expr_for_reuse(base_child)
+	}
+	idx := if t.is_value_match_or_if_operand(idx_child) {
+		t.transform_value_operand(idx_child)
+	} else {
+		t.stable_expr_for_reuse(idx_child)
+	}
 	mut base_type := t.node_type(base)
 	if base_type.len == 0 {
 		base_type = t.node_type(base_child)
