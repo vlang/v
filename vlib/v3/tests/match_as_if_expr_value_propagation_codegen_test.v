@@ -908,6 +908,55 @@ fn select_value_mut_receiver(node Node) !int {
 	return items[0].v * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+struct ValItem {
+	v int
+}
+
+fn (vi ValItem) read(x int) int {
+	return vi.v * 1000 + x
+}
+
+struct ValHolder {
+mut:
+	items []ValItem
+}
+
+fn (mut vh ValHolder) at() int {
+	return 0
+}
+
+fn (mut vh ValHolder) overwrite_first(_ First) !int {
+	vh.items[0] = ValItem{
+		v: 9
+	}
+	return 2
+}
+
+fn (mut vh ValHolder) overwrite_second(_ Second) !int {
+	vh.items[0] = ValItem{
+		v: 8
+	}
+	return 3
+}
+
+// A non-mut *value*-receiver method called on an lvalue element, with a later argument whose
+// match arm mutates that element: the receiver value must be read in source order (before the
+// mutation), not reloaded after the branch prelude. First -> items[0] (ValItem{5}).read(2) =
+// 5 * 1000 + 2 = 5002 (if the mutation leaked, the reloaded receiver would give 9002).
+fn select_value_value_receiver(node Node) !int {
+	mut vh := ValHolder{
+		items: [ValItem{
+			v: 5
+		}, ValItem{
+			v: 6
+		}]
+	}
+	return vh.items[vh.at()].read(match node {
+		First { vh.overwrite_first(node)! }
+		Second { vh.overwrite_second(node)! }
+	})
+}
+
 fn (mut tr Tracer) ch_index() int {
 	tr.order << 1
 	return 0
@@ -954,6 +1003,43 @@ fn select_value_nested_channel_target_order(node Node) !int {
 	}) or { return -1 }
 	got := <-channels[0]
 	return got * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
+struct ChanHolder {
+mut:
+	order []int
+	ch    chan int
+}
+
+fn (mut c ChanHolder) get_channel() chan int {
+	c.order << 1
+	return c.ch
+}
+
+fn (mut c ChanHolder) sent_first(_ First) !int {
+	c.order << 2
+	return 77
+}
+
+fn (mut c ChanHolder) sent_second(_ Second) !int {
+	c.order << 2
+	return 66
+}
+
+// A side-effecting *rvalue* channel target (a method call, not an lvalue) with a value-match
+// sent value: the target call must run before the hoisted prelude of the sent value. Since it
+// is not an lvalue shape it is spilled by value. First -> send 77, order [1,2] -> 7712 (a
+// reversed order would be 7721).
+fn select_value_rvalue_channel_target(node Node) !int {
+	mut c := ChanHolder{
+		ch: chan int{cap: 1}
+	}
+	c.get_channel() <- (match node {
+		First { c.sent_first(node)! }
+		Second { c.sent_second(node)! }
+	}) or { return -1 }
+	got := <-c.ch
+	return got * 100 + c.order[0] * 10 + c.order[1]
 }
 
 fn combine(a int, b int) int {
@@ -1213,8 +1299,10 @@ fn main() {
 	println(select_value_channel_send(First{})!)
 	println(select_value_call_operand_order(First{})!)
 	println(select_value_mut_receiver(First{})!)
+	println(select_value_value_receiver(First{})!)
 	println(select_value_channel_target_order(First{})!)
 	println(select_value_nested_channel_target_order(First{})!)
+	println(select_value_rvalue_channel_target(First{})!)
 	println(select_value_plain_call_order(First{})!)
 	println(select_value_nested_branch_arg_order(First{})!)
 	println(select_value_mut_arg(First{})!)
@@ -1235,5 +1323,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n9912\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
 }

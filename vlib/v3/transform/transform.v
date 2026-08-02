@@ -6534,6 +6534,26 @@ fn (t &Transformer) method_value_has_pointer_receiver(id flat.NodeId) bool {
 	return t.tc.mut_receiver_methods[method_name]
 }
 
+// method_receiver_is_reference reports whether the method `method` resolved on `base_id`
+// takes its receiver by reference (a `mut` or `&` receiver). Such a receiver must keep its
+// lvalue identity when stabilized (only its dynamic base/index components spilled) so the
+// call still mutates through the lvalue; an ordinary by-value receiver is spilled by value so
+// its value is read in source order — a later branch prelude that mutates its container cannot
+// then change the observed receiver value.
+fn (t &Transformer) method_receiver_is_reference(base_id flat.NodeId, method string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	method_name := t.resolve_receiver_method_name(base_id, method)
+	if method_name.len == 0 {
+		return false
+	}
+	if params := t.tc.fn_param_types[method_name] {
+		return params.len > 0 && params[0] is types.Pointer
+	}
+	return t.tc.mut_receiver_methods[method_name]
+}
+
 fn (mut t Transformer) mark_callback_method_value_receiver_escape(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -14684,14 +14704,23 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			send_prelude_start := t.pending_stmts.len
 			mut lhs := t.transform_expr(t.a.child(&node, 0))
 			sent_value_id := t.a.child(&rhs, 0)
-			// Stabilize the channel target's dynamic base/index components before materializing
-			// a sent value that hoists a value branch — directly or nested inside a compound
-			// sent value (`channels[next()] <- wrap(match ...) or {}`) — so a side-effecting
-			// target index (e.g. `channels[next(mut trace)] <- (match ...) or {}`) evaluates
-			// before the sent value's hoisted prelude. Preserves the lvalue shape without
-			// spilling the channel value.
+			// Stabilize the channel target before materializing a sent value that hoists a value
+			// branch — directly or nested inside a compound sent value (`channels[next()] <-
+			// wrap(match ...) or {}`) — so a side-effecting target (e.g.
+			// `channels[next(mut trace)] <- (match ...) or {}`) evaluates before the sent value's
+			// hoisted prelude. An lvalue target has only its dynamic base/index components
+			// spilled (preserving the lvalue shape without spilling the channel value); a
+			// non-lvalue rvalue target (e.g. `get_channel(mut trace) <- ...`), which
+			// `stabilize_transformed_lvalue_for_reuse` returns unchanged, is spilled by value.
 			if t.operand_hoists_value_branch(sent_value_id) {
-				lhs = t.stabilize_transformed_lvalue_for_reuse(lhs)
+				stabilized := t.stabilize_transformed_lvalue_for_reuse(lhs)
+				lhs = if stabilized != lhs {
+					stabilized
+				} else if !t.is_stable_expr_for_reuse(lhs) {
+					t.stable_transformed_expr_for_reuse(lhs, t.node_type(lhs), 'chan_target')
+				} else {
+					lhs
+				}
 			}
 			// Route a value `match`/`if` sent value through value lowering so its propagating
 			// arm tail is materialized as a value, e.g.
@@ -14995,8 +15024,18 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					}
 					r
 				} else if last_branch > 0 && !t.is_stable_expr_for_reuse(recv_id) {
-					r := if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
-						stabilized
+					// A `mut`/reference receiver keeps its lvalue identity (only its dynamic
+					// base/index components are spilled) so the call still mutates through the
+					// lvalue. An ordinary by-value receiver is spilled by value, so its value is
+					// read in source order — a later branch prelude that mutates its container
+					// (e.g. `items[next()].read(match ... { mutate(mut items)! } ...)`) cannot
+					// then change the observed receiver value.
+					r := if t.method_receiver_is_reference(recv_id, recv_fn.value) {
+						if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
+							stabilized
+						} else {
+							t.stable_expr_for_reuse(recv_id)
+						}
 					} else {
 						t.stable_expr_for_reuse(recv_id)
 					}
