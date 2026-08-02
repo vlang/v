@@ -97,9 +97,10 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.old_compiler {
 		return false
 	}
-	if v3_has_v1_only_preferences(prefs) || prefs.gc_mode != .no_gc {
+	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		// V1 still owns compiler modes whose runtime or C toolchain support has not
-		// been implemented by V3 yet.
+		// been implemented by V3 yet. The implicit GC default is resolved before
+		// dispatch, but it must not prevent V3 from being the default compiler.
 		return false
 	}
 	if prefs.autofree && prefs.is_run {

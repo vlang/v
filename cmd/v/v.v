@@ -250,9 +250,10 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
 		|| prefs.is_prof || prefs.output_cross_c || prefs.experimental
-		|| prefs.is_apk || prefs.json_errors || prefs.no_preludes || prefs.is_quiet
-		|| prefs.skip_warnings || prefs.print_watched_files || prefs.is_vlines
-		|| prefs.warn_impure_v || prefs.test_runner.len > 0 || prefs.exclude.len > 0
+		|| prefs.use_os_system_to_run || prefs.is_apk || prefs.json_errors
+		|| prefs.no_preludes || prefs.is_quiet || prefs.skip_warnings
+		|| prefs.print_watched_files || prefs.is_vlines || prefs.warn_impure_v
+		|| prefs.test_runner.len > 0 || prefs.exclude.len > 0
 		|| prefs.ldflags.len > 0 || prefs.nofloat || prefs.fast_math
 		|| prefs.compress || prefs.is_bare || prefs.assert_failure_mode != .default
 		|| prefs.macosx_version_min != '0'

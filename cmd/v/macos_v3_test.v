@@ -68,6 +68,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.is_prof = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_prof = false
+		prefs.use_os_system_to_run = true
+		assert !is_macos_v3_relevant_command('run', prefs)
+		prefs.use_os_system_to_run = false
 		prefs.output_cross_c = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.output_cross_c = false
@@ -176,12 +179,18 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	}
 }
 
-fn test_macos_v3_dispatch_requires_effective_no_gc_mode() {
+fn test_macos_v3_dispatch_allows_the_implicit_gc_default() {
 	$if macos {
 		implicit_gc, _ := pref.parse_args_and_show_errors([], ['', 'main.v'], false)
 		assert implicit_gc.gc_mode == .boehm_full_opt
 		assert !implicit_gc.gc_set_by_flag
-		assert !is_macos_v3_relevant_command('main.v', implicit_gc)
+		assert is_macos_v3_relevant_command('main.v', implicit_gc)
+
+		explicit_boehm, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', 'main.v'],
+			false)
+		assert explicit_boehm.gc_mode == .boehm_full_opt
+		assert explicit_boehm.gc_set_by_flag
+		assert !is_macos_v3_relevant_command('main.v', explicit_boehm)
 
 		explicit_none, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'none', 'main.v'],
 			false)
@@ -193,6 +202,71 @@ fn test_macos_v3_dispatch_requires_effective_no_gc_mode() {
 		assert prealloc.gc_mode == .no_gc
 		assert !prealloc.gc_set_by_flag
 		assert is_macos_v3_relevant_command('main.v', prealloc)
+	}
+}
+
+fn test_macos_v3_implicit_gc_default_uses_v3() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_implicit_gc_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		os.write_file(source, "fn main() { println('implicit gc v3') }\n")!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-v', '-nocache', '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'implicit gc v3'
+	}
+}
+
+fn test_macos_v3_use_os_system_to_run_stays_on_v1() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_system_run_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, "fn main() { println('system run v1') }\n")!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-v', '-gc', 'none', '-use-os-system-to-run', 'run', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert !compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
+		assert !compiler_output.contains('unknown option'), compiler_output
+		assert compiler_output.contains('system run v1'), compiler_output
 	}
 }
 
@@ -402,6 +476,9 @@ fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
 	prefs.experimental = true
 	assert autofree_requires_standard_compiler(prefs)
 	prefs.experimental = false
+	prefs.use_os_system_to_run = true
+	assert autofree_requires_standard_compiler(prefs)
+	prefs.use_os_system_to_run = false
 	prefs.macosx_version_min = '11.0'
 	assert autofree_requires_standard_compiler(prefs)
 	prefs.macosx_version_min = '0'
