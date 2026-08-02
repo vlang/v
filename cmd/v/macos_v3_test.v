@@ -95,6 +95,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.exclude = ['@vlib/math/*.c.v']
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.exclude.clear()
+		prefs.ldflags = '-L/custom/lib -lcustom'
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.ldflags = ''
 		prefs.is_run = true
 		prefs.autofree = true
 		assert !is_macos_v3_relevant_command('run', prefs)
