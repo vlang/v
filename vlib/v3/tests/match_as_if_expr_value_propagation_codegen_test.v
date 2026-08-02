@@ -405,6 +405,19 @@ fn select_value_infix_order(node ?Node) !int {
 	return sum * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+// Infix ordering with a *nested* branch: the match is buried inside a compound RHS
+// (`lhs() + (1 + (match ...))`), whose inner infix still hoists the match prelude. The
+// side-effecting LHS must run before that prelude. First -> 1 + (1 + 10) = 12, order [1,2]
+// -> 1212 (a reversed order would be 1221).
+fn select_value_nested_infix_order(node Node) !int {
+	mut tr := Tracer{}
+	sum := tr.lhs() + (1 + (match node {
+		First { tr.rf(node)! }
+		Second { tr.rs(node)! }
+	}))
+	return sum * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 fn (mut tr Tracer) shift_lhs() int {
 	tr.order << 1
 	return 1
@@ -419,6 +432,19 @@ fn select_value_shift_order(node Node) !int {
 		First { tr.rf(node)! }
 		Second { tr.rs(node)! }
 	})
+	return sum * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
+// Left-shift ordering with a *nested* RHS branch: the match is buried inside a compound
+// shift RHS (`shift_lhs() << (1 + (match ...))`), which still hoists the match prelude. The
+// side-effecting LHS must run before it. First -> 1 << (1 + 10) = 1 << 11 = 2048, order
+// [1,2] -> 204812 (a reversed order would be 204821).
+fn select_value_nested_shift_order(node Node) !int {
+	mut tr := Tracer{}
+	sum := tr.shift_lhs() << (1 + (match node {
+		First { tr.rf(node)! }
+		Second { tr.rs(node)! }
+	}))
 	return sum * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
@@ -535,6 +561,20 @@ fn select_value_range_order(node Node) !int {
 	return flag * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+// Membership-range ordering with a *nested* high bound: the match is buried inside a
+// compound high bound (`.. (1 + (match ...))`), which still hoists the match prelude. The
+// side-effecting low bound must run before it. First -> `5 in 0 .. (1 + 10)` = true, order
+// [1,2] -> 112 (a reversed order would be 121).
+fn select_value_nested_range_order(node Node) !int {
+	mut tr := Tracer{}
+	inside := 5 in tr.range_low() .. (1 + (match node {
+		First { tr.range_high_first(node)! }
+		Second { tr.range_high_second(node)! }
+	}))
+	flag := if inside { 1 } else { 0 }
+	return flag * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 fn make_values_first(_ First) ![]int {
 	return [10, 20, 30]
 }
@@ -608,6 +648,23 @@ fn (mut tr Tracer) text_second(_ Second) !string {
 fn select_value_string_membership_order(node Node) !int {
 	mut tr := Tracer{}
 	inside := tr.needle_str() in (match node {
+		First { tr.text_first(node)! }
+		Second { tr.text_second(node)! }
+	})
+	return (if inside { 500 } else { 0 }) + tr.order[0] * 10 + tr.order[1]
+}
+
+fn wrap_str(s string) string {
+	return s
+}
+
+// String-membership ordering with a *nested* container: the match is wrapped inside a call
+// (`needle in wrap_str(match ...)`), which still hoists the match prelude. The side-effecting
+// needle must run before it. First -> "lo" in "hello" = true, order [1,2] -> 512 (a reversed
+// order would be 521).
+fn select_value_nested_string_membership_order(node Node) !int {
+	mut tr := Tracer{}
+	inside := tr.needle_str() in wrap_str(match node {
 		First { tr.text_first(node)! }
 		Second { tr.text_second(node)! }
 	})
@@ -880,6 +937,25 @@ fn select_value_channel_target_order(node Node) !int {
 	return got * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+fn wrap_send(x int) int {
+	return x
+}
+
+// Channel-send ordering with a *nested* sent value: the match is wrapped inside a call
+// (`channels[i] <- wrap_send(match ...) or {}`), which still hoists the match prelude. The
+// side-effecting target index must run before it. First -> send 99, order [1,2] -> 9912 (a
+// reversed order would be 9921).
+fn select_value_nested_channel_target_order(node Node) !int {
+	mut tr := Tracer{}
+	mut channels := [chan int{cap: 1}, chan int{cap: 1}]
+	channels[tr.ch_index()] <- wrap_send(match node {
+		First { tr.ch_rhs_first(node)! }
+		Second { tr.ch_rhs_second(node)! }
+	}) or { return -1 }
+	got := <-channels[0]
+	return got * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 fn combine(a int, b int) int {
 	return a * 10 + b
 }
@@ -1112,17 +1188,21 @@ fn main() {
 	println(select_value_ascast_unsafe(5)!)
 	println(direct_match(Second{})!)
 	println(select_value_infix_order(First{})!)
+	println(select_value_nested_infix_order(First{})!)
 	println(select_value_shift_order(First{})!)
+	println(select_value_nested_shift_order(First{})!)
 	println(select_value_index_order(First{})!)
 	println(select_value_nested_index_order(First{})!)
 	println(select_value_gated_index_order(First{})!)
 	println(select_value_range_low(First{})!)
 	println(select_value_range_membership(First{})!)
 	println(select_value_range_order(First{})!)
+	println(select_value_nested_range_order(First{})!)
 	println(select_value_membership_container(First{})!)
 	println(select_value_forin_container(First{})!)
 	println(select_value_map_index(First{})!)
 	println(select_value_string_membership_order(First{})!)
+	println(select_value_nested_string_membership_order(First{})!)
 	println(select_value_append_order(First{})!)
 	println(select_value_nested_append_order(First{})!)
 	println(select_value_const_membership(First{})!)
@@ -1134,6 +1214,7 @@ fn main() {
 	println(select_value_call_operand_order(First{})!)
 	println(select_value_mut_receiver(First{})!)
 	println(select_value_channel_target_order(First{})!)
+	println(select_value_nested_channel_target_order(First{})!)
 	println(select_value_plain_call_order(First{})!)
 	println(select_value_nested_branch_arg_order(First{})!)
 	println(select_value_mut_arg(First{})!)
@@ -1154,5 +1235,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n2012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n9912\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
 }

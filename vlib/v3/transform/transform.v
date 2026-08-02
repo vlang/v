@@ -14685,10 +14685,12 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			mut lhs := t.transform_expr(t.a.child(&node, 0))
 			sent_value_id := t.a.child(&rhs, 0)
 			// Stabilize the channel target's dynamic base/index components before materializing
-			// a value-branch sent value, so a side-effecting target index (e.g.
-			// `channels[next(mut trace)] <- (match ...) or {}`) evaluates before the sent value's
-			// hoisted prelude. Preserves the lvalue shape without spilling the channel value.
-			if t.is_value_match_or_if_operand(sent_value_id) {
+			// a sent value that hoists a value branch — directly or nested inside a compound
+			// sent value (`channels[next()] <- wrap(match ...) or {}`) — so a side-effecting
+			// target index (e.g. `channels[next(mut trace)] <- (match ...) or {}`) evaluates
+			// before the sent value's hoisted prelude. Preserves the lvalue shape without
+			// spilling the channel value.
+			if t.operand_hoists_value_branch(sent_value_id) {
 				lhs = t.stabilize_transformed_lvalue_for_reuse(lhs)
 			}
 			// Route a value `match`/`if` sent value through value lowering so its propagating
@@ -14761,13 +14763,14 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		// lowered with plain `transform_expr` in a value-less statement context and
 		// emit an empty expression. `transform_value_operand` is a no-op for the
 		// common non-branch operands.
-		// Preserve LHS-before-RHS evaluation order: for a numeric shift whose RHS is a
-		// value branch (its materialization below queues prelude statements), stabilize a
+		// Preserve LHS-before-RHS evaluation order: for a numeric shift whose RHS hoists a
+		// value branch — directly or nested inside a compound RHS (`mark_lhs() << (1 +
+		// (match ...))`) — its materialization below queues prelude statements, so stabilize a
 		// side-effecting LHS first so it runs before that prelude, e.g.
 		// `mark_lhs() << (match x { ... mark_rhs()! ... })`. An array-append LHS
 		// (`rhs_target_type` set) is a mutated lvalue and must not be spilled; a value-branch
 		// LHS is already materialized in order by `transform_value_operand`.
-		rhs_is_value_branch := t.is_value_match_or_if_operand(rhs_id)
+		rhs_is_value_branch := t.operand_hoists_value_branch(rhs_id)
 		mut new_lhs := if rhs_target_type.len == 0 && rhs_is_value_branch
 			&& !t.is_value_match_or_if_operand(lhs_id) && !t.is_stable_expr_for_reuse(lhs_id) {
 			t.stable_expr_for_reuse(lhs_id)
@@ -14813,8 +14816,13 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	// operand is left as its original node so it is transformed exactly once.
 	infix_lhs_id := t.a.children[node.children_start]
 	infix_rhs_id := t.a.children[node.children_start + 1]
-	lhs_is_value_branch := t.is_value_match_or_if_operand(infix_lhs_id)
-	rhs_is_value_branch := t.is_value_match_or_if_operand(infix_rhs_id)
+	// Detect a value branch that either side hoists — directly or nested inside a compound
+	// operand (`trace_left() + (1 + (match ...))`) — so the other, side-effecting operand is
+	// stabilized before that operand's materialization prelude, preserving left-to-right order.
+	// A directly-branch operand is materialized in order by `transform_value_operand` below; a
+	// nested one is materialized by its `transform_expr` recursion.
+	lhs_is_value_branch := t.operand_hoists_value_branch(infix_lhs_id)
+	rhs_is_value_branch := t.operand_hoists_value_branch(infix_rhs_id)
 	if lhs_is_value_branch || rhs_is_value_branch {
 		// Evaluate operands left-to-right so their materialization statements land in
 		// `pending_stmts` in source order (LHS before RHS). Materializing only one side

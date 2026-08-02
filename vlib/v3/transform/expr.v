@@ -1887,13 +1887,14 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 			low_id := t.a.children[rhs.children_start]
 			high_id := t.a.children[rhs.children_start + 1]
-			// If the high bound is a value branch, its materialization below queues prelude
+			// If the high bound hoists a value branch — directly or nested inside a compound
+			// bound (`.. (1 + (match ...))`) — its materialization below queues prelude
 			// statements; stabilize a side-effecting low bound first so it evaluates before
 			// them, preserving low-before-high order, e.g.
 			// `x in low_with_effect() .. (match node { ... high_with_effect()! ... })`.
 			// A value-branch low is materialized in order by `transform_value_operand`.
 			new_low := if !t.is_value_match_or_if_operand(low_id)
-				&& t.is_value_match_or_if_operand(high_id) && !t.is_stable_expr_for_reuse(low_id) {
+				&& t.operand_hoists_value_branch(high_id) && !t.is_stable_expr_for_reuse(low_id) {
 				t.stable_expr_for_reuse(low_id)
 			} else {
 				t.transform_value_operand(low_id)
@@ -1994,10 +1995,11 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				result = t.make_call_typed(fn_name, arr3(new_rhs, len_expr, new_lhs), 'bool')
 			}
 		} else if clean_rhs_type == 'string' {
-			// If the container is a value branch, its materialization below hoists a
+			// If the container hoists a value branch — directly or nested inside a compound
+			// container (`... in wrap(match ...)`) — its materialization below hoists a
 			// prelude; stabilize a side-effecting needle first so it evaluates before it,
 			// e.g. `tr.needle() in (match n { First { tr.text_first(n)! } ... })`.
-			new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
+			new_lhs := if t.operand_hoists_value_branch(rhs_id) {
 				t.stable_expr_for_reuse(lhs_id)
 			} else {
 				t.transform_expr(lhs_id)
