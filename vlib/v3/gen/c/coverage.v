@@ -28,7 +28,7 @@ fn (mut g FlatGen) write_coverage_point(node flat.Node) {
 	}
 	position := g.a.source_position(node.pos) or { return }
 	path := os.real_path(position.filename)
-	line := if position.line > 1 { position.line - 1 } else { 1 }
+	line := position.line
 	mut info := g.coverage_files[path] or {
 		fhash := hash.sum64_string('${g.coverage_build_options}:${path}', 32).hex_full()
 		created := &CoverageInfo{
