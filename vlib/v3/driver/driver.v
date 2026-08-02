@@ -5642,9 +5642,9 @@ fn expand_v3_module_search_paths(spec string, vroot string) []string {
 
 fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
-		'--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path', '-cov', '-coverage',
-		'-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only']
+		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
+		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project',
+		'-test-runner', '-run-only']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {

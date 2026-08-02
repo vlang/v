@@ -116,6 +116,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.fast_math = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.fast_math = false
+		prefs.no_closures = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.no_closures = false
 		prefs.compress = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.compress = false
@@ -222,6 +225,14 @@ fn test_fatal_errors_requires_standard_compiler() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-Wfatal-errors', 'main.v'], false)
 	assert prefs.fatal_errors
 	assert v3_has_v1_only_preferences(prefs)
+}
+
+fn test_autofree_no_closures_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-no-closures', 'main.v'],
+		false)
+	assert prefs.autofree
+	assert prefs.no_closures
+	assert autofree_requires_standard_compiler(prefs)
 }
 
 fn test_macos_v3_implicit_gc_default_uses_v3() {

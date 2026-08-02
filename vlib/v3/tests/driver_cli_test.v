@@ -505,6 +505,14 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'app.v')
 	os.write_file(source, "fn main() { println('option-value-doc') }\n")!
+	for define_option in ['-d', '-define'] {
+		define_case := os.join_path(root, define_option.trim_left('-'))
+		os.mkdir_all(define_case)!
+		define := run_driver_in_work_folder(v3_bin,
+			['-silent', define_option, 'doc', 'run', source], define_case)
+		assert define.exit_code == 0, '${define_option}: ${define.output}'
+		assert define.output == 'option-value-doc\n', define.output
+	}
 
 	project_case := os.join_path(root, 'project_case')
 	os.mkdir_all(project_case)!
