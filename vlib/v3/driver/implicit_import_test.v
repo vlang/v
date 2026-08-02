@@ -21,6 +21,33 @@ fn test_default_bin_file_uses_safe_hidden_source_name() {
 	assert default_bin_file_for_input('unsafe\t.v') == 'unsafe_.v.out'
 }
 
+fn test_default_bin_file_resolves_source_symlink() {
+	$if !windows {
+		root := os.join_path(os.temp_dir(), 'v3_default_bin_symlink_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(os.join_path(root, 'source'))!
+		os.mkdir_all(os.join_path(root, 'links'))!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		target := os.join_path(root, 'source', 'app.v')
+		link := os.join_path(root, 'links', 'app.v')
+		os.write_file(target, 'fn main() {}\n')!
+		os.symlink(target, link)!
+		expected := os.join_path_single(os.dir(os.real_path(target)), 'app')
+		assert default_bin_file_for_input(link) == expected
+	}
+}
+
+fn test_c_executable_bin_file_uses_target_postfix() {
+	assert c_executable_bin_file_for_target('app', 'windows', false, false, false) == 'app.exe'
+	assert c_executable_bin_file_for_target('app.exe', 'windows', false, false, false) == 'app.exe'
+	assert c_executable_bin_file_for_target('app', 'macos', false, false, false) == 'app'
+	assert c_executable_bin_file_for_target('library', 'windows', true, false, false) == 'library'
+	assert c_executable_bin_file_for_target('unit.o', 'windows', false, true, false) == 'unit.o'
+	assert c_executable_bin_file_for_target('source', 'windows', false, false, true) == 'source'
+}
+
 fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
 	path := os.join_path(os.temp_dir(), 'v3_implicit_import_${name}_${os.getpid()}.v')
 	os.write_file(path, source) or { panic(err) }

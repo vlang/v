@@ -1637,10 +1637,12 @@ fn default_bin_file_for_input(input_file string) string {
 		real_input := os.real_path(input_file)
 		return os.join_path_single(real_input, os.base(real_input))
 	}
-	if !input_file.ends_with('.v') && !input_file.ends_with('.vv') && !input_file.ends_with('.vsh') {
-		return input_file
+	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
+	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')
+		&& !resolved_input.ends_with('.vsh') {
+		return resolved_input
 	}
-	filename := os.file_name(input_file).trim_space()
+	filename := os.file_name(resolved_input).trim_space()
 	mut base := filename.all_before_last('.')
 	if os.file_ext(base) in ['.c', '.js', '.wasm'] {
 		base = base.all_before_last('.')
@@ -1651,7 +1653,7 @@ fn default_bin_file_for_input(input_file string) string {
 	if default_bin_file_needs_safe_name(base, filename) {
 		base = safe_default_bin_file_name(filename)
 	}
-	input_dir := os.dir(input_file)
+	input_dir := os.dir(resolved_input)
 	return if input_dir in ['', '.'] { base } else { os.join_path_single(input_dir, base) }
 }
 
@@ -2096,6 +2098,20 @@ fn with_shared_library_postfix(path string, target_os string) string {
 		return path
 	}
 	return path + postfix
+}
+
+fn with_executable_postfix(path string, target_os string) string {
+	if pref.normalized_os(target_os) != 'windows' || path.ends_with('.exe') {
+		return path
+	}
+	return path + '.exe'
+}
+
+fn c_executable_bin_file_for_target(path string, target_os string, is_shared bool, is_o bool, c_only bool) string {
+	if is_shared || is_o || c_only {
+		return path
+	}
+	return with_executable_postfix(path, target_os)
 }
 
 // should_scope_prealloc_stages reports whether compiler stages can use disposable arenas.
@@ -6144,6 +6160,14 @@ pub fn run(args []string) {
 			bin_file = with_shared_library_postfix(bin_file, target.os)
 		}
 		output_file = bin_file + '.c'
+	}
+	if backend == 'c' {
+		target_bin_file := c_executable_bin_file_for_target(bin_file, target.os, is_shared, is_o,
+			c_only)
+		if target_bin_file != bin_file {
+			bin_file = target_bin_file
+			output_file = bin_file + '.c'
+		}
 	}
 	binary_existed_before := os.exists(bin_file)
 	remove_binary_after_run := should_run && !is_direct_vsh && !explicit_output && !keep_c
