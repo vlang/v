@@ -47,7 +47,7 @@ pub fn sleep(dur Duration) {
 }
 
 fn time_with_unix(t Time) Time {
-	if _ := t.loc {
+	if t.has_location() {
 		return t
 	}
 	if t.unix != 0 {

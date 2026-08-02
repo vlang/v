@@ -1,7 +1,6 @@
 @[has_globals]
 module time
 
-import compress.szip
 import os
 
 const zoneinfo_unix_sources = [
@@ -13,8 +12,6 @@ const zoneinfo_unix_sources = [
 
 const zoneinfo_vroot_zip = os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
 
-pub type ZoneinfoLoaderFn = fn (name string) ![]u8
-
 __global zoneinfo_loaders = []ZoneinfoLoaderFn{}
 
 // register_zoneinfo_loader registers a fallback loader for IANA time zone data.
@@ -22,59 +19,6 @@ __global zoneinfo_loaders = []ZoneinfoLoaderFn{}
 // installed zoneinfo.zip have been tried.
 pub fn register_zoneinfo_loader(loader ZoneinfoLoaderFn) {
 	zoneinfo_loaders << loader
-}
-
-// Zone describes one time zone rule in an IANA location.
-pub struct Zone {
-pub:
-	name   string
-	offset int
-	is_dst bool
-}
-
-struct ZoneTransition {
-	when  i64
-	index int
-}
-
-// Location contains parsed IANA time zone data.
-//
-// A `Time` with a non-none `location()` carries IANA zone rules. Prefer that
-// over the older `is_local` flag, which only means "system local wall time
-// with a fixed process offset" and does not model DST transitions by name.
-pub struct Location {
-pub:
-	name string
-mut:
-	zones       []Zone
-	transitions []ZoneTransition
-	posix       PosixZoneRule
-	has_posix   bool
-}
-
-struct PosixZoneRule {
-	std_name   string
-	std_offset int
-	dst_name   string
-	dst_offset int
-	start      PosixRule
-	end        PosixRule
-	has_dst    bool
-}
-
-enum PosixRuleKind {
-	month_week_day
-	julian_no_leap
-	day_of_year
-}
-
-struct PosixRule {
-	kind    PosixRuleKind
-	month   int
-	week    int
-	weekday int
-	day     int
-	seconds int
 }
 
 // load_location loads an IANA time zone location from ZONEINFO, system zoneinfo
@@ -149,7 +93,7 @@ pub fn (loc &Location) unix_nanosecond_to_local(unix_time i64, nanosecond int) !
 	zone := loc.zone_at(unix_time)!
 	local := unix_nanosecond(unix_time + i64(zone.offset), nanosecond)
 	return Time{
-		loc:        *loc
+		loc:        loc
 		unix:       unix_time
 		year:       local.year
 		month:      local.month
@@ -167,14 +111,19 @@ pub fn (t Time) in(loc &Location) !Time {
 }
 
 // location returns the IANA location associated with `t`, if any.
-pub fn (t Time) location() ?Location {
+pub fn (t Time) location() ?&Location {
+	if unsafe { t.loc == nil } {
+		return none
+	}
 	return t.loc
 }
 
 // zone returns the active zone rule for `t`, if it has an IANA location.
 pub fn (t Time) zone() !Zone {
-	loc := t.loc or { return error('time has no IANA location') }
-	return loc.zone_at(t.unix())
+	if loc := t.location() {
+		return loc.zone_at(t.unix())
+	}
+	return error('time has no IANA location')
 }
 
 fn (loc &Location) first_standard_zone_index() int {
@@ -184,6 +133,28 @@ fn (loc &Location) first_standard_zone_index() int {
 		}
 	}
 	return 0
+}
+
+fn location_from_posix_rule(name string, rule PosixZoneRule) &Location {
+	mut zones := [
+		Zone{
+			name:   rule.std_name
+			offset: rule.std_offset
+		},
+	]
+	if rule.has_dst {
+		zones << Zone{
+			name:   rule.dst_name
+			offset: rule.dst_offset
+			is_dst: true
+		}
+	}
+	return &Location{
+		name:      name
+		zones:     zones
+		posix:     rule
+		has_posix: true
+	}
 }
 
 fn load_zoneinfo_data(name string) ![]u8 {
@@ -228,23 +199,77 @@ fn load_zoneinfo_from_source(source string, name string) ![]u8 {
 }
 
 fn read_zoneinfo_zip_entry(zip_path string, name string) ![]u8 {
-	mut zip := szip.open(zip_path, .no_compression, .read_only)!
-	defer {
-		zip.close()
+	return read_uncompressed_zoneinfo_zip_entry(os.read_bytes(zip_path)!, name)
+}
+
+fn read_uncompressed_zoneinfo_zip_entry(data []u8, name string) ![]u8 {
+	eocd := find_zoneinfo_zip_end_of_central_directory(data)!
+	entries := read_zip_u16(data, eocd + 10)
+	mut pos := int(read_zip_u32(data, eocd + 16))
+	for _ in 0 .. entries {
+		if pos + 46 > data.len || read_zip_u32(data, pos) != 0x0201_4b50 {
+			return error('invalid zoneinfo.zip')
+		}
+		method := read_zip_u16(data, pos + 10)
+		size := int(read_zip_u32(data, pos + 24))
+		name_len := int(read_zip_u16(data, pos + 28))
+		extra_len := int(read_zip_u16(data, pos + 30))
+		comment_len := int(read_zip_u16(data, pos + 32))
+		local_header := int(read_zip_u32(data, pos + 42))
+		if pos + 46 + name_len > data.len {
+			return error('invalid zoneinfo.zip')
+		}
+		entry_name := data[pos + 46..pos + 46 + name_len].bytestr()
+		pos += 46 + name_len + extra_len + comment_len
+		if entry_name != name {
+			continue
+		}
+		if method != 0 {
+			return error('unsupported compressed time zone entry "${name}"')
+		}
+		return read_zip_file_data(data, local_header, name, size)
 	}
-	// miniz open_entry can succeed with size 0 for missing names; treat that
-	// as unknown so callers keep searching other sources.
-	zip.open_entry(name) or { return error('unknown time zone location "${name}"') }
-	defer {
-		zip.close_entry()
+	return error('unknown time zone location "${name}"')
+}
+
+fn read_zip_file_data(data []u8, pos int, name string, size int) ![]u8 {
+	if pos + 30 > data.len || read_zip_u32(data, pos) != 0x0403_4b50 {
+		return error('invalid time zone entry "${name}"')
 	}
-	size := int(zip.size())
-	if size <= 0 {
-		return error('unknown time zone location "${name}"')
+	name_len := int(read_zip_u16(data, pos + 26))
+	extra_len := int(read_zip_u16(data, pos + 28))
+	data_start := pos + 30 + name_len + extra_len
+	data_end := data_start + size
+	if data_end > data.len {
+		return error('truncated time zone entry "${name}"')
 	}
-	mut data := []u8{len: size}
-	zip.read_entry_buf(data.data, size)!
-	return data
+	return data[data_start..data_end].clone()
+}
+
+fn find_zoneinfo_zip_end_of_central_directory(data []u8) !int {
+	max_comment_len := 65_535
+	min_pos := if data.len > max_comment_len + 22 { data.len - max_comment_len - 22 } else { 0 }
+	for pos := data.len - 22; pos >= min_pos; pos-- {
+		if read_zip_u32(data, pos) == 0x0605_4b50 {
+			return pos
+		}
+	}
+	return error('invalid zoneinfo.zip')
+}
+
+fn read_zip_u16(data []u8, offset int) int {
+	if offset + 2 > data.len {
+		return 0
+	}
+	return int(u16(data[offset]) | (u16(data[offset + 1]) << 8))
+}
+
+fn read_zip_u32(data []u8, offset int) u32 {
+	if offset + 4 > data.len {
+		return 0
+	}
+	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) | (u32(data[
+		offset + 3]) << 24)
 }
 
 fn parse_tzif_location(name string, data []u8) !&Location {

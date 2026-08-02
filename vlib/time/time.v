@@ -38,7 +38,7 @@ pub const days_before = [
 @[markused]
 pub struct Time {
 	unix i64
-	loc  ?Location
+	loc  &Location = unsafe { nil }
 pub:
 	year       int
 	month      int
@@ -48,6 +48,11 @@ pub:
 	second     int
 	nanosecond int
 	is_local   bool // used to make time.now().local().local() == time.now().local()
+}
+
+@[inline]
+fn (t Time) has_location() bool {
+	return t.loc != unsafe { nil }
 }
 
 // FormatDelimiter contains different time formats.
@@ -144,7 +149,7 @@ pub fn (t Time) smonth() string {
 // unix returns the UNIX time with second resolution.
 @[inline]
 pub fn (t Time) unix() i64 {
-	if _ := t.loc {
+	if t.has_location() {
 		return t.unix
 	}
 	return time_with_unix(t.local_to_utc()).unix
@@ -155,7 +160,8 @@ pub fn (t Time) unix() i64 {
 // active at that instant (wall-clock seconds since epoch in that location).
 @[inline]
 pub fn (t Time) local_unix() i64 {
-	if loc := t.loc {
+	if t.has_location() {
+		loc := t.loc
 		// zone_at only fails for empty/corrupt locations; use the first zone
 		// offset rather than silently treating the instant as UTC.
 		zone_offset := loc.offset_at(t.unix) or {
@@ -203,7 +209,7 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
 	// increased_time_second
-	base_unix := if _ := t.loc { t.unix } else { t.local_unix() }
+	base_unix := if t.has_location() { t.unix } else { t.local_unix() }
 	mut increased_time_second := base_unix + (increased_time_nanosecond / second)
 	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
@@ -212,7 +218,8 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	}
 	res := unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
 
-	if loc := t.loc {
+	if t.has_location() {
+		loc := t.loc
 		return loc.unix_nanosecond_to_local(res.unix, res.nanosecond) or {
 			// Keep the location even if projection fails so later operations
 			// still treat this value as an IANA-zoned instant.
@@ -472,7 +479,7 @@ pub fn offset() int {
 // local_to_utc converts the receiver `t` to the corresponding UTC time, if it contains local time.
 // If the receiver already does contain UTC time, it returns it unchanged.
 pub fn (t Time) local_to_utc() Time {
-	if _ := t.loc {
+	if t.has_location() {
 		return unix_nanosecond(t.unix, t.nanosecond)
 	}
 	if !t.is_local {
@@ -487,7 +494,7 @@ pub fn (t Time) local_to_utc() Time {
 // utc_to_local converts the receiver `u` to the corresponding local time, if it contains UTC time.
 // If the receiver already does contain local time, it returns it unchanged.
 pub fn (u Time) utc_to_local() Time {
-	if _ := u.loc {
+	if u.has_location() {
 		return u
 	}
 	if u.is_local {

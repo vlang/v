@@ -1,25 +1,7 @@
 module time
 
-pub type ZoneinfoLoaderFn = fn (name string) ![]u8
-
 // register_zoneinfo_loader registers a fallback loader for IANA time zone data.
 pub fn register_zoneinfo_loader(loader ZoneinfoLoaderFn) {
-}
-
-// Zone describes one time zone rule in an IANA location.
-pub struct Zone {
-pub:
-	name   string
-	offset int
-	is_dst bool
-}
-
-// Location contains parsed IANA time zone data.
-pub struct Location {
-pub:
-	name string
-mut:
-	zones []Zone
 }
 
 // load_location loads an IANA time zone location.
@@ -54,7 +36,10 @@ pub fn (t Time) in(loc &Location) !Time {
 }
 
 // location returns the IANA location associated with `t`, if any.
-pub fn (t Time) location() ?Location {
+pub fn (t Time) location() ?&Location {
+	if unsafe { t.loc == nil } {
+		return none
+	}
 	return t.loc
 }
 

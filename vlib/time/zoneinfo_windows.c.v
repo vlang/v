@@ -1,5 +1,7 @@
 module time
 
+import os
+
 struct TimeZoneInformation {
 pub mut:
 	bias          i32
@@ -14,6 +16,12 @@ pub mut:
 fn C.GetTimeZoneInformation(&TimeZoneInformation) u32
 
 fn local_location() !&Location {
+	tz := os.getenv('TZ')
+	if tz != '' && tz != 'Local' && !tz.starts_with(':') {
+		if rule := parse_posix_zone_rule(tz) {
+			return location_from_posix_rule('Local', rule)
+		}
+	}
 	mut info := TimeZoneInformation{}
 	C.GetTimeZoneInformation(&info)
 	std_name := unsafe { string_from_wide(&u16(&info.standard_name[0])) }

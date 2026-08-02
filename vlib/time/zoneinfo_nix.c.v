@@ -52,28 +52,6 @@ fn fixed_local_location() &Location {
 	}
 }
 
-fn location_from_posix_rule(name string, rule PosixZoneRule) &Location {
-	mut zones := [
-		Zone{
-			name:   rule.std_name
-			offset: rule.std_offset
-		},
-	]
-	if rule.has_dst {
-		zones << Zone{
-			name:   rule.dst_name
-			offset: rule.dst_offset
-			is_dst: true
-		}
-	}
-	return &Location{
-		name:      name
-		zones:     zones
-		posix:     rule
-		has_posix: true
-	}
-}
-
 fn zoneinfo_name_from_path(path string) ?string {
 	marker := '/zoneinfo/'
 	index := path.index(marker) or { return none }

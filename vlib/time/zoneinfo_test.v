@@ -177,6 +177,13 @@ fn test_location_time_equals_same_instant() {
 	assert utc_time == local
 }
 
+fn test_zero_time_has_no_location_and_compares_equal() {
+	zero := time.Time{}
+	assert zero.location() == none
+	assert zero.is_zero()
+	assert zero == time.Time{}
+}
+
 fn test_invalid_location_name() {
 	if _ := time.load_location('../UTC') {
 		assert false
