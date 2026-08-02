@@ -256,6 +256,45 @@ fn main() {
 	assert parser_warning_error.output.contains('error:'), parser_warning_error.output
 	assert parser_warning_error.output.contains('use e.g. `typeof(expr).name`'), parser_warning_error.output
 
+	clean_impure_text_source := os.join_path(root, 'clean_impure_text.v')
+	clean_impure_text_output := os.join_path(root, 'clean_impure_text')
+	os.write_file(clean_impure_text_source,
+		"// C.comment() and JS.comment()\nfn main() { println('C.foo JS.bar') }\n")!
+	clean_impure_text := run_driver_review_process(v3_bin, ['-silent', '-Wimpure-v', '-W', '-o',
+		clean_impure_text_output, clean_impure_text_source], driver_review_environment())
+	assert clean_impure_text.exit_code == 0, clean_impure_text.output
+
+	directory_project := os.join_path(root, 'impure_directory')
+	os.mkdir_all(directory_project)!
+	os.write_file(os.join_path(directory_project, 'main.v'),
+		'module main\n\nfn main() { call_c() }\n')!
+	directory_interop_file := os.join_path(directory_project, 'interop.v')
+	os.write_file(directory_interop_file,
+		"module main\n\nfn C.puts(&char) int\n\nfn call_c() { C.puts(c'impure') }\n")!
+	directory_impure := run_driver_review_process(v3_bin, ['-silent', '-Wimpure-v', '-W', '-o',
+		os.join_path(root, 'impure_directory_output'), directory_project],
+		driver_review_environment())
+	assert directory_impure.exit_code != 0, directory_impure.output
+	assert directory_impure.output.contains('C code will not be allowed in pure .v files'), directory_impure.output
+
+	assert directory_impure.output.contains(directory_interop_file), directory_impure.output
+
+	import_project := os.join_path(root, 'impure_import')
+	import_module := os.join_path(import_project, 'impurejs')
+	os.mkdir_all(import_module)!
+	os.write_file(os.join_path(import_project, 'main.v'),
+		'module main\n\nimport impurejs\n\nfn main() { impurejs.call_js() }\n')!
+	import_interop_file := os.join_path(import_module, 'impurejs.v')
+	os.write_file(import_interop_file,
+		'module impurejs\n\nfn JS.do_work()\n\npub fn call_js() { JS.do_work() }\n')!
+	import_impure := run_driver_review_process(v3_bin, ['-silent', '-Wimpure-v', '-W', '-o',
+		os.join_path(root, 'impure_import_output'), os.join_path(import_project, 'main.v')],
+		driver_review_environment())
+	assert import_impure.exit_code != 0, import_impure.output
+	assert import_impure.output.contains('JS code will not be allowed in pure .v files'), import_impure.output
+
+	assert import_impure.output.contains(import_interop_file), import_impure.output
+
 	notice_source := os.join_path(root, 'notice.v')
 	os.write_file(notice_source, 'fn unused() {}\n\nfn main() {}\n')!
 	notice_output := os.join_path(root, 'notice')

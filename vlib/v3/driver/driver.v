@@ -17,6 +17,7 @@ import v3.modulecache
 import v3.parser
 import v3.pref
 import v3.tempname
+import v3.token as v3token
 import v3.transform
 import v3.types
 import v.vmod
@@ -5218,6 +5219,142 @@ fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fall
 	return true
 }
 
+fn v3_source_is_pure_v(path string) bool {
+	if !path.ends_with('.v') && !path.ends_with('.vv') && !path.ends_with('.vsh') {
+		return false
+	}
+	before_dot_v := path.all_before_last('.v')
+	language := before_dot_v.all_after_last('.')
+	language_with_underscore := before_dot_v.all_after_last('_')
+	if language == before_dot_v && language_with_underscore == before_dot_v {
+		return true
+	}
+	actual_language := if language == before_dot_v { language_with_underscore } else { language }
+	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
+		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32',
+		'riscv32', 'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64',
+		'ppc64le', 'sparc64', 'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser',
+		'js_freestanding', 'wasm32', 'wasm']
+}
+
+fn v3_type_text_uses_interop_namespace(text string, namespace string) bool {
+	needle := namespace + '.'
+	mut offset := 0
+	for offset < text.len {
+		relative := text[offset..].index(needle) or { return false }
+		index := offset + relative
+		if index == 0 || (!(text[index - 1].is_alnum() || text[index - 1] == `_`)
+			&& text[index - 1] != `.`) {
+			return true
+		}
+		offset = index + needle.len
+	}
+	return false
+}
+
+fn v3_ast_node_uses_interop_namespace(a &flat.FlatAst, node &flat.Node, namespace string) bool {
+	if node.kind == .selector && node.children_count > 0 {
+		base := a.child_node(node, 0)
+		if base.kind == .ident && base.value == namespace {
+			return true
+		}
+	}
+	if node.kind !in [.string_literal, .string_interp, .char_literal, .directive, .file]
+		&& node.value.starts_with(namespace + '.') {
+		return true
+	}
+	return v3_type_text_uses_interop_namespace(node.typ, namespace)
+}
+
+fn v3_explicit_interop_fn_namespace(node &flat.Node, file string, mut source_cache map[string]string) string {
+	if node.kind != .c_fn_decl || !node.pos.is_valid() {
+		return ''
+	}
+	source := source_cache[file] or {
+		loaded := os.read_file(file) or { return '' }
+		source_cache[file] = loaded
+		loaded
+	}
+	mut cursor := int_min(node.pos.offset, source.len)
+	for cursor > 0 && source[cursor - 1] in [` `, `\t`] {
+		cursor--
+	}
+	if cursor == 0 || source[cursor - 1] != `.` {
+		return ''
+	}
+	cursor--
+	for cursor > 0 && source[cursor - 1] in [` `, `\t`] {
+		cursor--
+	}
+	end := cursor
+	for cursor > 0 && (source[cursor - 1].is_alnum() || source[cursor - 1] == `_`) {
+		cursor--
+	}
+	namespace := source[cursor..end]
+	if namespace in ['C', 'JS'] {
+		return namespace
+	}
+	return ''
+}
+
+fn v3_impure_v_diagnostics(a &flat.FlatAst) []parser.Diagnostic {
+	mut diagnostics := []parser.Diagnostic{}
+	mut seen := map[string]bool{}
+	mut source_cache := map[string]string{}
+	mut file_ids := map[string]int{}
+	for id, file in a.source_files {
+		file_ids[file.name] = id
+	}
+	mut current_file := ''
+	mut current_file_id := 0
+	for node in a.nodes {
+		if node.kind == .file {
+			current_file = node.value
+			current_file_id = file_ids[current_file] or { 0 }
+			continue
+		}
+		mut file := current_file
+		mut file_id := current_file_id
+		if node.pos.is_valid() {
+			if source_file := a.source_files[node.pos.id] {
+				file = source_file.name
+				file_id = node.pos.id
+			}
+		}
+		if file_id == 0 || !v3_source_is_pure_v(file) {
+			continue
+		}
+		explicit_fn_namespace := v3_explicit_interop_fn_namespace(&node, file, mut source_cache)
+		for namespace in ['C', 'JS'] {
+			if explicit_fn_namespace != namespace
+				&& !v3_ast_node_uses_interop_namespace(a, &node, namespace) {
+				continue
+			}
+			pos := if node.pos.is_valid() { node.pos } else { v3token.new_pos(file_id, 0) }
+			key := '${pos.id}:${pos.offset}:${namespace}'
+			if key in seen {
+				continue
+			}
+			seen[key] = true
+			mut line := 1
+			mut column := pos.offset + 1
+			if position := a.source_position(pos) {
+				line = position.line
+				column = position.column
+			}
+			diagnostics << parser.Diagnostic{
+				file:     file
+				pos:      pos
+				line:     line
+				column:   column
+				severity: 'warning:'
+				message:  '${namespace} code will not be allowed in pure .v files, please move it to a .${namespace.to_lower_ascii()}.v file instead'
+			}
+		}
+	}
+	return diagnostics
+}
+
 fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string) bool {
 	if fallback_file == '' || report_dir == '' || !os.is_file(c_source) {
 		return false
@@ -5843,6 +5980,8 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-Wimpure-v' {
 			warn_impure_v = true
+			// Cached module headers omit function bodies, so inspect source for every import.
+			no_cache = true
 			i++
 		} else if args[i] == '-W' {
 			warns_are_errors = true
@@ -5935,16 +6074,6 @@ pub fn run(args []string) {
 		&& !output_file.ends_with('.o'))) {
 		eprintln('option `-is_o` requires the C backend and an explicit `.c` or `.o` output file')
 		exit(1)
-	}
-	if warn_impure_v && input_file.ends_with('.v') && !input_file.ends_with('.c.v') {
-		source := os.read_file(input_file) or { '' }
-		if source.contains('C.') {
-			severity := if warns_are_errors { 'error' } else { 'warning' }
-			eprintln('${input_file}: ${severity}: C code will not be allowed in pure .v files')
-			if warns_are_errors {
-				exit(1)
-			}
-		}
 	}
 	if !is_checker_fixture && input_is_legacy_diagnostic_fixture(input_file) {
 		// v/compiler_errors_test.v predates `-checker-fixture` and invokes every
@@ -6483,6 +6612,9 @@ pub fn run(args []string) {
 		resolve_imports_elapsed_us - resolve_imports_parse_us
 	} else {
 		i64(0)
+	}
+	if warn_impure_v {
+		p.diagnostics << v3_impure_v_diagnostics(a)
 	}
 	if print_v_files || print_watched_files {
 		mut watched := map[string]bool{}

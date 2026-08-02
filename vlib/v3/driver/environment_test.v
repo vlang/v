@@ -3,6 +3,8 @@ module driver
 import os
 import v3.ansi
 import v3.flat
+import v3.parser
+import v3.pref
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {
@@ -88,6 +90,38 @@ fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
 	assert v3_parallel_cc_active_sources_include_external_definition(a, [source])
 	a.nodes[1] = flat.Node{}
 	assert !v3_parallel_cc_active_sources_include_external_definition(a, [source])
+}
+
+fn test_impure_v_diagnostics_inspect_ast_nodes_in_every_pure_v_file() {
+	root := os.join_path(os.temp_dir(), 'v3_impure_v_ast_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	clean_file := os.join_path(root, 'clean.v')
+	c_file := os.join_path(root, 'c_usage.v')
+	js_file := os.join_path(root, 'js_usage.v')
+	allowed_c_file := os.join_path(root, 'allowed.c.v')
+	allowed_js_file := os.join_path(root, 'allowed.js.v')
+	os.write_file(clean_file,
+		"// C.comment() and JS.comment()\nfn clean() { println('C.foo JS.bar') }\n")!
+	os.write_file(c_file, 'fn C.do_work()\nfn use_c(value &C.Widget) { C.do_work() }\n')!
+	os.write_file(js_file, 'fn JS.do_work()\nfn use_js(value JS.Number) { JS.do_work() }\n')!
+	os.write_file(allowed_c_file, 'fn C.allowed()\nfn use_c() { C.allowed() }\n')!
+	os.write_file(allowed_js_file, 'fn JS.allowed()\nfn use_js() { JS.allowed() }\n')!
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_files([clean_file, c_file, js_file, allowed_c_file, allowed_js_file])
+	diagnostics := v3_impure_v_diagnostics(a)
+	assert !diagnostics.any(it.file == clean_file), diagnostics.str()
+	assert diagnostics.any(it.file == c_file && it.message.starts_with('C code will not be allowed')), diagnostics.str()
+
+	assert diagnostics.any(it.file == js_file
+		&& it.message.starts_with('JS code will not be allowed')), diagnostics.str()
+
+	assert !diagnostics.any(it.file == allowed_c_file), diagnostics.str()
+	assert !diagnostics.any(it.file == allowed_js_file), diagnostics.str()
 }
 
 fn test_v3_run_only_cache_identity_distinguishes_patterns() {
