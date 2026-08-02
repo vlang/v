@@ -122,6 +122,12 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.print_autofree_vars = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.print_autofree_vars = false
+		prefs.trace_calls = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.trace_calls = false
+		prefs.trace_fns = ['main.main']
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.trace_fns.clear()
 		prefs.compress = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.compress = false
@@ -166,6 +172,10 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.path = 'program.txt'
 		assert is_macos_v3_relevant_command('run', prefs)
 		assert is_macos_v3_relevant_command('build', prefs)
+		prefs.is_script = false
+		prefs.path = 'vlib/math'
+		assert !is_macos_v3_relevant_command('build-module', prefs)
+		prefs.is_script = true
 		prefs.path = 'script.vsh'
 		assert is_macos_v3_relevant_command('script.vsh', prefs)
 		assert !is_macos_v3_relevant_command('crun', prefs)
@@ -260,6 +270,29 @@ fn test_autofree_inspection_requires_standard_compiler() {
 	assert function_vars.print_autofree_vars
 	assert function_vars.print_autofree_vars_in_fn == 'main.main'
 	assert autofree_requires_standard_compiler(function_vars)
+}
+
+fn test_autofree_tracing_requires_standard_compiler() {
+	trace_calls, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-trace-calls',
+		'main.v',
+	], false)
+	assert trace_calls.autofree
+	assert trace_calls.trace_calls
+	assert autofree_requires_standard_compiler(trace_calls)
+
+	trace_fns, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-trace-fns',
+		'main.main',
+		'main.v',
+	], false)
+	assert trace_fns.autofree
+	assert trace_fns.trace_fns == ['main.main']
+	assert autofree_requires_standard_compiler(trace_fns)
 }
 
 fn test_macos_v3_implicit_gc_default_uses_v3() {
