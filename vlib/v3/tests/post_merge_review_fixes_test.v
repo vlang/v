@@ -3555,6 +3555,13 @@ fn test_formatted_interpolation_rune_and_long_float() {
 	assert out == '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'
 }
 
+fn test_formatted_interpolation_integer_alias_character_code() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code',
+		"type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
+	assert out == 'ABC'
+}
+
 fn test_alias_interface_str_dispatch_marks_alias_method_used() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'alias_interface_str_dispatch',

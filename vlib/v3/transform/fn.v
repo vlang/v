@@ -6142,7 +6142,14 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ.all_after_last('.')
 	}
-	normalized_typ := t.normalize_type_alias(typ)
+	mut normalized_typ := typ
+	for _ in 0 .. 1000 {
+		next := t.normalize_type_alias(normalized_typ)
+		if next == normalized_typ {
+			break
+		}
+		normalized_typ = next
+	}
 	if repeat_count, upper := string_repeat_format(format) {
 		if clean_typ == 'string' || normalized_typ == 'string' {
 			t.mark_fn_used('string__repeat')
@@ -6258,8 +6265,9 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		}
 	}
 	if char_format := character_format(format) {
-		if clean_typ in ['u8', 'byte', 'char', 'rune', 'int'] {
-			arg := if clean_typ == 'int' {
+		if normalized_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
+			'u64', 'usize', 'char', 'rune'] {
+			arg := if normalized_typ == 'int' {
 				expr
 			} else {
 				t.make_cast('int', expr, 'int')

@@ -180,7 +180,7 @@ fn is_string_interp_char_code_type(name string) bool {
 
 fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, typ types.Type, format string) bool {
 	f := parse_string_interp_format(format)
-	type_name := string_interp_type_name(typ)
+	type_name := string_interp_type_name(g.value_unalias_type(typ))
 	left := if f.left { 1 } else { 0 }
 	// An unsigned-backed enum must format as unsigned so values >= 1<<63 are not
 	// rendered as negative; consult the enum backing type like the transformer does.

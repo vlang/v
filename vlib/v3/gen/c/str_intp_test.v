@@ -32,6 +32,20 @@ fn test_character_interpolation_uses_rune_text() {
 	assert formatted_u8_interp_c_expr('3c') == 'v3_string_pad(rune__str((u32)(102)), 3, 0)'
 }
 
+fn test_character_interpolation_unwraps_integer_alias() {
+	mut a := flat.FlatAst.new()
+	value_id := a.add_val(.int_literal, '65')
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.gen_formatted_string_interp_child_expr(value_id, types.Alias{
+		name:      'Code'
+		base_type: types.Type(types.u8_)
+	}, 'c')
+	assert g.sb.str() == 'rune__str((u32)(65))'
+}
+
 fn test_width_only_enum_interpolation_uses_enum_text() {
 	assert formatted_enum_interp_c_expr('8') == 'v3_string_pad(Color__autostr(5), 8, 0)'
 	assert formatted_enum_interp_c_expr('-8') == 'v3_string_pad(Color__autostr(5), 8, 1)'
