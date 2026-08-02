@@ -165,6 +165,26 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	}
 }
 
+fn test_macos_v3_dispatch_requires_effective_no_gc_mode() {
+	$if macos {
+		implicit_gc, _ := pref.parse_args_and_show_errors([], ['', 'main.v'], false)
+		assert implicit_gc.gc_mode == .boehm_full_opt
+		assert !implicit_gc.gc_set_by_flag
+		assert !is_macos_v3_relevant_command('main.v', implicit_gc)
+
+		explicit_none, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'none', 'main.v'],
+			false)
+		assert explicit_none.gc_mode == .no_gc
+		assert explicit_none.gc_set_by_flag
+		assert is_macos_v3_relevant_command('main.v', explicit_none)
+
+		prealloc, _ := pref.parse_args_and_show_errors([], ['', '-prealloc', 'main.v'], false)
+		assert prealloc.gc_mode == .no_gc
+		assert !prealloc.gc_set_by_flag
+		assert is_macos_v3_relevant_command('main.v', prealloc)
+	}
+}
+
 fn test_macos_v3_detects_v1_only_leading_options() {
 	$if macos {
 		assert macos_v3_has_v1_only_leading_option(['-message-limit', '0', 'main.v'], 'main.v')
@@ -224,7 +244,8 @@ fn test_macos_v3_show_c_output_prints_successful_compiler_output() {
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
-		process.set_args(['-v', '-nocache', '-show-c-output', '-cc', compiler, '-o', output, source])
+		process.set_args(['-v', '-gc', 'none', '-nocache', '-show-c-output', '-cc', compiler, '-o',
+			output, source])
 		process.set_environment(environment)
 		process.set_redirect_stdio()
 		process.run()
@@ -486,7 +507,7 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
-		process.set_args(['-v', '-o', output, target])
+		process.set_args(['-v', '-gc', 'none', '-o', output, target])
 		process.set_environment(environment)
 		process.set_redirect_stdio()
 		process.run()
@@ -544,7 +565,7 @@ fn test_macos_v3_test_command_uses_v3() {
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
-		process.set_args(['-v', 'test', test_file])
+		process.set_args(['-v', '-gc', 'none', 'test', test_file])
 		process.set_environment(environment)
 		process.set_redirect_stdio()
 		process.run()
@@ -575,7 +596,7 @@ fn test_macos_v3_directory_c_output_differs_from_old_compiler() {
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut v3_process := os.new_process(@VEXE)
-		v3_process.set_args(['-v', '-o', v3_output, source_dir])
+		v3_process.set_args(['-v', '-gc', 'none', '-o', v3_output, source_dir])
 		v3_process.set_environment(environment)
 		v3_process.set_redirect_stdio()
 		v3_process.run()

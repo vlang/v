@@ -82,8 +82,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		|| prefs.exclude.len > 0 || prefs.ldflags.len > 0 || prefs.nofloat
 		|| prefs.fast_math || prefs.is_bare
 		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()
-		|| (prefs.backend == .wasm && prefs.is_run)
-		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
+		|| (prefs.backend == .wasm && prefs.is_run) || prefs.gc_mode != .no_gc {
 		// V1 still owns compiler modes whose runtime or C toolchain support has not
 		// been implemented by V3 yet.
 		return false
