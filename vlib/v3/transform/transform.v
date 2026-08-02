@@ -17267,6 +17267,34 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		return id
 	}
 	target_type := t.normalize_type_alias(node.value)
+	// Materialize a value-context `match`/`if` cast operand into a value temp before
+	// the type-specific dispatch below. Several cast paths return early into helpers
+	// that lower the operand with plain `transform_expr` — the optional-sum branch
+	// (`?Shape(match ...)`), interface boxing (`Animal(match ...)`), the pointer-to-sum
+	// branch (`&Shape(match ...)`) and the sum branch (`Shape(match ...)`) — which would
+	// lower a propagating branch tail in a value-less statement context and emit an
+	// empty expression. Re-dispatch over the rewritten temp so every path sees a plain,
+	// typed operand. `transform_value_operand` is a no-op for the common non-branch operands.
+	if node.children_count == 1 {
+		match_cast_child := t.a.child(&node, 0)
+		if t.is_value_match_or_if_operand(match_cast_child) {
+			value := t.transform_value_operand(match_cast_child)
+			if value != match_cast_child {
+				start := t.a.children.len
+				t.a.children << value
+				new_id := t.a.add_node(flat.Node{
+					kind:           .cast_expr
+					op:             node.op
+					children_start: start
+					children_count: 1
+					pos:            node.pos
+					value:          node.value
+					typ:            node.typ
+				})
+				return t.transform_cast_expr(new_id, t.a.nodes[int(new_id)])
+			}
+		}
+	}
 	if target_type.starts_with('&') && t.is_interface_type(target_type) {
 		child := t.a.child_node(&node, 0)
 		if child.kind == .call && child.children_count > 0 {
@@ -17390,17 +17418,9 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		return t.make_optional_some(expr, optional_target)
 	}
 	if t.is_sum_type_name(target_type) {
-		sum_child_id := t.a.child(&node, 0)
-		if t.is_value_match_or_if_operand(sum_child_id) {
-			// A `match`/`if` operand of a sum-type cast (e.g.
-			// `Shape(match x { First { make_circle()! } else { make_square()! } })`) is a
-			// value expression whose (possibly propagating) branch tails must be lowered
-			// as values. `wrap_sum_value` would lower them with plain `transform_expr` in
-			// a value-less statement context and emit an empty expression, so route the
-			// operand through the target sum type instead (mirrors the `as`-cast path).
-			return t.transform_expr_for_type(sum_child_id, target_type)
-		}
-		return t.wrap_sum_value(sum_child_id, target_type)
+		// A value `match`/`if` operand here has already been materialized into a value
+		// temp by the pre-dispatch guard above, so `wrap_sum_value` sees a plain operand.
+		return t.wrap_sum_value(t.a.child(&node, 0), target_type)
 	}
 	// An explicit cast to an interface (`Animal(dog)`, `&PRNG(rng)`) boxes the
 	// concrete value into the interface representation, just like an implicit
@@ -17451,12 +17471,6 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			new_children << t.transform_expr_for_type(child_id, target_type)
 		} else if target_type in ['voidptr', 'byteptr', 'charptr'] {
 			new_children << t.transform_expr_preserving_pointer_value(child_id)
-		} else if t.is_value_match_or_if_operand(child_id) {
-			// A `match`/`if` cast operand is a value expression whose (possibly
-			// propagating) branch tails must be lowered as values, e.g.
-			// `i64(match x { ... foo()! ... })`. Plain `transform_expr` would
-			// lower them in statement context and emit an empty ternary.
-			new_children << t.transform_expr_for_type(child_id, target_type)
 		} else {
 			new_children << t.transform_expr(child_id)
 		}
