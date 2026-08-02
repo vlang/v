@@ -378,6 +378,18 @@ fn test_autofree_response_files_and_message_limits_require_standard_compiler() {
 	}
 }
 
+fn test_autofree_allocation_warnings_require_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-warn-about-allocs',
+		'main.v',
+	], false)
+	assert prefs.autofree
+	assert prefs.warn_about_allocs
+	assert autofree_requires_standard_compiler(prefs)
+}
+
 fn test_autofree_tracing_requires_standard_compiler() {
 	trace_calls, _ := pref.parse_args_and_show_errors([], [
 		'',

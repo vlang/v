@@ -4164,11 +4164,11 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 		g.gen_compiler_vexe_env_setup()
 		g.gen_coverage_registration()
-		g.gen_executable_cleanup_registration()
 		if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 			|| g.global_inits.len > 0 {
 			g.writeln('\t_vinit();')
 		}
+		g.gen_executable_cleanup_registration()
 	} else {
 		ret_type := g.fn_node_return_type(node, module_name)
 		g.set_cur_fn_ret(ret_type)
@@ -4396,11 +4396,11 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
-	g.gen_executable_cleanup_registration()
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('\t_vinit();')
 	}
+	g.gen_executable_cleanup_registration()
 	g.indent++
 	g.gen_function_defer_prelude()
 	for stmt in stmts {
@@ -4469,11 +4469,11 @@ fn (mut g FlatGen) gen_test_main() {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
-	g.gen_executable_cleanup_registration()
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('\t_vinit();')
 	}
+	g.gen_executable_cleanup_registration()
 	g.indent++
 	if hooks.testsuite_begin.len > 0 {
 		g.writeln('${hooks.testsuite_begin}();')

@@ -21,6 +21,13 @@ fn executable_cleanup_compile_and_run(v3_bin string, root string, name string, s
 	return os.execute(os.quoted_path(output_path)), generated_c
 }
 
+fn assert_cleanup_registered_after_init(c_code string) {
+	init_index := c_code.index('\t_vinit();')
+	cleanup_index := c_code.index('atexit(_vcleanup);')
+	assert init_index >= 0, c_code
+	assert cleanup_index > init_index, c_code
+}
+
 fn test_executable_mains_invoke_module_cleanup() {
 	root := os.join_path(os.temp_dir(), 'v3_executable_cleanup_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -33,7 +40,11 @@ fn test_executable_mains_invoke_module_cleanup() {
 		os.execute('${os.quoted_path(executable_cleanup_vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(executable_cleanup_v3_src)}')
 	assert build.exit_code == 0, build.output
 
-	main_run, main_c := executable_cleanup_compile_and_run(v3_bin, root, 'user_main', '.v', "fn cleanup() {
+	main_run, main_c := executable_cleanup_compile_and_run(v3_bin, root, 'user_main', '.v', "fn init() {
+	println('init')
+}
+
+fn cleanup() {
 	println('cleanup')
 }
 
@@ -43,21 +54,49 @@ fn main() {
 }
 ")
 	assert main_run.exit_code == 0, main_run.output
-	assert main_run.output.trim_space() == 'main\ncleanup'
+	assert main_run.output.trim_space() == 'init\nmain\ncleanup'
 	assert main_c.contains('atexit(_vcleanup);'), main_c
+	assert_cleanup_registered_after_init(main_c)
+
+	init_exit_run, init_exit_c := executable_cleanup_compile_and_run(v3_bin, root, 'init_exit',
+		'.v', "fn init() {
+	println('init')
+	exit(0)
+}
+
+fn cleanup() {
+	println('cleanup')
+}
+
+fn main() {
+	println('main')
+}
+")
+	assert init_exit_run.exit_code == 0, init_exit_run.output
+	assert init_exit_run.output.trim_space() == 'init'
+	assert_cleanup_registered_after_init(init_exit_c)
 
 	top_level_run, top_level_c := executable_cleanup_compile_and_run(v3_bin, root, 'top_level',
-		'.vsh', "fn cleanup() {
+		'.vsh', "fn init() {
+	println('init')
+}
+
+fn cleanup() {
 	println('cleanup')
 }
 
 println('top level')
 ")
 	assert top_level_run.exit_code == 0, top_level_run.output
-	assert top_level_run.output.trim_space() == 'top level\ncleanup'
+	assert top_level_run.output.trim_space() == 'init\ntop level\ncleanup'
 	assert top_level_c.contains('atexit(_vcleanup);'), top_level_c
+	assert_cleanup_registered_after_init(top_level_c)
 
-	test_run, test_c := executable_cleanup_compile_and_run(v3_bin, root, 'test_main', '_test.v', "fn cleanup() {
+	test_run, test_c := executable_cleanup_compile_and_run(v3_bin, root, 'test_main', '_test.v', "fn init() {
+	println('init')
+}
+
+fn cleanup() {
 	println('cleanup')
 }
 
@@ -66,6 +105,7 @@ fn test_one() {
 }
 ")
 	assert test_run.exit_code == 0, test_run.output
-	assert test_run.output.trim_space() == 'test\ncleanup'
+	assert test_run.output.trim_space() == 'init\ntest\ncleanup'
 	assert test_c.contains('atexit(_vcleanup);'), test_c
+	assert_cleanup_registered_after_init(test_c)
 }
