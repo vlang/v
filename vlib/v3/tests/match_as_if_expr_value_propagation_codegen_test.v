@@ -880,6 +880,20 @@ fn select_value_plain_call_order(node Node) !int {
 	return r * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+// Plain call ordering with a *nested* value branch: the match is buried inside a compound
+// second argument (`1 + (match ...)`), which still materializes the branch prelude into
+// pending_stmts. The side-effecting first argument must run before that prelude.
+// First -> combine(3, 1 + 4) = combine(3, 5) = 35, order [1,2] -> 3512
+// (a reversed order, the match prelude before first_arg, would be 3521).
+fn select_value_nested_branch_arg_order(node Node) !int {
+	mut tr := Tracer{}
+	r := combine(tr.first_arg(), 1 + (match node {
+		First { tr.second_arg_first(node)! }
+		Second { tr.second_arg_second(node)! }
+	}))
+	return r * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 struct Holder2 {
 mut:
 	v int
@@ -1070,6 +1084,7 @@ fn main() {
 	println(select_value_mut_receiver(First{})!)
 	println(select_value_channel_target_order(First{})!)
 	println(select_value_plain_call_order(First{})!)
+	println(select_value_nested_branch_arg_order(First{})!)
 	println(select_value_mut_arg(First{})!)
 	println(select_value_array_init(First{})!)
 	println(select_value_nonmut_arg_value(First{})!)
@@ -1087,5 +1102,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n7612\n4004\n507\n212\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n3512\n7612\n4004\n507\n212\n1'
 }

@@ -14957,10 +14957,14 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		recv_fn := t.a.nodes[int(recv_fn_id)]
 		is_method := recv_fn.kind == .selector && recv_fn.children_count > 0
 		recv_id := if is_method { t.a.children[recv_fn.children_start] } else { flat.empty_node }
-		// Position of the last value-branch operand (0 = method receiver, 1.. = arguments).
+		// Position of the last operand that hoists a value branch (0 = method receiver,
+		// 1.. = arguments). An argument counts even when the branch is nested inside a
+		// compound expression (`1 + (match ...)`, `i64(match ...)`): lowering it still
+		// materializes the inner branch into pending_stmts, so an earlier operand must be
+		// stabilized to keep source order.
 		mut last_branch := if is_method && t.is_value_match_or_if_operand(recv_id) { 0 } else { -1 }
 		for i in 1 .. node.children_count {
-			if t.is_value_match_or_if_operand(t.a.child(&node, i)) {
+			if t.operand_hoists_value_branch(t.a.child(&node, i)) {
 				last_branch = i
 			}
 		}
@@ -17561,6 +17565,35 @@ fn (t &Transformer) is_value_match_or_if_operand(id flat.NodeId) bool {
 		return t.is_value_match_or_if_operand(t.a.child(&node, node.children_count - 1))
 	}
 	return node.kind in [.match_stmt, .if_expr]
+}
+
+// operand_hoists_value_branch reports whether lowering `id` as a call operand (receiver or
+// argument) can materialize a value `match`/`if` into pending_stmts — either directly, or
+// nested inside a compound expression such as an infix, cast, index, prefix, nested call or
+// composite literal (`1 + (match ...)`, `i64(match ...)`, `arr[match ...]`). The `last_branch`
+// scan uses this to detect an operand that hoists a prelude so preceding operands can be
+// stabilized for source order; `is_value_match_or_if_operand` alone stops at the outer
+// wrapper and misses a branch buried inside such a compound operand. Recursion stops at
+// constructs that lower into their own scope — a nested closure/lambda/spawn body materializes
+// into that body, not the current pending. Over-detection is safe here: it only spills an
+// extra preceding operand to a temp, which is always order-preserving.
+fn (t &Transformer) operand_hoists_value_branch(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.match_stmt, .if_expr] {
+		return true
+	}
+	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if t.operand_hoists_value_branch(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // transform_cast_expr transforms transform cast expr data for transform.
