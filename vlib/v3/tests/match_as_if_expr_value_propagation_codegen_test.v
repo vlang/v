@@ -184,6 +184,19 @@ fn select_value_prefix(node ?Node) !int {
 	return result
 }
 
+fn select_value_index(node ?Node) !int {
+	values := [10, 20, 30]
+	result := if value := node {
+		values[match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}]
+	} else {
+		0
+	}
+	return result
+}
+
 struct Holder {
 	value int
 	other int
@@ -281,6 +294,7 @@ fn main() {
 	println(select_value_callarg_infix(First{})!)
 	println(select_value_arraylit(First{})!)
 	println(select_value_prefix(First{})!)
+	println(select_value_index(First{})!)
 	println(select_value_structinit(First{})!.value)
 	println(select_value_mapinit(Second{})![7])
 	println(select_value_ascast(5)!)
@@ -298,5 +312,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n1\n2\n6\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n1\n2\n6\n6\n2'
 }

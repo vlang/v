@@ -8557,7 +8557,20 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				c.warn('`or {}` block required when indexing a map with sum type value', node.pos)
 			}
 		} else {
+			// A value `match`/`if` index, e.g. `values[match x { ... }]`, in a void
+			// context (nested in an if-branch) must be checked as an expression so
+			// its arms produce values, instead of being typed `void` ("non-integer
+			// index `void`").
+			mut restore_force_value := false
+			if c.expected_type == ast.void_type && !c.force_value_match_or_if
+				&& operand_is_value_match_or_if(node.index) {
+				c.force_value_match_or_if = true
+				restore_force_value = true
+			}
 			index_type := c.expr(mut node.index)
+			if restore_force_value {
+				c.force_value_match_or_if = false
+			}
 			if node.is_gated && (typ.is_ptr() || typ.is_pointer()
 				|| typ_sym.kind !in [.array, .array_fixed, .string]) {
 				c.error('`#[]` negative indexing is only supported for arrays, fixed arrays, and strings',

@@ -265,6 +265,20 @@ fn select_value_prefix(node ?Node) !int {
 	return result
 }
 
+// match as an index-expression operand: `values[match .. { .. }]`
+fn select_value_index(node ?Node) !string {
+	values := ['a', 'b', 'c']
+	result := if value := node {
+		values[match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}]
+	} else {
+		'x'
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -447,6 +461,12 @@ fn test_prefix_operand_match_as_if_expr_value_with_propagation() {
 	assert select_value_prefix(First{})! == -1
 	assert select_value_prefix(Second{})! == -2
 	assert select_value_prefix(none) or { 42 } == 0
+}
+
+fn test_index_operand_match_as_if_expr_value_with_propagation() {
+	assert select_value_index(First{})! == 'b'
+	assert select_value_index(Second{})! == 'c'
+	assert select_value_index(none) or { 'z' } == 'x'
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

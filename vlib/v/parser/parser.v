@@ -625,6 +625,12 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			// e.g. `-(match value { .. })` as a call argument.
 			p.expr_contains_value_match_or_if(expr.right)
 		}
+		ast.IndexExpr {
+			// e.g. `values[match value { .. }]` as a call argument.
+
+			p.expr_contains_value_match_or_if(expr.left)
+				|| p.expr_contains_value_match_or_if(expr.index)
+		}
 		ast.ArrayInit {
 			// e.g. `[match value { .. }]` as a call argument.
 			mut found := false
@@ -730,6 +736,21 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 				if p.expr_contains_value_match_or_if(element) {
 					p.mark_last_call_expr_return_as_used(mut element)
 				}
+			}
+		}
+		ast.IndexExpr {
+			if expr.or_expr.stmts.len > 0 {
+				mut or_block_last_stmt := expr.or_expr.stmts.last()
+				p.mark_last_call_return_as_used(mut or_block_last_stmt)
+			}
+			// last stmt on block is an index expr, e.g. `values[match value { .. }]`
+			// or `(match value { .. })[0]`; mark the indexed expr and the index if
+			// either is (or nests) a block-value match/if.
+			if p.expr_contains_value_match_or_if(expr.left) {
+				p.mark_last_call_expr_return_as_used(mut expr.left)
+			}
+			if p.expr_contains_value_match_or_if(expr.index) {
+				p.mark_last_call_expr_return_as_used(mut expr.index)
 			}
 		}
 		ast.ParExpr {

@@ -15104,7 +15104,9 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		mut new_child := t.transform_expr(child_id)
+		// route a value `match`/`if` operand (e.g. `values[match x { ... }]`)
+		// through its target type so its propagating arms are lowered as values.
+		mut new_child := t.transform_value_operand(child_id)
 		if i == 0 {
 			base := t.a.nodes[int(new_child)]
 			if base.kind == .cast_expr {
