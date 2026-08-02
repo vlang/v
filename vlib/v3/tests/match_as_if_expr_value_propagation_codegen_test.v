@@ -1079,6 +1079,68 @@ fn select_value_composite_rvalue_channel_target(node Node) !int {
 	return got * 100 + f.order[0] * 10 + f.order[1]
 }
 
+struct ChanPick {
+mut:
+	ch1 chan int
+	ch2 chan int
+}
+
+fn (mut c ChanPick) pick_first(_ First) !chan int {
+	return c.ch1
+}
+
+fn (mut c ChanPick) pick_second(_ Second) !chan int {
+	return c.ch2
+}
+
+// The channel target is itself a value match producing a channel: it must be materialized as a
+// value, not lowered as an empty channel. First -> send 7 to ch1 -> received 7.
+fn select_value_branch_channel_target(node Node) !int {
+	mut c := ChanPick{
+		ch1: chan int{cap: 1}
+		ch2: chan int{cap: 1}
+	}
+	(match node {
+		First { c.pick_first(node)! }
+		Second { c.pick_second(node)! }
+	}) <- 7 or { return -1 }
+	return <-c.ch1
+}
+
+struct ChanReassign {
+mut:
+	ch1    chan int
+	ch2    chan int
+	target chan int
+}
+
+fn (mut c ChanReassign) retarget(_ First) !int {
+	c.target = c.ch2
+	return 7
+}
+
+// A stable channel target whose variable the sent-value branch reassigns: the value must be
+// sent to the channel evaluated before the RHS, not the replacement. First -> 7 lands on the
+// original target ch1 -> 7 (a leaked reassignment sends to ch2 -> 107).
+fn select_value_channel_target_reassign(node Node) !int {
+	mut c := ChanReassign{
+		ch1: chan int{cap: 1}
+		ch2: chan int{cap: 1}
+	}
+	c.target = c.ch1
+	c.target <- (match node {
+		First { c.retarget(node)! }
+		Second { 1 }
+	}) or { return -1 }
+	return if c.ch1.len == 1 {
+		<-c.ch1
+	} else if c.ch2.len == 1 {
+		100 + <-c.ch2
+	} else {
+		-1
+	}
+}
+
 struct Counter {
 mut:
 	v int
@@ -1490,6 +1552,8 @@ fn main() {
 	println(select_value_nested_channel_target_order(First{})!)
 	println(select_value_rvalue_channel_target(First{})!)
 	println(select_value_composite_rvalue_channel_target(First{})!)
+	println(select_value_branch_channel_target(First{})!)
+	println(select_value_channel_target_reassign(First{})!)
 	println(select_value_plain_call_order(First{})!)
 	println(select_value_nested_branch_arg_order(First{})!)
 	println(select_value_mut_arg(First{})!)
@@ -1516,5 +1580,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\ntrue\n41\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\ntrue\n41\n1'
 }

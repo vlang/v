@@ -9924,45 +9924,6 @@ fn (mut t Transformer) stabilize_transformed_lvalue_for_reuse(id flat.NodeId) fl
 	}
 }
 
-// transformed_lvalue_root_needs_value_spill reports whether stabilize_transformed_lvalue_for_reuse
-// would leave a side-effecting subexpression inline in `id`. That stabilizer spills index/selector
-// *components* and deref operands, but for an index/selector it recurses into the *base* and
-// returns a non-lvalue base (a call or other rvalue) unchanged. So a target rooted in a
-// side-effecting rvalue (e.g. `make_channels()[0]`) is not made reusable by that stabilization —
-// only its outer shape is rebuilt (a new node id) while the rvalue base still runs at use time.
-// Walk the lvalue spine to the root leaf: if that leaf is a non-lvalue rvalue that is not stable,
-// the whole target must instead be spilled by value.
-fn (t &Transformer) transformed_lvalue_root_needs_value_spill(id flat.NodeId) bool {
-	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return false
-	}
-	node := t.a.nodes[int(id)]
-	match node.kind {
-		.ident {
-			return false
-		}
-		.selector, .index, .paren {
-			if node.children_count == 0 {
-				return false
-			}
-			return t.transformed_lvalue_root_needs_value_spill(t.a.child(&node, 0))
-		}
-		.prefix {
-			// A deref (`*p`) has its pointer operand spilled as a component, so it is safe;
-			// any other prefix is not an lvalue root.
-			if node.op == .mul {
-				return false
-			}
-			return !t.is_stable_expr_for_reuse(id)
-		}
-		else {
-			// A non-lvalue root (call, etc.): the stabilizer leaves it inline, so if it is
-			// side-effecting (not stable) the whole target must be spilled by value.
-			return !t.is_stable_expr_for_reuse(id)
-		}
-	}
-}
-
 fn (mut t Transformer) stabilize_transformed_lvalue_component(id flat.NodeId, prefix string) flat.NodeId {
 	if t.is_stable_expr_for_reuse(id) {
 		return id
@@ -14742,25 +14703,24 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			t.mark_fn_used('sync__Channel__try_push_priv')
 			t.mark_fn_used('sync__Channel__closed_error')
 			send_prelude_start := t.pending_stmts.len
-			mut lhs := t.transform_expr(t.a.child(&node, 0))
+			target_id := t.a.child(&node, 0)
+			// Route a value `match`/`if` channel target through value lowering so its propagating
+			// arm tail is materialized as a value temp, e.g.
+			// `(match node { First { channel_first(node)! } ... }) <- 1 or { return }`; otherwise
+			// it is lowered in a value-less statement context and emits an empty channel
+			// expression. `transform_value_operand` is a no-op for the common non-branch targets.
+			mut lhs := t.transform_value_operand(target_id)
 			sent_value_id := t.a.child(&rhs, 0)
-			// Stabilize the channel target before materializing a sent value that hoists a value
-			// branch — directly or nested inside a compound sent value (`channels[next()] <-
-			// wrap(match ...) or {}`) — so a side-effecting target (e.g.
-			// `channels[next(mut trace)] <- (match ...) or {}`) evaluates before the sent value's
-			// hoisted prelude. A stable-rooted lvalue target has only its dynamic base/index
-			// components spilled (preserving the lvalue shape without spilling the channel value).
-			// A target rooted in a side-effecting rvalue — a bare call (`get_channel(mut trace)
-			// <- ...`) or one under an index/selector (`make_channels(mut trace)[0] <- ...`),
-			// which the lvalue stabilizer would leave inline — is spilled whole by value.
-			if t.operand_hoists_value_branch(sent_value_id) {
-				lhs = if t.is_stable_expr_for_reuse(lhs) {
-					lhs
-				} else if t.transformed_lvalue_root_needs_value_spill(lhs) {
-					t.stable_transformed_expr_for_reuse(lhs, t.node_type(lhs), 'chan_target')
-				} else {
-					t.stabilize_transformed_lvalue_for_reuse(lhs)
-				}
+			// A send target is a channel reference handle, not an lvalue that must be written
+			// through, so when the sent value hoists a value branch, snapshot the target's channel
+			// value before that branch's prelude. This captures the source-order channel even if
+			// the prelude reassigns a stable target
+			// (`target <- (match ... { retarget(mut target)! } ...)`) or mutates a side-effecting
+			// target's components (`channels[next()] <- (match ...)`). A value-branch target is
+			// already materialized into a temp above.
+			if t.operand_hoists_value_branch(sent_value_id)
+				&& !t.is_value_match_or_if_operand(target_id) {
+				lhs = t.snapshot_transformed_expr_for_reuse(lhs, t.node_type(lhs), 'chan_target')
 			}
 			// Route a value `match`/`if` sent value through value lowering so its propagating
 			// arm tail is materialized as a value, e.g.
