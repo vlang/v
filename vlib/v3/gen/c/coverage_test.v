@@ -4,6 +4,22 @@ import os
 import v3.flat
 import v3.token
 
+fn test_coverage_json_escape_handles_every_control_character() {
+	for code in 0 .. 32 {
+		raw := [u8(code)].bytestr()
+		expected := match code {
+			8 { '\\b' }
+			9 { '\\t' }
+			10 { '\\n' }
+			12 { '\\f' }
+			13 { '\\r' }
+			else { '\\u00${code:02x}' }
+		}
+		assert coverage_json_escape(raw) == expected
+	}
+	assert coverage_json_escape('quote" slash\\') == 'quote\\" slash\\\\'
+}
+
 fn test_coverage_points_keep_one_based_source_lines() {
 	source := 'first\nsecond\nthird\n'
 	path := os.join_path(os.temp_dir(), 'v3_coverage_source_${os.getpid()}.v')

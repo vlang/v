@@ -57,7 +57,7 @@ fn (mut g FlatGen) gen_coverage_registration() {
 }
 
 fn coverage_json_escape(value string) string {
-	return value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+	return json_string_content_escape(value)
 }
 
 fn (mut g FlatGen) write_coverage_metadata() {
