@@ -383,6 +383,9 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
 	mut prefs := &pref.Preferences{}
 	assert !autofree_requires_standard_compiler(prefs)
+	prefs.is_quiet = true
+	assert autofree_requires_standard_compiler(prefs)
+	prefs.is_quiet = false
 	prefs.sanitize = true
 	assert autofree_requires_standard_compiler(prefs)
 	prefs.sanitize = false
@@ -459,6 +462,20 @@ fn test_macos_v3_keeps_v1_only_autofree_and_experimental_builds_on_v1() {
 		deployment_process.close()
 		assert deployment_exit_code == 0, deployment_build_output
 		assert !deployment_build_output.contains('Launching v3_ownership:'), deployment_build_output
+
+		quiet_source := os.join_path(root, 'quiet.v')
+		os.write_file(quiet_source, 'fn main() {}\n')!
+		mut quiet_process := os.new_process(@VEXE)
+		quiet_process.set_args(['-v', '-autofree', '-q', '-check', quiet_source])
+		quiet_process.set_environment(environment)
+		quiet_process.set_redirect_stdio()
+		quiet_process.run()
+		quiet_process.wait()
+		quiet_build_output := quiet_process.stdout_slurp() + quiet_process.stderr_slurp()
+		quiet_exit_code := quiet_process.code
+		quiet_process.close()
+		assert quiet_exit_code == 0, quiet_build_output
+		assert !quiet_build_output.contains('Launching v3_ownership:'), quiet_build_output
 
 		experimental_source := os.join_path(root, 'experimental.v')
 		experimental_output := os.join_path(root, 'experimental')

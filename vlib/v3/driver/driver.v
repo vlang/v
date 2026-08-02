@@ -1863,15 +1863,29 @@ fn v3_windows_batch_command(program string, args []string) string {
 	return parts.join(' ')
 }
 
+fn v3_posix_shell_quote_arg(argument string) string {
+	return "'" + argument.replace("'", "'\\''") + "'"
+}
+
+fn v3_posix_shell_command(program string, args []string) string {
+	mut parts := []string{cap: args.len + 1}
+	parts << v3_posix_shell_quote_arg(program)
+	for arg in args {
+		parts << v3_posix_shell_quote_arg(arg)
+	}
+	return parts.join(' ')
+}
+
 fn write_v3_c_project(project_dir string, c_source string, c_compiler string, plan V3CCompilerFlagPlan, support_inputs []string, objective_c bool) ! {
 	output_name := os.base(c_source).all_before_last('.c')
 	output_path := os.join_path_single(project_dir, output_name)
 	args := plan.compiler_args(output_path, v3_c_source_inputs(c_source, objective_c),
 		support_inputs)
-	posix_command := cmdexec.display(c_compiler, args)
+	display_command := cmdexec.display(c_compiler, args)
+	posix_command := v3_posix_shell_command(c_compiler, args)
 	make_command := posix_command.replace('$', '$$')
 	windows_command := v3_windows_batch_command(c_compiler, args)
-	os.write_file(os.join_path_single(project_dir, 'build_command.txt'), posix_command + '\n')!
+	os.write_file(os.join_path_single(project_dir, 'build_command.txt'), display_command + '\n')!
 	os.write_file(os.join_path_single(project_dir, 'Makefile'), 'all:\n\t${make_command}\n')!
 	build_sh := os.join_path_single(project_dir, 'build.sh')
 	os.write_file(build_sh, '#!/bin/sh\nset -eu\n${posix_command}\n')!

@@ -467,6 +467,17 @@ fn main() {
 	assert project_run.exit_code == 0, project_run.output
 	assert project_run.output == '42\n', project_run.output
 
+	backslash_project_dir := os.join_path(root, r'project\backslash')
+	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
+		backslash_project_dir, source])
+	assert backslash_generate.exit_code == 0, backslash_generate.output
+	backslash_build := cmdexec.run('sh', [
+		os.join_path(backslash_project_dir, 'build.sh'),
+	])
+	assert backslash_build.exit_code == 0, backslash_build.output
+	backslash_make := cmdexec.run('make', ['-C', backslash_project_dir])
+	assert backslash_make.exit_code == 0, backslash_make.output
+
 	bin_output := os.join_path(root, 'effective_flags')
 	bin_dump := os.join_path(root, 'binary_flags.txt')
 	compile := cmdexec.run(v3_bin, ['-silent', '-prod', '-showcc', '-dump-c-flags', bin_dump, '-o',

@@ -154,6 +154,11 @@ fn test_v3_windows_batch_command_uses_windows_quoting() {
 	assert !command.contains("'C:\\Program Files")
 }
 
+fn test_v3_posix_shell_command_quotes_every_argument() {
+	command := v3_posix_shell_command('clang', [r'/tmp/proj\name', 'plain', "it's"])
+	assert command == "'clang' '/tmp/proj\\name' 'plain' 'it'\\''s'"
+}
+
 fn test_record_user_define_normalizes_nonempty_valued_defines() {
 	mut defines := []string{}
 	mut values := map[string]string{}
