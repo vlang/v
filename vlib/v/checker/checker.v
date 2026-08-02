@@ -76,54 +76,54 @@ pub mut:
 	error_details []string
 	should_abort  bool // when too many errors are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 
-	expected_type                ast.Type
-	expected_or_type             ast.Type // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type           ast.Type // if/match is_expr: expected_type
-	mod                          string   // current module name
-	has_globals_in_module        bool     // true if the current module has @[has_globals] attribute
-	strict_map_index_in_module   bool     // true if the current module has @[strict_map_index] attribute
-	const_var                    &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
-	const_deps                   []string
-	const_eval_stack             []string // names of constants currently being recursively resolved (to break cycles via anon fn bodies)
-	const_names                  []string
-	global_names                 []string
-	locked_names                 []string // vars that are currently locked
-	rlocked_names                []string // vars that are currently read-locked
-	in_for_count                 int      // if checker is currently in a for loop
-	returns                      bool
-	scope_returns                bool
-	is_builtin_mod               bool        // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
-	is_just_builtin_mod          bool        // true only inside 'builtin'
-	is_generated                 bool        // true for `@[generated] module xyz` .v files
-	unresolved_fixed_sizes       []&ast.Stmt // funcs with unresolved array fixed size e.g. fn func() [const1]int
-	inside_recheck               bool        // true when rechecking rhs assign statement
-	inside_unsafe                bool        // true inside `unsafe {}` blocks
-	inside_const                 bool        // true inside `const ( ... )` blocks
-	inside_anon_fn               bool        // true inside `fn() { ... }()`
-	inside_lambda                bool        // true inside `|...| ...`
-	inside_ref_lit               bool        // true inside `a := &something`
-	inside_defer                 bool        // true inside `defer {}` blocks
-	inside_return                bool        // true inside `return ...` blocks
-	inside_fn_arg                bool        // `a`, `b` in `a.f(b)`
-	inside_ct_attr               bool        // true inside `[if expr]`
-	inside_x_is_type             bool        // true inside the Type expression of `if x is Type {`
-	inside_x_matches_type        bool        // true inside the match branch of `match x.type { Type {} }`
-	inside_array_init_value_elem bool        // true when checking a value `match`/`if` array element, e.g. `[match x { .. }]`
-	anon_struct_should_be_mut    bool        // true when `mut var := struct { ... }` is used
-	inside_generic_struct_init   bool
-	inside_integer_literal_cast  bool // true inside `int(123)`
-	cur_struct_generic_types     []ast.Type
-	cur_struct_concrete_types    []ast.Type
-	anon_fn_generic_names        []string
-	anon_fn_concrete_types       []ast.Type
-	skip_flags                   bool      // should `#flag` and `#include` be skipped
-	fn_level                     int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
-	smartcast_mut_pos            token.Pos // match mut foo, if mut foo is Foo
-	smartcast_cond_pos           token.Pos // match cond
-	ct_cond_stack                []ast.Expr
-	ct_user_defines              map[string]bool
-	ct_system_defines            map[string]bool
-	cur_ct_id                    int // id counter for $if $match branches
+	expected_type               ast.Type
+	expected_or_type            ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type          ast.Type // if/match is_expr: expected_type
+	mod                         string   // current module name
+	has_globals_in_module       bool     // true if the current module has @[has_globals] attribute
+	strict_map_index_in_module  bool     // true if the current module has @[strict_map_index] attribute
+	const_var                   &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
+	const_deps                  []string
+	const_eval_stack            []string // names of constants currently being recursively resolved (to break cycles via anon fn bodies)
+	const_names                 []string
+	global_names                []string
+	locked_names                []string // vars that are currently locked
+	rlocked_names               []string // vars that are currently read-locked
+	in_for_count                int      // if checker is currently in a for loop
+	returns                     bool
+	scope_returns               bool
+	is_builtin_mod              bool        // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_just_builtin_mod         bool        // true only inside 'builtin'
+	is_generated                bool        // true for `@[generated] module xyz` .v files
+	unresolved_fixed_sizes      []&ast.Stmt // funcs with unresolved array fixed size e.g. fn func() [const1]int
+	inside_recheck              bool        // true when rechecking rhs assign statement
+	inside_unsafe               bool        // true inside `unsafe {}` blocks
+	inside_const                bool        // true inside `const ( ... )` blocks
+	inside_anon_fn              bool        // true inside `fn() { ... }()`
+	inside_lambda               bool        // true inside `|...| ...`
+	inside_ref_lit              bool        // true inside `a := &something`
+	inside_defer                bool        // true inside `defer {}` blocks
+	inside_return               bool        // true inside `return ...` blocks
+	inside_fn_arg               bool        // `a`, `b` in `a.f(b)`
+	inside_ct_attr              bool        // true inside `[if expr]`
+	inside_x_is_type            bool        // true inside the Type expression of `if x is Type {`
+	inside_x_matches_type       bool        // true inside the match branch of `match x.type { Type {} }`
+	inside_container_value_elem bool        // true when checking a value `match`/`if` array element or map value, e.g. `[match x { .. }]` / `{'k': match x { .. }}`
+	anon_struct_should_be_mut   bool        // true when `mut var := struct { ... }` is used
+	inside_generic_struct_init  bool
+	inside_integer_literal_cast bool // true inside `int(123)`
+	cur_struct_generic_types    []ast.Type
+	cur_struct_concrete_types   []ast.Type
+	anon_fn_generic_names       []string
+	anon_fn_concrete_types      []ast.Type
+	skip_flags                  bool      // should `#flag` and `#include` be skipped
+	fn_level                    int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	smartcast_mut_pos           token.Pos // match mut foo, if mut foo is Foo
+	smartcast_cond_pos          token.Pos // match cond
+	ct_cond_stack               []ast.Expr
+	ct_user_defines             map[string]bool
+	ct_system_defines           map[string]bool
+	cur_ct_id                   int // id counter for $if $match branches
 mut:
 	stmt_level int // the nesting level inside each stmts list;
 	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`

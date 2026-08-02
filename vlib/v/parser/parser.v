@@ -643,6 +643,25 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			}
 			found
 		}
+		ast.MapInit {
+			// e.g. `{'value': match value { .. }}` as a call argument.
+			mut found := false
+			for element in expr.keys {
+				if p.expr_contains_value_match_or_if(element) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				for element in expr.vals {
+					if p.expr_contains_value_match_or_if(element) {
+						found = true
+						break
+					}
+				}
+			}
+			found
+		}
 		else {
 			false
 		}
@@ -691,6 +710,21 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			for mut field in expr.init_fields {
 				if p.expr_contains_value_match_or_if(field.expr) {
 					p.mark_last_call_expr_return_as_used(mut field.expr)
+				}
+			}
+		}
+		ast.MapInit {
+			// last stmt on block is a map literal, e.g.
+			// `{'value': match value { .. }}`; mark any key/value that is (or
+			// nests) a block-value match/if.
+			for mut element in expr.keys {
+				if p.expr_contains_value_match_or_if(element) {
+					p.mark_last_call_expr_return_as_used(mut element)
+				}
+			}
+			for mut element in expr.vals {
+				if p.expr_contains_value_match_or_if(element) {
+					p.mark_last_call_expr_return_as_used(mut element)
 				}
 			}
 		}

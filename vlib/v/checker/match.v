@@ -6,15 +6,15 @@ import v.token
 import strings
 
 fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
-	// `c.inside_array_init_value_elem` marks a value match used as an array element
-	// in a void context (`[match x { .. }]`), which must be treated as an
-	// expression even though the surrounding expected type is void. Consume the
-	// flag here so it applies only to this outer element node, not to nested
-	// statement-level match/if inside the arms.
-	is_array_init_value_elem := c.inside_array_init_value_elem
-	c.inside_array_init_value_elem = false
+	// `c.inside_container_value_elem` marks a value match used as an array element
+	// or map value in a void context (`[match x { .. }]`, `{'k': match x { .. }}`),
+	// which must be treated as an expression even though the surrounding expected
+	// type is void. Consume the flag here so it applies only to this outer element
+	// node, not to nested statement-level match/if inside the arms.
+	is_container_value_elem := c.inside_container_value_elem
+	c.inside_container_value_elem = false
 	if !node.is_comptime {
-		node.is_expr = c.expected_type != ast.void_type || is_array_init_value_elem
+		node.is_expr = c.expected_type != ast.void_type || is_container_value_elem
 	}
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {

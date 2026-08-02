@@ -235,6 +235,23 @@ fn select_value_structinit(node ?Node) !Holder {
 	return result
 }
 
+// match as a map-literal value: `{'value': match .. { .. }}`
+fn select_value_mapinit(node ?Node) !map[string]int {
+	result := if value := node {
+		{
+			'value': match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			}
+		}
+	} else {
+		{
+			'value': 0
+		}
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -401,6 +418,16 @@ fn test_struct_init_field_match_as_if_expr_value_with_propagation() {
 			value: -1
 		}
 	}.value == 0
+}
+
+fn test_map_init_value_match_as_if_expr_value_with_propagation() {
+	assert select_value_mapinit(First{})!['value'] == 1
+	assert select_value_mapinit(Second{})!['value'] == 2
+	assert (select_value_mapinit(none) or {
+		{
+			'value': -1
+		}
+	})['value'] == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {
