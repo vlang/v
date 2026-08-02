@@ -1204,7 +1204,12 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 			}
 		}
 	} else {
-		rhs = t.transform_expr(rhs_id)
+		// Route a value `match`/`if` push-many RHS (an array-producing match, e.g.
+		// `out << (match node { First { values_first(node)! } ... })`) through value
+		// lowering so its propagating arm tail is materialized as a value instead of in a
+		// value-less statement context. `transform_value_operand` is a no-op for the
+		// common non-branch push-many operands.
+		rhs = t.transform_value_operand(rhs_id)
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
@@ -1403,7 +1408,12 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 			}
 		}
 	} else {
-		rhs = t.transform_expr(rhs_id)
+		// Route a value `match`/`if` push-many RHS (an array-producing match, e.g.
+		// `out << (match node { First { values_first(node)! } ... })`) through value
+		// lowering so its propagating arm tail is materialized as a value instead of in a
+		// value-less statement context. `transform_value_operand` is a no-op for the
+		// common non-branch push-many operands.
+		rhs = t.transform_value_operand(rhs_id)
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)

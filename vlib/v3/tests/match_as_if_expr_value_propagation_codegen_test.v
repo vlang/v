@@ -681,6 +681,21 @@ fn select_value_map_membership_order(node Node) !int {
 	return (if inside { 600 } else { 0 }) + tr.order[0] * 10 + tr.order[1]
 }
 
+// Push-many append whose RHS is a value match producing an array: the propagating
+// arm tail must be lowered as a value. First -> [1] << [10,20,30] -> sum 61.
+fn select_value_push_many(node Node) !int {
+	mut out := [1]
+	out << (match node {
+		First { make_values_first(node)! }
+		Second { make_values_second(node)! }
+	})
+	mut sum := 0
+	for v in out {
+		sum += v
+	}
+	return sum
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -737,6 +752,7 @@ fn main() {
 	println(select_value_append_order(First{})!)
 	println(select_value_const_membership(First{})!)
 	println(select_value_map_membership_order(First{})!)
+	println(select_value_push_many(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -750,5 +766,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n1'
 }
