@@ -237,8 +237,16 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 		eprintln('v: `${mode}` currently supports direct compilation only. Use `v ${mode} module_dir`.')
 		exit(1)
 	}
-	ownership_args := merged_args.filter(it != '-ownership')
+	ownership_args := v3_ownership_forwarded_args(prefs, merged_args)
 	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
+}
+
+fn v3_ownership_forwarded_args(prefs &pref.Preferences, merged_args []string) []string {
+	ownership_args := merged_args.filter(it != '-ownership')
+	$if macos {
+		return macos_v3_forwarded_args(prefs, ownership_args)
+	}
+	return ownership_args
 }
 
 fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
@@ -250,7 +258,7 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
 		|| prefs.div_by_zero_is_zero || prefs.no_std || prefs.show_asserts || prefs.show_callgraph
-		|| prefs.show_depgraph {
+		|| prefs.show_depgraph || prefs.hide_auto_str {
 		return true
 	}
 	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared

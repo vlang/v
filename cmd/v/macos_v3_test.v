@@ -350,6 +350,14 @@ fn test_autofree_inspection_output_requires_standard_compiler() {
 	}
 }
 
+fn test_autofree_hide_auto_str_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-hide-auto-str', 'main.v'],
+		false)
+	assert prefs.autofree
+	assert prefs.hide_auto_str
+	assert autofree_requires_standard_compiler(prefs)
+}
+
 fn test_autofree_tracing_requires_standard_compiler() {
 	trace_calls, _ := pref.parse_args_and_show_errors([], [
 		'',
@@ -653,6 +661,31 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 	assert !ownership_delegation_is_requested(false, true, false, 'windows')
 	assert !ownership_delegation_is_requested(false, true, true, 'macos')
 	assert !ownership_delegation_is_requested(true, false, true, 'macos')
+}
+
+fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
+	$if macos {
+		prefs, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			'-arch',
+			'x86',
+			'main.v',
+		], false)
+		forwarded := v3_ownership_forwarded_args(prefs, ['-autofree', '-arch', 'x86', 'main.v'])
+		assert macos_v3_internal_quiet_flag in forwarded
+		assert '-ownership' !in forwarded
+		arch_index := forwarded.index('-arch')
+		assert arch_index >= 0
+		assert forwarded[arch_index + 1] == 'amd64'
+
+		for option in ['-stats', '-v', '-show-timings'] {
+			explicit_prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', option,
+				'main.v'], false)
+			explicit := v3_ownership_forwarded_args(explicit_prefs, ['-autofree', option, 'main.v'])
+			assert macos_v3_internal_quiet_flag !in explicit
+		}
+	}
 }
 
 fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
