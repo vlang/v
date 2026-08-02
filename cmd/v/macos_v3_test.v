@@ -71,6 +71,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.output_cross_c = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.output_cross_c = false
+		prefs.experimental = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.experimental = false
 		prefs.is_apk = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_apk = false
@@ -375,6 +378,81 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 	assert !ownership_delegation_is_requested(false, true, false, 'windows')
 	assert !ownership_delegation_is_requested(false, true, true, 'macos')
 	assert !ownership_delegation_is_requested(true, false, true, 'macos')
+}
+
+fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
+	mut prefs := &pref.Preferences{}
+	assert !autofree_requires_standard_compiler(prefs)
+	prefs.output_cross_c = true
+	assert autofree_requires_standard_compiler(prefs)
+	prefs.output_cross_c = false
+	prefs.experimental = true
+	assert autofree_requires_standard_compiler(prefs)
+	prefs.experimental = false
+	prefs.gc_set_by_flag = true
+	prefs.gc_mode = .boehm_full_opt
+	assert autofree_requires_standard_compiler(prefs)
+}
+
+fn test_macos_v3_keeps_cross_autofree_and_experimental_builds_on_v1() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_v1_only_modes_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		cross_source := os.join_path(root, 'cross.v')
+		cross_output := os.join_path(root, 'cross.c')
+		os.write_file(cross_source, 'fn main() {}\n')!
+		mut cross_process := os.new_process(@VEXE)
+		cross_process.set_args(['-v', '-autofree', '-cross', '-o', cross_output, cross_source])
+		cross_process.set_environment(environment)
+		cross_process.set_redirect_stdio()
+		cross_process.run()
+		cross_process.wait()
+		cross_build_output := cross_process.stdout_slurp() + cross_process.stderr_slurp()
+		cross_exit_code := cross_process.code
+		cross_process.close()
+		assert cross_exit_code == 0, cross_build_output
+		assert !cross_build_output.contains('Launching v3_ownership:'), cross_build_output
+		assert os.is_file(cross_output)
+		assert !os.is_executable(cross_output)
+
+		experimental_source := os.join_path(root, 'experimental.v')
+		experimental_output := os.join_path(root, 'experimental')
+		os.write_file(experimental_source, '
+enum Color {
+	Red
+}
+
+fn main() {
+	println(Color.Red)
+}
+')!
+		mut experimental_process := os.new_process(@VEXE)
+		experimental_process.set_args(['-v', '-gc', 'none', '-experimental', '-o',
+			experimental_output, experimental_source])
+		experimental_process.set_environment(environment)
+		experimental_process.set_redirect_stdio()
+		experimental_process.run()
+		experimental_process.wait()
+		experimental_build_output := experimental_process.stdout_slurp() +
+			experimental_process.stderr_slurp()
+		experimental_exit_code := experimental_process.code
+		experimental_process.close()
+		assert experimental_exit_code == 0, experimental_build_output
+		assert !experimental_build_output.contains('Running macOS V3 compiler in process:'), experimental_build_output
+		assert os.is_executable(experimental_output)
+		run := os.execute(os.quoted_path(experimental_output))
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'Red'
+	}
 }
 
 fn test_macos_v3_manualfree_overrides_vflags_autofree() {

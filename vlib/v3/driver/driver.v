@@ -5804,7 +5804,7 @@ pub fn run(args []string) {
 		} else if args[i] in ['-color', '-nocolor'] {
 			apply_v3_diagnostic_color_option(args[i])
 			i++
-		} else if args[i] in ['-apk', '-cross', '-experimental'] {
+		} else if args[i] == '-apk' {
 			// Accepted V1 compatibility switches. V3 always emits direct C,
 			// applies ownership cleanup, and forwards C failures.
 			i++

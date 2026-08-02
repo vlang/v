@@ -223,9 +223,7 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 		os.user_os()) {
 		return
 	}
-	// V3 ownership mode does not support the explicit Boehm GC variants yet.
-	// Keep established autofree+GC invocations on the regular compiler path.
-	if is_autofree && !is_ownership && prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+	if is_autofree && !is_ownership && autofree_requires_standard_compiler(prefs) {
 		return
 	}
 	if !is_ownership_relevant_command(command, prefs) {
@@ -241,6 +239,13 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 	}
 	ownership_args := merged_args.filter(it != '-ownership')
 	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
+}
+
+fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
+	// V3 ownership mode does not yet implement explicit Boehm collectors, portable
+	// cross-C output, or the established experimental checker extensions.
+	return (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) || prefs.output_cross_c
+		|| prefs.experimental
 }
 
 fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, host_os string) bool {
