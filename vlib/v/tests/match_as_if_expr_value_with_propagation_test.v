@@ -122,6 +122,23 @@ fn select_value_infix_left(node ?Node) !int {
 	return result
 }
 
+fn wrap(x int) int {
+	return x * 10
+}
+
+// match as a call argument: `wrap(match .. { .. })`
+fn select_value_callarg(node ?Node) !int {
+	result := if value := node {
+		wrap(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		})
+	} else {
+		0
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -248,6 +265,12 @@ fn test_infix_left_match_as_if_expr_value_with_propagation() {
 	assert select_value_infix_left(First{})! == 11
 	assert select_value_infix_left(Second{})! == 12
 	assert select_value_infix_left(none) or { -1 } == 0
+}
+
+fn test_call_argument_match_as_if_expr_value_with_propagation() {
+	assert select_value_callarg(First{})! == 10
+	assert select_value_callarg(Second{})! == 20
+	assert select_value_callarg(none) or { -1 } == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {
