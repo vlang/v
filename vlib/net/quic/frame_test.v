@@ -220,6 +220,31 @@ fn test_encode_ack_frame_rejects_range_with_largest_less_than_smallest() {
 	assert false, 'expected largest < smallest to be rejected'
 }
 
+fn test_scaled_ack_delay_micros_normal_value() {
+	assert scaled_ack_delay_micros(100, 3) == 800 // 100 << 3
+}
+
+fn test_scaled_ack_delay_micros_saturates_instead_of_wrapping() {
+	// A legal wire ACK Delay (raw_ack_delay == 1<<44, well within a single
+	// varint) combined with a legal, RFC 9000 §18.2-maximum ack_delay_exponent
+	// (20) shifts the value out to bit 64 -- overflowing u64. A naive `<<`
+	// silently wraps (here, to exactly 0: 2^44 << 20 == 2^64 == 0 mod 2^64),
+	// making an enormous peer-claimed delay look like NO delay at all,
+	// defeating any downstream max_ack_delay cap. Must saturate instead.
+	result := scaled_ack_delay_micros(u64(1) << 44, 20)
+	assert result == max_u64
+}
+
+fn test_scaled_ack_delay_micros_saturates_at_exponent_ge_64() {
+	// Defensive bound: ack_delay_exponent is validated to <=20 by
+	// transport_parameters.v before reaching here, but this function is a
+	// public, independently-callable API and must not exhibit C-level
+	// undefined behavior (a shift amount >= the type's bit width) for any
+	// input.
+	assert scaled_ack_delay_micros(5, 64) == max_u64
+	assert scaled_ack_delay_micros(0, 64) == 0
+}
+
 fn test_parse_frame_rejects_unimplemented_frame_type() {
 	// 0x08 (MAX_DATA) is a real, valid QUIC frame type this module simply
 	// doesn't implement yet (Phase 6) -- must be a clear "not implemented"
@@ -279,6 +304,34 @@ fn test_parse_crypto_frame_rejects_length_exceeding_buffer() {
 		return
 	}
 	assert false, 'expected a truncated CRYPTO frame to be rejected'
+}
+
+fn test_encode_crypto_frame_rejects_offset_plus_length_exceeding_varint_max() {
+	// RFC 9000 §19.6: "The largest offset delivered on a stream -- the sum
+	// of the offset and data length -- cannot exceed 2^62-1." Both fields
+	// are individually encodable (offset == max_varint, data.len == 1) but
+	// their sum overflows the limit.
+	encode_crypto_frame(max_varint, [u8(0xaa)]) or {
+		assert err.msg().contains('2^62')
+		return
+	}
+	assert false, 'expected offset+length exceeding the varint max to be rejected'
+}
+
+fn test_parse_crypto_frame_rejects_offset_plus_length_exceeding_varint_max() {
+	// Same invariant as above, enforced on the PARSE (attacker-controlled)
+	// side: a peer can send offset == max_varint with a small nonzero
+	// length -- each field individually fits in a varint, so only an
+	// explicit sum check catches it.
+	mut buf := encode_varint(u64(0x06))! // CRYPTO type
+	buf << encode_varint(max_varint)! // offset
+	buf << encode_varint(1)! // length
+	buf << [u8(0xaa)]
+	parse_frame(buf) or {
+		assert err.msg().contains('2^62')
+		return
+	}
+	assert false, 'expected offset+length exceeding the varint max to be rejected'
 }
 
 fn test_ack_frame_rejects_first_ack_range_exceeding_largest_acknowledged() {

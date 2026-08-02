@@ -34,7 +34,7 @@ fn test_retry_packet_round_trip_verifies() {
 
 	packet := build_test_retry_packet(new_dcid, new_scid, token, original_dcid)!
 
-	parsed := parse_retry_packet(packet)!
+	parsed := parse_retry_packet(packet, original_dcid)!
 	assert parsed.dcid == new_dcid
 	assert parsed.scid == new_scid
 	assert parsed.retry_token == token
@@ -83,7 +83,7 @@ fn test_parse_retry_packet_rejects_non_retry_type() {
 		length:  20
 	}
 	buf := encode_long_header(h, 0, 0)!
-	parse_retry_packet(buf) or {
+	parse_retry_packet(buf, [u8(99)]) or {
 		assert err.msg().contains('not a Retry packet')
 		return
 	}
@@ -100,11 +100,38 @@ fn test_parse_retry_packet_rejects_truncated_packet() {
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(1), 2, 3] // far fewer than the required 16-byte tag
-	parse_retry_packet(buf) or {
+	parse_retry_packet(buf, [u8(99)]) or {
 		assert err.msg().contains('missing')
 		return
 	}
 	assert false, 'expected a truncated Retry packet to be rejected'
+}
+
+fn test_parse_retry_packet_rejects_empty_token() {
+	// RFC 9000 §17.2.5.2: "A client MUST discard a Retry packet with a
+	// zero-length Retry Token field."
+	original_dcid := [u8(0xaa), 0xbb, 0xcc]
+	packet := build_test_retry_packet([u8(1), 2], [u8(3), 4], []u8{}, original_dcid)!
+	parse_retry_packet(packet, original_dcid) or {
+		assert err.msg().contains('zero-length')
+		return
+	}
+	assert false, 'expected a Retry packet with an empty token to be rejected'
+}
+
+fn test_parse_retry_packet_rejects_scid_equal_to_original_dcid() {
+	// RFC 9000 §17.2.5.1: "A client MUST discard a Retry packet that
+	// contains a Source Connection ID field that is identical to the
+	// Destination Connection ID field of its Initial packet."
+	original_dcid := [u8(0xaa), 0xbb, 0xcc, 0xdd]
+	// SCID (the server's supposed new CID) is identical to the client's own
+	// original DCID -- not a real server-chosen replacement.
+	packet := build_test_retry_packet([u8(1), 2], original_dcid, 'tok'.bytes(), original_dcid)!
+	parse_retry_packet(packet, original_dcid) or {
+		assert err.msg().contains('Source Connection ID')
+		return
+	}
+	assert false, 'expected a Retry packet whose SCID equals the original DCID to be rejected'
 }
 
 fn test_verify_retry_integrity_tag_rejects_too_short_packet() {

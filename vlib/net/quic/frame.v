@@ -72,6 +72,20 @@ pub const default_ack_delay_exponent = u64(3)
 // units, of the time between receiving the largest-acknowledged packet and
 // sending this ACK).
 pub fn scaled_ack_delay_micros(raw_ack_delay u64, ack_delay_exponent u64) u64 {
+	// A wire-legal raw_ack_delay (up to max_varint, i.e. up to 62
+	// significant bits) combined with a wire-legal ack_delay_exponent (up
+	// to 20 per RFC 9000 §18.2) can shift up to 82 bits of significance --
+	// far past u64's 64 bits. A naive `<<` silently wraps rather than
+	// erroring, which would make an enormous peer-claimed delay look
+	// artificially small (even zero) to callers, defeating any downstream
+	// max_ack_delay cap. Saturate instead of wrapping: an oversized delay
+	// should read as "as large as representable", never as "small".
+	if ack_delay_exponent >= 64 {
+		return if raw_ack_delay == 0 { u64(0) } else { max_u64 }
+	}
+	if raw_ack_delay > (max_u64 >> ack_delay_exponent) {
+		return max_u64
+	}
 	return raw_ack_delay << ack_delay_exponent
 }
 
@@ -242,6 +256,17 @@ fn parse_crypto_frame(buf []u8, start int) !(QuicFrame, int) {
 	offset += n1
 	length, n2 := decode_varint(buf[offset..])!
 	offset += n2
+	// RFC 9000 §19.6: "The largest offset delivered on a stream -- the sum
+	// of the offset and data length -- cannot exceed 2^62-1." Each field is
+	// individually a legal varint (up to max_varint on its own), so only an
+	// explicit sum check catches an attacker-chosen offset near max_varint
+	// paired with any nonzero length; u64 arithmetic here cannot itself
+	// overflow (two values each under 2^62 sum to at most just under 2^63,
+	// comfortably within u64's range), so this is a clean comparison, not
+	// an overflow-safety concern in its own right.
+	if crypto_offset + length > max_varint {
+		return error('quic: CRYPTO frame: offset ${crypto_offset} + length ${length} exceeds the 2^62-1 varint limit (RFC 9000 §19.6)')
+	}
 	if u64(offset) + length > u64(buf.len) {
 		return error('quic: CRYPTO frame: length ${length} exceeds remaining buffer')
 	}
@@ -338,6 +363,12 @@ pub fn encode_ack_frame(ranges []AckRange, ack_delay u64, ecn_counts ?EcnCounts)
 
 // encode_crypto_frame serializes a CRYPTO frame.
 pub fn encode_crypto_frame(offset u64, data []u8) ![]u8 {
+	// RFC 9000 §19.6: the sum of offset and data length cannot exceed
+	// 2^62-1, even though each is individually a legal varint on its own
+	// (see parse_crypto_frame's mirrored check on the decode side).
+	if offset + u64(data.len) > max_varint {
+		return error('quic: encode_crypto_frame: offset ${offset} + length ${data.len} exceeds the 2^62-1 varint limit (RFC 9000 §19.6)')
+	}
 	mut out := encode_varint(frame_type_crypto)!
 	out << encode_varint(offset)!
 	out << encode_varint(u64(data.len))!

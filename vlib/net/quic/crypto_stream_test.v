@@ -87,6 +87,24 @@ fn test_crypto_stream_reassembler_rejects_too_many_pending_fragments() {
 	assert last_err_seen
 }
 
+fn test_crypto_stream_reassembler_deduplicates_retransmitted_pending_fragment() {
+	// A peer retransmitting the SAME out-of-order CRYPTO fragment while an
+	// earlier gap remains open (ordinary loss recovery -- a lost ACK, not
+	// malicious behavior) must not count each retransmission as a NEW
+	// distinct fragment against the max_crypto_stream_pending_fragments cap,
+	// or enough ordinary retransmissions abort an otherwise-healthy
+	// handshake. Contrast with
+	// test_crypto_stream_reassembler_rejects_too_many_pending_fragments,
+	// which uses DISTINCT offsets and must still hit the cap.
+	mut r := new_crypto_stream_reassembler()
+	for _ in 0 .. max_crypto_stream_pending_fragments + 10 {
+		r.add(100, 'retransmitted'.bytes())!
+	}
+	assert r.consumed_len() == 0 // gap before offset 100 still open
+	r.add(0, []u8{len: 100})! // close the gap
+	assert r.data()[100..].bytestr() == 'retransmitted'
+}
+
 fn test_crypto_stream_reassembler_three_way_out_of_order() {
 	mut r := new_crypto_stream_reassembler()
 	r.add(7, 'World!'.bytes())! // 'Hello'(5) + ', '(2) = offset 7

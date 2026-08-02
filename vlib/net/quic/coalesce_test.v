@@ -14,9 +14,11 @@ import encoding.hex
 // RFC 9000 §17.2/§17.3.1's Fixed Bit requirement, confirming it is not a
 // third coalesced packet at all -- an earlier, less careful reading of
 // this same capture had assumed it was, before the Fixed Bit check below
-// existed; exactly the kind of trailing padding pad_datagram_for_initial
-// produces and frame 1's own Client Initial datagram already
-// demonstrated). This is real independent-implementation evidence that
+// existed; this is the shape a peer implementation that pads via raw
+// trailing bytes rather than internal PADDING frames produces -- this
+// client's own outgoing Initial packets no longer pad this way (see
+// pad_initial_payload), but a received datagram must still tolerate it
+// either way). This is real independent-implementation evidence that
 // the exact coalescing shape this module needs to handle (Length-field
 // walking across long-header packets, stopping cleanly at trailing
 // non-packet padding) occurs in practice, not just in the abstract per
@@ -126,13 +128,48 @@ fn test_split_coalesced_datagram_rejects_non_v1_version_with_retry_shaped_type_b
 	assert false, 'expected a non-v1 version to be rejected before retry-type dispatch'
 }
 
-fn test_pad_datagram_for_initial_pads_to_minimum() {
-	short := []u8{len: 50, init: 0x42}
-	padded := pad_datagram_for_initial(short)
-	assert padded.len == min_initial_datagram_size
-	assert padded[..50] == short
+fn test_split_coalesced_datagram_rejects_version_negotiation_after_another_packet() {
+	// RFC 9000 §12.2: "there is no situation where a Retry or Version
+	// Negotiation packet is coalesced with another packet." A datagram
+	// containing a real (small) Initial packet followed by VN-shaped bytes
+	// cannot come from a compliant sender -- reject it rather than treating
+	// the tail as a genuine VN packet.
+	h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    []u8{len: 8}
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  2 // 1-byte packet number + 1 byte of "payload"
+	}
+	mut buf := encode_long_header(h, 0, 0)!
+	buf << [u8(0x00), 0x00] // pn byte + one payload byte, matching length: 2
+
+	mut vn := []u8{}
+	vn << u8(0x80)
+	vn << [u8(0x00), 0x00, 0x00, 0x00] // version = 0 (Version Negotiation)
+	vn << u8(8)
+	vn << []u8{len: 8, init: 0xaa}
+	vn << u8(8)
+	vn << []u8{len: 8, init: 0xbb}
+	vn << [u8(0x00), 0x00, 0x00, 0x01]
+	buf << vn
+
+	split_coalesced_datagram(buf) or {
+		assert err.msg().contains('coalesced after another packet')
+		return
+	}
+	assert false, 'expected a VN packet following another packet to be rejected'
+}
+
+fn test_pad_initial_payload_pads_to_minimum() {
+	payload := []u8{len: 50, init: 0x42}
+	padded := pad_initial_payload(payload, 20, 16) // header(20) + payload(50) + tag(16) = 86
+	assert padded.len == min_initial_datagram_size - 20 - 16
+	assert padded[..50] == payload
 	assert padded[50] == 0
 
-	already_long := []u8{len: min_initial_datagram_size + 10, init: 0x01}
-	assert pad_datagram_for_initial(already_long).len == already_long.len
+	// Already at/above the minimum once header+tag are accounted for: no-op.
+	already_long := []u8{len: min_initial_datagram_size, init: 0x01}
+	assert pad_initial_payload(already_long, 20, 16).len == already_long.len
 }

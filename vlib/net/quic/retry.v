@@ -30,8 +30,8 @@ pub const retry_integrity_tag_len = 16
 pub struct QuicRetryPacket {
 pub:
 	version       u32
-	dcid          []u8 // the server's NEW connection ID the client must switch to
-	scid          []u8
+	dcid          []u8 // echoes the client's own SCID from the triggering Initial -- NOT a new value; see parse_retry_packet's doc comment
+	scid          []u8 // the server's NEW connection ID the client must switch to (RFC 9000 §17.2.5.1)
 	retry_token   []u8
 	integrity_tag []u8 // retry_integrity_tag_len (16) bytes
 }
@@ -41,15 +41,40 @@ pub:
 // read past that point, unlike Initial/0-RTT/Handshake) and splits
 // everything after that into the Retry Token and the trailing fixed-size
 // Integrity Tag.
-pub fn parse_retry_packet(buf []u8) !QuicRetryPacket {
+//
+// Field semantics (RFC 9000 §17.2.5.1, confirmed against the primary
+// text -- easy to get backwards since both DCID and SCID are, as always,
+// from the PACKET SENDER'S (the server's) point of view, not the client's):
+// the server populates the Retry's DESTINATION Connection ID with the
+// connection ID the CLIENT included as its own SOURCE Connection ID in the
+// Initial that provoked this Retry -- an echo, not a new value. The
+// server's NEWLY CHOSEN connection ID -- the one the client MUST switch to
+// as the Destination Connection ID of its retried Initial -- is the
+// Retry's SOURCE Connection ID (`scid` below), never `dcid`.
+//
+// `original_dcid` is the Destination Connection ID the client used on its
+// own original Initial packet (the value Initial secrets were derived
+// from) -- required to enforce RFC 9000 §17.2.5.1's anti-loop check: "A
+// client MUST discard a Retry packet that contains a Source Connection ID
+// field that is identical to the Destination Connection ID field of its
+// Initial packet." A Retry whose SCID merely echoes back the client's own
+// prior DCID carries no real server-chosen replacement and cannot
+// meaningfully be switched to.
+pub fn parse_retry_packet(buf []u8, original_dcid []u8) !QuicRetryPacket {
 	header, offset := parse_long_header(buf)!
 	if header.typ != .retry {
 		return error('quic: not a Retry packet')
+	}
+	if header.scid == original_dcid {
+		return error("quic: Retry packet Source Connection ID is identical to this client's own Initial Destination Connection ID (RFC 9000 §17.2.5.1)")
 	}
 	if buf.len - offset < retry_integrity_tag_len {
 		return error('quic: truncated Retry packet: missing ${retry_integrity_tag_len}-byte integrity tag')
 	}
 	retry_token := buf[offset..buf.len - retry_integrity_tag_len].clone()
+	if retry_token.len == 0 {
+		return error('quic: Retry packet has a zero-length Retry Token, which RFC 9000 §17.2.5.2 requires a client to discard')
+	}
 	integrity_tag := buf[buf.len - retry_integrity_tag_len..].clone()
 	return QuicRetryPacket{
 		version:       header.version
@@ -85,7 +110,7 @@ pub fn compute_retry_integrity_tag(original_dcid []u8, retry_packet_without_tag 
 
 // verify_retry_integrity_tag reports whether `packet`'s trailing 16-byte
 // Integrity Tag is valid, given the client's original DCID. A Retry with
-// an invalid tag MUST be discarded (RFC 9000 §17.2.5.1) -- treated as if it
+// an invalid tag MUST be discarded (RFC 9000 §17.2.5.2) -- treated as if it
 // were never received at all, NOT as a connection error: Retry packets
 // aren't authenticated by the connection's own key material, and an
 // off-path attacker forging one is exactly the case this check exists to

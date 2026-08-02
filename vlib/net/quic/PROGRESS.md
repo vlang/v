@@ -495,8 +495,10 @@ The largest, highest-risk phase. Sub-phases, in build order:
       fields; stops cleanly (not as a fabricated bogus packet) at a short
       header, a Version Negotiation packet, a Retry packet, or trailing
       non-packet padding (see the `/vreview` finding below).
-      `pad_datagram_for_initial` pads a sender's own datagram to the RFC
-      9000 §14.1 1200-byte minimum.
+      `pad_initial_payload` pads a sender's own Initial packet to the RFC
+      9000 §14.1 1200-byte minimum via PADDING frames INSIDE the
+      AEAD-protected payload (§14.1's primary mechanism), not raw bytes
+      appended after protection -- see the Codex-round fixes below.
 - [x] `retry.v` — client-side Retry Integrity Tag (RFC 9001 §5.8)
       compute/verify, using AEAD_AES_128_GCM over an empty plaintext with a
       FIXED public key/nonce (not derived from the connection's own
@@ -527,8 +529,10 @@ The largest, highest-risk phase. Sub-phases, in build order:
 - [x] `/vreview` pass: found and fixed three gaps before commit —
       (1) `split_coalesced_datagram` misinterpreted trailing raw
       UDP-datagram-level zero-byte padding (the shape a real Initial
-      datagram padded to 1200 bytes has, and what `pad_datagram_for_initial`
-      itself produces) as a bogus additional coalesced packet, since
+      datagram padded to 1200 bytes has -- this client's own outgoing
+      padding no longer produces this shape, see the Codex-round fixes
+      below, but a received datagram from another implementation must
+      still tolerate it) as a bogus additional coalesced packet, since
       neither `parse_long_header` nor `parse_short_header` (Phase 1,
       `header.v`) validated RFC 9000's Fixed Bit (0x40) — caught by the
       integration test above, then confirmed against the REAL captured
@@ -547,6 +551,38 @@ The largest, highest-risk phase. Sub-phases, in build order:
       first chosen value, 2^40, happened to wrap to exactly 0 when narrowed
       to a 32-bit `int` and so accidentally exercised a harmless
       allocation regardless of whether the fix was present).
+- [x] Codex review (vlang/v#27880, pullrequestreview-4836332922) found 9
+      more gaps after the post-#27680-merge rebase, all fixed with
+      regression tests, Phase-R-verified against the pre-fix code:
+      `handle_version_negotiation` treated a VN packet listing v1 as a
+      hard PROTOCOL_VIOLATION instead of the RFC 9000 §6.2-mandated
+      silent discard (an unauthenticated VN packet with a trivial
+      connection-kill primitive for an off-path attacker, if left as an
+      error); Initial-packet padding moved from raw trailing datagram
+      bytes to PADDING frames inside the AEAD-protected payload (RFC 9000
+      §14.1's primary mechanism -- `pad_datagram_for_initial` removed,
+      replaced by `pad_initial_payload`); `QuicRetryPacket`'s `dcid`/`scid`
+      doc comments had the server's-new-CID label on the WRONG field
+      (RFC 9000 §17.2.5.1: it's `scid`, not `dcid`); `parse_retry_packet`
+      now also rejects a zero-length Retry Token (§17.2.5.2) and a Retry
+      whose SCID equals the client's own Initial DCID (§17.2.5.1, an
+      anti-degenerate-loop check found while verifying the other two Retry
+      findings against the primary RFC text, not from Codex);
+      `CryptoStreamReassembler.add` now deduplicates a retransmitted
+      out-of-order fragment already covered by an existing pending one,
+      instead of counting ordinary loss-recovery retransmissions against
+      the distinct-fragment cap; `encode_crypto_frame`/`parse_crypto_frame`
+      now reject offset+length exceeding the 2^62-1 varint limit (RFC 9000
+      §19.6, confirmed verbatim); `scaled_ack_delay_micros` now saturates
+      instead of silently wrapping a u64 left-shift overflow (a legal wire
+      ACK Delay with a legal §18.2-maximum exponent of 20 shifts past bit
+      64); `split_coalesced_datagram` now rejects a Version Negotiation
+      packet coalesced after another packet (RFC 9000 §12.2: "there is no
+      situation where a Retry or Version Negotiation packet is coalesced
+      with another packet"). All RFC citations independently verified
+      against the primary rfc-editor.org text (cached locally at
+      `.claude/skills/code-review/rfc-texts/`, gitignored) rather than
+      trusted from the review comments alone.
 
 ## Phases 5-14 (NOT STARTED)
 

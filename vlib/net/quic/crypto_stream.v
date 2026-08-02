@@ -45,6 +45,9 @@ mut:
 	pending  []CryptoFragment
 }
 
+// new_crypto_stream_reassembler allocates an empty reassembler for one
+// encryption level's CRYPTO stream (see this file's module-level doc
+// comment for the one-per-level requirement).
 pub fn new_crypto_stream_reassembler() &CryptoStreamReassembler {
 	return &CryptoStreamReassembler{}
 }
@@ -103,7 +106,7 @@ pub fn (mut r CryptoStreamReassembler) add(offset u64, data []u8) ! {
 
 	if offset <= u64(r.received.len) {
 		r.append_or_validate(offset, data)!
-	} else {
+	} else if !r.pending_fully_covers(offset, data)! {
 		// max_crypto_stream_buffered_bytes bounds the OFFSET range a
 		// fragment may claim, but says nothing about how many DISTINCT
 		// out-of-order fragments can accumulate within that range -- a
@@ -113,6 +116,10 @@ pub fn (mut r CryptoStreamReassembler) add(offset u64, data []u8) ! {
 		// would produce for one handshake's CRYPTO stream. Reordering
 		// across dozens of packets is already generous headroom; this
 		// caps it well short of "attacker-chosen number of allocations".
+		// The pending_fully_covers check above keeps ORDINARY
+		// retransmission of an already-buffered fragment (a lost ACK, not
+		// an attack) from ever counting against this cap in the first
+		// place.
 		if r.pending.len >= max_crypto_stream_pending_fragments {
 			return error('quic: CRYPTO stream has too many out-of-order fragments buffered (limit ${max_crypto_stream_pending_fragments})')
 		}
@@ -122,6 +129,33 @@ pub fn (mut r CryptoStreamReassembler) add(offset u64, data []u8) ! {
 		}
 	}
 	r.promote_ready()!
+}
+
+// pending_fully_covers reports whether an existing entry in r.pending
+// already spans (offset, data) in full, having first verified (like
+// append_or_validate) that the overlapping bytes agree byte-for-byte --
+// a real retransmission of the same handshake bytes always will; a
+// genuine RFC 9000 §19.6 violation (different bytes at the same offset)
+// must still be rejected, not silently treated as "already covered".
+// Ordinary QUIC loss recovery retransmits an UNPROMOTED out-of-order
+// CRYPTO range verbatim (same offset, same length) while its gap remains
+// open; without this check, `add` would append a fresh CryptoFragment for
+// every such retransmission and could exhaust
+// max_crypto_stream_pending_fragments on harmless duplicates alone.
+fn (r &CryptoStreamReassembler) pending_fully_covers(offset u64, data []u8) !bool {
+	end := offset + u64(data.len)
+	for frag in r.pending {
+		frag_end := frag.offset + u64(frag.data.len)
+		if offset < frag.offset || end > frag_end {
+			continue
+		}
+		rel := offset - frag.offset
+		if frag.data[rel..rel + u64(data.len)] != data {
+			return error('quic: CRYPTO stream retransmission mismatch at offset ${offset}: disagrees with an already-pending out-of-order fragment')
+		}
+		return true
+	}
+	return false
 }
 
 // promote_ready repeatedly scans r.pending for any fragment whose offset

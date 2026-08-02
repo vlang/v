@@ -38,12 +38,16 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 			// the reserved bits). A byte run that looks short-header-shaped
 			// (top bit clear) but has the Fixed Bit ALSO clear is not a
 			// real packet at all -- most commonly, trailing raw zero-byte
-			// UDP datagram padding appended after the last real packet
-			// (see pad_datagram_for_initial below, and the real captured
-			// quiche datagram this was discovered against, whose own
-			// Length-declared packet ends far short of the datagram's full
-			// size). Treat it as "no more real packets in this datagram"
-			// and stop, rather than fabricating a bogus packet for it.
+			// UDP datagram padding a PEER's implementation appended after
+			// its last real packet rather than using PADDING frames (see
+			// the real captured quiche server datagram this was discovered
+			// against in coalesce_test.v, whose own Length-declared packet
+			// ends far short of the datagram's full size -- this client's
+			// own outgoing Initial packets pad internally instead, see
+			// pad_initial_payload below, but a received datagram from
+			// another implementation must still be tolerated either way).
+			// Treat it as "no more real packets in this datagram" and stop,
+			// rather than fabricating a bogus packet for it.
 			if remaining[0] & 0x40 == 0 {
 				break
 			}
@@ -59,6 +63,16 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 		}
 		version := (u32(remaining[1]) << 24) | (u32(remaining[2]) << 16) | (u32(remaining[3]) << 8) | u32(remaining[4])
 		if version == 0 {
+			// RFC 9000 §12.2: "there is no situation where a Retry or
+			// Version Negotiation packet is coalesced with another
+			// packet." A VN-shaped candidate appearing after this loop
+			// has already collected an earlier real packet (offset != 0)
+			// cannot be a genuine VN packet from a compliant sender --
+			// same failure-closed treatment as the non-v1-version check
+			// below, since anything past this point is untrustworthy.
+			if offset != 0 {
+				return error('quic: Version Negotiation packet cannot be coalesced after another packet (datagram offset ${offset}), per RFC 9000 §12.2')
+			}
 			// Version Negotiation: no Length field, consumes the rest of
 			// the datagram -- and per RFC 9000 §17.2.1, a server never
 			// coalesces anything else with it anyway. VN packets are
@@ -128,20 +142,33 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 // has been validated).
 pub const min_initial_datagram_size = 1200
 
-// pad_datagram_for_initial pads `datagram` with trailing zero bytes so it
-// meets min_initial_datagram_size, a no-op if it already does. This is raw
-// UDP-datagram-level padding OUTSIDE any QUIC packet's own Length-declared
-// boundary -- NOT QUIC PADDING frames inside a packet's AEAD-protected
-// payload. Confirmed against a real independent implementation: the
-// captured quiche Client Initial packet in testdata/tls13_vectors/ pads
-// this exact way (its own Length field covers only ~336 of the datagram's
-// 1200 bytes; the rest is trailing zero bytes never covered by AEAD at
-// all), found while building Phase 3's known-answer test.
-pub fn pad_datagram_for_initial(datagram []u8) []u8 {
-	if datagram.len >= min_initial_datagram_size {
-		return datagram
+// pad_initial_payload appends PADDING frame bytes (wire value 0x00, RFC
+// 9000 §19.1) to a not-yet-protected Initial packet's payload so that the
+// FINAL protected packet -- `header_len` bytes of already-built header +
+// this (possibly padded) payload + `aead_tag_len` bytes of AEAD tag --
+// reaches at least min_initial_datagram_size (1200) bytes. A no-op if the
+// packet would already reach that size unpadded.
+//
+// This is RFC 9000 §14.1's PRIMARY padding mechanism -- "adding PADDING
+// frames to the Initial packet" -- and the one every real implementation
+// (quiche, ngtcp2, quinn) actually uses: the padding lands INSIDE the
+// packet's own Length-delimited boundary and is authenticated by AEAD,
+// unlike raw bytes appended to the datagram after protection (RFC 9000
+// §12.2 requires every long-header packet's own Length field to cover its
+// full extent; anything past it is a SEPARATE coalesced packet or, if it
+// doesn't parse as one, discardable garbage -- not part of THIS packet).
+// Callers must add this padding, recompute the header's own Length field
+// to include it, and re-encode the header BEFORE calling protect_packet --
+// see initial_exchange_test.v for the full sequence (padding first changes
+// the payload length that flows into `length` and hence the AEAD-protected
+// packet, so it cannot be applied to an already-protected packet the way a
+// prior version of this padding scheme did).
+pub fn pad_initial_payload(payload []u8, header_len int, aead_tag_len int) []u8 {
+	total := header_len + payload.len + aead_tag_len
+	if total >= min_initial_datagram_size {
+		return payload
 	}
-	mut out := datagram.clone()
-	out << []u8{len: min_initial_datagram_size - datagram.len}
+	mut out := payload.clone()
+	out << []u8{len: min_initial_datagram_size - total}
 	return out
 }
