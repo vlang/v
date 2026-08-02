@@ -615,6 +615,12 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			}
 			found
 		}
+		ast.InfixExpr {
+			// e.g. `1 + (match value { .. })` as a call argument.
+
+			p.expr_contains_value_match_or_if(expr.left)
+				|| p.expr_contains_value_match_or_if(expr.right)
+		}
 		else {
 			false
 		}
