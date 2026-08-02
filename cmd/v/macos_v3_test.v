@@ -98,6 +98,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.ldflags = '-L/custom/lib -lcustom'
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.ldflags = ''
+		prefs.nofloat = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.nofloat = false
 		prefs.is_run = true
 		prefs.autofree = true
 		assert !is_macos_v3_relevant_command('run', prefs)

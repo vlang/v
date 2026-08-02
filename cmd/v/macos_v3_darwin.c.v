@@ -78,8 +78,8 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		|| prefs.output_cross_c || prefs.is_apk || prefs.json_errors
 		|| prefs.no_preludes || prefs.skip_warnings || prefs.print_watched_files
 		|| prefs.is_vlines || prefs.warn_impure_v || prefs.test_runner.len > 0
-		|| prefs.exclude.len > 0 || prefs.ldflags.len > 0 || prefs.backend.is_js()
-		|| (prefs.backend == .wasm && prefs.is_run)
+		|| prefs.exclude.len > 0 || prefs.ldflags.len > 0 || prefs.nofloat
+		|| prefs.backend.is_js() || (prefs.backend == .wasm && prefs.is_run)
 		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		// V1 still owns compiler modes whose runtime or C toolchain support has not
 		// been implemented by V3 yet.

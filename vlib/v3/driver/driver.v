@@ -834,11 +834,7 @@ fn compile_v3_program_object(kind string, source string, source_identity string,
 	} else {
 		args << ['-x', 'c']
 	}
-	for value in [c_standard, opt_flag, pic_flag] {
-		if value.len > 0 {
-			args << value
-		}
-	}
+	append_v3_c_compile_mode_flags(mut args, c_standard, opt_flag, pic_flag)
 	args << target_args
 	args << cgen.tokenize_c_flag(warning_flags)
 	args << '-Wno-int-conversion'
@@ -5223,6 +5219,27 @@ fn v3_effective_warns_are_errors(explicit bool, is_prod bool) bool {
 	return explicit || is_prod
 }
 
+fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool) []string {
+	if !is_prod || no_prod_options {
+		return []
+	}
+	mut flags := ['-O3']
+	if !is_shared && !parallel_cc {
+		flags << '-flto'
+	}
+	return flags
+}
+
+fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flags string, pic_flag string) {
+	if c_standard.len > 0 {
+		args << c_standard
+	}
+	args << cgen.tokenize_c_flag(opt_flags)
+	if pic_flag.len > 0 {
+		args << pic_flag
+	}
+}
+
 fn expand_v3_module_search_paths(spec string, vroot string) []string {
 	if spec.len == 0 {
 		return []
@@ -5302,6 +5319,7 @@ pub fn run(args []string) {
 	mut gc_mode := 'none'
 	mut enable_globals_compat := false
 	mut is_prod := false
+	mut no_prod_options := false
 	mut is_shared := false
 	mut is_livemain := false
 	mut is_liveshared := false
@@ -5419,6 +5437,9 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-prod' {
 			is_prod = true
+			i++
+		} else if args[i] == '-no-prod-options' {
+			no_prod_options = true
 			i++
 		} else if args[i] == '-shared' || args[i] == '--shared' {
 			is_shared = true
@@ -6094,6 +6115,7 @@ pub fn run(args []string) {
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
+		'no_prod_options=${no_prod_options}',
 		'debug=${is_debug}',
 		'c_debug=${is_c_debug}',
 		'shared=${is_shared}',
@@ -6213,36 +6235,22 @@ pub fn run(args []string) {
 		user_files << input_file
 		user_files = expand_single_test_file_inputs(user_files, prefs)
 	} else if os.is_dir(input_file) {
-		source_dir := v3_directory_source_root(input_file)
-		user_files = pref.get_v_files_from_dir_for_target(source_dir, prefs.user_defines,
-			prefs.target)
-		if user_files.len == 0 && report_v3_removed_src_layout(input_file) {
-			exit(1)
-		}
-		if is_test_command {
-			user_files << pref.get_test_v_files_from_dir_for_target(source_dir, prefs.user_defines,
-				prefs.backend, prefs.target)
-		}
-		subdirs := vmod_subdirs(input_file) or {
+		user_files = v3_directory_user_files(input_file, prefs, is_test_command, false) or {
 			eprintln(err.msg())
 			exit(1)
 		}
-		for subdir in subdirs {
-			subdir_path := os.join_path_single(source_dir, subdir)
-			user_files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines,
-				prefs.target)
-			if is_test_command {
-				user_files << pref.get_test_v_files_from_dir_for_target(subdir_path,
-					prefs.user_defines, prefs.backend, prefs.target)
-			}
+		if user_files.len == 0 && report_v3_removed_src_layout(input_file) {
+			exit(1)
 		}
 	} else {
 		user_files << input_file
 	}
 	for listed_path in file_list {
 		if os.is_dir(listed_path) {
-			user_files << pref.get_v_files_from_dir_for_target(listed_path, prefs.user_defines,
-				prefs.target)
+			user_files << v3_directory_user_files(listed_path, prefs, is_test_command, true) or {
+				eprintln(err.msg())
+				exit(1)
+			}
 		} else if os.is_file(listed_path) {
 			user_files << listed_path
 		} else {
@@ -7763,7 +7771,8 @@ pub fn run(args []string) {
 			if interface_impl_signature.len == 0 {
 				interface_impl_signature = pre_tc.interface_impl_set_signature()
 			}
-			opt_flag := if is_prod { '-O2' } else { '' }
+			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared,
+				parallel_cc).join(' ')
 			warning_flags := warn_args.join(' ')
 			compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
 				warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
@@ -8310,9 +8319,8 @@ pub fn run(args []string) {
 			if link_c_standard.len > 0 {
 				cc_args << link_c_standard
 			}
-			if is_prod {
-				cc_args << '-O2'
-			}
+			cc_args << v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared,
+				parallel_cc)
 			if pic_flag.len > 0 {
 				cc_args << pic_flag
 			}
@@ -9873,11 +9881,7 @@ fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard s
 	if objective_c {
 		args << ['-x', 'objective-c']
 	}
-	for value in [c_standard, opt_flag, pic_flag] {
-		if value.len > 0 {
-			args << value
-		}
-	}
+	append_v3_c_compile_mode_flags(mut args, c_standard, opt_flag, pic_flag)
 	args << cgen.tokenize_c_flag(warning_flags)
 	args << ['-Wno-int-conversion', '-c', '-o', tmp_object, tmp_source]
 	args << flags
@@ -9909,6 +9913,60 @@ fn vmod_subdirs(dir string) ![]string {
 	}
 	manifest := vmod.from_file(vmod_path)!
 	return manifest.unknown['subdirs'] or { []string{} }
+}
+
+fn v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, recursive bool) ![]string {
+	source_dir := v3_directory_source_root(dir)
+	mut files := []string{}
+	mut seen_files := map[string]bool{}
+	mut seen_dirs := map[string]bool{}
+	if recursive {
+		collect_v3_directory_user_files_rec(source_dir, source_dir, prefs, is_test_command, mut
+			seen_dirs, mut seen_files, mut files)
+		return files
+	}
+	append_v3_directory_user_files(source_dir, prefs, is_test_command, mut seen_files, mut files)
+	for subdir in vmod_subdirs(dir)! {
+		collect_v3_directory_user_files_rec(source_dir, os.join_path_single(source_dir, subdir),
+			prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+	}
+	return files
+}
+
+fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pref.Preferences, is_test_command bool, mut seen_dirs map[string]bool, mut seen_files map[string]bool, mut files []string) {
+	if !os.is_dir(dir) {
+		return
+	}
+	real_dir := os.real_path(dir)
+	if seen_dirs[real_dir] {
+		return
+	}
+	seen_dirs[real_dir] = true
+	if real_dir != os.real_path(module_root) && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
+		return
+	}
+	append_v3_directory_user_files(real_dir, prefs, is_test_command, mut seen_files, mut files)
+	mut entries := os.ls(real_dir) or { return }
+	entries.sort()
+	for entry in entries {
+		entry_path := os.join_path_single(real_dir, entry)
+		if os.is_dir(entry_path) {
+			collect_v3_directory_user_files_rec(module_root, entry_path, prefs, is_test_command, mut
+				seen_dirs, mut seen_files, mut files)
+		}
+	}
+}
+
+fn append_v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
+	for file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
+		append_unique_file(mut files, mut seen, file)
+	}
+	if is_test_command {
+		for file in pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines,
+			prefs.backend, prefs.target) {
+			append_unique_file(mut files, mut seen, file)
+		}
+	}
 }
 
 fn v3_directory_source_root(dir string) string {

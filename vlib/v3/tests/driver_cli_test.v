@@ -1283,6 +1283,29 @@ fn main() {
 	bits_run := cmdexec.run(bits_output, [])
 	assert bits_run.exit_code == 0, bits_run.output
 	assert bits_run.output.trim_space() == '1:18446744073709551614'
+
+	file_list_dir := os.join_path(root, 'file_list_sources')
+	file_list_nested_dir := os.join_path(file_list_dir, 'parts', 'nested')
+	os.mkdir_all(file_list_nested_dir) or { panic(err) }
+	os.write_file(os.join_path(file_list_dir, 'v.mod'),
+		"Module {\n\tname: 'file_list_sources'\n\tsubdirs: ['parts']\n}\n") or { panic(err) }
+	os.write_file(os.join_path(file_list_dir, 'root.v'),
+		'module main\n\nfn file_list_root_value() int { return 20 }\n') or { panic(err) }
+	os.write_file(os.join_path(file_list_nested_dir, 'nested.v'),
+		'module main\n\nfn file_list_nested_value() int { return 22 }\n') or { panic(err) }
+	file_list_main := os.join_path(root, 'file_list_main.v')
+	os.write_file(file_list_main,
+		'module main\n\nfn main() { println(file_list_root_value() + file_list_nested_value()) }\n') or {
+		panic(err)
+	}
+	file_list_output := os.join_path(root, 'file_list_output')
+	file_list_compile := cmdexec.run(v3_bin, ['-nocache', '-o', file_list_output, file_list_main,
+		'-file-list', file_list_dir])
+	assert file_list_compile.exit_code == 0, file_list_compile.output
+	file_list_run := cmdexec.run(file_list_output, [])
+	assert file_list_run.exit_code == 0, file_list_run.output
+	assert file_list_run.output.trim_space() == '42'
+
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
@@ -1297,10 +1320,18 @@ fn main() {
 		'unknown compile backend `bogus`')
 
 	if false_exe := os.find_abs_path_of_executable('false') {
-		cc_result := cmdexec.run(v3_bin, ['-prod', '-cc', false_exe, source, '-o',
+		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',
 			os.join_path(root, 'false_cc')])
 		assert cc_result.exit_code != 0
 		assert cc_result.output.contains(cmdexec.display(false_exe, ['-std=gnu11'])), cc_result.output
+		assert cc_result.output.contains('-O3'), cc_result.output
+		assert cc_result.output.contains('-flto'), cc_result.output
+		assert !cc_result.output.contains('-O2'), cc_result.output
+		custom_prod_result := cmdexec.run(v3_bin, ['-prod', '-no-prod-options', '-showcc', '-cc',
+			false_exe, source, '-o', os.join_path(root, 'false_cc_custom_prod')])
+		assert custom_prod_result.exit_code != 0
+		assert !custom_prod_result.output.contains('-O3'), custom_prod_result.output
+		assert !custom_prod_result.output.contains('-flto'), custom_prod_result.output
 	}
 
 	work_dir := os.join_path(root, 'work')
