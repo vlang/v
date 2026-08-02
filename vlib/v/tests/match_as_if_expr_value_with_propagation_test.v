@@ -313,6 +313,44 @@ fn select_value_selector(node ?Node) !int {
 	return result
 }
 
+// match as the first (parenthesized) key of an inferred map: `{(match ..): v}`
+fn select_value_mapkey(node ?Node) !map[int]string {
+	result := if value := node {
+		{
+			(match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			}): 'x'
+		}
+	} else {
+		{
+			0: 'x'
+		}
+	}
+	return result
+}
+
+fn lower_first_array(_ First) ![]int {
+	return [1, 1]
+}
+
+fn lower_second_array(_ Second) ![]int {
+	return [2, 2]
+}
+
+// match as an array spread operand: `[...(match .. { .. })]`
+fn select_value_spread(node ?Node) ![]int {
+	result := if value := node {
+		[...(match value {
+			First { lower_first_array(value)! }
+			Second { lower_second_array(value)! }
+		})]
+	} else {
+		[0]
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -513,6 +551,22 @@ fn test_selector_receiver_match_as_if_expr_value_with_propagation() {
 	assert select_value_selector(First{})! == 1
 	assert select_value_selector(Second{})! == 2
 	assert select_value_selector(none) or { -1 } == 0
+}
+
+fn test_map_key_match_as_if_expr_value_with_propagation() {
+	assert select_value_mapkey(First{})![1] == 'x'
+	assert select_value_mapkey(Second{})![2] == 'x'
+	assert (select_value_mapkey(none) or {
+		{
+			9: 'z'
+		}
+	})[0] == 'x'
+}
+
+fn test_array_spread_match_as_if_expr_value_with_propagation() {
+	assert select_value_spread(First{})! == [1, 1]
+	assert select_value_spread(Second{})! == [2, 2]
+	assert select_value_spread(none) or { [-1] } == [0]
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {

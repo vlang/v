@@ -636,12 +636,14 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			p.expr_contains_value_match_or_if(expr.expr)
 		}
 		ast.ArrayInit {
-			// e.g. `[match value { .. }]` as a call argument.
-			mut found := false
-			for element in expr.exprs {
-				if p.expr_contains_value_match_or_if(element) {
-					found = true
-					break
+			// e.g. `[match value { .. }]` or `[...(match value { .. })]`.
+			mut found := expr.has_update_expr && p.expr_contains_value_match_or_if(expr.update_expr)
+			if !found {
+				for element in expr.exprs {
+					if p.expr_contains_value_match_or_if(element) {
+						found = true
+						break
+					}
 				}
 			}
 			found
@@ -709,12 +711,16 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			}
 		}
 		ast.ArrayInit {
-			// last stmt on block is an array literal, e.g. `[match value { .. }]`;
-			// mark any element that is (or nests) a block-value match/if.
+			// last stmt on block is an array literal, e.g. `[match value { .. }]`
+			// or a spread `[...(match value { .. })]`; mark any element or the
+			// spread operand that is (or nests) a block-value match/if.
 			for mut element in expr.exprs {
 				if p.expr_contains_value_match_or_if(element) {
 					p.mark_last_call_expr_return_as_used(mut element)
 				}
+			}
+			if expr.has_update_expr && p.expr_contains_value_match_or_if(expr.update_expr) {
+				p.mark_last_call_expr_return_as_used(mut expr.update_expr)
 			}
 		}
 		ast.StructInit {
@@ -1342,7 +1348,29 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	match p.tok.kind {
 		.lcbr {
 			mut pos := p.tok.pos()
-			if p.peek_token(2).kind == .colon {
+			mut is_map_lit := p.peek_token(2).kind == .colon
+			if !is_map_lit && p.peek_tok.kind == .lpar {
+				// A parenthesized first key, e.g. `{ (match x { .. }) : v }`, puts the
+				// `:` past the closing `)`, so the single-token `peek_token(2)` check
+				// above misses it and the `{` would be misparsed as a block. Scan to
+				// the matching `)` and treat it as a map literal when a `:` follows.
+				mut depth := 1
+				for n := 2; true; n++ {
+					kind := p.peek_token(n).kind
+					if kind == .eof {
+						break
+					} else if kind == .lpar {
+						depth++
+					} else if kind == .rpar {
+						depth--
+						if depth == 0 {
+							is_map_lit = p.peek_token(n + 1).kind == .colon
+							break
+						}
+					}
+				}
+			}
+			if is_map_lit {
 				expr := p.expr(0)
 				// `{ 'abc' : 22 }`
 				return ast.ExprStmt{

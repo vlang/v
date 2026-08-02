@@ -409,8 +409,20 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 
 	if node.has_update_expr {
-		// `[...base, e1, e2]` — array update/spread literal
+		// `[...base, e1, e2]` — array update/spread literal.
+		// A value `match`/`if` spread operand, e.g. `[...(match x { ... })]`, in a
+		// void context (nested in an if-branch) must be checked as an expression so
+		// its arms produce values, instead of being typed `void`.
+		mut restore_force_value := false
+		if c.expected_type == ast.void_type && !c.force_value_match_or_if
+			&& operand_is_value_match_or_if(node.update_expr) {
+			c.force_value_match_or_if = true
+			restore_force_value = true
+		}
 		update_typ := c.expr(mut node.update_expr)
+		if restore_force_value {
+			c.force_value_match_or_if = false
+		}
 		// Resolve through type aliases so `type Ints = []int; [...Ints(...)]`
 		// is accepted; use final_sym to look past aliases of arrays.
 		update_sym := c.table.final_sym(update_typ)
@@ -949,7 +961,19 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		} else if node.keys.len > 0 {
 			// `{'age': 20}`
 			mut key_ := node.keys[0]
+			// A value `match`/`if` map key, e.g. `{(match x { ... }): v}`, in a void
+			// context determines the map key type and must be checked as an
+			// expression (like the value below). Same flag mechanism.
+			mut restore_key_flag := false
+			if c.expected_type == ast.void_type && !c.force_value_match_or_if
+				&& operand_is_value_match_or_if(key_) {
+				c.force_value_match_or_if = true
+				restore_key_flag = true
+			}
 			map_key_type = ast.mktyp(c.expr(mut key_))
+			if restore_key_flag {
+				c.force_value_match_or_if = false
+			}
 			if node.keys[0].is_auto_deref_var() {
 				map_key_type = map_key_type.deref()
 			}
