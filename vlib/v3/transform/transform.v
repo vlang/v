@@ -14599,11 +14599,27 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			t.mark_fn_used('sync__Channel__try_push_priv')
 			t.mark_fn_used('sync__Channel__closed_error')
 			lhs := t.transform_expr(t.a.child(&node, 0))
-			value := t.transform_expr(t.a.child(&rhs, 0))
+			// Route a value `match`/`if` sent value through value lowering so its propagating
+			// arm tail is materialized as a value, e.g.
+			// `ch <- (match node { First { get_first(node)! } ... }) or { return }`.
+			// `transform_value_operand` is a no-op for the common non-branch sent values.
+			value_pending_start := t.pending_stmts.len
+			value := t.transform_value_operand(t.a.child(&rhs, 0))
+			// Detach the sent value's materialization prelude so transforming the `or {}`
+			// handler below does not capture it into the handler body; re-queue it afterwards
+			// so it is emitted before the channel send.
+			mut value_prelude := []flat.NodeId{}
+			if t.pending_stmts.len > value_pending_start {
+				value_prelude = t.pending_stmts[value_pending_start..].clone()
+				t.pending_stmts = t.pending_stmts[..value_pending_start].clone()
+			}
 			saved_var_types := t.var_types.clone()
 			t.set_implicit_err_var_type()
 			body := t.transform_expr(t.a.child(&rhs, 1))
 			t.restore_var_types(saved_var_types)
+			for stmt in value_prelude {
+				t.pending_stmts << stmt
+			}
 			or_start := t.a.children.len
 			t.a.children << value
 			t.a.children << body
@@ -14850,20 +14866,28 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		recv_fn := t.a.nodes[int(recv_fn_id)]
 		if recv_fn.kind == .selector && recv_fn.children_count > 0 {
 			recv_id := t.a.children[recv_fn.children_start]
-			recv_is_branch := t.is_value_match_or_if_operand(recv_id)
-			mut has_branch_arg := false
+			// Position of the last value-branch operand (0 = receiver, 1.. = arguments).
+			mut last_branch := if t.is_value_match_or_if_operand(recv_id) { 0 } else { -1 }
 			for i in 1 .. node.children_count {
 				if t.is_value_match_or_if_operand(t.a.child(&node, i)) {
-					has_branch_arg = true
-					break
+					last_branch = i
 				}
 			}
-			if recv_is_branch || has_branch_arg {
-				// Evaluate the receiver before the arguments (source order), so their
-				// materialization preludes are queued in order.
+			if last_branch >= 0 {
+				// Evaluate operands in source order (receiver, then arguments). A value branch
+				// is materialized into a value temp; a non-stable operand that precedes a later
+				// branch is stabilized to a temp first, so its side effects run before that
+				// branch's hoisted prelude (e.g. `make_values(mut tr).index(match ...)`). Stable
+				// operands are left for the re-dispatch to transform once.
 				mut changed := false
-				new_recv := if recv_is_branch {
+				new_recv := if t.is_value_match_or_if_operand(recv_id) {
 					r := t.transform_value_operand(recv_id)
+					if r != recv_id {
+						changed = true
+					}
+					r
+				} else if last_branch > 0 && !t.is_stable_expr_for_reuse(recv_id) {
+					r := t.stable_expr_for_reuse(recv_id)
 					if r != recv_id {
 						changed = true
 					}
@@ -14888,15 +14912,17 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 				mut new_args := []flat.NodeId{cap: int(node.children_count)}
 				for i in 1 .. node.children_count {
 					arg_id := t.a.child(&node, i)
-					if t.is_value_match_or_if_operand(arg_id) {
-						na := t.transform_value_operand(arg_id)
-						if na != arg_id {
-							changed = true
-						}
-						new_args << na
+					na := if t.is_value_match_or_if_operand(arg_id) {
+						t.transform_value_operand(arg_id)
+					} else if i < last_branch && !t.is_stable_expr_for_reuse(arg_id) {
+						t.stable_expr_for_reuse(arg_id)
 					} else {
-						new_args << arg_id
+						arg_id
 					}
+					if na != arg_id {
+						changed = true
+					}
+					new_args << na
 				}
 				if changed {
 					call_start := t.a.children.len

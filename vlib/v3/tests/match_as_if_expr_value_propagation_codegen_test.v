@@ -731,6 +731,53 @@ fn select_value_method_arg(node Node) !int {
 	return idx * 1000 + values.len
 }
 
+fn ch_first(_ First) !int {
+	return 42
+}
+
+fn ch_second(_ Second) !int {
+	return 43
+}
+
+// Channel send with an `or {}` handler whose sent value is a value match: the
+// propagating arm tail must be lowered as a value inside the `.arrow` fast path.
+// First -> send 42, receive 42.
+fn select_value_channel_send(node Node) !int {
+	ch := chan int{cap: 1}
+	ch <- (match node {
+		First { ch_first(node)! }
+		Second { ch_second(node)! }
+	}) or { return -1 }
+	return <-ch
+}
+
+fn (mut tr Tracer) make_index_values() []int {
+	tr.order << 1
+	return [10, 20, 30]
+}
+
+fn (mut tr Tracer) needle_first(_ First) !int {
+	tr.order << 2
+	return 30
+}
+
+fn (mut tr Tracer) needle_second(_ Second) !int {
+	tr.order << 2
+	return 20
+}
+
+// Call operand ordering: a side-effecting receiver must run before the branch
+// argument hoisted prelude. First -> index of 30 in [10,20,30] = 2, order [1,2]
+// -> 2012 (a reversed order would be 2021).
+fn select_value_call_operand_order(node Node) !int {
+	mut tr := Tracer{}
+	idx := tr.make_index_values().index(match node {
+		First { tr.needle_first(node)! }
+		Second { tr.needle_second(node)! }
+	})
+	return idx * 1000 + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -790,6 +837,8 @@ fn main() {
 	println(select_value_push_many(First{})!)
 	println(select_value_method_receiver(First{})!)
 	println(select_value_method_arg(First{})!)
+	println(select_value_channel_send(First{})!)
+	println(select_value_call_operand_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -803,5 +852,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n1'
 }
