@@ -388,6 +388,19 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	mut cap_expr := t.make_int_literal(0)
 	mut init_expr := flat.empty_node
 	mut init_expr_id := flat.empty_node
+	// Source (child) position of the last `len`/`cap` field whose value is a value branch,
+	// so an earlier side-effecting `len`/`cap` field can be stabilized before that field
+	// hoists its materialization prelude, preserving field evaluation order (both are
+	// evaluated into `new_call` below; `init` is per-element in the loop body).
+	mut last_lencap_branch := -1
+	for i in 0 .. node.children_count {
+		child := t.a.child_node(&node, i)
+		if child.kind == .field_init && child.children_count > 0 && child.value in ['len', 'cap'] {
+			if t.is_value_match_or_if_operand(t.a.child(child, 0)) {
+				last_lencap_branch = i
+			}
+		}
+	}
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
 		if child.kind == .field_init && child.children_count > 0 {
@@ -395,10 +408,16 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 				// Typed value lowering so a value `match`/`if` len field (e.g.
 				// `[]int{len: match node { ... lower(node)! ... }}`) is materialized as a
 				// value instead of lowering its propagating arm in a statement context.
-				val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
+				mut val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
+				if i < last_lencap_branch && !t.is_stable_expr_for_reuse(val) {
+					val = t.stable_transformed_expr_for_reuse(val, 'int', 'arr_len')
+				}
 				len_expr = val
 			} else if child.value == 'cap' {
-				val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
+				mut val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
+				if i < last_lencap_branch && !t.is_stable_expr_for_reuse(val) {
+					val = t.stable_transformed_expr_for_reuse(val, 'int', 'arr_cap')
+				}
 				cap_expr = val
 			} else if child.value == 'init' {
 				init_expr_id = t.a.child(child, 0)

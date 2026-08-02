@@ -943,6 +943,69 @@ fn select_value_array_init(node Node) !int {
 	return arr.len * 1000 + arr.len
 }
 
+struct Mutator {
+mut:
+	items []int
+}
+
+fn (mut m Mutator) idx() int {
+	return 0
+}
+
+fn (mut m Mutator) bump_first(_ First) !int {
+	m.items[0] = 999
+	return 7
+}
+
+fn (mut m Mutator) bump_second(_ Second) !int {
+	m.items[0] = 888
+	return 8
+}
+
+fn take(a int, b int) int {
+	return a * 100 + b
+}
+
+// Ordinary (non-mut) lvalue argument (non-stable index) before a value-match argument
+// whose prelude mutates the container: the argument value must be read in source order,
+// before the mutation. First -> take(items[idx()]=5, 7) = 507 (if the mutated 999 leaked
+// in it would be 99907).
+fn select_value_nonmut_arg_value(node Node) !int {
+	mut m := Mutator{
+		items: [5, 6]
+	}
+	return take(m.items[m.idx()], match node {
+		First { m.bump_first(node)! }
+		Second { m.bump_second(node)! }
+	})
+}
+
+fn (mut tr Tracer) tlen() int {
+	tr.order << 1
+	return 2
+}
+
+fn (mut tr Tracer) tcap_first(_ First) !int {
+	tr.order << 2
+	return 4
+}
+
+fn (mut tr Tracer) tcap_second(_ Second) !int {
+	tr.order << 2
+	return 6
+}
+
+// Array initializer field ordering: a side-effecting len must run before a value-match
+// cap prelude. First -> len 2, order [1,2] -> 212 (a reversed order would be 221).
+fn select_value_array_init_cap_order(node Node) !int {
+	mut tr := Tracer{}
+	arr := []int{len: tr.tlen(), cap: match node {
+		First { tr.tcap_first(node)! }
+		Second { tr.tcap_second(node)! }
+	}}
+	return arr.len * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -1009,6 +1072,8 @@ fn main() {
 	println(select_value_plain_call_order(First{})!)
 	println(select_value_mut_arg(First{})!)
 	println(select_value_array_init(First{})!)
+	println(select_value_nonmut_arg_value(First{})!)
+	println(select_value_array_init_cap_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -1022,5 +1087,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n7612\n4004\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n7612\n4004\n507\n212\n1'
 }

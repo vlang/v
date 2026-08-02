@@ -15016,8 +15016,16 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 				na := if t.is_value_match_or_if_operand(arg_id) {
 					t.transform_value_operand(arg_id)
 				} else if i < last_branch && !t.is_stable_expr_for_reuse(arg_id) {
-					if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
-						stabilized
+					// A `mut` argument keeps its lvalue identity (only its dynamic base/index
+					// components are spilled) so it still mutates through. An ordinary argument is
+					// spilled by value, so its value is read in source order — a later branch
+					// prelude that mutates its container cannot change the observed value.
+					if t.a.nodes[int(arg_id)].is_mut {
+						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
+							stabilized
+						} else {
+							t.stable_expr_for_reuse(arg_id)
+						}
 					} else {
 						t.stable_expr_for_reuse(arg_id)
 					}
