@@ -1042,6 +1042,43 @@ fn select_value_rvalue_channel_target(node Node) !int {
 	return got * 100 + c.order[0] * 10 + c.order[1]
 }
 
+struct ChanFactory {
+mut:
+	order []int
+	chans []chan int
+}
+
+fn (mut f ChanFactory) make_channels() []chan int {
+	f.order << 1
+	return f.chans
+}
+
+fn (mut f ChanFactory) fsent_first(_ First) !int {
+	f.order << 2
+	return 55
+}
+
+fn (mut f ChanFactory) fsent_second(_ Second) !int {
+	f.order << 2
+	return 44
+}
+
+// A channel target that is an index into a side-effecting *rvalue* base (`make_channels()[0]`,
+// not an lvalue): the lvalue stabilizer rebuilds the outer index but leaves the base call
+// inline, so the whole target must be spilled by value to keep the base call ahead of the sent
+// value prelude. First -> send 55, order [1,2] -> 5512 (a reversed order would be 5521).
+fn select_value_composite_rvalue_channel_target(node Node) !int {
+	mut f := ChanFactory{
+		chans: [chan int{cap: 1}, chan int{cap: 1}]
+	}
+	f.make_channels()[0] <- (match node {
+		First { f.fsent_first(node)! }
+		Second { f.fsent_second(node)! }
+	}) or { return -1 }
+	got := <-f.chans[0]
+	return got * 100 + f.order[0] * 10 + f.order[1]
+}
+
 fn combine(a int, b int) int {
 	return a * 10 + b
 }
@@ -1303,6 +1340,7 @@ fn main() {
 	println(select_value_channel_target_order(First{})!)
 	println(select_value_nested_channel_target_order(First{})!)
 	println(select_value_rvalue_channel_target(First{})!)
+	println(select_value_composite_rvalue_channel_target(First{})!)
 	println(select_value_plain_call_order(First{})!)
 	println(select_value_nested_branch_arg_order(First{})!)
 	println(select_value_mut_arg(First{})!)
@@ -1323,5 +1361,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n1'
 }
