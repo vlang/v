@@ -396,9 +396,13 @@ pub fn encode_crypto_frame(offset u64, data []u8) ![]u8 {
 }
 
 // encode_connection_close_frame serializes a CONNECTION_CLOSE frame.
-// `frame_type` is ignored (encoded as 0) when `is_application_error` is
+// `frame_type` is ignored (the Frame Type field is OMITTED from the wire
+// entirely, not encoded as a zero value) when `is_application_error` is
 // true, matching the application-level variant's wire shape (RFC 9000
-// §19.19, second form).
+// §19.19, second form) -- a decoder parsing this back sees no such field
+// on the wire either, which is why parse_frame's own
+// ConnectionCloseFrame.frame_type defaults to 0 for that variant, rather
+// than reading a zero varint that was never sent.
 pub fn encode_connection_close_frame(is_application_error bool, error_code u64, frame_type u64, reason string) ![]u8 {
 	typ := if is_application_error {
 		frame_type_connection_close_application

@@ -148,8 +148,15 @@ fn (mut r CryptoStreamReassembler) merge_or_add_pending(offset u64, data []u8) !
 		overlap_start := if frag.offset > merged_offset { frag.offset } else { merged_offset }
 		overlap_end := if frag_end < merged_end { frag_end } else { merged_end }
 		if overlap_end > overlap_start {
-			a := unsafe { merged_data[overlap_start - merged_offset..overlap_end - merged_offset] }
-			b := unsafe { frag.data[overlap_start - frag.offset..overlap_end - frag.offset] }
+			// Plain (not unsafe) slicing: overlap_start/overlap_end are
+			// already-validated indices within both merged_data's and
+			// frag.data's bounds (derived from the max()/min() clamps
+			// above), and this is an equality comparison, not a per-packet
+			// hot path -- unlike packet_protection.v/header_protection.v's
+			// use of unsafe{} for that reason, there is no performance case
+			// for skipping the bounds-checked, cloned slice here.
+			a := merged_data[overlap_start - merged_offset..overlap_end - merged_offset].clone()
+			b := frag.data[overlap_start - frag.offset..overlap_end - frag.offset].clone()
 			if a != b {
 				return error('quic: CRYPTO stream retransmission mismatch at offset ${overlap_start}: disagrees with an already-pending out-of-order fragment')
 			}

@@ -60,10 +60,25 @@ pub:
 // Initial packet." A Retry whose SCID merely echoes back the client's own
 // prior DCID carries no real server-chosen replacement and cannot
 // meaningfully be switched to.
-pub fn parse_retry_packet(buf []u8, original_dcid []u8) !QuicRetryPacket {
+//
+// `original_scid` is the Source Connection ID the client used on that same
+// original Initial packet -- required to validate the ECHO half of the
+// same RFC 9000 §17.2.5.1 sentence quoted above ("the server populates the
+// Destination Connection ID with the connection ID the client included as
+// its own Source Connection ID"): the Retry's own DCID must equal it. This
+// is a DISTINCT check from the anti-loop one below -- the publicly known
+// Retry Integrity Key authenticates that whoever sent this observed SOME
+// Initial packet, not that THIS Retry is addressed to THIS client's own
+// connection attempt, so an attacker who also observed or correctly
+// guessed the client's original DCID could still forge a Retry with a
+// mismatched DCID without this check.
+pub fn parse_retry_packet(buf []u8, original_dcid []u8, original_scid []u8) !QuicRetryPacket {
 	header, offset := parse_long_header(buf)!
 	if header.typ != .retry {
 		return error('quic: not a Retry packet')
+	}
+	if header.dcid != original_scid {
+		return error("quic: Retry packet Destination Connection ID does not echo this client's own Initial Source Connection ID (RFC 9000 §17.2.5.1)")
 	}
 	if header.scid == original_dcid {
 		return error("quic: Retry packet Source Connection ID is identical to this client's own Initial Destination Connection ID (RFC 9000 §17.2.5.1)")
