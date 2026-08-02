@@ -197,6 +197,38 @@ fn select_value_index(node ?Node) !int {
 	return result
 }
 
+fn select_value_membership(node ?Node) !bool {
+	result := if value := node {
+		(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}) in [1, 2]
+	} else {
+		false
+	}
+	return result
+}
+
+struct Boxed {
+	value int
+}
+
+fn boxed(v int) Boxed {
+	return Boxed{v}
+}
+
+fn select_value_selector(node ?Node) !int {
+	result := if value := node {
+		(match value {
+			First { boxed(lower_first(value)!) }
+			Second { boxed(lower_second(value)!) }
+		}).value
+	} else {
+		0
+	}
+	return result
+}
+
 struct Holder {
 	value int
 	other int
@@ -295,6 +327,8 @@ fn main() {
 	println(select_value_arraylit(First{})!)
 	println(select_value_prefix(First{})!)
 	println(select_value_index(First{})!)
+	println(select_value_membership(First{})!)
+	println(select_value_selector(First{})!)
 	println(select_value_structinit(First{})!.value)
 	println(select_value_mapinit(Second{})![7])
 	println(select_value_ascast(5)!)
@@ -312,5 +346,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n1\n2\n6\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\ntrue\n1\n1\n2\n6\n6\n2'
 }

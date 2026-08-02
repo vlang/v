@@ -15609,7 +15609,9 @@ fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId 
 	// transparent parentheses (`(x).field`, `((x)).field`), where `x` is still the
 	// direct receiver.
 	if !t.selector_base_is_ident_receiver(id) {
-		return t.transform_expr(id)
+		// route a value `match`/`if` receiver (e.g. `(match x { ... }).field`)
+		// through its target type so its propagating arms are lowered as values.
+		return t.transform_value_operand(id)
 	}
 	old_in_selector_base := t.in_selector_base
 	t.in_selector_base = true

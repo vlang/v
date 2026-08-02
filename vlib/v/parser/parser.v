@@ -631,6 +631,10 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			p.expr_contains_value_match_or_if(expr.left)
 				|| p.expr_contains_value_match_or_if(expr.index)
 		}
+		ast.SelectorExpr {
+			// e.g. `(match value { .. }).field` as a call argument.
+			p.expr_contains_value_match_or_if(expr.expr)
+		}
 		ast.ArrayInit {
 			// e.g. `[match value { .. }]` as a call argument.
 			mut found := false
@@ -808,7 +812,18 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			// `-(match value { First { bar()! } })`; recurse into the operand.
 			p.mark_last_call_expr_return_as_used(mut expr.right)
 		}
-		ast.ComptimeCall, ast.ComptimeSelector, ast.SelectorExpr {
+		ast.SelectorExpr {
+			if expr.or_block.stmts.len > 0 {
+				mut or_block_last_stmt := expr.or_block.stmts.last()
+				p.mark_last_call_return_as_used(mut or_block_last_stmt)
+			}
+			// last stmt on block is a selector, e.g. `(match value { .. }).field`;
+			// recurse into the receiver if it is (or nests) a block-value match/if.
+			if p.expr_contains_value_match_or_if(expr.expr) {
+				p.mark_last_call_expr_return_as_used(mut expr.expr)
+			}
+		}
+		ast.ComptimeCall, ast.ComptimeSelector {
 			if expr.or_block.stmts.len > 0 {
 				mut or_block_last_stmt := expr.or_block.stmts.last()
 				p.mark_last_call_return_as_used(mut or_block_last_stmt)

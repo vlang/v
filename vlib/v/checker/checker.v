@@ -3081,7 +3081,19 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	node.is_field_typ = node.is_field_typ || c.comptime.is_comptime_selector_type(node)
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
+	// A value `match`/`if` selector receiver, e.g. `(match x { ... }).field`, in a
+	// void context (nested in an if-branch) must be checked as an expression so its
+	// arms produce values, instead of being typed `void` ("does not return a value").
+	mut restore_force_value := false
+	if c.expected_type == ast.void_type && !c.force_value_match_or_if
+		&& operand_is_value_match_or_if(node.expr) {
+		c.force_value_match_or_if = true
+		restore_force_value = true
+	}
 	mut typ := c.expr(mut node.expr)
+	if restore_force_value {
+		c.force_value_match_or_if = false
+	}
 	expr_is_auto_deref_var := node.expr.is_auto_deref_var()
 	receiver_uses_wrapped_smartcast := typ.has_option_or_result()
 		|| c.table.sym(c.unwrap_generic(typ)).kind in [.interface, .sum_type, .any]

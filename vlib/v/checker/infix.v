@@ -125,15 +125,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 	}
-	if !check_right_type_first && c.expected_type == ast.void_type
-		&& operand_is_value_match_or_if(node.left) {
-		// A `match`/`if` value operand on the left, e.g. `(match x { ... }) + 1`,
-		// would otherwise be checked with the (void) surrounding expected type and
-		// mistyped as a statement (e.g. when nested inside an if-branch). Resolve
-		// the right operand's type first and use it as the expected type so the
-		// left operand is checked as a value expression.
-		check_right_type_first = true
-	}
 	mut right_type := ast.void_type
 	if check_right_type_first {
 		right_type = c.expr(mut node.right)
@@ -144,7 +135,22 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		node.right_type = right_type
 		c.expected_type = right_type
 	}
+	// A `match`/`if` value operand on the left, e.g. `(match x { ... }) + 1` or
+	// `(match x { ... }) in [1, 2]`, would otherwise be checked with the (void)
+	// surrounding expected type and mistyped as a statement (e.g. when nested inside
+	// an if-branch). Force it to be checked as a value expression so its arms infer
+	// their own type, without imposing the right operand's type (which for a
+	// membership operator is a container, not the element/key type).
+	mut restore_force_value := false
+	if !check_right_type_first && c.expected_type == ast.void_type && !c.force_value_match_or_if
+		&& operand_is_value_match_or_if(node.left) {
+		c.force_value_match_or_if = true
+		restore_force_value = true
+	}
 	mut left_type := c.expr(mut node.left)
+	if restore_force_value {
+		c.force_value_match_or_if = false
+	}
 	if left_type == ast.no_type {
 		node.left_type = left_type
 		return ast.void_type

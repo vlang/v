@@ -279,6 +279,40 @@ fn select_value_index(node ?Node) !string {
 	return result
 }
 
+// match on the left of a membership operator: `(match .. { .. }) in [1, 2]`
+fn select_value_membership(node ?Node) !bool {
+	result := if value := node {
+		(match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}) in [1, 2]
+	} else {
+		false
+	}
+	return result
+}
+
+struct Boxed {
+	value int
+}
+
+fn boxed(v int) Boxed {
+	return Boxed{v}
+}
+
+// match as a selector receiver: `(match .. { .. }).value`
+fn select_value_selector(node ?Node) !int {
+	result := if value := node {
+		(match value {
+			First { boxed(lower_first(value)!) }
+			Second { boxed(lower_second(value)!) }
+		}).value
+	} else {
+		0
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -467,6 +501,18 @@ fn test_index_operand_match_as_if_expr_value_with_propagation() {
 	assert select_value_index(First{})! == 'b'
 	assert select_value_index(Second{})! == 'c'
 	assert select_value_index(none) or { 'z' } == 'x'
+}
+
+fn test_membership_operand_match_as_if_expr_value_with_propagation() {
+	assert select_value_membership(First{})! == true
+	assert select_value_membership(Second{})! == true
+	assert select_value_membership(none) or { true } == false
+}
+
+fn test_selector_receiver_match_as_if_expr_value_with_propagation() {
+	assert select_value_selector(First{})! == 1
+	assert select_value_selector(Second{})! == 2
+	assert select_value_selector(none) or { -1 } == 0
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {
