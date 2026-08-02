@@ -51,17 +51,36 @@ fn test_split_coalesced_datagram_real_server_capture() {
 
 fn test_split_coalesced_datagram_single_initial_packet() {
 	// Slice out just the first (Initial) packet from the real coalesced
-	// server datagram above and re-split THAT alone: the simplest possible
-	// case, one packet exactly spanning its own declared length with
-	// nothing coalesced after it.
+	// server datagram above, pad it to the RFC 9000 §14.1 1200-byte floor
+	// with raw trailing zero bytes (the same shape of UDP-level padding the
+	// real captured datagram above already exercises), and re-split THAT:
+	// the simplest possible case, one packet exactly spanning its own
+	// declared length with nothing coalesced after it.
 	raw := hex.decode(quiche_server_coalesced_datagram)!
 	all_packets := split_coalesced_datagram(raw)!
-	single := all_packets[0].bytes
+	mut single := all_packets[0].bytes.clone()
+	single << []u8{len: min_initial_datagram_size - single.len}
 
 	packets := split_coalesced_datagram(single)!
 	assert packets.len == 1
 	assert packets[0].form == .long
-	assert packets[0].bytes.len == single.len
+	assert packets[0].bytes.len == all_packets[0].bytes.len
+}
+
+fn test_split_coalesced_datagram_discards_undersized_initial_datagram() {
+	// RFC 9000 §14.1: an Initial packet carried in a UDP datagram smaller
+	// than 1200 bytes MUST be discarded. No compliant peer -- client or
+	// server -- can ever legitimately produce one this small: a client
+	// always pads its Initial-carrying datagrams to this floor, and a
+	// server does the same for any ack-eliciting Initial packet, so an
+	// undersized one is either a non-compliant sender or an
+	// anti-amplification probe.
+	raw := hex.decode(quiche_server_coalesced_datagram)!
+	all_packets := split_coalesced_datagram(raw)!
+	single := all_packets[0].bytes // the real, unpadded 167-byte Initial
+
+	packets := split_coalesced_datagram(single)!
+	assert packets.len == 0
 }
 
 fn test_split_coalesced_datagram_stops_at_version_negotiation() {
@@ -117,16 +136,22 @@ fn test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_len
 	// real leading Initial packet followed by "invalid packet" padding
 	// (here, a Length field claiming more than remains) must still yield
 	// the leading packet, not lose it to a whole-datagram error.
+	//
+	// The leading packet's own payload is inflated to reach the RFC 9000
+	// §14.1 1200-byte floor by itself -- NOT via trailing zero padding
+	// after the malformed chunk below, which would silently supply enough
+	// "remaining" bytes for the malformed chunk's own oversized Length
+	// field to appear satisfiable, defeating the overrun this test targets.
 	h := QuicLongHeader{
 		typ:     .initial
 		version: quic_v1
 		dcid:    []u8{len: 8}
 		scid:    []u8{len: 8}
 		token:   []u8{}
-		length:  2
+		length:  1200
 	}
 	mut buf := encode_long_header(h, 0, 0)!
-	buf << [u8(0x00), 0x00]
+	buf << []u8{len: 1200} // pn byte + payload, matching length: 1200
 
 	bad_h := QuicLongHeader{
 		typ:     .initial
@@ -179,6 +204,9 @@ fn test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_gar
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(0x00), 0x00]
 	buf << [u8(0x80 | 0x40), 0xde, 0xad, 0xbe, 0xef] // form+fixed bit set, bogus non-v1 version
+	// Pad to the RFC 9000 §14.1 1200-byte floor -- see the identical note in
+	// test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_length_overrun.
+	buf << []u8{len: min_initial_datagram_size - buf.len}
 
 	packets := split_coalesced_datagram(buf)!
 	assert packets.len == 1
@@ -295,6 +323,9 @@ fn test_split_coalesced_datagram_ignores_packet_with_mismatched_dcid() {
 	mut buf3 := encode_long_header(h3, 0, 0)!
 	buf3 << [u8(0x00), 0x00]
 	buf << buf3
+	// Pad to the RFC 9000 §14.1 1200-byte floor -- see the identical note in
+	// test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_length_overrun.
+	buf << []u8{len: min_initial_datagram_size - buf.len}
 
 	packets := split_coalesced_datagram(buf)!
 	assert packets.len == 2 // the mismatched middle packet is excluded

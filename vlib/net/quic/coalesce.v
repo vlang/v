@@ -178,6 +178,26 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 			// packets already validated before it.
 			break
 		}
+		if typ == .initial && u64(datagram.len) < min_initial_datagram_size {
+			// RFC 9000 14.1: "A server MUST discard an Initial packet
+			// that is carried in a UDP datagram with a payload that is
+			// smaller than the smallest allowed maximum datagram size of
+			// 1200 bytes." The literal MUST binds servers, but the same
+			// section requires BOTH a client (always) and a server (for
+			// ack-eliciting Initial packets) to pad their own outbound
+			// Initial-carrying datagrams up to this size -- see
+			// pad_initial_payload below -- so no compliant peer, on
+			// either side of the connection, can ever legitimately
+			// produce a smaller one; discarding it here is exactly the
+			// general "endpoint MAY discard" allowance the same section
+			// grants any receiver for a size-constraint violation.
+			// Exclude only this packet -- not the whole call -- matching
+			// the DCID-mismatch handling immediately below: its own
+			// Length field still correctly delimits it, so keep walking
+			// for whatever may legitimately follow.
+			offset += int(total_len)
+			continue
+		}
 		if fd := first_dcid {
 			if header.dcid != fd {
 				// Ignore -- not error -- per the SHOULD above: this one
