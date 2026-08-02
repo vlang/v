@@ -64,12 +64,28 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.is_liveshared = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_liveshared = false
+		prefs.is_prof = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_prof = false
+		prefs.output_cross_c = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.output_cross_c = false
+		prefs.is_apk = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.is_apk = false
+		prefs.json_errors = true
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.json_errors = false
 		prefs.is_run = true
 		prefs.autofree = true
 		assert !is_macos_v3_relevant_command('run', prefs)
 		prefs.autofree = false
 		assert is_macos_v3_relevant_command('run', prefs)
+		prefs.backend = .wasm
+		assert !is_macos_v3_relevant_command('run', prefs)
 		prefs.is_run = false
+		assert is_macos_v3_relevant_command('main.v', prefs)
+		prefs.backend = .c
 		prefs.is_shared = true
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_cstrict = true
@@ -80,7 +96,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.backend = .js_node
 		prefs.os = .linux
-		assert is_macos_v3_relevant_command('main.v', prefs)
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.backend = .c
+		prefs.os = .macos
 
 		prefs.path = 'vlib/v3'
 		prefs.is_test = true
@@ -155,14 +173,6 @@ fn test_macos_v3_forwards_compatibility_c99_mode() {
 		assert explicit_no_cache.count(it in ['-nocache', '--no-cache']) == 1
 		explicit_memory_limit := macos_v3_forwarded_args(prefs, ['--no-memory-limit', 'main.v'])
 		assert explicit_memory_limit.count(it in ['-no-memory-limit', '--no-memory-limit']) == 1
-		prefs.backend = .js_node
-		inferred_js := macos_v3_forwarded_args(prefs, ['-o', 'main.js', 'main.v'])
-		backend_index := inferred_js.index('-b') or { -1 }
-		assert backend_index >= 0
-		assert inferred_js[backend_index + 1] == 'js_node'
-		prefs.backend_set_by_flag = true
-		explicit_js := macos_v3_forwarded_args(prefs, ['-b', 'js_node', 'main.v'])
-		assert explicit_js.count(it == 'js_node') == 1
 	}
 }
 

@@ -59,7 +59,9 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.old_compiler {
 		return false
 	}
-	if prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
+	if prefs.sanitize || prefs.is_livemain || prefs.is_liveshared || prefs.is_prof
+		|| prefs.output_cross_c || prefs.is_apk || prefs.json_errors
+		|| prefs.backend.is_js() || (prefs.backend == .wasm && prefs.is_run)
 		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		// V1 still owns compiler modes whose runtime or C toolchain support has not
 		// been implemented by V3 yet.
@@ -108,13 +110,6 @@ fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) b
 
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
 	mut forwarded_args := raw_args.clone()
-	if prefs.backend == .js_node && !prefs.backend_set_by_flag {
-		// v.pref infers the Node.js backend from an explicit `.js` output name.
-		// The embedded V3 driver receives raw arguments, so preserve that derived
-		// preference explicitly instead of letting it fall back to C.
-		forwarded_args.insert(0, 'js_node')
-		forwarded_args.insert(0, '-b')
-	}
 	if macos_v3_compat_c99_flag !in forwarded_args {
 		forwarded_args.insert(0, macos_v3_compat_c99_flag)
 	}

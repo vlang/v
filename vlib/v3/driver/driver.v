@@ -5177,6 +5177,22 @@ fn parse_v3_environment_flags(name string) []string {
 	}
 }
 
+fn v3_environment_coverage_dir() string {
+	value := os.getenv('VCOVDIR')
+	if value.len == 0 {
+		return ''
+	}
+	return os.real_path(value)
+}
+
+fn v3_environment_run_only() []string {
+	value := os.getenv('VTEST_ONLY_FN')
+	if value.len == 0 {
+		return []
+	}
+	return value.split_any(',').filter(it.len > 0)
+}
+
 fn expand_v3_module_search_paths(spec string, vroot string) []string {
 	if spec.len == 0 {
 		return []
@@ -5304,13 +5320,13 @@ pub fn run(args []string) {
 	mut is_direct_vsh := false
 	mut is_test_command := false
 	mut is_checker_fixture := false
-	mut coverage_dir := ''
+	mut coverage_dir := v3_environment_coverage_dir()
 	mut dump_c_flags := ''
 	mut generate_c_project := ''
 	mut module_search_path_spec := ''
 	mut file_list := []string{}
 	mut run_args := []string{}
-	mut run_only := []string{}
+	mut run_only := v3_environment_run_only()
 	mut print_fn_names := []string{}
 	environment_c_flags := parse_v3_environment_flags('CFLAGS')
 	environment_ld_flags := parse_v3_environment_flags('LDFLAGS')
@@ -5480,6 +5496,7 @@ pub fn run(args []string) {
 			// command-line compatible with V1.
 			i += 2
 		} else if args[i] == '-run-only' && i + 1 < args.len {
+			run_only.clear()
 			for pattern in args[i + 1].split_any(',') {
 				trimmed := pattern.trim_space()
 				if trimmed.len > 0 {
