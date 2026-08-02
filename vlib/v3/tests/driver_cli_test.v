@@ -264,6 +264,13 @@ fn run_driver_with_environment(v3_bin string, args []string, environment map[str
 	return collect_driver_process_result(mut process)
 }
 
+fn run_driver_in_work_folder(v3_bin string, args []string, work_folder string) os.Result {
+	mut process := os.new_process(v3_bin)
+	process.set_args(args)
+	process.set_work_folder(work_folder)
+	return collect_driver_process_result(mut process)
+}
+
 fn test_driver_persistent_macos_output_survives_cache_removal() {
 	$if !macos {
 		return
@@ -468,6 +475,58 @@ fn main() {
 	bin_run := cmdexec.run(bin_output, [])
 	assert bin_run.exit_code == 0, bin_run.output
 	assert bin_run.output == '42\n', bin_run.output
+}
+
+fn test_driver_doc_detection_skips_all_option_values() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_doc_option_values_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'app.v')
+	os.write_file(source, "fn main() { println('option-value-doc') }\n")!
+
+	project_case := os.join_path(root, 'project_case')
+	os.mkdir_all(project_case)!
+	project := run_driver_in_work_folder(v3_bin, ['-silent', '-generate-c-project', 'doc', source],
+		project_case)
+	assert project.exit_code == 0, project.output
+	assert os.is_file(os.join_path(project_case, 'doc', 'app.c'))
+
+	for coverage_option in ['-cov', '-coverage'] {
+		coverage_case := os.join_path(root, coverage_option.trim_left('-'))
+		os.mkdir_all(coverage_case)!
+		coverage := run_driver_in_work_folder(v3_bin, ['-silent', coverage_option, 'doc', 'run',
+			source], coverage_case)
+		assert coverage.exit_code == 0, '${coverage_option}: ${coverage.output}'
+		assert coverage.output == 'option-value-doc\n', coverage.output
+	}
+
+	file_list_case := os.join_path(root, 'file_list_case')
+	os.mkdir_all(os.join_path(file_list_case, 'doc'))!
+	os.write_file(os.join_path(file_list_case, 'doc', 'extra.v'),
+		"module main\n\nfn doc_option_value() string { return 'option-value-doc' }\n")!
+	file_list_main := os.join_path(file_list_case, 'main.v')
+	os.write_file(file_list_main, 'module main\n\nfn main() { println(doc_option_value()) }\n')!
+	file_list := run_driver_in_work_folder(v3_bin, ['-silent', '-file-list', 'doc', '-o', 'out',
+		file_list_main], file_list_case)
+	assert file_list.exit_code == 0, file_list.output
+	file_list_run := cmdexec.run(os.join_path(file_list_case, 'out'), [])
+	assert file_list_run.exit_code == 0, file_list_run.output
+	assert file_list_run.output == 'option-value-doc\n', file_list_run.output
+
+	for option in ['-message-limit', '-dump-c-flags'] {
+		option_case := os.join_path(root, option.trim_left('-'))
+		os.mkdir_all(option_case)!
+		output := os.join_path(option_case, 'out')
+		result := run_driver_in_work_folder(v3_bin,
+			['-silent', option, 'doc', '-o', output, source], option_case)
+		assert result.exit_code == 0, '${option}: ${result.output}'
+		assert os.is_file(output), option
+		assert option != '-dump-c-flags' || os.is_file(os.join_path(option_case, 'doc'))
+	}
 }
 
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {

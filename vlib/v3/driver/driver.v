@@ -5371,6 +5371,17 @@ fn expand_v3_module_search_paths(spec string, vroot string) []string {
 	return expanded
 }
 
+fn v3_driver_option_requires_value(option string) bool {
+	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
+		'--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path', '-cov', '-coverage',
+		'-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
+		'-run-only']
+}
+
+fn v3_driver_option_consumes_value(option string) bool {
+	return v3_driver_option_requires_value(option) || option in ['-cflags', '-dump-c-flags']
+}
+
 // run executes the V3 compiler driver with `args`.
 @[markused]
 pub fn run(args []string) {
@@ -5385,9 +5396,7 @@ pub fn run(args []string) {
 			skip_option_value = false
 			continue
 		}
-		if arg in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
-			'--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path', '-cflags',
-			'-printfn', '-test-runner', '-run-only'] {
+		if v3_driver_option_consumes_value(arg) {
 			skip_option_value = true
 			continue
 		}
@@ -5513,7 +5522,7 @@ pub fn run(args []string) {
 		}
 		option_accepts_dash_value := args[i] in ['-o', '-output'] && i + 1 < args.len
 			&& args[i + 1] == '-'
-		if args[i] in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size', '-path', '-cov', '-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner', '-run-only']
+		if v3_driver_option_requires_value(args[i])
 			&& (i + 1 >= args.len || (args[i + 1].starts_with('-') && !option_accepts_dash_value)) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
