@@ -7,7 +7,10 @@ import strings
 
 fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !node.is_comptime {
-		node.is_expr = c.expected_type != ast.void_type
+		// `c.inside_array_init_value_elem` marks a value match used as an array
+		// element in a void context (`[match x { .. }]`), which must be treated as
+		// an expression even though the surrounding expected type is void.
+		node.is_expr = c.expected_type != ast.void_type || c.inside_array_init_value_elem
 	}
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {

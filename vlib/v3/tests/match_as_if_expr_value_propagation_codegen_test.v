@@ -160,6 +160,18 @@ fn select_value_callarg_infix(node ?Node) !int {
 	return result
 }
 
+fn select_value_arraylit(node ?Node) ![]int {
+	result := if value := node {
+		[match value {
+			First { lower_first(value)! }
+			Second { lower_second(value)! }
+		}]
+	} else {
+		[0]
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -219,6 +231,7 @@ fn main() {
 	println(select_value_callarg(Second{})!)
 	println(select_value_nested_callarg(First{})!)
 	println(select_value_callarg_infix(First{})!)
+	println(select_value_arraylit(First{})!)
 	println(select_value_ascast(5)!)
 	println(select_value_ascast_unsafe(5)!)
 	println(direct_match(Second{})!)
@@ -234,5 +247,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n6\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n6\n6\n2'
 }

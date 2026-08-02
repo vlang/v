@@ -122,6 +122,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			node_is_expr = true
 		} else if node.is_expr {
 			node_is_expr = true
+		} else if c.inside_array_init_value_elem {
+			// a value `if` used as an array element in a void context, e.g.
+			// `[if cond { a } else { b }]`, must be treated as an expression.
+			node_is_expr = true
 		}
 	}
 	if c.expected_type == ast.void_type && node_is_expr {

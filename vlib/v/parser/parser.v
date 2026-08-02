@@ -621,6 +621,17 @@ fn (p &Parser) expr_contains_value_match_or_if(expr ast.Expr) bool {
 			p.expr_contains_value_match_or_if(expr.left)
 				|| p.expr_contains_value_match_or_if(expr.right)
 		}
+		ast.ArrayInit {
+			// e.g. `[match value { .. }]` as a call argument.
+			mut found := false
+			for element in expr.exprs {
+				if p.expr_contains_value_match_or_if(element) {
+					found = true
+					break
+				}
+			}
+			found
+		}
 		else {
 			false
 		}
@@ -650,6 +661,15 @@ fn (mut p Parser) mark_last_call_expr_return_as_used(mut expr ast.Expr) {
 			for mut val in expr.vals {
 				if mut val is ast.CallExpr {
 					val.is_return_used = true
+				}
+			}
+		}
+		ast.ArrayInit {
+			// last stmt on block is an array literal, e.g. `[match value { .. }]`;
+			// mark any element that is (or nests) a block-value match/if.
+			for mut element in expr.exprs {
+				if p.expr_contains_value_match_or_if(element) {
+					p.mark_last_call_expr_return_as_used(mut element)
 				}
 			}
 		}

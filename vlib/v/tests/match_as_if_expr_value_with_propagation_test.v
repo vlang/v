@@ -167,6 +167,21 @@ fn select_value_callarg_infix(node ?Node) !int {
 	return result
 }
 
+// match as an array-literal element: `[match .. { .. }]`
+fn select_value_arraylit(node ?Node) ![]int {
+	result := if value := node {
+		[
+			match value {
+				First { lower_first(value)! }
+				Second { lower_second(value)! }
+			},
+		]
+	} else {
+		[0]
+	}
+	return result
+}
+
 struct Circle {
 	r int
 }
@@ -311,6 +326,12 @@ fn test_call_argument_infix_match_as_if_expr_value_with_propagation() {
 	assert select_value_callarg_infix(First{})! == 20
 	assert select_value_callarg_infix(Second{})! == 30
 	assert select_value_callarg_infix(none) or { -1 } == 0
+}
+
+fn test_array_literal_match_as_if_expr_value_with_propagation() {
+	assert select_value_arraylit(First{})! == [1]
+	assert select_value_arraylit(Second{})! == [2]
+	assert select_value_arraylit(none) or { [-1] } == [0]
 }
 
 fn test_match_as_if_expr_value_with_option_propagation() {
