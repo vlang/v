@@ -248,6 +248,10 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 }
 
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
+	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
+		|| prefs.div_by_zero_is_zero {
+		return true
+	}
 	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
 		|| prefs.is_prof || prefs.output_cross_c || prefs.experimental
 		|| prefs.use_os_system_to_run || prefs.is_apk || prefs.json_errors

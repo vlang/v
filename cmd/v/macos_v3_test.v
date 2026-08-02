@@ -252,6 +252,51 @@ fn test_fatal_errors_requires_standard_compiler() {
 	assert v3_has_v1_only_preferences(prefs)
 }
 
+fn test_unsupported_compiler_modes_require_standard_compiler() {
+	cmain, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-cmain',
+		'SDL_main',
+		'main.v',
+	], false)
+	assert cmain.cmain == 'SDL_main'
+	assert autofree_requires_standard_compiler(cmain)
+
+	prelude_path := os.join_path(os.vtmp_dir(), 'macos_v3_custom_prelude_${os.getpid()}.h')
+	os.write_file(prelude_path, '/* custom prelude */')!
+	defer {
+		os.rm(prelude_path) or {}
+	}
+	custom_prelude, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-custom-prelude',
+		prelude_path,
+		'main.v',
+	], false)
+	assert custom_prelude.custom_prelude == '/* custom prelude */'
+	assert autofree_requires_standard_compiler(custom_prelude)
+
+	check_return, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-check-return',
+		'main.v',
+	], false)
+	assert check_return.is_check_return
+	assert autofree_requires_standard_compiler(check_return)
+
+	div_by_zero, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-div-by-zero-is-zero',
+		'main.v',
+	], false)
+	assert div_by_zero.div_by_zero_is_zero
+	assert autofree_requires_standard_compiler(div_by_zero)
+}
+
 fn test_autofree_no_closures_requires_standard_compiler() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-no-closures', 'main.v'],
 		false)
