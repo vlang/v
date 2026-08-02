@@ -498,7 +498,22 @@ The largest, highest-risk phase. Sub-phases, in build order:
       `pad_initial_payload` pads a sender's own Initial packet to the RFC
       9000 §14.1 1200-byte minimum via PADDING frames INSIDE the
       AEAD-protected payload (§14.1's primary mechanism), not raw bytes
-      appended after protection -- see the Codex-round fixes below.
+      appended after protection -- see the Codex-round fixes below. A
+      trailing chunk that fails to parse as a legitimate next packet
+      (truncated header, unsupported version, or an overrun Length field)
+      is discarded and splitting stops there -- RFC 9000 §14.1's own
+      "coalesced with invalid packets, which a receiver will discard"
+      allowance -- rather than failing every packet already validated
+      before it. A subsequent long-header packet whose DCID doesn't match
+      the datagram's first packet is likewise excluded from the result,
+      not treated as an error (RFC 9000 §12.2, SHOULD), and scanning
+      continues past it for whatever legitimately-addressed packet may
+      follow.
+      `parse_frames` (frame.v) rejects a packet payload containing zero
+      frames as PROTOCOL_VIOLATION (RFC 9000 §12.4) -- `parse_frame`
+      (singular) already rejected an empty buffer, but the plural
+      reassembly loop's own `for offset < buf.len` guard never even
+      called into it for a genuinely empty payload.
 - [x] `retry.v` — client-side Retry Integrity Tag (RFC 9001 §5.8)
       compute/verify, using AEAD_AES_128_GCM over an empty plaintext with a
       FIXED public key/nonce (not derived from the connection's own

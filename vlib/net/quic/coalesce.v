@@ -11,6 +11,23 @@ module quic
 // moment it encounters any of the three, rather than needing a separate
 // explicit "assert nothing follows" check -- there is structurally nowhere
 // else in the loop for it to continue to.
+//
+// split_coalesced_datagram draws a sharp line between two different ways a
+// candidate chunk can be "wrong", handled by opposite policies:
+//   - A VN or Retry packet appearing at a NONZERO offset (something else
+//     was already collected before it) is a definite RFC 9000 §12.2
+//     protocol violation -- no compliant sender ever produces this -- and
+//     fails the WHOLE call.
+//   - A chunk that fails to structurally resolve into ANY legitimate next
+//     packet (too short for a header, an unsupported version, or a Length
+//     field claiming more than remains) is treated as RFC 9000 §14.1's
+//     explicitly sanctioned "invalid packet" datagram padding: splitting
+//     stops there and whatever was already collected is returned
+//     successfully, discarding only the trailing remainder.
+// A subsequent long-header packet whose DCID differs from the first
+// packet's is excluded from the result (RFC 9000 §12.2, SHOULD) but does
+// NOT stop the walk -- unlike the two cases above, scanning continues past
+// it for whatever legitimately-addressed packet may follow.
 
 // CoalescedPacket is one packet's raw bytes, sliced out of a (possibly
 // multi-packet) UDP datagram, along with its header form -- callers use
@@ -28,6 +45,15 @@ pub:
 pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 	mut packets := []CoalescedPacket{}
 	mut offset := 0
+	// RFC 9000 §12.2: "Receivers SHOULD ignore any subsequent packets with
+	// a different Destination Connection ID than the first packet in the
+	// datagram." Only tracked for long-header, Length-having packets
+	// (Initial/0-RTT/Handshake) -- a short-header packet's DCID length
+	// isn't on the wire (it depends on connection context this stateless
+	// splitter doesn't have), so it can't be compared, and VN/Retry can
+	// only ever be the datagram's sole packet (enforced above) so there is
+	// never a "subsequent" one to check against them.
+	mut first_dcid := ?[]u8(none)
 	for offset < datagram.len {
 		remaining := datagram[offset..]
 		form := peek_header_form(remaining)!
@@ -59,7 +85,14 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 		}
 
 		if remaining.len < 5 {
-			return error('quic: truncated long header while splitting coalesced datagram (need at least 5 bytes, have ${remaining.len})')
+			// RFC 9000 §14.1 explicitly allows a sender to pad an Initial
+			// datagram by coalescing "invalid packets, which a receiver
+			// will discard" -- a handful of leftover bytes too short for
+			// even a long header's fixed prefix is exactly that shape.
+			// Whatever real packets were already collected before this
+			// point remain valid; only this trailing remainder is
+			// discarded, not the whole datagram.
+			break
 		}
 		version := (u32(remaining[1]) << 24) | (u32(remaining[2]) << 16) | (u32(remaining[3]) << 8) | u32(remaining[4])
 		if version == 0 {
@@ -102,7 +135,12 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 		// directly, so this check must run before EITHER branch, not just
 		// be left to parse_long_header.
 		if version != quic_v1 {
-			return error('quic: coalesced packet has unsupported QUIC version 0x${version:08x}: only QUIC v1 (0x00000001) is supported')
+			// Same RFC 9000 §14.1 "invalid packet" allowance as above: an
+			// unsupported-version trailing chunk is exactly the shape a
+			// real sender may legitimately use as datagram padding --
+			// discard it and stop, rather than failing packets already
+			// validated before it.
+			break
 		}
 
 		typ := peek_long_header_type(remaining[0])!
@@ -130,10 +168,28 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 
 		// Initial, 0-RTT, or Handshake: has a Length field covering
 		// (packet number + payload), so more packets may follow.
-		header, header_len := parse_long_header(remaining)!
+		header, header_len := parse_long_header(remaining) or { break }
 		total_len := u64(header_len) + header.length
 		if total_len > u64(remaining.len) {
-			return error('quic: coalesced packet at datagram offset ${offset} claims length ${total_len}, exceeding the ${remaining.len} bytes remaining')
+			// Same RFC 9000 §14.1 allowance: a Length field claiming more
+			// than actually remains cannot be trusted to delimit a real
+			// next packet, so there is no safe way to keep walking past
+			// it either -- discard it and stop, rather than failing
+			// packets already validated before it.
+			break
+		}
+		if fd := first_dcid {
+			if header.dcid != fd {
+				// Ignore -- not error -- per the SHOULD above: this one
+				// packet is excluded from the result, but its own Length
+				// field still tells us exactly where it ends, so keep
+				// walking the datagram for whatever legitimately-addressed
+				// packet may follow it.
+				offset += int(total_len)
+				continue
+			}
+		} else {
+			first_dcid = header.dcid.clone()
 		}
 		packets << CoalescedPacket{
 			bytes: remaining[..int(total_len)]

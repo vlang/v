@@ -256,6 +256,19 @@ fn test_parse_frame_rejects_unimplemented_frame_type() {
 	assert false, 'expected an unimplemented frame type to be rejected'
 }
 
+fn test_parse_frames_rejects_empty_payload() {
+	// RFC 9000 §12.4: "An endpoint MUST treat receipt of a packet
+	// containing no frames as a connection error of type
+	// PROTOCOL_VIOLATION." Unlike parse_frame (singular), parse_frames'
+	// own `for offset < buf.len` loop never calls into parse_frame at all
+	// when buf is empty, so this must be its own explicit check.
+	parse_frames([]u8{}) or {
+		assert err.msg().contains('no frames')
+		return
+	}
+	assert false, 'expected an empty packet payload to be rejected'
+}
+
 fn test_parse_frame_rejects_empty_buffer() {
 	parse_frame([]u8{}) or { return }
 	assert false, 'expected an empty buffer to be rejected'

@@ -91,7 +91,12 @@ fn test_split_coalesced_datagram_stops_at_short_header() {
 	assert packets[0].bytes.len == buf.len
 }
 
-fn test_split_coalesced_datagram_rejects_length_exceeding_buffer() {
+fn test_split_coalesced_datagram_discards_packet_claiming_length_exceeding_buffer() {
+	// RFC 9000 §14.1: a Length field that can't possibly be trusted to
+	// delimit a real packet is treated as "invalid packet" padding to be
+	// discarded, not a reason to fail the whole datagram -- here it's the
+	// only thing in the datagram, so the result is an empty (not erroring)
+	// packet list.
 	h := QuicLongHeader{
 		typ:     .initial
 		version: quic_v1
@@ -103,17 +108,48 @@ fn test_split_coalesced_datagram_rejects_length_exceeding_buffer() {
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(0x01), 0x02, 0x03] // a few bytes, nowhere near 1000
 
-	split_coalesced_datagram(buf) or {
-		assert err.msg().contains('exceeding')
-		return
-	}
-	assert false, 'expected an oversized Length field to be rejected'
+	packets := split_coalesced_datagram(buf)!
+	assert packets.len == 0
 }
 
-fn test_split_coalesced_datagram_rejects_non_v1_version_with_retry_shaped_type_bits() {
+fn test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_length_overrun() {
+	// The actual target scenario the discard-not-fail policy exists for: a
+	// real leading Initial packet followed by "invalid packet" padding
+	// (here, a Length field claiming more than remains) must still yield
+	// the leading packet, not lose it to a whole-datagram error.
+	h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    []u8{len: 8}
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  2
+	}
+	mut buf := encode_long_header(h, 0, 0)!
+	buf << [u8(0x00), 0x00]
+
+	bad_h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    []u8{len: 8}
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  1000
+	}
+	mut bad_buf := encode_long_header(bad_h, 0, 0)!
+	bad_buf << [u8(0x01), 0x02, 0x03]
+	buf << bad_buf
+
+	packets := split_coalesced_datagram(buf)!
+	assert packets.len == 1
+	long_header, _ := parse_long_header(packets[0].bytes)!
+	assert long_header.dcid == h.dcid
+}
+
+fn test_split_coalesced_datagram_discards_non_v1_version_with_retry_shaped_type_bits() {
 	// peek_long_header_type's bit mapping (bits 4-5 of byte 0) is QUIC-v1-
 	// specific -- a non-v1 packet whose type bits happen to be 0b11 (v1's
-	// "retry") must be rejected for its wrong version BEFORE the retry
+	// "retry") must be discarded for its wrong version BEFORE the retry
 	// branch ever inspects those bits, not silently misclassified as a
 	// real Retry packet (which would consume the rest of the datagram and
 	// hide any real packets coalesced after it).
@@ -121,11 +157,34 @@ fn test_split_coalesced_datagram_rejects_non_v1_version_with_retry_shaped_type_b
 	buf << u8(0x80 | 0x40 | 0x30) // long header, fixed bit set, type bits = 0b11 (retry under v1)
 	buf << [u8(0xaa), 0xbb, 0xcc, 0xdd] // version: not 0 (not VN), not quic_v1
 
-	split_coalesced_datagram(buf) or {
-		assert err.msg().contains('unsupported QUIC version')
-		return
+	packets := split_coalesced_datagram(buf)!
+	assert packets.len == 0
+}
+
+fn test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_garbage() {
+	// The actual target scenario the discard-not-fail policy exists for
+	// (RFC 9000 §14.1: "Initial packets can even be coalesced with invalid
+	// packets, which a receiver will discard"): a real leading Initial
+	// packet followed by bytes that fail to parse as a legitimate next
+	// packet (here, an unsupported version) must still be returned, not
+	// lost to a whole-datagram error.
+	h := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    []u8{len: 8}
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  2
 	}
-	assert false, 'expected a non-v1 version to be rejected before retry-type dispatch'
+	mut buf := encode_long_header(h, 0, 0)!
+	buf << [u8(0x00), 0x00]
+	buf << [u8(0x80 | 0x40), 0xde, 0xad, 0xbe, 0xef] // form+fixed bit set, bogus non-v1 version
+
+	packets := split_coalesced_datagram(buf)!
+	assert packets.len == 1
+	long_header, _ := parse_long_header(packets[0].bytes)!
+	assert long_header.typ == .initial
+	assert long_header.dcid == h.dcid
 }
 
 fn test_split_coalesced_datagram_rejects_version_negotiation_after_another_packet() {
@@ -194,6 +253,55 @@ fn test_split_coalesced_datagram_rejects_retry_after_another_packet() {
 		return
 	}
 	assert false, 'expected a Retry packet following another packet to be rejected'
+}
+
+fn test_split_coalesced_datagram_ignores_packet_with_mismatched_dcid() {
+	// RFC 9000 §12.2: "Receivers SHOULD ignore any subsequent packets
+	// with a different Destination Connection ID than the first packet in
+	// the datagram." A second Initial packet addressed to a DIFFERENT
+	// connection is excluded from the result, not treated as a datagram-
+	// wide error -- and scanning still continues past it.
+	h1 := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    [u8(1), 1, 1, 1, 1, 1, 1, 1]
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  2
+	}
+	mut buf := encode_long_header(h1, 0, 0)!
+	buf << [u8(0x00), 0x00]
+
+	h2 := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    [u8(2), 2, 2, 2, 2, 2, 2, 2] // different connection
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  2
+	}
+	mut buf2 := encode_long_header(h2, 0, 0)!
+	buf2 << [u8(0x00), 0x00]
+	buf << buf2
+
+	h3 := QuicLongHeader{
+		typ:     .initial
+		version: quic_v1
+		dcid:    h1.dcid // back to the first connection
+		scid:    []u8{len: 8}
+		token:   []u8{}
+		length:  2
+	}
+	mut buf3 := encode_long_header(h3, 0, 0)!
+	buf3 << [u8(0x00), 0x00]
+	buf << buf3
+
+	packets := split_coalesced_datagram(buf)!
+	assert packets.len == 2 // the mismatched middle packet is excluded
+	h_first, _ := parse_long_header(packets[0].bytes)!
+	h_last, _ := parse_long_header(packets[1].bytes)!
+	assert h_first.dcid == h1.dcid
+	assert h_last.dcid == h1.dcid
 }
 
 fn test_pad_initial_payload_pads_to_minimum() {

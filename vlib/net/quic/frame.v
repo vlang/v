@@ -309,6 +309,15 @@ fn parse_connection_close_frame(buf []u8, start int, is_application_error bool) 
 // parse_frames parses every frame filling `buf` (a packet's already
 // AEAD-decrypted payload), in order, until the buffer is fully consumed.
 pub fn parse_frames(buf []u8) ![]QuicFrame {
+	// RFC 9000 §12.4: "An endpoint MUST treat receipt of a packet
+	// containing no frames as a connection error of type
+	// PROTOCOL_VIOLATION." parse_frame (singular) already rejects an empty
+	// buffer, but this loop's own `for offset < buf.len` guard never even
+	// calls it when buf itself is empty, so that rejection must be
+	// duplicated here rather than inherited from it.
+	if buf.len == 0 {
+		return error('quic: packet payload contains no frames (RFC 9000 §12.4: PROTOCOL_VIOLATION)')
+	}
 	mut frames := []QuicFrame{}
 	mut offset := 0
 	for offset < buf.len {
