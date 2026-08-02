@@ -124,7 +124,7 @@ fn main() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
-	maybe_delegate_to_ownership(command, prefs)
+	maybe_delegate_to_ownership(command, prefs, args_and_flags)
 	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
@@ -216,9 +216,9 @@ fn invoke_help_and_exit(remaining []string) {
 	exit(1)
 }
 
-fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences) {
-	is_ownership := '-ownership' in os.args
-	is_autofree := '-autofree' in os.args
+fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_args []string) {
+	is_ownership := '-ownership' in merged_args
+	is_autofree := prefs.autofree
 	if !is_ownership && !is_autofree {
 		return
 	}
@@ -238,7 +238,7 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences) {
 		eprintln('v: `${mode}` currently supports direct compilation only. Use `v ${mode} module_dir`.')
 		exit(1)
 	}
-	ownership_args := util.join_env_vflags_and_os_args()[1..].filter(it != '-ownership')
+	ownership_args := merged_args.filter(it != '-ownership')
 	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
 }
 
@@ -269,9 +269,17 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}
 		current_work_dir := os.getwd()
+		caller_vflags := os.getenv('VFLAGS')
+		caller_vosargs := os.getenv('VOSARGS')
+		// The bootstrap command already supplies its compiler configuration. Do not
+		// let target flags recursively select this ownership launcher again.
+		os.unsetenv('VFLAGS')
+		os.unsetenv('VOSARGS')
 		os.chdir(vroot) or {}
 		tool_compilation := os.execute(compilation_command)
 		os.chdir(current_work_dir) or {}
+		os.setenv('VFLAGS', caller_vflags, true)
+		os.setenv('VOSARGS', caller_vosargs, true)
 		if tool_compilation.exit_code != 0 {
 			eprintln('cannot compile `${v3_main_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
 			exit(1)

@@ -325,7 +325,7 @@ fn test_macos_v3_manualfree_overrides_vflags_autofree() {
 	}
 }
 
-fn test_autofree_delegation_forwards_vflags() {
+fn test_autofree_delegation_detects_and_forwards_vflags() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_autofree_vflags_${os.getpid()}')
 		os.rmdir_all(root) or {}
@@ -338,10 +338,10 @@ fn test_autofree_delegation_forwards_vflags() {
 		os.write_file(source,
 			"\$if ownership_vflags_feature ? {\n} \$else {\n\t\$compile_error('VFLAGS define was not forwarded')\n}\n\nfn main() {}\n")!
 		mut environment := os.environ()
-		environment['VFLAGS'] = '-d ownership_vflags_feature'
+		environment['VFLAGS'] = '-autofree -d ownership_vflags_feature'
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
-		process.set_args(['-autofree', '-gc', 'none', '-o', output, source])
+		process.set_args(['-v', '-gc', 'none', '-o', output, source])
 		process.set_environment(environment)
 		process.set_redirect_stdio()
 		process.run()
@@ -350,6 +350,9 @@ fn test_autofree_delegation_forwards_vflags() {
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('Launching v3_ownership:'), compiler_output
+		assert !compiler_output.contains('ownership support is not compiled into this v3 executable'), compiler_output
+
 		assert os.is_file(output)
 	}
 }
