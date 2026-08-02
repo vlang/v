@@ -114,6 +114,16 @@ int main(void) {
 	probe_run := cmdexec.run(probe_output, [])
 	assert probe_run.exit_code == 0, probe_run.output
 
+	cross_c_source := os.join_path(root, 'cross_target.v')
+	cross_c_output := os.join_path(root, 'cross_target.c')
+	os.write_file(cross_c_source, 'fn main() {}\n')!
+	cross_target_os := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
+	cross_c_compile := run_driver_review_process(v3_bin, ['-nocache', '-os', cross_target_os, '-o',
+		cross_c_output, cross_c_source], driver_review_environment())
+	assert cross_c_compile.exit_code == 0, cross_c_compile.output
+	assert os.is_file(cross_c_output)
+	assert os.read_file(cross_c_output)!.contains('int main(int argc, char** argv)')
+
 	first_root := os.join_path(root, 'modules_first')
 	second_root := os.join_path(root, 'modules_second')
 	os.mkdir_all(os.join_path(first_root, 'chosen'))!

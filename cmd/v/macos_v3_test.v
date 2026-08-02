@@ -383,6 +383,9 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
 	mut prefs := &pref.Preferences{}
 	assert !autofree_requires_standard_compiler(prefs)
+	prefs.sanitize = true
+	assert autofree_requires_standard_compiler(prefs)
+	prefs.sanitize = false
 	prefs.output_cross_c = true
 	assert autofree_requires_standard_compiler(prefs)
 	prefs.output_cross_c = false
@@ -394,7 +397,7 @@ fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 }
 
-fn test_macos_v3_keeps_cross_autofree_and_experimental_builds_on_v1() {
+fn test_macos_v3_keeps_v1_only_autofree_and_experimental_builds_on_v1() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_v1_only_modes_${os.getpid()}')
 		os.rmdir_all(root) or {}
@@ -423,6 +426,20 @@ fn test_macos_v3_keeps_cross_autofree_and_experimental_builds_on_v1() {
 		assert !cross_build_output.contains('Launching v3_ownership:'), cross_build_output
 		assert os.is_file(cross_output)
 		assert !os.is_executable(cross_output)
+
+		sanitize_source := os.join_path(root, 'sanitize.v')
+		os.write_file(sanitize_source, 'fn main() {}\n')!
+		mut sanitize_process := os.new_process(@VEXE)
+		sanitize_process.set_args(['-v', '-autofree', '-sanitize', '-check', sanitize_source])
+		sanitize_process.set_environment(environment)
+		sanitize_process.set_redirect_stdio()
+		sanitize_process.run()
+		sanitize_process.wait()
+		sanitize_build_output := sanitize_process.stdout_slurp() + sanitize_process.stderr_slurp()
+		sanitize_exit_code := sanitize_process.code
+		sanitize_process.close()
+		assert sanitize_exit_code == 0, sanitize_build_output
+		assert !sanitize_build_output.contains('Launching v3_ownership:'), sanitize_build_output
 
 		experimental_source := os.join_path(root, 'experimental.v')
 		experimental_output := os.join_path(root, 'experimental')

@@ -75,15 +75,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.old_compiler {
 		return false
 	}
-	if prefs.sanitize || prefs.is_livemain || prefs.is_liveshared || prefs.is_prof
-		|| prefs.output_cross_c || prefs.experimental || prefs.is_apk
-		|| prefs.json_errors || prefs.no_preludes || prefs.skip_warnings
-		|| prefs.print_watched_files || prefs.is_vlines || prefs.warn_impure_v
-		|| prefs.test_runner.len > 0 || prefs.exclude.len > 0
-		|| prefs.ldflags.len > 0 || prefs.nofloat || prefs.fast_math
-		|| prefs.compress || prefs.is_bare || prefs.assert_failure_mode != .default
-		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()
-		|| (prefs.backend == .wasm && prefs.is_run) || prefs.gc_mode != .no_gc {
+	if v3_has_v1_only_preferences(prefs) || prefs.gc_mode != .no_gc {
 		// V1 still owns compiler modes whose runtime or C toolchain support has not
 		// been implemented by V3 yet.
 		return false

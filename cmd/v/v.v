@@ -242,10 +242,21 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 }
 
 fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
-	// V3 ownership mode does not yet implement explicit Boehm collectors, portable
-	// cross-C output, or the established experimental checker extensions.
-	return (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) || prefs.output_cross_c
-		|| prefs.experimental
+	// Autofree selects no-GC by default, but an explicit collector still belongs
+	// to V1 until ownership mode implements it.
+	return v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
+}
+
+fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
+	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
+		|| prefs.is_prof || prefs.output_cross_c || prefs.experimental
+		|| prefs.is_apk || prefs.json_errors || prefs.no_preludes
+		|| prefs.skip_warnings || prefs.print_watched_files || prefs.is_vlines
+		|| prefs.warn_impure_v || prefs.test_runner.len > 0 || prefs.exclude.len > 0
+		|| prefs.ldflags.len > 0 || prefs.nofloat || prefs.fast_math
+		|| prefs.compress || prefs.is_bare || prefs.assert_failure_mode != .default
+		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()
+		|| (prefs.backend == .wasm && prefs.is_run)
 }
 
 fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, host_os string) bool {

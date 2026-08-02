@@ -7995,10 +7995,14 @@ pub fn run(args []string) {
 			b.step_parallel('cgen', cgen_was_parallel)
 		}
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
-		target_args := c_compiler_target_args(prefs.target, c_compiler_explicit) or {
-			eprintln(err.msg())
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
+		target_args := if c_only {
+			[]string{}
+		} else {
+			c_compiler_target_args(prefs.target, c_compiler_explicit) or {
+				eprintln(err.msg())
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
 		}
 		mut warn_args := if is_strict {
 			['-Wall', '-Wextra', '-Werror=implicit-function-declaration', '-Wno-unused-variable',
