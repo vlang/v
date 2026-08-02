@@ -14556,8 +14556,9 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 	})
 }
 
-// select_case_hoists_value_branch reports whether a select case's send value hoists a value
-// `match`/`if` whose materialization prelude would otherwise be drained before the whole select.
+// select_case_hoists_value_branch reports whether a select case's channel or send value hoists
+// a value `match`/`if` whose materialization prelude would otherwise be drained before the whole
+// select. It covers a send case's channel and value, and a receive case's channel.
 fn (t &Transformer) select_case_hoists_value_branch(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -14567,28 +14568,48 @@ fn (t &Transformer) select_case_hoists_value_branch(id flat.NodeId) bool {
 		return false
 	}
 	first := t.a.nodes[int(t.a.child(&branch, 0))]
+	// Send case `ch <- value`: either the channel or the value can hoist a branch.
 	if first.kind == .infix && first.op == .arrow && first.children_count >= 2 {
-		return t.operand_hoists_value_branch(t.a.child(&first, 1))
+		return t.operand_hoists_value_branch(t.a.child(&first, 0))
+			|| t.operand_hoists_value_branch(t.a.child(&first, 1))
+	}
+	// Receive case `<-ch`: the channel can hoist a branch.
+	if first.kind == .prefix && first.op == .arrow && first.children_count > 0 {
+		return t.operand_hoists_value_branch(t.a.child(&first, 0))
+	}
+	// Receive-assign case `x := <-ch`: child 1 is the receive prefix.
+	if branch.children_count >= 2 {
+		second := t.a.nodes[int(t.a.child(&branch, 1))]
+		if second.kind == .prefix && second.op == .arrow && second.children_count > 0 {
+			return t.operand_hoists_value_branch(t.a.child(&second, 0))
+		}
 	}
 	return false
+}
+
+// snapshot_select_operand lowers a select-case channel or send value in source order. A value
+// `match`/`if` operand (directly or nested) is materialized through the value-aware path; a
+// nonconstant (value-bearing) operand is snapshotted into a temp so a later case's hoisted
+// prelude cannot mutate a stable identifier before select setup reads it; a pure constant is
+// left inline.
+fn (mut t Transformer) snapshot_select_operand(id flat.NodeId, prefix string) flat.NodeId {
+	val := t.transform_value_operand(id)
+	if t.is_value_match_or_if_operand(id) {
+		// Already materialized into a value temp above.
+		return val
+	}
+	if t.operand_needs_ordering_snapshot(val) {
+		return t.snapshot_transformed_expr_for_reuse(val, t.node_type(val), prefix)
+	}
+	return val
 }
 
 // transform_select_send_ordered lowers a select send case `ch <- value` capturing the channel
 // and the send value into temps (in source order) so their evaluation lands in pending_stmts
 // before a later case's hoisted prelude, matching gen_select's per-case setup order.
 fn (mut t Transformer) transform_select_send_ordered(infix flat.Node) flat.NodeId {
-	channel_id := t.a.child(&infix, 0)
-	value_id := t.a.child(&infix, 1)
-	mut chan_expr := t.transform_expr(channel_id)
-	if !t.is_stable_expr_for_reuse(chan_expr) {
-		chan_expr = t.snapshot_transformed_expr_for_reuse(chan_expr, t.node_type(chan_expr),
-			'select_chan')
-	}
-	mut val_expr := t.transform_value_operand(value_id)
-	if !t.is_stable_expr_for_reuse(val_expr) {
-		val_expr = t.snapshot_transformed_expr_for_reuse(val_expr, t.node_type(val_expr),
-			'select_send_val')
-	}
+	chan_expr := t.snapshot_select_operand(t.a.child(&infix, 0), 'select_chan')
+	val_expr := t.snapshot_select_operand(t.a.child(&infix, 1), 'select_send_val')
 	start := t.a.children.len
 	t.a.children << chan_expr
 	t.a.children << val_expr
@@ -14605,12 +14626,7 @@ fn (mut t Transformer) transform_select_send_ordered(infix flat.Node) flat.NodeI
 // transform_select_recv_ordered lowers a select receive case `<-ch` capturing the channel into a
 // temp so a later case's hoisted prelude cannot change the channel before it is read.
 fn (mut t Transformer) transform_select_recv_ordered(prefix flat.Node) flat.NodeId {
-	channel_id := t.a.child(&prefix, 0)
-	mut chan_expr := t.transform_expr(channel_id)
-	if !t.is_stable_expr_for_reuse(chan_expr) {
-		chan_expr = t.snapshot_transformed_expr_for_reuse(chan_expr, t.node_type(chan_expr),
-			'select_chan')
-	}
+	chan_expr := t.snapshot_select_operand(t.a.child(&prefix, 0), 'select_chan')
 	start := t.a.children.len
 	t.a.children << chan_expr
 	return t.a.add_node(flat.Node{

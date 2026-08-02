@@ -1460,6 +1460,64 @@ fn select_value_select_case_order(node Node) !int {
 	return tr.order[0] * 10 + tr.order[1]
 }
 
+fn (mut c Counter) sel_change(_ First) !int {
+	c.v = 100
+	return 0
+}
+
+// A stable value operand in an earlier select send case that a later branch prelude mutates: it
+// must be captured in source order, before the prelude. First -> ch1 gets c.v in source order
+// (5), not the mutated 100 (an unbuffered ch2 with no receiver forces case 1).
+fn select_value_select_stable_operand(node Node) !int {
+	mut c := Counter{
+		v: 5
+	}
+	ch1 := chan int{cap: 1}
+	ch2 := chan int{}
+	select {
+		ch1 <- c.v {}
+		ch2 <- (match node {
+			First { c.sel_change(node)! }
+			Second { 0 }
+		}) {}
+	}
+	return <-ch1
+}
+
+struct ChanCtx {
+mut:
+	order []int
+	ch2   chan int
+}
+
+fn (mut c ChanCtx) c_first() int {
+	c.order << 1
+	return 3
+}
+
+fn (mut c ChanCtx) c_make(_ First) !chan int {
+	c.order << 2
+	return c.ch2
+}
+
+// A later select case whose channel is a value branch: case operands must evaluate in source
+// order during select setup. First -> c_first (order 1) then the channel match -> c_make (order
+// 2) -> 12 (a reversed order would be 21).
+fn select_value_select_branch_channel(node Node) !int {
+	mut c := ChanCtx{
+		ch2: chan int{cap: 1}
+	}
+	ch1 := chan int{cap: 1}
+	select {
+		ch1 <- c.c_first() {}
+		(match node {
+			First { c.c_make(node)! }
+			Second { c.ch2 }
+		}) <- 1 {}
+	}
+	return c.order[0] * 10 + c.order[1]
+}
+
 type IntFn = fn () int
 
 struct FnBox {
@@ -1843,6 +1901,8 @@ fn main() {
 	println(select_value_struct_field_order(First{})!)
 	println(select_value_optional_append_reassign(First{})!)
 	println(select_value_select_case_order(First{})!)
+	println(select_value_select_stable_operand(First{})!)
+	println(select_value_select_branch_channel(First{})!)
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_runtime_callee_order(First{})!)
@@ -1860,5 +1920,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\n500\n12\ntrue\n41\n712\n30\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\n500\n12\n5\n12\ntrue\n41\n712\n30\n1'
 }
