@@ -649,6 +649,38 @@ fn select_value_const_membership(node Node) !bool {
 	}) in allowed_words
 }
 
+fn (mut tr Tracer) map_key() string {
+	tr.order << 1
+	return "b"
+}
+
+fn (mut tr Tracer) map_first(_ First) !map[string]int {
+	tr.order << 2
+	return {
+		"a": 1
+		"b": 2
+	}
+}
+
+fn (mut tr Tracer) map_second(_ Second) !map[string]int {
+	tr.order << 2
+	return {
+		"a": 3
+	}
+}
+
+// Map-membership ordering: a side-effecting key must run before the hoisting match
+// container. `"b" in {a:1, b:2}` is true; order [1,2] -> 612 (a reversed order
+// would be 621).
+fn select_value_map_membership_order(node Node) !int {
+	mut tr := Tracer{}
+	inside := tr.map_key() in (match node {
+		First { tr.map_first(node)! }
+		Second { tr.map_second(node)! }
+	})
+	return (if inside { 600 } else { 0 }) + tr.order[0] * 10 + tr.order[1]
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -704,6 +736,7 @@ fn main() {
 	println(select_value_string_membership_order(First{})!)
 	println(select_value_append_order(First{})!)
 	println(select_value_const_membership(First{})!)
+	println(select_value_map_membership_order(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -717,5 +750,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n1'
 }
