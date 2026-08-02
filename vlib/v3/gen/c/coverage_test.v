@@ -42,3 +42,22 @@ fn test_coverage_points_keep_one_based_source_lines() {
 	assert info.counters == [0, 1, 2]
 	assert g.coverage_counter_count == 3
 }
+
+fn test_coverage_user_text_is_not_embedded_in_c_format_strings() {
+	dir := os.join_path(os.temp_dir(), 'v3_coverage_%s_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut g := FlatGen.new()
+	g.coverage_dir = dir
+	g.coverage_build_options = '-d percent=%d'
+	g.emit_coverage_support()
+	generated := g.sb.str()
+	escaped_dir := c_escape(dir)
+	assert generated.contains('snprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_v3_')
+	assert generated.contains('.csv", "${escaped_dir}", cov_secs, cov_nsecs);')
+	assert !generated.contains('"${escaped_dir}/vcounters_v3_')
+	assert generated.contains('fprintf(cov_file, "# path: %s\\n", "${escaped_dir}");')
+	assert generated.contains('fprintf(cov_file, "# build_options: %s\\n", "-d percent=%d");')
+}

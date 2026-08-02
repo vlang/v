@@ -140,3 +140,16 @@ fn test_v3_effective_warns_are_errors_includes_prod() {
 	assert v3_effective_warns_are_errors(false, true)
 	assert v3_effective_warns_are_errors(true, true)
 }
+
+fn test_v3_windows_batch_command_uses_windows_quoting() {
+	command := v3_windows_batch_command('C:\\Program Files\\LLVM\\clang.exe', [
+		'-IC:\\SDK Files\\include',
+		'-DNAME="V compiler"',
+		'100% ready!',
+	])
+	assert command.starts_with('"C:\\Program Files\\LLVM\\clang.exe" ')
+	assert command.contains('"-IC:\\SDK Files\\include"')
+	assert command.contains('"-DNAME=\\"V compiler\\""')
+	assert command.ends_with('"100%% ready!"')
+	assert !command.contains("'C:\\Program Files")
+}

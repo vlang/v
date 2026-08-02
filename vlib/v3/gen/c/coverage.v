@@ -113,11 +113,11 @@ fn (mut g FlatGen) emit_coverage_support() {
 	g.writeln('\tcov_secs = (long long)cov_ts.tv_sec;')
 	g.writeln('\tcov_nsecs = cov_ts.tv_nsec;')
 	g.writeln('#endif')
-	g.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "${c_escape(g.coverage_dir)}/vcounters_v3_${compile_tag}.%lld.%09ld.csv", cov_secs, cov_nsecs);')
+	g.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_v3_${compile_tag}.%lld.%09ld.csv", "${c_escape(g.coverage_dir)}", cov_secs, cov_nsecs);')
 	g.writeln('\tFILE* cov_file = fopen(cov_filename, "wb+");')
 	g.writeln('\tif (cov_file == NULL) return;')
-	g.writeln('\tfprintf(cov_file, "# path: ${c_escape(g.coverage_dir)}\\n");')
-	g.writeln('\tfprintf(cov_file, "# build_options: ${c_escape(g.coverage_build_options)}\\n");')
+	g.writeln('\tfprintf(cov_file, "# path: %s\\n", "${c_escape(g.coverage_dir)}");')
+	g.writeln('\tfprintf(cov_file, "# build_options: %s\\n", "${c_escape(g.coverage_build_options)}");')
 	g.writeln('\tfprintf(cov_file, "meta,point,hits\\n");')
 	for _, info in g.coverage_files {
 		for point_index, counter in info.counters {

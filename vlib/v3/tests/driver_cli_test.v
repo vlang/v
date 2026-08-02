@@ -441,7 +441,7 @@ fn main() {
 	println(C.v3_review_dependency_value())
 }
 ')!
-	project_dir := os.join_path(root, 'project')
+	project_dir := os.join_path(root, 'project with spaces')
 	project_dump := os.join_path(root, 'project_flags.txt')
 	generate := cmdexec.run(v3_bin, ['-silent', '-prod', '-dump-c-flags', project_dump,
 		'-generate-c-project', project_dir, source])
@@ -454,6 +454,9 @@ fn main() {
 		assert expected in project_flags, project_flags.str()
 	}
 	assert !build_command.contains(resolved_native_source.all_before_last('.c') + '.o'), build_command
+	batch_command := os.read_file(os.join_path(project_dir, 'build.bat'))!
+	assert batch_command.contains('"${project_dir}'), batch_command
+	assert !batch_command.contains("'${project_dir}"), batch_command
 	project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
 	assert project_build.exit_code == 0, project_build.output
 	project_run := cmdexec.run(os.join_path(project_dir, 'effective_flags'), [])

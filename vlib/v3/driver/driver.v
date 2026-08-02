@@ -1818,17 +1818,64 @@ fn v3_c_project_dependency_flags(flags []string) []string {
 	return project_flags
 }
 
+fn v3_windows_batch_quote_arg(argument string) string {
+	mut quoted := strings.new_builder(argument.len + 8)
+	quoted.write_u8(`"`)
+	mut pending_backslashes := 0
+	for i := 0; i < argument.len; i++ {
+		ch := argument[i]
+		if ch == `\\` {
+			pending_backslashes++
+			continue
+		}
+		if ch == `"` {
+			for _ in 0 .. pending_backslashes * 2 + 1 {
+				quoted.write_u8(`\\`)
+			}
+			quoted.write_u8(`"`)
+			pending_backslashes = 0
+			continue
+		}
+		for _ in 0 .. pending_backslashes {
+			quoted.write_u8(`\\`)
+		}
+		pending_backslashes = 0
+		if ch == `%` {
+			// Percent signs are expanded even inside quotes in a batch file.
+			quoted.write_string('%%')
+		} else {
+			quoted.write_u8(ch)
+		}
+	}
+	for _ in 0 .. pending_backslashes * 2 {
+		quoted.write_u8(`\\`)
+	}
+	quoted.write_u8(`"`)
+	return quoted.str()
+}
+
+fn v3_windows_batch_command(program string, args []string) string {
+	mut parts := []string{cap: args.len + 1}
+	parts << v3_windows_batch_quote_arg(program)
+	for arg in args {
+		parts << v3_windows_batch_quote_arg(arg)
+	}
+	return parts.join(' ')
+}
+
 fn write_v3_c_project(project_dir string, c_source string, c_compiler string, plan V3CCompilerFlagPlan, support_inputs []string, objective_c bool) ! {
 	output_name := os.base(c_source).all_before_last('.c')
 	output_path := os.join_path_single(project_dir, output_name)
 	args := plan.compiler_args(output_path, v3_c_source_inputs(c_source, objective_c),
 		support_inputs)
-	command := cmdexec.display(c_compiler, args)
-	os.write_file(os.join_path_single(project_dir, 'build_command.txt'), command + '\n')!
-	os.write_file(os.join_path_single(project_dir, 'Makefile'), 'all:\n\t${command}\n')!
+	posix_command := cmdexec.display(c_compiler, args)
+	windows_command := v3_windows_batch_command(c_compiler, args)
+	os.write_file(os.join_path_single(project_dir, 'build_command.txt'), posix_command + '\n')!
+	os.write_file(os.join_path_single(project_dir, 'Makefile'), 'all:\n\t${posix_command}\n')!
 	build_sh := os.join_path_single(project_dir, 'build.sh')
-	os.write_file(build_sh, '#!/bin/sh\nset -eu\n${command}\n')!
-	os.write_file(os.join_path_single(project_dir, 'build.bat'), '@echo off\r\n${command}\r\n')!
+	os.write_file(build_sh, '#!/bin/sh\nset -eu\n${posix_command}\n')!
+	os.write_file(os.join_path_single(project_dir, 'build.bat'),
+		'@echo off\r\nsetlocal DisableDelayedExpansion\r\n${windows_command}\r\n')!
 	$if !windows {
 		os.chmod(build_sh, 0o755)!
 	}
