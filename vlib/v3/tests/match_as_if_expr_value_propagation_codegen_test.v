@@ -1432,6 +1432,34 @@ fn select_value_optional_append_reassign(node Node) !int {
 	return got.len * 100 + got[0]
 }
 
+fn (mut tr Tracer) sel_first() int {
+	tr.order << 1
+	return 3
+}
+
+fn (mut tr Tracer) sel_second(_ First) !int {
+	tr.order << 2
+	return 4
+}
+
+// A select whose later send-case value is a value branch: all case values are evaluated during
+// select setup in source order, so the branch prelude must not be drained before the whole
+// select. First -> ch1 <- sel_first (order 1) then ch2 <- (match -> sel_second) (order 2) -> 12
+// (a reversed order would be 21).
+fn select_value_select_case_order(node Node) !int {
+	mut tr := Tracer{}
+	ch1 := chan int{cap: 1}
+	ch2 := chan int{cap: 1}
+	select {
+		ch1 <- tr.sel_first() {}
+		ch2 <- (match node {
+			First { tr.sel_second(node)! }
+			Second { 0 }
+		}) {}
+	}
+	return tr.order[0] * 10 + tr.order[1]
+}
+
 type IntFn = fn () int
 
 struct FnBox {
@@ -1814,6 +1842,7 @@ fn main() {
 	println(select_value_array_base_capture(First{})!)
 	println(select_value_struct_field_order(First{})!)
 	println(select_value_optional_append_reassign(First{})!)
+	println(select_value_select_case_order(First{})!)
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_runtime_callee_order(First{})!)
@@ -1831,5 +1860,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\n500\ntrue\n41\n712\n30\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\n500\n12\ntrue\n41\n712\n30\n1'
 }

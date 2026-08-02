@@ -14389,10 +14389,23 @@ fn (mut t Transformer) transform_select_expr(node flat.Node) flat.NodeId {
 			return t.make_block(body)
 		}
 	}
+	// A later send case whose value hoists a value branch materializes its prelude into
+	// pending_stmts, which is drained before the whole select while gen_select evaluates
+	// earlier case values during select setup — so `second` would run before `first` (and the
+	// prelude could mutate an earlier case's channel first). When any case hoists, capture each
+	// case's channel and send value into temps in case order so the preludes land in
+	// pending_stmts in source order.
+	mut order_cases := false
+	for i in 0 .. node.children_count {
+		if t.select_case_hoists_value_branch(t.a.child(&node, i)) {
+			order_cases = true
+			break
+		}
+	}
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	if t.smartcast_stack.len == 0 {
 		for i in 0 .. node.children_count {
-			branches << t.transform_select_branch(t.a.child(&node, i))
+			branches << t.transform_select_branch(t.a.child(&node, i), order_cases)
 		}
 	} else {
 		base_smartcasts := t.smartcast_stack.clone()
@@ -14401,7 +14414,7 @@ fn (mut t Transformer) transform_select_expr(node flat.Node) flat.NodeId {
 		for i in 0 .. node.children_count {
 			t.smartcast_stack = base_smartcasts.clone()
 			t.invalidated_smartcasts = base_invalidated.clone()
-			branches << t.transform_select_branch(t.a.child(&node, i))
+			branches << t.transform_select_branch(t.a.child(&node, i), order_cases)
 			for key, invalidated in t.invalidated_smartcasts {
 				if invalidated {
 					merged_invalidated[key] = true
@@ -14424,7 +14437,7 @@ fn (mut t Transformer) transform_select_expr(node flat.Node) flat.NodeId {
 	})
 }
 
-fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
+fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool) flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
 	}
@@ -14462,10 +14475,19 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 	mut children := []flat.NodeId{cap: int(branch.children_count)}
 	for i in 0 .. body_start {
 		child_id := t.a.child(&branch, i)
+		child := t.a.nodes[int(child_id)]
 		children << if branch.value == 'recv_assign' && body_start == 2 && i == 0 {
 			t.transform_lvalue_without_smartcast(child_id)
 		} else if body_start == 2 && i == 0 {
 			t.transform_lvalue(child_id)
+		} else if order_cases && child.kind == .infix && child.op == .arrow
+			&& child.children_count >= 2 {
+			// Send case `ch <- value`: capture channel and value in source order.
+			t.transform_select_send_ordered(child)
+		} else if order_cases && child.kind == .prefix && child.op == .arrow
+			&& child.children_count > 0 {
+			// Receive case `<-ch`: capture the channel in source order.
+			t.transform_select_recv_ordered(child)
 		} else {
 			t.transform_expr(child_id)
 		}
@@ -14531,6 +14553,73 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 		pos:            branch.pos
 		value:          branch.value
 		typ:            branch.typ
+	})
+}
+
+// select_case_hoists_value_branch reports whether a select case's send value hoists a value
+// `match`/`if` whose materialization prelude would otherwise be drained before the whole select.
+fn (t &Transformer) select_case_hoists_value_branch(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	branch := t.a.nodes[int(id)]
+	if branch.kind != .select_branch || branch.children_count == 0 {
+		return false
+	}
+	first := t.a.nodes[int(t.a.child(&branch, 0))]
+	if first.kind == .infix && first.op == .arrow && first.children_count >= 2 {
+		return t.operand_hoists_value_branch(t.a.child(&first, 1))
+	}
+	return false
+}
+
+// transform_select_send_ordered lowers a select send case `ch <- value` capturing the channel
+// and the send value into temps (in source order) so their evaluation lands in pending_stmts
+// before a later case's hoisted prelude, matching gen_select's per-case setup order.
+fn (mut t Transformer) transform_select_send_ordered(infix flat.Node) flat.NodeId {
+	channel_id := t.a.child(&infix, 0)
+	value_id := t.a.child(&infix, 1)
+	mut chan_expr := t.transform_expr(channel_id)
+	if !t.is_stable_expr_for_reuse(chan_expr) {
+		chan_expr = t.snapshot_transformed_expr_for_reuse(chan_expr, t.node_type(chan_expr),
+			'select_chan')
+	}
+	mut val_expr := t.transform_value_operand(value_id)
+	if !t.is_stable_expr_for_reuse(val_expr) {
+		val_expr = t.snapshot_transformed_expr_for_reuse(val_expr, t.node_type(val_expr),
+			'select_send_val')
+	}
+	start := t.a.children.len
+	t.a.children << chan_expr
+	t.a.children << val_expr
+	return t.a.add_node(flat.Node{
+		kind:           .infix
+		op:             .arrow
+		children_start: start
+		children_count: 2
+		pos:            infix.pos
+		typ:            infix.typ
+	})
+}
+
+// transform_select_recv_ordered lowers a select receive case `<-ch` capturing the channel into a
+// temp so a later case's hoisted prelude cannot change the channel before it is read.
+fn (mut t Transformer) transform_select_recv_ordered(prefix flat.Node) flat.NodeId {
+	channel_id := t.a.child(&prefix, 0)
+	mut chan_expr := t.transform_expr(channel_id)
+	if !t.is_stable_expr_for_reuse(chan_expr) {
+		chan_expr = t.snapshot_transformed_expr_for_reuse(chan_expr, t.node_type(chan_expr),
+			'select_chan')
+	}
+	start := t.a.children.len
+	t.a.children << chan_expr
+	return t.a.add_node(flat.Node{
+		kind:           .prefix
+		op:             .arrow
+		children_start: start
+		children_count: 1
+		pos:            prefix.pos
+		typ:            prefix.typ
 	})
 }
 
