@@ -14669,6 +14669,46 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		t.annotate_left_shift(new_id)
 		return new_id
 	}
+	// A value-context `match`/`if` operand (e.g. `(match x { First { get_a()! }
+	// else { get_b()! } }) + suffix`) must be materialized as a value before the
+	// type-specialized handlers below dispatch on operand type. Those handlers
+	// (string/array/map/interface/sum/struct ops) lower their operands with plain
+	// `transform_expr`, which would lower the (possibly propagating) branch tails
+	// in a value-less statement context and emit an empty expression. Materialize
+	// only the value-branch operand(s) into value temps here, then re-dispatch over
+	// the rewritten node so every handler sees a plain, typed operand. The other
+	// operand is left as its original node so it is transformed exactly once.
+	infix_lhs_id := t.a.children[node.children_start]
+	infix_rhs_id := t.a.children[node.children_start + 1]
+	lhs_is_value_branch := t.is_value_match_or_if_operand(infix_lhs_id)
+	rhs_is_value_branch := t.is_value_match_or_if_operand(infix_rhs_id)
+	if lhs_is_value_branch || rhs_is_value_branch {
+		new_lhs := if lhs_is_value_branch {
+			t.transform_value_operand(infix_lhs_id)
+		} else {
+			infix_lhs_id
+		}
+		new_rhs := if rhs_is_value_branch {
+			t.transform_value_operand(infix_rhs_id)
+		} else {
+			infix_rhs_id
+		}
+		if new_lhs != infix_lhs_id || new_rhs != infix_rhs_id {
+			start := t.a.children.len
+			t.a.children << new_lhs
+			t.a.children << new_rhs
+			new_id := t.a.add_node(flat.Node{
+				kind:           .infix
+				op:             node.op
+				children_start: start
+				children_count: 2
+				pos:            node.pos
+				value:          node.value
+				typ:            node.typ
+			})
+			return t.transform_infix_expr(new_id, t.a.nodes[int(new_id)])
+		}
+	}
 	if str_result := t.transform_infix_string_ops(id, node) {
 		return str_result
 	}
