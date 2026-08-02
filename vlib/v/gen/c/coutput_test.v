@@ -162,10 +162,9 @@ fn test_c_must_have_files() {
 		compilation := os.execute(cmd)
 		compile_ms := sw_compile.elapsed().milliseconds()
 		ensure_compilation_succeeded(compilation, cmd)
-		if generated_c_uses_v3_codegen(compilation.output) {
-			vprintln('> skipping V1-specific ${must_have_relpath} for the V3 C backend')
-			total_skips++
-			continue
+		uses_v3 := generated_c_uses_v3_codegen(compilation.output)
+		if user_os == 'macos' && relpath.ends_with('_v3.v') {
+			assert uses_v3, '${relpath} must exercise the default V3 C backend on macOS'
 		}
 		expected_lines := os.read_lines(must_have_path) or { [] }
 		generated_c_lines := compilation.output.split_into_lines()
@@ -1092,7 +1091,8 @@ fn ensure_compilation_succeeded(compilation os.Result, cmd string) {
 fn target2paths(target_path string, postfix string) (string, string, string, string) {
 	basename := os.file_name(target_path).replace(postfix, '')
 	target_dir := os.dir(target_path)
-	path := os.join_path(target_dir, '${basename}.vv')
+	v_path := os.join_path(target_dir, '${basename}.v')
+	path := if os.is_file(v_path) { v_path } else { os.join_path(target_dir, '${basename}.vv') }
 	relpath := vroot_relative(path)
 	target_relpath := vroot_relative(target_path)
 	return basename, path, relpath, target_relpath
