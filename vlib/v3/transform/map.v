@@ -339,9 +339,15 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	// `(match n { First { make_map_first(n)! } ... })['key']`); otherwise the propagating
 	// arm tail is lowered in a value-less statement context and emits an empty expression.
 	// `transform_value_operand` materializes it into a value temp (stable for the repeated
-	// use below); non-branch bases keep `stable_expr_for_reuse`.
+	// use below); non-branch bases keep `stable_expr_for_reuse`. The base is evaluated before
+	// the key: if the key hoists a value branch whose prelude can reassign a syntactically
+	// stable base (`items[match node { First { replace(mut items)! } ... }]`), snapshot the
+	// base's source-order value so the lookup uses the map evaluated before that prelude.
 	map_expr := if t.is_value_match_or_if_operand(map_source_id) {
 		t.transform_value_operand(map_source_id)
+	} else if t.operand_hoists_value_branch(key_id)
+		&& t.operand_needs_ordering_snapshot(map_source_id) {
+		t.snapshot_expr_for_reuse(map_source_id)
 	} else {
 		t.stable_expr_for_reuse(map_source_id)
 	}

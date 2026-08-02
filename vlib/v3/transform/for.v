@@ -813,9 +813,14 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	// propagating branch tail is lowered in a value-less statement context and emits an
 	// empty expression. `transform_value_operand` materializes such a bound into a value
 	// temp (stable for reuse in the loop condition); non-branch bounds keep
-	// `stable_expr_for_reuse`. The low bound is evaluated before the high bound.
+	// `stable_expr_for_reuse`. The low bound is evaluated before the high bound: if the high
+	// bound hoists a value branch whose prelude can mutate a syntactically stable low bound
+	// (`for i in low .. (match node { First { change_low(mut low)! } ... })`), snapshot the
+	// low bound's source-order value so the loop initializer reads it before that prelude.
 	low := if t.is_value_match_or_if_operand(low_id) {
 		t.transform_value_operand(low_id)
+	} else if t.operand_hoists_value_branch(high_id) && t.operand_needs_ordering_snapshot(low_id) {
+		t.snapshot_expr_for_reuse(low_id)
 	} else {
 		t.stable_expr_for_reuse(low_id)
 	}

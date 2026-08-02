@@ -1144,6 +1144,54 @@ fn select_value_stable_arg_snapshot(node Node) !int {
 	})
 }
 
+fn (mut c Counter) rng_hi_first(_ First) !int {
+	c.v = 100
+	return 3
+}
+
+fn (mut c Counter) rng_hi_second(_ Second) !int {
+	c.v = 200
+	return 5
+}
+
+// A stable range low bound whose value the high-bound branch prelude mutates: the loop must
+// start at the source-order low, not the mutated value. First -> `for i in 1 .. 3` sums 1+2 =
+// 3 (a leaked mutation of the low bound to 100 gives an empty range and sum 0).
+fn select_value_range_low_snapshot(node Node) !int {
+	mut c := Counter{
+		v: 1
+	}
+	mut sum := 0
+	for i in c.v .. (match node {
+		First { c.rng_hi_first(node)! }
+		Second { c.rng_hi_second(node)! }
+	}) {
+		sum += i
+	}
+	return sum
+}
+
+fn replace_map(mut m map[string]int) !string {
+	m = {
+		"x": 999
+	}
+	return "x"
+}
+
+// A stable map base whose variable the key branch prelude reassigns: the lookup must use the
+// map evaluated before the key, not the replacement. First -> original items["x"] = 5 (a
+// leaked reassignment gives the replacement value 999).
+fn select_value_map_base_snapshot(node Node) !int {
+	mut items := {
+		"x": 5
+		"y": 7
+	}
+	return items[match node {
+		First { replace_map(mut items)! }
+		Second { "y" }
+	}]
+}
+
 type IntFn = fn () int
 
 struct FnBox {
@@ -1451,6 +1499,8 @@ fn main() {
 	println(select_value_nested_cap_order(First{})!)
 	println(select_value_stable_lhs_snapshot(First{})!)
 	println(select_value_stable_arg_snapshot(First{})!)
+	println(select_value_range_low_snapshot(First{})!)
+	println(select_value_map_base_snapshot(First{})!)
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_addr(First{})!)
@@ -1466,5 +1516,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\ntrue\n41\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\ntrue\n41\n1'
 }
