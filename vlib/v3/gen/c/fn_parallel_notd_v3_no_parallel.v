@@ -11,7 +11,8 @@ import v3.workers
 
 const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 128
-const scoped_cgen_worker_batches = 1
+// Bound each worker's retained scratch while generating compiler-sized ASTs.
+const scoped_cgen_worker_batches = 32
 const flat_cgen_chunks_per_job = 12
 
 $if !windows {
@@ -593,39 +594,34 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 	cgen_worker_scope_leave(result_scope)
 }
 
-fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(chunks [][]FlatFnGenItem, chunk_queue chan int, reserve_cost i64) {
+fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
+	chunks [][]FlatFnGenItem,
+	chunk_queue chan int,
+	_reserve_cost i64) {
 	result_scope := cgen_worker_scope_begin(true)
-	scratch_scope := cgen_worker_scope_begin(true)
-	mut batch := g.new_parallel_worker(0)
-	batch.sb = strings.new_builder(int(reserve_cost * 5) + 65_536)
-	mut chunk_indexes := []int{cap: 16}
-	mut output_starts := []int{cap: 16}
-	mut output_lengths := []int{cap: 16}
 	for {
 		chunk_idx := <-chunk_queue or { break }
+		mut chunk_cost := i64(chunks[chunk_idx].len)
+		for item in chunks[chunk_idx] {
+			chunk_cost += item.cost
+		}
+		scratch_scope := cgen_worker_scope_begin(true)
+		mut batch := g.new_parallel_worker(chunk_idx)
+		batch.sb = strings.new_builder(int(chunk_cost * 5) + 65_536)
 		batch.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
 			chunk_idx: chunk_idx
 		}
 		batch.parallel_chunk_wrapper_capture = batch.parallel_chunk_wrapper_defs.len - 1
-		output_start := batch.sb.len
 		batch.gen_fn_items(chunks[chunk_idx])
 		batch.parallel_chunk_wrapper_capture = -1
-		chunk_indexes << chunk_idx
-		output_starts << output_start
-		output_lengths << batch.sb.len - output_start
-	}
-	cgen_worker_scope_leave(scratch_scope)
-	for i, chunk_idx in chunk_indexes {
-		output := batch.sb.spart(output_starts[i], output_lengths[i])
-		if output.len > 0 {
-			g.fn_segs << output
+		cgen_worker_scope_leave(scratch_scope)
+		segment_start := g.fn_segs.len
+		g.absorb_scoped_cgen_batch(batch, false)
+		if g.fn_segs.len > segment_start {
 			g.fn_seg_chunk_indexes << chunk_idx
-		} else {
-			unsafe { output.free() }
 		}
+		cgen_worker_scope_free(scratch_scope)
 	}
-	g.absorb_scoped_cgen_batch(batch, true)
-	cgen_worker_scope_free(scratch_scope)
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
 }

@@ -213,6 +213,12 @@ struct LocalBinding {
 	is_mut bool
 }
 
+struct LocalDeclRhs {
+	rhs    flat.NodeId
+	file   int
+	offset int
+}
+
 struct SharedAccessDiagnostic {
 	name string
 	pos  token.Pos
@@ -439,6 +445,8 @@ mut:
 	pointer_alias_goto_states                map[string][]map[string][]string
 	pointer_alias_backward_goto_targets      map[string]bool
 	closure_forbidden_captures               map[string]bool
+	local_decl_rhs_by_name                   map[string][]LocalDeclRhs
+	local_decl_rhs_indexed                   bool
 	closure_scope                            &Scope = unsafe { nil }
 	lambda_no_captures                       bool
 	generic_params                           []string
@@ -474,6 +482,7 @@ fn new_function_check_context() FunctionCheckContext {
 		pointer_alias_goto_states:           map[string][]map[string][]string{}
 		pointer_alias_backward_goto_targets: map[string]bool{}
 		closure_forbidden_captures:          map[string]bool{}
+		local_decl_rhs_by_name:              map[string][]LocalDeclRhs{}
 	}
 }
 
@@ -509,6 +518,8 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		pointer_alias_goto_states:                clone_pointer_alias_goto_states(src.pointer_alias_goto_states)
 		pointer_alias_backward_goto_targets:      src.pointer_alias_backward_goto_targets.clone()
 		closure_forbidden_captures:               src.closure_forbidden_captures.clone()
+		local_decl_rhs_by_name:                   src.local_decl_rhs_by_name.clone()
+		local_decl_rhs_indexed:                   src.local_decl_rhs_indexed
 		closure_scope:                            src.closure_scope
 		lambda_no_captures:                       src.lambda_no_captures
 		generic_params:                           src.generic_params.clone()

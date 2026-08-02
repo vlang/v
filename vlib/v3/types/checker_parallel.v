@@ -9,15 +9,16 @@ import v3.workers
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
-const scoped_check_worker_batches = 8
+// Scoped workers keep an arena alive for the phase. Limit their count and use
+// many short batches so self-hosting does not retain one large arena per core.
+const max_scoped_check_jobs = 8
+const scoped_check_worker_batches = 96
 // A serial checker owns the whole import graph instead of one worker shard, so
 // use finer arena batches to keep compiler-module checks below the memory cap.
 const scoped_check_serial_batches = 64
-// One chunk per worker makes the phase wall clock the single slowest chunk:
-// span-based costs undercount construct-heavy bodies severalfold, so the other
-// workers idle behind the outlier. Oversubscribed chunks let the pool queue
-// rebalance dynamically for ~0.6 ms fork+merge overhead per extra chunk.
-const check_chunk_oversubscribe = 4
+// Keep one scheduled chunk per scoped worker. Finer arena batches within each
+// chunk release transient checker allocations without retaining extra shards.
+const check_chunk_oversubscribe = 1
 // Extra share of the total work (in percent of an even bucket) pre-assigned to
 // the master's bucket; see split_check_items.
 const check_master_bias_pct = i64(0)
@@ -499,7 +500,10 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		if isnil(ast.worker_pool) {
 			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
-		n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
+		mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
+		if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
+			n_jobs = max_scoped_check_jobs
+		}
 		if items.len < min_parallel_check_items || n_jobs <= 1 {
 			tc.check_top_level_declarations()
 			tc.check_fn_items_serial(items)
@@ -875,6 +879,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
+	tc.index_local_decl_rhs(flat.NodeId(fn_idx))
 	tc.fn_context.concrete_generic_receiver_specialization =
 		fn_value_is_concrete_generic_receiver_specialization(node.value)
 	tc.cur_fn_node_id = fn_idx

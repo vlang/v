@@ -4959,12 +4959,70 @@ fn (mut tc TypeChecker) record_unknown_import_function_call(id flat.NodeId, node
 	return true
 }
 
+fn (mut tc TypeChecker) index_local_decl_rhs(fn_id flat.NodeId) {
+	tc.fn_context.local_decl_rhs_by_name = map[string][]LocalDeclRhs{}
+	tc.fn_context.local_decl_rhs_indexed = true
+	if !tc.valid_node_id(fn_id) {
+		return
+	}
+	fn_node := tc.a.node(fn_id)
+	mut stack := []flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		child_id := tc.a.child(fn_node, i)
+		if tc.a.node(child_id).kind != .param {
+			stack << child_id
+		}
+	}
+	mut seen := map[int]bool{}
+	for stack.len > 0 {
+		current_id := stack.pop()
+		if seen[int(current_id)] || !tc.valid_node_id(current_id) {
+			continue
+		}
+		seen[int(current_id)] = true
+		current := tc.a.node(current_id)
+		if current.kind == .decl_assign {
+			for i := 0; i + 1 < int(current.children_count); i += 2 {
+				lhs := tc.a.child_node(current, i)
+				if lhs.kind == .ident && lhs.value.len > 0 {
+					tc.fn_context.local_decl_rhs_by_name[lhs.value] << LocalDeclRhs{
+						rhs:    tc.a.child(current, i + 1)
+						file:   lhs.pos.id
+						offset: lhs.pos.offset
+					}
+				}
+			}
+		}
+		if current.kind in [.fn_literal, .lambda_expr] {
+			continue
+		}
+		for i in 0 .. current.children_count {
+			stack << tc.a.child(current, i)
+		}
+	}
+}
+
 fn (tc &TypeChecker) local_decl_rhs_before(name string, use_id flat.NodeId) ?flat.NodeId {
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if name.len == 0 || !tc.valid_node_id(fn_id) || !tc.valid_node_id(use_id) {
 		return none
 	}
 	use_pos := tc.a.node(use_id).pos
+	if tc.fn_context.local_decl_rhs_indexed {
+		mut best_id := flat.empty_node
+		mut best_offset := -1
+		for entry in tc.fn_context.local_decl_rhs_by_name[name] {
+			if entry.file == use_pos.id && entry.offset < use_pos.offset
+				&& entry.offset > best_offset {
+				best_id = entry.rhs
+				best_offset = entry.offset
+			}
+		}
+		if best_id != flat.empty_node {
+			return best_id
+		}
+		return none
+	}
 	fn_node := tc.a.node(fn_id)
 	mut stack := []flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
