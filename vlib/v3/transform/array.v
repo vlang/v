@@ -392,10 +392,13 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		child := t.a.child_node(&node, i)
 		if child.kind == .field_init && child.children_count > 0 {
 			if child.value == 'len' {
-				val := t.transform_expr(t.a.child(child, 0))
+				// Typed value lowering so a value `match`/`if` len field (e.g.
+				// `[]int{len: match node { ... lower(node)! ... }}`) is materialized as a
+				// value instead of lowering its propagating arm in a statement context.
+				val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
 				len_expr = val
 			} else if child.value == 'cap' {
-				val := t.transform_expr(t.a.child(child, 0))
+				val := t.transform_expr_for_type(t.a.child(child, 0), 'int')
 				cap_expr = val
 			} else if child.value == 'init' {
 				init_expr_id = t.a.child(child, 0)
@@ -437,7 +440,8 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		saved_pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()
 		indexed_init := t.substitute_ident_expr(init_expr_id, 'index', t.make_ident(idx_name))
-		init_expr = t.transform_expr(indexed_init)
+		// Typed value lowering so a value `match`/`if` init field is materialized as a value.
+		init_expr = t.transform_expr_for_type(indexed_init, elem_type)
 		init_pending := t.pending_stmts.clone()
 		t.pending_stmts = saved_pending
 		for stmt in init_pending {

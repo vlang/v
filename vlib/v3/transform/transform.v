@@ -9930,6 +9930,7 @@ fn (mut t Transformer) rebuild_transformed_lvalue(node flat.Node, children []fla
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
+		is_mut:         node.is_mut
 	})
 }
 
@@ -14954,22 +14955,27 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if node.children_count > 0 {
 		recv_fn_id := t.a.children[node.children_start]
 		recv_fn := t.a.nodes[int(recv_fn_id)]
-		if recv_fn.kind == .selector && recv_fn.children_count > 0 {
-			recv_id := t.a.children[recv_fn.children_start]
-			// Position of the last value-branch operand (0 = receiver, 1.. = arguments).
-			mut last_branch := if t.is_value_match_or_if_operand(recv_id) { 0 } else { -1 }
-			for i in 1 .. node.children_count {
-				if t.is_value_match_or_if_operand(t.a.child(&node, i)) {
-					last_branch = i
-				}
+		is_method := recv_fn.kind == .selector && recv_fn.children_count > 0
+		recv_id := if is_method { t.a.children[recv_fn.children_start] } else { flat.empty_node }
+		// Position of the last value-branch operand (0 = method receiver, 1.. = arguments).
+		mut last_branch := if is_method && t.is_value_match_or_if_operand(recv_id) { 0 } else { -1 }
+		for i in 1 .. node.children_count {
+			if t.is_value_match_or_if_operand(t.a.child(&node, i)) {
+				last_branch = i
 			}
-			if last_branch >= 0 {
-				// Evaluate operands in source order (receiver, then arguments). A value branch
-				// is materialized into a value temp; a non-stable operand that precedes a later
-				// branch is stabilized to a temp first, so its side effects run before that
-				// branch's hoisted prelude (e.g. `make_values(mut tr).index(match ...)`). Stable
-				// operands are left for the re-dispatch to transform once.
-				mut changed := false
+		}
+		if last_branch >= 0 {
+			// Evaluate operands in source order (method receiver, then arguments). A value branch
+			// is materialized into a value temp; a non-stable operand that precedes a later branch
+			// is stabilized first so its side effects run before that branch's hoisted prelude.
+			// Stabilization preserves an lvalue's identity (spilling only its dynamic base/index
+			// components, so `mut`/mutable operands still mutate through, e.g.
+			// `items[next()].update(match ...)` or `apply(mut items[next()], match ...)`); an rvalue
+			// is spilled by value. Applies to method calls and plain function calls alike. Stable
+			// operands are left for the re-dispatch to transform once.
+			mut changed := false
+			mut new_fn_id := recv_fn_id
+			if is_method {
 				new_recv := if t.is_value_match_or_if_operand(recv_id) {
 					r := t.transform_value_operand(recv_id)
 					if r != recv_id {
@@ -14977,10 +14983,6 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					}
 					r
 				} else if last_branch > 0 && !t.is_stable_expr_for_reuse(recv_id) {
-					// Stabilize a side-effecting receiver before a later branch argument hoists its
-					// prelude. Preserve the lvalue's identity by spilling only its dynamic base/index
-					// components (so a mutable receiver like `items[next()].update(match ...)` still
-					// mutates `items[next()]`); a non-lvalue (rvalue call) receiver is spilled by value.
 					r := if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
 						stabilized
 					} else {
@@ -14998,7 +15000,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 				for i in 1 .. recv_fn.children_count {
 					t.a.children << t.a.child(&recv_fn, i)
 				}
-				new_fn_id := t.a.add_node(flat.Node{
+				new_fn_id = t.a.add_node(flat.Node{
 					kind:           .selector
 					op:             recv_fn.op
 					value:          recv_fn.value
@@ -15007,38 +15009,42 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					children_count: recv_fn.children_count
 					pos:            recv_fn.pos
 				})
-				mut new_args := []flat.NodeId{cap: int(node.children_count)}
-				for i in 1 .. node.children_count {
-					arg_id := t.a.child(&node, i)
-					na := if t.is_value_match_or_if_operand(arg_id) {
-						t.transform_value_operand(arg_id)
-					} else if i < last_branch && !t.is_stable_expr_for_reuse(arg_id) {
-						t.stable_expr_for_reuse(arg_id)
+			}
+			mut new_args := []flat.NodeId{cap: int(node.children_count)}
+			for i in 1 .. node.children_count {
+				arg_id := t.a.child(&node, i)
+				na := if t.is_value_match_or_if_operand(arg_id) {
+					t.transform_value_operand(arg_id)
+				} else if i < last_branch && !t.is_stable_expr_for_reuse(arg_id) {
+					if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
+						stabilized
 					} else {
-						arg_id
+						t.stable_expr_for_reuse(arg_id)
 					}
-					if na != arg_id {
-						changed = true
-					}
-					new_args << na
+				} else {
+					arg_id
 				}
-				if changed {
-					call_start := t.a.children.len
-					t.a.children << new_fn_id
-					for a in new_args {
-						t.a.children << a
-					}
-					new_call_id := t.a.add_node(flat.Node{
-						kind:           .call
-						op:             node.op
-						value:          node.value
-						typ:            node.typ
-						children_start: call_start
-						children_count: node.children_count
-						pos:            node.pos
-					})
-					return t.transform_call_expr(new_call_id, t.a.nodes[int(new_call_id)])
+				if na != arg_id {
+					changed = true
 				}
+				new_args << na
+			}
+			if changed {
+				call_start := t.a.children.len
+				t.a.children << new_fn_id
+				for a in new_args {
+					t.a.children << a
+				}
+				new_call_id := t.a.add_node(flat.Node{
+					kind:           .call
+					op:             node.op
+					value:          node.value
+					typ:            node.typ
+					children_start: call_start
+					children_count: node.children_count
+					pos:            node.pos
+				})
+				return t.transform_call_expr(new_call_id, t.a.nodes[int(new_call_id)])
 			}
 		}
 	}

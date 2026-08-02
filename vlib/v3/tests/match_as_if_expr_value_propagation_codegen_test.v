@@ -849,6 +849,100 @@ fn select_value_channel_target_order(node Node) !int {
 	return got * 100 + tr.order[0] * 10 + tr.order[1]
 }
 
+fn combine(a int, b int) int {
+	return a * 10 + b
+}
+
+fn (mut tr Tracer) first_arg() int {
+	tr.order << 1
+	return 3
+}
+
+fn (mut tr Tracer) second_arg_first(_ First) !int {
+	tr.order << 2
+	return 4
+}
+
+fn (mut tr Tracer) second_arg_second(_ Second) !int {
+	tr.order << 2
+	return 5
+}
+
+// Plain function call ordering: a side-effecting first argument must run before the
+// value-match second argument prelude. First -> combine(3, 4) = 34, order [1,2] -> 3412
+// (a reversed order would be 3421).
+fn select_value_plain_call_order(node Node) !int {
+	mut tr := Tracer{}
+	r := combine(tr.first_arg(), match node {
+		First { tr.second_arg_first(node)! }
+		Second { tr.second_arg_second(node)! }
+	})
+	return r * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
+struct Holder2 {
+mut:
+	v int
+}
+
+struct Helper {}
+
+fn (h Helper) apply(mut item Holder2, x int) {
+	item.v += x
+}
+
+fn (mut tr Tracer) which_index() int {
+	tr.order << 1
+	return 0
+}
+
+fn (mut tr Tracer) delta_first(_ First) !int {
+	tr.order << 2
+	return 6
+}
+
+fn (mut tr Tracer) delta_second(_ Second) !int {
+	tr.order << 2
+	return 8
+}
+
+// Mutable argument lvalue before a value-match argument: the mut lvalue identity must
+// be preserved (only its index stabilized), so the mutation reaches holders[0], and the
+// index runs before the argument prelude. First -> holders[0].v = 70 + 6 = 76, order
+// [1,2] -> 7612 (mutation lost would be 7012; reversed order 7621).
+fn select_value_mut_arg(node Node) !int {
+	mut tr := Tracer{}
+	helper := Helper{}
+	mut holders := [Holder2{
+		v: 70
+	}, Holder2{
+		v: 80
+	}]
+	helper.apply(mut holders[tr.which_index()], match node {
+		First { tr.delta_first(node)! }
+		Second { tr.delta_second(node)! }
+	})
+	return holders[0].v * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
+fn len_first(_ First) !int {
+	return 4
+}
+
+fn len_second(_ Second) !int {
+	return 6
+}
+
+// Array initializer field that is a value match: the len field must be lowered as a
+// value. First -> []int{len: 4}, so arr.len = 4, encoded 4*1000 + 4 = 4004.
+fn select_value_array_init(node Node) !int {
+	arr := []int{len: match node {
+		First { len_first(node)! }
+		Second { len_second(node)! }
+	}}
+	return arr.len * 1000 + arr.len
+}
+
 // Address-of a value match (the checker permits `&` on a struct-typed match):
 // the propagating branch tail is materialized to a value temp whose address is
 // taken, then a field is read through it.
@@ -912,6 +1006,9 @@ fn main() {
 	println(select_value_call_operand_order(First{})!)
 	println(select_value_mut_receiver(First{})!)
 	println(select_value_channel_target_order(First{})!)
+	println(select_value_plain_call_order(First{})!)
+	println(select_value_mut_arg(First{})!)
+	println(select_value_array_init(First{})!)
 	println(select_value_addr(First{})!)
 }
 ') or {
@@ -925,5 +1022,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n102412\n1012\n3012\n6\ntrue\n112\ntrue\n60\n2\n512\n712\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n9912\n3412\n7612\n4004\n1'
 }
