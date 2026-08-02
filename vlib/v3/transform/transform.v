@@ -14689,15 +14689,43 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	lhs_is_value_branch := t.is_value_match_or_if_operand(infix_lhs_id)
 	rhs_is_value_branch := t.is_value_match_or_if_operand(infix_rhs_id)
 	if lhs_is_value_branch || rhs_is_value_branch {
+		// Evaluate operands left-to-right so their materialization statements land in
+		// `pending_stmts` in source order (LHS before RHS). Materializing only one side
+		// would emit its prelude before the other operand is evaluated — e.g.
+		// `mark('L') + (match x { ... mark_result('R')! ... })` would run the RHS prelude
+		// before the LHS call, reversing observable evaluation order. When one side is a
+		// value branch, spill a non-stable (side-effecting) other operand to a temp first
+		// so its evaluation still precedes the branch's prelude; stable operands
+		// (idents/literals) are left untouched for the re-dispatch to transform once.
+		pending_start := t.pending_stmts.len
 		new_lhs := if lhs_is_value_branch {
 			t.transform_value_operand(infix_lhs_id)
+		} else if rhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_lhs_id) {
+			t.stable_expr_for_reuse(infix_lhs_id)
 		} else {
 			infix_lhs_id
 		}
+		mut lhs_pending := []flat.NodeId{}
+		if t.pending_stmts.len > pending_start {
+			lhs_pending = t.pending_stmts[pending_start..].clone()
+			t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		}
 		new_rhs := if rhs_is_value_branch {
 			t.transform_value_operand(infix_rhs_id)
+		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id) {
+			t.stable_expr_for_reuse(infix_rhs_id)
 		} else {
 			infix_rhs_id
+		}
+		if lhs_pending.len > 0 {
+			rhs_pending := t.pending_stmts[pending_start..].clone()
+			t.pending_stmts = t.pending_stmts[..pending_start].clone()
+			for stmt in lhs_pending {
+				t.pending_stmts << stmt
+			}
+			for stmt in rhs_pending {
+				t.pending_stmts << stmt
+			}
 		}
 		if new_lhs != infix_lhs_id || new_rhs != infix_rhs_id {
 			start := t.a.children.len
@@ -16753,7 +16781,11 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			t.set_node_typ(int(addr), node.typ)
 			return addr
 		}
-		value := t.transform_expr(child_id)
+		// Route a value-context `match`/`if` operand (e.g. `&(match x { First { get_a()!
+		// } else { get_b()! } })`) through value lowering so a propagating branch tail is
+		// materialized as a value here instead of in a value-less statement context.
+		// `transform_value_operand` is a no-op for the common non-branch operands.
+		value := t.transform_value_operand(child_id)
 		if !t.expr_can_take_address(value) {
 			mut value_type := t.node_type(child_id)
 			if value_type.len == 0 {

@@ -369,6 +369,58 @@ fn direct_match(node Node) !int {
 	}
 }
 
+struct Tracer {
+mut:
+	order []int
+}
+
+fn (mut tr Tracer) lhs() int {
+	tr.order << 1
+	return 1
+}
+
+fn (mut tr Tracer) rf(_ First) !int {
+	tr.order << 2
+	return 10
+}
+
+fn (mut tr Tracer) rs(_ Second) !int {
+	tr.order << 2
+	return 20
+}
+
+// The LHS call must be evaluated before the RHS match materialization prelude.
+// Encodes sum (11) and the recorded order ([1,2] = LHS then RHS) as 1112; a
+// reversed order would yield 1121.
+fn select_value_infix_order(node ?Node) !int {
+	mut tr := Tracer{}
+	sum := if value := node {
+		tr.lhs() + (match value {
+			First { tr.rf(value)! }
+			Second { tr.rs(value)! }
+		})
+	} else {
+		0
+	}
+	return sum * 100 + tr.order[0] * 10 + tr.order[1]
+}
+
+// Address-of a value match (the checker permits `&` on a struct-typed match):
+// the propagating branch tail is materialized to a value temp whose address is
+// taken, then a field is read through it.
+fn select_value_addr(node ?Node) !int {
+	result := if value := node {
+		p := &(match value {
+			First { boxed(lower_first(value)!) }
+			Second { boxed(lower_second(value)!) }
+		})
+		p.value
+	} else {
+		0
+	}
+	return result
+}
+
 fn main() {
 	println(select_value(First{})!)
 	println(select_value(Second{})!)
@@ -395,6 +447,8 @@ fn main() {
 	println(select_value_ascast(5)!)
 	println(select_value_ascast_unsafe(5)!)
 	println(direct_match(Second{})!)
+	println(select_value_infix_order(First{})!)
+	println(select_value_addr(First{})!)
 }
 ') or {
 		panic(err)
@@ -407,5 +461,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1'
 }
