@@ -7857,7 +7857,10 @@ fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?Str
 	if struct_name.len == 0 {
 		return none
 	}
-	return c.struct_decls[struct_name] or { none }
+	if info := c.struct_decls[struct_name] {
+		return info
+	}
+	return none
 }
 
 // collect_struct_default_calls_from_info supports collect_struct_default_calls_from_info handling.

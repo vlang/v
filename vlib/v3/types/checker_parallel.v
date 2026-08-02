@@ -10,6 +10,9 @@ import v3.workers
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
 const scoped_check_worker_batches = 8
+// A serial checker owns the whole import graph instead of one worker shard, so
+// use finer arena batches to keep compiler-module checks below the memory cap.
+const scoped_check_serial_batches = 64
 // One chunk per worker makes the phase wall clock the single slowest chunk:
 // span-based costs undercount construct-heavy bodies severalfold, so the other
 // workers idle behind the outlier. Oversubscribed chunks let the pool queue
@@ -49,7 +52,7 @@ $if !windows {
 		mut w := unsafe { &TypeChecker(a.worker) }
 		items := unsafe { &[]CheckWorkItem(a.items_ptr) }
 		if a.scope_enabled {
-			w.check_scoped_batches(*items)
+			w.check_scoped_batches(*items, scoped_check_worker_batches)
 		} else {
 			w.check_fn_items_serial(*items)
 		}
@@ -62,14 +65,14 @@ $if !windows {
 // The receiver is a result accumulator; every batch uses a fresh checker fork,
 // then promotes only observable cache entries and diagnostics before its arena
 // is released.
-fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem) {
+fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit int) {
 	if items.len == 0 {
 		return
 	}
-	n_batches := if items.len < scoped_check_worker_batches {
+	n_batches := if items.len < batch_limit {
 		items.len
 	} else {
-		scoped_check_worker_batches
+		batch_limit
 	}
 	mut total_cost := i64(0)
 	for item in items {
@@ -172,7 +175,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	}
 	final_file := tc.cur_file
 	final_module := tc.cur_module
-	tc.check_scoped_batches(items)
+	tc.check_scoped_batches(items, scoped_check_serial_batches)
 	tc.cur_file = final_file
 	tc.cur_module = final_module
 	if tc.defer_ierror_gating {

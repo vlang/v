@@ -37,6 +37,19 @@ fn test_v3_environment_run_only_reads_vtest_only_fn() {
 	assert v3_environment_run_only() == ['test_one', 'test_two']
 }
 
+fn test_v3_environment_show_test_stats_reads_vtest_show_asserts() {
+	name := 'VTEST_SHOW_ASSERTS'
+	old_value := os.getenv(name)
+	was_set := name in os.environ()
+	defer {
+		restore_driver_environment(name, old_value, was_set)
+	}
+	os.unsetenv(name)
+	assert !v3_environment_show_test_stats()
+	os.setenv(name, '1', true)
+	assert v3_environment_show_test_stats()
+}
+
 fn test_v3_run_only_cache_identity_distinguishes_patterns() {
 	assert v3_run_only_cache_identity([]) == ''
 	first := v3_run_only_cache_identity(['test_one'])

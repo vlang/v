@@ -15198,6 +15198,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('void* calloc(size_t count, size_t size);')
 	g.writeln('void* realloc(void* ptr, size_t size);')
 	g.writeln('void free(void* ptr);')
+	g.writeln('int printf(const char* format, ...);')
 	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
 	g.writeln('int fseek(FILE* stream, long offset, int whence);')
 	g.writeln('char* getenv(const char* name);')
@@ -15381,6 +15382,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('void* calloc(size_t count, size_t size);')
 	g.writeln('void* realloc(void* ptr, size_t size);')
 	g.writeln('void free(void* ptr);')
+	g.writeln('int printf(const char* format, ...);')
 	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
 	g.writeln('int fflush(FILE* stream);')
 	g.writeln('#ifdef _WIN32')
@@ -15532,6 +15534,7 @@ const c_headerless_libc_declared_fns = [
 	'calloc',
 	'realloc',
 	'free',
+	'printf',
 	'fprintf',
 	'fseek',
 	'getenv',

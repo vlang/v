@@ -1269,7 +1269,8 @@ fn c_object_compiler_identity(compiler string, mut stats CObjectCacheStats) (str
 	if compiler_path in stats.compiler_versions {
 		return compiler_path, stats.compiler_versions[compiler_path]
 	}
-	version := cmdexec.run(compiler, ['--version']).output
+	compiler_result := cmdexec.run(compiler, ['--version'])
+	version := compiler_result.output
 	stats.compiler_versions[compiler_path] = version
 	return compiler_path, version
 }
@@ -4726,7 +4727,8 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	if target.os in ['macos', 'ios'] && resolved_path == '/usr/bin/cc' {
 		return 'clang'
 	}
-	version := cmdexec.run(compiler_path, ['--version']).output.to_lower_ascii()
+	compiler_result := cmdexec.run(compiler_path, ['--version'])
+	version := compiler_result.output.to_lower_ascii()
 	if version.contains('tiny c compiler') || version.contains('tcc version') {
 		return 'tinyc'
 	}
@@ -5193,6 +5195,10 @@ fn v3_environment_run_only() []string {
 	return value.split_any(',').filter(it.len > 0)
 }
 
+fn v3_environment_show_test_stats() bool {
+	return os.getenv('VTEST_SHOW_ASSERTS').len > 0
+}
+
 fn v3_run_only_cache_identity(patterns []string) string {
 	mut parts := []string{cap: patterns.len}
 	for pattern in patterns {
@@ -5304,7 +5310,7 @@ pub fn run(args []string) {
 	mut verbose := false
 	mut silent := false
 	mut is_repl := false
-	mut show_test_stats := false
+	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
 	mut warns_are_errors := false
 	mut notes_are_errors := false
@@ -5867,15 +5873,14 @@ pub fn run(args []string) {
 	if input_implies_building_v(input_file) || cmd_v_build {
 		building_v = true
 	}
-	// Serial compilation does not create enough concurrent scratch allocation to
-	// justify disposable stage arenas. Keeping it in the compilation arena also
-	// guarantees that a serial diagnostic run cannot retain a pointer into a
-	// released stage scope.
-	scope_prealloc_stages := should_scope_prealloc_stages() && !current_no_parallel
+	// Large serial compiler-module builds create the same transform and C-generation
+	// scratch state as parallel builds. Keep that state disposable; `-no-parallel`
+	// controls worker creation independently from arena lifetime.
+	scope_prealloc_stages := should_scope_prealloc_stages()
 	// Function checking still creates substantial short-lived state in serial
 	// mode for large import graphs. Scope each function independently there too.
 	scope_prealloc_check := should_scope_prealloc_stages()
-	scope_prealloc_cgen := should_scope_prealloc_cgen() && !current_no_parallel
+	scope_prealloc_cgen := should_scope_prealloc_cgen()
 	// The selective transform promotion path is designed around worker-owned
 	// results outside the disposable stage arena.
 	scope_prealloc_transform := scope_prealloc_stages
@@ -6087,6 +6092,7 @@ pub fn run(args []string) {
 		'warns_are_errors=${effective_warns_are_errors}',
 		'notes_are_errors=${notes_are_errors}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
+		'show_test_stats=${show_test_stats}',
 		'run_only=${v3_run_only_cache_identity(run_only)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
@@ -7502,7 +7508,10 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
-		if !cgen_cache_hit && scope_prealloc_cgen {
+		// The serial test harness declaration must remain ahead of its streamed
+		// function batches. Keep test C generation in the parent arena until that
+		// output ordering is represented by its own scoped segment.
+		if !cgen_cache_hit && scope_prealloc_cgen && test_files.len == 0 {
 			cgen_parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			cgen_scope := prealloc_scope_begin_for_v3()
 			mut g := cgen.FlatGen.new()

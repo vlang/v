@@ -2129,6 +2129,9 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 	$if windows {
 		return t.scan_late_call_names_range(cands, used, 0, cands.len)
 	} $else {
+		if !t.parallel_enabled {
+			return t.scan_late_call_names_range(cands, used, 0, cands.len)
+		}
 		// The scan clones no ASTs (workers share the merged AST read-only), so it
 		// is not bound by the clone-memory ceiling of the transform workers.
 		if isnil(t.a.worker_pool) {

@@ -373,6 +373,7 @@ mut:
 	// disposable arenas. The worker's surviving AST strings are cloned by the
 	// master before that arena is released.
 	scope_parallel_workers  bool
+	parallel_enabled        bool
 	worker_scope            voidptr
 	scoped_base_nodes       int = -1
 	scoped_owned_base_nodes map[int]bool
@@ -754,6 +755,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	t.skip_generics = skip_generics
 	t.building_v = building_v
 	t.scope_parallel_workers = scope_parallel_workers
+	t.parallel_enabled = want_parallel
 	t.retain_worker_results = retain_worker_results
 	t.stage_scope = stage_scope
 	if scope_parallel_workers {
@@ -15366,7 +15368,10 @@ fn (t &Transformer) bound_method_array_expr_info(id flat.NodeId) ?BoundMethodArr
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
-		return t.bound_method_arrays[t.bound_method_array_key(node.value)] or { none }
+		if info := t.bound_method_arrays[t.bound_method_array_key(node.value)] {
+			return info
+		}
+		return none
 	}
 	if node.kind == .paren && node.children_count > 0 {
 		return t.bound_method_array_expr_info(t.a.child(&node, 0))
