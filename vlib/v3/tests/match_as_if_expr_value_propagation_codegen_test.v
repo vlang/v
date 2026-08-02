@@ -1254,6 +1254,51 @@ fn select_value_map_base_snapshot(node Node) !int {
 	}]
 }
 
+fn replace_arr(mut a []int) !int {
+	a = [100, 200, 300]
+	return 0
+}
+
+// A stable gated-index base whose variable the index branch prelude reassigns: the gated access
+// must index the array evaluated before the index, not the replacement. First -> original
+// values#[0] = 5 (a leaked reassignment indexes [100, 200, 300] -> 100).
+fn select_value_gated_base_snapshot(node Node) !int {
+	mut values := [5, 6, 7]
+	return values#[match node {
+		First { replace_arr(mut values)! }
+		Second { 1 }
+	}]
+}
+
+fn (mut c Counter) idx_bump_first(_ First) !int {
+	c.v = 1
+	return 5
+}
+
+fn (mut c Counter) idx_bump_second(_ Second) !int {
+	c.v = 1
+	return 6
+}
+
+// A mutable receiver whose index (a stable field read) the value-branch argument mutates: the
+// index value must be captured in source order, so the method updates the original element.
+// First -> items[c.v=0].add(5) -> items[0].v = 45 (a mutated index updates items[1] -> 4055).
+fn select_value_mut_receiver_index_snapshot(node Node) !int {
+	mut c := Counter{
+		v: 0
+	}
+	mut items := [MutItem{
+		v: 40
+	}, MutItem{
+		v: 50
+	}]
+	items[c.v].add(match node {
+		First { c.idx_bump_first(node)! }
+		Second { c.idx_bump_second(node)! }
+	})
+	return items[0].v * 100 + items[1].v
+}
+
 type IntFn = fn () int
 
 struct FnBox {
@@ -1598,6 +1643,8 @@ fn main() {
 	println(select_value_stable_arg_snapshot(First{})!)
 	println(select_value_range_low_snapshot(First{})!)
 	println(select_value_map_base_snapshot(First{})!)
+	println(select_value_gated_base_snapshot(First{})!)
+	println(select_value_mut_receiver_index_snapshot(First{})!)
 	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_runtime_callee_order(First{})!)
@@ -1614,5 +1661,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\ntrue\n41\n712\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\ntrue\n41\n712\n1'
 }

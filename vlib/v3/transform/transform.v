@@ -9982,7 +9982,7 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 				return none
 			}
 			child_id := t.a.child(&node, 0)
-			new_child := if t.is_stable_expr_for_reuse(child_id) {
+			new_child := if t.is_pure_constant_expr(child_id) {
 				child_id
 			} else {
 				t.spill_original_lvalue_component(child_id, 'recv_deref')
@@ -10008,7 +10008,11 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 			mut children := [base]
 			for i in 1 .. node.children_count {
 				comp_id := t.a.child(&node, i)
-				children << if t.is_stable_expr_for_reuse(comp_id) {
+				// Snapshot a value-bearing index component (an ident/selector a later branch
+				// prelude could mutate) into a temp while keeping the surrounding lvalue shape,
+				// so `items[idx].update(match ... { change(mut idx)! } ...)` mutates the element
+				// at the source-order index. A pure constant index needs no snapshot.
+				children << if t.is_pure_constant_expr(comp_id) {
 					comp_id
 				} else {
 					t.spill_original_lvalue_component(comp_id, 'recv_index')
@@ -15501,9 +15505,15 @@ fn (mut t Transformer) lower_gated_scalar_index(node flat.Node) ?flat.NodeId {
 	// `values#[match n { First { get_index()! } else { other_index()! } }]`.
 	// `transform_value_operand` materializes such an operand into a value temp (already
 	// stable for the multiple uses below); non-branch operands keep `stable_expr_for_reuse`.
-	// The base is evaluated before the index, preserving base-before-index order.
+	// The base is evaluated before the index: if the index hoists a value branch whose prelude
+	// can reassign a syntactically stable base (`values#[match n { First { replace(mut values)!
+	// } ... }]`), snapshot the base's source-order value so the gated access reads it before
+	// that prelude.
 	base := if t.is_value_match_or_if_operand(base_child) {
 		t.transform_value_operand(base_child)
+	} else if t.operand_hoists_value_branch(idx_child)
+		&& t.operand_needs_ordering_snapshot(base_child) {
+		t.snapshot_expr_for_reuse(base_child)
 	} else {
 		t.stable_expr_for_reuse(base_child)
 	}
