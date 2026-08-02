@@ -5193,6 +5193,18 @@ fn v3_environment_run_only() []string {
 	return value.split_any(',').filter(it.len > 0)
 }
 
+fn v3_run_only_cache_identity(patterns []string) string {
+	mut parts := []string{cap: patterns.len}
+	for pattern in patterns {
+		parts << '${pattern.len}:${pattern}'
+	}
+	return parts.join(',')
+}
+
+fn v3_effective_warns_are_errors(explicit bool, is_prod bool) bool {
+	return explicit || is_prod
+}
+
 fn expand_v3_module_search_paths(spec string, vroot string) []string {
 	if spec.len == 0 {
 		return []
@@ -6051,6 +6063,7 @@ pub fn run(args []string) {
 		&& target.os == host_target.os && target.arch == host_target.arch
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
+	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	cache_salt := [
 		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
@@ -6071,9 +6084,10 @@ pub fn run(args []string) {
 		'ownership=${ownership_mode}',
 		'check_overflow=${check_overflow}',
 		'force_bounds_checking=${prefs.force_bounds_checking}',
-		'warns_are_errors=${warns_are_errors}',
+		'warns_are_errors=${effective_warns_are_errors}',
 		'notes_are_errors=${notes_are_errors}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
+		'run_only=${v3_run_only_cache_identity(run_only)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
 	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
@@ -6620,7 +6634,7 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
-	pre_tc.warns_are_errors = warns_are_errors
+	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
 	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
