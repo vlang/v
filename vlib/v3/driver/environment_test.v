@@ -124,6 +124,32 @@ fn test_impure_v_diagnostics_inspect_ast_nodes_in_every_pure_v_file() {
 	assert !diagnostics.any(it.file == allowed_js_file), diagnostics.str()
 }
 
+fn test_wayland_gg_precheck_inspects_parsed_imports_in_every_user_file() {
+	root := os.join_path(os.temp_dir(), 'v3_wayland_imports_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	comment_file := os.join_path(root, 'comment.v')
+	string_file := os.join_path(root, 'string.v')
+	gg_file := os.join_path(root, 'gg.v')
+	sapp_file := os.join_path(root, 'sapp.v')
+	os.write_file(comment_file, 'module main\n// import gg\nfn comment_only() {}\n')!
+	os.write_file(string_file,
+		"module main\nconst import_text = 'import sokol.sapp'\nfn string_only() {}\n")!
+	os.write_file(gg_file, 'module main\nimport gg\nfn gg_import() {}\n')!
+	os.write_file(sapp_file, 'module main\nimport sokol.sapp\nfn sapp_import() {}\n')!
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_files([comment_file, string_file, gg_file, sapp_file])
+	assert !parsed_files_import_linux_gg(a, [comment_file, string_file])
+	directory_files := v3_directory_user_files(root, prefs, false, false)!
+	assert directory_files.len == 4
+	assert parsed_files_import_linux_gg(a, directory_files)
+	assert parsed_files_import_linux_gg(a, [sapp_file])
+}
+
 fn test_v3_run_only_cache_identity_distinguishes_patterns() {
 	assert v3_run_only_cache_identity([]) == ''
 	first := v3_run_only_cache_identity(['test_one'])

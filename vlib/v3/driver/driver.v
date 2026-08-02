@@ -1690,14 +1690,6 @@ fn safe_default_bin_file_name(filename string) string {
 	return sanitized.str()
 }
 
-fn input_imports_linux_gg(input_file string) bool {
-	if os.is_dir(input_file) {
-		return false
-	}
-	source := os.read_file(input_file) or { return false }
-	return source.contains('import gg') || source.contains('import sokol.sapp')
-}
-
 struct V3CCompilerFlagOptions {
 	environment_c_flags  []string
 	environment_ld_flags []string
@@ -6296,14 +6288,6 @@ pub fn run(args []string) {
 		eprintln(err.msg())
 		exit(1)
 	}
-	if target.os == 'linux' && os.getenv('DISPLAY') == '' && os.getenv('WAYLAND_DISPLAY') != ''
-		&& os.getenv('XDG_SESSION_TYPE') == 'wayland'
-		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
-		&& input_imports_linux_gg(input_file) {
-		eprintln('`gg`/`sokol.sapp` cannot run in a Wayland-only Linux session without `-d sokol_wayland`.')
-		exit(1)
-	}
-
 	cmd_v_build := input_is_cmd_v(input_file)
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	// Neither compiler entry point uses generics. Keep self-builds off the generic
@@ -6672,6 +6656,13 @@ pub fn run(args []string) {
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
+	if target.os == 'linux' && os.getenv('DISPLAY') == '' && os.getenv('WAYLAND_DISPLAY') != ''
+		&& os.getenv('XDG_SESSION_TYPE') == 'wayland'
+		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
+		&& parsed_files_import_linux_gg(a, user_files) {
+		eprintln('`gg`/`sokol.sapp` cannot run in a Wayland-only Linux session without `-d sokol_wayland`.')
+		exit(1)
+	}
 	test_files := test_input_files(user_files, backend, prefs.target)
 
 	if !no_builtin {
@@ -12709,6 +12700,11 @@ fn imports_from_files(a &flat.FlatAst, files []string) map[string]bool {
 		}
 	}
 	return imports
+}
+
+fn parsed_files_import_linux_gg(a &flat.FlatAst, files []string) bool {
+	imports := imports_from_files(a, files)
+	return imports['gg'] || imports['sokol.sapp']
 }
 
 fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_node int, import_path string) {
