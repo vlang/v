@@ -1089,6 +1089,30 @@ fn (mut c Counter) bump() !int {
 	return 5
 }
 
+fn (mut c Counter) arr_first(_ First) ![]int {
+	c.v = 100
+	return [1, 5, 9]
+}
+
+fn (mut c Counter) arr_second(_ Second) ![]int {
+	c.v = 200
+	return [2, 6]
+}
+
+// A syntactically stable needle (a struct-field read) whose value the prelude of the
+// value-branch container mutates: the membership loop must read the needle in source order,
+// before the mutation. First -> c.v (5) in [1, 5, 9] -> true (a leaked mutation to 100 gives
+// false).
+fn select_value_membership_needle_snapshot(node Node) !bool {
+	mut c := Counter{
+		v: 5
+	}
+	return c.v in (match node {
+		First { c.arr_first(node)! }
+		Second { c.arr_second(node)! }
+	})
+}
+
 // A syntactically stable LHS lvalue (a struct-field read) whose value the RHS branch prelude
 // mutates: the infix must read the LHS source-order value, not the updated value. First ->
 // c.v (1) + 5 = 6, then c.v is 100 -> 6 * 1000 + 100 = 6100 (a leaked mutation gives 105100).
@@ -1427,6 +1451,7 @@ fn main() {
 	println(select_value_nested_cap_order(First{})!)
 	println(select_value_stable_lhs_snapshot(First{})!)
 	println(select_value_stable_arg_snapshot(First{})!)
+	println(select_value_membership_needle_snapshot(First{})!)
 	println(select_value_branch_callee(First{})!)
 	println(select_value_addr(First{})!)
 }
@@ -1441,5 +1466,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n41\n1'
+	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\ntrue\n41\n1'
 }

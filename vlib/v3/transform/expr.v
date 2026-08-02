@@ -2270,8 +2270,16 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 			elem_type, 'contains_needle')
 		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(needle_id, elem_type),
-			elem_type, 'contains_needle')
+		// `needle in container`: the needle is evaluated before the container in source order.
+		// If the container hoists a value branch whose prelude can mutate a syntactically stable
+		// needle (`x in (match node { First { change(mut x)! } ... })`), snapshot the needle's
+		// source-order value so the membership loop reads it before that prelude runs.
+		transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
+		needle = if t.operand_hoists_value_branch(base_id) {
+			t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
+		} else {
+			t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
+		}
 		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
