@@ -586,6 +586,43 @@ fn test_macos_v3_directory_c_output_differs_from_old_compiler() {
 	}
 }
 
+fn test_macos_v3_directory_default_output_is_source_adjacent() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_directory_output_${os.getpid()}')
+		source_dir := os.join_path(root, 'app')
+		caller_dir := os.join_path(root, 'caller')
+		expected_output := os.join_path(source_dir, 'app')
+		wrong_output := os.join_path(caller_dir, 'app')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(source_dir) or { panic(err) }
+		os.mkdir_all(caller_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(source_dir, 'main.v'), 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-v', '-gc', 'none', source_dir])
+		process.set_environment(environment)
+		process.set_work_folder(caller_dir)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
+		assert os.is_executable(expected_output)
+		assert !os.exists(wrong_output)
+	}
+}
+
 fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 	$if macos {
 		assert is_macos_v3_default_executable('/tmp/v')

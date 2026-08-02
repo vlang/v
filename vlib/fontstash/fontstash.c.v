@@ -99,16 +99,22 @@ pub fn (s &Context) add_font_mem(name string, data []u8, free_data bool) int {
 	// `data.data`; fontstash must not pass that interior pointer to C free().
 	// Give it an allocation made by the allocator paired with FONTSTASH_FREE.
 	unsafe {
+		data_len := data.len
 		mut owned := &u8(nil)
 		$if gcboehm ? {
-			owned = malloc_noscan(data.len)
+			owned = malloc_noscan(data_len)
 		} $else {
-			owned = &u8(C.malloc(usize(data.len)))
+			owned = &u8(C.malloc(usize(data_len)))
 		}
-		if data.len > 0 {
-			vmemcpy(owned, data.data, data.len)
+		if data_len > 0 && owned == nil {
+			data.free()
+			return invalid
 		}
-		return C.fonsAddFontMem(s, &char(name.str), owned, data.len, 1)
+		if data_len > 0 {
+			vmemcpy(owned, data.data, data_len)
+		}
+		data.free()
+		return C.fonsAddFontMem(s, &char(name.str), owned, data_len, 1)
 	}
 }
 
