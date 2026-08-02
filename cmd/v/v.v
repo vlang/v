@@ -223,7 +223,8 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 		os.user_os()) {
 		return
 	}
-	if is_autofree && !is_ownership && autofree_requires_standard_compiler(prefs) {
+	if is_autofree && !is_ownership && (autofree_requires_standard_compiler(prefs)
+		|| autofree_args_require_standard_compiler(merged_args, command)) {
 		return
 	}
 	if !is_ownership_relevant_command(command, prefs) {
@@ -239,6 +240,13 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 	}
 	ownership_args := v3_ownership_forwarded_args(prefs, merged_args)
 	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
+}
+
+fn autofree_args_require_standard_compiler(args []string, command string) bool {
+	$if macos {
+		return macos_v3_has_v1_only_leading_option(args, command)
+	}
+	return false
 }
 
 fn v3_ownership_forwarded_args(prefs &pref.Preferences, merged_args []string) []string {
@@ -258,7 +266,7 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
 		|| prefs.div_by_zero_is_zero || prefs.no_std || prefs.show_asserts || prefs.show_callgraph
-		|| prefs.show_depgraph || prefs.hide_auto_str {
+		|| prefs.show_depgraph || prefs.hide_auto_str || prefs.no_rsp || prefs.message_limit != 200 {
 		return true
 	}
 	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared

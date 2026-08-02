@@ -358,6 +358,26 @@ fn test_autofree_hide_auto_str_requires_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 }
 
+fn test_autofree_response_files_and_message_limits_require_standard_compiler() {
+	no_rsp, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-no-rsp', 'main.v'], false)
+	assert no_rsp.autofree
+	assert no_rsp.no_rsp
+	assert autofree_requires_standard_compiler(no_rsp)
+
+	for limit in ['1', '-1'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-message-limit', limit,
+			'main.v'], false)
+		assert prefs.autofree
+		assert prefs.message_limit == limit.int()
+		assert autofree_requires_standard_compiler(prefs)
+	}
+
+	$if macos {
+		assert autofree_args_require_standard_compiler(['-autofree', '-message-limit', '200',
+			'main.v'], 'main.v')
+	}
+}
+
 fn test_autofree_tracing_requires_standard_compiler() {
 	trace_calls, _ := pref.parse_args_and_show_errors([], [
 		'',
