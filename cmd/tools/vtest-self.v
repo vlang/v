@@ -237,9 +237,11 @@ const skip_on_ubuntu_musl = [
 	// is not usable from a musl-gcc build without a musl-native OpenSSL.
 	// Add any NEW net.quic/crypto.ecdsa test file here too.
 	'vlib/crypto/ecdsa/ecdsa_p256_ecdh_test.v',
+	'vlib/net/quic/header_protection_test.v',
 	'vlib/net/quic/header_test.v',
 	'vlib/net/quic/initial_secrets_test.v',
 	'vlib/net/quic/packet_number_test.v',
+	'vlib/net/quic/packet_protection_test.v',
 	'vlib/net/quic/tls13_certificate_chain_test.v',
 	'vlib/net/quic/tls13_certificate_test.v',
 	'vlib/net/quic/tls13_client_hello_test.v',
