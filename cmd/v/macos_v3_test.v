@@ -753,6 +753,11 @@ fn test_macos_v3_detects_v1_only_leading_options() {
 			'main.v')
 		assert autofree_args_require_standard_compiler(['-autofree', '-translated-go', 'main.v'],
 			'main.v')
+		for option in ['-musl', '-glibc'] {
+			assert macos_v3_has_v1_only_leading_option(['-autofree', option, 'main.v'], 'main.v')
+			assert autofree_args_require_standard_compiler(['-autofree', option, 'main.v'],
+				'main.v')
+		}
 		assert !macos_v3_has_v1_only_leading_option(['run', 'main.v', '-message-limit', '5'], 'run')
 		assert !macos_v3_has_v1_only_leading_option(['--', '-message-limit', '5', 'main.v'],
 			'main.v')
@@ -1005,6 +1010,15 @@ fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
 	prefs.gc_set_by_flag = true
 	prefs.gc_mode = .boehm_full_opt
 	assert autofree_requires_standard_compiler(prefs)
+}
+
+fn test_autofree_libc_selections_require_standard_compiler() {
+	musl, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-musl', 'main.v'], false)
+	assert musl.is_musl
+	assert autofree_requires_standard_compiler(musl)
+	glibc, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-glibc', 'main.v'], false)
+	assert glibc.is_glibc
+	assert autofree_requires_standard_compiler(glibc)
 }
 
 fn test_macos_v3_keeps_v1_only_autofree_and_experimental_builds_on_v1() {
