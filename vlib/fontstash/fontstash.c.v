@@ -13,6 +13,8 @@ $if gcboehm ? {
 #include "fontstash.h"
 #flag darwin -I/usr/local/Cellar/freetype/2.10.2/include/freetype2
 
+fn C.GC_MALLOC_ATOMIC(n usize) voidptr
+
 $if windows {
 	$if tinyc {
 		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o
@@ -102,7 +104,7 @@ pub fn (s &Context) add_font_mem(name string, data []u8, free_data bool) int {
 		data_len := data.len
 		mut owned := &u8(nil)
 		$if gcboehm ? {
-			owned = malloc_noscan(data_len)
+			owned = &u8(C.GC_MALLOC_ATOMIC(usize(data_len)))
 		} $else {
 			owned = &u8(C.malloc(usize(data_len)))
 		}

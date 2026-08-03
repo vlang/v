@@ -390,6 +390,17 @@ fn test_autofree_allocation_warnings_require_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 }
 
+fn test_autofree_debug_alias_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-debug', 'main.v'], false)
+	assert prefs.autofree
+	assert prefs.is_debug
+	assert prefs.is_vlines
+	assert autofree_requires_standard_compiler(prefs)
+	$if macos {
+		assert autofree_args_require_standard_compiler(['-autofree', '-debug', 'main.v'], 'main.v')
+	}
+}
+
 fn test_autofree_tracing_requires_standard_compiler() {
 	trace_calls, _ := pref.parse_args_and_show_errors([], [
 		'',
@@ -509,6 +520,7 @@ fn test_macos_v3_use_os_system_to_run_stays_on_v1() {
 
 fn test_macos_v3_detects_v1_only_leading_options() {
 	$if macos {
+		assert macos_v3_has_v1_only_leading_option(['-autofree', '-debug', 'main.v'], 'main.v')
 		assert macos_v3_has_v1_only_leading_option(['-message-limit', '0', 'main.v'], 'main.v')
 		assert macos_v3_has_v1_only_leading_option(['-message-limit', '5', 'run', 'main.v'], 'run')
 		assert macos_v3_has_v1_only_leading_option(['-gc', 'none', '-o', 'run', '-message-limit',
