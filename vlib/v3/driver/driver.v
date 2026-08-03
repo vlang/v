@@ -114,6 +114,18 @@ struct V3CgenCacheMetadata {
 	interface_impl_signature string
 	prefix_source_identity   string
 	flags                    []string
+	diagnostics              []V3CachedTypeDiagnostic
+}
+
+struct V3CachedTypeDiagnostic {
+	file            string
+	msg             string
+	severity        string
+	node            int
+	offset          int
+	end             int
+	reported_column int
+	details         []string
 }
 
 struct V3ExternalCachePath {
@@ -3636,22 +3648,143 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	return true
 }
 
-fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, prefix_source_identity string) string {
-	mut parts := ['v3-cgen-metadata-v3', interface_impl_signature, prefix_source_identity]
+fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, prefix_source_identity string, diagnostics []V3CachedTypeDiagnostic) string {
+	mut parts := ['v3-cgen-metadata-v4', interface_impl_signature, prefix_source_identity,
+		flags.len.str()]
 	parts << flags
+	parts << diagnostics.len.str()
+	for diagnostic in diagnostics {
+		parts << diagnostic.file
+		parts << diagnostic.msg
+		parts << diagnostic.severity
+		parts << diagnostic.node.str()
+		parts << diagnostic.offset.str()
+		parts << diagnostic.end.str()
+		parts << diagnostic.reported_column.str()
+		parts << diagnostic.details.len.str()
+		parts << diagnostic.details
+	}
 	return parts.join('\x00')
 }
 
 fn decode_v3_cgen_metadata(metadata string) ?V3CgenCacheMetadata {
 	parts := metadata.split('\x00')
-	if parts.len < 3 || parts[0] != 'v3-cgen-metadata-v3' {
+	if parts.len < 5 || parts[0] != 'v3-cgen-metadata-v4' {
+		return none
+	}
+	flag_count := strconv.atoi(parts[3]) or { return none }
+	if flag_count < 0 || 4 + flag_count >= parts.len {
+		return none
+	}
+	mut index := 4 + flag_count
+	diagnostic_count := strconv.atoi(parts[index]) or { return none }
+	if diagnostic_count < 0 {
+		return none
+	}
+	index++
+	mut diagnostics := []V3CachedTypeDiagnostic{cap: diagnostic_count}
+	for _ in 0 .. diagnostic_count {
+		if index + 8 > parts.len {
+			return none
+		}
+		node := strconv.atoi(parts[index + 3]) or { return none }
+		offset := strconv.atoi(parts[index + 4]) or { return none }
+		end := strconv.atoi(parts[index + 5]) or { return none }
+		reported_column := strconv.atoi(parts[index + 6]) or { return none }
+		detail_count := strconv.atoi(parts[index + 7]) or { return none }
+		if offset < 0 || end < offset || reported_column < 0 || detail_count < 0
+			|| index + 8 + detail_count > parts.len {
+			return none
+		}
+		diagnostics << V3CachedTypeDiagnostic{
+			file:            parts[index]
+			msg:             parts[index + 1]
+			severity:        parts[index + 2]
+			node:            node
+			offset:          offset
+			end:             end
+			reported_column: reported_column
+			details:         parts[index + 8..index + 8 + detail_count].clone()
+		}
+		index += 8 + detail_count
+	}
+	if index != parts.len {
 		return none
 	}
 	return V3CgenCacheMetadata{
 		interface_impl_signature: parts[1]
 		prefix_source_identity:   parts[2]
-		flags:                    parts[3..].clone()
+		flags:                    parts[4..4 + flag_count].clone()
+		diagnostics:              diagnostics
 	}
+}
+
+fn cache_v3_type_diagnostics(a &flat.FlatAst, diagnostics []types.TypeError) []V3CachedTypeDiagnostic {
+	mut cached := []V3CachedTypeDiagnostic{cap: diagnostics.len}
+	for diagnostic in diagnostics {
+		mut file := diagnostic.file
+		if diagnostic.pos.is_valid() {
+			if source_file := a.source_files[diagnostic.pos.id] {
+				file = source_file.name
+			}
+		}
+		if file.len > 0 {
+			file = os.real_path(file)
+		}
+		cached << V3CachedTypeDiagnostic{
+			file:            file.clone()
+			msg:             diagnostic.msg.clone()
+			severity:        diagnostic.severity.clone()
+			node:            int(diagnostic.node)
+			offset:          diagnostic.pos.offset
+			end:             diagnostic.pos.end
+			reported_column: diagnostic.pos.reported_column
+			details:         clone_string_list(diagnostic.details)
+		}
+	}
+	return cached
+}
+
+fn restore_v3_type_diagnostics(mut a flat.FlatAst, diagnostics []V3CachedTypeDiagnostic) []types.TypeError {
+	mut file_ids := map[string]int{}
+	mut next_file_id := 1
+	for id, file in a.source_files {
+		file_ids[os.real_path(file.name)] = id
+		if id >= next_file_id {
+			next_file_id = id + 1
+		}
+	}
+	mut file_set := v3token.FileSet.new()
+	mut restored := []types.TypeError{cap: diagnostics.len}
+	for diagnostic in diagnostics {
+		mut file_id := file_ids[diagnostic.file] or { 0 }
+		if file_id == 0 && diagnostic.file.len > 0 {
+			source := os.read_file(diagnostic.file) or { '' }
+			if source.len > 0 || os.is_file(diagnostic.file) {
+				mut source_file := file_set.add_file(diagnostic.file, source.len)
+				source_file.index_lines(source)
+				file_id = next_file_id
+				next_file_id++
+				a.source_files[file_id] = source_file
+				file_ids[diagnostic.file] = file_id
+			}
+		}
+		restored << types.TypeError{
+			msg:      diagnostic.msg.clone()
+			kind:     .unknown_ident
+			node:     flat.NodeId(diagnostic.node)
+			file:     diagnostic.file.clone()
+			pos:      v3token.Pos{
+				id:              file_id
+				offset:          diagnostic.offset
+				end:             diagnostic.end
+				reported_column: diagnostic.reported_column
+			}
+			details:  clone_string_list(diagnostic.details)
+			severity: diagnostic.severity.clone()
+		}
+	}
+	return restored
 }
 
 fn cacheable_runtime_string_nodes(a &flat.FlatAst) []bool {
@@ -7073,6 +7206,7 @@ pub fn run(args []string) {
 	mut pre_tc := types.TypeChecker.new(a)
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
+	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
 	pre_tc.compiler_vroot = prefs.vroot
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
@@ -7355,6 +7489,7 @@ pub fn run(args []string) {
 		}
 		if pre_tc.notices.len > 0 {
 			checker_sql_warnings_only := is_checker_fixture && ast_contains_sql_expr(a)
+			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture)
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
@@ -7667,6 +7802,17 @@ pub fn run(args []string) {
 		b.step('markused (cached)')
 		b.step('transform (cached)')
 		b.step('annotate types (cached)')
+		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
+			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
+			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture)
+			for notice in cached_notices {
+				if notice.severity == 'warning:' {
+					checker_warning_count++
+				} else {
+					checker_notice_count++
+				}
+			}
+		}
 	}
 	if is_repl {
 		pre_tc.notices.clear()
@@ -7769,6 +7915,7 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
+			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			if pre_tc.errors.len == 0 || macos_v3_fallback_file == '' {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			}
@@ -8383,9 +8530,8 @@ pub fn run(args []string) {
 					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
 						published_cgen_cache_input.generation_signature,
 						published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags,
-						interface_impl_signature, prefix_source_identity)) or {
-						modulecache.CgenEntry{}
-					}
+						interface_impl_signature, prefix_source_identity,
+						cached_checker_diagnostics)) or { modulecache.CgenEntry{} }
 				}
 				if incremental_cache_restored && prepared_plan_entry.source.len > 0 {
 					stable_body_source := os.read_file(prepared_plan_entry.source) or {
@@ -8427,7 +8573,8 @@ pub fn run(args []string) {
 						modulecache.prune_unreferenced_static_string_definitions(prepared_cache.program_declarations),
 						prepared_cache.program_body_cache,
 						encode_cached_runtime_strings(generic_cache_runtime_strings), encode_v3_cgen_metadata(generated_c_flags,
-						interface_impl_signature, prefix_source_identity)) or {}
+						interface_impl_signature, prefix_source_identity,
+						cached_checker_diagnostics)) or {}
 				}
 				if (!generic_cache_hit || incremental_cache_hit)
 					&& incremental_snapshot.declaration_signature.len > 0 {
@@ -8464,7 +8611,8 @@ pub fn run(args []string) {
 						encode_monomorph_cache_specs(incremental_specs),
 						prepared_cache.program_prefix_source, incremental_declarations,
 						incremental_tcc_declarations, prepared_cache.objects, encode_v3_cgen_metadata(generated_c_flags,
-						interface_impl_signature, prefix_source_identity)) or {}
+						interface_impl_signature, prefix_source_identity,
+						cached_checker_diagnostics)) or {}
 				}
 			}
 			prealloc_scope_leave_for_v3(cache_prepare_scope)

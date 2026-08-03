@@ -110,6 +110,37 @@ fn main() {
 	assert os.real_path(wrapper_file) in printed_files
 }
 
+fn test_whole_program_cache_replays_checker_notices() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_checker_notices_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn unused_helper() {}
+
+fn main() {}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'app')
+	command := 'V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -no-memory-limit -o ${os.quoted_path(output)} ${os.quoted_path(main_file)}'
+	first := os.execute(command)
+	assert first.exit_code == 0, first.output
+	assert first.output.count('unused function: `unused_helper`') == 1, first.output
+	assert first.output.contains(':3:4: notice: unused function: `unused_helper`'), first.output
+	assert !first.output.contains('check (cached)'), first.output
+
+	second := os.execute(command)
+	assert second.exit_code == 0, second.output
+	assert second.output.contains('check (cached)'), second.output
+	assert second.output.count('unused function: `unused_helper`') == 1, second.output
+	assert second.output.contains(':3:4: notice: unused function: `unused_helper`'), second.output
+}
+
 fn test_cached_sync_module_uses_preamble_pthread_declarations() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_sync_pthread_${os.getpid()}')
