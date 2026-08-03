@@ -418,7 +418,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 		return resolved
 	}
 	if sum_name.contains('.') {
-		if resolved := g.sum_name_lookup[sum_name.all_after_last('.')] {
+		if resolved := g.sum_name_lookup[c_short_name_view(sum_name)] {
 			return resolved
 		}
 	}
@@ -429,7 +429,7 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 	g.sum_name_lookup = map[string]string{}
 	for name, _ in g.tc.sum_types {
 		g.sum_name_lookup[name] = name
-		short := name.all_after_last('.')
+		short := c_short_name_view(name)
 		if short.len > 0 && short !in g.sum_name_lookup {
 			g.sum_name_lookup[short] = name
 		}

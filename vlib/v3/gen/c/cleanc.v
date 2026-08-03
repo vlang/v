@@ -28,6 +28,17 @@ const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'con
 const c_has_attribute_predicate = '__has_attribute'
 const c_has_attribute_override_key = '@function:__has_attribute'
 
+// c_short_name_view returns the suffix after the final dot without allocating.
+@[direct_array_access; inline]
+fn c_short_name_view(name string) string {
+	for i := name.len - 1; i >= 0; i-- {
+		if name[i] == `.` {
+			return unsafe { name.substr_unsafe(i + 1, name.len) }
+		}
+	}
+	return name
+}
+
 fn manual_stdlib_c_headers() string {
 	start := v1_c_headers_source.index('// c_headers\n') or { return '' }
 	relative_end := v1_c_headers_source[start..].index('static void v_stable_sort') or { return '' }
@@ -431,10 +442,11 @@ mut:
 	// Set while selected items' C-extern refs still have to be collected: the
 	// fused prep walk defers them to the parallel exact-cost pass, which falls
 	// back to a serial top-up when it cannot run.
-	prep_externs_pending bool
-	prep_costs_pending   bool
-	prep_typ_text_cache  &PrepTypTextCache = unsafe { nil }
-	preseed_type_seen    &PreseedTypeSeen  = unsafe { nil }
+	prep_externs_pending   bool
+	prep_costs_pending     bool
+	prep_typ_text_cache    &PrepTypTextCache = unsafe { nil }
+	prep_alias_short_names map[string]bool
+	preseed_type_seen      &PreseedTypeSeen = unsafe { nil }
 	// Separate seen-cache for the declaration preseed family
 	// (preseed_fn_ptr_type has optional-typedef side effects the body-walk
 	// preseed does not); armed only for the contiguous pre-dispatch preseed
@@ -8794,7 +8806,7 @@ fn (mut g FlatGen) register_fn_decl_signature_type(name string, full_name string
 	if is_variadic {
 		g.fn_decl_variadic[module_key] = true
 	}
-	short_name := name.all_after_last('.')
+	short_name := c_short_name_view(name)
 	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
 	for flag in shared_params {
 		if flag {
@@ -8822,7 +8834,7 @@ fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id fla
 	if name !in g.fn_decl_nodes_by_name {
 		g.fn_decl_nodes_by_name[name] = id
 	}
-	short := name.all_after_last('.')
+	short := c_short_name_view(name)
 	if short !in g.fn_decl_nodes_by_short {
 		g.fn_decl_nodes_by_short[short] = id
 	}
@@ -11355,12 +11367,21 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 	return ''
 }
 
+@[direct_array_access]
 fn (g &FlatGen) fixed_storage_candidate_short_name(name string) string {
-	dot := name.last_index_u8(`.`)
-	if dot >= 0 {
-		return unsafe { name.substr_unsafe(dot + 1, name.len) }
+	mut sep := -1
+	mut i := name.len - 1
+	for i >= 0 {
+		if name[i] == `.` {
+			return unsafe { name.substr_unsafe(i + 1, name.len) }
+		}
+		if sep < 0 && i > 0 && name[i] == `_` && name[i - 1] == `_` {
+			sep = i - 1
+			i--
+		}
+		i--
 	}
-	if sep := name.last_index('__') {
+	if sep >= 0 {
 		return unsafe { name.substr_unsafe(sep + 2, name.len) }
 	}
 	return name
@@ -11389,21 +11410,48 @@ fn (mut g FlatGen) collect_fixed_storage_const_candidates(mut candidates map[str
 	}
 }
 
-fn (g &FlatGen) const_ref_node_may_match_fixed_candidate(node &flat.Node, ident_refs map[string]bool, shorts map[string]bool) bool {
+struct FixedStorageCandidateNameFilter {
+mut:
+	lengths_by_initial [256]u64
+}
+
+@[direct_array_access]
+fn fixed_storage_candidate_name_filter(names map[string]bool) FixedStorageCandidateNameFilter {
+	mut filter := FixedStorageCandidateNameFilter{}
+	for name, _ in names {
+		if name.len == 0 {
+			continue
+		}
+		length_bit := if name.len < 63 { name.len } else { 63 }
+		filter.lengths_by_initial[name[0]] |= u64(1) << length_bit
+	}
+	return filter
+}
+
+@[direct_array_access; inline]
+fn (filter &FixedStorageCandidateNameFilter) may_match(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	length_bit := if name.len < 63 { name.len } else { 63 }
+	return filter.lengths_by_initial[name[0]] & (u64(1) << length_bit) != 0
+}
+
+fn (g &FlatGen) const_ref_node_may_match_fixed_candidate(node &flat.Node, ident_refs map[string]bool, shorts map[string]bool, ident_filter &FixedStorageCandidateNameFilter, short_filter &FixedStorageCandidateNameFilter) bool {
 	if node.kind == .paren {
 		if node.children_count == 0 {
 			return false
 		}
 		return g.const_ref_node_may_match_fixed_candidate(g.a.child_node(node, 0), ident_refs,
-			shorts)
+			shorts, ident_filter, short_filter)
 	}
 	if node.kind == .ident {
-		if node.value in ident_refs {
+		if ident_filter.may_match(node.value) && node.value in ident_refs {
 			return true
 		}
 		short_name := g.fixed_storage_candidate_short_name(node.value)
 		if short_name.len != node.value.len {
-			return short_name in shorts
+			return short_filter.may_match(short_name) && short_name in shorts
 		}
 		return false
 	}
@@ -11411,7 +11459,7 @@ fn (g &FlatGen) const_ref_node_may_match_fixed_candidate(node &flat.Node, ident_
 		if node.children_count == 0 {
 			return false
 		}
-		if node.value !in shorts {
+		if !short_filter.may_match(node.value) || node.value !in shorts {
 			return false
 		}
 		base := g.a.child_node(node, 0)
@@ -11498,6 +11546,8 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 	for short_name, _ in fixed_candidate_shorts {
 		fixed_candidate_idents[short_name] = true
 	}
+	fixed_candidate_ident_filter := fixed_storage_candidate_name_filter(fixed_candidate_idents)
+	fixed_candidate_short_filter := fixed_storage_candidate_name_filter(fixed_candidate_shorts)
 	for idx := 0; idx < g.a.nodes.len; idx++ {
 		node := unsafe { &g.a.nodes[idx] }
 		kind_id := int(node.kind)
@@ -11534,7 +11584,8 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 				base_id := g.a.child(node, 0)
 				base_node := g.a.node(base_id)
 				if g.const_ref_node_may_match_fixed_candidate(base_node, fixed_candidate_idents,
-					fixed_candidate_shorts)
+					fixed_candidate_shorts, &fixed_candidate_ident_filter,
+					&fixed_candidate_short_filter)
 				{
 					g.mark_const_ref_descendants(mut fixed_safe_refs, base_id)
 					index_base_items << FixedStorageConstRefItem{
@@ -11549,13 +11600,15 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 					base_id := g.a.child(node, 0)
 					base_node := g.a.node(base_id)
 					if g.const_ref_node_may_match_fixed_candidate(base_node,
-						fixed_candidate_idents, fixed_candidate_shorts)
+						fixed_candidate_idents, fixed_candidate_shorts,
+						&fixed_candidate_ident_filter, &fixed_candidate_short_filter)
 					{
 						g.mark_const_ref_descendants(mut fixed_safe_refs, base_id)
 					}
 				}
 				if g.const_ref_node_may_match_fixed_candidate(node, fixed_candidate_idents,
-					fixed_candidate_shorts)
+					fixed_candidate_shorts, &fixed_candidate_ident_filter,
+					&fixed_candidate_short_filter)
 				{
 					ref_items << FixedStorageConstRefItem{
 						id:     flat.NodeId(idx)
@@ -11573,7 +11626,8 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 					base_id := g.a.child(fn_node, 0)
 					base_node := g.a.node(base_id)
 					if g.const_ref_node_may_match_fixed_candidate(base_node,
-						fixed_candidate_idents, fixed_candidate_shorts)
+						fixed_candidate_idents, fixed_candidate_shorts,
+						&fixed_candidate_ident_filter, &fixed_candidate_short_filter)
 					{
 						call_base_items << FixedStorageConstRefItem{
 							id:     base_id
@@ -11590,7 +11644,8 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 					arg_id := g.a.child(node, ai)
 					arg_node := g.a.node(arg_id)
 					if g.const_ref_node_may_match_fixed_candidate(arg_node, fixed_candidate_idents,
-						fixed_candidate_shorts)
+						fixed_candidate_shorts, &fixed_candidate_ident_filter,
+						&fixed_candidate_short_filter)
 					{
 						call_base_items << FixedStorageConstRefItem{
 							id:     arg_id
@@ -11602,7 +11657,8 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 			}
 			.ident, .paren {
 				if g.const_ref_node_may_match_fixed_candidate(node, fixed_candidate_idents,
-					fixed_candidate_shorts)
+					fixed_candidate_shorts, &fixed_candidate_ident_filter,
+					&fixed_candidate_short_filter)
 				{
 					ref_items << FixedStorageConstRefItem{
 						id:     flat.NodeId(idx)

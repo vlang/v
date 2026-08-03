@@ -1121,20 +1121,27 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 		}
 	}
 	if !typ.contains('.') {
-		mut unique_target := ''
-		for name, target in t.tc.type_aliases {
-			if name == typ || name.ends_with('.${typ}') {
-				if unique_target.len > 0 && unique_target != target {
-					return typ
-				}
-				unique_target = target
+		if unique_target := t.type_alias_suffixes[typ] {
+			if unique_target.len > 0 {
+				return unique_target
 			}
-		}
-		if unique_target.len > 0 {
-			return unique_target
 		}
 	}
 	return typ
+}
+
+fn (mut t Transformer) build_type_alias_suffix_index() {
+	t.type_alias_suffixes = map[string]string{}
+	for name, target in t.tc.type_aliases {
+		short := if name.contains('.') { name.all_after_last('.') } else { name }
+		if existing := t.type_alias_suffixes[short] {
+			if existing != target {
+				t.type_alias_suffixes[short] = ''
+			}
+		} else {
+			t.type_alias_suffixes[short] = target
+		}
+	}
 }
 
 fn (t &Transformer) expand_generic_type_alias(typ string) ?string {

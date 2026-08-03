@@ -281,8 +281,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			continue
 		}
 		if node.kind == .fn_decl || node.kind == .c_fn_decl {
-			fn_decl_file := tc.fn_type_files[node.value] or { decl_file }
-			fn_decl_module := tc.fn_type_modules[node.value] or { decl_module }
+			decl_qname := qualify_fn(decl_module, node.value)
+			fn_decl_file := tc.fn_type_files[decl_qname] or { decl_file }
+			fn_decl_module := tc.fn_type_modules[decl_qname] or { decl_module }
 			fn_decl_import_context := import_context_by_file[fn_decl_file] or {
 				decl_import_context
 			}

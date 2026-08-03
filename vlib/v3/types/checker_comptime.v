@@ -13014,9 +13014,10 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			i += 2
 			continue
 		}
-		tc.check_const_reference_assignment(lhs_id, rhs_id, true, tc.decl_lhs_is_mut(node, lhs_id))
-		if lhs_node.value != '_' && tc.unsafe_depth == 0 && (tc.decl_lhs_is_mut(node, lhs_id)
-			|| tc.slice_expr_base_is_mutable(rhs_id)) {
+		lhs_is_mut := tc.decl_lhs_is_mut(node, lhs_id)
+		tc.check_const_reference_assignment(lhs_id, rhs_id, true, lhs_is_mut)
+		if lhs_node.value != '_' && tc.unsafe_depth == 0
+			&& (lhs_is_mut || tc.slice_expr_base_is_mutable(rhs_id)) {
 			tc.record_implicit_slice_clone_notice(rhs_id)
 		}
 		if tc.new_error_kind_since(error_count, .unknown_ident) {
@@ -13135,9 +13136,8 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id,
 				rhs_node.pos)
 		}
-		if tc.unsafe_depth == 0 && tc.decl_lhs_is_mut(node, lhs_id)
-			&& unalias_type(rhs_type) is Array && rhs_node.kind == .selector
-			&& tc.expr_root_is_mutable_lvalue(rhs_id) {
+		if tc.unsafe_depth == 0 && lhs_is_mut && unalias_type(rhs_type) is Array
+			&& rhs_node.kind == .selector && tc.expr_root_is_mutable_lvalue(rhs_id) {
 			tc.record_error_at(.assignment_mismatch,
 				'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)',
 				id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
@@ -13158,13 +13158,13 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 					'cannot assign `${rhs_type.name()}` to `${expected.name()}`', id)
 			}
 		}
-		owner := tc.insert_decl_lhs(lhs_id, expected, tc.decl_lhs_is_mut(node, lhs_id))
+		owner := tc.insert_decl_lhs(lhs_id, expected, lhs_is_mut)
 		tc.record_pointer_binding_alias(owner, rhs_id, expected)
 		if owner.storage_key().len > 0 && unalias_type(expected) is Map
 			&& tc.expr_is_unsafe_reference_alias(rhs_id) {
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
 		}
-		if lhs_node.value != '_' && tc.decl_lhs_is_mut(node, lhs_id) {
+		if lhs_node.value != '_' && lhs_is_mut {
 			tc.check_mutable_array_immutable_references(rhs_id)
 			tc.record_mutable_decl_branch_immutable_notices(rhs_id)
 			if immutable_source_id := tc.immutable_reference_source(rhs_id, rhs_type) {
@@ -15345,9 +15345,12 @@ fn (tc &TypeChecker) decl_lhs_is_mut(node flat.Node, lhs_id flat.NodeId) bool {
 		if file := tc.a.source_files[lhs.pos.id] {
 			if source := tc.source_texts_by_file[file.name] {
 				start := int_min(int_max(lhs.pos.offset, 0), source.len)
-				line_start := source[..start].last_index_u8(`\n`)
+				mut line_start := start
+				for line_start > 0 && source[line_start - 1] != `\n` {
+					line_start--
+				}
 				line_end := source.index_after('\n', start) or { source.len }
-				if source[line_start + 1..line_end].contains('mut ${lhs.value} :=') {
+				if last_index_between(source, 'mut ${lhs.value} :=', line_start, line_end) >= 0 {
 					return true
 				}
 			}

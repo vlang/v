@@ -9,9 +9,9 @@ import v3.workers
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
-// Scoped workers keep an arena alive for the phase. Limit their count and use
-// many short batches so self-hosting does not retain one large arena per core.
-const max_scoped_check_jobs = 8
+// Scoped workers use bounded arena batches, so let self-host checks occupy all
+// of the worker pool's cores without retaining one large arena per core.
+const max_scoped_check_jobs = 10
 const scoped_check_worker_batches = 96
 // A serial checker owns the whole import graph instead of one worker shard, so
 // use finer arena batches to keep compiler-module checks below the memory cap.
@@ -169,11 +169,6 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_export_attrs()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
-	if tc.diagnostic_files.len > 0 {
-		// Open generic bodies are checked only when reachable from the selected input.
-		// Populate the reachability set before the scoped workers inherit it.
-		tc.collect_selected_file_called_fns()
-	}
 	final_file := tc.cur_file
 	final_module := tc.cur_module
 	tc.check_scoped_batches(items, scoped_check_serial_batches)
@@ -295,11 +290,6 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		cksw.restart()
 		items := tc.collect_parallel_check_items()
 		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
-		if tc.diagnostic_files.len > 0 {
-			// Open generic bodies are checked only when reachable from the selected input.
-			// Populate the reachability set before the parallel workers inherit it.
-			tc.collect_selected_file_called_fns()
-		}
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
@@ -883,11 +873,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.fn_context.concrete_generic_receiver_specialization =
 		fn_value_is_concrete_generic_receiver_specialization(node.value)
 	tc.cur_fn_node_id = fn_idx
-	tc.method_value_locals = map[string]bool{}
-	tc.method_value_local_depth = map[string]int{}
-	tc.capturing_fn_literal_locals = map[string]bool{}
-	tc.capturing_fn_literal_local_depth = map[string]int{}
-	tc.capturing_fn_literal_return_unsupported = map[string]bool{}
+	tc.method_value_locals.clear()
+	tc.method_value_local_depth.clear()
+	tc.capturing_fn_literal_locals.clear()
+	tc.capturing_fn_literal_local_depth.clear()
+	tc.capturing_fn_literal_return_unsupported.clear()
 	tc.check_fn_receiver_and_operator_return(node, flat.NodeId(fn_idx))
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
@@ -1960,6 +1950,7 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	precomputed := tc.precomputed_check_cache()
 	// Parallel checker workers may populate this cache concurrently, so each
 	// worker (and each disposable scoped batch) owns mutable result/miss maps while
 	// sharing the declaration index that collect completed before checking starts.
@@ -2000,22 +1991,55 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.type_cache = &TypeCache{
 		// The master's frozen pre-region cache (the overlay's base) is shared
 		// read-only across all forks; each fork writes to its own maps.
-		base:                       if tc.type_cache != unsafe { nil } {
+		base:                        if tc.type_cache != unsafe { nil } {
 			tc.type_cache.base
 		} else {
 			&TypeCache(unsafe { nil })
 		}
-		parse_enabled:              if tc.type_cache != unsafe { nil } {
+		parse_enabled:               if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[TypeId]string{}
-		struct_field_entries:       map[string]Type{}
-		struct_field_misses:        map[string]bool{}
-		ierror_compat_entries:      map[string]int{}
-		source_error_embed_entries: map[string]int{}
+		parse_entries:               map[u64]ParseTypeCacheEntry{}
+		c_entries:                   map[TypeId]string{}
+		struct_field_entries:        map[string]Type{}
+		struct_field_misses:         map[string]bool{}
+		sum_variant_pattern_entries: map[string]string{}
+		lexical_smartcast_entries:   map[int]Type{}
+		lexical_smartcast_misses:    map[int]bool{}
+		short_type_name_index:       if isnil(precomputed)
+			|| !precomputed.short_type_name_index_built {
+			map[string]string{}
+		} else {
+			precomputed.short_type_name_index
+		}
+		short_type_name_index_built: !isnil(precomputed) && precomputed.short_type_name_index_built
+		local_fn_decl_index:         if isnil(precomputed)
+			|| precomputed.local_fn_decl_indexed_len == 0 {
+			map[string]bool{}
+		} else {
+			precomputed.local_fn_decl_index
+		}
+		local_fn_decl_indexed_len:   if isnil(precomputed) {
+			0
+		} else {
+			precomputed.local_fn_decl_indexed_len
+		}
+		local_fn_decl_last_module:   if isnil(precomputed) {
+			''
+		} else {
+			precomputed.local_fn_decl_last_module
+		}
+		ierror_compat_entries:       map[string]int{}
+		source_error_embed_entries:  if isnil(precomputed)
+			|| !precomputed.source_error_embed_indexed {
+			map[string]int{}
+		} else {
+			precomputed.source_error_embed_entries
+		}
+		source_error_embed_indexed:  !isnil(precomputed) && precomputed.source_error_embed_indexed
+		source_error_embed_shared:   !isnil(precomputed) && precomputed.source_error_embed_indexed
 	}
 	if tc.scope_parallel_check_workers {
 		// Shared interner growth from a helper arena would leave compilation-wide
@@ -2026,6 +2050,28 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		w.type_cache.base = unsafe { nil }
 	}
 	return &w
+}
+
+// precomputed_check_cache returns the immutable indexes warmed before the
+// parallel region. Scoped forks can share these maps without also inheriting
+// the large, context-sensitive parse cache.
+fn (tc &TypeChecker) precomputed_check_cache() &TypeCache {
+	if isnil(tc.type_cache) {
+		return unsafe { nil }
+	}
+	if tc.type_cache.source_error_embed_indexed || tc.type_cache.short_type_name_index_built
+		|| tc.type_cache.local_fn_decl_indexed_len > 0 {
+		return tc.type_cache
+	}
+	mut fallback := tc.type_cache.base
+	for !isnil(fallback) {
+		if fallback.source_error_embed_indexed || fallback.short_type_name_index_built
+			|| fallback.local_fn_decl_indexed_len > 0 {
+			return fallback
+		}
+		fallback = fallback.base
+	}
+	return unsafe { nil }
 }
 
 struct CheckCloneChunkArgs {
@@ -2226,7 +2272,9 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			cache.struct_field_misses.free()
 			cache.ierror_compat_entries.free()
 			cache.interface_impl_entries.free()
-			cache.source_error_embed_entries.free()
+			if !cache.source_error_embed_shared {
+				cache.source_error_embed_entries.free()
+			}
 		}
 	}
 }
