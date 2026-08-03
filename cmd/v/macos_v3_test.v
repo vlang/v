@@ -779,6 +779,24 @@ fn test_macos_v3_normalizes_legacy_x86_arch_alias() {
 	}
 }
 
+fn test_macos_v3_normalizes_enable_globals_alias() {
+	$if macos {
+		prefs := &pref.Preferences{
+			enable_globals: true
+		}
+		forwarded := macos_v3_forwarded_args(prefs, ['--enable-globals', 'main.v'])
+		assert '-enable-globals' in forwarded
+		assert '--enable-globals' !in forwarded
+
+		program_args := macos_v3_forwarded_args(&pref.Preferences{}, [
+			'run',
+			'main.v',
+			'--enable-globals',
+		])
+		assert program_args.last() == '--enable-globals'
+	}
+}
+
 fn test_macos_v3_forwards_showcc_with_quiet_benchmarks() {
 	$if macos {
 		prefs := &pref.Preferences{

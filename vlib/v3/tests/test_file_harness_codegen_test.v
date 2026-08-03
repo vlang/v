@@ -86,6 +86,28 @@ fn test_v3_test_file_harness_formats_propagation_paths_safely() {
 	assert run.output.contains('fn test_failure failed propagation with error: bad result')
 }
 
+fn test_v3_test_body_formats_propagation_paths_safely() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'body_propagation_%s_path', '_test.v', "fn fail() ! {
+	return error('bad result')
+}
+
+fn test_failure() {
+	fail()!
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('v3_body_propagation_%s_path_test.v')
+	assert run.output.contains('fn test_failure failed propagation with error: bad result')
+}
+
 fn test_v3_test_file_harness_measures_stats_durations() {
 	run_only := os.getenv('VTEST_ONLY_FN')
 	os.unsetenv('VTEST_ONLY_FN')

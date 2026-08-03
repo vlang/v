@@ -147,6 +147,12 @@ fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) b
 
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
 	mut forwarded_args := raw_args.clone()
+	if prefs.enable_globals {
+		globals_alias_index := forwarded_args.index('--enable-globals')
+		if globals_alias_index >= 0 {
+			forwarded_args[globals_alias_index] = '-enable-globals'
+		}
+	}
 	// V1 treats `x86` as an amd64 alias, while V3 reserves it for the 32-bit target.
 	if prefs.arch == .amd64 && '-arch x86' in prefs.build_options {
 		for i in 0 .. forwarded_args.len {

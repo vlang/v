@@ -7486,6 +7486,6 @@ fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node) {
 	}
 	err_msg := g.tmp_name()
 	g.write('string ${err_msg} = IError__msg(&err); ')
-	g.write('fprintf(stderr, "${c_escape(file.name)}:${position.line}: fn ${c_escape(g.cur_fn_name)} failed propagation with error: %.*s\\n", ${err_msg}.len, ${err_msg}.str); ')
+	g.write('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(file.name)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
 	g.write('__v3_test_failures++; return;')
 }
