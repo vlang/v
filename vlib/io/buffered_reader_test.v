@@ -198,15 +198,12 @@ fn test_peek_zero_bytes() {
 	assert p.len == 0
 }
 
-fn test_read_refills_buffer() {
+fn test_read_does_not_refill_buffer() {
 	data := 'abc'.bytes()
 	mut br := new_one_byte_buffered_reader(data)
 	mut res := []u8{len: 4}
 	read := br.read(mut res)!
-	assert read == data.len
-	for i := 0; i < read; i++ {
-		assert data[i] == res[i]
-	}
+	assert read == 1
 }
 
 fn test_peek_refills_buffer() {
