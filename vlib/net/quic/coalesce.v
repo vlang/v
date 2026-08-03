@@ -178,26 +178,25 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 			// packets already validated before it.
 			break
 		}
-		if typ == .initial && u64(datagram.len) < min_initial_datagram_size {
-			// RFC 9000 14.1: "A server MUST discard an Initial packet
-			// that is carried in a UDP datagram with a payload that is
-			// smaller than the smallest allowed maximum datagram size of
-			// 1200 bytes." The literal MUST binds servers, but the same
-			// section requires BOTH a client (always) and a server (for
-			// ack-eliciting Initial packets) to pad their own outbound
-			// Initial-carrying datagrams up to this size -- see
-			// pad_initial_payload below -- so no compliant peer, on
-			// either side of the connection, can ever legitimately
-			// produce a smaller one; discarding it here is exactly the
-			// general "endpoint MAY discard" allowance the same section
-			// grants any receiver for a size-constraint violation.
-			// Exclude only this packet -- not the whole call -- matching
-			// the DCID-mismatch handling immediately below: its own
-			// Length field still correctly delimits it, so keep walking
-			// for whatever may legitimately follow.
-			offset += int(total_len)
-			continue
-		}
+		// NOTE: no check here rejects an Initial packet for the overall
+		// datagram being under RFC 9000 14.1's 1200-byte floor. RFC
+		// 9000 14.1's discard MUST binds SERVERS receiving an
+		// undersized CLIENT Initial (anti-amplification); a server's
+		// OWN padding requirement applies only to ACK-ELICITING Initial
+		// packets (Table 3 marks ACK/PADDING/CONNECTION_CLOSE "N", not
+		// ack-eliciting), so a legitimate server response containing
+		// only e.g. an ACK or an early CONNECTION_CLOSE can be smaller
+		// than 1200 bytes -- this splitter has no visibility into frame
+		// contents (packets are still AEAD-protected here) to tell that
+		// case apart from a non-compliant/malicious one. A prior round
+		// added an unconditional size-based discard here and broke
+		// exactly this legitimate case (Codex P2, pullrequestreview-
+		// 4843018164, reverting pullrequestreview-4839675790's fix).
+		// The real requirement (server-side, role-aware, and only
+		// after decryption reveals whether the payload is ack-
+		// eliciting) belongs in a later phase with that visibility
+		// (Phase 9/13's connection state machine), not this stateless,
+		// pre-decryption, role-agnostic packet splitter.
 		if fd := first_dcid {
 			if header.dcid != fd {
 				// Ignore -- not error -- per the SHOULD above: this one

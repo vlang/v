@@ -161,7 +161,15 @@ pub fn verify_retry_integrity_tag(original_dcid []u8, packet []u8, already_proce
 		return false
 	}
 	if packet.len < retry_integrity_tag_len {
-		return error('quic: packet shorter than the retry integrity tag itself')
+		// A packet too short to even hold the tag cannot be verified at
+		// all -- exactly as unverifiable as a tag mismatch, so RFC 9000
+		// §17.2.5.2's same MUST-discard rule applies. Returning `false`
+		// (not an error) matches this function's own documented contract;
+		// a caller propagating `!` on a genuine error would otherwise treat
+		// a malformed/unverifiable Retry as fatal to the connection attempt,
+		// when it must be silently ignored like any other invalid Retry
+		// (Codex P1, pullrequestreview-4843018164).
+		return false
 	}
 	without_tag := packet[..packet.len - retry_integrity_tag_len]
 	actual_tag := packet[packet.len - retry_integrity_tag_len..]

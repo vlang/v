@@ -162,12 +162,12 @@ fn test_parse_retry_packet_rejects_dcid_not_echoing_original_scid() {
 	assert false, 'expected a Retry packet whose DCID does not echo the original SCID to be rejected'
 }
 
-fn test_verify_retry_integrity_tag_rejects_too_short_packet() {
-	verify_retry_integrity_tag([u8(1)], [u8(1), 2, 3], false) or {
-		assert err.msg().contains('shorter than the retry integrity tag')
-		return
-	}
-	assert false, 'expected a too-short packet to be rejected'
+fn test_verify_retry_integrity_tag_discards_too_short_packet() {
+	// A packet shorter than the tag itself cannot be verified at all --
+	// RFC 9000 §17.2.5.2 requires silent discard here, the same as a tag
+	// mismatch, not an error a caller might propagate as connection-fatal.
+	ok := verify_retry_integrity_tag([u8(1)], [u8(1), 2, 3], false)!
+	assert ok == false
 }
 
 fn test_verify_retry_integrity_tag_discards_when_already_processed_other_packet() {
