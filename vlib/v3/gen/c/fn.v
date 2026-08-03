@@ -489,6 +489,9 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	if g.runtime_init_is_needed() {
 		g.writeln('\t_vinit();')
 	}
+	if !g.is_shared {
+		g.gen_executable_cleanup_registration()
+	}
 	g.writeln('}')
 	g.writeln('')
 }

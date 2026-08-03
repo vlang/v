@@ -22,8 +22,8 @@ fn executable_cleanup_compile_and_run(v3_bin string, root string, name string, s
 }
 
 fn assert_cleanup_registered_after_init(c_code string) {
-	init_index := c_code.index('\t_vinit();')
-	cleanup_index := c_code.index('atexit(_vcleanup);')
+	init_index := c_code.index('\t_vinit();') or { -1 }
+	cleanup_index := c_code.index('atexit(_vcleanup);') or { -1 }
 	assert init_index >= 0, c_code
 	assert cleanup_index > init_index, c_code
 }
@@ -108,4 +108,30 @@ fn test_one() {
 	assert test_run.output.trim_space() == 'init\ntest\ncleanup'
 	assert test_c.contains('atexit(_vcleanup);'), test_c
 	assert_cleanup_registered_after_init(test_c)
+
+	no_main_source := os.join_path(root, 'no_main.v')
+	no_main_c_path := os.join_path(root, 'no_main.c')
+	os.write_file(no_main_source, "module main
+
+fn init() {
+	println('init')
+}
+
+fn cleanup() {
+	println('cleanup')
+}
+
+@[export: 'exported_answer']
+pub fn answer() int {
+	println('answer')
+	return 42
+}
+")!
+	generate_no_main :=
+		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(no_main_c_path)} ${os.quoted_path(no_main_source)}')
+	assert generate_no_main.exit_code == 0, generate_no_main.output
+	no_main_c := os.read_file(no_main_c_path)!
+	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
+	assert no_main_c.contains('int exported_answer(void)'), no_main_c
+	assert_cleanup_registered_after_init(no_main_c)
 }
