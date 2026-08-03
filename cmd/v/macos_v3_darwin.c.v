@@ -66,7 +66,8 @@ fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
 		if arg == '--' {
 			return false
 		}
-		if arg in ['-message-limit', '-debug', '-debug-tcc', '-wasm-validate', '-wasm-stack-top'] {
+		if arg in ['-message-limit', '-debug', '-debug-tcc', '-wasm-validate', '-wasm-stack-top',
+			'-use-coroutines', '-checker-match-exhaustive-cutoff-limit'] {
 			return true
 		}
 		if macos_v3_leading_option_consumes_value(arg) {

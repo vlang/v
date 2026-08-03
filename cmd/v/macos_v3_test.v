@@ -247,6 +247,29 @@ fn test_autofree_notice_suppression_requires_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 }
 
+fn test_remaining_unsupported_autofree_modes_require_standard_compiler() {
+	$if macos {
+		coroutines, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			'-use-coroutines',
+			'main.v',
+		], false)
+		assert coroutines.use_coroutines
+		assert autofree_requires_standard_compiler(coroutines)
+
+		cutoff, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			'-checker-match-exhaustive-cutoff-limit',
+			'20',
+			'main.v',
+		], false)
+		assert cutoff.checker_match_exhaustive_cutoff_limit == 20
+		assert autofree_requires_standard_compiler(cutoff)
+	}
+}
+
 fn test_fatal_errors_requires_standard_compiler() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-Wfatal-errors', 'main.v'], false)
 	assert prefs.fatal_errors
@@ -665,6 +688,10 @@ fn test_macos_v3_detects_v1_only_leading_options() {
 		assert macos_v3_has_v1_only_leading_option(['-message-limit', '5', 'run', 'main.v'], 'run')
 		assert macos_v3_has_v1_only_leading_option(['-gc', 'none', '-o', 'run', '-message-limit',
 			'0', 'run', 'bad.v'], 'run')
+		assert macos_v3_has_v1_only_leading_option(['-autofree', '-use-coroutines', 'main.v'],
+			'main.v')
+		assert macos_v3_has_v1_only_leading_option(['-autofree',
+			'-checker-match-exhaustive-cutoff-limit', '12', 'main.v'], 'main.v')
 		assert !macos_v3_has_v1_only_leading_option(['run', 'main.v', '-message-limit', '5'], 'run')
 		assert !macos_v3_has_v1_only_leading_option(['--', '-message-limit', '5', 'main.v'],
 			'main.v')
