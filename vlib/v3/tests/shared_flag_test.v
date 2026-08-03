@@ -1,4 +1,5 @@
 import os
+import dl
 
 const shared_flag_vexe = @VEXE
 const shared_flag_tests_dir = os.dir(@FILE)
@@ -21,8 +22,33 @@ fn test_shared_flag_builds_no_main_module() {
 	}
 
 	os.write_file(os.join_path(tmp_dir, 'v.mod'), 'Module { name: "shared_flag_module" }\n')!
-	os.write_file(os.join_path(tmp_dir, 'module.v'),
-		'module shared_flag_module\n\nfn cleanup() {}\n\npub fn answer() int {\n\treturn 42\n}\n')!
+	os.write_file(os.join_path(tmp_dir, 'module.v'), "module shared_flag_module
+
+import os
+
+fn write_lifecycle_event(event string) {
+	path := os.getenv('V3_SHARED_LIFECYCLE_FILE')
+	if path.len == 0 {
+		return
+	}
+	mut file := os.open_append(path) or { return }
+	file.writeln(event) or {}
+	file.close()
+}
+
+fn init() {
+	write_lifecycle_event('init')
+}
+
+fn cleanup() {
+	write_lifecycle_event('cleanup')
+}
+
+@[export: 'answer']
+pub fn answer() int {
+	return 42
+}
+")!
 
 	out_c := os.join_path(tmp_dir, 'shared_flag_module.c')
 	compile_c :=
@@ -31,6 +57,10 @@ fn test_shared_flag_builds_no_main_module() {
 	generated_c := os.read_file(out_c)!
 	assert generated_c.contains('void _vcleanup(void) {'), generated_c
 	assert generated_c.contains('\tshared_flag_module__cleanup();'), generated_c
+	$if !windows {
+		assert generated_c.contains('__attribute__((constructor))\nvoid _vinit_caller(void) {'), generated_c
+		assert generated_c.contains('__attribute__((destructor))\nvoid _vcleanup_caller(void) {'), generated_c
+	}
 	assert generated_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n}'), generated_c
 
 	coverage_dir := os.join_path(tmp_dir, 'coverage')
@@ -55,6 +85,27 @@ fn test_shared_flag_builds_no_main_module() {
 	assert !compile.output.contains('_main not defined'), compile.output
 	assert os.exists(out_path)
 	assert os.file_size(out_path) > 0
+
+	$if !windows {
+		lifecycle_env := 'V3_SHARED_LIFECYCLE_FILE'
+		old_lifecycle_path := os.getenv(lifecycle_env)
+		lifecycle_env_was_set := lifecycle_env in os.environ()
+		lifecycle_path := os.join_path(tmp_dir, 'lifecycle.txt')
+		os.rm(lifecycle_path) or {}
+		os.setenv(lifecycle_env, lifecycle_path, true)
+		defer {
+			if lifecycle_env_was_set {
+				os.setenv(lifecycle_env, old_lifecycle_path, true)
+			} else {
+				os.unsetenv(lifecycle_env)
+			}
+		}
+		handle := dl.open(out_path, dl.rtld_now)
+		assert handle != unsafe { nil }, dl.dlerror()
+		assert os.read_file(lifecycle_path)! == 'init\n'
+		assert dl.close(handle), dl.dlerror()
+		assert os.read_file(lifecycle_path)! == 'init\ncleanup\n'
+	}
 }
 
 // test_shared_flag_builds_object_dependencies_as_pic validates that cached

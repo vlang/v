@@ -503,10 +503,16 @@ fn (mut g FlatGen) gen_shared_runtime_callers() {
 	if g.cache_split {
 		g.writeln('/* V3CACHE_MODULE main */')
 	}
+	if g.target.os != 'windows' {
+		g.writeln('__attribute__((constructor))')
+	}
 	g.writeln('void _vinit_caller(void) {')
 	g.writeln('\t_vno_main_init_caller();')
 	g.writeln('}')
 	g.writeln('')
+	if g.target.os != 'windows' {
+		g.writeln('__attribute__((destructor))')
+	}
 	g.writeln('void _vcleanup_caller(void) {')
 	g.writeln('\tstatic bool once = false;')
 	g.writeln('\tif (once) { return; }')
