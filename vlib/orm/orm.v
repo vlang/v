@@ -501,10 +501,19 @@ fn trim_attr_arg(arg string) string {
 
 fn is_sql_expr(val string) bool {
 	// Function calls like gen_random_uuid(), NOW(), etc.
-	// Written as @[default: 'gen_random_uuid()'] — we detect the parens
-	// and treat it as a raw SQL expression rather than a string literal.
+	// Written as @[default: 'gen_random_uuid()'] — we detect the shape:
+	// must start with a letter/underscore, have ( and end with ),
+	// and the part before ( must be a valid SQL identifier.
 	if val.contains('(') && val.ends_with(')') {
-		return true
+		before_paren := val.all_before('(')
+		if before_paren.len > 0 && (before_paren[0].is_letter() || before_paren[0] == `_`) {
+			for ch in before_paren {
+				if !ch.is_letter() && !ch.is_digit() && ch != `_` {
+					return false
+				}
+			}
+			return true
+		}
 	}
 	return false
 }
@@ -1538,7 +1547,8 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		if defaults && has_default {
 			if default_val != '' {
 				if is_str_default && !is_sql_expr(default_val) {
-					stmt += " DEFAULT '${default_val}'"
+					escaped := default_val.replace("'", "''")
+					stmt += " DEFAULT '${escaped}'"
 				} else {
 					stmt += ' DEFAULT ${default_val}'
 				}
