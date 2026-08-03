@@ -73,6 +73,43 @@ fn run_module_cache_binary(path string) string {
 	return result.output.trim_space()
 }
 
+fn test_print_v_files_includes_warm_cached_module_sources() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_print_cached_v_files_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	wrapper_file := os.join_path(root, 'wrapper/wrapper.v')
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn value() int {
+	return 42
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert os.walk_ext(cache_dir, '.vh').any(os.file_name(it).starts_with('wrapper_'))
+
+	printed :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -silent -no-memory-limit -print-v-files ${os.quoted_path(main_file)}')
+	assert printed.exit_code == 0, printed.output
+	printed_files := printed.output.split_into_lines().filter(it.len > 0).map(os.real_path(it))
+	assert os.real_path(main_file) in printed_files
+	assert os.real_path(wrapper_file) in printed_files
+}
+
 fn test_cached_sync_module_uses_preamble_pthread_declarations() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_sync_pthread_${os.getpid()}')

@@ -6694,6 +6694,13 @@ pub fn run(args []string) {
 				watched[os.real_path(file.name)] = true
 			}
 		}
+		for source_files in cache_state.module_sources.values() {
+			for file in source_files {
+				if file.ends_with('.v') || file.ends_with('.vv') || file.ends_with('.vsh') {
+					watched[os.real_path(file)] = true
+				}
+			}
+		}
 		mut watched_files := watched.keys()
 		watched_files.sort()
 		for file in watched_files {
