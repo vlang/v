@@ -2936,13 +2936,20 @@ fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
 		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
 		return
 	}
-	typ := g.tc.resolve_type(id)
+	typ := g.value_unalias_type(g.tc.resolve_type(id))
 	if typ.is_float() {
-		g.write('fprintf(stderr, "${c_escape(prefix)}: ${c_escape(label)} = %.17g\\n", (double)(')
+		g.write('fprintf(stderr, "%s: %s = %.17g\\n", "${c_escape(prefix)}", "${c_escape(label)}", (double)(')
 		g.gen_expr(id)
 		g.writeln('));')
 	} else if typ.is_integer() {
-		g.write('fprintf(stderr, "${c_escape(prefix)}: ${c_escape(label)} = %lld\\n", (long long)(')
+		is_unsigned := if typ is types.Primitive {
+			typ.props.has(.unsigned)
+		} else {
+			typ is types.USize
+		}
+		format := if is_unsigned { '%llu' } else { '%lld' }
+		cast := if is_unsigned { 'unsigned long long' } else { 'long long' }
+		g.write('fprintf(stderr, "%s: %s = ${format}\\n", "${c_escape(prefix)}", "${c_escape(label)}", (${cast})(')
 		g.gen_expr(id)
 		g.writeln('));')
 	}
