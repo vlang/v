@@ -403,6 +403,25 @@ fn test_autofree_bug_report_url_requires_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 }
 
+fn test_line_info_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-line-info',
+		'main.v:24:7',
+		'main.v',
+	], false)
+	assert prefs.autofree
+	assert prefs.line_info == 'main.v:24:7'
+	assert prefs.linfo.path == 'main.v'
+	assert prefs.linfo.line_nr == 23
+	assert prefs.linfo.col == 6
+	assert autofree_requires_standard_compiler(prefs)
+	$if macos {
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+	}
+}
+
 fn test_autofree_wasm_options_require_standard_compiler() {
 	validate, _ := pref.parse_args_and_show_errors([], [
 		'',
