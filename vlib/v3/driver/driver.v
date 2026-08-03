@@ -6046,7 +6046,6 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-cc' && i + 1 < args.len {
 			requested_compiler := args[i + 1]
-			explicit_tcc = requested_compiler in ['tcc', 'tinyc']
 			c_compiler = requested_compiler
 			c_compiler_explicit = true
 			c_compiler_arg_index = i
@@ -6582,11 +6581,13 @@ pub fn run(args []string) {
 		target.default_thread_stack_size()
 	}
 	prefs.backend = backend
-	prefs.ccompiler = if backend == 'arm64' {
+	effective_c_compiler := if backend == 'arm64' {
 		'tinyc'
 	} else {
 		effective_c_compiler_name(c_compiler, target)
 	}
+	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
+	prefs.ccompiler = effective_c_compiler
 	prefs.c99 = c99
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.user_defines = user_defines

@@ -195,6 +195,7 @@ mut:
 	print_fn_names                 []string
 	is_prod                        bool
 	check_overflow                 bool
+	ignore_overflow                bool
 	force_bounds_checking          bool
 	is_shared                      bool
 	object_file_mode               bool
@@ -20202,7 +20203,7 @@ fn checked_integer_bounds(typ types.Type) ?CheckedIntegerBounds {
 }
 
 fn (mut g FlatGen) gen_checked_integer_infix(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type) bool {
-	if !g.check_overflow || node.op !in [.plus, .minus, .mul] {
+	if !g.check_overflow || g.ignore_overflow || node.op !in [.plus, .minus, .mul] {
 		return false
 	}
 	bounds := checked_integer_bounds(lhs_type) or { return false }

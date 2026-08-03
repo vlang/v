@@ -192,6 +192,11 @@ fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {
 	assert v3_prod_c_optimization_flags(true, true, false, false, false) == []
 }
 
+fn test_effective_c_compiler_name_detects_path_valued_tcc() {
+	target := pref.target_from('macos', 'amd64')!
+	assert effective_c_compiler_name('/opt/tcc/bin/tcc', target) == 'tinyc'
+}
+
 fn test_v3_windows_batch_command_uses_windows_quoting() {
 	command := v3_windows_batch_command('C:\\Program Files\\LLVM\\clang.exe', [
 		'-IC:\\SDK Files\\include',

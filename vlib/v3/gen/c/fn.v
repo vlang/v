@@ -61,6 +61,7 @@ struct FlatFnGenItem {
 	c_name                    string
 	is_program_specialization bool
 	direct_array_access       bool
+	ignore_overflow           bool
 mut:
 	cost              int
 	skip_prelude_scan bool
@@ -117,6 +118,7 @@ fn (mut g FlatGen) ensure_fn_gen_items() []FlatFnGenItem {
 fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut candidates := []FlatFnGenCandidate{}
 	direct_array_access_fns := g.direct_array_access_fns()
+	ignore_overflow_fns := g.function_attribute_fns('ignore_overflow')
 	mut preferred_fns := map[string]int{}
 	mut ranks := map[string]int{}
 	mut program_specializations := map[string]bool{}
@@ -194,6 +196,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					module:              item_module
 					c_name:              preferred_name
 					direct_array_access: direct_array_access_fns.contains(i, node)
+					ignore_overflow:     ignore_overflow_fns.contains(i, node)
 				}
 			}
 		}
@@ -247,6 +250,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			cost:                      cost
 			is_program_specialization: program_specializations[candidate.preferred_name]
 			direct_array_access:       item.direct_array_access
+			ignore_overflow:           item.ignore_overflow
 		}
 	}
 	items.sort(a.c_name < b.c_name)
@@ -257,6 +261,10 @@ fn (g &FlatGen) direct_array_access_fns() DirectArrayAccessFns {
 	if g.force_bounds_checking {
 		return DirectArrayAccessFns{}
 	}
+	return g.function_attribute_fns('direct_array_access')
+}
+
+fn (g &FlatGen) function_attribute_fns(attr_name string) DirectArrayAccessFns {
 	mut node_ids := map[int]bool{}
 	mut source_positions := map[u64]bool{}
 	for directive_idx in g.top_level_nodes() {
@@ -264,14 +272,14 @@ fn (g &FlatGen) direct_array_access_fns() DirectArrayAccessFns {
 		if directive.kind != .directive || !directive.value.starts_with('@attributes:') {
 			continue
 		}
-		mut has_direct_array_access := false
+		mut has_attr := false
 		for raw_attr in directive.generic_params() {
-			if raw_attr.all_before(':').trim_space() == 'direct_array_access' {
-				has_direct_array_access = true
+			if raw_attr.all_before(':').trim_space() == attr_name {
+				has_attr = true
 				break
 			}
 		}
-		if !has_direct_array_access {
+		if !has_attr {
 			continue
 		}
 		target_idx := directive.value['@attributes:'.len..].int()
@@ -404,11 +412,14 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		}
 		old_direct_array_access := g.direct_array_access
 		g.direct_array_access = item.direct_array_access
+		old_ignore_overflow := g.ignore_overflow
+		g.ignore_overflow = item.ignore_overflow
 		old_cur_fn_is_specialized := g.cur_fn_is_specialized
 		g.cur_fn_is_specialized = g.a.specialized_fn_nodes[int(item.node_id)]
 			|| g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
 		g.gen_fn_in_module(item.node_id, node, item.module, item.skip_prelude_scan)
 		g.cur_fn_is_specialized = old_cur_fn_is_specialized
+		g.ignore_overflow = old_ignore_overflow
 		g.direct_array_access = old_direct_array_access
 		if g.cache_split {
 			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')

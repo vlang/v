@@ -345,6 +345,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 				cost:                      item.cost
 				is_program_specialization: item.is_program_specialization
 				direct_array_access:       item.direct_array_access
+				ignore_overflow:           item.ignore_overflow
 			}
 		}
 		g.fn_gen_items = owned_items

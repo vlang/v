@@ -239,6 +239,24 @@ fn main() {
 		assert overflow_run.exit_code != 0, '${operation}: ${overflow_run.output}'
 		assert overflow_run.output.contains('integer overflow'), '${operation}: ${overflow_run.output}'
 	}
+	ignored_overflow_source := os.join_path(root, 'ignored_overflow.v')
+	ignored_overflow_output := os.join_path(root, 'ignored_overflow')
+	os.write_file(ignored_overflow_source, '@[ignore_overflow]
+fn wrapping_add(value u32) u32 {
+	return value + 1
+}
+
+fn main() {
+	println(wrapping_add(u32(0xffffffff)))
+}
+')!
+	ignored_overflow_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache',
+		'-check-overflow', '-o', ignored_overflow_output, ignored_overflow_source],
+		driver_review_environment())
+	assert ignored_overflow_compile.exit_code == 0, ignored_overflow_compile.output
+	ignored_overflow_run := cmdexec.run(ignored_overflow_output, [])
+	assert ignored_overflow_run.exit_code == 0, ignored_overflow_run.output
+	assert ignored_overflow_run.output.trim_space() == '0', ignored_overflow_run.output
 
 	warning_source := os.join_path(root, 'warning.v')
 	os.write_file(warning_source, '@[deprecated]\nfn old() {}\n\nfn main() {\n\told()\n}\n')!
