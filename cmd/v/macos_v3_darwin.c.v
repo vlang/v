@@ -68,7 +68,7 @@ fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
 		}
 		if arg in ['-message-limit', '-debug', '-debug-tcc', '-wasm-validate', '-wasm-stack-top',
 			'-use-coroutines', '-checker-match-exhaustive-cutoff-limit', '-raw-vsh-tmp-prefix',
-			'-c++', '-check-unused-fn-args'] {
+			'-c++', '-check-unused-fn-args', '-subsystem'] {
 			return true
 		}
 		if macos_v3_leading_option_consumes_value(arg) {
