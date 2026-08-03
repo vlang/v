@@ -1765,7 +1765,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		before_inputs << options.link_c_standard
 	}
 	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options,
-		options.is_shared, options.parallel_cc)
+		options.is_shared, options.parallel_cc, options.explicit_tcc)
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
@@ -5732,12 +5732,12 @@ fn v3_effective_warns_are_errors(explicit bool, is_prod bool) bool {
 	return explicit || is_prod
 }
 
-fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool) []string {
+fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, explicit_tcc bool) []string {
 	if !is_prod || no_prod_options {
 		return []
 	}
 	mut flags := ['-O3']
-	if !is_shared && !parallel_cc {
+	if !is_shared && !parallel_cc && !explicit_tcc {
 		flags << '-flto'
 	}
 	return flags
@@ -8377,7 +8377,7 @@ pub fn run(args []string) {
 				interface_impl_signature = pre_tc.interface_impl_set_signature()
 			}
 			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared,
-				parallel_cc).join(' ')
+				parallel_cc, explicit_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
 			compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
 				warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)

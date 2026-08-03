@@ -183,6 +183,15 @@ fn test_v3_effective_warns_are_errors_includes_prod() {
 	assert v3_effective_warns_are_errors(true, true)
 }
 
+fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {
+	assert v3_prod_c_optimization_flags(true, false, false, false, false) == ['-O3', '-flto']
+	assert v3_prod_c_optimization_flags(true, false, false, false, true) == ['-O3']
+	assert v3_prod_c_optimization_flags(true, false, true, false, false) == ['-O3']
+	assert v3_prod_c_optimization_flags(true, false, false, true, false) == ['-O3']
+	assert v3_prod_c_optimization_flags(false, false, false, false, false) == []
+	assert v3_prod_c_optimization_flags(true, true, false, false, false) == []
+}
+
 fn test_v3_windows_batch_command_uses_windows_quoting() {
 	command := v3_windows_batch_command('C:\\Program Files\\LLVM\\clang.exe', [
 		'-IC:\\SDK Files\\include',
