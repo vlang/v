@@ -403,6 +403,44 @@ fn test_autofree_bug_report_url_requires_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 }
 
+fn test_autofree_wasm_options_require_standard_compiler() {
+	validate, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-b',
+		'wasm',
+		'-wasm-validate',
+		'main.v',
+	], false)
+	assert validate.autofree
+	assert validate.backend == .wasm
+	assert validate.wasm_validate
+	assert autofree_requires_standard_compiler(validate)
+
+	stack_top, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-b',
+		'wasm',
+		'-wasm-stack-top',
+		'32768',
+		'main.v',
+	], false)
+	assert stack_top.autofree
+	assert stack_top.backend == .wasm
+	assert stack_top.wasm_stack_top == 32768
+	assert autofree_requires_standard_compiler(stack_top)
+
+	$if macos {
+		assert autofree_args_require_standard_compiler(['-autofree', '-b', 'wasm', '-wasm-validate',
+			'main.v'], 'main.v')
+		assert autofree_args_require_standard_compiler(['-autofree', '-b', 'wasm', '-wasm-stack-top',
+			'17408', 'main.v'], 'main.v')
+		assert !autofree_args_require_standard_compiler(['-autofree', '-b', 'wasm', 'main.v',
+			'-wasm-validate'], 'main.v')
+	}
+}
+
 fn test_autofree_debug_alias_requires_standard_compiler() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-debug', 'main.v'], false)
 	assert prefs.autofree
