@@ -42,6 +42,13 @@ pub:
 // everything after that into the Retry Token and the trailing fixed-size
 // Integrity Tag.
 //
+// Callers MUST call verify_retry_integrity_tag first and only call this
+// function when it returns true -- that is the single funnel for BOTH of
+// RFC 9000 §17.2.5.2's discard conditions (invalid tag, already processed
+// another Initial/Retry this connection attempt); this function has no
+// connection-lifecycle state of its own and does not repeat those checks.
+//
+
 // Field semantics (RFC 9000 §17.2.5.1, confirmed against the primary
 // text -- easy to get backwards since both DCID and SCID are, as always,
 // from the PACKET SENDER'S (the server's) point of view, not the client's):
@@ -123,23 +130,36 @@ pub fn compute_retry_integrity_tag(original_dcid []u8, retry_packet_without_tag 
 	return aead.encrypt([]u8{}, retry_integrity_nonce[..], aad)!
 }
 
-// verify_retry_integrity_tag reports whether `packet`'s trailing 16-byte
-// Integrity Tag is valid, given the client's original DCID. A Retry with
-// an invalid tag MUST be discarded (RFC 9000 §17.2.5.2) -- treated as if it
-// were never received at all, NOT as a connection error: Retry packets
-// aren't authenticated by the connection's own key material, and an
-// off-path attacker forging one is exactly the case this check exists to
-// catch, so silently ignoring a bad one (rather than tearing the connection
-// down over it) denies that attacker a way to abort a legitimate handshake
-// in progress.
+// verify_retry_integrity_tag reports whether a Retry packet should be
+// accepted: FALSE means discard it (never process it further -- do NOT call
+// parse_retry_packet on a packet this function rejects), TRUE means its
+// Integrity Tag validated and it is the client's first accepted Retry or
+// Initial for this connection attempt. Discarding is never a connection
+// error: Retry packets aren't authenticated by the connection's own key
+// material, and both discard conditions below exist specifically to deny an
+// off-path attacker a way to abort or replay into a legitimate handshake in
+// progress, so tearing the connection down over either would hand that
+// attacker exactly the outcome the RFC is protecting against.
 //
-// A second consideration this function does NOT enforce, since it is
-// stateless: RFC 9000 §17.2.5.2 requires a client to accept at most ONE
-// Retry per connection attempt (a second one, even with a valid tag, MUST
-// be discarded) -- tracking "has this connection already accepted a Retry"
-// is connection-lifecycle state that belongs to whichever later phase owns
-// QuicConn (Phase 9), not to this pure verification primitive.
-pub fn verify_retry_integrity_tag(original_dcid []u8, packet []u8) !bool {
+// `already_processed_other_packet` is the caller-tracked connection-
+// lifecycle state (owned by whichever later phase owns QuicConn, Phase 9,
+// not by this stateless primitive) for BOTH halves of RFC 9000 §17.2.5.2's
+// combined rule: "A client MUST accept and process at most one Retry packet
+// for each connection attempt. After the client has received and processed
+// an Initial or Retry packet from the server, it MUST discard any
+// subsequent Retry packets that it receives." A caller sets this true once
+// it has successfully processed EITHER its first Initial from the server OR
+// its first accepted Retry (this function's own TRUE return already IS that
+// moment for the Retry half) -- checked FIRST, before spending a AES-GCM
+// verification on a packet that must be discarded regardless of its tag.
+//
+// A Retry with an invalid tag MUST also be discarded (RFC 9000 §17.2.5.2) --
+// this is the ORIGINAL check this function performed before the state
+// parameter was added; unchanged in behavior or meaning.
+pub fn verify_retry_integrity_tag(original_dcid []u8, packet []u8, already_processed_other_packet bool) !bool {
+	if already_processed_other_packet {
+		return false
+	}
 	if packet.len < retry_integrity_tag_len {
 		return error('quic: packet shorter than the retry integrity tag itself')
 	}

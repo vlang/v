@@ -101,6 +101,16 @@ pub fn (mut r CryptoStreamReassembler) add(offset u64, data []u8) ! {
 	if data.len == 0 {
 		return
 	}
+	// Checked BEFORE computing `end`: offset+data.len is u64 arithmetic, and
+	// an offset near max_u64 wraps the sum back down to a small value,
+	// silently passing an `end > max_crypto_stream_buffered_bytes` check
+	// computed from the wrapped result (Codex P3, pullrequestreview-4840201604).
+	// Rejecting on `offset` alone first makes the later addition provably
+	// overflow-free, since max_crypto_stream_buffered_bytes is far below
+	// u64's range.
+	if offset > max_crypto_stream_buffered_bytes {
+		return error('quic: CRYPTO stream data at offset ${offset} (length ${data.len}) would exceed the ${max_crypto_stream_buffered_bytes}-byte buffering limit for one encryption level')
+	}
 	end := offset + u64(data.len)
 	if end > max_crypto_stream_buffered_bytes {
 		return error('quic: CRYPTO stream data at offset ${offset} (length ${data.len}) would exceed the ${max_crypto_stream_buffered_bytes}-byte buffering limit for one encryption level')

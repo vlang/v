@@ -100,6 +100,21 @@ fn test_crypto_stream_reassembler_rejects_data_beyond_buffering_limit() {
 	assert false, 'expected data past the buffering limit to be rejected'
 }
 
+fn test_crypto_stream_reassembler_rejects_offset_near_u64_max() {
+	// offset + u64(data.len) is u64 arithmetic -- an offset this close to
+	// u64's own max wraps the sum back down to a small value, which would
+	// silently pass an `end > max_crypto_stream_buffered_bytes` check
+	// computed from the wrapped result alone (Codex P3,
+	// pullrequestreview-4840201604). `add` must reject on `offset` itself
+	// before ever computing that sum.
+	mut r := new_crypto_stream_reassembler()
+	r.add(max_u64, [u8(0x41)]) or {
+		assert err.msg().contains('buffering limit')
+		return
+	}
+	assert false, 'expected an offset near u64 max to be rejected, not wrap around'
+}
+
 fn test_crypto_stream_reassembler_ignores_zero_length_add() {
 	mut r := new_crypto_stream_reassembler()
 	r.add(0, []u8{})!

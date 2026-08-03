@@ -42,7 +42,7 @@ fn test_retry_packet_round_trip_verifies() {
 	assert parsed.retry_token == token
 	assert parsed.integrity_tag.len == retry_integrity_tag_len
 
-	ok := verify_retry_integrity_tag(original_dcid, packet)!
+	ok := verify_retry_integrity_tag(original_dcid, packet, false)!
 	assert ok
 }
 
@@ -52,7 +52,7 @@ fn test_retry_packet_rejects_tampered_tag() {
 	mut packet := build_test_retry_packet(original_scid, [u8(3), 4], 'tok'.bytes(), original_dcid)!
 	packet[packet.len - 1] ^= 0x01
 
-	ok := verify_retry_integrity_tag(original_dcid, packet)!
+	ok := verify_retry_integrity_tag(original_dcid, packet, false)!
 	assert ok == false
 }
 
@@ -64,7 +64,7 @@ fn test_retry_packet_rejects_tampered_token() {
 	token_byte_index := packet.len - retry_integrity_tag_len - 1
 	packet[token_byte_index] ^= 0x01
 
-	ok := verify_retry_integrity_tag(original_dcid, packet)!
+	ok := verify_retry_integrity_tag(original_dcid, packet, false)!
 	assert ok == false
 }
 
@@ -74,7 +74,7 @@ fn test_retry_packet_rejects_wrong_original_dcid() {
 	packet := build_test_retry_packet(original_scid, [u8(3), 4], 'tok'.bytes(), original_dcid)!
 
 	wrong_original_dcid := [u8(0xaa), 0xbb, 0xce] // one bit different
-	ok := verify_retry_integrity_tag(wrong_original_dcid, packet)!
+	ok := verify_retry_integrity_tag(wrong_original_dcid, packet, false)!
 	assert ok == false
 }
 
@@ -163,9 +163,27 @@ fn test_parse_retry_packet_rejects_dcid_not_echoing_original_scid() {
 }
 
 fn test_verify_retry_integrity_tag_rejects_too_short_packet() {
-	verify_retry_integrity_tag([u8(1)], [u8(1), 2, 3]) or {
+	verify_retry_integrity_tag([u8(1)], [u8(1), 2, 3], false) or {
 		assert err.msg().contains('shorter than the retry integrity tag')
 		return
 	}
 	assert false, 'expected a too-short packet to be rejected'
+}
+
+fn test_verify_retry_integrity_tag_discards_when_already_processed_other_packet() {
+	// RFC 9000 §17.2.5.2: "After the client has received and processed an
+	// Initial or Retry packet from the server, it MUST discard any
+	// subsequent Retry packets that it receives." This must hold even for a
+	// packet whose tag is otherwise genuinely valid -- already_processed
+	// gates BEFORE tag verification, not as a tiebreaker after it.
+	original_dcid := [u8(0xaa), 0xbb, 0xcc]
+	original_scid := [u8(1), 2]
+	packet := build_test_retry_packet(original_scid, [u8(3), 4], 'tok'.bytes(), original_dcid)!
+
+	// Sanity: this exact packet verifies true when nothing has been
+	// processed yet, so the discard below is attributable to the flag.
+	assert verify_retry_integrity_tag(original_dcid, packet, false)!
+
+	ok := verify_retry_integrity_tag(original_dcid, packet, true)!
+	assert ok == false
 }
