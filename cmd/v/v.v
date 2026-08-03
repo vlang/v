@@ -266,12 +266,12 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
 		|| prefs.div_by_zero_is_zero || prefs.obfuscate_removed || prefs.no_std
-		|| prefs.show_asserts || prefs.show_callgraph || prefs.show_depgraph
-		|| prefs.hide_auto_str || prefs.no_rsp || prefs.message_limit != 200
-		|| prefs.warn_about_allocs || prefs.c_error_bug_report_url.len > 0
-		|| prefs.wasm_validate || prefs.wasm_stack_top != 1024 + (16 * 1024)
-		|| prefs.line_info.len > 0 || prefs.use_coroutines
-		|| prefs.checker_match_exhaustive_cutoff_limit != 12
+		|| prefs.is_vls || prefs.show_asserts || prefs.show_callgraph
+		|| prefs.show_depgraph || prefs.hide_auto_str || prefs.no_rsp
+		|| prefs.message_limit != 200 || prefs.warn_about_allocs
+		|| prefs.c_error_bug_report_url.len > 0 || prefs.wasm_validate
+		|| prefs.wasm_stack_top != 1024 + (16 * 1024) || prefs.line_info.len > 0
+		|| prefs.use_coroutines || prefs.checker_match_exhaustive_cutoff_limit != 12
 		|| (prefs.backend == .c && prefs.os !in [._auto, .macos])
 		|| prefs.build_options.any(it.starts_with('-debug-tcc'))
 		|| !prefs.relaxed_gcc14 {

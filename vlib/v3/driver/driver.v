@@ -1789,6 +1789,9 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	if options.is_shared {
 		before_inputs << '-shared'
+		if !options.is_liveshared && options.target_os == 'macos' {
+			before_inputs << '-fvisibility=hidden'
+		}
 	} else if options.is_o {
 		before_inputs << '-c'
 	}

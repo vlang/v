@@ -4175,6 +4175,11 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	} else {
 		ret_type := g.fn_node_return_type(node, module_name)
 		g.set_cur_fn_ret(ret_type)
+		if export_name := g.export_fn_name_in_module(module_name, node.value) {
+			if export_name == generated_fn_name {
+				g.write(g.exported_symbol_attribute())
+			}
+		}
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(generated_fn_name)
@@ -4227,6 +4232,7 @@ fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string)
 	}
 	ret_type := g.fn_node_return_type(node, module_name)
 	ret_ct := g.fn_return_type_name(ret_type)
+	g.write(g.exported_symbol_attribute())
 	g.write(ret_ct)
 	g.write(' ')
 	g.write(export_name)
@@ -4260,6 +4266,7 @@ fn (mut g FlatGen) emit_object_file_export_wrappers() {
 				g.tc.cur_file = item.file
 				g.tc.cur_module = item.module
 				ret_type := g.fn_node_return_type(node, item.module)
+				g.write(g.exported_symbol_attribute())
 				g.write(g.fn_return_type_name(ret_type))
 				g.write(' ')
 				g.write(export_name)
@@ -4310,6 +4317,16 @@ fn (mut g FlatGen) emit_object_file_export_wrappers() {
 		g.writeln('}')
 		g.writeln('')
 	}
+}
+
+fn (g &FlatGen) exported_symbol_attribute() string {
+	if !g.is_shared {
+		return ''
+	}
+	if g.ccompiler == 'msvc' {
+		return '__declspec(dllexport) '
+	}
+	return '__attribute__((visibility("default"))) '
 }
 
 fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
@@ -13836,6 +13853,11 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		ret_type := g.fn_node_return_type(node, item.module)
+		if export_name := g.export_fn_name_in_module(item.module, node.value) {
+			if export_name == qfn {
+				g.write(g.exported_symbol_attribute())
+			}
+		}
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(qfn)
@@ -13846,6 +13868,7 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 			if export_name := g.export_fn_name_in_module(item.module, node.value) {
 				if export_name != qfn && export_name !in forwarded_exports {
 					forwarded_exports << export_name
+					g.write(g.exported_symbol_attribute())
 					g.write(g.fn_return_type_name(ret_type))
 					g.write(' ')
 					g.write(export_name)

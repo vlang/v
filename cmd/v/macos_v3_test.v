@@ -312,6 +312,12 @@ fn test_obfuscation_aliases_require_standard_compiler() {
 	}
 }
 
+fn test_vls_mode_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-check', '-vls-mode', 'main.v'], false)
+	assert prefs.is_vls
+	assert v3_has_v1_only_preferences(prefs)
+}
+
 fn test_unsupported_compiler_modes_require_standard_compiler() {
 	cmain, _ := pref.parse_args_and_show_errors([], [
 		'',
@@ -731,6 +737,9 @@ fn test_macos_v3_detects_v1_only_leading_options() {
 		assert macos_v3_has_v1_only_leading_option(['-raw-vsh-tmp-prefix', 'tmp', 'script'],
 			'script')
 		assert macos_v3_has_v1_only_leading_option(['-c++', 'clang++', 'main.v'], 'main.v')
+		assert macos_v3_has_v1_only_leading_option(['-check-unused-fn-args', 'main.v'], 'main.v')
+		assert autofree_args_require_standard_compiler(['-autofree', '-check-unused-fn-args',
+			'main.v'], 'main.v')
 		assert !macos_v3_has_v1_only_leading_option(['run', 'main.v', '-message-limit', '5'], 'run')
 		assert !macos_v3_has_v1_only_leading_option(['--', '-message-limit', '5', 'main.v'],
 			'main.v')
