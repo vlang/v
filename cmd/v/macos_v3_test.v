@@ -318,6 +318,12 @@ fn test_vls_mode_requires_standard_compiler() {
 	assert v3_has_v1_only_preferences(prefs)
 }
 
+fn test_new_transformer_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-new-transformer', 'main.v'], false)
+	assert prefs.new_transform
+	assert v3_has_v1_only_preferences(prefs)
+}
+
 fn test_unsupported_compiler_modes_require_standard_compiler() {
 	cmain, _ := pref.parse_args_and_show_errors([], [
 		'',
