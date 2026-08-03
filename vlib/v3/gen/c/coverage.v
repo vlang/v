@@ -10,9 +10,9 @@ struct CoverageInfo {
 	path  string
 	fhash string
 mut:
-	points   []int
-	counters []int
-	seen     map[int]bool
+	points          []int
+	counters        []int
+	counter_by_line map[int]int
 }
 
 // set_coverage enables V-compatible line coverage output.
@@ -32,22 +32,23 @@ fn (mut g FlatGen) write_coverage_point(node flat.Node) {
 	mut info := g.coverage_files[path] or {
 		fhash := hash.sum64_string('${g.coverage_build_options}:${path}', 32).hex_full()
 		created := &CoverageInfo{
-			path:   path
-			fhash:  fhash
-			points: []
-			seen:   map[int]bool{}
+			path:            path
+			fhash:           fhash
+			points:          []
+			counter_by_line: map[int]int{}
 		}
 		g.coverage_files[path] = created
 		created
 	}
-	if info.seen[line] {
-		return
+	mut counter := info.counter_by_line[line]
+	if line !in info.counter_by_line {
+		counter = g.coverage_counter_count
+		info.counter_by_line[line] = counter
+		info.points << line
+		info.counters << counter
+		g.coverage_counter_count++
 	}
-	info.seen[line] = true
-	info.points << line
-	info.counters << g.coverage_counter_count
-	g.writeln('_v3_cov[${g.coverage_counter_count}]++;')
-	g.coverage_counter_count++
+	g.writeln('_v3_cov[${counter}]++;')
 }
 
 fn (mut g FlatGen) gen_coverage_registration() {

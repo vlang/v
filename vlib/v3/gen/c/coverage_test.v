@@ -57,6 +57,10 @@ fn test_coverage_points_keep_one_based_source_lines() {
 	assert info.points == [1, 2, 3]
 	assert info.counters == [0, 1, 2]
 	assert g.coverage_counter_count == 3
+	generated := g.sb.str()
+	assert generated.count('_v3_cov[0]++;') == 1
+	assert generated.count('_v3_cov[1]++;') == 2
+	assert generated.count('_v3_cov[2]++;') == 1
 }
 
 fn test_coverage_user_text_is_not_embedded_in_c_format_strings() {
