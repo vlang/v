@@ -224,6 +224,43 @@ pub fn make() Box {
 	assert uses_generics
 }
 
+fn test_module_function_owner_uses_qualified_declaration_key() {
+	a, tc := parse_checked_project_in_order('qualified_function_owner', [
+		'main/main.v',
+		'builtin/compat.v',
+		'support/support.v',
+	], [
+		'module main
+
+import support
+
+fn main() {
+	_ := support.decode()
+}
+',
+		'module builtin
+
+fn decode() int {
+	return 0
+}
+',
+		'module support
+
+pub fn decode() int {
+	return helper()
+}
+
+fn helper() int {
+	return 1
+}
+',
+	])
+	used := markused.mark_used_without_generic_detection(a, tc)
+	assert used['support.decode']
+	assert used['support.helper']
+	assert !used['builtin.decode']
+}
+
 // test_eager_markused_import_alias_context_is_file_local covers the eager,
 // parallel-capable body precollection path with the same per-file alias reuse.
 fn test_eager_markused_import_alias_context_is_file_local() {

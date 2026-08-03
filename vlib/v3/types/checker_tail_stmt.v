@@ -97,9 +97,18 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int, value_tail bool) {
-	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	had_saved_smartcasts := tc.smartcasts.len > 0
+	saved_smartcasts := if had_saved_smartcasts {
+		clone_smartcasts(tc.smartcasts)
+	} else {
+		tc.smartcasts
+	}
 	defer {
-		tc.smartcasts = clone_smartcasts(saved_smartcasts)
+		if had_saved_smartcasts {
+			tc.smartcasts = clone_smartcasts(saved_smartcasts)
+		} else {
+			tc.smartcasts.clear()
+		}
 	}
 	last_idx := int(node.children_count) - 1
 	mut sequence_exited := false
@@ -3097,25 +3106,20 @@ fn (tc &TypeChecker) struct_init_is_interface_return(id flat.NodeId) bool {
 	if unalias_and_unwrap_pointer_type(tc.fn_context.return_type) !is Interface {
 		return false
 	}
-	fn_id := flat.NodeId(tc.fn_context.node_id)
-	if !tc.valid_node_id(fn_id) {
-		return false
-	}
-	fn_node := tc.a.node(fn_id)
-	mut stack := []flat.NodeId{}
-	for i in 0 .. fn_node.children_count {
-		stack << tc.a.child(fn_node, i)
-	}
-	for stack.len > 0 {
-		current_id := stack.pop()
-		current := tc.a.node(current_id)
-		if current.kind == .return_stmt && current.children_count == 1
-			&& tc.node_tree_contains(tc.a.child(current, 0), id, 0) {
-			return true
+	mut current := id
+	for _ in 0 .. 128 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
 		}
-		for i in 0 .. current.children_count {
-			stack << tc.a.child(current, i)
+		parent := tc.a.node(parent_id)
+		if parent.kind == .return_stmt {
+			return parent.children_count == 1
 		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		current = parent_id
 	}
 	return false
 }
@@ -4154,6 +4158,31 @@ fn (tc &TypeChecker) source_struct_decl_id_for_name(name string) ?flat.NodeId {
 }
 
 fn (tc &TypeChecker) struct_field_diagnostic_fn_type(struct_name string, field_name string, field_index int) ?(string, string) {
+	key := '${struct_name}\x00${field_name}\x00${field_index}'
+	mut cache := tc.type_cache
+	if !isnil(cache) {
+		if cached := cache.struct_field_fn_diagnostics[key] {
+			separator := cached.index_u8(0)
+			if separator <= 0 {
+				return none
+			}
+			return cached[..separator], cached[separator + 1..]
+		}
+	}
+	expected, alias := tc.struct_field_diagnostic_fn_type_uncached(struct_name, field_name,
+		field_index) or {
+		if !isnil(cache) {
+			cache.struct_field_fn_diagnostics[key] = '\x00'
+		}
+		return none
+	}
+	if !isnil(cache) {
+		cache.struct_field_fn_diagnostics[key] = '${expected}\x00${alias}'
+	}
+	return expected, alias
+}
+
+fn (tc &TypeChecker) struct_field_diagnostic_fn_type_uncached(struct_name string, field_name string, field_index int) ?(string, string) {
 	decl := tc.source_struct_decl_for_name(struct_name) or { return none }
 	base, concrete_args, is_generic := generic_type_application_parts(struct_name)
 	struct_params := if is_generic {
@@ -4195,7 +4224,12 @@ fn (tc &TypeChecker) source_fn_field_type_text(field flat.Node) ?string {
 	source := tc.source_texts_by_file[file.name] or { return none }
 	offset := int_min(int_max(field.pos.offset, 0), source.len)
 	line_start := if offset > 0 {
-		if relative := source[..offset].last_index('\n') { relative + 1 } else { 0 }
+		relative := last_index_between(source, '\n', 0, offset)
+		if relative >= 0 {
+			relative + 1
+		} else {
+			0
+		}
 	} else {
 		0
 	}
@@ -8223,10 +8257,13 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 	base := tc.a.child_node(node, 0)
 	mut enum_name := ''
 	if base.kind == .ident {
+		if base.value.len == 0 || !base.value[0].is_capital() {
+			return none
+		}
 		enum_name = tc.resolve_enum_name(base.value) or { '' }
 	} else if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
-		if inner.kind == .ident {
+		if inner.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			enum_name = tc.resolve_enum_name('${mod_name}.${base.value}') or { '' }
 		}
@@ -10828,11 +10865,19 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 				tc.remember_struct_field_type(struct_name, field_name, typ, true)
 				return typ
 			}
+			if fallback.struct_field_misses[cache_key] {
+				tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
+				return none
+			}
 			fallback = fallback.base
 		}
 		if typ := tc.type_cache.struct_field_entries[cache_key] {
 			tc.remember_struct_field_type(struct_name, field_name, typ, true)
 			return typ
+		}
+		if tc.type_cache.struct_field_misses[cache_key] {
+			tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
+			return none
 		}
 	}
 	mut seen := map[string]bool{}
@@ -10843,6 +10888,10 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 		}
 		tc.remember_struct_field_type(struct_name, field_name, typ, true)
 		return typ
+	}
+	if !isnil(tc.type_cache) {
+		mut cache := tc.type_cache
+		cache.struct_field_misses[cache_key] = true
 	}
 	tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
 	return none
@@ -10890,8 +10939,16 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 			return field.typ
 		}
 	}
+	embeds_indexed := lookup_name in tc.struct_embed_receivers
 	for field in fields {
-		mut embedded_type := embedded_field_type(field) or { continue }
+		mut embedded_type := field.typ
+		if embeds_indexed {
+			if !field.is_embed {
+				continue
+			}
+		} else {
+			embedded_type = embedded_field_type(field) or { continue }
+		}
 		embedded_type = if is_generic {
 			tc.substitute_generic_type(embedded_type, generic_args, tc.struct_generic_params[base_name] or {
 				[]string{}
@@ -11781,7 +11838,23 @@ fn (tc &TypeChecker) sum_has_variant(sum_name string, variant_name string) bool 
 }
 
 pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name string, variant_name string) ?string {
-	return tc.sum_variant_type_for_pattern_depth(sum_name, variant_name, 0)
+	if isnil(tc.type_cache) {
+		return tc.sum_variant_type_for_pattern_depth(sum_name, variant_name, 0)
+	}
+	mut cache := tc.type_cache
+	key := '${tc.cur_file}\x01${tc.cur_module}\x01${sum_name}\x01${variant_name}'
+	if cached := cache.sum_variant_pattern_entries[key] {
+		if cached.len == 0 {
+			return none
+		}
+		return cached
+	}
+	result := tc.sum_variant_type_for_pattern_depth(sum_name, variant_name, 0) or {
+		cache.sum_variant_pattern_entries[key] = ''
+		return none
+	}
+	cache.sum_variant_pattern_entries[key] = result
+	return result
 }
 
 fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant_name string, depth int) ?string {
@@ -12029,6 +12102,26 @@ fn (tc &TypeChecker) expr_key_part(id flat.NodeId) string {
 
 // smartcast_type supports smartcast type handling for TypeChecker.
 fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
+	idx := int(id)
+	if idx < 0 || idx >= tc.a.nodes.len || tc.a.nodes[idx].kind !in [.ident, .selector, .index] {
+		return none
+	}
+	mut cache := tc.type_cache
+	// Most checker contexts have no active dynamic smartcast. Consult the
+	// node-indexed lexical cache first so repeated type queries do not rebuild an
+	// expression key merely to rediscover the same lexical hit or miss.
+	if tc.smartcasts.len == 0 && idx >= 0 && idx < tc.lexical_smartcast_misses.len
+		&& tc.lexical_smartcast_misses[idx] {
+		return none
+	}
+	if tc.smartcasts.len == 0 && idx >= 0 && idx < tc.direct_parent_ids.len && !isnil(cache) {
+		if typ := cache.lexical_smartcast_entries[idx] {
+			return typ
+		}
+		if cache.lexical_smartcast_misses[idx] {
+			return none
+		}
+	}
 	key := tc.expr_key(id)
 	if key.len == 0 {
 		return none
@@ -12043,14 +12136,42 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	// are appended after the parent index was built and carry explicit/synthetic
 	// types; walking the full arena to rediscover a parent for each such lookup
 	// makes self-host transformation quadratic.
-	idx := int(id)
 	if idx < 0 || idx >= tc.direct_parent_ids.len {
 		return none
 	}
+	if idx < tc.lexical_smartcast_misses.len && tc.lexical_smartcast_misses[idx] {
+		return none
+	}
+	if !isnil(cache) {
+		if typ := cache.lexical_smartcast_entries[idx] {
+			return typ
+		}
+		if cache.lexical_smartcast_misses[idx] {
+			return none
+		}
+	}
+	result := tc.lexical_smartcast_type(id, key) or {
+		if !tc.resolution_type_mode && idx < tc.lexical_smartcast_misses.len
+			&& (!tc.parallel_check_sparse || (idx >= tc.check_range_lo && idx <= tc.check_range_hi)) {
+			mut writable := unsafe { tc }
+			writable.lexical_smartcast_misses[idx] = true
+		}
+		if !isnil(cache) {
+			cache.lexical_smartcast_misses[idx] = true
+		}
+		return none
+	}
+	if !isnil(cache) {
+		cache.lexical_smartcast_entries[idx] = result
+	}
+	return result
+}
+
+fn (tc &TypeChecker) lexical_smartcast_type(id flat.NodeId, key string) ?Type {
 	if typ := tc.lexical_if_smartcast_type(id, key) {
 		return typ
 	}
-	return tc.lexical_match_smartcast_type(id)
+	return tc.lexical_match_smartcast_type_with_key(id, key)
 }
 
 fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type {
@@ -12094,11 +12215,14 @@ fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type
 }
 
 fn (tc &TypeChecker) lexical_match_smartcast_type(id flat.NodeId) ?Type {
+	return tc.lexical_match_smartcast_type_with_key(id, tc.expr_key(id))
+}
+
+fn (tc &TypeChecker) lexical_match_smartcast_type_with_key(id flat.NodeId, key string) ?Type {
 	idx := int(id)
 	if idx < 0 || idx >= tc.direct_parent_ids.len {
 		return none
 	}
-	key := tc.expr_key(id)
 	if key.len == 0 || !valid_string_data(key) {
 		return none
 	}
@@ -15924,12 +16048,12 @@ fn (tc &TypeChecker) generic_struct_method_base_candidates(base string) []string
 	if base.contains('.') {
 		resolved := tc.resolve_imported_type_text(base)
 		push_receiver_method_candidate(mut candidates, resolved)
-		push_receiver_method_candidate(mut candidates, resolved.all_after_last('.'))
-		push_receiver_method_candidate(mut candidates, base.all_after_last('.'))
+		push_receiver_method_candidate(mut candidates, short_name_view(resolved))
+		push_receiver_method_candidate(mut candidates, short_name_view(base))
 	} else {
 		if resolved := tc.resolve_selective_import_type_symbol(base) {
 			push_receiver_method_candidate(mut candidates, resolved)
-			push_receiver_method_candidate(mut candidates, resolved.all_after_last('.'))
+			push_receiver_method_candidate(mut candidates, short_name_view(resolved))
 		}
 		qualified := tc.qualify_name(base)
 		push_receiver_method_candidate(mut candidates, qualified)

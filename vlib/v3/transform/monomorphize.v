@@ -3169,6 +3169,9 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 }
 
 fn (mut t Transformer) ensure_node_module_map() {
+	if t.node_context_read_only {
+		return
+	}
 	if t.node_module_map_nodes == t.a.nodes.len {
 		return
 	}
@@ -3208,6 +3211,9 @@ fn (mut t Transformer) ensure_node_module_map() {
 }
 
 fn (mut t Transformer) ensure_node_context_map_capacity() {
+	if t.node_context_read_only {
+		return
+	}
 	if t.node_module_map_cache.len < t.a.nodes.len {
 		t.node_module_map_cache.ensure_cap(t.a.nodes.cap)
 		t.node_module_map_cache << []string{len: t.a.nodes.len - t.node_module_map_cache.len}
@@ -3239,6 +3245,9 @@ fn (t &Transformer) node_module_or(idx int, fallback string) string {
 }
 
 fn (mut t Transformer) mark_node_context(id flat.NodeId, module_name string, file_name string) {
+	if t.node_context_read_only {
+		return
+	}
 	t.node_context_stack.clear()
 	t.node_context_stack << id
 	for t.node_context_stack.len > 0 {
@@ -7210,25 +7219,6 @@ fn (mut t Transformer) build_generic_alias_name_index() {
 	t.generic_alias_names = names.move()
 }
 
-@[direct_array_access]
-fn (mut t Transformer) build_local_decl_index() {
-	mut decls := map[string][]int{}
-	for idx, node in t.a.nodes {
-		if node.kind != .decl_assign || node.children_count < 2 {
-			continue
-		}
-		lhs_id := t.a.child(&node, 0)
-		if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
-			continue
-		}
-		lhs := t.a.nodes[int(lhs_id)]
-		if lhs.kind == .ident && lhs.value.len > 0 {
-			decls[lhs.value] << idx
-		}
-	}
-	t.local_decl_nodes_by_name = decls.move()
-}
-
 fn (t &Transformer) generic_arg_is_alias_name(arg string, module_name string) bool {
 	clean := arg.trim_space()
 	if clean.len == 0 || isnil(t.tc) {
@@ -9789,7 +9779,7 @@ fn (t &Transformer) fn_decl_receiver_is_open_generic(node flat.Node, module_name
 	if !node.value.contains('.') || isnil(t.tc) {
 		return false
 	}
-	receiver := node.value.all_before_last('.')
+	receiver := owner_name_view(node.value)
 	base, args, ok := generic_app_parts(receiver)
 	if !ok || args.len == 0 {
 		return false

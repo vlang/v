@@ -3650,7 +3650,7 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum string, owner_mod 
 	}
 	mut found := ''
 	for enum_name, _ in t.enum_types {
-		if enum_name.all_after_last('.') != clean {
+		if short_name_view(enum_name) != clean {
 			continue
 		}
 		if found.len > 0 && found != enum_name {

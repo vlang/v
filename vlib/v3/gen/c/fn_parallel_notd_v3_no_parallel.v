@@ -13,7 +13,7 @@ const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 128
 // Bound each worker's retained scratch while generating compiler-sized ASTs.
 const scoped_cgen_worker_batches = 32
-const flat_cgen_chunks_per_job = 12
+const flat_cgen_chunks_per_job = 24
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -212,6 +212,11 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 		fused := g.prep_costs_pending
 		mut prep_g := unsafe { nil }
 		if fused {
+			if g.prep_alias_short_names.len == 0 {
+				for name, _ in g.tc.type_aliases {
+					g.prep_alias_short_names[name.all_after_last('.')] = true
+				}
+			}
 			prep_g = voidptr(g)
 		}
 		mut args := []FlatCgenCostArgs{cap: n_jobs}
@@ -1290,7 +1295,7 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 				}
 			}
 		}
-		if node.typ.len > 0 {
+		if parallel_type_text_may_preseed(g, node.typ) {
 			slot := int((u64(voidptr(node.typ.str)) >> 4) & 4095)
 			if text_cache.gens[slot] != text_cache.generation
 				|| text_cache.ptrs[slot] != voidptr(node.typ.str)
@@ -1325,6 +1330,66 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 		}
 	}
 	return cost, needs_prelude_scan
+}
+
+// parallel_type_text_may_preseed cheaply rejects builtin/container type text
+// before the exact-cost workers retain it for the ordered alias/fn-type replay.
+// V alias declarations are capitalized; literal callback types are the only
+// lowercase text that can require a function-pointer preseed.
+fn parallel_type_text_may_preseed(g &FlatGen, typ string) bool {
+	if typ.len == 0 {
+		return false
+	}
+	mut start := 0
+	for start < typ.len {
+		for start < typ.len && typ[start] in [` `, `\t`, `\n`, `\r`] {
+			start++
+		}
+		if start + 7 <= typ.len && typ[start] == `s` && typ[start + 1] == `h`
+			&& typ[start + 2] == `a` && typ[start + 3] == `r` && typ[start + 4] == `e`
+			&& typ[start + 5] == `d` && typ[start + 6] == ` ` {
+			start += 7
+			continue
+		}
+		if start + 3 <= typ.len && typ[start] == `.` && typ[start + 1] == `.`
+			&& typ[start + 2] == `.` {
+			start += 3
+			continue
+		}
+		if start + 2 <= typ.len && typ[start] == `[` && typ[start + 1] == `]` {
+			start += 2
+			continue
+		}
+		if start < typ.len && typ[start] in [`&`, `?`, `!`] {
+			start++
+			continue
+		}
+		break
+	}
+	if start >= typ.len {
+		return false
+	}
+	if start + 1 < typ.len && typ[start] == `f` && typ[start + 1] == `n` {
+		return true
+	}
+	mut name_start := start
+	for i := start; i < typ.len; i++ {
+		if typ[i] == `.` {
+			name_start = i + 1
+		}
+	}
+	if name_start >= typ.len || !typ[name_start].is_capital() {
+		return false
+	}
+	mut end := typ.len
+	for end > name_start && typ[end - 1] in [` `, `\t`, `\n`, `\r`] {
+		end--
+	}
+	if end <= name_start {
+		return false
+	}
+	short := unsafe { tos(typ.str + name_start, end - name_start) }
+	return short in g.prep_alias_short_names
 }
 
 @[inline]

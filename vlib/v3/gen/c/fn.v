@@ -1133,11 +1133,12 @@ fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name s
 	} else {
 		name
 	}
-	receiver := qualified.all_before_last('.')
-	method := qualified.all_after_last('.')
-	if receiver.len == 0 || method.len == 0 {
+	dot := qualified.last_index_u8(`.`)
+	if dot <= 0 || dot + 1 >= qualified.len {
 		return none
 	}
+	receiver := unsafe { qualified.substr_unsafe(0, dot) }
+	method := unsafe { qualified.substr_unsafe(dot + 1, qualified.len) }
 	if _ := g.enum_selector_base_name(receiver) {
 		return '${g.cname(receiver)}_${g.cname(method)}'
 	}
@@ -6634,9 +6635,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			// handler's context in that slot so the remaining explicit arguments
 			// still line up with their parameters.
 			expected_non_ctx := if is_method { param_types.len - 1 } else { param_types.len }
-			current_ctx_name := g.cur_veb_ctx_name() or { '' }
-			forward_ctx := param_types.len > 1 && g.is_implicit_veb_ctx_param(param_types[1])
-				&& num_call_args < expected_non_ctx && current_ctx_name.len > 0
+			may_forward_ctx := param_types.len > 1 && num_call_args < expected_non_ctx
+				&& g.is_implicit_veb_ctx_param(param_types[1])
+			mut current_ctx_name := if may_forward_ctx { g.cur_veb_ctx_name() or { '' } } else { '' }
+			forward_ctx := may_forward_ctx && current_ctx_name.len > 0
 			if forward_ctx && is_method {
 				g.write(', ${g.cname(current_ctx_name)}')
 			}
@@ -6960,7 +6962,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 					// The implicit veb `Context` parameter is supplied from the
 					// enclosing handler's context, not a zero/default value.
-					if g.is_implicit_veb_ctx_param(pt) && current_ctx_name.len > 0 {
+					implicit_ctx := g.is_implicit_veb_ctx_param(pt)
+					if implicit_ctx && current_ctx_name.len == 0 {
+						current_ctx_name = g.cur_veb_ctx_name() or { '' }
+					}
+					if implicit_ctx && current_ctx_name.len > 0 {
 						g.write(g.cname(current_ctx_name))
 					} else {
 						g.gen_default_value_for_type(pt)
@@ -9843,8 +9849,8 @@ fn resolved_call_matches_target(resolved string, target string) bool {
 	if resolved == target || c_name(resolved) == target || resolved == c_name(target) {
 		return true
 	}
-	resolved_short := resolved.all_after_last('.')
-	target_short := target.all_after_last('.')
+	resolved_short := c_short_name_view(resolved)
+	target_short := c_short_name_view(target)
 	return resolved_short == target_short || c_name(resolved_short) == target_short
 		|| resolved_short == c_name(target_short)
 }
@@ -13047,9 +13053,10 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 			g.write('})[0]')
 		}
 	}
-	current_ctx_name := g.cur_veb_ctx_name() or { '' }
-	forward_ctx := params.len > 1 && g.is_implicit_veb_ctx_param(params[1])
-		&& node.children_count - 1 < params.len && current_ctx_name.len > 0
+	may_forward_ctx := params.len > 1 && node.children_count - 1 < params.len
+		&& g.is_implicit_veb_ctx_param(params[1])
+	current_ctx_name := if may_forward_ctx { g.cur_veb_ctx_name() or { '' } } else { '' }
+	forward_ctx := may_forward_ctx && current_ctx_name.len > 0
 	if forward_ctx {
 		g.write(', ${g.cname(current_ctx_name)}')
 	}
@@ -13075,14 +13082,19 @@ fn (mut g FlatGen) gen_ierror_str_arg(fn_name string, callee_name string, arg_id
 	if arg_idx != 0 {
 		return false
 	}
-	arg_type := g.usable_expr_type(arg_id)
-	clean_type := types.unwrap_pointer(arg_type)
-	if !g.is_ierror_type_name(clean_type.name()) {
+	// C-name sanitization cannot turn an unrelated name into `IError__str`.
+	// Reject virtually every call before probing the generator's name cache.
+	if fn_name != 'str' && !fn_name.contains('IError') && !callee_name.contains('IError') {
 		return false
 	}
 	is_ierror_str := g.cname(fn_name) == 'IError__str' || g.cname(callee_name) == 'IError__str'
 		|| fn_name == 'IError.str' || callee_name == 'IError.str'
 	if !is_ierror_str && fn_name != 'str' {
+		return false
+	}
+	arg_type := g.usable_expr_type(arg_id)
+	clean_type := types.unwrap_pointer(arg_type)
+	if !g.is_ierror_type_name(clean_type.name()) {
 		return false
 	}
 	arg_node := g.a.nodes[int(arg_id)]

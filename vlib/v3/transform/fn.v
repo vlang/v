@@ -426,7 +426,7 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 			mut matched := ''
 			for sname, _ in t.tc.structs {
 				if !sname.contains('.') || sname.contains('[')
-					|| sname.all_after_last('.') != clean_type {
+					|| short_name_view(sname) != clean_type {
 					continue
 				}
 				qmethod := '${sname}.${method}'
@@ -1542,7 +1542,7 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 			if node.children_count > 0 && t.cur_module.len > 0
 				&& t.cur_module !in ['main', 'builtin'] {
 				fn_node := t.a.child_node(&node, 0)
-				short_name := name.all_after_last('.')
+				short_name := short_name_view(name)
 				if fn_node.kind == .ident && fn_node.value == short_name {
 					qname := '${t.cur_module}.${short_name}'
 					lowered_qname := c_name(qname)
@@ -1686,7 +1686,7 @@ fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, meth
 	clean_receiver := if receiver.starts_with('&') { receiver[1..] } else { receiver }
 	if receiver_param_types_match(clean_first, clean_receiver)
 		|| t.normalize_type_alias(clean_first) == t.normalize_type_alias(clean_receiver)
-		|| clean_first.all_after_last('.') == clean_receiver.all_after_last('.') {
+		|| short_name_view(clean_first) == short_name_view(clean_receiver) {
 		return true
 	}
 	return false
@@ -2839,7 +2839,7 @@ fn (t &Transformer) pointer_global_arg_matches_param(name string, param_type str
 	}
 	param_base := t.normalize_type_alias(param_type[1..])
 	arg_base := t.normalize_type_alias(arg_type[1..])
-	return param_base == arg_base || param_base.all_after_last('.') == arg_base.all_after_last('.')
+	return param_base == arg_base || short_name_view(param_base) == short_name_view(arg_base)
 }
 
 fn (t &Transformer) global_ident_type(name string) ?string {
@@ -4237,7 +4237,7 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 			}
 		}
 	}
-	short_name := qualified.all_after_last('.')
+	short_name := short_name_view(qualified)
 	if qualified !in t.enum_types && short_name in t.enum_types {
 		return short_name
 	}
@@ -4263,7 +4263,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		clean_typ = clean_typ[7..].trim_space()
 	}
 	if clean_typ.starts_with('builtin.') {
-		clean_typ = clean_typ.all_after_last('.')
+		clean_typ = clean_typ['builtin.'.len..]
 	}
 	if source_typ := t.source_type_name_from_c_name(clean_typ) {
 		return t.wrap_string_conversion(expr, source_typ)
@@ -4314,7 +4314,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		if !clean_typ.contains('.') && !local_struct_shadows_alias {
 			for aname, target in t.tc.type_aliases {
-				if aname.all_after_last('.') == clean_typ {
+				if short_name_view(aname) == clean_typ {
 					return t.alias_str_wrap(expr, clean_typ, target, is_ref)
 				}
 			}
@@ -5112,14 +5112,14 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 
 fn (t &Transformer) is_fn_stringify_type(typ string) bool {
 	clean := typ.trim_space()
-	short := clean.all_after_last('.')
+	short := short_name_view(clean)
 	return clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('_fn_ptr_')
 		|| short.starts_with('_fn_ptr_') || t.is_fn_pointer_type_name(clean)
 }
 
 fn (t &Transformer) fn_stringify_display(typ string) string {
 	clean := typ.trim_space()
-	if clean.starts_with('_fn_ptr_') || clean.all_after_last('.').starts_with('_fn_ptr_') {
+	if clean.starts_with('_fn_ptr_') || short_name_view(clean).starts_with('_fn_ptr_') {
 		return 'fn'
 	}
 	if !isnil(t.tc) {
@@ -11519,7 +11519,7 @@ fn (t &Transformer) receiver_method_name_is_open_generic(method_name string) boo
 		}
 	}
 	if method_name.contains('.') {
-		receiver := method_name.all_before_last('.')
+		receiver := owner_name_view(method_name)
 		if collection_receiver := receiver_collection_method_type(receiver) {
 			return t.generic_arg_is_unresolved_collection_type(collection_receiver)
 		}
@@ -11656,7 +11656,7 @@ fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiv
 // receiver_base_for_resolved_method
 // supports helper handling in transform.
 fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, method_name string) flat.NodeId {
-	method_receiver := t.trim_pointer_type(method_name.all_before_last('.'))
+	method_receiver := t.trim_pointer_type(owner_name_view(method_name))
 	key := t.expr_key(base_id)
 	for source_type in [t.raw_var_type_for_expr(base_id) or { '' },
 		t.original_expr_type(base_id), t.node_type(base_id)] {
@@ -12741,7 +12741,7 @@ fn (t &Transformer) receiver_method_param_offset(base_id flat.NodeId, node flat.
 	if receiver_param_types_match(clean_first, clean_base)
 		|| receiver_param_matches_method_name(clean_first, method_name)
 		|| t.normalize_type_alias(clean_first) == t.normalize_type_alias(clean_base)
-		|| clean_first.all_after_last('.') == clean_base.all_after_last('.') {
+		|| short_name_view(clean_first) == short_name_view(clean_base) {
 		return 1
 	}
 	if params.len >= int(node.children_count) {
@@ -12771,8 +12771,8 @@ fn receiver_param_matches_method_name(first string, method_name string) bool {
 	if receiver_is_generic {
 		receiver_base = receiver_generic_base
 	}
-	first_short := first_base.all_after_last('.')
-	receiver_short := receiver_base.all_after_last('.')
+	first_short := short_name_view(first_base)
+	receiver_short := short_name_view(receiver_base)
 	return first_base == receiver_base || first_short == receiver_short
 		|| receiver_short.starts_with('${first_short}_')
 		|| c_name(receiver_base).starts_with('${c_name(first_base)}_')

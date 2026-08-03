@@ -1952,6 +1952,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.base_write_intercept = true
 		t.defer_oor_writes = true
 		t.shared_base_nodes = base_nodes
+		t.node_context_read_only = true
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut args := []SharedChunkArgs{len: chunk_count}
 		args[0] = SharedChunkArgs{
@@ -1998,6 +1999,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.timing_profile('  [ttime]   shared setup     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, jobs: ${n_jobs})')
 		ttsw.restart()
 		any_started := t.a.worker_pool.run(tasks)
+		t.node_context_read_only = false
 		t.timing_profile('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		$if v3_ttime ? {
 			for ci, arg in args {
@@ -2045,7 +2047,10 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			deferred_start := t.deferred_base_writes.len
 			merged_node_start := t.a.nodes.len
 			mwsw.restart()
-			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], true)
+			// Compaction appends each worker at the current master end. Sparse cache
+			// entries from the master and earlier workers end before that fresh range,
+			// so clearing every new id would only hash absent keys.
+			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], false)
 			merge_core_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 			if ww.worker_scope != unsafe { nil } && !t.retain_worker_results {
 				t.clone_deferred_worker_writes_from(deferred_start)
