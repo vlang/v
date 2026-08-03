@@ -429,9 +429,43 @@ fn test_v3_test_hook_assertion_failures_return_to_harness() {
 		}
 	}
 	v3_bin := build_v3()
-	before_fail := compile_and_run_with_stats(v3_bin, 'harness_before_each_assert_fail', '_test.v', "fn before_each() {
-	println('BEFORE_MARKER')
+	helper_fail := compile_and_run_with_stats(v3_bin, 'harness_helper_assert_fail', '_test.v', "fn fail_helper() {
+	println('HELPER_MARKER')
 	assert false
+}
+
+fn after_each() {
+	println('AFTER_MARKER')
+}
+
+fn testsuite_end() {
+	println('END_MARKER')
+}
+
+fn test_one() {
+	fail_helper()
+	println('UNREACHABLE_MARKER')
+}
+
+fn test_two() {
+	println('NEXT_MARKER')
+}
+")
+	assert helper_fail.exit_code != 0
+	assert helper_fail.output.contains('HELPER_MARKER'), helper_fail.output
+	assert !helper_fail.output.contains('UNREACHABLE_MARKER'), helper_fail.output
+	assert helper_fail.output.contains('NEXT_MARKER'), helper_fail.output
+	assert helper_fail.output.count('AFTER_MARKER') == 2, helper_fail.output
+	assert helper_fail.output.contains('END_MARKER'), helper_fail.output
+	assert helper_fail.output.contains('1 failed, 1 passed, 2 total'), helper_fail.output
+
+	before_fail := compile_and_run_with_stats(v3_bin, 'harness_before_each_assert_fail', '_test.v', "fn fail_before_helper() {
+	assert false
+}
+
+fn before_each() {
+	println('BEFORE_MARKER')
+	fail_before_helper()
 }
 
 fn after_each() {

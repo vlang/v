@@ -2811,10 +2811,10 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				g.gen_expr(g.a.child(&node, 1))
 				g.writeln(');')
 			}
-			if g.is_current_test_fn_or_each_hook() {
+			if g.test_files.len > 0 {
 				g.gen_all_defers()
-				g.writeln('__v3_test_failures++;')
-				g.gen_default_return_stmt()
+				g.writeln('extern void __v3_test_fail_transfer(void);')
+				g.writeln('__v3_test_fail_transfer();')
 			} else {
 				g.writeln('exit(1);')
 			}

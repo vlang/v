@@ -100,7 +100,15 @@ fn (mut g FlatGen) gen_test_failure_global() {
 		if g.cache_split {
 			g.writeln('/* V3CACHE_MODULE main */')
 		}
+		g.writeln('#include <setjmp.h>')
 		g.writeln('static int __v3_test_failures = 0;')
+		g.writeln('static jmp_buf __v3_test_jump_buffer;')
+		g.writeln('static int __v3_test_jump_active = 0;')
+		g.writeln('void __v3_test_fail_transfer(void) {')
+		g.writeln('\t__v3_test_failures++;')
+		g.writeln('\tif (__v3_test_jump_active) { longjmp(__v3_test_jump_buffer, 1); }')
+		g.writeln('\texit(1);')
+		g.writeln('}')
 		if g.show_test_stats {
 			g.writeln('static int __v3_test_assertions = 0;')
 		}
@@ -4546,6 +4554,9 @@ fn (mut g FlatGen) gen_test_main() {
 			g.writeln('int __v3_test_assertions_before_${idx} = __v3_test_assertions;')
 		}
 		g.writeln('int __v3_test_failures_before_${idx} = __v3_test_failures;')
+		g.writeln('__v3_test_jump_active = 1;')
+		g.writeln('if (setjmp(__v3_test_jump_buffer) == 0) {')
+		g.indent++
 		if hooks.before_each.len > 0 {
 			g.writeln('${hooks.before_each}();')
 		}
@@ -4554,8 +4565,17 @@ fn (mut g FlatGen) gen_test_main() {
 		g.gen_test_fn_call(test_fn, idx)
 		g.indent--
 		g.writeln('}')
+		g.indent--
+		g.writeln('}')
+		g.writeln('__v3_test_jump_active = 0;')
 		if hooks.after_each.len > 0 {
+			g.writeln('__v3_test_jump_active = 1;')
+			g.writeln('if (setjmp(__v3_test_jump_buffer) == 0) {')
+			g.indent++
 			g.writeln('${hooks.after_each}();')
+			g.indent--
+			g.writeln('}')
+			g.writeln('__v3_test_jump_active = 0;')
 		}
 		if g.show_test_stats {
 			g.writeln('double __v3_test_elapsed_ms_${idx} = __v3_test_now_ms() - __v3_test_start_ms_${idx};')
