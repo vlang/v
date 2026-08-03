@@ -749,6 +749,10 @@ fn test_macos_v3_detects_v1_only_leading_options() {
 		assert macos_v3_has_v1_only_leading_option(['-subsystem', 'console', 'main.v'], 'main.v')
 		assert autofree_args_require_standard_compiler(['-autofree', '-subsystem', 'console',
 			'main.v'], 'main.v')
+		assert macos_v3_has_v1_only_leading_option(['-autofree', '-translated-go', 'main.v'],
+			'main.v')
+		assert autofree_args_require_standard_compiler(['-autofree', '-translated-go', 'main.v'],
+			'main.v')
 		assert !macos_v3_has_v1_only_leading_option(['run', 'main.v', '-message-limit', '5'], 'run')
 		assert !macos_v3_has_v1_only_leading_option(['--', '-message-limit', '5', 'main.v'],
 			'main.v')
