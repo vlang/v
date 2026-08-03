@@ -304,6 +304,14 @@ fn test_fatal_errors_requires_standard_compiler() {
 	assert v3_has_v1_only_preferences(prefs)
 }
 
+fn test_obfuscation_aliases_require_standard_compiler() {
+	for option in ['-obf', '-obfuscate'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', option, 'main.v'], false)
+		assert prefs.obfuscate_removed
+		assert v3_has_v1_only_preferences(prefs)
+	}
+}
+
 fn test_unsupported_compiler_modes_require_standard_compiler() {
 	cmain, _ := pref.parse_args_and_show_errors([], [
 		'',
