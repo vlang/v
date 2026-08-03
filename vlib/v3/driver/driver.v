@@ -5780,10 +5780,14 @@ fn apply_v3_diagnostic_color_option(option string) {
 	ansi.set_colors_enabled(option == '-color')
 }
 
+fn apply_v3_default_diagnostic_color() {
+	ansi.set_colors_enabled(ansi.stderr_supports_escape_sequences())
+}
+
 // run executes the V3 compiler driver with `args`.
 @[markused]
 pub fn run(args []string) {
-	ansi.set_colors_enabled(true)
+	apply_v3_default_diagnostic_color()
 	if args.len == 0 {
 		eprintln(cli_usage())
 		exit(1)

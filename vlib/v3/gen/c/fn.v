@@ -4465,6 +4465,18 @@ fn (mut g FlatGen) gen_test_main() {
 	tests, hooks := g.test_harness_fns()
 	g.tc.cur_module = 'main'
 	fn_start_pos := g.sb.len
+	if g.show_test_stats && tests.len > 0 {
+		g.writeln('static double __v3_test_now_ms(void) {')
+		g.writeln('#if defined(_WIN32)')
+		g.writeln('\treturn (double)GetTickCount64();')
+		g.writeln('#else')
+		g.writeln('\tstruct timespec ts;')
+		g.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')
+		g.writeln('\treturn ((double)ts.tv_sec * 1000.0) + ((double)ts.tv_nsec / 1000000.0);')
+		g.writeln('#endif')
+		g.writeln('}')
+		g.writeln('')
+	}
 	g.writeln('int main(int argc, char** argv) {')
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
@@ -4478,17 +4490,23 @@ fn (mut g FlatGen) gen_test_main() {
 	}
 	g.gen_executable_cleanup_registration()
 	g.indent++
+	if g.show_test_stats && tests.len > 0 {
+		g.writeln('double __v3_test_suite_start_ms = __v3_test_now_ms();')
+	}
 	if hooks.testsuite_begin.len > 0 {
 		g.writeln('${hooks.testsuite_begin}();')
 	}
 	if g.show_test_stats && tests.len > 0 {
-		g.writeln('printf("running tests in: ${c_escape(tests[0].file)}\\n");')
+		g.writeln('printf("running tests in: %s\\n", "${c_escape(tests[0].file)}");')
 	}
 	track_test_results := g.show_test_stats || g.show_test_summary
 	if track_test_results {
 		g.writeln('int __v3_test_passes = 0;')
 	}
 	for idx, test_fn in tests {
+		if g.show_test_stats {
+			g.writeln('double __v3_test_start_ms_${idx} = __v3_test_now_ms();')
+		}
 		g.writeln('int __v3_test_failures_before_${idx} = __v3_test_failures;')
 		if hooks.before_each.len > 0 {
 			g.writeln('${hooks.before_each}();')
@@ -4501,6 +4519,9 @@ fn (mut g FlatGen) gen_test_main() {
 		if hooks.after_each.len > 0 {
 			g.writeln('${hooks.after_each}();')
 		}
+		if g.show_test_stats {
+			g.writeln('double __v3_test_elapsed_ms_${idx} = __v3_test_now_ms() - __v3_test_start_ms_${idx};')
+		}
 		if track_test_results {
 			g.writeln('if (__v3_test_failures == __v3_test_failures_before_${idx}) {')
 			g.indent++
@@ -4509,11 +4530,11 @@ fn (mut g FlatGen) gen_test_main() {
 		if g.show_test_stats {
 			assert_count := g.test_fn_assert_count(test_fn.node_id)
 			assert_word := if assert_count == 1 { 'assert ' } else { 'asserts' }
-			g.writeln('printf("     OK    [${idx + 1}/${tests.len}]     0.000 ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n");')
+			g.writeln('printf("     OK    [${idx + 1}/${tests.len}] %9.3f ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n", __v3_test_elapsed_ms_${idx});')
 			g.indent--
 			g.writeln('} else {')
 			g.indent++
-			g.writeln('printf("     FAIL  [${idx + 1}/${tests.len}]     0.000 ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n");')
+			g.writeln('printf("     FAIL  [${idx + 1}/${tests.len}] %9.3f ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n", __v3_test_elapsed_ms_${idx});')
 		}
 		if track_test_results {
 			g.indent--
@@ -4525,13 +4546,14 @@ fn (mut g FlatGen) gen_test_main() {
 	}
 	if g.show_test_stats && tests.len > 0 {
 		file_name := os.file_name(tests[0].file)
+		g.writeln('double __v3_test_suite_elapsed_ms = __v3_test_now_ms() - __v3_test_suite_start_ms;')
 		g.writeln('if (__v3_test_failures > 0) {')
 		g.indent++
-		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": %d failed, %d passed, ${tests.len} total. Elapsed time: 0 ms.\\n\", ${tests.len} - __v3_test_passes, __v3_test_passes);")
+		g.writeln("printf(\"     Summary for running V tests in \\\"%s\\\": %d failed, %d passed, ${tests.len} total. Elapsed time: %.3f ms.\\n\", \"${c_escape(file_name)}\", ${tests.len} - __v3_test_passes, __v3_test_passes, __v3_test_suite_elapsed_ms);")
 		g.indent--
 		g.writeln('} else {')
 		g.indent++
-		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": %d passed, ${tests.len} total. Elapsed time: 0 ms.\\n\", __v3_test_passes);")
+		g.writeln("printf(\"     Summary for running V tests in \\\"%s\\\": %d passed, ${tests.len} total. Elapsed time: %.3f ms.\\n\", \"${c_escape(file_name)}\", __v3_test_passes, __v3_test_suite_elapsed_ms);")
 		g.indent--
 		g.writeln('}')
 	}
@@ -4563,7 +4585,7 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {
 		g.writeln('if (!${tmp_name}.ok) {')
 		g.indent++
 		g.writeln('string __test_err_msg_${idx} = IError__msg(&${tmp_name}.err);')
-		g.writeln('fprintf(stderr, "${c_escape(test_fn.file)}:${test_fn.failure_line}: fn ${c_escape(test_fn.name)} failed propagation with error: %.*s\\n", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
+		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
 		g.writeln('__v3_test_failures++;')
 		g.indent--
 		g.writeln('}')

@@ -68,6 +68,47 @@ fn compile_and_run_with_stats(v3_bin string, name string, suffix string, src str
 	return os.execute('${v3_bin} -stats ${src_path} -b c -o ${bin_path}')
 }
 
+fn test_v3_test_file_harness_formats_propagation_paths_safely() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'harness_propagation_%s_path', '_test.v', "fn test_failure() ! {
+	return error('bad result')
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('v3_harness_propagation_%s_path_test.v')
+	assert run.output.contains('fn test_failure failed propagation with error: bad result')
+}
+
+fn test_v3_test_file_harness_measures_stats_durations() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run_with_stats(v3_bin, 'harness_stats_duration', '_test.v', 'import time
+
+fn test_wait() {
+	time.sleep(25 * time.millisecond)
+}
+')
+	assert run.exit_code == 0, run.output
+	status_line := run.output.split_into_lines().filter(it.contains('main.test_wait()'))[0]
+	assert !status_line.contains('0.000 ms'), run.output
+	summary_line := run.output.split_into_lines().filter(it.contains('Summary for running V tests'))[0]
+	assert !summary_line.contains('Elapsed time: 0 ms.'), run.output
+	assert !summary_line.contains('Elapsed time: 0.000 ms.'), run.output
+}
+
 fn compile_project_and_run(v3_bin string, name string, files map[string]string) (os.Result, string) {
 	root := write_project(name, files)
 	return compile_project_root_and_run(v3_bin, name, root)

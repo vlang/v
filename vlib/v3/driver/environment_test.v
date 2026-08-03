@@ -64,6 +64,22 @@ fn test_v3_diagnostic_color_option() {
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
 }
 
+fn test_v3_default_diagnostic_color_uses_environment() {
+	name := 'VCOLORS'
+	old_value := os.getenv(name)
+	was_set := name in os.environ()
+	defer {
+		restore_driver_environment(name, old_value, was_set)
+		apply_v3_diagnostic_color_option('-color')
+	}
+	os.setenv(name, 'never', true)
+	apply_v3_default_diagnostic_color()
+	assert ansi.red('error') == 'error'
+	os.setenv(name, 'always', true)
+	apply_v3_default_diagnostic_color()
+	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
+}
+
 fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
 	root := os.join_path(os.temp_dir(), 'v3_parallel_cc_active_directive_${os.getpid()}')
 	os.rmdir_all(root) or {}
