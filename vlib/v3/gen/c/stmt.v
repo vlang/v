@@ -2806,10 +2806,10 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				g.gen_expr(g.a.child(&node, 1))
 				g.writeln(');')
 			}
-			if g.is_current_test_fn() && !g.cur_fn_ret_is_optional {
+			if g.is_current_test_fn() {
 				g.gen_all_defers()
 				g.writeln('__v3_test_failures++;')
-				g.writeln('return;')
+				g.gen_default_return_stmt()
 			} else {
 				g.writeln('exit(1);')
 			}

@@ -272,6 +272,45 @@ fn test_one() {
 	assert !ordinary_c.contains('test_lonely();'), ordinary_c
 }
 
+fn test_v3_wrapped_assertion_failures_return_to_harness() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	wrapped_assert_fail := compile_and_run(v3_bin, 'harness_wrapped_assert_fail', '_test.v', "fn after_each() {
+	println('after')
+}
+
+fn testsuite_end() {
+	println('end')
+}
+
+fn test_result_assert_fail() ! {
+	println('result')
+	assert false
+}
+
+fn test_option_assert_fail() ? {
+	println('option')
+	assert false
+}
+
+fn test_after_failures() {
+	println('next')
+}
+")
+	assert wrapped_assert_fail.exit_code != 0
+	assert wrapped_assert_fail.output.contains('result')
+	assert wrapped_assert_fail.output.contains('option')
+	assert wrapped_assert_fail.output.contains('next')
+	assert wrapped_assert_fail.output.count('after') == 3
+	assert wrapped_assert_fail.output.contains('end')
+}
+
 fn test_v3_test_file_harness_rejects_top_level_stmt() {
 	v3_bin := build_v3()
 	src := "println('top')

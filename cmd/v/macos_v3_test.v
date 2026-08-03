@@ -390,6 +390,19 @@ fn test_autofree_allocation_warnings_require_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 }
 
+fn test_autofree_bug_report_url_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-bug-report-url',
+		'https://bugs.example.test',
+		'main.v',
+	], false)
+	assert prefs.autofree
+	assert prefs.c_error_bug_report_url == 'https://bugs.example.test'
+	assert autofree_requires_standard_compiler(prefs)
+}
+
 fn test_autofree_debug_alias_requires_standard_compiler() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', '-debug', 'main.v'], false)
 	assert prefs.autofree
