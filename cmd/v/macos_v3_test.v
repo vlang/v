@@ -68,6 +68,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.is_prof = true
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_prof = false
+		prefs.profile_fns = ['main__work']
+		assert !is_macos_v3_relevant_command('main.v', prefs)
+		prefs.profile_fns.clear()
 		prefs.use_os_system_to_run = true
 		assert !is_macos_v3_relevant_command('run', prefs)
 		prefs.use_os_system_to_run = false
@@ -267,6 +270,20 @@ fn test_remaining_unsupported_autofree_modes_require_standard_compiler() {
 		], false)
 		assert cutoff.checker_match_exhaustive_cutoff_limit == 20
 		assert autofree_requires_standard_compiler(cutoff)
+	}
+}
+
+fn test_selective_profile_autofree_requires_standard_compiler() {
+	$if macos {
+		prefs, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			'-profile-fns',
+			'main__work',
+			'main.v',
+		], false)
+		assert prefs.profile_fns == ['main__work']
+		assert autofree_requires_standard_compiler(prefs)
 	}
 }
 
