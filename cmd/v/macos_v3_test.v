@@ -805,6 +805,13 @@ fn test_macos_v3_normalizes_enable_globals_alias() {
 		forwarded := macos_v3_forwarded_args(prefs, ['--enable-globals', 'main.v'])
 		assert '-enable-globals' in forwarded
 		assert '--enable-globals' !in forwarded
+		duplicate := macos_v3_forwarded_args(prefs, [
+			'--enable-globals',
+			'--enable-globals',
+			'main.v',
+		])
+		assert duplicate.count(it == '-enable-globals') == 2
+		assert '--enable-globals' !in duplicate
 
 		program_args := macos_v3_forwarded_args(&pref.Preferences{}, [
 			'run',
