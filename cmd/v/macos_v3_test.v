@@ -174,6 +174,7 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		prefs.os = .linux
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.backend = .c
+		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.os = .macos
 
 		prefs.path = 'vlib/v3'
@@ -419,6 +420,39 @@ fn test_line_info_requires_standard_compiler() {
 	assert autofree_requires_standard_compiler(prefs)
 	$if macos {
 		assert !is_macos_v3_relevant_command('main.v', prefs)
+	}
+}
+
+fn test_autofree_cross_target_requires_standard_compiler() {
+	$if macos {
+		for target in ['ios', 'linux', 'windows'] {
+			prefs, _ := pref.parse_args_and_show_errors([], [
+				'',
+				'-autofree',
+				'-os',
+				target,
+				'main.v',
+			], false)
+			assert prefs.autofree
+			assert prefs.backend == .c
+			assert prefs.os != .macos
+			assert autofree_requires_standard_compiler(prefs)
+		}
+
+		native, _ := pref.parse_args_and_show_errors([], ['', '-autofree', 'main.v'], false)
+		assert native.os == .macos
+		assert !autofree_requires_standard_compiler(native)
+
+		wasm, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			'-b',
+			'wasm',
+			'main.v',
+		], false)
+		assert wasm.backend == .wasm
+		assert wasm.os == .wasi
+		assert !autofree_requires_standard_compiler(wasm)
 	}
 }
 
