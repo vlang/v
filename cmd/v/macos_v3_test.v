@@ -287,6 +287,17 @@ fn test_selective_profile_autofree_requires_standard_compiler() {
 	}
 }
 
+fn test_no_relaxed_gcc14_autofree_requires_standard_compiler() {
+	prefs, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-autofree',
+		'-no-relaxed-gcc14',
+		'main.v',
+	], false)
+	assert !prefs.relaxed_gcc14
+	assert autofree_requires_standard_compiler(prefs)
+}
+
 fn test_fatal_errors_requires_standard_compiler() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-Wfatal-errors', 'main.v'], false)
 	assert prefs.fatal_errors
