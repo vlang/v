@@ -11369,11 +11369,6 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 		if !is_user_test_file_node(a, file_idx, file_node, selected_files) {
 			continue
 		}
-		module_name := test_file_module_name(a, file_node)
-		if module_name.len > 0 && module_name != 'main' && !file_node.value.ends_with('_test.v') {
-			errors << 'no runnable tests in ${file_node.value}'
-			continue
-		}
 		if test_file_has_executable_top_level_stmt(a, file_node) {
 			errors << 'invalid test file ${file_node.value}: executable top-level statements are not supported in test files'
 			continue

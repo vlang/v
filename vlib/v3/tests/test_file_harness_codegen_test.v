@@ -62,6 +62,12 @@ fn compile_and_run_flags(v3_bin string, name string, suffix string, src string, 
 	return os.execute(bin_path)
 }
 
+fn compile_and_run_with_stats(v3_bin string, name string, suffix string, src string) os.Result {
+	src_path := write_source(name, suffix, src)
+	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
+	return os.execute('${v3_bin} -stats ${src_path} -b c -o ${bin_path}')
+}
+
 fn compile_project_and_run(v3_bin string, name string, files map[string]string) (os.Result, string) {
 	root := write_project(name, files)
 	return compile_project_root_and_run(v3_bin, name, root)
@@ -156,7 +162,7 @@ fn test_result() ! {
 }
 ")
 	assert result_fail.exit_code != 0
-	assert result_fail.output.contains('test failed: test_fail')
+	assert result_fail.output.contains('fn test_fail failed propagation with error:'), result_fail.output
 
 	result_fail_cleanup := compile_and_run(v3_bin, 'harness_result_fail_cleanup', '_test.v', "fn testsuite_end() {
 	println('end')
@@ -171,7 +177,7 @@ fn test_fail() ! {
 }
 ")
 	assert result_fail_cleanup.exit_code != 0
-	assert result_fail_cleanup.output.contains('test failed: test_fail')
+	assert result_fail_cleanup.output.contains('fn test_fail failed propagation with error:'), result_fail_cleanup.output
 	assert result_fail_cleanup.output.contains('after')
 	assert result_fail_cleanup.output.contains('end')
 
@@ -180,7 +186,7 @@ fn test_fail() ! {
 }
 ')
 	assert option_fail.exit_code != 0
-	assert option_fail.output.contains('test failed: test_fail')
+	assert option_fail.output.contains('fn test_fail failed propagation with error:'), option_fail.output
 
 	option_fail_cleanup := compile_and_run(v3_bin, 'harness_option_fail_cleanup', '_test.v', "fn testsuite_end() {
 	println('end')
@@ -195,7 +201,7 @@ fn test_fail() ? {
 }
 ")
 	assert option_fail_cleanup.exit_code != 0
-	assert option_fail_cleanup.output.contains('test failed: test_fail')
+	assert option_fail_cleanup.output.contains('fn test_fail failed propagation with error:'), option_fail_cleanup.output
 	assert option_fail_cleanup.output.contains('after')
 	assert option_fail_cleanup.output.contains('end')
 
@@ -204,7 +210,7 @@ fn test_fail() ? {
 }
 ')
 	assert assert_fail.exit_code != 0
-	assert assert_fail.output.contains('assert failed')
+	assert assert_fail.output.contains('Assertion failed'), assert_fail.output
 
 	invalid_param := compile_expect_failure(v3_bin, 'harness_invalid_param', '_test.v', 'fn test_bad(i int) {
 }
@@ -231,12 +237,15 @@ fn test_one() {
 	assert same_module.exit_code == 0, same_module.output
 	assert same_module.output.trim_space() == 'sample test', same_module.output
 
-	non_main := compile_expect_failure(v3_bin, 'harness_non_main_module', '_test.c.v', 'module sample
+	backend_qualified_module := compile_and_run(v3_bin, 'harness_backend_qualified_module',
+		'_test.c.v', "module sample
 
 fn test_one() {
+	println('backend-qualified test')
 }
-')
-	assert non_main.output.contains('project must include a `main` module'), non_main.output
+")
+	assert backend_qualified_module.exit_code == 0, backend_qualified_module.output
+	assert backend_qualified_module.output.trim_space() == 'backend-qualified test', backend_qualified_module.output
 
 	result_hook := compile_expect_failure(v3_bin, 'harness_result_hook', '_test.v', 'fn before_each() ! {
 	return
@@ -309,6 +318,69 @@ fn test_after_failures() {
 	assert wrapped_assert_fail.output.contains('next')
 	assert wrapped_assert_fail.output.count('after') == 3
 	assert wrapped_assert_fail.output.contains('end')
+}
+
+fn test_v3_test_hook_assertion_failures_return_to_harness() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	before_fail := compile_and_run_with_stats(v3_bin, 'harness_before_each_assert_fail', '_test.v', "fn before_each() {
+	println('BEFORE_MARKER')
+	assert false
+}
+
+fn after_each() {
+	println('AFTER_MARKER')
+}
+
+fn testsuite_end() {
+	println('END_MARKER')
+}
+
+fn test_one() {
+	println('TEST_ONE_MARKER')
+}
+
+fn test_two() {
+	println('TEST_TWO_MARKER')
+}
+")
+	assert before_fail.exit_code != 0
+	assert before_fail.output.count('BEFORE_MARKER') == 2, before_fail.output
+	assert before_fail.output.count('AFTER_MARKER') == 2, before_fail.output
+	assert !before_fail.output.contains('TEST_ONE_MARKER'), before_fail.output
+	assert !before_fail.output.contains('TEST_TWO_MARKER'), before_fail.output
+	assert before_fail.output.contains('END_MARKER'), before_fail.output
+	assert before_fail.output.contains('2 failed, 0 passed, 2 total'), before_fail.output
+
+	after_fail := compile_and_run_with_stats(v3_bin, 'harness_after_each_assert_fail', '_test.v', "fn after_each() {
+	println('AFTER_MARKER')
+	assert false
+}
+
+fn testsuite_end() {
+	println('END_MARKER')
+}
+
+fn test_one() {
+	println('TEST_ONE_MARKER')
+}
+
+fn test_two() {
+	println('TEST_TWO_MARKER')
+}
+")
+	assert after_fail.exit_code != 0
+	assert after_fail.output.count('AFTER_MARKER') == 2, after_fail.output
+	assert after_fail.output.contains('TEST_ONE_MARKER'), after_fail.output
+	assert after_fail.output.contains('TEST_TWO_MARKER'), after_fail.output
+	assert after_fail.output.contains('END_MARKER'), after_fail.output
+	assert after_fail.output.contains('2 failed, 0 passed, 2 total'), after_fail.output
 }
 
 fn test_v3_test_file_harness_rejects_top_level_stmt() {

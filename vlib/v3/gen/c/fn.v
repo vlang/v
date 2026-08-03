@@ -4489,13 +4489,18 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('int __v3_test_passes = 0;')
 	}
 	for idx, test_fn in tests {
+		g.writeln('int __v3_test_failures_before_${idx} = __v3_test_failures;')
 		if hooks.before_each.len > 0 {
 			g.writeln('${hooks.before_each}();')
 		}
-		if track_test_results {
-			g.writeln('int __v3_test_failures_before_${idx} = __v3_test_failures;')
-		}
+		g.writeln('if (__v3_test_failures == __v3_test_failures_before_${idx}) {')
+		g.indent++
 		g.gen_test_fn_call(test_fn, idx)
+		g.indent--
+		g.writeln('}')
+		if hooks.after_each.len > 0 {
+			g.writeln('${hooks.after_each}();')
+		}
 		if track_test_results {
 			g.writeln('if (__v3_test_failures == __v3_test_failures_before_${idx}) {')
 			g.indent++
@@ -4514,9 +4519,6 @@ fn (mut g FlatGen) gen_test_main() {
 			g.indent--
 			g.writeln('}')
 		}
-		if hooks.after_each.len > 0 {
-			g.writeln('${hooks.after_each}();')
-		}
 	}
 	if hooks.testsuite_end.len > 0 {
 		g.writeln('${hooks.testsuite_end}();')
@@ -4525,7 +4527,7 @@ fn (mut g FlatGen) gen_test_main() {
 		file_name := os.file_name(tests[0].file)
 		g.writeln('if (__v3_test_failures > 0) {')
 		g.indent++
-		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": %d failed, %d passed, ${tests.len} total. Elapsed time: 0 ms.\\n\", __v3_test_failures, __v3_test_passes);")
+		g.writeln("printf(\"     Summary for running V tests in \\\"${c_escape(file_name)}\\\": %d failed, %d passed, ${tests.len} total. Elapsed time: 0 ms.\\n\", ${tests.len} - __v3_test_passes, __v3_test_passes);")
 		g.indent--
 		g.writeln('} else {')
 		g.indent++
@@ -4536,7 +4538,7 @@ fn (mut g FlatGen) gen_test_main() {
 	if g.show_test_summary {
 		g.writeln('if (__v3_test_failures > 0) {')
 		g.indent++
-		g.writeln('printf("Summary for all V _test.v files: %d failed, %d passed, ${tests.len} total.\\n", __v3_test_failures, __v3_test_passes);')
+		g.writeln('printf("Summary for all V _test.v files: %d failed, %d passed, ${tests.len} total.\\n", ${tests.len} - __v3_test_passes, __v3_test_passes);')
 		g.indent--
 		g.writeln('} else {')
 		g.indent++

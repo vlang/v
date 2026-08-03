@@ -2806,7 +2806,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				g.gen_expr(g.a.child(&node, 1))
 				g.writeln(');')
 			}
-			if g.is_current_test_fn() {
+			if g.is_current_test_fn_or_each_hook() {
 				g.gen_all_defers()
 				g.writeln('__v3_test_failures++;')
 				g.gen_default_return_stmt()
@@ -2878,7 +2878,7 @@ fn (g &FlatGen) assert_failure_detail(assert_node flat.Node, condition_id flat.N
 	if expression.starts_with('assert ') {
 		expression = expression['assert '.len..]
 	}
-	if g.is_current_test_fn() {
+	if g.is_current_test_fn_or_each_hook() {
 		module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
 		expression = qualify_assert_builtin_types(expression, module_name)
 		return '${file.name}:${line}: fn ${g.cur_fn_name}\nassert ${expression}'
@@ -7461,6 +7461,11 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 
 fn (g &FlatGen) is_current_test_fn() bool {
 	return g.cur_fn_name.starts_with('test_') && g.test_files.len > 0
+}
+
+fn (g &FlatGen) is_current_test_fn_or_each_hook() bool {
+	return g.test_files.len > 0
+		&& (g.cur_fn_name.starts_with('test_') || g.cur_fn_name in ['before_each', 'after_each'])
 }
 
 fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node) {
