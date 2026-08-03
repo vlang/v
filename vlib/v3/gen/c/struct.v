@@ -139,12 +139,11 @@ fn (g &FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) 
 	// (`geometry.Box[int]`) for this expression.
 	source_base := node.value.trim_left('&?!').all_before('[').all_after_last('.')
 	if source_base.len > 0 {
-		if resolved := g.tc.expr_type(id) {
-			resolved_value := default_init_unalias_type(types.unwrap_pointer(resolved))
-			if resolved_value is types.Struct
-				&& resolved_value.name.all_before('[').all_after_last('.') == source_base {
-				return resolved.name()
-			}
+		resolved := g.tc.expr_type(id) or { g.tc.resolve_type(id) }
+		resolved_value := default_init_unalias_type(types.unwrap_pointer(resolved))
+		if resolved_value is types.Struct
+			&& resolved_value.name.all_before('[').all_after_last('.') == source_base {
+			return resolved.name()
 		}
 	}
 	// A bare literal can collide with an imported type of the same short name.
@@ -4383,6 +4382,28 @@ fn (mut g FlatGen) gen_assoc_tmp_decl_by_fields(node flat.Node, tmp string, ct s
 }
 
 fn (g &FlatGen) assoc_target_type_name(node flat.Node) string {
+	for contextual_type in [g.expected_expr_type, g.cur_fn_ret] {
+		contextual_name := types.unwrap_pointer(contextual_type).name()
+		if contextual_name.contains('.') && g.assoc_type_is_usable(contextual_type) {
+			for candidate in [node.typ, node.value] {
+				if candidate.len > 0
+					&& candidate.all_after_last('.') == contextual_name.all_after_last('.') {
+					return contextual_name
+				}
+			}
+		}
+	}
+	if node.children_count > 0 {
+		base_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(&node, 0)))
+		base_name := base_type.name()
+		for candidate in [node.typ, node.value] {
+			if base_name.contains('.') && candidate.len > 0
+				&& candidate.all_after_last('.') == base_name.all_after_last('.')
+				&& g.assoc_type_is_usable(base_type) {
+				return base_name
+			}
+		}
+	}
 	for candidate in [node.typ, node.value] {
 		if g.assoc_type_name_is_usable(candidate) {
 			return candidate

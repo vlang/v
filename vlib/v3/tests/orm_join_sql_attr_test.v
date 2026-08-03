@@ -153,7 +153,8 @@ fn main() {
 
 struct MutatedInsertUser {
 	id int @[primary; sql: serial]
-	name string @[default: 'db_default']
+	mut:
+		name string @[default: 'db_default']
 }
 
 fn main() {
@@ -237,7 +238,7 @@ fn main() {
 ")
 	assert selector_insert_out == ''
 
-	invalid_out := orm_join_sql_attr_run(v3_bin, 'orm_invalid_static_where', "import db.sqlite
+	invalid_result := orm_join_sql_attr_compile(v3_bin, 'orm_invalid_static_where', "import db.sqlite
 
 struct InvalidWhereUser {
 	id int @[primary; sql: serial]
@@ -270,7 +271,8 @@ fn main() {
 	panic('expected invalid static WHERE to fail, got \${rows.len} rows')
 }
 ")
-	assert invalid_out == ''
+	assert invalid_result.exit_code != 0
+	assert invalid_result.output.contains("ORM: left side of the `==` expression must be one of the `InvalidWhereUser`'s fields"), invalid_result.output
 
 	signed_out := orm_join_sql_attr_run(v3_bin, 'orm_signed_static_where', "import db.sqlite
 

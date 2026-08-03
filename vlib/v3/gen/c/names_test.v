@@ -2,6 +2,7 @@ module c
 
 import os
 import v3.flat
+import v3.pref
 import v3.types
 
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
@@ -34,6 +35,10 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('printf') == 'v_printf'
 	assert c_name('C.printf') == 'printf'
 	assert c_name('C.send') == 'send'
+	assert c_name('index') == 'v_index'
+	assert c_name('log') == 'v_log'
+	assert c_name('C.index') == 'index'
+	assert c_name('C.log') == 'log'
 }
 
 fn test_c_name_generated_string_symbol_collision() {
@@ -186,6 +191,127 @@ fn test_apple_framework_include_does_not_match_x11() {
 	assert c_is_apple_framework_include('<CoreFoundation/CFString.h>')
 	assert !c_is_apple_framework_include('<X11/Xlib.h>')
 	assert !c_is_apple_framework_include('<sys/ptrace.h>')
+}
+
+fn test_objective_c_header_detection() {
+	assert c_header_text_needs_objective_c('#import <Cocoa/Cocoa.h>\n')
+	assert c_header_text_needs_objective_c('@interface AppDelegate : NSObject\n@end\n')
+	assert c_header_text_needs_objective_c('@class ForwardDeclaredClass;\n')
+	assert c_header_text_needs_objective_c('@protocol ForwardDeclaredProtocol;\n')
+	assert c_header_text_needs_objective_c('id value = @"Objective-C string";\n')
+	assert c_header_text_needs_objective_c('static inline id<NSCopying> copy(id<NSCopying> value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline id identity(id obj) { return obj; }\n')
+	assert c_header_text_needs_objective_c('static inline instancetype identity(instancetype obj) { return obj; }\n')
+	assert c_header_text_needs_objective_c('static inline Class identity(Class value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline SEL identity(SEL value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline Protocol *identity(Protocol *value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline NSArray<NSString *> *copy_names(NSArray<NSString *> *value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline NSObject<NSCopying> *copy(NSObject<NSCopying> *value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @42; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @YES; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @[]; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @{}; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(int value) { return @(value); }\n')
+	assert c_header_text_needs_objective_c('id value = (__bridge id)pointer;\n')
+	assert c_header_text_needs_objective_c('void *value = (__bridge_retained void *)pointer;\n')
+	assert c_header_text_needs_objective_c('Object value = (__bridge_transfer Object)pointer;\n')
+	assert c_header_text_needs_objective_c('typedef struct objc_class *Class; static __strong Class identity(__strong Class value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static __weak Class weak_value; __autoreleasing Class *out_value; __unsafe_unretained Class unsafe_value;\n')
+	assert c_header_text_needs_objective_c('static __kindof Class identity(__kindof Class value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline id helper(id obj) { return [obj description]; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (id)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (Class *)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (const id)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (const volatile Class *)value; }\n')
+	assert !c_header_text_needs_objective_c('static inline int helper(int *values, int i) { return values[i]; }\nint table[4] = {[0] = 1};\n[[gnu::unused]] static int state;\n// [obj description] @42\nconst char *message = "[obj description] @42";\n')
+	assert !c_header_text_needs_objective_c('static inline int id(int obj) { return obj; }\n')
+	assert !c_header_text_needs_objective_c('typedef unsigned id; static inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('typedef void *Class; static inline Class identity(Class value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('typedef unsigned SEL; static inline SEL identity(SEL value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('typedef void *Protocol; static inline Protocol identity(Protocol value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('struct Class { int value; }; union id { int value; }; enum SEL { sel_value }; struct Protocol { int value; }; union instancetype { int value; };\nstatic struct Class class_identity(struct Class value) { return value; }\nstatic union id id_identity(union id value) { return value; }\nstatic enum SEL sel_identity(enum SEL value) { return value; }\nstatic struct Protocol protocol_identity(struct Protocol value) { return value; }\nstatic union instancetype instance_identity(union instancetype value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#define id unsigned\n#define Class unsigned\n#define SEL unsigned\n#define Protocol unsigned\n#define instancetype unsigned\nid id_value; Class class_value; SEL selector_value; Protocol protocol_value; instancetype instance_value;\n')
+	assert !c_header_text_needs_objective_c('#define id unsigned\nstatic inline void *identity(void *value) { return (const id)value; }\n')
+	assert !c_header_text_needs_objective_c('static int id; static inline int consume(int value) { return value; } static inline int use(void) { return consume(id) + 1; }\n')
+	assert c_header_text_needs_objective_c('#define id unsigned\n#undef id\nstatic inline void *identity(void *value) { return (id)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (id)value; }\n#define id unsigned\n')
+	assert c_header_text_needs_objective_c('#define id(value) value\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#if 0\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if __has_attribute(aligned)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if __has_attribute(__packed__)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#if __has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#define __has_attribute(x) 0\n#if __has_attribute(aligned)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#define __has_attribute(x) 1\n#if __has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if __has_attribute(aligned) == 1\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if !__has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#define IGNORE(...)\nIGNORE(typedef unsigned id);\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#define __bridge\nvoid *value = (__bridge void *)pointer;\n')
+	assert !c_header_text_needs_objective_c('#define __bridge_retained\nvoid *value = (__bridge_retained void *)pointer;\n')
+	assert !c_header_text_needs_objective_c('#define __bridge_transfer\nvoid *value = (__bridge_transfer void *)pointer;\n')
+	assert !c_header_text_needs_objective_c('#define __strong\n#define __weak\n#define __autoreleasing\n#define __unsafe_unretained\n#define __kindof\n__strong void *strong_value;\n__weak void *weak_value;\n__autoreleasing void **out_value;\n__unsafe_unretained void *unsafe_value;\n__kindof void *kind_value;\n')
+	assert !c_header_text_needs_objective_c_for_target('__strong void *value;\n', [
+		'-D__strong',
+	], false, pref.host_target())
+	assert c_header_text_needs_objective_c('#define __bridge\n#undef __bridge\nid value = (__bridge id)pointer;\n')
+	assert c_header_text_needs_objective_c('#define __bridge(value) value\nid value = (__bridge id)pointer;\n')
+	assert !c_header_text_needs_objective_c('#include <CoreFoundation/CFString.h>\n')
+	assert !c_header_text_needs_objective_c('#include <X11/Xlib.h>\n')
+	assert !c_header_text_needs_objective_c('// @interface CommentOnly\n/* @implementation CommentOnly\nid value = (__bridge id)pointer;\n#import <Cocoa/Cocoa.h>\n*/\nconst char *description = "@interface string only";\nconst char *cast = "__bridge";\n')
+	assert !c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\nid value = (__bridge id)pointer;\n#import <Cocoa/Cocoa.h>\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 // disabled\n@interface DisabledByLineComment\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 /* disabled */\n@interface DisabledByBlockComment\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0L\n@interface DisabledByLongZero\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0x0ULL\n@interface DisabledByHexZero\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c("#if '\\0'\n@interface DisabledByNullCharacter\n@end\n#endif\n")
+	assert c_header_text_needs_objective_c("#if 'A'\n@interface EnabledByCharacter\n@end\n#endif\n")
+	assert !c_header_text_needs_objective_c("#if 'a' - 'a'\n@interface DisabledByCharacterArithmetic\n@end\n#endif\n")
+	assert !c_header_text_needs_objective_c('#if 0 == 1\nstatic inline id disabled(id obj) { return [obj description]; }\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 2 >= 1\nstatic inline id enabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 1 - 1\nstatic inline id disabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 2 * 3 - 6\nstatic inline id disabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 ? 1 : 0\n@interface DisabledByConditional\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 1 || 0 ? 0 : 0\n@interface DisabledByConditionalPrecedence\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 0 ? 0 : 1\n@interface EnabledByConditional\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#if (5 - 1) / 2\nstatic inline id enabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#define ONE 1\n#if ONE - 1\n@class DisabledByMacroArithmetic;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#define FOO 1\n#if defined(FOO) - 1\n@class DisabledByDefinedArithmetic;\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 2 + 2 == 4\n@class EnabledByArithmeticComparison;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (1 & 0)\n@class DisabledByBitwiseAnd;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (0 | 0)\n@class DisabledByBitwiseOr;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (1 ^ 1)\n@class DisabledByBitwiseXor;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (1 << 3) - 8\n@class DisabledByLeftShift;\n#endif\n')
+	assert c_header_text_needs_objective_c('#if (8 >> 2) == 2\n@class EnabledByRightShift;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 & 1 == 0\n@class DisabledByBitwiseComparisonPrecedence;\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 1 // enabled\n@interface EnabledByLineComment\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 1UL\n@interface EnabledByLongOne\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#ifdef __OBJC__\n@implementation Disabled\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if defined(__OBJC__) && __has_feature(objc_arc)\n@implementation Disabled\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if __has_feature(objc_arc) && defined(__OBJC__)\n@implementation Disabled\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if defined(FEATURE) && \\\ndefined(__OBJC__)\n@interface DisabledByContinuedGuard\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c_for_target('#if FEATURE\n@interface Disabled\n@end\n#endif\n', [
+		'-DFEATURE=0',
+	], false, pref.host_target())
+	assert c_header_text_needs_objective_c_for_target('#if FEATURE\n@interface Enabled\n@end\n#endif\n', [
+		'-DFEATURE=1',
+	], false, pref.host_target())
+	assert !c_header_text_needs_objective_c_for_target('#if FEATURE\n@class DisabledByChainedFlag;\n#endif\n', [
+		'-DOFF=0',
+		'-DFEATURE=OFF',
+	], false, pref.host_target())
+	assert !c_header_text_needs_objective_c('#define OFF 0\n#define FEATURE OFF\n#if FEATURE\n@protocol DisabledByChainedDirective;\n#endif\n')
+	assert c_header_text_needs_objective_c('#define ON 1\n#define FEATURE ON\n#if FEATURE\n@class EnabledByChainedDirective;\n#endif\n')
+	assert c_header_text_needs_objective_c('#define FIRST SECOND\n#define SECOND FIRST\n#if FIRST\n@class ConservativelyEnabledByMacroCycle;\n#endif\n')
+	assert !c_header_text_needs_objective_c_for_target('#if !defined(FEATURE)\n@interface Disabled\n@end\n#endif\n', [
+		'-DFEATURE(x)=x',
+	], false, pref.host_target())
+	assert c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\n#else\n@interface Enabled\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#ifdef COMPILER_MACRO\n@interface PossiblyEnabled\n@end\n#endif\n')
+	imports :=
+		c_header_objective_c_framework_imports('#ifdef _WIN32\n#include <windows.h>\n#endif\n#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>\n')
+	assert imports == '#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>'
+	guarded :=
+		c_header_objective_c_framework_imports('#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#else\n#include <X11/Xlib.h>\n#endif\n')
+	assert guarded == '#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#endif'
 }
 
 fn test_large_transitive_header_tree_is_preserved() {

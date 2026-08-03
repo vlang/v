@@ -81,6 +81,23 @@ fn test_transform_ast_clone_preserves_template_metadata() {
 	assert worker_ast.template_actions[7] == 'render_page'
 }
 
+fn test_transform_worker_records_struct_operators_in_private_map() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.used_struct_operator_fns['main.Box.+'] = true
+
+	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
+	worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	mut worker := master.fork_worker(worker_ast, worker_tc)
+	worker.mark_struct_operator_used_name('main.Point.==')
+
+	assert 'main.Point.==' !in master.used_struct_operator_fns
+	master.merge_worker_used_fns(worker)
+	assert master.used_struct_operator_fns['main.Box.+']
+	assert master.used_struct_operator_fns['main.Point.==']
+}
+
 fn test_skipped_literal_decl_does_not_hide_later_closure() {
 	mut a := flat.FlatAst.new()
 	a.add_node(flat.Node{

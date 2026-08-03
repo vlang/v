@@ -6366,7 +6366,7 @@ fn (mut tc TypeChecker) ownership_after_multi_return_assign_impl(lhs_ids []flat.
 	}
 }
 
-fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, _rhs_type Type, op flat.Op, assign_id flat.NodeId) {
+fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, rhs_type Type, op flat.Op, assign_id flat.NodeId) {
 	if tc.ownership_effects_disabled() {
 		return
 	}
@@ -6387,8 +6387,17 @@ fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.N
 		return
 	}
 	tc.ownership_check_reassign(lhs_name, assign_id)
-	tc.ownership_assign_to_name(lhs_name, rhs_id, lhs_type, assign_id)
+	tc.ownership_assign_to_name(lhs_name, rhs_id, tc.ownership_assignment_type(lhs_type, rhs_type),
+		assign_id)
 	tc.ownership_track_fn_value_binding(lhs_name, rhs_id)
+}
+
+fn (tc &TypeChecker) ownership_assignment_type(lhs_type Type, rhs_type Type) Type {
+	if lhs_type is Unknown || lhs_type is Void
+		|| (!tc.ownership_type_is_owned(lhs_type) && tc.ownership_type_is_owned(rhs_type)) {
+		return rhs_type
+	}
+	return lhs_type
 }
 
 fn (mut tc TypeChecker) ownership_after_assign_pairs(lhs_ids []flat.NodeId, rhs_ids []flat.NodeId, lhs_types []Type, rhs_types []Type, op flat.Op, assign_id flat.NodeId) {
@@ -6533,6 +6542,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		return
 	}
 	if tc.ownership_mark_from_call(lhs_name, rhs_id, assign_id) {
+		// A specialized generic call can still resolve here as `Container[T]`.
+		// Preserve the checked concrete assignment type for the eventual Drop call.
+		if tc.ownership_type_is_owned(lhs_type) {
+			tc.ownership_mark_owned(lhs_name, lhs_type, assign_id)
+		}
 		return
 	}
 	lhs_owned := tc.ownership_type_is_owned(lhs_type)
@@ -8693,11 +8707,13 @@ fn (mut tc TypeChecker) ownership_consume_method_value_receiver(arg_id flat.Node
 			consumed: true
 		}
 	}
-	recv_type := tc.resolve_type(recv_id)
-	if bad_type := tc.ownership_default_clone_missing_method(recv_type) {
-		tc.record_error(.assignment_mismatch,
-			'cannot bind owned method receiver: `${bad_type}` requires ownership destruction but has no `clone()` method',
-			pos)
+	tc.ownership_reject_global_move(recv_name, pos, call_name, true)
+	mut st := tc.ownership_state()
+	if recv_name in st.owned_vars {
+		tc.ownership_move_var(recv_name, call_name, pos, true, call_name, true)
+	} else {
+		_ := tc.ownership_move_overlapping_dynamic_storage(recv_name, call_name, pos, true,
+			call_name, true)
 	}
 	return OwnershipMethodValueReceiverResult{
 		consumed: true

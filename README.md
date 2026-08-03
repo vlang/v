@@ -204,6 +204,13 @@ when no compatible bundled `thirdparty/tcc` binary is available on the host.
 The [Tiny C Compiler (tcc)](https://repo.or.cz/w/tinycc.git) is downloaded for you by `make` if
 there is a compatible version for your system, and installed under the V `thirdparty` directory.
 
+On macOS, `-cc tcc -gc boehm` uses a persistent bundled `libgc.dylib` store when the physical V
+installation path contains a comma. The store is under `$XDG_DATA_HOME/v-tcc-libgc-v1`, or
+`$HOME/.local/share/v-tcc-libgc-v1` when the XDG variable is unset or empty. V creates the fallback
+directories with private permissions. An explicit `XDG_DATA_HOME` must already be absolute,
+user-owned, not group/world-writable, and have a safe, comma-free canonical path. Compiled binaries
+can depend on this store at runtime, so do not delete it while they are in use.
+
 This compiler is very fast, but does almost no optimizations. It is best for development builds.
 
 For production builds (using the `-prod` option to V), it's recommended to use clang, gcc, or

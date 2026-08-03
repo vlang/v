@@ -32,13 +32,14 @@ linked into `cmd/v`. It does not build or launch a second V3 compiler process. F
 `v file.v`, `v app_directory`, `v run file.v`, and `v script.vsh` are eligible. V3 currently
 compiles these unflagged builds without a garbage collector; `-gc none` and `-prealloc` are also
 eligible. An explicit non-none `-gc` mode stays on the established compiler. The in-process path
-currently uses serial stages and disables the split module cache, whose invalidation protocol
-still relies on restarting the standalone V3 executable.
+uses parallel stages while the input remains within its scratch-memory safety limit and disables
+the split module cache, whose invalidation protocol still relies on restarting the standalone V3
+executable.
 
-`cmd/v` remains the CLI and compatibility dispatcher. Tests, command tools, self-hosted temporary
-compilers, cross-compilation, and modes not yet supported by V3 continue through the established
-compiler. Pass `-old-compiler` to explicitly use that compatibility path for an otherwise
-eligible macOS build. Other operating systems are unchanged.
+`cmd/v` remains the CLI and compatibility dispatcher, and an unflagged `v cmd/v` build is eligible
+for V3. Tests, command tools, cross-compilation, and modes not yet supported by V3 continue through
+the established compiler. Pass `-old-compiler` to explicitly use that compatibility path for an
+otherwise eligible macOS build. Other operating systems are unchanged.
 
 When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
 retries the command through the established compiler. Exit codes from successfully compiled
@@ -117,7 +118,9 @@ configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 `math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
-object cache. The benchmark output prints counts for parsed `.vh` and `.v` files and their total
+object cache. An explicit `-b c` binary build also retains the complete generated translation unit
+at `<output>.c` for codegen inspection. The benchmark output prints counts for parsed `.vh` and
+`.v` files and their total
 line counts immediately after the parse stage, followed by each category's space-separated paths
 on one line. Paths below the current home directory use `~` as a prefix. A nonzero `.vh` count
 shows how many cached module interfaces were parsed by that build. Required compile-time bodies

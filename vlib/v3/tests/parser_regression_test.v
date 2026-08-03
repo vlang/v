@@ -578,6 +578,23 @@ fn test_empty_struct_literals_parse_in_control_header_conditions() {
 	assert foo_struct_inits == 4
 }
 
+fn test_positional_struct_literal_in_control_header_call_keeps_later_declaration() {
+	a := parse_parser_regression_source('positional_struct_literal_control_header_call',
+		'struct Range {\n\tfirst int\n\tlast int\n}\n\nfn allowed(range_ Range) bool {\n\treturn range_.first <= range_.last\n}\n\nfn check() bool {\n\tif true\n\t\t&& !allowed(Range{0, 1}) {\n\t\treturn false\n\t}\n\treturn true\n}\n\nfn declared_after() int {\n\treturn 1\n}\n')
+	mut range_struct_inits := 0
+	mut has_later_declaration := false
+	for node in a.nodes {
+		if node.kind == .struct_init && node.value == 'Range' {
+			range_struct_inits++
+		}
+		if node.kind == .fn_decl && node.value == 'declared_after' {
+			has_later_declaration = true
+		}
+	}
+	assert range_struct_inits == 1
+	assert has_later_declaration
+}
+
 fn test_local_sibling_types_are_predeclared_before_fields() {
 	a := parse_parser_regression_source('local_sibling_struct_fields',
 		'module main\n\nfn main() {\n\t_ := []struct {\n\t\tn int\n\t}{}\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n}\n')

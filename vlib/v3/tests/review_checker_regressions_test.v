@@ -7,7 +7,10 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn build_v3_review_checker() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test_${os.getpid()}')
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
@@ -48,6 +51,286 @@ fn run_runtime_bad(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn test_source_field_names_require_snake_case() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'uppercase_struct_field', 'struct S {\n\tFoo int\n}\n\nfn main() {}\n',
+		'field name `Foo` cannot contain uppercase letters, use snake_case instead')
+}
+
+fn test_immutable_fields_and_result_storage_are_rejected() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'immutable_struct_field',
+		'struct S {\n\tread_only int\nmut:\n\twritable int\n}\n\nfn main() {\n\tmut s := S{}\n\ts.read_only = 1\n}\n',
+		'field `read_only` of struct `S` is immutable')
+	run_bad(v3_bin, 'result_function_parameter', 'fn consume(value !int) {}\n\nfn main() {}\n',
+		'result type arguments are not supported')
+	run_bad(v3_bin, 'result_channel_element', 'fn main() {\n\t_ := chan !int{}\n}\n',
+		'cannot use chan with Result type')
+}
+
+fn test_declaration_mutability_and_storage_restrictions_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'immutable_reference_in_mut_field', 'struct Holder {
+mut:
+	ptr &int
+}
+
+fn main() {
+	value := 1
+	_ := Holder{
+		ptr: &value
+	}
+}
+',
+		'`value` is immutable, cannot have a mutable reference to an immutable object')
+	run_bad(v3_bin, 'result_struct_field', 'struct Holder {
+	value !int
+}
+
+fn main() {}
+',
+		'struct field does not support storing Result')
+	run_bad(v3_bin, 'mutable_primitive_parameter', 'fn update(mut value int) {
+	value++
+}
+
+fn main() {}
+',
+		'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases')
+	run_bad(v3_bin, 'parameter_shadows_import', 'import arrays
+
+fn update(arrays int) {
+	_ = arrays
+}
+
+fn main() {}
+',
+		'duplicate of an import symbol `arrays`')
+	run_bad(v3_bin, 'mutable_interface_smartcast', 'interface Value {}
+
+struct Concrete {}
+
+fn main() {
+	mut value := Value(Concrete{})
+	if value is Concrete {}
+}
+',
+		'smart casting a mutable interface value requires `if mut value is ...`')
+	run_bad(v3_bin, 'explicit_option_void_return', 'fn work() ?void {
+	return none
+}
+
+fn main() {}
+',
+		'use `?` instead of `?void`')
+	out := run_good(v3_bin, 'canonical_option_void_return', 'fn work() ? {
+	return none
+}
+
+fn main() {
+	work() or {
+		println("none")
+		return
+	}
+}
+')
+	assert out == 'none'
+}
+
+fn test_pointer_struct_and_spawn_safety_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'unparenthesized_pointer_write', 'fn main() {
+	value := 0
+	p := &value
+	*p = 1
+}
+',
+		'modifying variables via dereferencing can only be done in `unsafe` blocks')
+	run_bad(v3_bin, 'parenthesized_pointer_write', 'fn main() {
+	value := 0
+	p := &value
+	(*p) = 1
+}
+',
+		'modifying variables via dereferencing can only be done in `unsafe` blocks')
+	run_bad(v3_bin, 'uninitialized_reference_field', 'struct Holder {
+	value &int
+}
+
+fn main() {
+	_ := Holder{}
+}
+',
+		'reference field `Holder.value` must be initialized')
+	run_bad(v3_bin, 'partial_positional_struct_literal', 'struct Pair {
+	first int
+	second int
+}
+
+fn main() {
+	_ := Pair{1}
+}
+',
+		'too few fields in `Pair` literal (expecting 2, got 1)')
+	run_bad(v3_bin, 'local_shadows_import', 'import arrays
+
+fn main() {
+	arrays := 1
+	_ = arrays
+}
+',
+		'duplicate of an import symbol `arrays`')
+	run_bad(v3_bin, 'spawn_mutable_value_argument', 'struct State {
+mut:
+	value int
+}
+
+fn change(mut state State) {
+	state.value++
+}
+
+fn main() {
+	mut state := State{}
+	spawn change(mut state)
+}
+',
+		'function in `spawn` statement cannot contain mutable non-reference arguments')
+	run_bad(v3_bin, 'spawn_mutable_value_receiver', 'struct State {
+mut:
+	value int
+}
+
+fn (mut state State) change() {
+	state.value++
+}
+
+fn main() {
+	mut state := State{}
+	spawn state.change()
+}
+',
+		'method in `spawn` statement cannot have non-reference mutable receiver')
+	out := run_good(v3_bin, 'unsafe_pointer_write', 'fn main() {
+	mut value := 0
+	p := &value
+	unsafe {
+		*p = 1
+		(*p) = 2
+	}
+	println(value)
+}
+')
+	assert out == '2'
+}
+
+fn test_mutable_references_and_enum_order_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'mutable_reference_to_immutable_local_declaration', 'struct Foo {
+mut:
+	value int
+}
+
+fn main() {
+	f := Foo{}
+	mut pf := &f
+	pf.value = 1
+}
+',
+		'`f` is immutable, cannot have a mutable reference to it')
+	run_bad(v3_bin, 'mutable_reference_to_immutable_local_reassignment', 'struct Foo {
+mut:
+	value int
+}
+
+fn main() {
+	f := Foo{}
+	mut other := Foo{}
+	mut pf := &other
+	pf = &f
+}
+',
+		'`f` is immutable, cannot have a mutable reference to it')
+	run_bad(v3_bin, 'duplicate_value_enum_forward_reference', '@[_allow_multiple_values]
+enum ForwardValue {
+	a = .c
+	c = 2
+}
+
+fn main() {}
+',
+		'`ForwardValue.c` should be declared before using it')
+	out := run_good(v3_bin, 'immutable_reference_and_previous_enum_value', '@[_allow_multiple_values]
+enum Value {
+	a = 1
+	b = .a
+}
+
+struct Foo {
+	value int
+}
+
+fn main() {
+	f := Foo{
+		value: 2
+	}
+	pf := &f
+	println(pf.value + int(Value.b))
+}
+')
+	assert out == '3'
+}
+
+fn test_method_value_option_alias_and_const_names_match_v1() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'non_heap_pointer_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn make() fn () int {
+	foo := Foo{}
+	return foo.ref
+}
+
+fn main() {}
+',
+		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
+	run_bad(v3_bin, 'direct_option_alias_cast', 'type MaybeInt = ?int
+
+fn main() {
+	_ := MaybeInt(none)
+}
+',
+		'alias to Option type requires to be used as Option type (?MaybeInt(...))')
+	run_bad(v3_bin, 'uppercase_const_name', 'const Red = 1
+
+fn main() {
+	println(Red)
+}
+',
+		'const names cannot contain uppercase letters, use snake_case instead')
+	out := run_good(v3_bin, 'heap_method_value_and_translated_const', '@[translated]
+module main
+
+const Red = 2
+
+@[heap]
+struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn main() {
+	foo := Foo{}
+	callback := foo.ref
+	println(callback() + Red)
+}
+')
+	assert out == '3'
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
@@ -75,12 +358,15 @@ fn test_reject_fixed_array_decay_to_pointer() {
 		'cannot assign `[2]int` to `&int`')
 	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
 		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
-		'cannot use `&[2]u8` as argument 1 to `consume`; expected `&u8`')
+		'cannot reference fixed array `buf` outside `unsafe` blocks as it is supposed to be stored on stack')
+	run_bad(v3_bin, 'bad_addressed_fixed_array_compatible_pointer_argument',
+		'type Fixed = [2]int\n\nfn save(value &Fixed) {}\n\nfn main() {\n\tvalue := Fixed{}\n\tsave(&value)\n}\n',
+		'cannot reference fixed array `value` outside `unsafe` blocks as it is supposed to be stored on stack')
 	run_bad(v3_bin, 'bad_fixed_i32_array_byte_pointer_assignment',
 		'fn main() {\n\tbuf := [i32(1), 2]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n}\n',
-		'cannot assign `&[2]i32` to `&u8`')
-	byte_out := run_good(v3_bin, 'good_fixed_u8_array_byte_pointer_assignment',
-		'fn main() {\n\tbuf := [u8(65), 66]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n\tprintln(int_str(int(*ptr)))\n}\n')
+		'cannot reference fixed array `buf` outside `unsafe` blocks as it is supposed to be stored on stack')
+	byte_out := run_good(v3_bin, 'good_fixed_array_pointer_inside_unsafe',
+		'type Fixed = [2]u8\n\nfn main() {\n\tbuf := Fixed([u8(65), 66]!)\n\tptr := unsafe { &buf }\n\tprintln(int_str(int((*ptr)[0])))\n}\n')
 	assert byte_out == '65'
 	out := run_good(v3_bin, 'good_translated_fixed_array_pointer_assignment',
 		'@[translated]\nmodule main\n\nfn main() {\n\tvalues := [1, 2]!\n\tmut ptr := &int(0)\n\tptr = values\n\tprintln(int_str(*ptr))\n}\n')
@@ -473,7 +759,7 @@ fn test_fn_value_integer_returns_require_matching_c_abi() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_integer_return_abi',
 		'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n',
-		'cannot use `fn() u64`')
+		'cannot use `fn () u64`')
 	out := run_good(v3_bin, 'good_fn_value_matching_integer_return_abi',
 		'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n')
 	assert out == '65'
@@ -483,7 +769,7 @@ fn test_fn_value_aggregate_returns_require_compatible_payloads() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_array_return_payload',
 		'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n',
-		'cannot use `fn() []int`')
+		'cannot use `fn () []int`')
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {
@@ -529,7 +815,7 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n',
 		'cannot use non-shared `St` as argument 1')
 	out := run_good(v3_bin, 'good_shared_arg_and_receiver',
-		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(s) + s.f()))\n}\n')
+		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n')
 	assert out == '3'
 	mut_out := run_good(v3_bin, 'good_mut_receiver_mutable_value',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n')
@@ -709,6 +995,22 @@ fn test_comptime_if_selected_bodies_are_checked() {
 	assert out == 'ok'
 }
 
+fn test_comptime_match_shadowed_const_subject_is_not_folded() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_comptime_match_parameter_shadows_const',
+		"const mode = 'a'\n\nfn choose(mode string) {\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n\nfn main() {}\n",
+		'definition of `mode` is unknown at compile time')
+	run_bad(v3_bin, 'bad_comptime_match_mutable_local_shadows_const',
+		"const mode = 'a'\n\nfn main() {\n\tmut mode := 'b'\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n",
+		'`mode` is mut and may have changed since its definition')
+	out := run_good(v3_bin, 'good_comptime_match_known_local',
+		"fn main() {\n\tmode := 'b'\n\t\$match mode {\n\t\t'b' { println('ok') }\n\t\t\$else { println('bad') }\n\t}\n}\n")
+	assert out == 'ok'
+	type_out := run_good(v3_bin, 'good_comptime_match_generic_parameter_type',
+		"fn classify[T](value T) string {\n\t\$match value {\n\t\tint { return 'int' }\n\t\t\$else { return 'other' }\n\t}\n}\n\nfn main() {\n\tprintln(classify(1))\n}\n")
+	assert type_out == 'int'
+}
+
 fn test_explicit_generic_calls_use_all_type_arguments() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_multi_explicit_generic_call',
@@ -722,20 +1024,20 @@ fn test_explicit_generic_calls_use_all_type_arguments() {
 		'generic argument count mismatch')
 }
 
-fn test_reject_escaping_capturing_fn_literals() {
+fn test_escaping_capturing_fn_literals_use_runtime_closures() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_return_capturing_fn_literal',
-		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_return_capturing_fn_literal_alias',
-		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal_alias',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
+	out := run_good(v3_bin, 'return_capturing_fn_literal',
+		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n')
+	assert out == ''
+	alias_out := run_good(v3_bin, 'return_capturing_fn_literal_alias',
+		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n')
+	assert alias_out == ''
+	field_out := run_good(v3_bin, 'struct_field_capturing_fn_literal',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n')
+	assert field_out == ''
+	field_alias_out := run_good(v3_bin, 'struct_field_capturing_fn_literal_alias',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n')
+	assert field_alias_out == ''
 }
 
 fn test_capturing_fn_literal_aliases_are_binding_scoped() {
@@ -746,9 +1048,9 @@ fn test_capturing_fn_literal_aliases_are_binding_scoped() {
 	lambda_out := run_good(v3_bin, 'good_lambda_capturing_fn_literal_shadow',
 		'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n')
 	assert lambda_out == '4'
-	run_bad(v3_bin, 'bad_outer_capturing_alias_survives_inner_shadow',
-		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n',
-		'capturing fn literal cannot be stored or returned')
+	outer_out := run_good(v3_bin, 'outer_capturing_alias_survives_inner_shadow',
+		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n')
+	assert outer_out == ''
 }
 
 fn test_reject_unsmartcasted_unique_sum_variant_field() {
@@ -930,4 +1232,215 @@ fn test_builtin_function_callee_wins_over_unrelated_const_suffix() {
 	out := run_good(v3_bin, 'builtin_fn_unrelated_const_suffix',
 		'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n')
 	assert out == 'true'
+}
+
+fn test_fn_field_param_mutability_survives_type_identity_paths() {
+	v3_bin := build_v3_review_checker()
+	source_prefix := 'struct Counter {
+mut:
+	value int
+}
+
+struct Holder {
+	callback fn (mut Counter)
+}
+
+fn increment(mut counter Counter) {
+	counter.value++
+}
+'
+	out := run_good(v3_bin, 'good_fn_field_mut_param', source_prefix +
+		'
+fn main() {
+	holder := Holder{
+		callback: increment
+	}
+	mut counter := Counter{
+		value: 4
+	}
+	holder.callback(mut counter)
+	println(int_str(counter.value))
+}
+')
+	assert out == '5'
+	run_bad(v3_bin, 'bad_fn_field_missing_mut_arg', source_prefix +
+		'
+fn main() {
+	holder := Holder{
+		callback: increment
+	}
+	mut counter := Counter{
+		value: 4
+	}
+	holder.callback(counter)
+}
+',
+		'is `mut`, so use `mut counter` instead')
+}
+
+fn test_mutable_array_field_copy_requires_clone() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_mutable_array_field_copy', 'struct Holder {
+	items []int
+}
+
+fn main() {
+	holder := Holder{
+		items: [1]
+	}
+	mut copy := holder.items
+	copy << 2
+}
+',
+		'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)')
+	out := run_good(v3_bin, 'good_mutable_array_field_clone', 'struct Holder {
+	items []int
+}
+
+fn main() {
+	holder := Holder{
+		items: [1]
+	}
+	mut copy := holder.items.clone()
+	copy << 2
+	println(int_str(copy.len))
+	println(int_str(holder.items.len))
+}
+')
+	assert out == '2\n1'
+}
+
+fn test_pr_review_parser_and_checker_safety_batch() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shared_parameter_missing_marker', 'struct State {}
+
+fn take(shared state State) {}
+
+fn main() {
+	shared state := State{}
+	take(state)
+}
+',
+		'function `take` parameter `state` is `shared`, so use `shared state` instead')
+	run_bad(v3_bin, 'bad_shared_parameter_forwarded_unlocked', 'struct State {
+	value int
+}
+
+fn read(state State) int {
+	return state.value
+}
+
+fn forward(shared state State) int {
+	return read(state)
+}
+
+fn main() {}
+',
+		'`state` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument')
+	run_bad(v3_bin, 'bad_interface_option_alias_return', 'type MyInt = int
+
+interface Provider {
+	value() ?MyInt
+}
+
+struct IntProvider {}
+
+fn (_ IntProvider) value() ?int {
+	return 1
+}
+
+fn main() {
+	_ := Provider(IntProvider{})
+}
+',
+		'expected return type `?MyInt`')
+	run_bad(v3_bin, 'bad_interface_result_alias_return', 'type MyInt = int
+
+interface Provider {
+	value() !MyInt
+}
+
+struct IntProvider {}
+
+fn (_ IntProvider) value() !int {
+	return 1
+}
+
+fn main() {
+	_ := Provider(IntProvider{})
+}
+',
+		'expected return type `!MyInt`')
+	run_bad(v3_bin, 'bad_operator_if_attribute_return', 'struct Value {
+	n int
+}
+
+@[if debug]
+fn (a Value) +(b Value) Value {
+	return Value{
+		n: a.n + b.n
+	}
+}
+
+fn main() {}
+',
+		'only functions that do NOT return values can have `@[if debug]` tags')
+	run_bad(v3_bin, 'bad_pointer_cast_to_map_alias', 'type FooMap = map[string]int
+
+fn main() {
+	_ := &FooMap(map[string]int{})
+}
+',
+		'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value')
+}
+
+fn test_vexeroot_insert_and_generated_function_name_exemptions() {
+	v3_bin := build_v3_review_checker()
+	insert_out := run_good(v3_bin, 'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v3/tests/testdata/vexeroot_insert.h"
+
+fn C.v3_vexeroot_insert_value() int
+
+fn main() {
+	println(int_str(C.v3_vexeroot_insert_value()))
+}
+')
+	assert insert_out == '37'
+	run_bad(v3_bin, 'bad_source_function_name_with_generic_marker', 'fn bad_T_Name() {}
+
+fn main() {}
+',
+		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
+	generic_out := run_good(v3_bin, 'good_generated_generic_function_name', 'fn identity[T](value T) T {
+	return value
+}
+
+fn main() {
+	println(int_str(identity[int](7)))
+}
+')
+	assert generic_out == '7'
+}
+
+fn test_forwarded_variadic_arrays_must_be_final() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_forwarded_variadic_function_trailing_arg', 'fn take(values ...int) {}
+
+fn forward(values ...int) {
+	take(...values, 2)
+}
+
+fn main() {}
+',
+		'when forwarding a variadic variable, it must be the final argument')
+	run_bad(v3_bin, 'bad_forwarded_variadic_method_trailing_arg', 'struct Receiver {}
+
+fn (receiver Receiver) take(values ...int) {}
+
+fn (receiver Receiver) forward(values ...int) {
+	receiver.take(...values, 2)
+}
+
+fn main() {}
+',
+		'when forwarding a variadic variable, it must be the final argument')
 }

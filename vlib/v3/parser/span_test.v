@@ -615,7 +615,14 @@ fn main() {
 ')
 	mut saw_map := false
 	mut saw_generic := false
+	mut saw_main := false
 	for node in ast.nodes {
+		if node.kind == .fn_decl && node.value == 'main' {
+			saw_main = true
+			assert node.children_count == 2
+			assert ast.child_node(&node, 0).kind == .decl_assign
+			assert ast.child_node(&node, 1).kind == .decl_assign
+		}
 		if node.kind != .string_literal || node.children_count != 1 {
 			continue
 		}
@@ -628,6 +635,7 @@ fn main() {
 			saw_generic = true
 		}
 	}
+	assert saw_main
 	assert saw_map
 	assert saw_generic
 }

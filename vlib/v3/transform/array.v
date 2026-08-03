@@ -666,6 +666,11 @@ fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?string {
 			return '[]${local_elem}'
 		}
 	}
+	source_name := t.a.nodes[int(id)].typ
+	if elem.contains('.') && source_name.starts_with('[]')
+		&& source_name[2..].all_after_last('.') == elem.all_after_last('.') {
+		return name
+	}
 	if !t.generic_arg_is_alias_name(elem, t.cur_module) {
 		return none
 	}
@@ -2052,6 +2057,66 @@ fn (mut t Transformer) materialize_array_callback(id flat.NodeId, prefix string)
 	return callback_ident, setup
 }
 
+fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, default_elem_name string, elem_type string, prefix string) (string, flat.NodeId, []flat.NodeId, []flat.NodeId) {
+	predicate_node := t.a.nodes[int(predicate_id)]
+	predicate_allocates_closure := t.expr_allocates_fresh_runtime_closure(predicate_id)
+	predicate_is_fn_value := predicate_node.kind != .lambda_expr
+		&& t.call_arg_is_fn_pointer_value(predicate_id, predicate_node)
+	mut predicate_expr_id := predicate_id
+	mut lambda_param := ''
+	mut predicate_fn_name := ''
+	if predicate_node.kind == .lambda_expr && predicate_node.children_count > 0 {
+		predicate_expr_id = t.a.child(&predicate_node, predicate_node.children_count - 1)
+		if predicate_node.children_count > 1 {
+			param := t.a.child_node(&predicate_node, 0)
+			if param.kind == .ident && param.value.len > 0 {
+				lambda_param = param.value
+			}
+		}
+	} else if fn_name := t.resolve_fn_value_expr(predicate_id, predicate_node) {
+		predicate_fn_name = fn_name
+	} else if predicate_node.kind == .ident {
+		if ret_type := t.fn_value_return_type_name(predicate_id) {
+			if ret_type == 'bool' {
+				predicate_fn_name = predicate_node.value
+			}
+		}
+	}
+	elem_name := if lambda_param.len > 0 { lambda_param } else { default_elem_name }
+	old_elem := t.var_type(elem_name)
+	t.set_var_type(elem_name, elem_type)
+	predicate_source := if lambda_param.len > 0 {
+		predicate_expr_id
+	} else {
+		t.substitute_ident(predicate_expr_id, 'it', elem_name)
+	}
+	saved_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut callback_setup := []flat.NodeId{}
+	predicate := if predicate_fn_name.len > 0 {
+		t.make_call_typed(predicate_fn_name, arr1(t.make_ident(elem_name)), 'bool')
+	} else if predicate_is_fn_value || predicate_allocates_closure {
+		fn_value, setup := t.materialize_array_callback(predicate_id, prefix)
+		callback_setup = setup.clone()
+		fn_value_node := t.a.nodes[int(fn_value)]
+		if fn_value_node.kind == .ident {
+			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), 'bool')
+		} else {
+			t.make_call_expr_typed(fn_value, arr1(t.make_ident(elem_name)), 'bool')
+		}
+	} else {
+		t.transform_expr(predicate_source)
+	}
+	predicate_pending := t.pending_stmts.clone()
+	t.pending_stmts = saved_pending
+	if old_elem.len > 0 {
+		t.set_var_type(elem_name, old_elem)
+	} else {
+		t.unset_var_type(elem_name)
+	}
+	return elem_name, predicate, callback_setup, predicate_pending
+}
+
 // lower_array_filter_call builds lower array filter call data for transform.
 fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node, base_type string) ?flat.NodeId {
 	if node.children_count < 2 || !base_type.starts_with('[]') {
@@ -2227,7 +2292,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.substitute_ident(map_source_id, 'it', elem_name)
 	}
 	checker_result_elem_type := t.checker_expr_type_name(map_expr_id) or { '' }
-	mut result_elem_type := if checker_result_elem_type.len > 0 {
+	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type)
+		&& checker_result_elem_type != 'void'
+	mut result_elem_type := if checker_result_elem_type_is_usable {
 		checker_result_elem_type
 	} else {
 		t.node_type(map_expr_id)
@@ -2307,7 +2374,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.unset_var_type(elem_name)
 	}
 	mapped_type := t.node_type(mapped_expr)
-	if checker_result_elem_type.len == 0 && mapped_type.len > 0 && mapped_type != 'unknown' {
+	if !checker_result_elem_type_is_usable && decl_type_is_usable(mapped_type)
+		&& mapped_type != 'void' {
 		result_elem_type = mapped_type
 	}
 	if direct_selector_type.len > 0 && map_fn_name.len == 0 {
@@ -2818,39 +2886,20 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	mut elem_name := t.new_temp('count_it')
+	default_elem_name := t.new_temp('count_it')
 	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
 	predicate_id := t.a.child(&node, 1)
-	predicate_node := t.a.nodes[int(predicate_id)]
-	mut predicate_expr_id := predicate_id
-	mut lambda_param := ''
-	if predicate_node.kind == .lambda_expr && predicate_node.children_count > 0 {
-		predicate_expr_id = t.a.child(&predicate_node, predicate_node.children_count - 1)
-		if predicate_node.children_count > 1 {
-			param := t.a.child_node(&predicate_node, 0)
-			if param.kind == .ident && param.value.len > 0 {
-				lambda_param = param.value
-			}
-		}
-	}
-	elem_name = if lambda_param.len > 0 { lambda_param } else { elem_name }
+	elem_name, predicate, callback_setup, predicate_pending := t.transform_array_predicate(predicate_id,
+		default_elem_name, elem_type, 'count_callback')
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
-	old_elem := t.var_type(elem_name)
-	t.set_var_type(elem_name, elem_type)
-	predicate_source := if lambda_param.len > 0 {
-		predicate_expr_id
-	} else {
-		t.substitute_ident(predicate_expr_id, 'it', elem_name)
-	}
-	predicate := t.transform_expr(predicate_source)
-	if old_elem.len > 0 {
-		t.set_var_type(elem_name, old_elem)
-	} else {
-		t.unset_var_type(elem_name)
+	for stmt in callback_setup {
+		prefix << stmt
 	}
 	mut loop_body := []flat.NodeId{}
 	loop_body << elem_decl
-	t.drain_pending(mut loop_body)
+	for stmt in predicate_pending {
+		loop_body << stmt
+	}
 	inc := t.make_assign_op(t.make_ident(result_name), t.make_int_literal(1), .plus_assign)
 	loop_body << t.make_if(predicate, t.make_block(arr1(inc)), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
@@ -2905,39 +2954,20 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	mut elem_name := t.new_temp('${method}_it')
+	default_elem_name := t.new_temp('${method}_it')
 	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
 	predicate_id := t.a.child(&node, 1)
-	predicate_node := t.a.nodes[int(predicate_id)]
-	mut predicate_expr_id := predicate_id
-	mut lambda_param := ''
-	if predicate_node.kind == .lambda_expr && predicate_node.children_count > 0 {
-		predicate_expr_id = t.a.child(&predicate_node, predicate_node.children_count - 1)
-		if predicate_node.children_count > 1 {
-			param := t.a.child_node(&predicate_node, 0)
-			if param.kind == .ident && param.value.len > 0 {
-				lambda_param = param.value
-			}
-		}
-	}
-	elem_name = if lambda_param.len > 0 { lambda_param } else { elem_name }
+	elem_name, predicate, callback_setup, predicate_pending := t.transform_array_predicate(predicate_id,
+		default_elem_name, elem_type, '${method}_callback')
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
-	old_elem := t.var_type(elem_name)
-	t.set_var_type(elem_name, elem_type)
-	predicate_source := if lambda_param.len > 0 {
-		predicate_expr_id
-	} else {
-		t.substitute_ident(predicate_expr_id, 'it', elem_name)
-	}
-	predicate := t.transform_expr(predicate_source)
-	if old_elem.len > 0 {
-		t.set_var_type(elem_name, old_elem)
-	} else {
-		t.unset_var_type(elem_name)
+	for stmt in callback_setup {
+		prefix << stmt
 	}
 	mut loop_body := []flat.NodeId{}
 	loop_body << elem_decl
-	t.drain_pending(mut loop_body)
+	for stmt in predicate_pending {
+		loop_body << stmt
+	}
 	if method == 'all' {
 		not_predicate := t.make_prefix(.not, t.make_paren(predicate))
 		assign_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))

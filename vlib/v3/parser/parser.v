@@ -1900,6 +1900,8 @@ fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_typedef bo
 }
 
 fn (mut p Parser) global_decl() flat.NodeId {
+	is_pub := p.pending_decl_pub
+	p.pending_decl_pub = false
 	global_start := p.span_start()
 	p.next() // skip '__global'
 	is_grouped := p.tok == .lpar
@@ -1923,7 +1925,9 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			}
 			continue
 		}
+		mut field_is_pub := is_pub
 		if p.tok == .key_pub {
+			field_is_pub = true
 			p.next()
 		}
 		if p.tok == .key_mut {
@@ -1959,6 +1963,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					kind:           .field_decl
 					value:          full_name
 					typ:            gtype
+					op:             if field_is_pub { .arrow } else { .none }
 					payload:        flat.node_payload(if is_const { ['const'] } else { []string{} })
 					children_start: vstart
 					children_count: 1
@@ -1969,6 +1974,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					kind:    .field_decl
 					value:   full_name
 					typ:     gtype
+					op:      if field_is_pub { .arrow } else { .none }
 					payload: flat.node_payload(if is_const { ['const'] } else { []string{} })
 					pos:     p.span_to(field_start)
 				})
@@ -2002,6 +2008,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 	start := p.add_children(ids)
 	return p.add_node(flat.Node{
 		kind:           .global_decl
+		op:             if is_pub { .arrow } else { .none }
 		children_start: start
 		children_count: flat.child_count(ids.len)
 		pos:            header_pos
@@ -3148,6 +3155,16 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool) flat.NodeId {
 	if subject_is_literal {
 		return p.parse_known_comptime_match_value(subject, is_top_level)
 	}
+	subject_is_unresolved_local := p.is_local_binding(subject)
+		&& subject !in p.comptime_local_values
+	if value := p.comptime_local_values[subject] {
+		return p.parse_known_comptime_match_value(value, is_top_level)
+	}
+	if !subject_is_unresolved_local {
+		if value := p.comptime_value(subject) {
+			return p.parse_known_comptime_match_value(value, is_top_level)
+		}
+	}
 	if subject.starts_with('@') {
 		return p.parse_known_comptime_match_value(p.resolve_comptime_at_values(subject),
 			is_top_level)
@@ -3160,6 +3177,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool) flat.NodeId {
 		subject_start.str(),
 		subject_end.str(),
 		explicit_mut.str(),
+		subject_is_unresolved_local.str(),
 	]
 	mut else_block := flat.empty_node
 	for p.tok != .rcbr && p.tok != .eof {
@@ -3220,8 +3238,8 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool) flat.NodeId {
 
 fn comptime_match_pattern_kind(pattern string) string {
 	clean := pattern.trim_space()
-	if clean.len == 0 || clean[0].is_digit() || clean[0] in [`'`, `"`] || clean in ['true', 'false']
-		|| clean.starts_with('@') {
+	if clean.len == 0 || clean[0].is_digit() || clean[0] in [`'`, `"`, `\``]
+		|| clean in ['true', 'false'] || clean.starts_with('@') {
 		return 'value'
 	}
 	return 'type'
@@ -3433,7 +3451,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 			i++
 			continue
 		}
-		if c == `'` || c == `"` {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			out.write_u8(c)
 			i++
@@ -3460,14 +3478,9 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 				'@VMOD_FILE' {
 					vmod_file := os.join_path_single(vmod_root_for_file(p.cur_file), 'v.mod')
 					content := os.read_file(vmod_file) or {
-						message := p.a.add_val_id(5,
-							'@VMOD_FILE can only be used in projects that have a v.mod file')
-						// The @VMOD_FILE token has not been consumed here, so derive its
-						// own span from the condition's source offset (pseudo_pos) plus
-						// the token's local bounds within the condition string.
-						call := p.make_compile_error_call(message, pseudo_pos + start, pseudo_pos +
-							i)
-						_ = p.make_top_level_compile_error(call)
+						p.record_diagnostic_span('@VMOD_FILE can only be used in projects that have a v.mod file',
+
+							pseudo_pos + start, pseudo_pos + i)
 						''
 					}
 					write_comptime_cond_string(mut out, content.replace('\r\n', '\n'))
@@ -3615,7 +3628,10 @@ fn (p &Parser) comptime_cond_token_text() string {
 	}
 	tok := p.tok
 	if tok == .char {
-		return comptime_cond_string_token_text(p.lit)
+		if p.lit.len >= 2 && p.lit[0] == `\`` && p.lit[p.lit.len - 1] == `\`` {
+			return p.lit
+		}
+		return '`${p.lit}`'
 	}
 	if tok == .string {
 		return comptime_cond_string_token_text(p.lit)
@@ -3796,7 +3812,7 @@ fn (p &Parser) comptime_cond_references_unresolved_local(cond string) bool {
 			i++
 			continue
 		}
-		if c == `'` || c == `"` {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			i++
 			continue
@@ -4293,7 +4309,7 @@ fn inline_asm_condition_targets_arch(condition string, target_arch string) bool 
 			i++
 			continue
 		}
-		if c in [`'`, `"`] {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			i++
 			continue
@@ -4557,7 +4573,7 @@ fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) 
 			i++
 			continue
 		}
-		if c == `'` || c == `"` {
+		if c in [`'`, `"`, `\``] {
 			quote = c
 			out.write_u8(c)
 			i++
@@ -4922,7 +4938,7 @@ fn comptime_cond_strip_outer_parens(cond string) string {
 				}
 				continue
 			}
-			if ch == `'` || ch == `"` {
+			if ch in [`'`, `"`, `\``] {
 				quote = ch
 				continue
 			}
@@ -4961,7 +4977,7 @@ fn comptime_cond_split_top_level(cond string, op string) (string, string, bool) 
 			i++
 			continue
 		}
-		if ch == `'` || ch == `"` {
+		if ch in [`'`, `"`, `\``] {
 			quote = ch
 			i++
 			continue
@@ -5388,9 +5404,14 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 		})
 	}
 	if p.tok == .name && p.peek() == .lsbr {
+		typ := p.parse_type_name()
+		if p.tok == .lcbr && p.peek() == .rcbr {
+			p.next()
+			p.check(.rcbr)
+		}
 		return p.add_node(flat.Node{
 			kind:  .ident
-			value: p.parse_type_name()
+			value: typ
 		})
 	}
 	if p.tok != .lsbr || p.peek() != .rsbr {
@@ -8809,8 +8830,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
 			// runtime structs like array{} and string{}.
-			if p.tok == .lcbr && local_type_name.len > 0 && (!p.in_for_container
-				|| (p.tok_pos == name_pos + name.len && p.current_lcbr_looks_struct_init()))
+			if p.tok == .lcbr && local_type_name.len > 0
+				&& (!p.in_for_container || p.current_lcbr_is_attached())
 				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
 				|| name in ['any', 'array', 'string', 'map', 'mapnode', '_result', '_option']) {
 				return p.struct_init(local_type_name)
@@ -8886,7 +8907,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			p.next()
 			if p.tok == .amp {
 				p.next()
-				if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
+				if p.tok == .name && p.peek() == .dot {
 					if cast := p.pointer_cast_expr_from_current_depth(2) {
 						return cast
 					}
@@ -8924,7 +8945,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						pos:            p.span_to(amp_start)
 					})
 				}
-			} else if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
+			} else if p.tok == .name && p.peek() == .dot {
 				if cast := p.pointer_cast_expr_from_current_depth(1) {
 					return cast
 				}
@@ -8994,7 +9015,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				p.peek_pos = saved_peek_pos
 				p.peek_end = saved_peek_end
 				p.has_peek = saved_has_peek
-			} else if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
+			} else if p.tok == .name && p.peek() == .dot {
 				if cast := p.pointer_cast_expr_from_current_depth(1) {
 					return cast
 				}
@@ -9133,7 +9154,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				return current
 			}
-			if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
+			if p.tok == .name && p.peek() == .dot {
 				if cast := p.pointer_cast_expr_from_current_depth(depth) {
 					return cast
 				}
@@ -9412,8 +9433,12 @@ fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int) ?flat.NodeId {
 	saved_peek_pos := p.peek_pos
 	saved_peek_end := p.peek_end
 	saved_has_peek := p.has_peek
-	type_name := parser_pointer_type_name(depth, p.parse_type_name())
-	if type_name.len > depth && p.tok == .lpar {
+	base_type := p.parse_type_name()
+	type_leaf := base_type.all_after_last('.').all_before('[')
+	is_type_name := base_type.starts_with('C.')
+		|| (type_leaf.len > 0 && type_leaf[0] >= `A` && type_leaf[0] <= `Z`)
+	type_name := parser_pointer_type_name(depth, base_type)
+	if is_type_name && type_name.len > depth && p.tok == .lpar {
 		p.next()
 		inner := p.expr(.lowest)
 		p.check(.rpar)
@@ -9681,7 +9706,11 @@ fn (mut p Parser) lambda_body_expr() flat.NodeId {
 	p.defer_depth = 0
 	p.defer_result_allowed = false
 	p.nested_block_depth = 0
-	body := p.expr(.lowest)
+	body := if p.tok == .lcbr {
+		p.block_stmt()
+	} else {
+		p.expr(.lowest)
+	}
 	p.defer_depth = outer_defer_depth
 	p.defer_result_allowed = outer_defer_result_allowed
 	p.nested_block_depth = outer_nested_block_depth
@@ -10358,6 +10387,15 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			break
 		}
 		ids << p.expr(.lowest)
+	}
+	// Keep recovery local to the literal. Diagnose a missing separator or doubled
+	// comma before discarding the malformed tail.
+	if p.tok != .rsbr {
+		unexpected := if p.lit.len > 0 { p.lit } else { p.tok.str() }
+		p.record_diagnostic('unexpected token `${unexpected}`, expecting `]`', p.tok_pos)
+	}
+	for p.tok != .rsbr && p.tok != .eof {
+		p.next()
 	}
 	p.check(.rsbr)
 	// The literal spans up to `]`; capture it before a postfix `!` is consumed so

@@ -290,8 +290,8 @@ fn main() {}
 	})
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('invalid export name `1bad`'), compile.output
-	assert compile.output.contains('invalid export name `for`'), compile.output
+	assert compile.output.contains('export name `1bad` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `for` should be a valid identifier'), compile.output
 }
 
 fn test_invalid_imported_export_name_is_rejected_before_cgen() {
@@ -315,7 +315,8 @@ pub fn answer() int {
 	})
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0
-	assert compile.output.contains('invalid export name `1bad` for `badexp.answer`'), compile.output
+	assert compile.output.contains('export name `1bad` should be a valid identifier'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn test_export_name_reserved_by_v3_c_preamble_is_rejected() {
@@ -365,16 +366,16 @@ fn main() {}
 	})
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('invalid export name `bool`'), compile.output
-	assert compile.output.contains('invalid export name `string`'), compile.output
-	assert compile.output.contains('invalid export name `voidptr`'), compile.output
-	assert compile.output.contains('invalid export name `i8`'), compile.output
-	assert compile.output.contains('invalid export name `true`'), compile.output
-	assert compile.output.contains('invalid export name `Array`'), compile.output
-	assert compile.output.contains('invalid export name `map`'), compile.output
-	assert compile.output.contains('invalid export name `DenseArray`'), compile.output
-	assert compile.output.contains('invalid export name `SortedMap`'), compile.output
-	assert compile.output.contains('invalid export name `Optional`'), compile.output
+	assert compile.output.contains('export name `bool` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `string` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `voidptr` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `i8` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `true` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `Array` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `map` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `DenseArray` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `SortedMap` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `Optional` should be a valid identifier'), compile.output
 }
 
 fn test_generic_export_is_rejected_fail_closed() {

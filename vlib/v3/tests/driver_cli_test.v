@@ -167,9 +167,9 @@ fn test_explicit_arm64_import_unskips_ssa_dependencies() {
 import v3.gen.arm64
 
 fn main() {}
-')!
+	')!
 	output := os.join_path(root, 'arm64_import')
-	compile := cmdexec.run(v3_bin, ['-o', output, source])
+	compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', output, source])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -839,6 +839,45 @@ fn test_driver_run_preserves_stdin() {
 	result := run_driver_with_stdin_file(v3_bin, ['-o', output, 'run', source], input_file)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('read:from-stdin'), result.output
+}
+
+fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_retained_c_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	module_dir := os.join_path(root, 'retainedmod')
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(module_dir, 'retainedmod.v'),
+		"module retainedmod\n\npub fn message() string {\n\treturn 'complete cached translation unit'\n}\n")!
+	source := os.join_path(root, 'main.v')
+	os.write_file(source,
+		'module main\n\nimport retainedmod\n\nfn main() {\n\tprintln(retainedmod.message())\n}\n')!
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	mut retained_c := ''
+	for build_name in ['cold', 'warm'] {
+		output := os.join_path(root, build_name)
+		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-b', 'c', '-o',
+			output, source], environment)
+		assert compile.exit_code == 0, compile.output
+		retained_c = output + '.c'
+		assert os.is_file(retained_c)
+	}
+	retained_source := os.read_file(retained_c)!
+	assert retained_source.contains('retainedmod__message'), retained_source
+	assert retained_source.contains('complete cached translation unit'), retained_source
+	$if !windows {
+		rebuilt := os.join_path(root, 'rebuilt_from_retained_c')
+		rebuild := cmdexec.run('cc', ['-std=gnu11', '-w', '-o', rebuilt, retained_c, '-lm'])
+		assert rebuild.exit_code == 0, rebuild.output
+		run := cmdexec.run(rebuilt, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == 'complete cached translation unit\n', run.output
+	}
 }
 
 fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {

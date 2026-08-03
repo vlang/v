@@ -226,9 +226,8 @@ fn main() {
 	assert !c_code.contains('pthread_join((pthread_t)'), c_code
 }
 
-// A spawned fn-value closure must copy the lifted fn literal's thread-local
-// capture slots into the thread argument packet and restore them in the worker.
-fn test_spawn_fn_value_closure_copies_captures() {
+// A spawned named closure remains caller-owned because it can be reused after join.
+fn test_spawn_fn_value_closure_keeps_caller_ownership() {
 	v3_bin := build_v3()
 	c_code := gen_c(v3_bin, 'v3_spawn_fn_value_capture', '
 fn main() {
@@ -236,14 +235,15 @@ fn main() {
 	cb := fn [x] () int {
 		return x
 	}
-	_ := spawn (cb)()
-	println("ok")
+	t := spawn (cb)()
+	println(t.wait())
+	println(cb())
 }
 	')
 	c_compact := compact_c(c_code)
 	assert c_code.contains('fn_value_args_thread_wrapper'), c_code
-	assert c_compact.contains('intc0;}fn_value_thread_args_'), c_code
-	assert c_compact.contains('__anon_fn_0_x=p->c0;'), c_code
-	assert c_compact.contains('->c0=__anon_fn_0_x;'), c_code
+	assert c_compact.contains('f;}fn_value_thread_args_'), c_code
 	assert c_compact.contains('p->f()'), c_code
+	assert !c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
+	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
 }

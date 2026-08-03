@@ -933,7 +933,12 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 		return body_block
 	}
 
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	cond_id := t.build_match_cond(match_expr_id, branch)
+	mut cond_prelude := []flat.NodeId{}
+	t.drain_pending(mut cond_prelude)
+	t.pending_stmts = outer_pending
 	mut if_ids := []flat.NodeId{}
 	if_ids << cond_id
 	if_ids << body_block
@@ -945,11 +950,16 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 	for id in if_ids {
 		t.a.children << id
 	}
-	return t.a.add_node(flat.Node{
+	if_id := t.a.add_node(flat.Node{
 		kind:           .if_expr
 		children_start: if_start
 		children_count: flat.child_count(if_ids.len)
 	})
+	if cond_prelude.len > 0 {
+		cond_prelude << if_id
+		return t.make_block(cond_prelude)
+	}
+	return if_id
 }
 
 // build_return_match_type_branch_chain supports build_return_match_type_branch_chain handling.

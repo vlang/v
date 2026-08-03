@@ -5,7 +5,7 @@ import v3.pref
 import v3.types
 
 fn test_generic_sum_constructor_requires_monomorphization() {
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_markused_test.v')
+	src := os.join_path(os.temp_dir(), 'v3_generic_sum_markused_input.v')
 	os.write_file(src, '
 type Name[T] = T | int | string
 
@@ -31,7 +31,7 @@ fn main() {
 }
 
 fn test_inferred_generic_struct_init_requires_monomorphization() {
-	src := os.join_path(os.temp_dir(), 'v3_inferred_generic_struct_markused_test.v')
+	src := os.join_path(os.temp_dir(), 'v3_inferred_generic_struct_markused_input.v')
 	os.write_file(src, "
 struct Foo[T, U] {
 	a T

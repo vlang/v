@@ -28,6 +28,147 @@
 # passes - also fine, just logged) all hold. Any other shape exits 1.
 set -euo pipefail
 
+readonly EXPECTED_MACOSX_DEPLOYMENT_TARGET=10.13
+
+parse_macos_deployment_target() {
+  local label=$1
+
+  awk -v label="$label" '
+    function fail(message) {
+      print "::error::" label ": " message > "/dev/stderr"
+      failed = 1
+      exit 1
+    }
+
+    function finish_load_command() {
+      if (active_command != "" && target_field_count != 1) {
+        fail(active_command " must contain exactly one deployment-target field; found " target_field_count)
+      }
+      if (active_command == "LC_BUILD_VERSION" && platform_field_count != 1) {
+        fail("LC_BUILD_VERSION must contain exactly one platform field; found " platform_field_count)
+      }
+    }
+
+    $1 == "cmd" {
+      finish_load_command()
+      active_command = ""
+      target_field_count = 0
+      platform_field_count = 0
+      if ($2 == "LC_BUILD_VERSION" || $2 == "LC_VERSION_MIN_MACOSX") {
+        if (NF != 2) {
+          fail("deployment-target cmd line must contain exactly two fields")
+        }
+        deployment_command_count++
+        active_command = $2
+      }
+      next
+    }
+
+    active_command == "LC_BUILD_VERSION" && $1 == "platform" {
+      platform_field_count++
+      if (platform_field_count != 1 || NF != 2) {
+        fail("LC_BUILD_VERSION has a duplicate or malformed platform field")
+      }
+      # `otool -l` prints Mach-O PLATFORM_MACOS as the numeric value 1.
+      # Reject symbolic spellings and every other Apple platform value.
+      if ($2 != "1") {
+        fail("LC_BUILD_VERSION platform is not macOS (expected otool value 1, found " $2 ")")
+      }
+      next
+    }
+
+    active_command == "LC_BUILD_VERSION" && $1 == "minos" {
+      target_field_count++
+      if (target_field_count != 1 || NF != 2) {
+        fail("LC_BUILD_VERSION has a duplicate or malformed minos field")
+      }
+      deployment_target = $2
+      next
+    }
+
+    active_command == "LC_VERSION_MIN_MACOSX" && $1 == "version" {
+      target_field_count++
+      if (target_field_count != 1 || NF != 2) {
+        fail("LC_VERSION_MIN_MACOSX has a duplicate or malformed version field")
+      }
+      deployment_target = $2
+      next
+    }
+
+    END {
+      if (failed) {
+        exit 1
+      }
+      finish_load_command()
+      if (deployment_command_count != 1) {
+        fail("expected exactly one LC_BUILD_VERSION or LC_VERSION_MIN_MACOSX load command; found " deployment_command_count)
+      }
+      if (deployment_target == "") {
+        fail("deployment-target field is empty")
+      }
+      print deployment_target
+    }
+  '
+}
+
+validate_macos_load_commands() {
+  local label=$1
+  local deployment_target
+
+  if ! deployment_target=$(parse_macos_deployment_target "$label"); then
+    return 1
+  fi
+  if [ "$deployment_target" != "$EXPECTED_MACOSX_DEPLOYMENT_TARGET" ]; then
+    echo "::error::$label has macOS deployment target '$deployment_target'; expected exactly '$EXPECTED_MACOSX_DEPLOYMENT_TARGET'."
+    return 1
+  fi
+  echo "$label has exactly one macOS deployment-target load command at $deployment_target"
+}
+
+validate_macho_deployment_target() {
+  local artifact=$1
+  local load_commands
+
+  if [ ! -f "$artifact" ]; then
+    echo "::error::Mach-O deployment-target artifact is missing: $artifact"
+    return 1
+  fi
+  if ! load_commands=$(otool -l "$artifact" 2>&1); then
+    echo "::error::otool -l failed for $artifact:"
+    echo "$load_commands"
+    return 1
+  fi
+  if ! printf '%s\n' "$load_commands" | validate_macos_load_commands "$artifact"; then
+    return 1
+  fi
+
+  if command -v vtool >/dev/null 2>&1; then
+    echo "== vtool -show-build $artifact =="
+    if ! vtool -show-build "$artifact"; then
+      echo "::error::vtool -show-build failed for $artifact"
+      return 1
+    fi
+  elif [ "$(uname -s)" = Darwin ]; then
+    echo "::error::vtool is required to journal the build version on macOS, but it is unavailable"
+    return 1
+  else
+    echo "vtool unavailable off macOS; load-command parser remains authoritative for $artifact"
+  fi
+}
+
+# This mode exercises the exact fail-closed parser used below without
+# requiring a synthetic Mach-O binary. It is used by the workflow's
+# positive and negative load-command fixtures before either real bundle
+# validation runs.
+if [ "${1:-}" = '--validate-macho-load-command-fixture' ]; then
+  if [ "$#" -ne 2 ] || [ ! -f "$2" ]; then
+    echo "usage: $0 --validate-macho-load-command-fixture <otool-l-output>" >&2
+    exit 2
+  fi
+  validate_macos_load_commands "$2" < "$2"
+  exit
+fi
+
 TCC_FOLDER="${1:?usage: $0 <TCC_FOLDER>}"
 
 # TCC_FOLDER is passed both as a relative path (the in-tree build
@@ -58,6 +199,10 @@ case "$libgc_install_name" in
   @rpath/*) echo "libgc.dylib -> $libgc_dylib_target, install name $libgc_install_name (both confirmed)" ;;
   *) echo "::error::install name of $libgc_dylib_target is '$libgc_install_name', not @rpath/-relative."; exit 1 ;;
 esac
+
+echo "== verifying Mach-O deployment targets for the shipped executable and versioned dylib =="
+validate_macho_deployment_target "$TCC_FOLDER/tcc.exe"
+validate_macho_deployment_target "$TCC_FOLDER/lib/$libgc_dylib_target"
 
 echo "== validating the static libgc.a archive directly (ported verbatim from vlang/tccbin PR #74) =="
 # If the rebuild produced a structurally valid but empty or incomplete

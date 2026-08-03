@@ -55,6 +55,7 @@ fn main() {
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('intdirect[4]={0};')
+		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0},sizeof(direct));')
 		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0,0,0,0},sizeof(direct));'), generated
 
 	assert compact.contains('intwrapped[4]={0};') || compact.contains('intwrapped[4]={0,0,0,0};'), generated
@@ -91,7 +92,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_struct_field_${os.getpid()}')
 	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot initialize field `arr` with `&Arr`; expected `Arr`'), compile.output
+	assert compile.output.contains('cannot assign to field `arr`: expected `Arr`, not `&Arr`'), compile.output
 
 	assert !compile.output.contains('C compilation failed'), compile.output
 }

@@ -1011,7 +1011,13 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			t.set_var_type(closure_name, closure_type)
 			t.pending_stmts << t.make_decl_assign_typed(closure_name, transformed_callee,
 				closure_type)
-			t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
+			if t.in_spawn_expr {
+				// The spawn argument packet owns this runtime closure until the worker
+				// has invoked it.
+				t.mark_fn_used_name('closure.closure_try_destroy')
+			} else {
+				t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
+			}
 			transformed_callee = t.make_ident(closure_name)
 			t.set_node_typ(int(transformed_callee), closure_type)
 		}
@@ -2774,7 +2780,12 @@ fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.
 	} else if ret_type.len > 0 && ret_type != 'void' {
 		children << t.make_return(body_id, ret_type)
 	} else {
-		children << t.make_expr_stmt(body_id)
+		body := t.a.nodes[int(body_id)]
+		if body.kind == .block {
+			children << t.a.children_of(&body)
+		} else {
+			children << t.make_expr_stmt(body_id)
+		}
 	}
 	start := t.a.children.len
 	for child in children {
@@ -4513,18 +4524,33 @@ fn auto_str_helper_name(aggregate string) string {
 	return '__v3_autostr_${c_name(aggregate)}'
 }
 
+fn auto_str_helper_module(aggregate string, current_module string) string {
+	if aggregate.contains('.') {
+		return aggregate.all_before_last('.').all_after_last('.')
+	}
+	if current_module.len > 0 {
+		return current_module
+	}
+	return 'main'
+}
+
 fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate string) flat.NodeId {
 	helper := auto_str_helper_name(aggregate)
+	helper_module := auto_str_helper_module(aggregate, t.cur_module)
+	qualified_helper := if helper_module !in ['main', 'builtin'] {
+		'${helper_module}.${helper}'
+	} else {
+		helper
+	}
 	if aggregate !in t.auto_str_types {
-		helper_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
 		t.auto_str_types[aggregate] = AutoStrRequest{
 			module:        t.cur_module
 			file:          t.cur_file
 			helper_module: helper_module
 		}
 	}
-	t.mark_fn_used_name(helper)
-	return t.make_call_typed(helper, arr1(expr), 'string')
+	t.mark_fn_used_name(qualified_helper)
+	return t.make_call_typed(qualified_helper, arr1(expr), 'string')
 }
 
 fn (t &Transformer) has_pending_auto_str_helpers() bool {
@@ -4650,12 +4676,21 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 		children_start: i32(start)
 		children_count: flat.child_count(1 + stmts.len)
 	})
+	helper_key := if t.auto_str_helper_module !in ['', 'main', 'builtin'] {
+		'${t.auto_str_helper_module}.${helper}'
+	} else {
+		helper
+	}
 	t.fn_ret_types[helper] = 'string'
-	t.mark_fn_used_name(helper)
+	t.fn_ret_types[helper_key] = 'string'
+	t.mark_fn_used_name(helper_key)
 	if !isnil(t.tc) {
 		t.tc.fn_ret_types[helper] = t.tc.parse_type('string')
+		t.tc.fn_ret_types[helper_key] = t.tc.parse_type('string')
 		t.tc.fn_param_types[helper] = [t.tc.parse_type(aggregate)]
+		t.tc.fn_param_types[helper_key] = [t.tc.parse_type(aggregate)]
 		t.tc.fn_variadic[helper] = false
+		t.tc.fn_variadic[helper_key] = false
 	}
 }
 
@@ -5115,7 +5150,9 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	display := struct_string_display_name(struct_type)
 	mut result := t.make_string_literal('${display}{\n')
 	for field in info.fields {
-		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		field_type := t.lookup_struct_field_type(struct_type, field.name) or {
+			if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		}
 		if field_type.len == 0 {
 			continue
 		}
@@ -5833,6 +5870,7 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 	direct_pointer := t.sum_variant_is_direct_pointer(variant)
 	field_sel := t.make_selector_op(base, field,
 		if direct_pointer { variant } else { '&${variant}' }, .dot)
+	t.mark_generated_variant_access(field_sel, variant)
 	// Only statements created for THIS branch's payload conversion belong inside
 	// the branch; earlier pending statements (e.g. the base temp decl from
 	// lower_sum_str) must stay with the caller so they precede the whole if-chain.
@@ -7645,6 +7683,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		if smartcast_str := t.smartcast_sum_str_call(base_id) {
 			return smartcast_str
 		}
+		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id, 'str') {
+			return exact_call
+		}
 		mut raw_base_types := []string{}
 		for candidate in [t.raw_var_type_for_expr(base_id) or { '' },
 			t.node_type(base_id), t.lvalue_type(base_id)] {
@@ -8573,6 +8614,11 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		return t.make_compiler_default_map_clone_value(source, clean_type,
 			source_is_owned_temporary)
 	}
+	if fn_node.value == 'delete' {
+		if nested_delete := t.try_lower_nested_map_delete_call(node, base_id, clean_type) {
+			return nested_delete
+		}
+	}
 	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	base := t.stable_expr_for_reuse(base_id)
 	if map_method_needs_runtime_addr_only(fn_node.value) {
@@ -8893,7 +8939,14 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 		if resolved_method := t.tc.resolved_call_name(call_id) {
 			channel_method := 'chan.${fn_node.value}'
 			runtime_method := 'sync__Channel__${fn_node.value}'
-			if resolved_method != channel_method && resolved_method != runtime_method {
+			mut clean_resolved_method := resolved_method.trim_space()
+			for clean_resolved_method.starts_with('&') {
+				clean_resolved_method = clean_resolved_method[1..].trim_space()
+			}
+			is_typed_channel_method := clean_resolved_method.starts_with('chan ')
+				&& clean_resolved_method.ends_with('.${fn_node.value}')
+			if resolved_method != channel_method && resolved_method != runtime_method
+				&& !is_typed_channel_method {
 				if fn_node.value == 'close' {
 					if exact_call := t.lower_checker_selected_receiver_method(call_id, node,
 						base_id, 'chan.close')
@@ -11524,6 +11577,13 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	if receiver_name.len == 0 {
 		return true
 	}
+	mut checker_base_type := t.raw_checker_node_type(base_id)
+	for checker_base_type.starts_with('&') {
+		checker_base_type = checker_base_type[1..]
+	}
+	if receiver_name == checker_base_type {
+		return true
+	}
 	mut base_type := t.node_type(base_id)
 	if base_type.len == 0 && !isnil(t.tc) {
 		base_type = t.tc.resolve_type(base_id).name()
@@ -11537,6 +11597,12 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	}
 	if receiver_name == base_type {
 		return true
+	}
+	if !isnil(t.tc) {
+		resolved_base_type := t.tc.resolve_imported_type_text_in_file(base_type, t.cur_file)
+		if receiver_name == resolved_base_type {
+			return true
+		}
 	}
 	if !base_type.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' && receiver_name == '${t.cur_module}.${base_type}' {
@@ -12392,7 +12458,7 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 	}
 	if method !in ['replace', 'replace_once', 'trim', 'trim_left', 'trim_right', 'all_before',
 		'all_after', 'all_before_last', 'all_after_last', 'contains', 'starts_with', 'ends_with',
-		'bytes', 'substr', 'substr_unsafe', 'repeat', 'plus_two'] {
+		'bytes', 'substr', 'substr_unsafe', 'repeat', 'plus_two', 'count'] {
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
@@ -12408,9 +12474,11 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 	ret_type := match method {
 		'contains', 'starts_with', 'ends_with' { 'bool' }
 		'bytes' { '[]u8' }
+		'count' { 'int' }
 		else { 'string' }
 	}
 
+	t.mark_fn_used_name('string.${method}')
 	return t.make_call_typed('string__${method}', args, ret_type)
 }
 

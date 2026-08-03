@@ -46,7 +46,7 @@ fn main() {
 	_ := Color.from()
 }
 ',
-		'argument count mismatch for `Color.from`: expected 1, got 0')
+		'expected 1 argument, but got 0')
 	enum_from_arity_run_bad(v3_bin, 'bad_enum_from_extra_arg', 'enum Color {
 	red
 }
@@ -55,7 +55,7 @@ fn main() {
 	_ := Color.from(0, 1)
 }
 ',
-		'argument count mismatch for `Color.from`: expected 1, got 2')
+		'expected 1 argument, but got 2')
 	enum_from_arity_run_bad(v3_bin, 'bad_generic_enum_from_missing_arg', 'enum Color {
 	red
 }
@@ -68,7 +68,7 @@ fn main() {
 	parse[Color]()
 }
 ',
-		'argument count mismatch for `T.from`: expected 1, got 0')
+		'expected 1 argument, but got 0')
 	enum_from_arity_run_bad(v3_bin, 'bad_generic_enum_from_extra_arg', 'enum Color {
 	red
 }
@@ -81,7 +81,7 @@ fn main() {
 	parse[Color]("red")
 }
 ',
-		'argument count mismatch for `T.from`: expected 1, got 2')
+		'expected 1 argument, but got 2')
 }
 
 fn test_enum_from_validates_input_type_and_numeric_error() {

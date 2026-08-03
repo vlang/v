@@ -232,9 +232,20 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	mut source_type := t.node_type(id)
 	if node.kind == .call {
-		concrete_return_type := t.concrete_generic_call_return_type(id, node)
-		if concrete_return_type.len > 0 {
-			source_type = concrete_return_type
+		if fn_return_type := t.fn_value_call_return_type(node) {
+			resolved_return_type := if t.active_specialization_args.len > 0 {
+				t.subst_type(fn_return_type, t.active_specialization_args)
+			} else {
+				fn_return_type
+			}
+			if !t.generic_arg_is_unresolved(resolved_return_type) {
+				source_type = t.call_return_type_name(resolved_return_type, node)
+			}
+		} else {
+			concrete_return_type := t.concrete_generic_call_return_type(id, node)
+			if concrete_return_type.len > 0 {
+				source_type = concrete_return_type
+			}
 		}
 	}
 	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
@@ -251,8 +262,11 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			source_type = '&${t.trim_pointer_type(child_type)}'
 		}
 	}
-	if source_type.len == 0 {
-		source_type = t.checker_node_type(id)
+	if source_type.len == 0 || t.generic_arg_is_unresolved(source_type) {
+		checker_type := t.checker_node_type(id)
+		if checker_type.len > 0 && !t.generic_arg_is_unresolved(checker_type) {
+			source_type = checker_type
+		}
 	}
 	if target_is_ptr && source_type in ['nil', 'voidptr', '&void'] {
 		expr := t.transform_expr(id)

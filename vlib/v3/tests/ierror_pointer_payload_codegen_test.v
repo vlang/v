@@ -190,8 +190,8 @@ fn for_in_shadow_stable(stable &Holder) !int {
 	}
 	p := &holder.err
 	assert p.msg() == 'for shadow stack field'
-	for p in [&stable.err] {
-		return p
+	for stable_error in [&stable.err] {
+		return stable_error
 	}
 	return &stable.err
 }

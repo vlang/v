@@ -3,6 +3,19 @@ name: Update tccbin
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: 'Platform bundle to rebuild'
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - linux-amd64
+          - macos-amd64
+          - macos-arm64
+          - freebsd-amd64
+          - openbsd-amd64
+          - all
       tcc_commit:
         description: 'TinyCC ref, branch, or commit to build'
         required: false
@@ -11,6 +24,14 @@ on:
         description: 'bdwgc (Boehm GC) ref, branch, or commit to build - macOS amd64 only for now'
         required: false
         default: master
+      libatomic_ops_commit:
+        description: 'libatomic_ops ref, branch, or commit to build - macOS amd64 only for now'
+        required: false
+        default: master
+      expected_tccbin_head:
+        description: 'Expected current tccbin branch HEAD (required for a targeted publish)'
+        required: false
+        default: ''
       publish:
         description: 'Push the rebuilt bundle to vlang/tccbin'
         type: boolean
@@ -28,67 +49,181 @@ permissions:
   contents: read
 
 concurrency:
-  group: update-tccbin-${{ github.ref }}
+  group: update-tccbin
   cancel-in-progress: false
+  queue: max
 
 jobs:
-  update-tccbin-hosted:
-    if: github.repository == 'vlang/v' && (github.event_name != 'schedule' || github.ref == 'refs/heads/master')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: linux-amd64
-            os: ubuntu-latest
-            branch: thirdparty-linux-amd64
-            script: thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh
-          - id: macos-amd64
-            os: macos-15-intel
-            branch: thirdparty-macos-amd64
-            script: thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh
-          - id: macos-arm64
-            os: macos-latest
-            branch: thirdparty-macos-arm64
-            script: thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh
-    runs-on: ${{ matrix.os }}
-    env:
-      TCC_COMMIT: ${{ github.event.inputs.tcc_commit || 'mob' }}
-      LIBGC_COMMIT: ${{ github.event.inputs.libgc_commit || 'master' }}
-      TCCBIN_REPO: vlang/tccbin
-      PUBLISH: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'true' }}
-      FORCE_REBUILD: ${{ github.event.inputs.force_rebuild == 'true' }}
-      ## Bump whenever the macos-amd64 paired-rebuild recipe (this
-      ## workflow's macos-amd64-scoped steps, or the _bdwgc*.sh scripts
-      ## they call) changes materially, independent of any upstream
-      ## SHA - lets "Check whether rebuild is needed" force a rebuild on
-      ## a recipe change alone.
-      MACOS_AMD64_RECIPE_VERSION: "1"
-      ## Single source of truth for both halves of the macos-amd64
-      ## pair - passed explicitly to both scripts below rather than
-      ## relying on their own internal defaults, so this check step
-      ## and the actual build can never independently drift.
-      MACOSX_DEPLOYMENT_TARGET: "10.13"
+  control:
+    runs-on: ubuntu-latest
+    outputs:
+      target: ${{ steps.control.outputs.target }}
+      publish: ${{ steps.control.outputs.publish }}
+      force_rebuild: ${{ steps.control.outputs.force_rebuild }}
+      hosted_matrix: ${{ steps.control.outputs.hosted_matrix }}
+      bsd_matrix: ${{ steps.control.outputs.bsd_matrix }}
+      has_hosted: ${{ steps.control.outputs.has_hosted }}
+      has_bsd: ${{ steps.control.outputs.has_bsd }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Validate request and select build matrices
+        id: control
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_TARGET: ${{ inputs.target || 'none' }}
+          REQUESTED_PUBLISH: ${{ inputs.publish && 'true' || 'false' }}
+          REQUESTED_FORCE_REBUILD: ${{ inputs.force_rebuild && 'true' || 'false' }}
+          EXPECTED_TCCBIN_HEAD: ${{ inputs.expected_tccbin_head || '' }}
+          TCC_COMMIT: ${{ inputs.tcc_commit || 'mob' }}
+          LIBGC_COMMIT: ${{ inputs.libgc_commit || 'master' }}
+          LIBATOMIC_OPS_COMMIT: ${{ inputs.libatomic_ops_commit || 'master' }}
+          SCHEDULE_PUBLISH_UNLOCKED: ${{ vars.TCCBIN_SCHEDULE_PUBLISH_UNLOCKED }}
+        run: |
+          set -euo pipefail
 
-      - name: Test tccbin workflow preservation
-        if: matrix.id == 'linux-amd64'
-        run: bash thirdparty/build_scripts/tccbin_workflow_preservation_test.sh
+          # Keep execution authorization here. A fork-only validation
+          # commit may change the workflow_dispatch repository literal;
+          # the independent push guards below must remain vlang/v-only.
+          case "$EVENT_NAME:$GITHUB_REPOSITORY" in
+            workflow_dispatch:vlang/v)
+              ;;
+            schedule:vlang/v)
+              if [ "$GITHUB_REF" != 'refs/heads/master' ]; then
+                echo "::error::scheduled runs are only allowed on refs/heads/master"
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::this workflow event/repository combination is not authorized"
+              exit 1
+              ;;
+          esac
 
-      - name: Install macOS build dependencies
-        if: runner.os == 'macOS'
-        run: brew install make
+          case "$REQUESTED_PUBLISH:$REQUESTED_FORCE_REBUILD" in
+            true:true|true:false|false:true|false:false)
+              ;;
+            *)
+              echo "::error::publish and force_rebuild must be booleans"
+              exit 1
+              ;;
+          esac
 
-      - name: Install macOS build dependencies (bdwgc rebuild)
-        if: matrix.id == 'macos-amd64'
-        ## automake/libtool are needed by bdwgc's autogen.sh (aclocal,
-        ## libtoolize) - exact match to vlang/tccbin's own already-
-        ## proven CI step for this same rebuild.
-        run: brew install make automake libtool
+          if [ "$EVENT_NAME" = 'schedule' ]; then
+            target=all
+            force_rebuild=false
+            publish=false
+            if [ "$SCHEDULE_PUBLISH_UNLOCKED" = 'true' ]; then
+              publish=true
+            fi
+          else
+            target=$REQUESTED_TARGET
+            force_rebuild=$REQUESTED_FORCE_REBUILD
+            publish=$REQUESTED_PUBLISH
 
+            case "$target" in
+              linux-amd64|macos-amd64|macos-arm64|freebsd-amd64|openbsd-amd64|all)
+                ;;
+              none)
+                echo "::error::target=none is fail-closed; select an explicit target"
+                exit 1
+                ;;
+              *)
+                echo "::error::invalid target: $target"
+                exit 1
+                ;;
+            esac
+
+            if [ "$publish" = 'true' ] && [ "$GITHUB_REF" != 'refs/heads/master' ]; then
+              echo "::error::manual publication is only allowed from refs/heads/master"
+              exit 1
+            fi
+            if [ "$publish" = 'true' ] && [ "$target" = 'all' ]; then
+              echo "::error::manual target=all publication is not supported"
+              exit 1
+            fi
+            if [ "$publish" = 'true' ] && [ -z "$EXPECTED_TCCBIN_HEAD" ]; then
+              echo "::error::expected_tccbin_head is required for publication"
+              exit 1
+            fi
+          fi
+
+          if [ -n "$EXPECTED_TCCBIN_HEAD" ] \
+            && [[ ! "$EXPECTED_TCCBIN_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_tccbin_head must be a full lowercase commit SHA"
+            exit 1
+          fi
+
+          hosted_matrix='{"include":[]}'
+          bsd_matrix='{"include":[]}'
+          has_hosted=false
+          has_bsd=false
+
+          case "$target" in
+            linux-amd64)
+              hosted_matrix='{"include":[{"id":"linux-amd64","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"}]}'
+              has_hosted=true
+              ;;
+            macos-amd64)
+              hosted_matrix='{"include":[{"id":"macos-amd64","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"}]}'
+              has_hosted=true
+              ;;
+            macos-arm64)
+              hosted_matrix='{"include":[{"id":"macos-arm64","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
+              has_hosted=true
+              ;;
+            freebsd-amd64)
+              bsd_matrix='{"include":[{"id":"freebsd-amd64","operating_system":"freebsd","version":"15.1","branch":"thirdparty-freebsd-amd64","script":"thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh","install":"sudo pkg install -y bash git gmake rsync","cc":"cc"}]}'
+              has_bsd=true
+              ;;
+            openbsd-amd64)
+              bsd_matrix='{"include":[{"id":"openbsd-amd64","operating_system":"openbsd","version":"7.8","branch":"thirdparty-openbsd-amd64","script":"thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh","install":"sudo pkg_add bash git gmake rsync","cc":"clang"}]}'
+              has_bsd=true
+              ;;
+            all)
+              hosted_matrix='{"include":[{"id":"linux-amd64","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"},{"id":"macos-amd64","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"},{"id":"macos-arm64","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
+              bsd_matrix='{"include":[{"id":"freebsd-amd64","operating_system":"freebsd","version":"15.1","branch":"thirdparty-freebsd-amd64","script":"thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh","install":"sudo pkg install -y bash git gmake rsync","cc":"cc"},{"id":"openbsd-amd64","operating_system":"openbsd","version":"7.8","branch":"thirdparty-openbsd-amd64","script":"thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh","install":"sudo pkg_add bash git gmake rsync","cc":"clang"}]}'
+              has_hosted=true
+              has_bsd=true
+              ;;
+          esac
+
+          {
+            echo "target=$target"
+            echo "publish=$publish"
+            echo "force_rebuild=$force_rebuild"
+            echo "hosted_matrix=$hosted_matrix"
+            echo "bsd_matrix=$bsd_matrix"
+            echo "has_hosted=$has_hosted"
+            echo "has_bsd=$has_bsd"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "event=$EVENT_NAME"
+          echo "target=$target"
+          echo "publish=$publish"
+          echo "force_rebuild=$force_rebuild"
+          echo "tcc_commit=$TCC_COMMIT"
+          echo "libgc_commit=$LIBGC_COMMIT"
+          echo "libatomic_ops_commit=$LIBATOMIC_OPS_COMMIT"
+          if [ -n "$EXPECTED_TCCBIN_HEAD" ]; then
+            echo "expected_tccbin_head=$EXPECTED_TCCBIN_HEAD"
+          else
+            echo "expected_tccbin_head=<unset>"
+          fi
+
+  resolve-sources:
+    needs: control
+    if: needs.control.outputs.has_hosted == 'true' || needs.control.outputs.has_bsd == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      tinycc_hash: ${{ steps.tinycc.outputs.hash }}
+      libgc_hash: ${{ steps.bdwgc.outputs.libgc_hash }}
+      libatomic_ops_hash: ${{ steps.bdwgc.outputs.libatomic_ops_hash }}
+    steps:
       - name: Resolve TinyCC source hash
         id: tinycc
         shell: bash
+        env:
+          TCC_COMMIT: ${{ inputs.tcc_commit || 'mob' }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
@@ -106,16 +241,13 @@ jobs:
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
           echo "TinyCC $TCC_COMMIT resolves to $hash"
 
-      # Resolved once, here, and passed through explicitly as
-      # LIBGC_COMMIT into thirdparty-macos-amd64_bdwgc.sh below (which
-      # checks out this exact SHA, not a re-fetched floating ref) - so
-      # the rebuild-decision fingerprint and the actual build can never
-      # silently drift apart if LIBGC_COMMIT/libatomic_ops's default
-      # branch moves between resolving and building.
-      - name: Resolve bdwgc/libatomic_ops source hashes
-        if: matrix.id == 'macos-amd64'
+      - name: Resolve bdwgc and libatomic_ops source hashes
+        if: needs.control.outputs.target == 'macos-amd64' || needs.control.outputs.target == 'all'
         id: bdwgc
         shell: bash
+        env:
+          LIBGC_COMMIT: ${{ inputs.libgc_commit || 'master' }}
+          LIBATOMIC_OPS_COMMIT: ${{ inputs.libatomic_ops_commit || 'master' }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
@@ -143,30 +275,229 @@ jobs:
             fi
             sleep "$((attempt * 5))"
           done
-          git -C /tmp/libatomic_ops-ref checkout --quiet master
+          git -C /tmp/libatomic_ops-ref checkout --quiet "$LIBATOMIC_OPS_COMMIT"
           libatomic_ops_hash="$(git -C /tmp/libatomic_ops-ref rev-parse HEAD)"
           echo "libatomic_ops_hash=$libatomic_ops_hash" >> "$GITHUB_OUTPUT"
-          echo "libatomic_ops master resolves to $libatomic_ops_hash"
+          echo "libatomic_ops $LIBATOMIC_OPS_COMMIT resolves to $libatomic_ops_hash"
+
+  update-tccbin-hosted:
+    needs:
+      - control
+      - resolve-sources
+    if: needs.control.outputs.has_hosted == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.control.outputs.hosted_matrix) }}
+    runs-on: ${{ matrix.os }}
+    env:
+      TARGET: ${{ needs.control.outputs.target }}
+      TCC_COMMIT: ${{ needs.resolve-sources.outputs.tinycc_hash }}
+      LIBGC_COMMIT: ${{ needs.resolve-sources.outputs.libgc_hash }}
+      LIBATOMIC_OPS_COMMIT: ${{ needs.resolve-sources.outputs.libatomic_ops_hash }}
+      EXPECTED_TCCBIN_HEAD: ${{ inputs.expected_tccbin_head || '' }}
+      TCCBIN_REPO: vlang/tccbin
+      PUBLISH: ${{ needs.control.outputs.publish }}
+      FORCE_REBUILD: ${{ needs.control.outputs.force_rebuild }}
+      ## Bump whenever the macos-amd64 paired-rebuild recipe (this
+      ## workflow's macos-amd64-scoped steps, or the _bdwgc*.sh scripts
+      ## they call) changes materially, independent of any upstream
+      ## SHA - lets "Check whether rebuild is needed" force a rebuild on
+      ## a recipe change alone.
+      MACOS_AMD64_RECIPE_VERSION: '2'
+      ## Single source of truth for both halves of the macos-amd64
+      ## pair - passed explicitly to both scripts below rather than
+      ## relying on their own internal defaults, so this check step
+      ## and the actual build can never independently drift.
+      MACOSX_DEPLOYMENT_TARGET: '10.13'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test tccbin workflow preservation
+        if: matrix.id == 'linux-amd64'
+        run: bash thirdparty/build_scripts/tccbin_workflow_preservation_test.sh
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install make
+
+      - name: Install macOS build dependencies (bdwgc rebuild)
+        if: matrix.id == 'macos-amd64'
+        ## automake/libtool are needed by bdwgc's autogen.sh (aclocal,
+        ## libtoolize) - exact match to vlang/tccbin's own already-
+        ## proven CI step for this same rebuild.
+        run: brew install make automake libtool
+
+      - name: Test macOS deployment-target load-command parser
+        if: matrix.id == 'macos-amd64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          validator=thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc_validate.sh
+          fixture_dir=$(mktemp -d)
+          trap 'rm -rf "$fixture_dir"' EXIT
+
+          cat > "$fixture_dir/build-version-10.13.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION
+            cmdsize 32
+           platform 1
+              minos 10.13
+                sdk 15.0
+             ntools 1
+          EOF
+          cat > "$fixture_dir/version-min-10.13.txt" <<'EOF'
+          Load command 8
+                cmd LC_VERSION_MIN_MACOSX
+            cmdsize 16
+            version 10.13
+                sdk 15.0
+          EOF
+          : > "$fixture_dir/empty.txt"
+          cat > "$fixture_dir/duplicate.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION
+            cmdsize 32
+           platform 1
+              minos 10.13
+                sdk 15.0
+             ntools 0
+          Load command 9
+                cmd LC_VERSION_MIN_MACOSX
+            cmdsize 16
+            version 10.13
+                sdk 15.0
+          EOF
+          cat > "$fixture_dir/version-min-10.6.txt" <<'EOF'
+          Load command 8
+                cmd LC_VERSION_MIN_MACOSX
+            cmdsize 16
+            version 10.6
+                sdk 15.0
+          EOF
+          cat > "$fixture_dir/build-version-ios.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION
+            cmdsize 24
+           platform 2
+              minos 10.13
+                sdk 15.0
+             ntools 0
+          EOF
+          cat > "$fixture_dir/build-version-platform-missing.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION
+            cmdsize 24
+              minos 10.13
+                sdk 15.0
+             ntools 0
+          EOF
+          cat > "$fixture_dir/build-version-platform-duplicate.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION
+            cmdsize 24
+           platform 1
+           platform 1
+              minos 10.13
+                sdk 15.0
+             ntools 0
+          EOF
+          cat > "$fixture_dir/build-version-platform-malformed.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION
+            cmdsize 24
+           platform 1 trailing-field
+              minos 10.13
+                sdk 15.0
+             ntools 0
+          EOF
+          cat > "$fixture_dir/build-version-platform-symbolic.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION
+            cmdsize 24
+           platform MACOS
+              minos 10.13
+                sdk 15.0
+             ntools 0
+          EOF
+          cat > "$fixture_dir/build-version-cmd-malformed.txt" <<'EOF'
+          Load command 8
+                cmd LC_BUILD_VERSION trailing-field
+            cmdsize 24
+           platform 1
+              minos 10.13
+                sdk 15.0
+             ntools 0
+          EOF
+
+          bash "$validator" --validate-macho-load-command-fixture \
+            "$fixture_dir/build-version-10.13.txt"
+          bash "$validator" --validate-macho-load-command-fixture \
+            "$fixture_dir/version-min-10.13.txt"
+
+          expect_rejected() {
+            local fixture=$1
+            local output
+            local status
+            set +e
+            output=$(bash "$validator" --validate-macho-load-command-fixture "$fixture" 2>&1)
+            status=$?
+            set -e
+            echo "$output"
+            if [ "$status" -eq 0 ]; then
+              echo "::error::deployment-target parser falsely accepted $fixture"
+              return 1
+            fi
+          }
+
+          expect_rejected "$fixture_dir/empty.txt"
+          expect_rejected "$fixture_dir/duplicate.txt"
+          expect_rejected "$fixture_dir/version-min-10.6.txt"
+          expect_rejected "$fixture_dir/build-version-ios.txt"
+          expect_rejected "$fixture_dir/build-version-platform-missing.txt"
+          expect_rejected "$fixture_dir/build-version-platform-duplicate.txt"
+          expect_rejected "$fixture_dir/build-version-platform-malformed.txt"
+          expect_rejected "$fixture_dir/build-version-platform-symbolic.txt"
+          expect_rejected "$fixture_dir/build-version-cmd-malformed.txt"
+
+      - name: Clone resolved TinyCC source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if git clone --quiet https://repo.or.cz/tinycc.git /tmp/tinycc-ref; then
+              break
+            fi
+            rm -rf /tmp/tinycc-ref
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+          git -C /tmp/tinycc-ref checkout --quiet "$TCC_COMMIT"
+          test "$(git -C /tmp/tinycc-ref rev-parse HEAD)" = "$TCC_COMMIT"
 
       - name: Clone tccbin branch
         id: tccbin
         shell: bash
-        env:
-          TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
         run: |
           set -euo pipefail
           git clone --branch "${{ matrix.branch }}" --depth=1 \
             "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
           echo "base_commit=$(git -C thirdparty/tcc rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "workflow_tree=$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)" >> "$GITHUB_OUTPUT"
-          if [ "$PUBLISH" = 'true' ]; then
-            if [ -z "$TCCBIN_TOKEN" ]; then
-              echo "::error::VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}"
-              exit 1
-            fi
-            git -C thirdparty/tcc remote set-url origin \
-              "https://vlang-bot:${TCCBIN_TOKEN}@github.com/${TCCBIN_REPO}.git"
+
+      - name: Verify expected tccbin branch HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_head="$(git -C thirdparty/tcc rev-parse HEAD)"
+          if [ -n "$EXPECTED_TCCBIN_HEAD" ] && [ "$actual_head" != "$EXPECTED_TCCBIN_HEAD" ]; then
+            echo "::error::tccbin/${{ matrix.branch }} moved: expected $EXPECTED_TCCBIN_HEAD, got $actual_head"
+            exit 1
           fi
+          echo "tccbin/${{ matrix.branch }} base HEAD: $actual_head"
 
       - name: Check whether rebuild is needed
         id: rebuild
@@ -176,9 +507,9 @@ jobs:
           skip=false
           if [ "$FORCE_REBUILD" != 'true' ] \
             && [ -f thirdparty/tcc/build_source_hash.txt ] \
-            && [ "$(cat thirdparty/tcc/build_source_hash.txt)" = "${{ steps.tinycc.outputs.hash }}" ]; then
+            && [ "$(cat thirdparty/tcc/build_source_hash.txt)" = "$TCC_COMMIT" ]; then
             skip=true
-            echo "tccbin/${{ matrix.branch }} already has TinyCC ${{ steps.tinycc.outputs.hash }}"
+            echo "tccbin/${{ matrix.branch }} already has TinyCC $TCC_COMMIT"
           fi
 
           # macos-amd64 ships a PAIR (tcc.exe + libgc) - a TinyCC-only
@@ -191,10 +522,10 @@ jobs:
           if [ "${{ matrix.id }}" = 'macos-amd64' ] && [ "$skip" = 'true' ]; then
             reason=""
             if [ ! -f thirdparty/tcc/lib/libgc_build_source_hash.txt ] \
-              || [ "$(cat thirdparty/tcc/lib/libgc_build_source_hash.txt)" != "${{ steps.bdwgc.outputs.libgc_hash }}" ]; then
+              || [ "$(cat thirdparty/tcc/lib/libgc_build_source_hash.txt)" != "$LIBGC_COMMIT" ]; then
               reason="bdwgc hash mismatch or missing"
             elif [ ! -f thirdparty/tcc/lib/libgc_build_libatomic_ops_source_hash.txt ] \
-              || [ "$(cat thirdparty/tcc/lib/libgc_build_libatomic_ops_source_hash.txt)" != "${{ steps.bdwgc.outputs.libatomic_ops_hash }}" ]; then
+              || [ "$(cat thirdparty/tcc/lib/libgc_build_libatomic_ops_source_hash.txt)" != "$LIBATOMIC_OPS_COMMIT" ]; then
               reason="libatomic_ops hash mismatch or missing"
             elif [ ! -f thirdparty/tcc/build_macosx_deployment_target.txt ] \
               || [ "$(cat thirdparty/tcc/build_macosx_deployment_target.txt)" != "$MACOSX_DEPLOYMENT_TARGET" ]; then
@@ -210,6 +541,8 @@ jobs:
               reason="libgc.dylib missing or not a valid symlink"
             elif [ ! -f thirdparty/tcc/bundle_checksums.txt ]; then
               reason="bundle_checksums.txt missing"
+            elif ! (cd thirdparty/tcc && shasum -a 256 -c bundle_checksums.txt); then
+              reason="bundle checksum verification failed"
             fi
             if [ -n "$reason" ]; then
               echo "macos-amd64 pair fingerprint mismatch ($reason) - forcing rebuild despite TinyCC hash match"
@@ -238,7 +571,7 @@ jobs:
         run: |
           set -euo pipefail
           TCC_FOLDER=thirdparty/tcc bash "${{ matrix.script }}"
-          test "$(cat thirdparty/tcc/build_source_hash.txt)" = "${{ steps.tinycc.outputs.hash }}"
+          test "$(cat thirdparty/tcc/build_source_hash.txt)" = "$TCC_COMMIT"
           thirdparty/tcc/tcc.exe --version
           thirdparty/tcc/tcc.exe -v -v
           cat > /tmp/tcc-stdatomic-smoke.c <<'EOF'
@@ -266,15 +599,22 @@ jobs:
         env:
           CC: clang
           TCC_FOLDER: thirdparty/tcc
-          LIBGC_COMMIT: ${{ steps.bdwgc.outputs.libgc_hash }}
-          LIBATOMIC_OPS_COMMIT: ${{ steps.bdwgc.outputs.libatomic_ops_hash }}
           RECIPE_VERSION: ${{ env.MACOS_AMD64_RECIPE_VERSION }}
         run: bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc.sh
 
       - name: Validate staged tcc.exe + libgc pairing (build directory)
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
         shell: bash
-        run: bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc_validate.sh thirdparty/tcc
+        run: |
+          set -euo pipefail
+          validation_log="$(mktemp)"
+          trap 'rm -f "$validation_log"' EXIT
+          bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc_validate.sh thirdparty/tcc \
+            2>&1 | tee "$validation_log"
+          if grep -Fq 'Static libgc.a linking now succeeds on macOS amd64' "$validation_log"; then
+            echo "::error::static libgc.a XPASS requires a separate gate update before publication"
+            exit 1
+          fi
 
       - name: Record bundle checksums
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
@@ -325,8 +665,6 @@ jobs:
           git add -A -- 'lib/libgc*.dylib' 'lib/libgc*.a' lib/libgc_build_*.txt bundle_checksums.txt build_macosx_deployment_target.txt build_toolchain_identity.txt
           git status --porcelain
           git commit -m "pair libgc rebuild (bdwgc $LIBGC_COMMIT) with this tcc.exe rebuild"
-        env:
-          LIBGC_COMMIT: ${{ steps.bdwgc.outputs.libgc_hash }}
 
       - name: Clone a fresh, independent checkout of the new commit
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
@@ -349,15 +687,17 @@ jobs:
       - name: Re-validate against the fresh, independent checkout
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
         shell: bash
-        run: bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc_validate.sh /tmp/tccbin-fresh-checkout
+        run: |
+          set -euo pipefail
+          validation_log="$(mktemp)"
+          trap 'rm -f "$validation_log"' EXIT
+          bash thirdparty/build_scripts/thirdparty-macos-amd64_bdwgc_validate.sh /tmp/tccbin-fresh-checkout \
+            2>&1 | tee "$validation_log"
+          if grep -Fq 'Static libgc.a linking now succeeds on macOS amd64' "$validation_log"; then
+            echo "::error::static libgc.a XPASS requires a separate gate update before publication"
+            exit 1
+          fi
 
-      # Deliverable A (this PR) does not include the V selector change
-      # (deliverable C, vlib/builtin/builtin_d_gcboehm.c.v) - it merges
-      # separately, only after this pair is published and vlang/tccbin's
-      # gate is confirmed green under it. To actually exercise the
-      # dylib pairing here, apply that selector collapse to an entirely
-      # separate, freshly-cloned vlang/v workspace, in memory only -
-      # never written back to this checkout, never committed anywhere.
       # This clone's own thirdparty/tcc has nothing to do with the
       # bundle staged above (a brand new clone doesn't have one yet),
       # so letting `make`'s default target bootstrap it normally here
@@ -386,31 +726,75 @@ jobs:
           git clone --quiet "https://github.com/${{ github.repository }}" /tmp/v-bootstrap-workspace
           git -C /tmp/v-bootstrap-workspace checkout --quiet "${{ github.sha }}"
 
-          python3 - <<'PYEOF'
-          path = "/tmp/v-bootstrap-workspace/vlib/builtin/builtin_d_gcboehm.c.v"
-          with open(path, "r", encoding="utf-8", newline="") as f:
-              content = f.read()
-          old = ('\t\t\t\t\t\t$if arm64 {\n'
-                 '\t\t\t\t\t\t\t// tcc on macOS arm64 can leave the bundled GC archive symbols unresolved.\n'
-                 '\t\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib\n'
-                 '\t\t\t\t\t\t\t#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"\n'
-                 '\t\t\t\t\t\t} $else {\n'
-                 '\t\t\t\t\t\t\t// macOS amd64 tccbin only ships libgc.a (no .dylib).\n'
-                 '\t\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a\n'
-                 '\t\t\t\t\t\t}\n')
-          new = ('\t\t\t\t\t\t// SMOKE-TEST-ONLY PATCH (thirdparty-macos-amd64_bdwgc_validate.sh\n'
-                 '\t\t\t\t\t\t// caller) - never committed. Deliverable C applies this for real.\n'
-                 '\t\t\t\t\t\t#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib\n'
-                 '\t\t\t\t\t\t#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"\n')
-          count = content.count(old)
-          assert count == 1, f"expected exactly 1 occurrence of the selector block to patch, found {count}"
-          content = content.replace(old, new)
-          with open(path, "w", encoding="utf-8", newline="") as f:
-              f.write(content)
-          print("smoke-test-only selector patch applied in isolated workspace")
-          PYEOF
-
           (cd /tmp/v-bootstrap-workspace && make -j4)
+
+      - name: Prove a failing TCC cannot fall back to another compiler
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          failing_tcc_dir=/tmp/v-intentionally-failing-tcc
+          failing_tcc="$failing_tcc_dir/tcc.exe"
+          invocation_marker=/tmp/v-intentionally-failing-tcc-invoked
+          negative_binary=/tmp/v-no-tcc-fallback-probe
+          mkdir -p "$failing_tcc_dir"
+          rm -f "$invocation_marker" "$negative_binary"
+          cat > "$failing_tcc" <<'EOF'
+          #!/bin/sh
+          printf '%s\n' "$@" > /tmp/v-intentionally-failing-tcc-invoked
+          echo "tcc: error: intentional no-fallback probe failure" >&2
+          exit 86
+          EOF
+          chmod 700 "$failing_tcc"
+          cat > /tmp/v-no-tcc-fallback-probe.v <<'EOF'
+          module main
+
+          fn main() {
+              println('this binary must never be produced')
+          }
+          EOF
+
+          set +e
+          negative_output=$(
+            /tmp/v-bootstrap-workspace/v \
+              -cc "$failing_tcc" \
+              -gc none \
+              -showcc \
+              -no-retry-compilation \
+              -no-rsp \
+              -o "$negative_binary" \
+              /tmp/v-no-tcc-fallback-probe.v 2>&1
+          )
+          negative_status=$?
+          set -e
+          echo "$negative_output"
+
+          if [ ! -f "$invocation_marker" ]; then
+            echo "::error::the intentionally failing TCC was never invoked"
+            exit 1
+          fi
+          if ! grep -Eq '\.c$' "$invocation_marker"; then
+            echo "::error::the intentionally failing TCC did not receive a generated C source"
+            exit 1
+          fi
+          if [ "$negative_status" -eq 0 ]; then
+            echo "::error::V reported success after the intentionally failing TCC"
+            exit 1
+          fi
+          if [ -e "$negative_binary" ]; then
+            echo "::error::a binary was produced after the intentionally failing TCC"
+            exit 1
+          fi
+          if ! grep -Fq 'intentional no-fallback probe failure' <<< "$negative_output"; then
+            echo "::error::the intentionally failing TCC error was not propagated"
+            exit 1
+          fi
+          if grep -Eiq 'falling back to|retrying with|fallback compiler|backup compiler' \
+            <<< "$negative_output"; then
+            echo "::error::V attempted a compiler fallback despite -no-retry-compilation"
+            exit 1
+          fi
+          echo "confirmed: the failing TCC produced neither a fallback nor a binary"
 
       - name: Real V + tcc + boehm compile-and-execute smoke test
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
@@ -445,32 +829,519 @@ jobs:
           }
           EOF
 
-          showcc_output=$(/tmp/v-bootstrap-workspace/v -cc tcc -gc boehm -showcc -o /tmp/tcc_boehm_gc_smoke /tmp/tcc_boehm_gc_smoke.v 2>&1)
+          showcc_output=$(
+            /tmp/v-bootstrap-workspace/v \
+              -cc tcc \
+              -gc boehm \
+              -showcc \
+              -no-retry-compilation \
+              -no-rsp \
+              -o /tmp/tcc_boehm_gc_smoke \
+              /tmp/tcc_boehm_gc_smoke.v 2>&1
+          )
           echo "$showcc_output"
-          /tmp/tcc_boehm_gc_smoke
 
           # @VEXEROOT resolves relative to the isolated workspace (where
           # ./v itself lives and runs from), NOT this job's own working
           # directory - the staged bundle only got copied into the
           # isolated workspace's thirdparty/tcc, so that's the path a
           # correct run must actually reference.
-          expected_tcc="/tmp/v-bootstrap-workspace/thirdparty/tcc/tcc.exe"
-          case "$showcc_output" in
-            *"$expected_tcc"*) echo "confirmed: used the staged tcc.exe at $expected_tcc" ;;
-            *) echo "::error::-showcc output does not reference the staged tcc.exe ($expected_tcc) - the smoke test may have compiled with a different compiler entirely."; exit 1 ;;
-          esac
-          case "$showcc_output" in
-            *"libgc.dylib"*) ;;
-            *) echo "::error::-showcc output does not mention libgc.dylib - the smoke test did not actually link against the dylib."; exit 1 ;;
-          esac
-          case "$showcc_output" in
-            *"-rpath"*) ;;
-            *) echo "::error::-showcc output does not include an -rpath flag - the dylib would not be locatable at runtime outside this exact CI job."; exit 1 ;;
-          esac
-          case "$showcc_output" in
-            *"libgc.a"*) echo "::error::-showcc output mentions libgc.a - the smoke test linked the static archive, not the dylib, contradicting the whole point of this validation."; exit 1 ;;
-            *) echo "confirmed: libgc.a does not appear in the link line" ;;
-          esac
+          expected_tcc_root="$(cd /tmp/v-bootstrap-workspace/thirdparty/tcc && pwd -P)"
+          expected_tcc="$expected_tcc_root/tcc.exe"
+          expected_libgc="$expected_tcc_root/lib/libgc.dylib"
+          expected_rpath="$expected_tcc_root/lib"
+          if grep -Eiq 'falling back to|retrying with|fallback compiler|backup compiler' \
+            <<< "$showcc_output"; then
+            echo "::error::V attempted a compiler fallback during the real smoke test"
+            exit 1
+          fi
+
+          SHOWCC_OUTPUT="$showcc_output" \
+            EXPECTED_TCC="$expected_tcc" \
+            EXPECTED_LIBGC="$expected_libgc" \
+            EXPECTED_RPATH="$expected_rpath" \
+            EXPECTED_BINARY=/tmp/tcc_boehm_gc_smoke \
+            python3 - <<'PYEOF'
+          import os
+          import shlex
+          import sys
+
+          prefix = '> C compiler cmd: '
+          expected_binary = os.environ['EXPECTED_BINARY']
+          expected_tcc = os.environ['EXPECTED_TCC']
+          expected_libgc = os.environ['EXPECTED_LIBGC']
+          expected_rpath = f"-Wl,-rpath,{os.environ['EXPECTED_RPATH']}"
+
+
+          class ValidationError(Exception):
+              def __init__(self, kind, message):
+                  super().__init__(message)
+                  self.kind = kind
+
+
+          # This raw allowlist is deliberately narrower than shell syntax and
+          # applies even inside quotes. It admits only the ASCII characters
+          # needed by this one fixed-format V compiler command. In particular,
+          # glob/brace expansion cannot turn an apparently harmless token into
+          # an @response-file token between validation and shell execution.
+          allowed_ascii_punctuation = frozenset(" \t/._,+-=:'\"")
+
+
+          def is_allowed_raw_character(character):
+              return (
+                  'a' <= character <= 'z'
+                  or 'A' <= character <= 'Z'
+                  or '0' <= character <= '9'
+                  or character in allowed_ascii_punctuation
+              )
+
+
+          def validate_raw_command(raw_command):
+              for index, character in enumerate(raw_command):
+                  if not is_allowed_raw_character(character):
+                      raise ValidationError(
+                          'raw-character',
+                          f'forbidden raw character U+{ord(character):04X} '
+                          f'at offset {index} in -showcc command',
+                      )
+
+
+          def tokenize_command(raw_command):
+              validate_raw_command(raw_command)
+              try:
+                  tokens = shlex.split(raw_command, comments=False, posix=True)
+              except ValueError as error:
+                  raise ValidationError(
+                      'tokenization',
+                      f'could not tokenize -showcc compiler command: {error}',
+                  ) from error
+              response_tokens = [token for token in tokens if token.startswith('@')]
+              if response_tokens:
+                  raise ValidationError(
+                      'response-file',
+                      f'response-file token(s) are forbidden: {response_tokens!r}',
+                  )
+              return tokens
+
+
+          def validate_showcc(showcc_output):
+              if '\n' in showcc_output or '\r' in showcc_output:
+                  raise ValidationError(
+                      'raw-character',
+                      'line breaks are forbidden in -showcc output',
+                  )
+              if not showcc_output.startswith(prefix) or showcc_output.count(prefix) != 1:
+                  raise ValidationError(
+                      'command-count',
+                      'expected exactly one standalone -showcc compiler command',
+                  )
+              tokens = tokenize_command(showcc_output[len(prefix):])
+
+              joined_output_tokens = [
+                  token for token in tokens
+                  if token.startswith('-o') and token != '-o'
+              ]
+              if joined_output_tokens:
+                  raise ValidationError(
+                      'output-joined',
+                      f'joined TinyCC output option(s) are forbidden: '
+                      f'{joined_output_tokens!r}',
+                  )
+              output_count = tokens.count('-o')
+              if output_count != 1:
+                  raise ValidationError(
+                      'output-arity',
+                      f'expected exactly one -o token, found {output_count}',
+                  )
+              output_pair_count = sum(
+                  tokens[index] == '-o' and tokens[index + 1] == expected_binary
+                  for index in range(len(tokens) - 1)
+              )
+              if output_pair_count != 1:
+                  raise ValidationError(
+                      'output-pair',
+                      f'expected exactly one adjacent -o {expected_binary!r} pair, '
+                      f'found {output_pair_count}',
+                  )
+
+              tcc_count = tokens.count(expected_tcc)
+              if tcc_count != 1:
+                  raise ValidationError(
+                      'compiler-arity',
+                      f'expected exactly one TCC token {expected_tcc!r}, found {tcc_count}',
+                  )
+              if not tokens or tokens[0] != expected_tcc:
+                  actual = tokens[0] if tokens else '<missing>'
+                  raise ValidationError(
+                      'compiler-position',
+                      f'compiler token is {actual!r}, expected {expected_tcc!r}',
+                  )
+
+              failures = []
+              if tokens.count(expected_libgc) != 1:
+                  failures.append(
+                      f'expected exactly one libgc token {expected_libgc!r}, '
+                      f'found {tokens.count(expected_libgc)}'
+                  )
+              if tokens.count(expected_rpath) != 1:
+                  failures.append(
+                      f'expected exactly one rpath token {expected_rpath!r}, '
+                      f'found {tokens.count(expected_rpath)}'
+                  )
+              near_tcc = [
+                  token for token in tokens
+                  if token.startswith(expected_tcc) and token != expected_tcc
+              ]
+              near_libgc = [
+                  token for token in tokens
+                  if token.startswith(expected_libgc) and token != expected_libgc
+              ]
+              near_rpath = [
+                  token for token in tokens
+                  if token.startswith(expected_rpath) and token != expected_rpath
+              ]
+              if near_tcc:
+                  failures.append(f'rejected near-match TCC token(s): {near_tcc!r}')
+              if near_libgc:
+                  failures.append(f'rejected near-match libgc token(s): {near_libgc!r}')
+              if near_rpath:
+                  failures.append(f'rejected near-match rpath token(s): {near_rpath!r}')
+              if any('libgc.a' in token for token in tokens):
+                  failures.append('the compiler command contains a static libgc.a token')
+              if failures:
+                  raise ValidationError('link-contract', '; '.join(failures))
+              return tokens
+
+
+          def render_probe(tokens):
+              return prefix + ' '.join(shlex.quote(token) for token in tokens)
+
+
+          good_tokens = [
+              expected_tcc,
+              expected_rpath,
+              expected_libgc,
+              '-o',
+              expected_binary,
+              '/tmp/showcc-parser-probe.c',
+          ]
+          good_probe = render_probe(good_tokens)
+          realistic_probe = (
+              f'{prefix}"{expected_tcc}"  -O2 -D GC_THREADS=1\t'
+              f'-I"{os.path.dirname(expected_libgc)}"  '
+              f'{expected_rpath} "{expected_libgc}"  '
+              f'-o "{expected_binary}" "/tmp/showcc-parser.123.tmp.c"'
+          )
+          adversarial_probes = [
+              ('semicolon', good_probe + ' ; /usr/bin/clang', 'raw-character'),
+              ('and-list', good_probe + ' && /usr/bin/clang', 'raw-character'),
+              ('or-list', good_probe + ' || /usr/bin/clang', 'raw-character'),
+              ('pipeline', good_probe + ' | /usr/bin/tee /tmp/evil', 'raw-character'),
+              ('background', good_probe + ' & /usr/bin/clang', 'raw-character'),
+              ('input-redirection', good_probe + ' < /tmp/evil', 'raw-character'),
+              ('output-redirection', good_probe + ' > /tmp/evil', 'raw-character'),
+              ('backticks', good_probe + ' `true`', 'raw-character'),
+              ('command-substitution', good_probe + ' $(true)', 'raw-character'),
+              ('comment', good_probe + ' # ignored', 'raw-character'),
+              (
+                  'raw-response-file',
+                  render_probe(good_tokens[:3] + ['@/tmp/evil.rsp'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'glob-question-to-response-file',
+                  render_probe(good_tokens[:3] + ['?evil.rsp'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'glob-class-to-response-file',
+                  render_probe(good_tokens[:3] + ['[@]evil.rsp'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'glob-star-to-response-file',
+                  render_probe(good_tokens[:3] + ['*evil.rsp'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'glob-libgc',
+                  render_probe(
+                      good_tokens[:3]
+                      + [os.path.join(os.path.dirname(expected_libgc), 'libgc.*')]
+                      + good_tokens[3:]
+                  ),
+                  'raw-character',
+              ),
+              (
+                  'brace-expansion',
+                  render_probe(
+                      good_tokens[:3] + ['{evil,@evil.rsp}'] + good_tokens[3:]
+                  ),
+                  'raw-character',
+              ),
+              (
+                  'tilde-expansion',
+                  render_probe(good_tokens[:3] + ['~/evil.rsp'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'backslash-escape',
+                  render_probe(good_tokens[:3] + [r'\@evil.rsp'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'line-feed',
+                  good_probe + '\n@evil.rsp',
+                  'raw-character',
+              ),
+              (
+                  'carriage-return',
+                  good_probe + '\r@evil.rsp',
+                  'raw-character',
+              ),
+              (
+                  'unicode',
+                  render_probe(good_tokens[:3] + ['évil.rsp'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'control-nul',
+                  good_probe + '\x00evil',
+                  'raw-character',
+              ),
+              (
+                  'parentheses',
+                  render_probe(good_tokens[:3] + ['(evil)'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'bang',
+                  render_probe(good_tokens[:3] + ['!evil'] + good_tokens[3:]),
+                  'raw-character',
+              ),
+              (
+                  'double-output',
+                  render_probe(good_tokens[:3] + ['-o', '/tmp/evil'] + good_tokens[3:]),
+                  'output-arity',
+              ),
+              (
+                  'joined-output-path-before',
+                  render_probe(good_tokens[:3] + ['-o/tmp/evil'] + good_tokens[3:]),
+                  'output-joined',
+              ),
+              (
+                  'joined-output-name-before',
+                  render_probe(good_tokens[:3] + ['-otcc-output'] + good_tokens[3:]),
+                  'output-joined',
+              ),
+              (
+                  'joined-output-equals-before',
+                  render_probe(good_tokens[:3] + ['-o=/tmp/evil'] + good_tokens[3:]),
+                  'output-joined',
+              ),
+              (
+                  'joined-output-format-before',
+                  render_probe(good_tokens[:3] + ['-oformat=binary'] + good_tokens[3:]),
+                  'output-joined',
+              ),
+              (
+                  'joined-output-path-after',
+                  render_probe(good_tokens + ['-o/tmp/evil']),
+                  'output-joined',
+              ),
+              (
+                  'joined-output-name-after',
+                  render_probe(good_tokens + ['-otcc-output']),
+                  'output-joined',
+              ),
+              (
+                  'joined-output-equals-after',
+                  render_probe(good_tokens + ['-o=/tmp/evil']),
+                  'output-joined',
+              ),
+              (
+                  'joined-output-format-after',
+                  render_probe(good_tokens + ['-oformat=binary']),
+                  'output-joined',
+              ),
+              (
+                  'combined',
+                  render_probe(
+                      good_tokens[:3]
+                      + ['@/tmp/evil.rsp', '-o', '/tmp/evil']
+                      + good_tokens[3:]
+                  )
+                  + ' && /usr/bin/clang',
+                  'raw-character',
+              ),
+              (
+                  'tcc-suffix',
+                  render_probe([expected_tcc + '.evil'] + good_tokens[1:]),
+                  'compiler-arity',
+              ),
+              (
+                  'tcc-good-plus-suffix',
+                  render_probe(good_tokens[:1] + [expected_tcc + '.evil'] + good_tokens[1:]),
+                  'link-contract',
+              ),
+              (
+                  'duplicate-tcc',
+                  render_probe(good_tokens[:1] + [expected_tcc] + good_tokens[1:]),
+                  'compiler-arity',
+              ),
+              (
+                  'libgc-suffix',
+                  render_probe(good_tokens[:2] + [expected_libgc + '.evil'] + good_tokens[3:]),
+                  'link-contract',
+              ),
+              (
+                  'libgc-good-plus-suffix',
+                  render_probe(good_tokens[:3] + [expected_libgc + '.evil'] + good_tokens[3:]),
+                  'link-contract',
+              ),
+              (
+                  'rpath-suffix',
+                  render_probe(
+                      [expected_tcc, expected_rpath + '-evil'] + good_tokens[2:]
+                  ),
+                  'link-contract',
+              ),
+              (
+                  'rpath-good-plus-suffix',
+                  render_probe(good_tokens[:2] + [expected_rpath + '-evil'] + good_tokens[2:]),
+                  'link-contract',
+              ),
+              (
+                  'duplicate-libgc',
+                  render_probe(good_tokens[:3] + [expected_libgc] + good_tokens[3:]),
+                  'link-contract',
+              ),
+              (
+                  'static-libgc',
+                  render_probe(
+                      good_tokens[:3]
+                      + [os.path.join(os.path.dirname(expected_libgc), 'libgc.a')]
+                      + good_tokens[3:]
+                  ),
+                  'link-contract',
+              ),
+              (
+                  'wrong-output',
+                  render_probe(good_tokens[:4] + [expected_binary + '.evil'] + good_tokens[5:]),
+                  'output-pair',
+              ),
+          ]
+
+          try:
+              validate_showcc(good_probe)
+          except ValidationError as error:
+              print(f'::error::valid parser self-probe was rejected: {error}')
+              sys.exit(1)
+          try:
+              validate_showcc(realistic_probe)
+          except ValidationError as error:
+              print(f'::error::realistic V-format parser self-probe was rejected: {error}')
+              sys.exit(1)
+          for label, probe, expected_kind in adversarial_probes:
+              try:
+                  validate_showcc(probe)
+              except ValidationError as error:
+                  if error.kind != expected_kind:
+                      print(
+                          f'::error::parser self-probe {label!r} failed for '
+                          f'{error.kind!r}, expected {expected_kind!r}: {error}'
+                      )
+                      sys.exit(1)
+              else:
+                  print(f'::error::parser self-probe {label!r} was falsely accepted')
+                  sys.exit(1)
+          print(
+              f'confirmed: parser accepted both valid probes and rejected '
+              f'{len(adversarial_probes)} adversarial probes'
+          )
+
+          logical_tcc_root = '/tmp/v-bootstrap-workspace/thirdparty/tcc'
+          alias_tcc_root = logical_tcc_root
+          if alias_tcc_root == os.path.dirname(expected_tcc):
+              alias_tcc_root = os.path.join(alias_tcc_root, '..', 'tcc')
+          alias_tcc = os.path.join(alias_tcc_root, 'tcc.exe')
+          alias_libgc = os.path.join(alias_tcc_root, 'lib', 'libgc.dylib')
+          alias_rpath = f'-Wl,-rpath,{os.path.join(alias_tcc_root, "lib")}'
+          path_identity_probes = [
+              (
+                  'logical-alias-only',
+                  render_probe(
+                      [
+                          alias_tcc,
+                          alias_rpath,
+                          alias_libgc,
+                          '-o',
+                          expected_binary,
+                          '/tmp/showcc-parser-probe.c',
+                      ]
+                  ),
+                  'compiler-arity',
+              ),
+              (
+                  'physical-and-logical-mix',
+                  render_probe(
+                      [
+                          expected_tcc,
+                          alias_rpath,
+                          alias_libgc,
+                          '-o',
+                          expected_binary,
+                          '/tmp/showcc-parser-probe.c',
+                      ]
+                  ),
+                  'link-contract',
+              ),
+              (
+                  'arbitrary-root',
+                  render_probe(
+                      [
+                          '/tmp/arbitrary-tcc-root/tcc.exe',
+                          expected_rpath,
+                          expected_libgc,
+                          '-o',
+                          expected_binary,
+                          '/tmp/showcc-parser-probe.c',
+                      ]
+                  ),
+                  'compiler-arity',
+              ),
+          ]
+          for label, probe, expected_kind in path_identity_probes:
+              try:
+                  validate_showcc(probe)
+              except ValidationError as error:
+                  if error.kind != expected_kind:
+                      print(
+                          f'::error::path-identity probe {label!r} failed for '
+                          f'{error.kind!r}, expected {expected_kind!r}: {error}'
+                      )
+                      sys.exit(1)
+              else:
+                  print(f'::error::path-identity probe {label!r} was falsely accepted')
+                  sys.exit(1)
+          print(
+              'confirmed: physical-path command accepted; logical alias, '
+              'mixed-root, and arbitrary-root commands rejected'
+          )
+
+          try:
+              tokens = validate_showcc(os.environ['SHOWCC_OUTPUT'])
+          except ValidationError as error:
+              print(f'::error::{error}')
+              sys.exit(1)
+
+          print(f'confirmed exact compiler token: {expected_tcc}')
+          print(f'confirmed exact libgc token: {expected_libgc}')
+          print(f'confirmed exact rpath token: {expected_rpath}')
+          print('confirmed: no static libgc.a token is present')
+          PYEOF
+
+          /tmp/tcc_boehm_gc_smoke
 
       - name: Upload tar archive (macOS amd64, preserves symlinks and executable bits)
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
@@ -482,6 +1353,7 @@ jobs:
         with:
           name: tccbin-macos-amd64-tar
           path: /tmp/tccbin-macos-amd64.tar.gz
+          if-no-files-found: error
 
       - name: Verify tccbin workflows were preserved
         if: steps.rebuild.outputs.skip != 'true'
@@ -495,7 +1367,7 @@ jobs:
             "${{ steps.tccbin.outputs.base_commit }}" HEAD -- .github/workflows
 
       - name: Upload TCC bundle artifact
-        if: steps.rebuild.outputs.skip != 'true'
+        if: matrix.id != 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: tccbin-${{ matrix.id }}
@@ -507,51 +1379,115 @@ jobs:
       # to still be broken) - that gate must flip to "must pass" (deliverable
       # B) BEFORE a working pair is ever pushed here, or the very next green
       # publish breaks that CI for the opposite reason. PUBLISH alone isn't
-      # a safe gate for this platform: it's true unconditionally on every
-      # monthly schedule run, and also on any manual dispatch with
-      # publish=true, regardless of whether B has landed yet. Repo variable
-      # MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED defaults to unset (falsy), so
-      # this stays closed until a maintainer sets it to 'true' after
-      # confirming B is live and green - see the "Sequence" section of the
-      # PR description.
-      - name: Push tccbin branch
+      # a safe gate for this platform: the global schedule/manual gate does
+      # not prove that B has landed. Repo variable
+      # MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED defaults to unset (falsy), so this
+      # stays closed until a maintainer sets it to 'true' after confirming B
+      # is live and green - see the "Sequence" section of the PR description.
+      - name: Recheck tccbin branch HEAD before publication
         if: >-
+          github.repository == 'vlang/v' &&
           steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true' &&
+          (env.TARGET == matrix.id || env.TARGET == 'all') &&
           (matrix.id != 'macos-amd64' || vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED == 'true')
         shell: bash
         run: |
           set -euo pipefail
-          git -C thirdparty/tcc push origin HEAD:${{ matrix.branch }}
+          expected_head="${{ steps.tccbin.outputs.base_commit }}"
+          expected_ref="refs/heads/${{ matrix.branch }}"
+          remote_head="$(
+            git ls-remote --exit-code --refs \
+              "https://github.com/${TCCBIN_REPO}.git" "$expected_ref" \
+              | awk -v expected_ref="$expected_ref" '
+                  $2 == expected_ref { count += 1; head = $1 }
+                  END {
+                    if (count != 1) {
+                      exit 1
+                    }
+                    print head
+                  }
+                '
+          )"
+          if [ "$remote_head" != "$expected_head" ]; then
+            echo "::error::tccbin/${{ matrix.branch }} moved during this run: expected $expected_head, got $remote_head"
+            exit 1
+          fi
+          echo "confirmed: tccbin/${{ matrix.branch }} is still at $remote_head"
+
+      - name: Push tccbin branch
+        if: >-
+          github.repository == 'vlang/v' &&
+          steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true' &&
+          (env.TARGET == matrix.id || env.TARGET == 'all') &&
+          (matrix.id != 'macos-amd64' || vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED == 'true')
+        shell: bash
+        env:
+          TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
+          SCHEDULE_PUBLISH_UNLOCKED: ${{ vars.TCCBIN_SCHEDULE_PUBLISH_UNLOCKED }}
+          MACOS_AMD64_PUBLISH_UNLOCKED: ${{ vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REPOSITORY" != 'vlang/v' ]; then
+            echo "::error::publication is only allowed from vlang/v"
+            exit 1
+          fi
+          case "$TARGET" in
+            "${{ matrix.id }}"|all)
+              ;;
+            *)
+              echo "::error::target $TARGET cannot publish ${{ matrix.id }}"
+              exit 1
+              ;;
+          esac
+          if [ "$GITHUB_EVENT_NAME" = 'schedule' ] \
+            && [ "$SCHEDULE_PUBLISH_UNLOCKED" != 'true' ]; then
+            echo "::error::scheduled publication is locked"
+            exit 1
+          fi
+          if [ "${{ matrix.id }}" = 'macos-amd64' ] \
+            && [ "$MACOS_AMD64_PUBLISH_UNLOCKED" != 'true' ]; then
+            echo "::error::macOS amd64 publication is locked"
+            exit 1
+          fi
+          if [ -z "$TCCBIN_TOKEN" ]; then
+            echo "::error::VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}"
+            exit 1
+          fi
+          askpass="$(mktemp)"
+          trap 'rm -f "$askpass"' EXIT
+          cat > "$askpass" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' "$GIT_USERNAME" ;;
+            *Password*) printf '%s\n' "$GIT_PASSWORD" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod 700 "$askpass"
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
+            GIT_USERNAME=vlang-bot GIT_PASSWORD="$TCCBIN_TOKEN" \
+            git -C thirdparty/tcc push origin "HEAD:${{ matrix.branch }}"
 
   update-tccbin-bsd:
-    if: github.repository == 'vlang/v' && (github.event_name != 'schedule' || github.ref == 'refs/heads/master')
+    needs:
+      - control
+      - resolve-sources
+    if: needs.control.outputs.has_bsd == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - id: freebsd-amd64
-            operating_system: freebsd
-            version: '15.1'
-            branch: thirdparty-freebsd-amd64
-            script: thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh
-            install: sudo pkg install -y bash git gmake rsync
-            cc: cc
-          - id: openbsd-amd64
-            operating_system: openbsd
-            version: '7.8'
-            branch: thirdparty-openbsd-amd64
-            script: thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh
-            install: sudo pkg_add bash git gmake rsync
-            cc: clang
+      matrix: ${{ fromJSON(needs.control.outputs.bsd_matrix) }}
     runs-on: ubuntu-latest
     env:
-      TCC_COMMIT: ${{ github.event.inputs.tcc_commit || 'mob' }}
+      TARGET: ${{ needs.control.outputs.target }}
+      TCC_COMMIT: ${{ needs.resolve-sources.outputs.tinycc_hash }}
+      EXPECTED_TCCBIN_HEAD: ${{ inputs.expected_tccbin_head || '' }}
       TCCBIN_REPO: vlang/tccbin
-      PUBLISH: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'true' }}
-      FORCE_REBUILD: ${{ github.event.inputs.force_rebuild == 'true' }}
-      TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
+      PUBLISH: ${{ needs.control.outputs.publish }}
+      FORCE_REBUILD: ${{ needs.control.outputs.force_rebuild }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start ${{ matrix.id }} VM
         uses: cross-platform-actions/action@v1.3.0
@@ -561,12 +1497,24 @@ jobs:
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
-          environment_variables: TCC_COMMIT TCCBIN_REPO PUBLISH FORCE_REBUILD TCCBIN_TOKEN
+          environment_variables: TARGET TCC_COMMIT TCCBIN_REPO FORCE_REBUILD EXPECTED_TCCBIN_HEAD
 
-      - name: Build and publish ${{ matrix.id }} TCC bundle
-        shell: cpa.sh {0}
+      - name: Build ${{ matrix.id }} TCC bundle
+        shell: cpa.sh {0} --sync-files both
         run: |
           set -eu
+          case "$TARGET" in
+            "${{ matrix.id }}"|all)
+              ;;
+            *)
+              echo "target $TARGET cannot build ${{ matrix.id }}" >&2
+              exit 1
+              ;;
+          esac
+
+          rebuild_marker=".tccbin-${{ matrix.id }}-rebuilt"
+          base_commit_file=".tccbin-${{ matrix.id }}-base-commit"
+          rm -f "$rebuild_marker" "$base_commit_file"
           ${{ matrix.install }}
           git config --global user.name vlang-bot
           git config --global user.email vlang-bot@users.noreply.github.com
@@ -584,20 +1532,23 @@ jobs:
           done
           git -C /tmp/tinycc-ref checkout --quiet "$TCC_COMMIT"
           tinycc_hash="$(git -C /tmp/tinycc-ref rev-parse HEAD)"
-          echo "TinyCC $TCC_COMMIT resolves to $tinycc_hash"
+          if [ "$tinycc_hash" != "$TCC_COMMIT" ]; then
+            echo "resolved TinyCC checkout moved: expected $TCC_COMMIT, got $tinycc_hash" >&2
+            exit 1
+          fi
+          echo "TinyCC source pinned at $tinycc_hash"
 
           git clone --branch "${{ matrix.branch }}" --depth=1 \
             "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
           tccbin_base_commit="$(git -C thirdparty/tcc rev-parse HEAD)"
           tccbin_workflow_tree="$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)"
-          if [ "$PUBLISH" = 'true' ]; then
-            if [ -z "$TCCBIN_TOKEN" ]; then
-              echo "VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}" >&2
-              exit 1
-            fi
-            git -C thirdparty/tcc remote set-url origin \
-              "https://vlang-bot:${TCCBIN_TOKEN}@github.com/${TCCBIN_REPO}.git"
+          if [ -n "$EXPECTED_TCCBIN_HEAD" ] \
+            && [ "$tccbin_base_commit" != "$EXPECTED_TCCBIN_HEAD" ]; then
+            echo "tccbin/${{ matrix.branch }} moved: expected $EXPECTED_TCCBIN_HEAD, got $tccbin_base_commit" >&2
+            exit 1
           fi
+          echo "tccbin/${{ matrix.branch }} base HEAD: $tccbin_base_commit"
+          printf '%s\n' "$tccbin_base_commit" > "$base_commit_file"
 
           if [ "$FORCE_REBUILD" != 'true' ] \
             && [ -f thirdparty/tcc/build_source_hash.txt ] \
@@ -628,6 +1579,102 @@ jobs:
           git -C thirdparty/tcc diff --exit-code \
             "$tccbin_base_commit" HEAD -- .github/workflows
 
-          if [ "$PUBLISH" = 'true' ]; then
-            git -C thirdparty/tcc push origin HEAD:${{ matrix.branch }}
+          touch "$rebuild_marker"
+
+      - name: Record BSD rebuild result
+        id: bsd_rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_commit_file=".tccbin-${{ matrix.id }}-base-commit"
+          if [ ! -f "$base_commit_file" ]; then
+            echo "::error::BSD VM did not return the tccbin base commit"
+            exit 1
           fi
+          base_commit="$(cat "$base_commit_file")"
+          if [[ ! "$base_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::BSD VM returned an invalid tccbin base commit"
+            exit 1
+          fi
+          echo "base_commit=$base_commit" >> "$GITHUB_OUTPUT"
+          if [ -f ".tccbin-${{ matrix.id }}-rebuilt" ]; then
+            echo "rebuilt=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rebuilt=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Recheck tccbin branch HEAD before publication
+        if: >-
+          github.repository == 'vlang/v' &&
+          steps.bsd_rebuild.outputs.rebuilt == 'true' && env.PUBLISH == 'true' &&
+          (env.TARGET == matrix.id || env.TARGET == 'all')
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_head="${{ steps.bsd_rebuild.outputs.base_commit }}"
+          expected_ref="refs/heads/${{ matrix.branch }}"
+          remote_head="$(
+            git ls-remote --exit-code --refs \
+              "https://github.com/${TCCBIN_REPO}.git" "$expected_ref" \
+              | awk -v expected_ref="$expected_ref" '
+                  $2 == expected_ref { count += 1; head = $1 }
+                  END {
+                    if (count != 1) {
+                      exit 1
+                    }
+                    print head
+                  }
+                '
+          )"
+          if [ "$remote_head" != "$expected_head" ]; then
+            echo "::error::tccbin/${{ matrix.branch }} moved during this run: expected $expected_head, got $remote_head"
+            exit 1
+          fi
+          echo "confirmed: tccbin/${{ matrix.branch }} is still at $remote_head"
+
+      - name: Push tccbin branch
+        if: >-
+          github.repository == 'vlang/v' &&
+          steps.bsd_rebuild.outputs.rebuilt == 'true' && env.PUBLISH == 'true' &&
+          (env.TARGET == matrix.id || env.TARGET == 'all')
+        shell: sh
+        env:
+          TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
+          SCHEDULE_PUBLISH_UNLOCKED: ${{ vars.TCCBIN_SCHEDULE_PUBLISH_UNLOCKED }}
+        run: |
+          set -eu
+          if [ "$GITHUB_REPOSITORY" != 'vlang/v' ]; then
+            echo "publication is only allowed from vlang/v" >&2
+            exit 1
+          fi
+          case "$TARGET" in
+            "${{ matrix.id }}"|all)
+              ;;
+            *)
+              echo "target $TARGET cannot publish ${{ matrix.id }}" >&2
+              exit 1
+              ;;
+          esac
+          if [ "$GITHUB_EVENT_NAME" = 'schedule' ] \
+            && [ "$SCHEDULE_PUBLISH_UNLOCKED" != 'true' ]; then
+            echo "scheduled publication is locked" >&2
+            exit 1
+          fi
+          if [ -z "$TCCBIN_TOKEN" ]; then
+            echo "VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}" >&2
+            exit 1
+          fi
+          askpass="$(mktemp)"
+          trap 'rm -f "$askpass"' EXIT
+          cat > "$askpass" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' "$GIT_USERNAME" ;;
+            *Password*) printf '%s\n' "$GIT_PASSWORD" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod 700 "$askpass"
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
+            GIT_USERNAME=vlang-bot GIT_PASSWORD="$TCCBIN_TOKEN" \
+            git -C thirdparty/tcc push origin "HEAD:${{ matrix.branch }}"

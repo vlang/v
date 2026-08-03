@@ -395,6 +395,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		queue << 'array.delete_last'
 		used['array.delete_last'] = true
+		ownership_drop_value_types := tc.ownership_drop_value_type_names()
+		if ownership_drop_value_types.len > 0 {
+			// Ownership cleanup is synthesized after markused. Its recursive array/map
+			// destructors therefore have no AST call sites for the collector to follow.
+			for helper in ['array.free', 'array__free', 'map.free', 'map__free'] {
+				enqueue(helper, mut used, mut queue)
+			}
+		}
 		for type_name in tc.ownership_drop_type_names() {
 			method := '${type_name}.drop'
 			enqueue(method, mut used, mut queue)
@@ -1883,6 +1891,12 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut ierror_equality_cache := map[string]int{}
 	mut cur_module := ''
 	mut imports := map[string]string{}
+	for _, shared_params in tc.fn_shared_params {
+		if shared_params.any(it) {
+			needs_shared_runtime = true
+			break
+		}
+	}
 	for node_idx, node in a.nodes {
 		if node.typ.len > 0 {
 			if !needs_channel_helpers && markused_type_text_is_channel(node.typ) {
@@ -1891,6 +1905,10 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			if !needs_shared_runtime && markused_type_text_needs_shared_runtime(node.typ) {
 				needs_shared_runtime = true
 			}
+		}
+		if !needs_shared_runtime && node.kind == .decl_assign
+			&& (node.value == 'shared' || node.value.starts_with('shared:')) {
+			needs_shared_runtime = true
 		}
 		match node.kind {
 			.file {
@@ -1950,7 +1968,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						enqueue('escape_default_string', mut used, mut queue)
 					}
 					if fn_node.kind == .selector
-						&& fn_node.value in ['trim_space', 'trim_space_left', 'trim_space_right', 'to_upper', 'to_upper_ascii', 'to_lower', 'to_lower_ascii'] {
+						&& fn_node.value in ['trim_space', 'trim_space_left', 'trim_space_right', 'to_upper', 'to_upper_ascii', 'to_lower', 'to_lower_ascii', 'contains', 'count'] {
 						enqueue('string.${fn_node.value}', mut used, mut queue)
 					}
 					if markused_call_lowers_to_join_path_single(a, fn_node, imports) {
