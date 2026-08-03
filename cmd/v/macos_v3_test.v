@@ -505,6 +505,42 @@ fn test_autofree_debug_alias_requires_standard_compiler() {
 	}
 }
 
+fn test_autofree_debug_tcc_requires_standard_compiler() {
+	$if macos {
+		prefs, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			'-debug-tcc',
+			'main.v',
+		], false)
+		assert prefs.autofree
+		assert prefs.ccompiler_type == .tinyc
+		assert !prefs.retry_compilation
+		assert prefs.show_cc
+		assert prefs.show_c_output
+		assert prefs.build_options.any(it.starts_with('-debug-tcc'))
+		assert autofree_requires_standard_compiler(prefs)
+		assert autofree_args_require_standard_compiler(['-autofree', '-debug-tcc', 'main.v'],
+			'main.v')
+
+		explicit, _ := pref.parse_args_and_show_errors([], [
+			'',
+			'-autofree',
+			'-cc',
+			'tcc',
+			'-showcc',
+			'-show-c-output',
+			'-no-retry-compilation',
+			'main.v',
+		], false)
+		assert explicit.ccompiler_type == .tinyc
+		assert !explicit.retry_compilation
+		assert explicit.show_cc
+		assert explicit.show_c_output
+		assert !autofree_requires_standard_compiler(explicit)
+	}
+}
+
 fn test_autofree_tracing_requires_standard_compiler() {
 	trace_calls, _ := pref.parse_args_and_show_errors([], [
 		'',
