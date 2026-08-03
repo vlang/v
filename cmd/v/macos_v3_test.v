@@ -720,6 +720,9 @@ fn test_macos_v3_detects_v1_only_leading_options() {
 			'main.v')
 		assert macos_v3_has_v1_only_leading_option(['-autofree',
 			'-checker-match-exhaustive-cutoff-limit', '12', 'main.v'], 'main.v')
+		assert macos_v3_has_v1_only_leading_option(['-raw-vsh-tmp-prefix', 'tmp', 'script'],
+			'script')
+		assert macos_v3_has_v1_only_leading_option(['-c++', 'clang++', 'main.v'], 'main.v')
 		assert !macos_v3_has_v1_only_leading_option(['run', 'main.v', '-message-limit', '5'], 'run')
 		assert !macos_v3_has_v1_only_leading_option(['--', '-message-limit', '5', 'main.v'],
 			'main.v')
