@@ -1551,12 +1551,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 				g.write(' = ')
 				g.expr(val)
-			} else if is_fixed_array_init && var_type.has_flag(.option) {
-				g.expr(left)
-				g.write(' = ')
-				g.expr_with_opt(val, val_type, var_type)
-			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
-				if var_type.has_flag(.option) {
+			} else if var_type.has_flag(.option) {
+				if is_fixed_array_init || val is ast.StructInit || val_type.has_flag(.option) {
+					// `val` is either an inline literal that needs
+					// constructing in place (`Arr{}`, `[N]T{...}!`), or it
+					// already produces a full, matching option struct
+					// (`?Arr{}`, `?Arr(none)`, or a plain ident/call/cast of
+					// option type).
+					g.expr(left)
+					g.write(' = ')
+					g.expr_with_opt(val, val_type, var_type)
+				} else {
+					// `val` produces a plain (non-option) fixed array
+					// value: Ident, CallExpr, SelectorExpr, CastExpr, etc.
 					g.expr(left)
 					g.writeln('.state = 0;')
 					g.write('memcpy(')
@@ -1564,13 +1571,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.write('.data, ')
 					g.expr(val)
 					g.writeln(', sizeof(${g.styp(var_type.clear_flag(.option))}));')
-				} else {
-					g.write('memcpy(')
-					g.expr(left)
-					g.write(', ')
-					g.expr(val)
-					g.writeln(', sizeof(${g.styp(var_type)}));')
 				}
+			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
+				g.write('memcpy(')
+				g.expr(left)
+				g.write(', ')
+				g.expr(val)
+				g.writeln(', sizeof(${g.styp(var_type)}));')
 			} else {
 				arr_typ := styp.trim('*')
 				old_is_assign_lhs := g.is_assign_lhs
