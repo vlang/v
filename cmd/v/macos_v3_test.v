@@ -787,6 +787,9 @@ fn test_macos_v3_normalizes_legacy_x86_arch_alias() {
 		arch_index := forwarded.index('-arch')
 		assert arch_index >= 0
 		assert forwarded[arch_index + 1] == 'amd64'
+		duplicate := macos_v3_forwarded_args(prefs, ['-arch', 'x86', '-arch', 'x86', 'main.v'])
+		assert duplicate.count(it == 'amd64') == 2
+		assert 'x86' !in duplicate
 
 		prefs.build_options.clear()
 		program_args := macos_v3_forwarded_args(prefs, ['run', 'main.v', '-arch', 'x86'])
@@ -967,12 +970,12 @@ fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 			'x86',
 			'main.v',
 		], false)
-		forwarded := v3_ownership_forwarded_args(prefs, ['-autofree', '-arch', 'x86', 'main.v'])
+		forwarded := v3_ownership_forwarded_args(prefs, ['-arch', 'x86', '-autofree', '-arch',
+			'x86', 'main.v'])
 		assert macos_v3_internal_quiet_flag in forwarded
 		assert '-ownership' !in forwarded
-		arch_index := forwarded.index('-arch')
-		assert arch_index >= 0
-		assert forwarded[arch_index + 1] == 'amd64'
+		assert forwarded.count(it == 'amd64') == 2
+		assert 'x86' !in forwarded
 
 		for option in ['-stats', '-v', '-show-timings'] {
 			explicit_prefs, _ := pref.parse_args_and_show_errors([], ['', '-autofree', option,

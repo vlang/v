@@ -159,7 +159,6 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 			if i + 1 < forwarded_args.len && forwarded_args[i] == '-arch'
 				&& forwarded_args[i + 1] == 'x86' {
 				forwarded_args[i + 1] = 'amd64'
-				break
 			}
 		}
 	}
