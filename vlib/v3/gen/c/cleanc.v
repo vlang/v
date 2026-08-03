@@ -191,6 +191,7 @@ mut:
 	show_test_stats                bool
 	show_test_summary              bool
 	test_run_only                  []string
+	assert_expr_overrides          map[int]string
 	print_fn_names                 []string
 	is_prod                        bool
 	check_overflow                 bool
@@ -992,6 +993,7 @@ pub fn FlatGen.new() FlatGen {
 		scope_defer_starts:              []int{}
 		fn_defers:                       []flat.NodeId{}
 		fn_defer_counts:                 map[int]string{}
+		assert_expr_overrides:           map[int]string{}
 		defer_capture_names:             []string{}
 		defer_capture_types:             map[string]types.Type{}
 		const_runtime_inits:             []string{}
@@ -12352,6 +12354,10 @@ fn (g &FlatGen) infix_channel_type(id flat.NodeId, fallback types.Type) types.Ty
 fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	if int(id) < 0 {
 		g.write('0')
+		return
+	}
+	if replacement := g.assert_expr_overrides[int(id)] {
+		g.write(replacement)
 		return
 	}
 	node := g.a.nodes[int(id)]

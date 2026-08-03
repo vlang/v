@@ -100,6 +100,9 @@ fn (mut g FlatGen) gen_test_failure_global() {
 			g.writeln('/* V3CACHE_MODULE main */')
 		}
 		g.writeln('static int __v3_test_failures = 0;')
+		if g.show_test_stats {
+			g.writeln('static int __v3_test_assertions = 0;')
+		}
 	}
 }
 
@@ -4523,6 +4526,7 @@ fn (mut g FlatGen) gen_test_main() {
 	for idx, test_fn in tests {
 		if g.show_test_stats {
 			g.writeln('double __v3_test_start_ms_${idx} = __v3_test_now_ms();')
+			g.writeln('int __v3_test_assertions_before_${idx} = __v3_test_assertions;')
 		}
 		g.writeln('int __v3_test_failures_before_${idx} = __v3_test_failures;')
 		if hooks.before_each.len > 0 {
@@ -4538,6 +4542,7 @@ fn (mut g FlatGen) gen_test_main() {
 		}
 		if g.show_test_stats {
 			g.writeln('double __v3_test_elapsed_ms_${idx} = __v3_test_now_ms() - __v3_test_start_ms_${idx};')
+			g.writeln('int __v3_test_assertions_run_${idx} = __v3_test_assertions - __v3_test_assertions_before_${idx};')
 		}
 		if track_test_results {
 			g.writeln('if (__v3_test_failures == __v3_test_failures_before_${idx}) {')
@@ -4545,13 +4550,11 @@ fn (mut g FlatGen) gen_test_main() {
 			g.writeln('__v3_test_passes++;')
 		}
 		if g.show_test_stats {
-			assert_count := g.test_fn_assert_count(test_fn.node_id)
-			assert_word := if assert_count == 1 { 'assert ' } else { 'asserts' }
-			g.writeln('printf("     OK    [${idx + 1}/${tests.len}] %9.3f ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n", __v3_test_elapsed_ms_${idx});')
+			g.writeln('printf("     OK    [${idx + 1}/${tests.len}] %9.3f ms     %d assert%s | main.${c_escape(test_fn.name)}()\\n", __v3_test_elapsed_ms_${idx}, __v3_test_assertions_run_${idx}, __v3_test_assertions_run_${idx} == 1 ? "" : "s");')
 			g.indent--
 			g.writeln('} else {')
 			g.indent++
-			g.writeln('printf("     FAIL  [${idx + 1}/${tests.len}] %9.3f ms     ${assert_count} ${assert_word} | main.${c_escape(test_fn.name)}()\\n", __v3_test_elapsed_ms_${idx});')
+			g.writeln('printf("     FAIL  [${idx + 1}/${tests.len}] %9.3f ms     %d assert%s | main.${c_escape(test_fn.name)}()\\n", __v3_test_elapsed_ms_${idx}, __v3_test_assertions_run_${idx}, __v3_test_assertions_run_${idx} == 1 ? "" : "s");')
 		}
 		if track_test_results {
 			g.indent--
@@ -4739,23 +4742,6 @@ fn (g &FlatGen) test_fn_propagation_line(id flat.NodeId) int {
 		}
 	}
 	return 0
-}
-
-fn (g &FlatGen) test_fn_assert_count(id flat.NodeId) int {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return 0
-	}
-	node := g.a.nodes[int(id)]
-	mut count := if node.kind == .assert_stmt { 1 } else { 0 }
-	for i in 0 .. node.children_count {
-		child_id := g.a.child(&node, i)
-		child := g.a.nodes[int(child_id)]
-		if child.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
-			continue
-		}
-		count += g.test_fn_assert_count(child_id)
-	}
-	return count
 }
 
 fn (g &FlatGen) collect_test_harness_decl_ids(node flat.Node, mut ids []flat.NodeId) {

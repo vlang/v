@@ -2792,15 +2792,20 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			if g.is_prod {
 				return
 			}
+			condition_id := g.a.child(&node, 0)
+			captured_ids := g.gen_assert_capture_numeric_operands(condition_id)
+			if g.show_test_stats && g.test_files.len > 0 {
+				g.writeln('__v3_test_assertions++;')
+			}
 			g.write('if (!(')
-			g.gen_expr(g.a.child(&node, 0))
+			g.gen_expr(condition_id)
 			g.writeln(')) {')
 			g.indent++
 			g.writeln('v3_eprint_lit("V panic: Assertion failed...\\n");')
-			if detail := g.assert_failure_detail(node, g.a.child(&node, 0)) {
+			if detail := g.assert_failure_detail(node, condition_id) {
 				g.writeln('v3_eprint_lit("${c_escape(detail)}\\n");')
 			}
-			g.gen_assert_infix_values(g.a.child(&node, 0))
+			g.gen_assert_infix_values(condition_id)
 			if node.children_count > 1 {
 				g.write('v3_eprintln_string(')
 				g.gen_expr(g.a.child(&node, 1))
@@ -2815,6 +2820,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			}
 			g.indent--
 			g.writeln('}')
+			for captured_id in captured_ids {
+				g.assert_expr_overrides.delete(captured_id)
+			}
 		}
 		.goto_stmt {
 			if g.gen_goto_lock_leaves(node.value) {
@@ -2924,6 +2932,36 @@ fn (mut g FlatGen) gen_assert_infix_values(condition_id flat.NodeId) {
 	rhs_id := g.a.child(condition, 1)
 	g.gen_assert_numeric_value('   left value', lhs_id)
 	g.gen_assert_numeric_value('  right value', rhs_id)
+}
+
+fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId) []int {
+	condition := g.a.node(condition_id)
+	if condition.kind != .infix || condition.children_count < 2 {
+		return []
+	}
+	mut captured_ids := []int{cap: 2}
+	for operand_index in 0 .. 2 {
+		operand_id := g.a.child(condition, operand_index)
+		node := g.a.node(operand_id)
+		if node.kind in [.int_literal, .float_literal, .char_literal] {
+			continue
+		}
+		typ := g.value_unalias_type(g.tc.resolve_type(operand_id))
+		if !typ.is_integer() && !typ.is_float() {
+			continue
+		}
+		c_type := g.value_c_type(g.tc.resolve_type(operand_id))
+		if c_type.len == 0 {
+			continue
+		}
+		tmp := g.tmp_name()
+		g.write('${c_type} ${tmp} = (${c_type})(')
+		g.gen_expr(operand_id)
+		g.writeln(');')
+		g.assert_expr_overrides[int(operand_id)] = tmp
+		captured_ids << int(operand_id)
+	}
+	return captured_ids
 }
 
 fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {

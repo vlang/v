@@ -131,6 +131,43 @@ fn test_wait() {
 	assert !summary_line.contains('Elapsed time: 0.000 ms.'), run.output
 }
 
+fn test_v3_assertion_operands_run_once_and_stats_count_executed_assertions() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	failing_run := compile_and_run(v3_bin, 'assert_operand_once', '_test.v', '
+fn test_operand_once() {
+	mut values := [1]
+	assert values.pop() == 0
+}
+')
+	assert failing_run.exit_code != 0
+	assert failing_run.output.contains('left value: values.pop() = 1'), failing_run.output
+
+	stats_run := compile_and_run_with_stats(v3_bin, 'assert_runtime_count', '_test.v', 'fn helper() {
+	assert true
+}
+
+fn test_runtime_assertion_count() {
+	for _ in 0 .. 3 {
+		assert true
+	}
+	helper()
+	if false {
+		assert false
+	}
+}
+')
+	assert stats_run.exit_code == 0, stats_run.output
+	status_line := stats_run.output.split_into_lines().filter(it.contains('main.test_runtime_assertion_count()'))[0]
+	assert status_line.contains('4 asserts |'), stats_run.output
+}
+
 fn compile_project_and_run(v3_bin string, name string, files map[string]string) (os.Result, string) {
 	root := write_project(name, files)
 	return compile_project_root_and_run(v3_bin, name, root)
