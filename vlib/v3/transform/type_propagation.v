@@ -56,6 +56,10 @@ fn (t &Transformer) decl_type_should_override_fallback(authority string, fallbac
 	if !decl_type_is_usable(fallback) {
 		return true
 	}
+	if authority != fallback
+		&& rhs.kind in [.bool_literal, .char_literal, .float_literal, .int_literal, .string_literal, .string_interp] {
+		return true
+	}
 	if t.local_struct_type_overrides_imported_alias(authority, fallback) {
 		return true
 	}
@@ -153,6 +157,14 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
+		match node.kind {
+			.bool_literal { return 'bool' }
+			.char_literal { return if node.value.starts_with('c:') { '&u8' } else { 'rune' } }
+			.float_literal { return 'f64' }
+			.int_literal { return 'int' }
+			.string_literal, .string_interp { return 'string' }
+			else {}
+		}
 		if node.kind == .spawn_expr {
 			if spawn_type := t.spawn_expr_decl_type(node) {
 				return spawn_type
@@ -590,7 +602,7 @@ fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type string, field_na
 
 // is_c_int_selector reports whether is c int selector applies in transform.
 fn is_c_int_selector(name string) bool {
-	return name in ['errno', 'EINTR', 'STDOUT_FILENO', 'STDERR_FILENO', 'EINVAL']
+	return name in ['errno', 'EINTR', 'STDOUT_FILENO', 'STDERR_FILENO', 'EINVAL', 'SOMAXCONN']
 }
 
 // selector_expr_name supports selector expr name handling for Transformer.
@@ -1338,6 +1350,13 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 			return 'map[${key_type}]${value_type}'
 		}
 	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 0 && bracket_end < clean.len - 1 {
+			return clean[..bracket_end + 1] + t.normalize_type_in_module(clean[bracket_end +
+				1..], mod)
+		}
+	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
 		params, ret := fn_type_text_parts(clean) or { return clean }
 		mut normalized_params := []string{cap: params.len}
@@ -1404,6 +1423,15 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 	base_id := t.a.child(&node, 0)
 	mut base_type := t.resolve_expr_type(base_id)
 	if base_type.len == 0 {
+		base_node := t.a.nodes[int(base_id)]
+		if base_node.kind == .selector {
+			// Selector nodes can share their compact child slice with an earlier
+			// speculative node. Re-resolve a cached miss from the actual slice
+			// receiver before trusting the checker's index fallback.
+			base_type = t.resolve_selector_type_uncached(base_node)
+		}
+	}
+	if base_type.len == 0 {
 		return ''
 	}
 	base_type = t.normalize_type_alias(base_type)
@@ -1453,7 +1481,9 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 
 fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
 	resolved_elem_type := t.resolve_index_elem_type(node)
-	if resolved_elem_type == 'u8' {
+	is_slice := node.value == 'range'
+		|| (node.children_count > 1 && t.a.child_node(&node, 1).kind == .range)
+	if resolved_elem_type == 'u8' || (is_slice && resolved_elem_type.len > 0) {
 		return resolved_elem_type
 	}
 	if t.is_fixed_array_type(resolved_elem_type)
@@ -1809,6 +1839,10 @@ fn (t &Transformer) lvalue_type(id flat.NodeId) string {
 		}
 	}
 	if node.kind == .index {
+		if node.value == 'range'
+			|| (node.children_count > 1 && t.a.child_node(&node, 1).kind == .range) {
+			return t.index_expr_type(id, node)
+		}
 		elem_type := t.resolve_index_elem_type(node)
 		if elem_type.len > 0 {
 			return elem_type

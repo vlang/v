@@ -165,9 +165,9 @@ fn test_ierror_as_expr_unboxes_concrete_payload() {
 fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
 	v3_bin := build_v3()
 	c_code := generated_c(v3_bin, 'optional_plain_t_name_abi',
-		'fn plain[T](x T) T {\n\treturn x\n}\n\nfn plain_T_name(x ?int) int {\n\treturn x or { 0 }\n}\n\nfn maybe() ?int {\n\treturn 3\n}\n\nfn use_fn(f fn (?int) int) int {\n\treturn f(maybe())\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tprintln(plain_T_name(maybe()) + use_fn(plain_T_name) + take[int](7, 0) + plain[int](4))\n}\n')
-	assert c_code.contains('int plain_T_name(Optional x)'), c_code
-	assert !c_code.contains('int plain_T_name(Optional_int x)'), c_code
+		'fn plain[T](x T) T {\n\treturn x\n}\n\nfn plain_t_name(x ?int) int {\n\treturn x or { 0 }\n}\n\nfn maybe() ?int {\n\treturn 3\n}\n\nfn use_fn(f fn (?int) int) int {\n\treturn f(maybe())\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tprintln(plain_t_name(maybe()) + use_fn(plain_t_name) + take[int](7, 0) + plain[int](4))\n}\n')
+	assert c_code.contains('int plain_t_name(Optional x)'), c_code
+	assert !c_code.contains('int plain_t_name(Optional_int x)'), c_code
 	assert c_code.contains(')(struct Optional);'), c_code
 	assert !c_code.contains(')(Optional_int);'), c_code
 	assert c_code.contains('plain_T_v_int(') || c_code.contains('plain_T_int('), c_code

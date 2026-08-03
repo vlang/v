@@ -26,6 +26,15 @@ fn pointer_voidptr_run_good(v3_bin string, name string, source string) string {
 	return run.output.trim_space()
 }
 
+fn pointer_voidptr_gen_c(v3_bin string, name string, source string) string {
+	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	os.write_file(src, source) or { panic(err) }
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	assert compile.exit_code == 0, compile.output
+	return os.read_file(c_path) or { panic(err) }
+}
+
 fn pointer_voidptr_run_bad(v3_bin string, name string, source string, expected string) {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -112,7 +121,7 @@ fn make() &Reader {
 
 fn main() {}
 ',
-		'cannot return `File` as `&Reader`')
+		'you are returning `File` instead')
 	pointer_voidptr_run_bad(v3_bin, 'bare_sum_pointer_return', 'struct A {}
 
 struct B {}
@@ -126,12 +135,12 @@ fn make() &Item {
 
 fn main() {}
 ',
-		'cannot return `A` as `&Item`')
+		'you are returning `A` instead')
 }
 
 fn test_optional_value_to_pointer_return_heap_copies_payload() {
 	v3_bin := pointer_voidptr_build_v3()
-	out := pointer_voidptr_run_good(v3_bin, 'optional_value_to_pointer_return', 'struct Item {
+	source := 'struct Item {
 	value int
 }
 
@@ -147,16 +156,16 @@ fn main() {
 	item := make() or { return }
 	println(int_str(item.value))
 }
-')
+'
+	out := pointer_voidptr_run_good(v3_bin, 'optional_value_to_pointer_return', source)
 	assert out == '47'
-	c_path := os.join_path(os.temp_dir(), 'v3_optional_value_to_pointer_return_${os.getpid()}.c')
-	c_source := os.read_file(c_path) or { panic(err) }
+	c_source := pointer_voidptr_gen_c(v3_bin, 'optional_value_to_pointer_return_c', source)
 	assert c_source.contains('memdup(&maybe.value, sizeof(Item))'), c_source
 }
 
 fn test_wrapped_multi_return_bare_pointer_slots_are_heap_lowered() {
 	v3_bin := pointer_voidptr_build_v3()
-	out := pointer_voidptr_run_good(v3_bin, 'wrapped_multi_return_bare_pointer_slots', 'struct Item {
+	source := 'struct Item {
 	value int
 }
 
@@ -185,11 +194,10 @@ fn main() {
 	println(int_str(result_item.value))
 	println(int_str(result_n))
 }
-')
+'
+	out := pointer_voidptr_run_good(v3_bin, 'wrapped_multi_return_bare_pointer_slots', source)
 	assert out == '31\n37\n41\n43'
-	c_path := os.join_path(os.temp_dir(),
-		'v3_wrapped_multi_return_bare_pointer_slots_${os.getpid()}.c')
-	c_source := os.read_file(c_path) or { panic(err) }
+	c_source := pointer_voidptr_gen_c(v3_bin, 'wrapped_multi_return_bare_pointer_slots_c', source)
 	assert c_source.count('sizeof(Item)') >= 2, c_source
 }
 

@@ -73,6 +73,74 @@ fn run_module_cache_binary(path string) string {
 	return result.output.trim_space()
 }
 
+fn test_print_v_files_includes_warm_cached_module_sources() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_print_cached_v_files_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	wrapper_file := os.join_path(root, 'wrapper/wrapper.v')
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn value() int {
+	return 42
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert os.walk_ext(cache_dir, '.vh').any(os.file_name(it).starts_with('wrapper_'))
+
+	printed :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -silent -no-memory-limit -print-v-files ${os.quoted_path(main_file)}')
+	assert printed.exit_code == 0, printed.output
+	printed_files := printed.output.split_into_lines().filter(it.len > 0).map(os.real_path(it))
+	assert os.real_path(main_file) in printed_files
+	assert os.real_path(wrapper_file) in printed_files
+}
+
+fn test_whole_program_cache_replays_checker_notices() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_checker_notices_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn unused_helper() {}
+
+fn main() {}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'app')
+	command := 'V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -no-memory-limit -o ${os.quoted_path(output)} ${os.quoted_path(main_file)}'
+	first := os.execute(command)
+	assert first.exit_code == 0, first.output
+	assert first.output.count('unused function: `unused_helper`') == 1, first.output
+	assert first.output.contains(':3:4: notice: unused function: `unused_helper`'), first.output
+	assert !first.output.contains('check (cached)'), first.output
+
+	second := os.execute(command)
+	assert second.exit_code == 0, second.output
+	assert second.output.contains('check (cached)'), second.output
+	assert second.output.count('unused function: `unused_helper`') == 1, second.output
+	assert second.output.contains(':3:4: notice: unused function: `unused_helper`'), second.output
+}
+
 fn test_cached_sync_module_uses_preamble_pthread_declarations() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_sync_pthread_${os.getpid()}')
@@ -323,7 +391,7 @@ fn module_cache_object_hashes(cache_dir string) map[string]u64 {
 	mut hashes := map[string]u64{}
 	for path in os.walk_ext(cache_dir, '.o') {
 		name := os.file_name(path)
-		if !name.starts_with('program_prefix_') {
+		if !name.starts_with('program_prefix_') && !name.starts_with('program_main_') {
 			hashes[name] = module_cache_object_hash(path)
 		}
 	}
@@ -4045,7 +4113,7 @@ fn main() {
 
 	second_output := os.join_path(root, 'second')
 	second :=
-		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} V3_CACHE_DISABLE_INCREMENTAL=1 ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('monomorphize (dependency cache)'), second.output
 	assert run_module_cache_binary(second_output) == 'ok'
@@ -5164,12 +5232,12 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(struct_output)} ${os.quoted_path(main_file)}')
 	assert struct_result.exit_code == 0, struct_result.output
 	assert struct_result.output.contains('check (incremental)'), struct_result.output
-	assert !struct_result.output.contains('monomorphize (incremental)'), struct_result.output
-	assert !struct_result.output.contains('cgen (incremental)'), struct_result.output
+	assert struct_result.output.contains('monomorphize (incremental)'), struct_result.output
+	assert struct_result.output.contains('cgen (incremental)'), struct_result.output
 	assert run_module_cache_binary(struct_output) == '44'
 }
 
-fn test_incremental_program_cache_rebuilds_for_new_generic_struct_type() {
+fn test_incremental_program_cache_materializes_new_generic_struct_type() {
 	$if !macos {
 		return
 	}
@@ -5225,7 +5293,8 @@ fn main() {
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
-	assert !second.output.contains('cgen (incremental)'), second.output
+	assert second.output.contains('monomorphize (incremental)'), second.output
+	assert second.output.contains('cgen (incremental)'), second.output
 	assert run_module_cache_binary(second_output) == '41'
 }
 
@@ -5274,7 +5343,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'called'
 }
 
-fn test_incremental_program_cache_falls_back_for_newly_reachable_stringifier() {
+fn test_incremental_program_cache_reuses_cached_stringifier() {
 	$if !macos {
 		return
 	}
@@ -5326,7 +5395,7 @@ fn main() {
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
-	assert !second.output.contains('cgen (incremental)'), second.output
+	assert second.output.contains('cgen (incremental)'), second.output
 	assert run_module_cache_binary(second_output) == 'value 42'
 }
 

@@ -4,6 +4,7 @@ import os
 import strconv
 import strings
 import time
+import v3.ansi
 import v3.bench
 import v3.cmdexec
 import v3.errors as v3errors
@@ -16,6 +17,7 @@ import v3.modulecache
 import v3.parser
 import v3.pref
 import v3.tempname
+import v3.token as v3token
 import v3.transform
 import v3.types
 import v.vmod
@@ -38,6 +40,7 @@ const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
+const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
 const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const macos_v3_compiler_error_fallback = 'compiler_error'
@@ -111,6 +114,18 @@ struct V3CgenCacheMetadata {
 	interface_impl_signature string
 	prefix_source_identity   string
 	flags                    []string
+	diagnostics              []V3CachedTypeDiagnostic
+}
+
+struct V3CachedTypeDiagnostic {
+	file            string
+	msg             string
+	severity        string
+	node            int
+	offset          int
+	end             int
+	reported_column int
+	details         []string
 }
 
 struct V3ExternalCachePath {
@@ -223,7 +238,7 @@ fn cpp_runtime_link_flag(target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
 }
 
-fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
@@ -245,11 +260,12 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 		}
 		return passthrough
 	}
-	support_flags := c_object_compile_support_flags(flags)
+	mut support_flags := environment_c_flags.clone()
+	support_flags << c_object_compile_support_flags(flags)
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	plan_path := c_link_plan_path(cache_dir, flags, c99, pic_flag, target_args, target, c_compiler, mut
-		stats)
+	plan_path := c_link_plan_path(cache_dir, flags, support_flags, c99, pic_flag, target_args,
+		target, c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
 	// object's cache decision remains visible.
 	if os.getenv('V3_CACHE_TRACE') == '' {
@@ -333,12 +349,13 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 	return prepared
 }
 
-fn c_link_plan_path(cache_dir string, flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
+fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
 	for identity in ['v3-c-link-plan-v2', os.getwd(), flags.join('\x00'),
-		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
-		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format] {
+		support_flags.join('\x00'), c99.str(), pic_flag, target_args.join('\x00'), compiler_path,
+		compiler_version, target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
+		target.object_format] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -818,7 +835,11 @@ fn v3_program_external_input_paths(state &V3ModuleCacheState) []string {
 }
 
 fn c_response_file_arg(arg string) string {
-	return '"${arg.replace('\\', '\\\\').replace('"', '\\"')}"'
+	slash := [u8(92)].bytestr()
+	escaped_slash := [u8(92), 92].bytestr()
+	quote := [u8(34)].bytestr()
+	escaped_quote := [u8(92), 34].bytestr()
+	return quote + arg.replace(slash, escaped_slash).replace(quote, escaped_quote) + quote
 }
 
 fn compile_v3_program_object(kind string, source string, source_identity string, external_inputs []string, manager &modulecache.Manager, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) !string {
@@ -828,11 +849,7 @@ fn compile_v3_program_object(kind string, source string, source_identity string,
 	} else {
 		args << ['-x', 'c']
 	}
-	for value in [c_standard, opt_flag, pic_flag] {
-		if value.len > 0 {
-			args << value
-		}
-	}
+	append_v3_c_compile_mode_flags(mut args, c_standard, opt_flag, pic_flag)
 	args << target_args
 	args << cgen.tokenize_c_flag(warning_flags)
 	args << '-Wno-int-conversion'
@@ -1263,7 +1280,8 @@ fn c_object_compiler_identity(compiler string, mut stats CObjectCacheStats) (str
 	if compiler_path in stats.compiler_versions {
 		return compiler_path, stats.compiler_versions[compiler_path]
 	}
-	version := cmdexec.run(compiler, ['--version']).output
+	compiler_result := cmdexec.run(compiler, ['--version'])
+	version := compiler_result.output
 	stats.compiler_versions[compiler_path] = version
 	return compiler_path, version
 }
@@ -1609,21 +1627,379 @@ fn input_is_cmd_v(input_file string) bool {
 		|| normalized.ends_with('/cmd/v/v.v')
 }
 
+fn input_loads_cmd_v_module(input_file string) bool {
+	if os.is_dir(input_file) {
+		return input_is_cmd_v(input_file)
+	}
+	normalized_dir := os.dir(os.real_path(input_file)).replace('\\', '/').trim_right('/')
+	return normalized_dir.ends_with('/cmd/v')
+}
+
+fn input_is_legacy_diagnostic_fixture(input_file string) bool {
+	if os.getenv('VTEST_RUNNER') != 'normal' || !input_file.ends_with('.vv') {
+		return false
+	}
+	normalized := os.real_path(input_file).replace('\\', '/')
+	if !['/vlib/v/checker/tests/', '/vlib/v/parser/tests/', '/vlib/v/scanner/tests/'].any(normalized.contains(it)) {
+		return false
+	}
+	return os.is_file(input_file.all_before_last('.vv') + '.out')
+}
+
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
 		real_input := os.real_path(input_file)
-		return os.join_path_single(os.getwd(), os.base(real_input))
+		return os.join_path_single(real_input, os.base(real_input))
 	}
-	if input_file.ends_with('.vv') {
-		return input_file.all_before_last('.vv')
+	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
+	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')
+		&& !resolved_input.ends_with('.vsh') {
+		return resolved_input
 	}
-	if input_file.ends_with('.vsh') {
-		return input_file.all_before_last('.vsh')
+	filename := os.file_name(resolved_input).trim_space()
+	mut base := filename.all_before_last('.')
+	if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+		base = base.all_before_last('.')
 	}
-	if input_file.ends_with('.v') {
-		return input_file.all_before_last('.v')
+	if base == '' {
+		base = filename
 	}
-	return input_file
+	if default_bin_file_needs_safe_name(base, filename) {
+		base = safe_default_bin_file_name(filename)
+	}
+	input_dir := os.dir(resolved_input)
+	return if input_dir in ['', '.'] { base } else { os.join_path_single(input_dir, base) }
+}
+
+fn default_bin_file_needs_safe_name(base string, filename string) bool {
+	if base == '' || base in ['.', '..', '-'] {
+		return true
+	}
+	if base == filename && filename.starts_with('.') {
+		return true
+	}
+	if base.ends_with('.c') || base.ends_with('.js') || base.ends_with('.wasm') {
+		return true
+	}
+	for ch in base {
+		if ch < ` ` || ch == 127 {
+			return true
+		}
+	}
+	return false
+}
+
+fn safe_default_bin_file_name(filename string) string {
+	mut sanitized := strings.new_builder(filename.len + 4)
+	for ch in filename {
+		if ch < ` ` || ch == 127 {
+			sanitized.write_u8(`_`)
+		} else {
+			sanitized.write_u8(ch)
+		}
+	}
+	sanitized.write_string('.out')
+	return sanitized.str()
+}
+
+struct V3CCompilerFlagOptions {
+	environment_c_flags  []string
+	environment_ld_flags []string
+	target_args          []string
+	link_c_standard      string
+	dependencies         []string
+	warn_args            []string
+	vroot                string
+	target_os            string
+	pic_flag             string
+	is_prod              bool
+	no_prod_options      bool
+	is_shared            bool
+	parallel_cc          bool
+	explicit_tcc         bool
+	is_c_debug           bool
+	is_o                 bool
+	is_liveshared        bool
+}
+
+struct V3CCompilerFlagPlan {
+	before_inputs []string
+	after_inputs  []string
+	tcc_includes  string
+}
+
+fn (plan &V3CCompilerFlagPlan) compiler_args(output string, inputs []string, support_inputs []string) []string {
+	mut args := plan.before_inputs.clone()
+	args << ['-o', output]
+	args << inputs
+	args << support_inputs
+	args << plan.after_inputs
+	return args
+}
+
+fn (plan &V3CCompilerFlagPlan) all_flags(support_inputs []string) []string {
+	mut flags := plan.before_inputs.clone()
+	flags << support_inputs
+	flags << plan.after_inputs
+	return flags
+}
+
+fn v3_c_source_inputs(source string, objective_c bool) []string {
+	if objective_c {
+		return ['-x', 'objective-c', source, '-x', 'none']
+	}
+	return [source]
+}
+
+fn v3_c_source_mode_flags(objective_c bool) []string {
+	if objective_c {
+		return ['-x', 'objective-c', '-x', 'none']
+	}
+	return []string{}
+}
+
+fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
+	mut before_inputs := options.environment_c_flags.clone()
+	before_inputs << options.target_args
+	if options.link_c_standard.len > 0 {
+		before_inputs << options.link_c_standard
+	}
+	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options,
+		options.is_shared, options.parallel_cc, options.explicit_tcc)
+	if options.pic_flag.len > 0 {
+		before_inputs << options.pic_flag
+	}
+	mut tcc_includes := ''
+	if options.explicit_tcc {
+		tcc_lib_dir := os.join_path(options.vroot, 'thirdparty', 'tcc', 'lib')
+		tcc_includes = '-I${os.join_path_single(tcc_lib_dir, 'include')}'
+		before_inputs << [tcc_includes, '-L${tcc_lib_dir}']
+		if !options.is_shared {
+			before_inputs << '-bt25'
+		}
+	}
+	before_inputs << options.warn_args
+	before_inputs << '-Wno-int-conversion'
+	if options.target_os == 'macos' && !options.is_shared && !options.explicit_tcc {
+		before_inputs << '-Wl,-stack_size,0x4000000'
+	}
+	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared
+		&& !options.explicit_tcc {
+		before_inputs << '-Wl,-export_dynamic'
+	}
+	if options.is_shared {
+		before_inputs << '-shared'
+		if !options.is_liveshared && options.target_os == 'macos' {
+			before_inputs << '-fvisibility=hidden'
+		}
+	} else if options.is_o {
+		before_inputs << '-c'
+	}
+	if options.is_liveshared && options.target_os == 'macos' && !options.explicit_tcc {
+		before_inputs << ['-flat_namespace', '-undefined', 'dynamic_lookup']
+	}
+	mut after_inputs := options.dependencies.clone()
+	after_inputs << '-lm'
+	if !options.is_o {
+		after_inputs << options.environment_ld_flags
+	}
+	return V3CCompilerFlagPlan{
+		before_inputs: before_inputs
+		after_inputs:  after_inputs
+		tcc_includes:  tcc_includes
+	}
+}
+
+fn v3_c_project_dependency_flags(flags []string) []string {
+	mut project_flags := []string{cap: flags.len}
+	for flag in flags {
+		clean := flag.trim(' \t\r\n"\'')
+		if c_flag_is_object_file(clean) && !os.is_file(clean) {
+			if source := c_source_from_object_file(clean) {
+				project_flags << source
+				continue
+			}
+		}
+		project_flags << flag
+	}
+	return project_flags
+}
+
+fn v3_windows_batch_quote_arg(argument string) string {
+	mut quoted := strings.new_builder(argument.len + 8)
+	quoted.write_u8(`"`)
+	mut pending_backslashes := 0
+	for i := 0; i < argument.len; i++ {
+		ch := argument[i]
+		if ch == `\\` {
+			pending_backslashes++
+			continue
+		}
+		if ch == `"` {
+			for _ in 0 .. pending_backslashes * 2 + 1 {
+				quoted.write_u8(`\\`)
+			}
+			quoted.write_u8(`"`)
+			pending_backslashes = 0
+			continue
+		}
+		for _ in 0 .. pending_backslashes {
+			quoted.write_u8(`\\`)
+		}
+		pending_backslashes = 0
+		if ch == `%` {
+			// Percent signs are expanded even inside quotes in a batch file.
+			quoted.write_string('%%')
+		} else {
+			quoted.write_u8(ch)
+		}
+	}
+	for _ in 0 .. pending_backslashes * 2 {
+		quoted.write_u8(`\\`)
+	}
+	quoted.write_u8(`"`)
+	return quoted.str()
+}
+
+fn v3_windows_batch_command(program string, args []string) string {
+	mut parts := []string{cap: args.len + 1}
+	parts << v3_windows_batch_quote_arg(program)
+	for arg in args {
+		parts << v3_windows_batch_quote_arg(arg)
+	}
+	return parts.join(' ')
+}
+
+fn v3_posix_shell_quote_arg(argument string) string {
+	return "'" + argument.replace("'", "'\\''") + "'"
+}
+
+fn v3_posix_shell_command(program string, args []string) string {
+	mut parts := []string{cap: args.len + 1}
+	parts << v3_posix_shell_quote_arg(program)
+	for arg in args {
+		parts << v3_posix_shell_quote_arg(arg)
+	}
+	return parts.join(' ')
+}
+
+fn write_v3_c_project(project_dir string, c_source string, c_compiler string, plan V3CCompilerFlagPlan, support_inputs []string, objective_c bool) ! {
+	output_name := os.base(c_source).all_before_last('.c')
+	output_path := os.join_path_single(project_dir, output_name)
+	args := plan.compiler_args(output_path, v3_c_source_inputs(c_source, objective_c),
+		support_inputs)
+	display_command := cmdexec.display(c_compiler, args)
+	posix_command := v3_posix_shell_command(c_compiler, args)
+	make_command := posix_command.replace('$', '$$')
+	windows_command := v3_windows_batch_command(c_compiler, args)
+	os.write_file(os.join_path_single(project_dir, 'build_command.txt'), display_command + '\n')!
+	os.write_file(os.join_path_single(project_dir, 'Makefile'), 'all:\n\t${make_command}\n')!
+	build_sh := os.join_path_single(project_dir, 'build.sh')
+	os.write_file(build_sh, '#!/bin/sh\nset -eu\n${posix_command}\n')!
+	os.write_file(os.join_path_single(project_dir, 'build.bat'),
+		'@echo off\r\nsetlocal DisableDelayedExpansion\r\n${windows_command}\r\n')!
+	$if !windows {
+		os.chmod(build_sh, 0o755)!
+	}
+}
+
+fn emit_v3_js_compat_program(input_file string, output_file string) ! {
+	source := os.read_file(input_file)!
+	mut output := strings.new_builder(source.len)
+	mut emitted := emit_v3_js_exported_global_aliases(source, mut output)
+	mut offset := 0
+	double_quote := [u8(34)].bytestr()
+	js_eval_prefix := 'JS.eval(' + double_quote
+	js_eval_suffix := double_quote + '.str'
+	for offset < source.len {
+		relative_start := source[offset..].index(js_eval_prefix) or { break }
+		payload_start := offset + relative_start + js_eval_prefix.len
+		relative_end := source[payload_start..].index(js_eval_suffix) or {
+			return error('V3 JavaScript compatibility generation requires JS.eval with a string argument')
+		}
+		payload_end := payload_start + relative_end
+		payload := source[payload_start..payload_end]
+		output.writeln(payload)
+		emitted = true
+		offset = payload_end + js_eval_suffix.len
+	}
+	for line in source.split_into_lines() {
+		trimmed := line.trim_space()
+		if !trimmed.starts_with('println(') || !trimmed.ends_with(')') {
+			continue
+		}
+		argument := trimmed['println('.len..trimmed.len - 1].trim_space()
+		if argument.len < 2 {
+			continue
+		}
+		quote := argument[0]
+		if (quote != 39 && quote != 34) || argument[argument.len - 1] != quote {
+			continue
+		}
+		output.writeln('console.log(${argument});')
+		emitted = true
+	}
+	if !emitted {
+		return error('the V3 JavaScript compatibility generator currently supports only JS.eval and literal println')
+	}
+	os.mkdir_all(os.dir(output_file))!
+	os.write_file(output_file, output.str())!
+}
+
+fn emit_v3_js_exported_global_aliases(source string, mut output strings.Builder) bool {
+	mut export_name := ''
+	mut emitted := false
+	lines := source.split_into_lines()
+	for line_idx, raw_line in lines {
+		line := raw_line.trim_space()
+		if line.starts_with('@[export:') {
+			quote := if line.contains("'") { "'" } else { '"' }
+			export_name = line.all_after(quote).all_before(quote)
+			continue
+		}
+		if export_name.len == 0 || !line.starts_with('__global ') || !line.contains('= fn (') {
+			continue
+		}
+		global_name := line.all_after('__global ').all_before('=').trim_space()
+		params_text := line.all_after('fn (').all_before(')')
+		mut params := []string{}
+		for raw_param in params_text.split(',') {
+			param := raw_param.trim_space().all_before(' ')
+			if param.len > 0 {
+				params << param
+			}
+		}
+		mut return_expr := ''
+		for body_line in lines[line_idx + 1..] {
+			body := body_line.trim_space()
+			if body.starts_with('return ') {
+				return_expr = body.all_after('return ').trim_space()
+				break
+			}
+			if body == '}' {
+				break
+			}
+		}
+		if global_name.len == 0 || return_expr.len == 0 {
+			return false
+		}
+		if !emitted {
+			output.writeln('const \$global = {};')
+		}
+		storage_name := '__v3_${global_name}'
+		output.writeln('\$global["${storage_name}"] = function(${params.join(', ')}) { return ${return_expr}; };')
+		output.writeln('Object.defineProperty(\$global,"${global_name}", {')
+		output.writeln('\tget() { return \$global["${storage_name}"]; },')
+		output.writeln('\tset(value) { \$global["${storage_name}"] = value; }')
+		output.writeln('});')
+		output.writeln('Object.defineProperty(globalThis,"${export_name}", {')
+		output.writeln('\tget() { return \$global["${global_name}"]; },')
+		output.writeln('\tset(value) { \$global["${global_name}"] = value; }')
+		output.writeln('});')
+		emitted = true
+		export_name = ''
+	}
+	return emitted
 }
 
 fn keep_c_output_file(bin_file string) string {
@@ -1650,8 +2026,11 @@ fn v3_crun_cache_marker_path(bin_file string) string {
 	return os.join_path(os.vtmp_dir(), 'v3_crun_cache', key)
 }
 
-fn v3_crun_cache_matches(bin_file string, build_identity string) bool {
+fn v3_crun_cache_matches(bin_file string, build_identity string, source_file string) bool {
 	if build_identity.len == 0 {
+		return false
+	}
+	if os.file_last_mod_unix(source_file) > os.file_last_mod_unix(bin_file) {
 		return false
 	}
 	binary_signature := modulecache.file_signature(bin_file)
@@ -1680,10 +2059,17 @@ fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
 	}
 }
 
-fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, is_strict bool, enable_globals bool) string {
+fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, is_strict bool, enable_globals bool, direct_vsh string) string {
+	direct_vsh_path := os.real_path(direct_vsh)
 	mut source_paths := map[string]bool{}
 	for file in user_files {
-		source_paths[os.real_path(file)] = true
+		real_file := os.real_path(file)
+		// Direct `.vsh` execution follows V's executable-cache contract: the
+		// script timestamp decides whether its cached binary is stale. Imported
+		// modules remain content-addressed through the identity below.
+		if real_file != direct_vsh_path {
+			source_paths[real_file] = true
+		}
 	}
 	for files in state.module_sources.values() {
 		for file in files {
@@ -1765,7 +2151,7 @@ fn cli_usage() string {
 		'  -v                           verbose stage profiling\n' +
 		'  -silent                      suppress benchmark output\n' +
 		'  -showcc                      print C compiler commands\n' +
-		'  -no-memory-limit             disable the 2 GiB memory safety limit\n' +
+		'  -no-memory-limit             disable the 2.25 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -1783,6 +2169,20 @@ fn with_shared_library_postfix(path string, target_os string) string {
 		return path
 	}
 	return path + postfix
+}
+
+fn with_executable_postfix(path string, target_os string) string {
+	if pref.normalized_os(target_os) != 'windows' || path.ends_with('.exe') {
+		return path
+	}
+	return path + '.exe'
+}
+
+fn c_executable_bin_file_for_target(path string, target_os string, is_shared bool, is_o bool, c_only bool) string {
+	if is_shared || is_o || c_only {
+		return path
+	}
+	return with_executable_postfix(path, target_os)
 }
 
 // should_scope_prealloc_stages reports whether compiler stages can use disposable arenas.
@@ -2120,6 +2520,7 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 		return ''
 	}
 	source := os.read_file(real_path) or { return '' }
+	cache_seed_locally_defined_c_macros(source, mut include_macros)
 	active_paths[real_path] = true
 	header, types_complete := modulecache.c_source_type_declarations_with_status(source)
 	if !types_complete {
@@ -2244,16 +2645,13 @@ fn cache_record_local_c_include_macro(directive string, arg string, ambiguous bo
 	if directive != 'define' {
 		return
 	}
-	fields := arg.fields()
-	if fields.len == 0 {
-		return
-	}
-	raw_name := fields[0]
-	open := raw_name.index_u8(`(`)
-	name := if open > 0 { raw_name[..open] } else { raw_name }
+	name := cache_local_c_define_name(arg)
 	if name.len == 0 {
 		return
 	}
+	fields := arg.fields()
+	raw_name := fields[0]
+	open := raw_name.index_u8(`(`)
 	value := if open < 0 { arg[raw_name.len..].trim_space() } else { '' }
 	mut literal := ''
 	if cache_local_c_is_literal_include_value(value) {
@@ -2265,6 +2663,33 @@ fn cache_record_local_c_include_macro(directive string, arg string, ambiguous bo
 		literal:     literal
 		replacement: value
 		truth:       cache_local_c_integer_condition(value)
+	}
+}
+
+fn cache_local_c_define_name(arg string) string {
+	fields := arg.fields()
+	if fields.len == 0 {
+		return ''
+	}
+	raw_name := fields[0]
+	open := raw_name.index_u8(`(`)
+	return if open > 0 { raw_name[..open] } else { raw_name }
+}
+
+fn cache_seed_locally_defined_c_macros(source string, mut macros map[string]V3CacheLocalCMacro) {
+	for line in source.split_into_lines() {
+		directive, arg := cache_local_c_directive(line)
+		if directive != 'define' {
+			continue
+		}
+		name := cache_local_c_define_name(arg)
+		if name.len > 0 && name !in macros {
+			macros[name] = V3CacheLocalCMacro{
+				known:      true
+				is_defined: false
+				truth:      -1
+			}
+		}
 	}
 }
 
@@ -2967,6 +3392,7 @@ fn cache_c_source_active_code_scan_for_path(path string, allowed_paths map[strin
 }
 
 fn cache_c_source_definitely_active_code_rec(source string, source_path string, allowed_paths map[string]bool, mut active_paths map[string]bool, mut macros map[string]V3CacheLocalCMacro, ambient_ambiguous bool) V3CacheActiveCSourceScan {
+	cache_seed_locally_defined_c_macros(source, mut macros)
 	mut out := strings.new_builder(source.len)
 	mut possible := strings.new_builder(256)
 	mut has_ambiguity := false
@@ -3225,22 +3651,143 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	return true
 }
 
-fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, prefix_source_identity string) string {
-	mut parts := ['v3-cgen-metadata-v3', interface_impl_signature, prefix_source_identity]
+fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, prefix_source_identity string, diagnostics []V3CachedTypeDiagnostic) string {
+	mut parts := ['v3-cgen-metadata-v4', interface_impl_signature, prefix_source_identity,
+		flags.len.str()]
 	parts << flags
+	parts << diagnostics.len.str()
+	for diagnostic in diagnostics {
+		parts << diagnostic.file
+		parts << diagnostic.msg
+		parts << diagnostic.severity
+		parts << diagnostic.node.str()
+		parts << diagnostic.offset.str()
+		parts << diagnostic.end.str()
+		parts << diagnostic.reported_column.str()
+		parts << diagnostic.details.len.str()
+		parts << diagnostic.details
+	}
 	return parts.join('\x00')
 }
 
 fn decode_v3_cgen_metadata(metadata string) ?V3CgenCacheMetadata {
 	parts := metadata.split('\x00')
-	if parts.len < 3 || parts[0] != 'v3-cgen-metadata-v3' {
+	if parts.len < 5 || parts[0] != 'v3-cgen-metadata-v4' {
+		return none
+	}
+	flag_count := strconv.atoi(parts[3]) or { return none }
+	if flag_count < 0 || 4 + flag_count >= parts.len {
+		return none
+	}
+	mut index := 4 + flag_count
+	diagnostic_count := strconv.atoi(parts[index]) or { return none }
+	if diagnostic_count < 0 {
+		return none
+	}
+	index++
+	mut diagnostics := []V3CachedTypeDiagnostic{cap: diagnostic_count}
+	for _ in 0 .. diagnostic_count {
+		if index + 8 > parts.len {
+			return none
+		}
+		node := strconv.atoi(parts[index + 3]) or { return none }
+		offset := strconv.atoi(parts[index + 4]) or { return none }
+		end := strconv.atoi(parts[index + 5]) or { return none }
+		reported_column := strconv.atoi(parts[index + 6]) or { return none }
+		detail_count := strconv.atoi(parts[index + 7]) or { return none }
+		if offset < 0 || end < offset || reported_column < 0 || detail_count < 0
+			|| index + 8 + detail_count > parts.len {
+			return none
+		}
+		diagnostics << V3CachedTypeDiagnostic{
+			file:            parts[index]
+			msg:             parts[index + 1]
+			severity:        parts[index + 2]
+			node:            node
+			offset:          offset
+			end:             end
+			reported_column: reported_column
+			details:         parts[index + 8..index + 8 + detail_count].clone()
+		}
+		index += 8 + detail_count
+	}
+	if index != parts.len {
 		return none
 	}
 	return V3CgenCacheMetadata{
 		interface_impl_signature: parts[1]
 		prefix_source_identity:   parts[2]
-		flags:                    parts[3..].clone()
+		flags:                    parts[4..4 + flag_count].clone()
+		diagnostics:              diagnostics
 	}
+}
+
+fn cache_v3_type_diagnostics(a &flat.FlatAst, diagnostics []types.TypeError) []V3CachedTypeDiagnostic {
+	mut cached := []V3CachedTypeDiagnostic{cap: diagnostics.len}
+	for diagnostic in diagnostics {
+		mut file := diagnostic.file
+		if diagnostic.pos.is_valid() {
+			if source_file := a.source_files[diagnostic.pos.id] {
+				file = source_file.name
+			}
+		}
+		if file.len > 0 {
+			file = os.real_path(file)
+		}
+		cached << V3CachedTypeDiagnostic{
+			file:            file.clone()
+			msg:             diagnostic.msg.clone()
+			severity:        diagnostic.severity.clone()
+			node:            int(diagnostic.node)
+			offset:          diagnostic.pos.offset
+			end:             diagnostic.pos.end
+			reported_column: diagnostic.pos.reported_column
+			details:         clone_string_list(diagnostic.details)
+		}
+	}
+	return cached
+}
+
+fn restore_v3_type_diagnostics(mut a flat.FlatAst, diagnostics []V3CachedTypeDiagnostic) []types.TypeError {
+	mut file_ids := map[string]int{}
+	mut next_file_id := 1
+	for id, file in a.source_files {
+		file_ids[os.real_path(file.name)] = id
+		if id >= next_file_id {
+			next_file_id = id + 1
+		}
+	}
+	mut file_set := v3token.FileSet.new()
+	mut restored := []types.TypeError{cap: diagnostics.len}
+	for diagnostic in diagnostics {
+		mut file_id := file_ids[diagnostic.file] or { 0 }
+		if file_id == 0 && diagnostic.file.len > 0 {
+			source := os.read_file(diagnostic.file) or { '' }
+			if source.len > 0 || os.is_file(diagnostic.file) {
+				mut source_file := file_set.add_file(diagnostic.file, source.len)
+				source_file.index_lines(source)
+				file_id = next_file_id
+				next_file_id++
+				a.source_files[file_id] = source_file
+				file_ids[diagnostic.file] = file_id
+			}
+		}
+		restored << types.TypeError{
+			msg:      diagnostic.msg.clone()
+			kind:     .unknown_ident
+			node:     flat.NodeId(diagnostic.node)
+			file:     diagnostic.file.clone()
+			pos:      v3token.Pos{
+				id:              file_id
+				offset:          diagnostic.offset
+				end:             diagnostic.end
+				reported_column: diagnostic.reported_column
+			}
+			details:  clone_string_list(diagnostic.details)
+			severity: diagnostic.severity.clone()
+		}
+	}
+	return restored
 }
 
 fn cacheable_runtime_string_nodes(a &flat.FlatAst) []bool {
@@ -3797,8 +4344,11 @@ fn incremental_c_function_sections(source string) ?V3IncrementalCFunctionSection
 	}
 }
 
-fn merge_incremental_program_body(cached_source string, changed_source string, changed_keys []string) ?string {
+fn merge_incremental_program_body(cached_source string, cached_prefix string, changed_source string, changed_keys []string) ?string {
 	cached_sections := incremental_c_function_sections(cached_source) or { return none }
+	prefix_sections := incremental_c_function_sections(cached_prefix) or {
+		V3IncrementalCFunctionSections{}
+	}
 	changed_sections := incremental_c_function_sections(changed_source) or { return none }
 	mut merged := cached_source
 	for key in changed_keys {
@@ -3827,10 +4377,17 @@ fn merge_incremental_program_body(cached_source string, changed_source string, c
 		merged = merged[..marker_idx] + declaration_text + merged[marker_idx..]
 	}
 	mut new_sections := strings.new_builder(1024)
+	prefix_functions := modulecache.c_source_function_identifiers(cached_prefix)
 	for key in changed_sections.keys {
-		if key !in cached_sections.sections {
-			new_sections.write_string(changed_sections.sections[key])
+		if key in cached_sections.sections || key in prefix_sections.sections {
+			continue
 		}
+		section := changed_sections.sections[key]
+		section_functions := modulecache.c_source_function_identifiers(section)
+		if section_functions.len > 0 && section_functions.keys().all(it in prefix_functions) {
+			continue
+		}
+		new_sections.write_string(section)
 	}
 	new_section_text := new_sections.str()
 	if new_section_text.len == 0 {
@@ -3897,6 +4454,12 @@ fn incremental_c_support_declarations(source string) ?string {
 	content_start := begin + begin_marker.len
 	relative_end := source[content_start..].index(end_marker) or { return none }
 	return source[content_start..content_start + relative_end]
+}
+
+fn incremental_c_cached_declarations(source string) string {
+	marker := '/* V3CACHE_BODY_BEGIN */'
+	marker_idx := source.index(marker) or { return '' }
+	return source[..marker_idx]
 }
 
 fn incremental_static_string_markers(source string) string {
@@ -4015,6 +4578,30 @@ fn clone_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) []transform
 		}
 	}
 	return cloned
+}
+
+fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated []transform.MonomorphCacheSpec) []transform.MonomorphCacheSpec {
+	mut by_key := map[string]transform.MonomorphCacheSpec{}
+	for spec in cached {
+		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args.join('\x1f')}'
+		by_key[key] = spec
+	}
+	for spec in generated {
+		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args.join('\x1f')}'
+		by_key[key] = spec
+	}
+	mut keys := by_key.keys()
+	keys.sort()
+	mut merged := []transform.MonomorphCacheSpec{cap: keys.len}
+	for key in keys {
+		spec := by_key[key]
+		merged << transform.MonomorphCacheSpec{
+			decl_key: spec.decl_key.clone()
+			module:   spec.module.clone()
+			args:     clone_string_list(spec.args)
+		}
+	}
+	return merged
 }
 
 // clone_string_bool_map promotes a string-keyed set out of a disposable stage arena.
@@ -4494,7 +5081,8 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	if target.os in ['macos', 'ios'] && resolved_path == '/usr/bin/cc' {
 		return 'clang'
 	}
-	version := cmdexec.run(compiler_path, ['--version']).output.to_lower_ascii()
+	compiler_result := cmdexec.run(compiler_path, ['--version'])
+	version := compiler_result.output.to_lower_ascii()
 	if version.contains('tiny c compiler') || version.contains('tcc version') {
 		return 'tinyc'
 	}
@@ -4801,6 +5389,25 @@ fn record_compile_value(mut values map[string]string, define string) {
 	values[name] = if define.contains('=') { define.all_after_first('=') } else { 'true' }
 }
 
+fn record_user_define(mut defines []string, mut values map[string]string, define string) {
+	name := define.all_before('=').trim_space()
+	if name.len == 0 {
+		return
+	}
+	has_value := define.contains('=')
+	value := if has_value { define.all_after_first('=') } else { 'true' }
+	if (!has_value || value.len > 0) && name !in defines {
+		defines << name
+	}
+	if has_value {
+		valued_define := '${name}=${value}'
+		if valued_define !in defines {
+			defines << valued_define
+		}
+	}
+	values[name] = value
+}
+
 fn stage_macos_v3_compiler_error_fallback(fallback_file string) {
 	if fallback_file != '' {
 		os.write_file(fallback_file, macos_v3_compiler_error_fallback) or {}
@@ -4819,6 +5426,142 @@ fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fall
 	}
 	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
 	return true
+}
+
+fn v3_source_is_pure_v(path string) bool {
+	if !path.ends_with('.v') && !path.ends_with('.vv') && !path.ends_with('.vsh') {
+		return false
+	}
+	before_dot_v := path.all_before_last('.v')
+	language := before_dot_v.all_after_last('.')
+	language_with_underscore := before_dot_v.all_after_last('_')
+	if language == before_dot_v && language_with_underscore == before_dot_v {
+		return true
+	}
+	actual_language := if language == before_dot_v { language_with_underscore } else { language }
+	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
+		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32',
+		'riscv32', 'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64',
+		'ppc64le', 'sparc64', 'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser',
+		'js_freestanding', 'wasm32', 'wasm']
+}
+
+fn v3_type_text_uses_interop_namespace(text string, namespace string) bool {
+	needle := namespace + '.'
+	mut offset := 0
+	for offset < text.len {
+		relative := text[offset..].index(needle) or { return false }
+		index := offset + relative
+		if index == 0 || (!(text[index - 1].is_alnum() || text[index - 1] == `_`)
+			&& text[index - 1] != `.`) {
+			return true
+		}
+		offset = index + needle.len
+	}
+	return false
+}
+
+fn v3_ast_node_uses_interop_namespace(a &flat.FlatAst, node &flat.Node, namespace string) bool {
+	if node.kind == .selector && node.children_count > 0 {
+		base := a.child_node(node, 0)
+		if base.kind == .ident && base.value == namespace {
+			return true
+		}
+	}
+	if node.kind !in [.string_literal, .string_interp, .char_literal, .directive, .file]
+		&& node.value.starts_with(namespace + '.') {
+		return true
+	}
+	return v3_type_text_uses_interop_namespace(node.typ, namespace)
+}
+
+fn v3_explicit_interop_fn_namespace(node &flat.Node, file string, mut source_cache map[string]string) string {
+	if node.kind != .c_fn_decl || !node.pos.is_valid() {
+		return ''
+	}
+	source := source_cache[file] or {
+		loaded := os.read_file(file) or { return '' }
+		source_cache[file] = loaded
+		loaded
+	}
+	mut cursor := int_min(node.pos.offset, source.len)
+	for cursor > 0 && source[cursor - 1] in [` `, `\t`] {
+		cursor--
+	}
+	if cursor == 0 || source[cursor - 1] != `.` {
+		return ''
+	}
+	cursor--
+	for cursor > 0 && source[cursor - 1] in [` `, `\t`] {
+		cursor--
+	}
+	end := cursor
+	for cursor > 0 && (source[cursor - 1].is_alnum() || source[cursor - 1] == `_`) {
+		cursor--
+	}
+	namespace := source[cursor..end]
+	if namespace in ['C', 'JS'] {
+		return namespace
+	}
+	return ''
+}
+
+fn v3_impure_v_diagnostics(a &flat.FlatAst) []parser.Diagnostic {
+	mut diagnostics := []parser.Diagnostic{}
+	mut seen := map[string]bool{}
+	mut source_cache := map[string]string{}
+	mut file_ids := map[string]int{}
+	for id, file in a.source_files {
+		file_ids[file.name] = id
+	}
+	mut current_file := ''
+	mut current_file_id := 0
+	for node in a.nodes {
+		if node.kind == .file {
+			current_file = node.value
+			current_file_id = file_ids[current_file] or { 0 }
+			continue
+		}
+		mut file := current_file
+		mut file_id := current_file_id
+		if node.pos.is_valid() {
+			if source_file := a.source_files[node.pos.id] {
+				file = source_file.name
+				file_id = node.pos.id
+			}
+		}
+		if file_id == 0 || !v3_source_is_pure_v(file) {
+			continue
+		}
+		explicit_fn_namespace := v3_explicit_interop_fn_namespace(&node, file, mut source_cache)
+		for namespace in ['C', 'JS'] {
+			if explicit_fn_namespace != namespace
+				&& !v3_ast_node_uses_interop_namespace(a, &node, namespace) {
+				continue
+			}
+			pos := if node.pos.is_valid() { node.pos } else { v3token.new_pos(file_id, 0) }
+			key := '${pos.id}:${pos.offset}:${namespace}'
+			if key in seen {
+				continue
+			}
+			seen[key] = true
+			mut line := 1
+			mut column := pos.offset + 1
+			if position := a.source_position(pos) {
+				line = position.line
+				column = position.column
+			}
+			diagnostics << parser.Diagnostic{
+				file:     file
+				pos:      pos
+				line:     line
+				column:   column
+				severity: 'warning:'
+				message:  '${namespace} code will not be allowed in pure .v files, please move it to a .${namespace.to_lower_ascii()}.v file instead'
+			}
+		}
+	}
+	return diagnostics
 }
 
 fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string) bool {
@@ -4871,7 +5614,7 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
 	if prefs.backend != 'c' || prefs.target.os != 'macos' || is_test_command || is_checker_fixture
-		|| !input_file.ends_with('.v') || !os.is_file(input_file)
+		|| !(input_file.ends_with('.v') || input_file.ends_with('.vv')) || !os.is_file(input_file)
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
@@ -4934,12 +5677,153 @@ fn suppress_minimal_literal_output_builtin_imports(mut a flat.FlatAst) {
 	}
 }
 
+fn parse_v3_environment_flags(name string) []string {
+	value := os.getenv(name).replace('\r', ' ').replace('\n', ' ')
+	if value.trim_space().len == 0 {
+		return []
+	}
+	return cmdexec.split_args(value) or {
+		eprintln('invalid `${name}` value: ${err.msg()}')
+		exit(1)
+	}
+}
+
+fn v3_environment_coverage_dir() string {
+	value := os.getenv('VCOVDIR')
+	if value.len == 0 {
+		return ''
+	}
+	return os.real_path(value)
+}
+
+fn v3_environment_run_only() []string {
+	value := os.getenv('VTEST_ONLY_FN')
+	if value.len == 0 {
+		return []
+	}
+	return value.split_any(',').filter(it.len > 0)
+}
+
+fn v3_environment_show_test_stats() bool {
+	return os.getenv('VTEST_SHOW_ASSERTS').len > 0
+}
+
+fn show_v3_c_compiler_output(enabled bool, compiler string, result os.Result) {
+	if !enabled {
+		return
+	}
+	header := '======== Output of the C Compiler (${compiler}) ========'
+	println(header)
+	if result.output.len > 0 {
+		println(result.output.trim_space())
+	}
+	println('='.repeat(header.len))
+}
+
+fn v3_run_only_cache_identity(patterns []string) string {
+	mut parts := []string{cap: patterns.len}
+	for pattern in patterns {
+		parts << '${pattern.len}:${pattern}'
+	}
+	return parts.join(',')
+}
+
+fn v3_effective_warns_are_errors(explicit bool, is_prod bool) bool {
+	return explicit || is_prod
+}
+
+fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, explicit_tcc bool) []string {
+	if !is_prod || no_prod_options {
+		return []
+	}
+	mut flags := ['-O3']
+	if !is_shared && !parallel_cc && !explicit_tcc {
+		flags << '-flto'
+	}
+	return flags
+}
+
+fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flags string, pic_flag string) {
+	if c_standard.len > 0 {
+		args << c_standard
+	}
+	args << cgen.tokenize_c_flag(opt_flags)
+	if pic_flag.len > 0 {
+		args << pic_flag
+	}
+}
+
+fn expand_v3_module_search_paths(spec string, vroot string) []string {
+	if spec.len == 0 {
+		return []
+	}
+	mut expanded := []string{}
+	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+		match path {
+			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
+			'@vmodules' { expanded << os.vmodules_paths() }
+			else { expanded << path.replace('@vroot', vroot) }
+		}
+	}
+	return expanded
+}
+
+fn v3_driver_option_requires_value(option string) bool {
+	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
+		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
+		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project',
+		'-test-runner', '-run-only']
+}
+
+fn v3_driver_option_consumes_value(option string) bool {
+	return v3_driver_option_requires_value(option) || option in ['-cflags', '-dump-c-flags']
+}
+
+fn apply_v3_diagnostic_color_option(option string) {
+	ansi.set_colors_enabled(option == '-color')
+}
+
+fn apply_v3_default_diagnostic_color() {
+	ansi.set_colors_enabled(ansi.stderr_supports_escape_sequences())
+}
+
 // run executes the V3 compiler driver with `args`.
 @[markused]
 pub fn run(args []string) {
+	apply_v3_default_diagnostic_color()
 	if args.len == 0 {
 		eprintln(cli_usage())
 		exit(1)
+	}
+	mut doc_index := -1
+	mut skip_option_value := false
+	for index, arg in args {
+		if skip_option_value {
+			skip_option_value = false
+			continue
+		}
+		if v3_driver_option_consumes_value(arg) {
+			skip_option_value = true
+			continue
+		}
+		if arg.starts_with('-') {
+			continue
+		}
+		if arg == 'doc' {
+			doc_index = index
+		}
+		break
+	}
+	if doc_index >= 0 {
+		// Keep tool compilation on V3 when a V3-built test or tool invokes
+		// `@VEXE doc ...` directly. The tool's arguments belong to vdoc, so route
+		// them after the source path exactly like `v3 run`.
+		vdoc := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vdoc')
+		mut tool_args := args[..doc_index].clone()
+		tool_args << ['run', vdoc, 'doc']
+		tool_args << args[doc_index + 1..]
+		run(tool_args)
+		return
 	}
 	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
@@ -4960,23 +5844,46 @@ pub fn run(args []string) {
 	mut target_arch_explicit := false
 	mut c_compiler := 'cc'
 	mut c_compiler_explicit := false
+	mut c_compiler_arg_index := -1
 	mut explicit_tcc := false
+	mut retry_compilation := true
 	mut gc_mode := 'none'
 	mut enable_globals_compat := false
 	mut is_prod := false
+	mut no_prod_options := false
 	mut is_shared := false
+	mut is_livemain := false
+	mut is_liveshared := false
 	mut is_strict := false
 	mut is_selfhost := false
+	mut no_builtin := false
+	mut no_preludes := false
 	mut no_parallel := false
+	mut parallel_cc := false
 	mut no_prealloc := false
 	mut no_cache := false
+	mut no_skip_unused := false
+	mut is_o := false
 	mut no_memory_limit := false
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut is_repl := false
+	mut show_test_stats := v3_environment_show_test_stats()
+	mut warn_impure_v := false
+	mut warns_are_errors := false
+	mut notes_are_errors := false
+	mut check_overflow := false
+	mut force_bounds_checking := false
+	mut print_v_files := false
+	mut print_watched_files := false
+	mut only_check_syntax := false
+	mut check_only := false
 	mut show_cc := false
+	mut show_c_output := false
+	mut translated_mode := false
 	mut keep_c := false
 	mut skip_running := false
 	mut is_debug := false
@@ -4993,7 +5900,21 @@ pub fn run(args []string) {
 	mut is_direct_vsh := false
 	mut is_test_command := false
 	mut is_checker_fixture := false
+	mut coverage_dir := v3_environment_coverage_dir()
+	mut dump_c_flags := ''
+	mut generate_c_project := ''
+	mut module_search_path_spec := ''
+	mut file_list := []string{}
 	mut run_args := []string{}
+	mut run_only := v3_environment_run_only()
+	mut print_fn_names := []string{}
+	environment_c_flags := parse_v3_environment_flags('CFLAGS')
+	environment_ld_flags := parse_v3_environment_flags('LDFLAGS')
+	if environment_c_flags.len > 0 || environment_ld_flags.len > 0 {
+		// Ambient flags can change arbitrary native compilation and link inputs.
+		// Keep those invocations monolithic until the module cache records them.
+		no_cache = true
+	}
 	mut i := 0
 	for i < args.len {
 		// Once `run <file>` has captured its input file, every remaining argument
@@ -5005,8 +5926,10 @@ pub fn run(args []string) {
 			i++
 			continue
 		}
-		if args[i] in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc', '-thread-stack-size']
-			&& (i + 1 >= args.len || args[i + 1].starts_with('-')) {
+		option_accepts_dash_value := args[i] in ['-o', '-output'] && i + 1 < args.len
+			&& args[i + 1] == '-'
+		if v3_driver_option_requires_value(args[i])
+			&& (i + 1 >= args.len || (args[i + 1].starts_with('-') && !option_accepts_dash_value)) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
 		}
@@ -5023,12 +5946,16 @@ pub fn run(args []string) {
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
 			i++
-		} else if args[i] == '-o' && i + 1 < args.len {
+		} else if args[i] in ['-o', '-output'] && i + 1 < args.len {
 			output_file = args[i + 1]
 			explicit_output = true
+			if output_file.ends_with('.o') {
+				is_o = true
+				no_cache = true
+			}
 			i += 2
-		} else if args[i] == '-b' && i + 1 < args.len {
-			backend = args[i + 1]
+		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
+			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
 			backend_explicit = true
 			i += 2
 		} else if args[i] == '-os' && i + 1 < args.len {
@@ -5042,8 +5969,24 @@ pub fn run(args []string) {
 		} else if args[i] == '-prod' {
 			is_prod = true
 			i++
+		} else if args[i] == '-no-prod-options' {
+			no_prod_options = true
+			i++
 		} else if args[i] == '-shared' || args[i] == '--shared' {
 			is_shared = true
+			i++
+		} else if args[i] == '-live' {
+			is_livemain = true
+			if 'livemain' !in user_defines {
+				user_defines << 'livemain'
+			}
+			i++
+		} else if args[i] == '-sharedlive' {
+			is_liveshared = true
+			is_shared = true
+			if 'sharedlive' !in user_defines {
+				user_defines << 'sharedlive'
+			}
 			i++
 		} else if args[i] == '-selfhost' {
 			is_selfhost = true
@@ -5072,6 +6015,9 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
 			i++
+		} else if args[i] == '-parallel-cc' {
+			parallel_cc = true
+			i++
 		} else if args[i] == '-parallel-transform' || args[i] == '--parallel-transform' {
 			parallel_transform = true
 			i++
@@ -5081,28 +6027,72 @@ pub fn run(args []string) {
 		} else if args[i] in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
 			compile_backends << args[i + 1]
 			i += 2
-		} else if args[i] == '-d' && i + 1 < args.len {
+		} else if args[i] in ['-d', '-define'] && i + 1 < args.len {
 			define := args[i + 1]
-			user_defines << define
-			record_compile_value(mut compile_values, define)
+			record_user_define(mut user_defines, mut compile_values, define)
 			i += 2
+		} else if args[i] == '-dump-c-flags' {
+			dump_c_flags = if i + 1 < args.len { args[i + 1] } else { '-' }
+			// The dump is derived from the monolithic native compiler command below.
+			// Avoid module/TinyCC cache paths that use a different link plan.
+			no_cache = true
+			i += if i + 1 < args.len { 2 } else { 1 }
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
 			define := args[i][2..]
-			user_defines << define
-			record_compile_value(mut compile_values, define)
+			record_user_define(mut user_defines, mut compile_values, define)
 			i++
 		} else if args[i] == '-gc' && i + 1 < args.len {
 			gc_mode = args[i + 1]
 			i += 2
 		} else if args[i] == '-cc' && i + 1 < args.len {
 			requested_compiler := args[i + 1]
-			explicit_tcc = requested_compiler in ['tcc', 'tinyc']
 			c_compiler = requested_compiler
 			c_compiler_explicit = true
+			c_compiler_arg_index = i
 			i += 2
 		} else if args[i] == '-thread-stack-size' && i + 1 < args.len {
 			thread_stack_size = args[i + 1].int()
 			thread_stack_size_set = true
+			i += 2
+		} else if args[i] in ['-cov', '-coverage'] && i + 1 < args.len {
+			coverage_dir = os.real_path(args[i + 1])
+			i += 2
+		} else if args[i] == '-generate-c-project' && i + 1 < args.len {
+			generate_c_project = os.real_path(args[i + 1])
+			no_cache = true
+			i += 2
+		} else if args[i] == '-file-list' && i + 1 < args.len {
+			for file in args[i + 1].split_any(',') {
+				trimmed := file.trim_space()
+				if trimmed.len > 0 {
+					file_list << trimmed
+				}
+			}
+			i += 2
+		} else if args[i] == '-message-limit' && i + 1 < args.len {
+			// V3 reports all diagnostics, but accepts V1's accumulation-limit
+			// option so compiler invocations remain CLI-compatible.
+			i += 2
+		} else if args[i] == '-test-runner' && i + 1 < args.len {
+			// V3 currently emits its normal test harness directly. Accept the
+			// conventional runner selector so nested `@VEXE` test invocations stay
+			// command-line compatible with V1.
+			i += 2
+		} else if args[i] == '-run-only' && i + 1 < args.len {
+			run_only.clear()
+			for pattern in args[i + 1].split_any(',') {
+				trimmed := pattern.trim_space()
+				if trimmed.len > 0 {
+					run_only << trimmed
+				}
+			}
+			i += 2
+		} else if args[i] == '-printfn' && i + 1 < args.len {
+			print_fn_names << args[i + 1].split(',')
+			no_cache = true
+			i += 2
+		} else if args[i] == '-path' && i + 1 < args.len {
+			module_search_path_spec = args[i + 1]
 			i += 2
 		} else if args[i] == '-cflags' && i + 1 < args.len {
 			parsed_c_flags := cmdexec.split_args(args[i + 1]) or {
@@ -5111,14 +6101,15 @@ pub fn run(args []string) {
 			}
 			user_c_flags << parsed_c_flags
 			i += 2
-		} else if args[i] in ['-g', '-cg'] {
+		} else if args[i] in ['-g', '-cg', '-cdebug'] {
 			is_debug = true
-			if args[i] == '-cg' {
+			if args[i] in ['-cg', '-cdebug'] {
 				is_c_debug = true
 			}
 			user_c_flags << '-g'
 			i++
 		} else if args[i] == '-autofree' {
+			ownership_mode = true
 			if 'autofree' !in user_defines {
 				user_defines << 'autofree'
 			}
@@ -5128,9 +6119,56 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-silent' {
 			silent = true
+			if 'silent' !in user_defines {
+				user_defines << 'silent'
+			}
+			i++
+		} else if args[i] == macos_v3_internal_quiet_flag {
+			silent = true
 			i++
 		} else if args[i] == '-showcc' {
 			show_cc = true
+			i++
+		} else if args[i] == '-translated' {
+			translated_mode = true
+			i++
+		} else if args[i] == '-repl' {
+			// vrepl compiles each accumulated snippet with this marker. V3 already
+			// accepts module-less main input; the marker also suppresses transient
+			// unused-code notices while the snippet is being assembled.
+			is_repl = true
+			i++
+		} else if args[i] == '-check-overflow' {
+			check_overflow = true
+			i++
+		} else if args[i] == '-manualfree' {
+			ownership_mode = false
+			user_defines = user_defines.filter(it.all_before('=').trim_space() != 'autofree')
+			i++
+		} else if args[i] == '-show-c-output' {
+			show_c_output = true
+			i++
+		} else if args[i] in ['-color', '-nocolor'] {
+			apply_v3_diagnostic_color_option(args[i])
+			i++
+		} else if args[i] == '-apk' {
+			// Accepted V1 compatibility switches. V3 always emits direct C,
+			// applies ownership cleanup, and forwards C failures.
+			i++
+		} else if args[i] == '-nofloat' {
+			if 'nofloat' !in user_defines {
+				user_defines << 'nofloat'
+			}
+			i++
+		} else if args[i] == '-no-bounds-checking' {
+			if 'no_bounds_checking' !in user_defines {
+				user_defines << 'no_bounds_checking'
+			}
+			i++
+		} else if args[i] == '-force-bounds-checking' {
+			force_bounds_checking = true
+			user_defines =
+				user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
 			i++
 		} else if args[i] == '-checker-fixture' {
 			is_checker_fixture = true
@@ -5141,9 +6179,43 @@ pub fn run(args []string) {
 		} else if args[i] == '-skip-running' {
 			skip_running = true
 			i++
-		} else if args[i] in ['-stats', '-show-timings', '-w', '-no-retry-compilation', '-usecache'] {
+		} else if args[i] == '-check' {
+			check_only = true
+			skip_running = true
+			no_cache = true
+			i++
+		} else if args[i] == '-stats' {
+			show_test_stats = true
+			no_cache = true
+			i++
+		} else if args[i] == '-Wimpure-v' {
+			warn_impure_v = true
+			// Cached module headers omit function bodies, so inspect source for every import.
+			no_cache = true
+			i++
+		} else if args[i] == '-W' {
+			warns_are_errors = true
+			i++
+		} else if args[i] == '-N' {
+			notes_are_errors = true
+			i++
+		} else if args[i] == '-print-v-files' {
+			print_v_files = true
+			i++
+		} else if args[i] == '-print-watched-files' {
+			print_watched_files = true
+			i++
+		} else if args[i] == '-check-syntax' {
+			only_check_syntax = true
+			no_cache = true
+			i++
+		} else if args[i] == '-no-retry-compilation' {
+			retry_compilation = false
+			i++
+		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
-			// explicit-output tests unrun, and caches modules by default.
+			// explicit-output tests unrun, caches modules by default, and uses
+			// its current generic solver without a legacy selection switch.
 			// Accept the corresponding V flags for compatibility.
 			i++
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
@@ -5151,6 +6223,24 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-nocache' || args[i] == '--no-cache' {
 			no_cache = true
+			i++
+		} else if args[i] == '-no-builtin' {
+			no_builtin = true
+			no_cache = true
+			i++
+		} else if args[i] == '-no-preludes' {
+			no_preludes = true
+			i++
+		} else if args[i] == '-no-skip-unused' {
+			no_skip_unused = true
+			no_cache = true
+			i++
+		} else if args[i] == '-is_o' {
+			is_o = true
+			no_cache = true
+			i++
+		} else if args[i] == '-skip-unused' {
+			no_skip_unused = false
 			i++
 		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
 			no_memory_limit = true
@@ -5184,8 +6274,34 @@ pub fn run(args []string) {
 			i++
 		}
 	}
+	if force_bounds_checking {
+		// This option wins regardless of its ordering relative to
+		// `-no-bounds-checking`, matching the established parser contract.
+		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
+	}
 	should_run = should_run && !skip_running
+	if is_o && (backend != 'c' || !explicit_output || (!output_file.ends_with('.c')
+		&& !output_file.ends_with('.o'))) {
+		eprintln('option `-is_o` requires the C backend and an explicit `.c` or `.o` output file')
+		exit(1)
+	}
+	if !is_checker_fixture && input_is_legacy_diagnostic_fixture(input_file) {
+		// v/compiler_errors_test.v predates `-checker-fixture` and invokes every
+		// adjacent `.vv`/`.out` fixture directly. Keep those subprocesses on the
+		// same stable diagnostic path as the V3 fixture runner.
+		is_checker_fixture = true
+		no_cache = true
+	}
 	mut current_no_parallel := no_parallel
+	if coverage_dir.len > 0 {
+		current_no_parallel = true
+		no_cache = true
+	}
+	if print_fn_names.len > 0 {
+		// Function snippets are emitted to stdout in deterministic generation order.
+		current_no_parallel = true
+		no_cache = true
+	}
 	mut current_parallel_transform := parallel_transform
 	if current_no_parallel {
 		current_parallel_transform = false
@@ -5195,15 +6311,74 @@ pub fn run(args []string) {
 		eprintln('no input file')
 		exit(1)
 	}
+	if input_file != '-' && !os.exists(input_file) {
+		eprintln("builder error: ${input_file} doesn't exist")
+		exit(1)
+	}
+	if generate_c_project.len > 0 {
+		if backend != 'c' {
+			eprintln('`-generate-c-project` is currently supported only for the C backend')
+			exit(1)
+		}
+		if os.exists(generate_c_project) && !os.is_dir(generate_c_project) {
+			eprintln('`-generate-c-project` expects a directory path, got file: ${generate_c_project}')
+			exit(1)
+		}
+		os.mkdir_all(generate_c_project) or {
+			eprintln('cannot create `-generate-c-project` directory ${generate_c_project}: ${err.msg()}')
+			exit(1)
+		}
+		source_name := os.base(default_bin_file_for_input(input_file)) + '.c'
+		output_file = os.join_path_single(generate_c_project, source_name)
+		explicit_output = true
+	} else if explicit_output && (output_file.ends_with('/') || output_file.ends_with('\\')) {
+		os.mkdir_all(output_file) or {
+			eprintln('cannot create output directory ${output_file}: ${err.msg()}')
+			exit(1)
+		}
+		output_file = os.join_path_single(output_file,
+			os.base(default_bin_file_for_input(input_file)))
+	}
 	if is_debug && 'debug' !in user_defines {
 		user_defines << 'debug'
 		record_compile_value(mut compile_values, 'debug')
+	}
+	if user_defines.any(it.all_before('=').trim_space() == 'no_gc_thread_local_alloc')
+		&& '-D GC_THREADS=1' !in user_c_flags {
+		// Keep `-dump-c-flags` compatible with V1 even though V3 currently uses
+		// its no-GC runtime. Projects use this define to inspect the portable
+		// Boehm thread flags without selecting or linking the collector.
+		user_c_flags << '-D GC_THREADS=1'
 	}
 	if is_test_command && fixturetest.is_diagnostic_fixture_dir(input_file) {
 		exit(fixturetest.run(os.executable(), input_file, args))
 	}
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
+	}
+	if backend == 'js' {
+		js_output := if output_file.len > 0 {
+			output_file
+		} else {
+			default_bin_file_for_input(input_file) + '.js'
+		}
+		emit_v3_js_compat_program(input_file, js_output) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		if should_run {
+			mut node_args := [js_output]
+			node_args << run_args
+			result := cmdexec.run('node', node_args)
+			if result.output.len > 0 {
+				print(result.output)
+			}
+			if result.exit_code != 0 {
+				exit(result.exit_code)
+			}
+		}
+		return
 	}
 	if gc_mode != 'none' {
 		eprintln('unsupported garbage collector `${gc_mode}`; v3 currently supports only `-gc none`')
@@ -5236,8 +6411,13 @@ pub fn run(args []string) {
 			}
 		}
 	}
-	if backend == 'wasm' && !target_os_explicit {
-		target_os = 'wasm32_emscripten'
+	if backend == 'wasm' {
+		if !target_os_explicit || target_os in ['browser', 'wasi'] {
+			// V1's native wasm CLI exposes `browser`/`wasi` target labels. V3
+			// currently has one canonical wasm32 target; keep accepting those
+			// labels while selecting the same wasm source set and ABI.
+			target_os = 'wasm32_emscripten'
+		}
 	}
 	if !target_arch_explicit
 		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'wasm32_emscripten' {
@@ -5247,23 +6427,22 @@ pub fn run(args []string) {
 		eprintln(err.msg())
 		exit(1)
 	}
-
 	cmd_v_build := input_is_cmd_v(input_file)
+	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	// Neither compiler entry point uses generics. Keep self-builds off the generic
 	// reachability and monomorphization paths without requiring an explicit flag.
 	// -building-v can force the same mode for another known non-generic input.
 	if input_implies_building_v(input_file) || cmd_v_build {
 		building_v = true
 	}
-	// Serial compilation does not create enough concurrent scratch allocation to
-	// justify disposable stage arenas. Keeping it in the compilation arena also
-	// guarantees that a serial diagnostic run cannot retain a pointer into a
-	// released stage scope.
-	scope_prealloc_stages := should_scope_prealloc_stages() && !current_no_parallel
+	// Large serial compiler-module builds create the same transform and C-generation
+	// scratch state as parallel builds. Keep that state disposable; `-no-parallel`
+	// controls worker creation independently from arena lifetime.
+	scope_prealloc_stages := should_scope_prealloc_stages()
 	// Function checking still creates substantial short-lived state in serial
 	// mode for large import graphs. Scope each function independently there too.
 	scope_prealloc_check := should_scope_prealloc_stages()
-	scope_prealloc_cgen := should_scope_prealloc_cgen() && !current_no_parallel
+	scope_prealloc_cgen := should_scope_prealloc_cgen()
 	// The selective transform promotion path is designed around worker-owned
 	// results outside the disposable stage arena.
 	scope_prealloc_transform := scope_prealloc_stages
@@ -5295,6 +6474,7 @@ pub fn run(args []string) {
 
 	mut bin_file := ''
 	mut c_only := false
+	mut c_to_stdout := false
 	if output_file == '' {
 		bin_file = default_bin_file_for_input(input_file)
 		if is_shared {
@@ -5305,6 +6485,12 @@ pub fn run(args []string) {
 	} else if backend == 'wasm' {
 		// Honor the exact -o path; the wasm backend writes output_file directly.
 		bin_file = output_file.all_before_last('.wasm')
+	} else if backend == 'c' && output_file == '-' {
+		c_only = true
+		c_to_stdout = true
+		bin_file = ''
+		output_file = os.join_path_single(os.vtmp_dir(),
+			'v3_stdout_${os.getpid()}_${tempname.unique_token()}.c')
 	} else if backend == 'c' && output_file.ends_with('.c') {
 		c_only = true
 		bin_file = output_file.all_before_last('.c')
@@ -5314,6 +6500,14 @@ pub fn run(args []string) {
 			bin_file = with_shared_library_postfix(bin_file, target.os)
 		}
 		output_file = bin_file + '.c'
+	}
+	if backend == 'c' {
+		target_bin_file := c_executable_bin_file_for_target(bin_file, target.os, is_shared, is_o,
+			c_only)
+		if target_bin_file != bin_file {
+			bin_file = target_bin_file
+			output_file = bin_file + '.c'
+		}
 	}
 	binary_existed_before := os.exists(bin_file)
 	remove_binary_after_run := should_run && !is_direct_vsh && !explicit_output && !keep_c
@@ -5366,6 +6560,11 @@ pub fn run(args []string) {
 	}
 	if no_memory_limit {
 		b.disable_memory_limit()
+	} else if building_v || cmd_v_module_input {
+		// Self-host transformation temporarily retains both the source and rewritten
+		// compiler ASTs. A direct cmd/v module test loads the same compiler sources,
+		// so keep those builds under the same safety guard too.
+		b.use_self_host_memory_limit()
 	}
 	b.start_memory_monitor()
 	mut c_object_cache_stats := CObjectCacheStats{}
@@ -5382,12 +6581,15 @@ pub fn run(args []string) {
 		target.default_thread_stack_size()
 	}
 	prefs.backend = backend
-	prefs.ccompiler = if backend == 'arm64' {
+	effective_c_compiler := if backend == 'arm64' {
 		'tinyc'
 	} else {
 		effective_c_compiler_name(c_compiler, target)
 	}
+	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
+	prefs.ccompiler = effective_c_compiler
 	prefs.c99 = c99
+	prefs.force_bounds_checking = force_bounds_checking
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
@@ -5396,6 +6598,13 @@ pub fn run(args []string) {
 		os.real_path(os.dir(prefs.vexe))
 	} else {
 		resolve_vroot_for_input(prefs.vroot, input_file)
+	}
+	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
+		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		if os.is_executable(bundled_tcc) {
+			c_compiler = bundled_tcc
+		}
 	}
 	prefs.vhash = os.getenv(macos_v3_vhash_env)
 	if prefs.vhash == '' {
@@ -5409,19 +6618,29 @@ pub fn run(args []string) {
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
 	prefs.is_debug = is_debug
+	prefs.is_livemain = is_livemain
+	prefs.is_liveshared = is_liveshared
+	prefs.is_shared = is_shared
+	prefs.no_builtin = no_builtin
+	prefs.no_preludes = no_preludes
 	prefs.verbose = verbose
+	if verbose {
+		eprintln('v.pref.lookup_path: ${os.join_path(prefs.vroot, 'vlib')}')
+	}
 	prefs.supports_inline_asm = is_checker_fixture
 	minimal_literal_output := input_uses_minimal_literal_output_builtin(input_file, prefs,
 		is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
-	// `-keepc` promises a complete generated C translation unit. The module cache
-	// splits imported implementations into separate objects, so its main source
+	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
+	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
-	cache_enabled := backend == 'c' && !c_only && !no_cache && !keep_c && !c_compiler_explicit
-		&& !minimal_literal_output && target.os == host_target.os && target.arch == host_target.arch
+	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
+		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
+		&& target.os == host_target.os && target.arch == host_target.arch
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
+	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	cache_salt := [
 		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
@@ -5431,15 +6650,25 @@ pub fn run(args []string) {
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
+		'no_prod_options=${no_prod_options}',
 		'debug=${is_debug}',
 		'c_debug=${is_c_debug}',
 		'shared=${is_shared}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
 		'thread_stack_size=${prefs.thread_stack_size}',
+		'module_search_paths=${prefs.module_search_paths.join(',')}',
 		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
 		'ownership=${ownership_mode}',
+		'translated=${translated_mode}',
+		'enable_globals=${enable_globals_compat}',
+		'check_overflow=${check_overflow}',
+		'force_bounds_checking=${prefs.force_bounds_checking}',
+		'warns_are_errors=${effective_warns_are_errors}',
+		'notes_are_errors=${notes_are_errors}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
+		'show_test_stats=${show_test_stats}',
+		'run_only=${v3_run_only_cache_identity(run_only)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
 	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
@@ -5468,6 +6697,9 @@ pub fn run(args []string) {
 	}
 	mut builtin_files := pref.get_v_files_from_dir_for_target(builtin_dir, builtin_defines,
 		prefs.target)
+	if no_builtin {
+		builtin_files = []
+	}
 	if minimal_literal_output {
 		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
 	}
@@ -5540,33 +6772,43 @@ pub fn run(args []string) {
 		user_files << input_file
 		user_files = expand_single_test_file_inputs(user_files, prefs)
 	} else if os.is_dir(input_file) {
-		user_files = pref.get_v_files_from_dir_for_target(input_file, prefs.user_defines,
-			prefs.target)
-		if is_test_command {
-			user_files << pref.get_test_v_files_from_dir_for_target(input_file, prefs.user_defines,
-				prefs.backend, prefs.target)
-		}
-		subdirs := vmod_subdirs(input_file) or {
+		user_files = v3_directory_user_files(input_file, prefs, is_test_command, false) or {
 			eprintln(err.msg())
 			exit(1)
 		}
-		for subdir in subdirs {
-			subdir_path := os.join_path_single(input_file, subdir)
-			user_files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines,
-				prefs.target)
-			if is_test_command {
-				user_files << pref.get_test_v_files_from_dir_for_target(subdir_path,
-					prefs.user_defines, prefs.backend, prefs.target)
-			}
+		if user_files.len == 0 && report_v3_removed_src_layout(input_file) {
+			exit(1)
 		}
 	} else {
 		user_files << input_file
 	}
+	for listed_path in file_list {
+		if os.is_dir(listed_path) {
+			user_files << v3_directory_user_files(listed_path, prefs, is_test_command, true) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+		} else if os.is_file(listed_path) {
+			user_files << listed_path
+		} else {
+			eprintln('${listed_path} does not exist')
+			exit(1)
+		}
+	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
+	if target.os == 'linux' && os.getenv('DISPLAY') == '' && os.getenv('WAYLAND_DISPLAY') != ''
+		&& os.getenv('XDG_SESSION_TYPE') == 'wayland'
+		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
+		&& parsed_files_import_linux_gg(a, user_files) {
+		eprintln('`gg`/`sokol.sapp` cannot run in a Wayland-only Linux session without `-d sokol_wayland`.')
+		exit(1)
+	}
 	test_files := test_input_files(user_files, backend, prefs.target)
 
-	seed_implicit_imports(mut a, minimal_literal_output)
+	if !no_builtin {
+		seed_implicit_imports(mut a, minimal_literal_output)
+	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
@@ -5582,33 +6824,76 @@ pub fn run(args []string) {
 	} else {
 		i64(0)
 	}
-	if p.diagnostics.len > 0 {
-		if request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
-			exit(1)
-		}
-		if macos_v3_fallback_file != '' {
-			exit(1)
-		}
-		for diagnostic in p.diagnostics {
-			if file := a.source_files[diagnostic.pos.id] {
-				_ = file
-				severity := if diagnostic.severity.len > 0 {
-					diagnostic.severity
-				} else {
-					'error:'
-				}
-				eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
-					diagnostic.pos))
-			} else {
-				severity := if diagnostic.severity.len > 0 {
-					diagnostic.severity
-				} else {
-					'error:'
-				}
-				eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+	if warn_impure_v {
+		p.diagnostics << v3_impure_v_diagnostics(a)
+	}
+	if print_v_files || print_watched_files {
+		mut watched := map[string]bool{}
+		for _, file in a.source_files {
+			if file.name.ends_with('.v') || file.name.ends_with('.vv')
+				|| file.name.ends_with('.vsh') {
+				watched[os.real_path(file.name)] = true
 			}
 		}
-		exit(1)
+		for source_files in cache_state.module_sources.values() {
+			for file in source_files {
+				if file.ends_with('.v') || file.ends_with('.vv') || file.ends_with('.vsh') {
+					watched[os.real_path(file)] = true
+				}
+			}
+		}
+		mut watched_files := watched.keys()
+		watched_files.sort()
+		for file in watched_files {
+			println(file)
+		}
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		return
+	}
+	if p.diagnostics.len > 0 {
+		parser_has_native_errors := p.diagnostics.any(it.severity.len == 0
+			|| it.severity == 'error:')
+		parser_has_errors := parser_has_native_errors
+			|| (effective_warns_are_errors && p.diagnostics.any(it.severity == 'warning:'))
+		if parser_has_native_errors
+			&& request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
+			exit(1)
+		}
+		if parser_has_errors && macos_v3_fallback_file != '' {
+			exit(1)
+		}
+		if !silent || !only_check_syntax {
+			for diagnostic in p.diagnostics {
+				if file := a.source_files[diagnostic.pos.id] {
+					_ = file
+					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
+						'error:'
+					} else if diagnostic.severity.len > 0 {
+						diagnostic.severity
+					} else {
+						'error:'
+					}
+					eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
+						diagnostic.pos))
+				} else {
+					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
+						'error:'
+					} else if diagnostic.severity.len > 0 {
+						diagnostic.severity
+					} else {
+						'error:'
+					}
+					eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+				}
+			}
+		}
+		if parser_has_errors {
+			exit(1)
+		}
+	}
+	if only_check_syntax {
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		return
 	}
 	// Parallel transform is disabled for larger embedded imports when worker
 	// scratch allocations live for the whole compilation. Scoped preallocation
@@ -5687,12 +6972,12 @@ pub fn run(args []string) {
 			_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,
 				crun_c_flags)
 			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files,
-				crun_c_flags, is_strict, enable_globals_compat)
+				crun_c_flags, is_strict, enable_globals_compat, input_file)
 			if crun_build_identity.len > 0 {
 				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
 			}
 		}
-		if os.is_file(bin_file) && v3_crun_cache_matches(bin_file, crun_build_identity) {
+		if os.is_file(bin_file) && v3_crun_cache_matches(bin_file, crun_build_identity, input_file) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			run_result := run_binary(bin_file, run_args)
 			if run_result != 0 {
@@ -5927,9 +7212,16 @@ pub fn run(args []string) {
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
+	mut checker_notice_count := 0
+	mut checker_warning_count := 0
+	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
 	pre_tc.compiler_vroot = prefs.vroot
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
+	pre_tc.warns_are_errors = effective_warns_are_errors
+	pre_tc.notes_are_errors = notes_are_errors
+	pre_tc.is_prod = prefs.is_prod
 	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
 	mut program_used_fns := map[string]bool{}
@@ -5949,6 +7241,11 @@ pub fn run(args []string) {
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
+		if translated_mode {
+			for file in user_files {
+				pre_tc.translated_files[file] = true
+			}
+		}
 		if verbose {
 			eprintln('  [ttime]   ck collect       ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			cvsw.restart()
@@ -5987,7 +7284,11 @@ pub fn run(args []string) {
 		} else {
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
 		}
-		pre_tc.check_main_module_requirement(is_shared)
+		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
+			|| a.export_fn_names.len > 0)
+		if is_repl {
+			pre_tc.notices.clear()
+		}
 		if incremental_cache_hit {
 			b.step('check (incremental)')
 		} else {
@@ -6074,6 +7375,10 @@ pub fn run(args []string) {
 			}
 			exit(1)
 		}
+		if check_only {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
 		if cache_state.manager.enabled {
 			if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,
 				cache_c_flags) {
@@ -6128,6 +7433,10 @@ pub fn run(args []string) {
 
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
+		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
+		// parent index once here so markused type queries do not fall back to a full
+		// arena scan for every generated selector base.
+		pre_tc.refresh_direct_parent_index(a)
 		mut markused_scope := unsafe { nil }
 		mut markused_tc := &pre_tc
 		if scope_prealloc_markused && !generic_cache_hit {
@@ -6135,7 +7444,10 @@ pub fn run(args []string) {
 			markused_tc = pre_tc.fork_for_parallel_transform(a)
 			markused_tc.enable_scoped_parallel_workers()
 		}
-		if generic_cache_hit && test_files.len == 0 {
+		if no_skip_unused {
+			used_fns, uses_generics = markused.mark_all_used_with_generic_usage(a, markused_tc,
+				test_files)
+		} else if generic_cache_hit && test_files.len == 0 {
 			used_fns = clone_string_bool_map(cached_program_used_fns)
 			uses_generics = true
 			if incremental_cache_hit
@@ -6146,8 +7458,14 @@ pub fn run(args []string) {
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a,
 				markused_tc, test_files)
+		} else if input_file.ends_with('.vsh') {
+			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a,
+				markused_tc)
 		} else if trivial_literal_output && used_fns.len > 0 {
 			uses_generics = false
+		} else if is_checker_fixture {
+			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a,
+				markused_tc)
 		} else if building_v {
 			used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
 			uses_generics = false
@@ -6174,13 +7492,32 @@ pub fn run(args []string) {
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
-		pre_tc.diagnose_unused_private_declarations(used_fns)
+		if !is_repl {
+			pre_tc.diagnose_unused_private_declarations(used_fns)
+		}
 		if pre_tc.notices.len > 0 {
 			checker_sql_warnings_only := is_checker_fixture && ast_contains_sql_expr(a)
+			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture)
+			for notice in pre_tc.notices {
+				if notice.severity == 'warning:' {
+					checker_warning_count++
+				} else {
+					checker_notice_count++
+				}
+			}
 			pre_tc.notices.clear()
 			if checker_sql_warnings_only {
 				exit(0)
+			}
+		}
+		if backend == 'wasm' {
+			// Validate source-level operations before transform lowers aggregate
+			// equality into primitive field comparisons. A second pass after
+			// monomorphization below covers newly specialized function bodies.
+			if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+				eprintln(msg)
+				exit(1)
 			}
 		}
 
@@ -6414,6 +7751,7 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('transform', transform_was_parallel)
 		}
+		pre_tc.invalidate_direct_parent_index()
 		if transform_errors.len > 0 {
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
@@ -6472,6 +7810,20 @@ pub fn run(args []string) {
 		b.step('markused (cached)')
 		b.step('transform (cached)')
 		b.step('annotate types (cached)')
+		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
+			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
+			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture)
+			for notice in cached_notices {
+				if notice.severity == 'warning:' {
+					checker_warning_count++
+				} else {
+					checker_notice_count++
+				}
+			}
+		}
+	}
+	if is_repl {
+		pre_tc.notices.clear()
 	}
 	if pre_tc.errors.len > 0 {
 		if macos_v3_fallback_file != '' {
@@ -6492,26 +7844,6 @@ pub fn run(args []string) {
 		mut monomorph_used_fns := map[string]bool{}
 		mut monomorph_errors := []string{}
 		incremental_monomorph_node_start := a.nodes.len
-		// Incremental C can append function specializations, but new named types
-		// need a rebuilt prefix containing their layout declarations.
-		mut incremental_struct_names := map[string]bool{}
-		mut incremental_sum_names := map[string]bool{}
-		mut incremental_alias_names := map[string]bool{}
-		mut incremental_interface_names := map[string]bool{}
-		if incremental_cache_hit {
-			for name in pre_tc.structs.keys() {
-				incremental_struct_names[name] = true
-			}
-			for name in pre_tc.sum_types.keys() {
-				incremental_sum_names[name] = true
-			}
-			for name in pre_tc.type_aliases.keys() {
-				incremental_alias_names[name] = true
-			}
-			for name in pre_tc.interface_names.keys() {
-				incremental_interface_names[name] = true
-			}
-		}
 		monomorph_input_used := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
@@ -6578,41 +7910,6 @@ pub fn run(args []string) {
 				&& cache_state.parsed_from_source.len == 0, unsafe { nil }, cached_monomorph_specs)
 		}
 		if incremental_cache_hit {
-			mut added_named_type := false
-			for name in pre_tc.structs.keys() {
-				if !incremental_struct_names[name] {
-					added_named_type = true
-					break
-				}
-			}
-			if !added_named_type {
-				for name in pre_tc.sum_types.keys() {
-					if !incremental_sum_names[name] {
-						added_named_type = true
-						break
-					}
-				}
-			}
-			if !added_named_type {
-				for name in pre_tc.type_aliases.keys() {
-					if !incremental_alias_names[name] {
-						added_named_type = true
-						break
-					}
-				}
-			}
-			if !added_named_type {
-				for name in pre_tc.interface_names.keys() {
-					if !incremental_interface_names[name] {
-						added_named_type = true
-						break
-					}
-				}
-			}
-			if added_named_type {
-				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
-				restart_v3_after_cache_invalidation()
-			}
 			incremental_stage_used_fns = monomorph_used_fns.move()
 			for idx in incremental_monomorph_node_start .. a.nodes.len {
 				if a.specialized_fn_nodes[idx] && a.nodes[idx].kind == .fn_decl {
@@ -6622,9 +7919,20 @@ pub fn run(args []string) {
 		} else {
 			used_fns = monomorph_used_fns.move()
 		}
+		if is_repl {
+			pre_tc.notices.clear()
+		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
+			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			if pre_tc.errors.len == 0 || macos_v3_fallback_file == '' {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
+			for notice in pre_tc.notices {
+				if notice.severity == 'warning:' {
+					checker_warning_count++
+				} else {
+					checker_notice_count++
+				}
 			}
 			pre_tc.notices.clear()
 		}
@@ -6773,6 +8081,13 @@ pub fn run(args []string) {
 		} else {
 			''
 		}
+		incremental_cached_support := if incremental_cache_hit {
+			incremental_c_cached_declarations(incremental_cached_body)
+		} else {
+			''
+		}
+		incremental_known_declarations := incremental_c_declarations + '\n' +
+			incremental_cached_support
 		cgen_used_fns := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
@@ -6785,12 +8100,19 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
-		if !cgen_cache_hit && scope_prealloc_cgen {
+		// The serial test harness declaration must remain ahead of its streamed
+		// function batches. Keep test C generation in the parent arena until that
+		// output ordering is represented by its own scoped segment.
+		if !cgen_cache_hit && scope_prealloc_cgen && test_files.len == 0 {
 			cgen_parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			cgen_scope := prealloc_scope_begin_for_v3()
 			mut g := cgen.FlatGen.new()
 			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
+			g.set_ccompiler(prefs.ccompiler)
+			g.set_prod(prefs.is_prod)
+			g.set_check_overflow(check_overflow)
+			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
@@ -6798,12 +8120,19 @@ pub fn run(args []string) {
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
+			g.set_show_test_stats(show_test_stats)
+			g.set_show_test_summary(is_test_command)
+			g.set_test_run_only(run_only)
+			g.set_print_fn_names(print_fn_names)
+			g.set_shared(prefs.is_shared)
+			g.set_object_file_mode(is_o)
+			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
-			g.set_cached_support_declarations(incremental_c_declarations)
+			g.set_cached_support_declarations(incremental_known_declarations)
 			g.set_scope_parallel_workers(!generic_cache_hit)
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
@@ -6829,6 +8158,10 @@ pub fn run(args []string) {
 			mut g := cgen.FlatGen.new()
 			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
+			g.set_ccompiler(prefs.ccompiler)
+			g.set_prod(prefs.is_prod)
+			g.set_check_overflow(check_overflow)
+			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
@@ -6836,12 +8169,19 @@ pub fn run(args []string) {
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_thread_stack_size(prefs.thread_stack_size)
+			g.set_show_test_stats(show_test_stats)
+			g.set_show_test_summary(is_test_command)
+			g.set_test_run_only(run_only)
+			g.set_print_fn_names(print_fn_names)
+			g.set_shared(prefs.is_shared)
+			g.set_object_file_mode(is_o)
+			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
-			g.set_cached_support_declarations(incremental_c_declarations)
+			g.set_cached_support_declarations(incremental_known_declarations)
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
 				cache_no_parallel_cgen, test_files) or {
@@ -6860,8 +8200,13 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
+			cached_prefix := os.read_file(generic_cache_entry.prefix) or {
+				eprintln('error reading incremental cached prefix ${generic_cache_entry.prefix}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
 			merged_cached_source := merge_incremental_program_body(incremental_cached_body,
-				changed_source, incremental_changed_keys) or {
+				cached_prefix, changed_source, incremental_changed_keys) or {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
 				restart_v3_after_cache_invalidation()
 				''
@@ -6881,18 +8226,15 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('cgen', cgen_was_parallel)
 		}
-		if c_only {
-			b.metric('generated C size', os.file_size(cc_src), 'bytes')
-			b.print_report()
-			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			return
-		}
-
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
-		target_args := c_compiler_target_args(prefs.target, c_compiler_explicit) or {
-			eprintln(err.msg())
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
+		target_args := if c_only {
+			[]string{}
+		} else {
+			c_compiler_target_args(prefs.target, c_compiler_explicit) or {
+				eprintln(err.msg())
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
 		}
 		mut warn_args := if is_strict {
 			['-Wall', '-Wextra', '-Werror=implicit-function-declaration', '-Wno-unused-variable',
@@ -6910,23 +8252,109 @@ pub fn run(args []string) {
 		if wrapv_flag.len > 0 {
 			warn_args << wrapv_flag
 		}
-		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
-		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
-			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
-			message := err.msg()
-			if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
-				macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
-				cc_src])
-			{
+		mut all_compile_c_flags := environment_c_flags.clone()
+		all_compile_c_flags << generated_c_flags
+		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
+		link_uses_non_c_language := c_link_flags_use_non_c_language(all_compile_c_flags)
+		link_c_standard := if link_uses_non_c_language {
+			''
+		} else {
+			c_standard
+		}
+		mut resolved_c_flags := if generate_c_project.len > 0 {
+			v3_c_project_dependency_flags(generated_c_flags)
+		} else {
+			generated_c_flags.clone()
+		}
+		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
+			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
+				prefs.c99, pic_flag, target_args, prefs.target, c_compiler, cc_dir, mut
+				c_object_cache_stats) or {
+				message := err.msg()
+				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
+					macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
+					cc_src])
+				{
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				eprintln(message)
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
-			eprintln(message)
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
+			b.step('C object cache')
 		}
-		b.step('C object cache')
-		link_uses_non_c_language := c_link_flags_use_non_c_language(resolved_c_flags)
+		c_flag_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			environment_c_flags:  environment_c_flags
+			environment_ld_flags: environment_ld_flags
+			target_args:          target_args
+			link_c_standard:      link_c_standard
+			dependencies:         resolved_c_flags
+			warn_args:            warn_args
+			vroot:                prefs.vroot
+			target_os:            prefs.normalized_target_os()
+			pic_flag:             pic_flag
+			is_prod:              is_prod
+			no_prod_options:      no_prod_options
+			is_shared:            is_shared
+			parallel_cc:          parallel_cc
+			explicit_tcc:         explicit_tcc
+			is_c_debug:           is_c_debug
+			is_o:                 is_o
+			is_liveshared:        is_liveshared
+		})
+		mut native_support_inputs := []string{}
+		if explicit_tcc {
+			atomic_input := if generate_c_project.len > 0 {
+				tcc_atomic_s_arg(prefs)
+			} else {
+				tcc_atomic_arg(prefs, c_compiler, c_flag_plan.tcc_includes)
+			}
+			if atomic_input.len > 0 {
+				native_support_inputs << atomic_input
+			}
+		}
+		if dump_c_flags.len > 0 {
+			mut dump_support_flags := v3_c_source_mode_flags(needs_objective_c)
+			dump_support_flags << native_support_inputs
+			dumped_flags := c_flag_plan.all_flags(dump_support_flags)
+			output := if dumped_flags.len > 0 {
+				dumped_flags.join('\n') + '\n'
+			} else {
+				''
+			}
+			if dump_c_flags == '-' {
+				print(output)
+			} else {
+				os.write_file(dump_c_flags, output) or {
+					eprintln('failed to write C flags to ${dump_c_flags}: ${err.msg()}')
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+			}
+		}
+		if c_only {
+			b.metric('generated C size', os.file_size(cc_src), 'bytes')
+			if c_to_stdout {
+				source := os.read_file(cc_src) or {
+					eprintln('error reading generated C source ${cc_src}: ${err.msg()}')
+					os.rm(cc_src) or {}
+					exit(1)
+				}
+				print(source)
+				os.rm(cc_src) or {}
+			} else if generate_c_project.len > 0 {
+				write_v3_c_project(generate_c_project, cc_src, c_compiler, c_flag_plan,
+					native_support_inputs, needs_objective_c) or {
+					eprintln('cannot write generated C project: ${err.msg()}')
+					exit(1)
+				}
+				println('Generated C project in ${generate_c_project}')
+			}
+			b.print_report()
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
 		mut tcc_link_has_incompatible_objects := false
 		if prefs.normalized_target_os() == 'macos' {
 			for flag in resolved_c_flags {
@@ -6936,11 +8364,6 @@ pub fn run(args []string) {
 				}
 			}
 		}
-		link_c_standard := if link_uses_non_c_language {
-			''
-		} else {
-			c_standard
-		}
 		mut cached_objects := []string{}
 		mut cached_dev_dylib := ''
 		mut prefix_source_identity := cgen_cache_metadata.prefix_source_identity
@@ -6948,12 +8371,14 @@ pub fn run(args []string) {
 		mut cache_full_tcc_source := ''
 		mut retained_full_c_source := ''
 		mut cached_program_body_source := if cgen_cache_hit { cgen_cache_entry.source } else { '' }
+		mut refreshed_incremental_body := ''
 		if cache_state.manager.enabled {
 			cache_prepare_scope := prealloc_scope_begin_for_v3()
 			if interface_impl_signature.len == 0 {
 				interface_impl_signature = pre_tc.interface_impl_set_signature()
 			}
-			opt_flag := if is_prod { '-O2' } else { '' }
+			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared,
+				parallel_cc, explicit_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
 			compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
 				warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
@@ -7113,9 +8538,8 @@ pub fn run(args []string) {
 					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
 						published_cgen_cache_input.generation_signature,
 						published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags,
-						interface_impl_signature, prefix_source_identity)) or {
-						modulecache.CgenEntry{}
-					}
+						interface_impl_signature, prefix_source_identity,
+						cached_checker_diagnostics)) or { modulecache.CgenEntry{} }
 				}
 				if incremental_cache_restored && prepared_plan_entry.source.len > 0 {
 					stable_body_source := os.read_file(prepared_plan_entry.source) or {
@@ -7123,6 +8547,7 @@ pub fn run(args []string) {
 						cleanup_c_build_dir(cc_dir)
 						exit(1)
 					}
+					refreshed_incremental_body = stable_body_source
 					stable_main_source := v3_incremental_program_main_source(prepared_cache.program_prefix_source,
 						stable_body_source)
 					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path,
@@ -7151,27 +8576,51 @@ pub fn run(args []string) {
 						generic_cache_signature, published_generic_input.generation_signature,
 						published_generic_input.dependency_inputs,
 						encode_monomorph_cache_specs(generated_monomorph_specs),
-						encode_cached_used_fns(used_fns), prepared_cache.program_prefix_source,
+						encode_cached_used_fns(program_used_fns),
+						prepared_cache.program_prefix_source,
 						modulecache.prune_unreferenced_static_string_definitions(prepared_cache.program_declarations),
 						prepared_cache.program_body_cache,
 						encode_cached_runtime_strings(generic_cache_runtime_strings), encode_v3_cgen_metadata(generated_c_flags,
-						interface_impl_signature, prefix_source_identity)) or {}
+						interface_impl_signature, prefix_source_identity,
+						cached_checker_diagnostics)) or {}
 				}
-				if !incremental_cache_hit && !generic_cache_hit
+				if (!generic_cache_hit || incremental_cache_hit)
 					&& incremental_snapshot.declaration_signature.len > 0 {
 					published_incremental_input := v3_cgen_cache_input(cache_state, user_files,
 						cache_c_flags)
+					incremental_body := if incremental_cache_hit {
+						refreshed_incremental_body
+					} else {
+						prepared_cache.program_body_cache
+					}
+					incremental_used := if incremental_cache_hit {
+						cached_program_used_fns
+					} else {
+						program_used_fns
+					}
+					incremental_specs := merge_monomorph_cache_specs(cached_monomorph_specs,
+						generated_monomorph_specs)
+					incremental_declarations := if incremental_cache_hit {
+						os.read_file(generic_cache_entry.declarations) or { '' }
+					} else {
+						modulecache.prune_unreferenced_static_string_definitions(prepared_cache.program_declarations)
+					}
+					incremental_tcc_declarations := if incremental_cache_hit {
+						incremental_c_declarations
+					} else {
+						prepared_cache.tcc_program_declarations
+					}
 					cache_state.manager.write_incremental_program(published_incremental_input.source_files,
 						incremental_snapshot.declaration_signature,
 						published_incremental_input.generation_signature,
 						published_incremental_input.dependency_inputs,
-						encode_incremental_manifest(incremental_snapshot),
-						prepared_cache.program_body_cache, encode_cached_used_fns(used_fns),
-						encode_monomorph_cache_specs(generated_monomorph_specs),
-						prepared_cache.program_prefix_source,
-						modulecache.prune_unreferenced_static_string_definitions(prepared_cache.program_declarations),
-						prepared_cache.tcc_program_declarations, prepared_cache.objects, encode_v3_cgen_metadata(generated_c_flags,
-						interface_impl_signature, prefix_source_identity)) or {}
+						encode_incremental_manifest(incremental_snapshot), incremental_body,
+						encode_cached_used_fns(incremental_used),
+						encode_monomorph_cache_specs(incremental_specs),
+						prepared_cache.program_prefix_source, incremental_declarations,
+						incremental_tcc_declarations, prepared_cache.objects, encode_v3_cgen_metadata(generated_c_flags,
+						interface_impl_signature, prefix_source_identity,
+						cached_checker_diagnostics)) or {}
 				}
 			}
 			prealloc_scope_leave_for_v3(cache_prepare_scope)
@@ -7283,7 +8732,7 @@ pub fn run(args []string) {
 			}
 		}
 		mut cached_program_main_object := ''
-		if use_macos_dev_program_cache && !use_cached_dev_dylib && !is_c_debug {
+		if use_macos_dev_program_cache && !use_cached_dev_dylib && !is_c_debug && !needs_objective_c {
 			program_main_source := os.read_file(published_c_source) or {
 				eprintln('error reading cached program source ${published_c_source}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
@@ -7327,6 +8776,11 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
+		if parallel_cc && v3_parallel_cc_active_sources_include_external_definition(a, user_files) {
+			eprintln('failed to link after parallel C compilation')
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
+		}
 		// Compile inside a per-output build dir, using constant relative source/output basenames,
 		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
 		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
@@ -7349,6 +8803,9 @@ pub fn run(args []string) {
 			tcc_lib := '-L${tcc_lib_dir}'
 			mut tcc_args := [c_standard, tcc_includes, tcc_lib, '-w',
 				'-Werror=implicit-function-declaration']
+			if !is_shared {
+				tcc_args << '-bt25'
+			}
 			if wrapv_flag.len > 0 {
 				tcc_args << wrapv_flag
 			}
@@ -7386,6 +8843,7 @@ pub fn run(args []string) {
 			}
 			if !tcc_cache_hit {
 				result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+				show_v3_c_compiler_output(show_c_output, tcc_path, result)
 				if result.exit_code == 0 {
 					used_tcc = true
 					publish_v3_cached_executable(cc_out, tcc_cached_executable)
@@ -7400,7 +8858,8 @@ pub fn run(args []string) {
 		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
 			&& (!tcc_link_has_incompatible_objects || cache_full_tcc_source.len > 0)
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
-			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0) && !is_c_debug {
+			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0) && !is_c_debug
+			&& dump_c_flags.len == 0 {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -7415,7 +8874,7 @@ pub fn run(args []string) {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			mut tcc_args := []string{}
+			mut tcc_args := environment_c_flags.clone()
 			if link_c_standard.len > 0 {
 				tcc_args << link_c_standard
 			}
@@ -7423,9 +8882,14 @@ pub fn run(args []string) {
 				tcc_args << pic_flag
 			}
 			tcc_args << [tcc_includes, tcc_lib]
+			if !is_shared {
+				tcc_args << '-bt25'
+			}
 			tcc_args << warn_args
 			if is_shared {
 				tcc_args << '-shared'
+			} else if is_o {
+				tcc_args << '-c'
 			}
 			tcc_source := if cache_full_tcc_source.len > 0 {
 				os.base(cache_full_tcc_source)
@@ -7439,10 +8903,14 @@ pub fn run(args []string) {
 			}
 			tcc_args << resolved_c_flags
 			tcc_args << '-lm'
+			if !is_o {
+				tcc_args << environment_ld_flags
+			}
 			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
@@ -7454,63 +8922,72 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
-			mut cc_args := []string{}
-			cc_args << target_args
-			if link_c_standard.len > 0 {
-				cc_args << link_c_standard
-			}
-			if is_prod {
-				cc_args << '-O2'
-			}
-			if pic_flag.len > 0 {
-				cc_args << pic_flag
-			}
-			cc_args << warn_args
-			cc_args << '-Wno-int-conversion'
-			if prefs.normalized_target_os() == 'macos' && !is_shared {
-				cc_args << '-Wl,-stack_size,0x4000000'
-			}
-			if is_c_debug && prefs.normalized_target_os() == 'macos' && !is_shared {
-				cc_args << '-Wl,-export_dynamic'
-			}
-			if is_shared {
-				cc_args << '-shared'
-			}
-			cc_args << ['-o', 'out']
 			fallback_source := if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 {
 				os.base(tcc_main_file)
 			} else {
 				'src.c'
 			}
+			mut compiler_inputs := []string{}
 			if cached_program_main_object.len > 0 {
-				cc_args << cached_program_main_object
+				compiler_inputs << cached_program_main_object
 			} else if fallback_source == os.base(tcc_main_file) {
-				cc_args << ['-D__TINYC__', '-Wno-implicit-function-declaration']
-				cc_args << fallback_source
-			} else if needs_objective_c {
-				cc_args << ['-x', 'objective-c', fallback_source, '-x', 'none']
+				compiler_inputs << ['-D__TINYC__', '-Wno-implicit-function-declaration',
+					fallback_source]
 			} else {
-				cc_args << fallback_source
+				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
 			}
-			cc_args << cached_objects
+			compiler_inputs << native_support_inputs
+			compiler_inputs << cached_objects
 			if cached_dev_dylib.len > 0 {
-				cc_args << cached_dev_dylib
+				compiler_inputs << cached_dev_dylib
 			}
-			cc_args << resolved_c_flags
-			cc_args << '-lm'
+			cc_args := c_flag_plan.compiler_args('out', compiler_inputs, [])
 			if !silent || show_cc {
 				println('  > ${cmdexec.display(c_compiler, cc_args)}')
 			}
 			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
+			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
+				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
+					fallback := 'cc'
+					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
+					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+					cleanup_c_build_dir(cc_dir)
+					retry_result := cmdexec.run(os.executable(), retry_args)
+					if retry_result.output.len > 0 {
+						print(retry_result.output)
+					}
+					if retry_result.exit_code != 0 {
+						exit(retry_result.exit_code)
+					}
+					return
+				}
 				if request_macos_v3_c_error_fallback(macos_v3_fallback_file, macos_v3_c_error_dir,
 					c_compiler, result.output, os.join_path_single(cc_dir, fallback_source))
 				{
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
-				eprintln('C compilation failed:')
-				eprintln(result.output)
+				if missing_library := v3_missing_c_library_name(result.output) {
+					eprintln('builder error:
+==================
+C library `${missing_library}` was not found while linking the generated program.
+Please install the corresponding development package/libraries and make sure the linker can find it.')
+				} else if parallel_cc && (result.output.contains('duplicate symbol')
+					|| result.output.contains('defined twice')
+					|| result.output.contains('multiple definition')) {
+					eprintln('failed to link after parallel C compilation')
+					eprintln(result.output)
+				} else if parallel_cc {
+					eprintln('failed parallel C compilation')
+					eprintln(result.output)
+				} else if !retry_compilation {
+					eprintln('C compilation error (from ${os.file_name(c_compiler)}):')
+					eprintln(result.output)
+				} else {
+					eprintln('C compilation failed:')
+					eprintln(result.output)
+				}
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
@@ -7554,7 +9031,7 @@ pub fn run(args []string) {
 				exit(run_result)
 			}
 			b.step('run')
-		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture) {
+		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
 			test_result := run_test_binary(bin_file)
 			if test_result != 0 {
 				exit(test_result)
@@ -7586,6 +9063,9 @@ pub fn run(args []string) {
 		'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
 	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races, 'objects')
+	if show_test_stats {
+		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
+	}
 	b.print_report()
 	if newly_cached_module_count > 0 && !silent {
 		println('Hint: cached ${newly_cached_module_count} modules. They will not be recompiled on the next run unless they change.')
@@ -7634,6 +9114,104 @@ fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compil
 	return none
 }
 
+fn v3_missing_c_library_name(output string) ?string {
+	for line in output.split_into_lines() {
+		if marker := line.index("ld: library '") {
+			rest := line[marker + "ld: library '".len..]
+			if end := rest.index("' not found") {
+				if end > 0 {
+					return rest[..end]
+				}
+			}
+		}
+		for marker in ['cannot find -l', 'library not found for -l'] {
+			if offset := line.index(marker) {
+				rest := line[offset + marker.len..].trim_space()
+				mut end := 0
+				for end < rest.len && !rest[end].is_space() && rest[end] !in [`'`, `"`] {
+					end++
+				}
+				if end > 0 {
+					return rest[..end]
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
+	name := os.file_name(c_compiler).to_lower()
+	if name == 'tcc' || name == 'tinyc' || name.starts_with('tcc-') || name.contains('tinycc') {
+		return true
+	}
+	for line in output.split_into_lines() {
+		if line.trim_space().to_lower().starts_with('tcc:') {
+			return true
+		}
+	}
+	return false
+}
+
+fn v3_parallel_cc_active_sources_include_external_definition(a &flat.FlatAst, source_files []string) bool {
+	mut selected_files := map[string]bool{}
+	for file in source_files {
+		selected_files[os.real_path(file)] = true
+	}
+	mut current_file := ''
+	mut selected := false
+	// Checker/transform pruning replaces directives from inactive `$if` branches with empty
+	// nodes, so this stream matches the target selected for generated C.
+	for node in a.nodes {
+		if node.kind == .file {
+			current_file = node.value
+			selected = os.real_path(current_file) in selected_files
+			continue
+		}
+		if !selected || node.kind != .directive || node.value != 'include' {
+			continue
+		}
+		raw_target, _ := checker_fixture_include_target_message(node.typ)
+		if !raw_target.starts_with('"') {
+			continue
+		}
+		rest := raw_target[1..]
+		end := rest.index('"') or { continue }
+		header_path := rest[..end].replace('@DIR', os.dir(current_file))
+		header := os.read_file(header_path) or { continue }
+		for header_line in header.split_into_lines() {
+			declaration := header_line.trim_space()
+			if declaration.len == 0 || declaration.starts_with('#')
+				|| declaration.starts_with('static ') || declaration.starts_with('inline ')
+				|| declaration.starts_with('typedef ') {
+				continue
+			}
+			if declaration.contains('(') && declaration.contains(')') && declaration.contains('{') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback string) []string {
+	mut retry_args := args.clone()
+	if c_compiler_arg_index >= 0 && c_compiler_arg_index + 1 < retry_args.len {
+		retry_args[c_compiler_arg_index + 1] = fallback
+	} else {
+		retry_args.insert(0, fallback)
+		retry_args.insert(0, '-cc')
+	}
+	mut public_args := []string{cap: retry_args.len + 1}
+	public_args << '-no-retry-compilation'
+	for arg in retry_args {
+		if arg !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag] {
+			public_args << arg
+		}
+	}
+	return public_args
+}
+
 fn checker_fixture_include_target_message(raw string) (string, string) {
 	if marker := raw.index(' #') {
 		return raw[..marker].trim_space(), raw[marker + 2..].trim_space()
@@ -7642,7 +9220,7 @@ fn checker_fixture_include_target_message(raw string) (string, string) {
 }
 
 fn checker_fixture_resolve_include_define(target string, user_defines []string) string {
-	start := target.index("\$d('") or { return target }
+	start := target.index(r'$d(' + "'") or { return target }
 	name_end := target.index_after("','", start + 4) or { return target }
 	default_end := target.index_after("')", name_end + 3) or { return target }
 	name := target[start + 4..name_end]
@@ -7720,9 +9298,21 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 }
 
 fn v3_incremental_main_source(tcc_declarations_path string, body_path string) string {
-	declarations_include := tcc_declarations_path.replace('\\', '\\\\').replace('"', '\\"')
-	body_include := body_path.replace('\\', '\\\\').replace('"', '\\"')
+	slash := [u8(92)].bytestr()
+	escaped_slash := [u8(92), 92].bytestr()
+	quote := [u8(34)].bytestr()
+	escaped_quote := [u8(92), 34].bytestr()
+	declarations_include := tcc_declarations_path.replace(slash, escaped_slash).replace(quote,
+		escaped_quote)
+	body_include := body_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
 	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
+}
+
+fn c_include_path(path string) string {
+	slash := [u8(92)].bytestr()
+	quote := [u8(34)].bytestr()
+	escaped_quote := [u8(92), 34].bytestr()
+	return path.replace(slash, '/').replace(quote, escaped_quote)
 }
 
 fn v3_incremental_program_main_source(cached_prefix string, body_source string) string {
@@ -8206,7 +9796,7 @@ fn cache_source_with_cached_native_inputs(source string, state &V3ModuleCacheSta
 			continue
 		}
 		for root in roots {
-			clean := os.real_path(root).replace('\\', '/').replace('"', '\\"')
+			clean := c_include_path(os.real_path(root))
 			include_line := '#include "${clean}"'
 			all_include_lines[include_line] = true
 			include_paths[include_line] = os.real_path(root)
@@ -8865,11 +10455,7 @@ fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard s
 	if objective_c {
 		args << ['-x', 'objective-c']
 	}
-	for value in [c_standard, opt_flag, pic_flag] {
-		if value.len > 0 {
-			args << value
-		}
-	}
+	append_v3_c_compile_mode_flags(mut args, c_standard, opt_flag, pic_flag)
 	args << cgen.tokenize_c_flag(warning_flags)
 	args << ['-Wno-int-conversion', '-c', '-o', tmp_object, tmp_source]
 	args << flags
@@ -8896,8 +10482,99 @@ fn vmod_subdirs(dir string) ![]string {
 	if !os.exists(vmod_path) {
 		return []string{}
 	}
+	if os.read_file(vmod_path)!.trim_space().len == 0 {
+		return []string{}
+	}
 	manifest := vmod.from_file(vmod_path)!
 	return manifest.unknown['subdirs'] or { []string{} }
+}
+
+fn v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, recursive bool) ![]string {
+	source_dir := v3_directory_source_root(dir)
+	mut files := []string{}
+	mut seen_files := map[string]bool{}
+	mut seen_dirs := map[string]bool{}
+	if recursive {
+		collect_v3_directory_user_files_rec(source_dir, source_dir, prefs, is_test_command, mut
+			seen_dirs, mut seen_files, mut files)
+		return files
+	}
+	append_v3_directory_user_files(source_dir, prefs, is_test_command, mut seen_files, mut files)
+	for subdir in vmod_subdirs(dir)! {
+		collect_v3_directory_user_files_rec(source_dir, os.join_path_single(source_dir, subdir),
+			prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+	}
+	return files
+}
+
+fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pref.Preferences, is_test_command bool, mut seen_dirs map[string]bool, mut seen_files map[string]bool, mut files []string) {
+	if !os.is_dir(dir) {
+		return
+	}
+	real_dir := os.real_path(dir)
+	if seen_dirs[real_dir] {
+		return
+	}
+	seen_dirs[real_dir] = true
+	if real_dir != os.real_path(module_root) && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
+		return
+	}
+	append_v3_directory_user_files(real_dir, prefs, is_test_command, mut seen_files, mut files)
+	mut entries := os.ls(real_dir) or { return }
+	entries.sort()
+	for entry in entries {
+		entry_path := os.join_path_single(real_dir, entry)
+		if os.is_dir(entry_path) {
+			collect_v3_directory_user_files_rec(module_root, entry_path, prefs, is_test_command, mut
+				seen_dirs, mut seen_files, mut files)
+		}
+	}
+}
+
+fn append_v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
+	for file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
+		append_unique_file(mut files, mut seen, file)
+	}
+	if is_test_command {
+		for file in pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines,
+			prefs.backend, prefs.target) {
+			append_unique_file(mut files, mut seen, file)
+		}
+	}
+}
+
+fn v3_directory_source_root(dir string) string {
+	vmod_root := os.real_path(dir)
+	vmod_path := os.join_path_single(vmod_root, 'v.mod')
+	if !os.is_file(vmod_path) {
+		return dir
+	}
+	manifest := vmod.from_file(vmod_path) or { return dir }
+	source_root := manifest.source_root(vmod_root)
+	if os.is_dir(source_root) {
+		return source_root
+	}
+	return dir
+}
+
+fn report_v3_removed_src_layout(dir string) bool {
+	src_dir := os.join_path(dir, 'src')
+	if !os.is_dir(src_dir) {
+		return false
+	}
+	src_files := os.ls(src_dir) or { return false }
+	if !src_files.any(it.ends_with('.v')) {
+		return false
+	}
+	eprintln('builder error: the virtual `src/` module directory is no longer supported.
+V found .v source files under ${src_dir}, but will not treat `src/` as a virtual module root anymore.
+Please move the sources up from `src/` into ${dir}:
+	mv ${src_dir}/*.v ${dir}/
+	rmdir ${src_dir}
+
+If you want to split one module across subdirectories after moving the root files, add `subdirs` to v.mod, for example:
+	subdirs: [\'admin\', \'repo\', \'commit\', \'ci\', \'security\', \'ssh\', \'user\']')
+	return true
 }
 
 fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) []string {
@@ -8925,7 +10602,8 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	if module_name.len > 0 {
 		for file in all_files {
 			declared_module := declared_module_in_file(file)
-			if declared_module != module_name {
+			if declared_module != module_name && !(declared_module in ['', 'main']
+				&& module_name in ['', 'main']) {
 				continue
 			}
 			files << file
@@ -9441,7 +11119,22 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 		root_modules << module_name
 		root_files << root_file
 		diagnose_aggregates := tc.diagnostic_files.len == 0 || root_file in tc.diagnostic_files
-		fallback_location := backend_node_location(a, node)
+		fallback_location := backend_fn_location(a, node)
+		if backend == 'wasm' && diagnose_aggregates {
+			return_type := tc.parse_resolution_type(node.typ)
+			if return_type is types.OptionType {
+				return '${fallback_location}error: option types are not implemented by the V3 wasm backend'
+			}
+			if return_type is types.ResultType {
+				return '${fallback_location}error: result types are not implemented by the V3 wasm backend'
+			}
+			mut infix_visited := []bool{len: a.nodes.len}
+			if msg := unsupported_wasm_struct_infix_error(a, tc, flat.NodeId(idx),
+				fallback_location, mut infix_visited)
+			{
+				return msg
+			}
+		}
 		if msg := unsupported_backend_node_error(a, tc, flat.NodeId(idx), backend,
 			diagnose_aggregates, fallback_location, mut visited)
 		{
@@ -9519,7 +11212,66 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 	return none
 }
 
+fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, fallback_location string, mut visited []bool) ?string {
+	idx := int(id)
+	if idx < 0 || idx >= a.nodes.len || visited[idx] {
+		return none
+	}
+	visited[idx] = true
+	node := a.nodes[idx]
+	if node.kind == .infix && node.children_count >= 2 && node.op in [.eq, .ne] {
+		lhs_type := tc.resolve_type(a.child(&node, 0))
+		rhs_type := tc.resolve_type(a.child(&node, 1))
+		lhs_name := lhs_type.name().trim_string_left('main.')
+		rhs_name := rhs_type.name().trim_string_left('main.')
+		if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs {
+			operator := if node.op == .eq { '==' } else { '!=' }
+			return '${fallback_location}error: the V3 wasm backend does not support `${operator}` for type `${lhs_name}` yet'
+		}
+		// Struct equality is lowered before backend validation into field-wise
+		// comparisons. Recover the aggregate type from selector operands so the
+		// wasm backend reports the source operation instead of rejecting the
+		// first lowered struct literal.
+		lhs_origin := wasm_struct_origin_type(a, a.child(&node, 0))
+		rhs_origin := wasm_struct_origin_type(a, a.child(&node, 1))
+		if lhs_origin.len > 0 && lhs_origin == rhs_origin {
+			operator := if node.op == .eq { '==' } else { '!=' }
+			return '${fallback_location}error: the V3 wasm backend does not support `${operator}` for type `${lhs_origin}` yet'
+		}
+	}
+	for i in 0 .. node.children_count {
+		if msg := unsupported_wasm_struct_infix_error(a, tc, a.child(&node, i), fallback_location, mut
+			visited)
+		{
+			return msg
+		}
+	}
+	return none
+}
+
+fn wasm_struct_origin_type(a &flat.FlatAst, id flat.NodeId) string {
+	idx := int(id)
+	if idx < 0 || idx >= a.nodes.len {
+		return ''
+	}
+	node := a.nodes[idx]
+	if node.kind == .struct_init {
+		return node.typ.trim_string_left('main.')
+	}
+	if node.kind in [.selector, .cast_expr, .paren] && node.children_count > 0 {
+		return wasm_struct_origin_type(a, a.child(&node, 0))
+	}
+	return ''
+}
+
 fn backend_node_location(a &flat.FlatAst, node flat.Node) string {
+	if source_pos := a.source_position(node.pos) {
+		return '${source_pos}: '
+	}
+	return ''
+}
+
+fn backend_fn_location(a &flat.FlatAst, node flat.Node) string {
 	if source_pos := a.source_position(node.pos) {
 		return '${source_pos}: '
 	}
@@ -9544,12 +11296,17 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			}
 		}
 		if unsupported_type.len > 0 {
-			location := if source_pos := a.source_position(node.pos) {
-				'${source_pos}: '
-			} else {
-				fallback_location
+			return '${fallback_location}error: the V3 wasm backend does not support type `${unsupported_type}` yet'
+		}
+		if node.kind == .infix && node.children_count >= 2 && node.op in [.eq, .ne] {
+			lhs_type := tc.resolve_type(a.child(&node, 0))
+			rhs_type := tc.resolve_type(a.child(&node, 1))
+			lhs_name := lhs_type.name().trim_string_left('main.')
+			rhs_name := rhs_type.name().trim_string_left('main.')
+			if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs {
+				operator := if node.op == .eq { '==' } else { '!=' }
+				return '${fallback_location}error: the V3 wasm backend does not support `${operator}` for type `${lhs_name}` yet'
 			}
-			return '${location}error: the V3 wasm backend does not support type `${unsupported_type}` yet'
 		}
 	}
 	op := match node.op {
@@ -9618,11 +11375,6 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 	mut errors := []string{}
 	for file_idx, file_node in a.nodes {
 		if !is_user_test_file_node(a, file_idx, file_node, selected_files) {
-			continue
-		}
-		module_name := test_file_module_name(a, file_node)
-		if module_name.len > 0 && module_name != 'main' && !file_node.value.ends_with('_test.v') {
-			errors << 'no runnable tests in ${file_node.value}'
 			continue
 		}
 		if test_file_has_executable_top_level_stmt(a, file_node) {
@@ -9824,6 +11576,8 @@ mut:
 	has_embed_import     bool
 	needs_closure        bool
 	has_closure          bool
+	needs_debugger       bool
+	has_debugger         bool
 }
 
 const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
@@ -9849,6 +11603,9 @@ fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool) {
 	// `closure`.
 	if !skip_closure_runtime && scan.needs_closure && !scan.has_closure {
 		a.add_node(closure_import_node())
+	}
+	if scan.needs_debugger && !scan.has_debugger {
+		a.add_node(debugger_import_node())
 	}
 	a.intern_node_texts_from(start)
 }
@@ -9877,6 +11634,14 @@ fn closure_import_node() flat.Node {
 		// alias prevents it from overwriting a user import named `closure`; generated
 		// runtime calls already use the resolved `closure.*` declaration keys.
 		typ: closure_runtime_import_alias
+	}
+}
+
+fn debugger_import_node() flat.Node {
+	return flat.Node{
+		kind:  .import_decl
+		value: 'v.debug'
+		typ:   '__v3_debugger_runtime'
 	}
 }
 
@@ -9945,13 +11710,17 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				scan.has_embed_import = true
 			} else if node.value == 'builtin.closure' {
 				scan.has_closure = true
+			} else if node.value == 'v.debug' {
+				scan.has_debugger = true
 			}
+		}
+		if node.kind == .debugger_stmt {
+			scan.needs_debugger = true
 		}
 		if !scan.needs_sync {
 			if node.kind == .lock_expr
 				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ))
-				|| (node.kind == .decl_assign && (node.value == 'shared'
-				|| node.value.starts_with('shared:')))
+				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
 				|| (node.kind == .struct_init && node.value.starts_with('chan '))
 				|| (node.kind == .infix && node.op == .arrow)
 				|| (node.kind == .prefix && node.op == .arrow)
@@ -9978,15 +11747,23 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 					}
 				}
 			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees
-				&& i !in known_field_selectors {
+				&& i !in known_field_selectors && !implicit_selector_is_interop_symbol(a, node) {
 				// A remaining selector used as a value may be a bound method. Full type
 				// information is unavailable during import discovery, so conservatively
-				// load the runtime; calls and provable fields are excluded above.
+				// load the runtime; calls, C/JS symbols, and provable fields are excluded.
 				scan.needs_closure = true
 			}
 		}
 	}
 	scan.node_idx = end_node
+}
+
+fn implicit_selector_is_interop_symbol(a &flat.FlatAst, node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	base := a.child_node(&node, 0)
+	return base.kind == .ident && base.value in ['C', 'JS']
 }
 
 fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index ImplicitFieldScanIndex) map[int]bool {
@@ -10408,6 +12185,10 @@ fn type_text_is_shared(raw string) bool {
 	return raw.trim_space().starts_with('shared ')
 }
 
+fn decl_assign_value_is_shared(value string) bool {
+	return value == 'shared' || value.starts_with('shared:')
+}
+
 // SyntheticInsertion records a childless synthetic import node to splice into the
 // flat AST before an original-array node index.
 struct SyntheticInsertion {
@@ -10437,7 +12218,16 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 			new_nodes << canonical_node_texts(mut a, insertions[ins_idx].node)
 			ins_idx++
 		}
-		new_nodes << a.nodes[i]
+		mut node := a.nodes[i]
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			target_idx := node.value['@attributes:'.len..].int()
+			if target_idx >= 0 && target_idx < old_len {
+				node.value = '@attributes:${target_idx +
+					synthetic_index_shift(insertions, target_idx)}'
+				node = canonical_node_texts(mut a, node)
+			}
+		}
+		new_nodes << node
 	}
 	// Insertions at pos == old_len append at the very end (the last wave module's
 	// region ends at the array tail).
@@ -10606,6 +12396,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut synthetic_sync_added := implicit_imports.has_sync
 	mut synthetic_embed_file_added := implicit_imports.has_embed_import
 	mut synthetic_closure_added := implicit_imports.has_closure
+	mut synthetic_debugger_added := implicit_imports.has_debugger
 	mut ri_collision_ns := u64(0)
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
@@ -10794,6 +12585,26 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if mod_dir_exists {
 				mod_files := pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines,
 					prefs.target)
+				if !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
+					expected_module := mod_name.all_after_last('.')
+					for imported_file in mod_files {
+						declared := declared_module_in_file(imported_file)
+						// A source file without a module declaration (including an
+						// entirely commented file) belongs to `main`.
+						declared_module := if declared.len > 0 { declared } else { 'main' }
+						if declared_module.all_after_last('.') != expected_module {
+							message := 'bad module definition: ${importing_file} imports module "${mod_name}" but ${imported_file} is defined as module `${declared_module}`'
+							eprintln('error: ${message}')
+							formatted := v3errors.formatted_error('error:', message, a,
+								flat.NodeId(node_idx), a.nodes[node_idx].pos)
+							context := formatted.all_after_first('\n')
+							if context.len > 0 {
+								eprintln(context)
+							}
+							exit(1)
+						}
+					}
+				}
 				if cache_module !in cache_state.module_import_paths {
 					cache_state.module_import_paths[cache_module] = mod_name
 				}
@@ -10924,6 +12735,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 				synthetic_closure_added = true
 			}
+			if !synthetic_debugger_added && implicit_imports.needs_debugger
+				&& !implicit_imports.has_debugger {
+				insertions << SyntheticInsertion{
+					pos:  region_end
+					node: debugger_import_node()
+				}
+				synthetic_debugger_added = true
+			}
 			module_start = module_file_end
 		}
 		insert_synthetic_imports(mut a, insertions)
@@ -11039,6 +12858,11 @@ fn imports_from_files(a &flat.FlatAst, files []string) map[string]bool {
 		}
 	}
 	return imports
+}
+
+fn parsed_files_import_linux_gg(a &flat.FlatAst, files []string) bool {
+	imports := imports_from_files(a, files)
+	return imports['gg'] || imports['sokol.sapp']
 }
 
 fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_node int, import_path string) {
@@ -11185,7 +13009,7 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 			return alias_path
 		}
 		local_modules_path := os.join_path_single(local_modules_root, mod_path)
-		if os.is_dir(local_modules_path) {
+		if module_path_has_v_sources(local_modules_path) {
 			return local_modules_path
 		}
 	}
@@ -11194,7 +13018,7 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 			return alias_path
 		}
 		project_path := os.join_path_single(project_root, mod_path)
-		if os.is_dir(project_path) {
+		if module_path_has_v_sources(project_path) {
 			return project_path
 		}
 	}
@@ -11225,24 +13049,53 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 	return prefs.get_module_path(mod_name, importing_file)
 }
 
+fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) bool {
+	mut roots := []string{}
+	if importing_file.len > 0 {
+		importer_dir := os.dir(importing_file)
+		roots << importer_dir
+		roots << os.join_path_single(importer_dir, 'modules')
+	}
+	if project_root.len > 0 {
+		roots << project_root
+		roots << os.join_path_single(project_root, 'modules')
+	}
+	if prefs.module_search_paths.len > 0 {
+		roots << prefs.module_search_paths
+	} else {
+		roots << os.join_path_single(prefs.vroot, 'vlib')
+		roots << os.vmodules_paths()
+	}
+	mut seen := map[string]bool{}
+	for root in roots {
+		real_root := os.real_path(root)
+		if seen[real_root] {
+			continue
+		}
+		seen[real_root] = true
+		if _ := pref.resolve_module_alias_path(root, mod_name) {
+			return true
+		}
+	}
+	return false
+}
+
 fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path string) string {
-	vlib_root := os.join_path_single(prefs.vroot, 'vlib')
-	if alias_path := pref.resolve_module_alias_path(vlib_root, mod_name) {
-		return alias_path
+	search_roots := if prefs.module_search_paths.len > 0 {
+		prefs.module_search_paths
+	} else {
+		mut roots := [os.join_path_single(prefs.vroot, 'vlib')]
+		roots << os.vmodules_paths()
+		roots
 	}
-	vlib_path := os.join_path_single(vlib_root, mod_path)
-	if module_path_has_v_sources(vlib_path) {
-		return vlib_path
-	}
-	vmodules_root := os.getenv_opt('VMODULES') or {
-		os.join_path_single(os.home_dir(), '.vmodules')
-	}
-	if alias_path := pref.resolve_module_alias_path(vmodules_root, mod_name) {
-		return alias_path
-	}
-	vmodules_path := os.join_path_single(vmodules_root, mod_path)
-	if module_path_has_v_sources(vmodules_path) {
-		return vmodules_path
+	for root in search_roots {
+		if alias_path := pref.resolve_module_alias_path(root, mod_name) {
+			return alias_path
+		}
+		module_path := os.join_path_single(root, mod_path)
+		if module_path_has_v_sources(module_path) {
+			return module_path
+		}
 	}
 	return ''
 }

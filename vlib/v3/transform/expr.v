@@ -69,6 +69,12 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	if rhs_is_string_ptr {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
+	if node.op == .plus && lhs_clean_type in ['char', 'rune'] {
+		new_lhs = t.wrap_string_conversion(new_lhs, lhs_clean_type)
+	}
+	if node.op == .plus && rhs_clean_type in ['char', 'rune'] {
+		new_rhs = t.wrap_string_conversion(new_rhs, rhs_clean_type)
+	}
 
 	mut result := flat.empty_node
 	result_type := if node.op == .plus { 'string' } else { 'bool' }
@@ -192,6 +198,32 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	mut effective_rhs_raw_type := rhs_raw_type
 	checker_lhs_type := t.raw_checker_node_type(lhs_id)
 	checker_rhs_type := t.raw_checker_node_type(rhs_id)
+	if !t.membership_container_type(effective_lhs_raw_type).starts_with('[]')
+		&& t.membership_container_type(checker_lhs_type).starts_with('[]') {
+		effective_lhs_raw_type = checker_lhs_type
+	}
+	if !t.membership_container_type(effective_rhs_raw_type).starts_with('[]')
+		&& t.membership_container_type(checker_rhs_type).starts_with('[]') {
+		effective_rhs_raw_type = checker_rhs_type
+	}
+	if !t.membership_container_type(effective_lhs_raw_type).starts_with('[]') {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .or_expr && lhs.children_count > 0 {
+			_, value_type := t.or_expr_types(t.a.child(&lhs, 0), lhs.typ)
+			if t.membership_container_type(value_type).starts_with('[]') {
+				effective_lhs_raw_type = value_type
+			}
+		}
+	}
+	if !t.membership_container_type(effective_rhs_raw_type).starts_with('[]') {
+		rhs := t.a.nodes[int(rhs_id)]
+		if rhs.kind == .or_expr && rhs.children_count > 0 {
+			_, value_type := t.or_expr_types(t.a.child(&rhs, 0), rhs.typ)
+			if t.membership_container_type(value_type).starts_with('[]') {
+				effective_rhs_raw_type = value_type
+			}
+		}
+	}
 	if !t.is_fixed_array_type(t.membership_container_type(effective_lhs_raw_type))
 		&& t.is_fixed_array_type(t.membership_container_type(checker_lhs_type)) {
 		effective_lhs_raw_type = checker_lhs_type
@@ -275,8 +307,21 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if elem_type.len == 0 {
 		elem_type = 'int'
 	}
-	lhs_target_type := t.contextual_array_comparison_type(lhs_id, lhs_type, rhs_type)
-	rhs_target_type := t.contextual_array_comparison_type(rhs_id, rhs_type, lhs_type)
+	mut lhs_target_type := t.contextual_array_comparison_type(lhs_id, lhs_type, rhs_type)
+	mut rhs_target_type := t.contextual_array_comparison_type(rhs_id, rhs_type, lhs_type)
+	mut literal_elem_resolved := false
+	if nested_elem := t.array_comparison_literal_elem_type(lhs_id) {
+		elem_type = nested_elem
+		lhs_type = '[]${nested_elem}'
+		lhs_target_type = lhs_type
+		literal_elem_resolved = true
+	}
+	if nested_elem := t.array_comparison_literal_elem_type(rhs_id) {
+		elem_type = nested_elem
+		rhs_type = '[]${nested_elem}'
+		rhs_target_type = rhs_type
+		literal_elem_resolved = true
+	}
 	mut new_lhs := if int(fixed_lhs_as_array) >= 0 {
 		fixed_lhs_as_array
 	} else if lhs_target_type.starts_with('[]') {
@@ -295,10 +340,14 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	new_rhs = t.preserve_array_comparison_deref(rhs_id, new_rhs, rhs_type)
 	new_lhs_type := t.membership_container_type(t.node_type(new_lhs))
 	new_rhs_type := t.membership_container_type(t.node_type(new_rhs))
-	if new_lhs_type.starts_with('[]') {
+	// Keep an already resolved nested element type. Generic method calls can retain a
+	// coarse scalar return type on the transformed node even though contextual typing
+	// resolved the comparison itself to `[][]T`.
+	if !literal_elem_resolved && !elem_type.starts_with('[]') && new_lhs_type.starts_with('[]') {
 		elem_type = new_lhs_type[2..]
 		lhs_type = new_lhs_type
-	} else if new_rhs_type.starts_with('[]') {
+	} else if !literal_elem_resolved && !elem_type.starts_with('[]')
+		&& new_rhs_type.starts_with('[]') {
 		elem_type = new_rhs_type[2..]
 		rhs_type = new_rhs_type
 	}
@@ -323,6 +372,68 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .array_literal || node.children_count == 0 {
+		return none
+	}
+	first_id := t.a.child(&node, 0)
+	first := t.a.nodes[int(first_id)]
+	if first.kind !in [.array_literal, .array_init] {
+		scalar := if first.kind == .prefix && first.op in [.plus, .minus]
+			&& first.children_count == 1 {
+			t.a.child_node(&first, 0)
+		} else {
+			&first
+		}
+		return match scalar.kind {
+			.string_literal, .string_interp {
+				'string'
+			}
+			.char_literal {
+				'rune'
+			}
+			.float_literal {
+				if scalar.typ == 'f32' {
+					'f32'
+				} else {
+					'f64'
+				}
+			}
+			.bool_literal {
+				'bool'
+			}
+			.cast_expr {
+				clean := t.normalize_type_alias(scalar.value)
+				if clean.len > 0 && clean != 'unknown' {
+					clean
+				} else {
+					none
+				}
+			}
+			else {
+				none
+			}
+		}
+	}
+	for candidate in [t.raw_checker_node_type(first_id), t.node_type(first_id), first.typ] {
+		clean := t.membership_container_type(t.normalize_type_alias(candidate))
+		if clean.starts_with('[]') {
+			return clean
+		}
+	}
+	if first.kind == .array_literal && first.children_count > 0 {
+		inner := t.array_literal_elem_type(first)
+		if inner.len > 0 && inner != 'unknown' {
+			return '[]${inner}'
+		}
+	}
+	return none
 }
 
 fn (mut t Transformer) preserve_array_comparison_deref(source_id flat.NodeId, transformed_id flat.NodeId, array_type string) flat.NodeId {
@@ -479,6 +590,16 @@ fn (mut t Transformer) map_comparison_expr_type(id flat.NodeId) string {
 		return ''
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .or_expr && node.children_count > 0 {
+		_, value_type := t.or_expr_types(t.a.child(&node, 0), node.typ)
+		if t.clean_map_type(value_type).starts_with('map[') {
+			return value_type
+		}
+		inner_type := t.map_comparison_expr_type(t.a.child(&node, 0))
+		if t.clean_map_type(inner_type).starts_with('map[') {
+			return inner_type
+		}
+	}
 	if node.kind == .call {
 		concrete := t.concrete_generic_call_return_type(id, node)
 		if concrete.len > 0 && t.clean_map_type(concrete).starts_with('map[') {
@@ -869,13 +990,19 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 
 fn (mut t Transformer) transform_struct_pointer_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type string, rhs_type string, lhs_clean string, rhs_clean string) ?flat.NodeId {
 	pending_base := t.pending_stmts.len
-	lhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr(lhs_id), lhs_type, 'ptr_eq_lhs')
-	rhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr(rhs_id), rhs_type, 'ptr_eq_rhs')
+	lhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr_preserving_pointer_value(lhs_id),
+		lhs_type, 'ptr_eq_lhs')
+	rhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr_preserving_pointer_value(rhs_id),
+		rhs_type, 'ptr_eq_rhs')
 	result_name := t.new_temp('ptr_eq')
-	same_ptr := t.make_infix(.eq, lhs_ptr, rhs_ptr)
+	// Compare addresses through voidptr casts so a later transform pass does not
+	// auto-dereference a mutable pointer-value local in the synthesized identity checks.
+	lhs_addr := t.make_cast('voidptr', lhs_ptr, 'voidptr')
+	rhs_addr := t.make_cast('voidptr', rhs_ptr, 'voidptr')
+	same_ptr := t.make_infix(.eq, lhs_addr, rhs_addr)
 	t.pending_stmts << t.make_decl_assign_typed(result_name, same_ptr, 'bool')
-	lhs_not_nil := t.make_infix(.ne, lhs_ptr, t.a.add(.nil_literal))
-	rhs_not_nil := t.make_infix(.ne, rhs_ptr, t.a.add(.nil_literal))
+	lhs_not_nil := t.make_infix(.ne, lhs_addr, t.a.add(.nil_literal))
+	rhs_not_nil := t.make_infix(.ne, rhs_addr, t.a.add(.nil_literal))
 	both_not_nil := t.make_infix(.logical_and, lhs_not_nil, rhs_not_nil)
 	not_same_ptr := t.make_prefix(.not, t.make_ident(result_name))
 	compare_values := t.make_infix(.logical_and, not_same_ptr, both_not_nil)
@@ -988,6 +1115,19 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 
 fn (t &Transformer) infix_operand_is_pointer(id flat.NodeId) bool {
 	return t.infix_operand_pointer_type(id) != none
+}
+
+fn (t &Transformer) infix_operand_is_language_pointer(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident && t.pointer_value_rvalues[node.value] {
+		// Some value locals use pointer storage (mutable captures, `for mut` bindings,
+		// and heap-promoted locals). Equality still compares their language-level value.
+		return false
+	}
+	return t.infix_operand_is_pointer(id)
 }
 
 fn (t &Transformer) infix_operand_pointer_type(id flat.NodeId) ?string {
@@ -1126,12 +1266,13 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 		base_id := t.a.child(&node, 0)
 		if raw_base := t.raw_var_type_for_expr(base_id) {
 			mut elem := raw_base.trim_space()
+			mut is_pointer_element := false
 			if elem.starts_with('mut ') {
 				elem = elem[4..].trim_space()
 			}
-			elem = t.normalize_type_alias(elem)
 			if elem.starts_with('&') {
-				elem = t.normalize_type_alias(elem[1..].trim_space())
+				elem = elem[1..].trim_space()
+				is_pointer_element = true
 			}
 			if elem.starts_with('[]') {
 				elem = elem[2..].trim_space()
@@ -1139,11 +1280,19 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 				if bracket_end := elem.index(']') {
 					elem = elem[bracket_end + 1..].trim_space()
 				}
+			} else if elem.starts_with('[') {
+				if bracket_end := elem.index(']') {
+					elem = elem[bracket_end + 1..].trim_space()
+				}
+			} else if !is_pointer_element {
+				return none
 			}
 			clean := t.trim_pointer_type(elem)
-			if clean.len > 0 && t.is_type_alias_name(clean) {
-				if _ := t.struct_operator_call_info_any(clean, op) {
-					return clean
+			for candidate in [clean, t.normalize_type_alias(clean)] {
+				if candidate.len > 0 && t.is_type_alias_name(candidate) {
+					if _ := t.struct_operator_call_info_any(candidate, op) {
+						return candidate
+					}
 				}
 			}
 			return none
@@ -1585,13 +1734,13 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	lhs_type = t.normalize_type_alias(lhs_type)
 	rhs_type = t.normalize_type_alias(rhs_type)
-	if !t.is_sum_type_name(lhs_type) {
+	if !t.is_sum_type_name(lhs_type) && t.generic_arg_is_unresolved(lhs_type) {
 		lhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(lhs_id)))
 		if t.is_sum_type_name(lhs_original) {
 			lhs_type = lhs_original
 		}
 	}
-	if !t.is_sum_type_name(rhs_type) {
+	if !t.is_sum_type_name(rhs_type) && t.generic_arg_is_unresolved(rhs_type) {
 		rhs_original := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(rhs_id)))
 		if t.is_sum_type_name(rhs_original) {
 			rhs_type = rhs_original
@@ -1995,8 +2144,9 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 
 	if is_not_in && result != id {
+		parenthesized := t.make_paren(result)
 		start := t.a.children.len
-		t.a.children << t.make_paren(result)
+		t.a.children << parenthesized
 		return t.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             .not
@@ -2200,12 +2350,10 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(needle_id, elem_type),
-			elem_type, 'contains_needle')
+		needle = t.stable_expr_for_reuse(needle_id)
 		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(needle_id, elem_type),
-			elem_type, 'contains_needle')
+		needle = t.stable_expr_for_reuse(needle_id)
 		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)

@@ -67,7 +67,7 @@ fn add(mut c Counter, a int, b int) {
 }
 
 fn main() {
-	mut c := Counter{}
+	mut c := &Counter{}
 	_ := spawn add(mut c, 3, 4)
 	println("ok")
 }
@@ -77,7 +77,7 @@ fn main() {
 	assert c_code.contains('pthread_create'), c_code
 	assert_spawn_pthread_decls(c_code)
 	assert c_compact.contains('typedefstruct{Counter*a0;inta1;inta2;}add_thread_args;'), c_code
-	assert c_compact.contains('->a0=&c;'), c_code
+	assert c_compact.contains('->a0=c;'), c_code
 	assert c_compact.contains('__v_thread_spawn(add_args_thread_wrapper,(void*)_sa'), c_code
 	assert c_code.contains('add(p->a0, p->a1, p->a2)'), c_code
 }
@@ -97,7 +97,7 @@ fn (mut c Counter) bump(x int) {
 }
 
 fn main() {
-	mut c := Counter{}
+	mut c := &Counter{}
 	_ := spawn c.bump(10)
 	println("ok")
 }
@@ -105,7 +105,7 @@ fn main() {
 	c_compact := compact_c(c_code)
 	assert c_code.contains('pthread_create'), c_code
 	assert c_compact.contains('typedefstruct{Counter*a0;inta1;}Counter__bump_thread_args;'), c_code
-	assert c_compact.contains('->a0=&c;'), c_code
+	assert c_compact.contains('->a0=c;'), c_code
 	assert c_compact.contains('__v_thread_spawn(Counter__bump_args_thread_wrapper,(void*)_sa'), c_code
 
 	assert c_code.contains('Counter__bump(p->a0, p->a1)'), c_code
@@ -185,7 +185,7 @@ fn main() {
 	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
 }
 
-fn test_spawn_mutable_local_address_copies_value_into_heap_packet() {
+fn test_spawn_mutable_local_address_preserves_escaping_pointer() {
 	v3_bin := build_v3()
 	c_code := gen_c(v3_bin, 'v3_spawn_mutable_local_address', '
 fn takes_ptr(value &int) {
@@ -202,11 +202,10 @@ fn main() {
 }
 	')
 	c_compact := compact_c(c_code)
-	assert c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
+	assert c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
 	assert c_compact.contains('->a0=value;'), c_code
-	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
-	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
-	assert !c_compact.contains('->a0=&value;'), c_code
+	assert c_compact.contains('takes_ptr(p->a0)'), c_code
+	assert !c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
 }
 
 fn test_spawn_result_uses_checked_allocation_and_typed_join() {

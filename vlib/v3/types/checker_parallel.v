@@ -9,12 +9,16 @@ import v3.workers
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
-const scoped_check_worker_batches = 8
-// One chunk per worker makes the phase wall clock the single slowest chunk:
-// span-based costs undercount construct-heavy bodies severalfold, so the other
-// workers idle behind the outlier. Oversubscribed chunks let the pool queue
-// rebalance dynamically for ~0.6 ms fork+merge overhead per extra chunk.
-const check_chunk_oversubscribe = 4
+// Scoped workers keep an arena alive for the phase. Limit their count and use
+// many short batches so self-hosting does not retain one large arena per core.
+const max_scoped_check_jobs = 8
+const scoped_check_worker_batches = 96
+// A serial checker owns the whole import graph instead of one worker shard, so
+// use finer arena batches to keep compiler-module checks below the memory cap.
+const scoped_check_serial_batches = 64
+// Keep one scheduled chunk per scoped worker. Finer arena batches within each
+// chunk release transient checker allocations without retaining extra shards.
+const check_chunk_oversubscribe = 1
 // Extra share of the total work (in percent of an even bucket) pre-assigned to
 // the master's bucket; see split_check_items.
 const check_master_bias_pct = i64(0)
@@ -49,7 +53,7 @@ $if !windows {
 		mut w := unsafe { &TypeChecker(a.worker) }
 		items := unsafe { &[]CheckWorkItem(a.items_ptr) }
 		if a.scope_enabled {
-			w.check_scoped_batches(*items)
+			w.check_scoped_batches(*items, scoped_check_worker_batches)
 		} else {
 			w.check_fn_items_serial(*items)
 		}
@@ -62,14 +66,14 @@ $if !windows {
 // The receiver is a result accumulator; every batch uses a fresh checker fork,
 // then promotes only observable cache entries and diagnostics before its arena
 // is released.
-fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem) {
+fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit int) {
 	if items.len == 0 {
 		return
 	}
-	n_batches := if items.len < scoped_check_worker_batches {
+	n_batches := if items.len < batch_limit {
 		items.len
 	} else {
-		scoped_check_worker_batches
+		batch_limit
 	}
 	mut total_cost := i64(0)
 	for item in items {
@@ -165,9 +169,14 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_export_attrs()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
+	if tc.diagnostic_files.len > 0 {
+		// Open generic bodies are checked only when reachable from the selected input.
+		// Populate the reachability set before the scoped workers inherit it.
+		tc.collect_selected_file_called_fns()
+	}
 	final_file := tc.cur_file
 	final_module := tc.cur_module
-	tc.check_scoped_batches(items)
+	tc.check_scoped_batches(items, scoped_check_serial_batches)
 	tc.cur_file = final_file
 	tc.cur_module = final_module
 	if tc.defer_ierror_gating {
@@ -286,6 +295,11 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		cksw.restart()
 		items := tc.collect_parallel_check_items()
 		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
+		if tc.diagnostic_files.len > 0 {
+			// Open generic bodies are checked only when reachable from the selected input.
+			// Populate the reachability set before the parallel workers inherit it.
+			tc.collect_selected_file_called_fns()
+		}
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
@@ -486,7 +500,10 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		if isnil(ast.worker_pool) {
 			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
-		n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
+		mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
+		if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
+			n_jobs = max_scoped_check_jobs
+		}
 		if items.len < min_parallel_check_items || n_jobs <= 1 {
 			tc.check_top_level_declarations()
 			tc.check_fn_items_serial(items)
@@ -862,6 +879,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
+	tc.index_local_decl_rhs(flat.NodeId(fn_idx))
 	tc.fn_context.concrete_generic_receiver_specialization =
 		fn_value_is_concrete_generic_receiver_specialization(node.value)
 	tc.cur_fn_node_id = fn_idx
@@ -912,15 +930,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 						param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 				}
 				param_type := unalias_type(raw_param_type)
-				if !is_specialized && param_type !is Array && param_type !is ArrayFixed
-					&& param_type !is Interface && param_type !is Map && param_type !is Pointer
-					&& param_type !is Struct && param_type !is SumType && param_type !is Unknown {
-					if !(param.op == .dot && param_type is OptionType) {
-						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch,
-							'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`',
-							param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
-					}
+				if !is_specialized && !mut_param_type_is_allowed(raw_param_type) {
+					type_name := param_type.name()
+					tc.record_error_at(.call_arg_mismatch,
+						'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`',
+						param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 				}
 			}
 			tc.check_reserved_parameter_name(param_id)
@@ -957,7 +971,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	qname := checker_qualified_fn_name(module_name, node.value)
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
-	should_check_generic_body := generic_params.len == 0 || qname in tc.selected_file_called_fns
+	should_check_generic_body := generic_params.len == 0
 	if should_check_generic_body && !signature_has_bare_generic_type {
 		tc.check_fn_body(node)
 		tc.check_recursive_str_calls(flat.NodeId(fn_idx), node)
@@ -1037,7 +1051,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if node.children_count > 0 && node.value.contains('.') {
 		receiver := tc.a.child_node(&node, 0)
 		receiver_name := node.value.all_before_last('.').all_after_last('.')
-		if receiver.kind == .param {
+		if receiver.kind == .param && receiver.op == .dot {
 			receiver_type := unalias_type(tc.parse_type(receiver.typ))
 			if receiver_type is Interface
 				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.name) {

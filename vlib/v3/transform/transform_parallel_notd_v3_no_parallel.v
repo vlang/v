@@ -20,8 +20,9 @@ const max_parallel_transform_jobs = 7
 // clone memory; cap by core count only.
 const max_shared_transform_jobs = 10
 const max_parallel_monomorph_jobs = 10
-const scoped_transform_worker_batches = 1
-const scoped_transform_master_batches = 1
+// Recycle scratch arenas throughout large self-hosting transforms.
+const scoped_transform_worker_batches = 32
+const scoped_transform_master_batches = 32
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 
@@ -1763,6 +1764,14 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		t.transform_pure_items_serial(items)
 		return false
 	} $else {
+		// Generic body lowering can discover and register new specializations. The
+		// signature tables are compilation-wide mutable state, so cloned workers
+		// must not update them concurrently. The dedicated monomorphization stage
+		// has its own synchronized parallel queue; keep this earlier pass serial.
+		if !t.skip_generics {
+			t.transform_pure_items_serial(items)
+			return false
+		}
 		if isnil(t.a.worker_pool) {
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
@@ -2121,6 +2130,9 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 	$if windows {
 		return t.scan_late_call_names_range(cands, used, 0, cands.len)
 	} $else {
+		if !t.parallel_enabled {
+			return t.scan_late_call_names_range(cands, used, 0, cands.len)
+		}
 		// The scan clones no ASTs (workers share the merged AST read-only), so it
 		// is not bound by the clone-memory ceiling of the transform workers.
 		if isnil(t.a.worker_pool) {

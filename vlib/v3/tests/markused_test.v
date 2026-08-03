@@ -26,6 +26,7 @@ fn parse_checked_source_with_unknown_calls(name string, source string, diagnose_
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
 	tc.collect(a)
 	tc.enable_globals = true
 	tc.diagnose_unknown_calls = diagnose_unknown_calls
@@ -65,6 +66,7 @@ fn parse_checked_project(name string, files map[string]string, main_file string)
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
 	tc.collect(a)
 	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
@@ -90,6 +92,7 @@ fn parse_checked_project_in_order(name string, rels []string, sources []string) 
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
 	tc.collect(a)
 	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
@@ -116,6 +119,7 @@ fn test_trivial_literal_output_prunes_conservative_runtime_helper_seeds() {
 	assert !used['i64.str']
 	assert !used['map.clone']
 	assert !used['strconv.format_uint']
+	assert used['string.free']
 }
 
 fn test_nontrivial_output_keeps_conservative_runtime_helper_seeds() {
@@ -130,6 +134,17 @@ println(message())
 	assert used['strconv.format_uint']
 	assert used['array.delete_last']
 	assert used['i64.str']
+}
+
+fn test_cached_trivial_output_keeps_cached_runtime_helper_seeds() {
+	a, tc := parse_checked_source('cached_trivial_output', "println('Hello, World!')")
+	used := markused.mark_used_for_cache(a, tc, []string{}, {
+		'builtin': true
+	})
+	assert used['__new_array']
+	assert used['array.push']
+	assert used['byteptr.vstring_with_len']
+	assert used['strconv.format_uint']
 }
 
 fn find_fn_node_id(a &flat.FlatAst, name string) int {
@@ -1300,7 +1315,7 @@ fn helper() int {
 }
 
 f := helper
-println(int_str(f() + 1))
+println(f() + 1)
 ') or {
 		panic(err)
 	}
@@ -1510,7 +1525,7 @@ fn used() int {
 
 fn main() {
 	unused := used
-	println(unused())
+	println((unused)())
 }
 ')
 	mut used := markused.mark_used(a, tc)
@@ -1681,7 +1696,7 @@ fn main() {
 		ratio:  1.25
 		ch:     `x`
 		nums:   [3, 4]
-		lookup: {
+		lookup: map[string]u64{
 			"a": u64(5)
 		}
 		inner:  Inner{

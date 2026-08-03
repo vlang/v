@@ -213,9 +213,11 @@ pub fn (mut s Scanner) scan() token.Token {
 			break
 		}
 		s.lit = s.source_lit(s.pos, s.offset)
-		if s.lit == 'c' && s.offset < s.src.len && s.src[s.offset] == `'` {
+		if s.lit == 'c' && s.offset < s.src.len
+			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			quote := s.src[s.offset]
 			s.pos = s.offset
-			tok := s.scan_char_literal(`'`)
+			tok := s.scan_char_literal(quote)
 			s.lit = 'c:${s.lit}'
 			return tok
 		}

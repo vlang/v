@@ -27,19 +27,21 @@ can compile the full builtin map.v.
 
 ## macOS V3 dispatch
 
-On macOS, the top-level `v` command runs supported native C source builds through the V3 driver
-linked into `cmd/v`. It does not build or launch a second V3 compiler process. For example,
-`v file.v`, `v app_directory`, `v run file.v`, and `v script.vsh` are eligible. V3 currently
-compiles these unflagged builds without a garbage collector; `-gc none` and `-prealloc` are also
-eligible. An explicit non-none `-gc` mode stays on the established compiler. The in-process path
-uses parallel stages while the input remains within its scratch-memory safety limit and disables
-the split module cache, whose invalidation protocol still relies on restarting the standalone V3
-executable.
+On macOS, V3 is the default compiler for user source and test builds. The top-level `v` command
+runs the V3 driver linked into `cmd/v`; it does not build or launch a second compiler process.
+This includes direct file and directory builds, `run`, `build`, and test-file compilation, plus
+production and shared builds and supported cross targets and backends. The `test` command itself
+continues to use the established test dispatcher, while each discovered test file is compiled by
+V3.
 
-`cmd/v` remains the CLI and compatibility dispatcher, and an unflagged `v cmd/v` build is eligible
-for V3. Tests, command tools, cross-compilation, and modes not yet supported by V3 continue through
-the established compiler. Pass `-old-compiler` to explicitly use that compatibility path for an
-otherwise eligible macOS build. Other operating systems are unchanged.
+`cmd/v` remains the CLI and compatibility dispatcher. Its own build, its internal command-tool
+bootstrap, and the `vlib/v3/v3.v` compiler bootstrap retain the compatibility compiler. Explicit
+non-none garbage collectors, sanitizer builds, live reload, and `-autofree run` also stay on that
+path until V3 supports their runtime behavior. Pass `-old-compiler` to explicitly select the
+compatibility compiler for another user build. Other operating systems are unchanged.
+
+The in-process path supports the split module cache and uses parallel stages while the input
+remains within its scratch-memory safety limit.
 
 When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
 retries the command through the established compiler. Exit codes from successfully compiled
@@ -66,7 +68,8 @@ currently supported collector mode. Directory builds read `subdirs` through the 
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
-The driver monitors compiler memory throughout the build and exits when it reaches 2 GiB.
+The driver monitors compiler memory throughout the build and exits when it reaches 2.25 GiB
+(4 GiB for compiler self-host builds).
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
 On macOS, each stage benchmark prints physical footprint immediately after RSS.

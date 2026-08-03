@@ -383,6 +383,17 @@ fn test_prealloc_defaults_to_no_gc() {
 	assert prefs.gc_mode == .no_gc
 }
 
+fn test_macos_v_compiler_target_defaults_to_prealloc() {
+	if pref.get_host_os() != .macos {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+	assert prefs.building_v
+	assert prefs.prealloc
+	assert prefs.gc_mode == .no_gc
+}
+
 fn test_prealloc_overrides_explicit_gc_selection() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', '-prealloc', target],
@@ -504,6 +515,15 @@ fn test_old_compiler_flag_is_accepted() {
 	assert command == target
 	assert prefs.old_compiler
 	assert '-old-compiler' !in prefs.build_options
+}
+
+fn test_v3_checker_fixture_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for flag in ['-checker-fixture', '-macos-v3-compat-c99'] {
+		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
+		assert command == target
+		assert flag !in prefs.build_options
+	}
 }
 
 fn test_compact_boolean_define_is_accepted() {

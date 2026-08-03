@@ -1,4 +1,5 @@
 import os
+import dl
 
 const shared_flag_vexe = @VEXE
 const shared_flag_tests_dir = os.dir(@FILE)
@@ -21,8 +22,54 @@ fn test_shared_flag_builds_no_main_module() {
 	}
 
 	os.write_file(os.join_path(tmp_dir, 'v.mod'), 'Module { name: "shared_flag_module" }\n')!
-	os.write_file(os.join_path(tmp_dir, 'module.v'),
-		'module shared_flag_module\n\npub fn answer() int {\n\treturn 42\n}\n')!
+	os.write_file(os.join_path(tmp_dir, 'module.v'), "module shared_flag_module
+
+import os
+
+fn write_lifecycle_event(event string) {
+	path := os.getenv('V3_SHARED_LIFECYCLE_FILE')
+	if path.len == 0 {
+		return
+	}
+	mut file := os.open_append(path) or { return }
+	file.writeln(event) or {}
+	file.close()
+}
+
+fn init() {
+	write_lifecycle_event('init')
+}
+
+fn cleanup() {
+	write_lifecycle_event('cleanup')
+}
+
+@[export: 'answer']
+pub fn answer() int {
+	return 42
+}
+")!
+
+	out_c := os.join_path(tmp_dir, 'shared_flag_module.c')
+	compile_c :=
+		os.execute('${os.quoted_path(v3_bin)} -shared -o ${os.quoted_path(out_c)} ${os.quoted_path(tmp_dir)}')
+	assert compile_c.exit_code == 0, compile_c.output
+	generated_c := os.read_file(out_c)!
+	assert generated_c.contains('void _vcleanup(void) {'), generated_c
+	assert generated_c.contains('\tshared_flag_module__cleanup();'), generated_c
+	$if !windows {
+		assert generated_c.contains('__attribute__((constructor))\nvoid _vinit_caller(void) {'), generated_c
+		assert generated_c.contains('__attribute__((destructor))\nvoid _vcleanup_caller(void) {'), generated_c
+	}
+	assert generated_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n}'), generated_c
+
+	coverage_dir := os.join_path(tmp_dir, 'coverage')
+	coverage_c := os.join_path(tmp_dir, 'shared_flag_module_coverage.c')
+	compile_coverage_c :=
+		os.execute('${os.quoted_path(v3_bin)} -coverage ${os.quoted_path(coverage_dir)} -shared -o ${os.quoted_path(coverage_c)} ${os.quoted_path(tmp_dir)}')
+	assert compile_coverage_c.exit_code == 0, compile_coverage_c.output
+	generated_coverage_c := os.read_file(coverage_c)!
+	assert generated_coverage_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n\tv3_write_coverage_stats();\n}'), generated_coverage_c
 
 	out_lib := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	out_path := out_lib + shared_flag_library_postfix()
@@ -32,12 +79,33 @@ fn test_shared_flag_builds_no_main_module() {
 	}
 
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -shared -o ${os.quoted_path(out_lib)} ${os.quoted_path(tmp_dir)}')
+		os.execute('${os.quoted_path(v3_bin)} -coverage ${os.quoted_path(coverage_dir)} -shared -o ${os.quoted_path(out_lib)} ${os.quoted_path(tmp_dir)}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('-shared'), compile.output
 	assert !compile.output.contains('_main not defined'), compile.output
 	assert os.exists(out_path)
 	assert os.file_size(out_path) > 0
+
+	$if !windows {
+		lifecycle_env := 'V3_SHARED_LIFECYCLE_FILE'
+		old_lifecycle_path := os.getenv(lifecycle_env)
+		lifecycle_env_was_set := lifecycle_env in os.environ()
+		lifecycle_path := os.join_path(tmp_dir, 'lifecycle.txt')
+		os.rm(lifecycle_path) or {}
+		os.setenv(lifecycle_env, lifecycle_path, true)
+		defer {
+			if lifecycle_env_was_set {
+				os.setenv(lifecycle_env, old_lifecycle_path, true)
+			} else {
+				os.unsetenv(lifecycle_env)
+			}
+		}
+		handle := dl.open(out_path, dl.rtld_now)
+		assert handle != unsafe { nil }, dl.dlerror()
+		assert os.read_file(lifecycle_path)! == 'init\n'
+		assert dl.close(handle), dl.dlerror()
+		assert os.read_file(lifecycle_path)! == 'init\ncleanup\n'
+	}
 }
 
 // test_shared_flag_builds_object_dependencies_as_pic validates that cached

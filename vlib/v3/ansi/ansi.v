@@ -1,9 +1,20 @@
+@[has_globals]
 module ansi
 
 import os
 
+__global colors_enabled = true
+
+// set_colors_enabled controls ANSI wrapping for compiler diagnostics.
+pub fn set_colors_enabled(enabled bool) {
+	colors_enabled = enabled
+}
+
 @[inline]
 fn format(message string, open string, close string) string {
+	if !colors_enabled {
+		return message
+	}
 	return '\x1b[${open}m${message}\x1b[${close}m'
 }
 
@@ -29,13 +40,14 @@ pub fn blue(message string) string {
 
 // bright_blue_stderr highlights message when stderr supports ANSI colors.
 pub fn bright_blue_stderr(message string) string {
-	if stderr_supports_escape_sequences() {
+	if colors_enabled && stderr_supports_escape_sequences() {
 		return format(message, '94', '39')
 	}
 	return message
 }
 
-fn stderr_supports_escape_sequences() bool {
+// stderr_supports_escape_sequences reports whether stderr and the environment permit ANSI colors.
+pub fn stderr_supports_escape_sequences() bool {
 	override := os.getenv('VCOLORS')
 	if override == 'always' {
 		return true

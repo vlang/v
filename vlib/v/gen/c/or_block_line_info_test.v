@@ -21,6 +21,24 @@ fn test_option_propagation_panic_has_matching_line_info() {
 	fwd_source_path := source_path.replace('\\', '/')
 	expected_line := '#line 12 "${escaped_source_path}"'
 	expected_panic := 'builtin__panic_debug(12, builtin__tos3("${fwd_source_path}")'
+	if res.output.contains('int main(int argc, char** argv) {') {
+		main_body := res.output.all_after('int main(int argc, char** argv) {').all_before('\n}')
+		option_guard := main_body.index('if (__or_opt_') or {
+			assert false, res.output
+			return
+		}
+		panic_call := main_body.index('v_panic(') or {
+			assert false, res.output
+			return
+		}
+		value_use := main_body.index('Foo__foo(') or {
+			assert false, res.output
+			return
+		}
+		assert option_guard < panic_call
+		assert panic_call < value_use
+		return
+	}
 	mut main_idx := -1
 	for i, line in lines {
 		if line.contains('void main__main(void) {') {

@@ -105,6 +105,13 @@ fn test_debug_comptime_flag_uses_target_preferences() {
 	assert comptime_flag_value(prefs, 'debug')
 }
 
+fn test_prod_comptime_flag_uses_target_preferences() {
+	mut prefs := new_preferences()
+	assert !comptime_flag_value(prefs, 'prod')
+	prefs.is_prod = true
+	assert comptime_flag_value(prefs, 'prod')
+}
+
 fn test_c_compiler_comptime_flags_use_effective_compiler() {
 	mut prefs := new_preferences()
 	prefs.backend = 'c'

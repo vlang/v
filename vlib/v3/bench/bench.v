@@ -4,7 +4,8 @@ import os
 import runtime
 import time
 
-const default_memory_limit_kb = i64(2) * 1024 * 1024
+const default_memory_limit_kb = i64(9) * 256 * 1024
+const self_host_memory_limit_kb = i64(4) * 1024 * 1024
 const memory_monitor_interval = 100 * time.millisecond
 
 // Step represents step data used by bench.
@@ -67,6 +68,11 @@ pub fn new() Bench {
 // disable_memory_limit disables the compiler memory safety limit.
 pub fn (mut b Bench) disable_memory_limit() {
 	b.memory_limit_kb = 0
+}
+
+// use_self_host_memory_limit raises the safety limit for compiler self-host builds.
+pub fn (mut b Bench) use_self_host_memory_limit() {
+	b.memory_limit_kb = self_host_memory_limit_kb
 }
 
 // set_quiet suppresses benchmark output while retaining timing and memory checks.
@@ -214,9 +220,14 @@ fn memory_limit_error(memory_kb i64, limit_kb i64, context string, metric string
 		return ''
 	}
 	memory_mb := memory_kb / 1024
-	limit_gib := limit_kb / (1024 * 1024)
+	limit_mb := limit_kb / 1024
+	limit_label := if limit_mb % 1024 == 0 {
+		'${limit_mb / 1024} GiB'
+	} else {
+		'${limit_mb} MiB'
+	}
 	return 'error: v3 compiler memory usage reached ${memory_mb} MiB ${metric} ${context} ' +
-		'(limit: ${limit_gib} GiB); use `-no-memory-limit` to disable this limit'
+		'(limit: ${limit_label}); use `-no-memory-limit` to disable this limit'
 }
 
 // metric records a structural compiler counter for the final benchmark report.

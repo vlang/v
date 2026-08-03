@@ -11,7 +11,8 @@ import v3.workers
 
 const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 128
-const scoped_cgen_worker_batches = 1
+// Bound each worker's retained scratch while generating compiler-sized ASTs.
+const scoped_cgen_worker_batches = 32
 const flat_cgen_chunks_per_job = 12
 
 $if !windows {
@@ -344,6 +345,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 				cost:                      item.cost
 				is_program_specialization: item.is_program_specialization
 				direct_array_access:       item.direct_array_access
+				ignore_overflow:           item.ignore_overflow
 			}
 		}
 		g.fn_gen_items = owned_items
@@ -593,39 +595,34 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 	cgen_worker_scope_leave(result_scope)
 }
 
-fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(chunks [][]FlatFnGenItem, chunk_queue chan int, reserve_cost i64) {
+fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
+	chunks [][]FlatFnGenItem,
+	chunk_queue chan int,
+	_reserve_cost i64) {
 	result_scope := cgen_worker_scope_begin(true)
-	scratch_scope := cgen_worker_scope_begin(true)
-	mut batch := g.new_parallel_worker(0)
-	batch.sb = strings.new_builder(int(reserve_cost * 5) + 65_536)
-	mut chunk_indexes := []int{cap: 16}
-	mut output_starts := []int{cap: 16}
-	mut output_lengths := []int{cap: 16}
 	for {
 		chunk_idx := <-chunk_queue or { break }
+		mut chunk_cost := i64(chunks[chunk_idx].len)
+		for item in chunks[chunk_idx] {
+			chunk_cost += item.cost
+		}
+		scratch_scope := cgen_worker_scope_begin(true)
+		mut batch := g.new_parallel_worker(chunk_idx)
+		batch.sb = strings.new_builder(int(chunk_cost * 5) + 65_536)
 		batch.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
 			chunk_idx: chunk_idx
 		}
 		batch.parallel_chunk_wrapper_capture = batch.parallel_chunk_wrapper_defs.len - 1
-		output_start := batch.sb.len
 		batch.gen_fn_items(chunks[chunk_idx])
 		batch.parallel_chunk_wrapper_capture = -1
-		chunk_indexes << chunk_idx
-		output_starts << output_start
-		output_lengths << batch.sb.len - output_start
-	}
-	cgen_worker_scope_leave(scratch_scope)
-	for i, chunk_idx in chunk_indexes {
-		output := batch.sb.spart(output_starts[i], output_lengths[i])
-		if output.len > 0 {
-			g.fn_segs << output
+		cgen_worker_scope_leave(scratch_scope)
+		segment_start := g.fn_segs.len
+		g.absorb_scoped_cgen_batch(batch, false)
+		if g.fn_segs.len > segment_start {
 			g.fn_seg_chunk_indexes << chunk_idx
-		} else {
-			unsafe { output.free() }
 		}
+		cgen_worker_scope_free(scratch_scope)
 	}
-	g.absorb_scoped_cgen_batch(batch, true)
-	cgen_worker_scope_free(scratch_scope)
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
 }
@@ -705,6 +702,7 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 
 // gen_fns_dispatch emits fns dispatch output for c.
 fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
+	g.gen_test_failure_global()
 	if no_parallel {
 		if g.scope_parallel_workers {
 			items := g.ensure_fn_gen_items()
@@ -1483,6 +1481,10 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_gen_items:                   g.fn_gen_items
 		top_level_node_ids:             g.top_level_node_ids
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
+		is_prod:                        g.is_prod
+		check_overflow:                 g.check_overflow
+		force_bounds_checking:          g.force_bounds_checking
+		object_file_mode:               g.object_file_mode
 		cache_program_files:            g.cache_program_files
 		incremental_fn_names:           g.incremental_fn_names
 		cached_support_identifiers:     g.cached_support_identifiers
@@ -1513,6 +1515,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_modules:                 g.global_modules
 		global_inits:                   g.global_inits
 		global_init_order:              g.global_init_order
+		c_decl_abi_names:               g.c_decl_abi_names
+		c_extern_global_names:          g.c_extern_global_names
 		enum_backing_infos:             g.enum_backing_infos
 		iface_impls:                    g.iface_impls
 		interface_dispatch_required:    g.interface_dispatch_required
@@ -1531,6 +1535,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		sum_name_lookup:                g.sum_name_lookup
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
+		module_cleanup_fns:             g.module_cleanup_fns
+		module_cleanup_fn_modules:      g.module_cleanup_fn_modules
 		module_imports:                 g.module_imports
 		preserved_header_files_seen:    g.preserved_header_files_seen
 		libc_compat_fns:                g.libc_compat_fns.clone()
@@ -1541,6 +1547,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		has_builtins:                   g.has_builtins
 		cache_split:                    g.cache_split
+		compile_values:                 g.compile_values
 		skip_generics:                  g.skip_generics
 		tmp_count:                      (worker_id + 1) * 100_000
 		line_start:                     true
@@ -1567,6 +1574,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		generic_fn_key_ordinal:         g.generic_fn_key_ordinal
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
+		decl_attrs:                     g.decl_attrs
 		shared_type_names:              g.shared_type_names
 		shared_alias_pointer_shorts:    g.shared_alias_pointer_shorts
 		default_value_stack:            map[string]bool{}
@@ -1583,6 +1591,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vroot:                 g.compiler_vroot
 		compiler_vexe:                  g.compiler_vexe
 		compiler_vexe_env_setup:        g.compiler_vexe_env_setup
+		ccompiler:                      g.ccompiler
 		cur_param_names:                if result_only {
 			g.cur_param_names
 		} else {
@@ -1617,6 +1626,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_is_optional:         g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                g.cur_fn_ret_base
 		loop_label_depths:              map[string]int{}
+		loop_defer_starts:              []int{}
+		loop_label_defer_starts:        map[string]int{}
+		goto_label_c_names:             map[string]string{}
 		expected_expr_type:             g.expected_expr_type
 		expected_enum:                  g.expected_enum
 		needed_optional_types:          g.needed_optional_types.clone()
@@ -1709,6 +1721,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		struct_field_c_abi_fns:                g.tc.struct_field_c_abi_fns
 		unions:                                g.tc.unions
 		type_aliases:                          g.tc.type_aliases
+		type_alias_modules:                    g.tc.type_alias_modules
 		type_alias_generic_params:             g.tc.type_alias_generic_params
 		type_alias_c_abi_fns:                  g.tc.type_alias_c_abi_fns
 		sum_types:                             g.tc.sum_types
