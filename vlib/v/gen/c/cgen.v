@@ -7791,7 +7791,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					return
 				} else if node.field_name in ['idx', 'typ', 'unaliased_typ'] {
 					// `T.idx`, `T.typ`, `T.unaliased_typ`, `typeof(expr).idx`, `typeof(expr).typ`,
-					// `typeof(expr).unalised_typ`
+					// `typeof(expr).unaliased_typ`
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
 						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
