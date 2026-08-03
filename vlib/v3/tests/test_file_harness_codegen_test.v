@@ -197,6 +197,38 @@ fn compile_expect_failure_flags(v3_bin string, name string, suffix string, src s
 	return compile
 }
 
+fn test_v3_test_run_only_matches_declared_module() {
+	outer_run_only := os.getenv_opt('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if value := outer_run_only {
+			os.setenv('VTEST_ONLY_FN', value, true)
+		} else {
+			os.unsetenv('VTEST_ONLY_FN')
+		}
+	}
+	v3_bin := build_v3()
+	source := "module sample
+
+fn test_one() {
+	println('one')
+}
+
+fn test_two() {
+	println('two')
+}
+"
+	cli_run := compile_and_run_flags(v3_bin, 'harness_module_run_only_cli', '_test.v', source,
+		'-run-only sample.test_one')
+	assert cli_run.exit_code == 0, cli_run.output
+	assert cli_run.output.trim_space() == 'one', cli_run.output
+
+	os.setenv('VTEST_ONLY_FN', 'sample.test_two', true)
+	env_run := compile_and_run(v3_bin, 'harness_module_run_only_env', '_test.v', source)
+	assert env_run.exit_code == 0, env_run.output
+	assert env_run.output.trim_space() == 'two', env_run.output
+}
+
 fn test_v3_generates_minimal_test_file_harness() {
 	v3_bin := build_v3()
 	order_src := "fn test_one() {

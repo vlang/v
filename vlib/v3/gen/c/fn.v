@@ -4688,7 +4688,7 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 				}
 				else {
 					if child.value.starts_with('test_') && g.is_supported_test_fn_decl(child) {
-						if !g.test_fn_matches_run_only(child.value) {
+						if !g.test_fn_matches_run_only(module_name, child.value) {
 							continue
 						}
 						tests << TestHarnessFn{
@@ -4707,12 +4707,13 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 	return tests, hooks
 }
 
-fn (g &FlatGen) test_fn_matches_run_only(name string) bool {
+fn (g &FlatGen) test_fn_matches_run_only(module_name string, name string) bool {
 	if g.test_run_only.len == 0 {
 		return true
 	}
+	qualified_name := '${module_name}.${name}'
 	for pattern in g.test_run_only {
-		if name.match_glob(pattern) || 'main.${name}'.match_glob(pattern) {
+		if name.match_glob(pattern) || qualified_name.match_glob(pattern) {
 			return true
 		}
 	}
