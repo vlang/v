@@ -22,8 +22,6 @@ const type_level_cutoff_limit = 40 // it is very rarely deeper than 4
 const iface_level_cutoff_limit = 100
 const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-const generic_fn_postprocess_iterations_cutoff_limit = 128
-
 fn has_ascii_upper(s string) bool {
 	for ch in s {
 		if ch >= `A` && ch <= `Z` {
@@ -771,7 +769,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// is needed when the generic type is auto inferred from the call argument.
 	// we may have to loop several times, if there were more concrete types found.
 	mut post_process_generic_fns_iterations := 0
-	post_process_iterations_loop: for post_process_generic_fns_iterations <= generic_fn_postprocess_iterations_cutoff_limit {
+	post_process_iterations_loop: for post_process_generic_fns_iterations <= c.pref.generic_fn_postprocess_iters {
 		$if trace_post_process_generic_fns_loop ? {
 			eprintln('>>>>>>>>> recheck_generic_fns loop iteration: ${post_process_generic_fns_iterations}')
 		}
@@ -804,12 +802,12 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		if !c.need_recheck_generic_fns {
 			break
 		}
-		if post_process_generic_fns_iterations == generic_fn_postprocess_iterations_cutoff_limit {
+		if post_process_generic_fns_iterations == c.pref.generic_fn_postprocess_iters {
 			if c.file.generic_fns.len > 0 {
-				c.error('generic function post processing reached the cutoff limit of ${generic_fn_postprocess_iterations_cutoff_limit} iterations, probably due to an infinite generic instantiation loop',
+				c.error('generic function post processing reached the cutoff limit of ${c.pref.generic_fn_postprocess_iters} iterations, probably due to an infinite generic instantiation loop',
 					c.file.generic_fns[0].pos)
 			} else {
-				c.error('generic function post processing reached the cutoff limit of ${generic_fn_postprocess_iterations_cutoff_limit} iterations, probably due to an infinite generic instantiation loop', token.Pos{})
+				c.error('generic function post processing reached the cutoff limit of ${c.pref.generic_fn_postprocess_iters} iterations, probably due to an infinite generic instantiation loop', token.Pos{})
 			}
 			break
 		}
@@ -1278,7 +1276,7 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 		} else if clean_sym_name.contains('<') {
 			clean_sym_name = clean_sym_name.all_before('<')
 		}
-		if clean_sym_name == node.name {
+		if clean_sym_name == node.name && sym.mod == c.file.mod.name {
 			c.error('sum type cannot hold itself', variant.pos)
 			variant.typ = ast.void_type
 			continue
