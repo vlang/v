@@ -1267,8 +1267,11 @@ fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth i
 		return false
 	}
 	match typ {
-		String, Array, Map, Interface, OptionType, ResultType, SumType {
+		String, Array, Map, Interface, ResultType, SumType {
 			return true
+		}
+		OptionType {
+			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
 		}
 		Alias {
 			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
@@ -1339,9 +1342,6 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
-			if tc.ownership_type_has_explicit_drop(name) {
-				return name
-			}
 			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone') {
 				return name
 			}
@@ -1389,22 +1389,6 @@ fn (tc &TypeChecker) ownership_default_clone_missing_ierror_method() ?string {
 		}
 	}
 	return none
-}
-
-fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
-	name := resolve_type_name_for_method(typ)
-	if name.len == 0 {
-		return false
-	}
-	if _ := tc.resolve_generic_struct_method(name, 'clone') {
-		return true
-	}
-	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
-		if method_name in tc.fn_ret_types {
-			return true
-		}
-	}
-	return false
 }
 
 fn (tc &TypeChecker) ownership_ierror_has_compatible_clone_method(typ Type) bool {
@@ -10810,7 +10794,7 @@ fn (tc &TypeChecker) ownership_type_is_owned(typ Type) bool {
 		return tc.ownership_type_is_owned(typ.base_type)
 	}
 	if typ is OptionType {
-		return true
+		return tc.ownership_type_is_owned(typ.base_type)
 	}
 	if typ is ResultType {
 		return true

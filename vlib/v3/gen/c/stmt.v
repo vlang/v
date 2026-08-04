@@ -43,10 +43,17 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 		if base.kind == .prefix && base.op == .mul && base.children_count > 0 {
 			child_id := g.a.child(&base, 0)
 			child := g.a.nodes[int(child_id)]
-			child_type := g.usable_expr_type(child_id)
-			if child.kind == .ident && child_type is types.Pointer
-				&& g.current_param_is_mut(child.value) {
-				g.gen_expr(child_id)
+			if child.kind == .ident && g.current_param_is_mut(child.value) {
+				// A source `mut p &T` parameter has pointer-slot ABI (`T**`),
+				// while a plain `mut value T` parameter has `T*` ABI.
+				// The transformed lvalue base is `*p` in both cases.
+				if g.current_param_is_mut_pointer(child.value) {
+					g.write('(*')
+					g.gen_expr(child_id)
+					g.write(')')
+				} else {
+					g.gen_expr(child_id)
+				}
 				g.write('[')
 				g.gen_expr(g.a.child(&node, 1))
 				g.write(']')
@@ -1033,6 +1040,11 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
 	if g.recursive_drop_helpers.len == 0 {
 		return
 	}
+	// Recursive drop helpers are emitted before const definitions and their
+	// generated Result/Option cleanup guards reference the process-wide IError
+	// sentinels. Declare those globals before the helper bodies.
+	g.writeln('extern IError builtin__none__;')
+	g.writeln('extern IError builtin__error_sentinel;')
 	mut keys := g.recursive_drop_helpers.keys()
 	keys.sort()
 	for key in keys {
@@ -2868,7 +2880,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			// NOTE: match_stmt is intentionally absent — the transformer lowers every
 			// match into an if/else-if chain (see transform.lower_match_stmts), so the
 			// backend never sees one. Match lowering lives in the transformer, not here.
-			eprintln('gen_node: unsupported node kind: ${node.kind}')
+			source_name := if source_file := g.a.source_files[node.pos.id] {
+				source_file.name
+			} else {
+				''
+			}
+			eprintln('gen_node: unsupported node kind: ${node.kind}; fn=${g.cur_fn_name}; source=${source_name}:${node.pos.offset}; value=${node.value}; typ=${node.typ}; op=${node.op}; children=${node.children_count}')
 		}
 	}
 }
@@ -4232,14 +4249,8 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		return type_is_optional_result(typ)
 	}
 	if node.kind == .call {
-		typ := g.usable_expr_type(id)
-		if typ !is types.Unknown && typ !is types.Void {
-			return type_is_optional_result(typ)
-		}
-		if fname := g.tc.resolved_call_name(id) {
-			ret_type := g.tc.fn_ret_types[fname] or { return false }
-			return ret_type is types.OptionType || ret_type is types.ResultType
-		}
+		ret_type := g.declared_call_return_type(id)
+		return ret_type is types.OptionType || ret_type is types.ResultType
 	}
 	return type_is_optional_result(g.usable_expr_type(id))
 }

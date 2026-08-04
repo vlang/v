@@ -4123,6 +4123,18 @@ fn (mut tc TypeChecker) invalidate_const_initializer_type(expr_id flat.NodeId) {
 }
 
 fn (mut tc TypeChecker) refine_const_initializer_type(expr_id flat.NodeId, typ Type) Type {
+	if int(expr_id) >= 0 && int(expr_id) < tc.a.nodes.len {
+		expr := tc.a.nodes[int(expr_id)]
+		if expr.kind == .call {
+			if info0 := tc.resolve_call_info(expr_id, expr) {
+				info := tc.specialized_plain_generic_call_info(expr, info0)
+				if info.return_type !is Unknown && info.return_type !is Void
+					&& !generic_semantic_type_has_placeholder(info.return_type) {
+					return info.return_type
+				}
+			}
+		}
+	}
 	if typ is Array && typ.elem_type is Unknown && int(expr_id) >= 0
 		&& int(expr_id) < tc.a.nodes.len {
 		expr := tc.a.nodes[int(expr_id)]
@@ -6405,7 +6417,7 @@ pub fn (mut tc TypeChecker) check_main_module_requirement(is_shared bool) {
 	if tc.valid_diagnostic_fast {
 		return
 	}
-	if is_shared || (tc.checker_fixture_mode && tc.errors.len > 0) {
+	if is_shared || tc.has_c_test_harness_main() || (tc.checker_fixture_mode && tc.errors.len > 0) {
 		return
 	}
 	for file, _ in tc.diagnostic_files {
@@ -6492,127 +6504,132 @@ fn checker_qualified_fn_name(mod string, name string) string {
 
 // annotate_node supports annotate node handling for TypeChecker.
 fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
-	if int(id) < 0 {
-		return
-	}
-	node := tc.a.nodes[int(id)]
-	match node.kind {
-		.decl_assign {
-			lhs_count := tc.multi_assign_lhs_count(node)
-			rhs_count := tc.multi_assign_rhs_count(node)
-			if rhs_count == 1 && lhs_count > 1 {
-				tc.annotate_multi_return_decl_assign(node)
+	mut pending := [id]
+	for pending.len > 0 {
+		current_id := pending.pop()
+		if int(current_id) < 0 {
+			return
+		}
+		node := tc.a.nodes[int(current_id)]
+		match node.kind {
+			.decl_assign {
+				lhs_count := tc.multi_assign_lhs_count(node)
+				rhs_count := tc.multi_assign_rhs_count(node)
+				if rhs_count == 1 && lhs_count > 1 {
+					tc.annotate_multi_return_decl_assign(node)
+					return
+				}
+				pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
+				for pair_idx in 0 .. pair_count {
+					lhs_id := tc.multi_assign_lhs_id(node, pair_idx)
+					rhs_id := tc.multi_assign_rhs_id(node, pair_idx)
+					tc.annotate_node(rhs_id)
+					lhs := tc.a.nodes[int(lhs_id)]
+					if lhs.kind == .ident && lhs.value.len > 0 {
+						mut typ := Type(void_)
+						if node.children_count == 2 && node.typ.len > 0 {
+							typ = tc.parse_type(node.typ)
+							tc.annotate_expected_expr(rhs_id, typ)
+						} else {
+							typ = tc.resolve_type(rhs_id)
+						}
+						if typ !is MultiReturn && typ !is Void {
+							owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+							if owner.storage_key().len > 0
+								&& decl_assign_is_shared_marker(node.value) {
+								tc.mark_shared_binding_owner(lhs.value, owner)
+							}
+							tc.remember_expr_type(lhs_id, typ)
+						}
+					}
+				}
 				return
 			}
-			pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
-			for pair_idx in 0 .. pair_count {
-				lhs_id := tc.multi_assign_lhs_id(node, pair_idx)
-				rhs_id := tc.multi_assign_rhs_id(node, pair_idx)
-				tc.annotate_node(rhs_id)
-				lhs := tc.a.nodes[int(lhs_id)]
-				if lhs.kind == .ident && lhs.value.len > 0 {
-					mut typ := Type(void_)
-					if node.children_count == 2 && node.typ.len > 0 {
-						typ = tc.parse_type(node.typ)
-						tc.annotate_expected_expr(rhs_id, typ)
-					} else {
-						typ = tc.resolve_type(rhs_id)
-					}
-					if typ !is MultiReturn && typ !is Void {
-						owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
-						if owner.storage_key().len > 0 && decl_assign_is_shared_marker(node.value) {
-							tc.mark_shared_binding_owner(lhs.value, owner)
-						}
-						tc.remember_expr_type(lhs_id, typ)
+			.for_in_stmt {
+				tc.annotate_for_in(current_id, node)
+				return
+			}
+			.comptime_for {
+				return
+			}
+			.fn_literal {
+				tc.annotate_fn_literal(node)
+				return
+			}
+			.selector {
+				if node.children_count > 0 {
+					base_id := tc.a.child(&node, 0)
+					base_type := tc.resolve_type(base_id)
+					if type_contains_unknown(base_type)
+						|| ((base_type is OptionType || base_type is ResultType)
+						&& node.value !in ['ok', 'value', 'err'])
+						|| (tc.fn_context.generic_params.len > 0 && (base_type is OptionType
+						|| base_type is ResultType)) {
+						tc.annotate_node(base_id)
+						return
 					}
 				}
 			}
-			return
-		}
-		.for_in_stmt {
-			tc.annotate_for_in(id, node)
-			return
-		}
-		.comptime_for {
-			return
-		}
-		.fn_literal {
-			tc.annotate_fn_literal(node)
-			return
-		}
-		.selector {
-			if node.children_count > 0 {
-				base_id := tc.a.child(&node, 0)
-				base_type := tc.resolve_type(base_id)
-				if type_contains_unknown(base_type)
-					|| ((base_type is OptionType || base_type is ResultType)
-					&& node.value !in ['ok', 'value', 'err'])
-					|| (tc.fn_context.generic_params.len > 0 && (base_type is OptionType
-					|| base_type is ResultType)) {
-					tc.annotate_node(base_id)
+			.assign, .selector_assign, .index_assign {
+				if node.children_count > 0
+					&& tc.annotation_storage_path_has_unknown(tc.a.child(&node, 0)) {
+					for i in 0 .. node.children_count {
+						tc.annotate_node(tc.a.child(&node, i))
+					}
+					return
+				}
+				tc.annotate_assign_expected_exprs(node)
+			}
+			.struct_init {
+				tc.annotate_struct_init_expected_exprs(node)
+			}
+			.call {
+				if tc.fn_context.generic_params.len > 0 {
+					dsl_name := tc.unresolved_array_dsl_call_name(node)
+					if dsl_name.len > 0 {
+						tc.push_array_dsl_scope(node, dsl_name)
+					}
+					for i in 0 .. node.children_count {
+						tc.annotate_node(tc.a.child(&node, i))
+					}
+					tc.annotate_call_expected_exprs(current_id, node)
+					if info := tc.resolve_call_info(current_id, node) {
+						tc.remember_expr_type(current_id, info.return_type)
+					}
+					if dsl_name.len > 0 {
+						tc.pop_scope()
+					}
+					return
+				}
+				tc.annotate_call_expected_exprs(current_id, node)
+				// The call annotation above records a more precise return type for
+				// contextual builtins such as `map.move()`. Avoid replacing it with
+				// the parser's broad `map`/`array` placeholder below.
+				for i in 0 .. node.children_count {
+					tc.annotate_node(tc.a.child(&node, i))
+				}
+				return
+			}
+			.index {
+				if generic_fn_type := tc.explicit_generic_fn_value_type(node) {
+					tc.remember_expr_type(current_id, generic_fn_type)
+					return
+				}
+				if node.children_count > 0
+					&& type_contains_unknown(tc.resolve_type(tc.a.child(&node, 0))) {
+					for i in 0 .. node.children_count {
+						tc.annotate_node(tc.a.child(&node, i))
+					}
 					return
 				}
 			}
+			else {}
 		}
-		.assign, .selector_assign, .index_assign {
-			if node.children_count > 0
-				&& tc.annotation_storage_path_has_unknown(tc.a.child(&node, 0)) {
-				for i in 0 .. node.children_count {
-					tc.annotate_node(tc.a.child(&node, i))
-				}
-				return
-			}
-			tc.annotate_assign_expected_exprs(node)
-		}
-		.struct_init {
-			tc.annotate_struct_init_expected_exprs(node)
-		}
-		.call {
-			if tc.fn_context.generic_params.len > 0 {
-				dsl_name := tc.unresolved_array_dsl_call_name(node)
-				if dsl_name.len > 0 {
-					tc.push_array_dsl_scope(node, dsl_name)
-				}
-				for i in 0 .. node.children_count {
-					tc.annotate_node(tc.a.child(&node, i))
-				}
-				tc.annotate_call_expected_exprs(id, node)
-				if info := tc.resolve_call_info(id, node) {
-					tc.remember_expr_type(id, info.return_type)
-				}
-				if dsl_name.len > 0 {
-					tc.pop_scope()
-				}
-				return
-			}
-			tc.annotate_call_expected_exprs(id, node)
-			// The call annotation above records a more precise return type for
-			// contextual builtins such as `map.move()`. Avoid replacing it with
-			// the parser's broad `map`/`array` placeholder below.
-			for i in 0 .. node.children_count {
-				tc.annotate_node(tc.a.child(&node, i))
-			}
-			return
-		}
-		.index {
-			if generic_fn_type := tc.explicit_generic_fn_value_type(node) {
-				tc.remember_expr_type(id, generic_fn_type)
-				return
-			}
-			if node.children_count > 0
-				&& type_contains_unknown(tc.resolve_type(tc.a.child(&node, 0))) {
-				for i in 0 .. node.children_count {
-					tc.annotate_node(tc.a.child(&node, i))
-				}
-				return
-			}
-		}
-		else {}
-	}
 
-	tc.remember_expr_type(id, tc.resolve_type(id))
-	for i in 0 .. node.children_count {
-		tc.annotate_node(tc.a.child(&node, i))
+		tc.remember_expr_type(current_id, tc.resolve_type(current_id))
+		for i := node.children_count - 1; i >= 0; i-- {
+			pending << tc.a.child(&node, i)
+		}
 	}
 }
 
@@ -13610,7 +13627,7 @@ pub fn (tc &TypeChecker) struct_module_for_type(name string) string {
 
 fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) bool {
 	clean := unalias_type(unwrap_pointer(typ))
-	type_name := clean.name()
+	type_name := strip_generic_args_name(clean.name())
 	if type_name.len == 0 {
 		return false
 	}

@@ -16732,6 +16732,25 @@ fn resolve_type_name_for_method(t Type) string {
 	return ''
 }
 
+// ownership_type_has_clone_method reports whether typ declares a handwritten clone method.
+// It is kept in the always-built checker surface because ownership transform support is
+// compiled into the V executable even when the executable itself is built without ownership.
+pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
+	name := resolve_type_name_for_method(typ)
+	if name.len == 0 {
+		return false
+	}
+	if _ := tc.resolve_generic_struct_method(name, 'clone') {
+		return true
+	}
+	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+		if method_name in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
+}
+
 fn receiver_type_name_variant(t Type, fixed_array_prefix bool, shorten_modules bool) string {
 	if t is Alias {
 		return receiver_leaf_type_name(t.name, shorten_modules)

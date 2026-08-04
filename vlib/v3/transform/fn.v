@@ -1792,7 +1792,17 @@ fn (t &Transformer) is_import_alias_ident(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind != .ident || node.value !in t.tc.imports {
+	if node.kind != .ident {
+		return false
+	}
+	// A module may export a constant with the same short name as the import
+	// alias (`import core.flags`, where that module also exports `flags`). In a
+	// selector callee such as `flags.parse()`, the file import remains the
+	// syntactic namespace unless a local value shadows it.
+	if _ := t.tc.file_imports[file_import_key(t.cur_file, node.value)] {
+		return t.raw_var_type(node.value).len == 0
+	}
+	if node.value !in t.tc.imports {
 		return false
 	}
 	// A local or receiver can shadow an import alias. Generic clones may no longer
@@ -7676,7 +7686,8 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 		}
 	}
 	// A user-defined clone() would have been lowered already; only supply the default clone.
-	if t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
+	if t.tc.ownership_type_has_clone_method(t.tc.parse_type(base_type))
+		&& t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
 		return none
 	}
 	// The checker reports the concrete ownership-bearing field that has no safe clone.
@@ -7749,7 +7760,7 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_compiler_default_map_clone_value(source, clean,
 			!t.expr_can_take_address(source))
 	}
-	if allow_method {
+	if allow_method && !isnil(t.tc) && t.tc.ownership_type_has_clone_method(t.tc.parse_type(clean)) {
 		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
 			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
 				call := t.make_method_call(source, 'clone', []flat.NodeId{})
@@ -10962,6 +10973,14 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return none
 		}
 		if t.receiver_method_has_generic_template(base_type, method) {
+			return none
+		}
+		// A marker-only `IClone` receiver has no declared method for generic
+		// validation to resolve. Its call is lowered structurally by
+		// try_lower_struct_clone_method_call immediately after this helper.
+		if method == 'clone' && !isnil(t.tc)
+			&& t.tc.named_type_implements_marker(base_type, 'IClone')
+			&& !t.tc.ownership_type_has_clone_method(t.tc.parse_type(base_type)) {
 			return none
 		}
 		base_name := if base_node.kind == .ident && base_node.value.len > 0 {

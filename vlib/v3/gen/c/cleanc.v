@@ -398,6 +398,7 @@ mut:
 	cur_param_types              map[string]types.Type
 	cur_concrete_optional_params map[string]bool
 	cur_mut_params               map[string]bool
+	cur_mut_pointer_params       map[string]bool
 	cur_mut_param_owners         map[string]types.ScopeBindingOwner
 	cur_fn_ret                   types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional       bool
@@ -1016,6 +1017,7 @@ pub fn FlatGen.new() FlatGen {
 		cur_param_types:                 map[string]types.Type{}
 		cur_concrete_optional_params:    map[string]bool{}
 		cur_mut_params:                  map[string]bool{}
+		cur_mut_pointer_params:          map[string]bool{}
 		cur_mut_param_owners:            map[string]types.ScopeBindingOwner{}
 		active_locks:                    []ActiveLock{}
 		conditional_branch_scopes:       []&types.Scope{}
@@ -2102,6 +2104,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_types.clear()
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
+	g.cur_mut_pointer_params.clear()
 	g.cur_mut_param_owners.clear()
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
