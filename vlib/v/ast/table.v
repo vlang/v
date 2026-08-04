@@ -10,10 +10,9 @@ import v.token
 
 const alias_unwrap_depth_cutoff_limit = 100
 const generic_inst_depth_cutoff_limit = 256
-const struct_fields_depth_cutoff_limit = 100
 const generic_fn_inst_cutoff_limit = 4_096
 const generic_inst_name_len_cutoff_limit = 8_192
-const max_postprocess_iterations = 100_000
+const max_postprocess_iterations_default = 100_000
 
 @[heap; minify]
 pub struct UsedFeatures {
@@ -93,6 +92,11 @@ pub mut:
 	link_flag_segments          []LinkFlagSegment
 	redefined_fns               []string
 	fn_generic_types            map[string][][]Type // for generic functions
+	generic_fn_inst_limit       int = generic_fn_inst_cutoff_limit       // wired from pref by builder; user-tunable: `-generic-fn-inst-limit`
+	generic_inst_name_len_limit int = generic_inst_name_len_cutoff_limit // `-generic-inst-name-len-limit`
+	generic_inst_depth_limit    int = generic_inst_depth_cutoff_limit    // `-generic-inst-depth-limit`
+	alias_unwrap_depth_limit    int = alias_unwrap_depth_cutoff_limit    // `-alias-unwrap-depth-limit`
+	max_postprocess_iterations  int = max_postprocess_iterations_default // `-max-postprocess-iterations`
 	structured_receiver_methods map[string][]Fn
 	interfaces                  map[int]InterfaceDecl
 	sumtypes                    map[int]SumTypeDecl
@@ -1555,7 +1559,7 @@ pub fn (t &Table) fully_unaliased_type(typ Type) Type {
 	mut unaliased := typ
 	mut extra_flags := u32(typ) & 0xff00_0000
 	mut depth := 0
-	for depth < alias_unwrap_depth_cutoff_limit {
+	for depth < t.alias_unwrap_depth_limit {
 		sym := t.sym(unaliased)
 		if sym.info is Alias {
 			parent_typ := sym.info.parent_type
@@ -2315,8 +2319,8 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 		}
 	}
 	inst_name += ']'
-	if inst_name.len > generic_inst_name_len_cutoff_limit {
-		t.panic('generic instantiation name limit exceeded')
+	if inst_name.len > t.generic_inst_name_len_limit {
+		t.panic('generic instantiation name limit ${t.generic_inst_name_len_limit} exceeded (override with `-generic-inst-name-len-limit`)')
 	}
 	existing_idx := t.type_idxs[inst_name]
 	if existing_idx > 0 {
@@ -2421,8 +2425,8 @@ pub fn (mut t Table) register_fn_generic_types(fn_name string) {
 }
 
 pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bool {
-	if t.fn_generic_types[fn_name].len > generic_fn_inst_cutoff_limit {
-		t.panic('generic function instantiation limit exceeded')
+	if t.fn_generic_types[fn_name].len > t.generic_fn_inst_limit {
+		t.panic('generic function instantiation limit ${t.generic_fn_inst_limit} exceeded (override with `-generic-fn-inst-limit`)')
 	}
 	if types.len == 0 {
 		return false
@@ -3036,7 +3040,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 }
 
 fn (mut t Table) convert_generic_type_with_depth(generic_type Type, generic_names []string, to_types []Type, depth int) ?Type {
-	if depth > generic_inst_depth_cutoff_limit {
+	if depth > t.generic_inst_depth_limit {
 		return none
 	}
 	if generic_names.len != to_types.len {
@@ -4071,16 +4075,16 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 }
 
 fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool, depth_guard []string, depth int) Type {
-	if depth > generic_inst_depth_cutoff_limit {
-		t.panic('generic instantiation depth limit exceeded')
+	if depth > t.generic_inst_depth_limit {
+		t.panic('generic instantiation depth limit ${t.generic_inst_depth_limit} exceeded (override with `-generic-inst-depth-limit`)')
 	}
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
 	mut nrt := ''
 	mut c_nrt := ''
 	mut new_depth_guard := []string{}
-	if depth_guard.len > generic_inst_depth_cutoff_limit {
-		t.panic('generic instantiation depth limit exceeded')
+	if depth_guard.len > t.generic_inst_depth_limit {
+		t.panic('generic instantiation depth limit ${t.generic_inst_depth_limit} exceeded (override with `-generic-inst-depth-limit`)')
 	}
 	type_idx := typ.idx()
 	if type_idx == 0 || type_idx >= t.type_symbols.len {
@@ -4965,8 +4969,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 	for mut sym in t.type_symbols {
 		if sym.kind == .generic_inst {
 			cnt++
-			if cnt > max_postprocess_iterations {
-				t.panic('generic_insts_to_concrete limit exceeded')
+			if cnt > t.max_postprocess_iterations {
+				t.panic('generic_insts_to_concrete limit ${t.max_postprocess_iterations} exceeded (override with `-max-postprocess-iterations`)')
 			}
 			info := sym.info as GenericInst
 			if info.parent_idx <= 0 || info.parent_idx >= t.type_symbols.len {
@@ -5120,26 +5124,35 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						mut fields := parent_info.fields.clone()
 						mut variants := parent_info.variants.clone()
 
-						// Prevent circular sum types from causing infinite loops
+						// Prevent circular sum types from causing infinite loops, while still
+						// processing the remaining generic instantiations. Variant and parent are
+						// compared module-aware, otherwise same-named types from different modules
+						// are misdetected as circular.
+						mut parent_name := parent.name.trim_string_left(parent.mod + '.')
+						if parent_name.contains('[') {
+							parent_name = parent_name.all_before('[')
+						} else if parent_name.contains('<') {
+							parent_name = parent_name.all_before('<')
+						}
+						mut is_circular_sum_type := false
 						for variant in variants {
-							mut sym_name := t.sym(variant).name.trim_string_left(
-								t.sym(variant).mod + '.')
+							variant_sym := t.sym(variant)
+							if variant_sym.mod != parent.mod {
+								continue
+							}
+							mut sym_name := variant_sym.name.trim_string_left(variant_sym.mod + '.')
 							if sym_name.contains('[') {
 								sym_name = sym_name.all_before('[')
 							} else if sym_name.contains('<') {
 								sym_name = sym_name.all_before('<')
 							}
-
-							mut parent_name := parent.name.trim_string_left(parent.mod + '.')
-							if parent_name.contains('[') {
-								parent_name = parent_name.all_before('[')
-							} else if parent_name.contains('<') {
-								parent_name = parent_name.all_before('<')
-							}
-
 							if sym_name == parent_name {
-								return
+								is_circular_sum_type = true
+								break
 							}
+						}
+						if is_circular_sum_type {
+							continue
 						}
 
 						generic_names := t.get_generic_names(parent_info.generic_types)
