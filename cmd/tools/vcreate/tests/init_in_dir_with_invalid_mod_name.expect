@@ -2,12 +2,12 @@
 
 set timeout 10
 
-# Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
-set v_root [lindex $argv 0]
+# Pass the active V executable as an arg, since we chdir into a temp directory during testing.
+set v_exe [lindex $argv 0]
 set project_dir_name [lindex $argv 1]
 set corrected_mod_name [lindex $argv 2]
 
-spawn $v_root/v init
+spawn $v_exe init
 
 expect "Input your project description: " { send "\r" } timeout { exit 1 }
 expect "Input your project version: (0.0.0) " { send "\r" } timeout { exit 1 }

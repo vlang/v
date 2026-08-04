@@ -134,6 +134,16 @@ fn test_cache_c_source_definitely_active_code_rejects_unresolved_definition_guar
 	assert body_complete
 }
 
+fn test_cache_c_source_definitely_active_code_accepts_local_header_guards() {
+	source := '#ifndef LOCAL_API_H\n#define LOCAL_API_H\n#ifndef LOCAL_INLINE\n#define LOCAL_INLINE static inline\n#endif\nLOCAL_INLINE int local_api(void) { return 1; }\n#endif\n'
+	mut macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
+	active, complete := cache_c_source_definitely_active_code_with_status(source, mut macros)
+	assert complete
+	assert active.contains('local_api')
+	assert macros['LOCAL_API_H'].is_defined
+	assert macros['LOCAL_INLINE'].is_defined
+}
+
 fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
 	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
 	os.rmdir_all(root_dir) or {}

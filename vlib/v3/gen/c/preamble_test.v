@@ -1,5 +1,12 @@
 module c
 
+fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
+	headers := manual_stdlib_c_headers()
+	for name in ['memcpy', 'memmove', 'memset'] {
+		assert headers.contains('#ifdef ${name}\n#undef ${name}\n#endif'), name
+	}
+}
+
 fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	mut g := FlatGen.new()
 	g.system_libc_preamble()
@@ -27,4 +34,11 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	assert guard.contains('!defined(_PTHREAD_T)'), guard
 	assert c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
+}
+
+fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
+	mut g := FlatGen.new()
+	g.headerless_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('int printf(const char* format, ...);'), c_code
 }

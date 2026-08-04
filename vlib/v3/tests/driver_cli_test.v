@@ -264,6 +264,13 @@ fn run_driver_with_environment(v3_bin string, args []string, environment map[str
 	return collect_driver_process_result(mut process)
 }
 
+fn run_driver_in_work_folder(v3_bin string, args []string, work_folder string) os.Result {
+	mut process := os.new_process(v3_bin)
+	process.set_args(args)
+	process.set_work_folder(work_folder)
+	return collect_driver_process_result(mut process)
+}
+
 fn test_driver_persistent_macos_output_survives_cache_removal() {
 	$if !macos {
 		return
@@ -404,6 +411,253 @@ fn main() {
 	object_run := cmdexec.run(object_output, [])
 	assert object_run.exit_code == 0, object_run.output
 	assert object_run.output == '99\n', object_run.output
+}
+
+fn test_driver_c_project_and_dump_include_effective_dependency_flags() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_effective_c_flags_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	native_source := os.join_path(root, 'native_dependency.c')
+	os.write_file(native_source, '#ifndef V3_REVIEW_DEPENDENCY_FLAG
+#error missing generated dependency flag
+#endif
+
+int v3_review_dependency_value(void) {
+	return 42;
+}
+')!
+	resolved_native_source := os.real_path(native_source)
+	source := os.join_path(root, 'effective_flags.v')
+	os.write_file(source, '#flag -DV3_REVIEW_DEPENDENCY_FLAG=1
+#flag @DIR/native_dependency.o
+
+fn C.v3_review_dependency_value() int
+
+fn main() {
+	println(C.v3_review_dependency_value())
+}
+')!
+	project_dir := os.join_path(root, r'project $with spaces')
+	project_dump := os.join_path(root, 'project_flags.txt')
+	generate := cmdexec.run(v3_bin, ['-silent', '-prod', '-dump-c-flags', project_dump,
+		'-generate-c-project', project_dir, source])
+	assert generate.exit_code == 0, generate.output
+	build_command := os.read_file(os.join_path(project_dir, 'build_command.txt'))!
+	project_flags := os.read_lines(project_dump)!
+	for expected in ['-std=gnu11', '-O3', '-flto', '-DV3_REVIEW_DEPENDENCY_FLAG=1',
+		resolved_native_source] {
+		assert build_command.contains(expected), build_command
+		assert expected in project_flags, project_flags.str()
+	}
+	assert !build_command.contains(resolved_native_source.all_before_last('.c') + '.o'), build_command
+	batch_command := os.read_file(os.join_path(project_dir, 'build.bat'))!
+	assert batch_command.contains('"${project_dir}'), batch_command
+	assert !batch_command.contains("'${project_dir}"), batch_command
+	makefile := os.read_file(os.join_path(project_dir, 'Makefile'))!
+	assert makefile.contains(r'project $$with spaces'), makefile
+	make_build := cmdexec.run('make', ['-C', project_dir])
+	assert make_build.exit_code == 0, make_build.output
+	project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
+	assert project_build.exit_code == 0, project_build.output
+	project_run := cmdexec.run(os.join_path(project_dir, 'effective_flags'), [])
+	assert project_run.exit_code == 0, project_run.output
+	assert project_run.output == '42\n', project_run.output
+
+	backslash_project_dir := os.join_path(root, r'project\backslash')
+	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
+		backslash_project_dir, source])
+	assert backslash_generate.exit_code == 0, backslash_generate.output
+	backslash_build := cmdexec.run('sh', [
+		os.join_path(backslash_project_dir, 'build.sh'),
+	])
+	assert backslash_build.exit_code == 0, backslash_build.output
+	backslash_make := cmdexec.run('make', ['-C', backslash_project_dir])
+	assert backslash_make.exit_code == 0, backslash_make.output
+
+	bin_output := os.join_path(root, 'effective_flags')
+	bin_dump := os.join_path(root, 'binary_flags.txt')
+	compile := cmdexec.run(v3_bin, ['-silent', '-prod', '-showcc', '-dump-c-flags', bin_dump, '-o',
+		bin_output, source])
+	assert compile.exit_code == 0, compile.output
+	bin_flags := os.read_lines(bin_dump)!
+	for expected in ['-std=gnu11', '-O3', '-flto', '-w', '-Wno-int-conversion',
+		'-DV3_REVIEW_DEPENDENCY_FLAG=1', '-lm'] {
+		assert expected in bin_flags, bin_flags.str()
+		assert compile.output.contains(expected), compile.output
+	}
+	assert bin_flags.any(it.ends_with('.o')), bin_flags.str()
+	bin_run := cmdexec.run(bin_output, [])
+	assert bin_run.exit_code == 0, bin_run.output
+	assert bin_run.output == '42\n', bin_run.output
+}
+
+fn test_driver_doc_detection_skips_all_option_values() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_doc_option_values_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'app.v')
+	os.write_file(source, "fn main() { println('option-value-doc') }\n")!
+	for define_option in ['-d', '-define'] {
+		define_case := os.join_path(root, define_option.trim_left('-'))
+		os.mkdir_all(define_case)!
+		define := run_driver_in_work_folder(v3_bin,
+			['-silent', define_option, 'doc', 'run', source], define_case)
+		assert define.exit_code == 0, '${define_option}: ${define.output}'
+		assert define.output == 'option-value-doc\n', define.output
+	}
+
+	project_case := os.join_path(root, 'project_case')
+	os.mkdir_all(project_case)!
+	project := run_driver_in_work_folder(v3_bin, ['-silent', '-generate-c-project', 'doc', source],
+		project_case)
+	assert project.exit_code == 0, project.output
+	assert os.is_file(os.join_path(project_case, 'doc', 'app.c'))
+
+	for coverage_option in ['-cov', '-coverage'] {
+		coverage_case := os.join_path(root, coverage_option.trim_left('-'))
+		os.mkdir_all(coverage_case)!
+		coverage := run_driver_in_work_folder(v3_bin, ['-silent', coverage_option, 'doc', 'run',
+			source], coverage_case)
+		assert coverage.exit_code == 0, '${coverage_option}: ${coverage.output}'
+		assert coverage.output == 'option-value-doc\n', coverage.output
+	}
+
+	file_list_case := os.join_path(root, 'file_list_case')
+	os.mkdir_all(os.join_path(file_list_case, 'doc'))!
+	os.write_file(os.join_path(file_list_case, 'doc', 'extra.v'),
+		"module main\n\nfn doc_option_value() string { return 'option-value-doc' }\n")!
+	file_list_main := os.join_path(file_list_case, 'main.v')
+	os.write_file(file_list_main, 'module main\n\nfn main() { println(doc_option_value()) }\n')!
+	file_list := run_driver_in_work_folder(v3_bin, ['-silent', '-file-list', 'doc', '-o', 'out',
+		file_list_main], file_list_case)
+	assert file_list.exit_code == 0, file_list.output
+	file_list_run := cmdexec.run(os.join_path(file_list_case, 'out'), [])
+	assert file_list_run.exit_code == 0, file_list_run.output
+	assert file_list_run.output == 'option-value-doc\n', file_list_run.output
+
+	for option in ['-message-limit', '-dump-c-flags'] {
+		option_case := os.join_path(root, option.trim_left('-'))
+		os.mkdir_all(option_case)!
+		output := os.join_path(option_case, 'out')
+		result := run_driver_in_work_folder(v3_bin,
+			['-silent', option, 'doc', '-o', output, source], option_case)
+		assert result.exit_code == 0, '${option}: ${result.output}'
+		assert os.is_file(output), option
+		assert option != '-dump-c-flags' || os.is_file(os.join_path(option_case, 'doc'))
+	}
+}
+
+fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_skip_unused_cache_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "fn unused_value() int { return 42 }\n\nfn main() { println('ok') }\n")!
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+
+	cold_output := os.join_path(root, 'cold')
+	cold := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', cold_output, source],
+		environment)
+	assert cold.exit_code == 0, cold.output
+	assert !cold.output.contains('(cached)'), cold.output
+
+	warm_output := os.join_path(root, 'warm')
+	warm := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', warm_output, source],
+		environment)
+	assert warm.exit_code == 0, warm.output
+	assert warm.output.contains('cgen (cached)'), warm.output
+
+	no_skip_output := os.join_path(root, 'no_skip')
+	no_skip := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-o',
+		no_skip_output, source], environment)
+	assert no_skip.exit_code == 0, no_skip.output
+	assert !no_skip.output.contains('(cached)'), no_skip.output
+	no_skip_run := cmdexec.run(no_skip_output, [])
+	assert no_skip_run.exit_code == 0, no_skip_run.output
+	assert no_skip_run.output == 'ok\n', no_skip_run.output
+}
+
+fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_valued_define_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	project := os.join_path(root, 'project')
+	os.mkdir_all(project)!
+	os.write_file(os.join_path(project, 'main.v'), "module main
+
+fn main() {
+	\$if feature ? {
+		println('optional:on')
+	} \$else {
+		println('optional:off')
+	}
+	println(feature_source())
+	println(\$d('feature', 'missing'))
+}
+")!
+	os.write_file(os.join_path(project, 'source_d_feature.v'), "module main
+
+fn feature_source() string {
+	return 'source:on'
+}
+")!
+	os.write_file(os.join_path(project, 'source_notd_feature.v'), "module main
+
+fn feature_source() string {
+	return 'source:off'
+}
+")!
+	for define_option in ['-d', '-define'] {
+		output := os.join_path(root, 'app_${define_option.trim_left('-')}')
+		compile := cmdexec.run(v3_bin, ['-nocache', define_option, 'feature=enabled', '-o', output,
+			project])
+		assert compile.exit_code == 0, '${define_option}: ${compile.output}'
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, '${define_option}: ${run.output}'
+		assert run.output == 'optional:on\nsource:on\nenabled\n', '${define_option}: ${run.output}'
+	}
+}
+
+fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_silent_define_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source,
+		"@[if silent ?]\nfn print_silent_attribute() {\n\tprintln('attribute silent')\n}\n\nfn main() {\n\t\$if silent ? {\n\t\tprintln('silent')\n\t} \$else {\n\t\tprintln('not silent')\n\t}\n\tprint_silent_attribute()\n}\n")!
+
+	for option, expected in {
+		'-silent':                  'silent\nattribute silent\n'
+		'-macos-v3-internal-quiet': 'not silent\n'
+	} {
+		output := os.join_path(root, option.trim_left('-'))
+		compile := cmdexec.run(v3_bin, [option, '-o', output, source])
+		assert compile.exit_code == 0, '${option}: ${compile.output}'
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, '${option}: ${run.output}'
+		assert run.output == expected, '${option}: ${run.output}'
+	}
 }
 
 fn test_driver_requests_macos_compatibility_for_inline_assembly() {
@@ -1206,6 +1460,12 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
 
+	path_output := os.join_path(root, 'hello_path')
+	path_compile := cmdexec.run(v3_bin, ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o',
+		path_output, source])
+	assert path_compile.exit_code == 0, path_compile.output
+	assert os.is_file(path_output)
+
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')
@@ -1277,6 +1537,29 @@ fn main() {
 	bits_run := cmdexec.run(bits_output, [])
 	assert bits_run.exit_code == 0, bits_run.output
 	assert bits_run.output.trim_space() == '1:18446744073709551614'
+
+	file_list_dir := os.join_path(root, 'file_list_sources')
+	file_list_nested_dir := os.join_path(file_list_dir, 'parts', 'nested')
+	os.mkdir_all(file_list_nested_dir) or { panic(err) }
+	os.write_file(os.join_path(file_list_dir, 'v.mod'),
+		"Module {\n\tname: 'file_list_sources'\n\tsubdirs: ['parts']\n}\n") or { panic(err) }
+	os.write_file(os.join_path(file_list_dir, 'root.v'),
+		'module main\n\nfn file_list_root_value() int { return 20 }\n') or { panic(err) }
+	os.write_file(os.join_path(file_list_nested_dir, 'nested.v'),
+		'module main\n\nfn file_list_nested_value() int { return 22 }\n') or { panic(err) }
+	file_list_main := os.join_path(root, 'file_list_main.v')
+	os.write_file(file_list_main,
+		'module main\n\nfn main() { println(file_list_root_value() + file_list_nested_value()) }\n') or {
+		panic(err)
+	}
+	file_list_output := os.join_path(root, 'file_list_output')
+	file_list_compile := cmdexec.run(v3_bin, ['-nocache', '-o', file_list_output, file_list_main,
+		'-file-list', file_list_dir])
+	assert file_list_compile.exit_code == 0, file_list_compile.output
+	file_list_run := cmdexec.run(file_list_output, [])
+	assert file_list_run.exit_code == 0, file_list_run.output
+	assert file_list_run.output.trim_space() == '42'
+
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
@@ -1291,10 +1574,18 @@ fn main() {
 		'unknown compile backend `bogus`')
 
 	if false_exe := os.find_abs_path_of_executable('false') {
-		cc_result := cmdexec.run(v3_bin, ['-prod', '-cc', false_exe, source, '-o',
+		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',
 			os.join_path(root, 'false_cc')])
 		assert cc_result.exit_code != 0
 		assert cc_result.output.contains(cmdexec.display(false_exe, ['-std=gnu11'])), cc_result.output
+		assert cc_result.output.contains('-O3'), cc_result.output
+		assert cc_result.output.contains('-flto'), cc_result.output
+		assert !cc_result.output.contains('-O2'), cc_result.output
+		custom_prod_result := cmdexec.run(v3_bin, ['-prod', '-no-prod-options', '-showcc', '-cc',
+			false_exe, source, '-o', os.join_path(root, 'false_cc_custom_prod')])
+		assert custom_prod_result.exit_code != 0
+		assert !custom_prod_result.output.contains('-O3'), custom_prod_result.output
+		assert !custom_prod_result.output.contains('-flto'), custom_prod_result.output
 	}
 
 	work_dir := os.join_path(root, 'work')

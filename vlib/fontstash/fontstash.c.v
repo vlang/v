@@ -13,6 +13,8 @@ $if gcboehm ? {
 #include "fontstash.h"
 #flag darwin -I/usr/local/Cellar/freetype/2.10.2/include/freetype2
 
+fn C.GC_MALLOC_ATOMIC(n usize) voidptr
+
 $if windows {
 	$if tinyc {
 		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o
@@ -92,7 +94,30 @@ pub fn (s &Context) add_fallback_font(base int, fallback int) int {
 // The function returns the id of the font on success, `fontstash.invalid` otherwise.
 @[inline]
 pub fn (s &Context) add_font_mem(name string, data []u8, free_data bool) int {
-	return C.fonsAddFontMem(s, &char(name.str), data.data, data.len, int(free_data))
+	if !free_data {
+		return C.fonsAddFontMem(s, &char(name.str), data.data, data.len, 0)
+	}
+	// A V array allocation can store ownership metadata immediately before
+	// `data.data`; fontstash must not pass that interior pointer to C free().
+	// Give it an allocation made by the allocator paired with FONTSTASH_FREE.
+	unsafe {
+		data_len := data.len
+		mut owned := &u8(nil)
+		$if gcboehm ? {
+			owned = &u8(C.GC_MALLOC_ATOMIC(usize(data_len)))
+		} $else {
+			owned = &u8(C.malloc(usize(data_len)))
+		}
+		if data_len > 0 && owned == nil {
+			data.free()
+			return invalid
+		}
+		if data_len > 0 {
+			vmemcpy(owned, data.data, data_len)
+		}
+		data.free()
+		return C.fonsAddFontMem(s, &char(name.str), owned, data_len, 1)
+	}
 }
 
 // push_state pushes a new state on the state stack.

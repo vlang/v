@@ -20,8 +20,9 @@ const max_parallel_transform_jobs = 7
 // clone memory; cap by core count only.
 const max_shared_transform_jobs = 10
 const max_parallel_monomorph_jobs = 10
-const scoped_transform_worker_batches = 1
-const scoped_transform_master_batches = 1
+// Recycle scratch arenas throughout large self-hosting transforms.
+const scoped_transform_worker_batches = 32
+const scoped_transform_master_batches = 32
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 
@@ -1763,6 +1764,14 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		t.transform_pure_items_serial(items)
 		return false
 	} $else {
+		// Generic body lowering can discover and register new specializations. The
+		// signature tables are compilation-wide mutable state, so cloned workers
+		// must not update them concurrently. The dedicated monomorphization stage
+		// has its own synchronized parallel queue; keep this earlier pass serial.
+		if !t.skip_generics {
+			t.transform_pure_items_serial(items)
+			return false
+		}
 		if isnil(t.a.worker_pool) {
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
@@ -1943,6 +1952,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.base_write_intercept = true
 		t.defer_oor_writes = true
 		t.shared_base_nodes = base_nodes
+		t.node_context_read_only = true
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut args := []SharedChunkArgs{len: chunk_count}
 		args[0] = SharedChunkArgs{
@@ -1989,6 +1999,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.timing_profile('  [ttime]   shared setup     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, jobs: ${n_jobs})')
 		ttsw.restart()
 		any_started := t.a.worker_pool.run(tasks)
+		t.node_context_read_only = false
 		t.timing_profile('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		$if v3_ttime ? {
 			for ci, arg in args {
@@ -2036,7 +2047,10 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			deferred_start := t.deferred_base_writes.len
 			merged_node_start := t.a.nodes.len
 			mwsw.restart()
-			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], true)
+			// Compaction appends each worker at the current master end. Sparse cache
+			// entries from the master and earlier workers end before that fresh range,
+			// so clearing every new id would only hash absent keys.
+			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], false)
 			merge_core_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 			if ww.worker_scope != unsafe { nil } && !t.retain_worker_results {
 				t.clone_deferred_worker_writes_from(deferred_start)
@@ -2121,6 +2135,9 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 	$if windows {
 		return t.scan_late_call_names_range(cands, used, 0, cands.len)
 	} $else {
+		if !t.parallel_enabled {
+			return t.scan_late_call_names_range(cands, used, 0, cands.len)
+		}
 		// The scan clones no ASTs (workers share the merged AST read-only), so it
 		// is not bound by the clone-memory ceiling of the transform workers.
 		if isnil(t.a.worker_pool) {

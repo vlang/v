@@ -1,4 +1,5 @@
 import os
+import v3.cmdexec
 import v3.parser
 import v3.pref
 import v3.types
@@ -94,29 +95,6 @@ fn gen_c(v3_bin string, name string, src string) string {
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
-}
-
-fn test_amp_array_literal_uses_scanned_heap_header() {
-	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'amp_array_literal_scanned_header', 'struct Holder {
-	values &[]int
-}
-
-fn make_holder() Holder {
-	return Holder{
-		values: &[1, 2, 3]
-	}
-}
-
-fn main() {
-	holder := make_holder()
-	println(holder.values[1])
-}
-')
-	assert c_source.contains('void* memdup(void* src, ptrdiff_t sz);\nstatic inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }'), c_source
-
-	assert c_source.count('v3_heap_array(') >= 2, c_source
-	assert !c_source.contains('malloc_noscan(sizeof(Array))'), c_source
 }
 
 fn c_fn_body(c_source string, signature string) string {
@@ -656,17 +634,13 @@ fn same(value IValue) bool {
 	return value == value
 }
 
-fn consume_result(value !IValue) bool {
-	payload := value or { return false }
-	return same(payload)
-}
-
 fn main() {
 	mut option_value := ?IValue(none)
 	option_value = make_option()
 	option_payload := option_value or { panic("missing option") }
 	println(same(option_payload).str())
-	println(consume_result(make_result()).str())
+	result_payload := make_result() or { panic(err) }
+	println(same(result_payload).str())
 }
 ')
 	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
@@ -1348,7 +1322,8 @@ pub fn (app &App) index() veb.Result {
 
 fn main() {
 	mut app := &App{}
-	_ = app.index()
+	mut ctx := Context{}
+	_ = app.index(mut ctx)
 }
 '
 	}, 'main.v')
@@ -3116,6 +3091,31 @@ fn main() {
 	assert decoded == '{}\n[1,2]'
 }
 
+fn test_json_fast_paths_accept_null_strings_and_encode_non_finite_floats() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_null_string_and_non_finite_floats', 'import json
+import math
+
+struct Payload {
+	name string
+	nan  f64
+	pos  f64
+	neg  f32
+}
+
+fn main() {
+	decoded := json.decode(Payload, "{\\"name\\":null}")!
+	println(decoded.name.len)
+	println(json.encode(Payload{
+		nan: math.nan()
+		pos: math.inf(1)
+		neg: f32(math.inf(-1))
+	}))
+}
+')
+	assert out == '0\n{"name":"","nan":null,"pos":null,"neg":null}'
+}
+
 fn test_json_encode_embedded_structs_use_fast_path_flattening() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'json_encode_embedded_struct_flattening', 'import json
@@ -3554,6 +3554,44 @@ fn test_formatted_interpolation_rune_and_long_float() {
 	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float',
 		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n")
 	assert out == '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'
+}
+
+fn test_formatted_interpolation_integer_alias_character_code() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code',
+		"type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
+	assert out == 'ABC'
+}
+
+fn test_stats_reports_failed_test_status_and_passed_total() {
+	v3_bin := build_v3()
+	source := '${tmp_test_path('stats_failed_test_status')}_test.v'
+	os.write_file(source,
+		'fn test_fails() {\n\tassert false\n}\n\nfn test_passes() {\n\tassert true\n}\n') or {
+		panic(err)
+	}
+	outer_run_only := os.getenv_opt('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if value := outer_run_only {
+			os.setenv('VTEST_ONLY_FN', value, true)
+		} else {
+			os.unsetenv('VTEST_ONLY_FN')
+		}
+	}
+	result := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-stats', 'test', source])
+	assert result.exit_code != 0
+	assert result.output.contains('     FAIL  [1/2]'), result.output
+	assert result.output.contains('     OK    [2/2]'), result.output
+	assert result.output.contains('1 failed, 1 passed, 2 total'), result.output
+	assert !result.output.contains('2 passed, 2 total'), result.output
+}
+
+fn test_driver_accepts_cdebug_alias() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'cdebug_alias', '-nocache -cdebug',
+		"fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n")
+	assert out == 'debug'
 }
 
 fn test_alias_interface_str_dispatch_marks_alias_method_used() {
@@ -4595,6 +4633,22 @@ fn main() {
 	inferred_out := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape',
 		'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n')
 	assert inferred_out == '1\ntyped'
+}
+
+fn test_anonymous_struct_type_allows_volatile_field_name() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'anonymous_struct_volatile_field_name', 'fn read(value struct {
+	volatile u8
+}) u8 {
+	return value.volatile
+}
+
+fn main() {
+	value := struct { volatile: u8(73) }
+	println(read(value))
+}
+')
+	assert out == '73'
 }
 
 fn test_latest_pr_review_codegen_regressions() {

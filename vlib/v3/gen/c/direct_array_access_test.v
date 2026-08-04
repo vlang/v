@@ -71,3 +71,16 @@ fn test_direct_array_access_attribute_does_not_match_invalid_clone_position() {
 	assert attrs.contains(int(original_id), g.a.nodes[int(original_id)])
 	assert !attrs.contains(int(clone_id), g.a.nodes[int(clone_id)])
 }
+
+fn test_force_bounds_checking_ignores_direct_array_access_attribute() {
+	mut g := direct_array_access_test_gen()
+	target_id := g.a.add_node(flat.Node{
+		kind:  .fn_decl
+		value: 'unchecked_at'
+	})
+	direct_array_access_test_attribute(mut g.a, target_id)
+	g.set_force_bounds_checking(true)
+
+	attrs := g.direct_array_access_fns()
+	assert !attrs.contains(int(target_id), g.a.nodes[int(target_id)])
+}
