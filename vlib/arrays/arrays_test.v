@@ -71,6 +71,17 @@ fn test_merge() {
 	assert merge[int](d, b) == b
 }
 
+fn test_merge_desc() {
+	a := [7, 5, 5, 3, 1]
+	b := [8, 6, 5, 4, 2]
+	c := []int{}
+	d := []int{}
+	assert merge_desc[int](a, b) == [8, 7, 6, 5, 5, 5, 4, 3, 2, 1]
+	assert merge_desc[int](c, d) == []
+	assert merge_desc[int](a, c) == a
+	assert merge_desc[int](d, b) == b
+}
+
 fn test_append() {
 	a := [1, 3, 5, 5, 7]
 	b := [2, 4, 4, 5, 6, 8]
