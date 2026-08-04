@@ -291,6 +291,24 @@ NB: the build flags are shared with the run command too:
     NB: this is still experimental, the rules for it will
     change, it may be dropped completely, or it may become the default.
 
+  Resource limits (guard rails against infinite generic / alias expansion in invalid code):
+
+  -generic-fn-inst-limit <n>
+    Max distinct concrete instantiations of a single generic fn. Default: 4096.
+  -generic-inst-name-len-limit <n>
+    Max length of the generated name of a generic instantiation. Default: 8192.
+  -generic-inst-depth-limit <n>
+    Max recursion depth while unwrapping generic types. Default: 256.
+    NB: values above 512 are clamped, since the guard must fire before the native stack overflows.
+  -alias-unwrap-depth-limit <n>
+    Max unwrap iterations for chains/cycles of type aliases. Default: 100.
+  -generic-fn-postprocess-iters <n>
+    Max post-processing re-check passes over generic fns, before bailing out
+    with an error about a probable infinite generic instantiation loop. Default: 128.
+  -max-postprocess-iterations <n>
+    Max number of generic struct instantiations handled in one post-processing
+    sweep. Default: 100000.
+
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.
 For Native-specific build flags, use `v help build-native`.
