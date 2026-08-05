@@ -19,7 +19,7 @@ $if windows {
 		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence_pre.h"
 	}
 	$if tinyc {
-		#include <stdatomic.h>
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_restore.h"
 		$if linux {
 			#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_linux_fence.h"
 		}
