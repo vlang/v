@@ -547,6 +547,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-old-compiler' {
 				res.old_compiler = true
 			}
+			'-checker-fixture', '-macos-v3-compat-c99' {
+				// Passed through to the embedded V3 diagnostic fixture runner.
+			}
 			'-no-memory-limit', '--no-memory-limit' {
 				// Passed through to V3 dispatchers by cmd/v.
 			}
