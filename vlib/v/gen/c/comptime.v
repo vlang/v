@@ -848,7 +848,14 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 	is_opt_or_result := inferred_typ.has_option_or_result()
 	is_array_fixed := g.table.final_sym(inferred_typ).kind == .array_fixed
-	line := if node.is_expr && inferred_typ != ast.void_type {
+	// When the if is used as an expression but no branch yields a concrete
+	// (non-void) type - e.g. an `or {}` body whose only live comptime branch
+	// ends in `panic(err)` while the value-producing branch was pruned as dead
+	// code - there is no result temp to declare. Generating `${tmp_var} = ...`
+	// and a trailing `${tmp_var}` reference would then emit an undeclared temp
+	// (see issue #28022). Fall back to plain statement codegen in that case.
+	gen_as_expr := node.is_expr && inferred_typ != ast.void_type
+	line := if gen_as_expr {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
 		styp := g.styp(inferred_typ)
@@ -914,7 +921,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 			g.defer_ifdef += expr_str
 		}
-		if node.is_expr {
+		if gen_as_expr {
 			if is_true.val {
 				g.bind_comptime_if_generic_types(branch.cond)
 				len := branch.stmts.len
@@ -994,7 +1001,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 	g.defer_ifdef = ''
 	g.writeln('#endif')
-	if node.is_expr {
+	if gen_as_expr {
 		g.write('${line}${tmp_var}')
 	}
 }
