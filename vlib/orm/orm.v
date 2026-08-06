@@ -500,10 +500,12 @@ fn trim_attr_arg(arg string) string {
 }
 
 fn is_sql_expr(val string) bool {
-	// Function calls like gen_random_uuid(), NOW(), etc.
-	// Written as @[default: 'gen_random_uuid()'] — we detect the shape:
-	// must start with a letter/underscore, have ( and end with ),
-	// and the part before ( must be a valid SQL identifier.
+	// SQL expressions written as string defaults, e.g. @[default: 'gen_random_uuid()'].
+	// Two shapes are detected, so they are emitted unquoted in the DEFAULT clause:
+	// 1. Function calls: must start with a letter/underscore, have ( and end
+	//    with ), and the part before ( must be a valid SQL identifier.
+	// 2. Paren-less SQL keywords like CURRENT_TIMESTAMP / CURRENT_DATE.
+	//    Quoting them would silently turn the default into a string literal.
 	if val.contains('(') && val.ends_with(')') {
 		before_paren := val.all_before('(')
 		if before_paren.len > 0 && (before_paren[0].is_letter() || before_paren[0] == `_`) {
@@ -515,7 +517,17 @@ fn is_sql_expr(val string) bool {
 			return true
 		}
 	}
-	return false
+	lower := val.trim_space().to_lower_ascii()
+	return match lower {
+		'current_date', 'current_time', 'current_timestamp', 'localtime', 'localtimestamp',
+		'current_user', 'session_user', 'system_user', 'current_role', 'current_catalog',
+		'current_schema' {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn tenant_filter_array_primitive_type[T](value []T) int {
