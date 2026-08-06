@@ -160,10 +160,10 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor
-        if: matrix.name != 'memory-clang-compiler'
+        if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: ./v doctor
       - name: Ensure code is well formatted
-        if: matrix.name != 'memory-clang-compiler'
+        if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
@@ -180,15 +180,15 @@ jobs:
             ./v -cg -cstrict -o v cmd/v
           fi
       - name: Self tests (-fsanitize=undefined)
-        if: matrix.sanitizer == 'undefined'
+        if: ${{ matrix.sanitizer == 'undefined' }}
         run: |
           ./v -cflags -fsanitize=undefined -o v2 cmd/v
           ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
-        if: matrix.sanitizer == 'undefined'
+        if: ${{ matrix.sanitizer == 'undefined' }}
         run: ./v2 -silent build-examples
       - name: Self tests (-fsanitize=address)
-        if: matrix.sanitizer == 'address' && matrix.name != 'memory-clang-compiler' && matrix.name != 'memory-clang'
+        if: ${{ matrix.sanitizer == 'address' && matrix.name != 'memory-clang-compiler' && matrix.name != 'memory-clang' }}
         run: |
           if [ "${{ matrix.cc }}" = "clang" ] && [ "${{ matrix.name }}" = "address-clang" ]; then
             ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -silent test-self vlib
@@ -198,7 +198,7 @@ jobs:
             ./v -cflags -fsanitize=address -silent test-self vlib
           fi
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
-        if: matrix.sanitizer == 'address' && (matrix.name == 'address-clang' || matrix.name == 'address-gcc')
+        if: ${{ matrix.sanitizer == 'address' && (matrix.name == 'address-clang' || matrix.name == 'address-gcc') }}
         run: |
           if [ "${{ matrix.name }}" = "address-clang" ]; then
             ./v -cflags -fsanitize=address -o v cmd/v
@@ -208,18 +208,18 @@ jobs:
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           fi
       - name: Build examples (V compiled with -fsanitize=address)
-        if: matrix.sanitizer == 'address'
+        if: ${{ matrix.sanitizer == 'address' }}
         run: ./v -silent build-examples
       - name: Self tests (-fsanitize=memory)
-        if: matrix.name == 'memory-clang'
+        if: ${{ matrix.name == 'memory-clang' }}
         run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
-        if: matrix.name == 'memory-clang-compiler'
+        if: ${{ matrix.name == 'memory-clang-compiler' }}
         run: |
           GITHUB_JOB=sanitize-memory-clang ./v -cflags -fsanitize=memory -o v cmd/v
           GITHUB_JOB=sanitize-memory-clang ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=memory)
-        if: matrix.name == 'memory-clang-compiler'
+        if: ${{ matrix.name == 'memory-clang-compiler' }}
         run: GITHUB_JOB=sanitize-memory-clang ./v -silent build-examples
 
   sanitize-address-msvc:
