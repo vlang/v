@@ -48,7 +48,7 @@ fn test_packet_number_space_note_peer_acked_never_regresses() {
 fn test_packet_number_space_feeds_phase1_functions() {
 	mut s := PacketNumberSpaceState{}
 	s.note_peer_acked(1000)
-	pn_bytes, pn_len := encode_packet_number(1005, s.largest_acked_by_peer)
+	pn_bytes, pn_len := encode_packet_number(1005, s.largest_acked_by_peer)!
 	assert pn_len >= 1
 
 	mut truncated := u64(0)

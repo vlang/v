@@ -963,9 +963,13 @@ fn test_free_is_idempotent() {
 // bug class.
 fn test_application_secrets_and_handshake_secrets_return_independent_copies() {
 	mut h, _ := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:        []u8{len: 32, init: 0x11}
-		server_name:   'example.com'
-		ca_bundle_pem: ''
+		random:               []u8{len: 32, init: 0x11}
+		server_name:          'example.com'
+		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id: [u8(1), 2, 3, 4]
+		}
+		ca_bundle_pem:        ''
+		alpn_protocols:       ['h3']
 	})!
 	defer {
 		h.free()
