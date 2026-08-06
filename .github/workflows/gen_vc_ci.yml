@@ -37,6 +37,65 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Diagnose remaining master failures
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MASTER_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+          runs_json="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?event=push&per_page=100")"
+          echo "Master SHA: ${MASTER_SHA}"
+          echo '--- workflow summary ---'
+          jq -r --arg sha "$MASTER_SHA" '
+            .workflow_runs[]
+            | select(.head_sha == $sha)
+            | [.id, .name, .status, (.conclusion // "-")]
+            | @tsv
+          ' <<< "$runs_json" | sort -k2,2
+
+          mapfile -t failed_runs < <(
+            jq -r --arg sha "$MASTER_SHA" '
+              .workflow_runs[]
+              | select(.head_sha == $sha)
+              | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure")
+              | [.id, .name]
+              | @tsv
+            ' <<< "$runs_json"
+          )
+          echo "Failed workflow runs: ${#failed_runs[@]}"
+
+          for run in "${failed_runs[@]}"; do
+            run_id="${run%%$'\t'*}"
+            run_name="${run#*$'\t'}"
+            echo "::group::FAILED WORKFLOW: ${run_name} (${run_id})"
+            jobs_json="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100")"
+            jq -r '.jobs[] | [.id, .name, .status, (.conclusion // "-")] | @tsv' <<< "$jobs_json"
+
+            mapfile -t failed_jobs < <(
+              jq -r '
+                .jobs[]
+                | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure")
+                | [.id, .name]
+                | @tsv
+              ' <<< "$jobs_json"
+            )
+            for job in "${failed_jobs[@]}"; do
+              job_id="${job%%$'\t'*}"
+              job_name="${job#*$'\t'}"
+              log_file="/tmp/master-job-${job_id}.log"
+              echo "--- FAILED JOB: ${job_name} (${job_id}) ---"
+              if gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}/logs" > "$log_file"; then
+                echo '--- likely diagnostics ---'
+                grep -E -i -C 4 '(^|[^[:alpha:]])(error|fatal|failed|failure|panic|assert|undefined|unknown function|timed out|timeout)([^[:alpha:]]|$)' "$log_file" | tail -n 350 || true
+                echo '--- log tail ---'
+                tail -n 350 "$log_file"
+              else
+                echo "Could not download logs for job ${job_id}"
+              fi
+            done
+            echo '::endgroup::'
+          done
       - name: Build V
         run: make -j4
       - name: Regenerate v.c and v_win.c
