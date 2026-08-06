@@ -675,8 +675,8 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			// u8
 			orm.type_idx['u8'] {
-				data := str.i8()
-				return orm.Primitive(*unsafe { &u8(&data) })
+				data := str.i16()
+				return orm.Primitive(u8(data))
 			}
 			// u16
 			orm.type_idx['u16'] {
