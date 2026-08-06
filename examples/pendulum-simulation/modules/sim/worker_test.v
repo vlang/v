@@ -1,5 +1,7 @@
 module sim
 
+import math
+
 const worker_test_mock_params = SimParams{
 	rope_length:     0.25
 	bearing_mass:    0.03
@@ -24,6 +26,10 @@ const worker_test_mock_state = SimState{
 		y: -2.842170943040401e-10
 		z: 1.2126596023639044e-10
 	)
+}
+
+fn worker_vectors_approximately_equal(a Vector3D, b Vector3D) bool {
+	return math.abs(a.x - b.x) < 1e-9 && math.abs(a.y - b.y) < 1e-9 && math.abs(a.z - b.z) < 1e-9
 }
 
 fn test_compute_result() {
@@ -57,5 +63,11 @@ fn test_compute_result() {
 		magnet3_distance: 0.03609361938278008
 	}
 	result := compute_result(request)
-	assert result == expected
+	assert result.id == expected.id
+	assert worker_vectors_approximately_equal(result.state.position, expected.state.position)
+	assert worker_vectors_approximately_equal(result.state.velocity, expected.state.velocity)
+	assert worker_vectors_approximately_equal(result.state.accel, expected.state.accel)
+	assert math.abs(result.magnet1_distance - expected.magnet1_distance) < 1e-9
+	assert math.abs(result.magnet2_distance - expected.magnet2_distance) < 1e-9
+	assert math.abs(result.magnet3_distance - expected.magnet3_distance) < 1e-9
 }

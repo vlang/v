@@ -202,8 +202,12 @@ fn test_read_refills_buffer() {
 	data := 'abc'.bytes()
 	mut br := new_one_byte_buffered_reader(data)
 	mut res := []u8{len: 4}
+	// read refills the empty buffer from the underlying reader with a single
+	// fill, then returns what that fill produced. The OneByteReader yields one
+	// byte per read, so read returns 1 byte here, not the whole input: per the
+	// Reader interface, read returns *up to* buf.len bytes and callers loop.
 	read := br.read(mut res)!
-	assert read == data.len
+	assert read == 1
 	for i := 0; i < read; i++ {
 		assert data[i] == res[i]
 	}

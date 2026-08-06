@@ -800,7 +800,18 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		}
 		.paren, .cast_expr, .as_expr {
 			if node.children_count > 0 {
-				return tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+				mut binding := tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+				if node.kind == .cast_expr && binding.can_recurse {
+					target := unwrap_all_pointers(tc.resolve_type(id))
+					receiver := unwrap_all_pointers(ctx.receiver_type)
+					if target !is Unknown && receiver !is Unknown
+						&& target.name() != receiver.name() {
+						binding.progressed = true
+						binding.nonreversible_progress = true
+						binding.numeric_deltas = map[string]i64{}
+					}
+				}
+				return binding
 			}
 		}
 		.dump_expr {
@@ -1957,10 +1968,8 @@ fn (tc &TypeChecker) recursive_str_receiver_is_concrete_match_variant(call_id fl
 			condition_count := if parent.value.is_int() { parent.value.int() } else { 0 }
 			for i in 0 .. int_min(condition_count, int(parent.children_count)) {
 				pattern := tc.a.child_node(parent, i)
-				if pattern.kind != .ident || !tc.type_name_known(pattern.value) {
-					continue
-				}
-				pattern_type := unalias_and_unwrap_pointer_type(tc.parse_type(pattern.value))
+				pattern_name := tc.match_type_pattern(pattern) or { continue }
+				pattern_type := unalias_and_unwrap_pointer_type(tc.parse_type(pattern_name))
 				if pattern_type !is Unknown && pattern_type.name() != expected.name() {
 					return true
 				}

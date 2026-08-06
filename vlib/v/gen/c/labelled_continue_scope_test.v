@@ -43,6 +43,27 @@ fn function_window_containing(text string, marker string) string {
 	return rest[..end_offset]
 }
 
+fn braced_function_window(text string, marker string) string {
+	start := text.index(marker) or {
+		assert false, 'missing marker: ${marker}'
+		return ''
+	}
+	open_offset := text[start..].index_u8(`{`)
+	assert open_offset >= 0, 'missing function body for: ${marker}'
+	mut depth := 0
+	for i in start + open_offset .. text.len {
+		if text[i] == `{` {
+			depth++
+		} else if text[i] == `}` {
+			depth--
+			if depth == 0 {
+				return text[start..i + 1]
+			}
+		}
+	}
+	panic('unterminated function body for: ${marker}')
+}
+
 fn generate_c(path string, extra_flags string) string {
 	os.chdir(vroot) or {}
 	cmd := '${os.quoted_path(vexe)} -gc none ${extra_flags} -o - ${os.quoted_path(path)}'
@@ -86,6 +107,26 @@ fn test_labelled_continue_targets_reenter_at_the_loop_gate() {
 		LabelledContinueCase{'c_loop', 'c_outer', 'issue_19973_c_var'},
 		LabelledContinueCase{'c_multi_loop', 'c_multi_outer', 'issue_19973_c_multi_var'},
 	]
+	if generated_c.contains('void range_loop(void) {') {
+		for tc in cases {
+			fn_c := braced_function_window(generated_c, 'void ${tc.fn_name}(void) {')
+			base := '__v_user_goto_0'
+			continue_flag := '${base}__continue_flag'
+			flag_decl := 'bool ${continue_flag} = false;'
+			var_decl := 'string ${tc.var_name} ='
+			continue_label := '${base}__continue: ;'
+			assert fn_c.contains('${base}: ;')
+			assert fn_c.contains(flag_decl)
+			assert fn_c.contains('${continue_flag} = true;')
+			assert fn_c.contains('goto ${base}__continue;')
+			assert fn_c.contains(continue_label)
+			assert fn_c.contains('${base}__break: ;')
+			assert !fn_c.contains('${tc.label}:')
+			assert fn_c.index(flag_decl)? < fn_c.index(var_decl)?
+			assert fn_c.index(var_decl)? < fn_c.index(continue_label)?
+		}
+		return
+	}
 	for tc in cases {
 		fn_c := function_window(generated_c, 'void main__${tc.fn_name}(void) {')
 		base := '__v_user_goto_0'
@@ -122,6 +163,22 @@ fn test_labelled_continue_targets_reenter_at_the_loop_gate() {
 
 fn test_all_labeled_loop_forms_share_short_ordinal_control_names() {
 	generated_c := generate_c(named_break_continue_testdata, '')
+	if generated_c.contains('void test_labelled_for(void) {') {
+		fn_c := braced_function_window(generated_c, 'void test_labelled_for(void) {')
+		for i, source_label in ['L1', 'L2', 'L3', 'L4'] {
+			base := '__v_user_goto_${i}'
+			continue_flag := '${base}__continue_flag'
+			assert fn_c.contains('goto ${base};')
+			assert fn_c.contains('${base}: ;')
+			assert fn_c.contains('bool ${continue_flag} = false;')
+			assert fn_c.contains('${continue_flag} = true;')
+			assert fn_c.contains('goto ${base}__continue;')
+			assert fn_c.contains('${base}__continue: ;')
+			assert fn_c.contains('${base}__break: ;')
+			assert !fn_c.contains('${source_label}:')
+		}
+		return
+	}
 	fn_c := function_window(generated_c, 'void main__test_labelled_for(void) {')
 	for i, source_label in ['L1', 'L2', 'L3', 'L4'] {
 		base := '__v_user_goto_${i}'
@@ -135,6 +192,19 @@ fn test_all_labeled_loop_forms_share_short_ordinal_control_names() {
 
 fn test_ordinary_goto_labels_reset_for_each_function() {
 	generated_c := generate_c(goto_testdata, '')
+	if generated_c.contains('void test_goto(void) {') {
+		for signature, source_label in {
+			'void test_goto(void) {':                    'a'
+			'void test_goto_after_return(void) {':       'finally_ok'
+			'void test_goto_with_comptime_tmpl(void) {': 'label'
+		} {
+			fn_c := braced_function_window(generated_c, signature)
+			assert fn_c.contains('goto __v_user_goto_0;')
+			assert fn_c.contains('__v_user_goto_0: ;')
+			assert !fn_c.contains('goto ${source_label};')
+		}
+		return
+	}
 	for signature in [
 		'void main__test_goto(void) {',
 		'void main__test_goto_after_return(void) {',
@@ -150,6 +220,59 @@ fn test_ordinary_goto_labels_reset_for_each_function() {
 
 fn test_cstruct_goto_labels_are_short_collision_free_and_scoped() {
 	generated_c := generate_c(cstruct_goto_label_testdata, '-cc msvc -os windows')
+	if generated_c.contains('int ordinary_labels_with_c_name_collisions_and_hostile_macro(void) {') {
+		ordinary_fn := braced_function_window(generated_c,
+			'int ordinary_labels_with_c_name_collisions_and_hostile_macro(void) {')
+		for i in 0 .. 3 {
+			base := '__v_user_goto_${i}'
+			assert ordinary_fn.count('goto ${base};') == 1
+			assert ordinary_fn.count('${base}: ;') == 1
+		}
+		assert !ordinary_fn.contains('goto class;')
+		assert !ordinary_fn.contains('goto __v_class;')
+		assert !ordinary_fn.contains('macro_target')
+
+		loop_fn := braced_function_window(generated_c,
+			'int loop_head_labels_with_c_name_collisions(void) {')
+		for i in 0 .. 3 {
+			base := '__v_user_goto_${i}'
+			assert loop_fn.contains('goto ${base};')
+			assert loop_fn.contains('${base}: ;')
+			assert loop_fn.contains('bool ${base}__continue_flag = false;')
+			assert loop_fn.contains('goto ${base}__continue;')
+			assert loop_fn.contains('${base}__continue: ;')
+			assert loop_fn.contains('${base}__break: ;')
+		}
+
+		long_fn := braced_function_window(generated_c,
+			'int long_labels_and_source_generated_name_collision(void) {')
+		for i in 0 .. 3 {
+			base := '__v_user_goto_${i}'
+			assert long_fn.contains('${base}: ;')
+			assert long_fn.count('goto ${base};') == 1
+		}
+		assert !long_fn.contains('long_label_aaaaaaaa')
+
+		for signature in [
+			'int labels_reset_in_first_function(void) {',
+			'int labels_reset_in_second_function(void) {',
+		] {
+			fn_c := braced_function_window(generated_c, signature)
+			assert fn_c.contains('__v_user_goto_0: ;')
+			assert !fn_c.contains('__v_user_goto_1')
+		}
+
+		generic_string_fn := braced_function_window(generated_c,
+			'int generic_labeled_loop_with_selected_goto_T_string(void) {')
+		generic_int_fn := braced_function_window(generated_c,
+			'int generic_labeled_loop_with_selected_goto_T_v_int(void) {')
+		assert !generic_string_fn.contains('goto __v_user_goto_0;')
+		assert generic_string_fn.contains('__v_user_goto_0:')
+		assert generic_int_fn.contains('goto __v_user_goto_0;')
+		assert generic_int_fn.contains('__v_user_goto_0:')
+		assert_short_user_goto_identifiers(generated_c)
+		return
+	}
 
 	ordinary_fn := function_window(generated_c,
 		'int main__ordinary_labels_with_c_name_collisions_and_hostile_macro(void) {')

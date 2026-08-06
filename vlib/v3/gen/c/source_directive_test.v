@@ -186,6 +186,12 @@ fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations()
 	}
 }
 
+fn test_cache_split_uses_system_sigaction_declaration() {
+	mut g := posix_declaration_filter_gen('macos', false)
+	g.set_cache_split(true)
+	assert g.skip_builtin_struct('C.sigaction')
+}
+
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	mut headerless := FlatGen.new()
 	assert !headerless.c_directives_use_system_libc()

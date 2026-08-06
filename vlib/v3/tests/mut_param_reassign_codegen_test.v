@@ -255,7 +255,7 @@ fn replace(mut current &Item, replacement &Item) {
 }
 
 fn main() {
-	first := Item{
+	mut first := Item{
 		value: 1
 	}
 	second := Item{
@@ -278,7 +278,7 @@ fn replace[T](mut current &T, replacement &T) {
 }
 
 fn main() {
-	first := Item{
+	mut first := Item{
 		value: 2
 	}
 	second := Item{
@@ -304,7 +304,7 @@ fn replace(mut current &Item, replacement &Item) {
 }
 
 fn main() {
-	first := Item{
+	mut first := Item{
 		value: 1
 	}
 	second := Item{
@@ -400,7 +400,7 @@ fn main() {
 	bad(mut xs)
 }
 ",
-		'cannot assign `[]string` to `[]int`')
+		'expected `[]int`, not `[]string`')
 	mut_param_reassign_run_bad(v3_bin, 'bad_mut_array_param_reassign_scalar', 'fn bad(mut xs []int) {
 	xs = 1
 }
@@ -410,7 +410,7 @@ fn main() {
 	bad(mut xs)
 }
 ',
-		'cannot assign `int` to `[]int`')
+		'expected `[]int`, not `int literal`')
 	mut_param_reassign_run_bad(v3_bin, 'bad_pointer_local_reassign_value', 'fn main() {
 	mut xs := []int{}
 	mut p := &xs
@@ -418,7 +418,7 @@ fn main() {
 	p = tmp
 }
 ',
-		'cannot assign `[]int` to `&[]int`')
+		'expected `&[]int`, not `[]int`')
 	mut_param_reassign_run_bad(v3_bin, 'bad_shadowed_mut_param_multi_return', 'fn pair() ([]int, int) {
 	mut xs := []int{}
 	return xs, 7

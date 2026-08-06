@@ -271,12 +271,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			g.tc.cur_scope.insert(lhs.value, base_type.value_type)
 		} else {
 			opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
-			val_ct0, val_type := g.optional_value_ct(rhs_type)
-			val_ct := if val_type is types.MultiReturn {
-				g.optional_payload_c_type(val_type)
-			} else {
-				val_ct0
-			}
+			val_ct, val_type := g.optional_value_info(rhs_type, opt_ct)
 			g.write('${opt_ct} ${tmp} = ')
 			if rhs_needs_deref {
 				g.write('*(')
@@ -293,12 +288,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		}
 	} else {
 		opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
-		val_ct0, val_type := g.optional_value_ct(rhs_type)
-		val_ct := if val_type is types.MultiReturn {
-			g.optional_payload_c_type(val_type)
-		} else {
-			val_ct0
-		}
+		val_ct, val_type := g.optional_value_info(rhs_type, opt_ct)
 		g.write('${opt_ct} ${tmp} = ')
 		if rhs_needs_deref {
 			g.write('*(')
@@ -833,7 +823,7 @@ fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node, ret_type types.Type) {
 			}
 			return
 		}
-		g.writeln('{ _ifexpr = (typeof(_ifexpr)){0}; }')
+		g.writeln('{ _ifexpr = (${g.value_c_type(ret_type)}){0}; }')
 		return
 	}
 }

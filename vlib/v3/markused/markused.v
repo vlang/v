@@ -12,7 +12,8 @@ const min_eager_markused_bodies = 4096
 
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
+		false, true)
 	return used
 }
 
@@ -24,13 +25,22 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 // mark_used_with_generic_usage also reports whether reachable code uses a generic
 // function, struct, or sum type and therefore requires monomorphization.
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true)
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
+		false, true)
+}
+
+// mark_used_with_generic_usage_full_runtime disables the literal-output shortcut so
+// compatibility fixtures retain helpers referenced by the complete builtin runtime.
+pub fn mark_used_with_generic_usage_full_runtime(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true,
+		false, false)
 }
 
 // mark_used_without_generic_detection is the self-host variant for inputs whose caller
 // already guarantees that monomorphization is unnecessary.
 pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false,
+		false, true)
 	return used
 }
 
@@ -41,7 +51,17 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false, true)
+}
+
+// mark_all_used_with_generic_usage roots every concrete function while preserving
+// ordinary generic reachability and test harness roots.
+pub fn mark_all_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) (map[string]bool, bool) {
+	mut file_map := map[string]bool{}
+	for file in test_files {
+		file_map[file] = true
+	}
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true, true)
 }
 
 // mark_used_for_cache roots every concrete function in modules being built for the object cache.
@@ -57,7 +77,7 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true)
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false, true)
 }
 
 // mark_used_for_cache_without_generic_detection is the self-host cache variant for inputs
@@ -67,7 +87,7 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 	for file in test_files {
 		file_map[file] = true
 	}
-	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false)
+	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false, true)
 	return used
 }
 
@@ -144,9 +164,10 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 }
 
 @[direct_array_access]
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool) (map[string]bool, bool) {
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
-	trivial_literal_output := is_trivial_literal_output_program(a, tc.diagnostic_files)
+	trivial_literal_output := allow_trivial_literal_output && !cache_mode && cache_modules.len == 0
+		&& test_files.len == 0 && is_trivial_literal_output_program(a, tc.diagnostic_files)
 	// An exact literal-output program has no user expressions or declarations that
 	// can instantiate a generic. Skip generic indexes and per-node generic checks,
 	// just as the known non-generic self-host path does.
@@ -165,6 +186,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut cur_file := ''
 	mut import_contexts := []map[string]string{cap: 256}
 	import_contexts << map[string]string{}
+	mut import_context_by_file := map[string]int{}
 	mut cur_import_context := 0
 	mut fn_decls := map[string]FnDeclInfo{}
 	mut fn_decl_lists := map[string][]FnDeclInfo{}
@@ -191,6 +213,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_import_contexts := []int{cap: 8192}
 	mut cache_roots := []string{}
 	mut c_interface_roots := []string{}
+	mut marked_roots := []string{}
 
 	mut fn_count := 0
 	mut fn_with_dot := 0
@@ -202,6 +225,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			cur_module = ''
 			import_contexts << markused_top_level_file_imports(a, node)
 			cur_import_context = import_contexts.len - 1
+			import_context_by_file[cur_file] = cur_import_context
 			continue
 		}
 		if node.kind == .module_decl {
@@ -214,12 +238,19 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			continue
 		}
+		decl_file := if source_file := a.source_files[node.pos.id] {
+			source_file.name
+		} else {
+			cur_file
+		}
+		decl_module := tc.file_modules[decl_file] or { cur_module }
+		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
 		if node.kind == .struct_decl {
-			full_name := qualify_fn(cur_module, node.value)
+			full_name := qualify_fn(decl_module, node.value)
 			info := StructDeclInfo{
 				node_id:        flat.NodeId(node_idx)
-				module:         cur_module
-				import_context: cur_import_context
+				module:         decl_module
+				import_context: decl_import_context
 			}
 			struct_decls[full_name] = info
 			if node.value !in struct_decls {
@@ -236,12 +267,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 				info := ConstDeclInfo{
 					expr_id:        a.child(field, 0)
-					module:         cur_module
-					import_context: cur_import_context
+					module:         decl_module
+					import_context: decl_import_context
 				}
 				const_decls[field.value] = info
 				add_candidate_suffix(mut const_name_suffixes, field.value)
-				full_name := qualify_fn(cur_module, field.value)
+				full_name := qualify_fn(decl_module, field.value)
 				if full_name != field.value {
 					const_decls[full_name] = info
 					add_candidate_suffix(mut const_name_suffixes, full_name)
@@ -250,9 +281,15 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			continue
 		}
 		if node.kind == .fn_decl || node.kind == .c_fn_decl {
+			decl_qname := qualify_fn(decl_module, node.value)
+			fn_decl_file := tc.fn_type_files[decl_qname] or { decl_file }
+			fn_decl_module := tc.fn_type_modules[decl_qname] or { decl_module }
+			fn_decl_import_context := import_context_by_file[fn_decl_file] or {
+				decl_import_context
+			}
 			body_ids << node_idx
-			body_modules << cur_module
-			body_import_contexts << cur_import_context
+			body_modules << fn_decl_module
+			body_import_contexts << fn_decl_import_context
 			has_dot := node.value.index_u8(`.`) >= 0
 			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
@@ -266,8 +303,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			info := FnDeclInfo{
 				node_id:        flat.NodeId(node_idx)
-				module:         cur_module
-				import_context: cur_import_context
+				module:         fn_decl_module
+				import_context: fn_decl_import_context
 			}
 			add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
 			if can_suffix_match {
@@ -280,14 +317,17 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					add_candidate_suffix(mut fn_name_suffixes, lowered_name)
 				}
 			}
-			qname := qualify_fn(cur_module, node.value)
+			qname := qualify_fn(fn_decl_module, node.value)
+			if markused_fn_has_attribute(a, node_idx, 'markused') {
+				marked_roots << qname
+			}
 			// Cached headers retain bodies only when the warm pass must recreate
 			// generated specializations or closure support symbols. Root those bodies
 			// even though their ordinary caller can live entirely in another cached
 			// object and therefore be invisible to the program AST.
-			cached_header_body := cur_file.ends_with('.vh') && !node.is_mut
+			cached_header_body := fn_decl_file.ends_with('.vh') && !node.is_mut
 			if cache_mode && node.kind == .fn_decl && node.generic_params().len == 0
-				&& (cache_modules[cur_module] || cached_header_body) {
+				&& (cache_modules[fn_decl_module] || cached_header_body) {
 				cache_roots << qname
 			}
 			if qname != node.value {
@@ -318,7 +358,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				short := qname.all_after_last('.')
 				add_suffix_candidate(mut suffix_map, short, qname)
 			}
-			if cur_module == 'c' && cur_file.ends_with('/gen/c/interface.v') {
+			if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
 				c_interface_roots << node.value
 				if qname != node.value {
 					c_interface_roots << qname
@@ -338,15 +378,22 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	queue << 'main'
 	used['main'] = true
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
-	enqueue_auto_roots(fn_decls, reachable_modules, mut used, mut queue)
+	enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
+	for root in marked_roots {
+		enqueue(root, mut used, mut queue)
+	}
+	// Exported functions are externally reachable even when the input has no V
+	// entry point (for example `-is_o` modules called from C).
+	enqueue_export_roots(a, tc, mut used, mut queue)
 	if trivial_literal_output {
-		// Primitive signed-integer string wrappers are part of the generated C
-		// prelude even when the user program never calls them.
-		queue << 'strconv.format_int'
-		used['strconv.format_int'] = true
+		// Bounds-checking helpers are part of the generated C prelude even when the
+		// user program only prints a literal. Their diagnostics stringify indexes
+		// and release intermediate concatenations after markused has run.
+		for seed in ['strconv.format_int', 'string.free', 'string__free'] {
+			enqueue(seed, mut used, mut queue)
+		}
 	}
 	if !trivial_literal_output {
-		enqueue_export_roots(a, tc, mut used, mut queue)
 		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
 		enqueue_test_file_roots(a, test_files, mut used, mut queue)
 		for seed in ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue',
@@ -370,19 +417,20 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			queue << seed
 			used[seed] = true
 		}
-		for seed in ['new_array_from_c_array', 'array.set', 'array.push_many', 'array.insert',
-			'array.insert_many', 'array.prepend', 'array.reverse', 'array.slice', 'array.slice_ni',
-			'string.substr_ni', 'array.pop_left', 'array.clone', 'array.delete', 'array.ensure_cap',
-			'string.==', 'string.<', 'string.free', 'string.all_before', 'string.all_before_last',
-			'string.all_after', 'string.all_after_last', 'string.substr', 'string__substr',
-			'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes', 'charptr.vstring',
-			'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
-			'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get',
-			'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
-			'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'strings.Builder.write_ptr',
-			'strings.Builder.write_runes', 'strings.Builder.free', 'strconv.format_int',
-			'strconv.format_uint', 'strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64',
-			'bool.str', 'int.str', 'u64.str', 'f32.str', 'f64.str', 'rune.str', 'string.+', 'ptr_str',
+		for seed in ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
+			'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
+			'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone',
+			'array.delete', 'array.ensure_cap', 'string.==', 'string.<', 'string.free',
+			'string.all_before', 'string.all_before_last', 'string.all_after',
+			'string.all_after_last', 'string.substr', 'string__substr', 'u8.vstring',
+			'u8.vstring_with_len', 'u8.vbytes', 'charptr.vstring', 'charptr.vstring_with_len',
+			'byteptr.vstring', 'byteptr.vstring_with_len', 'byteptr.vbytes', 'voidptr.vbytes',
+			'[]rune.string', 'map.set', 'map.exists', 'map.get', 'map.get_check', 'map.get_and_set',
+			'map.delete', 'map.clone', 'map.clear', 'map.keys', 'map.values', 'map.reserve',
+			'map_map_eq', 'memdup', 'strings.Builder.write_ptr', 'strings.Builder.write_runes',
+			'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint',
+			'strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64', 'bool.str', 'int.str',
+			'u64.str', 'f32.str', 'f64.str', 'rune.str', 'string.+', 'ptr_str',
 			'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'os.join_path_single', 'panic',
 			'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
 			'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
@@ -404,7 +452,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 		}
 		for type_name in tc.ownership_drop_type_names() {
-			method := '${type_name}.drop'
+			method := if tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }
 			enqueue(method, mut used, mut queue)
 			lowered := markused_c_name(method)
 			if lowered != method {
@@ -421,6 +469,22 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	for name in c_interface_roots {
 		enqueue(name, mut used, mut queue)
+	}
+	if a.nodes.any(it.kind == .debugger_stmt) {
+		enqueue('debug.Debugger.interact', mut used, mut queue)
+	}
+	// Trace calls are injected by Cgen after AST reachability has been computed,
+	// so retain their two runtime entry points whenever the debug module exists.
+	enqueue('debug.before_call_hook', mut used, mut queue)
+	enqueue('debug.after_call_hook', mut used, mut queue)
+	if all_functions {
+		for index, node_idx in body_ids {
+			node := a.nodes[node_idx]
+			if node.kind != .fn_decl || markused_fn_decl_is_generic_template(node, a) {
+				continue
+			}
+			enqueue(qualify_fn(body_modules[index], node.value), mut used, mut queue)
+		}
 	}
 
 	if trace_markused {
@@ -500,7 +564,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	} else if !trivial_literal_output {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	}
-	if !trivial_literal_output && markused_program_needs_closure_runtime(a, tc) {
+	if !trivial_literal_output && markused_program_needs_closure_runtime(a) {
 		enqueue('closure.closure_create_with_data', mut used, mut queue)
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
 	}
@@ -580,6 +644,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			// the checker per enclosing function) are reachable too -- mark them so they
 			// survive pruning (cgen emits a wrapper that calls them).
 			if mvs := tc.method_values_by_fn[node_key] {
+				enqueue('closure.closure_create_with_data', mut used, mut queue)
+				enqueue('closure.closure_try_destroy', mut used, mut queue)
 				for mkey in mvs {
 					enqueue(mkey, mut used, mut queue)
 					lowered_mv := markused_c_name(mkey)
@@ -1616,9 +1682,13 @@ fn (c &CallCollector) may_target_interface_params(name string) bool {
 }
 
 // enqueue_auto_roots supports enqueue auto roots handling for markused.
-fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, reachable_modules map[string]bool, mut used map[string]bool, mut queue []string) {
+fn enqueue_auto_roots(a &flat.FlatAst, fn_decls map[string]FnDeclInfo, reachable_modules map[string]bool, mut used map[string]bool, mut queue []string) {
 	for name, info in fn_decls {
 		if !is_auto_root_fn(name) {
+			continue
+		}
+		if name.all_after_last('.') == 'cleanup'
+			&& markused_fn_has_receiver_param(a, a.node(info.node_id)) {
 			continue
 		}
 		if !markused_module_has_reachable_initializer(info.module, reachable_modules) {
@@ -1684,7 +1754,7 @@ fn enqueue_veb_handler_roots(a &flat.FlatAst, tc &types.TypeChecker, mut used ma
 
 fn markused_fn_needs_implicit_veb_ctx(a &flat.FlatAst, tc &types.TypeChecker, cur_module string, node flat.Node) bool {
 	return markused_fn_returns_veb_result(tc, node) && markused_fn_has_receiver_param(a, node)
-		&& !markused_fn_receiver_type_is_context(a, node) && !markused_fn_has_param(a, node, 'ctx')
+		&& !markused_fn_receiver_type_is_context(a, node)
 		&& markused_type_name_known_in_module(tc, cur_module, 'Context')
 }
 
@@ -1715,16 +1785,6 @@ fn markused_fn_receiver_type_is_context(a &flat.FlatAst, node flat.Node) bool {
 	}
 	first := a.child_node(&node, 0)
 	return first.typ.trim_left('&').all_after_last('.') == 'Context'
-}
-
-fn markused_fn_has_param(a &flat.FlatAst, node flat.Node, name string) bool {
-	for i in 0 .. node.children_count {
-		param := a.child_node(&node, i)
-		if param.kind == .param && param.value == name {
-			return true
-		}
-	}
-	return false
 }
 
 fn markused_type_name_known_in_module(tc &types.TypeChecker, module_name string, typ string) bool {
@@ -1870,7 +1930,19 @@ fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string
 // is_auto_root_fn reports whether is auto root fn applies in markused.
 fn is_auto_root_fn(name string) bool {
 	short_name := name.all_after_last('.')
-	return short_name in ['init', 'builtin_init']
+	return short_name in ['init', 'builtin_init', 'cleanup']
+}
+
+fn markused_fn_has_attribute(a &flat.FlatAst, node_idx int, name string) bool {
+	attr_idx := node_idx + 1
+	if attr_idx < 0 || attr_idx >= a.nodes.len {
+		return false
+	}
+	attr := a.nodes[attr_idx]
+	if attr.kind != .directive || attr.value != '@attributes:${node_idx}' {
+		return false
+	}
+	return name in attr.generic_params()
 }
 
 // enqueue_detected_runtime_helpers supports enqueue detected runtime helpers handling for markused.
@@ -2162,10 +2234,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 }
 
-fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker) bool {
-	if tc.method_values_by_fn.len > 0 {
-		return true
-	}
+fn markused_program_needs_closure_runtime(a &flat.FlatAst) bool {
 	mut call_callees := map[int]bool{}
 	for node in a.nodes {
 		if node.kind == .call && node.children_count > 0 {
@@ -4092,18 +4161,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				}
 				if c.selector_is_enum_value(child, cur_module, imports, local_values) {
 					// Enum fields are values even when a method has the same name.
-				} else if c.collect_interface_method_value_selector(child, mut calls) {
-					// handled
-				} else if c.detect_generics
-					&& c.collect_generic_method_value_selector(child, cur_module, imports, mut calls) {
-					// handled
-				} else if resolved := c.tc.resolved_fn_value_name(child_id) {
-					calls << resolved
 				} else {
-					// The checker normally records local receiver method values in
-					// method_values_by_fn. Keep a typed-selector fallback here too: large
-					// parallel checks can merge a body without that auxiliary entry, while
-					// cgen will still emit a wrapper that calls the concrete method.
 					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
 				}
 			}
@@ -4681,6 +4739,9 @@ fn (c &CallCollector) local_fn_param_type_names(node &flat.Node, cur_module stri
 }
 
 fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, cur_module string, imports map[string]string, local_types map[string]string) string {
+	if contextual_alias := c.contextual_alias_type_name(declared, cur_module, imports) {
+		return contextual_alias
+	}
 	declared_type := c.tc.parse_canonical_type(declared)
 	if declared_type is types.Alias {
 		return declared_type.name
@@ -4695,6 +4756,29 @@ fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, 
 		return rhs_type.name
 	}
 	return declared
+}
+
+// contextual_alias_type_name preserves the owner module of an alias written
+// unqualified in a declaration. Markused workers analyze bodies from many
+// modules with one checker view, so parsing that source spelling through the
+// worker's last module would attach an unrelated module to the alias.
+fn (c &CallCollector) contextual_alias_type_name(type_text string, cur_module string, imports map[string]string) ?string {
+	clean := type_text.trim_space()
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '&', '?', '!'] {
+		if clean.starts_with(prefix) {
+			inner := c.contextual_alias_type_name(clean[prefix.len..], cur_module, imports) or {
+				return none
+			}
+			return prefix + inner
+		}
+	}
+	resolved := markused_resolve_imported_type_name(clean, imports)
+	for candidate in markused_alias_type_candidates(resolved, clean, cur_module) {
+		if candidate in c.tc.type_aliases {
+			return candidate
+		}
+	}
+	return none
 }
 
 fn markused_fn_signature_name_candidates(name string, cur_module string) []string {
@@ -5377,6 +5461,21 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 	}
 	node := c.a.node(id)
 	match node.kind {
+		.paren {
+			if node.children_count > 0 {
+				return c.syntax_alias_expr_type(c.a.child(node, 0), cur_module, imports)
+			}
+		}
+		.prefix {
+			if node.op == .amp && node.children_count > 0 {
+				inner := c.syntax_alias_expr_type(c.a.child(node, 0), cur_module, imports) or {
+					return none
+				}
+				return types.Type(types.Pointer{
+					base_type: inner
+				})
+			}
+		}
 		.array_literal {
 			for i in 0 .. node.children_count {
 				elem_id := c.a.child(node, i)
@@ -5396,6 +5495,9 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 		}
 		.cast_expr {
 			if node.value.len > 0 {
+				if contextual_alias := c.contextual_alias_type_name(node.value, cur_module, imports) {
+					return c.tc.parse_canonical_type(contextual_alias)
+				}
 				if alias_type := c.alias_type_from_name(node.value, cur_module, imports) {
 					return alias_type
 				}
@@ -5887,6 +5989,9 @@ fn (c &CallCollector) top_level_expr_type_name(id flat.NodeId, cur_module string
 			return elem_type
 		}
 	}
+	if alias_type := c.syntax_alias_expr_type(id, cur_module, imports) {
+		return alias_type.name()
+	}
 	typ := c.node_type(id)
 	if type_name := markused_type_name(typ, unwrap_optional_result) {
 		return type_name
@@ -6277,6 +6382,15 @@ fn (c &CallCollector) operator_lhs_type(lhs_id flat.NodeId, local_types map[stri
 				}
 			}
 		}
+		if lhs.kind == .index && lhs.children_count > 0 {
+			base_type := types.unwrap_pointer(c.operator_lhs_type(c.a.child(lhs, 0), local_types))
+			return match base_type {
+				types.Array { base_type.elem_type }
+				types.ArrayFixed { base_type.elem_type }
+				types.Map { base_type.value_type }
+				else { base_type }
+			}
+		}
 	}
 	return c.node_type(lhs_id)
 }
@@ -6490,14 +6604,21 @@ fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_mo
 // collect_fn_value_selector updates collect fn value selector state for markused.
 @[direct_array_access]
 fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
+	if resolved := c.tc.resolved_fn_value_name(id) {
+		calls << resolved
+		return
+	}
+	// A field access can share its name with a receiver method. Only apply the
+	// typed-selector fallback when checking established that the selector itself
+	// is a function value; otherwise the fallback over-marks unrelated methods.
+	if !c.node_is_fn_value(id) {
+		return
+	}
 	if c.collect_interface_method_value_selector(node, mut calls) {
 		return
 	}
-	if c.collect_generic_method_value_selector(node, cur_module, imports, mut calls) {
-		return
-	}
-	if resolved := c.tc.resolved_fn_value_name(id) {
-		calls << resolved
+	if c.detect_generics
+		&& c.collect_generic_method_value_selector(node, cur_module, imports, mut calls) {
 		return
 	}
 	for name in c.fn_value_selector_names(node, cur_module, imports) {
@@ -7741,7 +7862,10 @@ fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?Str
 	if struct_name.len == 0 {
 		return none
 	}
-	return c.struct_decls[struct_name] or { none }
+	if info := c.struct_decls[struct_name] {
+		return info
+	}
+	return none
 }
 
 // collect_struct_default_calls_from_info supports collect_struct_default_calls_from_info handling.

@@ -178,11 +178,13 @@ fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 			c_name:              'main__unchecked_index'
 			cost:                1
 			direct_array_access: true
+			ignore_overflow:     true
 		},
 	]
 	g.prepare_pre_dispatch_master()
 	assert g.fn_gen_items.len == 1
 	assert g.fn_gen_items[0].direct_array_access
+	assert g.fn_gen_items[0].ignore_overflow
 	g.release_scoped_fn_items()
 }
 

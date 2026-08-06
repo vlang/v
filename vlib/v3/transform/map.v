@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // MapIndexInfo stores map index info metadata used by transform.
 struct MapIndexInfo {
@@ -89,7 +90,7 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
 	key_storage_type := t.map_key_storage_type(key_type)
-	hash_fn, eq_fn, clone_fn, free_fn := map_callback_names(key_storage_type)
+	hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(key_storage_type)
 	mut args := []flat.NodeId{}
 	args << t.make_sizeof_type(key_storage_type)
 	args << t.make_sizeof_type(value_type)
@@ -133,6 +134,17 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
+}
+
+fn (t &Transformer) map_callback_names_for_type(key_type string) (string, string, string, string) {
+	if !isnil(t.tc) {
+		clean := t.tc.parse_type(t.normalize_type_alias(key_type))
+		if clean is types.ArrayFixed {
+			base := '${t.tc.c_type(clean)}_map_key'
+			return '${base}_hash', '${base}_eq', '${base}_clone', '${base}_free'
+		}
+	}
+	return map_callback_names(key_type)
 }
 
 // map_index_info supports map index info handling for Transformer.
@@ -243,6 +255,13 @@ fn (mut t Transformer) make_map_set_stmt(map_expr flat.NodeId, base_type string,
 	call := t.make_call_typed('map__set', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void')
 	return t.make_expr_stmt(call)
+}
+
+fn (mut t Transformer) stable_map_lvalue_for_reuse(id flat.NodeId) flat.NodeId {
+	if t.expr_can_take_address(id) {
+		return t.transform_lvalue(id)
+	}
+	return t.stable_expr_for_reuse(id)
 }
 
 // const_expr_for_ident supports const expr for ident handling for Transformer.
@@ -383,9 +402,10 @@ fn (mut t Transformer) lower_owned_map_index_move(source_id flat.NodeId, map_exp
 	body := [t.make_assign(t.make_ident(result_name), stored_read),
 		t.make_clear_map_ptr_value(ptr_name, value_type)]
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	body_block := t.make_block(body)
 	start := t.a.children.len
 	t.a.children << cond
-	t.a.children << t.make_block(body)
+	t.a.children << body_block
 	t.pending_stmts << t.a.add_node(flat.Node{
 		kind:                 .if_expr
 		children_start:       start
@@ -640,7 +660,7 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 		return none
 	}
 	info := t.map_index_info(t.a.child(&node, 0)) or { return none }
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -852,7 +872,7 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	if inner_key_type.len == 0 || inner_value_type.len == 0 {
 		return none
 	}
-	map_expr := t.stable_expr_for_reuse(outer_info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(outer_info.base_id)
 	outer_key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1058,7 +1078,7 @@ fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[
 	}
 	lhs_id := t.a.child(&node, 0)
 	path := t.map_fixed_array_index_path(lhs_id) or { return none }
-	map_expr := t.stable_expr_for_reuse(path.map_info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(path.map_info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1147,7 +1167,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	if field_type.len == 0 {
 		return none
 	}
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1325,7 +1345,7 @@ fn (mut t Transformer) try_lower_map_index_postfix_stmt(id flat.NodeId) ?[]flat.
 		return none
 	}
 	info := t.map_index_info(t.a.child(&node, 0)) or { return none }
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1353,7 +1373,7 @@ fn (mut t Transformer) try_lower_map_index_append_stmt_with_prelude(id flat.Node
 	if !info.value_type.starts_with('[]') {
 		return none
 	}
-	map_expr := t.stable_expr_for_reuse(info.base_id)
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1442,6 +1462,13 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		t.node_type(id)
 	}
 	map_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(map_type))
+	if t.generic_arg_is_unresolved(map_type) {
+		inferred_type :=
+			t.normalize_type_alias(t.resolve_type_text_import_aliases(t.infer_map_init_entry_type(node)))
+		if inferred_type.starts_with('map[') && !t.generic_arg_is_unresolved(inferred_type) {
+			map_type = inferred_type
+		}
+	}
 	if !map_type.starts_with('map[') {
 		return id
 	}
@@ -1484,16 +1511,10 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		key_id := t.a.child(&node, i)
 		key_name := t.new_temp('map_key')
 		value_name := t.new_temp('map_val')
-		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
-			key_type), key_storage_type)
+		key_expr := t.transform_map_entry_expr_for_type(key_id, key_type)
+		t.pending_stmts << t.make_decl_assign_typed(key_name, key_expr, key_storage_type)
 		value_id := t.a.child(&node, i + 1)
-		value := if value_type.starts_with('&') && t.is_sum_type_name(value_type[1..]) {
-			t.transform_expr_for_type(value_id, value_type)
-		} else if value_type in t.sum_types || t.resolve_sum_name(value_type) in t.sum_types {
-			t.transform_sum_value_for_type(value_id, value_type)
-		} else {
-			t.transform_expr_for_type(value_id, value_type)
-		}
+		value := t.transform_map_entry_expr_for_type(value_id, value_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, value_type)
 		mut cleanup_key := false
 		mut existing_key_name := ''
@@ -1524,6 +1545,24 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		}
 	}
 	return t.make_ident(tmp_name)
+}
+
+fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ string) flat.NodeId {
+	prefix := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value := if typ.starts_with('&') && t.is_sum_type_name(typ[1..]) {
+		t.transform_expr_for_type(id, typ)
+	} else if typ in t.sum_types || t.resolve_sum_name(typ) in t.sum_types {
+		t.transform_sum_value_for_type(id, typ)
+	} else {
+		t.transform_expr_for_type(id, typ)
+	}
+	entry_pending := t.pending_stmts.clone()
+	t.pending_stmts = prefix
+	for stmt in entry_pending {
+		t.pending_stmts << stmt
+	}
+	return value
 }
 
 fn (t &Transformer) refine_map_init_fixed_array_value_type(node flat.Node, map_type string) string {

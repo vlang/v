@@ -233,9 +233,9 @@ pub fn (mut p Parser) expr() !int {
 	assert !generated.contains('othermod__Parser__expr('), generated
 }
 
-fn test_top_level_local_receiver_shadows_module_alias() {
+fn test_top_level_local_receiver_cannot_shadow_module_alias() {
 	v3_bin := mini_calc_build_v3()
-	output, generated := mini_calc_compile_run(v3_bin, 'local_receiver_alias_shadow', {
+	output := mini_calc_compile_bad(v3_bin, 'local_receiver_alias_shadow', {
 		'main.v':          'module main
 
 import parsermod as parser
@@ -256,14 +256,12 @@ pub fn expr() int {
 }
 '
 	}, 'main.v')
-	assert output == '12'
-	assert generated.contains('Parser__expr('), generated
-	assert !generated.contains('parsermod__expr('), generated
+	assert output.contains('duplicate of an import symbol `parser`'), output
 }
 
-fn test_top_level_import_alias_then_local_receiver_shadow_direct_calls() {
+fn test_top_level_import_alias_cannot_be_shadowed_after_direct_calls() {
 	v3_bin := mini_calc_build_v3()
-	output, generated := mini_calc_compile_run(v3_bin, 'import_alias_then_local_receiver_shadow', {
+	output := mini_calc_compile_bad(v3_bin, 'import_alias_then_local_receiver_shadow', {
 		'main.v':          'module main
 
 import parsermod as parser
@@ -285,9 +283,7 @@ pub fn expr() int {
 }
 '
 	}, 'main.v')
-	assert output == '17\n99'
-	assert generated.contains('parsermod__expr('), generated
-	assert generated.contains('Parser__expr('), generated
+	assert output.contains('duplicate of an import symbol `parser`'), output
 }
 
 fn test_mini_calculator_recursive_descent_compiles_and_runs() {

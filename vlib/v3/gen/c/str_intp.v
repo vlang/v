@@ -173,9 +173,14 @@ fn is_string_interp_unsigned_int_type(name string) bool {
 	return name in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
 }
 
+fn is_string_interp_char_code_type(name string) bool {
+	return is_string_interp_signed_int_type(name) || is_string_interp_unsigned_int_type(name)
+		|| name == 'rune'
+}
+
 fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, typ types.Type, format string) bool {
 	f := parse_string_interp_format(format)
-	type_name := string_interp_type_name(typ)
+	type_name := string_interp_type_name(g.value_unalias_type(typ))
 	left := if f.left { 1 } else { 0 }
 	// An unsigned-backed enum must format as unsigned so values >= 1<<63 are not
 	// rendered as negative; consult the enum backing type like the transformer does.
@@ -183,6 +188,18 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		enum_storage_c_type_is_unsigned(g.enum_storage_c_type(typ))
 	} else {
 		false
+	}
+	if is_string_interp_char_code_type(type_name) && f.verb == `c` {
+		if f.width > 1 {
+			g.write('v3_string_pad(')
+		}
+		g.write('rune__str((u32)(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write('))')
+		if f.width > 1 {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
 	}
 	if (is_string_interp_signed_int_type(type_name) || is_string_interp_unsigned_int_type(type_name)
 		|| typ is types.Enum) && f.verb in [`b`, `o`, `x`, `X`] {

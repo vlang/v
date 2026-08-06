@@ -257,7 +257,9 @@ fn parse_args() bool {
 }
 
 fn host_v_cmd(cfg Config) string {
-	return '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)}'
+	// Keep the bootstrap and V3 module-test builds on V1 after macOS defaults to
+	// V3. The later harness steps use the freshly built V3 binary explicitly.
+	return '${q(cfg.vexe)} -old-compiler -gc none -path ${q(cfg.vlib_dir)}'
 }
 
 fn native_backend_arch() string {

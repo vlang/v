@@ -17,6 +17,9 @@ char quote = \'A\';
 	assert !g.cached_support_identifiers['_fn_ptr_block_comment_only']
 	assert !g.cached_support_identifiers['Option_string_only']
 	assert !g.cached_support_identifiers['escaped']
+	assert g.cached_support_has_c_type('ExistingSupport')
+	assert g.cached_support_has_c_type('struct ExistingSupport')
+	assert !g.cached_support_has_c_type('struct MissingSupport')
 }
 
 fn test_c_directive_targets_use_requested_platform() {
