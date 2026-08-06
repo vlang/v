@@ -157,8 +157,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: make -j4 && ./v symlink
+        with:
+          profile: sanitizers
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: true
       - name: V doctor
         if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: ./v doctor
