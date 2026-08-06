@@ -233,6 +233,14 @@ pub const min_initial_datagram_size = 1200
 // reaches at least min_initial_datagram_size (1200) bytes. A no-op if the
 // packet would already reach that size unpadded.
 //
+// `header_len` MUST be the full on-wire header length INCLUDING the packet
+// number field -- i.e. `encode_long_header(...).len + pn_length`, not just
+// the encoded long header by itself (see initial_exchange_test.v for the
+// exact call shape). The packet number is encoded separately from the long
+// header proper but still occupies bytes of the final protected packet
+// this function is sizing against; omitting it under-counts `total` by
+// 1-4 bytes and silently under-pads below the RFC 9000 §14.1 floor.
+//
 // This is RFC 9000 §14.1's PRIMARY padding mechanism -- "adding PADDING
 // frames to the Initial packet" -- and the one every real implementation
 // (quiche, ngtcp2, quinn) actually uses: the padding lands INSIDE the

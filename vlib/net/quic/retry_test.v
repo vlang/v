@@ -36,14 +36,19 @@ fn test_retry_packet_round_trip_verifies() {
 	// echo requirement); its own SCID is the server's genuinely new value.
 	packet := build_test_retry_packet(original_scid, new_scid, token, original_dcid)!
 
+	// verify_retry_integrity_tag first, matching parse_retry_packet's own
+	// documented contract ("Callers MUST call verify_retry_integrity_tag
+	// first and only call this function when it returns true") -- this test
+	// models the intended production call order, not just independent
+	// checks on the same fixture.
+	ok := verify_retry_integrity_tag(original_dcid, packet, false)!
+	assert ok
+
 	parsed := parse_retry_packet(packet, original_dcid, original_scid)!
 	assert parsed.dcid == original_scid
 	assert parsed.scid == new_scid
 	assert parsed.retry_token == token
 	assert parsed.integrity_tag.len == retry_integrity_tag_len
-
-	ok := verify_retry_integrity_tag(original_dcid, packet, false)!
-	assert ok
 }
 
 fn test_retry_packet_rejects_tampered_tag() {
