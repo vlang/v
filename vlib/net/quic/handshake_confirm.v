@@ -39,6 +39,8 @@ mut:
 	sent_first_handshake_packet bool
 }
 
+// new_handshake_completion_state creates a fresh tracker with none of the
+// completion/confirmation checkpoints reached yet.
 pub fn new_handshake_completion_state() &HandshakeCompletionState {
 	return &HandshakeCompletionState{}
 }

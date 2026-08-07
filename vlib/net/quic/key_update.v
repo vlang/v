@@ -1,5 +1,7 @@
 module quic
 
+import crypto.sha256
+
 // RFC 9001 §6 — 1-RTT Key Update, RECEIVE side only. Client-initiated key
 // rotation (this side deciding to start sending with a NEW phase) is
 // explicitly deferred past v1 per this project's plan; tolerating a
@@ -23,8 +25,17 @@ const key_update_label = 'quic ku'
 // connection's client_secret and server_secret -- each side's traffic
 // secret chain advances on its own schedule, which is exactly why this
 // function takes a bare secret rather than anything connection-scoped.
+//
+// The output is always exactly sha256.size bytes -- RFC 9001 §6.1 defines
+// this as the negotiated TLS hash length, NOT a function of the input's own
+// length. v1 is pinned to TLS_AES_128_GCM_SHA256 (see tls13_client_hello.v),
+// so that length is always sha256.size, matching every other traffic-secret
+// derivation in this module (initial_secrets.v, tls13_keyschedule.v).
+// Trusting `current_secret.len` instead would let a wrong-length input
+// silently produce a wrong-length "updated" secret that no compliant peer
+// would ever derive, rather than surfacing the mismatch as an error.
 pub fn derive_updated_secret(current_secret []u8) ![]u8 {
-	return hkdf_expand_label(current_secret, key_update_label, []u8{}, current_secret.len)
+	return hkdf_expand_label(current_secret, key_update_label, []u8{}, sha256.size)
 }
 
 // max_key_updates_accepted bounds how many PEER-INITIATED key updates one
@@ -61,6 +72,18 @@ pub:
 	// seen in the current phase) -- AS OBSERVED AT RESOLVE TIME. Mutually
 	// exclusive with is_new_update.
 	is_previous_phase bool
+	// generation is the ABSOLUTE key generation this resolution belongs to
+	// (generation 0 is the first 1-RTT secret, incrementing by exactly 1
+	// per accepted update), computed from s.current_generation AT RESOLVE
+	// TIME. Unlike the phase bit (which has period-2 parity and cannot
+	// tell generation N apart from generation N+2), an absolute generation
+	// number stays correct even if OTHER resolutions commit in between --
+	// it identifies a real, specific generation, not a value relative to
+	// "whatever is current right now". note_successful_decrypt trusts this
+	// field specifically because of that: comparing it against the
+	// CURRENT s.current_generation at commit time is always correct,
+	// regardless of how many other commits happened first.
+	generation int
 }
 
 // KeyUpdateState tracks ONE direction's (specifically: the direction used
@@ -77,21 +100,35 @@ mut:
 	previous_keys           ?QuicPacketProtectionKeys
 	min_pn_in_current_phase ?u64
 	updates_accepted        int
+	// current_generation is an ABSOLUTE count of accepted key updates
+	// (generation 0 is the first 1-RTT secret). See KeyResolution.generation
+	// for why note_successful_decrypt compares this instead of the phase
+	// bit: the phase bit alone cannot tell generation N apart from
+	// generation N+2 (it has period-2 parity), which is exactly what let a
+	// stale generation-0 commit corrupt bookkeeping after a second update.
+	current_generation int
 }
 
 // new_key_update_state seeds tracking with the FIRST 1-RTT traffic secret
 // (Phase 2's application traffic secret, derived once at handshake
 // completion) and phase 0 -- RFC 9001 §6: "the Key Phase bit... is
-// initially set to 0 for the first set of 1-RTT packets".
+// initially set to 0 for the first set of 1-RTT packets". Clones
+// `initial_secret` rather than retaining the caller's own slice -- V array
+// assignment shares backing storage, so retaining it uncloned would let a
+// caller's later mutation of their own copy silently corrupt this state's
+// secret out from under it.
 pub fn new_key_update_state(initial_secret []u8) !&KeyUpdateState {
 	keys := derive_packet_protection_keys(initial_secret)!
 	return &KeyUpdateState{
 		current_phase:  false
 		current_keys:   keys
-		current_secret: initial_secret
+		current_secret: initial_secret.clone()
 	}
 }
 
+// current_phase_bit reports the Key Phase bit this side currently expects
+// on an incoming 1-RTT packet that uses the CURRENT (not previous or next)
+// generation of keys.
 pub fn (s &KeyUpdateState) current_phase_bit() bool {
 	return s.current_phase
 }
@@ -121,6 +158,7 @@ pub fn (s &KeyUpdateState) resolve_read_keys(packet_phase bool, packet_number u6
 			keys:         s.current_keys
 			secret:       s.current_secret
 			packet_phase: packet_phase
+			generation:   s.current_generation
 		}
 	}
 
@@ -142,6 +180,7 @@ pub fn (s &KeyUpdateState) resolve_read_keys(packet_phase bool, packet_number u6
 			secret:            []u8{} // not meaningful for a previous-phase resolution
 			packet_phase:      packet_phase
 			is_previous_phase: true
+			generation:        s.current_generation - 1
 		}
 	}
 	return s.next_key_resolution(packet_phase)!
@@ -149,12 +188,13 @@ pub fn (s &KeyUpdateState) resolve_read_keys(packet_phase bool, packet_number u6
 
 fn (s &KeyUpdateState) next_key_resolution(packet_phase bool) !KeyResolution {
 	next_secret := derive_updated_secret(s.current_secret)!
-	next_keys := derive_packet_protection_keys(next_secret)!
+	next_keys := derive_updated_packet_protection_keys(next_secret, s.current_keys.hp)!
 	return KeyResolution{
 		keys:          next_keys
 		secret:        next_secret
 		packet_phase:  packet_phase
 		is_new_update: true
+		generation:    s.current_generation + 1
 	}
 }
 
@@ -162,21 +202,23 @@ fn (s &KeyUpdateState) next_key_resolution(packet_phase bool) !KeyResolution {
 // resolution AFTER the caller has verified it by successfully
 // AEAD-decrypting a real packet with it -- never before.
 //
-// Deliberately does NOT trust resolution.is_new_update/is_previous_phase:
-// those reflect the situation as observed AT RESOLVE TIME, and this
-// function can be called with a STALE resolution if a caller resolves
-// more than one packet (e.g. several packets coalesced into one datagram)
-// before committing either -- committing the first packet's genuine new
-// update would flip s.current_phase, and a second, now-stale "is_new_update"
-// resolution for a packet that ACTUALLY matches the just-updated current
-// phase would otherwise be mis-committed as a SECOND update, corrupting
-// current_secret two generations ahead of where the peer actually is.
-// Re-deriving the classification fresh here, from resolution.packet_phase
-// (the packet's own real, immutable phase bit) against CURRENT state,
-// makes this function correct regardless of how many resolutions were
-// computed before it, or in what order they are committed.
+// Deliberately does NOT trust resolution.is_new_update/is_previous_phase,
+// and deliberately does NOT compare resolution.packet_phase against
+// s.current_phase either -- both reflect the situation as observed AT
+// RESOLVE TIME, and this function can be called with a STALE resolution if
+// a caller resolves more than one packet (e.g. several packets coalesced
+// into one datagram) before committing either. The phase bit specifically
+// cannot be trusted for this comparison even when re-read fresh: it has
+// period-2 parity, so after a SECOND update has committed, a genuinely old
+// generation-0 packet's phase bit coincidentally matches the new
+// generation-2 current phase, and comparing bits alone would mis-commit it
+// as belonging to generation 2. resolution.generation is an ABSOLUTE
+// counter (not subject to that parity collision) computed once at resolve
+// time from what was genuinely current then -- comparing IT against the
+// CURRENT s.current_generation is correct regardless of how many
+// resolutions were computed before this one, or in what order they commit.
 pub fn (mut s KeyUpdateState) note_successful_decrypt(resolution KeyResolution, packet_number u64) ! {
-	if resolution.packet_phase == s.current_phase {
+	if resolution.generation == s.current_generation {
 		current := s.min_pn_in_current_phase or {
 			s.min_pn_in_current_phase = packet_number
 			return
@@ -188,33 +230,34 @@ pub fn (mut s KeyUpdateState) note_successful_decrypt(resolution KeyResolution, 
 		return
 	}
 
-	min_current := s.min_pn_in_current_phase or {
+	if resolution.generation == s.current_generation + 1 {
 		s.commit_new_update(packet_number)!
 		return
 	}
 
-	if packet_number < min_current {
-		// Still an old-phase packet as of now -- no bookkeeping change.
-		return
-	}
-	s.commit_new_update(packet_number)!
+	// Any other generation (older than the retained previous one, or
+	// jumped ahead by more than one) is stale relative to CURRENT state --
+	// no bookkeeping change.
 }
 
 // commit_new_update performs the actual key-generation advance, always
 // re-deriving the next secret/keys fresh from the CURRENT current_secret
 // (never trusting a resolution's possibly-stale secret/keys) so it is
 // correct no matter how many resolutions were computed before it committed.
+// The header-protection key is carried forward unchanged (RFC 9001 §6) --
+// see derive_updated_packet_protection_keys' doc comment.
 fn (mut s KeyUpdateState) commit_new_update(packet_number u64) ! {
 	if s.updates_accepted >= max_key_updates_accepted {
 		return error('quic: too many key updates accepted on this connection (limit ${max_key_updates_accepted})')
 	}
 	new_secret := derive_updated_secret(s.current_secret)!
-	new_keys := derive_packet_protection_keys(new_secret)!
+	new_keys := derive_updated_packet_protection_keys(new_secret, s.current_keys.hp)!
 	s.previous_keys = s.current_keys
 	s.current_keys = new_keys
 	s.current_secret = new_secret
 	s.current_phase = !s.current_phase
 	s.min_pn_in_current_phase = packet_number
+	s.current_generation++
 	s.updates_accepted++
 }
 

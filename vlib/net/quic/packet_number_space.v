@@ -46,7 +46,17 @@ pub mut:
 // outgoing packet in this space and advances the counter. A caller must
 // never construct or send two packets sharing the same (space,
 // packet_number) pair.
-pub fn (mut s PacketNumberSpaceState) next_packet_number() u64 {
+//
+// Rejects once the next packet number would exceed max_packet_number (RFC
+// 9000 §12.3: this packet number space is exhausted, and the caller MUST
+// stop sending in it) -- matching encode_packet_number's own convention,
+// rather than silently handing out a packet number the encoder would
+// reject one step later, or letting the counter wrap past u64::MAX into a
+// REUSED packet number.
+pub fn (mut s PacketNumberSpaceState) next_packet_number() !u64 {
+	if s.next_send_pn > max_packet_number {
+		return error('quic: packet number space exhausted (RFC 9000 §12.3): next packet number ${s.next_send_pn} exceeds the maximum ${max_packet_number} (2^62-1); this space must not send another packet')
+	}
 	pn := s.next_send_pn
 	s.next_send_pn++
 	return pn
@@ -97,6 +107,9 @@ pub mut:
 	application_data PacketNumberSpaceState
 }
 
+// new_packet_number_spaces creates the three independent per-space states
+// (Initial, Handshake, Application Data) a connection needs, each starting
+// from its own zero value -- no shared state between them.
 pub fn new_packet_number_spaces() &QuicPacketNumberSpaces {
 	return &QuicPacketNumberSpaces{}
 }

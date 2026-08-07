@@ -121,6 +121,71 @@ fn test_key_update_state_rejects_previous_phase_packet_once_discarded() {
 	assert false, 'expected resolving a previous-phase packet to fail once discarded'
 }
 
+// test_key_update_state_preserves_header_protection_key_across_update is a
+// Phase-R reproduction (Copilot findings on vlang/v#27881, pullrequestreview
+// 4885595852): RFC 9001 §6 rotates ONLY the packet-protection key/IV on a
+// key update -- the header-protection key is derived once per encryption
+// level and never updates within it. Deriving `hp` fresh (as
+// derive_packet_protection_keys does for EVERY field) desyncs this client's
+// header-protection key from what a real, compliant peer keeps.
+fn test_key_update_state_preserves_header_protection_key_across_update() {
+	secret := rand.bytes(32)!
+	mut s := new_key_update_state(secret)!
+	original_hp := s.current_keys.hp
+
+	resolution := s.resolve_read_keys(true, 100)!
+	assert resolution.keys.hp == original_hp
+
+	s.note_successful_decrypt(resolution, 100)!
+	assert s.current_keys.hp == original_hp
+}
+
+// test_key_update_state_second_update_does_not_corrupt_bookkeeping_via_stale_reordered_packet
+// is a Phase-R reproduction (same review): the phase bit is a single bit
+// with period-2 parity, so after a SECOND update the phase bit cycles back
+// to the value it had at generation 0. note_successful_decrypt's matched-
+// phase branch compared resolution.packet_phase against s.current_phase --
+// a genuinely old generation-0 packet, committed AFTER a second update has
+// already flipped current_phase back to that same bit value, was
+// mis-classified as belonging to the NEW (generation 2) phase, corrupting
+// min_pn_in_current_phase and misleading subsequent resolutions.
+fn test_key_update_state_second_update_does_not_corrupt_bookkeeping_via_stale_reordered_packet() {
+	secret := rand.bytes(32)!
+	mut s := new_key_update_state(secret)!
+
+	// First update: generation 0 -> generation 1 (phase false -> true).
+	first := s.resolve_read_keys(true, 100)!
+	s.note_successful_decrypt(first, 100)!
+	assert s.current_phase_bit() == true
+
+	// Resolve BOTH before committing either -- a genuinely reordered
+	// generation-0 packet (PN 50, phase false) and a genuine second update
+	// (generation 2, also phase false -- phase alternates and 2 is even).
+	old_resolution := s.resolve_read_keys(false, 50)!
+	assert old_resolution.is_previous_phase == true
+	new_resolution := s.resolve_read_keys(false, 200)!
+	assert new_resolution.is_new_update == true
+
+	// Commit the genuine second update first.
+	s.note_successful_decrypt(new_resolution, 200)!
+	assert s.current_phase_bit() == false // back to phase 0, by parity -- generation 2
+
+	// Commit the OLD, generation-0 resolution. Its phase bit (false) now
+	// coincidentally matches s.current_phase (also false, but for
+	// generation 2) -- it must NOT be treated as belonging to generation 2.
+	s.note_successful_decrypt(old_resolution, 50)!
+
+	// A genuinely still-outstanding generation-1 packet (reordered, PN
+	// between the corrupted-50 and correct-200 thresholds) must still
+	// resolve as a previous-phase packet using the retained generation-1
+	// keys -- not be misread as yet another brand new update because
+	// bookkeeping was corrupted down to 50.
+	still_generation_one := s.resolve_read_keys(true, 100)!
+	assert still_generation_one.is_previous_phase == true
+	assert still_generation_one.is_new_update == false
+	assert still_generation_one.keys == first.keys
+}
+
 fn test_key_update_state_enforces_update_count_limit() {
 	secret := rand.bytes(32)!
 	mut s := new_key_update_state(secret)!
