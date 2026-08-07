@@ -540,7 +540,7 @@ fn foo() (int, int) {
 
 fn main() {
 	c, _ := foo()
-	print(c)
+	println(c)
 	// no warning about unused variable returned by foo.
 }
 ```
