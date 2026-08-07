@@ -32,10 +32,14 @@ fn main() {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
 		uname := os.uname()
-		if uos == 'macos' && uname.machine == 'arm64' {
+		if uos == 'macos' && uname.machine == 'arm64' && gc_mode_from_args(args) !in ['', 'none'] {
 			// Apple silicon, like m1, m2 etc
 			// Use tcc by default for V, since tinycc is much faster and also
-			// it already supports compiling many programs like V itself, that do not depend on inlined objective-C code
+			// it already supports compiling many programs like V itself, that do not depend on inlined objective-C code.
+			// Note: a plain `v self` (no explicit -gc) forces Preferences.prealloc on
+			// for macOS builds of V itself, which declares its allocator state
+			// `_Thread_local` - a keyword the bundled tcc cannot parse. Only default
+			// to tcc here when an explicit non-`none` `-gc` rules that out.
 			args << '-cc tcc'
 		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
@@ -131,6 +135,20 @@ fn has_gc_arg(args []string) bool {
 		}
 	}
 	return false
+}
+
+// gc_mode_from_args returns the value of an explicit `-gc <mode>` or `-gc=<mode>`
+// flag in args, or '' when no `-gc` flag is present.
+fn gc_mode_from_args(args []string) string {
+	for i, arg in args {
+		if arg == '-gc' {
+			return if i + 1 < args.len { args[i + 1] } else { '' }
+		}
+		if arg.starts_with('-gc=') {
+			return arg.all_after('-gc=')
+		}
+	}
+	return ''
 }
 
 fn has_profile_cflag(args []string) bool {
