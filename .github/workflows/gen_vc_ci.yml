@@ -25,6 +25,12 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
@@ -37,6 +43,96 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Diagnose remaining master failures
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MASTER_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=master&event=push&per_page=100")"
+          mapfile -t failed_runs < <(
+            jq -r --arg sha "$MASTER_SHA" '
+              .workflow_runs[]
+              | select(.head_sha == $sha)
+              | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure")
+              | [.id, .name, .html_url]
+              | @tsv
+            ' <<< "$runs_json"
+          )
+
+          summary=/tmp/master-ci-summary.md
+          {
+            echo '<!-- master-ci-diagnostic-summary -->'
+            echo "## Master CI failures for \`${MASTER_SHA}\`"
+            echo
+            echo "Found **${#failed_runs[@]} failed workflow runs**. Detailed diagnostic comments follow."
+            echo
+            for run in "${failed_runs[@]}"; do
+              IFS=$'\t' read -r run_id run_name run_url <<< "$run"
+              echo "- [\`${run_name}\`](${run_url}) — run \`${run_id}\`"
+            done
+          } > "$summary"
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -F body=@"$summary"
+
+          for run in "${failed_runs[@]}"; do
+            IFS=$'\t' read -r run_id run_name run_url <<< "$run"
+            jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100")"
+            mapfile -t failed_jobs < <(
+              jq -r '
+                .jobs[]
+                | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure")
+                | [.id, .name, .html_url]
+                | @tsv
+              ' <<< "$jobs_json"
+            )
+
+            body="/tmp/master-workflow-${run_id}.md"
+            {
+              echo "<!-- master-ci-diagnostic-run:${run_id} -->"
+              echo "## Failed workflow: [${run_name}](${run_url})"
+              echo
+              echo "Run \`${run_id}\`; ${#failed_jobs[@]} failed job(s)."
+            } > "$body"
+
+            for job in "${failed_jobs[@]}"; do
+              IFS=$'\t' read -r job_id job_name job_url <<< "$job"
+              log_file="/tmp/master-job-${job_id}.log"
+              clean_file="/tmp/master-job-${job_id}.clean.log"
+              snippet_file="/tmp/master-job-${job_id}.snippet.log"
+              {
+                echo
+                echo "### [${job_name}](${job_url}) — job \`${job_id}\`"
+                echo
+              } >> "$body"
+
+              if gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}/logs" > "$log_file"; then
+                sed -E $'s/\x1B\[[0-9;]*[[:alpha:]]//g' "$log_file" > "$clean_file"
+                grep -E -i -B 4 -A 10 \
+                  '##\[error\]|::error::|Process completed with exit code|builder error|fatal:|panic:|assertion failed|(^|[[:space:]])FAILED([[:space:]]|$)|unknown function|undefined reference|timed out|timeout' \
+                  "$clean_file" | tail -n 80 > "$snippet_file" || true
+                if [ ! -s "$snippet_file" ]; then
+                  tail -n 80 "$clean_file" > "$snippet_file"
+                fi
+                {
+                  echo '<details><summary>Relevant log excerpt</summary>'
+                  echo
+                  echo '```text'
+                  tail -c 12000 "$snippet_file"
+                  echo
+                  echo '```'
+                  echo '</details>'
+                } >> "$body"
+              else
+                echo '_Could not download this job log._' >> "$body"
+              fi
+            done
+
+            # Stay below GitHub's issue-comment size limit.
+            head -c 62000 "$body" > "${body}.trimmed"
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -F body=@"${body}.trimmed"
+          done
       - name: Build V
         run: make -j4
       - name: Regenerate v.c and v_win.c
