@@ -1,0 +1,10 @@
+fn main() {
+	'' == (match '' {
+		$embed_file(@FILE).path {
+			'a'
+		}
+		else {
+			'b'
+		}
+	})
+}

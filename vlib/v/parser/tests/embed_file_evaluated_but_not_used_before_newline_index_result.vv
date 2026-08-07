@@ -1,0 +1,15 @@
+fn main() {
+	outer := true
+	cond := true
+	fallback := $embed_file(@FILE)
+	_ := if outer {
+		if cond {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+		[0]
+	} else {
+		[1]
+	}
+}

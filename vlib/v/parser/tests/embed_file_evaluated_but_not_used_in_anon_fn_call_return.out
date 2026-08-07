@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_anon_fn_call_return.vv:4:2: error: expression evaluated but not used
+    2 | 
+    3 | fn main() {
+    4 |     '' == fn () embed_file.EmbedFileData {
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 |         return $embed_file(@FILE)
+    6 |     }()

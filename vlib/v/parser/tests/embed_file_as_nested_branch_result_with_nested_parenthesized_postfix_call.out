@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_as_nested_branch_result_with_nested_parenthesized_postfix_call.vv:23:9: error: undefined ident: `missing_symbol`
+   21 |         }
+   22 |     }).to_string())
+   23 |     sink = missing_symbol
+      |            ~~~~~~~~~~~~~~
+   24 | }

@@ -1,0 +1,3 @@
+fn main() {
+	typeof($embed_file(@FILE)).name == ''
+}

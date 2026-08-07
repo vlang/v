@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_ident_or_block_selector.vv:5:2: error: expression evaluated but not used
+    3 | fn main() {
+    4 |     maybe := ?embed_file.EmbedFileData(none)
+    5 |     '' == (maybe or { $embed_file(@FILE) }).path
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 | }

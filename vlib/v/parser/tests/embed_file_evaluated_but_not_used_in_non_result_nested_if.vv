@@ -1,0 +1,14 @@
+fn main() {
+	ok := true
+	other := true
+	_ := if ok {
+		if other {
+			$embed_file(@FILE)
+		} else {
+			$embed_file(@FILE)
+		}
+		0
+	} else {
+		1
+	}
+}
