@@ -186,7 +186,11 @@ pub fn (h &Tls13ClientHandshake) state() ClientHandshakeState {
 // into actual AEAD keys via hkdf_expand_label's "quic key"/"quic iv"
 // labels.
 pub fn (h &Tls13ClientHandshake) application_secrets() ApplicationSecrets {
-	return h.application_secrets
+	return ApplicationSecrets{
+		master_secret: h.application_secrets.master_secret.clone()
+		client_secret: h.application_secrets.client_secret.clone()
+		server_secret: h.application_secrets.server_secret.clone()
+	}
 }
 
 // handshake_secrets returns the derived Handshake-level traffic secrets.
@@ -195,7 +199,11 @@ pub fn (h &Tls13ClientHandshake) application_secrets() ApplicationSecrets {
 // Handshake-level packet protection keys as soon as ServerHello arrives,
 // before the rest of the handshake completes).
 pub fn (h &Tls13ClientHandshake) handshake_secrets() HandshakeSecrets {
-	return h.handshake_secrets
+	return HandshakeSecrets{
+		handshake_secret: h.handshake_secrets.handshake_secret.clone()
+		client_secret:    h.handshake_secrets.client_secret.clone()
+		server_secret:    h.handshake_secrets.server_secret.clone()
+	}
 }
 
 // free releases ecdhe_private (an OpenSSL EVP_PKEY, Phase 1's
