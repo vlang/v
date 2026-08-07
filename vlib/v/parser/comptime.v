@@ -510,6 +510,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			kind:        .embed_file
 			embed_file:  ast.EmbeddedFile{
 				compression_type: embed_compression_type
+				source_file:      p.file_path
 			}
 			args:        [arg]
 			pos:         start_pos.extend(p.prev_tok.pos())

@@ -88,7 +88,10 @@ fn (mut g Gen) gen_embedded_metadata() {
 	if g.pref.parallel_cc {
 		g.extern_out.writeln('extern v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash);')
 	}
-	g.embedded_data.writeln('v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash) {')
+	// Under -usecache each object that embeds files generates its own copy of this
+	// function, so external linkage collides at link — emit it file-local.
+	emb_sc := if g.pref.use_cache || g.pref.build_mode == .build_module { 'static ' } else { '' }
+	g.embedded_data.writeln('${emb_sc}v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash) {')
 	g.embedded_data.writeln('\tv__embed_file__EmbedFileData res;')
 	g.embedded_data.writeln('\tmemset(&res, 0, sizeof(res));')
 	g.embedded_data.writeln('\tswitch(ef_hash) {')

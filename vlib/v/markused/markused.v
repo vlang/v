@@ -281,7 +281,21 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	walker.mark_generic_types()
 
 	if pref_.use_cache {
-		walker.mark_by_sym_name('IError')
+		// Under -usecache the program TU keeps skip_unused ON (small/fast MAIN) while
+		// cached module objects are built with it OFF. The program TU still emits the
+		// interface tables (index + name_table + cast wrappers) for every interface,
+		// and those wrappers reference each implementor's concrete methods (e.g.
+		// net__TcpConn_addr). If skip_unused prunes a method the program TU doesn't call
+		// directly, the wrapper references an undeclared function → C error. Mark every
+		// non-generic interface (and thus its implementor methods) used so the program
+		// TU declares them. Bodies are NOT duplicated: cached-module function bodies are
+		// emitted declaration-only in the program TU (see gen_fn_decl). (Previously only
+		// IError was marked, which covered builtin error handling but no other interface.)
+		for isym in table.type_symbols {
+			if isym.info is ast.Interface && !isym.info.is_generic {
+				walker.mark_by_sym(isym)
+			}
+		}
 	}
 
 	walker.mark_root_fns(all_fn_root_names)
