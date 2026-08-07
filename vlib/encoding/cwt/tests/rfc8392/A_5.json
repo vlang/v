@@ -1,0 +1,39 @@
+{
+   "title":"CWT draft - Example A.5 - Encrypted",
+   "input":{
+      "plaintext_hex":"a70175636f61703a2f2f61732e6578616d706c652e636f6d02656572696b77037818636f61703a2f2f6c696768742e6578616d706c652e636f6d041a5612aeb0051a5610d9f0061a5610d9f007420b71",
+      "encrypted":{
+         "protected":{
+            "alg":"AES-CCM-16-128/64"
+         },
+         "recipients":[
+            {
+               "key":{
+                  "kty":"oct",
+                  "kid":"our-secret",
+                  "use":"enc",
+                  "k_hex":"231f4c4d4d3051fdc2ec0a3851d5b383"
+               },
+               "unprotected":{
+                  "alg":"direct"
+               }
+            }
+         ]
+      },
+      "rng_stream":[
+         "99A0D7846E762C49FFE8A63E0B"
+      ]
+   },
+   "intermediates":{
+      "recipients":[
+         {
+         }
+      ],
+      "AAD_hex":"8368456E63727970743043A1010A40",
+      "CEK_hex":"231F4C4D4D3051FDC2EC0A3851D5B383"
+   },
+   "output":{
+      "cbor_diag":"16([h'A1010A', {5: h'99A0D7846E762C49FFE8A63E0B'}, h'B918A11FD81E438B7F973D9E2E119BCB22424BA0F38A80F27562F400EE1D0D6C0FDB559C02421FD384FC2EBE22D7071378B0EA7428FFF157444D45F7E6AFCDA1AAE5F6495830C58627087FC5B4974F319A8707A635DD643B'])",
+      "cbor":"D08343A1010AA1054D99A0D7846E762C49FFE8A63E0B5858B918A11FD81E438B7F973D9E2E119BCB22424BA0F38A80F27562F400EE1D0D6C0FDB559C02421FD384FC2EBE22D7071378B0EA7428FFF157444D45F7E6AFCDA1AAE5F6495830C58627087FC5B4974F319A8707A635DD643B"
+   }
+}
