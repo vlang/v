@@ -1,0 +1,6 @@
+"mov %rsp, %gs:24\n\t"
+"mov %gs:16, %rsp\n\t"
+"mov %%fs:8, %%rax\n\t"
+"mov %%rax, %[a]\n\t"
+"mov %%gs:16, %%rax\n\t"
+"jne %l[over]\n\t"
