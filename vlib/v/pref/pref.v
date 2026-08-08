@@ -256,9 +256,16 @@ pub mut:
 	gc_set_by_flag      bool              // true when the compiler receives `-gc`
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 200 // the maximum amount of warnings/errors/notices that will be accumulated
-	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
-	use_coroutines      bool // experimental coroutines
-	fast_math           bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend
+	// resource limit settings (guard rails against infinite generic/alias expansion; see the defaults in vlib/v/ast/table.v):
+	generic_fn_inst_limit        int = 4096    // Change with `-generic-fn-inst-limit`
+	generic_inst_name_len_limit  int = 8192    // Change with `-generic-inst-name-len-limit`
+	generic_inst_depth_limit     int = 256     // Change with `-generic-inst-depth-limit` (clamped to <= 512)
+	alias_unwrap_depth_limit     int = 100     // Change with `-alias-unwrap-depth-limit`
+	generic_fn_postprocess_iters int = 128     // Change with `-generic-fn-postprocess-iters`
+	max_postprocess_iterations   int = 100_000 // Change with `-max-postprocess-iterations`
+	nofloat                      bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
+	use_coroutines               bool // experimental coroutines
+	fast_math                    bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. The final default is adjusted in fill_with_defaults() based on the target architecture.
@@ -1089,6 +1096,40 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-checker-match-exhaustive-cutoff-limit' {
 				res.checker_match_exhaustive_cutoff_limit =
 					cmdline.option(args[i..], arg, '10').int()
+				i++
+			}
+			'-generic-fn-inst-limit' {
+				res.generic_fn_inst_limit = cmdline.option(args[i..], arg,
+					res.generic_fn_inst_limit.str()).int()
+				i++
+			}
+			'-generic-inst-name-len-limit' {
+				res.generic_inst_name_len_limit = cmdline.option(args[i..], arg,
+					res.generic_inst_name_len_limit.str()).int()
+				i++
+			}
+			'-generic-inst-depth-limit' {
+				res.generic_inst_depth_limit = cmdline.option(args[i..], arg,
+					res.generic_inst_depth_limit.str()).int()
+				if res.generic_inst_depth_limit > 512 {
+					eprintln('warning: `-generic-inst-depth-limit` clamped to 512; higher values can segfault the compiler before the guard fires')
+					res.generic_inst_depth_limit = 512
+				}
+				i++
+			}
+			'-alias-unwrap-depth-limit' {
+				res.alias_unwrap_depth_limit = cmdline.option(args[i..], arg,
+					res.alias_unwrap_depth_limit.str()).int()
+				i++
+			}
+			'-generic-fn-postprocess-iters' {
+				res.generic_fn_postprocess_iters = cmdline.option(args[i..], arg,
+					res.generic_fn_postprocess_iters.str()).int()
+				i++
+			}
+			'-max-postprocess-iterations' {
+				res.max_postprocess_iterations = cmdline.option(args[i..], arg,
+					res.max_postprocess_iterations.str()).int()
 				i++
 			}
 			'-o', '-output' {
