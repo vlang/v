@@ -34,9 +34,21 @@ pub fn (mut b Builder) rebuild_modules() {
 	if invalidations.len > 0 {
 		vexe := pref.vexe_path()
 		for imp in invalidations {
-			b.v_build_module(vexe, imp)
+			rebuild_cmd, rebuild_code := b.v_build_module(vexe, imp)
+			if rebuild_code != 0 {
+				// find_invalidated_modules_by_files already saved the new hashes; drop
+				// them, or the next run skips the rebuild and links the stale object.
+				forget_source_hashes(all_files)
+				verror(usecache_module_error('Could not rebuild the changed module `${imp}` for `-usecache`.',
+					rebuild_code, os.dir(vexe), rebuild_cmd))
+			}
 		}
 	}
+}
+
+fn forget_source_hashes(all_files []string) {
+	mut cm := vcache.new_cache_manager(all_files)
+	cm.save('.hashes', 'all_files', '') or {}
 }
 
 pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []string {
@@ -185,7 +197,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	return invalidations
 }
 
-fn (mut b Builder) v_build_module(vexe string, imp_path string) {
+fn (mut b Builder) v_build_module(vexe string, imp_path string) (string, int) {
 	pwd := os.getwd()
 	defer {
 		os.chdir(pwd) or {}
@@ -201,7 +213,17 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
 	// eprintln('> Builder.v_build_module: ${rebuild_cmd}')
-	os.system(rebuild_cmd)
+	return rebuild_cmd, os.system(rebuild_cmd)
+}
+
+fn usecache_module_error(what string, code int, vroot string, cmd string) string {
+	mut res := '\n==================\n${what}'
+	res += if code != 0 {
+		'\n`v build-module` exited with code ${code}; its errors are printed above.'
+	} else {
+		'\n`v build-module` reported success, so this is a V bug. Please report it at https://github.com/vlang/v/issues/new/choose .'
+	}
+	return res + '\nTo reproduce just that step, run this in ${os.quoted_path(vroot)}:\n\t${cmd}'
 }
 
 fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
@@ -209,9 +231,10 @@ fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
 		if b.pref.is_verbose {
 			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
 		}
-		b.v_build_module(vexe, imp_path)
+		rebuild_cmd, rebuild_code := b.v_build_module(vexe, imp_path)
 		rebuilt_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
-			panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
+			verror(usecache_module_error('Could not build module `${imp_path}` for `-usecache`: no cached object file was produced.',
+				rebuild_code, os.dir(vexe), rebuild_cmd))
 		}
 		return rebuilt_o
 	}

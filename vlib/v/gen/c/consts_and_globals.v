@@ -18,6 +18,14 @@ struct GlobalConstDef {
 	is_precomputed bool     // can be declared as a const in C: primitive, and a simple definition
 }
 
+// Under -usecache only the program runs `_vinit`, so it defines the consts, and the cached objects declare them.
+fn (g &Gen) const_visibility_kw(inited_later bool) string {
+	if inited_later && g.pref.build_mode == .build_module {
+		return 'extern '
+	}
+	return if g.pref.use_cache { '' } else { g.static_non_parallel }
+}
+
 fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	g.inside_const = true
 	defer {
@@ -56,7 +64,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					// eprintln('> const_name: ${const_name} | name: ${name} | styp: ${styp} | val: ${val}')
 					g.global_const_defs[name] = GlobalConstDef{
 						mod:       field.mod
-						def:       '${g.static_non_parallel}${styp} ${const_name} = ${val}; // fixed array const'
+						def:       '${g.const_visibility_kw(false)}${styp} ${const_name} = ${val}; // fixed array const'
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
 				} else if field.expr.is_fixed && !field.expr.has_index
@@ -74,7 +82,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				typ := if field.expr.language == .c { 'char*' } else { 'string' }
 				g.global_const_defs[name] = GlobalConstDef{
 					mod:   field.mod
-					def:   '${g.static_non_parallel}${typ} ${const_name}; // a string literal, inited later'
+					def:   '${g.const_visibility_kw(true)}${typ} ${const_name}; // a string literal, inited later'
 					init:  '\t${const_name} = ${val};'
 					order: -1
 				}
@@ -126,7 +134,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 							val := g.expr_string(field.expr.expr)
 							g.global_const_defs[name] = GlobalConstDef{
 								mod:       field.mod
-								def:       '${g.static_non_parallel}${styp} ${const_name} = ${val}; // fixed array const'
+								def:       '${g.const_visibility_kw(false)}${styp} ${const_name} = ${val}; // fixed array const'
 								dep_names: g.table.dependent_names_in_expr(field_expr)
 							}
 							continue
@@ -251,7 +259,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 			}
 			g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 				mod:   mod
-				def:   '${g.static_non_parallel}${styp} ${cname}; // str inited later'
+				def:   '${g.const_visibility_kw(true)}${styp} ${cname}; // str inited later'
 				init:  '\t${cname} = ${init};'
 				order: -1
 			}
@@ -353,7 +361,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr
 	if surround_cbr {
 		init.writeln('}')
 	}
-	mut def := '${g.static_non_parallel}${styp} ${cname}'
+	mut def := '${g.const_visibility_kw(true)}${styp} ${cname}'
 	if g.pref.parallel_cc {
 		// So that the const is usable in other files
 		// def = 'extern ${def}'
@@ -415,7 +423,7 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 			init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr, ';'))
 		}
 	}
-	mut def := '${g.static_non_parallel}${styp} ${cname}'
+	mut def := '${g.const_visibility_kw(true)}${styp} ${cname}'
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 		mod:       mod
 		def:       '${def}; // inited later'
@@ -522,8 +530,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		g.inside_cinit = false
 		g.inside_global_decl = false
 	}
-	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
-		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
+	// The cached object owns the definition (#27592), but only the program has `_vinit`.
+	should_init := g.pref.build_mode != .build_module || g.module_built == node.mod
 	mut attributes := ''
 	first_field := node.fields[0]
 	if first_field.is_weak {
@@ -625,6 +633,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			continue
 		}
 		mut needs_ending_semicolon := false
+		// an inline `= value` on an extern declaration would define it a second time
+		is_extern_decl := field_visibility_kw == 'extern '
 		if field.language != .c || field.has_expr {
 			def_builder.write_string('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
 			needs_ending_semicolon = true
@@ -647,9 +657,11 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			} else if field.expr.is_literal() || cinit
 				|| (field.expr is ast.ArrayInit && field.expr.is_fixed)
 				|| is_simple_unsafe_expr {
-				// Simple literals can be initialized right away in global scope in C.
-				// e.g. `int myglobal = 10;`
-				def_builder.write_string(' = ${g.expr_string(field.expr)}')
+				if !is_extern_decl {
+					// Simple literals can be initialized right away in global scope in C.
+					// e.g. `int myglobal = 10;`
+					def_builder.write_string(' = ${g.expr_string(field.expr)}')
+				}
 			} else {
 				// More complex expressions need to be moved to `_vinit()`
 				// e.g. `__global ( mygblobal = 'hello ' + world' )`
@@ -663,7 +675,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			// don't zero globals from C code
 			g.type_default_vars.clear()
 			default_initializer := g.type_default(field.typ)
-			if default_initializer == '{0}' && should_init {
+			if is_extern_decl {
+				// zeroed by the definition in the cached module object
+			} else if default_initializer == '{0}' && should_init {
 				def_builder.write_string(' = {0}')
 			} else if default_initializer == '{E_STRUCT}' && should_init {
 				init = '\tmemcpy(${final_c_name}, (${styp}){${default_initializer}}, sizeof(${styp})); // global 4'

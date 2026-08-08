@@ -3,6 +3,7 @@ module builder
 import os
 import time
 import v.pref
+import v.vcache
 
 fn test_ccompiler_is_available_with_existing_absolute_path() {
 	assert ccompiler_is_available(@VEXE)
@@ -944,6 +945,27 @@ fn test_thirdparty_deps_mtime_includes_module_include_headers() {
 	assert deps == config_mtime, 'thirdparty_deps_mtime must fold in include/ headers; got ${deps}, want ${config_mtime}'
 	// Memoized per module root: a second call returns the same value.
 	assert b.thirdparty_deps_mtime(source) == config_mtime
+}
+
+fn test_forget_source_hashes_makes_the_next_run_reinvalidate() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_forget_hashes_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	sample := os.join_path(test_root, 'sample.v')
+	os.write_file(sample, 'module sample\n') or { panic(err) }
+	files := [sample]
+
+	mut cm := vcache.new_cache_manager(files)
+	cm.save('.hashes', 'all_files', 'deadbeef ${sample}\n') or { panic(err) }
+	assert cm.load('.hashes', 'all_files') or { '' } != ''
+
+	forget_source_hashes(files)
+
+	mut cm2 := vcache.new_cache_manager(files)
+	assert cm2.load('.hashes', 'all_files') or { 'missing' } == ''
 }
 
 fn prepare_test_ccompiler_alias(test_root string, compiler_name string, version_output string) string {

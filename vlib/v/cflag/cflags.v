@@ -194,6 +194,13 @@ fn split_bare_windows_import_libs(value string) []string {
 	return parts
 }
 
+// is_c_source_operand reports whether opt is a bare source file, added with
+// `#flag /path/to/file.c`, and so cannot go into a `-c` compilation with one `-o`.
+pub fn is_c_source_operand(opt string) bool {
+	unq := opt.trim('"').trim("'")
+	return os.file_ext(unq).to_lower() in ['.c', '.cpp', '.cc', '.cxx', '.s'] && os.is_file(unq)
+}
+
 fn is_bare_windows_import_lib(value string) bool {
 	lib := value.trim_space()
 	return lib.len > '.lib'.len && lib.to_lower().ends_with('.lib') && !lib.contains('/')

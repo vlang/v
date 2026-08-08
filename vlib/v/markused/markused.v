@@ -282,6 +282,14 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	if pref_.use_cache {
 		walker.mark_by_sym_name('IError')
+		// A `build-module` object is compiled without -skip-unused, so it contains
+		// every fn of its module. Treat those as roots, so the consts, globals and
+		// types they reference survive here, where they are defined.
+		for fkey, func in all_fns {
+			if func.mod != 'main' && !util.should_bundle_module(func.mod) {
+				all_fn_root_names << fkey
+			}
+		}
 	}
 
 	walker.mark_root_fns(all_fn_root_names)

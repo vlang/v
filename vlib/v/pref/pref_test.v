@@ -814,3 +814,14 @@ fn test_wayland_only_linux_session_surfaces_a_v_error_for_gg() {
 	assert output.contains('Wayland-only Linux session without `-d sokol_wayland`')
 	assert !output.contains('C error. This should never happen.')
 }
+
+fn test_enable_globals_is_forwarded_to_cached_module_builds() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for flag in ['-enable-globals', '--enable-globals'] {
+		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
+		assert command == target
+		assert prefs.enable_globals
+		// the `-usecache` `v build-module` child is started from build_options
+		assert '-enable-globals' in prefs.build_options
+	}
+}

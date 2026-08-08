@@ -1551,31 +1551,35 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
-			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache
-			if g.pref.build_mode != .build_module {
-				interface_idx_static_prefix := if g.pref.is_o { 'static ' } else { '' }
-				g.definitions.writeln('${interface_idx_static_prefix}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-				g.writeln2('',
-					'${interface_idx_static_prefix}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
-				if g.pref.parallel_cc && interface_idx_static_prefix == '' {
-					g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-				}
-				for t in impl_types {
-					sub_sym := g.table.sym(ast.mktyp(t))
-					if sub_sym.kind == .interface {
-						continue
-					}
-					if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
-						continue
-					}
-					if g.pref.skip_unused && sub_sym.kind == .struct
-						&& sub_sym.idx !in g.table.used_features.used_syms {
-						continue
-					}
-					g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${u32(t.set_nr_muls(0))};')
-				}
-				g.writeln2('\treturn ${u32(ityp)};', '}')
+			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache;
+			// build-module needs its own static copy, since it calls this too.
+			interface_idx_static_prefix := if g.pref.is_o || g.pref.build_mode == .build_module {
+				'static '
+			} else {
+				''
 			}
+			g.definitions.writeln('${interface_idx_static_prefix}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+			g.writeln2('',
+				'${interface_idx_static_prefix}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
+			if g.pref.parallel_cc && interface_idx_static_prefix == '' {
+				g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+			}
+			for t in impl_types {
+				sub_sym := g.table.sym(ast.mktyp(t))
+				if sub_sym.kind == .interface {
+					continue
+				}
+				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
+					continue
+				}
+				if g.pref.skip_unused && sub_sym.kind == .struct
+					&& sub_sym.idx !in g.table.used_features.used_syms {
+					continue
+				}
+				// a build-module object has its own type table, so resolve the index at link time
+				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${g.type_sidx(t.set_nr_muls(0))};')
+			}
+			g.writeln2('\treturn ${g.type_sidx(ityp)};', '}')
 		}
 	}
 	g.writeln2('// << typeof() support for sum types', '')
@@ -5093,8 +5097,8 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	mut variant_name := g.get_sumtype_variant_name(got, got_sym)
 	if got_sym.kind == .alias && got_sym.info is ast.Alias
 		&& g.table.unaliased_type(got).idx() == exp.idx() {
-		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
-		sb.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
+		g.definitions.writeln('${g.static_non_parallel}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
+		sb.writeln('${g.static_non_parallel}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
 		sb.writeln('\treturn *(${exp_cname}*)x;')
 		sb.writeln('}\n')
 		g.auto_fn_definitions << sb.str()
@@ -5121,8 +5125,8 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		got_cname = g.styp(got)
 		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		// sb.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
-		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
-		sb.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
+		g.definitions.writeln('${g.static_non_parallel}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
+		sb.writeln('${g.static_non_parallel}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
 		sb.writeln('\t${got_cname}* ptr = x;')
 		sb.writeln('\tif (!is_mut) { ptr = builtin__memdup(x, sizeof(${got_cname})); }')
 	}

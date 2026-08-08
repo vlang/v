@@ -1247,7 +1247,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 
 	legacy_cflags, ordered_link_flags, pkgconfig_pthread :=
 		v.split_ordered_pkgconfig_link_flags(cflags)
-	defines, others, libs := legacy_cflags.defines_others_libs()
+	defines, mut others, libs := legacy_cflags.defines_others_libs()
+	if v.pref.build_mode == .build_module {
+		// `cc -c -o x.o` takes a single input. Only build-module can drop these: the
+		// program build that links its object compiles them itself.
+		others = others.filter(!cflag.is_c_source_operand(it))
+	}
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
@@ -2319,10 +2324,8 @@ fn (mut b Builder) cc_linux_cross() {
 	mut other_flags := []string{cap: others.len}
 	mut extra_sources := []string{}
 	for opt in others {
-		unq := opt.trim('"').trim("'")
-		ext := os.file_ext(unq).to_lower()
-		if ext in ['.c', '.cpp', '.cc', '.cxx', '.s'] && os.is_file(unq) {
-			extra_sources << unq
+		if cflag.is_c_source_operand(opt) {
+			extra_sources << opt.trim('"').trim("'")
 		} else {
 			other_flags << opt
 		}

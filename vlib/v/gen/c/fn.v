@@ -1433,8 +1433,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 	}
 	arg_str := g.out.after(arg_start_pos)
-	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
-		&& !g.pref.is_test) || skip {
+	// closure/overflow are is_builtin but also bundled, and build-module skips
+	// bundled modules, so their bodies are not in builtin.o
+	body_is_in_builtin_o := node.is_builtin && !util.should_bundle_module(node.mod)
+	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module)
+		&& body_is_in_builtin_o && !g.pref.is_test) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // NO BODY')
 		if g.inside_c_extern {

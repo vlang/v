@@ -714,9 +714,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				eprintln_cond(show_output && !res.is_quiet,
 					'`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
 				res.enable_globals = true
+				res.build_options << '-enable-globals'
 			}
 			'-enable-globals' {
 				res.enable_globals = true
+				res.build_options << arg // the -usecache `v build-module` child needs it too
 			}
 			'--disable-explicit-mutability', '-disable-explicit-mutability' {
 				res.disable_explicit_mutability = true

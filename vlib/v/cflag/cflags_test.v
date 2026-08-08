@@ -47,3 +47,34 @@ fn test_windows_import_lib_link_args_preserves_quoted_paths_and_converts_mixed_c
 	}.windows_import_lib_link_args()
 	assert args == ['"${direct_path}"', '-lVersion', '-lAdvapi32']
 }
+
+fn test_is_c_source_operand_recognizes_existing_translation_units() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_cflag_source_operands')
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	for name in ['first.c', 'second.CPP', 'third.cc', 'fourth.cxx', 'fifth.S'] {
+		path := os.join_path(test_root, name)
+		os.write_file(path, '') or { panic(err) }
+		assert is_c_source_operand(path)
+		assert is_c_source_operand('"${path}"')
+		assert is_c_source_operand("'${path}'")
+	}
+}
+
+fn test_is_c_source_operand_ignores_everything_that_is_not_a_source_file() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_cflag_non_source_operands')
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	for name in ['header.h', 'prebuilt.o', 'prebuilt.a'] {
+		path := os.join_path(test_root, name)
+		os.write_file(path, '') or { panic(err) }
+		assert !is_c_source_operand(path)
+	}
+	assert !is_c_source_operand('-DFOO=1')
+	assert !is_c_source_operand('-Wall')
+	assert !is_c_source_operand(os.join_path(test_root, 'not_written_out.c'))
+}
