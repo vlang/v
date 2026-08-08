@@ -73,6 +73,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		typ_idx := typ.idx()
 		high_type := c.expr(mut node.high)
 		high_type_idx := high_type.idx()
+		errors_before_range_checks := c.errors.len
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
 			&& high_type_idx != ast.void_type_idx {
 			c.error('range types do not match', node.cond.pos())
@@ -99,7 +100,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
-		range_error := c.errors.map(it.pos.line_nr).any(it == node.pos.line_nr)
+		range_error := c.errors.len > errors_before_range_checks
 		if !range_error {
 			c.check_for_empty_range(node.cond, node.high)
 		}
