@@ -2942,8 +2942,7 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	mut captured_ids := []int{cap: 2}
 	for operand_index in 0 .. 2 {
 		operand_id := g.a.child(condition, operand_index)
-		node := g.a.node(operand_id)
-		if node.kind in [.int_literal, .float_literal, .char_literal] {
+		if g.is_constant_numeric_expr(operand_id) {
 			continue
 		}
 		typ := g.value_unalias_type(g.tc.resolve_type(operand_id))
@@ -2964,13 +2963,51 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	return captured_ids
 }
 
-fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
+// side-effect free; a capture temp would type the constant as `int` and truncate wider values
+fn (g &FlatGen) is_constant_numeric_expr(id flat.NodeId) bool {
 	node := g.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .char_literal] {
+		return true
+	}
+	if node.children_count == 0 {
+		return false
+	}
+	return match node.kind {
+		.paren {
+			g.is_constant_numeric_expr(g.a.child(node, 0))
+		}
+		.prefix {
+			node.op in [.plus, .minus, .bit_not] && g.is_constant_numeric_expr(g.a.child(node, 0))
+		}
+		.infix {
+			node.children_count == 2 && g.is_constant_numeric_expr(g.a.child(node, 0))
+				&& g.is_constant_numeric_expr(g.a.child(node, 1))
+		}
+		else {
+			false
+		}
+	}
+}
+
+// display only: `~5` and `-(-1)` still need evaluating, so this stays narrower than capture
+fn (g &FlatGen) is_signed_numeric_literal(id flat.NodeId) bool {
+	node := g.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .char_literal] {
+		return true
+	}
+	if node.kind != .prefix || node.op !in [.plus, .minus] || node.children_count == 0 {
+		return false
+	}
+	operand := g.a.node(g.a.child(node, 0))
+	return operand.kind in [.int_literal, .float_literal, .char_literal]
+}
+
+fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
 	label := g.assert_source_text(id)
 	if label.len == 0 {
 		return
 	}
-	if node.kind in [.int_literal, .float_literal, .char_literal] {
+	if g.is_signed_numeric_literal(id) {
 		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
 		return
 	}
