@@ -2943,7 +2943,9 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	for operand_index in 0 .. 2 {
 		operand_id := g.a.child(condition, operand_index)
 		node := g.a.node(operand_id)
-		if node.kind in [.int_literal, .float_literal, .char_literal] || g.arg_is_const_ident(node) {
+		// exempt operands whose value a capture temp would truncate: constant
+		// numeric literals/exprs (ours) and const identifiers (upstream)
+		if g.is_constant_numeric_literal(operand_id) || g.arg_is_const_ident(node) {
 			continue
 		}
 		operand_type := g.usable_expr_type(operand_id)
@@ -2965,13 +2967,36 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	return captured_ids
 }
 
-fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
+// A signed literal parses as a prefix over the literal; capturing it would type
+// it as the default `int` and truncate anything wider than 32 bits.
+fn (g &FlatGen) is_constant_numeric_literal(id flat.NodeId) bool {
 	node := g.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .char_literal] {
+		return true
+	}
+	if node.children_count == 0 {
+		return false
+	}
+	return match node.kind {
+		.paren {
+			g.is_constant_numeric_literal(g.a.child(node, 0))
+		}
+		.prefix {
+			node.op in [.plus, .minus, .bit_not]
+				&& g.is_constant_numeric_literal(g.a.child(node, 0))
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
 	label := g.assert_source_text(id)
 	if label.len == 0 {
 		return
 	}
-	if node.kind in [.int_literal, .float_literal, .char_literal] {
+	if g.is_constant_numeric_literal(id) {
 		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
 		return
 	}
