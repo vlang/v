@@ -476,12 +476,24 @@ fn parse_stream_frame(buf []u8, start int, type_byte u8) !(QuicFrame, int) {
 	if len_bit {
 		length, n3 := decode_varint(buf[offset..])!
 		offset += n3
+		// RFC 9000 §19.8 (identical requirement to §19.6's CRYPTO-frame
+		// bound, see parse_crypto_frame): "The largest offset delivered on
+		// a stream -- the sum of the offset and data length -- cannot
+		// exceed 2^62-1." u64 arithmetic here cannot itself overflow (two
+		// values each under 2^62 sum to at most just under 2^63).
+		if stream_offset + length > max_varint {
+			return error('quic: STREAM frame: offset ${stream_offset} + length ${length} exceeds the 2^62-1 varint limit (RFC 9000 §19.8)')
+		}
 		if u64(offset) + length > u64(buf.len) {
 			return error('quic: STREAM frame: length ${length} exceeds remaining buffer')
 		}
 		data = buf[offset..offset + int(length)].clone()
 		offset += int(length)
 	} else {
+		implicit_length := u64(buf.len - offset)
+		if stream_offset + implicit_length > max_varint {
+			return error('quic: STREAM frame: offset ${stream_offset} + length ${implicit_length} exceeds the 2^62-1 varint limit (RFC 9000 §19.8)')
+		}
 		data = buf[offset..].clone()
 		offset = buf.len
 	}
@@ -515,6 +527,14 @@ fn parse_max_stream_data_frame(buf []u8, start int) !(QuicFrame, int) {
 
 fn parse_max_streams_frame(buf []u8, start int, is_uni bool) !(QuicFrame, int) {
 	maximum_streams, n1 := decode_varint(buf[start..])!
+	// RFC 9000 §4.6: a MAX_STREAMS value above 2^60 would allow a stream ID
+	// that cannot be expressed as a variable-length integer -- MUST be
+	// treated as FRAME_ENCODING_ERROR. Mirrors the identical
+	// max_initial_max_streams check already enforced on the transport
+	// parameter (transport_parameters.v) for the same RFC requirement.
+	if maximum_streams > max_initial_max_streams {
+		return error('quic: MAX_STREAMS frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §4.6)')
+	}
 	return QuicFrame(MaxStreamsFrame{
 		direction:       if is_uni {
 			StreamDirection.unidirectional
@@ -698,6 +718,11 @@ pub fn encode_stop_sending_frame(stream_id u64, error_code u64) ![]u8 {
 // stream.v/flow_control.v's caller makes, not something inferable from the
 // frame's own fields alone.
 pub fn encode_stream_frame(stream_id u64, offset u64, data []u8, fin bool, include_length bool) ![]u8 {
+	// RFC 9000 §19.8 (mirrors encode_crypto_frame's identical §19.6 check):
+	// the sum of offset and data length must not exceed 2^62-1.
+	if offset + u64(data.len) > max_varint {
+		return error('quic: encode_stream_frame: offset ${offset} + length ${data.len} exceeds the 2^62-1 varint limit (RFC 9000 §19.8)')
+	}
 	mut type_bits := u8(frame_type_stream_base)
 	if offset != 0 {
 		type_bits |= 0x04
@@ -737,6 +762,10 @@ pub fn encode_max_stream_data_frame(stream_id u64, maximum_stream_data u64) ![]u
 
 // encode_max_streams_frame serializes a MAX_STREAMS frame.
 pub fn encode_max_streams_frame(direction StreamDirection, maximum_streams u64) ![]u8 {
+	// RFC 9000 §4.6 (mirrors parse_max_streams_frame's identical check).
+	if maximum_streams > max_initial_max_streams {
+		return error('quic: encode_max_streams_frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §4.6)')
+	}
 	typ := if direction == .unidirectional {
 		frame_type_max_streams_uni
 	} else {

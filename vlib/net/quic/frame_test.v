@@ -495,6 +495,46 @@ fn test_stream_frame_rejects_length_exceeding_buffer() {
 	assert false, 'expected a truncated STREAM frame to be rejected'
 }
 
+// test_encode_stream_frame_rejects_offset_plus_length_exceeding_varint_max
+// and its parse-side sibling below are the STREAM-frame analog of
+// test_encode_crypto_frame_rejects_offset_plus_length_exceeding_varint_max
+// (RFC 9000 §19.8 mirrors §19.6's identical requirement).
+fn test_encode_stream_frame_rejects_offset_plus_length_exceeding_varint_max() {
+	encode_stream_frame(0, max_varint, [u8(0xaa)], false, true) or {
+		assert err.msg().contains('2^62')
+		return
+	}
+	assert false, 'expected offset+length exceeding the varint max to be rejected'
+}
+
+fn test_parse_stream_frame_rejects_offset_plus_length_exceeding_varint_max() {
+	mut buf := encode_varint(u64(0x0e))! // STREAM type, OFF+LEN bits set
+	buf << encode_varint(0)! // stream_id
+	buf << encode_varint(max_varint)! // offset
+	buf << encode_varint(1)! // length
+	buf << [u8(0xaa)]
+	parse_frame(buf) or {
+		assert err.msg().contains('2^62')
+		return
+	}
+	assert false, 'expected offset+length exceeding the varint max to be rejected'
+}
+
+// test_parse_stream_frame_without_length_rejects_offset_plus_implicit_length_exceeding_varint_max
+// covers the LEN-bit-clear path, where the length is implicit (rest of
+// buffer) rather than an explicit wire field.
+fn test_parse_stream_frame_without_length_rejects_offset_plus_implicit_length_exceeding_varint_max() {
+	mut buf := encode_varint(u64(0x0c))! // STREAM type, OFF bit set, LEN bit clear
+	buf << encode_varint(0)! // stream_id
+	buf << encode_varint(max_varint)! // offset
+	buf << [u8(0xaa)] // implicit-length data: rest of buffer
+	parse_frame(buf) or {
+		assert err.msg().contains('2^62')
+		return
+	}
+	assert false, 'expected offset+implicit-length exceeding the varint max to be rejected'
+}
+
 fn test_reset_stream_frame_round_trip() {
 	encoded := encode_reset_stream_frame(4, 7, 1000)!
 	frame, n := parse_frame(encoded)!
@@ -576,6 +616,42 @@ fn test_max_streams_frame_round_trip_both_directions() {
 		MaxStreamsFrame {
 			assert uni_frame.direction == .unidirectional
 			assert uni_frame.maximum_streams == 5
+		}
+		else {
+			assert false, 'expected a MaxStreamsFrame'
+		}
+	}
+}
+
+// test_encode/parse_max_streams_frame_rejects_value_above_2_pow_60 mirror
+// transport_parameters.v's own initial_max_streams_bidi/uni boundary tests
+// for the identical RFC 9000 §4.6 limit, now also enforced on the
+// MAX_STREAMS FRAME (not just the transport parameter) the RFC names
+// alongside it.
+fn test_encode_max_streams_frame_rejects_value_above_2_pow_60() {
+	encode_max_streams_frame(.bidirectional, max_initial_max_streams + 1) or {
+		assert err.msg().contains('2^60')
+		return
+	}
+	assert false, 'expected a MAX_STREAMS value above 2^60 to be rejected'
+}
+
+fn test_parse_max_streams_frame_rejects_value_above_2_pow_60() {
+	mut buf := encode_varint(u64(0x12))! // MAX_STREAMS bidi type
+	buf << encode_varint(max_initial_max_streams + 1)!
+	parse_frame(buf) or {
+		assert err.msg().contains('2^60')
+		return
+	}
+	assert false, 'expected a MAX_STREAMS value above 2^60 to be rejected'
+}
+
+fn test_encode_max_streams_frame_accepts_boundary_2_pow_60() {
+	encoded := encode_max_streams_frame(.bidirectional, max_initial_max_streams)!
+	frame, _ := parse_frame(encoded)!
+	match frame {
+		MaxStreamsFrame {
+			assert frame.maximum_streams == max_initial_max_streams
 		}
 		else {
 			assert false, 'expected a MaxStreamsFrame'
