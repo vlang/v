@@ -3,6 +3,12 @@ module time
 // operator `==` returns true if provided time is equal to time
 @[inline]
 pub fn (t1 Time) == (t2 Time) bool {
+	if t1.has_location() {
+		return t1.nanosecond == t2.nanosecond && t1.unix() == t2.unix()
+	}
+	if t2.has_location() {
+		return t1.nanosecond == t2.nanosecond && t1.unix() == t2.unix()
+	}
 	return t1.nanosecond == t2.nanosecond && t1.is_local == t2.is_local
 		&& t1.local_unix() == t2.local_unix()
 }

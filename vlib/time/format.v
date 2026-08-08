@@ -184,7 +184,7 @@ pub fn (t Time) format_rfc3339() string {
 	}
 
 	t_ := time_with_unix(t)
-	if t_.is_local {
+	if t_.is_local || t_.location() != none {
 		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
@@ -217,7 +217,7 @@ pub fn (t Time) format_rfc3339_micro() string {
 	}
 
 	t_ := time_with_unix(t)
-	if t_.is_local {
+	if t_.is_local || t_.location() != none {
 		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
@@ -250,7 +250,7 @@ pub fn (t Time) format_rfc3339_nano() string {
 	}
 
 	t_ := time_with_unix(t)
-	if t_.is_local {
+	if t_.is_local || t_.location() != none {
 		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
@@ -720,9 +720,10 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 @[deprecated: 'use `http_header_string()` instead']
 @[deprecated_after: '2026-09-30']
 pub fn (t Time) utc_string() string {
-	day_str := t.weekday_str()
-	month_str := t.smonth()
-	utc_string := '${day_str}, ${t.day} ${month_str} ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
+	t_ := if t.location() != none { t.local_to_utc() } else { t }
+	day_str := t_.weekday_str()
+	month_str := t_.smonth()
+	utc_string := '${day_str}, ${t_.day} ${month_str} ${t_.year} ${t_.hour:02d}:${t_.minute:02d}:${t_.second:02d} UTC'
 	return utc_string
 }
 
@@ -750,10 +751,15 @@ pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
 	if dst_len < http_date_len {
 		return error('time.write_http_header: dst_len must be >= 29')
 	}
-	day_str := long_days[iclamp(0, t.day_of_week() - 1, 6)] // read in place: no substr
+	if t.location() != none {
+		unsafe { t.local_to_utc().write_http_header(dst, dst_len)! }
+		return
+	}
+	t_ := t
+	day_str := long_days[iclamp(0, t_.day_of_week() - 1, 6)] // read in place: no substr
 	// months_string is indexed in place (no smonth() substr allocation); out-of-range
 	// months keep smonth()'s historical '---' fallback.
-	mi := if t.month >= 1 && t.month <= 12 { (t.month - 1) * 3 } else { -1 }
+	mi := if t_.month >= 1 && t_.month <= 12 { (t_.month - 1) * 3 } else { -1 }
 	m0 := if mi >= 0 { months_string[mi] } else { `-` }
 	m1 := if mi >= 0 { months_string[mi + 1] } else { `-` }
 	m2 := if mi >= 0 { months_string[mi + 2] } else { `-` }
@@ -761,11 +767,11 @@ pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
 	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, m0, m1, m2, ` `, `0`,
 		`0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `, `G`, `M`, `T`]!
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.day, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.year, &buf[12], 4)
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[17], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[20], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[23], 2)
+		int_to_ptr_byte_array_no_pad(t_.day, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t_.year, &buf[12], 4)
+		int_to_ptr_byte_array_no_pad(t_.hour, &buf[17], 2)
+		int_to_ptr_byte_array_no_pad(t_.minute, &buf[20], 2)
+		int_to_ptr_byte_array_no_pad(t_.second, &buf[23], 2)
 		// plain byte loop instead of vmemcpy: compiles on every backend (JS has
 		// no vmemcpy) and C compilers turn it into a memcpy at -prod anyway
 		for i in 0 .. 29 {
