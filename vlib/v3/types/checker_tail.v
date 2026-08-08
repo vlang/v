@@ -8253,8 +8253,12 @@ fn (tc &TypeChecker) expr_can_take_address(id flat.NodeId) bool {
 			return tc.expr_can_take_address(tc.a.child(&node, 0))
 		}
 		.or_expr {
-			return node.value == '?' && node.children_count > 0
-				&& tc.expr_can_take_address(tc.a.child(&node, 0))
+			// Optional/result propagation retains the source lvalue's storage.
+			// In particular, `&holder.field?` addresses the unwrapped payload.
+			if node.value !in ['?', '!'] || node.children_count == 0 {
+				return false
+			}
+			return tc.expr_can_take_address(tc.a.child(&node, 0))
 		}
 		else {
 			return false

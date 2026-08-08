@@ -10067,7 +10067,14 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		&& node.children_count == 2 && !isnil(t.tc) {
 		lhs_id := t.a.child(&node, 0)
 		rhs_id := t.a.child(&node, 1)
-		mut lhs_type_name := t.lvalue_type(t.a.child(&node, 0))
+		lhs_node := t.a.nodes[int(lhs_id)]
+		// Whole-variable assignment overwrites the variable's storage type, even
+		// when an active optional smartcast makes the expression read as its payload.
+		mut lhs_type_name := if lhs_node.kind == .ident {
+			t.var_type(lhs_node.value)
+		} else {
+			t.lvalue_type(t.a.child(&node, 0))
+		}
 		if lhs_type_name.len == 0 {
 			lhs_type_name = t.lvalue_type(new_children[0])
 		}
@@ -10087,7 +10094,33 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			t.drain_pending(mut result)
 			tmp_name := t.new_temp('drop_assign')
 			tmp_type := lhs_type.name()
-			result << t.make_decl_assign_typed(tmp_name, new_children[1], tmp_type)
+			mut tmp_value := new_children[1]
+			// A clone call can retain the assignment's optional expected type on its
+			// transformed call node even though the lowered call still returns the
+			// payload. The overwrite temporary must therefore wrap a non-optional
+			// source explicitly before it is declared as the optional LHS type.
+			if t.is_optional_type_name(tmp_type) {
+				source_type := t.original_expr_type(rhs_id)
+				payload_type := t.optional_base_type(t.qualify_optional_type(tmp_type))
+				value_node := t.a.nodes[int(tmp_value)]
+				value_is_wrapper := value_node.kind == .struct_init && t.is_optional_type_name(if value_node.value.len > 0 {
+					value_node.value
+				} else {
+					value_node.typ
+				})
+				transformed_type := if value_node.kind == .ident {
+					t.var_type(value_node.value)
+				} else {
+					''
+				}
+				value_is_optional := t.is_optional_type_name(transformed_type)
+				if !value_is_wrapper && !value_is_optional && !t.is_optional_type_name(source_type)
+					&& t.normalize_type_alias(source_type) == t.normalize_type_alias(payload_type) {
+					t.set_node_typ(int(tmp_value), payload_type)
+					tmp_value = t.make_optional_some(tmp_value, tmp_type)
+				}
+			}
+			result << t.make_decl_assign_typed(tmp_name, tmp_value, tmp_type)
 			lvalue := t.stabilize_transformed_lvalue_for_reuse(new_children[0])
 			t.drain_pending(mut result)
 			drop_call := t.make_call_typed('drop_owned', arr1(lvalue), 'void')
@@ -11194,6 +11227,15 @@ fn (t &Transformer) pointer_value_assign_rhs_matches(lhs_value_type_raw string, 
 
 // transform_expr_for_type transforms transform expr for type data for transform.
 fn (t &Transformer) optional_conversion_source_type(id flat.NodeId) string {
+	if int(id) >= 0 && int(id) < t.a.nodes.len {
+		node := t.a.nodes[int(id)]
+		if node.kind == .ident {
+			local_type := t.var_type(node.value)
+			if local_type.len > 0 && local_type != 'unknown' {
+				return local_type
+			}
+		}
+	}
 	mut source_type := t.node_type(id)
 	original_source_type := t.original_expr_type(id)
 	if t.is_optional_type_name(source_type) && !t.is_optional_type_name(original_source_type)

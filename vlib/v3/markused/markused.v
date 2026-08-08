@@ -377,6 +377,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	reachable_modules := markused_reachable_modules(a, tc)
 	queue << 'main'
 	used['main'] = true
+	$if ownership ? {
+		// Ownership cleanup and clone lowering emits direct C references to these
+		// process-wide IError sentinels. They have no source-AST reference for the
+		// ordinary markused traversal to discover, so root their const declarations.
+		for seed in ['builtin.none__', 'builtin.error_sentinel'] {
+			enqueue(seed, mut used, mut queue)
+		}
+	}
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
 	for root in marked_roots {
