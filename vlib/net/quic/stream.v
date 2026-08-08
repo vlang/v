@@ -153,7 +153,19 @@ pub mut:
 
 // note_size_known transitions recv -> size_known once the final size is
 // learned (a FIN-carrying STREAM frame, or a RESET_STREAM frame).
+//
+// A no-op once `state` has already reached reset_recvd/reset_read: RFC 9000
+// §3.2's Receive Stream State Machine (Figure 2) makes Reset Recvd a
+// terminal classification for how this stream's data delivery is
+// understood -- reordering means a STREAM frame carrying the FIN this
+// endpoint was still expecting can legitimately arrive AFTER a RESET_STREAM
+// that raced ahead of it on the wire, and processing it here would
+// otherwise silently flip `state` from Reset Recvd back to Data Recvd,
+// which the state machine never permits.
 pub fn (mut h StreamRecvHalf) note_size_known(final_size u64) ! {
+	if h.state == .reset_recvd || h.state == .reset_read {
+		return
+	}
 	h.reassembler.note_final_size(final_size)!
 	h.final_size = final_size
 	if h.state == .recv {
@@ -167,7 +179,14 @@ pub fn (mut h StreamRecvHalf) note_size_known(final_size u64) ! {
 // note_data records incoming STREAM frame data and promotes recv/
 // size_known -> data_recvd once the reassembler has everything up to a
 // known final size.
+//
+// A no-op once reset -- see note_size_known's doc comment for the same
+// reordering rationale (a reset stream must not be promoted back to
+// data_recvd by a stray, reordered STREAM frame).
 pub fn (mut h StreamRecvHalf) note_data(offset u64, data []u8) ! {
+	if h.state == .reset_recvd || h.state == .reset_read {
+		return
+	}
 	h.reassembler.add(offset, data)!
 	if final := h.final_size {
 		if h.reassembler.consumed_len() >= final {

@@ -507,6 +507,22 @@ fn test_encode_stream_frame_rejects_offset_plus_length_exceeding_varint_max() {
 	assert false, 'expected offset+length exceeding the varint max to be rejected'
 }
 
+// test_encode_stream_frame_rejects_offset_near_u64_max_without_overflow is a
+// Phase-R regression for a Copilot finding on vlang/v#27882
+// (pullrequestreview-4888843234): unlike the parse-side check (both
+// operands there come from decode_varint, inherently bounded to
+// max_varint), `offset` here is caller-supplied with no such bound -- a
+// naive `offset + u64(data.len) > max_varint` check would itself overflow
+// and wrap to a small value for an offset this close to u64::MAX, silently
+// passing the very check meant to reject it.
+fn test_encode_stream_frame_rejects_offset_near_u64_max_without_overflow() {
+	encode_stream_frame(0, max_u64 - 3, [u8(0xaa), 0xbb, 0xcc, 0xdd, 0xee], false, true) or {
+		assert err.msg().contains('2^62')
+		return
+	}
+	assert false, 'expected an offset near u64::MAX to be rejected, not silently accepted via overflow'
+}
+
 fn test_parse_stream_frame_rejects_offset_plus_length_exceeding_varint_max() {
 	mut buf := encode_varint(u64(0x0e))! // STREAM type, OFF+LEN bits set
 	buf << encode_varint(0)! // stream_id
