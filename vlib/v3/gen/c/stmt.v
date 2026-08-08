@@ -2967,8 +2967,9 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	return captured_ids
 }
 
-// A signed literal parses as a prefix over the literal; capturing it would type
-// it as the default `int` and truncate anything wider than 32 bits.
+// Capture eligibility: these are side-effect free, so skipping the temp is safe.
+// A signed literal parses as a prefix over the literal, and capturing it would
+// type it as the default `int` and truncate anything wider than 32 bits.
 fn (g &FlatGen) is_constant_numeric_literal(id flat.NodeId) bool {
 	node := g.a.node(id)
 	if node.kind in [.int_literal, .float_literal, .char_literal] {
@@ -2991,12 +2992,27 @@ fn (g &FlatGen) is_constant_numeric_literal(id flat.NodeId) bool {
 	}
 }
 
+// Display suppression: narrower than capture eligibility, because the label only
+// spells out the value for a bare or sign-prefixed literal. `~5` and `-(-1)`
+// still need evaluating.
+fn (g &FlatGen) is_signed_numeric_literal(id flat.NodeId) bool {
+	node := g.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .char_literal] {
+		return true
+	}
+	if node.kind != .prefix || node.op !in [.plus, .minus] || node.children_count == 0 {
+		return false
+	}
+	operand := g.a.node(g.a.child(node, 0))
+	return operand.kind in [.int_literal, .float_literal, .char_literal]
+}
+
 fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
 	label := g.assert_source_text(id)
 	if label.len == 0 {
 		return
 	}
-	if g.is_constant_numeric_literal(id) {
+	if g.is_signed_numeric_literal(id) {
 		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
 		return
 	}
