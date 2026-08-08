@@ -607,7 +607,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			// (a store to a `_Thread_local` variable segfaults), so there we emulate
 			// per-thread storage with a pthread key. The generated C is compiled by
 			// either tcc or the fallback system compiler, so both variants must exist.
-			g.write_prealloc_tls_global(mut def_builder, styp, final_c_name)
+			linkage := '${extern}${field_visibility_kw}'
+			g.write_prealloc_tls_global(mut def_builder, linkage, styp, final_c_name)
 			g.global_const_defs[name] = GlobalConstDef{
 				mod: node.mod
 				def: def_builder.str()
@@ -696,7 +697,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 // thread-local storage (a store to a `_Thread_local` variable segfaults), so there the
 // same identifier is redirected to per-thread storage held in a pthread key. Both variants
 // are emitted because the same generated C can be compiled by TCC or the system compiler.
-fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, styp string, cname string) {
+fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, linkage string, styp string,
+	cname string) {
 	def_builder.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
 	def_builder.writeln('#include <pthread.h>')
 	def_builder.writeln('static pthread_key_t v_prealloc_tls_key;')
@@ -714,7 +716,7 @@ fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, styp s
 	def_builder.writeln('}')
 	def_builder.writeln('#define ${cname} (*(${styp} *)v_prealloc_tls_slot())')
 	def_builder.writeln('#else')
-	def_builder.writeln('_Thread_local ${styp} ${cname}; // global 6')
+	def_builder.writeln('${linkage}_Thread_local ${styp} ${cname}; // global 6')
 	def_builder.writeln('#endif')
 }
 
