@@ -311,9 +311,10 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 1
 		}
 		u8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(u8))
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(data))
+			vals << &char(&num)
+			lens << int(sizeof(u16))
 			formats << 1
 		}
 		u16 {
@@ -338,9 +339,10 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 1
 		}
 		i8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(i8))
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(data))
+			vals << &char(&num)
+			lens << int(sizeof(i16))
 			formats << 1
 		}
 		i16 {
@@ -673,8 +675,8 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			// u8
 			orm.type_idx['u8'] {
-				data := str.i8()
-				return orm.Primitive(*unsafe { &u8(&data) })
+				data := str.i16()
+				return orm.Primitive(u8(data))
 			}
 			// u16
 			orm.type_idx['u16'] {

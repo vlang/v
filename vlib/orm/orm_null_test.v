@@ -11,8 +11,10 @@ mut:
 
 struct MockDB {
 	use_num bool
-	st      &MockDBState = unsafe { nil }
-	db      sqlite.DB
+mut:
+	capture_only bool // do not execute DDL against the real sqlite DB
+	st           &MockDBState = unsafe { nil }
+	db           sqlite.DB
 }
 
 fn MockDB.new() &MockDB {
@@ -84,7 +86,9 @@ fn mock_type_from_v(typ int) !string {
 fn (db MockDB) create(table orm.Table, fields []orm.TableField) ! {
 	mut st := db.st
 	st.last = orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, mock_type_from_v, false)!
-	return db.db.create(table, fields)
+	if !db.capture_only {
+		return db.db.create(table, fields)
+	}
 }
 
 fn (db MockDB) drop(table orm.Table) ! {
@@ -106,7 +110,7 @@ struct Foo {
 mut:
 	id u64 @[primary; sql: serial]
 	a  string
-	b  string @[default: '"yes"']
+	b  string @[default: 'yes']
 	c  ?string
 	d  ?string = 'hi'
 	e  int
@@ -139,7 +143,7 @@ fn test_option_struct_fields_and_none() {
 	sql db {
 		create table Foo
 	}!
-	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `foo` (`id` serial-type NOT NULL, `a` string-type NOT NULL, `b` string-type DEFAULT "yes" NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `f` int-type DEFAULT 33 NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));'
+	assert db.st.last == "CREATE TABLE IF NOT EXISTS `foo` (`id` serial-type NOT NULL, `a` string-type NOT NULL, `b` string-type DEFAULT 'yes' NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `f` int-type DEFAULT 33 NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));"
 
 	_ := sql db {
 		select from Foo where e > 5 && c is none && c !is none && h == 2
@@ -368,4 +372,24 @@ fn test_distinct_select() {
 		select distinct from Foo where e > 5
 	}!
 	assert db.st.last == 'SELECT DISTINCT `id`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h` FROM `foo` WHERE `e` > ?;'
+}
+
+@[table: 'default_exprs']
+struct DefaultExprs {
+mut:
+	id    int    @[primary; sql: serial]
+	uuid  string @[default: 'gen_random_uuid()']
+	ts    string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	note  string @[default: "Bob's account"]
+	state string @[default: 'pending (manual)']
+}
+
+fn test_default_sql_expr_and_string_quoting() {
+	mut db := MockDB.new()
+	db.capture_only = true
+
+	sql db {
+		create table DefaultExprs
+	}!
+	assert db.st.last == "CREATE TABLE IF NOT EXISTS `default_exprs` (`id` serial-type NOT NULL, `uuid` string-type DEFAULT gen_random_uuid() NOT NULL, `ts` TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL, `note` string-type DEFAULT 'Bob''s account' NOT NULL, `state` string-type DEFAULT 'pending (manual)' NOT NULL, PRIMARY KEY(`id`));"
 }

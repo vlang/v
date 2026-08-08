@@ -34,14 +34,14 @@ mut:
 struct TestDefaultAttribute {
 	id         string @[primary; sql: serial]
 	name       string
-	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: CURRENT_TIMESTAMP; sql_type: 'TIMESTAMP']
 }
 
 @[comment: 'This is a table comment']
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
 	name       string @[comment: 'real user name']
-	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: CURRENT_TIMESTAMP; sql_type: 'TIMESTAMP']
 }
 
 fn test_mysql_orm() {

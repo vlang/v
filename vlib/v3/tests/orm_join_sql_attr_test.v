@@ -149,16 +149,16 @@ fn main() {
 ")
 	assert selector_db_out == ''
 
-	mutated_insert_out := orm_join_sql_attr_run(v3_bin, 'orm_mutated_insert_fields', 'import db.sqlite
+	mutated_insert_out := orm_join_sql_attr_run(v3_bin, 'orm_mutated_insert_fields', "import db.sqlite
 
 struct MutatedInsertUser {
 	id int @[primary; sql: serial]
-mut:
-	name string @[default: \'"db_default"\']
+	mut:
+		name string @[default: 'db_default']
 }
 
 fn main() {
-	mut db := sqlite.connect(\':memory:\') or { panic(err) }
+	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
 		db.close() or {}
 	}
@@ -168,7 +168,7 @@ fn main() {
 	}!
 
 	mut user := MutatedInsertUser{}
-	user.name = \'Ada\'
+	user.name = 'Ada'
 	sql db {
 		insert user into MutatedInsertUser
 	}!
@@ -177,16 +177,16 @@ fn main() {
 		select from MutatedInsertUser
 	}!
 	assert rows.len == 1
-	assert rows[0].name == \'Ada\'
+	assert rows[0].name == 'Ada'
 }
-')
+")
 	assert mutated_insert_out == ''
 
-	selector_insert_out := orm_join_sql_attr_run(v3_bin, 'orm_selector_insert_value', 'import db.sqlite
+	selector_insert_out := orm_join_sql_attr_run(v3_bin, 'orm_selector_insert_value', "import db.sqlite
 
 struct SelectorInsertUser {
 	id int @[primary]
-	name string @[default: \'"db_default"\']
+	name string @[default: 'db_default']
 }
 
 struct SelectorInsertRequest {
@@ -194,7 +194,7 @@ struct SelectorInsertRequest {
 }
 
 fn main() {
-	mut db := sqlite.connect(\':memory:\') or { panic(err) }
+	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
 		db.close() or {}
 	}
@@ -206,7 +206,7 @@ fn main() {
 	request := SelectorInsertRequest{
 		user: SelectorInsertUser{
 			id: 1
-			name: \'Ada\'
+			name: 'Ada'
 		}
 	}
 	sql db {
@@ -217,12 +217,12 @@ fn main() {
 		select from SelectorInsertUser where id == 1
 	}!
 	assert first.len == 1
-	assert first[0].name == \'Ada\'
+	assert first[0].name == 'Ada'
 
 	update_request := SelectorInsertRequest{
 		user: SelectorInsertUser{
 			id: 1
-			name: \'Grace\'
+			name: 'Grace'
 		}
 	}
 	sql db {
@@ -233,9 +233,9 @@ fn main() {
 		select from SelectorInsertUser where id == 1
 	}!
 	assert updated.len == 1
-	assert updated[0].name == \'Grace\'
+	assert updated[0].name == 'Grace'
 }
-')
+")
 	assert selector_insert_out == ''
 
 	invalid_result := orm_join_sql_attr_compile(v3_bin, 'orm_invalid_static_where', "import db.sqlite

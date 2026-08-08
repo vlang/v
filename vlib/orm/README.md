@@ -39,9 +39,11 @@ struct Foo {
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[sql_select: 'SQL expression']` uses a custom expression in `SELECT` for the field
-- `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
-  creating a new table, allowing for SQL functions like `CURRENT_TIME`. For raw strings,
-  surround `raw_sql` with backticks (\`).
+- `[default: 'raw_sql']` sets a "DEFAULT" clause when creating a new table.
+  String values are quoted, with single quotes escaped as `''`. SQL expressions
+  are emitted unquoted: function calls like `'gen_random_uuid()'` and paren-less
+  keywords like `CURRENT_TIMESTAMP` are recognized automatically; for any other
+  SQL expression use a bare identifier, e.g. `[default: CURRENT_TIMESTAMP]`.
 
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 - `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`
@@ -61,7 +63,7 @@ import time
 struct Foo {
     id          int         @[primary; sql: serial]
     name        string
-    created_at  time.Time   @[default: 'CURRENT_TIME']
+    created_at  time.Time   @[default: CURRENT_TIME]
     updated_at  ?string     @[sql_type: 'TIMESTAMP']
     deleted_at  ?time.Time
     children    []Child     @[fkey: 'parent_id']
@@ -243,7 +245,7 @@ If the `id` field is marked as `sql: serial` and `primary`, the insert expressio
 returns the database ID of the newly added object. Getting an ID of a newly
 added DB row is often useful.
 
-When inserting, `[sql: serial]` fields, and fields with a `[default: 'raw_sql']`
+When inserting, `[sql: serial]` fields, and fields with a `[default: ...]`
 attribute, are not sent to the database when the value being sent is the default
 for the V struct field (e.g., 0 int, or an empty string).  This allows the
 database to insert default values for auto-increment fields and where you have
@@ -479,7 +481,7 @@ import db.pg
 struct Member {
 	id         string @[default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
 	name       string
-	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: CURRENT_TIMESTAMP; sql_type: 'TIMESTAMP']
 }
 
 fn main() {

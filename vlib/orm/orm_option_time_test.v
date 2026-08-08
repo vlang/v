@@ -6,7 +6,7 @@ import time
 struct Foo {
 	id         int @[primary; sql: serial]
 	name       string
-	created_at time.Time @[default: 'CURRENT_TIME']
+	created_at time.Time @[default: CURRENT_TIME]
 	updated_at ?string   @[sql_type: 'TIMESTAMP']
 	deleted_at ?time.Time
 	children   []Child @[fkey: 'parent_id']
