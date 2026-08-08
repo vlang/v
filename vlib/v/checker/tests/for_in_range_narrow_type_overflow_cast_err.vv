@@ -1,0 +1,5 @@
+fn main() {
+	for b in u8(0) .. int(256) {
+		println(b)
+	}
+}

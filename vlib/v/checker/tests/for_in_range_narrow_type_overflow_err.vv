@@ -1,0 +1,5 @@
+fn main() {
+	for b in min_u8 .. int(max_u8) + 1 {
+		println(b)
+	}
+}
