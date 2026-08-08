@@ -35,6 +35,16 @@ fn run_ownership_check(v3_bin string, name string, code string) os.Result {
 	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
+fn run_autofree_check(v3_bin string, name string, code string) os.Result {
+	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	src := os.join_path(tmp_dir, 'main.v')
+	out := os.join_path(tmp_dir, 'out')
+	os.write_file(src, code) or { panic(err) }
+	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
+}
+
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
@@ -1111,8 +1121,8 @@ fn test_ownership_reassigned_reference_releases_old_borrow() {
 	v3_bin := ownership_build_v3()
 	ok := run_ownership_check(v3_bin, 'reassign_ref_releases_borrow', "
 fn main() {
-	s := 's'.to_owned()
-	t := 't'.to_owned()
+	mut s := 's'.to_owned()
+	mut t := 't'.to_owned()
 	mut r := &s
 	r = &t
 	u := s
@@ -2734,6 +2744,48 @@ fn main() {
 }
 ')
 	assert ok_scoped_owned_field.exit_code == 0, ok_scoped_owned_field.output
+}
+
+fn test_ownership_unsafe_expression_does_not_shift_scope_drops() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'unsafe_expression_scope_drop', '
+fn use_owned(flag bool, pointer voidptr) {
+	if pointer == unsafe { nil } {
+		return
+	}
+	if flag {
+		value := "owned".to_owned()
+		println(value)
+	} else {
+		println("not owned")
+	}
+}
+
+fn main() {
+	use_owned(true, voidptr(1))
+}
+')
+	assert ok.exit_code == 0, ok.output
+}
+
+fn test_ownership_returned_pointer_moves_aggregate_drop_state() {
+	v3_bin := ownership_build_v3()
+	ok := run_autofree_check(v3_bin, 'returned_pointer_aggregate_drop', '
+struct HeapBox {
+	err IError = none
+}
+
+fn make_heap_box() &HeapBox {
+	mut value := HeapBox{}
+	return &value
+}
+
+fn main() {
+	_ := make_heap_box()
+	println("ok")
+}
+')
+	assert ok.exit_code == 0, ok.output
 }
 
 fn test_ownership_callee_params_are_order_independent() {

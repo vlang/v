@@ -8140,8 +8140,8 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	struct_type := base as types.Struct
 	fields := g.tc.structs[struct_type.name] or { return false }
 	// The shortcut can only faithfully decode a fixed set of field types and
-	// ignores json field attributes. Decline anything else so the result stays
-	// an error instead of silently succeeding with dropped/renamed/rounded data.
+	// attributes. Decline anything else so the result stays an error instead of
+	// silently succeeding with dropped/renamed/rounded data.
 	if g.json_struct_has_decode_field_attrs(struct_type.name) {
 		return false
 	}
@@ -8178,7 +8178,7 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	// fails instead of silently substituting a default (e.g. `{"n":"bad"}` for int).
 	mut checks := []string{}
 	for field in fields {
-		checks << g.json_decode_field_valid_expr(root_name, field)
+		checks << g.json_decode_field_valid_expr(root_name, struct_type.name, field)
 	}
 	valid_cond := if checks.len > 0 { checks.join(' && ') } else { 'true' }
 	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} != NULL) { if (cJSON_IsObject(${root_name})) { if (${valid_cond}) { ')
@@ -8197,13 +8197,18 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 // json_decode_field_valid_expr returns a C boolean expression that is true when the
 // JSON value for `field` is absent (defaulted) or present with the cJSON type the
 // fast-path decoder can faithfully read. A present wrong-typed value fails the decode.
-fn (mut g FlatGen) json_decode_field_valid_expr(root_name string, field types.StructField) string {
-	item := if g.json_decode_struct_field_is_embedded(field) {
-		root_name
-	} else {
-		'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
-	}
+fn (mut g FlatGen) json_decode_field_valid_expr(root_name string, struct_name string, field types.StructField) string {
+	item := g.json_decode_field_item(root_name, struct_name, field)
 	return g.json_decode_value_valid_expr(item, field.typ)
+}
+
+fn (g &FlatGen) json_decode_field_item(root_name string, struct_name string, field types.StructField) string {
+	if g.json_decode_struct_field_is_embedded(field) {
+		return root_name
+	}
+	attrs := g.json_struct_field_attrs(struct_name, field.name)
+	label := json_struct_field_label(field.name, attrs)
+	return 'cJSON_GetObjectItemCaseSensitive(${root_name}, "${c_escape(label)}")'
 }
 
 fn (mut g FlatGen) json_decode_value_valid_expr(item string, typ types.Type) string {
@@ -8232,11 +8237,7 @@ fn (mut g FlatGen) json_decode_value_valid_expr(item string, typ types.Type) str
 		fields := g.tc.structs[clean.name] or { return 'false' }
 		mut checks := []string{cap: fields.len}
 		for field in fields {
-			field_item := if g.json_decode_struct_field_is_embedded(field) {
-				item
-			} else {
-				'cJSON_GetObjectItemCaseSensitive(${item}, "${field.name}")'
-			}
+			field_item := g.json_decode_field_item(item, clean.name, field)
 			checks << g.json_decode_value_valid_expr(field_item, field.typ)
 		}
 		children_valid := if checks.len > 0 { checks.join(' && ') } else { 'true' }
@@ -8310,11 +8311,7 @@ fn (g &FlatGen) json_decode_value_needs_exact_integer(typ types.Type, depth int)
 }
 
 fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, struct_name string, field types.StructField) {
-	item := if g.json_decode_struct_field_is_embedded(field) {
-		root_name
-	} else {
-		'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
-	}
+	item := g.json_decode_field_item(root_name, struct_name, field)
 	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
 	if clean is types.Pointer {
 		if info, default_id := g.json_struct_field_default_expr(struct_name, field.name) {
@@ -8543,8 +8540,24 @@ fn (g &FlatGen) json_struct_has_field_attrs(struct_name string) bool {
 }
 
 fn (g &FlatGen) json_struct_has_decode_field_attrs(struct_name string) bool {
-	// `omitempty` changes encoding only. It is safe to ignore while decoding.
-	return g.json_struct_has_disallowed_field_attrs(struct_name, ['omitempty'])
+	// `omitempty` changes encoding only. Renamed `json` fields are handled by
+	// json_decode_field_item. Skip/required and other attributes still need the
+	// full decoder.
+	if g.json_struct_has_disallowed_field_attrs(struct_name, ['json', 'omitempty']) {
+		return true
+	}
+	info := g.find_struct_decl(json_struct_decl_name(struct_name)) or { return false }
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		attrs := field.generic_params()
+		if attrs.len > 1 && json_attrs_skip_field(attrs[1..]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) json_struct_has_encode_field_attrs(struct_name string) bool {

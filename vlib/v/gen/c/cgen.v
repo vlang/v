@@ -1711,7 +1711,7 @@ fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) 
 	// pos2 := 	g.out_parallel[g.out_idx].len
 	g.expr_with_cast(expr, typ, exp)
 	// g.out_parallel[g.out_idx].cut_to(pos2)
-	return g.out.cut_to(pos).trim_space()
+	return g.normalize_extracted_stmt(g.out.cut_to(pos))
 }
 
 // Surround a potentially multi-statement expression safely with `prepend` and `append`.

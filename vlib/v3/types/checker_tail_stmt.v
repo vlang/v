@@ -14802,12 +14802,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if rt is String {
 				return rt_raw
 			}
-			lhs := tc.a.nodes[int(lhs_id)]
-			rhs := tc.a.nodes[int(rhs_id)]
-			if int_promoted := int_literal_promoted_infix_type(lhs, rhs, rt) {
+			if int_promoted := tc.int_literal_promoted_infix_type(lhs_id, rhs_id, rt) {
 				return int_promoted
 			}
-			if int_promoted := int_literal_promoted_infix_type(rhs, lhs, lt) {
+			if int_promoted := tc.int_literal_promoted_infix_type(rhs_id, lhs_id, lt) {
 				return int_promoted
 			}
 			if lt.is_float() || rt.is_float() {
@@ -16581,11 +16579,11 @@ fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {
 		|| tc.resolve_generic_struct_method(type_name, op_name) != none
 }
 
-fn int_literal_promoted_infix_type(lit flat.Node, other flat.Node, other_type Type) ?Type {
-	if lit.kind != .int_literal || other.kind == .int_literal {
+fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_id flat.NodeId, other_type Type) ?Type {
+	if tc.int_literal_value(lit_id) == none || tc.int_literal_value(other_id) != none {
 		return none
 	}
-	value := v_int_literal_value(lit.value) or { return none }
+	value := tc.int_literal_value(lit_id)?
 	clean_type := unalias_type(other_type)
 	if unsigned_type_accepts_int_literal(clean_type, value) {
 		return clean_type
@@ -16595,6 +16593,18 @@ fn int_literal_promoted_infix_type(lit flat.Node, other flat.Node, other_type Ty
 	// inference relies on that distinction when it chooses its value type.
 	if clean_type.is_integer() && clean_type.name() != Type(int_).name() {
 		return clean_type
+	}
+	return none
+}
+
+fn (tc &TypeChecker) int_literal_value(id flat.NodeId) ?int {
+	node := tc.a.node(id)
+	if node.kind == .int_literal {
+		return v_int_literal_value(node.value)
+	}
+	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0 {
+		value := tc.int_literal_value(tc.a.child(node, 0))?
+		return if node.op == .minus { -value } else { value }
 	}
 	return none
 }

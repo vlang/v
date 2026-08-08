@@ -2951,6 +2951,28 @@ fn main() {
 	assert out == 'true\n9007199254740993\ntrue\ntrue\n0\n7\n7\n7\n-9223372036854775808\n18446744073709551615\n9007199254740993\n9007199254740993'
 }
 
+fn test_json_decode_fast_path_uses_renamed_fields_recursively() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_renamed_fields', 'import json
+
+struct Item {
+	id int @[json: \'itemId\']
+}
+
+struct Payload {
+	group_name string @[json: \'groupName\']
+	items      []Item  @[json: \'testItems\']
+}
+
+fn main() {
+	payload := json.decode(Payload, "{\\"groupName\\":\\"A\\",\\"testItems\\":[{\\"itemId\\":7}]}")!
+	println(payload.group_name)
+	println(int_str(payload.items[0].id))
+}
+')
+	assert out == 'A\n7'
+}
+
 fn test_json_decode_aligned_pointer_fields_use_aligned_memdup() {
 	v3_bin := build_v3()
 	source := 'import json

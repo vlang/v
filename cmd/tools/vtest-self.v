@@ -237,11 +237,19 @@ const skip_on_ubuntu_musl = [
 	// is not usable from a musl-gcc build without a musl-native OpenSSL.
 	// Add any NEW net.quic/crypto.ecdsa test file here too.
 	'vlib/crypto/ecdsa/ecdsa_p256_ecdh_test.v',
+	'vlib/net/quic/coalesce_test.v',
+	'vlib/net/quic/crypto_stream_test.v',
+	'vlib/net/quic/frame_test.v',
+	'vlib/net/quic/handshake_confirm_test.v',
 	'vlib/net/quic/header_protection_test.v',
 	'vlib/net/quic/header_test.v',
+	'vlib/net/quic/initial_exchange_test.v',
 	'vlib/net/quic/initial_secrets_test.v',
+	'vlib/net/quic/key_update_test.v',
+	'vlib/net/quic/packet_number_space_test.v',
 	'vlib/net/quic/packet_number_test.v',
 	'vlib/net/quic/packet_protection_test.v',
+	'vlib/net/quic/retry_test.v',
 	'vlib/net/quic/tls13_certificate_chain_test.v',
 	'vlib/net/quic/tls13_certificate_test.v',
 	'vlib/net/quic/tls13_client_hello_test.v',
@@ -252,6 +260,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/quic/tls13_server_hello_test.v',
 	'vlib/net/quic/transport_parameters_test.v',
 	'vlib/net/quic/varint_test.v', // pure V, no OpenSSL of its own -- but V compiles net.quic as one package, so a sibling file's #include failure still fails this file's build
+	'vlib/net/quic/version_negotiation_test.v',
 	'vlib/db/pg_sqlite_consistency_test.v', // pg + sqlite dev headers pull in glibc-only sys/cdefs.h on musl-gcc
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
