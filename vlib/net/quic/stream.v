@@ -37,10 +37,14 @@ pub:
 	value u64
 }
 
+// initiator returns which side of the connection opened this stream, per
+// bit 0 of the stream ID (RFC 9000 §2.1).
 pub fn (id StreamId) initiator() StreamInitiator {
 	return if id.value & 0x01 == 0 { StreamInitiator.client } else { StreamInitiator.server }
 }
 
+// direction returns whether this stream is bidirectional or unidirectional,
+// per bit 1 of the stream ID (RFC 9000 §2.1).
 pub fn (id StreamId) direction() StreamDirection {
 	return if id.value & 0x02 == 0 {
 		StreamDirection.bidirectional
@@ -225,10 +229,12 @@ pub mut:
 	recv &StreamRecvHalf = unsafe { nil }
 }
 
+// has_send reports whether this stream has a send half on this endpoint.
 pub fn (s &QuicStream) has_send() bool {
 	return s.send != unsafe { nil }
 }
 
+// has_recv reports whether this stream has a receive half on this endpoint.
 pub fn (s &QuicStream) has_recv() bool {
 	return s.recv != unsafe { nil }
 }
@@ -272,6 +278,8 @@ mut:
 	next_local_uni  u64
 }
 
+// new_quic_stream_set constructs an empty QuicStreamSet for the given
+// endpoint role.
 pub fn new_quic_stream_set(role QuicRole) &QuicStreamSet {
 	return &QuicStreamSet{
 		role: role
@@ -323,6 +331,7 @@ pub fn (mut s QuicStreamSet) open_local_stream(direction StreamDirection) &QuicS
 	return stream
 }
 
+// len returns the number of streams currently known to this set.
 pub fn (s &QuicStreamSet) len() int {
 	return s.streams.len
 }

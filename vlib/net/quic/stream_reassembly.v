@@ -48,6 +48,8 @@ mut:
 	final_size  ?u64
 }
 
+// new_stream_reassembler constructs an empty reassembler starting at
+// stream offset 0.
 pub fn new_stream_reassembler() &StreamReassembler {
 	return &StreamReassembler{}
 }

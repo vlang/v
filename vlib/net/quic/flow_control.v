@@ -18,6 +18,8 @@ mut:
 	limit    u64
 }
 
+// new_flow_control_window constructs a send-side flow-control window
+// starting at `initial_limit` with nothing yet consumed.
 pub fn new_flow_control_window(initial_limit u64) FlowControlWindow {
 	return FlowControlWindow{
 		limit: initial_limit
@@ -69,6 +71,8 @@ mut:
 	initial_limit u64
 }
 
+// new_receive_window constructs a receive-side flow-control window,
+// initially advertising `initial_limit` to the peer.
 pub fn new_receive_window(initial_limit u64) ReceiveWindow {
 	return ReceiveWindow{
 		advertised:    initial_limit
@@ -76,6 +80,8 @@ pub fn new_receive_window(initial_limit u64) ReceiveWindow {
 	}
 }
 
+// advertised_limit returns the cumulative-offset limit we've told the peer
+// via MAX_DATA/MAX_STREAM_DATA.
 pub fn (w &ReceiveWindow) advertised_limit() u64 {
 	return w.advertised
 }
@@ -122,6 +128,9 @@ pub fn (w &ReceiveWindow) next_advertised_limit() u64 {
 	return w.advertised + w.initial_limit
 }
 
+// mark_advertised commits `new_limit` as sent to the peer, once the caller
+// has actually transmitted the corresponding MAX_DATA/MAX_STREAM_DATA frame.
+// Non-regressing: a smaller/stale limit is silently ignored.
 pub fn (mut w ReceiveWindow) mark_advertised(new_limit u64) {
 	if new_limit > w.advertised {
 		w.advertised = new_limit
