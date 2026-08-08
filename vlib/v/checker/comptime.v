@@ -46,20 +46,6 @@ fn comptime_power_f64(base f64, exponent f64) f64 {
 	return math.pow(base, exponent)
 }
 
-fn comptime_power_value(left ast.ComptTimeConstValue, right ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
-	if left_i := left.i64() {
-		if right_i := right.i64() {
-			return comptime_power_i64(left_i, right_i)
-		}
-	}
-	if left_f := left.f64() {
-		if right_f := right.f64() {
-			return comptime_power_f64(left_f, right_f)
-		}
-	}
-	return none
-}
-
 fn comptime_compare_i64_values(op token.Kind, left i64, right i64) ?bool {
 	return match op {
 		.eq { left == right }
@@ -1240,9 +1226,6 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			}
 			right := c.eval_comptime_const_expr_with_locals(expr.right, nlevel + 1, local_values)?
 			c.expected_type = saved_expected_type
-			if expr.op == .power {
-				return comptime_power_value(left, right)
-			}
 			if left is string && right is string {
 				match expr.op {
 					.plus {
@@ -1264,24 +1247,35 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					right_f := right.f64()
 
 					if _likely_(left_f != none && right_f != none) {
+						mut lf := left_f
+						mut rf := right_f
+
+						if promoted_type == ast.f32_type {
+							lf = f64(f32(lf))
+							rf = f64(f32(rf))
+						}
+
 						mut result := f64(0)
 
 						match expr.op {
 							.plus {
-								result = left_f + right_f
+								result = lf + rf
 							}
 							.minus {
-								result = left_f - right_f
+								result = lf - rf
 							}
 							.mul {
-								result = left_f * right_f
+								result = lf * rf
 							}
 							.div {
-								if _unlikely_(right_f == 0) {
+								if _unlikely_(rf == 0) {
 									return none
 								} else {
-									result = left_f / right_f
+									result = lf / rf
 								}
+							}
+							.power {
+								result = comptime_power_f64(lf, rf)
 							}
 							else {
 								return none
@@ -1350,6 +1344,9 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 								.unsigned_right_shift {
 									result = i64(u64(left_raw) >>> right_raw)
 								}
+								.power {
+									result = comptime_power_i64(left_raw, right_raw)
+								}
 								else {
 									return none
 								}
@@ -1401,6 +1398,9 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 								}
 								.unsigned_right_shift {
 									result = i64(left_u >>> right_u)
+								}
+								.power {
+									result = comptime_power_i64(i64(left_u), i64(right_u))
 								}
 								else {
 									return none
