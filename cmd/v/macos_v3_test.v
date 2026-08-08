@@ -949,9 +949,11 @@ fn test_autofree_non_direct_commands_stay_on_the_standard_command_path() {
 	}
 	assert !is_ownership_relevant_command('run', prefs)
 	assert !is_ownership_relevant_command('test', prefs)
-	prefs.autofree = true
-	assert !is_macos_v3_relevant_command('run', prefs)
-	prefs.autofree = false
+	$if macos {
+		prefs.autofree = true
+		assert !is_macos_v3_relevant_command('run', prefs)
+		prefs.autofree = false
+	}
 	prefs.is_run = false
 	assert is_ownership_relevant_command('app.v', prefs)
 }
