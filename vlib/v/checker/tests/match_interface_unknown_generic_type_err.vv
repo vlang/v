@@ -1,0 +1,20 @@
+interface Value {}
+
+struct Holder {
+	val Value
+}
+
+fn main() {
+	s := Holder{
+		val: 42
+	}
+
+	match s.val {
+		Nil[int] {
+			''
+		}
+		else {
+			''
+		}
+	}
+}

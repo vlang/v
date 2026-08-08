@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_interface_unknown_generic_type_err.vv:13:3: error: unknown type `Nil[int]`
+   11 | 
+   12 |     match s.val {
+   13 |         Nil[int] {
+      |         ~~~
+   14 |             ''
+   15 |         }
