@@ -272,6 +272,17 @@ pub fn (s &QuicStreamSet) get(raw_id u64) ?&QuicStream {
 // locally-initiated stream on the peer's say-so (see its own doc
 // comment) -- this function is how one of those streams actually comes
 // into existence, driven by THIS endpoint's own decision to open it.
+//
+// Unlike get_or_create, this function does NOT itself enforce RFC 9000
+// §4.6's max_streams limit (the peer's current MAX_STREAMS/
+// initial_max_streams_* advertisement) -- that check requires state this
+// set doesn't own (the peer's currently-advertised limit, which changes
+// over the connection's life) and belongs to the connection-level caller
+// that DOES own it (Phase 9's QuicConn), the same way ACK-driven and
+// application-read-driven state transitions above are documented hooks
+// for a later phase rather than something this file drives on its own.
+// The caller MUST check against the peer's current limit before calling
+// this function.
 pub fn (mut s QuicStreamSet) open_local_stream(direction StreamDirection) &QuicStream {
 	initiator := if s.role == .client { StreamInitiator.client } else { StreamInitiator.server }
 	base := first_stream_id_of(initiator, direction)
