@@ -2942,7 +2942,7 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	mut captured_ids := []int{cap: 2}
 	for operand_index in 0 .. 2 {
 		operand_id := g.a.child(condition, operand_index)
-		if g.is_constant_numeric_literal(operand_id) {
+		if g.is_constant_numeric_expr(operand_id) {
 			continue
 		}
 		typ := g.value_unalias_type(g.tc.resolve_type(operand_id))
@@ -2963,10 +2963,8 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	return captured_ids
 }
 
-// Capture eligibility: these are side-effect free, so skipping the temp is safe.
-// A signed literal parses as a prefix over the literal, and capturing it would
-// type it as the default `int` and truncate anything wider than 32 bits.
-fn (g &FlatGen) is_constant_numeric_literal(id flat.NodeId) bool {
+// side-effect free; a capture temp would type the constant as `int` and truncate wider values
+fn (g &FlatGen) is_constant_numeric_expr(id flat.NodeId) bool {
 	node := g.a.node(id)
 	if node.kind in [.int_literal, .float_literal, .char_literal] {
 		return true
@@ -2976,11 +2974,14 @@ fn (g &FlatGen) is_constant_numeric_literal(id flat.NodeId) bool {
 	}
 	return match node.kind {
 		.paren {
-			g.is_constant_numeric_literal(g.a.child(node, 0))
+			g.is_constant_numeric_expr(g.a.child(node, 0))
 		}
 		.prefix {
-			node.op in [.plus, .minus, .bit_not]
-				&& g.is_constant_numeric_literal(g.a.child(node, 0))
+			node.op in [.plus, .minus, .bit_not] && g.is_constant_numeric_expr(g.a.child(node, 0))
+		}
+		.infix {
+			node.children_count == 2 && g.is_constant_numeric_expr(g.a.child(node, 0))
+				&& g.is_constant_numeric_expr(g.a.child(node, 1))
 		}
 		else {
 			false
@@ -2988,9 +2989,7 @@ fn (g &FlatGen) is_constant_numeric_literal(id flat.NodeId) bool {
 	}
 }
 
-// Display suppression: narrower than capture eligibility, because the label only
-// spells out the value for a bare or sign-prefixed literal. `~5` and `-(-1)`
-// still need evaluating.
+// display only: `~5` and `-(-1)` still need evaluating, so this stays narrower than capture
 fn (g &FlatGen) is_signed_numeric_literal(id flat.NodeId) bool {
 	node := g.a.node(id)
 	if node.kind in [.int_literal, .float_literal, .char_literal] {
