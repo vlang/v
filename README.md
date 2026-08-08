@@ -275,7 +275,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 - [Vim](https://github.com/vlang/awesome-v#vim)
 - [Vim/Neovim Runtime Files](editors/vim)
 - [VS Code](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
-- [zed](https://github.com/lv37/zed-v)
+- [Zed](https://github.com/lv37/zed-v)
 
 
 To bring IDE functions for the V programming languages to your editor, check out
