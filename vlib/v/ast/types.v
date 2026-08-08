@@ -1177,6 +1177,9 @@ pub fn (t &TypeSymbol) is_empty_struct_array() bool {
 		if elem_sym.info is Struct {
 			return elem_sym.info.is_empty_struct()
 		}
+		if elem_sym.info is ArrayFixed {
+			return elem_sym.is_empty_struct_array()
+		}
 	}
 	return false
 }

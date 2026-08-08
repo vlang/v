@@ -4572,11 +4572,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 						no_cast = true
 					}
 					elem_sym := g.table.sym(info.elem_type)
-					if elem_sym.kind == .struct {
+					if no_cast {
+						g.write('builtin___option_ok(')
+					} else if elem_sym.kind == .struct {
 						expr_is_fixed_array_var = false
 						g.write('builtin___option_ok(&(${styp}[]) { ')
-					} else if no_cast {
-						g.write('builtin___option_ok(')
 					} else {
 						g.write('builtin___option_ok((${g.styp(final_expr_sym.idx)})')
 					}
@@ -4628,11 +4628,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					no_cast = true
 				}
 				elem_sym := g.table.sym(info.elem_type)
-				if elem_sym.kind == .struct {
+				if no_cast {
+					g.write('builtin___result_ok(')
+				} else if elem_sym.kind == .struct {
 					expr_is_fixed_array_var = false
 					g.write('builtin___result_ok(&(${styp}[]) { ')
-				} else if no_cast {
-					g.write('builtin___result_ok(')
 				} else {
 					g.write('builtin___result_ok((${g.styp(final_expr_sym.idx)})')
 				}
@@ -7791,7 +7791,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					return
 				} else if node.field_name in ['idx', 'typ', 'unaliased_typ'] {
 					// `T.idx`, `T.typ`, `T.unaliased_typ`, `typeof(expr).idx`, `typeof(expr).typ`,
-					// `typeof(expr).unalised_typ`
+					// `typeof(expr).unaliased_typ`
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
 						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {

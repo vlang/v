@@ -1444,9 +1444,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.ComptimeSelector, ast.DumpExpr, ast.InfixExpr, ast.IfExpr, ast.MatchExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
-			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident, ast.CallExpr]))
-			&& !((g.pref.translated || g.file.is_translated)
-			&& unaliased_left_sym.kind != .array_fixed)
+			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident, ast.CallExpr])
+			|| (val is ast.StructInit && !is_decl && !blank_assign)) && !((g.pref.translated
+			|| g.file.is_translated) && unaliased_left_sym.kind != .array_fixed)
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
@@ -1551,12 +1551,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 				g.write(' = ')
 				g.expr(val)
-			} else if is_fixed_array_init && var_type.has_flag(.option) {
-				g.expr(left)
-				g.write(' = ')
-				g.expr_with_opt(val, val_type, var_type)
-			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
-				if var_type.has_flag(.option) {
+			} else if var_type.has_flag(.option) {
+				if is_fixed_array_init || val is ast.StructInit || val_type.has_flag(.option) {
+					// `val` is either an inline literal that needs
+					// constructing in place (`Arr{}`, `[N]T{...}!`), or it
+					// already produces a full, matching option struct
+					// (`?Arr{}`, `?Arr(none)`, or a plain ident/call/cast of
+					// option type).
+					g.expr(left)
+					g.write(' = ')
+					g.expr_with_opt(val, val_type, var_type)
+				} else {
+					// `val` produces a plain (non-option) fixed array
+					// value: Ident, CallExpr, SelectorExpr, CastExpr, etc.
 					g.expr(left)
 					g.writeln('.state = 0;')
 					g.write('memcpy(')
@@ -1564,13 +1571,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.write('.data, ')
 					g.expr(val)
 					g.writeln(', sizeof(${g.styp(var_type.clear_flag(.option))}));')
-				} else {
-					g.write('memcpy(')
-					g.expr(left)
-					g.write(', ')
-					g.expr(val)
-					g.writeln(', sizeof(${g.styp(var_type)}));')
 				}
+			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
+				g.write('memcpy(')
+				g.expr(left)
+				g.write(', ')
+				g.expr(val)
+				g.writeln(', sizeof(${g.styp(var_type)}));')
 			} else {
 				arr_typ := styp.trim('*')
 				old_is_assign_lhs := g.is_assign_lhs
@@ -1596,6 +1603,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						right_var := g.new_tmp_var()
 						g.write('${arr_typ} ${right_var} = ')
 						g.expr(right)
+						g.writeln(';')
+						fixed_right_expr = right_var
+					} else if val is ast.StructInit {
+						// e.g. `a = Arr{}`, where `type Arr = [N]Box`
+						// struct_init() emits a bare brace-init list with no cast prefix
+						// for fixed arrays, which is only valid as a declaration initializer,
+						// not as a memcpy() argument expression.
+						right_var := g.new_tmp_var()
+						g.write('${arr_typ} ${right_var} = ')
+						g.expr(val)
 						g.writeln(';')
 						fixed_right_expr = right_var
 					} else {
