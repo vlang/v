@@ -418,7 +418,7 @@ pub fn (mut v Builder) cc_msvc() {
 		verror('cannot build with msvc on ${os.user_os()}')
 	}
 	util.timing_start('C msvc')
-	res := os.execute(cmd)
+	res := v.execute_cc(cmd)
 	if res.exit_code != 0 {
 		eprintln('================== ${c_compilation_error_title} (from msvc): ==============')
 		eprintln(res.output)
@@ -514,7 +514,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	mut res := os.Result{}
 	mut i := 0
 	for i = 0; i < thirdparty_obj_build_max_retries; i++ {
-		res = os.execute(cmd)
+		res = v.execute_cc(cmd)
 		if res.exit_code == 0 {
 			break
 		}

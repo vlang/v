@@ -49,6 +49,8 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	tmp_dir := os.vtmp_dir()
 	sw_total := time.new_stopwatch()
 	defer {
+		// charge this phase (cc + link across processes) to the C compiler for -stats
+		b.stats_cc_micros += sw_total.elapsed().microseconds()
 		eprint_time(sw_total, @METHOD)
 	}
 	c_files := int_max(1, util.nr_jobs)

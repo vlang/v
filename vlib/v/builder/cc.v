@@ -1985,7 +1985,7 @@ pub fn (mut v Builder) cc() {
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
-		res := os.execute(cmd)
+		res := v.execute_cc(cmd)
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(ccompiler, res)
@@ -2352,7 +2352,7 @@ fn (mut b Builder) cc_linux_cross() {
 		if b.pref.show_cc {
 			println(src_cmd)
 		}
-		src_res := os.execute(src_cmd)
+		src_res := b.execute_cc(src_cmd)
 		if src_res.exit_code != 0 {
 			println('Cross compilation for Linux failed (extra source ${src}).')
 			verror(src_res.output)
@@ -2375,7 +2375,7 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
-	cc_res := os.execute(cc_cmd)
+	cc_res := b.execute_cc(cc_cmd)
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
 		verror(cc_res.output)
@@ -2813,7 +2813,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}
-	res := os.execute(cmd)
+	res := v.execute_cc(cmd)
 	os.chdir(current_folder) or {}
 	if res.exit_code != 0 {
 		eprintln('> Failed build_thirdparty_obj_file cmd')

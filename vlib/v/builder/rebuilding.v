@@ -213,7 +213,10 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) (string, int) {
 		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
 	// eprintln('> Builder.v_build_module: ${rebuild_cmd}')
-	return rebuild_cmd, os.system(rebuild_cmd)
+	sw := time.new_stopwatch()
+	code := os.system(rebuild_cmd)
+	b.stats_modules_micros += sw.elapsed().microseconds()
+	return rebuild_cmd, code
 }
 
 fn usecache_module_error(what string, code int, vroot string, cmd string) string {
@@ -415,10 +418,25 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		sbytes = util.bold('${sbytes:10s}')
 		println('generated  target  code size: ${slines} lines, ${sbytes} bytes')
 		//
-		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
+		// so the vlines/s figure below is about V, not the C compiler
+		mut frontend_time_micros := compilation_time_micros - b.stats_cc_micros -
+			b.stats_modules_micros
+		if frontend_time_micros < 1 {
+			frontend_time_micros = 1
+		}
+		sfrontend_time_ms := util.bold('${f64(frontend_time_micros) / 1000.0:6.3f}')
+		mut timing_parts := ['${sfrontend_time_ms} ms V frontend']
+		if b.stats_cc_micros > 0 {
+			timing_parts << '${util.bold('${f64(b.stats_cc_micros) / 1000.0:6.3f}')} ms ${b.pref.ccompiler}'
+		}
+		if b.stats_modules_micros > 0 {
+			timing_parts << '${util.bold('${f64(b.stats_modules_micros) / 1000.0:6.3f}')} ms cached module builds'
+		}
+		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(frontend_time_micros))
 		svlines_per_second := util.bold(vlines_per_second.str())
 		used_cgen_threads := if b.pref.no_parallel { 1 } else { runtime.nr_jobs() }
-		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s, cgen threads: ${used_cgen_threads}')
+		println('compilation took: ${scompilation_time_ms} ms (${timing_parts.join(', ')})')
+		println('V frontend speed: ${svlines_per_second} vlines/s, cgen threads: ${used_cgen_threads}')
 	}
 }
 

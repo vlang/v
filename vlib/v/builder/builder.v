@@ -1,6 +1,7 @@
 module builder
 
 import os
+import time
 import v.token
 import v.pref
 import v.errors
@@ -31,20 +32,22 @@ pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file being compiled, or the dir itself when doing `v .`
 	module_path  string
 pub mut:
-	checker             &checker.Checker         = unsafe { nil }
-	transformer         &transformer.Transformer = unsafe { nil }
-	comptime            &comptime.Comptime       = unsafe { nil }
-	generics            &generics.Generics       = unsafe { nil }
-	out_name_c          string
-	out_name_js         string
-	stats_lines         int // size of backend generated source code in lines
-	stats_bytes         int // size of backend generated source code in bytes
-	nr_errors           int // accumulated error count of scanner, parser, checker, and builder
-	nr_warnings         int // accumulated warning count of scanner, parser, checker, and builder
-	nr_notices          int // accumulated notice count of scanner, parser, checker, and builder
-	pref                &pref.Preferences = unsafe { nil }
-	module_search_paths []string
-	parsed_files        []&ast.File
+	checker              &checker.Checker         = unsafe { nil }
+	transformer          &transformer.Transformer = unsafe { nil }
+	comptime             &comptime.Comptime       = unsafe { nil }
+	generics             &generics.Generics       = unsafe { nil }
+	out_name_c           string
+	out_name_js          string
+	stats_lines          int // size of backend generated source code in lines
+	stats_bytes          int // size of backend generated source code in bytes
+	stats_cc_micros      i64 // time in the C compiler, for -stats
+	stats_modules_micros i64 // time in `v build-module` children, for -stats
+	nr_errors            int // accumulated error count of scanner, parser, checker, and builder
+	nr_warnings          int // accumulated warning count of scanner, parser, checker, and builder
+	nr_notices           int // accumulated notice count of scanner, parser, checker, and builder
+	pref                 &pref.Preferences = unsafe { nil }
+	module_search_paths  []string
+	parsed_files         []&ast.File
 	//$if windows {
 	cached_msvc MsvcResult
 	//}
@@ -1296,6 +1299,15 @@ fn (b &Builder) print_frontend_builder_errors() {
 			}
 		}
 	}
+}
+
+// execute_cc runs a C compiler command, accumulating how long it took, so that
+// `-stats` can report it apart from the V frontend.
+pub fn (mut b Builder) execute_cc(cmd string) os.Result {
+	sw := time.new_stopwatch()
+	res := os.execute(cmd)
+	b.stats_cc_micros += sw.elapsed().microseconds()
+	return res
 }
 
 @[noreturn]
