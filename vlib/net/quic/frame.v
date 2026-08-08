@@ -566,6 +566,12 @@ fn parse_stream_data_blocked_frame(buf []u8, start int) !(QuicFrame, int) {
 
 fn parse_streams_blocked_frame(buf []u8, start int, is_uni bool) !(QuicFrame, int) {
 	maximum_streams, n1 := decode_varint(buf[start..])!
+	// RFC 9000 §19.14: the same 2^60 cap as MAX_STREAMS (§4.6) -- carries the
+	// identical "maximum stream count" semantic, so a value exceeding it
+	// would likewise imply a stream ID inexpressible as a varint.
+	if maximum_streams > max_initial_max_streams {
+		return error('quic: STREAMS_BLOCKED frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §19.14)')
+	}
 	return QuicFrame(StreamsBlockedFrame{
 		direction:       if is_uni {
 			StreamDirection.unidirectional
@@ -719,8 +725,19 @@ pub fn encode_stop_sending_frame(stream_id u64, error_code u64) ![]u8 {
 // frame's own fields alone.
 pub fn encode_stream_frame(stream_id u64, offset u64, data []u8, fin bool, include_length bool) ![]u8 {
 	// RFC 9000 §19.8 (mirrors encode_crypto_frame's identical §19.6 check):
-	// the sum of offset and data length must not exceed 2^62-1.
-	if offset + u64(data.len) > max_varint {
+	// the sum of offset and data length must not exceed 2^62-1. Unlike the
+	// PARSE-side check (both operands there come from decode_varint, which
+	// inherently caps each at max_varint, so their sum can never overflow
+	// u64), `offset` here is CALLER-supplied with no such inherent bound --
+	// a caller passing e.g. offset near u64::MAX would make `offset +
+	// u64(data.len)` itself wrap to a small value, silently passing an
+	// `offset + length > max_varint` check. Checking `offset` alone first,
+	// then rearranging the sum comparison into an overflow-safe
+	// subtraction, avoids ever computing the (potentially wrapping) sum.
+	if offset > max_varint {
+		return error('quic: encode_stream_frame: offset ${offset} exceeds the 2^62-1 varint limit (RFC 9000 §19.8)')
+	}
+	if data.len > 0 && offset > max_varint - u64(data.len) {
 		return error('quic: encode_stream_frame: offset ${offset} + length ${data.len} exceeds the 2^62-1 varint limit (RFC 9000 §19.8)')
 	}
 	mut type_bits := u8(frame_type_stream_base)
@@ -793,6 +810,10 @@ pub fn encode_stream_data_blocked_frame(stream_id u64, maximum_stream_data u64) 
 
 // encode_streams_blocked_frame serializes a STREAMS_BLOCKED frame.
 pub fn encode_streams_blocked_frame(direction StreamDirection, maximum_streams u64) ![]u8 {
+	// RFC 9000 §19.14 (mirrors parse_streams_blocked_frame's identical check).
+	if maximum_streams > max_initial_max_streams {
+		return error('quic: encode_streams_blocked_frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §19.14)')
+	}
 	typ := if direction == .unidirectional {
 		frame_type_streams_blocked_uni
 	} else {

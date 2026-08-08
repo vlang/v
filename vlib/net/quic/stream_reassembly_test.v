@@ -46,14 +46,98 @@ fn test_stream_reassembler_rejects_mismatch_between_two_pending_fragments() {
 	assert false, 'expected the pending-fragment mismatch to be rejected once promoted'
 }
 
+fn test_stream_reassembler_discard_frees_held_window_and_preserves_consumed_len() {
+	mut r := new_stream_reassembler()
+	r.add(0, 'helloworld'.bytes())!
+	r.discard(5)!
+	assert r.data().bytestr() == 'world'
+	assert r.consumed_len() == 10 // unchanged -- discard doesn't un-receive data
+}
+
+fn test_stream_reassembler_discard_is_idempotent_for_a_stale_base() {
+	mut r := new_stream_reassembler()
+	r.add(0, 'helloworld'.bytes())!
+	r.discard(5)!
+	r.discard(5)! // same value again
+	r.discard(2)! // an OLDER value -- also a no-op, not a regression
+	assert r.data().bytestr() == 'world'
+}
+
+fn test_stream_reassembler_discard_rejects_base_beyond_consumed_len() {
+	mut r := new_stream_reassembler()
+	r.add(0, 'hello'.bytes())!
+	r.discard(10) or {
+		assert err.msg().contains('exceeds consumed_len')
+		return
+	}
+	assert false, 'expected discard() past consumed_len to be rejected'
+}
+
+fn test_stream_reassembler_tolerates_retransmission_of_already_discarded_data() {
+	mut r := new_stream_reassembler()
+	r.add(0, 'helloworld'.bytes())!
+	r.discard(5)!
+	// A retransmission of "hello" (now entirely below base_offset) must be
+	// tolerated silently -- there's nothing left to validate it against,
+	// and a compliant peer retransmitting already-consumed bytes is normal.
+	r.add(0, 'hello'.bytes())!
+	assert r.data().bytestr() == 'world'
+}
+
+fn test_stream_reassembler_validates_retransmission_straddling_the_discard_boundary() {
+	mut r := new_stream_reassembler()
+	r.add(0, 'helloworld'.bytes())!
+	r.discard(5)!
+	// "hello" + "wor" -- the "hello" prefix is below base_offset (skipped),
+	// "wor" straddles into the still-held window and must still be
+	// validated against it.
+	r.add(0, 'helloXXX'.bytes()) or {
+		assert err.msg().contains('retransmission mismatch')
+		return
+	}
+	assert false, 'expected a mismatch straddling the discard boundary to be rejected'
+}
+
+// test_stream_reassembler_rejects_data_beyond_buffering_limit is a
+// Phase-R regression for a Copilot finding on vlang/v#27882
+// (pullrequestreview-4888843234): the cap must bound BUFFERED-BUT-NOT-YET-
+// CONSUMED bytes, not the wire offset a fragment happens to land at -- a
+// single small out-of-order fragment landing near a large offset (the
+// scenario this test originally covered) is now correctly ACCEPTED (it's
+// a legitimate, cheap-to-buffer fragment regardless of where in the stream
+// it lands); only the actual pending-byte SUM exceeding the cap is
+// rejected.
 fn test_stream_reassembler_rejects_data_beyond_buffering_limit() {
 	mut r := new_stream_reassembler()
 	offset := max_stream_buffered_bytes - 2
-	r.add(offset, []u8{len: 100}) or {
+	r.add(offset, []u8{len: 100})! // accepted: a small fragment, regardless of its offset
+
+	mut r2 := new_stream_reassembler()
+	r2.add(u64(1) << 30, []u8{len: int(max_stream_buffered_bytes) + 1}) or {
 		assert err.msg().contains('buffering limit')
 		return
 	}
-	assert false, 'expected data past the buffering limit to be rejected'
+	assert false, 'expected pending data exceeding the buffering limit to be rejected'
+}
+
+// test_stream_reassembler_supports_streams_larger_than_the_buffering_limit
+// is the Phase-R reproduction proper: with discard() freeing consumed
+// bytes as the caller goes, a stream's TOTAL size can exceed
+// max_stream_buffered_bytes -- the exact scenario the pre-fix cap (which
+// bounded absolute stream position, not buffered memory) made impossible
+// even for entirely in-order data.
+fn test_stream_reassembler_supports_streams_larger_than_the_buffering_limit() {
+	mut r := new_stream_reassembler()
+	chunk := []u8{len: 1024, init: 0x41}
+	mut offset := u64(0)
+	total_chunks := int(max_stream_buffered_bytes / 1024) + 10 // deliberately past the old absolute cap
+	for _ in 0 .. total_chunks {
+		r.add(offset, chunk)!
+		offset += u64(chunk.len)
+		r.discard(r.consumed_len())! // simulate the application immediately consuming each chunk
+	}
+	assert r.consumed_len() == offset
+	assert r.consumed_len() > max_stream_buffered_bytes
 }
 
 fn test_stream_reassembler_rejects_too_many_pending_fragments() {

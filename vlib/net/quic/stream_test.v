@@ -222,3 +222,27 @@ fn test_recv_half_reset_recvd() {
 	assert h.state == .reset_recvd
 	assert h.error_code or { 0 } == 4
 }
+
+// test_recv_half_reset_recvd_is_not_clobbered_by_a_reordered_data_frame and
+// its note_size_known sibling below are Phase-R regressions for a Copilot
+// finding on vlang/v#27882 (pullrequestreview-4888843234): RFC 9000 §3.2's
+// Receive Stream State Machine makes Reset Recvd terminal -- a STREAM frame
+// that raced ahead of the RESET_STREAM on the wire and arrives afterward
+// must not be allowed to promote the half back to data_recvd.
+fn test_recv_half_reset_recvd_is_not_clobbered_by_a_reordered_data_frame() {
+	mut h := StreamRecvHalf{
+		reassembler: new_stream_reassembler()
+	}
+	h.mark_reset_recvd(4)
+	h.note_data(0, [u8(1), 2, 3, 4, 5])!
+	assert h.state == .reset_recvd
+}
+
+fn test_recv_half_reset_recvd_is_not_clobbered_by_a_reordered_size_known_frame() {
+	mut h := StreamRecvHalf{
+		reassembler: new_stream_reassembler()
+	}
+	h.mark_reset_recvd(4)
+	h.note_size_known(5)!
+	assert h.state == .reset_recvd
+}
