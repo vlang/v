@@ -601,13 +601,22 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 			continue
 		}
-		if field.is_extern {
-			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
-				'_Thread_local '
-			} else {
-				''
+		if field.name == 'g_memory_block' && g.pref.prealloc {
+			// The prealloc arena root is thread-local, so each thread bump-allocates
+			// from its own chunk. TinyCC on macOS has no working thread-local storage
+			// (a store to a `_Thread_local` variable segfaults), so there we emulate
+			// per-thread storage with a pthread key. The generated C is compiled by
+			// either tcc or the fallback system compiler, so both variants must exist.
+			linkage := '${extern}${field_visibility_kw}'
+			g.write_prealloc_tls_global(mut def_builder, linkage, styp, final_c_name)
+			g.global_const_defs[name] = GlobalConstDef{
+				mod: node.mod
+				def: def_builder.str()
 			}
-			def_builder.writeln('${extern}${tls_kw}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
+			continue
+		}
+		if field.is_extern {
+			def_builder.writeln('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
 			g.global_const_defs[name] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
@@ -617,12 +626,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		mut needs_ending_semicolon := false
 		if field.language != .c || field.has_expr {
-			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
-				'_Thread_local '
-			} else {
-				''
-			}
-			def_builder.write_string('${extern}${tls_kw}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
+			def_builder.write_string('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
 			needs_ending_semicolon = true
 		}
 		if field.has_expr || cinit {
@@ -685,6 +689,35 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			dep_names: g.table.dependent_names_in_expr(field.expr)
 		}
 	}
+}
+
+// write_prealloc_tls_global emits the definition of the thread-local prealloc arena
+// root (`g_memory_block`). Regular C compilers back it with a `_Thread_local` variable
+// so each thread bump-allocates from its own arena. TinyCC on macOS has no working
+// thread-local storage (a store to a `_Thread_local` variable segfaults), so there the
+// same identifier is redirected to per-thread storage held in a pthread key. Both variants
+// are emitted because the same generated C can be compiled by TCC or the system compiler.
+fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, linkage string, styp string,
+	cname string) {
+	def_builder.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
+	def_builder.writeln('#include <pthread.h>')
+	def_builder.writeln('static pthread_key_t v_prealloc_tls_key;')
+	def_builder.writeln('static pthread_once_t v_prealloc_tls_once = PTHREAD_ONCE_INIT;')
+	def_builder.writeln('static void v_prealloc_tls_slot_free(void *slot) { free(slot); }')
+	def_builder.writeln('static void v_prealloc_tls_key_init(void) { pthread_key_create(&v_prealloc_tls_key, v_prealloc_tls_slot_free); }')
+	def_builder.writeln('static inline void **v_prealloc_tls_slot(void) {')
+	def_builder.writeln('\tpthread_once(&v_prealloc_tls_once, v_prealloc_tls_key_init);')
+	def_builder.writeln('\tvoid **slot = (void **)pthread_getspecific(v_prealloc_tls_key);')
+	def_builder.writeln('\tif (slot == ((void *)0)) {')
+	def_builder.writeln('\t\tslot = (void **)calloc(1, sizeof(void *));')
+	def_builder.writeln('\t\tpthread_setspecific(v_prealloc_tls_key, slot);')
+	def_builder.writeln('\t}')
+	def_builder.writeln('\treturn slot;')
+	def_builder.writeln('}')
+	def_builder.writeln('#define ${cname} (*(${styp} *)v_prealloc_tls_slot())')
+	def_builder.writeln('#else')
+	def_builder.writeln('${linkage}_Thread_local ${styp} ${cname}; // global 6')
+	def_builder.writeln('#endif')
 }
 
 fn (mut g Gen) sort_globals_consts() {

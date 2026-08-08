@@ -43,6 +43,25 @@ pub fn derive_packet_protection_keys(secret []u8) !QuicPacketProtectionKeys {
 	}
 }
 
+// derive_updated_packet_protection_keys computes the key/IV for a NEW
+// generation produced by a 1-RTT key update (RFC 9001 §6.1's `next_secret`),
+// while carrying `current_hp` forward UNCHANGED. RFC 9001 §6 is explicit
+// that a key update rotates only the packet-protection key and IV -- the
+// header-protection key is derived once, at the start of the encryption
+// level, and never updates within it (using key_update.v's own
+// derive_updated_secret to also produce a fresh `hp` would desync this
+// side's header-protection key from what a compliant peer keeps, since the
+// peer never rotates its own).
+pub fn derive_updated_packet_protection_keys(next_secret []u8, current_hp []u8) !QuicPacketProtectionKeys {
+	key := hkdf_expand_label(next_secret, 'quic key', []u8{}, aead_key_length)!
+	iv := hkdf_expand_label(next_secret, 'quic iv', []u8{}, aead_iv_length)!
+	return QuicPacketProtectionKeys{
+		key: key
+		iv:  iv
+		hp:  current_hp
+	}
+}
+
 // packet_protection_nonce computes the per-packet AEAD nonce (RFC 9001
 // §5.3): the packet's FULL, RECONSTRUCTED packet number (never the
 // truncated on-the-wire bytes — using the truncated value would collide
