@@ -166,8 +166,9 @@ pub mut:
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
 pub struct SSLListener {
-	saddr  string
-	config SSLConnectConfig
+	saddr   string
+	config  SSLConnectConfig
+	options SSLListenerOptions
 mut:
 	server_fd C.mbedtls_net_context
 	ssl       C.mbedtls_ssl_context
@@ -185,11 +186,19 @@ mut:
 	// duration	time.Duration
 }
 
-// create a new SSLListener binding to `saddr`
-pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
+// SSLListenerOptions configures the TCP listener used by an SSLListener.
+@[params]
+pub struct SSLListenerOptions {
+pub:
+	family net.AddrFamily = .unspec
+}
+
+// new_ssl_listener creates a new SSLListener binding to `saddr`.
+pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListenerOptions) !&SSLListener {
 	mut listener := &SSLListener{
-		saddr:  saddr
-		config: config
+		saddr:   saddr
+		config:  config
+		options: options
 	}
 	listener.init()!
 	listener.opened = true
@@ -218,13 +227,23 @@ pub fn (mut l SSLListener) shutdown() ! {
 	}
 }
 
+fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
+	if family != .unspec {
+		return family
+	}
+	address, _ := net.split_address(saddr) or { return .ip }
+	if address == '' || address == '::' || address.contains(':') {
+		return .ip6
+	}
+	return .ip
+}
+
 // internal function to init and bind the listener
 fn (mut l SSLListener) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
 
-	lhost, lport := net.split_address(l.saddr)!
 	if l.config.cert == '' || l.config.cert_key == '' {
 		return error('net.mbedtls SSLListener.init, no certificate or key provided')
 	}
@@ -261,22 +280,20 @@ fn (mut l SSLListener) init() ! {
 		C.mbedtls_ssl_conf_authmode(&l.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)
 	}
 
-	mut bind_ip := unsafe { nil }
-	if lhost != '' {
-		bind_ip = voidptr(lhost.str)
-	}
-	bind_port := lport.str()
-
-	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, voidptr(bind_port.str), C.MBEDTLS_NET_PROTO_TCP)
-
-	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.init, mbedtls_net_bind can't bind to ${l.saddr} error ret: ${ret}",
-			ret)
+	tcp_listener := net.listen_tcp(ssl_listener_family(l.saddr, l.options.family), l.saddr, net.ListenOptions{
+		backlog: C.MBEDTLS_NET_LISTEN_BACKLOG
+	}) or { return error('net.mbedtls SSLListener.init, listen_tcp failed for ${l.saddr}: ${err}') }
+	l.server_fd.fd = tcp_listener.sock.handle
+	l.opened = true
+	net.set_blocking(l.server_fd.fd, true) or {
+		l.shutdown() or {}
+		return error('net.mbedtls SSLListener.init, could not make listener socket blocking: ${err}')
 	}
 
 	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER,
 		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}",
 			ret)
 	}
@@ -289,6 +306,7 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_ssl_conf_ca_chain(&l.conf, &l.certs.cacert, unsafe { nil })
 	ret = C.mbedtls_ssl_conf_own_cert(&l.conf, &l.certs.client_cert, &l.certs.client_key)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_conf_own_cert can't load certificate ret: ${ret}",
 			ret)
 	}
@@ -299,6 +317,7 @@ fn (mut l SSLListener) init() ! {
 		n := l.config.alpn_protocols.len
 		l.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
 		if l.alpn_list == unsafe { nil } {
+			l.shutdown() or {}
 			return error('net.mbedtls SSLListener.init, failed to allocate ALPN list')
 		}
 		unsafe {
@@ -309,6 +328,7 @@ fn (mut l SSLListener) init() ! {
 		}
 		ret = C.mbedtls_ssl_conf_alpn_protocols(&l.conf, voidptr(l.alpn_list))
 		if ret != 0 {
+			l.shutdown() or {}
 			return error_with_code('net.mbedtls SSLListener.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
 				ret)
 		}
@@ -316,6 +336,7 @@ fn (mut l SSLListener) init() ! {
 
 	ret = C.mbedtls_ssl_setup(&l.ssl, &l.conf)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_setup can't setup ssl ret: ${ret}",
 			ret)
 	}
