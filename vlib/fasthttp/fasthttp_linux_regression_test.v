@@ -410,8 +410,21 @@ fn test_zero_length_file_response_does_not_leak_fd() ! {
 	C.close(client_fd)
 }
 
+const sigpipe_handler_probe = 'V_FASTHTTP_SIGPIPE_HANDLER_PROBE'
+
+fn record_sigpipe_handler(_ os.Signal) {
+	// Called directly by the test, never from an actual signal context.
+	os.setenv(sigpipe_handler_probe, 'called', true)
+}
+
+fn sendfile_with_worker_sigpipe_mask(socket_fd int, file_fd int) bool {
+	block_sigpipe_for_worker()
+	mut offset := i64(0)
+	return C.sendfile(socket_fd, file_fd, &offset, 1) == -1 && C.errno == C.EPIPE
+}
+
 // https://github.com/vlang/v/issues/28033
-fn test_sendfile_to_disconnected_client_does_not_raise_sigpipe() ! {
+fn test_sendfile_to_disconnected_client_preserves_sigpipe_handler() ! {
 	tmp := os.join_path(os.vtmp_dir(), 'fasthttp_sigpipe_file_test.txt')
 	os.write_file(tmp, 'x')!
 	defer {
@@ -430,10 +443,19 @@ fn test_sendfile_to_disconnected_client_does_not_raise_sigpipe() ! {
 		C.close(server_fd)
 	}
 
-	ignore_sigpipe()
-	mut offset := i64(0)
-	assert C.sendfile(server_fd, file.fd, &offset, 1) == -1
-	assert C.errno == C.EPIPE
+	os.unsetenv(sigpipe_handler_probe)
+	previous_handler := os.signal_opt(.pipe, record_sigpipe_handler)!
+	defer {
+		os.signal_opt(.pipe, previous_handler) or {}
+		os.unsetenv(sigpipe_handler_probe)
+	}
+	worker := spawn sendfile_with_worker_sigpipe_mask(server_fd, file.fd)
+	assert worker.wait()
+
+	installed_handler := os.signal_opt(.pipe, previous_handler)!
+	assert !isnil(installed_handler)
+	installed_handler(.pipe)
+	assert os.getenv(sigpipe_handler_probe) == 'called'
 }
 
 // A .reusable takeover writes its response directly to the socket. If an earlier
