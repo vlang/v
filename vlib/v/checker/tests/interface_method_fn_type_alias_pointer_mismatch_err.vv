@@ -17,6 +17,7 @@ interface CallbackProvider {
 struct PointerCallbackProvider {}
 
 fn (_ PointerCallbackProvider) callback() &EquivalentHandler {
+	// The callback is never called; nil only supplies the deliberately mismatched return value.
 	return unsafe { nil }
 }
 
