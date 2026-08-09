@@ -2190,6 +2190,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// interface IDs too: newly boxed values must match the cached dispatch tables.
 		g.precompute_embedded_fields()
 		g.precompute_param_type_index()
+		g.precompute_shared_param_index()
 		g.precompute_sum_name_lookup()
 		g.collect_interface_impls()
 		g.precompute_required_interface_dispatch_methods()
