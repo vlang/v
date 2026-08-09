@@ -3,6 +3,7 @@ module parser
 import os
 import v3.flat
 import v3.pref
+import v3.token
 
 // Parses `src` on its own and returns the flat AST plus the exact bytes the
 // parser saw, so a node's [offset, end) span can be checked against the source.
@@ -74,6 +75,24 @@ fn test_supported_unix_comptime_aliases_have_no_diagnostics() {
 	mut p := Parser.new(pref.new_preferences())
 	p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
+}
+
+fn test_parser_and_parallel_remap_keep_file_ids_beyond_u16() {
+	path := os.join_path(os.temp_dir(), 'v3_wide_file_id_${os.getpid()}.v')
+	os.write_file(path, 'fn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	wide_file_id := int(max_u16) + 1
+	mut p := Parser.new(pref.new_preferences())
+	p.next_file_id = wide_file_id
+	a := p.parse_file(path)
+	assert wide_file_id in a.source_files
+	assert a.nodes.any(it.pos.id == wide_file_id)
+
+	remapped := remap_worker_pos(token.new_span(wide_file_id, 1, 2), wide_file_id,
+		wide_file_id + 1, 1)
+	assert remapped.id == wide_file_id + 1
 }
 
 fn test_attribute_before_module_preserves_qualified_noreturn_name() {

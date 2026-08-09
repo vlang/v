@@ -5,7 +5,7 @@ pub struct Pos {
 pub:
 	offset int
 	end    int
-	id     u16
+	id     int
 	meta   u16
 }
 
@@ -13,11 +13,8 @@ const type_text_meta_flag = u16(0x8000)
 
 // new_pos creates a source position from a stable file id and byte offset.
 pub fn new_pos(file_id int, offset int) Pos {
-	if file_id < 0 || file_id > int(max_u16) {
-		panic('V3 source file id exceeds 65535')
-	}
 	return Pos{
-		id:     u16(file_id)
+		id:     file_id
 		offset: offset
 		end:    offset
 	}
@@ -26,11 +23,8 @@ pub fn new_pos(file_id int, offset int) Pos {
 // new_span creates an immutable half-open source span. The offset field is
 // retained as the start for compatibility with existing diagnostic consumers.
 pub fn new_span(file_id int, start int, end int) Pos {
-	if file_id < 0 || file_id > int(max_u16) {
-		panic('V3 source file id exceeds 65535')
-	}
 	return Pos{
-		id:     u16(file_id)
+		id:     file_id
 		offset: start
 		end:    if end < start { start } else { end }
 	}
