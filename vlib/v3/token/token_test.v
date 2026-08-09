@@ -45,6 +45,16 @@ fn test_file_position_resolves_file_local_offsets() {
 	assert f.line(new_pos(1, 9)) == 2
 }
 
+fn test_reported_column_outside_compact_range_is_ignored() {
+	pos := new_span(1, 10, 13)
+	wide := pos.with_reported_column(32768)
+	assert wide == pos
+	assert wide.reported_column() == 0
+
+	typed := pos.with_type_text_id(7)
+	assert typed.with_reported_column(32768) == typed
+}
+
 fn test_keyword_property_does_not_depend_on_enum_ordinals() {
 	assert Token.key_as.is_keyword()
 	assert Token.key_unsafe.is_keyword()

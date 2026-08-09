@@ -37,9 +37,11 @@ pub fn new_span(file_id int, start int, end int) Pos {
 }
 
 // with_reported_column overrides the one-based column shown in a diagnostic header.
+// Columns that do not fit in the compact metadata are ignored so diagnostics can
+// fall back to the source position instead of aborting compilation.
 pub fn (p Pos) with_reported_column(column int) Pos {
 	if column < 0 || column >= int(type_text_meta_flag) {
-		panic('V3 reported source column exceeds 32767')
+		return p
 	}
 	return Pos{
 		...p
