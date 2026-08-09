@@ -585,10 +585,21 @@ fn (mut g Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.Type
 		|| node.init_fields.len != info.fields.len {
 		return false
 	}
-	for init_field in node.init_fields {
-		// C string literals can initialize arrays only as part of an initializer.
-		// This path assigns fields after allocation, so keep the compound initializer instead.
-		if g.need_tmp_var_in_expr(init_field.expr)
+	for i, init_field in node.init_fields {
+		mut expected_type := init_field.expected_type
+		if expected_type == 0 {
+			field_name := if node.no_keys { info.fields[i].name } else { init_field.name }
+			for field in info.fields {
+				if field.name == field_name {
+					expected_type = g.unwrap_generic(field.typ)
+					break
+				}
+			}
+		}
+		// C arrays can only be initialized as part of a compound initializer; they cannot be
+		// assigned after allocation. Keep the compound initializer path for fixed-array fields.
+		if g.need_tmp_var_in_expr(init_field.expr) || (expected_type != 0
+			&& g.table.final_sym(g.unwrap_generic(expected_type)).kind == .array_fixed)
 			|| g.is_translated_c_string_fixed_char_array_field(init_field) {
 			return false
 		}

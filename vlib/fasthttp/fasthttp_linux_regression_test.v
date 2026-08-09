@@ -410,6 +410,32 @@ fn test_zero_length_file_response_does_not_leak_fd() ! {
 	C.close(client_fd)
 }
 
+// https://github.com/vlang/v/issues/28033
+fn test_sendfile_to_disconnected_client_does_not_raise_sigpipe() ! {
+	tmp := os.join_path(os.vtmp_dir(), 'fasthttp_sigpipe_file_test.txt')
+	os.write_file(tmp, 'x')!
+	defer {
+		os.rm(tmp) or {}
+	}
+	mut file := os.open(tmp)!
+	defer {
+		file.close()
+	}
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	C.close(client_fd)
+	defer {
+		C.close(server_fd)
+	}
+
+	ignore_sigpipe()
+	mut offset := i64(0)
+	assert C.sendfile(server_fd, file.fd, &offset, 1) == -1
+	assert C.errno == C.EPIPE
+}
+
 // A .reusable takeover writes its response directly to the socket. If an earlier
 // pipelined response is still buffered in write_buf, flushing it afterwards would
 // reverse HTTP/1.1 response order. The reactor enforces the "takeover is the sole

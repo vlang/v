@@ -1,6 +1,7 @@
 module fasthttp
 
 import net
+import os
 import sync.stdatomic
 import time
 
@@ -1026,6 +1027,7 @@ pub fn (mut server Server) run() ! {
 		eprintln('Windows is not supported yet')
 		return
 	}
+	ignore_sigpipe()
 	for i := 0; i < max_thread_pool_size; i++ {
 		server.listen_fds[i] = create_server_socket(server)
 		if server.listen_fds[i] < 0 {
@@ -1060,6 +1062,12 @@ pub fn (mut server Server) run() ! {
 		}
 	}
 	server.mark_stopped()
+}
+
+fn ignore_sigpipe() {
+	// sendfile(2) has no MSG_NOSIGNAL flag. A client disconnecting while a static
+	// file is being streamed must result in EPIPE, not terminate the server.
+	os.signal_ignore(.pipe)
 }
 
 // buf_view returns a non-owning []u8 window over buf[start..start+length] without
