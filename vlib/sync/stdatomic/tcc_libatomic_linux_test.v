@@ -19,7 +19,7 @@ fn main() {
 }
 '
 
-// This is a regression test for https://github.com/vlang/v/issues/28027 (and similar reports),
+// This is a regression test for https://github.com/vlang/v/issues/28043 (and similar reports),
 // where TCC failed to link sync.stdatomic programs on Linux/amd64 systems with newer GCC
 // versions (e.g. GCC 15/16 on Arch Linux).
 fn test_tcc_can_link_sync_stdatomic_programs_on_linux() {

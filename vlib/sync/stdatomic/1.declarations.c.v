@@ -32,6 +32,8 @@ $if windows {
 $if linux {
 	$if tinyc {
 		$if amd64 {
+			// Debian/Ubuntu:
+			#flag $when_first_existing('/usr/lib/gcc/x86_64-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/14/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/15/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/16/libatomic.a')
 			// Redhat/CentOS:
 			#flag $when_first_existing('/usr/lib/gcc/x86_64-redhat-linux/6/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/7/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/8/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/9/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/10/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/11/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/12/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/13/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/14/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/15/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/16/libatomic.a')
 			// Gentoo:
