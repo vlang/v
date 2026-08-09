@@ -7,7 +7,7 @@ fn scan_literal_decl_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
 	return false
 }
 
-fn scan_top_level_kind_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
+fn scan_top_level_kind_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8, _ bool) bool {
 	return false
 }
 
@@ -40,4 +40,10 @@ pub fn promote_scoped_checker_node_caches_parallel(mut _ types.TypeChecker, _ &f
 
 pub fn scan_scoped_text_flags_parallel(_ &flat.FlatAst, _ voidptr, mut _ []u8) bool {
 	return false
+}
+
+// prepare_with_pre_scans keeps preparation serial when v3 is built with the
+// internal `v3_no_parallel` define.
+fn (mut t Transformer) prepare_with_pre_scans() {
+	t.prepare()
 }

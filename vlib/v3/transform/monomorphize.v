@@ -613,10 +613,14 @@ fn (mut t Transformer) materialize_monomorph_signature_types(specs []MonomorphCa
 		]
 		for i in 0 .. decl.node.children_count {
 			param := t.a.child_node(&decl.node, i)
-			if param.kind == .param {
-				signature_types << t.specialized_signature_type_text(decl, param.typ, args,
-					generic_params)
+			if param.kind != .param {
+				if t.prefix_param_scan {
+					break
+				}
+				continue
 			}
+			signature_types << t.specialized_signature_type_text(decl, param.typ, args,
+				generic_params)
 		}
 		for typ in signature_types {
 			t.collect_generic_struct_spec_from_type(typ, decl.module, decl.file, struct_decls, mut
@@ -835,7 +839,7 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 	// serial walk. Prescreen-negative fn decls can never need erasure.
 	mut scan_sw := time.new_stopwatch()
 	mut flags := []u8{len: t.a.nodes.len}
-	if scan_top_level_kind_flags_parallel(t.a, 0, mut flags) {
+	if scan_top_level_kind_flags_parallel(t.a, 0, mut flags, t.prefix_param_scan) {
 		t.timing_profile('  [ttime]     collect scan        ${f64(scan_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		scan_sw.restart()
 		// Word-scan the flag array: flagged nodes are rare, so loading eight
@@ -1001,7 +1005,13 @@ fn (mut t Transformer) generic_fn_decl_needs_erasure_scan(node flat.Node, module
 	}
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
-		if child.kind == .param && t.type_text_has_generic_placeholder(child.typ, module_name) {
+		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
+		}
+		if t.type_text_has_generic_placeholder(child.typ, module_name) {
 			return true
 		}
 	}
@@ -1654,13 +1664,16 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 fn (mut t Transformer) interface_box_call_param_maybe(param types.Type) bool {
 	key := '${t.cur_module}:${t.tc.type_name(param)}'
 	if !isnil(t.interface_box_param_cache) {
-		if cached := t.interface_box_param_cache.entries[key] {
+		mut cache := t.interface_box_param_cache
+		cached := cache.get(key)
+		if cached != 0 {
 			return cached > 0
 		}
 	}
 	result := t.interface_box_call_param_maybe_uncached(param)
 	if !isnil(t.interface_box_param_cache) {
-		t.interface_box_param_cache.entries[key] = if result { i8(1) } else { i8(-1) }
+		mut cache := t.interface_box_param_cache
+		cache.put(key, if result { i8(1) } else { i8(-1) })
 	}
 	return result
 }
@@ -3378,7 +3391,13 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.reset_var_types()
 	for i in 0 .. decl.node.children_count {
 		param_child := t.a.child_node(&decl.node, i)
-		if node_kind_id(param_child) != 75 || param_child.value.len == 0 || param_child.typ.len == 0 {
+		if node_kind_id(param_child) != 75 {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
+		}
+		if param_child.value.len == 0 || param_child.typ.len == 0 {
 			continue
 		}
 		mut param_raw := param_child.typ
@@ -3589,7 +3608,13 @@ fn (mut t Transformer) seed_generated_fn_body_context(root flat.NodeId) {
 			continue
 		}
 		child := t.a.nodes[int(child_id)]
-		if node_kind_id(child) != 75 || child.value.len == 0 {
+		if node_kind_id(child) != 75 {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
+		}
+		if child.value.len == 0 {
 			continue
 		}
 		raw_source_typ := if child.typ.starts_with('...') {
@@ -3934,14 +3959,21 @@ fn (mut t Transformer) specialize_cloned_fn_signature(clone_id flat.NodeId, decl
 	clone := t.a.nodes[int(clone_id)]
 	for i in 0 .. clone.children_count {
 		dst_id := t.a.child(&clone, i)
-		if t.a.nodes[int(dst_id)].kind == .param {
-			dst_params << dst_id
+		if t.a.nodes[int(dst_id)].kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
 		}
+		dst_params << dst_id
 	}
 	mut param_idx := 0
 	for i in 0 .. decl.node.children_count {
 		src := t.a.child_node(&decl.node, i)
 		if src.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		if param_idx >= dst_params.len {
@@ -3980,6 +4012,9 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl,
@@ -4536,6 +4571,9 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl,
@@ -4614,6 +4652,9 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		is_recv_param := is_receiver && param_idx == 0
@@ -4681,9 +4722,13 @@ fn (t &Transformer) generic_decl_param_count(node flat.Node) int {
 	mut count := 0
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
-		if child.kind == .param {
-			count++
+		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
 		}
+		count++
 	}
 	return count
 }
@@ -4874,6 +4919,9 @@ fn (mut t Transformer) specialized_generic_call_param_type_texts(decl GenericFnD
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		result << explicit_mut_pointer_param_type_text(child, t.specialized_call_target_type_text(decl,
@@ -4991,9 +5039,13 @@ fn (mut t Transformer) specialize_generic_fn_value_arg(arg_id flat.NodeId, expec
 		mut signature_params := []string{}
 		for i in 0 .. decl.node.children_count {
 			param := t.a.child_node(&decl.node, i)
-			if param.kind == .param {
-				signature_params << param.typ
+			if param.kind != .param {
+				if t.prefix_param_scan {
+					break
+				}
+				continue
 			}
+			signature_params << param.typ
 		}
 		signature := 'fn (${signature_params.join(', ')})${if decl.node.typ.len > 0
 			&& decl.node.typ != 'void' {
@@ -5594,7 +5646,13 @@ fn (mut t Transformer) generic_args_equal_ignoring_mut_storage(decl GenericFnDec
 	mut direct_mut_params := map[string]bool{}
 	for i in 0 .. decl.node.children_count {
 		param := t.a.child_node(&decl.node, i)
-		if param.kind == .param && (param.is_mut || param.typ.starts_with('mut ')) {
+		if param.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
+		}
+		if param.is_mut || param.typ.starts_with('mut ') {
 			generic_name := generic_inference_param_type(param)
 			if is_generic_fn_placeholder_name(generic_name) {
 				direct_mut_params[generic_name] = true
@@ -5639,6 +5697,9 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 	for i in 0 .. decl.node.children_count {
 		param := t.a.child_node(&decl.node, i)
 		if param.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		arg_id := t.generic_call_arg_id_for_param(node, param_idx, is_receiver) or {
@@ -6466,6 +6527,9 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		param_count++
@@ -6686,6 +6750,9 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		is_recv_param := is_receiver && param_idx == 0
@@ -7245,7 +7312,7 @@ fn (mut t Transformer) build_generic_alias_name_index() {
 }
 
 fn (t &Transformer) generic_arg_is_alias_name(arg string, module_name string) bool {
-	clean := arg.trim_space()
+	clean := trimmed_transform_text(arg)
 	if clean.len == 0 || isnil(t.tc) {
 		return false
 	}
@@ -9321,6 +9388,9 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		for i in 0 .. decl.node.children_count {
 			child := t.a.child_node(&decl.node, i)
 			if child.kind != .param {
+				if t.prefix_param_scan {
+					break
+				}
 				continue
 			}
 			arg_pos := param_idx + 1
@@ -9566,6 +9636,9 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 		for i in 0 .. decl.node.children_count {
 			child := t.a.child_node(&decl.node, i)
 			if child.kind != .param {
+				if t.prefix_param_scan {
+					break
+				}
 				continue
 			}
 			clone_arg_id := t.generic_call_arg_id_for_param(clone, param_idx, is_receiver) or {
@@ -9711,7 +9784,11 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 
 fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 	mut overlay := t.tc.fork_overlay
-	mut call_name := overlay.resolved_call_names[src_idx] or { '' }
+	mut call_name := if src_idx >= overlay.base_node_count {
+		overlay.resolved_call_names[src_idx] or { '' }
+	} else {
+		''
+	}
 	if call_name.len == 0 && src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
 		call_name = t.tc.resolved_call_names[src_idx]
 	}
@@ -9719,7 +9796,11 @@ fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 		&& !t.resolved_call_is_generic_fn(call_name) {
 		overlay.resolved_call_names[dst_idx] = call_name
 	}
-	mut fn_value := overlay.resolved_fn_values[src_idx] or { '' }
+	mut fn_value := if src_idx >= overlay.base_node_count {
+		overlay.resolved_fn_values[src_idx] or { '' }
+	} else {
+		''
+	}
 	if fn_value.len == 0 && src_idx < t.tc.resolved_fn_value_set.len
 		&& t.tc.resolved_fn_value_set[src_idx] {
 		fn_value = t.tc.resolved_fn_value_names[src_idx]
@@ -9793,7 +9874,13 @@ fn (mut t Transformer) fn_decl_has_unresolved_generics(node flat.Node, module_na
 	}
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
-		if child.kind == .param && t.type_text_has_generic_placeholder(child.typ, module_name) {
+		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
+		}
+		if t.type_text_has_generic_placeholder(child.typ, module_name) {
 			return true
 		}
 	}
@@ -10038,9 +10125,13 @@ fn (mut t Transformer) generic_fn_param_names(node flat.Node, module_name string
 	t.collect_generic_param_names_from_type(node.typ, module_name, mut names)
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
-		if child.kind == .param {
-			t.collect_generic_param_names_from_type(child.typ, module_name, mut names)
+		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
 		}
+		t.collect_generic_param_names_from_type(child.typ, module_name, mut names)
 	}
 	return names
 }
@@ -12053,12 +12144,15 @@ fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 		if cache.module != t.cur_module {
 			cache.module = t.cur_module
 			cache.entries.clear()
+			cache.last_name = ''
+			cache.last_value = 0
 		}
-		if cached := cache.entries[arg] {
+		cached := cache.get(arg)
+		if cached != 0 {
 			return cached > 0
 		}
 		result := t.generic_arg_is_unresolved_uncached(arg)
-		cache.entries[arg] = if result { i8(1) } else { i8(-1) }
+		cache.put(arg, if result { i8(1) } else { i8(-1) })
 		return result
 	}
 	return t.generic_arg_is_unresolved_uncached(arg)
