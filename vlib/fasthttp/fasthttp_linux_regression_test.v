@@ -417,10 +417,28 @@ fn record_sigpipe_handler(_ os.Signal) {
 	os.setenv(sigpipe_handler_probe, 'called', true)
 }
 
-fn sendfile_with_worker_sigpipe_mask(socket_fd int, file_fd int) bool {
-	block_sigpipe_for_worker()
+fn current_thread_blocks_sigpipe() bool {
+	mut current_mask := C.sigset_t{}
+	if C.pthread_sigmask(C.SIG_SETMASK, C.NULL, &current_mask) != 0 {
+		return true
+	}
+	return C.sigismember(&current_mask, C.SIGPIPE) == 1
+}
+
+fn current_thread_has_pending_sigpipe() bool {
+	mut pending_set := C.sigset_t{}
+	return C.sigpending(&pending_set) == 0 && C.sigismember(&pending_set, C.SIGPIPE) == 1
+}
+
+fn sendfile_with_scoped_sigpipe_mask(socket_fd int, file_fd int) bool {
+	if current_thread_blocks_sigpipe() {
+		return false
+	}
 	mut offset := i64(0)
-	return C.sendfile(socket_fd, file_fd, &offset, 1) == -1 && C.errno == C.EPIPE
+	sent := sendfile_without_sigpipe(socket_fd, file_fd, &offset, 1)
+	sendfile_errno := C.errno
+	return sent == -1 && sendfile_errno == C.EPIPE && !current_thread_blocks_sigpipe()
+		&& !current_thread_has_pending_sigpipe()
 }
 
 // https://github.com/vlang/v/issues/28033
@@ -449,7 +467,7 @@ fn test_sendfile_to_disconnected_client_preserves_sigpipe_handler() ! {
 		os.signal_opt(.pipe, previous_handler) or {}
 		os.unsetenv(sigpipe_handler_probe)
 	}
-	worker := spawn sendfile_with_worker_sigpipe_mask(server_fd, file.fd)
+	worker := spawn sendfile_with_scoped_sigpipe_mask(server_fd, file.fd)
 	assert worker.wait()
 
 	installed_handler := os.signal_opt(.pipe, previous_handler)!

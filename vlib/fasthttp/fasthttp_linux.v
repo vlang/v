@@ -1,7 +1,6 @@
 module fasthttp
 
 import net
-import os
 import sync.stdatomic
 import time
 
@@ -388,7 +387,7 @@ fn drain_file(fd int, mut cs ConnState) int {
 		} else {
 			usize(cs.file_remaining)
 		}
-		sent := C.sendfile(fd, cs.file_fd, &cs.file_off, want)
+		sent := sendfile_without_sigpipe(fd, cs.file_fd, &cs.file_off, want)
 		if sent > 0 {
 			cs.file_remaining -= i64(sent)
 			continue
@@ -925,14 +924,7 @@ fn close_worker_clients(mut w Worker) {
 	}
 }
 
-// block_sigpipe_for_worker masks SIGPIPE only in the current worker thread.
-// os.signal_ignore uses a thread-local mask because process_events is always spawned.
-fn block_sigpipe_for_worker() {
-	os.signal_ignore(.pipe)
-}
-
 fn process_events(server &Server, epoll_fd int, listen_fd int) {
-	block_sigpipe_for_worker()
 	mut w := Worker{
 		epoll_fd:  epoll_fd
 		listen_fd: listen_fd
