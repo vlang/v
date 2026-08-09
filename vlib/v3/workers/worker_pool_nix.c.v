@@ -89,6 +89,7 @@ mut:
 	fallback_task_count    u64
 	launch_attempt_count   u64
 	launch_failure_count   u64
+	launched_thread_count  u64
 	queue_wait_ns          u64
 	worker_run_ns          u64
 	started_at_ns          u64
@@ -151,6 +152,7 @@ pub fn new(size int) &Pool {
 			pool.launch_failure_count++
 		}
 	}
+	pool.launched_thread_count = u64(pool.threads.len)
 	return pool
 }
 
@@ -231,7 +233,7 @@ pub fn (p &Pool) tasks_run() u64 {
 pub fn (p &Pool) stats() Stats {
 	now := time.sys_mono_now()
 	elapsed_ns := if now >= p.started_at_ns { now - p.started_at_ns } else { 0 }
-	capacity_ns := elapsed_ns * u64(p.threads.len)
+	capacity_ns := elapsed_ns * p.launched_thread_count
 	utilization_ppm := if capacity_ns > 0 {
 		p.worker_run_ns * 1_000_000 / capacity_ns
 	} else {
