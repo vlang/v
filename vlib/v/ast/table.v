@@ -530,6 +530,10 @@ fn (t &Table) method_types_are_equal(left Type, right Type) bool {
 	if unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result() {
 		return false
 	}
+	// sym() drops outer modifiers, so require them to match before comparing Fn declarations.
+	if unaliased_left.flags() != unaliased_right.flags() {
+		return false
+	}
 	if unaliased_left == unaliased_right {
 		return true
 	}
