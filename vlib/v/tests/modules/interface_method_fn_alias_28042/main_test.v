@@ -4,6 +4,7 @@ import callback_api
 
 struct App {}
 
+// connect implements callback_api.Initializer for this regression test.
 pub fn (mut app App) connect(_ string, _ string, _ callback_api.Handler) {}
 
 // https://github.com/vlang/v/issues/28042
