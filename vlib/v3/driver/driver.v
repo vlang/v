@@ -7640,7 +7640,7 @@ pub fn run(args []string) {
 			prealloc_scope_leave_for_v3(transform_scope)
 			retain_transform_scope := building_v && backend == 'c' && !cache_state.manager.enabled
 				&& retained_transform_regions.len == 0
-				&& os.getenv('V3_NO_RETAIN_TRANSFORM_SCOPE') == ''
+				&& os.getenv('V3_RETAIN_TRANSFORM_SCOPE') == '1'
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning
@@ -8350,6 +8350,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
+		a.close_workers()
 		if cgen_cache_hit {
 			b.step('cgen (cached)')
 		} else if incremental_cache_hit {
