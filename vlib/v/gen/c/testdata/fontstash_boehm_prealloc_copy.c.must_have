@@ -1,1 +1,1 @@
-GC_MALLOC_ATOMIC(((usize)(data_len)))
+owned = ((u8*)(GC_MALLOC_ATOMIC

@@ -2943,14 +2943,15 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	for operand_index in 0 .. 2 {
 		operand_id := g.a.child(condition, operand_index)
 		node := g.a.node(operand_id)
-		if node.kind in [.int_literal, .float_literal, .char_literal] {
+		if node.kind in [.int_literal, .float_literal, .char_literal] || g.arg_is_const_ident(node) {
 			continue
 		}
-		typ := g.value_unalias_type(g.tc.resolve_type(operand_id))
+		operand_type := g.usable_expr_type(operand_id)
+		typ := g.value_unalias_type(operand_type)
 		if !typ.is_integer() && !typ.is_float() {
 			continue
 		}
-		c_type := g.value_c_type(g.tc.resolve_type(operand_id))
+		c_type := g.value_c_type(operand_type)
 		if c_type.len == 0 {
 			continue
 		}
@@ -2974,7 +2975,7 @@ fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
 		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
 		return
 	}
-	typ := g.value_unalias_type(g.tc.resolve_type(id))
+	typ := g.value_unalias_type(g.usable_expr_type(id))
 	if typ.is_float() {
 		g.write('fprintf(stderr, "%s: %s = %.17g\\n", "${c_escape(prefix)}", "${c_escape(label)}", (double)(')
 		g.gen_expr(id)

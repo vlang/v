@@ -351,7 +351,11 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					}
 					call_module := t.node_module_or(i, '')
 					decl_key, args := t.cached_generic_call_specialization(flat.NodeId(i), node,
-						call_module, decls) or { continue }
+						call_module, decls) or {
+						t.missing_specialized_plain_generic_call(node, call_module, decls) or {
+							continue
+						}
+					}
 					decl := decls[decl_key] or { continue }
 					if !t.call_has_source_generic_args(node)
 						&& t.generic_args_contain_alias(args, decl.module) {
@@ -698,7 +702,9 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		}
 		call_module := t.node_module_or(i, '')
 		decl_key, args := t.cached_generic_call_specialization(flat.NodeId(i), node, call_module,
-			decls) or { continue }
+			decls) or {
+			t.missing_specialized_plain_generic_call(node, call_module, decls) or { continue }
+		}
 		decl := decls[decl_key] or { continue }
 		if !t.call_has_source_generic_args(node) && t.generic_args_contain_alias(args, decl.module) {
 			t.set_node_value(i, args.join(', '))
@@ -5494,6 +5500,25 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		args:     args
 	}
 	return decl_key, args
+}
+
+fn (mut t Transformer) missing_specialized_plain_generic_call(node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {
+	if node.children_count == 0 || isnil(t.tc) {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || !t.generic_callee_is_specialization(callee.value) {
+		return none
+	}
+	spec := t.specialized_plain_generic_call_specialization(node, module_name, decls) or {
+		return none
+	}
+	decl := decls[spec.decl_key] or { return none }
+	exact := spec.args
+	if t.generic_specialization_registered(decl, exact) {
+		return none
+	}
+	return spec.decl_key, exact
 }
 
 fn (t &Transformer) generic_args_name_specialized_functions(args []string) bool {

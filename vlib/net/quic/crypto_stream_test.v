@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn test_crypto_stream_reassembler_in_order() {

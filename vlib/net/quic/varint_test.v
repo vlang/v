@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn test_varint_boundary_values_round_trip() {

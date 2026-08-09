@@ -4655,6 +4655,22 @@ fn (t &Transformer) str_method_has_pointer_receiver(str_fn string) bool {
 }
 
 fn (t &Transformer) aggregate_str_method_name(aggregate string) ?string {
+	if aggregate.starts_with('C.') {
+		method_name := '${aggregate}.str'
+		method_suffix := '.${method_name}'
+		for name, _ in t.fn_ret_types {
+			if name == method_name || name.ends_with(method_suffix) {
+				return name
+			}
+		}
+		if !isnil(t.tc) {
+			for name, _ in t.tc.fn_ret_types {
+				if name == method_name || name.ends_with(method_suffix) {
+					return name
+				}
+			}
+		}
+	}
 	if method := t.resolve_receiver_method_for_type(aggregate, 'str') {
 		if t.receiver_method_matches_type_name(method, aggregate) {
 			return method
@@ -4939,6 +4955,10 @@ fn (mut t Transformer) lower_ref_value_str(expr flat.NodeId, typ string, nil_tex
 		return t.wrap_string_conversion(expr, typ)
 	}
 	elem_type := typ[1..]
+	if str_fn := t.aggregate_str_method_name(elem_type) {
+		t.mark_fn_used_name(str_fn)
+		return t.lower_ref_str_guarded(expr, elem_type, true, str_fn, nil_text)
+	}
 	ptr_name := t.new_temp('arr_ref_str_ptr')
 	res_name := t.new_temp('arr_ref_str_text')
 	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, typ)

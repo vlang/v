@@ -6557,8 +6557,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					arg_start = 1
 				} else {
 					base_node := g.a.nodes[int(base_id)]
-					if receiver_wants_ptr && base_node.kind == .prefix && base_node.op == .mul
-						&& base_node.children_count > 0 {
+					if receiver_wants_ptr && param_types.len > 0
+						&& g.gen_deref_method_receiver(base_id, param_types[0]) {
+						// handled
+					} else if receiver_wants_ptr && base_node.kind == .prefix
+						&& base_node.op == .mul && base_node.children_count > 0 {
 						g.gen_expr(g.a.child(&base_node, 0))
 					} else {
 						mut is_ptr_base := base_type is types.Pointer
@@ -7248,6 +7251,24 @@ fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wa
 		return false
 	}
 	g.write(g.cname(base.value))
+	return true
+}
+
+fn (mut g FlatGen) gen_deref_method_receiver(receiver_id flat.NodeId, expected types.Type) bool {
+	if int(receiver_id) < 0 || int(receiver_id) >= g.a.nodes.len {
+		return false
+	}
+	receiver := g.a.nodes[int(receiver_id)]
+	if receiver.kind != .prefix || receiver.op != .mul || receiver.children_count == 0 {
+		return false
+	}
+	child_id := g.a.child(&receiver, 0)
+	child_type := g.usable_expr_type(child_id)
+	if cgen_type_pointer_depth(child_type) > cgen_type_pointer_depth(expected) {
+		g.gen_expr(receiver_id)
+	} else {
+		g.gen_expr(child_id)
+	}
 	return true
 }
 
@@ -13048,9 +13069,8 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 		receiver_wants_ptr)
 	{
 		// handled
-	} else if receiver_wants_ptr && receiver.kind == .prefix && receiver.op == .mul
-		&& receiver.children_count > 0 {
-		g.gen_expr(g.a.child(&receiver, 0))
+	} else if receiver_wants_ptr && g.gen_deref_method_receiver(receiver_id, params[0]) {
+		// handled
 	} else {
 		materialize_receiver := receiver_wants_ptr && !receiver_is_ptr && receiver.kind == .call
 		if materialize_receiver {

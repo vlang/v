@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn test_packet_number_spaces_are_independent() {

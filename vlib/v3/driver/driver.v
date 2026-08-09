@@ -11107,7 +11107,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .fn_decl || node.generic_params().len > 0 {
+		if node.kind != .fn_decl || (node.generic_params().len > 0 && !a.specialized_fn_nodes[idx]) {
 			continue
 		}
 		module_name := a.specialized_fn_modules[idx] or { cur_module }

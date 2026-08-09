@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !sanitize-memory-clang
 module quic
 
 import crypto.ecdsa
@@ -17,6 +18,10 @@ fn test_full_initial_round_trip_over_fake_transport() {
 	// --- Build a real ClientHello (Phase 2) ---
 	priv := ecdsa.PrivateKey.new()!
 	pub_key := priv.public_key()!
+	defer {
+		pub_key.free()
+		priv.free()
+	}
 	ecdhe_public_key := pub_key.uncompressed_bytes()!
 	client_hello_random := rand.bytes(32)!
 	dcid := rand.bytes(8)! // client's original, self-chosen DCID
@@ -146,6 +151,10 @@ fn test_full_initial_round_trip_over_fake_transport() {
 fn test_full_initial_round_trip_rejects_tampered_datagram() {
 	priv := ecdsa.PrivateKey.new()!
 	pub_key := priv.public_key()!
+	defer {
+		pub_key.free()
+		priv.free()
+	}
 	ecdhe_public_key := pub_key.uncompressed_bytes()!
 	dcid := rand.bytes(8)!
 	scid := rand.bytes(8)!
