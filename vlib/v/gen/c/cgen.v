@@ -12907,10 +12907,19 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					field_deps << dep
 				}
 				for field in sym.info.fields {
+					fsym := g.table.sym(field.typ)
 					if field.typ.is_ptr() {
+						// Pointer fields do not normally require a complete pointee type. An
+						// alias to a fixed array is a typedef, however, so C must see that
+						// alias declaration before it can name a pointer to it.
+						if fsym.info is ast.Alias && g.alias_is_fixed_array_of_non_builtin(fsym) {
+							dep := fsym.scoped_name()
+							if dep in type_names && dep !in field_deps {
+								field_deps << dep
+							}
+						}
 						continue
 					}
-					fsym := g.table.sym(field.typ)
 					dep := fsym.name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps {

@@ -410,6 +410,72 @@ fn test_zero_length_file_response_does_not_leak_fd() ! {
 	C.close(client_fd)
 }
 
+const sigpipe_handler_probe = 'V_FASTHTTP_SIGPIPE_HANDLER_PROBE'
+
+fn record_sigpipe_handler(_ os.Signal) {
+	// Called directly by the test, never from an actual signal context.
+	os.setenv(sigpipe_handler_probe, 'called', true)
+}
+
+fn current_thread_blocks_sigpipe() bool {
+	mut current_mask := C.sigset_t{}
+	if C.pthread_sigmask(C.SIG_SETMASK, C.NULL, &current_mask) != 0 {
+		return true
+	}
+	return C.sigismember(&current_mask, C.SIGPIPE) == 1
+}
+
+fn current_thread_has_pending_sigpipe() bool {
+	mut pending_set := C.sigset_t{}
+	return C.sigpending(&pending_set) == 0 && C.sigismember(&pending_set, C.SIGPIPE) == 1
+}
+
+fn sendfile_with_scoped_sigpipe_mask(socket_fd int, file_fd int) bool {
+	if current_thread_blocks_sigpipe() {
+		return false
+	}
+	mut offset := i64(0)
+	sent := sendfile_without_sigpipe(socket_fd, file_fd, &offset, 1)
+	sendfile_errno := C.errno
+	return sent == -1 && sendfile_errno == C.EPIPE && !current_thread_blocks_sigpipe()
+		&& !current_thread_has_pending_sigpipe()
+}
+
+// https://github.com/vlang/v/issues/28033
+fn test_sendfile_to_disconnected_client_preserves_sigpipe_handler() ! {
+	tmp := os.join_path(os.vtmp_dir(), 'fasthttp_sigpipe_file_test.txt')
+	os.write_file(tmp, 'x')!
+	defer {
+		os.rm(tmp) or {}
+	}
+	mut file := os.open(tmp)!
+	defer {
+		file.close()
+	}
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	C.close(client_fd)
+	defer {
+		C.close(server_fd)
+	}
+
+	os.unsetenv(sigpipe_handler_probe)
+	previous_handler := os.signal_opt(.pipe, record_sigpipe_handler)!
+	defer {
+		os.signal_opt(.pipe, previous_handler) or {}
+		os.unsetenv(sigpipe_handler_probe)
+	}
+	worker := spawn sendfile_with_scoped_sigpipe_mask(server_fd, file.fd)
+	assert worker.wait()
+
+	installed_handler := os.signal_opt(.pipe, previous_handler)!
+	assert !isnil(installed_handler)
+	installed_handler(.pipe)
+	assert os.getenv(sigpipe_handler_probe) == 'called'
+}
+
 // A .reusable takeover writes its response directly to the socket. If an earlier
 // pipelined response is still buffered in write_buf, flushing it afterwards would
 // reverse HTTP/1.1 response order. The reactor enforces the "takeover is the sole

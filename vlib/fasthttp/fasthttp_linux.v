@@ -387,7 +387,7 @@ fn drain_file(fd int, mut cs ConnState) int {
 		} else {
 			usize(cs.file_remaining)
 		}
-		sent := C.sendfile(fd, cs.file_fd, &cs.file_off, want)
+		sent := sendfile_without_sigpipe(fd, cs.file_fd, &cs.file_off, want)
 		if sent > 0 {
 			cs.file_remaining -= i64(sent)
 			continue

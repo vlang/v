@@ -1,0 +1,30 @@
+vlib/v/checker/tests/interface_method_fn_type_alias_pointer_mismatch_err.vv:25:7: error: `PointerCallbackConsumer` incorrectly implements method `set_callback` of interface `CallbackConsumer`: expected `fn (int) int`, not `&fn (int) int` for parameter 1
+   23 |
+   24 | fn main() {
+   25 |     _ := CallbackConsumer(PointerCallbackConsumer{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   26 |     _ := CallbackProvider(PointerCallbackProvider{})
+   27 | }
+Details: main.CallbackConsumer has `fn set_callback(x main.CallbackConsumer,  fn (int) int)`
+         main.PointerCallbackConsumer has `fn set_callback(_ main.PointerCallbackConsumer, _ &fn (int) int)`
+vlib/v/checker/tests/interface_method_fn_type_alias_pointer_mismatch_err.vv:25:7: error: `PointerCallbackConsumer` does not implement interface `CallbackConsumer`, cannot cast `PointerCallbackConsumer` to interface `CallbackConsumer`
+   23 |
+   24 | fn main() {
+   25 |     _ := CallbackConsumer(PointerCallbackConsumer{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   26 |     _ := CallbackProvider(PointerCallbackProvider{})
+   27 | }
+vlib/v/checker/tests/interface_method_fn_type_alias_pointer_mismatch_err.vv:26:7: error: `PointerCallbackProvider` incorrectly implements method `callback` of interface `CallbackProvider`: expected return type `fn (int) int`
+   24 | fn main() {
+   25 |     _ := CallbackConsumer(PointerCallbackConsumer{})
+   26 |     _ := CallbackProvider(PointerCallbackProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   27 | }
+Details: main.CallbackProvider has `fn callback(x main.CallbackProvider) fn (int) int`
+         main.PointerCallbackProvider has `fn callback(_ main.PointerCallbackProvider) &fn (int) int`
+vlib/v/checker/tests/interface_method_fn_type_alias_pointer_mismatch_err.vv:26:7: error: `PointerCallbackProvider` does not implement interface `CallbackProvider`, cannot cast `PointerCallbackProvider` to interface `CallbackProvider`
+   24 | fn main() {
+   25 |     _ := CallbackConsumer(PointerCallbackConsumer{})
+   26 |     _ := CallbackProvider(PointerCallbackProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   27 | }

@@ -530,7 +530,19 @@ fn (t &Table) method_types_are_equal(left Type, right Type) bool {
 	if unaliased_left.has_option_or_result() || unaliased_right.has_option_or_result() {
 		return false
 	}
-	return unaliased_left == unaliased_right
+	// sym() drops outer modifiers, so require them to match before comparing Fn declarations.
+	if unaliased_left.flags() != unaliased_right.flags() {
+		return false
+	}
+	if unaliased_left == unaliased_right {
+		return true
+	}
+	left_sym := t.sym(unaliased_left)
+	right_sym := t.sym(unaliased_right)
+	if left_sym.info is FnType && right_sym.info is FnType {
+		return t.fn_types_are_compatible(left_sym.info.func, right_sym.info.func, 0)
+	}
+	return false
 }
 
 fn (t &Table) method_return_types_are_compatible(left Type, right Type) bool {
