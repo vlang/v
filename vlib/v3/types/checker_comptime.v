@@ -4470,6 +4470,9 @@ fn (tc &TypeChecker) interface_declaration_diagnostic(iface_name string) (flat.N
 // check_interface_embedding_limits rejects deep interface casts before requirement
 // indexes recursively expand the embedding chain.
 pub fn (mut tc TypeChecker) check_interface_embedding_limits() bool {
+	if tc.valid_diagnostic_fast {
+		return false
+	}
 	mut embedded := map[string]bool{}
 	for _, embeds in tc.interface_embeds {
 		for embed in embeds {
@@ -7846,7 +7849,8 @@ fn (tc &TypeChecker) mut_param_base_for_current_ident(name string, typ Type) ?Ty
 		// otherwise runs for every infix operand.
 		return none
 	}
-	if isnil(tc.cur_scope) || tc.cur_scope == tc.file_scope || tc.fn_context.node_id < 0 {
+	if isnil(tc.cur_scope) || voidptr(tc.cur_scope) == voidptr(tc.file_scope)
+		|| tc.fn_context.node_id < 0 {
 		return none
 	}
 	base := tc.fn_context.mut_param_base_types[name] or { return none }
@@ -12096,6 +12100,7 @@ fn (tc &TypeChecker) lock_keyword_diagnostic_pos(node flat.Node) token.Pos {
 }
 
 // check_for_in_stmt validates check for in stmt state for types.
+@[direct_array_access]
 fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	header := node.value.int()
 	if header < 3 || node.children_count < 3 {
@@ -12840,6 +12845,10 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	if tc.valid_resolution_fast {
+		tc.check_valid_decl_assign(id, node)
+		return
+	}
 	if tc.check_multi_return_decl_assign(id, node) {
 		return
 	}
@@ -13200,6 +13209,59 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		tc.track_method_value_local(lhs_id, rhs_id)
 		tc.track_variadic_fn_value_local(lhs_id, rhs_id)
 		tc.track_capturing_fn_literal_local(lhs_id, rhs_id, owner)
+		i += 2
+	}
+}
+
+// check_valid_decl_assign performs only the resolution state updates needed by
+// later expressions and code generation. The building-v input is already known
+// to be valid, so recreating declaration diagnostics here is redundant work.
+fn (mut tc TypeChecker) check_valid_decl_assign(id flat.NodeId, node flat.Node) {
+	if tc.check_multi_return_decl_assign(id, node) {
+		return
+	}
+	if tc.check_multi_value_list_decl_assign(id, node) {
+		return
+	}
+	if tc.check_assignment_marker(id, node) {
+		return
+	}
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs_id := tc.a.child(&node, i)
+		rhs_id := tc.a.child(&node, i + 1)
+		lhs_node := tc.a.node(lhs_id)
+		if lhs_node.kind != .ident {
+			tc.check_node(rhs_id)
+			i += 2
+			continue
+		}
+		explicit_expected := if node.children_count == 2 && node.typ.len > 0 {
+			tc.parse_type(node.typ)
+		} else {
+			Type(void_)
+		}
+		if explicit_expected is Void {
+			tc.check_node(rhs_id)
+		} else {
+			tc.check_node_with_expected_context(rhs_id, explicit_expected)
+		}
+		mut inferred := tc.decl_assign_inferred_type(rhs_id)
+		if explicit_expected !is Void {
+			inferred = tc.resolve_expr(rhs_id, explicit_expected)
+		}
+		lhs_is_mut := tc.decl_lhs_is_mut(node, lhs_id)
+		owner := tc.insert_decl_lhs(lhs_id, if explicit_expected is Void {
+			inferred
+		} else {
+			explicit_expected
+		}, lhs_is_mut)
+		if owner.storage_key().len > 0 && decl_assign_is_shared_marker(node.value) {
+			tc.mark_shared_binding_owner(lhs_node.value, owner)
+		}
+		if owner.storage_key().len > 0 && tc.expr_initializes_shared_array(rhs_id) {
+			tc.mark_shared_array_binding_owner(lhs_node.value, owner)
+		}
 		i += 2
 	}
 }
@@ -15384,7 +15446,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 fn (tc &TypeChecker) visible_mut_param_binding_owns_name(name string) bool {
 	param_owner := tc.fn_context.mut_param_owners[name] or { return false }
 	owner := tc.cur_scope.lookup_owner(name) or { return false }
-	return owner.scope == param_owner.scope && owner.index == param_owner.index
+	return voidptr(owner.scope) == voidptr(param_owner.scope) && owner.index == param_owner.index
 		&& owner.generation == param_owner.generation
 }
 
@@ -15404,6 +15466,10 @@ fn (tc &TypeChecker) visible_local_scope_owns_name(name string) bool {
 // check_assign validates check assign state for types.
 fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count < 2 {
+		return
+	}
+	if tc.valid_resolution_fast {
+		tc.check_valid_assign(id, node)
 		return
 	}
 	if _ := tc.malformed_const_keyword_pos(id) {
@@ -15918,6 +15984,65 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		_ = ownership_rhs_ids
 		_ = ownership_lhs_types
 		_ = ownership_rhs_types
+	}
+}
+
+// check_valid_assign retains expression typing and smartcast state while
+// omitting assignment diagnostics for the already-validated building-v input.
+fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
+	if tc.check_assignment_marker(id, node) {
+		return
+	}
+	if tc.check_multi_return_assign(id, node) {
+		return
+	}
+	mut smartcast_write_keys := []string{}
+	mut smartcast_updates := map[string]Type{}
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs_id := tc.a.child(&node, i)
+		rhs_id := tc.a.child(&node, i + 1)
+		lhs_node := tc.a.node(lhs_id)
+		lhs_type := if node.kind == .index_assign {
+			tc.resolve_index_lvalue_type(lhs_id, node.op)
+		} else {
+			tc.resolve_lvalue_type(lhs_id)
+		}
+		tc.remember_expr_type(lhs_id, lhs_type)
+		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
+		source_rhs_type := tc.resolve_type(rhs_id)
+		tc.annotate_expected_expr(rhs_id, expected_type)
+		tc.check_node_with_expected_context(rhs_id, expected_type)
+		mut rhs_type := tc.resolve_expr(rhs_id, expected_type)
+		rhs_node := tc.a.node(rhs_id)
+		if rhs_node.kind == .call {
+			if call_info := tc.resolve_call_info(rhs_id, rhs_node) {
+				if call_info.return_type !is Unknown && call_info.return_type !is Void {
+					rhs_type = call_info.return_type
+					tc.remember_expr_type(rhs_id, rhs_type)
+				}
+			}
+		}
+		lhs_key := tc.expr_key(lhs_id)
+		if lhs_key.len > 0 {
+			if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+				smartcast_write_keys << lhs_key
+			}
+			if node.op == .assign && lhs_node.kind == .ident {
+				declared := tc.cur_scope.lookup(lhs_node.value) or { Type(void_) }
+				if declared is OptionType
+					&& tc.expr_compatible(rhs_id, source_rhs_type, declared.base_type) {
+					smartcast_updates[lhs_key] = declared.base_type
+				}
+			}
+		}
+		i += 2
+	}
+	for key in smartcast_write_keys {
+		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for key, typ in smartcast_updates {
+		tc.smartcasts[key] = typ
 	}
 }
 

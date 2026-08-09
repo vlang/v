@@ -312,7 +312,7 @@ fn remap_worker_pos(pos token.Pos, first_file_id int, next_file_id int, delta in
 	}
 	return token.Pos{
 		...pos
-		id: pos.id + delta
+		id: u16(int(pos.id) + delta)
 	}
 }
 
@@ -971,6 +971,9 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 	}
 	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
 	mut cache_vals := []string{len: 4096}
+	mut type_cache_ptrs := unsafe { []voidptr{len: 4096} }
+	mut type_cache_vals := []string{len: 4096}
+	mut type_cache_ids := []u16{len: 4096}
 	for k in 0 .. w.a.nodes.len {
 		mut node := w.a.nodes[k]
 		if node.children_count != 0 {
@@ -988,7 +991,10 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		mut all_hit := true
 		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
 		mut hit := true
-		node.typ, hit = p.a.probe_text_ptr_cached(node.typ, mut cache_ptrs, mut cache_vals)
+		mut type_id := u16(0)
+		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut
+			type_cache_vals, mut type_cache_ids)
+		node.set_type_text_id(type_id)
 		all_hit = all_hit && hit
 		params := node.generic_params()
 		if params.len > 0 {

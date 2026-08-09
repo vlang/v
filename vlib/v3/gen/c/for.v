@@ -123,6 +123,7 @@ fn (mut g FlatGen) gen_loop_continue_label(label string) {
 }
 
 // gen_for emits for output for c.
+@[direct_array_access]
 fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.push_scope()
 	defer_start := g.defers.len
@@ -540,7 +541,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 
 fn (g &FlatGen) for_in_container_type(node flat.Node, container_id flat.NodeId) types.Type {
 	if node.typ.starts_with('map[') {
-		typ := g.tc.parse_type(node.typ)
+		typ := g.parse_node_type(&node)
 		if typ is types.Map {
 			return typ
 		}
@@ -567,7 +568,7 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 		return
 	}
 	key_name := if key.value == '_' {
-		'__discard_${int(key_id)}'
+		g.discard_name(key_id)
 	} else {
 		g.c_loop_local_name(key.value)
 	}

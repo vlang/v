@@ -149,7 +149,7 @@ fn (mut g FlatGen) gen_array_equality_literal_arg(names []string, arg_idx int, a
 		g.gen_array_literal_value(node, arr.elem_type)
 		return true
 	}
-	if arr := array_like_type(g.tc.parse_type(node.typ)) {
+	if arr := array_like_type(g.parse_node_type(&node)) {
 		g.gen_array_literal_value(node, arr.elem_type)
 		return true
 	}
@@ -296,7 +296,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
-	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.tc.parse_type(node.typ)) != none
+	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.parse_node_type(&node)) != none
 	if !annotated_is_fixed
 		&& fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
 		g.gen_expr(id)
@@ -774,7 +774,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 		return none
 	}
 	if node.typ.len > 0 {
-		if fixed := array_fixed_type(g.tc.parse_type(node.typ)) {
+		if fixed := array_fixed_type(g.parse_node_type(&node)) {
 			return fixed
 		}
 	}

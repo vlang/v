@@ -400,7 +400,7 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 		}
 		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown']
 			&& cgen_type_text_is_complete(node.typ) {
-			g.collect_optional_typedef_type(g.tc.parse_type(node.typ))
+			g.collect_optional_typedef_type(g.parse_node_type(&node))
 		}
 	}
 }
