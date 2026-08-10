@@ -1196,7 +1196,7 @@ fn (t &Transformer) raw_checker_node_type(id flat.NodeId) string {
 		return ''
 	}
 	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
-	name := typ.name()
+	name := t.tc.type_name(typ)
 	if name.len == 0 || name == 'void' {
 		return ''
 	}
@@ -1228,12 +1228,15 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 		if cache.module != t.cur_module {
 			cache.module = t.cur_module
 			cache.entries.clear()
+			cache.last_name = ''
+			cache.last_value = 0
 		}
-		if cached := cache.entries[name] {
+		cached := cache.get(name)
+		if cached != 0 {
 			return cached > 0
 		}
 		result := t.is_type_alias_name_uncached(name)
-		cache.entries[name] = if result { i8(1) } else { i8(-1) }
+		cache.put(name, if result { i8(1) } else { i8(-1) })
 		return result
 	}
 	return t.is_type_alias_name_uncached(name)
@@ -3320,18 +3323,18 @@ fn (t &Transformer) selector_array_elem_type(node flat.Node) string {
 
 // membership_container_type supports membership container type handling for Transformer.
 fn (t &Transformer) membership_container_type(typ string) string {
-	mut clean := t.normalize_type_alias(typ).trim_space()
+	mut clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	for {
 		if clean.starts_with('shared ') {
-			clean = clean[7..].trim_space()
+			clean = trimmed_transform_text(clean[7..])
 			continue
 		}
 		if clean.starts_with('&') {
-			clean = clean[1..].trim_space()
+			clean = trimmed_transform_text(clean[1..])
 			continue
 		}
 		if clean.starts_with('...') {
-			clean = '[]' + clean[3..].trim_space()
+			clean = '[]' + trimmed_transform_text(clean[3..])
 			continue
 		}
 		break
@@ -3340,14 +3343,14 @@ fn (t &Transformer) membership_container_type(typ string) string {
 }
 
 fn (t &Transformer) membership_type_is_pointer(typ string) bool {
-	mut clean := t.normalize_type_alias(typ).trim_space()
+	mut clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	for {
 		if clean.starts_with('shared ') {
-			clean = clean[7..].trim_space()
+			clean = trimmed_transform_text(clean[7..])
 			continue
 		}
 		if clean.starts_with('mut ') {
-			clean = clean[4..].trim_space()
+			clean = trimmed_transform_text(clean[4..])
 			continue
 		}
 		break
@@ -3356,16 +3359,16 @@ fn (t &Transformer) membership_type_is_pointer(typ string) bool {
 }
 
 fn (t &Transformer) equality_type_is_array_pointer(typ string) bool {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	if clean.starts_with('mut ') {
 		return false
 	}
-	clean = t.normalize_type_alias(clean).trim_space()
+	clean = trimmed_transform_text(t.normalize_type_alias(clean))
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	if !clean.starts_with('&') {
 		return false
@@ -3382,40 +3385,40 @@ fn (t &Transformer) equality_expr_is_string_pointer(id flat.NodeId, typ string) 
 	if node.kind in [.string_literal, .string_interp] {
 		return false
 	}
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	if clean.starts_with('mut ') {
 		return false
 	}
-	clean = t.normalize_type_alias(clean).trim_space()
+	clean = trimmed_transform_text(t.normalize_type_alias(clean))
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	return clean == '&string'
 }
 
 fn (t &Transformer) equality_type_is_map_pointer(typ string) bool {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	if clean.starts_with('mut ') {
 		return false
 	}
-	clean = t.normalize_type_alias(clean).trim_space()
+	clean = trimmed_transform_text(t.normalize_type_alias(clean))
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	return clean.starts_with('&') && t.clean_map_type(clean).starts_with('map[')
 }
 
 // membership_container_is_pointer_array supports membership_container_is_pointer_array handling.
 fn (t &Transformer) membership_container_is_pointer_array(typ string) bool {
-	mut clean := t.normalize_type_alias(typ).trim_space()
+	mut clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	if !clean.starts_with('&') {
 		return false
@@ -3535,14 +3538,14 @@ fn (mut t Transformer) transform_fixed_array_len(_id flat.NodeId, node flat.Node
 
 // clean_map_type transforms clean map type data for transform.
 fn (t &Transformer) clean_map_type(typ string) string {
-	mut clean := t.normalize_type_alias(typ).trim_space()
+	mut clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	for {
 		if clean.starts_with('shared ') {
-			clean = clean[7..].trim_space()
+			clean = trimmed_transform_text(clean[7..])
 			continue
 		}
 		if clean.starts_with('&') {
-			clean = clean[1..].trim_space()
+			clean = trimmed_transform_text(clean[1..])
 			continue
 		}
 		break

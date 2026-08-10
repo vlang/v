@@ -8,6 +8,10 @@ fn par_cgen_prep_enabled() bool {
 	return false
 }
 
+fn (mut g FlatGen) collect_gen_info_fn_preps(_ []int) []CollectGenFnPrep {
+	return []CollectGenFnPrep{}
+}
+
 // gen_fns_dispatch emits all functions serially when v3 is built with the
 // internal `v3_no_parallel` define.
 fn (mut g FlatGen) gen_fns_dispatch(_ bool) {

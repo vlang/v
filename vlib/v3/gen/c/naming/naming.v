@@ -116,6 +116,9 @@ const libc_collisions = {
 // c_name returns the C identifier used for a V symbol or type name.
 pub fn c_name(name string) string {
 	if name.starts_with('C.') {
+		if name[2..].contains('.') {
+			return sanitize(name)
+		}
 		return name[2..]
 	}
 	if name == 'malloc' {

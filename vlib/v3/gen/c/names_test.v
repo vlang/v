@@ -41,6 +41,10 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('C.log') == 'log'
 }
 
+fn test_c_name_preserves_c_receiver_method_namespace() {
+	assert c_name('C.SSL_CTX.str') == 'C__SSL_CTX__str'
+}
+
 fn test_c_name_generated_string_symbol_collision() {
 	assert c_name('_str_1') == 'v__str_1'
 	assert c_name('_str_002') == 'v__str_002'

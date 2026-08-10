@@ -1468,12 +1468,7 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 			sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
 			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${cn}* i')
 			for pi := 1; pi < sig_params.len; pi++ {
-				pt := sig_params[pi]
-				pct := if pt is types.OptionType || pt is types.ResultType {
-					g.optional_type_name(pt)
-				} else {
-					g.tc.c_type(pt)
-				}
+				pct := g.interface_dispatch_param_c_type(sig_params[pi])
 				g.write(', ${pct} _a${pi - 1}')
 			}
 			g.writeln(');')
@@ -1562,12 +1557,7 @@ fn (mut g FlatGen) interface_dispatch_signature(iface_name string, cn string, me
 	sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
 	mut sig := '${ret_ct} ${cn}__${method}(${cn}* i'
 	for pi := 1; pi < sig_params.len; pi++ {
-		pt := sig_params[pi]
-		pct := if pt is types.OptionType || pt is types.ResultType {
-			g.optional_type_name(pt)
-		} else {
-			g.tc.c_type(pt)
-		}
+		pct := g.interface_dispatch_param_c_type(sig_params[pi])
 		sig += ', ${pct} _a${pi - 1}'
 	}
 	sig += ')'
@@ -1659,12 +1649,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	mut arg_names := []string{}
 	g.write('${ret_ct} ${cn}__${method}(${cn}* i')
 	for pi := 1; pi < sig_params.len; pi++ {
-		pt := sig_params[pi]
-		pct := if pt is types.OptionType || pt is types.ResultType {
-			g.optional_type_name(pt)
-		} else {
-			g.tc.c_type(pt)
-		}
+		pct := g.interface_dispatch_param_c_type(sig_params[pi])
 		an := '_a${pi - 1}'
 		arg_names << an
 		g.write(', ${pct} ${an}')
@@ -1886,6 +1871,18 @@ fn interface_dispatch_wrapped_base_type(typ types.Type) ?types.Type {
 			return none
 		}
 	}
+}
+
+fn (mut g FlatGen) interface_dispatch_param_c_type(typ types.Type) string {
+	mut ct := if typ is types.OptionType || typ is types.ResultType {
+		g.optional_type_name(typ)
+	} else {
+		g.tc.c_type(typ)
+	}
+	if ct.starts_with('fn_ptr:') {
+		ct = g.resolve_fn_ptr_type(ct)
+	}
+	return ct
 }
 
 fn (mut g FlatGen) interface_boxed_type_marked_for_dispatch(iface_name string, concrete string) bool {

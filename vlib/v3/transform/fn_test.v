@@ -168,8 +168,10 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	mut tc := types.TypeChecker.new(a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.prepare_parallel_call_param_types()
+	assert t.call_param_types_prepared
 	mut worker := t.fork_worker(t.a, t.tc)
 	assert worker.call_param_types_index_ready
+	assert worker.call_param_types_prepared
 	assert worker.call_param_types_decl_index.len == t.call_param_types_decl_index.len
 	assert worker.call_param_types_decl_cache.len == t.call_param_types_decl_cache.len
 	params := worker.call_param_types_from_decl('takes_string') or {
@@ -178,6 +180,9 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	}
 	assert params.len == 1
 	assert params[0] is types.String
+	t.add_call_param_types_decl_key('main.takes_string', a.nodes.len - 1, 'signature_index_test.v',
+		'main')
+	assert !t.call_param_types_prepared
 }
 
 fn test_pending_generic_specialization_keys_are_private_initialized_maps() {

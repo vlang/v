@@ -42,9 +42,11 @@ int main(void) {
 	return 0;
 }
 ')!
+	// Each preallocated object must keep builtin globals object-local, including
+	// the thread-local g_memory_block arena root.
 	for cmd in [
-		'${test_vexe} -cc ${cc} -gc none -no-skip-unused -is_o -o ${os.quoted_path(a_c)} ${os.quoted_path(a_v)}',
-		'${test_vexe} -cc ${cc} -gc none -no-skip-unused -is_o -o ${os.quoted_path(b_c)} ${os.quoted_path(b_v)}',
+		'${test_vexe} -message-limit 199 -cc ${cc} -gc none -prealloc -no-skip-unused -is_o -o ${os.quoted_path(a_c)} ${os.quoted_path(a_v)}',
+		'${test_vexe} -message-limit 199 -cc ${cc} -gc none -prealloc -no-skip-unused -is_o -o ${os.quoted_path(b_c)} ${os.quoted_path(b_v)}',
 		'${cc} -o ${os.quoted_path(prog)} ${os.quoted_path(a_c)} ${os.quoted_path(b_c)} ${os.quoted_path(host_c)} -lm',
 	] {
 		res := os.execute(cmd)

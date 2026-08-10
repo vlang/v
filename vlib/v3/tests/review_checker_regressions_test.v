@@ -548,6 +548,22 @@ fn main() {
 		'cannot assign to `value`: expected `?int`, not `?void`')
 }
 
+fn test_assignment_selector_diagnostic_accepts_wide_columns() {
+	v3_bin := build_v3_review_checker()
+	indent := ' '.repeat(32768)
+	run_bad(v3_bin, 'wide_assignment_selector_diagnostic', 'struct Holder {
+	item ?string
+}
+
+fn main() {
+	holder := Holder{}
+	mut value := 0
+${indent}value = holder.item or { "" }
+}
+',
+		'cannot assign to `value`: expected `int`, not `string`')
+}
+
 fn test_optional_address_preserves_wrapper_shape() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'optional_address_wrapper_shape', 'fn take_wrapper(value &?int) {

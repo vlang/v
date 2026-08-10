@@ -402,7 +402,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		}
 	}
 	init_type := g.tc.parse_type(init_value)
-	node_type := g.tc.parse_type(node.typ)
+	node_type := g.parse_node_type(&node)
 	is_optional_init := init_value == 'Optional' || init_type is types.OptionType
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
@@ -659,7 +659,7 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 	}
 	if !isnil(g.unique_struct_ct_cache) {
 		mut cache := g.unique_struct_ct_cache
-		if cached := cache.entries[short_ct] {
+		if cached := cache.get(short_ct) {
 			if cached.len == 0 {
 				return none
 			}
@@ -679,13 +679,13 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 	if matches.len == 1 && matches[0] != short_ct {
 		if !isnil(g.unique_struct_ct_cache) {
 			mut cache := g.unique_struct_ct_cache
-			cache.entries[short_ct] = matches[0]
+			cache.put(short_ct, matches[0])
 		}
 		return matches[0]
 	}
 	if !isnil(g.unique_struct_ct_cache) {
 		mut cache := g.unique_struct_ct_cache
-		cache.entries[short_ct] = ''
+		cache.put(short_ct, '')
 	}
 	return none
 }
@@ -3285,7 +3285,7 @@ fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string
 		return none
 	}
 	if node.typ.len > 0 {
-		candidate := g.tc.parse_type(node.typ)
+		candidate := g.parse_node_type(&node)
 		base := default_init_unalias_type(types.unwrap_all_pointers(candidate))
 		if base !is types.Array && base !is types.ArrayFixed {
 			name := base.name()
@@ -3307,7 +3307,7 @@ fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string
 
 fn (g &FlatGen) generic_struct_init_instance_name_for_node(node flat.Node) ?string {
 	if node.typ.len > 0 {
-		candidate := g.tc.parse_type(node.typ)
+		candidate := g.parse_node_type(&node)
 		base := default_init_unalias_type(types.unwrap_all_pointers(candidate))
 		if base !is types.Array && base !is types.ArrayFixed {
 			name := base.name()
@@ -3540,7 +3540,8 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?strin
 		if generic_receiver_type_suffixes(candidate_args) == arg_suffix {
 			context_ct := g.tc.c_type(candidate_type)
 			if !isnil(g.generic_struct_context_ct_cache) {
-				if cached := g.generic_struct_context_ct_cache.entries[context_ct] {
+				mut cache := g.generic_struct_context_ct_cache
+				if cached := cache.get(context_ct) {
 					return cached
 				}
 			}
@@ -3557,7 +3558,7 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?strin
 			result := if matches.len == 1 { matches[0] } else { context_ct }
 			if !isnil(g.generic_struct_context_ct_cache) {
 				mut cache := g.generic_struct_context_ct_cache
-				cache.entries[context_ct] = result
+				cache.put(context_ct, result)
 			}
 			return result
 		}
@@ -3639,7 +3640,8 @@ fn (g &FlatGen) same_module_flattened_generic_struct_ct(clean string) ?string {
 
 fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 	if !isnil(g.flattened_generic_name_cache) {
-		if cached := g.flattened_generic_name_cache.entries[ct] {
+		mut cache := g.flattened_generic_name_cache
+		if cached := cache.get(ct) {
 			return cached
 		}
 	}
@@ -3665,7 +3667,7 @@ fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 	result := out.bytestr()
 	if !isnil(g.flattened_generic_name_cache) {
 		mut cache := g.flattened_generic_name_cache
-		cache.entries[ct] = result
+		cache.put(ct, result)
 	}
 	return result
 }
@@ -3691,9 +3693,28 @@ fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 // a private instance (new_parallel_worker_config).
 struct StructDeclPrefCache {
 mut:
-	module  string
-	entries map[string]StructDeclInfo
-	misses  map[string]bool
+	module           string
+	entries          map[string]StructDeclInfo
+	misses           map[string]bool
+	field_entries    map[string][]types.StructField
+	field_misses     map[string]bool
+	field_last_name  string
+	field_last_value []types.StructField
+	field_last_state i8
+}
+
+fn (mut cache StructDeclPrefCache) select_module(module_name string) {
+	if cache.module == module_name {
+		return
+	}
+	cache.module = module_name
+	cache.entries.clear()
+	cache.misses.clear()
+	cache.field_entries.clear()
+	cache.field_misses.clear()
+	cache.field_last_name = ''
+	cache.field_last_value = []types.StructField{}
+	cache.field_last_state = 0
 }
 
 fn (g &FlatGen) find_struct_decl_preferred(type_name string) ?StructDeclInfo {
@@ -3701,11 +3722,7 @@ fn (g &FlatGen) find_struct_decl_preferred(type_name string) ?StructDeclInfo {
 	if isnil(cache) {
 		return g.find_struct_decl_preferred_uncached(type_name)
 	}
-	if cache.module != g.tc.cur_module {
-		cache.module = g.tc.cur_module
-		cache.entries.clear()
-		cache.misses.clear()
-	}
+	cache.select_module(g.tc.cur_module)
 	if cached := cache.entries[type_name] {
 		return cached
 	}
@@ -3910,6 +3927,46 @@ fn (g &FlatGen) struct_embedded_fields(type_name string) []types.StructField {
 }
 
 fn (g &FlatGen) struct_fields_for_type(type_name string) ?[]types.StructField {
+	mut cache := g.struct_decl_pref_cache
+	if g.cache_struct_fields && !isnil(cache) {
+		cache.select_module(g.tc.cur_module)
+		if cache.field_last_state != 0 && cache.field_last_name.len == type_name.len
+			&& (unsafe { cache.field_last_name.str == type_name.str }
+			|| cache.field_last_name == type_name) {
+			if cache.field_last_state > 0 {
+				return cache.field_last_value
+			}
+			return none
+		}
+		if fields := cache.field_entries[type_name] {
+			cache.field_last_name = type_name
+			cache.field_last_value = fields
+			cache.field_last_state = 1
+			return fields
+		}
+		if cache.field_misses[type_name] {
+			cache.field_last_name = type_name
+			cache.field_last_value = []types.StructField{}
+			cache.field_last_state = -1
+			return none
+		}
+		if fields := g.struct_fields_for_type_uncached(type_name) {
+			cache.field_entries[type_name] = fields
+			cache.field_last_name = type_name
+			cache.field_last_value = fields
+			cache.field_last_state = 1
+			return fields
+		}
+		cache.field_misses[type_name] = true
+		cache.field_last_name = type_name
+		cache.field_last_value = []types.StructField{}
+		cache.field_last_state = -1
+		return none
+	}
+	return g.struct_fields_for_type_uncached(type_name)
+}
+
+fn (g &FlatGen) struct_fields_for_type_uncached(type_name string) ?[]types.StructField {
 	if info := g.find_struct_decl(type_name) {
 		if fields := g.tc.structs[info.full_name] {
 			return fields
@@ -4487,7 +4544,7 @@ fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if node.typ.len > 0 {
-		map_type := g.tc.parse_type(node.typ)
+		map_type := g.parse_node_type(&node)
 		if map_type is types.Map {
 			g.gen_map_init_for_type(node, g.refined_map_init_type(node, map_type))
 			return
@@ -4890,7 +4947,8 @@ fn c_struct_needs_typedef(name string) bool {
 
 fn (g &FlatGen) struct_cname(name string) string {
 	if !isnil(g.struct_cname_cache) {
-		if cached := g.struct_cname_cache.entries[name] {
+		mut cache := g.struct_cname_cache
+		if cached := cache.get(name) {
 			return cached
 		}
 	}
@@ -4899,7 +4957,7 @@ fn (g &FlatGen) struct_cname(name string) string {
 	}))
 	if !isnil(g.struct_cname_cache) {
 		mut cache := g.struct_cname_cache
-		cache.entries[name] = result
+		cache.put(name, result)
 	}
 	return result
 }

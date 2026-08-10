@@ -471,14 +471,190 @@ The largest, highest-risk phase. Sub-phases, in build order:
       and both header forms (long/short), plus negative tests for tampered
       ciphertext and for decrypting with the wrong direction's keys.
 
-## Phases 4-14 (NOT STARTED)
+## Phase 4 — Initial packet exchange (done)
+
+- [x] `frame.v` — PADDING/PING/ACK/CRYPTO/CONNECTION_CLOSE parsing and
+      encoding (RFC 9000 §19), scoped to exactly the frame types legal in
+      the Initial/Handshake packet number spaces (§12.4 Table 3). ACK's
+      Gap/ACK Range Length wire encoding is resolved into already-computed
+      `[smallest, largest]` ranges; the gap math was verified against a
+      hand-derived numeric example (not just a self round trip, which
+      can't catch a bug consistently wrong in both directions) with the
+      exact expected wire bytes hardcoded. Every other frame type (STREAM,
+      MAX_DATA, ...) reports "not yet implemented" rather than a
+      wire-format error, since they're real, valid QUIC frames just
+      deferred to later phases.
+- [x] `crypto_stream.v` — per-encryption-level CRYPTO frame reassembly,
+      tolerating out-of-order arrival and overlapping retransmissions (RFC
+      9000 §19.6); a content mismatch on any overlap — including between
+      two not-yet-promoted out-of-order fragments that overlap each other
+      before either touches the contiguous stream — is rejected at the
+      point of overlap via one shared validated-append path, rather than
+      surfacing later as a confusing transcript-hash/Finished-MAC failure.
+- [x] `coalesce.v` — datagram splitting by walking long-header `Length`
+      fields; stops cleanly (not as a fabricated bogus packet) at a short
+      header, a Version Negotiation packet, a Retry packet, or trailing
+      non-packet padding (see the `/vreview` finding below).
+      `pad_initial_payload` pads a sender's own Initial packet to the RFC
+      9000 §14.1 1200-byte minimum via PADDING frames INSIDE the
+      AEAD-protected payload (§14.1's primary mechanism), not raw bytes
+      appended after protection -- see the Codex-round fixes below. A
+      trailing chunk that fails to parse as a legitimate next packet
+      (truncated header, unsupported version, or an overrun Length field)
+      is discarded and splitting stops there -- RFC 9000 §14.1's own
+      "coalesced with invalid packets, which a receiver will discard"
+      allowance -- rather than failing every packet already validated
+      before it. A subsequent long-header packet whose DCID doesn't match
+      the datagram's first packet is likewise excluded from the result,
+      not treated as an error (RFC 9000 §12.2, SHOULD), and scanning
+      continues past it for whatever legitimately-addressed packet may
+      follow.
+      `parse_frames` (frame.v) rejects a packet payload containing zero
+      frames as PROTOCOL_VIOLATION (RFC 9000 §12.4) -- `parse_frame`
+      (singular) already rejected an empty buffer, but the plural
+      reassembly loop's own `for offset < buf.len` guard never even
+      called into it for a genuinely empty payload.
+- [x] `retry.v` — client-side Retry Integrity Tag (RFC 9001 §5.8)
+      compute/verify, using AEAD_AES_128_GCM over an empty plaintext with a
+      FIXED public key/nonce (not derived from the connection's own
+      secrets). The fixed key/nonce were confirmed against two independent
+      sources before trusting them: RFC 9001 §5.8's own text, and
+      Cloudflare quiche's Rust source (`RETRY_INTEGRITY_KEY_V1`/
+      `RETRY_INTEGRITY_NONCE_V1` in `packet.rs`) — the same reference
+      implementation this module's TLS 1.3 test vectors were captured
+      from. An invalid tag returns `false` (discard the packet silently),
+      never an error — an off-path forger is exactly what this check
+      exists to catch, so treating a bad tag as fatal would hand that
+      forger a way to abort a legitimate handshake in progress.
+      Tracking "at most one Retry per connection attempt" (RFC 9000
+      §17.2.5.2) is documented as Phase 9 `QuicConn` state, since this
+      module is a stateless verification primitive.
+- [x] `version_negotiation.v` — a VN packet listing v1 itself MUST be
+      silently discarded (RFC 9000 §6.2), not treated as a protocol
+      violation: the connection attempt continues unchanged. A VN packet
+      without v1 fails the connection attempt cleanly, since this client
+      implements only v1 with no lower-version fallback. Before either
+      check runs, the VN packet's DCID must echo the client's own original
+      SCID (RFC 9000 §17.2.1); a mismatch is discarded as unauthenticated/
+      spoofed rather than treated as a genuine response to this client's
+      Initial packet, mirroring `retry.v`'s analogous anti-spoof CID check.
+- [x] Integration test (`initial_exchange_test.v`): a full simulated
+      Initial round trip tying Phases 2+3+4 together — a real ClientHello
+      (Phase 2), real CRYPTO framing, real packet+header protection (Phase
+      3), "transmitted" over a plain `[]u8` fake transport, then fully
+      reversed on the receive side ending with the reassembled CRYPTO
+      stream reproducing the exact original ClientHello bytes and
+      re-parsing as a valid handshake message. Plus a tampered-datagram
+      negative test.
+- [x] `/vreview` pass: found and fixed three gaps before commit —
+      (1) `split_coalesced_datagram` misinterpreted trailing raw
+      UDP-datagram-level zero-byte padding (the shape a real Initial
+      datagram padded to 1200 bytes has -- this client's own outgoing
+      padding no longer produces this shape, see the Codex-round fixes
+      below, but a received datagram from another implementation must
+      still tolerate it) as a bogus additional coalesced packet, since
+      neither `parse_long_header` nor `parse_short_header` (Phase 1,
+      `header.v`) validated RFC 9000's Fixed Bit (0x40) — caught by the
+      integration test above, then confirmed against the REAL captured
+      server datagram from Phase 3's testdata, which turned out to have
+      been misread as 3 packets instead of 2 real ones + trailing padding
+      (an earlier, less careful reading of that same capture had assumed
+      the third "packet" was genuine); (2) `parse_ack_frame` sized a `cap:`
+      allocation hint directly off the attacker-controlled, unvalidated
+      `ack_range_count` varint (up to 2^62-1) before confirming the buffer
+      could plausibly contain that many ranges — a real DoS vector from a
+      single small ACK frame; (3) `CryptoStreamReassembler` bounded the
+      byte-offset range a fragment may claim but not the NUMBER of distinct
+      out-of-order fragments that can accumulate within that range. All
+      three have regression tests, Phase-R-verified to fail on the pre-fix
+      code (the ACK allocation test needed a second iteration after its
+      first chosen value, 2^40, happened to wrap to exactly 0 when narrowed
+      to a 32-bit `int` and so accidentally exercised a harmless
+      allocation regardless of whether the fix was present).
+- [x] Codex review (vlang/v#27880, pullrequestreview-4836332922) found 9
+      more gaps after the post-#27680-merge rebase, all fixed with
+      regression tests, Phase-R-verified against the pre-fix code:
+      `handle_version_negotiation` treated a VN packet listing v1 as a
+      hard PROTOCOL_VIOLATION instead of the RFC 9000 §6.2-mandated
+      silent discard (an unauthenticated VN packet with a trivial
+      connection-kill primitive for an off-path attacker, if left as an
+      error); Initial-packet padding moved from raw trailing datagram
+      bytes to PADDING frames inside the AEAD-protected payload (RFC 9000
+      §14.1's primary mechanism -- `pad_datagram_for_initial` removed,
+      replaced by `pad_initial_payload`); `QuicRetryPacket`'s `dcid`/`scid`
+      doc comments had the server's-new-CID label on the WRONG field
+      (RFC 9000 §17.2.5.1: it's `scid`, not `dcid`); `parse_retry_packet`
+      now also rejects a zero-length Retry Token (§17.2.5.2) and a Retry
+      whose SCID equals the client's own Initial DCID (§17.2.5.1, an
+      anti-degenerate-loop check found while verifying the other two Retry
+      findings against the primary RFC text, not from Codex);
+      `CryptoStreamReassembler.add` now deduplicates a retransmitted
+      out-of-order fragment already covered by an existing pending one,
+      instead of counting ordinary loss-recovery retransmissions against
+      the distinct-fragment cap; `encode_crypto_frame`/`parse_crypto_frame`
+      now reject offset+length exceeding the 2^62-1 varint limit (RFC 9000
+      §19.6, confirmed verbatim); `scaled_ack_delay_micros` now saturates
+      instead of silently wrapping a u64 left-shift overflow (a legal wire
+      ACK Delay with a legal §18.2-maximum exponent of 20 shifts past bit
+      64); `split_coalesced_datagram` now rejects a Version Negotiation
+      packet coalesced after another packet (RFC 9000 §12.2: "there is no
+      situation where a Retry or Version Negotiation packet is coalesced
+      with another packet"). All RFC citations independently verified
+      against the primary rfc-editor.org text (cached locally at
+      `.claude/skills/code-review/rfc-texts/`, gitignored) rather than
+      trusted from the review comments alone.
+
+## Phase 5 — Full handshake completion (done)
+
+- [x] `packet_number_space.v` — formalizes the THREE INDEPENDENT packet
+      number spaces (Initial/Handshake/Application Data), flagged as the
+      most common implementation mistake to get wrong (treating packet
+      numbers as connection-global breaks ACK-frame interop with any
+      compliant peer). `PacketNumberSpaceState` tracks per-space
+      next-to-send/largest-received/largest-acked-by-peer, feeding directly
+      into Phase 1's `encode_packet_number`/`decode_packet_number` with no
+      adaptation. `QuicPacketNumberSpaces` groups the three as genuinely
+      independent struct fields — no shared mutable state to accidentally
+      conflate.
+- [x] `handshake_confirm.v` — models "complete" (own Finished sent AND
+      peer's Finished verified) and "confirmed" (HANDSHAKE_DONE received)
+      as two distinct checkpoints, each with its own key-discard trigger
+      (RFC 9001 §4.9.1/§4.9.2), plus a third, independent checkpoint for
+      discarding Initial keys (first Handshake-space packet sent). The
+      alternate ack-based confirmation path RFC 9001 permits is
+      deliberately not implemented — v1 always waits for HANDSHAKE_DONE.
+- [x] `key_update.v` — 1-RTT-only key phase bit rotation (RFC 9001 §6),
+      receive side only (client-initiated rotation deferred, per plan).
+      `resolve_read_keys` decides which keys to try decrypting an incoming
+      packet with — matching the current phase, the retained previous
+      phase (a reordered pre-update packet), or a freshly-derived next
+      phase (a genuine new update) — purely from the packet's phase bit
+      and packet number, per RFC 9001 §6.5, and never mutates state or
+      authenticates anything itself. `note_successful_decrypt` commits the
+      outcome only after the caller's own AEAD decryption has actually
+      succeeded. `max_key_updates_accepted` is a coarse, time-independent
+      cap standing in for RFC 9001 §6.1/§6.5's ack-plus-3xPTO pacing, which
+      needs RTT/PTO estimation this module doesn't have yet (Phase 7).
+- [x] `/vreview` pass: found and fixed one gap before commit —
+      `note_successful_decrypt` trusted `resolution.is_new_update`/
+      `is_previous_phase` at face value, but those flags are computed at
+      `resolve_read_keys` time and go stale if a caller resolves more than
+      one packet (e.g. two packets from the same coalesced datagram)
+      before committing either; committing the first packet's genuine
+      update flips the current phase, and a second, now-stale
+      `is_new_update` resolution for a packet that actually matches the
+      just-updated phase would otherwise be mis-committed as a SECOND
+      update, permanently desynchronizing decryption. Fixed by having
+      `note_successful_decrypt` re-derive its classification fresh from
+      the packet's own real phase bit against current state, rather than
+      trusting resolve-time flags — correct regardless of how many
+      resolutions were computed before any commit. Has a regression test,
+      Phase-R-verified to fail on the pre-fix code.
+
+## Phases 6-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-4. Initial packet exchange — CRYPTO frame reassembly, core frames, datagram
-   coalescing, Retry/Version Negotiation handling.
-5. Full handshake completion — three independent packet number spaces (a
-   common implementation mistake to conflate), key discard, key update.
 6. Stream layer — STREAM frames, connection+stream flow control interplay.
    Note: even client-only v1 must receive server-initiated uni streams from
    day one (HTTP/3's control/QPACK streams need this).

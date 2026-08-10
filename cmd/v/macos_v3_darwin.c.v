@@ -8,8 +8,6 @@ const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
-const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
-const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
@@ -57,42 +55,6 @@ fn trace_macos_v3_skip(reason string) {
 
 fn is_macos_v3_default_executable(vexe string) bool {
 	return os.base(vexe) in ['v', 'v.exe', 'vnew', 'vnew.exe']
-}
-
-fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
-	mut i := 0
-	for i < args.len {
-		arg := args[i]
-		if arg == '--' {
-			return false
-		}
-		if arg in ['-message-limit', '-debug', '-debug-tcc', '-wasm-validate', '-wasm-stack-top',
-			'-use-coroutines', '-checker-match-exhaustive-cutoff-limit', '-raw-vsh-tmp-prefix',
-			'-c++', '-check-unused-fn-args', '-subsystem', '-translated-go', '-musl', '-glibc'] {
-			return true
-		}
-		if macos_v3_leading_option_consumes_value(arg) {
-			i += 2
-			continue
-		}
-		if command.len > 0 && arg == command {
-			return false
-		}
-		i++
-	}
-	return false
-}
-
-fn macos_v3_leading_option_consumes_value(option string) bool {
-	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
-		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-cov',
-		'-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
-		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
-		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
-		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
-		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
-		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
 }
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
@@ -143,42 +105,6 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) bool {
 	return is_vchild
 		&& (normalized_path.starts_with('cmd/tools/') || normalized_path.contains('/cmd/tools/'))
-}
-
-fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
-	mut forwarded_args := raw_args.clone()
-	if prefs.enable_globals {
-		for i, arg in forwarded_args {
-			if arg == '--enable-globals' {
-				forwarded_args[i] = '-enable-globals'
-			}
-		}
-	}
-	// V1 treats `x86` as an amd64 alias, while V3 reserves it for the 32-bit target.
-	if prefs.arch == .amd64 && '-arch x86' in prefs.build_options {
-		for i in 0 .. forwarded_args.len {
-			if i + 1 < forwarded_args.len && forwarded_args[i] == '-arch'
-				&& forwarded_args[i + 1] == 'x86' {
-				forwarded_args[i + 1] = 'amd64'
-			}
-		}
-	}
-	if macos_v3_compat_c99_flag !in forwarded_args {
-		forwarded_args.insert(0, macos_v3_compat_c99_flag)
-	}
-	if prefs.skip_running && '-skip-running' !in forwarded_args {
-		forwarded_args.insert(0, '-skip-running')
-	}
-	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && '-silent' !in forwarded_args
-		&& macos_v3_internal_quiet_flag !in forwarded_args {
-		forwarded_args.insert(0, macos_v3_internal_quiet_flag)
-	}
-	// The compatibility fallback must not select a different compiler merely
-	// because a valid V3 build crosses the standalone driver's safety cap.
-	if '-no-memory-limit' !in forwarded_args && '--no-memory-limit' !in forwarded_args {
-		forwarded_args.insert(0, '-no-memory-limit')
-	}
-	return forwarded_args
 }
 
 fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3CErrorReport {

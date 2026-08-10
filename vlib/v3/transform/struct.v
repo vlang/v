@@ -14,6 +14,9 @@ fn (mut t Transformer) transform_field_init_expr(id flat.NodeId, node flat.Node)
 	} else {
 		t.transform_expr(val_id)
 	}
+	if t.rewrite_one_child_in_place(id, new_val) {
+		return id
+	}
 	start := t.a.children.len
 	t.a.children << new_val
 	return t.a.add_node(flat.Node{
@@ -40,10 +43,10 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 	}
 	// Build a field name -> type lookup from the struct definition
 	mut field_types := map[string]string{}
-	mut field_order := []string{cap: info.fields.len}
-	for f in info.fields {
-		field_types[f.name] = t.lookup_struct_field_type(node.value, f.name) or { f.typ }
-		field_order << f.name
+	if !t.lean_struct_init_fields {
+		for f in info.fields {
+			field_types[f.name] = t.lookup_struct_field_type(node.value, f.name) or { f.typ }
+		}
 	}
 	mut field_ids := []flat.NodeId{}
 	mut promoted_fields := map[string][]flat.NodeId{}
@@ -58,13 +61,19 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			val_node := t.a.nodes[int(val_id)]
 			field_name := if child.value.len > 0 {
 				child.value
-			} else if i < field_order.len {
-				field_order[i]
+			} else if i < info.fields.len {
+				info.fields[i].name
 			} else {
 				''
 			}
 			mut target_field_name := field_name
-			mut field_type := field_types[field_name] or { '' }
+			mut field_type := if t.lean_struct_init_fields {
+				t.lookup_struct_field_type(node.value, field_name) or {
+					struct_info_field_type(info, field_name)
+				}
+			} else {
+				field_types[field_name] or { '' }
+			}
 			mut promoted_key := ''
 			if field_type.len == 0 {
 				// A cross-module embed (`aa.Inner`) is initialized under its
@@ -72,7 +81,11 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				for f in info.fields {
 					if f.name.contains('.') && f.name.all_after_last('.') == field_name {
 						target_field_name = f.name
-						field_type = field_types[f.name] or { f.typ }
+						field_type = if t.lean_struct_init_fields {
+							t.lookup_struct_field_type(node.value, f.name) or { f.typ }
+						} else {
+							field_types[f.name] or { f.typ }
+						}
 						break
 					}
 				}
@@ -127,17 +140,22 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				new_val = t.make_ident(closure_name)
 				t.set_node_typ(int(new_val), closure_type)
 			}
-			fi_start := t.a.children.len
-			t.a.children << new_val
-			new_field := t.a.add_node(flat.Node{
-				kind:           .field_init
-				op:             child.op
-				children_start: fi_start
-				children_count: 1
-				pos:            child.pos
-				value:          target_field_name
-				typ:            child.typ
-			})
+			new_field := if t.inplace_struct_fields && target_field_name == child.value
+				&& t.rewrite_one_child_in_place(child_id, new_val) {
+				child_id
+			} else {
+				fi_start := t.a.children.len
+				t.a.children << new_val
+				t.a.add_node(flat.Node{
+					kind:           .field_init
+					op:             child.op
+					children_start: fi_start
+					children_count: 1
+					pos:            child.pos
+					value:          target_field_name
+					typ:            child.typ
+				})
+			}
 			if promoted_key.len > 0 {
 				mut promoted := promoted_fields[promoted_key] or { []flat.NodeId{} }
 				promoted << new_field
@@ -162,24 +180,41 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		}
 		field_ids << t.make_promoted_struct_field_init(path, promoted)
 	}
-	start := t.a.children.len
-	for fid in field_ids {
-		t.a.children << fid
+	output_typ := if node.typ.len > 0 { node.typ } else { node.value }
+	new_id := if t.inplace_struct_fields && t.rewrite_children_in_place(id, field_ids) {
+		if output_typ != node.typ {
+			t.set_node_typ(int(id), output_typ)
+		}
+		id
+	} else {
+		start := t.a.children.len
+		for fid in field_ids {
+			t.a.children << fid
+		}
+		t.a.add_node(flat.Node{
+			kind:           .struct_init
+			op:             node.op
+			children_start: start
+			children_count: flat.child_count(field_ids.len)
+			pos:            node.pos
+			value:          node.value
+			typ:            output_typ
+		})
 	}
-	new_id := t.a.add_node(flat.Node{
-		kind:           .struct_init
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(field_ids.len)
-		pos:            node.pos
-		value:          node.value
-		typ:            if node.typ.len > 0 { node.typ } else { node.value }
-	})
 	final_id := t.add_missing_struct_defaults(new_id, t.a.nodes[int(new_id)])
 	for stmt in prelude {
 		t.pending_stmts << stmt
 	}
 	return final_id
+}
+
+fn struct_info_field_type(info StructInfo, name string) string {
+	for field in info.fields {
+		if field.name == name {
+			return field.typ
+		}
+	}
+	return ''
 }
 
 fn promoted_field_path_key(path []FieldInfo) string {
@@ -531,20 +566,32 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		if child.kind == .field_init && child.children_count > 0 {
 			val_id := t.a.child(&child, 0)
 			new_val := t.transform_expr(val_id)
-			fi_start := t.a.children.len
-			t.a.children << new_val
-			field_ids << t.a.add_node(flat.Node{
-				kind:           .field_init
-				op:             child.op
-				children_start: fi_start
-				children_count: 1
-				pos:            child.pos
-				value:          child.value
-				typ:            child.typ
-			})
+			field_ids << if t.inplace_struct_fields
+				&& t.rewrite_one_child_in_place(child_id, new_val) {
+				child_id
+			} else {
+				fi_start := t.a.children.len
+				t.a.children << new_val
+				t.a.add_node(flat.Node{
+					kind:           .field_init
+					op:             child.op
+					children_start: fi_start
+					children_count: 1
+					pos:            child.pos
+					value:          child.value
+					typ:            child.typ
+				})
+			}
 		} else {
 			field_ids << child_id
 		}
+	}
+	if t.inplace_struct_fields && t.rewrite_children_in_place(id, field_ids) {
+		output_typ := if node.typ.len > 0 { node.typ } else { node.value }
+		if output_typ != node.typ {
+			t.set_node_typ(int(id), output_typ)
+		}
+		return id
 	}
 	start := t.a.children.len
 	for fid in field_ids {
@@ -1436,6 +1483,9 @@ fn (mut t Transformer) transform_array_init_expr(id flat.NodeId, node flat.Node)
 		child_id := t.a.child(&node, i)
 		new_children << t.transform_expr(child_id)
 	}
+	if t.rewrite_children_in_place(id, new_children) {
+		return id
+	}
 	start := t.a.children.len
 	for nc in new_children {
 		t.a.children << nc
@@ -1475,6 +1525,9 @@ fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) f
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		new_children << t.transform_expr(child_id)
+	}
+	if t.rewrite_children_in_place(id, new_children) {
+		return id
 	}
 	start := t.a.children.len
 	for nc in new_children {

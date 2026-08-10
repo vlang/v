@@ -17,18 +17,27 @@ fn (mut g Gen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTe
 	return x
 }
 
+fn (g &Gen) normalize_extracted_stmt(stmt string) string {
+	if !g.pref.is_vlines {
+		return stmt.trim_space()
+	}
+	// A nested statement offset can split `#line` from its number.
+	mut normalized := stmt.trim_right(' \n\t\v\f\r').trim_left('\n\t\v\f\r')
+	// Keep directives in extracted error-propagation blocks on their own lines.
+	normalized = normalized.replace('{#line', '{\n#line')
+	if normalized.starts_with('#line') {
+		normalized = '\n' + normalized
+	}
+	return normalized
+}
+
 fn (mut g Gen) expr_to_ctemp_before_stmt(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
 	mut stmt_str := if g.inside_ternary > 0 {
 		g.go_before_ternary()
 	} else {
 		g.go_before_last_stmt()
 	}
-	if g.pref.is_vlines {
-		// A nested statement offset can split `#line` from its number.
-		stmt_str = stmt_str.trim_right(' \n\t\v\f\r').trim_left('\n\t\v\f\r')
-	} else {
-		stmt_str = stmt_str.trim_space()
-	}
+	stmt_str = g.normalize_extracted_stmt(stmt_str)
 	if g.inside_return && stmt_str.ends_with('return') {
 		stmt_str += ' '
 	}

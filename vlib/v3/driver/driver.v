@@ -1,6 +1,7 @@
 module driver
 
 import os
+import runtime
 import strconv
 import strings
 import time
@@ -48,6 +49,21 @@ const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
+
+fn configure_selfhost_parallelism(building_v bool) {
+	if !building_v || os.getenv('VJOBS') != '' || os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT') != '' {
+		return
+	}
+	jobs := runtime.nr_jobs()
+	if jobs < 2 || jobs >= 12 {
+		return
+	}
+	overcommitted := int_min(12, jobs + jobs / 2)
+	if overcommitted > jobs {
+		os.setenv('VJOBS', overcommitted.str(), true)
+	}
+}
+
 const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
@@ -3741,7 +3757,7 @@ fn cache_v3_type_diagnostics(a &flat.FlatAst, diagnostics []types.TypeError) []V
 			node:            int(diagnostic.node)
 			offset:          diagnostic.pos.offset
 			end:             diagnostic.pos.end
-			reported_column: diagnostic.pos.reported_column
+			reported_column: diagnostic.pos.reported_column()
 			details:         clone_string_list(diagnostic.details)
 		}
 	}
@@ -3777,12 +3793,7 @@ fn restore_v3_type_diagnostics(mut a flat.FlatAst, diagnostics []V3CachedTypeDia
 			kind:     .unknown_ident
 			node:     flat.NodeId(diagnostic.node)
 			file:     diagnostic.file.clone()
-			pos:      v3token.Pos{
-				id:              file_id
-				offset:          diagnostic.offset
-				end:             diagnostic.end
-				reported_column: diagnostic.reported_column
-			}
+			pos:      v3token.new_span(file_id, diagnostic.offset, diagnostic.end).with_reported_column(diagnostic.reported_column)
 			details:  clone_string_list(diagnostic.details)
 			severity: diagnostic.severity.clone()
 		}
@@ -4719,6 +4730,9 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
 		node.typ = ast.intern_text_ptr_cached(node.typ, mut cache_ptrs, mut cache_vals)
 	}
+	if node.type_text_id() == 0 && node.typ.len > 0 {
+		node.set_type_text_id(ast.type_text_id(node.typ))
+	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		return
@@ -4757,6 +4771,9 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	}
 	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
 		_, node.typ = ast.intern_text(node.typ)
+	}
+	if node.type_text_id() == 0 && node.typ.len > 0 {
+		node.set_type_text_id(ast.type_text_id(node.typ))
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
@@ -6315,6 +6332,7 @@ pub fn run(args []string) {
 		eprintln("builder error: ${input_file} doesn't exist")
 		exit(1)
 	}
+	configure_selfhost_parallelism(building_v)
 	if generate_c_project.len > 0 {
 		if backend != 'c' {
 			eprintln('`-generate-c-project` is currently supported only for the C backend')
@@ -7222,6 +7240,9 @@ pub fn run(args []string) {
 	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
+	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
+	pre_tc.valid_diagnostic_fast = building_v && os.getenv('V3_NO_VALID_DIAGNOSTIC_FAST') == ''
+	pre_tc.valid_resolution_fast = building_v && os.getenv('V3_NO_VALID_RESOLUTION_FAST') == ''
 	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
 	mut program_used_fns := map[string]bool{}
@@ -7229,6 +7250,7 @@ pub fn run(args []string) {
 	mut uses_generics := false
 	mut skip_transform_generics := true
 	mut transform_texts_canonical := cgen_cache_hit
+	mut retained_transform_scope := unsafe { nil }
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -7236,9 +7258,13 @@ pub fn run(args []string) {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
+		mut ckpre_sw := time.new_stopwatch()
 		set_diagnostic_files(mut pre_tc, user_files)
 		trivial_literal_output = test_files.len == 0 && !is_checker_fixture
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
+		if verbose {
+			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
 		if translated_mode {
@@ -7284,8 +7310,12 @@ pub fn run(args []string) {
 		} else {
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
 		}
+		ckpre_sw.restart()
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
+		if verbose {
+			eprintln('  [ttime]   ck main req      ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 		if is_repl {
 			pre_tc.notices.clear()
 		}
@@ -7492,8 +7522,13 @@ pub fn run(args []string) {
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
-		if !is_repl {
+		mut tfpre_sw := time.new_stopwatch()
+		if !is_repl && !pre_tc.valid_diagnostic_fast {
 			pre_tc.diagnose_unused_private_declarations(used_fns)
+		}
+		if verbose {
+			eprintln('  [ttime] tf diag unused     ${f64(tfpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			tfpre_sw.restart()
 		}
 		if pre_tc.notices.len > 0 {
 			checker_sql_warnings_only := is_checker_fixture && ast_contains_sql_expr(a)
@@ -7521,6 +7556,12 @@ pub fn run(args []string) {
 			}
 		}
 
+		// Checking is complete: from here on, resolve_type may serve unmodified
+		// source nodes straight from the checker's dense per-node cache
+		// (transform invalidates every id it rewrites).
+		if os.getenv('V3_NO_TRUST_CHECKED_TYPES').len == 0 {
+			pre_tc.trust_checked_expr_types = true
+		}
 		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 		// by default for compatible builds, and `-no-parallel` disables both threaded transform
 		// and cgen.
@@ -7549,6 +7590,11 @@ pub fn run(args []string) {
 				&pre_tc, incremental_changed_names)
 			transform_texts_canonical = true
 		} else if scope_prealloc_transform {
+			if verbose {
+				eprintln('  [ttime] tf pre misc        ${f64(tfpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				eprintln('  [leakcheck] pre-reserve: nodes ${a.nodes.len}/${a.nodes.cap} children ${a.children.len}/${a.children.cap} cache_mode ${cache_state.manager.enabled} skipgen ${skip_transform_generics}')
+				tfpre_sw.restart()
+			}
 			// Keep the large escaping AST/cache slabs in the compilation arena, while
 			// transformer indexes and per-body temporary state use a stage arena.
 			if cache_state.manager.enabled {
@@ -7556,11 +7602,21 @@ pub fn run(args []string) {
 			} else {
 				transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
 			}
+			if verbose {
+				eprintln('  [leakcheck] post-reserve: nodes ${a.nodes.len}/${a.nodes.cap} children ${a.children.len}/${a.children.cap}')
+				eprintln('  [ttime] tf reserve         ${f64(tfpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				tfpre_sw.restart()
+			}
 			pre_tc.begin_sparse_transform_node_caches(a.nodes.len)
 			pre_tc.reserve_scoped_transform_metadata(scoped_transform_signature_headroom)
+			if verbose {
+				eprintln('  [ttime] tf sparse+meta     ${f64(tfpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				tfpre_sw.restart()
+			}
 			base_transform_nodes := a.nodes.len
 			reserved_nodes_cap := a.nodes.cap
 			reserved_children_cap := a.children.cap
+			pre_scope_children_data := unsafe { a.children.data }
 			base_specialized_fns := a.specialized_fn_nodes.len
 			base_type_count := pre_tc.type_count()
 			base_symbol_count := pre_tc.symbol_count()
@@ -7568,6 +7624,10 @@ pub fn run(args []string) {
 			mut original_signature_names := map[string]bool{}
 			for name, _ in pre_tc.fn_ret_types {
 				original_signature_names[name] = true
+			}
+			if verbose {
+				eprintln('  [ttime] tf signames        ${f64(tfpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+				tfpre_sw.restart()
 			}
 			transform_scope := prealloc_scope_begin_for_v3()
 			mut scoped_owned_base_nodes := []int{}
@@ -7578,151 +7638,222 @@ pub fn run(args []string) {
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
-			retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
-			pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
-				transform_scope)
-			if verbose {
-				eprintln('  [ttime] promote interners  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-				post_sw.restart()
-			}
-			if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap
-				&& !scoped_value_owned(transform_scope, a.nodes.data)
-				&& !scoped_value_owned(transform_scope, a.children.data) {
-				a.promote_transform_texts_from(base_text_count, transform_scope)
+			retain_transform_scope := building_v && backend == 'c' && !cache_state.manager.enabled
+				&& retained_transform_regions.len == 0
+				&& os.getenv('V3_RETAIN_TRANSFORM_SCOPE') == '1'
+			if retain_transform_scope {
+				// Cgen is the only remaining semantic consumer in this no-cache self-host
+				// path. Keep the typed transform arena alive through it instead of cloning
+				// the AST/checker payloads into the parent and immediately rebuilding the
+				// same type caches in the backend.
+				retained_transform_scope = transform_scope
+				transform_texts_canonical = true
+			} else {
+				retained_transform_regions =
+					clone_scoped_transform_regions(retained_transform_regions)
+				pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
+					transform_scope)
 				if verbose {
-					eprintln('  [ttime] promote texts      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+					eprintln('  [ttime] promote interners  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
 				}
-				// Lowering can rewrite arbitrary pre-existing nodes, including type text
-				// on otherwise non-generic expressions. Publish every scope-owned
-				// text before releasing the outer arena. Without retained regions
-				// one fused pool pass (ownership check + table-hit reuse + clone)
-				// replaces the serial canonicalize + promote walks.
-				mut fused_text_promote := false
-				if retained_transform_regions.len == 0
-					&& os.getenv('V3_NO_FUSED_TEXT_PROMOTE') == '' {
-					fused_text_promote = transform.promote_scoped_texts_parallel(mut a,
-						transform_scope)
-					if fused_text_promote {
-						transform_texts_canonical = true
-					}
-				}
-				if verbose {
-					eprintln('  [ttime] canon nodes        ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${a.nodes.len}, fused: ${fused_text_promote})')
-					post_sw.restart()
-				}
-				if !fused_text_promote {
-					mut scoped_text_flags := []u8{len: a.nodes.len}
-					if transform.scan_scoped_text_flags_parallel(a, transform_scope, mut
-						scoped_text_flags)
-					{
-						mut canon_cache_ptrs := unsafe { []voidptr{len: 4096} }
-						mut canon_cache_vals := []string{len: 4096}
-						for idx, flag in scoped_text_flags {
-							if flag != 0 {
-								canonicalize_scoped_node_cached(mut a, idx, transform_scope, mut
-									canon_cache_ptrs, mut canon_cache_vals)
+				if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap
+					&& !scoped_value_owned(transform_scope, a.nodes.data)
+					&& !scoped_value_owned(transform_scope, a.children.data) {
+					a.promote_transform_texts_from(base_text_count, transform_scope)
+					if verbose {
+						mut dirty_texts := 0
+						for tv in a.text_values {
+							if tv.len > 0 && scoped_value_owned(transform_scope, tv.str) {
+								dirty_texts++
 							}
 						}
-					} else {
-						scoped_text_flags = []u8{}
-						for idx in 0 .. a.nodes.len {
-							canonicalize_scoped_node(mut a, idx, transform_scope)
+						eprintln('  [leakcheck] text table dirty ${dirty_texts} / ${a.text_values.len} (base_text_count ${base_text_count}, regions ${retained_transform_regions.len})')
+						eprintln('  [ttime] promote texts      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+						post_sw.restart()
+					}
+					// Lowering can rewrite arbitrary pre-existing nodes, including type text
+					// on otherwise non-generic expressions. Publish every scope-owned
+					// text before releasing the outer arena. Without retained regions
+					// one fused pool pass (ownership check + table-hit reuse + clone)
+					// replaces the serial canonicalize + promote walks.
+					mut fused_text_promote := false
+					if retained_transform_regions.len == 0
+						&& os.getenv('V3_NO_FUSED_TEXT_PROMOTE') == '' {
+						fused_text_promote = transform.promote_scoped_texts_parallel(mut a,
+							transform_scope)
+						if fused_text_promote {
+							transform_texts_canonical = true
 						}
 					}
-					if retained_transform_regions.len > 0 {
-						outer_new_end := retained_transform_regions[0].new_start
-						promote_scoped_ast_nodes_flagged(mut a, base_transform_nodes,
-							outer_new_end, scoped_owned_base_nodes, transform_scope,
+					if verbose {
+						eprintln('  [ttime] canon nodes        ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${a.nodes.len}, fused: ${fused_text_promote})')
+						post_sw.restart()
+					}
+					if !fused_text_promote {
+						mut scoped_text_flags := []u8{len: a.nodes.len}
+						if transform.scan_scoped_text_flags_parallel(a, transform_scope, mut
 							scoped_text_flags)
-						// Late lowering can rewrite nodes that live in a retained worker region
-						// while allocating their replacement text in the outer transform arena.
-						// Publish those strings before releasing that arena; the worker-owned
-						// fields in the same regions are canonicalized below from their own scope.
-						for region in retained_transform_regions {
-							canonicalize_scoped_transform_region_from_scope(mut a, region,
-								transform_scope)
+						{
+							mut canon_cache_ptrs := unsafe { []voidptr{len: 4096} }
+							mut canon_cache_vals := []string{len: 4096}
+							for idx, flag in scoped_text_flags {
+								if flag != 0 {
+									canonicalize_scoped_node_cached(mut a, idx, transform_scope, mut
+										canon_cache_ptrs, mut canon_cache_vals)
+								}
+							}
+						} else {
+							scoped_text_flags = []u8{}
+							for idx in 0 .. a.nodes.len {
+								canonicalize_scoped_node(mut a, idx, transform_scope)
+							}
 						}
-						last_worker_end := retained_transform_regions.last().new_end
-						promote_scoped_ast_nodes_flagged(mut a, last_worker_end, a.nodes.len,
-							[]int{}, transform_scope, scoped_text_flags)
-					} else {
-						// Workers report every rewritten base node. Publish those and the
-						// appended range without rebuilding the text table for the source AST.
-						promote_scoped_ast_nodes_flagged(mut a, base_transform_nodes, a.nodes.len,
-							scoped_owned_base_nodes, transform_scope, scoped_text_flags)
-						transform_texts_canonical = true
+						if retained_transform_regions.len > 0 {
+							outer_new_end := retained_transform_regions[0].new_start
+							promote_scoped_ast_nodes_flagged(mut a, base_transform_nodes,
+								outer_new_end, scoped_owned_base_nodes, transform_scope,
+								scoped_text_flags)
+							// Late lowering can rewrite nodes that live in a retained worker region
+							// while allocating their replacement text in the outer transform arena.
+							// Publish those strings before releasing that arena; the worker-owned
+							// fields in the same regions are canonicalized below from their own scope.
+							for region in retained_transform_regions {
+								canonicalize_scoped_transform_region_from_scope(mut a, region,
+									transform_scope)
+							}
+							last_worker_end := retained_transform_regions.last().new_end
+							promote_scoped_ast_nodes_flagged(mut a, last_worker_end, a.nodes.len,
+								[]int{}, transform_scope, scoped_text_flags)
+						} else {
+							// Workers report every rewritten base node. Publish those and the
+							// appended range without rebuilding the text table for the source AST.
+							promote_scoped_ast_nodes_flagged(mut a, base_transform_nodes,
+								a.nodes.len, scoped_owned_base_nodes, transform_scope,
+								scoped_text_flags)
+							transform_texts_canonical = true
+						}
 					}
-				}
-			} else {
-				clone_flat_ast_storage(mut a)
-				pre_tc.rebind_ast(a)
-			}
-			if a.specialized_fn_nodes.len != base_specialized_fns {
-				a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
-				a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
-				a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
-			}
-			if verbose {
-				eprintln('  [ttime] promote ast nodes  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-				post_sw.restart()
-			}
-			promote_scoped_checker_node_caches(mut pre_tc, a, transform_scope, base_transform_nodes)
-			if verbose {
-				eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-				post_sw.restart()
-			}
-			promote_scoped_signatures(mut pre_tc, original_signature_names)
-			if verbose {
-				eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-				post_sw.restart()
-			}
-			promote_scoped_type_metadata(mut pre_tc)
-			// Transform type lookups can canonicalize alias keys/targets while the
-			// disposable arena is active. Re-own the table before releasing that arena;
-			// interface snapshotting below iterates every alias, including otherwise
-			// unreachable callback aliases.
-			pre_tc.type_aliases = clone_string_string_map(pre_tc.type_aliases)
-			transform_used_fns = clone_string_bool_map(transform_used_fns)
-			transform_errors = clone_string_list(transform_errors)
-			pre_tc.set_fresh_type_cache(parse_cache_enabled)
-			prealloc_scope_free_for_v3(transform_scope)
-			if verbose {
-				eprintln('  [ttime] promote checker    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-				post_sw.restart()
-			}
-			if retained_transform_regions.len > 0 {
-				if p.parsed_v_header_files > 0 {
-					// Header-only warm builds are small enough that transform may not
-					// force the pre-reserved flat arrays to grow. Publish their backing
-					// once in the compilation arena before releasing retained helper
-					// arenas; individual node text is promoted below.
+				} else {
+					if verbose {
+						eprintln('  [leakcheck] canon SKIPPED: nodes cap ${a.nodes.cap} vs ${reserved_nodes_cap} children cap ${a.children.cap} vs ${reserved_children_cap} nodes.len ${a.nodes.len} owned n ${scoped_value_owned(transform_scope,
+							a.nodes.data)} c ${scoped_value_owned(transform_scope, a.children.data)}')
+						eprintln('  [leakcheck] children.data pre ${u64(pre_scope_children_data)} now ${u64(unsafe { a.children.data })} moved ${pre_scope_children_data != unsafe { a.children.data }}')
+					}
+					// The flat arrays escaped into the stage arena, so their backing is
+					// cloned below — but each node's value/typ/params strings can live in
+					// that arena too. Publish them through the canonical text table first;
+					// skipping this dangled every transform-written node text whenever the
+					// pre-reserved capacity was outgrown.
+					a.promote_transform_texts_from(base_text_count, transform_scope)
+					for idx in 0 .. a.nodes.len {
+						canonicalize_scoped_node(mut a, idx, transform_scope)
+					}
 					clone_flat_ast_storage(mut a)
 					pre_tc.rebind_ast(a)
 				}
-				for region in retained_transform_regions {
-					if skip_transform_generics {
-						canonicalize_scoped_transform_region(mut a, region)
-					} else {
-						// Bounded generic batches can publish rewrites to any source node
-						// through this result arena, so verify every flat payload before
-						// releasing it.
-						for idx in 0 .. a.nodes.len {
-							canonicalize_scoped_node(mut a, idx, region.scope)
+				if a.specialized_fn_nodes.len != base_specialized_fns {
+					a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
+					a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
+					a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
+				}
+				if verbose {
+					eprintln('  [ttime] promote ast nodes  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+					post_sw.restart()
+				}
+				promote_scoped_checker_node_caches(mut pre_tc, a, transform_scope,
+					base_transform_nodes)
+				if verbose {
+					eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+					post_sw.restart()
+				}
+				promote_scoped_signatures(mut pre_tc, original_signature_names)
+				if verbose {
+					eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+					post_sw.restart()
+				}
+				promote_scoped_type_metadata(mut pre_tc)
+				// Transform type lookups can canonicalize alias keys/targets while the
+				// disposable arena is active. Re-own the table before releasing that arena;
+				// interface snapshotting below iterates every alias, including otherwise
+				// unreachable callback aliases.
+				pre_tc.type_aliases = clone_string_string_map(pre_tc.type_aliases)
+				transform_used_fns = clone_string_bool_map(transform_used_fns)
+				transform_errors = clone_string_list(transform_errors)
+				pre_tc.set_fresh_type_cache(parse_cache_enabled)
+				if verbose {
+					mut leaked_rc := 0
+					mut leaked_fv := 0
+					mut leaked_nv := 0
+					mut leaked_nt := 0
+					mut first_leak := -1
+					for idx in 0 .. pre_tc.resolved_call_names.len {
+						if idx < pre_tc.resolved_call_set.len && pre_tc.resolved_call_set[idx] {
+							name := pre_tc.resolved_call_names[idx]
+							if name.len > 0 && scoped_value_owned(transform_scope, name.str) {
+								leaked_rc++
+								if first_leak < 0 {
+									first_leak = idx
+								}
+							}
+						}
+						if idx < pre_tc.resolved_fn_value_set.len
+							&& pre_tc.resolved_fn_value_set[idx] {
+							name := pre_tc.resolved_fn_value_names[idx]
+							if name.len > 0 && scoped_value_owned(transform_scope, name.str) {
+								leaked_fv++
+							}
 						}
 					}
-					if scoped_value_owned(region.scope, a.nodes.data)
-						|| scoped_value_owned(region.scope, a.children.data) {
-						a = clone_flat_ast_after_transform(a)
+					for idx in 0 .. a.nodes.len {
+						node := a.nodes[idx]
+						if node.value.len > 0 && scoped_value_owned(transform_scope, node.value.str) {
+							leaked_nv++
+						}
+						if node.typ.len > 0 && scoped_value_owned(transform_scope, node.typ.str) {
+							leaked_nt++
+						}
+					}
+					eprintln('  [leakcheck] tf scope: rc ${leaked_rc} fv ${leaked_fv} node.value ${leaked_nv} node.typ ${leaked_nt} first_rc ${first_leak}')
+				}
+				prealloc_scope_free_for_v3(transform_scope)
+				if verbose {
+					eprintln('  [ttime] promote checker    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+					post_sw.restart()
+				}
+				if retained_transform_regions.len > 0 {
+					if p.parsed_v_header_files > 0 {
+						// Header-only warm builds are small enough that transform may not
+						// force the pre-reserved flat arrays to grow. Publish their backing
+						// once in the compilation arena before releasing retained helper
+						// arenas; individual node text is promoted below.
+						clone_flat_ast_storage(mut a)
 						pre_tc.rebind_ast(a)
 					}
-					prealloc_scope_free_for_v3(region.scope)
+					for region in retained_transform_regions {
+						if skip_transform_generics {
+							canonicalize_scoped_transform_region(mut a, region)
+						} else {
+							// Bounded generic batches can publish rewrites to any source node
+							// through this result arena, so verify every flat payload before
+							// releasing it.
+							for idx in 0 .. a.nodes.len {
+								canonicalize_scoped_node(mut a, idx, region.scope)
+							}
+						}
+						if scoped_value_owned(region.scope, a.nodes.data)
+							|| scoped_value_owned(region.scope, a.children.data) {
+							a = clone_flat_ast_after_transform(a)
+							pre_tc.rebind_ast(a)
+						}
+						prealloc_scope_free_for_v3(region.scope)
+					}
+					transform_texts_canonical = true
 				}
-				transform_texts_canonical = true
+				// Type-resolution views can grow their by-file map while the transform arena
+				// is active. Recreate it in the compilation arena before later phases use it.
+				pre_tc.reset_resolution_type_view_cache()
 			}
-			// Type-resolution views can grow their by-file map while the transform arena
-			// is active. Recreate it in the compilation arena before later phases use it.
-			pre_tc.reset_resolution_type_view_cache()
 			if verbose {
 				eprintln('  [ttime] regions+views      ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
@@ -8219,6 +8350,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
+		a.close_workers()
 		if cgen_cache_hit {
 			b.step('cgen (cached)')
 		} else if incremental_cache_hit {
@@ -9063,6 +9195,10 @@ Please install the corresponding development package/libraries and make sure the
 		'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
 	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races, 'objects')
+	if retained_transform_scope != unsafe { nil } {
+		prealloc_scope_free_for_v3(retained_transform_scope)
+		retained_transform_scope = unsafe { nil }
+	}
 	if show_test_stats {
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
 	}
@@ -11107,7 +11243,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .fn_decl || node.generic_params().len > 0 {
+		if node.kind != .fn_decl || (node.generic_params().len > 0 && !a.specialized_fn_nodes[idx]) {
 			continue
 		}
 		module_name := a.specialized_fn_modules[idx] or { cur_module }

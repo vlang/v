@@ -120,25 +120,27 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 		loop_cond = t.make_bool_literal(true)
 		loop_body = guarded_body.clone()
 	}
-	// Rebuild the for_stmt with transformed children
-	start := t.a.children.len
-	t.a.children << new_init
-	t.a.children << loop_cond
-	t.a.children << new_post
+	// Rebuild the for_stmt with transformed children.
+	mut new_children := [new_init, loop_cond, new_post]
 	for bid in loop_body {
-		t.a.children << bid
+		new_children << bid
 	}
-	count := t.a.children.len - start
-	new_id := t.a.add_node(flat.Node{
-		kind:                 .for_stmt
-		op:                   node.op
-		children_start:       start
-		children_count:       flat.child_count(count)
-		pos:                  node.pos
-		value:                node.value
-		typ:                  node.typ
-		skip_ownership_drops: node.skip_ownership_drops
-	})
+	new_id := if t.rewrite_children_in_place(id, new_children) {
+		id
+	} else {
+		start := t.a.children.len
+		t.a.children << new_children
+		t.a.add_node(flat.Node{
+			kind:                 .for_stmt
+			op:                   node.op
+			children_start:       start
+			children_count:       flat.child_count(new_children.len)
+			pos:                  node.pos
+			value:                node.value
+			typ:                  node.typ
+			skip_ownership_drops: node.skip_ownership_drops
+		})
+	}
 	if synthetic_continue_label.len > 0 {
 		return [
 			t.a.add_val(.label_stmt, pending_loop_label_marker + synthetic_continue_label),
@@ -309,6 +311,9 @@ fn (mut t Transformer) rewrite_continue_to_for_post_label_in_children(id flat.No
 		children << new_child
 	}
 	if !changed {
+		return id
+	}
+	if t.rewrite_children_in_place(id, children) {
 		return id
 	}
 	start := t.a.children.len
@@ -817,7 +822,11 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	range_type := t.range_loop_var_type_name(low_id)
 	low := t.stable_expr_for_reuse(low_id)
 	high := t.stable_expr_for_reuse(high_id)
-	loop_name := if key.value == '_' { '__discard_${int(key_id)}' } else { key.value }
+	loop_name := if key.value == '_' {
+		'__discard_${key.pos.id}_${key.pos.offset}_${key.pos.end}'
+	} else {
+		key.value
+	}
 	t.set_var_type(loop_name, range_type)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -898,6 +907,7 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 }
 
 // lower_indexed_for_in builds lower indexed for in data for transform.
+@[direct_array_access]
 fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
 		return arr1(id)

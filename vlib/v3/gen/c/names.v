@@ -15,10 +15,44 @@ fn c_name(name string) string {
 @[heap]
 struct CNameCache {
 mut:
-	entries    map[string]string
-	base       &CNameCache = unsafe { nil }
-	last_name  string
-	last_value string
+	entries          map[string]string
+	base             &CNameCache = unsafe { nil }
+	last_name        string
+	last_value       string
+	recent_ptrs      [1024]voidptr
+	recent_lens      [1024]u16
+	recent_values    [1024]string
+	recent_populated [1024]bool
+}
+
+@[inline]
+fn c_name_recent_slot(name string) int {
+	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 1023)
+}
+
+@[inline]
+fn (c &CNameCache) recent(name string) ?string {
+	if name.len > 65535 {
+		return none
+	}
+	slot := c_name_recent_slot(name)
+	if c.recent_populated[slot] && c.recent_ptrs[slot] == voidptr(name.str)
+		&& c.recent_lens[slot] == u16(name.len) {
+		return c.recent_values[slot]
+	}
+	return none
+}
+
+@[inline]
+fn (mut c CNameCache) remember(name string, value string) {
+	if name.len > 65535 {
+		return
+	}
+	slot := c_name_recent_slot(name)
+	c.recent_ptrs[slot] = voidptr(name.str)
+	c.recent_lens[slot] = u16(name.len)
+	c.recent_values[slot] = value
+	c.recent_populated[slot] = true
 }
 
 // ConstShortIndex maps a const short name to its unique primary const name
@@ -36,7 +70,75 @@ mut:
 @[heap]
 struct FnNameFactCache {
 mut:
-	entries map[string]i8
+	entries    map[string]i8
+	last_name  string
+	last_value i8
+}
+
+@[heap]
+struct ContextNameFactCache {
+mut:
+	file       string = '\x00'
+	module     string
+	entries    map[string]i8
+	last_name  string
+	last_value i8
+}
+
+@[inline]
+fn (mut c FnNameFactCache) get(name string) i8 {
+	if c.last_value != 0 && c.last_name.len == name.len
+		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
+		return c.last_value
+	}
+	if cached := c.entries[name] {
+		c.last_name = name
+		c.last_value = cached
+		return cached
+	}
+	return 0
+}
+
+@[inline]
+fn (mut c FnNameFactCache) put(name string, value i8) {
+	c.entries[name] = value
+	c.last_name = name
+	c.last_value = value
+}
+
+@[inline]
+fn (mut c ContextNameFactCache) get(name string) i8 {
+	if c.last_value != 0 && c.last_name.len == name.len
+		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
+		return c.last_value
+	}
+	if cached := c.entries[name] {
+		c.last_name = name
+		c.last_value = cached
+		return cached
+	}
+	return 0
+}
+
+@[inline]
+fn (mut c ContextNameFactCache) put(name string, value i8) {
+	c.entries[name] = value
+	c.last_name = name
+	c.last_value = value
+}
+
+@[inline]
+fn (mut c ContextNameFactCache) select_context(file string, module_name string) {
+	if c.file.len == file.len && c.module.len == module_name.len && unsafe {
+		c.file.str == file.str && c.module.str == module_name.str
+	} {
+		return
+	}
+	c.file = file
+	c.module = module_name
+	c.entries = map[string]i8{}
+	c.last_name = ''
+	c.last_value = 0
 }
 
 // StringLookupCache memoizes context-qualified string lookups whose empty
@@ -45,7 +147,33 @@ mut:
 @[heap]
 struct StringLookupCache {
 mut:
-	entries map[string]string
+	entries    map[string]string
+	last_name  string
+	last_value string
+	last_valid bool
+}
+
+@[inline]
+fn (mut c StringLookupCache) get(name string) ?string {
+	if c.last_valid && c.last_name.len == name.len
+		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
+		return c.last_value
+	}
+	if cached := c.entries[name] {
+		c.last_name = name
+		c.last_value = cached
+		c.last_valid = true
+		return cached
+	}
+	return none
+}
+
+@[inline]
+fn (mut c StringLookupCache) put(name string, value string) {
+	c.entries[name] = value
+	c.last_name = name
+	c.last_value = value
+	c.last_valid = true
 }
 
 // ContextStringLookupCache memoizes string lookups whose answers depend on the
@@ -65,7 +193,9 @@ mut:
 
 @[inline]
 fn (mut c ContextStringLookupCache) select_context(file string, module_name string) {
-	if c.file == file && c.module == module_name {
+	if c.file.len == file.len && c.module.len == module_name.len && unsafe {
+		c.file.str == file.str && c.module.str == module_name.str
+	} {
 		return
 	}
 	c.file = file
@@ -94,15 +224,28 @@ fn (g &FlatGen) cname(name string) string {
 		&& (unsafe { cache.last_name.str == name.str } || cache.last_name == name) {
 		return cache.last_value
 	}
-	if cached := cache.entries[name] {
+	if cached := cache.recent(name) {
 		cache.last_name = name
 		cache.last_value = cached
 		return cached
 	}
+	if cached := cache.entries[name] {
+		cache.last_name = name
+		cache.last_value = cached
+		cache.remember(name, cached)
+		return cached
+	}
 	if !isnil(cache.base) {
+		if cached := cache.base.recent(name) {
+			cache.last_name = name
+			cache.last_value = cached
+			cache.remember(name, cached)
+			return cached
+		}
 		if cached := cache.base.entries[name] {
 			cache.last_name = name
 			cache.last_value = cached
+			cache.remember(name, cached)
 			return cached
 		}
 	}
@@ -110,6 +253,7 @@ fn (g &FlatGen) cname(name string) string {
 	cache.entries[name] = result
 	cache.last_name = name
 	cache.last_value = result
+	cache.remember(name, result)
 	return result
 }
 

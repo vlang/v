@@ -45,6 +45,24 @@ fn test_file_position_resolves_file_local_offsets() {
 	assert f.line(new_pos(1, 9)) == 2
 }
 
+fn test_reported_column_outside_compact_range_is_ignored() {
+	pos := new_span(1, 10, 13)
+	wide := pos.with_reported_column(32768)
+	assert wide == pos
+	assert wide.reported_column() == 0
+
+	typed := pos.with_type_text_id(7)
+	assert typed.with_reported_column(32768) == typed
+}
+
+fn test_source_file_ids_are_wider_than_u16() {
+	file_id := int(max_u16) + 1
+	pos := new_pos(file_id, 7)
+	span := new_span(file_id, 7, 11)
+	assert pos.id == file_id
+	assert span.id == file_id
+}
+
 fn test_keyword_property_does_not_depend_on_enum_ordinals() {
 	assert Token.key_as.is_keyword()
 	assert Token.key_unsafe.is_keyword()
