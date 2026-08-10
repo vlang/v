@@ -48,6 +48,12 @@ struct TestCommentAttribute {
 	created_at string @[default: CURRENT_TIMESTAMP; sql_type: 'TIMESTAMP']
 }
 
+struct TestSmallIntRoundTrip {
+	id     int @[primary; sql: serial]
+	u8_val u8
+	i8_val i8
+}
+
 fn test_pg_orm() {
 	$if !network ? {
 		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
@@ -329,4 +335,31 @@ fn test_pg_orm() {
 		information_schema_table_comment_result << x or { '' }
 	}
 	assert information_schema_table_comment_result == ['This is a table comment']
+
+	/** test u8/i8 round trip
+	*/
+	sql db {
+		create table TestSmallIntRoundTrip
+	}!
+
+	model_roundtrip := TestSmallIntRoundTrip{
+		u8_val: u8(255)
+		i8_val: i8(-1)
+	}
+
+	sql db {
+		insert model_roundtrip into TestSmallIntRoundTrip
+	}!
+
+	roundtrip_result := sql db {
+		select from TestSmallIntRoundTrip
+	}!
+
+	sql db {
+		drop table TestSmallIntRoundTrip
+	}!
+
+	assert roundtrip_result.len == 1
+	assert roundtrip_result[0].u8_val == u8(255)
+	assert roundtrip_result[0].i8_val == i8(-1)
 }
