@@ -747,11 +747,27 @@ fn test_tcc_shared_builds_disable_backtraces() {
 	assert 'no_backtrace' in shared_prefs.compile_defines_all
 
 	mut regular_prefs := &pref.Preferences{
-		path:      'main.v'
-		ccompiler: 'tinyc'
+		path:                  'main.v'
+		os:                    .linux
+		arch:                  .amd64
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
 	}
 	regular_prefs.fill_with_defaults()
 	assert 'no_backtrace' !in regular_prefs.compile_defines_all
+}
+
+fn test_macos_arm64_tcc_builds_disable_backtraces() {
+	mut prefs := &pref.Preferences{
+		path:                  'main.v'
+		os:                    .macos
+		arch:                  .arm64
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
+	}
+	prefs.fill_with_defaults()
+	assert 'no_backtrace' in prefs.compile_defines_all
+	assert prefs.build_options.contains('-d no_backtrace')
 }
 
 fn test_bsd_tinyc_defaults_to_openssl() {
