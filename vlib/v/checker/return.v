@@ -275,22 +275,33 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				expected_is_interface := exp_type_sym.kind == .interface
 					|| (exp_type_sym.kind == .generic_inst && exp_type_sym.info is ast.GenericInst
 					&& c.table.type_symbols[exp_type_sym.info.parent_idx].kind == .interface)
-				// A custom IError is a valid error return even when the Result payload is an
-				// interface. Recognize it before checking against that payload interface.
-				if expected_fn_return_type_has_result && expected_is_interface
-					&& got_type_sym.kind == .struct
-					&& c.table.does_type_implement_interface(got_type, ast.error_type) {
-					node.exprs[expr_idxs[i]] = ast.CastExpr{
-						expr:      exprv
-						typname:   'IError'
-						typ:       ast.error_type
-						expr_type: got_type
-						pos:       node.pos
-					}
-					node.types[expr_idxs[i]] = ast.error_type
-					continue
-				}
 				if expected_is_interface {
+					if exp_type_sym.kind == .generic_inst {
+						c.table.generic_insts_to_concrete()
+					}
+					payload_implements := c.table.does_type_implement_interface(got_type, exp_type)
+					if payload_implements {
+						if c.type_implements(got_type, exp_type, node.pos)
+							&& !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
+							&& !c.inside_unsafe {
+							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
+						}
+						continue
+					}
+					// A custom IError is a valid error return when it does not implement the
+					// Result payload interface.
+					if expected_fn_return_type_has_result && got_type_sym.kind == .struct
+						&& c.table.does_type_implement_interface(got_type, ast.error_type) {
+						node.exprs[expr_idxs[i]] = ast.CastExpr{
+							expr:      exprv
+							typname:   'IError'
+							typ:       ast.error_type
+							expr_type: got_type
+							pos:       node.pos
+						}
+						node.types[expr_idxs[i]] = ast.error_type
+						continue
+					}
 					if c.type_implements(got_type, exp_type, node.pos) {
 						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
 							&& !c.inside_unsafe {
