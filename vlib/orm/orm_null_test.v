@@ -379,6 +379,7 @@ struct DefaultExprs {
 mut:
 	id    int    @[primary; sql: serial]
 	uuid  string @[default: 'gen_random_uuid()']
+	qual  string @[default: 'extensions.uuid_generate_v4()']
 	ts    string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 	note  string @[default: "Bob's account"]
 	state string @[default: 'pending (manual)']
@@ -391,5 +392,28 @@ fn test_default_sql_expr_and_string_quoting() {
 	sql db {
 		create table DefaultExprs
 	}!
-	assert db.st.last == "CREATE TABLE IF NOT EXISTS `default_exprs` (`id` serial-type NOT NULL, `uuid` string-type DEFAULT gen_random_uuid() NOT NULL, `ts` TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL, `note` string-type DEFAULT 'Bob''s account' NOT NULL, `state` string-type DEFAULT 'pending (manual)' NOT NULL, PRIMARY KEY(`id`));"
+	assert db.st.last == "CREATE TABLE IF NOT EXISTS `default_exprs` (`id` serial-type NOT NULL, `uuid` string-type DEFAULT gen_random_uuid() NOT NULL, `qual` string-type DEFAULT extensions.uuid_generate_v4() NOT NULL, `ts` TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL, `note` string-type DEFAULT 'Bob''s account' NOT NULL, `state` string-type DEFAULT 'pending (manual)' NOT NULL, PRIMARY KEY(`id`));"
+}
+
+fn test_mysql_default_backslash_escaping() {
+	table := orm.Table{
+		name: 'mysql_defaults'
+	}
+	query := orm.orm_table_gen(.mysql, table, '`', true, 0, [
+		orm.TableField{
+			name:        'path'
+			typ:         typeof[string]().idx
+			default_val: 'C:\\temp\\dir'
+			nullable:    true
+			attrs:       [
+				VAttribute{
+					name:    'default'
+					has_arg: true
+					arg:     'C:\\temp\\dir'
+					kind:    .string
+				},
+			]
+		},
+	], mock_type_from_v, false) or { panic(err) }
+	assert query == "CREATE TABLE IF NOT EXISTS `mysql_defaults` (`path` string-type DEFAULT 'C:\\\\temp\\\\dir');"
 }

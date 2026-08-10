@@ -503,18 +503,28 @@ fn is_sql_expr(val string) bool {
 	// SQL expressions written as string defaults, e.g. @[default: 'gen_random_uuid()'].
 	// Two shapes are detected, so they are emitted unquoted in the DEFAULT clause:
 	// 1. Function calls: must start with a letter/underscore, have ( and end
-	//    with ), and the part before ( must be a valid SQL identifier.
+	//    with ), and the part before ( must be a valid SQL identifier, optionally
+	//    schema-qualified with dots, e.g. 'extensions.uuid_generate_v4()'.
 	// 2. Paren-less SQL keywords like CURRENT_TIMESTAMP / CURRENT_DATE.
 	//    Quoting them would silently turn the default into a string literal.
 	if val.contains('(') && val.ends_with(')') {
 		before_paren := val.all_before('(')
 		if before_paren.len > 0 && (before_paren[0].is_letter() || before_paren[0] == `_`) {
+			mut prev_is_dot := false
 			for ch in before_paren {
-				if !ch.is_letter() && !ch.is_digit() && ch != `_` {
-					return false
+				if ch.is_letter() || ch.is_digit() || ch == `_` {
+					prev_is_dot = false
+					continue
 				}
+				if ch == `.` && !prev_is_dot {
+					prev_is_dot = true
+					continue
+				}
+				return false
 			}
-			return true
+			if !prev_is_dot {
+				return true
+			}
 		}
 	}
 	lower := val.trim_space().to_lower_ascii()
@@ -1559,7 +1569,12 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		if defaults && has_default {
 			if default_val != '' {
 				if is_str_default && !is_sql_expr(default_val) {
-					escaped := default_val.replace("'", "''")
+					mut escaped := default_val.replace("'", "''")
+					if sql_dialect == .mysql {
+						// MySQL string literals treat backslashes as escape
+						// characters, so preserve them by doubling them.
+						escaped = escaped.replace('\\', '\\\\')
+					}
 					stmt += " DEFAULT '${escaped}'"
 				} else {
 					stmt += ' DEFAULT ${default_val}'

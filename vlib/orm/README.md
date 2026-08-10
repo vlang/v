@@ -40,10 +40,12 @@ struct Foo {
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[sql_select: 'SQL expression']` uses a custom expression in `SELECT` for the field
 - `[default: 'raw_sql']` sets a "DEFAULT" clause when creating a new table.
-  String values are quoted, with single quotes escaped as `''`. SQL expressions
-  are emitted unquoted: function calls like `'gen_random_uuid()'` and paren-less
-  keywords like `CURRENT_TIMESTAMP` are recognized automatically; for any other
-  SQL expression use a bare identifier, e.g. `[default: CURRENT_TIMESTAMP]`.
+  String values are quoted, with single quotes escaped as `''` (and, on MySQL,
+  backslashes escaped as `\\`). SQL expressions are emitted unquoted: function
+  calls like `'gen_random_uuid()'`, including schema-qualified names such as
+  `'extensions.uuid_generate_v4()'`, and paren-less keywords like
+  `CURRENT_TIMESTAMP` are recognized automatically; for any other SQL expression
+  use a bare identifier, e.g. `[default: CURRENT_TIMESTAMP]`.
 
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 - `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`
