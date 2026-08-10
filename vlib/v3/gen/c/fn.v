@@ -5662,10 +5662,6 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		g.gen_default_value_for_type(g.call_default_return_type(id))
 		return
 	}
-	if target_name == 'veb.run_at' {
-		g.gen_default_value_for_type(g.call_default_return_type(id))
-		return
-	}
 	if g.is_missing_middleware_use_call(fn_node) {
 		g.write('0')
 		return

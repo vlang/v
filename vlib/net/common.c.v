@@ -153,7 +153,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
 	infinite := deadline.unix() == 0
 	for infinite || time.now() <= deadline {
-		timeout := if infinite { infinite_timeout } else { deadline - time.now() }
+		timeout := time.Duration(if infinite { infinite_timeout } else { deadline - time.now() })
 		ready := select(handle, test, timeout) or {
 			if err.code() == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
