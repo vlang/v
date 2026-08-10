@@ -272,9 +272,25 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if c.pref.skip_unused && got_types[i].has_flag(.generic) {
 					c.table.used_features.comptime_syms[got_type] = true
 				}
-				if exp_type_sym.kind == .interface
+				expected_is_interface := exp_type_sym.kind == .interface
 					|| (exp_type_sym.kind == .generic_inst && exp_type_sym.info is ast.GenericInst
-					&& c.table.type_symbols[exp_type_sym.info.parent_idx].kind == .interface) {
+					&& c.table.type_symbols[exp_type_sym.info.parent_idx].kind == .interface)
+				// A custom IError is a valid error return even when the Result payload is an
+				// interface. Recognize it before checking against that payload interface.
+				if expected_fn_return_type_has_result && expected_is_interface
+					&& got_type_sym.kind == .struct
+					&& c.table.does_type_implement_interface(got_type, ast.error_type) {
+					node.exprs[expr_idxs[i]] = ast.CastExpr{
+						expr:      exprv
+						typname:   'IError'
+						typ:       ast.error_type
+						expr_type: got_type
+						pos:       node.pos
+					}
+					node.types[expr_idxs[i]] = ast.error_type
+					continue
+				}
+				if expected_is_interface {
 					if c.type_implements(got_type, exp_type, node.pos) {
 						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
 							&& !c.inside_unsafe {

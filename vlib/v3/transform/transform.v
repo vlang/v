@@ -11997,7 +11997,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 		flat.Node{}
 	}
 	if int(expr) >= 0 && source_node.kind == .call && source_node.typ.contains('[')
-		&& target_type.len > 0 {
+		&& target_type.len > 0 && !t.is_optional_type_name(target_type) {
 		t.set_node_typ(int(expr), target_type)
 	}
 	return t.coerce_transformed_expr_to_type(expr, id, target_type)
