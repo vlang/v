@@ -9349,6 +9349,12 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		actual_name = actual_name[2..]
 		is_c_call = true
 	}
+	if !is_c_call && b.is_disabled_fn_name(actual_name) {
+		// The transformer normally elides disabled `@[if ...]` calls. Minimal
+		// programs can skip transforming an otherwise reachable builtin body, so
+		// enforce the same no-op semantics here without evaluating the arguments.
+		return b.m.get_or_add_const(b.i64_type, '0')
+	}
 	if node.children_count == 2 && b.ownership_drop_intrinsic_name(actual_name) {
 		// SSA does not yet have the C backend's recursive ownership-destruction ABI.
 		// Preserve evaluation and the native backend's previous leak-tolerant behavior.
@@ -9686,6 +9692,16 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	return b.m.add_instr(.call, b.cur_block, ret_type, args)
+}
+
+fn (b &Builder) is_disabled_fn_name(name string) bool {
+	if name in b.a.disabled_fns || name.replace('__', '.') in b.a.disabled_fns {
+		return true
+	}
+	if !name.contains('.') && b.cur_module.len > 0 && b.cur_module !in ['main', 'builtin'] {
+		return '${b.cur_module}.${name}' in b.a.disabled_fns
+	}
+	return false
 }
 
 fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?ValueID {

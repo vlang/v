@@ -387,6 +387,7 @@ mut:
 	placeholder_check_forced     bool
 	cur_fn_name                  string
 	cur_fn_is_specialized        bool
+	cur_fn_assert_continues      bool
 	current_decl_is_mut          bool
 	direct_array_access          bool
 	struct_default_module        string

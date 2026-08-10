@@ -6421,6 +6421,10 @@ pub fn run(args []string) {
 		eprintln('unknown backend `${backend}`; expected c, arm64, wasm, or eval')
 		exit(1)
 	}
+	if backend == 'arm64' && target_os != 'macos' && 'no_gettid' !in user_defines {
+		// The native ARM64 linker emits Mach-O and cannot resolve Linux's gettid symbol.
+		user_defines << 'no_gettid'
+	}
 	for requested in compile_backends {
 		for name in requested.split(',') {
 			if name.trim_space() !in ['c', 'arm64', 'aarch64', 'wasm', 'wasm32', 'eval'] {
@@ -6768,6 +6772,11 @@ pub fn run(args []string) {
 	mut parse_timing := V3ParseTiming{}
 	parse_files_dispatch_profiled(mut p, files, !current_no_parallel, mut parse_timing)
 	mut a := p.a
+	if !current_no_parallel {
+		// Later parallel stages can run inside disposable arenas. Ensure the shared
+		// pool itself is owned by the compilation arena before any such stage starts.
+		a.ensure_workers(runtime.nr_jobs() - 1)
+	}
 	defer {
 		a.close_workers()
 	}

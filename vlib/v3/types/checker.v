@@ -14318,6 +14318,10 @@ fn (tc &TypeChecker) assert_stmt_never_returns(node flat.Node) bool {
 	if node.kind != .assert_stmt || node.children_count == 0 {
 		return false
 	}
+	if tc.valid_node_id(flat.NodeId(tc.fn_context.node_id))
+		&& tc.declaration_has_attribute(flat.NodeId(tc.fn_context.node_id), 'assert_continues') {
+		return false
+	}
 	value := tc.constant_bool_value(tc.a.child(&node, 0)) or { return false }
 	return !value
 }

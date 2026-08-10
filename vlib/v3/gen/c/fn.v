@@ -4099,6 +4099,7 @@ fn (g &FlatGen) print_fn_selector_matches(c_name string, module_name string, sou
 fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_name string, skip_prelude_scan bool) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
+	g.cur_fn_assert_continues = g.tc.declaration_has_attribute(node_id, 'assert_continues')
 	g.begin_usable_expr_type_memo()
 	g.known_expr_type_id = -1
 	g.ownership_return_index = 0
