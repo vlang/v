@@ -26,11 +26,15 @@ fn test_parse_resolution_type_prefers_file_import_over_known_short_symbol() {
 	mut tc := TypeChecker.new(&a)
 	tc.structs['token.Pos'] = []StructField{}
 	tc.structs['v.token.Pos'] = []StructField{}
+	tc.structs['Box'] = []StructField{}
 	tc.cur_file = 'ast.v'
 	tc.cur_module = 'v.ast'
 	tc.register_file_import('token', 'v.token')
 
 	assert tc.parse_resolution_type('token.Pos').name() == 'v.token.Pos'
+	assert tc.parse_resolution_type('[]token.Pos').name() == '[]v.token.Pos'
+	assert tc.parse_resolution_type('?token.Pos').name() == '?v.token.Pos'
+	assert tc.parse_resolution_type('Box[token.Pos]').name() == 'Box[v.token.Pos]'
 }
 
 fn test_type_cache_overlay_rebinds_resolution_type_views() {

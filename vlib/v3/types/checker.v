@@ -4683,13 +4683,12 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	clean := trimmed_space(typ)
-	resolved := if clean.contains('.') { tc.resolve_imported_type_text(clean) } else { clean }
-	if resolved.contains('.') {
-		if exact := tc.type_from_known_symbol(resolved) {
+	qualified := tc.qualify_resolution_type_text(clean)
+	if qualified.contains('.') {
+		if exact := tc.type_from_known_symbol(qualified) {
 			return exact
 		}
 	}
-	qualified := tc.qualify_resolution_type_text(resolved)
 	if isnil(tc.resolution_type_views) {
 		mut direct_view := tc.fork_type_parse_view(tc.cur_file, '')
 		direct_view.resolution_type_mode = false
@@ -4813,8 +4812,14 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 				parts.join(', ') + ']' + clean[bracket_end + 1..]
 		}
 	}
-	if resolution && clean.contains('.') && tc.qualify_candidate_type_exists(clean) {
-		return clean
+	if resolution && clean.contains('.') {
+		resolved := tc.resolve_imported_type_text(clean)
+		if resolved != clean {
+			return resolved
+		}
+		if tc.qualify_candidate_type_exists(clean) {
+			return clean
+		}
 	}
 	if !clean.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(clean) {
