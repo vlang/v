@@ -903,6 +903,15 @@ fn (mut h HugeBodyTrailerHandler) handle(req Request) Response {
 // encoder's dynamic table, desyncing it from the client's decoder for every
 // later response on the connection. A second, independent Trailers-Only
 // exchange on the SAME connection afterward proves the encoder stayed in sync.
+//
+// The 100-byte body / 10-byte initial window are chosen so the window is
+// exhausted by the very first DATA frame (10 < h2_default_max_frame_size, so
+// the first chunk is capped at exactly the 10-byte window, not split
+// further); send_body then blocks on its very next iteration and
+// pump_for_window reads the already-buffered RST_STREAM immediately. The
+// test does not depend on how many chunks the remaining 90 bytes would take —
+// only on window << body size, guaranteeing at least one block-and-check
+// cycle happens strictly before the body could complete.
 fn test_h2_server_skips_trailers_after_stream_reset_during_body() {
 	mut client_end, mut server_end := new_pipe()
 	mut handler_iface := Handler(HugeBodyTrailerHandler{
