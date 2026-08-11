@@ -2094,11 +2094,12 @@ fn (t &Table) receiver_generic_types(typ Type) ?ReceiverGenericTypes {
 	match sym.info {
 		Struct {
 			if sym.info.concrete_types.len > 0 {
-				mut parent_idx := sym.idx
-				if sym.info.parent_type != 0 {
-					parent_idx = sym.info.parent_type.clear_flag(.generic).idx()
+				parent_idx := if sym.info.parent_type != 0 {
+					sym.info.parent_type.clear_flag(.generic).idx()
 				} else if sym.parent_idx != 0 {
-					parent_idx = sym.parent_idx
+					sym.parent_idx
+				} else {
+					sym.idx
 				}
 				return ReceiverGenericTypes{
 					parent_idx: parent_idx
@@ -2121,11 +2122,12 @@ fn (t &Table) receiver_generic_types(typ Type) ?ReceiverGenericTypes {
 		}
 		Interface {
 			if sym.info.concrete_types.len > 0 {
-				mut parent_idx := sym.idx
-				if sym.info.parent_type != 0 {
-					parent_idx = sym.info.parent_type.clear_flag(.generic).idx()
+				parent_idx := if sym.info.parent_type != 0 {
+					sym.info.parent_type.clear_flag(.generic).idx()
 				} else if sym.parent_idx != 0 {
-					parent_idx = sym.parent_idx
+					sym.parent_idx
+				} else {
+					sym.idx
 				}
 				return ReceiverGenericTypes{
 					parent_idx: parent_idx
@@ -2148,11 +2150,12 @@ fn (t &Table) receiver_generic_types(typ Type) ?ReceiverGenericTypes {
 		}
 		SumType {
 			if sym.info.concrete_types.len > 0 {
-				mut parent_idx := sym.idx
-				if sym.info.parent_type != 0 {
-					parent_idx = sym.info.parent_type.clear_flag(.generic).idx()
+				parent_idx := if sym.info.parent_type != 0 {
+					sym.info.parent_type.clear_flag(.generic).idx()
 				} else if sym.parent_idx != 0 {
-					parent_idx = sym.parent_idx
+					sym.parent_idx
+				} else {
+					sym.idx
 				}
 				return ReceiverGenericTypes{
 					parent_idx: parent_idx

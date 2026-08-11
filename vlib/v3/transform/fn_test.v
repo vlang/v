@@ -75,6 +75,12 @@ fn test_building_v_auto_str_helper_call_uses_main_symbol() {
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'main'
 }
 
+fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
+	t := Transformer{}
+	assert t.merge_if_expr_types('unknown', 'int') == 'int'
+	assert t.merge_if_expr_types('int', 'unknown') == 'int'
+}
+
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 	mut a := flat.FlatAst.new()
 	ident_id := a.add_node(flat.Node{

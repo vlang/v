@@ -5379,3 +5379,45 @@ fn main() {
 ')
 	assert out == 'integer'
 }
+
+fn test_building_v_keeps_valid_match_and_filtered_array_expression_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'building_v_valid_expression_types',
+		'-building-v -d valid_exprs', 'struct NumberInfo {
+	values []int
+}
+
+struct NameInfo {
+	names []string
+}
+
+type Info = NameInfo | NumberInfo
+
+fn item_count(info Info) int {
+	return match info {
+		NumberInfo { info.values.len }
+		NameInfo { info.names.len }
+	}
+}
+
+fn filtered_path_count() int {
+	$if valid_exprs ? {
+		first := "one"
+		second := ""
+		if first.len > 0 {
+			paths := [first, second].filter(it.len != 0)
+			return paths.len
+		}
+	}
+	return 0
+}
+
+fn main() {
+	println(item_count(Info(NumberInfo{
+		values: [1, 2]
+	})))
+	println(filtered_path_count())
+}
+')
+	assert out == '2\n1'
+}

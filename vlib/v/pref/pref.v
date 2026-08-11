@@ -300,12 +300,7 @@ pub fn ensure_coroutines_runtime() ! {
 			dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
 			so_dir := os.dir(so_path)
 			if !dyld_fallback_paths.contains(so_dir) {
-				mut paths := []string{}
-				if dyld_fallback_paths.len != 0 {
-					paths << dyld_fallback_paths
-				}
-				paths << so_dir
-				env := paths.join(':')
+				env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
 				os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
 			}
 		}
