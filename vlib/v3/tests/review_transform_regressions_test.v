@@ -4427,6 +4427,18 @@ fn main() {
 	assert out == '1\n1'
 }
 
+fn test_builtin_map_nested_array_append_pushes_one() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'builtin_map_nested_array_append', 'fn main() {
+	mut values := [][]int{}
+	values << [1, 2].map(it)
+	println(int_str(values.len))
+	println(int_str(values[0][1]))
+}
+')
+	assert out == '1\n2'
+}
+
 fn test_optional_append_to_map_value_copies_back_absent_entry() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_append_to_map_value_copyback', 'fn next_value() ?int {

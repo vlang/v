@@ -1193,7 +1193,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	if !push_many && t.array_append_rhs_is_builtin_map_call(rhs_id) {
+	if !push_many && t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
 		push_many = true
 		rhs_type = array_type
 	}
@@ -1395,7 +1395,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	if !push_many && t.array_append_rhs_is_builtin_map_call(rhs_id) {
+	if !push_many && t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
 		push_many = true
 		rhs_type = array_type
 	}
@@ -1744,7 +1744,7 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 	if !t.is_sum_type_name(elem_type) {
 		return false
 	}
-	if t.array_append_rhs_is_builtin_map_call(rhs_id) {
+	if t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
 		return false
 	}
 	if !isnil(t.tc) {
@@ -1815,6 +1815,29 @@ fn (t &Transformer) array_append_rhs_is_builtin_map_call(rhs_id flat.NodeId) boo
 	}
 	if resolved_rhs_type := t.array_map_call_type_name(rhs_id, node) {
 		return resolved_rhs_type.starts_with('[]')
+	}
+	return false
+}
+
+fn (t &Transformer) array_append_rhs_builtin_map_elem_matches(rhs_id flat.NodeId, elem_type string) bool {
+	if !t.array_append_rhs_is_builtin_map_call(rhs_id) {
+		return false
+	}
+	node := t.a.nodes[int(rhs_id)]
+	if result_type := t.array_map_call_type_name(rhs_id, node) {
+		clean := t.normalize_type_alias(result_type)
+		if clean.starts_with('[]') {
+			return t.array_append_elem_types_match(clean[2..], elem_type)
+		}
+	}
+	if !isnil(t.tc) {
+		resolved := types.unwrap_all_pointers(t.tc.resolve_type(rhs_id))
+		if resolved is types.Array {
+			return t.array_append_elem_types_match(resolved.elem_type.name(), elem_type)
+		}
+		if resolved is types.ArrayFixed {
+			return t.array_append_elem_types_match(resolved.elem_type.name(), elem_type)
+		}
 	}
 	return false
 }
