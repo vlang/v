@@ -13,8 +13,14 @@ import strings
 // Response represents the result of the request
 pub struct Response {
 pub mut:
-	body         string
-	header       Header
+	body   string
+	header Header
+	// trailers are emitted as a trailing HEADERS block by the HTTP/2 server
+	// path (net.http.h2_server.v) after the body, e.g. for `grpc-status`.
+	// Ignored by the HTTP/1.1 write path — H1 has no wire mechanism for this
+	// enabled here (chunked-encoding trailers are a separate, unimplemented
+	// feature), so fields set here simply do not appear on an H1 response.
+	trailers     Header
 	status_code  int
 	status_msg   string
 	http_version string

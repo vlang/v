@@ -936,11 +936,62 @@ fn (mut c H2ServerConn) send_response(stream_id u32, resp Response, mut handler 
 	}
 	body := resp.body.bytes()
 	has_body := body.len > 0
+	trailer_fields := c.h2_outbound_trailer_fields(resp.trailers)
+	has_trailers := trailer_fields.len > 0
+
+	if !has_body && has_trailers {
+		// Trailers-Only: no body separates the response from the trailers, so
+		// both go in one HEADERS block (RFC 9113 §8.1 permits a single HEADERS
+		// frame to carry response and trailer fields together when there is no
+		// DATA in between). This is also the common gRPC "fails immediately"
+		// shape and saves a frame over always splitting.
+		fields << trailer_fields
+		block := c.encoder.encode(fields)
+		c.send_header_block(stream_id, block, true)!
+		return
+	}
+
 	block := c.encoder.encode(fields)
 	c.send_header_block(stream_id, block, !has_body)!
 	if has_body {
-		c.send_body(stream_id, body, mut handler)!
+		c.send_body(stream_id, body, !has_trailers, mut handler)!
 	}
+	// send_body may return early (stream_id no longer in c.streams) if the peer
+	// RST_STREAM'd this stream while we were blocked on flow control. Do not
+	// encode or send trailers in that case: the stream is already torn down on
+	// both ends, and encoding a block that is never transmitted would still
+	// mutate c.encoder's dynamic table, desyncing it from the client's decoder
+	// for every later response on this connection.
+	if has_trailers && stream_id in c.streams {
+		trailer_block := c.encoder.encode(trailer_fields)
+		c.send_header_block(stream_id, trailer_block, true)!
+	}
+}
+
+// h2_outbound_trailer_fields converts handler-authored trailers into wire
+// fields, applying the same RFC 9113 §8.2.2 hop-by-hop filter as the main
+// response headers plus a pseudo-header guard — trailers (like headers) must
+// never carry a pseudo-header field (§8.1) — and the same §8.2.1 forbidden-
+// octet check applied to every inbound field elsewhere in this file
+// (h2_request_field_error, finalize_trailers): a handler-supplied value is
+// wire-bound data too, and Header.add_custom only validates the field NAME,
+// not the value, so nothing upstream of this already rejects an embedded
+// NUL/CR/LF.
+fn (c &H2ServerConn) h2_outbound_trailer_fields(trailers Header) []H2HeaderField {
+	mut fields := []H2HeaderField{}
+	for key in trailers.keys() {
+		lkey := key.to_lower()
+		if lkey.starts_with(':') || lkey in h2_conn_specific_headers {
+			continue
+		}
+		for val in trailers.custom_values(key) {
+			if h2_field_value_has_forbidden_octet(val) {
+				continue
+			}
+			fields << H2HeaderField{lkey, val}
+		}
+	}
+	return fields
 }
 
 fn (mut c H2ServerConn) send_header_block(stream_id u32, block []u8, end_stream bool) ! {
@@ -975,7 +1026,7 @@ fn (mut c H2ServerConn) send_header_block(stream_id u32, block []u8, end_stream 
 	}
 }
 
-fn (mut c H2ServerConn) send_body(stream_id u32, body []u8, mut handler Handler) ! {
+fn (mut c H2ServerConn) send_body(stream_id u32, body []u8, close_stream bool, mut handler Handler) ! {
 	max := int(c.peer.max_frame_size)
 	mut off := 0
 	for off < body.len {
@@ -1009,7 +1060,7 @@ fn (mut c H2ServerConn) send_body(stream_id u32, body []u8, mut handler Handler)
 		c.send_frame(H2DataFrame{
 			stream_id:  stream_id
 			data:       body[off..next]
-			end_stream: next == body.len
+			end_stream: next == body.len && close_stream
 		})!
 		c.send_window -= i64(chunk)
 		if mut s := c.streams[stream_id] {
