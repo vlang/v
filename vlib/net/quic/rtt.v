@@ -37,6 +37,9 @@ pub mut:
 	has_sample   bool
 }
 
+// new_rtt_estimator constructs an RttEstimator pre-seeded with RFC 9002
+// §5.3's pre-sample values (kInitialRtt / kInitialRtt/2), before any real
+// sample has been taken.
 pub fn new_rtt_estimator() RttEstimator {
 	return RttEstimator{
 		smoothed_rtt: initial_rtt

@@ -42,6 +42,9 @@ pub mut:
 	congestion_recovery_start_time ?u64
 }
 
+// new_newreno_congestion_control constructs a fresh NewReno controller at
+// RFC 9002 §7.2's initial state: congestion_window seeded to
+// kInitialWindow, ssthresh unbounded.
 pub fn new_newreno_congestion_control() NewRenoCongestionControl {
 	return NewRenoCongestionControl{
 		congestion_window: initial_window

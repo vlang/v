@@ -73,8 +73,17 @@ pub mut:
 	application_data LossDetectionSpaceState
 	rtt              RttEstimator
 	pto_count        int
+	// first_rtt_sample_time records `now` from the FIRST call that ever
+	// produced an RTT sample (RttEstimator.has_sample's false -> true
+	// transition). RFC 9002 §7.6.2's persistent-congestion condition
+	// requires "a prior RTT sample existed" at the send time of the two
+	// packets bounding the congestion period -- this is what
+	// is_persistent_congestion checks that against.
+	first_rtt_sample_time ?u64
 }
 
+// new_quic_loss_detection_timer constructs empty per-space loss-detection
+// state with a fresh RttEstimator, matching RFC 9002 Appendix A.4's Init.
 pub fn new_quic_loss_detection_timer() &QuicLossDetectionTimer {
 	return &QuicLossDetectionTimer{
 		rtt: new_rtt_estimator()
@@ -201,17 +210,33 @@ pub fn (mut ld QuicLossDetectionTimer) on_ack_received(space QuicPacketNumberSpa
 		}
 	}
 	if found_largest && has_ack_eliciting {
+		was_first_sample := !ld.rtt.has_sample
 		latest_rtt := time.Duration(i64(now) - i64(largest_newly_acked.time_sent))
 		raw_ack_delay_micros := scaled_ack_delay_micros(ack.ack_delay, ack_delay_exponent)
 		raw_ack_delay := time.Duration(i64(raw_ack_delay_micros) * i64(time.microsecond))
 		ld.rtt.update(space, latest_rtt, raw_ack_delay, max_ack_delay, handshake_confirmed)
+		if was_first_sample {
+			ld.first_rtt_sample_time = now
+		}
 	}
 
 	lost := ld.detect_and_remove_lost_packets(space, now)
 
 	mut persistent_congestion := false
 	if lost.len > 0 {
-		persistent_congestion = is_persistent_congestion(lost, ld.rtt.pto_period())
+		// RFC 9002 §7.6.1: the persistent-congestion duration adds
+		// max_ack_delay to the PTO formula -- but per §6.2.1's own
+		// per-space caveat (mirrored here exactly as pto_time_and_space
+		// already applies it), that only applies once the space is
+		// application_data AND the handshake is confirmed; Initial/
+		// Handshake never delay ACKs intentionally, so their contribution
+		// is 0.
+		mut congestion_max_ack_delay := time.Duration(0)
+		if space == .application_data && handshake_confirmed {
+			congestion_max_ack_delay = max_ack_delay
+		}
+		persistent_congestion = is_persistent_congestion(lost, ld.rtt.pto_period(),
+			congestion_max_ack_delay, ld.first_rtt_sample_time)
 	} else {
 		// "Reset PTO count unless a packet is lost" (RFC 9002 Appendix A.6)
 		// -- deliberately NOT reset when something WAS lost; only an actual
@@ -376,16 +401,31 @@ pub fn (mut ld QuicLossDetectionTimer) next_timeout(handshake_confirmed bool, ma
 // it fires.
 pub struct LossTimeoutResult {
 pub:
-	lost      []SentPacketInfo
-	pto_fired bool
-	pto_space QuicPacketNumberSpace
+	lost                  []SentPacketInfo
+	persistent_congestion bool
+	pto_fired             bool
+	pto_space             QuicPacketNumberSpace
 }
 
+// on_loss_detection_timeout is RFC 9002 Appendix A.9's OnLossDetectionTimeout:
+// the single connection-wide loss-detection/PTO timer has fired. See
+// LossTimeoutResult's own doc comment for which of its two outcomes this
+// produces.
 pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handshake_confirmed bool, max_ack_delay time.Duration) LossTimeoutResult {
 	if _, loss_space := ld.loss_time_and_space() {
 		lost := ld.detect_and_remove_lost_packets(loss_space, now)
+		// RFC 9002 Appendix A.9: this branch calls OnPacketsLost the same
+		// as on_ack_received's own lost batch does -- persistent congestion
+		// must be determined here too, not only for ACK-triggered loss.
+		mut congestion_max_ack_delay := time.Duration(0)
+		if loss_space == .application_data && handshake_confirmed {
+			congestion_max_ack_delay = max_ack_delay
+		}
+		persistent_congestion := is_persistent_congestion(lost, ld.rtt.pto_period(),
+			congestion_max_ack_delay, ld.first_rtt_sample_time)
 		return LossTimeoutResult{
-			lost: lost
+			lost:                  lost
+			persistent_congestion: persistent_congestion
 		}
 	}
 
@@ -399,10 +439,15 @@ pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handsh
 
 // is_persistent_congestion determines RFC 9002 §7.6.2's persistent
 // congestion collapse condition from a SINGLE detect_and_remove_lost_packets
-// batch: two ack-eliciting lost packets spanning at least
-// kPersistentCongestionThreshold PTOs apart, with every packet number in
-// between also present in this same lost batch (nothing sent between them
-// survived as acked or still-outstanding).
+// batch: two ack-eliciting lost packets (a) for which a prior RTT sample
+// already existed when the EARLIER of the two was sent, (b) spanning at
+// least kPersistentCongestionThreshold persistent-congestion-durations
+// apart, with (c) every packet number in between also present in this same
+// lost batch (nothing sent between them survived as acked or
+// still-outstanding). `max_ack_delay` must already be caller-zeroed for
+// Initial/Handshake spaces (RFC 9002 §7.6.1's duration formula shares
+// §6.2.1's own per-space max_ack_delay caveat) -- callers pass the same
+// value they'd pass to pto_time_and_space for this space.
 //
 // Scope note: this checks contiguity only WITHIN one detection pass rather
 // than stitching together multiple separate loss-detection calls. A
@@ -415,7 +460,7 @@ pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handsh
 // v1; failing to collapse in that narrow case is the conservative
 // direction to err in (never wrongly collapsing the window), not an
 // incorrect one.
-pub fn is_persistent_congestion(lost_packets []SentPacketInfo, pto time.Duration) bool {
+pub fn is_persistent_congestion(lost_packets []SentPacketInfo, pto time.Duration, max_ack_delay time.Duration, first_rtt_sample_time ?u64) bool {
 	mut ack_eliciting := lost_packets.filter(it.is_ack_eliciting)
 	if ack_eliciting.len < 2 {
 		return false
@@ -425,7 +470,19 @@ pub fn is_persistent_congestion(lost_packets []SentPacketInfo, pto time.Duration
 	earliest := ack_eliciting[0]
 	latest := ack_eliciting[ack_eliciting.len - 1]
 
-	congestion_period := time.Duration(i64(pto) * persistent_congestion_threshold)
+	// RFC 9002 §7.6.2's third condition: "a prior RTT sample existed when
+	// these two packets were sent". If no sample has EVER been taken, it
+	// certainly didn't exist yet; if one exists but postdates `earliest`
+	// (the sample was the RESULT of processing an ack for a packet sent
+	// after `earliest`), it didn't exist at `earliest`'s send time either
+	// -- min_rtt/smoothed_rtt would otherwise still be seeded from
+	// kInitialRtt rather than reality when this batch was building up.
+	sample_time := first_rtt_sample_time or { return false }
+	if earliest.time_sent < sample_time {
+		return false
+	}
+
+	congestion_period := time.Duration(i64(pto + max_ack_delay) * persistent_congestion_threshold)
 	span := time.Duration(i64(latest.time_sent) - i64(earliest.time_sent))
 	if span < congestion_period {
 		return false

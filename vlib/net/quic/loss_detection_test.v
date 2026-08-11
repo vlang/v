@@ -283,6 +283,95 @@ fn test_on_loss_detection_timeout_reports_loss_when_a_loss_time_is_pending() {
 	assert ld.pto_count == 0
 }
 
+// The next 3 tests are Phase-R regressions for gaps found via a full RFC
+// 9002 §7.6/Appendix A.9 audit while reviewing this PR (2026-08-11), not
+// from an external review round: is_persistent_congestion's own congestion-
+// period formula was missing RFC 9002 §7.6.1's max_ack_delay term and
+// §7.6.2's "a prior RTT sample existed when these packets were sent"
+// condition entirely; on_loss_detection_timeout's timer-triggered loss
+// branch (Appendix A.9's own OnPacketsLost call) never determined
+// persistent_congestion at all for that path.
+
+fn test_is_persistent_congestion_requires_prior_rtt_sample_existed_at_send_time() {
+	pto := 100 * time.millisecond
+	lost := [
+		SentPacketInfo{
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
+			is_ack_eliciting: true
+			in_flight:        true
+		},
+		SentPacketInfo{
+			packet_number:    1
+			time_sent:        1_000_000_000 + u64(4 * pto)
+			sent_bytes:       1200
+			is_ack_eliciting: true
+			in_flight:        true
+		},
+	]
+	// No RTT sample has ever been taken.
+	assert !is_persistent_congestion(lost, pto, time.Duration(0), none)
+	// A sample exists, but only AFTER the earliest lost packet was sent --
+	// it did not exist yet AT that packet's own send time.
+	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(1_000_000_001))
+	// A sample existed at-or-before the earliest lost packet's send time.
+	assert is_persistent_congestion(lost, pto, time.Duration(0), u64(1_000_000_000))
+}
+
+fn test_is_persistent_congestion_congestion_period_includes_max_ack_delay() {
+	pto := 100 * time.millisecond
+	max_ack_delay := 50 * time.millisecond
+	// Span is 350ms: enough to qualify against a bare 3*pto=300ms
+	// threshold, but NOT enough once RFC 9002 §7.6.1 correctly folds
+	// max_ack_delay into the congestion-period formula: (100+50)*3=450ms.
+	lost := [
+		SentPacketInfo{
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
+			is_ack_eliciting: true
+			in_flight:        true
+		},
+		SentPacketInfo{
+			packet_number:    1
+			time_sent:        1_000_000_000 + u64(350 * time.millisecond)
+			sent_bytes:       1200
+			is_ack_eliciting: true
+			in_flight:        true
+		},
+	]
+	assert !is_persistent_congestion(lost, pto, max_ack_delay, u64(1_000_000_000))
+	assert is_persistent_congestion(lost, pto, time.Duration(0), u64(1_000_000_000))
+}
+
+fn test_on_loss_detection_timeout_reports_persistent_congestion_for_timer_triggered_loss() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.first_rtt_sample_time = 50
+	ld.initial.largest_acked_packet = 10
+	ld.initial.sent_packets[3] = SentPacketInfo{
+		packet_number:    3
+		time_sent:        100
+		sent_bytes:       1200
+		is_ack_eliciting: true
+		in_flight:        true
+	}
+	ld.initial.sent_packets[4] = SentPacketInfo{
+		packet_number:    4
+		time_sent:        100 + u64(4 * ld.rtt.pto_period())
+		sent_bytes:       1200
+		is_ack_eliciting: true
+		in_flight:        true
+	}
+	ld.initial.loss_time = 5000
+
+	result := ld.on_loss_detection_timeout(100 + u64(5 * ld.rtt.pto_period()), false,
+		time.Duration(0))
+	assert !result.pto_fired
+	assert result.lost.len == 2
+	assert result.persistent_congestion
+}
+
 fn test_is_persistent_congestion_contiguous_batch_spanning_three_ptos() {
 	pto := 100 * time.millisecond
 	lost := [
@@ -301,7 +390,7 @@ fn test_is_persistent_congestion_contiguous_batch_spanning_three_ptos() {
 			in_flight:        true
 		},
 	]
-	assert is_persistent_congestion(lost, pto)
+	assert is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
 }
 
 fn test_is_persistent_congestion_requires_span_at_least_three_ptos() {
@@ -322,7 +411,7 @@ fn test_is_persistent_congestion_requires_span_at_least_three_ptos() {
 			in_flight:        true
 		},
 	]
-	assert !is_persistent_congestion(lost, pto)
+	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
 }
 
 fn test_is_persistent_congestion_requires_contiguous_packet_numbers() {
@@ -346,7 +435,7 @@ fn test_is_persistent_congestion_requires_contiguous_packet_numbers() {
 			in_flight:        true
 		},
 	]
-	assert !is_persistent_congestion(lost, pto)
+	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
 }
 
 fn test_is_persistent_congestion_requires_at_least_two_ack_eliciting_packets() {
@@ -360,5 +449,5 @@ fn test_is_persistent_congestion_requires_at_least_two_ack_eliciting_packets() {
 			in_flight:        true
 		},
 	]
-	assert !is_persistent_congestion(lost, pto)
+	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
 }
