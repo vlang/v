@@ -7,12 +7,12 @@ import io
 import net
 
 // h2c_preface_prefix is the leading bytes of the HTTP/2 client connection
-// preface (h2_client_preface, h2_conn.v). RFC 9113 §3.4 chose "PRI" as the
-// pseudo-method specifically because it is not a registered HTTP/1.1 method,
-// so a plain-TCP listener can dispatch on it unambiguously before parsing
-// anything as HTTP/1.1. This is the only h2c bootstrap mechanism implemented:
-// the HTTP/1.1 `Upgrade: h2c` mechanism (RFC 7540 §3.2) was dropped entirely
-// from RFC 9113 and is not supported here.
+// preface (h2_client_preface, h2_conn.v) — the literal string "PRI ". RFC
+// 9113 §3.4 chose "PRI" as the pseudo-method specifically because it is not a
+// registered HTTP/1.1 method, so a plain-TCP listener can dispatch on it
+// unambiguously before parsing anything as HTTP/1.1. This is the only h2c
+// bootstrap mechanism implemented: the HTTP/1.1 `Upgrade: h2c` mechanism (RFC
+// 7540 §3.2) was dropped entirely from RFC 9113 and is not supported here.
 const h2c_preface_prefix = h2_client_preface[..4]
 
 // H2cTransport adapts a buffered HTTP/1.1 connection reader to the
@@ -50,6 +50,10 @@ fn try_serve_h2c(mut reader io.BufferedReader, mut conn net.TcpConn, mut handler
 		reader: reader
 		conn:   conn
 	})
-	serve_h2_conn(mut transport, mut handler) or {}
+	serve_h2_conn(mut transport, mut handler) or {
+		$if debug {
+			eprintln('h2c server error: ${err}')
+		}
+	}
 	return true
 }
