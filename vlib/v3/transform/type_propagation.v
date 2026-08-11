@@ -1909,7 +1909,11 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?st
 			return checker_type
 		}
 	}
-	base_type0 := t.node_type(t.a.child(fn_node, 0))
+	base_id := t.a.child(fn_node, 0)
+	mut base_type0 := t.node_type(base_id)
+	if !base_type0.trim_string_left('&').starts_with('[]') {
+		base_type0 = t.original_expr_type(base_id)
+	}
 	base_type := if base_type0.starts_with('&') { base_type0[1..] } else { base_type0 }
 	if !base_type.starts_with('[]') {
 		return none

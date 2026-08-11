@@ -4409,6 +4409,24 @@ fn test_statement_array_append_consumes_rhs_expression() {
 	assert out == '35'
 }
 
+fn test_user_defined_scalar_map_method_append_pushes_one() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'user_defined_scalar_map_append', 'type Bar = int
+
+fn (b Bar) map() int {
+	return b + 1
+}
+
+fn main() {
+	mut values := []int{}
+	values << Bar(0).map()
+	println(int_str(values.len))
+	println(int_str(values[0]))
+}
+')
+	assert out == '1\n1'
+}
+
 fn test_optional_append_to_map_value_copies_back_absent_entry() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_append_to_map_value_copyback', 'fn next_value() ?int {
