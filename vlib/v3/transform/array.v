@@ -1747,17 +1747,6 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 	if t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
 		return false
 	}
-	if !isnil(t.tc) {
-		if rhs_resolved := t.tc.expr_type(rhs_id) {
-			rhs_clean := types.unwrap_pointer(rhs_resolved)
-			if rhs_clean is types.Array {
-				return false
-			}
-			if rhs_clean is types.ArrayFixed {
-				return false
-			}
-		}
-	}
 	mut clean_rhs := rhs_type.trim_space()
 	if clean_rhs.starts_with('!') || clean_rhs.starts_with('?') {
 		clean_rhs = clean_rhs[1..].trim_space()

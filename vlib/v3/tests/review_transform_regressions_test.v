@@ -4439,6 +4439,28 @@ fn test_builtin_map_nested_array_append_pushes_one() {
 	assert out == '1\n2'
 }
 
+fn test_array_valued_sum_variant_append_pushes_one() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_valued_sum_variant_append', 'type Value = int | []u8 | [2]u8
+
+fn main() {
+	mut values := []Value{}
+	bytes := [u8(1), 2]
+	values << bytes
+	fixed := [u8(3), 4]!
+	values << fixed
+	println(int_str(values.len))
+	inner := values[0] as []u8
+	println(int_str(inner.len))
+	println(int_str(int(inner[1])))
+	inner_fixed := values[1] as [2]u8
+	println(int_str(int(inner_fixed[0])))
+	println(int_str(int(inner_fixed[1])))
+}
+')
+	assert out == '2\n2\n2\n3\n4'
+}
+
 fn test_optional_append_to_map_value_copies_back_absent_entry() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_append_to_map_value_copyback', 'fn next_value() ?int {
