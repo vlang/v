@@ -48,6 +48,7 @@ fn test_receive_window_note_received_is_non_regressing() {
 
 fn test_receive_window_auto_growth_heuristic() {
 	mut w := new_receive_window(100)
+	w.note_received(100)! // data must actually arrive before the application can read it
 	assert w.should_advertise_more() == false
 	w.note_read(40)
 	assert w.should_advertise_more() == false // less than half
@@ -58,6 +59,20 @@ fn test_receive_window_auto_growth_heuristic() {
 	assert next == 200
 	w.mark_advertised(next)
 	assert w.advertised_limit() == 200
+}
+
+// test_receive_window_note_read_is_capped_to_received is a Phase-R
+// regression for a "Local AI Review" finding on vlang/v#27882 (2026-08-11):
+// note_read trusted new_total_read unconditionally, so a caller claiming to
+// have read more than was ever actually received (received tracks real
+// network arrival) could push w.read past w.received, letting
+// should_advertise_more() grant flow-control credit for bytes that never
+// arrived.
+fn test_receive_window_note_read_is_capped_to_received() {
+	mut w := new_receive_window(100)
+	w.note_received(30)!
+	w.note_read(80) // must never be trusted beyond what has actually arrived
+	assert w.should_advertise_more() == false // true only if the uncapped 80 were trusted (80 >= 50)
 }
 
 fn test_receive_window_mark_advertised_never_regresses() {

@@ -138,8 +138,16 @@ pub fn (mut h StreamSendHalf) mark_fin_sent(final_size u64) {
 
 // mark_reset_sent transitions to reset_sent from any state prior to
 // data_recvd/reset_recvd -- RFC 9000 §3.1 permits resetting a stream at
-// any point before its send side has fully completed.
+// any point before its send side has fully completed, but its Sending
+// Stream State Machine draws "Send RESET_STREAM" only from Ready/Send/
+// Data Sent, and its prose states a sender MUST NOT send RESET_STREAM once
+// already in a terminal state (Data Recvd or Reset Recvd). A no-op from
+// either terminal state, matching mark_fin_sent's own guarded-transition
+// pattern above.
 pub fn (mut h StreamSendHalf) mark_reset_sent(error_code u64) {
+	if h.state == .data_recvd || h.state == .reset_recvd {
+		return
+	}
 	h.error_code = error_code
 	h.state = .reset_sent
 }
@@ -200,8 +208,27 @@ pub fn (mut h StreamRecvHalf) note_data(offset u64, data []u8) ! {
 }
 
 // mark_reset_recvd transitions to reset_recvd on receiving RESET_STREAM --
-// legal from recv or size_known (RFC 9000 §3.2).
-pub fn (mut h StreamRecvHalf) mark_reset_recvd(error_code u64) {
+// legal from recv or size_known, and also from data_recvd (RFC 9000 §3.2
+// explicitly allows this as implementation-defined: "It is possible that
+// all stream data has already been received when a RESET_STREAM is
+// received... An implementation is free to manage this situation as it
+// chooses."). Reconciles `final_size` against everything already received
+// via the reassembler's own FINAL_SIZE_ERROR check (RFC 9000 §4.5) -- the
+// same validation note_size_known already applies to a FIN-carrying STREAM
+// frame's final size, applied here too so a reset claiming a final size
+// smaller than data already received, or disagreeing with an
+// already-established final size (including a differing retransmitted
+// RESET_STREAM), is rejected rather than silently accepted.
+//
+// A no-op once `state` is reset_read: the application has already consumed
+// the reset, matching note_size_known/note_data's own terminal-state
+// rationale.
+pub fn (mut h StreamRecvHalf) mark_reset_recvd(error_code u64, final_size u64) ! {
+	if h.state == .reset_read {
+		return
+	}
+	h.reassembler.note_final_size(final_size)!
+	h.final_size = final_size
 	h.error_code = error_code
 	h.state = .reset_recvd
 }

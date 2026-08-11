@@ -102,10 +102,16 @@ pub fn (mut w ReceiveWindow) note_received(new_total_received u64) ! {
 }
 
 // note_read records that the application has consumed up to
-// `new_total_read` (a cumulative offset).
+// `new_total_read` (a cumulative offset). Capped to `received`: the
+// application can never have read more than has actually arrived over the
+// network, so a `new_total_read` claiming otherwise (a caller bug, once a
+// real application-read API exists in a later phase) is capped rather than
+// trusted -- otherwise should_advertise_more() could grant flow-control
+// credit for bytes that were never received.
 pub fn (mut w ReceiveWindow) note_read(new_total_read u64) {
-	if new_total_read > w.read {
-		w.read = new_total_read
+	capped := if new_total_read > w.received { w.received } else { new_total_read }
+	if capped > w.read {
+		w.read = capped
 	}
 }
 

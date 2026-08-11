@@ -214,13 +214,67 @@ fn test_recv_half_state_transitions_fin_before_all_data() {
 	assert h.state == .data_recvd
 }
 
+// test_send_half_reset_sent_does_not_regress_from_data_recvd and its
+// reset_recvd sibling below are Phase-R regressions for a "Local AI Review"
+// finding on vlang/v#27882 (2026-08-11): RFC 9000 §3.1's Sending Stream
+// State Machine draws "Send RESET_STREAM" only from Ready/Send/Data Sent,
+// and its prose states a sender MUST NOT send RESET_STREAM from a terminal
+// state (Data Recvd or Reset Recvd) -- mark_reset_sent had no such guard.
+fn test_send_half_reset_sent_does_not_regress_from_data_recvd() {
+	mut h := StreamSendHalf{}
+	h.mark_fin_sent(100)
+	h.state = .data_recvd // simulate all data ACKed
+	h.mark_reset_sent(7)
+	assert h.state == .data_recvd
+}
+
+fn test_send_half_reset_sent_does_not_regress_from_reset_recvd() {
+	mut h := StreamSendHalf{}
+	h.mark_reset_sent(7)
+	h.state = .reset_recvd // simulate the RESET_STREAM's own ACK arriving
+	h.mark_reset_sent(9)
+	assert h.state == .reset_recvd
+	assert h.error_code or { 0 } == 7 // unchanged from the original reset
+}
+
 fn test_recv_half_reset_recvd() {
 	mut h := StreamRecvHalf{
 		reassembler: new_stream_reassembler()
 	}
-	h.mark_reset_recvd(4)
+	h.mark_reset_recvd(4, 10)!
 	assert h.state == .reset_recvd
 	assert h.error_code or { 0 } == 4
+	assert h.final_size or { 0 } == 10
+}
+
+// test_recv_half_reset_recvd_rejects_final_size_smaller_than_already_received
+// and its established-final-size sibling below are Phase-R regressions for a
+// "Local AI Review" finding on vlang/v#27882 (2026-08-11): mark_reset_recvd
+// never reconciled RESET_STREAM's own Final Size field against the
+// reassembler (RFC 9000 §4.5), unlike note_size_known's identical
+// obligation for a FIN-carrying STREAM frame's final size.
+fn test_recv_half_reset_recvd_rejects_final_size_smaller_than_already_received() {
+	mut h := StreamRecvHalf{
+		reassembler: new_stream_reassembler()
+	}
+	h.note_data(0, [u8(1), 2, 3, 4, 5])!
+	h.mark_reset_recvd(4, 3) or {
+		assert err.msg().contains('FINAL_SIZE_ERROR')
+		return
+	}
+	assert false, 'expected a reset final size smaller than already-received data to be rejected'
+}
+
+fn test_recv_half_reset_recvd_rejects_final_size_conflicting_with_known_final_size() {
+	mut h := StreamRecvHalf{
+		reassembler: new_stream_reassembler()
+	}
+	h.note_size_known(10)!
+	h.mark_reset_recvd(4, 20) or {
+		assert err.msg().contains('FINAL_SIZE_ERROR')
+		return
+	}
+	assert false, 'expected a reset final size disagreeing with an established final size to be rejected'
 }
 
 // test_recv_half_reset_recvd_is_not_clobbered_by_a_reordered_data_frame and
@@ -233,7 +287,7 @@ fn test_recv_half_reset_recvd_is_not_clobbered_by_a_reordered_data_frame() {
 	mut h := StreamRecvHalf{
 		reassembler: new_stream_reassembler()
 	}
-	h.mark_reset_recvd(4)
+	h.mark_reset_recvd(4, 10)!
 	h.note_data(0, [u8(1), 2, 3, 4, 5])!
 	assert h.state == .reset_recvd
 }
@@ -242,7 +296,7 @@ fn test_recv_half_reset_recvd_is_not_clobbered_by_a_reordered_size_known_frame()
 	mut h := StreamRecvHalf{
 		reassembler: new_stream_reassembler()
 	}
-	h.mark_reset_recvd(4)
+	h.mark_reset_recvd(4, 10)!
 	h.note_size_known(5)!
 	assert h.state == .reset_recvd
 }
