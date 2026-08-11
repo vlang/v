@@ -2470,7 +2470,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				if g.cur_fn_ret_is_optional {
 					ct := g.optional_type_name(g.cur_fn_ret)
 					base := g.cur_fn_ret_base
-					if node.value == direct_optional_forward_return_value {
+					if node.value == direct_optional_forward_return_value
+						&& g.expr_really_returns_optional(ret_id) {
 						g.write('return ')
 						g.gen_expr(ret_id)
 						g.writeln(';')
@@ -3709,7 +3710,8 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 	}
 	if g.cur_fn_ret_is_optional {
 		base := g.cur_fn_ret_base
-		if node.value == direct_optional_forward_return_value {
+		if node.value == direct_optional_forward_return_value
+			&& g.expr_really_returns_optional(ret_id) {
 			return g.expr_to_string(ret_id)
 		}
 		if err_id := g.optional_error_payload_err_expr(ret_id) {
@@ -4230,6 +4232,10 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		return type_is_optional_result(typ)
 	}
 	if node.kind == .call {
+		typ := g.usable_expr_type(id)
+		if typ !is types.Unknown && typ !is types.Void {
+			return type_is_optional_result(typ)
+		}
 		if fname := g.tc.resolved_call_name(id) {
 			ret_type := g.tc.fn_ret_types[fname] or { return false }
 			return ret_type is types.OptionType || ret_type is types.ResultType

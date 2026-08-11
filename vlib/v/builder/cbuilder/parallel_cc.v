@@ -158,7 +158,8 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
-	pp.work_on_items(cmds)
+	// PoolProcessor stores erased item pointers internally, so avoid a generic wrapper here.
+	unsafe { pp.work_on_pointers(cmds.pointers()) }
 	for result_ptr in pp.get_result_pointers() {
 		failed += if isnil(result_ptr) { 0 } else { 1 }
 	}

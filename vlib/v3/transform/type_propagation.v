@@ -411,7 +411,7 @@ fn (t &Transformer) concrete_node_type_name(node flat.Node) string {
 		return ''
 	}
 	typ := t.normalize_type_alias(node.typ)
-	if typ.len == 0 || typ in ['array', 'map', 'unknown'] {
+	if !decl_type_is_usable(typ) {
 		return ''
 	}
 	if type_text_has_unresolved_generic_placeholder(typ) {
@@ -698,6 +698,10 @@ fn (t &Transformer) enum_type_name_from_selector_name(name string) ?string {
 	}
 	if name in t.enum_types {
 		return name
+	}
+	resolved := t.normalize_type_in_module(name, t.cur_module)
+	if resolved in t.enum_types {
+		return resolved
 	}
 	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {

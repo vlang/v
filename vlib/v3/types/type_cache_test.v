@@ -21,6 +21,18 @@ fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	assert tc.type_cache.parse_entries.len == 3
 }
 
+fn test_parse_resolution_type_prefers_file_import_over_known_short_symbol() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['token.Pos'] = []StructField{}
+	tc.structs['v.token.Pos'] = []StructField{}
+	tc.cur_file = 'ast.v'
+	tc.cur_module = 'v.ast'
+	tc.register_file_import('token', 'v.token')
+
+	assert tc.parse_resolution_type('token.Pos').name() == 'v.token.Pos'
+}
+
 fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -70,6 +82,25 @@ fn test_type_cache_restore_preserves_disabled_resolution_type_views() {
 
 	tc.unfreeze_type_cache_after_forks()
 	assert isnil(tc.resolution_type_views)
+}
+
+fn test_type_cache_overlay_can_be_discarded_without_publishing_entries() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_cache.parse_enabled = true
+	tc.cur_file = 'main.v'
+	tc.cur_module = 'main'
+
+	assert tc.parse_type('int').name() == 'int'
+	base := tc.type_cache
+	base_entries := base.parse_entries.len
+	tc.freeze_type_cache_for_forks()
+	assert tc.parse_type('string').name() == 'string'
+	assert tc.type_cache.parse_entries.len > 0
+
+	tc.discard_type_cache_overlay_after_forks()
+	assert tc.type_cache == base
+	assert base.parse_entries.len == base_entries
 }
 
 fn test_c_type_cache_uses_existing_named_type_identity() {

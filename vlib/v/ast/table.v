@@ -2286,12 +2286,13 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 
 pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_types []Type) int {
 	parent_sym := t.sym(parent_typ)
-	expected_generic_types := match parent_sym.info {
-		Struct { parent_sym.info.generic_types.len }
-		Interface { parent_sym.info.generic_types.len }
-		SumType { parent_sym.info.generic_types.len }
-		FnType { parent_sym.info.func.generic_names.len }
-		else { 0 }
+	mut expected_generic_types := 0
+	match parent_sym.info {
+		Struct { expected_generic_types = parent_sym.info.generic_types.len }
+		Interface { expected_generic_types = parent_sym.info.generic_types.len }
+		SumType { expected_generic_types = parent_sym.info.generic_types.len }
+		FnType { expected_generic_types = parent_sym.info.func.generic_names.len }
+		else {}
 	}
 
 	if expected_generic_types == 0 || concrete_types.len != expected_generic_types {

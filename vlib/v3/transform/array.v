@@ -1193,10 +1193,12 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	rhs_is_sum_variant := t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
-	if push_many && rhs_is_sum_variant {
-		push_many = false
+	if !push_many && t.array_append_rhs_is_map_call(rhs_node) {
+		push_many = true
+		rhs_type = array_type
 	}
+	rhs_is_sum_variant := !push_many
+		&& t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
 	if rhs_node.kind == .array_literal && t.array_append_literal_should_push_many(rhs_id, elem_type) {
 		// `[]scalar << [a, b, c]` always appends the literal's elements. Retype the
 		// literal from the destination so a mis-inferred element type (e.g. `[]int`
@@ -1393,10 +1395,12 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	rhs_is_sum_variant := t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
-	if push_many && rhs_is_sum_variant {
-		push_many = false
+	if !push_many && t.array_append_rhs_is_map_call(rhs_node) {
+		push_many = true
+		rhs_type = array_type
 	}
+	rhs_is_sum_variant := !push_many
+		&& t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
 	if rhs_node.kind == .array_literal && t.array_append_literal_should_push_many(rhs_id, elem_type) {
 		push_many = true
 		t.set_node_typ(int(rhs_id), array_type)
@@ -1740,6 +1744,24 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 	if !t.is_sum_type_name(elem_type) {
 		return false
 	}
+	rhs_node := t.a.nodes[int(rhs_id)]
+	if rhs_node.kind == .call && rhs_node.children_count > 0 {
+		callee := t.a.child_node(&rhs_node, 0)
+		if callee.kind == .selector && callee.value == 'map' {
+			return false
+		}
+	}
+	if !isnil(t.tc) {
+		if rhs_resolved := t.tc.expr_type(rhs_id) {
+			rhs_clean := types.unwrap_pointer(rhs_resolved)
+			if rhs_clean is types.Array {
+				return false
+			}
+			if rhs_clean is types.ArrayFixed {
+				return false
+			}
+		}
+	}
 	mut clean_rhs := rhs_type.trim_space()
 	if clean_rhs.starts_with('!') || clean_rhs.starts_with('?') {
 		clean_rhs = clean_rhs[1..].trim_space()
@@ -1759,6 +1781,14 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 		return true
 	}
 	return false
+}
+
+fn (t &Transformer) array_append_rhs_is_map_call(node flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	return callee.kind == .selector && callee.value == 'map'
 }
 
 fn (t &Transformer) array_append_rhs_variant_candidate(rhs_id flat.NodeId, rhs_type string) string {
