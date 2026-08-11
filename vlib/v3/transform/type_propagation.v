@@ -51,6 +51,16 @@ fn (mut t Transformer) end_node_type_memo() {
 	}
 }
 
+fn (mut t Transformer) clear_node_type_memo() {
+	if isnil(t.node_type_memo) {
+		return
+	}
+	mut memo := t.node_type_memo
+	if memo.active && memo.filled.len > 0 {
+		unsafe { vmemset(&memo.filled[0], 0, memo.filled.len) }
+	}
+}
+
 @[inline]
 fn (t &Transformer) invalidate_node_type_memo(idx int) {
 	if isnil(t.node_type_memo) {
@@ -411,7 +421,7 @@ fn (t &Transformer) concrete_node_type_name(node flat.Node) string {
 		return ''
 	}
 	typ := t.normalize_type_alias(node.typ)
-	if typ.len == 0 || typ in ['array', 'map', 'unknown'] {
+	if !decl_type_is_usable(typ) {
 		return ''
 	}
 	if type_text_has_unresolved_generic_placeholder(typ) {
@@ -586,6 +596,9 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 		}
 		return ''
 	}
+	if builtin_type := t.builtin_selector_type(base_type, field_name) {
+		return builtin_type
+	}
 	base_key := t.expr_key(base_id)
 	if base_key.len > 0 {
 		full_key := '${base_key}.${field_name}'
@@ -625,6 +638,24 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 		return ftyp
 	}
 	return ''
+}
+
+fn (t &Transformer) builtin_selector_type(base_type string, field_name string) ?string {
+	clean := t.trim_pointer_type(t.normalize_type_alias(base_type))
+	if field_name == 'len' && (clean == 'string' || clean.starts_with('[]')
+		|| clean.starts_with('map[') || t.is_fixed_array_type(clean)
+		|| clean == 'chan' || clean.starts_with('chan ')) {
+		return 'int'
+	}
+	if clean == 'chan' || clean.starts_with('chan ') {
+		if field_name == 'cap' {
+			return 'int'
+		}
+		if field_name == 'closed' {
+			return 'bool'
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) lookup_sum_variant_field_type(sum_type string, field_name string) ?string {
@@ -698,6 +729,10 @@ fn (t &Transformer) enum_type_name_from_selector_name(name string) ?string {
 	}
 	if name in t.enum_types {
 		return name
+	}
+	resolved := t.normalize_type_in_module(name, t.cur_module)
+	if resolved in t.enum_types {
+		return resolved
 	}
 	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
@@ -1905,7 +1940,11 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?st
 			return checker_type
 		}
 	}
-	base_type0 := t.node_type(t.a.child(fn_node, 0))
+	base_id := t.a.child(fn_node, 0)
+	mut base_type0 := t.node_type(base_id)
+	if !base_type0.trim_string_left('&').starts_with('[]') {
+		base_type0 = t.original_expr_type(base_id)
+	}
 	base_type := if base_type0.starts_with('&') { base_type0[1..] } else { base_type0 }
 	if !base_type.starts_with('[]') {
 		return none

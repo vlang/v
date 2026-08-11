@@ -4759,24 +4759,8 @@ fn auto_str_helper_name(aggregate string) string {
 	return '__v3_autostr_${c_name(aggregate)}'
 }
 
-fn auto_str_helper_module(aggregate string, current_module string) string {
-	if aggregate.contains('.') {
-		return aggregate.all_before_last('.').all_after_last('.')
-	}
-	if current_module.len > 0 {
-		return current_module
-	}
-	return 'main'
-}
-
 fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate string) flat.NodeId {
 	helper := auto_str_helper_name(aggregate)
-	helper_module := auto_str_helper_module(aggregate, t.cur_module)
-	qualified_helper := if helper_module !in ['main', 'builtin'] {
-		'${helper_module}.${helper}'
-	} else {
-		helper
-	}
 	if aggregate !in t.auto_str_types {
 		t.auto_str_types[aggregate] = AutoStrRequest{
 			module: t.cur_module
@@ -4787,8 +4771,8 @@ fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate strin
 			helper_module: 'main'
 		}
 	}
-	t.mark_fn_used_name(qualified_helper)
-	return t.make_call_typed(qualified_helper, arr1(expr), 'string')
+	t.mark_fn_used_name(helper)
+	return t.make_call_typed(helper, arr1(expr), 'string')
 }
 
 fn (t &Transformer) has_pending_auto_str_helpers() bool {
@@ -13263,11 +13247,17 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		if fn_node.kind == .ident && fn_node.value == short_name {
 			qname := '${t.cur_module}.${short_name}'
 			if ret := t.tc.fn_ret_types[qname] {
-				return t.call_return_type_name(t.semantic_type_name(ret), node)
+				candidate := t.call_return_type_name(t.semantic_type_name(ret), node)
+				if decl_type_is_usable(candidate) || candidate == 'void' {
+					return candidate
+				}
 			}
 			lowered_qname := c_name(qname)
 			if ret := t.tc.fn_ret_types[lowered_qname] {
-				return t.call_return_type_name(t.semantic_type_name(ret), node)
+				candidate := t.call_return_type_name(t.semantic_type_name(ret), node)
+				if decl_type_is_usable(candidate) || candidate == 'void' {
+					return candidate
+				}
 			}
 		}
 	}
@@ -13277,17 +13267,27 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	decl_module := t.tc.fn_type_modules[name] or { '' }
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
-			return t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)
+			candidate := t.call_return_type_name_in_module(t.semantic_type_name(ret), node,
+				decl_module)
+			if decl_type_is_usable(candidate) {
+				return candidate
+			}
 		}
 	}
 	if ret_text := t.tc.fn_ret_type_texts[name] {
 		if ret_text.len > 0 {
-			return t.call_return_type_name_in_module(ret_text, node, decl_module)
+			candidate := t.call_return_type_name_in_module(ret_text, node, decl_module)
+			if decl_type_is_usable(candidate) || candidate == 'void' {
+				return candidate
+			}
 		}
 	}
 	if typ := t.tc.expr_type(id) {
 		if typ !is types.Unknown && typ !is types.Void {
-			return t.call_return_type_name(t.semantic_type_name(typ), node)
+			candidate := t.call_return_type_name(t.semantic_type_name(typ), node)
+			if decl_type_is_usable(candidate) {
+				return candidate
+			}
 		}
 	}
 	return none

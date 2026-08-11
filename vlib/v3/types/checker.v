@@ -1407,6 +1407,21 @@ pub fn (tc &TypeChecker) unfreeze_type_cache_after_forks() {
 	mtc.restore_type_cache_base()
 }
 
+// discard_type_cache_overlay_after_forks reattaches the frozen cache without
+// publishing memoized entries from parallel work. C generation uses this after
+// its workers join because the driver replaces the cache at the end of the
+// stage, and worker-arena values must not escape into the persistent base.
+pub fn (tc &TypeChecker) discard_type_cache_overlay_after_forks() {
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	if isnil(mtc.type_cache) || isnil(mtc.type_cache.base) {
+		return
+	}
+	mtc.type_cache = mtc.type_cache.base
+	if !isnil(mtc.resolution_type_views) {
+		mtc.reset_resolution_type_view_cache()
+	}
+}
+
 // set_fresh_type_cache attaches a new empty TypeCache. Parallel-cgen worker
 // checkers use this so the lazily-built lookup indexes and memoizations work
 // per worker instead of falling back to their uncached full scans.
@@ -4668,12 +4683,12 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	clean := trimmed_space(typ)
-	if clean.contains('.') {
-		if exact := tc.type_from_known_symbol(clean) {
+	qualified := tc.qualify_resolution_type_text(clean)
+	if qualified.contains('.') {
+		if exact := tc.type_from_known_symbol(qualified) {
 			return exact
 		}
 	}
-	qualified := tc.qualify_resolution_type_text(typ)
 	if isnil(tc.resolution_type_views) {
 		mut direct_view := tc.fork_type_parse_view(tc.cur_file, '')
 		direct_view.resolution_type_mode = false
@@ -4797,8 +4812,14 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 				parts.join(', ') + ']' + clean[bracket_end + 1..]
 		}
 	}
-	if resolution && clean.contains('.') && tc.qualify_candidate_type_exists(clean) {
-		return clean
+	if resolution && clean.contains('.') {
+		resolved := tc.resolve_imported_type_text(clean)
+		if resolved != clean {
+			return resolved
+		}
+		if tc.qualify_candidate_type_exists(clean) {
+			return clean
+		}
 	}
 	if !clean.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(clean) {

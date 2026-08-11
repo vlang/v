@@ -5,7 +5,7 @@ module checker
 import strings
 import v.ast
 import os
-import token
+import v.token
 
 enum DetailKind {
 	text           = 1

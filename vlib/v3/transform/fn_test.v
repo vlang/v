@@ -58,6 +58,29 @@ fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
 	assert t.receiver_method_matches_type_name('Thing.str', 'pkg.Thing')
 }
 
+fn test_building_v_auto_str_helper_call_uses_main_symbol() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := Transformer{
+		a:          &a
+		tc:         &tc
+		cur_module: 'token'
+		cur_file:   'token.v'
+	}
+	value := t.make_ident('pos')
+	call := t.request_auto_str_helper(value, 'v.token.Pos')
+	callee := a.child_node(a.node(call), 0)
+
+	assert callee.value == '__v3_autostr_v__token__Pos'
+	assert t.auto_str_types['v.token.Pos'].helper_module == 'main'
+}
+
+fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
+	t := Transformer{}
+	assert t.merge_if_expr_types('unknown', 'int') == 'int'
+	assert t.merge_if_expr_types('int', 'unknown') == 'int'
+}
+
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 	mut a := flat.FlatAst.new()
 	ident_id := a.add_node(flat.Node{
