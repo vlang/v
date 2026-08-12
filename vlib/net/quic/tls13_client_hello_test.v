@@ -1,4 +1,4 @@
-// vtest build: !sanitize-memory-clang
+// vtest build: present_openssl? && !sanitize-memory-clang
 module quic
 
 import encoding.hex

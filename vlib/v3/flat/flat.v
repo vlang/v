@@ -179,17 +179,30 @@ pub fn node_payload(generic_params []string) &NodePayload {
 // Node represents node data used by flat.
 pub struct Node {
 pub mut:
-	value          string
-	typ            string
-	payload        &NodePayload = unsafe { nil }
-	children_start i32
-	is_mut         bool
-pub:
+	value                string
+	typ                  string
+	payload              &NodePayload = unsafe { nil }
+	children_start       i32
+	is_mut               bool
 	kind                 NodeKind
 	op                   Op
 	skip_ownership_drops bool
 	children_count       i32
 	pos                  token.Pos
+}
+
+// type_text_id returns the compact canonical identity carried in this node's
+// otherwise-unused source-position metadata.
+@[inline]
+pub fn (n &Node) type_text_id() u16 {
+	return n.pos.type_text_id()
+}
+
+// set_type_text_id updates the compact type identity without disturbing a
+// diagnostic reported-column override.
+@[inline]
+pub fn (mut n Node) set_type_text_id(id u16) {
+	n.pos = n.pos.with_type_text_id(id)
 }
 
 // generic_params returns this node's uncommon generic/attribute metadata.
@@ -252,7 +265,16 @@ pub mut:
 // close_workers stops the compilation-owned persistent worker pool.
 pub fn (mut a FlatAst) close_workers() {
 	if !isnil(a.worker_pool) {
-		a.worker_pool.close()
+		mut pool := a.worker_pool
+		a.worker_pool = unsafe { nil }
+		pool.close()
+	}
+}
+
+// ensure_workers creates the compilation-owned persistent worker pool when needed.
+pub fn (mut a FlatAst) ensure_workers(count int) {
+	if isnil(a.worker_pool) {
+		a.worker_pool = workers.new(count)
 	}
 }
 
@@ -396,6 +418,34 @@ pub fn (a &FlatAst) text_count() int {
 	return a.text_values.len
 }
 
+// type_text_id returns the compact canonical identity for value, or 0 when it
+// has not been interned or the compilation's text table exceeds u16 range.
+pub fn (a &FlatAst) type_text_id(value string) u16 {
+	if value.len == 0 {
+		return 0
+	}
+	if id := a.text_ids[value] {
+		if id <= 65535 {
+			return u16(id)
+		}
+	}
+	return 0
+}
+
+// node_type_text_id preserves an already-matching identity without a map
+// lookup. A changed or newly synthesized spelling is assigned during the
+// ordered canonicalization pass after worker merge.
+@[inline]
+pub fn (a &FlatAst) node_type_text_id(value string, current u16) u16 {
+	if current != 0 {
+		canonical := a.text(TextId(current))
+		if canonical.len == value.len && canonical.str == value.str {
+			return current
+		}
+	}
+	return 0
+}
+
 // intern_node_texts_from canonicalizes managed payloads in nodes[start..].
 // This runs serially after parse/transform worker merges, so the text table
 // itself requires no synchronization and cannot retain worker-arena storage.
@@ -417,8 +467,12 @@ pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
 	// Nothing is freed during this pass, so pointer keys stay valid.
 	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
 	mut cache_vals := []string{len: 4096}
+	mut type_cache_ptrs := unsafe { []voidptr{len: 4096} }
+	mut type_cache_vals := []string{len: 4096}
+	mut type_cache_ids := []u16{len: 4096}
 	for idx in first .. end {
-		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals)
+		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals, mut type_cache_ptrs, mut
+			type_cache_vals, mut type_cache_ids)
 	}
 }
 
@@ -432,15 +486,22 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 	}
 	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
 	mut cache_vals := []string{len: 4096}
+	mut type_cache_ptrs := unsafe { []voidptr{len: 4096} }
+	mut type_cache_vals := []string{len: 4096}
+	mut type_cache_ids := []u16{len: 4096}
 	for idx in indexes {
-		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals)
+		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals, mut type_cache_ptrs, mut
+			type_cache_vals, mut type_cache_ids)
 	}
 }
 
-fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs []voidptr, mut cache_vals []string) {
+fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs []voidptr, mut cache_vals []string, mut type_cache_ptrs []voidptr, mut type_cache_vals []string, mut type_cache_ids []u16) {
 	a.nodes[idx].value = a.intern_text_ptr_cached(a.nodes[idx].value, mut cache_ptrs, mut
 		cache_vals)
-	a.nodes[idx].typ = a.intern_text_ptr_cached(a.nodes[idx].typ, mut cache_ptrs, mut cache_vals)
+	type_id, canonical_type := a.intern_type_text_ptr_cached(a.nodes[idx].typ, mut type_cache_ptrs, mut
+		type_cache_vals, mut type_cache_ids)
+	a.nodes[idx].typ = canonical_type
+	a.nodes[idx].set_type_text_id(type_id)
 	params := a.nodes[idx].generic_params()
 	if params.len > 0 {
 		// Always rebuild the payload: the params array itself may live in a
@@ -451,6 +512,25 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs []voidptr, mut 
 		}
 		a.nodes[idx].set_generic_params(canonical_params)
 	}
+}
+
+// intern_type_text_ptr_cached canonicalizes a node type spelling and returns
+// its compact identity. Programs with more than 65535 texts use 0 and retain
+// the existing string-keyed fallback.
+pub fn (mut a FlatAst) intern_type_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string, mut cache_ids []u16) (u16, string) {
+	if value.len == 0 {
+		return 0, ''
+	}
+	slot := int((u64(voidptr(value.str)) >> 4) & 4095)
+	if cache_ptrs[slot] == voidptr(value.str) && cache_vals[slot].len == value.len {
+		return cache_ids[slot], cache_vals[slot]
+	}
+	id, canonical := a.intern_text(value)
+	compact_id := if id <= 65535 { u16(id) } else { u16(0) }
+	cache_ptrs[slot] = voidptr(value.str)
+	cache_vals[slot] = canonical
+	cache_ids[slot] = compact_id
+	return compact_id, canonical
 }
 
 // probe_text_ptr_cached is the read-only twin of intern_text_ptr_cached: it
@@ -472,6 +552,27 @@ pub fn (a &FlatAst) probe_text_ptr_cached(value string, mut cache_ptrs []voidptr
 		return canonical, true
 	}
 	return value, false
+}
+
+// probe_type_text_ptr_cached is the compact-id form used while parallel parse
+// workers probe the frozen master text table.
+pub fn (a &FlatAst) probe_type_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string, mut cache_ids []u16) (u16, string, bool) {
+	if value.len == 0 {
+		return 0, '', true
+	}
+	slot := int((u64(voidptr(value.str)) >> 4) & 4095)
+	if cache_ptrs[slot] == voidptr(value.str) && cache_vals[slot].len == value.len {
+		return cache_ids[slot], cache_vals[slot], true
+	}
+	if id := a.text_ids[value] {
+		canonical := a.text_values[int(id) - 1]
+		compact_id := if id <= 65535 { u16(id) } else { u16(0) }
+		cache_ptrs[slot] = voidptr(value.str)
+		cache_vals[slot] = canonical
+		cache_ids[slot] = compact_id
+		return compact_id, canonical, true
+	}
+	return 0, value, false
 }
 
 pub fn (mut a FlatAst) intern_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string) string {
@@ -596,7 +697,7 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 		value:                n.value
 		typ:                  n.typ
 		payload:              n.payload
-		pos:                  pos
+		pos:                  pos.with_type_text_id(n.type_text_id())
 		children_start:       n.children_start
 		children_count:       n.children_count
 		kind:                 n.kind
@@ -629,7 +730,9 @@ pub fn (n Node) clone_owned() Node {
 // add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
-	a.nodes << node
+	mut stored := node
+	stored.set_type_text_id(a.node_type_text_id(stored.typ, stored.type_text_id()))
+	a.nodes << stored
 	return id
 }
 

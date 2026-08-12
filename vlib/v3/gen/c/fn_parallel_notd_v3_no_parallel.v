@@ -13,7 +13,7 @@ const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 128
 // Bound each worker's retained scratch while generating compiler-sized ASTs.
 const scoped_cgen_worker_batches = 32
-const flat_cgen_chunks_per_job = 24
+const flat_cgen_chunks_per_job = 12
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -35,10 +35,52 @@ $if !windows {
 	}
 
 	struct FlatCgenDynamicArgs {
-		worker          voidptr
+		dispatcher      voidptr
+		worker_id       int
 		work_chunks_ptr voidptr
 		chunk_queue     chan int
 		reserve_cost    i64
+	mut:
+		worker      voidptr
+		setup_scope voidptr
+	}
+
+	struct CollectGenInfoFnPrepArgs {
+		g            voidptr // read-only &FlatGen master
+		node_ids_ptr voidptr // &[]int
+		preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
+		start        int
+		end          int
+		file         string
+		module_name  string
+	}
+
+	fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
+		a := unsafe { &CollectGenInfoFnPrepArgs(arg) }
+		master := unsafe { &FlatGen(a.g) }
+		mut view := master.new_collect_gen_info_view()
+		view.tc.cur_file = a.file
+		view.tc.cur_module = a.module_name
+		node_ids := unsafe { &[]int(a.node_ids_ptr) }
+		mut preps := unsafe { &[]CollectGenFnPrep(a.preps_ptr) }
+		mut cur_file := a.file
+		mut cur_module := a.module_name
+		for pos in a.start .. a.end {
+			node_idx := unsafe { node_ids[pos] }
+			node := view.a.nodes[node_idx]
+			if node.kind == .file {
+				cur_file = node.value
+				cur_module = 'main'
+			} else if node.kind == .module_decl {
+				cur_module = node.value
+			} else if node.kind == .fn_decl && (!view.has_used_fn_filter()
+				|| view.used_fn_contains_in_module(node.value, cur_module)) {
+				unsafe {
+					preps[pos] = view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
+				}
+			}
+		}
+		return unsafe { nil }
 	}
 
 	fn flat_cgen_cost_thread(arg voidptr) voidptr {
@@ -84,6 +126,10 @@ $if !windows {
 
 	fn parallel_type_decls_thread(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
+		tdsw := time.new_stopwatch()
+		defer {
+			w.timing_profile('  [ttime]     cg typedecls   ${f64(tdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task)')
+		}
 		// This force-sync task uses the master generator without entering a
 		// prealloc worker arena. Keep context caches disabled here; body workers
 		// own arena-local caches and account for nearly all lookup traffic.
@@ -91,15 +137,23 @@ $if !windows {
 		w.enum_selector_cache = unsafe { nil }
 		w.enum_method_cache = unsafe { nil }
 		w.qualified_enum_method_cache = unsafe { nil }
+		w.local_typedef_shadow_facts = unsafe { nil }
+		w.local_global_shadow_facts = unsafe { nil }
 		// Self-host declaration output is several MiB. Reserve it once instead of
 		// repeatedly copying a geometrically growing builder.
 		w.sb.ensure_cap(4 * 1024 * 1024)
+		mut tdpsw := time.new_stopwatch()
 		w.parallel_const_code = w.precompute_consts()
+		w.timing_profile('  [ttime]       td consts    ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		tdpsw.restart()
 		w.gen_type_declaration_block()
+		w.timing_profile('  [ttime]       td typedecl  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		tdpsw.restart()
 		w.parallel_type_decls = w.sb.str()
 		unsafe { w.sb.free() }
 		w.sb = strings.new_builder(4096)
 		w.forward_decls()
+		w.timing_profile('  [ttime]       td fwd decls ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.parallel_forward_decls = w.sb.str()
 		unsafe { w.sb.free() }
 		w.sb = strings.new_builder(4096)
@@ -112,14 +166,18 @@ $if !windows {
 	// fn work items and pre-seeds the parallel tables.
 	fn fixed_storage_scan_thread(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
-		fssw := time.new_stopwatch()
+		mut fssw := time.new_stopwatch()
 		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
-		w.collect_fixed_storage_consts()
+		w.collect_fixed_storage_consts(true)
+		w.timing_profile('  [ttime]       fs consts     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		fssw.restart()
 		w.precompute_param_type_index()
+		w.timing_profile('  [ttime]       fs param idx  ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		fssw.restart()
 		w.precompute_concrete_optional_abi_fns()
+		w.timing_profile('  [ttime]       fs opt abi    ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
-		w.timing_profile('  [ttime]     cg fs scan     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return unsafe { nil }
 	}
 
@@ -147,11 +205,82 @@ $if !windows {
 	}
 
 	fn flat_cgen_dynamic_thread(arg voidptr) voidptr {
-		a := unsafe { &FlatCgenDynamicArgs(arg) }
+		mut a := unsafe { &FlatCgenDynamicArgs(arg) }
+		if isnil(a.worker) {
+			dispatcher := unsafe { &FlatGen(a.dispatcher) }
+			a.setup_scope = cgen_worker_scope_begin(dispatcher.scope_parallel_workers)
+			a.worker = voidptr(dispatcher.new_parallel_dispatch_worker(a.worker_id))
+			cgen_worker_scope_leave(a.setup_scope)
+		}
 		mut w := unsafe { &FlatGen(a.worker) }
 		chunks := unsafe { &[][]FlatFnGenItem(a.work_chunks_ptr) }
 		w.gen_fn_chunks_scoped_dynamic(*chunks, a.chunk_queue, a.reserve_cost)
 		return unsafe { nil }
+	}
+}
+
+// collect_gen_info_fn_preps resolves used function signatures on the persistent
+// worker pool. Registration stays serial in collect_gen_info, preserving all
+// source-order and duplicate-declaration semantics.
+fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []int) []CollectGenFnPrep {
+	$if windows {
+		return []CollectGenFnPrep{}
+	} $else {
+		if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 || node_ids.len < 2048
+			|| os.getenv('V3_NO_PAR_CGEN_INFO_FNS') != '' {
+			return []CollectGenFnPrep{}
+		}
+		mut n_jobs := g.a.worker_pool.size() + 1
+		if n_jobs > max_flat_cgen_jobs {
+			n_jobs = max_flat_cgen_jobs
+		}
+		mut preps := []CollectGenFnPrep{len: node_ids.len}
+		mut context_files := []string{len: n_jobs}
+		mut context_modules := []string{len: n_jobs}
+		mut cur_file := ''
+		mut cur_module := 'main'
+		mut boundary := 0
+		for pos in 0 .. node_ids.len {
+			for boundary < n_jobs && pos == node_ids.len * boundary / n_jobs {
+				context_files[boundary] = cur_file
+				context_modules[boundary] = cur_module
+				boundary++
+			}
+			node := g.a.nodes[node_ids[pos]]
+			if node.kind == .file {
+				cur_file = node.value
+				cur_module = 'main'
+			} else if node.kind == .module_decl {
+				cur_module = node.value
+			}
+		}
+		for boundary < n_jobs {
+			context_files[boundary] = cur_file
+			context_modules[boundary] = cur_module
+			boundary++
+		}
+		mut args := []CollectGenInfoFnPrepArgs{cap: n_jobs}
+		mut tasks := []workers.Task{cap: n_jobs}
+		for job in 0 .. n_jobs {
+			args << CollectGenInfoFnPrepArgs{
+				g:            voidptr(g)
+				node_ids_ptr: unsafe { voidptr(&node_ids) }
+				preps_ptr:    unsafe { voidptr(&preps) }
+				start:        node_ids.len * job / n_jobs
+				end:          node_ids.len * (job + 1) / n_jobs
+				file:         context_files[job]
+				module_name:  context_modules[job]
+			}
+		}
+		for job in 0 .. n_jobs {
+			tasks << workers.Task{
+				run:        collect_gen_info_fn_prep_thread
+				arg:        unsafe { voidptr(&args[job]) }
+				force_sync: job == 0
+			}
+		}
+		g.a.worker_pool.run(tasks)
+		return preps
 	}
 }
 
@@ -221,14 +350,35 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 		}
 		mut args := []FlatCgenCostArgs{cap: n_jobs}
 		mut tasks := []workers.Task{cap: n_jobs}
+		mut boundaries := []int{len: n_jobs + 1, init: g.fn_gen_items.len}
+		boundaries[0] = 0
+		if os.getenv('V3_NO_CGEN_COST_BALANCE') == '' {
+			mut total_cost := i64(g.fn_gen_items.len)
+			for item in g.fn_gen_items {
+				total_cost += i64(item.cost)
+			}
+			mut consumed_cost := i64(0)
+			mut pos := 0
+			for job in 1 .. n_jobs {
+				target_cost := total_cost * i64(job) / i64(n_jobs)
+				max_pos := g.fn_gen_items.len - (n_jobs - job)
+				for pos < max_pos && (consumed_cost < target_cost || pos == boundaries[job - 1]) {
+					consumed_cost += i64(g.fn_gen_items[pos].cost) + 1
+					pos++
+				}
+				boundaries[job] = pos
+			}
+		} else {
+			for job in 1 .. n_jobs {
+				boundaries[job] = g.fn_gen_items.len * job / n_jobs
+			}
+		}
 		for job in 0 .. n_jobs {
-			start := g.fn_gen_items.len * job / n_jobs
-			end := g.fn_gen_items.len * (job + 1) / n_jobs
 			args << FlatCgenCostArgs{
 				a:         unsafe { g.a }
 				items_ptr: unsafe { voidptr(&g.fn_gen_items) }
-				start:     start
-				end:       end
+				start:     boundaries[job]
+				end:       boundaries[job + 1]
 				g:         prep_g
 			}
 		}
@@ -318,8 +468,10 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	if g.scope_parallel_workers {
 		mut pmsw := time.new_stopwatch()
 		selection_scope := cgen_worker_scope_begin(true)
+		retain_selection := os.getenv('V3_NO_RETAIN_CGEN_PREP_SCOPE') == ''
 		master_tc := g.tc
 		g.tc = g.clone_parallel_type_checker()
+		g.tc.verbose = master_tc.verbose
 		g.timing_profile('  [ttime]       pm clone tc  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		pmsw.restart()
 		// Fuse body-local function-pointer discovery into the item cost walk so
@@ -339,36 +491,46 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		g.register_interface_strings()
 		g.tc = master_tc
 		cgen_worker_scope_leave(selection_scope)
-		items_scope := cgen_worker_scope_begin(true)
-		mut owned_items := []FlatFnGenItem{cap: items.len}
-		for item in items {
-			owned_items << FlatFnGenItem{
-				node_id:                   item.node_id
-				file:                      item.file
-				module:                    item.module
-				c_name:                    item.c_name.clone()
-				cost:                      item.cost
-				is_program_specialization: item.is_program_specialization
-				direct_array_access:       item.direct_array_access
-				ignore_overflow:           item.ignore_overflow
+		if retain_selection {
+			// The selected items and predispatch tables are immutable from here on.
+			// Keep their arena through final output so they can move straight into
+			// cgen instead of cloning every item, string table, and lookup map only
+			// to free the originals immediately afterward.
+			g.parallel_worker_scopes << selection_scope
+			g.timing_profile('  [ttime]       pm retain out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			n_items = items.len
+		} else {
+			items_scope := cgen_worker_scope_begin(true)
+			mut owned_items := []FlatFnGenItem{cap: items.len}
+			for item in items {
+				owned_items << FlatFnGenItem{
+					node_id:                   item.node_id
+					file:                      item.file
+					module:                    item.module
+					c_name:                    item.c_name.clone()
+					cost:                      item.cost
+					is_program_specialization: item.is_program_specialization
+					direct_array_access:       item.direct_array_access
+					ignore_overflow:           item.ignore_overflow
+				}
 			}
+			g.fn_gen_items = owned_items
+			g.emitted_fns = clone_cgen_string_bool_map(g.emitted_fns)
+			cgen_worker_scope_leave(items_scope)
+			g.scoped_fn_items_scope = items_scope
+			// These tables remain live after release_scoped_fn_items, so promote them
+			// into the enclosing cgen arena rather than the retained item arena.
+			g.str_lits = clone_cgen_string_list(g.str_lits)
+			g.str_lit_ids = clone_cgen_string_int_map(g.str_lit_ids)
+			g.fn_ptr_types = clone_cgen_string_map(g.fn_ptr_types)
+			g.used_fn_ptr_types = clone_cgen_string_bool_map(g.used_fn_ptr_types)
+			g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
+			g.c_name_cache = clone_c_name_cache(g.c_name_cache)
+			g.generic_app_cache = clone_generic_app_cache(g.generic_app_cache)
+			cgen_worker_scope_free(selection_scope)
+			n_items = g.fn_gen_items.len
+			g.timing_profile('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
-		g.fn_gen_items = owned_items
-		g.emitted_fns = clone_cgen_string_bool_map(g.emitted_fns)
-		cgen_worker_scope_leave(items_scope)
-		g.scoped_fn_items_scope = items_scope
-		// These tables remain live after release_scoped_fn_items, so promote them
-		// into the enclosing cgen arena rather than the retained item arena.
-		g.str_lits = clone_cgen_string_list(g.str_lits)
-		g.str_lit_ids = clone_cgen_string_int_map(g.str_lit_ids)
-		g.fn_ptr_types = clone_cgen_string_map(g.fn_ptr_types)
-		g.used_fn_ptr_types = clone_cgen_string_bool_map(g.used_fn_ptr_types)
-		g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
-		g.c_name_cache = clone_c_name_cache(g.c_name_cache)
-		g.generic_app_cache = clone_generic_app_cache(g.generic_app_cache)
-		cgen_worker_scope_free(selection_scope)
-		n_items = g.fn_gen_items.len
-		g.timing_profile('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	} else {
 		g.want_parallel_prep = true
 		n_items = g.ensure_fn_gen_items().len
@@ -604,15 +766,29 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 	chunks [][]FlatFnGenItem,
 	chunk_queue chan int,
 	_reserve_cost i64) {
+	wsw := time.new_stopwatch()
+	mut n_chunks := 0
 	result_scope := cgen_worker_scope_begin(true)
+	// Chunks assigned to one dispatcher run sequentially. Keep the dense
+	// generation-tagged expression-type memo in the result arena so each scratch
+	// chunk does not allocate and zero another 192 KiB table.
+	reuse_expr_type_memo := os.getenv('V3_NO_REUSE_CGEN_EXPR_TYPE_MEMO') == ''
+	if reuse_expr_type_memo {
+		g.begin_usable_expr_type_memo()
+		g.end_usable_expr_type_memo()
+	}
 	for {
 		chunk_idx := <-chunk_queue or { break }
+		n_chunks++
 		mut chunk_cost := i64(chunks[chunk_idx].len)
 		for item in chunks[chunk_idx] {
 			chunk_cost += item.cost
 		}
 		scratch_scope := cgen_worker_scope_begin(true)
 		mut batch := g.new_parallel_worker(chunk_idx)
+		if reuse_expr_type_memo {
+			batch.usable_expr_type_memo = g.usable_expr_type_memo
+		}
 		batch.sb = strings.new_builder(int(chunk_cost * 5) + 65_536)
 		batch.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
 			chunk_idx: chunk_idx
@@ -628,6 +804,7 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		}
 		cgen_worker_scope_free(scratch_scope)
 	}
+	g.timing_profile('  [ttime]     cg wkr busy    ${f64(wsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${n_chunks})')
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
 }
@@ -758,6 +935,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		// transform phases) as the shared read-only base for every worker's
 		// fresh cache; the master's own memoization writes go to a private
 		// overlay for the duration of the region.
+		mut stsw := time.new_stopwatch()
 		g.tc.freeze_type_cache_for_forks()
 		g.freeze_parallel_lookup_caches()
 		if !g.parallel_prepared {
@@ -770,19 +948,26 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		}
 		mut chunk_items := split_flat_cgen_items(items, chunk_jobs)
 		chunk_count := chunk_items.len
+		g.timing_profile('  [ttime]   cg freeze+split  ${f64(stsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		stsw.restart()
 		if parallel_type_decls {
 			fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 			static_dispatch := fail.len > 0
+			lazy_worker_setup := !static_dispatch && os.getenv('V3_NO_PAR_CGEN_WORKER_SETUP') == ''
 			worker_count := if static_dispatch { chunk_count } else { n_jobs }
-			mut cgen_workers := []voidptr{cap: worker_count}
+			mut cgen_workers := []voidptr{len: worker_count, init: unsafe { nil }}
+			mut worker_setup_scopes := []voidptr{len: worker_count, init: unsafe { nil }}
 			mut ordered_chunk_outputs := []string{}
 			mut ordered_wrapper_defs := []ParallelChunkWrapperDefs{}
-			worker_setup_scope := cgen_worker_scope_begin(true)
-			for ci := 0; ci < worker_count; ci++ {
-				mut w := g.new_parallel_dispatch_worker(ci)
-				cgen_workers << voidptr(w)
+			mut worker_setup_scope := unsafe { nil }
+			if !lazy_worker_setup {
+				worker_setup_scope = cgen_worker_scope_begin(true)
+				for ci := 0; ci < worker_count; ci++ {
+					cgen_workers[ci] = voidptr(g.new_parallel_dispatch_worker(ci))
+				}
+				cgen_worker_scope_leave(worker_setup_scope)
 			}
-			cgen_worker_scope_leave(worker_setup_scope)
+			g.timing_profile('  [ttime]   cg wkr setup     ${f64(stsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
 			if static_dispatch {
 				mut args := []FlatCgenChunkArgs{cap: chunk_count}
 				mut tasks := []workers.Task{cap: chunk_count + 1}
@@ -829,6 +1014,8 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				}
 				for ci in 0 .. worker_count {
 					args << FlatCgenDynamicArgs{
+						dispatcher:      voidptr(g)
+						worker_id:       ci
 						worker:          cgen_workers[ci]
 						work_chunks_ptr: unsafe { voidptr(&chunk_items) }
 						chunk_queue:     chunk_queue
@@ -841,13 +1028,19 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					}
 				}
 				g.parallel_used = g.a.worker_pool.run(tasks)
+				if lazy_worker_setup {
+					for ci in 0 .. worker_count {
+						cgen_workers[ci] = args[ci].worker
+						worker_setup_scopes[ci] = args[ci].setup_scope
+					}
+				}
 				g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
 			}
 			// The declaration thread disables the master's caches while body
 			// workers use their private copies. Restore them for synthetic output.
 			mut msw := time.new_stopwatch()
 			g.reset_context_lookup_caches()
-			for worker_ptr in cgen_workers {
+			for ci, worker_ptr in cgen_workers {
 				mut w := unsafe { &FlatGen(worker_ptr) }
 				if ordered_chunk_outputs.len > 0 {
 					g.merge_parallel_worker_ordered(w, mut ordered_chunk_outputs, mut
@@ -855,9 +1048,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				} else {
 					g.merge_parallel_worker(w)
 				}
-				if w.worker_scope != unsafe { nil } {
-					cgen_worker_scope_free(w.worker_scope)
-					w.worker_scope = unsafe { nil }
+				g.finish_parallel_worker_scope(mut w)
+				if worker_setup_scopes[ci] != unsafe { nil } {
+					cgen_worker_scope_free(worker_setup_scopes[ci])
 				}
 			}
 			g.replay_ordered_parallel_wrapper_defs(ordered_wrapper_defs)
@@ -867,8 +1060,12 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					g.fn_segs << output
 				}
 			}
-			cgen_worker_scope_free(worker_setup_scope)
-			g.tc.unfreeze_type_cache_after_forks()
+			if worker_setup_scope != unsafe { nil } {
+				cgen_worker_scope_free(worker_setup_scope)
+			}
+			// Cgen's cache is reset by the driver after this stage. Discard its
+			// overlay so worker-arena memo values cannot escape into the base.
+			g.tc.discard_type_cache_overlay_after_forks()
 			g.gen_synthetic_main_after_fns()
 			synthetic_output := g.sb.str()
 			unsafe { g.sb.free() }
@@ -928,13 +1125,12 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		for ci := 0; ci < thread_count; ci++ {
 			mut w := unsafe { &FlatGen(cgen_workers[ci]) }
 			g.merge_parallel_worker(w)
-			if w.worker_scope != unsafe { nil } {
-				cgen_worker_scope_free(w.worker_scope)
-				w.worker_scope = unsafe { nil }
-			}
+			g.finish_parallel_worker_scope(mut w)
 		}
 		cgen_worker_scope_free(worker_setup_scope)
-		g.tc.unfreeze_type_cache_after_forks()
+		// Cgen's cache is reset by the driver after this stage. Discard its
+		// overlay so worker-arena memo values cannot escape into the base.
+		g.tc.discard_type_cache_overlay_after_forks()
 		// Synthetic main temps continue after the master's chunk[0] range.
 		g.gen_synthetic_main_after_fns()
 		synthetic_output := g.sb.str()
@@ -1110,7 +1306,7 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		// fallback, see refine_fn_item_costs). Keep this walk preseed-only.
 		if node.typ.len > 0
 			&& g.should_preseed_parallel_type_text_ptr_cached(node.typ, mut type_text_cache) {
-			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
+			g.preseed_parallel_fn_ptr_type(g.parse_node_type(node))
 		}
 		if expr_type := g.parallel_cached_expr_type(current_id, node) {
 			// Checker-cached expression types repeat the same ~1K canonical
@@ -1203,7 +1399,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 		g.collect_c_extern_ref_from_node(node)
 		if node.typ.len > 0
 			&& g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
-			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
+			g.preseed_parallel_fn_ptr_type(g.parse_node_type(node))
 		}
 		if expr_type := g.parallel_cached_expr_type(current_id, node) {
 			g.preseed_parallel_fn_ptr_type(expr_type)
@@ -1538,7 +1734,7 @@ fn (g &FlatGen) new_parallel_result_worker(worker_id int) &FlatGen {
 }
 
 fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &FlatGen {
-	return &FlatGen{
+	mut w := &FlatGen{
 		sb:                             strings.new_builder(if result_only { 0 } else { 64_000 })
 		a:                              unsafe { g.a }
 		used_fns:                       g.used_fns
@@ -1589,14 +1785,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		interface_boxed_types:          g.interface_boxed_types
 		interface_boxed_types_done:     g.interface_boxed_types_done
 		ierror_method_emit_names:       g.ierror_method_emit_names
-		ierror_stack_pointer_aliases:   []map[string]bool{}
-		ierror_owned_pointer_by_owner:  map[string]bool{}
 		recursive_drop_helpers:         g.recursive_drop_helpers
-		local_pointer_storage_by_owner: map[string]bool{}
-		local_c_type_by_owner:          map[string]string{}
-		local_raw_type_by_owner:        map[string]string{}
-		local_shared_storage_by_owner:  map[string]bool{}
-		local_fn_value_c_name_by_owner: map[string]string{}
 		sum_name_lookup:                g.sum_name_lookup
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
@@ -1642,7 +1831,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		decl_attrs:                     g.decl_attrs
 		shared_type_names:              g.shared_type_names
 		shared_alias_pointer_shorts:    g.shared_alias_pointer_shorts
-		default_value_stack:            map[string]bool{}
 		const_runtime_inits:            if result_only {
 			g.const_runtime_inits
 		} else {
@@ -1690,10 +1878,12 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret:                     g.cur_fn_ret
 		cur_fn_ret_is_optional:         g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                g.cur_fn_ret_base
-		loop_label_depths:              map[string]int{}
-		loop_defer_starts:              []int{}
-		loop_label_defer_starts:        map[string]int{}
-		goto_label_c_names:             map[string]string{}
+		memo_usable_expr_types:         g.memo_usable_expr_types
+		cache_struct_fields:            g.cache_struct_fields
+		dedup_fn_decl_aliases:          g.dedup_fn_decl_aliases
+		prefix_param_scan:              g.prefix_param_scan
+		lean_parallel_worker_init:      g.lean_parallel_worker_init
+		lazy_param_abi_merge:           g.lazy_param_abi_merge
 		expected_expr_type:             g.expected_expr_type
 		expected_enum:                  g.expected_enum
 		needed_optional_types:          g.needed_optional_types.clone()
@@ -1745,9 +1935,13 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		// The const short-name index is read-only after its first build (the
 		// master queries it during the const precompute, before the forks);
 		// sharing it avoids a rebuild per worker.
-		const_short_index: g.const_short_index
-		mut_recv_facts:    &FnNameFactCache{}
-		generic_app_cache: &GenericAppCache{
+		const_short_index:               g.const_short_index
+		mut_recv_facts:                  &FnNameFactCache{}
+		local_typedef_shadow_facts:      &FnNameFactCache{}
+		local_global_shadow_facts:       &ContextNameFactCache{}
+		local_global_suffix_names:       g.local_global_suffix_names
+		local_global_suffix_names_ready: g.local_global_suffix_names_ready
+		generic_app_cache:               &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base
 			} else {
@@ -1755,6 +1949,21 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 			}
 		}
 	}
+	if !g.lean_parallel_worker_init {
+		w.ierror_stack_pointer_aliases = []map[string]bool{}
+		w.ierror_owned_pointer_by_owner = map[string]bool{}
+		w.local_pointer_storage_by_owner = map[string]bool{}
+		w.local_c_type_by_owner = map[string]string{}
+		w.local_raw_type_by_owner = map[string]string{}
+		w.local_shared_storage_by_owner = map[string]bool{}
+		w.local_fn_value_c_name_by_owner = map[string]string{}
+		w.default_value_stack = map[string]bool{}
+		w.loop_label_depths = map[string]int{}
+		w.loop_defer_starts = []int{}
+		w.loop_label_defer_starts = map[string]int{}
+		w.goto_label_c_names = map[string]string{}
+	}
+	return w
 }
 
 fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
@@ -1763,6 +1972,10 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 	fs := types.new_scope(g.tc.file_scope)
 	mut wtc := &types.TypeChecker{
 		a:                                     unsafe { g.tc.a }
+		fast_parse_recent:                     g.tc.fast_parse_recent
+		fast_type_text_refs:                   g.tc.fast_type_text_refs
+		fast_c_type_recent:                    g.tc.fast_c_type_recent
+		memo_call_info:                        g.tc.memo_call_info
 		fn_ret_types:                          g.tc.fn_ret_types
 		fn_param_types:                        g.tc.fn_param_types
 		c_fn_module_ret_types:                 g.tc.c_fn_module_ret_types
@@ -1816,6 +2029,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		scope_pool:                            []&types.Scope{}
 		has_builtins:                          g.tc.has_builtins
 		resolution_type_mode:                  g.tc.resolution_type_mode
+		trust_checked_expr_types:              g.tc.trust_checked_expr_types
 		cur_module:                            g.tc.cur_module
 		cur_file:                              g.tc.cur_file
 		errors:                                g.tc.errors.clone()
@@ -1968,6 +2182,8 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		g.output_error = w.output_error.clone()
 	}
 	string_id_remap := g.publish_worker_string_literals(w)
+	borrow_worker_segments := os.getenv('V3_NO_RETAIN_CGEN_RESULT_SCOPES') == ''
+		&& w.worker_scope != unsafe { nil } && !g.cache_split && string_id_remap.len == 0
 	user_c_symbols := if string_id_remap.len > 0 {
 		g.cache_user_c_string_symbols()
 	} else {
@@ -1996,6 +2212,11 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 			ww.rewrite_cache_string_symbols(segment)
 		} else if string_id_remap.len > 0 {
 			remap_scoped_worker_string_symbols(segment, string_id_remap, user_c_symbols)
+		} else if borrow_worker_segments {
+			// The immutable segment already lives in this worker's retained result
+			// arena. Its lifetime now extends through final file output, so moving
+			// the string view avoids cloning the complete generated function body.
+			segment
 		} else {
 			segment.clone()
 		}
@@ -2107,6 +2328,21 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 }
 
+// finish_parallel_worker_scope either releases a joined result arena
+// immediately (oracle fallback) or retains it until FlatGen has written every
+// borrowed function segment.
+fn (mut g FlatGen) finish_parallel_worker_scope(mut w FlatGen) {
+	if w.worker_scope == unsafe { nil } {
+		return
+	}
+	if os.getenv('V3_NO_RETAIN_CGEN_RESULT_SCOPES') == '' {
+		g.parallel_worker_scopes << w.worker_scope
+	} else {
+		cgen_worker_scope_free(w.worker_scope)
+	}
+	w.worker_scope = unsafe { nil }
+}
+
 fn (mut g FlatGen) replay_ordered_parallel_wrapper_defs(wrapper_defs []ParallelChunkWrapperDefs) {
 	for wrappers in wrapper_defs {
 		for def in wrappers.spawn {
@@ -2134,6 +2370,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
 		mut fs_worker := g.new_parallel_worker(0)
+		fs_worker.tc.verbose = g.tc.verbose
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		if fail.len > 0 {
 			g.a.worker_pool.run([

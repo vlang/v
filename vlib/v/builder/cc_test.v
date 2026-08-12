@@ -587,6 +587,33 @@ fn test_shared_tcc_compile_args_skip_bt25_after_late_compiler_resolution() {
 	assert !builder.get_compile_args().contains('-bt25')
 }
 
+fn test_macos_arm64_tcc_compile_args_skip_bt25() {
+	mut builder := new_test_builder([
+		'-os',
+		'macos',
+		'-arch',
+		'arm64',
+		'-cc',
+		'tcc',
+		hello_world_example(),
+	])
+	assert 'no_backtrace' in builder.pref.compile_defines_all
+	assert !builder.get_compile_args().contains('-bt25')
+}
+
+fn test_macos_amd64_tcc_compile_args_keep_bt25() {
+	mut builder := new_test_builder([
+		'-os',
+		'macos',
+		'-arch',
+		'amd64',
+		'-cc',
+		'tcc',
+		hello_world_example(),
+	])
+	assert builder.get_compile_args().contains('-bt25')
+}
+
 fn test_shared_build_module_keeps_shared_linker_flag() {
 	mut builder := new_test_builder(['-shared', hello_world_example()])
 	builder.pref.build_mode = .build_module

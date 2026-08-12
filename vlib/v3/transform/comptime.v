@@ -801,6 +801,9 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 		for i in 0 .. node.children_count {
 			param := t.a.child_node(&node, i)
 			if param.kind != .param {
+				if t.prefix_param_scan {
+					break
+				}
 				continue
 			}
 			if i == 0 && param.op == .dot {
@@ -1065,6 +1068,9 @@ fn comptime_method_receiver_type(raw string) string {
 
 fn comptime_method_receiver_name(raw string, module_name string) string {
 	name := comptime_method_receiver_base(raw)
+	if name.starts_with('main.') {
+		return name['main.'.len..]
+	}
 	if name.len == 0 || name.contains('.') || module_name.len == 0
 		|| module_name in ['main', 'builtin'] {
 		return name
@@ -1149,13 +1155,17 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		mut params := []ParamMeta{}
 		for i in 1 .. node.children_count {
 			param := t.a.child_node(&node, i)
-			if param.kind == .param {
-				params << ParamMeta{
-					name:        param.value
-					typ:         substitute_generic_type_text_with_params(param.typ, generic_args,
-						generic_params)
-					module_name: module_name
+			if param.kind != .param {
+				if t.prefix_param_scan {
+					break
 				}
+				continue
+			}
+			params << ParamMeta{
+				name:        param.value
+				typ:         substitute_generic_type_text_with_params(param.typ, generic_args,
+					generic_params)
+				module_name: module_name
 			}
 		}
 		return_type := substitute_generic_type_text_with_params(if node.typ.len > 0 {
@@ -2180,6 +2190,9 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	for i in 0 .. decl.node.children_count {
 		param := t.a.child_node(&decl.node, i)
 		if param.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
 			continue
 		}
 		arg_id := if is_receiver && param_idx == 0 {

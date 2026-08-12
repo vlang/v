@@ -80,6 +80,9 @@ fn test_pool_runs_persistent_batches_and_sync_fallbacks() {
 		assert stats.worker_run_ns > 0
 	}
 	pool.close()
+	$if !windows {
+		assert pool.stats().utilization_ppm > 0
+	}
 }
 
 fn test_pool_falls_back_for_every_failed_launch_index() {

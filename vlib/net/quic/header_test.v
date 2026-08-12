@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn test_long_header_initial_round_trip() {

@@ -1065,7 +1065,7 @@ fn get_max_header_len() int {
 }
 
 fn check_openssl_present() bool {
-	if github_job.ends_with('-windows') {
+	if github_job != '' && os.user_os() == 'windows' {
 		// TODO: investigate the https://github.com/vlang/v/actions/runs/18590919000/job/53005499130 failure in more details
 		return false
 	}

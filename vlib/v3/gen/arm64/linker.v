@@ -47,7 +47,7 @@ const cs_hashtype_sha256 = u8(2)
 const cs_hash_size = 32 // SHA256 = 32 bytes
 const cs_page_size_arm64 = 16384 // Code signing page size for ARM64 macOS
 const cs_page_shift_arm64 = 14 // log2(16384)
-const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
+const o_wronly_creat_trunc = $if linux { 0x241 } $else { 0x601 }
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB

@@ -3,11 +3,13 @@ module token
 // Pos represents pos data used by token.
 pub struct Pos {
 pub:
-	offset          int
-	end             int
-	id              int
-	reported_column int
+	offset int
+	end    int
+	id     int
+	meta   u16
 }
+
+const type_text_meta_flag = u16(0x8000)
 
 // new_pos creates a source position from a stable file id and byte offset.
 pub fn new_pos(file_id int, offset int) Pos {
@@ -29,10 +31,44 @@ pub fn new_span(file_id int, start int, end int) Pos {
 }
 
 // with_reported_column overrides the one-based column shown in a diagnostic header.
+// Columns that do not fit in the compact metadata are ignored so diagnostics can
+// fall back to the source position instead of aborting compilation.
 pub fn (p Pos) with_reported_column(column int) Pos {
+	if column < 0 || column >= int(type_text_meta_flag) {
+		return p
+	}
 	return Pos{
 		...p
-		reported_column: column
+		meta: u16(column)
+	}
+}
+
+// reported_column returns the optional diagnostic column override. The high
+// meta bit belongs to Node's canonical type-text id and is invisible to
+// ordinary source-position consumers.
+@[inline]
+pub fn (p Pos) reported_column() int {
+	return if p.meta & type_text_meta_flag == 0 { int(p.meta) } else { 0 }
+}
+
+// type_text_id returns the compact Node annotation identity stored in unused
+// position metadata. Source positions carrying a diagnostic column do not
+// carry a type identity.
+@[inline]
+pub fn (p Pos) type_text_id() u16 {
+	return if p.meta & type_text_meta_flag != 0 { p.meta & ~type_text_meta_flag } else { 0 }
+}
+
+// with_type_text_id stores a compact identity when no diagnostic column is
+// present. Larger ids use the existing string-keyed type cache.
+@[inline]
+pub fn (p Pos) with_type_text_id(id u16) Pos {
+	if p.reported_column() > 0 {
+		return p
+	}
+	return Pos{
+		...p
+		meta: if id > 0 && id < type_text_meta_flag { type_text_meta_flag | id } else { 0 }
 	}
 }
 

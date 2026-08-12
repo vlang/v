@@ -1711,7 +1711,7 @@ fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) 
 	// pos2 := 	g.out_parallel[g.out_idx].len
 	g.expr_with_cast(expr, typ, exp)
 	// g.out_parallel[g.out_idx].cut_to(pos2)
-	return g.out.cut_to(pos).trim_space()
+	return g.normalize_extracted_stmt(g.out.cut_to(pos))
 }
 
 // Surround a potentially multi-statement expression safely with `prepend` and `append`.
@@ -4320,7 +4320,16 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						g.write('${tmp_var} = ')
 					}
 				}
-				g.stmt(stmt)
+				if stmt is ast.ExprStmt {
+					// This final expression supplies the enclosing if/match temporary even when
+					// its AST node was not marked as an expression. Keep propagated call results
+					// alive so nested match branches emit the unwrapped value after their prelude.
+					mut value_stmt := stmt
+					value_stmt.is_expr = true
+					g.stmt(value_stmt)
+				} else {
+					g.stmt(stmt)
+				}
 				// Reset outer_tmp_var after processing
 				if is_if_expr_with_tmp {
 					g.outer_tmp_var = ''
@@ -12907,10 +12916,19 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					field_deps << dep
 				}
 				for field in sym.info.fields {
+					fsym := g.table.sym(field.typ)
 					if field.typ.is_ptr() {
+						// Pointer fields do not normally require a complete pointee type. An
+						// alias to a fixed array is a typedef, however, so C must see that
+						// alias declaration before it can name a pointer to it.
+						if fsym.info is ast.Alias && g.alias_is_fixed_array_of_non_builtin(fsym) {
+							dep := fsym.scoped_name()
+							if dep in type_names && dep !in field_deps {
+								field_deps << dep
+							}
+						}
 						continue
 					}
-					fsym := g.table.sym(field.typ)
 					dep := fsym.name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps {

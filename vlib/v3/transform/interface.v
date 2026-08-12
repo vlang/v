@@ -27,6 +27,12 @@ fn (t &Transformer) interface_cast_matches_target(cast_type string, iface_name s
 }
 
 fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name string, target_type string) flat.NodeId {
+	if t.a.nodes[int(expr)].kind == .struct_init {
+		addr := t.make_prefix(.amp, expr)
+		cast := t.make_cast(target_type, addr, target_type)
+		t.set_node_typ(int(cast), target_type)
+		return cast
+	}
 	tmp_name := t.new_temp('iface_box')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, iface_name)
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))

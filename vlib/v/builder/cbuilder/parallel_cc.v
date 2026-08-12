@@ -158,10 +158,10 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
-	pp.work_on_pointers(unsafe { cmds.pointers() })
+	// PoolProcessor stores erased item pointers internally, so avoid a generic wrapper here.
+	unsafe { pp.work_on_pointers(cmds.pointers()) }
 	for result_ptr in pp.get_result_pointers() {
-		x := unsafe { &os.Result(result_ptr) }
-		failed += if x.exit_code == 0 { 0 } else { 1 }
+		failed += if isnil(result_ptr) { 0 } else { 1 }
 	}
 	eprint_time(sw,
 		'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
@@ -201,13 +201,16 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 }
 
 fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
-	cmd := unsafe { *(&string(p.get_item_ptr(idx))) }
+	cmd := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)
-	return voidptr(&os.Result{
-		...res
-	})
+	// The caller only needs success/failure. Returning a sentinel avoids keeping
+	// pointers to worker-local os.Result values after the workers have exited.
+	if res.exit_code == 0 {
+		return pool.no_result
+	}
+	return unsafe { voidptr(1) }
 }
 
 fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {

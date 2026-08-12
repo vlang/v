@@ -4409,6 +4409,58 @@ fn test_statement_array_append_consumes_rhs_expression() {
 	assert out == '35'
 }
 
+fn test_user_defined_scalar_map_method_append_pushes_one() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'user_defined_scalar_map_append', 'type Bar = int
+
+fn (b Bar) map() int {
+	return b + 1
+}
+
+fn main() {
+	mut values := []int{}
+	values << Bar(0).map()
+	println(int_str(values.len))
+	println(int_str(values[0]))
+}
+')
+	assert out == '1\n1'
+}
+
+fn test_builtin_map_nested_array_append_pushes_one() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'builtin_map_nested_array_append', 'fn main() {
+	mut values := [][]int{}
+	values << [1, 2].map(it)
+	println(int_str(values.len))
+	println(int_str(values[0][1]))
+}
+')
+	assert out == '1\n2'
+}
+
+fn test_array_valued_sum_variant_append_pushes_one() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_valued_sum_variant_append', 'type Value = int | []u8 | [2]u8
+
+fn main() {
+	mut values := []Value{}
+	bytes := [u8(1), 2]
+	values << bytes
+	fixed := [u8(3), 4]!
+	values << fixed
+	println(int_str(values.len))
+	inner := values[0] as []u8
+	println(int_str(inner.len))
+	println(int_str(int(inner[1])))
+	inner_fixed := values[1] as [2]u8
+	println(int_str(int(inner_fixed[0])))
+	println(int_str(int(inner_fixed[1])))
+}
+')
+	assert out == '2\n2\n2\n3\n4'
+}
+
 fn test_optional_append_to_map_value_copies_back_absent_entry() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_append_to_map_value_copyback', 'fn next_value() ?int {
@@ -5360,4 +5412,46 @@ fn main() {
 }
 ')
 	assert out == 'integer'
+}
+
+fn test_building_v_keeps_valid_match_and_filtered_array_expression_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'building_v_valid_expression_types',
+		'-building-v -d valid_exprs', 'struct NumberInfo {
+	values []int
+}
+
+struct NameInfo {
+	names []string
+}
+
+type Info = NameInfo | NumberInfo
+
+fn item_count(info Info) int {
+	return match info {
+		NumberInfo { info.values.len }
+		NameInfo { info.names.len }
+	}
+}
+
+fn filtered_path_count() int {
+	$if valid_exprs ? {
+		first := "one"
+		second := ""
+		if first.len > 0 {
+			paths := [first, second].filter(it.len != 0)
+			return paths.len
+		}
+	}
+	return 0
+}
+
+fn main() {
+	println(item_count(Info(NumberInfo{
+		values: [1, 2]
+	})))
+	println(filtered_path_count())
+}
+')
+	assert out == '2\n1'
 }

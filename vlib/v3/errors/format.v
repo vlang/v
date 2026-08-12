@@ -76,8 +76,8 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 	position := file.position(pos)
 	path := relative_error_path(file.name)
 	mut result := strings.new_builder(message.len + 256)
-	reported_column := if pos.reported_column > 0 {
-		pos.reported_column
+	reported_column := if pos.reported_column() > 0 {
+		pos.reported_column()
 	} else {
 		position.column
 	}

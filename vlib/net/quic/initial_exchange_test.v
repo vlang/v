@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !sanitize-memory-clang
 module quic
 
 import crypto.ecdsa
@@ -17,6 +18,10 @@ fn test_full_initial_round_trip_over_fake_transport() {
 	// --- Build a real ClientHello (Phase 2) ---
 	priv := ecdsa.PrivateKey.new()!
 	pub_key := priv.public_key()!
+	defer {
+		pub_key.free()
+		priv.free()
+	}
 	ecdhe_public_key := pub_key.uncompressed_bytes()!
 	client_hello_random := rand.bytes(32)!
 	dcid := rand.bytes(8)! // client's original, self-chosen DCID
@@ -115,9 +120,10 @@ fn test_full_initial_round_trip_over_fake_transport() {
 	// second, ordinary frame rather than being invisible to this parse.
 	assert frames.len == 2
 	mut reassembler := new_crypto_stream_reassembler()
-	match frames[0] {
+	frame0 := frames[0]
+	match frame0 {
 		CryptoFrame {
-			reassembler.add(frames[0].offset, frames[0].data)!
+			reassembler.add(frame0.offset, frame0.data)!
 		}
 		else {
 			assert false, 'expected the first frame to be a CryptoFrame'
@@ -146,6 +152,10 @@ fn test_full_initial_round_trip_over_fake_transport() {
 fn test_full_initial_round_trip_rejects_tampered_datagram() {
 	priv := ecdsa.PrivateKey.new()!
 	pub_key := priv.public_key()!
+	defer {
+		pub_key.free()
+		priv.free()
+	}
 	ecdhe_public_key := pub_key.uncompressed_bytes()!
 	dcid := rand.bytes(8)!
 	scid := rand.bytes(8)!

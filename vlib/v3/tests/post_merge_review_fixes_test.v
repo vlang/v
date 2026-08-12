@@ -2421,6 +2421,11 @@ fn main() {
 		item.bump()
 		bump_item(mut item)
 	}
+	mut first := &Item{n: 3}
+	mut pointer_items := [first]
+	for mut pointer_item in pointer_items {
+		pointer_item.bump()
+	}
 	{
 		mut item := Counter{}
 		inc_counter(mut item)
@@ -2432,11 +2437,12 @@ fn main() {
 	c.inc()
 	println(int_str(items[0].n))
 	println(int_str(items[1].n))
+	println(int_str(first.n))
 	println(int_str(c.n))
 }
 '
 	out := run_good(v3_bin, 'for_mut_item_receiver_run', item_src)
-	assert out == '3\n4\n2'
+	assert out == '3\n4\n4\n2'
 	item_c := gen_c(v3_bin, 'for_mut_item_receiver_c', item_src)
 	item_main := c_fn_body(item_c, 'int main(')
 	assert item_main.len > 0, item_c
@@ -2445,6 +2451,9 @@ fn main() {
 	assert !item_main.contains('__bump(&item);'), item_main
 	assert item_main.contains('bump_item(item);'), item_main
 	assert !item_main.contains('bump_item(&item);'), item_main
+	assert item_main.contains('Item** pointer_item ='), item_main
+	assert item_main.contains('__bump(*pointer_item);'), item_main
+	assert !item_main.contains('__bump(pointer_item);'), item_main
 	assert item_main.contains('inc_counter(&item);'), item_main
 	assert !item_main.contains('inc_counter(item);'), item_main
 	assert item_main.contains('inc_counter(&c);'), item_main
@@ -2475,6 +2484,48 @@ fn main() {
 	assert string_main.contains('string* s ='), string_main
 	assert string_main.contains('string__free(s);'), string_main
 	assert !string_main.contains('string__free(&s);'), string_main
+}
+
+fn test_assert_capture_preserves_inferred_wide_const_type() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'assert_capture_inferred_wide_const_type', 'type Duration = i64
+
+const nanosecond = Duration(1)
+const microsecond = 1000 * nanosecond
+const millisecond = 1000 * microsecond
+const timeout = 10000 * millisecond
+
+struct Config {
+	value Duration = timeout
+}
+
+fn main() {
+	config := Config{}
+	assert config.value == timeout
+	println(config.value.str())
+}
+')
+	assert out == '10000000000'
+}
+
+fn test_c_pointer_receiver_str_is_used_for_reference_field() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'c_pointer_receiver_str_for_reference_field', "struct C.Opaque {}
+
+struct Holder {
+	ptr &C.Opaque
+}
+
+fn (p &C.Opaque) str() string {
+	return 'C.Opaque(0x\${voidptr(p)})'
+}
+
+fn main() {
+	holder := unsafe { Holder{&C.Opaque(123)} }
+	println(holder.str().contains('&C.Opaque(0x7b)'))
+}
+")
+	assert out == 'true'
 }
 
 fn test_channel_alias_close_method_wins_over_builtin() {
@@ -2949,6 +3000,28 @@ fn main() {
 }
 ')
 	assert out == 'true\n9007199254740993\ntrue\ntrue\n0\n7\n7\n7\n-9223372036854775808\n18446744073709551615\n9007199254740993\n9007199254740993'
+}
+
+fn test_json_decode_fast_path_uses_renamed_fields_recursively() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_renamed_fields', 'import json
+
+struct Item {
+	id int @[json: \'itemId\']
+}
+
+struct Payload {
+	group_name string @[json: \'groupName\']
+	items      []Item  @[json: \'testItems\']
+}
+
+fn main() {
+	payload := json.decode(Payload, "{\\"groupName\\":\\"A\\",\\"testItems\\":[{\\"itemId\\":7}]}")!
+	println(payload.group_name)
+	println(int_str(payload.items[0].id))
+}
+')
+	assert out == 'A\n7'
 }
 
 fn test_json_decode_aligned_pointer_fields_use_aligned_memdup() {
@@ -4353,8 +4426,10 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
 	c_source := gen_c(v3_bin, 'amp_interface_cast_heap_copy', source)
-	assert c_source.contains('._object = (Box*)(memdup(&b, sizeof(Box)))')
-	assert c_source.contains('memdup(&__iface_box_')
+	make_body := c_fn_body(c_source, '\nReader* make(void) {')
+	assert make_body.contains('._object = (Box*)(memdup(&b, sizeof(Box)))')
+	assert make_body.contains('memdup(&(Reader){')
+	assert !make_body.contains('__iface_box_')
 	out := run_good(v3_bin, 'amp_interface_cast_heap_copy_run', source)
 	assert out == '5'
 }

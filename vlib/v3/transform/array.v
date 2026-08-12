@@ -1162,6 +1162,7 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 	return none
 }
 
+@[direct_array_access]
 fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 {
 		return none
@@ -1192,10 +1193,12 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	rhs_is_sum_variant := t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
-	if push_many && rhs_is_sum_variant {
-		push_many = false
+	if !push_many && t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
+		push_many = true
+		rhs_type = array_type
 	}
+	rhs_is_sum_variant := !push_many
+		&& t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
 	if rhs_node.kind == .array_literal && t.array_append_literal_should_push_many(rhs_id, elem_type) {
 		// `[]scalar << [a, b, c]` always appends the literal's elements. Retype the
 		// literal from the destination so a mis-inferred element type (e.g. `[]int`
@@ -1392,10 +1395,12 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	rhs_is_sum_variant := t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
-	if push_many && rhs_is_sum_variant {
-		push_many = false
+	if !push_many && t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
+		push_many = true
+		rhs_type = array_type
 	}
+	rhs_is_sum_variant := !push_many
+		&& t.array_append_rhs_is_sum_variant_value(rhs_id, raw_rhs_type, elem_type)
 	if rhs_node.kind == .array_literal && t.array_append_literal_should_push_many(rhs_id, elem_type) {
 		push_many = true
 		t.set_node_typ(int(rhs_id), array_type)
@@ -1739,6 +1744,9 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 	if !t.is_sum_type_name(elem_type) {
 		return false
 	}
+	if t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
+		return false
+	}
 	mut clean_rhs := rhs_type.trim_space()
 	if clean_rhs.starts_with('!') || clean_rhs.starts_with('?') {
 		clean_rhs = clean_rhs[1..].trim_space()
@@ -1758,6 +1766,77 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 		return true
 	}
 	return false
+}
+
+fn (t &Transformer) array_append_rhs_is_builtin_map_call(rhs_id flat.NodeId) bool {
+	if isnil(t.tc) || int(rhs_id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(rhs_id)]
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value != 'map' || callee.children_count == 0 {
+		return false
+	}
+	if resolved := t.tc.resolved_call_name(rhs_id) {
+		if resolved != 'array.map' {
+			return false
+		}
+	}
+	// Cloned comptime/generic calls can lose their call-id annotation. In that case,
+	// require both the preserved receiver type and the inferred return type to be arrays.
+	receiver_id := t.a.child(callee, 0)
+	receiver_type := t.tc.resolve_type(receiver_id)
+	mut receiver_is_array := array_append_semantic_type_is_array(receiver_type)
+	if !receiver_is_array {
+		original_receiver_type := t.trim_pointer_type(t.original_expr_type(receiver_id))
+		receiver_is_array = original_receiver_type.starts_with('[]')
+			|| t.is_fixed_array_type(original_receiver_type)
+	}
+	if !receiver_is_array {
+		return false
+	}
+	rhs_type := t.tc.resolve_type(rhs_id)
+	if array_append_semantic_type_is_array(rhs_type) {
+		return true
+	}
+	if resolved_rhs_type := t.array_map_call_type_name(rhs_id, node) {
+		return resolved_rhs_type.starts_with('[]')
+	}
+	return false
+}
+
+fn (t &Transformer) array_append_rhs_builtin_map_elem_matches(rhs_id flat.NodeId, elem_type string) bool {
+	if !t.array_append_rhs_is_builtin_map_call(rhs_id) {
+		return false
+	}
+	node := t.a.nodes[int(rhs_id)]
+	if result_type := t.array_map_call_type_name(rhs_id, node) {
+		clean := t.normalize_type_alias(result_type)
+		if clean.starts_with('[]') {
+			return t.array_append_elem_types_match(clean[2..], elem_type)
+		}
+	}
+	if !isnil(t.tc) {
+		resolved := types.unwrap_all_pointers(t.tc.resolve_type(rhs_id))
+		if resolved is types.Array {
+			return t.array_append_elem_types_match(resolved.elem_type.name(), elem_type)
+		}
+		if resolved is types.ArrayFixed {
+			return t.array_append_elem_types_match(resolved.elem_type.name(), elem_type)
+		}
+	}
+	return false
+}
+
+fn array_append_semantic_type_is_array(typ types.Type) bool {
+	clean := types.unwrap_all_pointers(typ)
+	if clean is types.Alias {
+		return array_append_semantic_type_is_array(clean.base_type)
+	}
+	return clean is types.Array || clean is types.ArrayFixed
 }
 
 fn (t &Transformer) array_append_rhs_variant_candidate(rhs_id flat.NodeId, rhs_type string) string {

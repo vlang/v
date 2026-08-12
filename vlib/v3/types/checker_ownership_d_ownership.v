@@ -1042,6 +1042,13 @@ fn (mut tc TypeChecker) ownership_record_scope_drops(frame OwnershipScopeFrame) 
 	if int(frame.scope_id) < 0 || frame.cur_fn.len == 0 {
 		return
 	}
+	scope_node := tc.a.node(frame.scope_id)
+	if scope_node.kind == .block && scope_node.value == 'unsafe'
+		&& !tc.is_statement_node(frame.scope_id) {
+		// Unsafe expression blocks are emitted inline and do not consume a codegen
+		// scope-drop slot. Counting them shifts every later lexical scope.
+		return
+	}
 	mut st := tc.ownership_state()
 	index := st.drop_scope_counts[frame.cur_fn] or { 0 }
 	st.drop_scope_counts[frame.cur_fn] = index + 1
@@ -8842,7 +8849,12 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 		name := if tc.ownership_method_value_clones_receiver(expr_id) {
 			''
 		} else {
-			tc.ownership_expr_ident_name(expr_id)
+			direct_name := tc.ownership_expr_ident_name(expr_id)
+			if direct_name.len > 0 {
+				direct_name
+			} else {
+				tc.ownership_borrowed_name(expr_id)
+			}
 		}
 		if fn_value := tc.ownership_fn_value_name_from_expr(expr_id) {
 			tc.ownership_note_fn_return_fn_value(st.cur_fn, fn_value)
@@ -8868,15 +8880,33 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 		}
 		if name.len > 0 {
 			tc.ownership_reject_global_move(name, expr_id, st.cur_fn, true)
-			for slot_idx in tc.ownership_return_slot_indices(expr_id, i, '') {
-				tc.ownership_mark_return_owned_descendants(st.cur_fn, slot_idx, name, id)
-			}
+			return_slots := tc.ownership_return_slot_indices(expr_id, i, '')
 			if name in st.owned_vars {
-				st.mark_fn_return_owned(st.cur_fn)
-				for slot_idx in tc.ownership_return_slot_indices(expr_id, i, '') {
-					tc.ownership_add_fn_return_slot(st.cur_fn, slot_idx)
+				// Moving descendants first makes the aggregate overlap with an already moved
+				// value. Transfer the base once, then clear its descendants while preserving
+				// their return metadata for callers.
+				descendants := tc.ownership_owned_descendant_names(name)
+				if tc.ownership_move_var_result(name, st.cur_fn, id, true, st.cur_fn, false) {
+					st.mark_fn_return_owned(st.cur_fn)
+					for slot_idx in return_slots {
+						tc.ownership_add_fn_return_slot(st.cur_fn, slot_idx)
+					}
+					for source_name in descendants {
+						suffix := source_name[name.len..]
+						type_name := tc.ownership_type_name_for_var(source_name)
+						for slot_idx in return_slots {
+							tc.ownership_add_fn_return_descendant(st.cur_fn, slot_idx, suffix,
+								type_name)
+						}
+						st.owned_vars.delete(source_name)
+						st.owned_var_types.delete(source_name)
+						st.moved_vars.delete(source_name)
+					}
 				}
-				tc.ownership_move_var(name, st.cur_fn, id, true, st.cur_fn, false)
+			} else {
+				for slot_idx in return_slots {
+					tc.ownership_mark_return_owned_descendants(st.cur_fn, slot_idx, name, id)
+				}
 			}
 		}
 		if name.len > 0 && name !in st.owned_vars {

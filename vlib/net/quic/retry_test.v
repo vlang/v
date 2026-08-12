@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn build_test_retry_packet(dcid []u8, scid []u8, token []u8, original_dcid []u8) ![]u8 {
