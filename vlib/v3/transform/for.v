@@ -936,6 +936,24 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id
+	} else if t.expr_can_take_address(container_id) {
+		mut lvalue := t.transform_lvalue(container_id)
+		if !t.is_stable_expr_for_reuse(lvalue) {
+			lvalue_type := if t.node_type(lvalue).len > 0 && t.node_type(lvalue) != 'unknown' {
+				t.node_type(lvalue)
+			} else if source_container_type.len > 0 && source_container_type != 'unknown' {
+				source_container_type
+			} else {
+				iter_type
+			}
+			lvalue_ptr := t.make_prefix(.amp, lvalue)
+			t.set_node_typ(int(lvalue_ptr), '&${lvalue_type}')
+			stable_ptr := t.stable_transformed_expr_for_reuse(lvalue_ptr, '&${lvalue_type}',
+				'for_container')
+			lvalue = t.make_prefix(.mul, stable_ptr)
+			t.set_node_typ(int(lvalue), lvalue_type)
+		}
+		lvalue
 	} else {
 		t.stable_expr_for_reuse(container_id)
 	}

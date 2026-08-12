@@ -15591,7 +15591,7 @@ fn (tc &TypeChecker) branch_explicit_comma_tail_types(id flat.NodeId) ?[]Type {
 	}
 	node := tc.a.node(id)
 	if node.kind == .block && node.value == 'comma_exprs' {
-		mut types := []Type{cap: node.children_count}
+		mut tail_types := []Type{cap: node.children_count}
 		for i in 0 .. node.children_count {
 			stmt_id := tc.a.child(node, i)
 			if !tc.valid_node_id(stmt_id) {
@@ -15606,9 +15606,9 @@ fn (tc &TypeChecker) branch_explicit_comma_tail_types(id flat.NodeId) ?[]Type {
 			if typ is Unknown || !type_has_runtime_value(typ) {
 				return none
 			}
-			types << typ
+			tail_types << typ
 		}
-		return if types.len > 1 { types } else { none }
+		return if tail_types.len > 1 { tail_types } else { none }
 	}
 	if node.kind !in [.block, .match_branch] || node.children_count == 0 {
 		return none

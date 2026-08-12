@@ -27,6 +27,19 @@ fn mut_param_reassign_run_good(v3_bin string, name string, source string) string
 	return run.output.trim_space()
 }
 
+fn mut_param_reassign_run_good_with_c(v3_bin string, name string, source string) (string, string) {
+	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	os.write_file(src, source) or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -keepc -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	c_source := os.read_file('${bin}.c') or { panic(err) }
+	return run.output.trim_space(), c_source
+}
+
 fn mut_param_reassign_run_bad(v3_bin string, name string, source string, expected string) {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -366,6 +379,89 @@ fn main() {
 }
 ',
 		'expected `&&Item`')
+}
+
+fn test_mut_pointer_param_signature_and_expression_conversions() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin,
+		'mut_pointer_param_signature_and_expression_conversions', 'interface Reader {
+	read() int
+}
+
+struct Item {
+	value int
+}
+
+fn (item &Item) read() int {
+	return item.value
+}
+
+fn consume_reader(reader Reader) int {
+	return reader.read()
+}
+
+fn consume_pointer(item &Item) int {
+	return item.value
+}
+
+fn consume_optional(item ?&Item) int {
+	if value := item {
+		return value.value
+	}
+	return 0
+}
+
+fn read_field(mut item &Item) int {
+	return item.value
+}
+
+fn read_deref(mut item &Item) int {
+	return (*item).value
+}
+
+fn copy_deref(mut item &Item) Item {
+	return *item
+}
+
+fn assign_deref(mut item &Item) Item {
+	mut copied_value := Item{}
+	copied_value = *item
+	return copied_value
+}
+
+fn increment_deref(mut value &int) int {
+	(*value)++
+	return *value
+}
+
+fn read_method(mut item &Item) int {
+	return item.read()
+}
+
+fn forward(mut item &Item) int {
+	copied := copy_deref(mut item)
+	assigned := assign_deref(mut item)
+	mut number_value := 5
+	mut number := &number_value
+	incremented := increment_deref(mut number)
+	return read_field(mut item) + read_deref(mut item) + read_method(mut item) + consume_reader(item) + consume_pointer(item) + consume_optional(item) + copied.value + assigned.value + incremented
+}
+
+fn main() {
+	mut value := Item{
+		value: 7
+	}
+	mut item := &value
+	println(int_str(forward(mut item)))
+}
+')
+	assert out == '62'
+	assert c_source.contains('int read_field(Item** item) {'), 'missing Item** signature'
+	assert !c_source.contains('int read_field(Item*** item) {'), 'found over-indirected Item*** signature'
+	assert c_source.contains('return ((*item))->value;'), 'missing single slot dereference'
+	assert c_source.contains('return (*(*item));'), 'missing source dereference after slot dereference'
+	assert c_source.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'
+	assert c_source.contains('((*(*value)))++;'), 'missing standalone postfix dereference'
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {

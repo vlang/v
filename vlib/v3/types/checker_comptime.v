@@ -14851,15 +14851,15 @@ fn (tc &TypeChecker) multi_expr_branch_tail_type_groups(branch_id flat.NodeId, c
 	if groups := tc.tuple_tail_value_groups(branch_id, count, explicit_comma_tail) {
 		mut result := [][]Type{cap: groups.len}
 		for group in groups {
-			mut types := []Type{cap: group.len}
+			mut tail_types := []Type{cap: group.len}
 			for value_id in group {
 				typ := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
 				if !type_has_runtime_value(typ) {
 					return none
 				}
-				types << typ
+				tail_types << typ
 			}
-			result << types
+			result << tail_types
 		}
 		return result
 	}

@@ -1764,7 +1764,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				g.write(')')
 			} else if explicit_mut_pointer_param {
 				g.write('(*')
-				g.gen_expr(base_id)
+				g.gen_mut_pointer_slot_expr(base_id)
 				g.write(')')
 			} else {
 				g.write('(')

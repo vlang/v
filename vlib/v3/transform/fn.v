@@ -7674,7 +7674,15 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 		|| t.is_fixed_array_type(base_type) {
 		return none
 	}
-	if isnil(t.tc) || !t.tc.named_type_implements_marker(base_type, 'IClone') {
+	parsed_base_type := if isnil(t.tc) {
+		types.Type(types.Unknown{})
+	} else {
+		t.tc.parse_type(base_type)
+	}
+	is_default_sum_clone := t.is_sum_type_name(base_type) && !isnil(t.tc)
+		&& t.tc.ownership_default_clone_missing_method(parsed_base_type) == none
+	if isnil(t.tc) || (!t.tc.named_type_implements_marker(base_type, 'IClone')
+		&& !is_default_sum_clone) {
 		return none
 	}
 	// A concrete generic receiver can have a handwritten clone() on its open
@@ -7693,7 +7701,7 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	// The checker reports the concrete ownership-bearing field that has no safe clone.
 	// Do not turn the rejected default clone into a shallow aggregate copy while
 	// transforming the invalid program.
-	if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(base_type)) {
+	if _ := t.tc.ownership_default_clone_missing_method(parsed_base_type) {
 		return t.make_empty()
 	}
 	mut receiver := t.transform_expr(base_id)
@@ -7716,20 +7724,25 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	if clean.starts_with('?') || clean.starts_with('!') {
 		inner := t.optional_base_type(t.qualify_optional_type(clean))
 		inner_needs_work := t.compiler_default_clone_type_needs_work(inner)
-		tmp_name := t.new_temp('derived_clone_opt')
-		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
-		tmp := t.make_ident(tmp_name)
-		mut body := []flat.NodeId{}
-		if inner_needs_work {
-			source_value := t.make_selector(tmp, 'value', inner)
-			pending_start := t.pending_stmts.len
-			cloned_value := t.make_compiler_default_clone_value(source_value, inner, true)
-			body = t.pending_stmts[pending_start..].clone()
-			t.pending_stmts = t.pending_stmts[..pending_start].clone()
-			body << t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner),
-				cloned_value)
+		source_is_owned_temporary := !t.expr_can_take_address(source)
+		stable_source := t.stable_transformed_expr_for_reuse(source, clean,
+			'derived_clone_opt_source')
+		out_name := t.new_temp('derived_clone_opt')
+		t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_optional_none(clean), clean)
+		pending_start := t.pending_stmts.len
+		cloned_value := if inner_needs_work {
+			t.make_compiler_default_clone_value(t.make_selector(stable_source, 'value', inner),
+				inner, true)
+		} else if inner.len > 0 && inner != 'void' {
+			t.make_selector(stable_source, 'value', inner)
+		} else {
+			t.make_empty()
 		}
-		source_err := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
+		mut body := t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		body << t.make_assign_without_ownership_drop(t.make_ident(out_name), t.make_optional_some(cloned_value,
+			clean))
+		source_err := t.make_selector(stable_source, 'err', 'IError')
 		t.mark_fn_used('string__clone')
 		if !isnil(t.tc) {
 			for concrete in t.tc.ierror_impl_names() {
@@ -7739,11 +7752,15 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			}
 		}
 		cloned_err := t.make_call_typed('__v3_clone_owned_ierror', arr1(source_err), 'IError')
-		else_branch := t.make_block(arr1(t.make_assign(t.make_selector(t.make_ident(tmp_name),
-			'err', 'IError'), cloned_err)))
-		t.pending_stmts << t.make_if(t.make_selector(tmp, 'ok', 'bool'), t.make_block(body),
-			else_branch)
-		return t.make_ident(tmp_name)
+		else_branch := t.make_block(arr1(t.make_assign_without_ownership_drop(t.make_ident(out_name), t.make_optional_none_with_err(clean,
+			cloned_err))))
+		t.pending_stmts << t.make_if(t.make_selector(stable_source, 'ok', 'bool'),
+			t.make_block(body), else_branch)
+		if source_is_owned_temporary {
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+				arr1(stable_source), 'void'))
+		}
+		return t.make_ident(out_name)
 	}
 	if clean == 'string' {
 		t.mark_fn_used('string__clone')
@@ -7784,6 +7801,16 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(clean)) != none) {
 		return source
 	}
+	if clean in t.default_clone_expansion_stack {
+		return t.request_default_clone_helper(source, clean)
+	}
+	t.default_clone_expansion_stack << clean
+	defer {
+		t.default_clone_expansion_stack.delete_last()
+	}
+	if t.is_sum_type_name(clean) {
+		return t.make_compiler_default_sum_clone_value(source, clean)
+	}
 	info := t.lookup_struct_info(clean) or { return source }
 	mut owning_fields := []FieldInfo{}
 	for field in info.fields {
@@ -7812,10 +7839,186 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			t.pending_stmts << t.make_expr_stmt(drop_call)
 			cloned_field = t.make_ident(cloned_name)
 		}
-		t.pending_stmts << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.name,
-			field_type), cloned_field)
+		t.pending_stmts << t.make_assign_without_ownership_drop(t.make_selector(t.make_ident(tmp_name),
+			field.name, field_type), cloned_field)
 	}
 	return t.make_ident(tmp_name)
+}
+
+// make_compiler_default_sum_clone_value rebuilds the active variant so its boxed
+// payload is independent from the source sum value.
+fn (mut t Transformer) make_compiler_default_sum_clone_value(source flat.NodeId, sum_type string) flat.NodeId {
+	resolved_sum := t.resolve_sum_name(sum_type)
+	variants := t.sum_types[resolved_sum] or { return source }
+	if variants.len == 0 {
+		return source
+	}
+	source_is_owned_temporary := !t.expr_can_take_address(source)
+	stable_source := t.stable_transformed_expr_for_reuse(source, sum_type,
+		'derived_clone_sum_source')
+	out_name := t.new_temp('derived_clone_sum')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, stable_source, sum_type)
+	for variant in variants {
+		qvariant := t.resolve_variant(resolved_sum, variant)
+		if qvariant.len == 0 {
+			continue
+		}
+		use_ptr := t.variant_references_sum(qvariant, resolved_sum)
+			&& !t.sum_variant_is_direct_pointer(qvariant)
+		field_type := if use_ptr { '&${qvariant}' } else { qvariant }
+		mut payload :=
+			t.make_selector_op(stable_source, t.sum_field_name(qvariant), field_type, .dot)
+		if use_ptr {
+			payload = t.make_prefix(.mul, payload)
+			t.set_node_typ(int(payload), qvariant)
+		}
+		pending_start := t.pending_stmts.len
+		cloned_payload := t.make_compiler_default_clone_value(payload, qvariant, true)
+		mut body := t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		wrapped := t.make_sum_literal(resolved_sum, qvariant, cloned_payload)
+		body << t.make_assign_without_ownership_drop(t.make_ident(out_name), wrapped)
+		cond := t.make_sum_is_check(stable_source, sum_type, resolved_sum, qvariant)
+		t.pending_stmts << t.make_if(cond, t.make_block(body), t.make_empty())
+	}
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), sum_type)
+	return result
+}
+
+fn default_clone_helper_name(typ string) string {
+	return '__v3_default_clone_${c_name(typ)}'
+}
+
+fn (mut t Transformer) request_default_clone_helper(source flat.NodeId, typ string) flat.NodeId {
+	helper := default_clone_helper_name(typ)
+	if typ !in t.default_clone_types {
+		t.default_clone_types[typ] = DefaultCloneRequest{
+			module: t.cur_module
+			file:   t.cur_file
+		}
+	}
+	t.mark_fn_used_name(helper)
+	address := t.runtime_addr(source, typ)
+	argument := t.make_cast('voidptr', address, 'voidptr')
+	return t.make_call_typed(helper, arr1(argument), typ)
+}
+
+// synthesize_default_clone_helpers drains recursive compiler-provided IClone
+// requests after worker results have been merged. Building a helper can expose
+// another recursive aggregate, so requests are processed as a worklist.
+fn (mut t Transformer) synthesize_default_clone_helpers() []string {
+	old_module := t.cur_module
+	old_file := t.cur_file
+	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
+	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	was_log_active := t.used_fns_log_active
+	log_start := t.used_fns_log.len
+	t.used_fns_log_active = true
+	for {
+		mut pending := []string{}
+		for name, _ in t.default_clone_types {
+			if name in t.default_clone_synthesized {
+				continue
+			}
+			if default_clone_helper_name(name) in t.fn_ret_types {
+				t.default_clone_synthesized[name] = true
+				continue
+			}
+			pending << name
+		}
+		if pending.len == 0 {
+			break
+		}
+		pending.sort()
+		for name in pending {
+			t.default_clone_synthesized[name] = true
+			req := t.default_clone_types[name] or { DefaultCloneRequest{} }
+			t.cur_module = req.module
+			t.cur_file = req.file
+			if !isnil(t.tc) {
+				t.tc.cur_module = req.module
+				t.tc.cur_file = req.file
+			}
+			t.build_default_clone_helper_fn(name)
+		}
+	}
+	mut new_names := []string{}
+	mut seen := map[string]bool{}
+	for i in log_start .. t.used_fns_log.len {
+		name := t.used_fns_log[i]
+		if name.len > 0 && !seen[name] {
+			seen[name] = true
+			new_names << name
+		}
+	}
+	if !was_log_active {
+		t.used_fns_log_active = false
+		t.used_fns_log = t.used_fns_log[..log_start].clone()
+	}
+	t.cur_module = old_module
+	t.cur_file = old_file
+	if !isnil(t.tc) {
+		t.tc.cur_module = old_tc_module
+		t.tc.cur_file = old_tc_file
+	}
+	return new_names
+}
+
+fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
+	helper := default_clone_helper_name(typ)
+	saved_pending := t.pending_stmts
+	saved_vars := t.var_types.clone()
+	saved_fn_name := t.cur_fn_name
+	saved_ret_type := t.cur_fn_ret_type
+	saved_expansion_stack := t.default_clone_expansion_stack.clone()
+	t.pending_stmts = []flat.NodeId{}
+	t.reset_var_types()
+	t.default_clone_expansion_stack = []string{}
+	t.cur_fn_name = helper
+	t.cur_fn_ret_type = typ
+	param_name := '__default_clone_source'
+	param := t.a.add_node(flat.Node{
+		kind:  .param
+		value: param_name
+		typ:   'voidptr'
+	})
+	t.set_var_type(param_name, 'voidptr')
+	typed_pointer := t.make_cast('&${typ}', t.make_ident(param_name), '&${typ}')
+	source := t.make_prefix(.mul, typed_pointer)
+	t.set_node_typ(int(source), typ)
+	cloned := t.make_compiler_default_clone_value(source, typ, false)
+	mut body := t.pending_stmts.clone()
+	body << t.make_return(cloned, typ)
+	t.pending_stmts = saved_pending
+	t.restore_var_types(saved_vars)
+	t.default_clone_expansion_stack = saved_expansion_stack
+	t.cur_fn_name = saved_fn_name
+	t.cur_fn_ret_type = saved_ret_type
+	t.add_generated_fn_decl_context('main')
+	start := t.a.children.len
+	t.a.children << param
+	t.a.children << body
+	fn_decl := t.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          helper
+		typ:            typ
+		children_start: i32(start)
+		children_count: flat.child_count(1 + body.len)
+	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, 'main', t.cur_file)
+	t.fn_ret_types[helper] = typ
+	t.mark_fn_used_name(helper)
+	if !isnil(t.tc) {
+		t.tc.fn_ret_types[helper] = t.tc.parse_type(typ)
+		t.tc.fn_param_types[helper] = [t.tc.parse_type('voidptr')]
+		t.tc.fn_variadic[helper] = false
+	}
 }
 
 // make_compiler_default_array_clone_value clones the array storage and then replaces
@@ -7844,8 +8047,8 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
-	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
-		cloned_elem)
+	body << t.make_assign_without_ownership_drop(t.make_index(t.make_ident(out_name),
+		t.make_ident(idx_name), elem_type), cloned_elem)
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
 		skip_ownership_drops: true
 	})
@@ -7882,8 +8085,8 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
-	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
-		cloned_elem)
+	body << t.make_assign_without_ownership_drop(t.make_index(t.make_ident(out_name),
+		t.make_ident(idx_name), elem_type), cloned_elem)
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
 		skip_ownership_drops: true
 	})
@@ -11379,6 +11582,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected.starts_with('&') && actual == expected[1..] {
 		return true
 	}
+	// V also permits the inverse value coercion. This covers a borrowed value
+	// passed to a by-value parameter and `&param` inside a specialized function
+	// where a source `mut T` parameter already has `&T` storage after lowering.
+	if actual.starts_with('&') && actual[1..] == expected {
+		return true
+	}
 	if expected == '&void'
 		&& (actual.starts_with('&') || actual in ['voidptr', 'byteptr', 'charptr', 'nil']) {
 		return true
@@ -11424,9 +11633,13 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if t.is_sum_type_name(actual) && t.sum_target_accepts_variant_type(actual, expected) {
 		return true
 	}
-	if !isnil(t.tc) && expected in t.tc.interface_names
-		&& t.tc.type_text_implements_interface(actual, expected) {
-		return true
+	if !isnil(t.tc) {
+		expected_interface := t.trim_all_pointer_type(expected)
+		actual_interface := t.trim_all_pointer_type(actual)
+		if expected_interface in t.tc.interface_names
+			&& t.tc.type_text_implements_interface(actual_interface, expected_interface) {
+			return true
+		}
 	}
 	// Generic applications may differ only in module qualification of their
 	// type arguments (`json2.Node[ValueInfo]` vs `json2.Node[json2.ValueInfo]`).

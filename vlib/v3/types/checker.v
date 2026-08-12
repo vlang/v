@@ -6508,7 +6508,7 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 	for pending.len > 0 {
 		current_id := pending.pop()
 		if int(current_id) < 0 {
-			return
+			continue
 		}
 		node := tc.a.nodes[int(current_id)]
 		match node.kind {
@@ -6517,7 +6517,7 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 				rhs_count := tc.multi_assign_rhs_count(node)
 				if rhs_count == 1 && lhs_count > 1 {
 					tc.annotate_multi_return_decl_assign(node)
-					return
+					continue
 				}
 				pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
 				for pair_idx in 0 .. pair_count {
@@ -6543,18 +6543,18 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 						}
 					}
 				}
-				return
+				continue
 			}
 			.for_in_stmt {
 				tc.annotate_for_in(current_id, node)
-				return
+				continue
 			}
 			.comptime_for {
-				return
+				continue
 			}
 			.fn_literal {
 				tc.annotate_fn_literal(node)
-				return
+				continue
 			}
 			.selector {
 				if node.children_count > 0 {
@@ -6566,7 +6566,7 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 						|| (tc.fn_context.generic_params.len > 0 && (base_type is OptionType
 						|| base_type is ResultType)) {
 						tc.annotate_node(base_id)
-						return
+						continue
 					}
 				}
 			}
@@ -6576,7 +6576,7 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 					for i in 0 .. node.children_count {
 						tc.annotate_node(tc.a.child(&node, i))
 					}
-					return
+					continue
 				}
 				tc.annotate_assign_expected_exprs(node)
 			}
@@ -6599,7 +6599,7 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 					if dsl_name.len > 0 {
 						tc.pop_scope()
 					}
-					return
+					continue
 				}
 				tc.annotate_call_expected_exprs(current_id, node)
 				// The call annotation above records a more precise return type for
@@ -6608,19 +6608,19 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 				for i in 0 .. node.children_count {
 					tc.annotate_node(tc.a.child(&node, i))
 				}
-				return
+				continue
 			}
 			.index {
 				if generic_fn_type := tc.explicit_generic_fn_value_type(node) {
 					tc.remember_expr_type(current_id, generic_fn_type)
-					return
+					continue
 				}
 				if node.children_count > 0
 					&& type_contains_unknown(tc.resolve_type(tc.a.child(&node, 0))) {
 					for i in 0 .. node.children_count {
 						tc.annotate_node(tc.a.child(&node, i))
 					}
-					return
+					continue
 				}
 			}
 			else {}
@@ -7543,6 +7543,15 @@ fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 // resolved_call_name returns the checker-resolved function name for a call node.
 pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
+}
+
+// resolved_call_is_builtin reports whether `id` resolved to the named builtin function.
+pub fn (tc &TypeChecker) resolved_call_is_builtin(id flat.NodeId, name string) bool {
+	resolved := tc.cached_resolved_call(id) or { return false }
+	if resolved != name && resolved != 'builtin.${name}' {
+		return false
+	}
+	return tc.fn_type_modules[resolved] or { '' } == 'builtin'
 }
 
 // reset_resolved_calls_for_reannotation discards pre-transform call-name

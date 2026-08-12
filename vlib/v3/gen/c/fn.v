@@ -5525,12 +5525,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
-	drop_target_name := if resolved_target_name.len > 0 {
-		resolved_target_name
-	} else {
-		target_name
-	}
-	if node.children_count == 2 && g.ownership_drop_intrinsic_name(drop_target_name) {
+	// Ownership lowering appends its calls after checking, so they have no source position.
+	is_ownership_drop := (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
+		|| (resolved_target_name.len > 0 && g.ownership_drop_intrinsic_name(resolved_target_name))
+	if node.children_count == 2 && is_ownership_drop {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
 		g.writeln('({')
@@ -7063,21 +7061,23 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 		|| clean is types.ISize || clean is types.USize || clean is types.Enum
 }
 
+fn ownership_synthetic_drop_name(name string) bool {
+	return name == 'drop_owned' || name.starts_with('drop_owned_T_')
+		|| name == 'drop_owned_v3_interface' || name.starts_with('drop_owned_v3_interface_T_')
+}
+
 fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
 	if name in ['builtin.drop_owned', 'builtin__drop_owned']
-		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
-		return true
-	}
-	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
-		|| name.starts_with('drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
+		|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
 		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
 		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
 		return true
 	}
-	if name != 'drop_owned' && !name.starts_with('drop_owned_T_') {
+	if !ownership_synthetic_drop_name(name) {
 		return false
 	}
-	module_name := g.tc.fn_type_modules['drop_owned'] or { return false }
+	module_name := g.tc.fn_type_modules[name] or { return false }
 	return module_name == 'builtin'
 }
 
@@ -7281,7 +7281,11 @@ fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wa
 	if base.kind != .ident || !g.current_param_is_mut(base.value) {
 		return false
 	}
-	g.write(g.cname(base.value))
+	if g.current_param_is_mut_pointer(base.value) {
+		g.gen_expr(base_id)
+	} else {
+		g.write(g.cname(base.value))
+	}
 	return true
 }
 
@@ -12563,15 +12567,6 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		if g.gen_array_equality_literal_arg([fn_name, callee_name], arg_idx, arg_id, arg_node) {
 			continue
 		}
-		// A source `mut p &T` parameter is stored as a `T**` pointer slot.
-		// An ordinary (non-`mut`) argument reads its `&T` value from that slot;
-		// forwarding `mut p` is handled below and passes the slot itself.
-		if arg_node.kind == .ident && !arg_node.is_mut
-			&& g.current_param_is_mut_pointer(arg_node.value) {
-			g.write('*')
-			g.gen_expr(arg_id)
-			continue
-		}
 		if !is_c_call && arg_idx == 0 && start == 1 && arg_node.kind == .ident
 			&& (g.mut_receiver_arg_wants_addr(fn_name, arg_id)
 			|| (!callee_is_module_selector && g.mut_receiver_arg_wants_addr(callee_name, arg_id))) {
@@ -15671,32 +15666,23 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		}
 		effective_pt := g.fn_node_effective_param_type(p, raw_pt)
 		param_idx++
-		// `mut p &T` mutates the pointer slot itself. Its semantic parameter is
-		// `&T`, while the C ABI receives the caller's slot as `T**`.
-		abi_pt := if p.is_mut && p.op == .amp && effective_pt is types.Pointer {
-			types.Type(types.Pointer{
-				base_type: effective_pt
-			})
-		} else {
-			effective_pt
-		}
-		if concrete_optional_params && type_is_optional_result(abi_pt) && p.value.len > 0 {
+		if concrete_optional_params && type_is_optional_result(effective_pt) && p.value.len > 0 {
 			g.cur_concrete_optional_params[p.value] = true
 		}
 		ct := if shared_ct := g.shared_param_c_type(p.typ) {
 			shared_ct
 		} else if concrete_optional_params
-			&& (abi_pt is types.OptionType || abi_pt is types.ResultType) {
-			g.concrete_optional_type_name(abi_pt)
-		} else if abi_pt is types.Pointer
-			&& (abi_pt.base_type is types.OptionType || abi_pt.base_type is types.ResultType) {
-			g.optional_type_name(abi_pt)
-		} else if abi_pt is types.ArrayFixed {
-			'${g.fixed_array_elem_c_type(abi_pt.elem_type)}*'
-		} else if abi_pt is types.OptionType || abi_pt is types.ResultType {
-			g.optional_type_name(abi_pt)
+			&& (effective_pt is types.OptionType || effective_pt is types.ResultType) {
+			g.concrete_optional_type_name(effective_pt)
+		} else if effective_pt is types.Pointer && (effective_pt.base_type is types.OptionType
+			|| effective_pt.base_type is types.ResultType) {
+			g.optional_type_name(effective_pt)
+		} else if effective_pt is types.ArrayFixed {
+			'${g.fixed_array_elem_c_type(effective_pt.elem_type)}*'
+		} else if effective_pt is types.OptionType || effective_pt is types.ResultType {
+			g.optional_type_name(effective_pt)
 		} else {
-			g.tc.c_type(abi_pt)
+			g.tc.c_type(effective_pt)
 		}
 		if ct.starts_with('fn_ptr:') {
 			g.write(g.resolve_fn_ptr_type(ct))
