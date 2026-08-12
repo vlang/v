@@ -224,19 +224,14 @@ pub fn (mut ld QuicLossDetectionTimer) on_ack_received(space QuicPacketNumberSpa
 
 	mut persistent_congestion := false
 	if lost.len > 0 {
-		// RFC 9002 §7.6.1: the persistent-congestion duration adds
-		// max_ack_delay to the PTO formula -- but per §6.2.1's own
-		// per-space caveat (mirrored here exactly as pto_time_and_space
-		// already applies it), that only applies once the space is
-		// application_data AND the handshake is confirmed; Initial/
-		// Handshake never delay ACKs intentionally, so their contribution
-		// is 0.
-		mut congestion_max_ack_delay := time.Duration(0)
-		if space == .application_data && handshake_confirmed {
-			congestion_max_ack_delay = max_ack_delay
-		}
-		persistent_congestion = is_persistent_congestion(lost, ld.rtt.pto_period(),
-			congestion_max_ack_delay, ld.first_rtt_sample_time)
+		// RFC 9002 §7.6.1: "Unlike the PTO computation in Section 6.2,
+		// this duration includes the max_ack_delay irrespective of the
+		// packet number spaces in which losses are established" -- pass
+		// the peer's max_ack_delay through UNCHANGED, do not zero it for
+		// Initial/Handshake the way pto_time_and_space correctly does for
+		// the (different) PTO formula.
+		persistent_congestion = is_persistent_congestion(lost, ld.rtt.pto_period(), max_ack_delay,
+			ld.first_rtt_sample_time)
 	} else {
 		// "Reset PTO count unless a packet is lost" (RFC 9002 Appendix A.6)
 		// -- deliberately NOT reset when something WAS lost; only an actual
@@ -398,13 +393,17 @@ pub fn (mut ld QuicLossDetectionTimer) next_timeout(handshake_confirmed bool, ma
 // belongs in -- RFC 9002 Appendix A.9's OnLossDetectionTimeout always
 // re-checks loss_time_and_space FIRST, since the timer may have been armed
 // for a loss deadline that a race already resolved differently by the time
-// it fires.
+// it fires. Deliberately carries NO persistent_congestion verdict: RFC 9002
+// §7.6.2 opens with "A sender establishes persistent congestion after the
+// receipt of an acknowledgment" -- a time-threshold loss batch found here,
+// with no ACK involved, must never itself trigger the persistent-congestion
+// collapse. Only on_ack_received's own AckProcessingResult carries that
+// verdict.
 pub struct LossTimeoutResult {
 pub:
-	lost                  []SentPacketInfo
-	persistent_congestion bool
-	pto_fired             bool
-	pto_space             QuicPacketNumberSpace
+	lost      []SentPacketInfo
+	pto_fired bool
+	pto_space QuicPacketNumberSpace
 }
 
 // on_loss_detection_timeout is RFC 9002 Appendix A.9's OnLossDetectionTimeout:
@@ -414,18 +413,8 @@ pub:
 pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handshake_confirmed bool, max_ack_delay time.Duration) LossTimeoutResult {
 	if _, loss_space := ld.loss_time_and_space() {
 		lost := ld.detect_and_remove_lost_packets(loss_space, now)
-		// RFC 9002 Appendix A.9: this branch calls OnPacketsLost the same
-		// as on_ack_received's own lost batch does -- persistent congestion
-		// must be determined here too, not only for ACK-triggered loss.
-		mut congestion_max_ack_delay := time.Duration(0)
-		if loss_space == .application_data && handshake_confirmed {
-			congestion_max_ack_delay = max_ack_delay
-		}
-		persistent_congestion := is_persistent_congestion(lost, ld.rtt.pto_period(),
-			congestion_max_ack_delay, ld.first_rtt_sample_time)
 		return LossTimeoutResult{
-			lost:                  lost
-			persistent_congestion: persistent_congestion
+			lost: lost
 		}
 	}
 
@@ -444,10 +433,14 @@ pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handsh
 // least kPersistentCongestionThreshold persistent-congestion-durations
 // apart, with (c) every packet number in between also present in this same
 // lost batch (nothing sent between them survived as acked or
-// still-outstanding). `max_ack_delay` must already be caller-zeroed for
-// Initial/Handshake spaces (RFC 9002 §7.6.1's duration formula shares
-// §6.2.1's own per-space max_ack_delay caveat) -- callers pass the same
-// value they'd pass to pto_time_and_space for this space.
+// still-outstanding). `max_ack_delay` is the peer's raw max_ack_delay
+// transport parameter, passed through UNCHANGED regardless of packet
+// number space -- RFC 9002 §7.6.1 is explicit that this differs from the
+// PTO formula: "Unlike the PTO computation in Section 6.2, this duration
+// includes the max_ack_delay irrespective of the packet number spaces in
+// which losses are established." Do NOT zero it for Initial/Handshake the
+// way pto_time_and_space correctly does for the PTO formula -- that rule
+// does not apply here.
 //
 // Scope note: this checks contiguity only WITHIN one detection pass rather
 // than stitching together multiple separate loss-detection calls. A

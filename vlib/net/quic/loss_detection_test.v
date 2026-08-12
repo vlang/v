@@ -283,14 +283,28 @@ fn test_on_loss_detection_timeout_reports_loss_when_a_loss_time_is_pending() {
 	assert ld.pto_count == 0
 }
 
-// The next 3 tests are Phase-R regressions for gaps found via a full RFC
+// The next 2 tests are Phase-R regressions for gaps found via a full RFC
 // 9002 §7.6/Appendix A.9 audit while reviewing this PR (2026-08-11), not
 // from an external review round: is_persistent_congestion's own congestion-
 // period formula was missing RFC 9002 §7.6.1's max_ack_delay term and
 // §7.6.2's "a prior RTT sample existed when these packets were sent"
-// condition entirely; on_loss_detection_timeout's timer-triggered loss
-// branch (Appendix A.9's own OnPacketsLost call) never determined
-// persistent_congestion at all for that path.
+// condition entirely.
+//
+// That same audit's own FIRST-DRAFT fix for the max_ack_delay gap was
+// itself wrong -- it zeroed max_ack_delay for Initial/Handshake spaces,
+// copying pto_time_and_space's per-space caveat, which RFC 9002 §7.6.1
+// explicitly says does NOT apply here ("Unlike the PTO computation...this
+// duration includes the max_ack_delay irrespective of the packet number
+// spaces"). It also wrongly added a persistent_congestion verdict to
+// on_loss_detection_timeout's timer-triggered path, contradicting §7.6.2's
+// opening sentence ("A sender establishes persistent congestion after the
+// receipt of an acknowledgment"). Both caught by a maintainer-run "Local AI
+// Review" on this PR and fixed here; see
+// test_on_ack_received_persistent_congestion_includes_max_ack_delay_for_initial_space
+// below for the caller-side regression covering the first mistake -- the
+// second mistake needed no replacement test, since removing
+// LossTimeoutResult.persistent_congestion entirely makes the wrong behavior
+// impossible to reintroduce by accident.
 
 fn test_is_persistent_congestion_requires_prior_rtt_sample_existed_at_send_time() {
 	pto := 100 * time.millisecond
@@ -345,8 +359,14 @@ fn test_is_persistent_congestion_congestion_period_includes_max_ack_delay() {
 	assert is_persistent_congestion(lost, pto, time.Duration(0), u64(1_000_000_000))
 }
 
-fn test_on_loss_detection_timeout_reports_persistent_congestion_for_timer_triggered_loss() {
+// test_on_ack_received_persistent_congestion_includes_max_ack_delay_for_initial_space
+// is the caller-side regression for the "Local AI Review" finding above:
+// on_ack_received must pass max_ack_delay through to is_persistent_congestion
+// UNCHANGED for the Initial space too, not zeroed the way pto_time_and_space
+// correctly zeroes it for the (different) PTO formula.
+fn test_on_ack_received_persistent_congestion_includes_max_ack_delay_for_initial_space() {
 	mut ld := new_quic_loss_detection_timer()
+	max_ack_delay := 500 * time.millisecond
 	ld.first_rtt_sample_time = 50
 	ld.initial.largest_acked_packet = 10
 	ld.initial.sent_packets[3] = SentPacketInfo{
@@ -357,19 +377,42 @@ fn test_on_loss_detection_timeout_reports_persistent_congestion_for_timer_trigge
 		in_flight:        true
 	}
 	ld.initial.sent_packets[4] = SentPacketInfo{
-		packet_number:    4
-		time_sent:        100 + u64(4 * ld.rtt.pto_period())
+		packet_number: 4
+		// Span of 3.5s: >= 3*pto_period() (~3s, the WRONG max_ack_delay-
+		// zeroed threshold a caller-side regression would use), but <
+		// 3*(pto_period()+max_ack_delay) (~4.5s, the correct RFC 9002
+		// §7.6.1 threshold) -- only distinguishes the two if
+		// on_ack_received actually forwards max_ack_delay unchanged.
+		time_sent:        100 + u64(3500 * time.millisecond)
 		sent_bytes:       1200
 		is_ack_eliciting: true
 		in_flight:        true
 	}
-	ld.initial.loss_time = 5000
-
-	result := ld.on_loss_detection_timeout(100 + u64(5 * ld.rtt.pto_period()), false,
-		time.Duration(0))
-	assert !result.pto_fired
+	// A non-ack-eliciting packet we ack here purely to drive
+	// on_ack_received's persistent-congestion computation without
+	// disturbing pn3/pn4 above or taking an RTT sample (which would make
+	// pto_period() unpredictable for this test).
+	ld.initial.sent_packets[10] = SentPacketInfo{
+		packet_number:    10
+		time_sent:        50
+		sent_bytes:       1200
+		is_ack_eliciting: false
+		in_flight:        false
+	}
+	ack := AckFrame{
+		largest_acknowledged: 10
+		ack_delay:            0
+		ranges:               [AckRange{
+			smallest: 10
+			largest:  10
+		}]
+	}
+	result := ld.on_ack_received(.initial, ack, default_ack_delay_exponent, max_ack_delay, false,
+		4_000_000_000)
+	// pn3, pn4 both satisfy the packet threshold (largest_acked=10 >=
+	// pn+3), so both are lost regardless of `now`.
 	assert result.lost.len == 2
-	assert result.persistent_congestion
+	assert !result.persistent_congestion
 }
 
 fn test_is_persistent_congestion_contiguous_batch_spanning_three_ptos() {
