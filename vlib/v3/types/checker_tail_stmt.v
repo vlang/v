@@ -15632,14 +15632,18 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	mut params := []Type{}
 	mut params_mut := []bool{}
+	mut reached_params := false
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		if child.kind != .param {
-			if tc.prefix_param_scan {
+			// Explicit closure captures are stored before the parameter prefix.
+			// Skip those identifiers, then stop once the function body begins.
+			if tc.prefix_param_scan && (reached_params || child.kind != .ident) {
 				break
 			}
 			continue
 		}
+		reached_params = true
 		params_mut << child.is_mut
 		parsed := tc.parse_type(normalize_fn_type_param_text(child.typ))
 		if child.value.len == 0 && child.typ.len > 0 && parsed is Unknown {
