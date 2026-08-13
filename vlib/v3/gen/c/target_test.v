@@ -615,6 +615,40 @@ fn test_cache_input_scan_rejects_unresolved_include_macros() {
 	assert inputs['sample'] == [os.real_path(outer_header)]
 }
 
+fn test_cache_input_scan_bounds_repeated_header_trees() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_repeated_header_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	common_header := os.join_path(dir, 'common.h')
+	left_header := os.join_path(dir, 'left.h')
+	right_header := os.join_path(dir, 'right.h')
+	os.write_file(common_header,
+		'#ifndef V3_COMMON_H\n#define V3_COMMON_H\n#define V3_COMMON_VALUE 1\n#endif\n') or {
+		panic(err)
+	}
+	os.write_file(left_header, '#include "common.h"\n') or { panic(err) }
+	os.write_file(right_header, '#include "common.h"\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "left.h"\n#include "right.h"\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert has_untracked
+	mut expected := [os.real_path(left_header), os.real_path(right_header),
+		os.real_path(common_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+}
+
 fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_source_root_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -641,7 +675,7 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	inputs, native_roots, unscoped_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
 		'', {
 		'sample': true
-	}, [], prefs.target)
+	}, [], prefs.target, map[string]bool{})
 	assert !has_untracked
 	mut expected_inputs := [os.real_path(root_source), os.real_path(nested_source),
 		os.real_path(direct_header), os.real_path(nested_header)]
@@ -649,6 +683,17 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	assert inputs['sample'] == expected_inputs
 	assert native_roots['sample'] == [os.real_path(root_source)]
 	assert unscoped_inputs['sample'] == expected_inputs
+	program_inputs, program_roots, program_unscoped, _, _, program_has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, {
+		os.real_path(source): true
+	})
+	assert !program_has_untracked
+	assert program_inputs['main'] == expected_inputs
+	assert program_roots['main'] == [os.real_path(root_source)]
+	assert program_unscoped['main'] == expected_inputs
+	assert 'sample' !in program_inputs
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

@@ -380,24 +380,20 @@ mut:
 	// active expansion chain private to each checker/cache so parsing such a
 	// recursive alias terminates without introducing shared parallel state.
 	alias_parse_stack []string
-	c_entries         map[TypeId]string
+	c_entries         map[string]string
 	c_name_entries    map[string]string
-	// Lock-free recent slots for c_type, with the same Type-value/lifetime
-	// invariant as name_recent below.
-	c_recent_w0   [2048]u64
-	c_recent_w1   [2048]u64
+	// Lock-free recent slots for c_type use exact canonical type text. Sum-type
+	// payload storage can reuse the same address for different values, so neither
+	// raw interface words nor retained Type payloads are stable cache identities.
+	c_recent_keys [2048]string
 	c_recent_vals [2048]string
 	c_recent_set  [2048]bool
-	// Lock-free recent slots for type_name: keyed by the Type value's raw words
-	// (tag + payload pointer — identical bytes imply the same type), they avoid
-	// the interner's lock round-trips for repeated spellings of shared type
-	// values. Slots never outlive the cache, and every cache dies with (or
-	// before) the arena owning the payloads it saw, so a recycled payload
-	// address can never produce a stale hit.
-	name_recent_w0   [2048]u64
-	name_recent_w1   [2048]u64
-	name_recent_vals [2048]string
-	name_recent_set  [2048]bool
+	// type_name cannot use its result as its lookup key. Semantic hashes choose a
+	// slot, and an owned Type copy verifies equality.
+	name_recent_hashes [2048]u64
+	name_recent_types  [2048]Type
+	name_recent_vals   [2048]string
+	name_recent_set    [2048]bool
 	// Per-checker symbol probes front the compilation-wide interner. Resolved
 	// names are usually repeated as the same canonical string pointer inside a
 	// worker, so these slots avoid taking the interner mutex on every call.
@@ -435,6 +431,14 @@ mut:
 	local_fn_decl_index       map[string]bool
 	local_fn_decl_indexed_len int
 	local_fn_decl_last_module string
+}
+
+fn (mut cache TypeCache) clear_c_type_entries() {
+	cache.c_entries.clear()
+	cache.c_name_entries.clear()
+	for i in 0 .. cache.c_recent_set.len {
+		cache.c_recent_set[i] = false
+	}
 }
 
 // ResolutionTypeViewCache reuses the lookup-only, unscoped checker views used
@@ -524,6 +528,7 @@ mut:
 	closure_forbidden_captures               map[string]bool
 	local_decl_rhs_by_name                   map[string][]LocalDeclRhs
 	local_decl_rhs_indexed                   bool
+	bool_condition_exprs                     map[string]flat.NodeId
 	has_goto_nodes                           bool
 	closure_scope                            &Scope = unsafe { nil }
 	lambda_no_captures                       bool
@@ -574,6 +579,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		closure_forbidden_captures:               src.closure_forbidden_captures.clone()
 		local_decl_rhs_by_name:                   src.local_decl_rhs_by_name.clone()
 		local_decl_rhs_indexed:                   src.local_decl_rhs_indexed
+		bool_condition_exprs:                     src.bool_condition_exprs.clone()
 		has_goto_nodes:                           src.has_goto_nodes
 		closure_scope:                            src.closure_scope
 		lambda_no_captures:                       src.lambda_no_captures
@@ -637,52 +643,54 @@ mut:
 @[heap]
 pub struct TypeChecker {
 pub mut:
-	a                              &flat.FlatAst = unsafe { nil }
-	compiler_vroot                 string
-	verbose                        bool
-	raw_type_equality              bool
-	fast_parse_recent              bool
-	fast_type_text_refs            bool
-	fast_c_type_recent             bool
-	memo_call_info                 bool
-	method_suffix_prescreen        bool
-	prefix_param_scan              bool
-	building_v_fast                bool
-	valid_diagnostic_fast          bool
-	valid_resolution_fast          bool
-	defer_fn_ancillary             bool
-	fn_ancillary_registrations     []FnAncillaryRegistration
-	fn_c_variadic_registrations    []FnNamePairRegistration
-	fn_mut_receiver_registrations  []FnNamePairRegistration
-	fn_ret_text_registrations      []FnTextRegistration
-	visible_mutation_registrations []VisibleMutationRegistration
-	enable_globals                 bool
-	fn_ret_types                   map[string]Type
-	fn_param_types                 map[string][]Type
-	v_fn_semantic_names            map[string]bool
-	c_fn_module_ret_types          map[string]Type
-	c_fn_module_param_types        map[string][]Type
-	c_fn_module_variadic           map[string]bool
-	fn_shared_params               map[string][]bool
-	mut_receiver_methods           map[string]bool
-	source_no_body_fns             map[string]bool
-	source_no_body_fn_suffixes     map[string]bool
-	unsafe_fns                     map[string]bool
-	unsafe_c_fns                   map[string]bool
-	fn_ret_type_texts              map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
-	fn_param_type_texts            map[string][]string // generic struct method key -> original param type texts (receiver first)
-	fn_type_files                  map[string]string
-	fn_type_modules                map[string]string
-	fn_generic_params              map[string][]string
-	specialized_generic_fns        map[string]bool
-	fn_variadic                    map[string]bool
-	c_variadic_fns                 map[string]bool
-	fn_implicit_veb_ctx            map[string]bool
-	receiver_method_suffix_index   map[string]string
-	structs                        map[string][]StructField
-	struct_modules                 map[string]string
-	struct_files                   map[string]string
-	soa_structs                    map[string]bool
+	a                                &flat.FlatAst = unsafe { nil }
+	compiler_vroot                   string
+	verbose                          bool
+	raw_type_equality                bool
+	fast_parse_recent                bool
+	fast_type_text_refs              bool
+	fast_c_type_recent               bool
+	memo_call_info                   bool
+	method_suffix_prescreen          bool
+	prefix_param_scan                bool
+	building_v_fast                  bool
+	valid_diagnostic_fast            bool
+	valid_resolution_fast            bool
+	defer_fn_ancillary               bool
+	fn_ancillary_registrations       []FnAncillaryRegistration
+	fn_c_variadic_registrations      []FnNamePairRegistration
+	fn_mut_receiver_registrations    []FnNamePairRegistration
+	fn_ret_text_registrations        []FnTextRegistration
+	visible_mutation_registrations   []VisibleMutationRegistration
+	enable_globals                   bool
+	fn_ret_types                     map[string]Type
+	fn_param_types                   map[string][]Type
+	v_fn_semantic_names              map[string]bool
+	c_fn_module_ret_types            map[string]Type
+	c_fn_module_param_types          map[string][]Type
+	c_fn_module_variadic             map[string]bool
+	fn_shared_params                 map[string][]bool
+	mut_receiver_methods             map[string]bool
+	source_no_body_fns               map[string]bool
+	source_no_body_fn_suffixes       map[string]bool
+	unsafe_fns                       map[string]bool
+	unsafe_c_fns                     map[string]bool
+	fn_ret_type_texts                map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
+	fn_param_type_texts              map[string][]string // generic struct method key -> original param type texts (receiver first)
+	fn_type_files                    map[string]string
+	fn_type_modules                  map[string]string
+	transform_signature_maps_shared  bool
+	transform_signature_maps_changed bool
+	fn_generic_params                map[string][]string
+	specialized_generic_fns          map[string]bool
+	fn_variadic                      map[string]bool
+	c_variadic_fns                   map[string]bool
+	fn_implicit_veb_ctx              map[string]bool
+	receiver_method_suffix_index     map[string]string
+	structs                          map[string][]StructField
+	struct_modules                   map[string]string
+	struct_files                     map[string]string
+	soa_structs                      map[string]bool
 	// set of `${file}\x01${module}\x01${name}` keys for every source-level
 	// struct/type/interface/enum declaration, built once in `collect`. Replaces
 	// the former full-node scan in `source_declares_type_in_scope`, which was
@@ -1064,7 +1072,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		smartcasts:                              map[string]Type{}
 		type_cache:                              &TypeCache{
 			parse_entries:              map[u64]ParseTypeCacheEntry{}
-			c_entries:                  map[TypeId]string{}
+			c_entries:                  map[string]string{}
 			struct_field_entries:       map[string]Type{}
 			struct_field_misses:        map[string]bool{}
 			ierror_compat_entries:      map[string]int{}
@@ -1340,6 +1348,11 @@ fn (tc &TypeChecker) fork_smartcast_query_view() TypeChecker {
 // expr_type lookup on a freshly-created node id indexes a valid array.
 pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
 	mut forked := tc.fork_program_view(ast, map[int][]SymbolId{})
+	// Most transform workers only read signatures. Share the immutable base and
+	// clone it lazily if a worker actually synthesizes a declaration; eagerly
+	// cloning all maps for every scoped batch dominates self-host memory.
+	forked.transform_signature_maps_shared = true
+	forked.transform_signature_maps_changed = false
 	// Visible-mutation analysis only runs during checking. Do not allocate its
 	// three private maps for the many short-lived transform forks.
 	forked.visible_mutation_cache = unsafe { nil }
@@ -1380,13 +1393,35 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 			false
 		}
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[TypeId]string{}
+		c_entries:                  map[string]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
 	return &forked
+}
+
+// ensure_private_transform_signatures detaches the signature tables before a
+// transform worker writes them. The worker's private maps are merged while its
+// disposable arena is still alive.
+pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
+	if tc.transform_signature_maps_shared {
+		tc.fn_ret_types = tc.fn_ret_types.clone()
+		tc.fn_param_types = tc.fn_param_types.clone()
+		tc.fn_variadic = tc.fn_variadic.clone()
+		tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
+		tc.fn_type_modules = tc.fn_type_modules.clone()
+		tc.fn_type_files = tc.fn_type_files.clone()
+		tc.transform_signature_maps_shared = false
+	}
+	tc.transform_signature_maps_changed = true
+}
+
+// transform_signatures_changed reports whether a transform fork detached and
+// added signature state that its parent must merge.
+pub fn (tc &TypeChecker) transform_signatures_changed() bool {
+	return tc.transform_signature_maps_changed
 }
 
 // freeze_type_cache_for_forks freezes this checker's warm type cache as the
@@ -1445,8 +1480,7 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 		cache.parse_entries.clear()
 		cache.parse_context_valid = false
 		cache.parse_last_valid = false
-		cache.c_entries.clear()
-		cache.c_name_entries.clear()
+		cache.clear_c_type_entries()
 		cache.struct_field_entries.clear()
 		cache.struct_field_misses.clear()
 		cache.ierror_compat_entries.clear()
@@ -1518,12 +1552,10 @@ pub fn (tc &TypeChecker) clear_c_type_cache() {
 	if isnil(cache) {
 		return
 	}
-	cache.c_entries.clear()
-	cache.c_name_entries.clear()
+	cache.clear_c_type_entries()
 	if !isnil(cache.base) {
 		mut base := cache.base
-		base.c_entries.clear()
-		base.c_name_entries.clear()
+		base.clear_c_type_entries()
 	}
 }
 
@@ -1558,7 +1590,7 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 	tc.type_cache = &TypeCache{
 		parse_enabled:              parse_enabled
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[TypeId]string{}
+		c_entries:                  map[string]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -2637,7 +2669,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 	tc.type_cache = &TypeCache{
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[TypeId]string{}
+		c_entries:                  map[string]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -3103,8 +3135,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	// Pass 1 can parse callback aliases before later modules with same-named
 	// types have been indexed. Rebuild name-derived caches from the complete
 	// declaration table before collecting concrete signatures in pass 2.
-	tc.type_cache.c_entries.clear()
-	tc.type_cache.c_name_entries.clear()
+	tc.type_cache.clear_c_type_entries()
 	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
 	tc.check_c_fn_redeclarations(a)
@@ -4683,6 +4714,16 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	clean := trimmed_space(typ)
+	// Generic specialization uses `main.Type` as an internal lock for a
+	// caller-owned program type. Resolve that lock before qualification strips
+	// `main.` and lets a same-named import in the declaration file capture the
+	// resulting bare name.
+	if clean.starts_with('main.') && !clean['main.'.len..].contains('.') {
+		if _ := tc.resolve_import_alias('main') {
+		} else if exact := tc.type_from_known_symbol(clean['main.'.len..]) {
+			return exact
+		}
+	}
 	qualified := tc.qualify_resolution_type_text(clean)
 	if qualified.contains('.') {
 		if exact := tc.type_from_known_symbol(qualified) {
@@ -7135,6 +7176,16 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 			if container.kind == .range {
 				tc.insert_loop_var(key_id, tc.range_loop_var_type(tc.a.child(&container, 0), tc.a.child(&container,
 					1)))
+			} else {
+				// Annotation also walks deferred generic branches such as
+				// `$if T is $array { for value in data { ... } }`. The source template's
+				// `T` is intentionally unresolved here; keep its loop bindings visible so
+				// annotation does not emit diagnostics for otherwise valid specializations.
+				unresolved := unknown_type('unresolved for-in element during annotation')
+				tc.insert_loop_var(key_id, unresolved)
+				if has_val {
+					tc.insert_loop_var(val_id, unresolved)
+				}
 			}
 		}
 	}
@@ -7756,7 +7807,8 @@ fn (mut tc TypeChecker) resolve_fn_value_name_for_expected(id flat.NodeId, expec
 
 fn (mut tc TypeChecker) generic_fn_value_matches_expected(key string, expected Type) bool {
 	expected_fn := fn_type_from_type(expected) or { return false }
-	actual_fn := tc.fn_type_from_key(key) or { return false }
+	actual_type := tc.fn_type_from_key(key) or { return false }
+	actual_fn := fn_type_from_type(actual_type) or { return false }
 	if actual_fn.params.len != expected_fn.params.len {
 		return false
 	}
@@ -10177,6 +10229,13 @@ fn (tc &TypeChecker) fn_has_veb_context_param(node flat.Node) bool {
 				break
 			}
 			continue
+		}
+		// The signature pass can run before every embedded struct relation is
+		// available in a parallel worker. Recognize the conventional context
+		// spelling directly so an explicit `mut ctx Context` is never also given
+		// a hidden context parameter.
+		if p.typ.trim_space().trim_string_left('mut ').trim_left('&').all_after_last('.') == 'Context' {
+			return true
 		}
 		if tc.is_veb_context_type(tc.parse_type(p.typ)) {
 			return true
@@ -12784,7 +12843,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				field_id, tc.struct_field_type_pos(*field))
 		}
 		if field.children_count > 0
-			&& (field.typ.contains('$d(') || tc.node_source_contains(field_id, '$d(')) {
+			&& tc.struct_field_type_uses_comptime_define(field_id, field_type_text) {
 			default_id := tc.a.child(field, 0)
 			tc.record_error_at(.assignment_mismatch,
 				'cannot initialize a fixed size array field that uses `$d()` as size quantifier since the size may change via -d',
@@ -12966,6 +13025,16 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		}
 	}
 	tc.fn_context.generic_params = saved_generic_params
+}
+
+fn (tc &TypeChecker) struct_field_type_uses_comptime_define(field_id flat.NodeId, field_type_text string) bool {
+	if field_type_text.contains('$d(') {
+		return true
+	}
+	source := tc.source_text_for_node(field_id)
+	define_pos := source.index('$d(') or { return false }
+	assign_pos := source.index('=') or { source.len }
+	return define_pos < assign_pos
 }
 
 fn (tc &TypeChecker) struct_field_type_pos(field flat.Node) token.Pos {

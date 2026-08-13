@@ -645,9 +645,9 @@ fn main() {
 	}
 	a.tui = tui.init(
 		user_data:      a
-		init_fn:        InitFn(init)
-		frame_fn:       FrameFn(frame)
-		event_fn:       EventFn(event)
+		init_fn:        unsafe { InitFn(init) }
+		frame_fn:       unsafe { FrameFn(frame) }
+		event_fn:       unsafe { EventFn(event) }
 		capture_events: true
 	)
 	a.tui.run()!

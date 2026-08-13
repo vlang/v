@@ -156,6 +156,25 @@ fn test_rebuild_scoped_transform_signature_maps_after_growth() {
 	}
 }
 
+fn test_parallel_transform_fork_owns_mutable_signature_maps() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.fn_ret_types['existing'] = Type(string_)
+	mut transform_fork := tc.fork_for_parallel_transform(&a)
+	transform_fork.ensure_private_transform_signatures()
+	transform_fork.fn_ret_types['generated'] = Type(bool_)
+	transform_fork.fn_param_types['generated'] = [Type(int_)]
+	transform_fork.fn_variadic['generated'] = false
+	transform_fork.specialized_generic_fns['generated'] = true
+
+	assert 'generated' !in tc.fn_ret_types
+	assert 'generated' !in tc.fn_param_types
+	assert 'generated' !in tc.fn_variadic
+	assert 'generated' !in tc.specialized_generic_fns
+	existing := tc.fn_ret_types['existing'] or { Type(void_) }
+	assert existing is String
+}
+
 fn test_type_qualification_preserves_channel_and_thread_wrappers() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

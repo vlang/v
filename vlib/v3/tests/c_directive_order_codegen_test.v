@@ -50,7 +50,7 @@ fn main() {}
 	directive_order_write_file(root, 'sokol/c/sokol_gfx.h', '')
 	directive_order_write_file(root, 'sokol/f/f.v', 'module f
 
-import sokol.c as _
+import sokol.gfx as _
 
 #define SOKOL_FONTSTASH_IMPL
 #include "util/sokol_fontstash.h"
@@ -58,6 +58,10 @@ import sokol.c as _
 #ifdef KEEP_DUPLICATE_INCLUDE
 #include "sokol_gfx.h"
 #endif
+')
+	directive_order_write_file(root, 'sokol/gfx/gfx.v', 'module gfx
+
+import sokol.c as _
 ')
 	directive_order_write_file(root, 'sokol/f/util/sokol_fontstash.h', '')
 	directive_order_write_file(root, 'sokol/f/sokol_gfx.h', '')

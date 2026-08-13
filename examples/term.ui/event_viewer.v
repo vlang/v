@@ -41,7 +41,7 @@ fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
 		user_data:            app
-		event_fn:             EventFn(event)
+		event_fn:             unsafe { EventFn(event) }
 		window_title:         'V term.ui event viewer'
 		hide_cursor:          true
 		capture_events:       true

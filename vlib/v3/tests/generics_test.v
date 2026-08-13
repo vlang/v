@@ -87,6 +87,64 @@ fn run_generic_exec(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn test_generic_array_for_in_binding_survives_annotation() {
+	v3_bin := build_v3()
+	out := run_generic_exec(v3_bin, 'generic_array_for_in_binding', '
+fn sum[T](data T) int {
+	$if T is $array {
+		mut total := 0
+		for value in data {
+			total += value
+		}
+		return total
+	} $else {
+		return 0
+	}
+}
+
+fn main() {
+	println(sum([1, 2, 3]))
+}
+')
+	assert out == '6'
+}
+
+fn test_explicit_main_generic_arg_survives_imported_call_rewrite() {
+	v3_bin := build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_gen_explicit_main_generic_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	write_project_file(root, 'gate/gate.v', 'module gate
+
+pub fn classify[T]() string {
+	$if T is $struct {
+		return "struct"
+	} $else {
+		return "other"
+	}
+}
+')
+	write_project_file(root, 'main.v', 'module main
+
+import gate
+
+struct Payload[T] {
+	value T
+}
+
+fn main() {
+	println(gate.classify[Payload[string]]())
+}
+')
+	bin_file := os.join_path(root, 'app')
+	compile := os.execute('${v3_bin} -nocache -path "${root}|@vlib|@vmodules" -b c -o ${bin_file} ${os.join_path(root,
+		'main.v')}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_file)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'struct'
+}
+
 // test_generics_rejected_when_building_v validates this v3 regression case.
 fn test_generics_rejected_when_building_v() {
 	v3_bin := build_v3()

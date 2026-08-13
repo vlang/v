@@ -510,6 +510,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 					c_name:                    item.c_name.clone()
 					cost:                      item.cost
 					is_program_specialization: item.is_program_specialization
+					is_program:                item.is_program
 					direct_array_access:       item.direct_array_access
 					ignore_overflow:           item.ignore_overflow
 				}

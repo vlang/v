@@ -58,9 +58,10 @@ fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
 	assert t.receiver_method_matches_type_name('Thing.str', 'pkg.Thing')
 }
 
-fn test_building_v_auto_str_helper_call_uses_main_symbol() {
+fn test_auto_str_helper_call_uses_type_owner_module() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
+	tc.struct_modules['v.token.Pos'] = 'token'
 	mut t := Transformer{
 		a:          &a
 		tc:         &tc
@@ -72,7 +73,7 @@ fn test_building_v_auto_str_helper_call_uses_main_symbol() {
 	callee := a.child_node(a.node(call), 0)
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
-	assert t.auto_str_types['v.token.Pos'].helper_module == 'main'
+	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
 }
 
 fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
@@ -226,14 +227,25 @@ fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.begin_sparse_transform_node_caches(0)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
-	batch_tc := tc.fork_for_parallel_transform(&a)
+	mut batch_tc := tc.fork_for_parallel_transform(&a)
+	batch_tc.fork_overlay.resolved_call_names[10] = 'main.resolved_call'
+	batch_tc.fork_overlay.resolved_fn_values[11] = 'main.resolved_fn_value'
+	batch_tc.ensure_private_transform_signatures()
+	batch_tc.fn_ret_types['main.generated'] = types.Type(types.bool_)
+	batch_tc.fn_param_types['main.generated'] = [types.Type(types.int_)]
+	batch_tc.fn_variadic['main.generated'] = false
 	mut batch := master.fork_scoped_batch_worker(&a, batch_tc)
-	batch.tc.fork_overlay.resolved_call_names[10] = 'main.resolved_call'
-	batch.tc.fork_overlay.resolved_fn_values[11] = 'main.resolved_fn_value'
+	batch.set_fn_ret_type('main.generated', 'bool')
+	assert 'main.generated' !in master.fn_ret_types
+	assert 'main.generated' !in tc.fn_ret_types
 
 	master.absorb_scoped_batch(batch, unsafe { nil }, batch.a.nodes.len)
 	assert tc.sparse_resolved_call_names[10] == 'main.resolved_call'
 	assert tc.sparse_resolved_fn_values[11] == 'main.resolved_fn_value'
+	assert master.fn_ret_types['main.generated'] == 'bool'
+	generated_ret := tc.fn_ret_types['main.generated'] or { types.Type(types.void_) }
+	assert generated_ret == types.Type(types.bool_)
+	assert tc.fn_param_types['main.generated'][0] == types.Type(types.int_)
 }
 
 fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {

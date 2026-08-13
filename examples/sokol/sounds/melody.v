@@ -18,7 +18,9 @@ fn my_audio_stream_callback(mut soundbuffer &f32, num_frames int, num_channels i
 		for ch := 0; ch < num_channels; ch++ {
 			idx := frame * num_channels + ch
 			a := f32(y - 127) / 255.0
-			soundbuffer[idx] = a
+			unsafe {
+				soundbuffer[idx] = a
+			}
 			acontext.frames[idx & 2047] = a
 		}
 	}

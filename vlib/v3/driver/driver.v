@@ -37,6 +37,7 @@ $if !skip_wasm ? {
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
@@ -1651,6 +1652,22 @@ fn input_loads_cmd_v_module(input_file string) bool {
 	return normalized_dir.ends_with('/cmd/v')
 }
 
+fn input_is_v3_compiler_tree(input_file string) bool {
+	real_input := os.real_path(input_file).replace('\\', '/').trim_right('/')
+	return real_input.ends_with('/vlib/v3') || real_input.contains('/vlib/v3/')
+}
+
+fn input_owns_builtin_bundle_module(input_file string, vroot string) bool {
+	real_input := os.real_path(input_file)
+	input_dir := if os.is_dir(real_input) { real_input } else { os.dir(real_input) }
+	for relative_dir in ['builtin', 'strconv', 'strings', 'hash', os.join_path('math', 'bits')] {
+		if input_dir == os.real_path(os.join_path(vroot, 'vlib', relative_dir)) {
+			return true
+		}
+	}
+	return false
+}
+
 fn input_is_legacy_diagnostic_fixture(input_file string) bool {
 	if os.getenv('VTEST_RUNNER') != 'normal' || !input_file.ends_with('.vv') {
 		return false
@@ -1777,6 +1794,16 @@ fn v3_c_source_mode_flags(objective_c bool) []string {
 
 fn v3_tcc_backtrace_enabled(target_os string, target_arch string, is_shared bool) bool {
 	return !is_shared && !(target_os == 'macos' && target_arch == 'arm64')
+}
+
+fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target_arch string, is_shared bool, explicit_tcc bool) {
+	if explicit_tcc && !v3_tcc_backtrace_enabled(target_os, target_arch, is_shared)
+		&& 'no_backtrace' !in user_defines {
+		// The builtin backtrace implementation must match the native TCC flag plan.
+		// Shared libraries cannot link TCC's runtime symbols, while its initializer
+		// crashes in dyld on macOS arm64 due to unaligned access.
+		user_defines << 'no_backtrace'
+	}
 }
 
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
@@ -2369,6 +2396,13 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	}
 }
 
+fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_dir string) bool {
+	// Test sessions compile thousands of unique programs. Their shared module
+	// objects are reusable, but retaining every whole-program snapshot only grows
+	// the temporary session until the complete suite exits.
+	return cache_enabled && !test_input && !os.base(vtmp_dir).starts_with('tsession_')
+}
+
 fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, prefs &pref.Preferences, user_files []string, user_c_flags []string) bool {
 	mut cache_input_modules := map[string]bool{}
 	for module_name in state.module_sources.keys() {
@@ -2376,7 +2410,8 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	}
 	cache_input_modules['main'] = true
 	external_inputs, native_source_roots, unscoped_inputs, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
-		prefs.vroot, cache_input_modules, user_c_flags, prefs.target)
+		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
+		module_cache_source_path_set(user_files))
 	state.module_external_inputs = external_inputs.clone()
 	state.module_native_roots = native_source_roots.clone()
 	state.external_input_signatures = map[string]string{}
@@ -5025,7 +5060,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
 }
 
-fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool) {
+fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool, _scope voidptr) {
 	// Set difference instead of the former sort-and-merge: only a handful of
 	// signatures are added during transform, while sorting every fn name twice
 	// cost several ms per build.
@@ -5059,9 +5094,10 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 			tc.specialized_generic_fns[owned_name] = true
 		}
 	}
-	if added_names.len > scoped_transform_signature_headroom {
-		tc.rebuild_scoped_transform_signature_maps()
-	}
+	// A reserved map can keep its dense arrays in the parent arena while cloned
+	// string-key text or nested type metadata is allocated in the disposable
+	// stage arena. Rebuild all signature ownership before releasing that arena.
+	tc.rebuild_scoped_transform_signature_maps()
 }
 
 // default_cc_identity returns a precise identity for the resolved default `cc`.
@@ -5442,8 +5478,13 @@ fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
 	}
 }
 
+fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
+	return fallback_file != '' && os.getenv(macos_v3_no_fallback_env) != '1'
+}
+
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
-	if fallback_file == '' || !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
+	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1'
+		|| !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
 		return false
 	}
 	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
@@ -6456,6 +6497,7 @@ pub fn run(args []string) {
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
+	v3_compiler_tree_input := input_is_v3_compiler_tree(input_file)
 	// Neither compiler entry point uses generics. Keep self-builds off the generic
 	// reachability and monomorphization paths without requiring an explicit flag.
 	// -building-v can force the same mode for another known non-generic input.
@@ -6587,10 +6629,13 @@ pub fn run(args []string) {
 	}
 	if no_memory_limit {
 		b.disable_memory_limit()
+	} else if v3_compiler_tree_input {
+		// A compiler-module test retains test-runner state in addition to the full
+		// compiler AST. Its measured peak is above the self-host-only limit.
+		b.use_compiler_tree_memory_limit()
 	} else if building_v || cmd_v_module_input {
 		// Self-host transformation temporarily retains both the source and rewritten
-		// compiler ASTs. A direct cmd/v module test loads the same compiler sources,
-		// so keep those builds under the same safety guard too.
+		// compiler ASTs. Direct cmd/v module tests load the same compiler sources.
 		b.use_self_host_memory_limit()
 	}
 	b.start_memory_monitor()
@@ -6614,6 +6659,7 @@ pub fn run(args []string) {
 		effective_c_compiler_name(c_compiler, target)
 	}
 	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
+	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc)
 	prefs.ccompiler = effective_c_compiler
 	prefs.c99 = c99
 	prefs.force_bounds_checking = force_bounds_checking
@@ -6665,6 +6711,7 @@ pub fn run(args []string) {
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
 		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
 		&& target.os == host_target.os && target.arch == host_target.arch
+		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
@@ -6702,6 +6749,8 @@ pub fn run(args []string) {
 	version_pseudo_values := [prefs.vhash, prefs.vcurrent_hash].join('\n')
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled,
 		build_pseudo_values, version_pseudo_values)
+	program_cache_enabled := persistent_program_cache_enabled(cache_enabled, is_test_command
+		|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	// Cache markers and scoped output are stable across ordered worker chunks, so cached
 	// and preallocated builds use the same parallel function-body generator.
@@ -6891,7 +6940,7 @@ pub fn run(args []string) {
 			&& request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
 			exit(1)
 		}
-		if parser_has_errors && macos_v3_fallback_file != '' {
+		if parser_has_errors && macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
 		if !silent || !only_check_syntax {
@@ -7044,8 +7093,8 @@ pub fn run(args []string) {
 		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
 			prefs.compile_values)
 	}
-	use_macos_dev_program_cache := backend == 'c' && cache_state.manager.enabled && !is_prod
-		&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
+	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
+		&& !is_selfhost && prefs.normalized_target_os() == 'macos'
 	incremental_cache_enabled := use_macos_dev_program_cache
 		&& os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1'
 	mut generic_cache_inputs_ready := false
@@ -7059,7 +7108,7 @@ pub fn run(args []string) {
 	mut incremental_cached_body := ''
 	mut incremental_prefix_path := ''
 	mut incremental_tcc_declarations_path := ''
-	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
+	if backend == 'c' && program_cache_enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
 		mut external_inputs_ready := restore_v3_cache_external_inputs(mut cache_state, user_files,
 			cache_c_flags, prefs.ccompiler, prefs.target, '')
@@ -7291,7 +7340,7 @@ pub fn run(args []string) {
 			cvsw.restart()
 		}
 		if pre_tc.check_interface_embedding_limits() {
-			if macos_v3_fallback_file == '' {
+			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			}
 			exit(1)
@@ -7395,7 +7444,7 @@ pub fn run(args []string) {
 						fixture_used_fns, false)
 				}
 			}
-			if macos_v3_fallback_file == '' {
+			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			}
 			pre_tc.notices.clear()
@@ -7781,7 +7830,7 @@ pub fn run(args []string) {
 					eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
 				}
-				promote_scoped_signatures(mut pre_tc, original_signature_names)
+				promote_scoped_signatures(mut pre_tc, original_signature_names, transform_scope)
 				if verbose {
 					eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
@@ -7971,7 +8020,7 @@ pub fn run(args []string) {
 		pre_tc.notices.clear()
 	}
 	if pre_tc.errors.len > 0 {
-		if macos_v3_fallback_file != '' {
+		if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
@@ -8069,7 +8118,8 @@ pub fn run(args []string) {
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
 			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
-			if pre_tc.errors.len == 0 || macos_v3_fallback_file == '' {
+			if pre_tc.errors.len == 0
+				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			}
 			for notice in pre_tc.notices {
@@ -8271,6 +8321,7 @@ pub fn run(args []string) {
 			g.set_print_fn_names(print_fn_names)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
@@ -8320,6 +8371,7 @@ pub fn run(args []string) {
 			g.set_print_fn_names(print_fn_names)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
@@ -8679,7 +8731,7 @@ pub fn run(args []string) {
 					prefix_source_identity = v3_program_prefix_source_identity(prepared_cache.program_prefix_source,
 						prepared_cache.objects)
 				}
-				if !cgen_cache_hit {
+				if !cgen_cache_hit && program_cache_enabled {
 					published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files,
 						cache_c_flags)
 					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
@@ -9536,6 +9588,11 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	split := modulecache.split_generated_c(generated_source)!
 	mut parsed_modules := state.parsed_from_source.keys()
 	parsed_modules.sort()
+	mut parsed_short_module_counts := map[string]int{}
+	for module_name in parsed_modules {
+		short_name := module_name.all_after_last('.')
+		parsed_short_module_counts[short_name]++
+	}
 	mut newly_cached_modules := map[string]bool{}
 	mut needs_declarations := !state.bundle_valid
 	if !needs_declarations {
@@ -9627,7 +9684,15 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		source_files := state.module_sources[module_name] or { continue }
 		entry := state.manager.object_entry(module_name, source_files, compile_signature)
 		body := split.modules[module_name] or {
-			split.modules[module_name.all_after_last('.')] or { '' }
+			short_name := module_name.all_after_last('.')
+			// A short split marker is a compatibility fallback for an unqualified
+			// module identity. Never reuse it for two dotted modules with the same
+			// leaf name, or both cache objects receive the same function definitions.
+			if parsed_short_module_counts[short_name] == 1 {
+				split.modules[short_name] or { '' }
+			} else {
+				''
+			}
 		}
 		module_declarations := prune_cached_native_function_prototypes(raw_declarations, state, [
 			module_name,

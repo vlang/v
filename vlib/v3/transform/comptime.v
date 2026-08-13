@@ -1413,7 +1413,7 @@ fn (t &Transformer) comptime_method_param_index(id flat.NodeId, var_name string)
 	if node.kind == .paren && node.children_count > 0 {
 		return t.comptime_method_param_index(t.a.child(&node, 0), var_name)
 	}
-	if node.kind != .index || node.children_count < 2 {
+	if node.kind != .index || node.value == 'range' || node.children_count < 2 {
 		return none
 	}
 	base := t.a.child_node(&node, 0)
@@ -1471,6 +1471,15 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 		t.a.children << child
 	}
 	mut typ := node.typ
+	if node.kind == .index && node.value == 'range' && children.len > 0 {
+		// `method.args[lo..hi]` is cloned after checking, so the new slice has no
+		// checker-side type entry. Keep the materialized metadata array type for
+		// for-in inference instead of letting the loop element degrade to `int`.
+		base_type := t.node_type(children[0])
+		if base_type.starts_with('[]') {
+			typ = base_type
+		}
+	}
 	if node.kind == .call && children.len > 0 {
 		callee := t.a.node(children[0])
 		if callee.kind == .selector && comptime_method_selector_marker in callee.generic_params() {

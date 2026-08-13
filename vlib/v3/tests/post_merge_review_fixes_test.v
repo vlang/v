@@ -6586,8 +6586,12 @@ fn (value FixedClone) clone() FixedClone {
 	return FixedClone([value[1], value[0]]!)
 }
 
+fn make_fixed_clone() FixedClone {
+	return FixedClone([1, 2]!)
+}
+
 fn main() {
-	value := FixedClone([1, 2]!)
+	value := make_fixed_clone()
 	cloned := value.clone()
 	println(int_str(cloned[0]))
 	println(int_str(cloned[1]))
@@ -10152,4 +10156,255 @@ fn main() {
 }
 ')
 	assert progressed_out.len > 0
+}
+
+fn test_capturing_fn_literal_cast_keeps_declared_parameters() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'capturing_fn_literal_cast_parameters', 'type Callback = fn (int)
+
+fn main() {
+	mut total := 0
+callback := fn [mut total] (value int) {
+	total += value
+	println(int_str(total))
+}
+typed := Callback(callback)
+typed(4)
+println(int_str(total))
+}
+')
+	assert out == '4\n0'
+}
+
+fn test_return_control_expression_forwards_matching_result() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'return_control_expression_result_forward', "fn bytes(ok bool) ![]u8 {
+	if !ok {
+		return error('bad')
+	}
+	return [u8(7)]
+}
+
+fn via_if(ok bool) ![]u8 {
+	return if ok { bytes(true) } else { bytes(false) }
+}
+
+fn via_match(ok bool) ![]u8 {
+	return match ok {
+		true { bytes(true) }
+		else { bytes(false) }
+	}
+}
+
+fn main() {
+	println(via_if(true)!.str())
+	via_if(false) or { println(err.msg()) }
+	println(via_match(true)!.str())
+	via_match(false) or { println(err.msg()) }
+}
+")
+	assert out == '[7]\nbad\n[7]\nbad'
+}
+
+fn test_generic_array_interpolation_resolves_main_struct() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'generic_array_interpolation_main_struct', 'struct Item {
+	value int
+}
+
+fn render[T](items []T) string {
+	return "\${items}"
+}
+
+fn main() {
+	println(render([Item{
+		value: 7
+	}]))
+}
+')
+	assert out.contains('Item{')
+	assert out.contains('value: 7')
+}
+
+fn test_interface_match_smartcast_prefers_concrete_str_method() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_match_concrete_str', 'interface Value {
+	number() int
+}
+
+struct Item {}
+
+fn (_ &Item) number() int {
+	return 7
+}
+
+fn (_ &Item) str() string {
+	return "item"
+}
+
+fn (value &Value) str() string {
+	match value {
+		Item { return value.str() }
+		else { return "unknown" }
+	}
+}
+
+fn main() {
+	value := Value(&Item{})
+	println(value.str())
+}
+')
+	assert out == '&item'
+}
+
+fn test_imported_struct_default_wraps_scalar_sum_variant() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_struct_default_scalar_sum', {
+		'v.mod':         "Module { name: 'imported_struct_default_scalar_sum' }\n"
+		'model/model.v': 'module model\n\ntype Choice = Item | bool\n\npub struct Item {}\n\npub struct Settings {\npub:\n\tchoice Choice = true\n}\n\npub fn choice_is_true(settings Settings) bool {\n\treturn settings.choice is bool && settings.choice\n}\n'
+		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tprintln(model.choice_is_true(model.Settings{}))\n}\n'
+	}, 'main.v')
+	assert out == 'true'
+}
+
+fn test_imported_generic_receiver_alias_methods_on_struct_field() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_generic_receiver_alias_field', {
+		'v.mod':             "Module { name: 'imported_generic_receiver_alias_field' }\n"
+		'vectors/vectors.v': 'module vectors\n\npub struct Vec[T] {\npub mut:\n\tx T\n}\n\npub fn (left Vec[T]) + (right Vec[T]) Vec[T] {\n\treturn Vec[T]{\n\t\tx: left.x + right.x\n\t}\n}\n\npub fn (value Vec[T]) divide[U](scalar U) Vec[T] {\n\treturn Vec[T]{\n\t\tx: value.x / T(scalar)\n\t}\n}\n\npub fn (value Vec[T]) difference(other Vec[T]) T {\n\treturn value.x - other.x\n}\n'
+		'main.v':            'module main\n\nimport vectors\n\ntype V2 = vectors.Vec[f32]\n\nstruct Holder {\nmut:\n\tvalue V2\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: V2{\n\t\t\tx: 8\n\t\t}\n\t}\n\tholder.value += V2{\n\t\tx: 2\n\t}\n\tscaled := holder.value.divide(2)\n\tassert scaled.x == 5\n\tassert holder.value.difference(V2{\n\t\tx: 3\n\t}) == 7\n\tprintln("ok")\n}\n'
+	}, 'main.v')
+	assert out == 'ok'
+}
+
+fn test_imported_generic_receiver_alias_method_return_is_concrete() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_generic_receiver_alias_return', {
+		'v.mod':             "Module { name: 'imported_generic_receiver_alias_return' }\n"
+		'vectors/vectors.v': 'module vectors\n\npub struct Vec3[T] {\npub:\n\tx T\n\ty T\n\tz T\n}\n\npub fn (left Vec3[T]) + (right Vec3[T]) Vec3[T] {\n\treturn Vec3[T]{left.x + right.x, left.y + right.y, left.z + right.z}\n}\n\npub fn (value Vec3[T]) mul_scalar[U](scalar U) Vec3[T] {\n\treturn Vec3[T]{value.x * T(scalar), value.y * T(scalar), value.z * T(scalar)}\n}\n\npub fn (left Vec3[T]) cross(right Vec3[T]) Vec3[T] {\n\treturn Vec3[T]{\n\t\tx: left.y * right.z - left.z * right.y\n\t\ty: left.z * right.x - left.x * right.z\n\t\tz: left.x * right.y - left.y * right.x\n\t}\n}\n'
+		'main.v':            'module main\n\nimport vectors\n\ntype Vec = vectors.Vec3[f64]\n\nfn main() {\n\tleft := Vec{\n\t\tx: 1\n\t\ty: 0\n\t\tz: 0\n\t}\n\tright := Vec{\n\t\tx: 0\n\t\ty: 1\n\t\tz: 0\n\t}\n\tresult := Vec(left.cross(right).mul_scalar(2) + left)\n\tprintln(result.z)\n}\n'
+	}, 'main.v')
+	assert out == '1.0'
+}
+
+fn test_top_level_statements_with_postinclude_generate_main() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'top_level_postinclude_main',
+		'#postinclude <limits.h>\n\n@[export: "v3_exported_helper"]\nfn exported_helper() {}\n\nprintln("ok")\n')
+	assert out == 'ok'
+}
+
+fn test_composite_string_format_accepts_width_and_alignment() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'composite_string_format_width',
+		'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n')
+	assert out == '|[1, 2]      |'
+}
+
+fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'comptime_define_field_default',
+		'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n')
+	assert out == 'Job'
+	run_bad(v3_bin, 'comptime_define_fixed_array_initializer',
+		'struct App {\n\tjobs [\$d("jobs", 2)]int = [1, 2]!\n}\n\nfn main() {}\n',
+		'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
+}
+
+fn test_params_struct_fields_use_callback_and_userdata_compatibility() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'params_struct_callback_userdata_compatibility', 'type Callback = fn (voidptr)
+
+@[params]
+struct Config {
+	callback Callback
+	user_data voidptr
+}
+
+struct App {
+mut:
+	called bool
+}
+
+fn run(config Config) {
+	config.callback(config.user_data)
+}
+
+fn (mut app App) callback() {
+	app.called = true
+}
+
+mut app := &App{}
+run(callback: app.callback, user_data: app)
+println(app.called)
+')
+	assert out == 'true'
+}
+
+fn test_voidptr_function_value_argument_skips_pointer_depth_mismatch() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'voidptr_function_value_argument', 'type Mapper = fn (f64) f64
+
+fn apply(mapper Mapper) f64 {
+	return mapper(2)
+}
+
+fn double(value f64) f64 {
+	return value * 2
+}
+
+fn main() {
+	value := voidptr(double)
+	println(apply(value))
+}
+')
+	assert out == '4.0'
+}
+
+fn test_interface_mut_array_argument_uses_pointer_storage() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_mut_array_argument', 'interface Reader {
+	read(mut buf []u8)
+}
+
+struct Source {}
+
+fn (mut source Source) read(mut buf []u8) {
+	buf[0] = 7
+}
+
+fn main() {
+	mut reader := Reader(Source{})
+	mut buf := []u8{len: 1}
+	reader.read(mut buf)
+	println(buf[0])
+}
+')
+	assert out == '7'
+}
+
+fn test_array_generic_specialization_is_recovered_from_lowered_callee() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'array_generic_specialization_recovery', 'import json
+
+struct Item {
+	value int
+}
+
+fn main() {
+	items := json.decode[[]Item]("[{"value":7}]")!
+	println(items[0].value)
+}
+')
+	assert out == '7'
+}
+
+fn test_imported_generic_preserves_main_embedded_context_type() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_generic_main_embedded_context', {
+		'v.mod':                 "Module { name: 'imported_generic_main_embedded_context' }\n"
+		'ctxhelper/ctxhelper.v': 'module ctxhelper\n\npub struct Context {\npub:\n\tvalue int\n}\n\npub fn read[X]() int {\n\tctx := Context{\n\t\tvalue: 7\n\t}\n\tuser_context := X{\n\t\tContext: ctx\n\t}\n\treturn user_context.Context.value + user_context.value\n}\n'
+		'main.v':                'module main\n\nimport ctxhelper\n\nstruct Context {\n\tctxhelper.Context\n}\n\nfn main() {\n\tprintln(ctxhelper.read[Context]())\n}\n'
+	}, 'main.v')
+	assert out == '14'
 }

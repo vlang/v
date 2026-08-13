@@ -588,17 +588,10 @@ fn (tc &TypeChecker) post_if_exit_smartcasts(id flat.NodeId) []LocalBinding {
 	}
 	cond_id := tc.a.child(&node, 0)
 	then_id := tc.a.child(&node, 1)
-	if binding := tc.negated_is_smartcast(cond_id) {
-		if tc.stmt_definitely_returns(then_id) {
-			return [binding]
-		}
-	}
 	if tc.stmt_definitely_returns(then_id) {
-		cond := tc.a.nodes[int(cond_id)]
-		if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
-			if binding := tc.option_none_cmp_binding(cond) {
-				return [binding]
-			}
+		false_branch_smartcasts := tc.extract_else_branch_smartcasts(cond_id)
+		if false_branch_smartcasts.len > 0 {
+			return false_branch_smartcasts
 		}
 	}
 	if node.children_count >= 3 {
@@ -682,13 +675,18 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 	if cond.kind == .decl_assign {
 		return tc.check_if_guard(cond_id, cond)
 	}
-	if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
+	if cond.kind == .infix && cond.op in [.logical_and, .logical_or] && cond.children_count >= 2 {
 		lhs_id := tc.a.child(&cond, 0)
 		rhs_id := tc.a.child(&cond, 1)
 		mut bindings := tc.check_condition(lhs_id)
+		lhs_smartcasts := if cond.op == .logical_and {
+			tc.extract_smartcasts(lhs_id)
+		} else {
+			tc.extract_else_branch_smartcasts(lhs_id)
+		}
 		if tc.valid_resolution_fast {
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
-			for sc in tc.extract_smartcasts(lhs_id) {
+			for sc in lhs_smartcasts {
 				if valid_string_data(sc.name) {
 					tc.smartcasts[sc.name] = sc.typ
 				}
@@ -702,7 +700,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 		pointer_alias_skipped_rhs :=
 			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
-		for sc in tc.extract_smartcasts(lhs_id) {
+		for sc in lhs_smartcasts {
 			if valid_string_data(sc.name) {
 				tc.smartcasts[sc.name] = sc.typ
 			}
@@ -2837,12 +2835,12 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	for tc.valid_node_id(cur_id) {
 		node := tc.a.nodes[int(cur_id)]
 		if node.kind != .if_expr {
-			return choose_if_tail_type(result, tc.branch_tail_type(cur_id))
+			return tc.choose_if_tail_type(result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
 			smartcasts := tc.extract_smartcasts(tc.a.child(&node, 0))
 			then_type := tc.branch_tail_type_with_smartcasts(tc.a.child(&node, 1), smartcasts)
-			result = choose_if_tail_type(result, then_type)
+			result = tc.choose_if_tail_type(result, then_type)
 		}
 		if node.children_count <= 2 {
 			return result
@@ -2857,7 +2855,7 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			continue
 		}
 		else_type := tc.branch_tail_type(else_id)
-		return choose_if_tail_type(result, else_type)
+		return tc.choose_if_tail_type(result, else_type)
 	}
 	return result
 }
@@ -2903,7 +2901,7 @@ fn (tc &TypeChecker) match_expr_tail_type(id flat.NodeId) Type {
 			|| (is_result_void_type(branch_type) && !tc.branch_tail_is_error_literal(tail)) {
 			incompatible_wrapper_void = branch_type
 		}
-		result = choose_if_tail_type(result, branch_type)
+		result = tc.choose_if_tail_type(result, branch_type)
 	}
 	if incompatible_wrapper_void !is Void {
 		return incompatible_wrapper_void
@@ -2912,7 +2910,7 @@ fn (tc &TypeChecker) match_expr_tail_type(id flat.NodeId) Type {
 }
 
 // choose_if_tail_type supports choose if tail type handling for types.
-fn choose_if_tail_type(current Type, next Type) Type {
+fn (tc &TypeChecker) choose_if_tail_type(current Type, next Type) Type {
 	if current is Void {
 		return next
 	}
@@ -2921,6 +2919,12 @@ fn choose_if_tail_type(current Type, next Type) Type {
 	}
 	if inferred := inferred_contextual_if_type(current, next) {
 		return inferred
+	}
+	if current is SumType && tc.sum_variant_type_for_pattern(current.name, next.name()) != none {
+		return current
+	}
+	if next is SumType && tc.sum_variant_type_for_pattern(next.name, current.name()) != none {
+		return next
 	}
 	if current !is Primitive {
 		return current
@@ -3083,6 +3087,15 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	if cond.kind == .paren && cond.children_count > 0 {
 		return tc.extract_smartcasts(tc.a.child(&cond, 0))
 	}
+	if cond.kind == .ident {
+		if key := tc.visible_binding_storage_key(cond.value) {
+			if source_id := tc.fn_context.bool_condition_exprs[key] {
+				if source_id != cond_id {
+					return tc.extract_smartcasts(source_id)
+				}
+			}
+		}
+	}
 	if cond.kind == .is_expr && cond.children_count > 0 {
 		expr_id := tc.a.child(&cond, 0)
 		key := tc.expr_key(expr_id)
@@ -3201,6 +3214,15 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 	if cond.kind == .paren && cond.children_count > 0 {
 		return tc.extract_else_branch_smartcasts(tc.a.child(&cond, 0))
 	}
+	if cond.kind == .ident {
+		if key := tc.visible_binding_storage_key(cond.value) {
+			if source_id := tc.fn_context.bool_condition_exprs[key] {
+				if source_id != cond_id {
+					return tc.extract_else_branch_smartcasts(source_id)
+				}
+			}
+		}
+	}
 	if binding := tc.negated_is_smartcast(cond_id) {
 		return [binding]
 	}
@@ -3208,6 +3230,11 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 		if binding := tc.option_none_cmp_binding(cond) {
 			return [binding]
 		}
+	}
+	if cond.kind == .infix && cond.op == .logical_or && cond.children_count >= 2 {
+		mut result := tc.extract_else_branch_smartcasts(tc.a.child(&cond, 0))
+		result << tc.extract_else_branch_smartcasts(tc.a.child(&cond, 1))
+		return result
 	}
 	return []LocalBinding{}
 }
@@ -4814,10 +4841,9 @@ fn (tc &TypeChecker) struct_init_field_deprecation_pos(field flat.Node) token.Po
 	file := tc.a.source_files[field.pos.id] or { return field.pos }
 	source := tc.source_texts_by_file[file.name] or { return field.pos }
 	offset := int_min(int_max(field.pos.offset, 0), source.len)
-	line_start := if offset > 0 {
-		if relative := source[..offset].last_index('\n') { relative + 1 } else { 0 }
-	} else {
-		0
+	mut line_start := offset
+	for line_start > 0 && source[line_start - 1] != `\n` {
+		line_start--
 	}
 	line_end := source.index_after('\n', line_start) or { source.len }
 	line := source[line_start..line_end].trim_right('\r\n')
@@ -12378,7 +12404,40 @@ fn (tc &TypeChecker) lexical_smartcast_type(id flat.NodeId, key string) ?Type {
 	if typ := tc.lexical_if_smartcast_type(id, key) {
 		return typ
 	}
+	if typ := tc.lexical_for_smartcast_type(id, key) {
+		return typ
+	}
 	return tc.lexical_match_smartcast_type_with_key(id, key)
+}
+
+fn (tc &TypeChecker) lexical_for_smartcast_type(id flat.NodeId, key string) ?Type {
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .for_stmt && parent.children_count > 3 {
+			mut body_child := false
+			for i in 3 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					body_child = true
+					break
+				}
+			}
+			if body_child {
+				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
+					if binding.name == key {
+						return binding.typ
+					}
+				}
+			}
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			break
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return none
 }
 
 fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type {
@@ -12794,16 +12853,16 @@ pub fn (tc &TypeChecker) type_name(t Type) string {
 	}
 	mut cache := unsafe { tc.type_cache }
 	if !isnil(cache) {
-		w0, w1, slot := type_value_words(&t)
-		if cache.name_recent_set[slot] && cache.name_recent_w0[slot] == w0
-			&& cache.name_recent_w1[slot] == w1 {
+		hash, slot := type_recent_hash_slot(t)
+		if cache.name_recent_set[slot] && cache.name_recent_hashes[slot] == hash
+			&& semantic_types_equal(cache.name_recent_types[slot], t) {
 			return cache.name_recent_vals[slot]
 		}
 		id, _ := tc.intern_type(t)
 		mut interner := unsafe { tc.type_interner }
 		result := interner.name(id)
-		cache.name_recent_w0[slot] = w0
-		cache.name_recent_w1[slot] = w1
+		cache.name_recent_hashes[slot] = hash
+		cache.name_recent_types[slot] = clone_owned_type(t)
 		cache.name_recent_vals[slot] = result
 		cache.name_recent_set[slot] = true
 		return result
@@ -12813,8 +12872,21 @@ pub fn (tc &TypeChecker) type_name(t Type) string {
 	return interner.name(id)
 }
 
-// type_value_words exposes a Type value's two raw words for slot hashing:
-// identical bytes always denote the same type (same tag, same payload).
+// type_recent_hash_slot chooses a recent-cache slot from semantic identity.
+@[inline]
+fn type_recent_hash_slot(typ Type) (u64, int) {
+	hash := semantic_type_hash(typ)
+	return hash, int(hash & 2047)
+}
+
+@[inline]
+fn type_text_recent_slot(typ string) int {
+	return int(type_hash_string(u64(14_695_981_039_346_656_037), typ) & 2047)
+}
+
+// type_value_words exposes the transient Type representation for immediate
+// equality checks. Do not retain these words as a cache key: payload addresses
+// can be reused after the compared values leave scope.
 @[inline]
 fn type_value_words(typ &Type) (u64, u64, int) {
 	words := unsafe { &u64(voidptr(typ)) }
@@ -15635,9 +15707,8 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		if child.kind != .param {
-			if tc.prefix_param_scan {
-				break
-			}
+			// Captures precede parameters in a function literal's flat children, so a
+			// prefix-only scan would stop at the first capture and infer `fn()`.
 			continue
 		}
 		params_mut << child.is_mut
@@ -15816,34 +15887,28 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 		return tc.c_type_uncached(t)
 	}
 	mut cache := unsafe { tc.type_cache }
-	mut w0 := u64(0)
-	mut w1 := u64(0)
-	mut slot := 0
+	key := t.name()
+	slot := type_text_recent_slot(key)
 	if tc.fast_c_type_recent {
-		w0, w1, slot = type_value_words(&t)
-		if cache.c_recent_set[slot] && cache.c_recent_w0[slot] == w0
-			&& cache.c_recent_w1[slot] == w1 {
+		if cache.c_recent_set[slot] && cache.c_recent_keys[slot] == key {
 			cache.c_hits++
 			return cache.c_recent_vals[slot]
 		}
 	}
-	key, canonical := tc.intern_type(t)
 	if cached := cache.c_entries[key] {
 		cache.c_hits++
 		if tc.fast_c_type_recent {
-			cache.c_recent_w0[slot] = w0
-			cache.c_recent_w1[slot] = w1
+			cache.c_recent_keys[slot] = key
 			cache.c_recent_vals[slot] = cached
 			cache.c_recent_set[slot] = true
 		}
 		return cached
 	}
 	cache.c_misses++
-	result := tc.c_type_uncached(canonical)
+	result := tc.c_type_uncached(t)
 	cache.c_entries[key] = result
 	if tc.fast_c_type_recent {
-		cache.c_recent_w0[slot] = w0
-		cache.c_recent_w1[slot] = w1
+		cache.c_recent_keys[slot] = key
 		cache.c_recent_vals[slot] = result
 		cache.c_recent_set[slot] = true
 	}
@@ -16024,23 +16089,31 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 fn (tc &TypeChecker) c_struct_type_name(name string) string {
 	base, args, ok := generic_type_application_parts(name)
 	if !ok {
-		cname := naming.c_name(name)
-		if tc.autofree_mode && !name.contains('.') && name in tc.struct_modules {
+		mut qualified_name := name
+		if !name.contains('.') && name in tc.struct_modules {
 			module_name := tc.struct_modules[name]
 			if module_name in ['', 'main'] {
-				return naming.c_name('main.${name}')
+				qualified_name = 'main.${name}'
 			}
 		}
+		cname := naming.c_name(qualified_name)
 		if tc.struct_c_name_collides_with_v3_runtime(name, cname) {
 			return '_v_${cname}'
 		}
 		return cname
 	}
+	mut qualified_base := base
+	if !base.contains('.') && base in tc.struct_modules {
+		module_name := tc.struct_modules[base]
+		if module_name in ['', 'main'] {
+			qualified_base = 'main.${base}'
+		}
+	}
 	mut normalized_args := []string{cap: args.len}
 	for arg in args {
 		normalized_args << tc.c_generic_struct_arg_name(arg)
 	}
-	return naming.c_name('${base}[${normalized_args.join(', ')}]')
+	return naming.c_name('${qualified_base}[${normalized_args.join(', ')}]')
 }
 
 fn (tc &TypeChecker) struct_c_name_collides_with_v3_runtime(name string, cname string) bool {
@@ -16938,6 +17011,9 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 	mut receiver_types := [unwrap_pointer(lhs)]
 	if receiver_types[0] is Alias {
 		alias_type := receiver_types[0] as Alias
+		if target := tc.alias_target_type_text(alias_type.name) {
+			receiver_types << tc.parse_type(target)
+		}
 		receiver_types << alias_type.base_type
 	}
 	for receiver_type in receiver_types {
@@ -16945,21 +17021,34 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 		if lhs_name.len == 0 {
 			continue
 		}
-		method_name := '${lhs_name}.${op_name}'
-		for candidate in [method_name, tc.cached_c_name(method_name)] {
-			ret := tc.fn_ret_types[candidate] or { continue }
-			params := tc.fn_param_types[candidate] or { continue }
-			if params.len == 0 || (!tc.receiver_compatible(lhs, params[0])
-				&& !tc.receiver_compatible(receiver_type, params[0])) {
-				continue
-			}
-			return InfixOperatorSignature{
-				return_type: ret
-				param_type:  if params.len > 1 { params[1] } else { Type(void_) }
-				param_count: params.len
+		_, _, is_concrete_generic := generic_type_application_parts(lhs_name)
+		if is_concrete_generic {
+			if info := tc.resolve_generic_struct_method(lhs_name, op_name) {
+				if info.params.len > 0 && (tc.receiver_compatible(lhs, info.params[0])
+					|| tc.receiver_compatible(receiver_type, info.params[0])) {
+					return InfixOperatorSignature{
+						return_type: info.return_type
+						param_type:  if info.params.len > 1 { info.params[1] } else { Type(void_) }
+						param_count: info.params.len
+					}
+				}
 			}
 		}
-		if info := tc.resolve_generic_struct_method(lhs_name, op_name) {
+		method_name := '${lhs_name}.${op_name}'
+		if ret := tc.fn_ret_types[method_name] {
+			if params := tc.fn_param_types[method_name] {
+				if params.len > 0 && (tc.receiver_compatible(lhs, params[0])
+					|| tc.receiver_compatible(receiver_type, params[0])) {
+					return InfixOperatorSignature{
+						return_type: ret
+						param_type:  if params.len > 1 { params[1] } else { Type(void_) }
+						param_count: params.len
+					}
+				}
+			}
+		}
+		if !is_concrete_generic {
+			info := tc.resolve_generic_struct_method(lhs_name, op_name) or { continue }
 			if info.params.len > 0 && (tc.receiver_compatible(lhs, info.params[0])
 				|| tc.receiver_compatible(receiver_type, info.params[0])) {
 				return InfixOperatorSignature{
@@ -16991,8 +17080,7 @@ fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {
 		return true
 	}
 	method_name := '${type_name}.${op_name}'
-	return method_name in tc.fn_ret_types || tc.cached_c_name(method_name) in tc.fn_ret_types
-		|| tc.resolve_generic_struct_method(type_name, op_name) != none
+	return method_name in tc.fn_ret_types
 }
 
 fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_id flat.NodeId, other_type Type) ?Type {

@@ -109,7 +109,9 @@ fn audio_callback(mut soundbuffer &f32, num_frames int, num_channels int, mut ap
 				note.amplitude -= c_note_decay
 			}
 			for ch in 0 .. num_channels {
-				soundbuffer[frame * num_channels + ch] = sample
+				unsafe {
+					soundbuffer[frame * num_channels + ch] = sample
+				}
 			}
 		}
 	}

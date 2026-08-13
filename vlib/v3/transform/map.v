@@ -1548,8 +1548,8 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 }
 
 fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ string) flat.NodeId {
-	prefix := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	prefix := t.pending_stmts
+	t.pending_stmts = []flat.NodeId{}
 	value := if typ.starts_with('&') && t.is_sum_type_name(typ[1..]) {
 		t.transform_expr_for_type(id, typ)
 	} else if typ in t.sum_types || t.resolve_sum_name(typ) in t.sum_types {
@@ -1557,7 +1557,7 @@ fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ str
 	} else {
 		t.transform_expr_for_type(id, typ)
 	}
-	entry_pending := t.pending_stmts.clone()
+	entry_pending := t.pending_stmts
 	t.pending_stmts = prefix
 	for stmt in entry_pending {
 		t.pending_stmts << stmt

@@ -931,7 +931,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			if var := g.global_const_defs[var_name] {
 				if !var.def.starts_with('#define') {
 					helpers.writeln(var.def)
-					if var.def.starts_with('/*') || var.def.starts_with('extern ') {
+					if var.extern_def.len > 0 {
+						g.extern_out.writeln(var.extern_def)
+					} else if var.def.starts_with('/*') || var.def.starts_with('extern ') {
 						// skip C globals (comment-only placeholders) and
 						// already extern declarations (e.g. extern C globals)
 						g.extern_out.writeln(var.def)

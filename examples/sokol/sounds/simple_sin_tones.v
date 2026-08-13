@@ -17,13 +17,21 @@ fn my_audio_stream_callback(mut soundbuffer &f32, num_frames int, num_channels i
 		for ch := 0; ch < num_channels; ch++ {
 			idx := frame * num_channels + ch
 			if ms < 250 {
-				soundbuffer[idx] = 0.5 * sintone(20, frame, num_frames)
+				unsafe {
+					soundbuffer[idx] = 0.5 * sintone(20, frame, num_frames)
+				}
 			} else if ms < 300 {
-				soundbuffer[idx] = 0.5 * sintone(25, frame, num_frames)
+				unsafe {
+					soundbuffer[idx] = 0.5 * sintone(25, frame, num_frames)
+				}
 			} else if ms < 1500 {
-				soundbuffer[idx] *= sintone(22, frame, num_frames)
+				unsafe {
+					soundbuffer[idx] *= sintone(22, frame, num_frames)
+				}
 			} else {
-				soundbuffer[idx] = 0.5 * sintone(25, frame, num_frames)
+				unsafe {
+					soundbuffer[idx] = 0.5 * sintone(25, frame, num_frames)
+				}
 			}
 		}
 	}

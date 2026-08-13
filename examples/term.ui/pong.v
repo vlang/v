@@ -491,10 +491,10 @@ fn main() {
 	mut app := &App{}
 	app.tui = ui.init(
 		user_data:      app
-		init_fn:        InitFn(init)
-		frame_fn:       FrameFn(frame)
-		cleanup_fn:     CleanupFn(cleanup)
-		event_fn:       EventFn(event)
+		init_fn:        unsafe { InitFn(init) }
+		frame_fn:       unsafe { FrameFn(frame) }
+		cleanup_fn:     unsafe { CleanupFn(cleanup) }
+		event_fn:       unsafe { EventFn(event) }
 		fail_fn:        fail
 		capture_events: true
 		hide_cursor:    true

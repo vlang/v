@@ -11,7 +11,7 @@ import v3.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-47'
+const cache_format = 'v3-module-cache-48'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -5213,6 +5213,18 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		}
 	}
 	node := a.nodes[int(id)]
+	if node.kind == .infix && node.children_count > 0 {
+		// Generic operator calls are represented by the infix node itself, not a
+		// call node with a resolved generic callee. Preserve the containing source
+		// body so a warm build can recreate the concrete operator specialization
+		// required by the cached module object.
+		operand_type := tc.resolve_type(a.child(&node, 0)).name().trim_left('&?!')
+		receiver_base := operand_type.all_before('[')
+		if operand_type.contains('[') && (receiver_base in tc.struct_generic_params
+			|| receiver_base.all_after_last('.') in tc.struct_generic_params) {
+			return true
+		}
+	}
 	if node.kind == .call && node.children_count > 0 {
 		callee_id := a.child(&node, 0)
 		if name := generic_call_source_name(a, callee_id) {
@@ -5959,7 +5971,9 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 				if typ is types.Array {
 					// Cache headers are declaration inputs. A bare const literal uses
 					// fixed storage there and disagrees with the cached object's source ABI.
-					value = '${value}.clone()'
+					// Preserve the checked element type too: the raw `array.clone` header
+					// signature cannot reconstruct it from every declaration-only literal.
+					value = '${cached_type_source_name(typ)}(${value}).clone()'
 				}
 			}
 			if value.len > 0 {
@@ -6044,8 +6058,17 @@ fn interface_text(a &flat.FlatAst, node flat.Node, source_is_public bool) string
 			mut params := []string{}
 			for pi in 0 .. field.children_count {
 				param := a.child_node(field, pi)
-				prefix := if param.op == .amp { 'mut ' } else { '' }
-				param_type := if param.op == .amp { param.typ.trim_left('&') } else { param.typ }
+				mut param_type := param.typ
+				mut prefix := ''
+				if param.is_mut && param.op == .amp {
+					prefix = 'mut '
+					if !param_type.starts_with('&') {
+						param_type = '&${param_type}'
+					}
+				} else if param_type.starts_with('&') && param.is_mut {
+					prefix = 'mut '
+					param_type = param_type[1..].trim_space()
+				}
 				params << '${prefix}arg${pi} ${param_type}'
 			}
 			ret := if field.typ.len > 0 { ' ${field.typ}' } else { '' }

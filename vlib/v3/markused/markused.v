@@ -379,6 +379,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	used['main'] = true
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
+	enqueue_implicit_global_container_roots(a, tc, fn_decls, mut used, mut queue)
 	for root in marked_roots {
 		enqueue(root, mut used, mut queue)
 	}
@@ -564,7 +565,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	} else if !trivial_literal_output {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	}
-	if !trivial_literal_output && markused_program_needs_closure_runtime(a) {
+	if !trivial_literal_output && markused_program_needs_closure_runtime(a, tc) {
 		enqueue('closure.closure_create_with_data', mut used, mut queue)
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
 	}
@@ -1297,6 +1298,47 @@ fn enqueue_initializer_callee(callee string, fn_decls map[string]FnDeclInfo, a &
 		add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
 	} else {
 		enqueue(callee, mut used, mut queue)
+	}
+}
+
+fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecker, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+	mut needs_array := false
+	mut needs_map := false
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		if node.kind != .global_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.children_count > 0 {
+				continue
+			}
+			mut typ := tc.parse_type(field.typ)
+			for _ in 0 .. 32 {
+				if typ is types.Alias {
+					typ = typ.base_type
+					continue
+				}
+				break
+			}
+			if typ is types.Array {
+				needs_array = true
+			} else if typ is types.Map {
+				needs_map = true
+			}
+		}
+	}
+	if needs_array {
+		enqueue_initializer_callee('__new_array', fn_decls, a, mut used, mut queue)
+	}
+	if needs_map {
+		for helper in ['new_map', 'map_hash_string', 'map_eq_string', 'map_clone_string',
+			'map_free_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
+			'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_1',
+			'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
+			enqueue_initializer_callee(helper, fn_decls, a, mut used, mut queue)
+		}
 	}
 }
 
@@ -2234,7 +2276,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 }
 
-fn markused_program_needs_closure_runtime(a &flat.FlatAst) bool {
+fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker) bool {
 	mut call_callees := map[int]bool{}
 	for node in a.nodes {
 		if node.kind == .call && node.children_count > 0 {
@@ -2258,7 +2300,8 @@ fn markused_program_needs_closure_runtime(a &flat.FlatAst) bool {
 	for idx, node in a.nodes {
 		if node.kind == .selector && node.children_count > 0 && idx !in call_callees {
 			base := a.child_node(&node, 0)
-			if base.kind in [.string_literal, .int_literal, .float_literal, .char_literal] {
+			if base.kind in [.string_literal, .int_literal, .float_literal, .char_literal]
+				|| tc.expr_is_method_value(flat.NodeId(idx)) {
 				return true
 			}
 		}

@@ -468,9 +468,9 @@ fn main() {
 	mut app := &App{}
 	app.termui = termui.init(
 		user_data:   app
-		event_fn:    EventFn(event)
-		frame_fn:    FrameFn(frame)
-		init_fn:     InitFn(init)
+		event_fn:    unsafe { EventFn(event) }
+		frame_fn:    unsafe { FrameFn(frame) }
+		init_fn:     unsafe { InitFn(init) }
 		hide_cursor: true
 		frame_rate:  10
 	)

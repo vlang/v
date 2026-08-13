@@ -6552,7 +6552,16 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				}
 				return tc.call_info(mname, true)
 			}
-			alias_target_name := resolve_type_name_for_method(clean.base_type)
+			// The semantic alias payload can be the open generic form after a
+			// declaration-module parse. Reparse the recorded target text in the
+			// caller so `type Vec = vec.Vec3[f64]` retains its concrete argument
+			// when resolving inherited methods such as `Vec.cross()`.
+			alias_target_type := if target := tc.alias_target_type_text(clean.name) {
+				tc.parse_type(target)
+			} else {
+				clean.base_type
+			}
+			alias_target_name := resolve_type_name_for_method(alias_target_type)
 			if alias_target_name.len > 0 {
 				if info := tc.resolve_generic_struct_method(alias_target_name, fn_node.value) {
 					return info
@@ -7140,6 +7149,20 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				return tc.call_info(mname, true)
 			}
 		}
+		if declared := tc.declared_smartcast_receiver_type(base_id) {
+			declared_clean := unwrap_all_pointers(declared)
+			if declared_clean is SumType {
+				if info := tc.resolve_generic_sum_method(declared_clean.name, fn_node.value) {
+					return info
+				}
+			}
+			for mname in receiver_method_name_candidates(declared_clean, fn_node.value,
+				tc.cur_module) {
+				if mname in tc.fn_ret_types {
+					return tc.call_info(mname, true)
+				}
+			}
+		}
 		if fn_node.value == 'clone' && tc.type_has_compiler_default_clone(clean) {
 			if bad_type := tc.ownership_default_clone_missing_method(clean) {
 				tc.record_error(.call_arg_mismatch,
@@ -7252,6 +7275,17 @@ fn (tc &TypeChecker) binding_is_strings_builder(name string) bool {
 		return false
 	}
 	return strings_builder_binding_key(tc.fn_context.node_id, name) in tc.strings_builder_bindings
+}
+
+fn (tc &TypeChecker) declared_smartcast_receiver_type(id flat.NodeId) ?Type {
+	if tc.smartcast_type(id) == none || !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return tc.cur_scope.lookup(node.value)
+	}
+	return none
 }
 
 fn (tc &TypeChecker) expr_is_strings_new_builder_call(id flat.NodeId) bool {
@@ -10257,8 +10291,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				} else {
 					tc.resolve_type(arg_id)
 				}
-				if !tc.type_compatible(actual, expected) && !tc.type_compatible(expected, actual)
-					&& !tc.pointer_value_compatible(actual, expected) {
+				if !tc.params_field_expr_compatible(arg_id, actual, expected) {
 					expected_name := tc.params_field_diagnostic_type(raw_arg.value, info, expected)
 					actual_name := if unalias_type(expected) is FnType
 						&& unalias_type(actual) is FnType {
@@ -10964,6 +10997,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 			&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
 			&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+			&& !tc.fn_voidptr_expr_compatible(pointer_check_actual, expected)
 			&& !(info.name.starts_with('C.') && tc.is_zero_literal(arg_id))
 			&& !(info.name.starts_with('C.') && fn_param_is_voidptr_type(pointer_check_actual))
 			&& !tc.implicit_ref_arg_compatible(arg_id, pointer_check_actual, expected)
@@ -11171,6 +11205,16 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	for arg_id in pointer_slot_call_args {
 		tc.invalidate_pointer_binding_alias_after_mut_call(arg_id)
 	}
+}
+
+fn (tc &TypeChecker) params_field_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+	return tc.expr_compatible(id, actual, expected)
+		|| tc.type_compatible(expected, actual)
+		|| tc.pointer_value_compatible(actual, expected)
+		|| tc.method_value_matches_voidptr_callback(id, actual, expected)
+		|| tc.fn_callback_adapter_compatible(actual, expected)
+		|| voidptr_arg_compatible(expected, actual)
+		|| (fn_param_is_voidptr_type(expected) && tc.expr_can_take_address(id))
 }
 
 fn (tc &TypeChecker) call_is_direct_spawn_child(id flat.NodeId) bool {
@@ -12773,13 +12817,43 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 			tc.type_from_known_symbol(arg) or { tc.parse_type(arg) }
 		}
 	}
+	// A generic receiver method can also have its own generic parameters, e.g.
+	// `fn (v Vec3[T]) mul_scalar[U](u U) Vec3[T]`. The method inference above
+	// resolves `U`, while resolve_generic_struct_method has already made the
+	// receiver concrete. Retain both substitutions when rebuilding signature
+	// text so the receiver's `T` does not become open again.
+	mut signature_params := generic_params.clone()
+	mut signature_args := concrete_args.clone()
+	if info.has_receiver && info.params.len > 0 && param_texts.len > 0 {
+		receiver_pattern := info.name.all_before_last('.')
+		_, receiver_params, receiver_is_generic := generic_type_application_parts(receiver_pattern)
+		if receiver_is_generic {
+			mut receiver_inferred := map[string]string{}
+			actual_receiver := unwrap_pointer(info.params[0]).name()
+			tc.infer_generic_type_text_from_text(receiver_pattern, actual_receiver,
+				receiver_params, mut receiver_inferred)
+			if receiver_inferred.len == 0 {
+				tc.infer_generic_type_text_from_type(param_texts[0], info.params[0],
+					receiver_params, mut receiver_inferred)
+			}
+			for receiver_param in receiver_params {
+				if receiver_param in signature_params {
+					continue
+				}
+				if receiver_arg := receiver_inferred[receiver_param] {
+					signature_params << receiver_param
+					signature_args << receiver_arg
+				}
+			}
+		}
+	}
 	mut sub_params := []Type{}
 	for i, param_text in param_texts {
 		if generic_type_application(param_text) {
 			// Named applications such as `Box[T]` lose their arguments in the
 			// open parsed type, so retain the textual reconstruction for them.
 			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
-				concrete_args, generic_params))
+				signature_args, signature_params))
 		} else if i < info.params.len {
 			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types,
 				generic_params)
@@ -12791,8 +12865,8 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	ret_text := tc.fn_ret_type_texts[info.name] or { '' }
 	sub_ret := if ret_text.len > 0 {
 		if generic_type_application(ret_text) || ret_text.starts_with('(') {
-			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, concrete_args,
-				generic_params))
+			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, signature_args,
+				signature_params))
 		} else {
 			tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 		}

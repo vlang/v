@@ -1692,6 +1692,12 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 			return checker_type
 		}
 	}
+	// `offsetof` stores its member name in `node.typ`; that payload is not the
+	// expression type. Keep it from becoming a synthetic named type when dump
+	// lowering declares a temporary for the expression.
+	if node.kind == .offsetof_expr || node.kind == .sizeof_expr {
+		return 'usize'
+	}
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {
 		// The checker override only applies to named struct types. Most expressions

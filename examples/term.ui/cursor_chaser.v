@@ -90,8 +90,8 @@ fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
 		user_data:   app
-		frame_fn:    FrameFn(frame)
-		event_fn:    EventFn(event)
+		frame_fn:    unsafe { FrameFn(frame) }
+		event_fn:    unsafe { EventFn(event) }
 		hide_cursor: true
 	)
 	app.tui.run()!

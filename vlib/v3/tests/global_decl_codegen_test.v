@@ -33,3 +33,17 @@ fn test_typed_global_initializers_in_group_keep_type_and_value() {
 		'import sync.stdatomic\n\n__global (\n\tfirst_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n\tsecond_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n)\n\nfn main() {\n\tfirst_flag.store(true)\n\tprintln(first_flag.load())\n\tprintln(second_flag.load())\n\tsecond_flag.store(true)\n\tprintln(second_flag.load())\n}\n')
 	assert out == 'true\nfalse\ntrue'
 }
+
+fn test_implicit_global_dynamic_array_is_initialized_before_append() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'implicit_global_dynamic_array',
+		"struct Entry {\n\tname string\n}\n\n__global entries []Entry\n\nfn main() {\n\tentries << Entry{name: 'ok'}\n\tprintln(entries[0].name)\n}\n")
+	assert out == 'ok'
+}
+
+fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'implicit_global_container_helpers',
+		"__global names []string\n__global lookup map[string]int\n\nfn main() {\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}

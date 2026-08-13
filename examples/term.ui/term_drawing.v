@@ -113,8 +113,8 @@ fn main() {
 	mut app := &App{}
 	app.ui = ui.init(
 		user_data:    app
-		frame_fn:     FrameFn(frame)
-		event_fn:     EventFn(event)
+		frame_fn:     unsafe { FrameFn(frame) }
+		event_fn:     unsafe { EventFn(event) }
 		frame_rate:   frame_rate
 		hide_cursor:  true
 		window_title: 'V terminal pixelart drawing app'

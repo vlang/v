@@ -4759,16 +4759,27 @@ fn auto_str_helper_name(aggregate string) string {
 	return '__v3_autostr_${c_name(aggregate)}'
 }
 
+fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
+	if !isnil(t.tc) {
+		if module_name := t.tc.struct_modules[aggregate] {
+			return module_name
+		}
+	}
+	if !aggregate.starts_with('C.') && aggregate.contains('.') {
+		return aggregate.all_before_last('.')
+	}
+	return if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+}
+
 fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate string) flat.NodeId {
 	helper := auto_str_helper_name(aggregate)
 	if aggregate !in t.auto_str_types {
 		t.auto_str_types[aggregate] = AutoStrRequest{
 			module: t.cur_module
 			file:   t.cur_file
-			// The helper name already contains the aggregate's fully qualified C
-			// name. Emit it in `main` so every transformed call uses that exact,
-			// module-independent symbol.
-			helper_module: 'main'
+			// The helper name contains the fully qualified C type, while the module
+			// assignment keeps its definition with the cached object that owns it.
+			helper_module: t.auto_str_helper_owner_module(aggregate)
 		}
 	}
 	t.mark_fn_used_name(helper)
@@ -4903,10 +4914,11 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 	} else {
 		helper
 	}
-	t.fn_ret_types[helper] = 'string'
-	t.fn_ret_types[helper_key] = 'string'
+	t.set_fn_ret_type(helper, 'string')
+	t.set_fn_ret_type(helper_key, 'string')
 	t.mark_fn_used_name(helper_key)
 	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_signatures()
 		t.tc.fn_ret_types[helper] = t.tc.parse_type('string')
 		t.tc.fn_ret_types[helper_key] = t.tc.parse_type('string')
 		t.tc.fn_param_types[helper] = [t.tc.parse_type(aggregate)]
@@ -5762,9 +5774,18 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
 }
 
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
-	clean := typ.trim_space()
+	mut clean := typ.trim_space()
 	if clean.len == 0 {
 		return none
+	}
+	// Main-module declarations are stored under their bare names, while checker-resolved
+	// generic parameter types can retain a `main.` qualifier after specialization.
+	if clean.starts_with('main.') && !clean['main.'.len..].contains('.') {
+		short := clean['main.'.len..]
+		if short in t.structs || short in t.sum_types
+			|| (!isnil(t.tc) && (short in t.tc.structs || short in t.tc.sum_types)) {
+			clean = short
+		}
 	}
 	base, args, is_generic := generic_app_parts(clean)
 	if is_generic && args.len > 0 && t.generic_aggregate_base_exists(base, args.len) {
@@ -5812,17 +5833,16 @@ fn (t &Transformer) generic_specialized_source_type_name(typ string) ?string {
 	if args.len == 0 {
 		return none
 	}
-	suffix := generic_type_suffixes(args)
 	if !isnil(t.tc) {
 		for base, params in t.tc.struct_generic_params {
 			if params.len == args.len
-				&& generic_specialized_type_matches_flat_name(clean, base, suffix) {
+				&& generic_specialized_type_matches_flat_name(clean, base, args) {
 				return generic_specialized_source_type_name_for_base(base, args)
 			}
 		}
 		for base, params in t.tc.sum_generic_params {
 			if params.len == args.len
-				&& generic_specialized_type_matches_flat_name(clean, base, suffix) {
+				&& generic_specialized_type_matches_flat_name(clean, base, args) {
 				return generic_specialized_source_type_name_for_base(base, args)
 			}
 		}
@@ -5853,11 +5873,20 @@ fn (t &Transformer) generic_aggregate_base_exists(base string, arg_count int) bo
 	return false
 }
 
-fn generic_specialized_type_matches_flat_name(flat_name string, base string, suffix string) bool {
-	if flat_name.len == 0 || base.len == 0 || suffix.len == 0 {
+fn generic_specialized_type_matches_flat_name(flat_name string, base string, args []string) bool {
+	if flat_name.len == 0 || base.len == 0 || args.len == 0 {
 		return false
 	}
 	mut candidates := []string{}
+	source_name := generic_specialized_source_type_name_for_base(base, args)
+	add_generic_specialized_type_candidate(mut candidates, source_name)
+	source_cname := c_name(source_name)
+	add_generic_specialized_type_candidate(mut candidates, source_cname)
+	// A specialized callee is decoded from its C spelling before live-argument
+	// inference. That restores module separators inside a flattened aggregate
+	// (`Box_mod__Type` -> `Box_mod.Type`) without restoring the generic brackets.
+	add_generic_specialized_type_candidate(mut candidates, source_cname.replace('__', '.'))
+	suffix := generic_type_suffixes(args)
 	add_generic_specialized_type_candidate(mut candidates, '${base}_${suffix}')
 	add_generic_specialized_type_candidate(mut candidates, c_name('${base}_${suffix}'))
 	if base.contains('.') {
@@ -7697,6 +7726,11 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 // compiler-provided IClone value. The initial aggregate copy preserves scalar/reference
 // fields, and each owning field is then replaced with its independent clone.
 fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ string, allow_method bool) flat.NodeId {
+	mut visiting := map[string]bool{}
+	return t.make_compiler_default_clone_value_inner(source, typ, allow_method, mut visiting)
+}
+
+fn (mut t Transformer) make_compiler_default_clone_value_inner(source flat.NodeId, typ string, allow_method bool, mut visiting map[string]bool) flat.NodeId {
 	clean := t.normalize_type_alias(typ).trim_space()
 	if clean.len == 0 || clean.starts_with('&') {
 		return source
@@ -7712,7 +7746,8 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		if inner_needs_work {
 			source_value := t.make_selector(tmp, 'value', inner)
 			pending_start := t.pending_stmts.len
-			cloned_value := t.make_compiler_default_clone_value(source_value, inner, true)
+			cloned_value := t.make_compiler_default_clone_value_inner(source_value, inner, true, mut
+				visiting)
 			body = t.pending_stmts[pending_start..].clone()
 			t.pending_stmts = t.pending_stmts[..pending_start].clone()
 			body << t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner),
@@ -7739,15 +7774,15 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_call_typed('string__clone', arr1(source), 'string')
 	}
 	if clean.starts_with('[]') {
-		return t.make_compiler_default_array_clone_value(source, clean,
-			!t.expr_can_take_address(source))
+		return t.make_compiler_default_array_clone_value_inner(source, clean,
+			!t.expr_can_take_address(source), mut visiting)
 	}
 	if t.is_fixed_array_type(clean) {
-		return t.make_compiler_default_fixed_array_clone_value(source, clean)
+		return t.make_compiler_default_fixed_array_clone_value_inner(source, clean, mut visiting)
 	}
 	if clean.starts_with('map[') {
-		return t.make_compiler_default_map_clone_value(source, clean,
-			!t.expr_can_take_address(source))
+		return t.make_compiler_default_map_clone_value_inner(source, clean,
+			!t.expr_can_take_address(source), mut visiting)
 	}
 	if allow_method {
 		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
@@ -7784,6 +7819,14 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	if owning_fields.len == 0 {
 		return source
 	}
+	// Inline recursive aggregates (for example StructField -> StructDecl ->
+	// []StructField) have a zero/default recursive member at runtime. Stop the
+	// compiler-generated clone at the repeated aggregate instead of recursively
+	// expanding an unbounded synthetic expression tree.
+	if visiting[clean] {
+		return source
+	}
+	visiting[clean] = true
 	// An addressable source keeps owning its fields, so the aggregate copy below is
 	// only a non-owning template. A temporary source transfers its fields into the
 	// aggregate and those originals must be destroyed after their clones are saved.
@@ -7793,7 +7836,8 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	for field in owning_fields {
 		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
 		source_field := t.make_selector(t.make_ident(tmp_name), field.name, field_type)
-		mut cloned_field := t.make_compiler_default_clone_value(source_field, field_type, true)
+		mut cloned_field := t.make_compiler_default_clone_value_inner(source_field, field_type,
+			true, mut visiting)
 		if source_fields_are_owned {
 			cloned_name := t.new_temp('derived_clone_field')
 			t.pending_stmts << t.make_decl_assign_typed(cloned_name, cloned_field, field_type)
@@ -7804,6 +7848,7 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		t.pending_stmts << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.name,
 			field_type), cloned_field)
 	}
+	visiting.delete(clean)
 	return t.make_ident(tmp_name)
 }
 
@@ -7812,6 +7857,12 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 // owners and are deliberately overwritten without being dropped. The caller classifies
 // the source lifetime before transformation can make a temporary addressable.
 fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeId, array_type string, source_is_owned_temporary bool) flat.NodeId {
+	mut visiting := map[string]bool{}
+	return t.make_compiler_default_array_clone_value_inner(source, array_type,
+		source_is_owned_temporary, mut visiting)
+}
+
+fn (mut t Transformer) make_compiler_default_array_clone_value_inner(source flat.NodeId, array_type string, source_is_owned_temporary bool, mut visiting map[string]bool) flat.NodeId {
 	elem_type := array_type[2..]
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return t.make_array_clone_value(source, array_type)
@@ -7830,7 +7881,8 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	source_elem := t.array_get_value(stable_source, t.make_ident(idx_name), elem_type)
 	pending_start := t.pending_stmts.len
-	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	cloned_elem := t.make_compiler_default_clone_value_inner(source_elem, elem_type, true, mut
+		visiting)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
@@ -7851,6 +7903,12 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 // replaces each owning element with an independent clone. The initial element copies
 // are non-owning and are overwritten without being dropped.
 fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat.NodeId, raw_fixed_type string) flat.NodeId {
+	mut visiting := map[string]bool{}
+	return t.make_compiler_default_fixed_array_clone_value_inner(source, raw_fixed_type, mut
+		visiting)
+}
+
+fn (mut t Transformer) make_compiler_default_fixed_array_clone_value_inner(source flat.NodeId, raw_fixed_type string, mut visiting map[string]bool) flat.NodeId {
 	fixed_type :=
 		t.receiver_type_text_source_fixed_spelling(t.resolved_fixed_array_canonical_type(raw_fixed_type))
 	elem_type := fixed_array_elem_type(fixed_type)
@@ -7868,7 +7926,8 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	source_elem := t.make_index(stable_source, t.make_ident(idx_name), elem_type)
 	pending_start := t.pending_stmts.len
-	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	cloned_elem := t.make_compiler_default_clone_value_inner(source_elem, elem_type, true, mut
+		visiting)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
@@ -7890,6 +7949,12 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 // The source lifetime is classified by the caller before transformation can turn a
 // temporary literal into an addressable synthetic identifier.
 fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId, map_type string, source_is_owned_temporary bool) flat.NodeId {
+	mut visiting := map[string]bool{}
+	return t.make_compiler_default_map_clone_value_inner(source, map_type,
+		source_is_owned_temporary, mut visiting)
+}
+
+fn (mut t Transformer) make_compiler_default_map_clone_value_inner(source flat.NodeId, map_type string, source_is_owned_temporary bool, mut visiting map[string]bool) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
 	clean_key_type := t.normalize_type_alias(key_type).trim_space()
 	key_needs_clone := clean_key_type != 'string'
@@ -7923,12 +7988,14 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 	t.set_var_type(source_value_name, value_type)
 	pending_start := t.pending_stmts.len
 	cloned_key := if key_needs_clone {
-		t.make_compiler_default_clone_value(t.make_ident(key_name), key_type, true)
+		t.make_compiler_default_clone_value_inner(t.make_ident(key_name), key_type, true, mut
+			visiting)
 	} else {
 		t.make_ident(key_name)
 	}
 	cloned_value := if value_needs_clone {
-		t.make_compiler_default_clone_value(t.make_ident(source_value_name), value_type, true)
+		t.make_compiler_default_clone_value_inner(t.make_ident(source_value_name), value_type,
+			true, mut visiting)
 	} else {
 		t.make_ident(source_value_name)
 	}
@@ -8012,6 +8079,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	base_id := t.a.children[fn_node.children_start]
 	if fn_node.value == 'str' {
+		if smartcast_call := t.try_lower_smartcast_target_receiver_method_call(call_id, node) {
+			return smartcast_call
+		}
 		if smartcast_str := t.smartcast_sum_str_call(base_id) {
 			return smartcast_str
 		}
@@ -8207,6 +8277,14 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			raw_alias_type := t.raw_alias_type_for_expr(base_id)
 			stringify_type := if raw_alias_type.len > 0 { raw_alias_type } else { clean_base_type }
 			return t.wrap_string_conversion(receiver, stringify_type)
+		}
+		// A fixed-array alias may declare a method with the same name as an array
+		// builtin. Honor the checker-selected alias method before adapting the
+		// fixed array to a dynamic array for builtin lowering.
+		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
+			array_builtin_method)
+		{
+			return exact_call
 		}
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := '[]${elem_type}'
@@ -9599,6 +9677,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(fn_decl, generated_module, t.cur_file)
 	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(ret_type)
 		t.tc.fn_ret_types[name] = ret
 		t.tc.fn_param_types[name] = param_types.clone()
@@ -10663,6 +10742,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
+	}
+	if base_node.kind == .or_expr && base_node.children_count > 0
+		&& (base_type.len == 0 || t.generic_arg_is_unresolved(base_type)) {
+		_, unwrapped_type := t.or_expr_types(t.a.child(&base_node, 0), base_type)
+		if decl_type_is_usable(unwrapped_type) && !t.generic_arg_is_unresolved(unwrapped_type) {
+			base_type = unwrapped_type
+		}
 	}
 	if t.active_specialization_args.len > 0 {
 		specialized := t.subst_type(base_type, t.active_specialization_args)

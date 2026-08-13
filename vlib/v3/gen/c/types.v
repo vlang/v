@@ -126,6 +126,10 @@ fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optiona
 	return g.optional_type_name(t)
 }
 
+fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
+	return g.optional_type_name_for_context(t, g.cur_fn_is_specialized)
+}
+
 fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)

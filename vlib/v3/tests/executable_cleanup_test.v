@@ -109,6 +109,16 @@ fn test_one() {
 	assert test_c.contains('atexit(_vcleanup);'), test_c
 	assert_cleanup_registered_after_init(test_c)
 
+	function_only_run, function_only_c := executable_cleanup_compile_and_run(v3_bin, root,
+		'function_only', '.v', 'module main
+
+pub fn answer() int {
+	return 42
+}
+')
+	assert function_only_run.exit_code == 0, function_only_run.output
+	assert function_only_c.contains('int main(int argc, char** argv) {'), function_only_c
+
 	no_main_source := os.join_path(root, 'no_main.v')
 	no_main_c_path := os.join_path(root, 'no_main.c')
 	os.write_file(no_main_source, "module main

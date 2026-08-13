@@ -245,6 +245,7 @@ mut:
 	force_bounds_checking          bool
 	is_shared                      bool
 	object_file_mode               bool
+	suppress_main                  bool
 	coverage_dir                   string
 	coverage_build_options         string
 	coverage_files                 map[string]&CoverageInfo
@@ -1147,6 +1148,11 @@ pub fn (mut g FlatGen) set_object_file_mode(enabled bool) {
 	g.object_file_mode = enabled
 }
 
+// set_suppress_main disables executable entry point generation for `-d no_main` builds.
+pub fn (mut g FlatGen) set_suppress_main(enabled bool) {
+	g.suppress_main = enabled
+}
+
 // set_compile_values records explicit `-d` values so `$d(...)` inside `#flag`
 // directives resolves configured values over fallbacks.
 pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
@@ -1259,7 +1265,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	}
 	c_flags << initial_c_flags
 	inputs, native_source_roots, _, _, _, has_untracked_include := cache_external_input_files_with_resolved_flags(a,
-		vroot, source_modules, c_flags, target)
+		vroot, source_modules, c_flags, target, map[string]bool{})
 	return inputs, native_source_roots, has_untracked_include
 }
 
@@ -1268,8 +1274,9 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 // dependency trees of native source roots and direct non-source includes whose
 // linkage can cross generated units. resolution_dirs contains every searched include
 // directory whose contents can change path resolution; missing_resolution_paths
-// are the first nonexistent path components searched.
-pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target) (map[string][]string, map[string][]string, map[string][]string, []string, []string, bool) {
+// are the first nonexistent path components searched. Directives from program_files
+// belong to the program translation unit even when a library test declares that module.
+pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target, program_files map[string]bool) (map[string][]string, map[string][]string, map[string][]string, []string, []string, bool) {
 	include_dirs := c_flag_include_dirs(c_flags)
 	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths :=
 		cache_c_flag_input_files_with_status(c_flags)
@@ -1280,15 +1287,21 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 			collect_modules[module_name.all_after_last('.')] = true
 		}
 	}
+	if program_files.len > 0 {
+		collect_modules['main'] = true
+	}
 	mut inputs := map[string][]string{}
 	mut native_source_roots := map[string][]string{}
 	mut unscoped_inputs := map[string][]string{}
 	mut has_untracked_include := false
+	mut collected_paths := map[string]bool{}
 	mut cur_module := ''
 	mut cur_file := ''
+	mut cur_file_is_program := false
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
+			cur_file_is_program = program_files[cur_file] || program_files[os.real_path(cur_file)]
 			cur_module = ''
 			continue
 		}
@@ -1296,7 +1309,13 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 			cur_module = node.value
 			continue
 		}
-		owner_module := if cur_module.len > 0 { cur_module } else { 'main' }
+		owner_module := if cur_file_is_program {
+			'main'
+		} else if cur_module.len > 0 {
+			cur_module
+		} else {
+			'main'
+		}
 		if !collect_modules[owner_module] {
 			continue
 		}
@@ -1304,6 +1323,9 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 			&& node.value in ['include', 'insert', 'preinclude', 'postinclude'] && node.typ.len > 0 {
 			include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
 			if include_arg.len == 0 {
+				continue
+			}
+			if c_include_arg_is_builtin_abi_helper(include_arg) {
 				continue
 			}
 			if !c_include_arg_is_literal(include_arg) {
@@ -1326,11 +1348,10 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 					native_source_roots[owner_module] = roots
 				}
 				mut active_paths := map[string]bool{}
-				mut collected_paths := map[string]bool{}
 				mut files := []string{}
 				if c_collect_external_input_tree(path, vroot, include_dirs, mut active_paths, mut
 					collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
-					resolution_dirs, mut missing_resolution_paths, false)
+					resolution_dirs, mut missing_resolution_paths, owner_module, false)
 				{
 					has_untracked_include = true
 				}
@@ -1395,7 +1416,7 @@ fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[str
 			}
 			if c_collect_external_input_tree(path, '', include_dirs, mut active_paths, mut
 				collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
-				resolution_dirs, mut missing_resolution_paths, false)
+				resolution_dirs, mut missing_resolution_paths, '__v3_c_flags__', false)
 			{
 				has_untracked_include = true
 			}
@@ -1454,7 +1475,7 @@ mut:
 	ambiguous bool
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, ambient_ambiguous bool) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, collection_scope string, ambient_ambiguous bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
 	}
@@ -1462,15 +1483,27 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	if active_paths[real_path] {
 		return false
 	}
+	collection_key := collection_scope + '\x00' + real_path
+	mut text := ''
+	if collected_paths[collection_key] {
+		text = os.read_file(real_path) or { return true }
+		if c_header_has_whole_file_guard(text) {
+			// The first traversal recorded the guarded tree. If its guard was reached
+			// through an uncertain macro branch, conservatively disable cache reuse.
+			return true
+		}
+	}
 	active_paths[real_path] = true
 	defer {
 		active_paths.delete(real_path)
 	}
-	if !collected_paths[real_path] {
-		collected_paths[real_path] = true
+	if !collected_paths[collection_key] {
+		collected_paths[collection_key] = true
 		files << real_path
 	}
-	text := os.read_file(real_path) or { return false }
+	if text.len == 0 {
+		text = os.read_file(real_path) or { return false }
+	}
 	mut has_untracked_include := false
 	mut in_block_comment := false
 	mut conditionals := []CCacheConditional{}
@@ -1551,7 +1584,7 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut
 					active_paths, mut collected_paths, mut files, mut include_macros, mut
 					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths,
-					nested_ambiguous)
+					collection_scope, nested_ambiguous)
 				{
 					has_untracked_include = true
 				}
@@ -1560,6 +1593,73 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		}
 	}
 	return has_untracked_include
+}
+
+fn c_header_has_whole_file_guard(text string) bool {
+	mut in_block_comment := false
+	mut guard_name := ''
+	mut guard_defined := false
+	mut guard_closed := false
+	mut conditional_depth := 0
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if clean.trim_space().len == 0 {
+			continue
+		}
+		if guard_closed {
+			return false
+		}
+		directive_name := c_directive_name(clean)
+		if guard_name.len == 0 {
+			if directive_name == 'pragma' && c_directive_arg(clean).trim_space() == 'once' {
+				return true
+			}
+			guard_name = c_whole_file_guard_name(clean)
+			if guard_name.len == 0 {
+				return false
+			}
+			conditional_depth = 1
+			continue
+		}
+		if !guard_defined {
+			define_fields := c_directive_arg(clean).fields()
+			if directive_name != 'define' || define_fields.len == 0
+				|| define_fields[0] != guard_name {
+				return false
+			}
+			guard_defined = true
+			continue
+		}
+		if directive_name in ['if', 'ifdef', 'ifndef'] {
+			conditional_depth++
+		} else if directive_name == 'endif' {
+			conditional_depth--
+			if conditional_depth == 0 {
+				guard_closed = true
+			}
+		}
+	}
+	return guard_defined && guard_closed
+}
+
+fn c_whole_file_guard_name(directive string) string {
+	name := c_directive_name(directive)
+	if name == 'ifndef' {
+		fields := c_directive_arg(directive).fields()
+		return if fields.len == 1 { fields[0] } else { '' }
+	}
+	if name != 'if' {
+		return ''
+	}
+	expression := c_directive_arg(directive).replace(' ', '').replace('\t', '')
+	if expression.starts_with('!defined(') && expression.ends_with(')') {
+		return expression['!defined('.len..expression.len - 1]
+	}
+	if expression.starts_with('!defined') {
+		return expression['!defined'.len..]
+	}
+	return ''
 }
 
 // A false dynamic_include_macros value marks a macro whose defined state is ambiguous.
@@ -2930,12 +3030,13 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 	if shared_params.len > 0 {
 		shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
 	}
+	return_type := g.fn_node_return_type(node, module_name)
 	return CollectGenFnPrep{
 		prepared:           true
 		ptypes:             ptypes
 		shared_params:      shared_params
 		fn_ptr_ctypes:      fn_ptr_ctypes
-		return_type:        g.fn_node_return_type(node, module_name)
+		return_type:        return_type
 		decl_is_variadic:   decl_is_variadic
 		first_param_is_mut: first_param_is_mut
 	}
@@ -3576,8 +3677,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		}
 		// These helper headers are superseded by the inline compiler helpers emitted in
 		// builtin_abi_decls(); also including them would redefine the helpers.
-		if include_arg.contains('prealloc_atomics.h') || include_arg.contains('filelock_helpers.h')
-			|| include_arg.contains('stdatomic') {
+		if c_include_arg_is_builtin_abi_helper(include_arg) {
 			return true
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
@@ -3717,6 +3817,11 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	return false
 }
 
+fn c_include_arg_is_builtin_abi_helper(include_arg string) bool {
+	return include_arg.contains('prealloc_atomics.h') || include_arg.contains('filelock_helpers.h')
+		|| include_arg.contains('stdatomic')
+}
+
 fn (mut g FlatGen) emit_preinclude_directives() {
 	for directive in g.preinclude_directives {
 		g.writeln(directive)
@@ -3737,6 +3842,11 @@ fn (mut g FlatGen) emit_postinclude_directives() {
 }
 
 fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
+	// Some system APIs are declared through macros that the lightweight header
+	// declaration scanner cannot expand (for example OpenSSL's X509_free).
+	// Record the known declarations even when the resolved tree is scanned below.
+	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 		mut tree_size := CHeaderTreeSize{}
 		if os.is_file(path)
@@ -7864,6 +7974,13 @@ fn (mut g FlatGen) ordered_c_directives(late bool) []string {
 		}
 		directives_by_module[directive.module] << directive
 	}
+	// Keep traversing through modules without directives so directives from a
+	// transitive import are still emitted before an importer's after-import body.
+	for imported_module, _ in g.module_imports {
+		if imported_module !in directives_by_module {
+			directives_by_module[imported_module] = []CDirective{}
+		}
+	}
 	mut result := []string{}
 	mut visiting := map[string]bool{}
 	mut visited := map[string]bool{}
@@ -10515,6 +10632,32 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 		return actual_type
 	}
 	node := g.a.nodes[int(id)]
+	// Expected-type checking records a bare literal assigned to a sum as the sum
+	// itself. Imported struct defaults reach cgen without transform-time wrapping,
+	// so retain the literal's intrinsic type here and let gen_sum_value_expr box it.
+	match node.kind {
+		.int_literal {
+			return types.Type(types.int_)
+		}
+		.float_literal {
+			return types.Type(types.f64_)
+		}
+		.bool_literal {
+			return types.Type(types.bool_)
+		}
+		.char_literal {
+			return types.Type(types.rune_)
+		}
+		.string_literal, .string_interp {
+			return types.Type(types.String{})
+		}
+		.paren, .expr_stmt {
+			if node.children_count == 1 {
+				return g.sum_cast_actual_type(g.a.child(&node, 0))
+			}
+		}
+		else {}
+	}
 	if node.kind == .call {
 		declared := g.declared_call_return_type(id)
 		if declared !is types.Void && declared !is types.Unknown {
@@ -12824,7 +12967,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			is_current_param := g.current_param_type(node.value) != none
+			is_current_param := node.value in g.cur_param_names
+				|| g.current_param_type(node.value) != none
 			is_local := if is_current_param {
 				true
 			} else if owner := g.tc.cur_scope.lookup_owner(node.value) {
@@ -13532,7 +13676,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// handled
 			} else if g.gen_sum_shared_field_selector(base_id, base_type0, node.value) {
 				// handled
-			} else if g.gen_pointer_pointer_struct_selector(base_id, base_type0, node.value) {
+			} else if g.gen_pointer_pointer_struct_selector(base_id, if base.kind == .ident {
+				g.local_ident_type(base.value) or { base_type0 }
+			} else {
+				base_type0
+			}, node.value)
+			{
 				// handled
 			} else if base.kind == .call && base.children_count == 2
 				&& g.c_typedef_cast_call_name(base).len > 0 {
@@ -13717,12 +13866,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 								stable_base_type = resolved_type
 							}
 						}
-						// A transformed selector can retain an `.arrow` hint from an
-						// earlier inference pass. Once the call's semantic return type is
-						// known, let that type decide value (`.`) versus pointer (`->`).
-						local_type_known = stable_base_type !is types.Unknown
-							&& stable_base_type !is types.Void
 					}
+					// A transformed selector can retain an `.arrow` hint from an
+					// earlier inference pass. Once the base's semantic type is known,
+					// let that type decide value (`.`) versus pointer (`->`).
+					local_type_known = stable_base_type !is types.Unknown
+						&& stable_base_type !is types.Void
 					is_ptr = stable_base_type is types.Pointer
 						|| cgen_unalias_type(stable_base_type) is types.Pointer
 				}
@@ -13926,7 +14075,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_default_value_for_type(target_type)
 				return
 			}
-			if semantic_target is types.Interface {
+			if semantic_target is types.Interface && cast_arg.kind == .none_expr
+				&& g.is_ierror_type_name(semantic_target.name) {
+				g.write(g.ierror_none_literal_string())
+			} else if semantic_target is types.Interface {
 				if !g.gen_interface_value_expr(g.a.child(node, 0), semantic_target) {
 					g.gen_expr(g.a.child(node, 0))
 				}
@@ -14033,6 +14185,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.block {
 			if node.children_count > 1 {
+				// Lowered collection expressions can introduce a lexical defer inside a
+				// GNU statement expression. Keep it visible to returns/propagations in
+				// this block, then discard it before generating the enclosing function.
+				defer_start := g.defers.len
 				g.write('({')
 				for bi in 0 .. node.children_count - 1 {
 					g.gen_node(g.a.child(node, bi))
@@ -14050,6 +14206,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_node(last_id)
 				}
 				g.write(';})')
+				g.trim_defers(defer_start)
 			} else if node.children_count > 0 {
 				last_id := g.a.child(node, 0)
 				last := g.a.nodes[int(last_id)]
@@ -18295,6 +18452,10 @@ fn fixed_array_elem_is_early_complete(elem types.Type) bool {
 // fn_return_type_name is the C type to write for a function/fn-ptr return type,
 // substituting the fixed-array wrapper struct when one exists.
 fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
+	return g.fn_return_type_name_for_context(t, g.cur_fn_is_specialized)
+}
+
+fn (mut g FlatGen) fn_return_type_name_for_context(t types.Type, concrete_optional bool) string {
 	if fixed := array_fixed_type(t) {
 		bare := g.fixed_array_c_type(fixed)
 		return fixed_array_ret_wrapper_name(bare)
@@ -18302,7 +18463,7 @@ fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
 	if g.tc.autofree_mode && t is types.Alias {
 		return g.tc.c_type(t)
 	}
-	ct := g.optional_type_name(t)
+	ct := g.optional_type_name_for_context(t, concrete_optional)
 	// A function/fn-ptr-valued return (`fn f() fn () int`) has the internal `fn_ptr:...`
 	// encoding for its C type; map it to the shared `_fn_ptr_N` typedef, since a C function
 	// cannot be declared returning that raw encoding (it would emit invalid C).
@@ -18982,7 +19143,13 @@ fn (mut g FlatGen) emit_global_inits() {
 		val_id := g.global_inits[qname] or {
 			if typ := g.global_types[qname] {
 				clean_type := default_init_unalias_type(typ)
+				if clean_type is types.Array {
+					c_elem := g.value_c_type(clean_type.elem_type)
+					g.queue_runtime_init('\t${g.global_c_name(qname)} = array_new(sizeof(${c_elem}), 0, 0);')
+					continue
+				}
 				if clean_type is types.Map {
+					g.register_fixed_array_map_key_type(clean_type.key_type)
 					tmp_sb := g.sb
 					tmp_line_start := g.line_start
 					g.sb = strings.new_builder(64)
@@ -18991,7 +19158,7 @@ fn (mut g FlatGen) emit_global_inits() {
 					expr_str := g.sb.str()
 					g.sb = tmp_sb
 					g.line_start = tmp_line_start
-					g.queue_runtime_init('\t${g.cname(qname)} = ${expr_str};')
+					g.queue_runtime_init('\t${g.global_c_name(qname)} = ${expr_str};')
 					continue
 				}
 				g.queue_global_struct_default_init(qname, typ)
