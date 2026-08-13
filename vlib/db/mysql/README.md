@@ -112,7 +112,12 @@ A stream exclusively holds its MySQL connection until it is exhausted or closed.
 close it on the thread that created it. Existing `query()` and prepared statement APIs continue
 to return materialized results. Stream batches contain `NullableRow` values, where `val_opt()`
 and the raw `vals` array preserve SQL NULL as `none`. The `val()` and `values()` compatibility
-helpers flatten NULL to an empty string.
+helpers flatten NULL to an empty string. For multi-statement queries, `query_stream()` exposes the
+first result and discards later results when the stream is exhausted or closed, keeping the
+connection reusable. Use `exec_multi()` when every result is needed.
+
+The legacy `use_result()` method is retained for compatibility and only discards a pending
+result. Use `query_stream()` to read unbuffered rows.
 
 ## Concurrent Usage
 

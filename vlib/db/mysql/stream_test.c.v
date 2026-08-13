@@ -162,6 +162,53 @@ fn test_query_stream_blob_and_empty_result() {
 	assert_stream_connection_reusable(&db)!
 }
 
+fn test_use_result_discards_pending_result() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	mut db := connect_for_stream_test()!
+	defer {
+		db.close() or {}
+	}
+	query := 'SELECT 1 AS id'
+	mut query_guard := db.acquire_connection_guard()!
+	assert C.mysql_real_query(query_guard.conn, query.str, query.len) == 0
+	query_guard.release()
+
+	db.use_result()
+	assert_stream_connection_reusable(&db)!
+}
+
+fn test_query_stream_drains_multi_statement_results() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	mut db := connect(Config{
+		host:     '127.0.0.1'
+		port:     u32($d('mysql_test_port', 3306))
+		username: 'root'
+		password: $d('mysql_test_password', '12345678')
+		dbname:   'mysql'
+		flag:     .client_multi_statements
+	})!
+	defer {
+		db.close() or {}
+	}
+
+	mut exhausted := db.query_stream('SELECT 1; SELECT 2')!
+	assert exhausted.next_batch(10)![0].val(0) == '1'
+	assert_stream_connection_reusable(&db)!
+
+	mut partial := db.query_stream('SELECT 1 UNION ALL SELECT 2; SELECT 3')!
+	assert partial.next_batch(1)![0].val(0) == '1'
+	partial.close()
+	assert_stream_connection_reusable(&db)!
+}
+
 fn test_prepare_stream_blob_param_empty_result_and_execute_failure() {
 	$if !network ? {
 		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')

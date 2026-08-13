@@ -11,16 +11,7 @@ mut:
 	closed bool
 }
 
-// query_stream executes `query` and returns an unbuffered result. Unlike
-// `query`, rows are read directly from the server instead of being buffered by
-// the client. The caller must close the result if it is not read to exhaustion.
-pub fn (db &DB) query_stream(query string) !StreamResult {
-	mut guard := db.acquire_connection_guard()!
-	if C.mysql_real_query(guard.conn, query.str, query.len) != 0 {
-		err := error_with_code(get_error_msg(guard.conn), get_errno(guard.conn))
-		guard.release()
-		return err
-	}
+fn stream_result_from_guard(mut guard MySQLConnectionGuard) !StreamResult {
 	result := C.mysql_use_result(guard.conn)
 	if result == unsafe { nil } && get_errno(guard.conn) != 0 {
 		err := error_with_code(get_error_msg(guard.conn), get_errno(guard.conn))
@@ -32,6 +23,34 @@ pub fn (db &DB) query_stream(query string) !StreamResult {
 		guard:  guard
 		fields: fields_from_result(result)
 	}
+}
+
+fn drain_remaining_stream_results(conn &C.MYSQL) {
+	if conn == unsafe { nil } {
+		return
+	}
+	for C.mysql_more_results(conn) {
+		if C.mysql_next_result(conn) != 0 {
+			break
+		}
+		result := C.mysql_use_result(conn)
+		if result != unsafe { nil } {
+			C.mysql_free_result(result)
+		}
+	}
+}
+
+// query_stream executes `query` and returns an unbuffered result. Unlike
+// `query`, rows are read directly from the server instead of being buffered by
+// the client. The caller must close the result if it is not read to exhaustion.
+pub fn (db &DB) query_stream(query string) !StreamResult {
+	mut guard := db.acquire_connection_guard()!
+	if C.mysql_real_query(guard.conn, query.str, query.len) != 0 {
+		err := error_with_code(get_error_msg(guard.conn), get_errno(guard.conn))
+		guard.release()
+		return err
+	}
+	return stream_result_from_guard(mut guard)
 }
 
 // fields returns metadata for the streamed result columns.
@@ -78,8 +97,9 @@ pub fn (mut r StreamResult) next_batch(size int) ![]NullableRow {
 	return rows
 }
 
-// close frees an unbuffered result and releases its connection lock. It is
-// safe to call close more than once.
+// close frees an unbuffered result, discards any later results from a
+// multi-statement query, and releases its connection lock. It is safe to call
+// close more than once.
 pub fn (mut r StreamResult) close() {
 	if r.closed {
 		return
@@ -88,6 +108,7 @@ pub fn (mut r StreamResult) close() {
 		C.mysql_free_result(r.result)
 		r.result = unsafe { nil }
 	}
+	drain_remaining_stream_results(r.guard.conn)
 	r.guard.release()
 	r.closed = true
 }

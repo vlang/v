@@ -195,20 +195,16 @@ pub fn (db &DB) query(q string) !Result {
 	return Result{result}
 }
 
-// use_result reads the result of a query
-// used after invoking mysql_real_query() or mysql_query(),
-// for every statement that successfully produces a result set
-// (SELECT, SHOW, DESCRIBE, EXPLAIN, CHECK TABLE, and so forth).
-// This reads the result of a query directly from the server
-// without storing it in a temporary table or local buffer,
-// mysql_use_result is faster and uses much less memory than C.mysql_store_result().
-// You must mysql_free_result() after you are done with the result set.
+// use_result discards a pending unbuffered result after a low-level query.
+// Use query_stream to execute a query and read its unbuffered rows safely.
 pub fn (db &DB) use_result() {
 	mut guard := db.acquire_connection_guard() or { return }
-	defer {
-		guard.release()
+	result := C.mysql_use_result(guard.conn)
+	if result != unsafe { nil } {
+		C.mysql_free_result(result)
 	}
-	C.mysql_use_result(guard.conn)
+	drain_remaining_stream_results(guard.conn)
+	guard.release()
 }
 
 // real_query makes an SQL query and receive the results.
