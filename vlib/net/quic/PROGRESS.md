@@ -864,14 +864,14 @@ The largest, highest-risk phase. Sub-phases, in build order:
       one-sided and both-sided paths and confirms a large-but-finite,
       strictly positive `Duration` comes back.
 
-## Phase 9 — QuicConn top-level struct and event loop (IN PROGRESS)
+## Phase 9 — QuicConn top-level struct and event loop
 
 No prior phase composes any two of the pieces built so far — every phase
 built independently unit-tested state and deferred wiring to "a future
 QuicConn." `vlib/net/quic/conn.v` is that wiring. Sub-phased like Phase 2,
 landing as one PR:
 
-- [ ] **9a — Connection establishment** (`conn.v`): `dial()` picks
+- [x] **9a — Connection establishment** (`conn.v`): `dial()` picks
       `scid`/`original_dcid`, derives Initial secrets, builds ClientHello.
       `poll()`/`process_timeouts()` handle Retry/VN detection (RFC 9000
       §17.2.5.2's at-most-one-Retry + VN/Retry anti-spoof state, both
@@ -882,7 +882,7 @@ landing as one PR:
       `CryptoStreamReassembler`, ACK generation/processing for
       Initial/Handshake tied into `loss_detection.v`, idle timeout, and key
       discard on handshake confirmation (RFC 9001 §4.9).
-- [ ] **9b — Steady state**: 1-RTT packet processing (STREAM/ACK/
+- [x] **9b — Steady state**: 1-RTT packet processing (STREAM/ACK/
       CONNECTION_CLOSE dispatch into `QuicStreamSet` + flow control both
       directions), `open_stream`/`write_stream`/`read_stream`, full
       loss-detection↔congestion-control wiring for 1-RTT sends,
@@ -890,10 +890,24 @@ landing as one PR:
       current limit, stateless-reset detection on decrypt failure, ECN
       count recording, graceful/immediate close, 1-RTT key update rotation
       (`app_read_keys`/`app_write_keys`).
-- [ ] Tests: `conn_test.v`, hand-built ServerHello→Finished fixtures
+- [x] Tests: `conn_test.v`, hand-built ServerHello→Finished fixtures
       (reusing Phase 2's RFC 8448/quiche vectors, no live server) driving
       `dial()`+`poll()` to `handshake_confirmed`; STREAM data round-trip
       through `poll()`; CONNECTION_CLOSE handling; key update.
+- [x] `/vreview` found and fixed two real bugs, both reproduced with a
+      failing test before the fix landed (Phase R): (1) `write_stream`/
+      `read_stream` never called `ensure_stream_windows` for a stream that
+      only exists because RFC 9000 §2.1 auto-created it as a lower-numbered
+      sibling of a peer-referenced higher stream ID — such a stream had no
+      flow-control window, so a local write to it queued forever with no
+      error, never reaching the wire; (2) `handle_peer_connection_close`
+      and the stateless-reset branch of `note_one_rtt_processing_failed`
+      transitioned to `.draining` without setting `closing_deadline` (RFC
+      9000 §10.2.2 requires the draining period to be bounded, same as
+      closing) — a peer-initiated close, the most common real-world close
+      path, left the connection draining forever instead of eventually
+      reaching `.closed`. Fixed with a shared `enter_draining(now)` helper
+      mirroring `close_with_error`'s existing deadline formula.
 
 Connection ID rotation/migration is explicitly OUT of scope (not deferred
 to a later phase — `stateless_reset.v`/`pmtu.v` both say so independently):

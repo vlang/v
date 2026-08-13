@@ -201,10 +201,21 @@ pub:
 	maximum_streams u64
 }
 
+// HandshakeDoneFrame represents a HANDSHAKE_DONE frame (type 0x1e, RFC 9000
+// §19.20): sent only by a server, only once, to signal handshake
+// confirmation (RFC 9001 §4.1.2) -- carries no fields. A client MUST treat
+// receipt of one as a connection error of type PROTOCOL_VIOLATION (RFC 9000
+// §19.20); parse_frame itself has no connection-role awareness to enforce
+// that, so it is the caller's (Phase 9 QuicConn's) job, same division as
+// every other role-dependent check this module defers (see coalesce.v's
+// analogous note).
+pub struct HandshakeDoneFrame {}
+
 pub type QuicFrame = AckFrame
 	| ConnectionCloseFrame
 	| CryptoFrame
 	| DataBlockedFrame
+	| HandshakeDoneFrame
 	| MaxDataFrame
 	| MaxStreamDataFrame
 	| MaxStreamsFrame
@@ -234,6 +245,7 @@ const frame_type_streams_blocked_bidi = u64(0x16)
 const frame_type_streams_blocked_uni = u64(0x17)
 const frame_type_connection_close_transport = u64(0x1c)
 const frame_type_connection_close_application = u64(0x1d)
+const frame_type_handshake_done = u64(0x1e)
 
 // parse_frame parses exactly one frame from the start of `buf`, returning
 // the frame and the number of bytes consumed. A run of consecutive PADDING
@@ -306,6 +318,10 @@ pub fn parse_frame(buf []u8) !(QuicFrame, int) {
 		|| typ == frame_type_connection_close_application {
 		return parse_connection_close_frame(buf, typ_len,
 			typ == frame_type_connection_close_application)
+	}
+
+	if typ == frame_type_handshake_done {
+		return QuicFrame(HandshakeDoneFrame{}), typ_len
 	}
 
 	return error('quic: frame type 0x${typ:02x} is not yet implemented by this module')

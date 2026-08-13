@@ -1,0 +1,690 @@
+// vtest build: present_openssl?
+module quic
+
+import crypto.ecdsa
+import crypto.sha256
+import encoding.base64
+import net.mbedtls
+
+// Duplicated locally (rather than referenced from any other _test.v file)
+// deliberately, per this module's own established convention -- each
+// _test.v file is its own independent compilation unit (confirmed the hard
+// way: a first draft of this file tried to call tls13_handshake_test.v's
+// helpers directly and failed with "unknown function" -- test files do NOT
+// share symbols with each other, only with the module's non-test .v
+// files). Same real self-signed test cert + matching RSA private key used
+// throughout this module's test suite -- see tls13_certificate_chain_test.v
+// and tls13_handshake_test.v's own identical notes for provenance.
+const conn_test_cert_pem = '-----BEGIN CERTIFICATE-----\nMIIEOTCCAyECFG64Q2g46jZb3kRbDOJWX/BwjSp6MA0GCSqGSIb3DQEBCwUAMEUx\nCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRl\ncm5ldCBXaWRnaXRzIFB0eSBMdGQwIBcNMjMwODAyMTcyOTQyWhgPMjA1MDEyMTcx\nNzI5NDJaMGsxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRQwEgYD\nVQQHDAtMb3MgQW5nZWxlczEdMBsGA1UECgwUQ2F0YWx5c3QgRGV2ZWxvcG1lbnQx\nEjAQBgNVBAMMCWxvY2FsaG9zdDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC\nggIBALqAI4fqUi+QBVWcsXglouLdOML5+w0+1hSR1KdO0Q5XPdQAs/yYWJ+KUkDw\nG++rfy9DUPq7FNRBVurXQkcAtn6gXdllGUSjwUiDo/N4mMOyS/2sufBuaeww7jVi\nrppH+zwP1tUnjRd6khl6bi1Ian9VSzr3Iy9CkXIg1GU4CPXkOydLeoQfepXxWoK1\nOUNwT3VKC/stAfY3j/NIIeiJYkyuRGFCkxn/BUjN+AsXiTugRcYKEFHdIPkOuCXp\nYbhf+lLsczpxCs3rdZG9b/N6mEDCzXTmeHkmsjdPTf+1k5DZZvKzVBBrgdxCgBb7\n5RwjF5v9WmnIc33wWgfJC6FaUzj9NYxYUbPHD+jTz0rJB/jj4u/xJlM/e5NRmXdW\n70pOMKXtWjRSolLOFIPKLY1qs3KMTAZxKKWPDDF7WlMJxMRt7nnnks5yw43Nog4C\njDLk1ZgETnPpLgo3jbmJdIv+OHKTJrBlVvDq7VTyixCoS5G8KoOmyQJhaXG6NwE2\niVhH5JIKgzgCfetfDsnjxqJ/qtrFXPa8FF2TsomD0NK/GZmIcs+9OeVB75Jn5uhF\nfLHScpiTbuu5w3P/LI/MqihLRB6RRNnRzPH8fIg5bYC9b770ta/8GcFRuYE8t+UR\nGtqXJoIKixbDlqV54kal8FQzYzhETf9+NM6Kb/lKEfG/pslvAgMBAAEwDQYJKoZI\nhvcNAQELBQADggEBALI3uNiNO0QE1brA3QYFK+d9ZroB72NrJ0UNkzYHDg2Fc6xg\n4aVVfaxY08+TmKc0JlMOW+pUxeCW/+UBSngdQiR9EE9xm0k0XIrAsy9RXxRvEtPu\nM1VI2h7ayp1Y2BrnQinevTSgtqLRyS1VbOFRl1FiyVvinw2I0KsDdAMNevAPXcOa\nQ8pUgUq6f56DkhocQaj+hxD/uV8HryNxuoSXnPhvfTN3z4YRGzsaWevJ9EYJliOM\n+XugcqfFJ+W7/QCEcAHCL+Bw6OydG5NFORr3p57PXjjcL/uKmxPBrWg2Bz6uT4uR\nMhj0zttiFHLAt9jGfyk6W57UNUja1e1ggftJJhs=\n-----END CERTIFICATE-----\n'
+
+const conn_test_key_pem = '-----BEGIN RSA PRIVATE KEY-----\n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\n-----END RSA PRIVATE KEY-----\n'
+
+fn conn_test_pem_to_der(pem string) []u8 {
+	body :=
+		pem.replace('-----BEGIN CERTIFICATE-----', '').replace('-----END CERTIFICATE-----', '').replace('\n', '').trim_space()
+	return base64.decode(body)
+}
+
+// conn_test_sign_certificate_verify signs `signed_content` with the test RSA
+// private key using real RSA-PSS/SHA-256 -- see tls13_handshake_test.v's
+// fake_server_sign_certificate_verify (duplicated, not shared -- see this
+// file's top-of-file note) for the full rationale.
+fn conn_test_sign_certificate_verify(signed_content []u8) ![]u8 {
+	hash := sha256.sum256(signed_content)
+
+	mut ctr_drbg := C.mbedtls_ctr_drbg_context{}
+	mut entropy := C.mbedtls_entropy_context{}
+	C.mbedtls_ctr_drbg_init(&ctr_drbg)
+	C.mbedtls_entropy_init(&entropy)
+	defer {
+		C.mbedtls_ctr_drbg_free(&ctr_drbg)
+		C.mbedtls_entropy_free(&entropy)
+	}
+	seed_ret := C.mbedtls_ctr_drbg_seed(&ctr_drbg, C.mbedtls_entropy_func, &entropy, 0, 0)
+	if seed_ret != 0 {
+		return error('test: failed to seed RNG, mbedtls ret: ${seed_ret}')
+	}
+
+	mut pk := C.mbedtls_pk_context{}
+	C.mbedtls_pk_init(&pk)
+	defer {
+		C.mbedtls_pk_free(&pk)
+	}
+	unsafe {
+		parse_ret := C.mbedtls_pk_parse_key(&pk, conn_test_key_pem.str, conn_test_key_pem.len + 1,
+			0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+		if parse_ret != 0 {
+			return error('test: failed to parse RSA private key, mbedtls ret: ${parse_ret}')
+		}
+	}
+	// pk_type 6 = MBEDTLS_PK_RSASSA_PSS, md_alg 9 = MBEDTLS_MD_SHA256.
+	mut sig := []u8{len: 600}
+	mut sig_len := usize(0)
+	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len),
+		&sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+	if ret != 0 {
+		return error('test: mbedtls_pk_sign_ext failed, mbedtls ret: ${ret}')
+	}
+	return sig[..int(sig_len)].clone()
+}
+
+// conn_test_extract_client_hello_key_exchange hand-parses a built
+// ClientHello far enough to pull out the key_share extension's
+// key_exchange bytes -- see tls13_handshake_test.v's identically-named
+// helper for the full rationale (duplicated, not shared).
+fn conn_test_extract_client_hello_key_exchange(client_hello_framed []u8) ![]u8 {
+	msg, _ := parse_handshake_message(client_hello_framed)!
+	body := msg.body
+	mut cursor := 2 + 32 // legacy_version + random
+	session_id_len := int(body[cursor])
+	cursor += 1 + session_id_len
+	cipher_suites_len := int((u32(body[cursor]) << 8) | u32(body[cursor + 1]))
+	cursor += 2 + cipher_suites_len
+	compression_len := int(body[cursor])
+	cursor += 1 + compression_len
+	extensions_len := int((u32(body[cursor]) << 8) | u32(body[cursor + 1]))
+	cursor += 2
+	extensions := parse_extension_list(body[cursor..cursor + extensions_len])!
+	ks_ext := find_extension(extensions, ext_key_share) or {
+		return error('test: ClientHello missing key_share')
+	}
+	group := u16((u32(ks_ext.data[2]) << 8) | u32(ks_ext.data[3]))
+	if group != named_group_secp256r1 {
+		return error('test: unexpected client key_share group 0x${group:04x}')
+	}
+	key_exchange_len := int((u32(ks_ext.data[4]) << 8) | u32(ks_ext.data[5]))
+	return ks_ext.data[6..6 + key_exchange_len].clone()
+}
+
+// conn_test_build_fake_server_hello builds a real ServerHello (RFC 8446
+// §4.1.3) offering exactly what build_client_hello sent
+// (TLS_AES_128_GCM_SHA256, secp256r1) -- see tls13_handshake_test.v's
+// build_fake_server_hello for the full rationale (duplicated, not shared).
+fn conn_test_build_fake_server_hello(server_random []u8, key_exchange []u8) ![]u8 {
+	mut body := []u8{}
+	body << u8(0x03)
+	body << u8(0x03)
+	body << server_random
+	body << u8(0) // legacy_session_id_echo length = 0
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256 >> 8)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256)
+	body << u8(0) // legacy_compression_method
+
+	mut sv_data := []u8{}
+	sv_data << u8(tls_version_1_3 >> 8)
+	sv_data << u8(tls_version_1_3)
+	sv_ext := encode_extension(ext_supported_versions, sv_data)!
+
+	mut ks_entry := []u8{}
+	ks_entry << u8(named_group_secp256r1 >> 8)
+	ks_entry << u8(named_group_secp256r1)
+	ks_entry << u8(key_exchange.len >> 8)
+	ks_entry << u8(key_exchange.len)
+	ks_entry << key_exchange
+	ks_ext := encode_extension(ext_key_share, ks_entry)!
+
+	mut extensions := []u8{}
+	extensions << sv_ext
+	extensions << ks_ext
+	body << u8(extensions.len >> 8)
+	body << u8(extensions.len)
+	body << extensions
+
+	return encode_handshake_message(.server_hello, body)!
+}
+
+// conn_test_build_fake_encrypted_extensions builds a real EncryptedExtensions
+// offering ALPN 'h3' and the given transport parameters -- see
+// tls13_handshake_test.v's build_fake_encrypted_extensions_with_alpn for the
+// full rationale (duplicated, not shared; the ALPN-parametrized variant
+// isn't needed here so only the 'h3' shape is kept).
+fn conn_test_build_fake_encrypted_extensions(server_transport_params QuicTransportParameters) ![]u8 {
+	encoded_tp := encode_transport_parameters(server_transport_params)!
+	tp_ext := encode_extension(ext_quic_transport_parameters, encoded_tp)!
+
+	name_bytes := 'h3'.bytes()
+	mut alpn_list := []u8{}
+	alpn_list << u8(name_bytes.len)
+	alpn_list << name_bytes
+	mut alpn_data := []u8{}
+	alpn_data << u8(alpn_list.len >> 8)
+	alpn_data << u8(alpn_list.len)
+	alpn_data << alpn_list
+	alpn_ext := encode_extension(ext_alpn, alpn_data)!
+
+	mut extensions := []u8{}
+	extensions << alpn_ext
+	extensions << tp_ext
+	mut body := []u8{}
+	body << u8(extensions.len >> 8)
+	body << u8(extensions.len)
+	body << extensions
+	return encode_handshake_message(.encrypted_extensions, body)!
+}
+
+// conn_test_build_fake_certificate builds a real Certificate message
+// carrying one DER-encoded certificate with no per-entry extensions -- see
+// tls13_handshake_test.v's build_fake_certificate (duplicated, not shared).
+fn conn_test_build_fake_certificate(cert_der []u8) ![]u8 {
+	mut entry := []u8{}
+	entry << u8(cert_der.len >> 16)
+	entry << u8(cert_der.len >> 8)
+	entry << u8(cert_der.len)
+	entry << cert_der
+	entry << u8(0) // per-CertificateEntry extensions length = 0
+	entry << u8(0)
+
+	mut body := []u8{}
+	body << u8(0) // certificate_request_context length = 0
+	body << u8(entry.len >> 16)
+	body << u8(entry.len >> 8)
+	body << u8(entry.len)
+	body << entry
+	return encode_handshake_message(.certificate, body)!
+}
+
+fn conn_test_build_fake_certificate_verify(algorithm u16, signature []u8) ![]u8 {
+	mut body := []u8{}
+	body << u8(algorithm >> 8)
+	body << u8(algorithm)
+	body << u8(signature.len >> 8)
+	body << u8(signature.len)
+	body << signature
+	return encode_handshake_message(.certificate_verify, body)!
+}
+
+fn conn_test_concat_bytes(a []u8, b []u8) []u8 {
+	mut out := []u8{cap: a.len + b.len}
+	out << a
+	out << b
+	return out
+}
+
+// generous_transport_params is a reusable QuicTransportParameters value
+// with every flow-control/stream-count limit set high enough that Phase 9b
+// stream/flow-control tests aren't ALSO incidentally testing "what happens
+// at limit zero" (drive_to_established's own default -- an empty
+// QuicTransportParameters{} -- deliberately leaves every limit at zero,
+// which is what Phase 9a's own capstone test needed since it never opens a
+// stream at all). Tests that specifically want to probe a limit (e.g.
+// MAX_STREAMS blocking) start from this and override just the one field
+// they care about.
+fn generous_transport_params() QuicTransportParameters {
+	return QuicTransportParameters{
+		initial_max_data:                    1_000_000
+		initial_max_stream_data_bidi_local:  100_000
+		initial_max_stream_data_bidi_remote: 100_000
+		initial_max_stream_data_uni:         100_000
+		initial_max_streams_bidi:            10
+		initial_max_streams_uni:             10
+	}
+}
+
+// build_fake_long_header_packet builds one long-header (Initial/Handshake)
+// datagram as if from a fake server: encodes the header, appends the
+// packet number, and protects it with `keys` (the same-direction keys the
+// client independently derived -- QuicPacketProtectionKeys is a plain AEAD
+// key/iv/hp bundle, not client/server-typed, so the identical struct value
+// works for both the client's decrypt and this fake server's encrypt).
+// No RFC 9000 §14.1 1200-byte padding is applied -- that requirement is on
+// the CLIENT's first flight only (anti-amplification), never the server's.
+fn build_fake_long_header_packet(typ LongPacketType, dcid []u8, scid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys) !QuicDatagram {
+	pn_length := 2
+	h := QuicLongHeader{
+		typ:     typ
+		version: quic_v1
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
+	}
+	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
+	header << [u8(pn >> 8), u8(pn)]
+	protected := protect_packet(header, .long, pn, pn_length, payload, keys)!
+	return QuicDatagram{
+		bytes: protected
+	}
+}
+
+// build_fake_one_rtt_packet mirrors build_fake_long_header_packet for a
+// fake server's short-header (1-RTT) datagram.
+fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys) !QuicDatagram {
+	pn_length := 2
+	header_prefix := encode_short_header(dcid, false, 0, false, u8(pn_length - 1))!
+	mut header := header_prefix.clone()
+	header << [u8(pn >> 8), u8(pn)]
+	protected := protect_packet(header, .short, pn, pn_length, payload, keys)!
+	return QuicDatagram{
+		bytes: protected
+	}
+}
+
+// conn_test_decrypt_one_rtt decrypts and frame-parses a 1-RTT datagram
+// USING A SINGLE, KNOWN (non-rotating) generation of keys -- suitable for
+// tests inspecting what the CLIENT itself just sent (c.app_write_keys never
+// rotates, matching key_update.v's own documented v1 scope: client-initiated
+// rotation is out of scope, and app_write_keys is a plain, non-KeyUpdateState
+// field for exactly that reason). NOT a substitute for conn.v's own
+// process_one_rtt_packet (which must handle key-phase resolution via
+// KeyUpdateState); this is a test-only, single-generation-only decrypt used
+// purely to verify what conn.v's outgoing path built.
+fn conn_test_decrypt_one_rtt(datagram []u8, dcid_len int, keys QuicPacketProtectionKeys) ![]QuicFrame {
+	mut packet := datagram.clone()
+	_, offset := parse_short_header(datagram, dcid_len)!
+	pn_length := unprotect_header(mut packet, offset, keys.hp, .short)!
+	mut truncated := u64(0)
+	for i in 0 .. pn_length {
+		truncated = (truncated << 8) | u64(packet[offset + i])
+	}
+	full_pn := decode_packet_number(truncated, pn_length, none)!
+	header := packet[..offset + pn_length].clone()
+	// unsafe, not .clone(): mirrors conn.v's process_one_rtt_packet's own
+	// identical slice -- read-only pass into decrypt_packet_payload, no
+	// mutation of `packet` happens after this point.
+	ciphertext := unsafe { packet[offset + pn_length..] }
+	payload := decrypt_packet_payload(keys, full_pn, header, ciphertext)!
+	return parse_frames(payload)!
+}
+
+// drive_to_established is the shared Phase 9a/9b test fixture: dials a real
+// QuicConn and drives it, against a fake in-memory server, all the way
+// through RFC 9001 §4.1.2's "confirmed" checkpoint -- see
+// test_full_handshake_reaches_confirmed_over_fake_transport's own (fuller)
+// doc comment below for why Certificate/CertificateVerify go through
+// c.handshake's direct API rather than the wire. `own_params`/`peer_params`
+// let callers control flow-control/stream-count limits on either side;
+// drive_to_established forces `peer_params`' two connection-ID identity
+// fields (initial_source_connection_id/original_destination_connection_id)
+// regardless of what the caller passed, since those MUST match this
+// specific handshake's actual IDs or EncryptedExtensions processing itself
+// would (correctly) fail RFC 9000 §7.3's anti-tampering check.
+fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTransportParameters) !(&QuicConn, []u8, u64) {
+	mut now := u64(1000)
+	mut c, initial_dg := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: own_params
+	}, now)!
+	assert initial_dg.bytes.len >= min_initial_datagram_size
+
+	server_initial_scid := [u8(0xaa), 0xbb, 0xcc, 0xdd]
+
+	// --- Fake server: ECDHE key exchange against the real ClientHello dial() built ---
+	server_pub, server_priv := ecdsa.generate_key(nid: .prime256v1)!
+	defer {
+		server_pub.free()
+		unsafe { server_priv.free() }
+	}
+	server_ecdhe_public_bytes := server_pub.uncompressed_bytes()!
+	server_random := []u8{len: 32, init: 0x22}
+	client_key_exchange := conn_test_extract_client_hello_key_exchange(c.client_hello)!
+	client_pub := ecdsa.PublicKey.from_uncompressed_bytes(client_key_exchange, nid: .prime256v1)!
+	defer {
+		client_pub.free()
+	}
+	server_shared_secret := server_priv.derive_shared_secret(client_pub)!
+	server_hello_framed := conn_test_build_fake_server_hello(server_random,
+		server_ecdhe_public_bytes)!
+
+	early_secret := derive_early_secret()!
+	ch_sh_hash := sha256.sum256(conn_test_concat_bytes(c.client_hello, server_hello_framed))
+	server_handshake_secrets := derive_handshake_secrets(early_secret, server_shared_secret,
+		ch_sh_hash)!
+
+	// --- Deliver ServerHello as a real, protected Initial packet ---
+	sh_payload := encode_crypto_frame(0, server_hello_framed)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0,
+		sh_payload, c.initial_keys_server)!
+	result1 := c.poll(sh_datagram.bytes, now)!
+	assert result1.events.len == 0
+	assert c.handshake.state() == .wait_encrypted_extensions
+	now += 10
+
+	// --- Deliver EncryptedExtensions as a real, protected Handshake packet ---
+	hs_keys_server := c.handshake_keys_server or { panic('unreachable: just asserted != none') }
+	mut ee_params := peer_params
+	ee_params.initial_source_connection_id = server_initial_scid
+	ee_params.original_destination_connection_id = c.original_dcid
+	ee_framed := conn_test_build_fake_encrypted_extensions(ee_params)!
+	ee_payload := encode_crypto_frame(0, ee_framed)!
+	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0,
+		ee_payload, hs_keys_server)!
+	result2 := c.poll(ee_datagram.bytes, now)!
+	assert result2.events.len == 0
+	assert c.handshake.state() == .wait_certificate
+	now += 10
+
+	// --- Certificate + CertificateVerify: direct API, not over the wire (see doc comment below) ---
+	server_der := conn_test_pem_to_der(conn_test_cert_pem)
+	cert_framed := conn_test_build_fake_certificate(server_der)!
+	cert_msg, _ := parse_handshake_message(cert_framed)!
+	c.handshake.process_certificate_or_request(cert_msg, cert_framed) or {
+		// Expected: this repo's test cert is self-signed, so trust
+		// validation fails -- matches tls13_handshake_test.v's own
+		// documented, accepted limitation. The transcript is still
+		// correctly updated by this call despite the error.
+	}
+	real_chain := mbedtls.build_certificate_chain([server_der])!
+	unsafe {
+		c.handshake.verified_chain = &VerifiedCertificateChain{
+			chain: real_chain
+		}
+	}
+	c.handshake.certificate_transcript_hash = c.handshake.transcript_hash()
+	c.handshake.state = .wait_certificate_verify
+
+	signed_content := certificate_verify_signed_content(.server,
+		c.handshake.certificate_transcript_hash)
+	sig := conn_test_sign_certificate_verify(signed_content)!
+	cv_framed := conn_test_build_fake_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, sig)!
+	cv_msg, _ := parse_handshake_message(cv_framed)!
+	c.handshake.process_certificate_verify(cv_msg, cv_framed)!
+	assert c.handshake.state() == .wait_finished
+
+	// --- Deliver Finished as a real, protected Handshake packet ---
+	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret,
+		c.handshake.transcript_hash())!
+	finished_framed := encode_handshake_message(.finished, finished_verify_data)!
+	finished_payload := encode_crypto_frame(u64(ee_framed.len), finished_framed)!
+	finished_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 1,
+		finished_payload, hs_keys_server)!
+	result3 := c.poll(finished_datagram.bytes, now)!
+	assert result3.events.len == 0
+	assert c.handshake.state() == .connected
+	now += 10
+
+	// --- Fake server: deliver HANDSHAKE_DONE over a real 1-RTT packet ---
+	read_keys := c.app_read_keys or { panic('unreachable: just asserted != none') }
+	server_app_keys := read_keys.current_keys
+	// RFC 9001 §5.4.2: header protection sampling needs at least 4 bytes of
+	// packet number plus a 16-byte sample after it -- a bare 1-byte
+	// HANDSHAKE_DONE frame's resulting packet is 1 byte too short for that,
+	// so pad with a few PADDING frames (0x00, RFC 9000 §19.1 -- legal
+	// anywhere, silently ignored).
+	mut hs_done_payload := [u8(frame_type_handshake_done)]
+	hs_done_payload << [u8(0), 0, 0, 0]
+	hs_done_datagram := build_fake_one_rtt_packet(c.scid, 0, hs_done_payload, server_app_keys)!
+	result4 := c.poll(hs_done_datagram.bytes, now)!
+	assert result4.events.any(it.kind == .handshake_confirmed)
+	assert c.state() == .established
+	now += 10
+
+	return c, server_initial_scid, now
+}
+
+// test_dial_produces_a_valid_padded_initial_datagram checks dial()'s own
+// contract in isolation, independent of the much larger fake-transport
+// tests below: a freshly dialed connection is .handshaking, and its first
+// outgoing datagram meets RFC 9000 §14.1's 1200-byte floor (the same
+// property initial_exchange_test.v already proves for build_client_hello +
+// manual packet construction -- this test proves dial()'s OWN composition
+// of that same pipeline produces the same result).
+fn test_dial_produces_a_valid_padded_initial_datagram() {
+	mut c, dg := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	assert dg.bytes.len >= min_initial_datagram_size
+	assert c.state() == .handshaking
+	assert c.role() == .client
+}
+
+// test_full_handshake_reaches_confirmed_over_fake_transport is Phase 9a's
+// capstone integration test: drives a REAL QuicConn from dial() through the
+// full RFC 9001 §4.1.2 "confirmed" checkpoint against a fake, in-memory
+// server -- real ECDHE, real QUIC packet protection, real CRYPTO framing,
+// real key derivation/promotion/discard at every level. This is the first
+// test anywhere in the project to exercise conn.v's own composition logic
+// (no prior phase had a QuicConn to test); the underlying TLS message
+// semantics (extension validation, signature verification, transcript
+// hashing) are already exhaustively covered by tls13_handshake_test.v and
+// are NOT re-proven here.
+//
+// Certificate/CertificateVerify are deliberately NOT sent over the fake
+// wire: this repo has no CA-flagged test certificate (documented,
+// long-standing limitation -- see tls13_handshake_test.v's own note), so a
+// real Certificate message routed through conn.v's normal poll() path
+// would fail trust validation and conn.v would (correctly) treat that as a
+// fatal protocol violation, closing the connection. Instead, following
+// tls13_handshake_test.v's OWN established pattern for testing past this
+// gap, Certificate/CertificateVerify are processed by calling
+// c.handshake's methods DIRECTLY (white-box, same-module access -- conn.v
+// itself has no other side effects for these two dispatch arms beyond
+// c.handshake's own state, so nothing about conn.v's own wiring is skipped
+// by this shortcut). ServerHello, EncryptedExtensions, Finished, and
+// HANDSHAKE_DONE all go through the REAL wire path (dial()/poll()), since
+// those four are exactly where conn.v's own key-derivation/promotion/
+// discard and event-reporting logic lives.
+fn test_full_handshake_reaches_confirmed_over_fake_transport() {
+	mut c, _, _ := drive_to_established(QuicTransportParameters{}, QuicTransportParameters{})!
+	defer {
+		c.handshake.free()
+	}
+	assert c.handshake_completion_is_complete()
+	assert c.app_write_keys != none
+	assert c.app_read_keys != none
+	assert c.initial_keys_discarded
+	assert c.handshake_keys_discarded
+}
+
+// handshake_completion_is_complete is a tiny same-module accessor so tests
+// can assert RFC 9001 §4.1.2's "complete" checkpoint without reaching into
+// HandshakeCompletionState's own mut fields directly.
+fn (c &QuicConn) handshake_completion_is_complete() bool {
+	return c.handshake_completion.is_complete()
+}
+
+// -------------------------------------------------------------------------
+// Phase 9b: steady-state 1-RTT tests
+// -------------------------------------------------------------------------
+
+// test_stream_write_read_round_trip_over_fake_transport covers
+// open_stream/write_stream's OUTGOING path (verified by decrypting the
+// datagram conn.v itself built, using the same fake-server technique as
+// drive_to_established) and read_stream's INCOMING path (fed a real,
+// protected STREAM frame from the fake server).
+fn test_stream_write_read_round_trip_over_fake_transport() {
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	stream_id := c.open_stream(true)!
+	assert stream_id == 0 // first client-initiated bidi stream id, RFC 9000 §2.1
+	c.write_stream(stream_id, 'hello from client'.bytes(), true)!
+	result := c.poll(none, now)!
+	assert result.outgoing.len > 0
+	now += 10
+
+	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
+		write_keys)!
+	mut found_stream_frame := false
+	for f in frames {
+		if f is StreamFrame {
+			assert f.stream_id == stream_id
+			assert f.offset == 0
+			assert f.data == 'hello from client'.bytes()
+			assert f.fin
+			found_stream_frame = true
+		}
+	}
+	assert found_stream_frame
+
+	// --- Fake server replies with STREAM data on the same bidi stream ---
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	reply_frame := encode_stream_frame(stream_id, 0, 'hello from server'.bytes(), true, true)!
+	reply_datagram := build_fake_one_rtt_packet(c.scid, 0, reply_frame, server_app_keys)!
+	result2 := c.poll(reply_datagram.bytes, now)!
+	assert result2.events.len == 0
+
+	got := c.read_stream(stream_id)!
+	assert got == 'hello from server'.bytes()
+	// A second read before any new data arrives returns nothing new.
+	assert c.read_stream(stream_id)!.len == 0
+}
+
+// test_open_stream_respects_peer_max_streams_and_streams_blocked drives
+// open_stream() into RFC 9000 §4.6's peer-imposed limit (advertised as 0
+// bidi streams here), confirms it errors and queues STREAMS_BLOCKED (RFC
+// 9000 §19.14) rather than silently failing, then confirms a MAX_STREAMS
+// frame from the peer unblocks it.
+fn test_open_stream_respects_peer_max_streams_and_streams_blocked() {
+	own_params := generous_transport_params()
+	mut restrictive_peer_params := generous_transport_params()
+	restrictive_peer_params.initial_max_streams_bidi = 0
+	mut c, server_initial_scid, mut now :=
+		drive_to_established(own_params, restrictive_peer_params)!
+	defer {
+		c.handshake.free()
+	}
+
+	c.open_stream(true) or { assert err.msg().contains('STREAM_LIMIT') }
+
+	result := c.poll(none, now)!
+	assert result.outgoing.len > 0
+	now += 10
+	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
+		write_keys)!
+	mut found_blocked := false
+	for f in frames {
+		if f is StreamsBlockedFrame {
+			assert f.direction == .bidirectional
+			assert f.maximum_streams == 0
+			found_blocked = true
+		}
+	}
+	assert found_blocked
+
+	// --- Fake server raises the limit via MAX_STREAMS ---
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	max_streams_frame := encode_max_streams_frame(.bidirectional, 5)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, max_streams_frame, server_app_keys)!
+	result2 := c.poll(incoming.bytes, now)!
+	assert result2.events.len == 0
+
+	stream_id := c.open_stream(true)!
+	assert stream_id == 0
+}
+
+// test_close_sends_connection_close_and_transitions_to_closing covers the
+// public close() API's deferred-send contract (see close()'s own doc
+// comment): nothing happens until the next poll() call, which then builds
+// and sends a real, protected CONNECTION_CLOSE and transitions to .closing.
+fn test_close_sends_connection_close_and_transitions_to_closing() {
+	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	c.close(42, 'bye')
+	assert c.state() == .established // deferred -- nothing happens synchronously
+	result := c.poll(none, now)!
+	assert c.state() == .closing
+	assert result.outgoing.len > 0
+
+	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
+		write_keys)!
+	mut found_close := false
+	for f in frames {
+		if f is ConnectionCloseFrame {
+			assert f.error_code == 42
+			assert f.is_application_error
+			assert f.reason == 'bye'
+			found_close = true
+		}
+	}
+	assert found_close
+}
+
+// test_peer_connection_close_enters_draining covers the receive side of
+// RFC 9000 §10.2.2: a CONNECTION_CLOSE from the peer transitions this
+// connection straight to .draining (never .closing -- draining requires no
+// close of our own to be sent) and reports a connection_closed event.
+fn test_peer_connection_close_enters_draining() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	cc_frame := encode_connection_close_frame(false, 7, 0, 'server done')!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, cc_frame, server_app_keys)!
+	result := c.poll(incoming.bytes, now)!
+	assert c.state() == .draining
+	assert result.events.any(it.kind == .connection_closed)
+
+	// RFC 9000 §10.2.2: draining MUST be bounded (same period as closing,
+	// recommended 3x PTO) -- a peer-initiated close is the MOST common
+	// real-world close path, so process_timeouts() must eventually retire
+	// this connection to .closed, not leave it draining forever.
+	far_future := now + 1000 * 1000
+	timeout_result := c.process_timeouts(far_future)!
+	assert c.state() == .closed
+	assert timeout_result.events.any(it.kind == .connection_closed)
+}
+
+// test_write_stream_on_auto_created_sibling_stream_is_not_stuck is a
+// regression test for a bug found during /vreview: QuicStreamSet.
+// get_or_create (stream.v) auto-creates every LOWER-numbered same-category
+// stream when the peer references a higher one directly (RFC 9000 §2.1 --
+// "before a stream is created, all streams of the same type with
+// lower-numbered stream IDs MUST be created"), but handle_stream_frame/
+// handle_reset_stream_frame only called ensure_stream_windows for the named
+// frame.stream_id, never for those auto-created siblings. write_stream() on
+// such a sibling queued data that drain_pending_stream_writes could never
+// send (its `c.stream_send_windows[stream_id] or { continue }` lookup
+// always missed), silently and permanently -- no error, no event, just a
+// write that never reaches the wire.
+fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	// Server-initiated bidi stream ids are 1, 5, 9, ... (base 1, step 4).
+	// Referencing id=9 directly auto-creates siblings 1 and 5 with NO
+	// flow-control windows under the pre-fix code.
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	stream_frame := encode_stream_frame(9, 0, 'from server on stream 9'.bytes(), true, true)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys)!
+	result1 := c.poll(incoming.bytes, now)!
+	assert result1.events.len == 0
+	now += 10
+
+	// Stream 1 (an auto-created sibling, never itself named in any frame)
+	// is a real bidi stream from the client's perspective -- writing to it
+	// must eventually reach the wire, not silently vanish.
+	c.write_stream(1, 'sibling data'.bytes(), true)!
+	result2 := c.poll(none, now)!
+	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
+	mut found_sibling_stream_frame := false
+	for dg in result2.outgoing {
+		frames := conn_test_decrypt_one_rtt(dg.bytes, server_initial_scid.len, write_keys)!
+		for f in frames {
+			if f is StreamFrame {
+				if f.stream_id == 1 {
+					assert f.data == 'sibling data'.bytes()
+					assert f.fin
+					found_sibling_stream_frame = true
+				}
+			}
+		}
+	}
+	assert found_sibling_stream_frame
+}
