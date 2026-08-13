@@ -188,6 +188,28 @@ defer { conn.close() or {} }
 rows := conn.exec('select 1')!
 ```
 
+## Result Column Metadata
+
+Queries made with `exec_result()`, `exec_param_many_result()`, or
+`exec_prepared_result()` return a `pg.Result` whose `fields` array contains the
+libpq metadata for each result column:
+
+```v oksyntax
+import db.pg
+
+fn show_columns(conn &pg.Conn) ! {
+	result := conn.exec_result('select 1::int4 as id, 3.14::numeric(10, 2) as amount')!
+	for field in result.fields {
+		println('${field.name}: oid=${field.type_oid}, modifier=${field.type_modifier}')
+	}
+}
+```
+
+Each `pg.Field` preserves the type OID, type modifier, fixed size, result format,
+source table OID, and source table column number reported by libpq. Type OIDs for
+user-defined types are database-specific. PostgreSQL can resolve a type OID and
+modifier to its display name with `pg_catalog.format_type(oid, modifier)`.
+
 ## Using Parameterized Queries
 
 Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($n).
