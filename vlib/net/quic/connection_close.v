@@ -25,12 +25,15 @@ pub enum ConnectionCloseState {
 	draining
 }
 
+// ConnectionCloseTracker tracks which of RFC 9000 §10.2's connection-close
+// states (active/closing/draining) this endpoint is currently in.
 pub struct ConnectionCloseTracker {
 pub mut:
 	state                          ConnectionCloseState
 	packets_received_while_closing u64
 }
 
+// new_connection_close_tracker returns a tracker in the initial `active` state.
 pub fn new_connection_close_tracker() ConnectionCloseTracker {
 	return ConnectionCloseTracker{
 		state: .active

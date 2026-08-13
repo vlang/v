@@ -822,7 +822,7 @@ The largest, highest-risk phase. Sub-phases, in build order:
       already failed (RFC 9000 §10.3.1 — never a first-choice
       interpretation, since a legitimate packet's ciphertext could
       coincidentally end in the same 16 bytes as an unrelated token), and
-      compares the trailing 16 bytes via `crypto.internal.subtle`'s
+      compares the trailing 16 bytes via `crypto.subtle`'s
       constant-time compare (a token is a secret; a variable-time compare
       would leak a timing side-channel). Scoped-down CID handling: tokens
       are recorded for matching only, no full NEW_CONNECTION_ID/

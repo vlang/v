@@ -59,6 +59,7 @@ pub mut:
 	last_reset ?u64 // time.sys_mono_now()-sourced instant
 }
 
+// new_idle_timeout_state returns a timer that has not yet been reset by any packet.
 pub fn new_idle_timeout_state() IdleTimeoutState {
 	return IdleTimeoutState{}
 }

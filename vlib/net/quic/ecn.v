@@ -28,6 +28,7 @@ pub mut:
 	last_ecn_ce u64
 }
 
+// new_ecn_state returns a zero-valued EcnState with no counts recorded yet.
 pub fn new_ecn_state() EcnState {
 	return EcnState{}
 }

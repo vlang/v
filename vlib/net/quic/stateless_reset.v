@@ -1,6 +1,6 @@
 module quic
 
-import crypto.internal.subtle
+import crypto.subtle
 
 // RFC 9000 §10.3 — Stateless Reset. A stateless reset packet is
 // indistinguishable on the wire from an ordinary short-header packet
@@ -28,6 +28,7 @@ mut:
 	known_tokens map[string][]u8 // hex-encoded connection ID -> 16-byte token
 }
 
+// new_stateless_reset_tracker returns a tracker with no tokens recorded yet.
 pub fn new_stateless_reset_tracker() StatelessResetTracker {
 	return StatelessResetTracker{}
 }
