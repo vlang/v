@@ -45,6 +45,7 @@ const mysql_type_var_string = C.MYSQL_TYPE_VAR_STRING
 const mysql_type_string = C.MYSQL_TYPE_STRING
 const mysql_type_geometry = C.MYSQL_TYPE_GEOMETRY
 const mysql_no_data = C.MYSQL_NO_DATA
+const mysql_data_truncated = C.MYSQL_DATA_TRUNCATED
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
 fn C.mysql_stmt_prepare(&C.MYSQL_STMT, const_query charptr, u32) i32

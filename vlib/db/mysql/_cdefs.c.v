@@ -50,7 +50,7 @@ fn C.mysql_query(mysql &C.MYSQL, const_q charptr) i32
 
 // C.mysql_use_result initiates a result set retrieval but does not actually read
 // the result set into the client like `mysql_store_result()` does.
-fn C.mysql_use_result(mysql &C.MYSQL)
+fn C.mysql_use_result(mysql &C.MYSQL) &C.MYSQL_RES
 
 // C.mysql_real_query executes the SQL statement pointed to by `stmt_str`,
 // a string length bytes long.
@@ -121,6 +121,11 @@ fn C.mysql_next_result(mysql &C.MYSQL) i32
 
 // C.mysql_fetch_row retrieves the next row of a result set.
 fn C.mysql_fetch_row(res &C.MYSQL_RES) &charptr
+
+fn C.v_mysql_fetch_column_length(res &C.MYSQL_RES, column u32) u64
+fn C.v_mysql_lengths_new(count u32) voidptr
+fn C.v_mysql_length_at(lengths voidptr, column u32) u64
+fn C.v_mysql_bind_set_length_at(bind &C.MYSQL_BIND, lengths voidptr, column u32)
 
 // C.mysql_fetch_fields returns an array of all `MYSQL_FIELD` structures for a result set.
 // Each structure provides the field definition for one column of the result set.

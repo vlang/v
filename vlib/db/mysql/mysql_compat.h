@@ -10,3 +10,22 @@
 		defined(MARIADB_PACKAGE_VERSION_ID) || defined(LIBMARIADB))
 #define MYSQL_OPT_SSL_MODE 9999
 #endif
+
+static inline unsigned long long v_mysql_fetch_column_length(MYSQL_RES *result,
+	unsigned int column) {
+	unsigned long *lengths = mysql_fetch_lengths(result);
+	return lengths == NULL ? 0 : (unsigned long long)lengths[column];
+}
+
+static inline void *v_mysql_lengths_new(unsigned int count) {
+	return calloc(count, sizeof(unsigned long));
+}
+
+static inline unsigned long long v_mysql_length_at(void *lengths, unsigned int column) {
+	return (unsigned long long)((unsigned long *)lengths)[column];
+}
+
+static inline void v_mysql_bind_set_length_at(MYSQL_BIND *bind, void *lengths,
+	unsigned int column) {
+	bind->length = &((unsigned long *)lengths)[column];
+}
