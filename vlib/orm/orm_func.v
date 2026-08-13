@@ -12,10 +12,19 @@ pub:
 	value     Primitive = Null{}
 }
 
+enum RelationLoadMode {
+	explicit
+	implicit
+}
+
 @[heap]
 pub struct QueryBuilder[T] {
 mut:
-	builder_error string
+	builder_error       string
+	relation_load_mode  RelationLoadMode
+	include_paths       [][]string
+	last_include_path   []string
+	relation_join_paths map[string]Table
 pub mut:
 	meta                  []TableField
 	valid_sql_field_names []string
@@ -37,6 +46,7 @@ pub fn new_query[T](conn Connection) &QueryBuilder[T] {
 		}
 		data:                  QueryData{}
 		where:                 QueryData{}
+		relation_join_paths:   map[string]Table{}
 	}
 }
 
@@ -49,18 +59,24 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	}
 	qb.data = QueryData{}
 	qb.where = QueryData{}
+	qb.relation_load_mode = .explicit
+	qb.include_paths = [][]string{}
+	qb.last_include_path = []string{}
+	qb.relation_join_paths = map[string]Table{}
 	qb.builder_error = ''
 	return qb
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_select_fields(fields []string) &QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	qb.relation_load_mode = .implicit
 	qb.config.fields = fields.map(qb.v_sql_field_name(it))
 	return qb
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_select_qualified_fields(fields []string) &QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	qb.relation_load_mode = .implicit
 	mut select_fields := fields.map(qb.v_sql_field_name(it))
 	if select_fields.len == 0 {
 		for field in qb.meta {
@@ -72,6 +88,153 @@ fn (qb_ &QueryBuilder[T]) v_sql_select_qualified_fields(fields []string) &QueryB
 	qb.config.fields = select_fields
 	qb.config.select_exprs = select_fields.map(qb.v_sql_qualified_select_expr(it))
 	return qb
+}
+
+// include loads a direct `@[fkey]` relationship when the query runs.
+pub fn (qb_ &QueryBuilder[T]) include(field string) !&QueryBuilder[T] {
+	mut qb := unsafe { qb_ }
+	qb.validate_include_root(field)!
+	qb.add_include_path([field])
+	qb.last_include_path = [field]
+	return qb
+}
+
+// then_include loads a relationship of the last relationship passed to include or then_include.
+pub fn (qb_ &QueryBuilder[T]) then_include(field string) !&QueryBuilder[T] {
+	mut qb := unsafe { qb_ }
+	if qb.last_include_path.len == 0 {
+		return error('${@FN}(): call `include` before `then_include`')
+	}
+	if field.trim_space().len == 0 || field.contains('.') {
+		return error('${@FN}(): field must be a direct relationship name')
+	}
+	mut path := qb.last_include_path.clone()
+	path << field
+	qb.add_include_path(path)
+	qb.last_include_path = path
+	return qb
+}
+
+fn (qb_ &QueryBuilder[T]) validate_include_root(field string) ! {
+	if field.trim_space().len == 0 || field.contains('.') {
+		return error('${@FN}(): field must be a direct relationship name')
+	}
+	meta_field := qb_.get_meta_field_by_sql_name(field) or {
+		return error("${@FN}(): table `${qb_.config.table}` has no field's name: `${field}`")
+	}
+	if !meta_field.is_arr || orm_field_fkey_attr(meta_field.attrs).len == 0 {
+		return error('${@FN}(): field `${field}` is not a `@[fkey]` relationship')
+	}
+}
+
+fn (qb_ &QueryBuilder[T]) add_include_path(path []string) {
+	mut qb := unsafe { qb_ }
+	for existing in qb.include_paths {
+		if existing == path {
+			return
+		}
+	}
+	qb.include_paths << path
+}
+
+fn (qb_ &QueryBuilder[T]) relation_filter_field(field string) !string {
+	mut qb := unsafe { qb_ }
+	parts := field.split('.')
+	if parts.len < 2 || parts.any(it.len == 0) {
+		return error('${@FN}(): relationship field must have the form `relationship.field`')
+	}
+	leaf := parts[parts.len - 1]
+	result := add_relation_filter_joins[T](mut qb.config, mut qb.relation_join_paths,
+		qb.config.table, '', parts[..parts.len - 1], leaf, false)!
+	qb.config.has_distinct = true
+	return result
+}
+
+fn add_relation_filter_joins[T](mut config SelectConfig, mut joined map[string]Table, current Table, prefix string, relations []string, leaf string, leaf_is_relationship bool) !string {
+	if relations.len == 0 {
+		for meta_field in struct_meta[T]() {
+			if meta_field.name == leaf || sql_field_name(meta_field) == leaf {
+				if meta_field.is_arr {
+					if leaf_is_relationship && orm_field_fkey_attr(meta_field.attrs).len > 0 {
+						return ''
+					}
+					if leaf_is_relationship {
+						return error('${@FN}(): field `${leaf}` is not a `@[fkey]` relationship')
+					}
+					return error('${@FN}(): last segment `${leaf}` must be a database field')
+				}
+				if leaf_is_relationship {
+					return error('${@FN}(): field `${leaf}` is not a `@[fkey]` relationship')
+				}
+				return table_qualified_field(current.name, sql_field_name(meta_field))
+			}
+		}
+		return error('${@FN}(): field `${leaf}` does not exist')
+	}
+	name := relations[0]
+	empty := T{}
+	$for field in T.fields {
+		if field.name == name {
+			fkey := orm_field_fkey(field.attrs)
+			$if field.unaliased_typ is $array {
+				if fkey.len == 0 {
+					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+				}
+				primary := find_save_primary_field_name(struct_meta[T]()) or {
+					return error('${@FN}(): table `${current.name}` has no primary key')
+				}
+				return add_relation_filter_array(mut config, mut joined, current, prefix, name,
+					primary, fkey, relations[1..], leaf, leaf_is_relationship, empty.$(field.name))
+			} $else $if field.typ is $option {
+				if !orm_type_name_is_optional_array(typeof(field).name) || fkey.len == 0 {
+					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+				}
+				primary := find_save_primary_field_name(struct_meta[T]()) or {
+					return error('${@FN}(): table `${current.name}` has no primary key')
+				}
+				return add_relation_filter_optional_array(mut config, mut joined, current, prefix,
+					name, primary, fkey, relations[1..], leaf, leaf_is_relationship,
+					empty.$(field.name))
+			} $else {
+				return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+			}
+		}
+	}
+	return error('${@FN}(): field `${name}` does not exist')
+}
+
+fn add_relation_filter_array[U](mut config SelectConfig, mut joined map[string]Table, current Table, prefix string, name string, primary string, fkey string, remaining []string, leaf string, leaf_is_relationship bool, _ []U) !string {
+	path := if prefix.len == 0 { name } else { '${prefix}.${name}' }
+	child_table := joined[path] or {
+		table := table_from_struct[U](struct_meta[U]())
+		alias := relation_filter_alias(config.joins.len)
+		config.joins << JoinConfig{
+			kind:          .inner
+			table:         table
+			alias:         alias
+			on_left_table: current.name
+			on_left_col:   primary
+			on_right_col:  fkey
+		}
+		joined[path] = Table{
+			name: alias
+		}
+		joined[path]
+	}
+	return add_relation_filter_joins[U](mut config, mut joined, child_table, path, remaining, leaf,
+		leaf_is_relationship)
+}
+
+fn relation_filter_alias(index int) string {
+	return '__orm_rel_${index}'
+}
+
+fn add_relation_filter_optional_array[U](mut config SelectConfig, mut joined map[string]Table, current Table, prefix string, name string, primary string, fkey string, remaining []string, leaf string, leaf_is_relationship bool, _ ?U) !string {
+	$if U is $array {
+		return add_relation_filter_array(mut config, mut joined, current, prefix, name, primary,
+			fkey, remaining, leaf, leaf_is_relationship, U{})
+	}
+	return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
 }
 
 fn (qb &QueryBuilder[T]) v_sql_qualified_select_expr(field string) string {
@@ -382,6 +545,7 @@ pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) !&Que
 		qb.where.is_and << true // and
 	}
 	qb.parse_conditions(condition, normalize_primitive_arguments(params))!
+	qb.qualify_where_fields_for_joins()
 	qb.config.has_where = true
 	return qb
 }
@@ -394,8 +558,21 @@ pub fn (qb_ &QueryBuilder[T]) or_where(condition string, params ...Primitive) !&
 		qb.where.is_and << false // or
 	}
 	qb.parse_conditions(condition, normalize_primitive_arguments(params))!
+	qb.qualify_where_fields_for_joins()
 	qb.config.has_where = true
 	return qb
+}
+
+fn (qb_ &QueryBuilder[T]) qualify_where_fields_for_joins() {
+	mut qb := unsafe { qb_ }
+	if qb.config.joins.len == 0 {
+		return
+	}
+	for i, field in qb.where.fields {
+		if !field.contains(table_qualified_field_separator) {
+			qb.where.fields[i] = table_qualified_field(qb.config.table.name, field)
+		}
+	}
 }
 
 fn normalize_primitive_arguments(params []Primitive) []Primitive {
@@ -559,7 +736,10 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 			.field {
 				// only support valid field names
 				mapped_field := qb.v_sql_field_name(tok)
-				if mapped_field in qb.valid_sql_field_names {
+				if tok.contains('.') && qb.relation_load_mode == .explicit {
+					current_field = qb.relation_filter_field(tok)!
+					state = .op
+				} else if mapped_field in qb.valid_sql_field_names {
 					current_field = mapped_field
 					state = .op
 				} else if tok == '(' {
@@ -1371,22 +1551,15 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	}
 	parent_key := qb.selected_primary_value(row) or { Primitive(Null{}) }
 	mut conn := qb.conn
+	if parent_key != Primitive(Null{}) {
+		hydrate_array_relationships(mut conn, mut instance, parent_key, qb.relation_load_mode,
+			qb.include_paths)!
+	}
 	$for field in T.fields {
 		field_type_name := typeof(field).name
-		$if field.unaliased_typ is $array {
-			fkey := orm_field_fkey(field.attrs)
-			if fkey.len > 0 && parent_key != Primitive(Null{}) {
-				instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
-					instance.$(field.name))!
-			}
-		} $else $if field.typ is $option {
-			if orm_type_name_is_optional_array(field_type_name) {
-				fkey := orm_field_fkey(field.attrs)
-				if fkey.len > 0 && parent_key != Primitive(Null{}) {
-					instance.$(field.name) = query_relation_optional_array_like(mut conn,
-						parent_key, fkey, instance.$(field.name))!
-				}
-			} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
+		$if field.typ is $option {
+			if !orm_type_name_is_optional_array(field_type_name) && field.is_struct
+				&& !orm_type_name_is_time(field_type_name) {
 				mm := qb.meta.filter(it.name == field.name)
 				if mm.len != 0 {
 					index := qb.config.fields.index(sql_field_name(mm[0]))
@@ -1416,12 +1589,65 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	return instance
 }
 
+fn hydrate_array_relationships[T](mut conn Connection, mut instance T, parent_key Primitive, mode RelationLoadMode, paths [][]string) ! {
+	$for field in T.fields {
+		field_type_name := typeof(field).name
+		$if field.unaliased_typ is $array {
+			fkey := orm_field_fkey(field.attrs)
+			if fkey.len > 0 && relation_should_load(mode, paths, field.name) {
+				instance.$(field.name) = query_relation_array_like_with_includes(mut conn,
+					parent_key, fkey, mode, include_child_paths(paths, field.name),
+					instance.$(field.name))!
+			}
+		} $else $if field.typ is $option {
+			if orm_type_name_is_optional_array(field_type_name) {
+				fkey := orm_field_fkey(field.attrs)
+				if fkey.len > 0 && relation_should_load(mode, paths, field.name) {
+					instance.$(field.name) = query_relation_optional_array_like_with_includes(mut conn,
+						parent_key, fkey, mode, include_child_paths(paths, field.name),
+						instance.$(field.name))!
+				}
+			}
+		}
+	}
+}
+
+fn validate_include_paths[T](paths [][]string) ! {
+	table := table_from_struct[T](struct_meta[T]())
+	mut config := SelectConfig{
+		table: table
+	}
+	mut joined := map[string]Table{}
+	for path in paths {
+		if path.len == 0 {
+			continue
+		}
+		_ = add_relation_filter_joins[T](mut config, mut joined, table, '', path[..path.len - 1],
+			path[path.len - 1], true)!
+	}
+}
+
+fn relation_should_load(mode RelationLoadMode, paths [][]string, field string) bool {
+	return mode == .implicit || paths.any(it.len > 0 && it[0] == field)
+}
+
+fn include_child_paths(paths [][]string, field string) [][]string {
+	mut children := [][]string{}
+	for path in paths {
+		if path.len > 1 && path[0] == field {
+			children << path[1..]
+		}
+	}
+	return children
+}
+
 // prepare QueryBuilder, ready for gen SQL
 fn (qb_ &QueryBuilder[T]) prepare() ! {
 	mut qb := unsafe { qb_ }
 	if qb.builder_error.len > 0 {
 		return error(qb.builder_error)
 	}
+	qb.ensure_primary_key_for_includes()
 
 	// check for mismatch `(` and `)`
 	for p in qb.where.parentheses {
@@ -1442,11 +1668,17 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 	if qb.config.select_exprs.len != qb.config.fields.len {
 		mut select_exprs := []string{cap: qb.config.fields.len}
 		for f in qb.config.fields {
-			mut select_expr := f
-			for ff in qb.meta {
-				if sql_field_name(ff) == f {
-					select_expr = sql_field_select_expr(ff)
-					break
+			mut select_expr := if qb.config.joins.len > 0 {
+				qb.v_sql_qualified_select_expr(f)
+			} else {
+				f
+			}
+			if qb.config.joins.len == 0 {
+				for ff in qb.meta {
+					if sql_field_name(ff) == f {
+						select_expr = sql_field_select_expr(ff)
+						break
+					}
 				}
 			}
 			select_exprs << select_expr
@@ -1466,6 +1698,18 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 		}
 		qb.config.types = types
 	}
+}
+
+fn (qb_ &QueryBuilder[T]) ensure_primary_key_for_includes() {
+	if qb_.include_paths.len == 0 || qb_.config.fields.len == 0 {
+		return
+	}
+	primary := find_save_primary_field_name(qb_.meta) or { return }
+	if primary in qb_.config.fields {
+		return
+	}
+	mut qb := unsafe { qb_ }
+	qb.config.fields << primary
 }
 
 fn (qb &QueryBuilder[T]) get_meta_field_by_sql_name(field string) ?TableField {
@@ -1619,6 +1863,9 @@ pub fn (qb_ &QueryBuilder[T]) query() ![]T {
 	defer {
 		qb.reset()
 	}
+	if qb.relation_load_mode == .explicit {
+		validate_include_paths[T](qb.include_paths)!
+	}
 	qb.prepare()!
 	rows := qb.conn.select(qb.config, qb.data, qb.where)!
 	mut result := []T{cap: rows.len}
@@ -1633,6 +1880,9 @@ pub fn (qb_ &QueryBuilder[T]) count() !int {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
+	}
+	if qb.relation_load_mode == .explicit {
+		validate_include_paths[T](qb.include_paths)!
 	}
 	qb.prepare()!
 	count_config := qb.build_aggregate_config(.count, '')!
@@ -1941,6 +2191,15 @@ fn orm_field_fkey(attrs []string) string {
 		name, arg, has_arg := orm_attr_name_arg(attr)
 		if has_arg && name == 'fkey' {
 			return trim_attr_arg(arg)
+		}
+	}
+	return ''
+}
+
+fn orm_field_fkey_attr(attrs []VAttribute) string {
+	for attr in attrs {
+		if attr.has_arg && attr_name_matches(attr.name, 'fkey') {
+			return trim_attr_arg(attr.arg)
 		}
 	}
 	return ''
@@ -2279,7 +2538,13 @@ fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, _ ?U)
 }
 
 fn query_relation_array[U](mut conn Connection, key Primitive, fkey string) ![]U {
+	return query_relation_array_with_includes[U](mut conn, key, fkey, .implicit, [][]string{})
+}
+
+fn query_relation_array_with_includes[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string) ![]U {
 	mut qb := new_query[U](conn)
+	qb.relation_load_mode = mode
+	qb.include_paths = paths
 	field_key := primitive_for_field[U](key, fkey)
 	return qb.v_sql_where_primitive(fkey, .eq, field_key).query() or {
 		if err.msg().contains('no such table') {
@@ -2293,13 +2558,28 @@ fn query_relation_array_like[U](mut conn Connection, key Primitive, fkey string,
 	return query_relation_array[U](mut conn, key, fkey)
 }
 
+fn query_relation_array_like_with_includes[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ []U) ![]U {
+	return query_relation_array_with_includes[U](mut conn, key, fkey, mode, paths)
+}
+
 fn query_relation_array_from_optional[U](mut conn Connection, key Primitive, fkey string, _ ?[]U) ![]U {
 	return query_relation_array[U](mut conn, key, fkey)!
+}
+
+fn query_relation_array_from_optional_with_includes[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ ?[]U) ![]U {
+	return query_relation_array_with_includes[U](mut conn, key, fkey, mode, paths)!
 }
 
 fn query_relation_optional_array_like[U](mut conn Connection, key Primitive, fkey string, value ?U) !U {
 	$if U is $array {
 		return query_relation_array_from_optional(mut conn, key, fkey, value)!
+	}
+	return U{}
+}
+
+fn query_relation_optional_array_like_with_includes[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ ?U) !U {
+	$if U is $array {
+		return query_relation_array_like_with_includes(mut conn, key, fkey, mode, paths, U{})!
 	}
 	return U{}
 }
@@ -2337,7 +2617,9 @@ fn insert_optional_relation_array_values[U](mut conn Connection, values ?[]U, ke
 
 fn insert_optional_relation_array[U](mut conn Connection, values ?U, key Primitive, fkey string) ! {
 	$if U is $array {
-		insert_optional_relation_array_values(mut conn, values, key, fkey)!
+		if items := values {
+			insert_relation_array(mut conn, items, key, fkey)!
+		}
 	}
 }
 

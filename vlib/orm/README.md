@@ -584,6 +584,44 @@ struct User {
 	only_names := qb.select('name')!.query()!
 ```
 
+Function Call queries do not load `@[fkey]` array relationships unless requested with `include`.
+`then_include` continues from the last included relationship; call `include` again to start
+another path from the root:
+
+```v ignore
+@[table: 'parents']
+struct Parent {
+	id       int     @[primary]
+	children []Child @[fkey: 'parent_id']
+}
+
+struct Child {
+	id        int       @[primary]
+	parent_id int
+	grandkids []Grandkid @[fkey: 'child_id']
+}
+
+parents := qb
+	.include('children')!
+	.then_include('grandkids')!
+	.query()!
+```
+
+`where` continues to filter only the root query. The SQL-like API keeps its existing
+implicit relationship loading behavior.
+
+Function Call `where` also accepts a relationship path. It uses the relationship only to
+filter the root result; it does not populate that relationship. Use `include` separately
+when it is needed in the result:
+
+```v ignore
+parents := qb
+	.where('children.grandkids.name = ?', 'Bob')!
+	.include('children')!
+	.then_include('grandkids')!
+	.query()!
+```
+
 8. Update records​​ (note: `update()` must be placed last):
 
 ```v ignore
