@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn test_stream_id_category_derivation_all_four_combinations() {
