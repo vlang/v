@@ -57,7 +57,7 @@ checklist for exact status. Every checked item has passing tests under
       being rejected) and a minor OpenSSL leak in
       `PublicKey.from_uncompressed_bytes`. Both have regression tests.
 
-## Phase 2 — QUIC-scoped TLS 1.3 handshake + key schedule (NOT STARTED)
+## Phase 2 — QUIC-scoped TLS 1.3 handshake + key schedule (done)
 
 The largest, highest-risk phase. Sub-phases, in build order:
 
@@ -102,9 +102,9 @@ The largest, highest-risk phase. Sub-phases, in build order:
       message bytes, no record-layer framing (RFC 8446 §4.4.1 / RFC 9001
       §4), both extracted from the raw RFC text programmatically, not
       hand-transcribed.
-- **2c — Messages + state machine** (`tls13_messages.v`, `tls13_handshake.v`):
+- [x] **2c — Messages + state machine** (`tls13_messages.v`, `tls13_handshake.v`):
   ClientHello…Finished, the `quic_transport_parameters` extension (0x39),
-  client state machine. In progress — sub-items:
+  client state machine. Sub-items:
   - [x] Generic handshake message framing (`HandshakeType` enum — the real
         RFC 8446 §B.3 v1.3 set only, TLS-1.2-era RESERVED values correctly
         rejected, not silently accepted as unused variants —
