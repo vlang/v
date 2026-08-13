@@ -864,12 +864,46 @@ The largest, highest-risk phase. Sub-phases, in build order:
       one-sided and both-sided paths and confirms a large-but-finite,
       strictly positive `Duration` comes back.
 
-## Phases 9-14 (NOT STARTED)
+## Phase 9 — QuicConn top-level struct and event loop (IN PROGRESS)
+
+No prior phase composes any two of the pieces built so far — every phase
+built independently unit-tested state and deferred wiring to "a future
+QuicConn." `vlib/net/quic/conn.v` is that wiring. Sub-phased like Phase 2,
+landing as one PR:
+
+- [ ] **9a — Connection establishment** (`conn.v`): `dial()` picks
+      `scid`/`original_dcid`, derives Initial secrets, builds ClientHello.
+      `poll()`/`process_timeouts()` handle Retry/VN detection (RFC 9000
+      §17.2.5.2's at-most-one-Retry + VN/Retry anti-spoof state, both
+      explicitly documented in `retry.v`/`version_negotiation.v` as this
+      phase's job), Initial/Handshake packet demux→unprotect→frame-parse,
+      driving `Tls13ClientHandshake` through to `process_finished`, key
+      derivation/promotion per level, CRYPTO-frame reassembly via
+      `CryptoStreamReassembler`, ACK generation/processing for
+      Initial/Handshake tied into `loss_detection.v`, idle timeout, and key
+      discard on handshake confirmation (RFC 9001 §4.9).
+- [ ] **9b — Steady state**: 1-RTT packet processing (STREAM/ACK/
+      CONNECTION_CLOSE dispatch into `QuicStreamSet` + flow control both
+      directions), `open_stream`/`write_stream`/`read_stream`, full
+      loss-detection↔congestion-control wiring for 1-RTT sends,
+      MAX_STREAMS enforcement on locally-opened streams against the peer's
+      current limit, stateless-reset detection on decrypt failure, ECN
+      count recording, graceful/immediate close, 1-RTT key update rotation
+      (`app_read_keys`/`app_write_keys`).
+- [ ] Tests: `conn_test.v`, hand-built ServerHello→Finished fixtures
+      (reusing Phase 2's RFC 8448/quiche vectors, no live server) driving
+      `dial()`+`poll()` to `handshake_confirmed`; STREAM data round-trip
+      through `poll()`; CONNECTION_CLOSE handling; key update.
+
+Connection ID rotation/migration is explicitly OUT of scope (not deferred
+to a later phase — `stateless_reset.v`/`pmtu.v` both say so independently):
+`QuicConn` holds exactly one local `scid` and tracks the peer's current
+`dcid`, no active CID set, no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID.
+
+## Phases 10-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-9. `QuicConn` — top-level struct, `poll()`/`process_timeouts()` event-loop
-   contract.
 10. HTTP/3 framing (RFC 9114) — incremental/resumable parsing (structurally
     different from HTTP/2's single-shot framing).
 11. QPACK (RFC 9204) — absolute indexing, encoder/decoder streams, blocked-
