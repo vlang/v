@@ -640,11 +640,125 @@ fn test_peer_connection_close_enters_draining() {
 	// RFC 9000 §10.2.2: draining MUST be bounded (same period as closing,
 	// recommended 3x PTO) -- a peer-initiated close is the MOST common
 	// real-world close path, so process_timeouts() must eventually retire
-	// this connection to .closed, not leave it draining forever.
-	far_future := now + 1000 * 1000
+	// this connection to .closed, not leave it draining forever. `now`
+	// throughout this module is a time.sys_mono_now()-sourced nanosecond
+	// instant (see IdleTimeoutState.last_reset's own doc comment), so
+	// "far future" must be nanosecond-scale too -- 10 real seconds safely
+	// exceeds even a first-sample PTO (default smoothed_rtt=333ms) x3.
+	far_future := now + 10_000_000_000
 	timeout_result := c.process_timeouts(far_future)!
 	assert c.state() == .closed
 	assert timeout_result.events.any(it.kind == .connection_closed)
+}
+
+// test_idle_timeout_mechanism_fires_after_configured_window is a sanity
+// regression test for the idle-timeout mechanism itself, written while
+// verifying a maintainer "Local AI Review" finding on PR #28083
+// (2026-08-14). It also caught a genuine self-inflicted bug: an earlier
+// attempt at this fix "corrected" idle_timeout_deadline() to route its
+// already-real, nanosecond-scale `time.Duration` through `.milliseconds()`
+// before combining with `now` -- but `now` is nanosecond-scale throughout
+// this module (time.sys_mono_now()-sourced; see loss_detection_test.v's
+// own RTT-sample assertions, e.g. `ld.rtt.latest_rtt == 1000 *
+// time.nanosecond`, for independent confirmation), so that "fix" shrank the
+// real timeout to a tiny millisecond COUNT and made the deadline arrive
+// almost immediately instead of after the configured window. The ORIGINAL
+// code (a bare `u64(timeout)`, no conversion) was correct all along; this
+// test's own first draft (using tiny `now` deltas modeled on the wrong,
+// millisecond assumption) could not have caught that mistake either, since
+// small deltas pass trivially regardless of which formula is used.
+fn test_idle_timeout_mechanism_fires_after_configured_window() {
+	mut own_params := generous_transport_params()
+	own_params.max_idle_timeout = 5000 // milliseconds, per RFC 9000 §18.2's wire format
+	mut peer_params := generous_transport_params()
+	peer_params.max_idle_timeout = 5000
+	mut c, _, mut now := drive_to_established(own_params, peer_params)!
+	defer {
+		c.handshake.free()
+	}
+
+	// Genuinely idle (nothing received or sent since establishment) and
+	// well past the real 5-second (5_000_000_000ns) window -- must close.
+	now += 6_000_000_000
+	final_result := c.process_timeouts(now)!
+	assert c.state() == .closed
+	assert final_result.events.any(it.kind == .connection_closed)
+}
+
+// test_process_one_rtt_packet_resets_idle_timer_on_receive is a regression
+// test for a maintainer "Local AI Review" finding on PR #28083 (2026-08-14,
+// a different LLM than the closing_deadline round): conn.v never called
+// IdleTimeoutState.note_packet_received at all -- only note_packet_sent was
+// wired in (build_initial_packet/build_handshake_packet/
+// build_one_rtt_packet). An otherwise active connection that only RECEIVES
+// data (never itself initiates a send) would incorrectly idle-timeout at
+// the original deadline. Verifying this surfaced a second, deeper bug:
+// note_packet_received itself had RFC 9000 §10.1's rule backwards --
+// gating the RECEIVE-side restart on ack-eliciting, when the RFC's
+// ack-eliciting condition applies only to the SEND side; receive restarts
+// unconditionally on ANY successfully processed packet (fixed in
+// idle_timeout.v, which also dropped the now-unnecessary is_ack_eliciting
+// parameter).
+//
+// White-box (same-module), calling process_one_rtt_packet directly rather
+// than through poll(): this module's own drain_outgoing unconditionally
+// ACKs every received 1-RTT packet in the SAME poll() call
+// (`app_received_pns.len > 0` gates an outgoing ACK with no ack-eliciting
+// check), and building that ACK packet calls note_packet_sent -- so a
+// poll()-driven test can never isolate "receive alone resets the timer"
+// from "the auto-generated ACK response resets it," the same masking shape
+// already seen once this session (a stale PTO masking the closing_deadline
+// gap). Calling process_one_rtt_packet directly, before drain_outgoing ever
+// runs, is the only way to observe the receive-side effect in isolation.
+fn test_process_one_rtt_packet_resets_idle_timer_on_receive() {
+	mut c, _, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	stream_frame := encode_stream_frame(1, 0, 'keepalive'.bytes(), false, false)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys)!
+
+	now += 4000
+	mut result := PollResult{}
+	c.process_one_rtt_packet(incoming.bytes, now, mut result)!
+	last_reset := c.idle_timeout.last_reset or { u64(0) }
+	assert last_reset == now
+}
+
+// test_handshake_done_rejected_when_role_is_server is a regression test for
+// a maintainer "Local AI Review" finding on PR #28083 (2026-08-14): RFC
+// 9000 §19.20 -- "A HANDSHAKE_DONE frame can only be sent by the server...
+// A server MUST treat receipt of a HANDSHAKE_DONE frame as a connection
+// error of type PROTOCOL_VIOLATION" -- was never checked;
+// dispatch_one_rtt_frame's HandshakeDoneFrame arm unconditionally advanced
+// handshake state regardless of role.
+//
+// White-box (same-module), forcing `c.role = .server`: this codebase only
+// ever constructs clients in v1 (dial() hardcodes role: .client, no server
+// constructor exists), so this exact path is currently unreachable through
+// any real call path -- forcing the role is the only way to exercise it.
+// Still worth fixing now rather than deferring to Phase 13: stream.v's own
+// QuicRole doc comment and PROGRESS.md both state the role field exists
+// specifically so Phases 1-9's dispatch code needs no rework when server
+// support lands, and this is a one-line, zero-risk guard matching an
+// explicit RFC MUST.
+fn test_handshake_done_rejected_when_role_is_server() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.role = .server
+
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(HandshakeDoneFrame{}, now, mut result) or {
+		assert err.msg().contains('PROTOCOL_VIOLATION')
+		return
+	}
+	assert false, 'expected dispatch_one_rtt_frame to reject HANDSHAKE_DONE when role is server'
 }
 
 // test_compute_next_timeout_includes_closing_deadline is a regression test

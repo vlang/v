@@ -634,6 +634,10 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 	unprotected := unprotect_packet(mut packet, offset, .long, keys, largest_pn) or { return }
 
 	c.processed_first_server_packet = true
+	// RFC 9000 §10.1: receiving and successfully processing ANY packet
+	// restarts the idle timer, not just an ack-eliciting one -- see
+	// idle_timeout.v's own doc comment.
+	c.idle_timeout.note_packet_received(now)
 	if c.peer_scid.len == 0 {
 		// RFC 9000 §7.2: upon first receiving a packet from the server, the
 		// client MUST use its Source Connection ID as the Destination
@@ -735,6 +739,10 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 	read_keys.note_successful_decrypt(resolution, full_pn)!
 
 	c.processed_first_server_packet = true
+	// RFC 9000 §10.1: receiving and successfully processing ANY packet
+	// restarts the idle timer, not just an ack-eliciting one -- see
+	// idle_timeout.v's own doc comment.
+	c.idle_timeout.note_packet_received(now)
 	c.pn_spaces.application_data.note_received(full_pn)
 	c.app_received_pns[full_pn] = true
 
@@ -783,6 +791,17 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			c.handle_peer_connection_close(frame, now, mut result)
 		}
 		HandshakeDoneFrame {
+			// RFC 9000 §19.20: "A HANDSHAKE_DONE frame can only be sent by
+			// the server... A server MUST treat receipt of a
+			// HANDSHAKE_DONE frame as a connection error of type
+			// PROTOCOL_VIOLATION." Currently unreachable in real use (v1
+			// only ever constructs clients, role is always .client) but
+			// kept so this dispatch code needs no rework when server
+			// support (Phase 13) lands -- see
+			// test_handshake_done_rejected_when_role_is_server.
+			if c.role == .server {
+				return error('quic: PROTOCOL_VIOLATION: server received HANDSHAKE_DONE (RFC 9000 §19.20)')
+			}
 			c.handshake_completion.mark_handshake_done_received()
 			if c.handshake_completion.is_confirmed() {
 				c.on_handshake_confirmed(mut result)
@@ -1375,9 +1394,19 @@ fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut res
 // `now`. Shared by close_with_error (.closing) and enter_draining
 // (.draining) so both states are bounded identically -- see enter_draining's
 // own doc comment for why a missing deadline here is a real, not
-// theoretical, bug.
+// theoretical, bug. `now` is a `time.sys_mono_now()`-sourced nanosecond
+// instant throughout this module (see IdleTimeoutState.last_reset's own
+// doc comment, and loss_detection_test.v's own RTT-sample assertions, e.g.
+// `ld.rtt.latest_rtt == 1000 * time.nanosecond`) -- `pto_period()` is
+// ALREADY a real, nanosecond-scale `time.Duration`, so it must be added
+// directly, never routed through `.milliseconds()` first (that would
+// shrink it to a tiny millisecond COUNT before adding it to a
+// nanosecond-scale `now`, landing the deadline almost immediately instead
+// of ~3xPTO out). Found self-inflicted while re-verifying a maintainer
+// "Local AI Review" idle-timeout finding on PR #28083 surfaced the exact
+// same mistake freshly introduced in idle_timeout_deadline().
 fn (c &QuicConn) closing_or_draining_deadline(now u64) u64 {
-	return now + 3 * u64(c.loss_detection.rtt.pto_period().milliseconds())
+	return now + 3 * u64(c.loss_detection.rtt.pto_period())
 }
 
 // enter_draining transitions to RFC 9000 §10.2.2's draining state -- used
@@ -1457,6 +1486,20 @@ fn (c &QuicConn) effective_max_ack_delay() time.Duration {
 	return time.Duration(i64(v) * i64(time.millisecond))
 }
 
+// idle_timeout_deadline computes the absolute `now`-scale time (a
+// `time.sys_mono_now()`-sourced nanosecond instant throughout this module
+// -- see IdleTimeoutState.last_reset's own doc comment) at which RFC 9000
+// §10.1's idle timeout elapses. `effective_idle_timeout` already returns a
+// real, nanosecond-scale `time.Duration` (correctly converted from the
+// millisecond WIRE value via `clamped_ms_to_duration`) -- add it to
+// `baseline` directly, never through `.milliseconds()` first, which would
+// shrink it to a tiny millisecond COUNT before adding it to a
+// nanosecond-scale baseline, making the deadline arrive almost immediately
+// instead of the real configured timeout. (A prior version of this
+// function briefly "fixed" this into the wrong shape while investigating a
+// maintainer "Local AI Review" finding on PR #28083 -- the ORIGINAL bare
+// `u64(timeout)` was correct all along; the real, adjacent bug was in
+// `closing_or_draining_deadline`, which had the identical mistake.)
 fn (c &QuicConn) idle_timeout_deadline() ?u64 {
 	peer_max := c.handshake.peer_transport_parameters.max_idle_timeout or { u64(0) }
 	timeout := effective_idle_timeout(c.own_max_idle_timeout_ms, peer_max) or { return none }
