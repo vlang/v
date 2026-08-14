@@ -627,6 +627,16 @@ fn test_peer_connection_close_enters_draining() {
 	assert c.state() == .draining
 	assert result.events.any(it.kind == .connection_closed)
 
+	// Maintainer "Local AI Review" finding (2026-08-14): closing_deadline
+	// being set (previous assertion block, enter_draining) is not enough on
+	// its own -- compute_next_timeout() must also surface it, or a
+	// caller-driven event loop with no other active timer (no idle timeout
+	// configured here, no loss-detection PTO armed after a clean reply)
+	// never learns it needs to call process_timeouts() again, and the
+	// connection would sit in .draining forever despite the deadline being
+	// correctly recorded.
+	assert result.next_timeout != none
+
 	// RFC 9000 §10.2.2: draining MUST be bounded (same period as closing,
 	// recommended 3x PTO) -- a peer-initiated close is the MOST common
 	// real-world close path, so process_timeouts() must eventually retire
@@ -635,6 +645,39 @@ fn test_peer_connection_close_enters_draining() {
 	timeout_result := c.process_timeouts(far_future)!
 	assert c.state() == .closed
 	assert timeout_result.events.any(it.kind == .connection_closed)
+}
+
+// test_compute_next_timeout_includes_closing_deadline is a regression test
+// for a maintainer "Local AI Review" finding on PR #28083 (2026-08-14):
+// closing_deadline being set (by enter_draining/close_with_error) is not
+// enough on its own -- compute_next_timeout() must also surface it in its
+// merged deadline, or a caller-driven event loop with no other active timer
+// (no idle timeout configured, nothing currently in flight) never learns it
+// needs to call process_timeouts() again, leaving the connection stuck in
+// .closing/.draining forever despite the deadline being correctly recorded.
+// Same-module (white-box) test, deliberately isolating this from
+// loss-detection/idle-timeout noise: a fixture driven through the full
+// fake-transport flow always has SOME packet outstanding (the fixture never
+// constructs ACK frames back to the client), which happens to keep a PTO
+// timer armed and masks this exact gap -- force `bytes_in_flight` to 0 to
+// reproduce the precise "nothing else armed" scenario the finding
+// describes.
+fn test_compute_next_timeout_includes_closing_deadline() {
+	mut c, _ := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	c.congestion_control.bytes_in_flight = 0
+	assert c.idle_timeout_deadline() == none
+	assert c.compute_next_timeout() == none
+
+	c.enter_draining(u64(500))
+	assert c.compute_next_timeout() != none
 }
 
 // test_write_stream_on_auto_created_sibling_stream_is_not_stuck is a

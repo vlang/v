@@ -1482,5 +1482,21 @@ fn (mut c QuicConn) compute_next_timeout() ?u64 {
 			deadline = idle_deadline
 		}
 	}
+	// closing_deadline (set by close_with_error/enter_draining) is the
+	// caller's only signal to call process_timeouts() again once in
+	// .closing/.draining -- without merging it in here, a connection with
+	// no active idle timeout and nothing in flight would return `none` and
+	// the caller would never learn it needs to retire the connection to
+	// .closed (RFC 9000 §10.2.2). Found via a maintainer "Local AI Review"
+	// on PR #28083 -- see test_compute_next_timeout_includes_closing_deadline.
+	if closing_deadline := c.closing_deadline {
+		if d := deadline {
+			if closing_deadline < d {
+				deadline = closing_deadline
+			}
+		} else {
+			deadline = closing_deadline
+		}
+	}
 	return deadline
 }
