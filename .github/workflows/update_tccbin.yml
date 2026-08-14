@@ -1490,7 +1490,7 @@ jobs:
           persist-credentials: false
 
       - name: Start ${{ matrix.id }} VM
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.4.0
         with:
           operating_system: ${{ matrix.operating_system }}
           version: ${{ matrix.version }}

@@ -129,7 +129,10 @@ fn (app App) recompile_vup() bool {
 		eprintln('> Skipping recompiling vup.v, `${vexe_path}` is missing.')
 		return false
 	}
-	vup_result := os.execute('${os.quoted_path(vexe_path)} -g cmd/tools/vup.v')
+	// `-gc none` matches how `util.launch_tool` builds vup, so this self-rebuild
+	// after a successful update does not overwrite the GC-free executable with a
+	// libgc-linked one (which could fail to start in the dynamic loader). See #27148.
+	vup_result := os.execute('${os.quoted_path(vexe_path)} -g -gc none cmd/tools/vup.v')
 	if vup_result.exit_code != 0 {
 		eprintln('> Failed recompiling vup.v .')
 		eprintln(vup_result.output)
