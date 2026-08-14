@@ -1068,6 +1068,9 @@ fn comptime_method_receiver_type(raw string) string {
 
 fn comptime_method_receiver_name(raw string, module_name string) string {
 	name := comptime_method_receiver_base(raw)
+	if name.starts_with('main.') {
+		return name['main.'.len..]
+	}
 	if name.len == 0 || name.contains('.') || module_name.len == 0
 		|| module_name in ['main', 'builtin'] {
 		return name

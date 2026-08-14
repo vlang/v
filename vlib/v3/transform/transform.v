@@ -8090,6 +8090,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	for id in body_ids {
 		t.collect_mut_capture_sources(id)
 	}
+	// The escape pre-pass may query expression types before local declarations
+	// have populated var_types. Do not let those provisional answers leak into
+	// the declaration-ordered body transform.
+	t.clear_node_type_memo()
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	mut new_children := []flat.NodeId{cap: int(fn_node.children_count)}
@@ -11997,7 +12001,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 		flat.Node{}
 	}
 	if int(expr) >= 0 && source_node.kind == .call && source_node.typ.contains('[')
-		&& target_type.len > 0 {
+		&& target_type.len > 0 && !t.is_optional_type_name(target_type) {
 		t.set_node_typ(int(expr), target_type)
 	}
 	return t.coerce_transformed_expr_to_type(expr, id, target_type)

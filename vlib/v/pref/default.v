@@ -226,9 +226,11 @@ pub fn (mut p Preferences) defines_map_unique_keys() string {
 	return skeys.join(',')
 }
 
-fn (mut p Preferences) disable_tcc_shared_backtraces() {
-	if p.is_shared && p.ccompiler_type == .tinyc && 'no_backtrace' !in p.compile_defines_all {
-		// TCC shared libraries should not depend on TCC's backtrace runtime symbols.
+fn (mut p Preferences) disable_unsupported_tcc_backtraces() {
+	if p.ccompiler_type == .tinyc && (p.is_shared || (p.os == .macos && p.arch == .arm64))
+		&& 'no_backtrace' !in p.compile_defines_all {
+		// TCC shared libraries should not depend on TCC's backtrace runtime symbols. TCC's
+		// backtrace initializer also crashes in dyld on macOS arm64 due to unaligned access.
 		p.parse_define('no_backtrace')
 	}
 }
@@ -420,7 +422,7 @@ fn is_v_compiler_target(npath string) bool {
 // defaults after the effective C compiler has been resolved.
 pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
 	p.prefer_openssl_for_bsd_tinyc()
-	p.disable_tcc_shared_backtraces()
+	p.disable_unsupported_tcc_backtraces()
 	if p.prealloc {
 		p.gc_mode = .no_gc
 		p.clear_gc_options()

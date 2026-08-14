@@ -265,7 +265,16 @@ pub mut:
 // close_workers stops the compilation-owned persistent worker pool.
 pub fn (mut a FlatAst) close_workers() {
 	if !isnil(a.worker_pool) {
-		a.worker_pool.close()
+		mut pool := a.worker_pool
+		a.worker_pool = unsafe { nil }
+		pool.close()
+	}
+}
+
+// ensure_workers creates the compilation-owned persistent worker pool when needed.
+pub fn (mut a FlatAst) ensure_workers(count int) {
+	if isnil(a.worker_pool) {
+		a.worker_pool = workers.new(count)
 	}
 }
 

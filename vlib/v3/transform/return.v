@@ -334,6 +334,11 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .call && !isnil(t.tc) {
+		if typ := t.tc.expr_type(id) {
+			if typ !is types.Unknown && typ !is types.Void {
+				return typ is types.OptionType || typ is types.ResultType
+			}
+		}
 		if name := t.tc.resolved_call_name(id) {
 			if ret := t.tc.fn_ret_types[name] {
 				return t.is_optional_type_name(t.semantic_type_name(ret))

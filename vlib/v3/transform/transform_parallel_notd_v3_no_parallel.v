@@ -2099,6 +2099,14 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			t.a.children.cap = orig_children_cap
 			t.a.children.flags.clear(.nogrow)
 		}
+		// The master chunk can publish its scoped batches eagerly, which clears
+		// worker_scope before this merge. Its bodies were still transformed and
+		// must be excluded from the late-use pass just like helper chunks.
+		for item in chunks[0] {
+			if item.fn_idx >= 0 && item.fn_idx < t.transformed_fns.len {
+				t.transformed_fns[item.fn_idx] = true
+			}
+		}
 		if t.retain_worker_results && t.worker_scope != unsafe { nil } {
 			mut master_base_nodes := t.scoped_owned_base_nodes.keys()
 			master_base_nodes << t.scoped_owned_base_log
@@ -2110,11 +2118,6 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				new_start:  base_nodes
 				new_end:    t.a.nodes.len
 				base_nodes: master_base_nodes
-			}
-			for item in chunks[0] {
-				if item.fn_idx >= 0 && item.fn_idx < t.transformed_fns.len {
-					t.transformed_fns[item.fn_idx] = true
-				}
 			}
 		}
 		// Relocate every worker region's appended ids in place first, in

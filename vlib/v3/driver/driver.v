@@ -1727,6 +1727,7 @@ struct V3CCompilerFlagOptions {
 	warn_args            []string
 	vroot                string
 	target_os            string
+	target_arch          string
 	pic_flag             string
 	is_prod              bool
 	no_prod_options      bool
@@ -1774,6 +1775,10 @@ fn v3_c_source_mode_flags(objective_c bool) []string {
 	return []string{}
 }
 
+fn v3_tcc_backtrace_enabled(target_os string, target_arch string, is_shared bool) bool {
+	return !is_shared && !(target_os == 'macos' && target_arch == 'arm64')
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -1790,7 +1795,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		tcc_lib_dir := os.join_path(options.vroot, 'thirdparty', 'tcc', 'lib')
 		tcc_includes = '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 		before_inputs << [tcc_includes, '-L${tcc_lib_dir}']
-		if !options.is_shared {
+		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
 	}
@@ -6421,6 +6426,10 @@ pub fn run(args []string) {
 		eprintln('unknown backend `${backend}`; expected c, arm64, wasm, or eval')
 		exit(1)
 	}
+	if backend == 'arm64' && target_os != 'macos' && 'no_gettid' !in user_defines {
+		// The native ARM64 linker emits Mach-O and cannot resolve Linux's gettid symbol.
+		user_defines << 'no_gettid'
+	}
 	for requested in compile_backends {
 		for name in requested.split(',') {
 			if name.trim_space() !in ['c', 'arm64', 'aarch64', 'wasm', 'wasm32', 'eval'] {
@@ -6768,6 +6777,11 @@ pub fn run(args []string) {
 	mut parse_timing := V3ParseTiming{}
 	parse_files_dispatch_profiled(mut p, files, !current_no_parallel, mut parse_timing)
 	mut a := p.a
+	if !current_no_parallel {
+		// Later parallel stages can run inside disposable arenas. Ensure the shared
+		// pool itself is owned by the compilation arena before any such stage starts.
+		a.ensure_workers(runtime.nr_jobs() - 1)
+	}
 	defer {
 		a.close_workers()
 	}
@@ -8425,6 +8439,7 @@ pub fn run(args []string) {
 			warn_args:            warn_args
 			vroot:                prefs.vroot
 			target_os:            prefs.normalized_target_os()
+			target_arch:          prefs.normalized_target_arch()
 			pic_flag:             pic_flag
 			is_prod:              is_prod
 			no_prod_options:      no_prod_options
@@ -8935,7 +8950,9 @@ pub fn run(args []string) {
 			tcc_lib := '-L${tcc_lib_dir}'
 			mut tcc_args := [c_standard, tcc_includes, tcc_lib, '-w',
 				'-Werror=implicit-function-declaration']
-			if !is_shared {
+			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
+				prefs.normalized_target_arch(), is_shared)
+			{
 				tcc_args << '-bt25'
 			}
 			if wrapv_flag.len > 0 {
@@ -9014,7 +9031,9 @@ pub fn run(args []string) {
 				tcc_args << pic_flag
 			}
 			tcc_args << [tcc_includes, tcc_lib]
-			if !is_shared {
+			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
+				prefs.normalized_target_arch(), is_shared)
+			{
 				tcc_args << '-bt25'
 			}
 			tcc_args << warn_args

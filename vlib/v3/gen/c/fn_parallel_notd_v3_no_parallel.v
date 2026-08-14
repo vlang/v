@@ -1063,7 +1063,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			if worker_setup_scope != unsafe { nil } {
 				cgen_worker_scope_free(worker_setup_scope)
 			}
-			g.tc.unfreeze_type_cache_after_forks()
+			// Cgen's cache is reset by the driver after this stage. Discard its
+			// overlay so worker-arena memo values cannot escape into the base.
+			g.tc.discard_type_cache_overlay_after_forks()
 			g.gen_synthetic_main_after_fns()
 			synthetic_output := g.sb.str()
 			unsafe { g.sb.free() }
@@ -1126,7 +1128,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.finish_parallel_worker_scope(mut w)
 		}
 		cgen_worker_scope_free(worker_setup_scope)
-		g.tc.unfreeze_type_cache_after_forks()
+		// Cgen's cache is reset by the driver after this stage. Discard its
+		// overlay so worker-arena memo values cannot escape into the base.
+		g.tc.discard_type_cache_overlay_after_forks()
 		// Synthetic main temps continue after the master's chunk[0] range.
 		g.gen_synthetic_main_after_fns()
 		synthetic_output := g.sb.str()

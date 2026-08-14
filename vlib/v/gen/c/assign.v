@@ -1571,6 +1571,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.expr(val)
 					g.writeln(', sizeof(${g.styp(var_type)}));')
 				}
+			} else if is_fixed_array_var && var_type.has_flag(.option) {
+				g.expr(left)
+				g.write(' = ')
+				g.expr_with_opt(val, val_type, var_type)
 			} else {
 				arr_typ := styp.trim('*')
 				old_is_assign_lhs := g.is_assign_lhs

@@ -4320,7 +4320,16 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						g.write('${tmp_var} = ')
 					}
 				}
-				g.stmt(stmt)
+				if stmt is ast.ExprStmt {
+					// This final expression supplies the enclosing if/match temporary even when
+					// its AST node was not marked as an expression. Keep propagated call results
+					// alive so nested match branches emit the unwrapped value after their prelude.
+					mut value_stmt := stmt
+					value_stmt.is_expr = true
+					g.stmt(value_stmt)
+				} else {
+					g.stmt(stmt)
+				}
 				// Reset outer_tmp_var after processing
 				if is_if_expr_with_tmp {
 					g.outer_tmp_var = ''

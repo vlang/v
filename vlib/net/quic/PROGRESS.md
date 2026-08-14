@@ -57,7 +57,7 @@ checklist for exact status. Every checked item has passing tests under
       being rejected) and a minor OpenSSL leak in
       `PublicKey.from_uncompressed_bytes`. Both have regression tests.
 
-## Phase 2 — QUIC-scoped TLS 1.3 handshake + key schedule (NOT STARTED)
+## Phase 2 — QUIC-scoped TLS 1.3 handshake + key schedule (done)
 
 The largest, highest-risk phase. Sub-phases, in build order:
 
@@ -102,9 +102,9 @@ The largest, highest-risk phase. Sub-phases, in build order:
       message bytes, no record-layer framing (RFC 8446 §4.4.1 / RFC 9001
       §4), both extracted from the raw RFC text programmatically, not
       hand-transcribed.
-- **2c — Messages + state machine** (`tls13_messages.v`, `tls13_handshake.v`):
+- [x] **2c — Messages + state machine** (`tls13_messages.v`, `tls13_handshake.v`):
   ClientHello…Finished, the `quic_transport_parameters` extension (0x39),
-  client state machine. In progress — sub-items:
+  client state machine. Sub-items:
   - [x] Generic handshake message framing (`HandshakeType` enum — the real
         RFC 8446 §B.3 v1.3 set only, TLS-1.2-era RESERVED values correctly
         rejected, not silently accepted as unused variants —
@@ -651,16 +651,223 @@ The largest, highest-risk phase. Sub-phases, in build order:
       resolutions were computed before any commit. Has a regression test,
       Phase-R-verified to fail on the pre-fix code.
 
-## Phases 6-14 (NOT STARTED)
+## Phase 6 — Stream layer and flow control (done)
+
+- [x] `frame.v` extended — STREAM (0x08-0x0f, OFF/LEN/FIN bits), RESET_STREAM,
+      STOP_SENDING, MAX_DATA, MAX_STREAM_DATA, MAX_STREAMS (bidi/uni),
+      DATA_BLOCKED, STREAM_DATA_BLOCKED, STREAMS_BLOCKED (bidi/uni). A
+      length-less STREAM frame (LEN bit clear) correctly consumes the rest
+      of `parse_frames`' buffer, matching RFC 9000 §19.8's requirement that
+      it be the last frame in its packet — a natural consequence of the
+      wire format itself, not something requiring separate enforcement.
+- [x] `stream.v` — `StreamId` category derivation (RFC 9000 §2.1),
+      `QuicRole`-aware `is_locally_initiated`, `SendStreamState`/
+      `RecvStreamState` (RFC 9000 §3.1/§3.2) driven by local actions and
+      frame arrival respectively (ACK-driven and application-read-driven
+      transitions are documented hooks for Phase 7/9, not implemented
+      here). `QuicStream.send`/`recv` are nilable pointers (`&StreamSendHalf`/
+      `&StreamRecvHalf`, matching `Tls13ClientHandshake.verified_chain`'s
+      established convention) so every caller mutates the SAME shared half
+      directly — see the `/vreview` finding below for why this replaced an
+      earlier Optional-value design. `QuicStreamSet.get_or_create` auto-creates
+      peer-initiated streams (including every lower-numbered stream in the
+      same category, per RFC 9000 §2.1) while enforcing the caller-supplied
+      `max_streams` limit (STREAM_LIMIT_ERROR) and refusing to fabricate a
+      locally-initiated stream just because a frame references it
+      (STREAM_STATE_ERROR); `open_local_stream` is the send-side mirror,
+      allocating sequential IDs per category.
+- [x] `stream_reassembly.v` — per-stream offset-ordered reassembly, mirroring
+      Phase 4's `crypto_stream.v` design (validated-append + promote_ready,
+      tolerating out-of-order arrival and overlapping retransmissions),
+      extended with `note_final_size` reconciling a stream's final size
+      (from a FIN-carrying STREAM frame or RESET_STREAM) against everything
+      already received or buffered (FINAL_SIZE_ERROR on mismatch, RFC 9000
+      §4.5) — the one genuine difference from CRYPTO streams, which have no
+      final-size concept.
+- [x] `flow_control.v` — `FlowControlWindow` (send-side accounting against a
+      peer-raised limit) and `ReceiveWindow` (receive-side accounting with
+      an auto-growth heuristic: advertise a higher limit once the
+      application has consumed at least half the current window, avoiding
+      a throughput stall). `initial_send_limit_for_stream`/
+      `initial_receive_limit_for_stream` resolve RFC 9000 §4.1's
+      easy-to-invert peer-relative transport-parameter naming
+      (`initial_max_stream_data_bidi_local`/`_remote` mean opposite things
+      depending on whose parameters and which side of the stream you're
+      asking about) in one place, verified against a hand-derived worked
+      example for all 4 stream categories from the client's own
+      perspective, not just structurally.
+- [x] Integration test (`stream_layer_test.v`): three streams — a
+      client-opened bidi stream, a server-opened uni stream (the plan's own
+      "even client-first phase must receive server-initiated unidirectional
+      streams from day one"), and a second client-opened bidi stream — with
+      STREAM frames delivered genuinely interleaved (not grouped by stream),
+      each independently reassembled while one connection-level
+      `ReceiveWindow` tracks the running total across all three.
+- [x] `/vreview` pass: found and fixed one gap before commit —
+      `QuicStream.send`/`recv` were originally Optional VALUE fields
+      (`?StreamSendHalf`/`?StreamRecvHalf`); unwrapping via `s.recv or
+      {...}` copies the struct out, so mutating the copy via
+      `note_data()`/`note_size_known()` looks like in-place mutation but
+      silently doesn't persist unless the caller remembers to explicitly
+      reassign `s.recv = recv` afterward (the reassembler's own data
+      survives regardless, via its internal pointer field, but `state`/
+      `final_size` would silently revert). Fixed by switching to nilable
+      pointers before any real caller could hit this, eliminating the
+      whole bug class by construction rather than documenting the trap.
+      Two mechanical V-compiler quirks surfaced and fixed along the way,
+      unrelated to the finding above: `match` on a repeated array-index
+      expression (`frames[N]`) doesn't reliably narrow a sum type across
+      multiple field accesses within one arm once the sum type has enough
+      variants — affected both new Phase 6 tests and two PRE-EXISTING
+      tests in `frame_test.v`/`initial_exchange_test.v` that had worked
+      fine with fewer variants; fixed by binding to a local variable
+      before matching (the already-idiomatic pattern used everywhere
+      else). Separately, a pre-existing test's "frame type 0x08 is not
+      yet implemented" case became false once Phase 6 implemented STREAM
+      frames at that exact type value; retargeted to 0x1e
+      (HANDSHAKE_DONE), still genuinely unimplemented.
+
+## Phase 7 — Loss detection and NewReno congestion control (done)
+
+- [x] `rtt.v` — `RttEstimator` (RFC 9002 §5.3): first-sample-seeds-directly
+      vs. subsequent-sample-EWMA as two genuinely distinct code paths (not
+      the same formula with a placeholder initial value); ACK Delay
+      unconditionally treated as zero for the Initial/Handshake spaces,
+      decided from the `space` parameter inside `update()` itself rather
+      than trusted to every caller; the peer's `max_ack_delay` clamp
+      applied only once the handshake is confirmed; the ack_delay
+      subtraction itself only applied when it cannot drive the sample
+      below `min_rtt`. `pto_period()` factors out the
+      `smoothed_rtt + max(4*rttvar, kGranularity)` term loss_detection.v
+      scales per space/backoff.
+- [x] `loss_detection.v` — `QuicLossDetectionTimer`: three independent
+      per-space `LossDetectionSpaceState` (packet numbering genuinely is
+      per-space, RFC 9000 §12.3) plus a single connection-wide
+      `RttEstimator`/`pto_count`/PTO timer (the PTO timer is deliberately
+      NOT per-space — sourced from whichever space's own deadline is
+      earliest via `pto_time_and_space`, the plan's own explicitly flagged
+      pitfall, the opposite mistake from treating packet numbers as
+      connection-global). `detect_and_remove_lost_packets` implements
+      RFC 9002 §6.1's packet-threshold (kPacketThreshold=3) OR
+      time-threshold (9/8·max(latest_rtt,smoothed_rtt), floored at
+      kGranularity) rule, either alone sufficient. `is_persistent_congestion`
+      implements RFC 9002 §7.6.2 from a single detection-pass batch (a
+      documented v1 scope choice — see its own doc comment for why this
+      matches the realistic PTO-stall trigger pattern).
+- [x] `congestion_control.v` — `NewRenoCongestionControl` (RFC 9002
+      Appendix B): slow start / congestion avoidance via `is_in_slow_start()`
+      (re-derives `congestion_window < ssthresh` every call — see the
+      `/vreview` finding below for why this can't be shortcut to "has a
+      loss ever happened"), ordinary-loss ssthresh halving via
+      `on_congestion_event`, a distinctly harsher persistent-congestion
+      collapse straight to `kMinimumWindow`, and `in_congestion_recovery`
+      ensuring one recovery episode reacts exactly once regardless of how
+      many packets it takes down. App-limited detection (RFC 9002 §7.8) is
+      a documented v1 scope omission — no real send queue exists yet
+      (Phase 9); spec-legal, only affects how eagerly cwnd grows, not
+      correctness of loss/recovery handling.
+- [x] Tests: first-vs-subsequent RTT formula, ACK-Delay-ignored-for-
+      Initial/Handshake (two identically-seeded estimators, one fed a huge
+      delay, must converge identically), max_ack_delay clamp only after
+      confirmation, packet-threshold-only and time-threshold-only loss
+      (each engineered so the other threshold structurally cannot also
+      fire), single-PTO-timer-sourced-from-earliest-space (including the
+      application_data-excluded-before-confirmation/included-after case),
+      persistent-congestion collapse as its own dedicated test, and
+      single-reaction-per-recovery-episode (multiple losses within one
+      episode react once; a loss from a genuinely later episode reacts
+      again).
+- [x] `/vreview` (full A-G pass) found and fixed two issues before commit:
+      (1) `NewRenoCongestionControl.is_in_slow_start()` originally
+      shortcut to `ssthresh == none` ("a loss has ever happened") instead
+      of RFC 9002's actual `congestion_window < ssthresh` — these diverge
+      after a persistent-congestion collapse, which resets `congestion_window`
+      to `kMinimumWindow` while leaving the larger, just-computed `ssthresh`
+      untouched, so cwnd can legitimately fall back below an already-set
+      ssthresh and must re-enter slow start, not stay in congestion
+      avoidance. Caught via the from-scratch contract restatement, before
+      any test was written against it. (2) A real DoS: `on_ack_received`'s
+      newly-acked extraction originally iterated each ACK range's own
+      `[smallest, largest]` span directly — but `largest_acknowledged` and
+      `first_ack_range` are independent wire varints (RFC 9000 §19.3), so
+      a tiny, well-formed ACK frame can legally claim a range spanning up
+      to 2^62-1 packet numbers with no relationship to the frame's own
+      wire size, and the parser's existing `ack_range_count` bound (against
+      remaining buffer length) does nothing to limit an individual range's
+      span. Fixed by iterating `sent_packets` (bounded by how many packets
+      *we* actually have outstanding) and testing membership against the
+      ranges instead of iterating the peer-supplied span — regression test
+      constructs a `largest_acknowledged = 2^62` range and confirms
+      `on_ack_received` still completes and resolves correctly.
+
+## Phase 8 — Connection lifecycle (done)
+
+- [x] `idle_timeout.v` — `effective_idle_timeout` resolves RFC 9000
+      §10.1's min-of-non-zero rule across all 4 zero/non-zero
+      combinations (0 means "no timeout", not literally zero).
+      `IdleTimeoutState` tracks the deliberately ASYMMETRIC reset rule:
+      an ack-eliciting packet RECEIVED restarts it, a non-ack-eliciting
+      receive does not, but ANY packet SENT restarts it regardless — not
+      "any packet either direction".
+- [x] `connection_close.v` — `ConnectionCloseTracker`: `active` ->
+      `closing` (this endpoint sent its own CONNECTION_CLOSE, may still
+      send a rate-limited retransmission — at most once per received
+      packet, RFC 9000 §10.2.1) -> `draining` (this endpoint received the
+      peer's CONNECTION_CLOSE, or was already closing and then received
+      one; MUST NOT send anything at all, §10.2.2's fully-silent
+      requirement, a one-way absorbing state).
+- [x] `stateless_reset.v` — `StatelessResetTracker` records
+      stateless-reset tokens keyed by connection ID; `is_stateless_reset`
+      is documented as callable ONLY after normal AEAD decryption has
+      already failed (RFC 9000 §10.3.1 — never a first-choice
+      interpretation, since a legitimate packet's ciphertext could
+      coincidentally end in the same 16 bytes as an unrelated token), and
+      compares the trailing 16 bytes via `crypto.subtle`'s
+      constant-time compare (a token is a secret; a variable-time compare
+      would leak a timing side-channel). Scoped-down CID handling: tokens
+      are recorded for matching only, no full NEW_CONNECTION_ID/
+      RETIRE_CONNECTION_ID rotation.
+- [x] `ecn.v` — `EcnState` parses/records a peer's reported ECN counts
+      (frame.v's `EcnCounts`, already implemented) without erroring, but
+      `is_validated()` always reports false — no OS-level ECN socket
+      option exists in V today to mark outgoing datagrams, so there is
+      nothing to validate (a spec-legal fallback, RFC 9000 §13.4.2, not a
+      violation); this is the checkpoint any future congestion-control
+      integration must consult before reacting to an ECN-CE mark, and it
+      can never be true in v1.
+- [x] `pmtu.v` — pinned to the existing 1200-byte safe minimum (reusing
+      `congestion_control.v`'s `max_datagram_size` rather than
+      introducing a third constant for the same number, alongside
+      `coalesce.v`'s `min_initial_datagram_size`), no active DPLPMTUD
+      probing. Connection migration stays explicitly out of scope.
+- [x] Tests: idle-timeout min-of-non-zero across all 4 combinations, the
+      reset asymmetry (ack-eliciting-receive-or-any-send), closing's
+      rate-limited retransmission vs. draining's fully-silent behavior,
+      stateless reset matched only via a previously-recorded token, ECN
+      counts recorded without erroring and never validated, and a runtime
+      assertion pinning the PMTU at exactly 1200 bytes.
+- [x] `/vreview` (full A-G pass) found and fixed one issue before commit:
+      a real integer-overflow bug. `max_idle_timeout` is a peer-supplied
+      transport-parameter varint (RFC 9000 §18.2) that
+      `transport_parameters.v` accepts with NO upper bound (up to the
+      full 2^62-1 varint range) — `effective_idle_timeout` originally
+      multiplied it directly by `time.millisecond`, which overflows the
+      i64 backing `time.Duration` for any peer-supplied value above
+      ~9.2 trillion ms, silently producing a nonsensical (possibly
+      negative) timeout: a hostile or buggy peer could self-inflict a
+      near-immediate teardown, or effectively disable the idle timeout
+      altogether. Fixed by clamping to `max_safe_idle_timeout_ms`
+      (derived from `time.infinite`, i.e. i64::MAX ns, divided by
+      `time.millisecond` — the exact mathematically-necessary bound, not
+      an arbitrary policy number) before scaling; regression test feeds
+      the maximum possible QUIC varint (2^62-1) through both the
+      one-sided and both-sided paths and confirms a large-but-finite,
+      strictly positive `Duration` comes back.
+
+## Phases 9-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-6. Stream layer — STREAM frames, connection+stream flow control interplay.
-   Note: even client-only v1 must receive server-initiated uni streams from
-   day one (HTTP/3's control/QPACK streams need this).
-7. Loss detection & NewReno congestion control (RFC 9002).
-8. Connection lifecycle — idle timeout, CONNECTION_CLOSE, stateless reset,
-   ECN fallback, PMTU (pinned to 1200 bytes for v1).
 9. `QuicConn` — top-level struct, `poll()`/`process_timeouts()` event-loop
    contract.
 10. HTTP/3 framing (RFC 9114) — incremental/resumable parsing (structurally

@@ -768,6 +768,9 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 				}
 			}
 			base_type := t.node_type_with_smartcasts(base_id, contexts)
+			if builtin_type := t.builtin_selector_type(base_type, node.value) {
+				return builtin_type
+			}
 			clean_base := if base_type.starts_with('&') { base_type[1..] } else { base_type }
 			if ftyp := t.lookup_struct_field_type(clean_base, node.value) {
 				return ftyp
@@ -851,10 +854,10 @@ fn (t &Transformer) find_smartcast_in_context(expr_name string, contexts []Smart
 
 // merge_if_expr_types supports merge if expr types handling for Transformer.
 fn (t &Transformer) merge_if_expr_types(current string, next string) string {
-	if current.len == 0 {
+	if current.len == 0 || current == 'unknown' {
 		return next
 	}
-	if next.len == 0 || current == next {
+	if next.len == 0 || next == 'unknown' || current == next {
 		return current
 	}
 	if current == 'array' && next.starts_with('[]') {

@@ -2470,7 +2470,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				if g.cur_fn_ret_is_optional {
 					ct := g.optional_type_name(g.cur_fn_ret)
 					base := g.cur_fn_ret_base
-					if node.value == direct_optional_forward_return_value {
+					if node.value == direct_optional_forward_return_value
+						&& g.expr_really_returns_optional(ret_id) {
 						g.write('return ')
 						g.gen_expr(ret_id)
 						g.writeln(';')
@@ -2812,10 +2813,14 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				g.writeln(');')
 			}
 			if g.test_files.len > 0 {
-				g.gen_all_defers()
-				g.writeln('extern void __v3_test_fail_transfer(void);')
-				g.writeln('__v3_test_fail_transfer();')
-			} else {
+				if g.cur_fn_assert_continues {
+					g.writeln('__v3_test_failures++;')
+				} else {
+					g.gen_all_defers()
+					g.writeln('extern void __v3_test_fail_transfer(void);')
+					g.writeln('__v3_test_fail_transfer();')
+				}
+			} else if !g.cur_fn_assert_continues {
 				g.writeln('exit(1);')
 			}
 			g.indent--
@@ -2889,9 +2894,9 @@ fn (g &FlatGen) assert_failure_detail(assert_node flat.Node, condition_id flat.N
 	if g.is_current_test_fn_or_each_hook() {
 		module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
 		expression = qualify_assert_builtin_types(expression, module_name)
-		return '${file.name}:${line}: fn ${g.cur_fn_name}\nassert ${expression}'
+		return '${file.name}:${line}: fn ${g.cur_fn_name}\n> assert ${expression}'
 	}
-	return '${file.name}:${line}: assert ${expression}'
+	return '${file.name}:${line}: > assert ${expression}'
 }
 
 fn qualify_assert_builtin_types(expression string, module_name string) string {
@@ -2943,7 +2948,7 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	for operand_index in 0 .. 2 {
 		operand_id := g.a.child(condition, operand_index)
 		node := g.a.node(operand_id)
-		if node.kind in [.int_literal, .float_literal, .char_literal] || g.arg_is_const_ident(node) {
+		if g.is_numeric_literal_expr(operand_id) || g.arg_is_const_ident(node) {
 			continue
 		}
 		operand_type := g.usable_expr_type(operand_id)
@@ -2965,13 +2970,23 @@ fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId)
 	return captured_ids
 }
 
-fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
+fn (g &FlatGen) is_numeric_literal_expr(id flat.NodeId) bool {
 	node := g.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .char_literal] {
+		return true
+	}
+	if node.kind != .prefix || node.op !in [.plus, .minus] || node.children_count != 1 {
+		return false
+	}
+	return g.a.child_node(node, 0).kind in [.int_literal, .float_literal]
+}
+
+fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
 	label := g.assert_source_text(id)
 	if label.len == 0 {
 		return
 	}
-	if node.kind in [.int_literal, .float_literal, .char_literal] {
+	if g.is_numeric_literal_expr(id) {
 		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
 		return
 	}
@@ -3695,7 +3710,8 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 	}
 	if g.cur_fn_ret_is_optional {
 		base := g.cur_fn_ret_base
-		if node.value == direct_optional_forward_return_value {
+		if node.value == direct_optional_forward_return_value
+			&& g.expr_really_returns_optional(ret_id) {
 			return g.expr_to_string(ret_id)
 		}
 		if err_id := g.optional_error_payload_err_expr(ret_id) {
@@ -4216,6 +4232,10 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		return type_is_optional_result(typ)
 	}
 	if node.kind == .call {
+		typ := g.usable_expr_type(id)
+		if typ !is types.Unknown && typ !is types.Void {
+			return type_is_optional_result(typ)
+		}
 		if fname := g.tc.resolved_call_name(id) {
 			ret_type := g.tc.fn_ret_types[fname] or { return false }
 			return ret_type is types.OptionType || ret_type is types.ResultType
