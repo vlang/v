@@ -148,12 +148,23 @@ fn init_project(cmd Command) ! {
 	c.create_git_repo('.')
 }
 
+// prompt_input asks for a line of input, but only when stdin is a terminal.
+// When it is not (piped input, CI, some IDE terminals), the interactive prompt
+// would block forever waiting for input that never arrives, making
+// `v new`/`v init` appear to hang, so return `default` instead. See #28061.
+fn prompt_input(prompt string, default string) string {
+	if os.is_atty(0) == 0 {
+		return default
+	}
+	return os.input(prompt)
+}
+
 fn (mut c Create) prompt(args []string) {
 	if c.name == '' {
-		c.name = check_name(args[0] or { os.input('Input your project name: ') })
+		c.name = check_name(args[0] or { prompt_input('Input your project name: ', '') })
 		if c.name == '' {
 			eprintln('')
-			cerror('project name cannot be empty')
+			cerror('project name cannot be empty; pass it on the command line, e.g. `v new my_project`')
 			exit(1)
 		}
 		if c.name.contains('-') {
@@ -167,14 +178,14 @@ fn (mut c Create) prompt(args []string) {
 			exit(3)
 		}
 	}
-	c.description = os.input('Input your project description: ')
+	c.description = prompt_input('Input your project description: ', '')
 	default_version := '0.0.0'
-	c.version = os.input('Input your project version: (${default_version}) ')
+	c.version = prompt_input('Input your project version: (${default_version}) ', default_version)
 	if c.version == '' {
 		c.version = default_version
 	}
 	default_license := 'MIT'
-	c.license = os.input('Input your project license: (${default_license}) ')
+	c.license = prompt_input('Input your project license: (${default_license}) ', default_license)
 	if c.license == '' {
 		c.license = default_license
 	}
