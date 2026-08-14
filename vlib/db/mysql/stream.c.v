@@ -158,6 +158,11 @@ pub fn (mut stmt StreamStmt) execute(params []string) ! {
 	if stmt.executed {
 		return error('db.mysql: a stream statement can only be executed once')
 	}
+	expected_params := int(C.mysql_stmt_param_count(stmt.stmt))
+	if params.len != expected_params {
+		stmt.close()
+		return error('db.mysql: stream statement parameter count mismatch: expected ${expected_params}, got ${params.len}')
+	}
 	mut params_bind := []C.MYSQL_BIND{cap: params.len}
 	for param in params {
 		params_bind << C.MYSQL_BIND{

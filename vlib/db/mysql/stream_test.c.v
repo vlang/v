@@ -241,10 +241,17 @@ fn test_prepare_stream_blob_param_empty_result_and_execute_failure() {
 	assert_stream_connection_reusable(&db)!
 
 	mut invalid := db.prepare_stream('SELECT ?')!
-	mut execute_failed := false
-	invalid.execute([]) or { execute_failed = true }
-	assert execute_failed
+	mut execute_error := ''
+	invalid.execute([]) or { execute_error = err.msg() }
+	assert execute_error == 'db.mysql: stream statement parameter count mismatch: expected 1, got 0'
 	invalid.close()
+	assert_stream_connection_reusable(&db)!
+
+	mut extra := db.prepare_stream('SELECT ?')!
+	mut extra_error := ''
+	extra.execute(['1', '2']) or { extra_error = err.msg() }
+	assert extra_error == 'db.mysql: stream statement parameter count mismatch: expected 1, got 2'
+	extra.close()
 	assert_stream_connection_reusable(&db)!
 }
 
