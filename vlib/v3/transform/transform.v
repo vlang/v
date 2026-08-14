@@ -5279,6 +5279,14 @@ fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool
 	if t.mut_param_values[name] {
 		return true
 	}
+	// A name whose own tracked type is already `&T` is genuinely pointer-backed
+	// storage (mutable for-in bindings, `@[heap]`-promoted locals, ...). Those
+	// still read as a plain value everywhere else via `pointer_value_rvalues`
+	// (see e.g. `heap_escaping_source_decl`); string conversion must match, or a
+	// heap-promoted local prints as a nil-checked pointer instead of its value.
+	if t.pointer_value_rvalues[name] {
+		return true
+	}
 	source_type := t.var_type(name)
 	if source_type.len == 0 || source_type.starts_with('&') {
 		return false
@@ -5413,6 +5421,16 @@ fn (t &Transformer) heapable_value_type(typ string) bool {
 	return typ.len > 0 && !typ.starts_with('&') && !typ.starts_with('[]')
 		&& !typ.starts_with('map[') && !typ.starts_with('?') && !typ.starts_with('!')
 		&& !typ.starts_with('[') && typ != 'unknown' && typ != 'void'
+}
+
+// heap_attr_struct_type reports whether `typ` is a plain (non-pointer) struct type
+// declared `@[heap]`. Such structs must always be heap-allocated at construction, not
+// only when escape analysis detects an address later leaving the stack frame.
+fn (t &Transformer) heap_attr_struct_type(typ string) bool {
+	if isnil(t.tc) || !t.heapable_value_type(typ) {
+		return false
+	}
+	return t.tc.type_has_declaration_attribute(t.tc.parse_type(typ), 'heap')
 }
 
 fn (mut t Transformer) collect_exclusive_closure_return_fns() {
@@ -12956,6 +12974,13 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
 			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+		}
+		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
+		// regardless of whether its address is later taken (`@[heap]` is an unconditional
+		// promise, not an escape-analysis trigger).
+		if src.kind == .ident && src.value !in t.heaped_amp_locals
+			&& t.heap_attr_struct_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 	}
