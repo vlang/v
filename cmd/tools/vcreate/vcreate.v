@@ -66,8 +66,11 @@ fn main() {
 				description: [
 					'Creates a new V project in a directory with the specified project name.',
 					'',
-					'A setup prompt is started to create a `v.mod` file with the projects metadata.',
-					'The <project_name> argument can be omitted and entered in the prompts dialog.',
+					'When run in a terminal, a setup prompt is started to create a `v.mod` file with',
+					'the projects metadata; the <project_name> argument can then be omitted and',
+					'entered in the prompts dialog. When stdin is not a terminal (piped/redirected,',
+					'e.g. in CI) the prompts are skipped, defaults are used, and <project_name> is',
+					'required.',
 					'If git is installed, `git init` will be performed during the setup.',
 				].join_lines()
 				parent:      &Command{
@@ -84,6 +87,7 @@ fn main() {
 					'Sets up a V project within the current directory.',
 					'',
 					"If no `v.mod` exists, a setup prompt is started to create one with the project's metadata.",
+					'The prompts run only when stdin is a terminal; otherwise the defaults are used.',
 					'If no `.v` file exists, a project template is generated. If the current directory is not a',
 					'git project and git is installed, `git init` will be performed during the setup.',
 				].join_lines()
