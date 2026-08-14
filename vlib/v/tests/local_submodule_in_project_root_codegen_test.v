@@ -21,9 +21,8 @@ fn write_project() {
 	basepath := project_path()
 	os.rmdir_all(basepath) or {}
 	os.mkdir_all(basepath) or { panic(err) }
-	os.write_file(os.join_path(basepath, 'v.mod'), "Module {\n\tname: 'issue_28074'\n\tversion: '0.0.1'\n}\n") or {
-		panic(err)
-	}
+	os.write_file(os.join_path(basepath, 'v.mod'),
+		"Module {\n\tname: 'issue_28074'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
 	os.write_file(os.join_path(basepath, 'main.v'),
 		['module main', '', 'import calculator', '', 'fn main() {', '\tprintln(calculator.evaluate(calculator.Op.add))', '}'].join('\n') +
 		'\n') or { panic(err) }

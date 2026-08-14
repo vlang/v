@@ -334,8 +334,8 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 		rel_mod_path := path.replace(abs_pref_path.all_before_last(os.path_separator) +
 			os.path_separator, '')
 		if rel_mod_path != path {
-			mod_full_name := normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator,
-				'.'), path)
+			mod_full_name :=
+				normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
 			// A file that sits directly in the project root maps to `path` ending in
 			// `/.`, so `rel_mod_path` becomes `.` and yields an empty/dotted module
 			// name. That is not a valid qualified name (it later produces `module `
