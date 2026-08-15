@@ -171,6 +171,14 @@ pub fn (mut db DB) q_strings(query string) ![]Row {
 	return db.exec(query)
 }
 
+// escape_literal returns `value` as a quoted PostgreSQL literal using a pooled connection.
+// Prefer parameterized queries when they can express the operation.
+pub fn (mut db DB) escape_literal(value string) !string {
+	mut c := db.pool.acquire()!
+	defer { c.close() or {} }
+	return c.escape_literal(value)
+}
+
 // copy_expert runs a COPY command on a pooled conn.
 pub fn (mut db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	mut c := db.pool.acquire()!

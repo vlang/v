@@ -221,6 +221,16 @@ db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['t
 db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom')!
 ```
 
+When an operation cannot use parameters, `escape_literal` returns a complete quoted PostgreSQL
+literal using libpq's connection-aware escaping:
+
+```v ignore
+value := db.escape_literal("O'Reilly")!
+row := db.exec_one('INSERT INTO authors (name) VALUES (${value}) RETURNING id')!
+```
+
+Prefer parameterized queries whenever possible. Do not add quotes around the returned value.
+
 ## Using LISTEN/NOTIFY
 
 PostgreSQL's LISTEN/NOTIFY mechanism allows you to build event-driven applications. One
