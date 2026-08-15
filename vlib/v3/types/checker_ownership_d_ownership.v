@@ -1355,10 +1355,15 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, stri
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
-			// Autofree accepts the same aggregate copies as V1 and recursively clones
-			// their owning fields. Explicit ownership still requires a user-provided
-			// clone when a struct has custom destruction semantics.
-			if tc.ownership_type_has_explicit_drop(name) && !tc.autofree_mode {
+			// A struct with custom destruction semantics needs a user-provided clone:
+			// the compiler-default clone only duplicates recognized owned storage, so an
+			// opaque handle/voidptr managed by the destructor would be shared between the
+			// original and the clone and then double-freed when both are dropped. Require
+			// the explicit clone whenever the destructor can run on both copies — strict
+			// ownership always, and autofree once the struct opts into `.clone()` via
+			// IClone. Non-IClone custom-drop structs keep V1's collection-copy behavior.
+			if tc.ownership_type_has_explicit_drop(name)
+				&& (!tc.autofree_mode || tc.named_type_implements_marker(name, 'IClone')) {
 				return name
 			}
 			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone') {

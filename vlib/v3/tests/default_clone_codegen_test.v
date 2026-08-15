@@ -171,3 +171,122 @@ fn main() {
 	good := os.execute('${v3_bin} -autofree ${good_src} -b c -o ${good_out}')
 	assert good.exit_code == 0, good.output
 }
+
+fn test_autofree_default_clone_requires_custom_drop_clone() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_autofree_drop_clone_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+	}
+	build :=
+		os.execute('${default_clone_vexe} -gc none -d ownership -path "${default_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${default_clone_v3_src}')
+	assert build.exit_code == 0, build.output
+
+	// An IClone struct with a custom destructor has no explicit clone(). The
+	// compiler-default clone only duplicates recognized owned storage, so the opaque
+	// handle the destructor manages would be shared and then double-freed; autofree
+	// must reject the default clone just like strict ownership does.
+	bad_src := os.join_path(os.temp_dir(), 'v3_autofree_drop_bad_${pid}.v')
+	bad_out := os.join_path(os.temp_dir(), 'v3_autofree_drop_bad_${pid}')
+	defer {
+		os.rm(bad_src) or {}
+		os.rm(bad_out) or {}
+		os.rm(bad_out + '.c') or {}
+	}
+	os.write_file(bad_src, 'module main
+
+struct Handle implements IClone {
+mut:
+	fd int
+}
+
+fn (mut h Handle) free() {
+	h.fd = -1
+}
+
+fn main() {
+	h := Handle{
+		fd: 3
+	}
+	d := h.clone()
+	println(d.fd)
+}
+') or {
+		panic(err)
+	}
+	bad := os.execute('${v3_bin} -autofree ${bad_src} -b c -o ${bad_out}')
+	assert bad.exit_code != 0, bad.output
+	assert bad.output.contains('has no `clone()` method'), bad.output
+
+	// Providing the explicit clone() is the escape hatch and compiles again.
+	good_src := os.join_path(os.temp_dir(), 'v3_autofree_drop_good_${pid}.v')
+	good_out := os.join_path(os.temp_dir(), 'v3_autofree_drop_good_${pid}')
+	defer {
+		os.rm(good_src) or {}
+		os.rm(good_out) or {}
+		os.rm(good_out + '.c') or {}
+	}
+	os.write_file(good_src, 'module main
+
+struct Handle implements IClone {
+mut:
+	fd int
+}
+
+fn (mut h Handle) free() {
+	h.fd = -1
+}
+
+fn (h Handle) clone() Handle {
+	return Handle{
+		fd: h.fd
+	}
+}
+
+fn main() {
+	h := Handle{
+		fd: 3
+	}
+	d := h.clone()
+	println(d.fd)
+}
+') or {
+		panic(err)
+	}
+	good := os.execute('${v3_bin} -autofree ${good_src} -b c -o ${good_out}')
+	assert good.exit_code == 0, good.output
+
+	// A non-IClone struct with a custom destructor is still copied like V1 through
+	// collection operations; only IClone clone targets require the explicit clone.
+	compat_src := os.join_path(os.temp_dir(), 'v3_autofree_drop_compat_${pid}.v')
+	compat_out := os.join_path(os.temp_dir(), 'v3_autofree_drop_compat_${pid}')
+	defer {
+		os.rm(compat_src) or {}
+		os.rm(compat_out) or {}
+		os.rm(compat_out + '.c') or {}
+	}
+	os.write_file(compat_src, "module main
+
+struct Pos {
+	index int
+}
+
+fn (mut _ Pos) free() {}
+
+struct Comment {
+	text string
+	pos  Pos
+}
+
+fn main() {
+	comments := [Comment{
+		text: 'kept'
+	}]
+	println(comments.filter(it.text == 'kept').len)
+}
+") or {
+		panic(err)
+	}
+	compat := os.execute('${v3_bin} -autofree ${compat_src} -b c -o ${compat_out}')
+	assert compat.exit_code == 0, compat.output
+}
