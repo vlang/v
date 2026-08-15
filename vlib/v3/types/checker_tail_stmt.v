@@ -678,6 +678,12 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 	if cond.kind == .infix && cond.op in [.logical_and, .logical_or] && cond.children_count >= 2 {
 		lhs_id := tc.a.child(&cond, 0)
 		rhs_id := tc.a.child(&cond, 1)
+		// Only `&&` guarantees both operands hold when the then-branch runs, so its
+		// guard bindings may be exported into that scope. An `||` short-circuits: the
+		// branch is taken when either side is true, so a guard operand may never have
+		// produced a payload. Its bindings must not become bindings of the whole
+		// condition, or the body would read an unwrapped value that does not exist.
+		exports_bindings := cond.op == .logical_and
 		mut bindings := tc.check_condition(lhs_id)
 		lhs_smartcasts := if cond.op == .logical_and {
 			tc.extract_smartcasts(lhs_id)
@@ -694,7 +700,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 			bindings << tc.check_condition(rhs_id)
 			tc.smartcasts = clone_smartcasts(saved_smartcasts)
 			tc.check_infix(cond_id, cond)
-			return bindings
+			return if exports_bindings { bindings } else { []LocalBinding{} }
 		}
 		unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
 		pointer_alias_skipped_rhs :=
@@ -724,7 +730,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 			tc.record_error(.condition_mismatch,
 				'non-bool type `${cond_name}` used as if condition', cond_id)
 		}
-		return bindings
+		return if exports_bindings { bindings } else { []LocalBinding{} }
 	}
 	tc.check_bool_condition(cond_id)
 	return []LocalBinding{}
