@@ -117,6 +117,30 @@ fn test_ambiguous_guarded_reinclude_disables_cache() {
 	assert untracked
 }
 
+fn test_reinclude_after_undef_rescans_new_dependencies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_reinclude_undef_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'extra.h'), '#pragma once\nint extra_fn(void);\n')!
+	// A whole-file-guarded header whose body pulls in extra.h unless SKIP_EXTRA is
+	// defined. With SKIP_EXTRA defined the include is statically inactive.
+	os.write_file(os.join_path(root, 'a.h'),
+		'#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
+	// The first include skips extra.h (SKIP_EXTRA defined). The root then undefines the
+	// header guard and SKIP_EXTRA and includes a.h again: the real preprocessor traverses
+	// it a second time and now selects extra.h, which the scanner must collect too.
+	top := os.join_path(root, 'top.h')
+	os.write_file(top,
+		'#define SKIP_EXTRA\n#include "a.h"\n#undef A_H\n#undef SKIP_EXTRA\n#include "a.h"\n')!
+
+	_, files := collect_external_input_tree_status(root, top, false)
+	extra_path := os.real_path(os.join_path(root, 'extra.h'))
+	assert extra_path in files, 'undef re-include did not rescan extra.h: ${files.str()}'
+}
+
 fn test_large_nested_angle_header_stays_an_include() {
 	root := os.join_path(os.vtmp_dir(), 'v3_nested_large_header_${os.getpid()}')
 	os.rmdir_all(root) or {}

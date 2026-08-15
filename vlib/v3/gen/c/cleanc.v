@@ -1491,12 +1491,18 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	mut text := ''
 	if collected_paths[collection_key] {
 		text = os.read_file(real_path) or { return true }
-		if c_header_has_whole_file_guard(text) {
-			// A whole-file guard makes the preprocessor skip this repeat include, so an
-			// ordinary diamond re-include contributes no new inputs and stays cacheable.
-			// Only when the first traversal recorded the guard through an uncertain macro
-			// branch is the guard's defined state unknown, so disable cache reuse there.
-			return ambiguous_collected_paths[collection_key]
+		if guard := c_whole_file_guard_macro(text) {
+			// The preprocessor skips a repeat include only while the guard is still in
+			// effect: `#pragma once` always is, and an `#ifndef NAME` guard is while NAME
+			// stays defined. An ordinary diamond re-include then contributes no new inputs
+			// and stays cacheable (subject to first-traversal ambiguity). But if the guard
+			// macro was `#undef`d before this include, the preprocessor traverses the file
+			// again and may pull in newly selected dependencies, so fall through and rescan.
+			guard_in_effect := guard.len == 0 || guard in include_macros
+				|| guard in dynamic_include_macros
+			if guard_in_effect {
+				return ambiguous_collected_paths[collection_key]
+			}
 		}
 	}
 	active_paths[real_path] = true
@@ -1604,7 +1610,12 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	return has_untracked_include
 }
 
-fn c_header_has_whole_file_guard(text string) bool {
+// c_whole_file_guard_macro returns the include guard that gates a whole-file
+// guarded header: an empty string for `#pragma once` (always effective), the
+// macro name for an `#ifndef NAME` / `#define NAME` wrapper, or none when the
+// file is not whole-file guarded. Callers consult the macro's current defined
+// state to decide whether the preprocessor would skip a repeat include.
+fn c_whole_file_guard_macro(text string) ?string {
 	mut in_block_comment := false
 	mut guard_name := ''
 	mut guard_defined := false
@@ -1617,16 +1628,16 @@ fn c_header_has_whole_file_guard(text string) bool {
 			continue
 		}
 		if guard_closed {
-			return false
+			return none
 		}
 		directive_name := c_directive_name(clean)
 		if guard_name.len == 0 {
 			if directive_name == 'pragma' && c_directive_arg(clean).trim_space() == 'once' {
-				return true
+				return ''
 			}
 			guard_name = c_whole_file_guard_name(clean)
 			if guard_name.len == 0 {
-				return false
+				return none
 			}
 			conditional_depth = 1
 			continue
@@ -1635,7 +1646,7 @@ fn c_header_has_whole_file_guard(text string) bool {
 			define_fields := c_directive_arg(clean).fields()
 			if directive_name != 'define' || define_fields.len == 0
 				|| define_fields[0] != guard_name {
-				return false
+				return none
 			}
 			guard_defined = true
 			continue
@@ -1649,7 +1660,10 @@ fn c_header_has_whole_file_guard(text string) bool {
 			}
 		}
 	}
-	return guard_defined && guard_closed
+	if guard_defined && guard_closed {
+		return guard_name
+	}
+	return none
 }
 
 fn c_whole_file_guard_name(directive string) string {
