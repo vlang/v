@@ -83,19 +83,64 @@ search_dirs_log="$probe_dir/search-dirs.log"
 
 cat > "$probe_source" <<'EOF'
 #include <gc.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#ifdef V_TCC_PROBE_RUNTIME_ATOMICS
+/* cmd/v uses sync.stdatomic, so verify the TCC runtime as well as its headers. */
+#define DECLARE_ATOMICS(bits, type) \
+	extern type __atomic_load_##bits(type *, int); \
+	extern void __atomic_store_##bits(type *, type, int); \
+	extern _Bool __atomic_compare_exchange_##bits(type *, type *, type, int, int); \
+	extern type __atomic_exchange_##bits(type *, type, int); \
+	extern type __atomic_fetch_add_##bits(type *, type, int); \
+	extern type __atomic_fetch_sub_##bits(type *, type, int); \
+	extern type __atomic_fetch_and_##bits(type *, type, int); \
+	extern type __atomic_fetch_or_##bits(type *, type, int); \
+	extern type __atomic_fetch_xor_##bits(type *, type, int)
+
+DECLARE_ATOMICS(1, uint8_t);
+DECLARE_ATOMICS(2, uint16_t);
+DECLARE_ATOMICS(4, uint32_t);
+DECLARE_ATOMICS(8, uint64_t);
+
+#define PROBE_ATOMICS(bits, type) do { \
+	type value = 1; \
+	type expected = 2; \
+	if (__atomic_load_##bits(&value, 5) != 1) return bits; \
+	__atomic_store_##bits(&value, 2, 5); \
+	if (!__atomic_compare_exchange_##bits(&value, &expected, 3, 5, 5)) return bits; \
+	if (__atomic_exchange_##bits(&value, 4, 5) != 3) return bits; \
+	if (__atomic_fetch_add_##bits(&value, 2, 5) != 4) return bits; \
+	if (__atomic_fetch_sub_##bits(&value, 1, 5) != 6) return bits; \
+	if (__atomic_fetch_and_##bits(&value, 6, 5) != 5) return bits; \
+	if (__atomic_fetch_or_##bits(&value, 1, 5) != 4) return bits; \
+	if (__atomic_fetch_xor_##bits(&value, 4, 5) != 5) return bits; \
+	if (__atomic_load_##bits(&value, 5) != 1) return bits; \
+} while (0)
+#endif
 
 int main(void) {
 	GC_INIT();
 	char *value = GC_MALLOC(32);
 	strcpy(value, "v-tcc-host-boehm-probe");
+#ifdef V_TCC_PROBE_RUNTIME_ATOMICS
+	PROBE_ATOMICS(1, uint8_t);
+	PROBE_ATOMICS(2, uint16_t);
+	PROBE_ATOMICS(4, uint32_t);
+	PROBE_ATOMICS(8, uint64_t);
+#endif
 	puts(value);
 	return 0;
 }
 EOF
 
 probe_bundle() {
+	local atomic_probe_flags=()
+	if [ "$tcc_arch" = 'amd64' ]; then
+		atomic_probe_flags=(-DV_TCC_PROBE_RUNTIME_ATOMICS=1)
+	fi
 	: > "$probe_log"
 	: > "$search_dirs_log"
 	if [ ! -f "$tcc_dir/lib/libgc.a" ] || [ ! -f "$vroot/thirdparty/libgc/include/gc.h" ]; then
@@ -124,6 +169,7 @@ probe_bundle() {
 		cd "$vroot"
 		"$tcc_dir/tcc.exe" \
 			-I"$vroot/thirdparty/libgc/include" \
+			"${atomic_probe_flags[@]}" \
 			-DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 \
 			-o "$probe_exe" "$probe_source" "$tcc_dir/lib/libgc.a" -ldl -lpthread
 	) \

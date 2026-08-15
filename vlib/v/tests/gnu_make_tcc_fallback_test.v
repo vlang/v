@@ -312,7 +312,7 @@ fi
 '
 }
 
-fn gc_compatible_tcc_script(version string, includes_local bool, requires_include_environment bool) string {
+fn gc_compatible_tcc_script(version string, includes_local bool, requires_include_environment bool, rejects_atomic_runtime_probe bool) string {
 	include_environment_check := if requires_include_environment {
 		'
 if [ -z "\${C_INCLUDE_PATH:-}" ] && [ -z "\${CPATH:-}" ]; then
@@ -323,7 +323,26 @@ fi
 	} else {
 		''
 	}
+	atomic_runtime_check := if rejects_atomic_runtime_probe {
+		'
+atomic_probe_requested=0
+atomic_probe_source=
+for argument in "\$@"; do
+	case "\$argument" in
+		-DV_TCC_PROBE_RUNTIME_ATOMICS=1) atomic_probe_requested=1 ;;
+		*.c) atomic_probe_source="\$argument" ;;
+	esac
+done
+if [ "\$atomic_probe_requested" = 1 ] && [ -n "\$atomic_probe_source" ] && grep -q "DECLARE_ATOMICS(8" "\$atomic_probe_source"; then
+	echo "tcc: error: undefined symbol \'__atomic_load_8\'" >&2
+	exit 5
+fi
+'
+	} else {
+		''
+	}
 	return tcc_probe_script_prefix(version, includes_local) + include_environment_check +
+		atomic_runtime_check +
 		'
 if [ ! -f thirdparty/tcc/lib/tcc/include/stddef.h ]; then
 	echo "tcc: error: thirdparty/tcc/lib/tcc/include/stddef.h is unavailable from the current directory" >&2
@@ -364,15 +383,19 @@ chmod +x "\$out"
 }
 
 fn compatible_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, true, false)
+	return gc_compatible_tcc_script(version, true, false, false)
 }
 
 fn missing_local_include_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, false, false)
+	return gc_compatible_tcc_script(version, false, false, false)
 }
 
 fn include_environment_dependent_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, true, true)
+	return gc_compatible_tcc_script(version, true, true, false)
+}
+
+fn atomic_runtime_incompatible_tcc_script(version string) string {
+	return gc_compatible_tcc_script(version, true, false, true)
 }
 
 fn runtime_incompatible_tcc_script(version string) string {
@@ -467,6 +490,9 @@ fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
 		commit_bundle_state(source, 'runtime-incompatible',
 			runtime_incompatible_tcc_script('runtime-incompatible-tcc'),
 			'runtime-incompatible-libgc\n')
+		commit_bundle_state(source, 'atomic-runtime-incompatible',
+			atomic_runtime_incompatible_tcc_script('atomic-runtime-incompatible-tcc'),
+			'atomic-runtime-incompatible-libgc\n')
 	}
 	incompatible_sha := commit_bundle_state(source, 'include-environment-dependent',
 		include_environment_dependent_tcc_script('include-environment-dependent-tcc'),
