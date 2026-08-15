@@ -5,6 +5,7 @@ import crypto.ecdsa
 import crypto.sha256
 import encoding.base64
 import net.mbedtls
+import time
 
 // Duplicated locally (rather than referenced from any other _test.v file)
 // deliberately, per this module's own established convention -- each
@@ -248,9 +249,9 @@ fn build_fake_long_header_packet(typ LongPacketType, dcid []u8, scid []u8, pn u6
 
 // build_fake_one_rtt_packet mirrors build_fake_long_header_packet for a
 // fake server's short-header (1-RTT) datagram.
-fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys) !QuicDatagram {
+fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys, key_phase bool) !QuicDatagram {
 	pn_length := 2
-	header_prefix := encode_short_header(dcid, false, 0, false, u8(pn_length - 1))!
+	header_prefix := encode_short_header(dcid, false, 0, key_phase, u8(pn_length - 1))!
 	mut header := header_prefix.clone()
 	header << [u8(pn >> 8), u8(pn)]
 	protected := protect_packet(header, .short, pn, pn_length, payload, keys)!
@@ -260,14 +261,16 @@ fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketPro
 }
 
 // conn_test_decrypt_one_rtt decrypts and frame-parses a 1-RTT datagram
-// USING A SINGLE, KNOWN (non-rotating) generation of keys -- suitable for
-// tests inspecting what the CLIENT itself just sent (c.app_write_keys never
-// rotates, matching key_update.v's own documented v1 scope: client-initiated
-// rotation is out of scope, and app_write_keys is a plain, non-KeyUpdateState
-// field for exactly that reason). NOT a substitute for conn.v's own
-// process_one_rtt_packet (which must handle key-phase resolution via
-// KeyUpdateState); this is a test-only, single-generation-only decrypt used
-// purely to verify what conn.v's outgoing path built.
+// USING A SINGLE, KNOWN generation of keys passed by the caller -- suitable
+// for tests inspecting what the CLIENT itself just sent. c.app_write_keys
+// DOES advance generations now (RFC 9001 §6.2: this endpoint follows a
+// peer-initiated key update, via sync_write_keys_to_peer_update), so a
+// caller testing anything AFTER a key-update exchange must pass the
+// CURRENT c.app_write_keys at the point of decryption, not an earlier
+// snapshot. NOT a substitute for conn.v's own process_one_rtt_packet
+// (which must handle key-phase resolution via KeyUpdateState); this is a
+// test-only, single-generation-only decrypt used purely to verify what
+// conn.v's outgoing path built.
 fn conn_test_decrypt_one_rtt(datagram []u8, dcid_len int, keys QuicPacketProtectionKeys) ![]QuicFrame {
 	mut packet := datagram.clone()
 	_, offset := parse_short_header(datagram, dcid_len)!
@@ -404,7 +407,8 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	// anywhere, silently ignored).
 	mut hs_done_payload := [u8(frame_type_handshake_done)]
 	hs_done_payload << [u8(0), 0, 0, 0]
-	hs_done_datagram := build_fake_one_rtt_packet(c.scid, 0, hs_done_payload, server_app_keys)!
+	hs_done_datagram := build_fake_one_rtt_packet(c.scid, 0, hs_done_payload, server_app_keys,
+		false)!
 	result4 := c.poll(hs_done_datagram.bytes, now)!
 	assert result4.events.any(it.kind == .handshake_confirmed)
 	assert c.state() == .established
@@ -522,7 +526,7 @@ fn test_stream_write_read_round_trip_over_fake_transport() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	reply_frame := encode_stream_frame(stream_id, 0, 'hello from server'.bytes(), true, true)!
-	reply_datagram := build_fake_one_rtt_packet(c.scid, 0, reply_frame, server_app_keys)!
+	reply_datagram := build_fake_one_rtt_packet(c.scid, 0, reply_frame, server_app_keys, false)!
 	result2 := c.poll(reply_datagram.bytes, now)!
 	assert result2.events.len == 0
 
@@ -569,7 +573,7 @@ fn test_open_stream_respects_peer_max_streams_and_streams_blocked() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	max_streams_frame := encode_max_streams_frame(.bidirectional, 5)!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, max_streams_frame, server_app_keys)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, max_streams_frame, server_app_keys, false)!
 	result2 := c.poll(incoming.bytes, now)!
 	assert result2.events.len == 0
 
@@ -687,6 +691,162 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 	assert close_frame.reason == ''
 }
 
+// test_non_ack_eliciting_packet_does_not_elicit_an_ack covers RFC 9000
+// §13.2.1: "An endpoint MUST NOT send a non-ack-eliciting packet in
+// response to a non-ack-eliciting packet, even if there are packet gaps
+// that precede the received packet. This avoids an infinite feedback loop
+// of acknowledgments, which could prevent the connection from ever
+// becoming idle." process_one_rtt_packet/process_initial_or_handshake add
+// EVERY successfully-processed packet's number to the space's
+// `_received_pns` map regardless of whether any of its frames were
+// ack-eliciting, and drain_outgoing unconditionally sends an ACK-only
+// packet (itself non-ack-eliciting) whenever that map is non-empty -- so a
+// peer's own ACK-only packet (ACK is explicitly non-ack-eliciting, RFC
+// 9000 Table 3) triggers an ACK-only reply, which is exactly the
+// "non-ack-eliciting in response to non-ack-eliciting" case the RFC
+// prohibits.
+fn test_non_ack_eliciting_packet_does_not_elicit_an_ack() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	ack_only_payload := encode_ack_frame([AckRange{
+		smallest: 0
+		largest:  0
+	}], 0, none)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, ack_only_payload, server_app_keys, false)!
+	result := c.poll(incoming.bytes, now)!
+	assert result.outgoing.len == 0
+}
+
+// test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent covers RFC
+// 9002's on_ack_received contract (its own doc comment: "ack_delay_exponent
+// is the PEER's own ack_delay_exponent transport parameter") -- conn.v's
+// handle_ack_frame passed the bare frame.v default_ack_delay_exponent
+// constant (3) instead of c.handshake.peer_transport_parameters.
+// ack_delay_exponent, so any peer advertising a non-default value (legal up
+// to 20 per RFC 9000 §18.2) had every one of its ACK Delay fields
+// misinterpreted, corrupting the smoothed_rtt/rttvar the PTO timer is built
+// from. Verified by comparing the actual post-second-sample smoothed_rtt
+// against the value the CORRECT exponent (12, set on this test's own peer
+// transport parameters) predicts -- a wrong exponent (the buggy default, 3)
+// predicts a measurably different value (raw wire ack_delay=5 scales to
+// ~20.48ms under exponent 12 vs ~0.04ms under exponent 3, a >2ms difference
+// in the resulting smoothed_rtt, easily distinguishable from floating-point-
+// style rounding noise).
+fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
+	mut peer_params := generous_transport_params()
+	peer_params.ack_delay_exponent = 12
+	mut c, _, now := drive_to_established(generous_transport_params(), peer_params)!
+	defer {
+		c.handshake.free()
+	}
+
+	// First RTT sample -- seeds has_sample; RttEstimator.update's
+	// first-sample path ignores ack_delay entirely regardless of exponent,
+	// so this step is identical either way.
+	c.loss_detection.on_packet_sent(.application_data, 100, 50, true, true, now)
+	first_ack := AckFrame{
+		largest_acknowledged: 100
+		ack_delay:            0
+		ranges:               [AckRange{
+			smallest: 100
+			largest:  100
+		}]
+	}
+	c.handle_ack_frame(.application_data, first_ack, now + 10_000_000)
+	assert c.loss_detection.rtt.smoothed_rtt == time.Duration(10_000_000)
+
+	// Second sample: raw wire ack_delay=5. min_rtt stays 10ms (130ms isn't
+	// smaller). adjusted_rtt = latest_rtt(130ms) - effective_ack_delay,
+	// where effective_ack_delay = scaled_ack_delay_micros(5, exponent) in
+	// nanoseconds, clamped to max_ack_delay (25ms default, not reached by
+	// either candidate exponent here).
+	c.loss_detection.on_packet_sent(.application_data, 101, 50, true, true, now + 20_000_000)
+	second_ack := AckFrame{
+		largest_acknowledged: 101
+		ack_delay:            5
+		ranges:               [AckRange{
+			smallest: 101
+			largest:  101
+		}]
+	}
+	c.handle_ack_frame(.application_data, second_ack, now + 20_000_000 + 130_000_000)
+
+	// scaled_ack_delay_micros(5, 12) == 5 << 12 == 20480 us == 20_480_000 ns
+	adjusted_rtt_correct := time.Duration(130_000_000 - 20_480_000)
+	expected_smoothed_rtt := (time.Duration(10_000_000) * 7 + adjusted_rtt_correct) / 8
+	assert c.loss_detection.rtt.smoothed_rtt == expected_smoothed_rtt
+
+	// scaled_ack_delay_micros(5, 3) (the buggy always-default value) ==
+	// 5 << 3 == 40 us == 40_000 ns -- confirm the actual result does NOT
+	// match what the bug would have produced, not just that it matches the
+	// correct value (guards against both computations coincidentally
+	// landing on the same number).
+	adjusted_rtt_wrong_default := time.Duration(130_000_000 - 40_000)
+	smoothed_rtt_if_bug_present := (time.Duration(10_000_000) * 7 + adjusted_rtt_wrong_default) / 8
+	assert c.loss_detection.rtt.smoothed_rtt != smoothed_rtt_if_bug_present
+}
+
+// test_client_follows_server_initiated_key_update covers RFC 9001 §6.2:
+// "If a packet is successfully processed using the next key and IV, then
+// the peer has initiated a key update. The endpoint MUST update its send
+// keys to the corresponding key phase in response... Sending keys MUST be
+// updated before sending an acknowledgment for the packet that was
+// received with updated keys." key_update.v's KeyUpdateState only ever
+// tracked the READ direction; c.app_write_keys was set once at handshake
+// completion and never advanced, so this client's own sends -- including
+// the ACK for the very packet that triggers a server-initiated update --
+// stayed on generation 0 forever, which RFC 9001 §6.2's last paragraph
+// permits the SERVER to treat as a fatal KEY_UPDATE_ERROR.
+fn test_client_follows_server_initiated_key_update() {
+	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_gen0_secret := read_keys.current_secret
+	server_gen0_hp := read_keys.current_keys.hp
+
+	// Simulate the SERVER initiating a key update: derive its next-generation
+	// secret/keys via RFC 9001 §6.1's own derivation and send a packet using
+	// them with the toggled Key Phase bit.
+	server_gen1_secret := derive_updated_secret(server_gen0_secret)!
+	server_gen1_keys := derive_updated_packet_protection_keys(server_gen1_secret, server_gen0_hp)!
+
+	mut ping_payload := [u8(frame_type_ping)]
+	ping_payload << [u8(0), 0, 0, 0]
+	incoming := build_fake_one_rtt_packet(c.scid, 0, ping_payload, server_gen1_keys, true)!
+	result := c.poll(incoming.bytes, now)!
+	assert result.events.len == 0
+
+	// RFC 9001 §6.2: the client's OWN send generation MUST have followed.
+	assert c.app_write_generation == 1
+
+	// The auto-ACK drain_outgoing queues for this ack-eliciting PING (same
+	// poll() call) MUST be protected with the NEW (generation-1) write
+	// keys -- exactly the "sending keys MUST be updated before sending an
+	// acknowledgment" requirement. Decrypting it with the stale
+	// generation-0 keys, or the correct generation-1 keys fetched fresh
+	// from c.app_write_keys, distinguishes the two.
+	assert result.outgoing.len > 0
+	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
+		write_keys)!
+	mut found_ack := false
+	for f in frames {
+		if f is AckFrame {
+			found_ack = true
+		}
+	}
+	assert found_ack
+}
+
 // test_peer_connection_close_enters_draining covers the receive side of
 // RFC 9000 §10.2.2: a CONNECTION_CLOSE from the peer transitions this
 // connection straight to .draining (never .closing -- draining requires no
@@ -700,7 +860,7 @@ fn test_peer_connection_close_enters_draining() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	cc_frame := encode_connection_close_frame(false, 7, 0, 'server done')!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, cc_frame, server_app_keys)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, cc_frame, server_app_keys, false)!
 	result := c.poll(incoming.bytes, now)!
 	assert c.state() == .draining
 	assert result.events.any(it.kind == .connection_closed)
@@ -768,7 +928,7 @@ fn test_closing_deadline_not_extended_by_peer_close_while_already_closing() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	cc_frame := encode_connection_close_frame(false, 7, 0, 'server done too')!
-	incoming := build_fake_one_rtt_packet(c.scid, 1, cc_frame, server_app_keys)!
+	incoming := build_fake_one_rtt_packet(c.scid, 1, cc_frame, server_app_keys, false)!
 	c.poll(incoming.bytes, now1)!
 	assert c.state() == .draining
 
@@ -848,7 +1008,7 @@ fn test_process_one_rtt_packet_resets_idle_timer_on_receive() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	stream_frame := encode_stream_frame(1, 0, 'keepalive'.bytes(), false, false)!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys, false)!
 
 	now += 4000
 	mut result := PollResult{}
@@ -1018,7 +1178,8 @@ fn test_wrong_destination_cid_rejected_on_short_header() {
 	// mismatch), which would fail for an unrelated reason.
 	wrong_dcid := []u8{len: c.scid.len, init: 0xde}
 	stream_frame := encode_stream_frame(1, 0, 'forged'.bytes(), false, false)!
-	forged_datagram := build_fake_one_rtt_packet(wrong_dcid, 0, stream_frame, server_app_keys)!
+	forged_datagram := build_fake_one_rtt_packet(wrong_dcid, 0, stream_frame, server_app_keys,
+		false)!
 	result := c.poll(forged_datagram.bytes, now)!
 	assert result.events.len == 0
 	assert c.streams.len() == 0
@@ -1163,7 +1324,7 @@ fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	stream_frame := encode_stream_frame(9, 0, 'from server on stream 9'.bytes(), true, true)!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys)!
+	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys, false)!
 	result1 := c.poll(incoming.bytes, now)!
 	assert result1.events.len == 0
 	now += 10

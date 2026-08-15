@@ -131,6 +131,18 @@ mut:
 	app_write_keys           ?QuicPacketProtectionKeys
 	app_read_keys            ?&KeyUpdateState
 
+	// app_write_secret/app_write_generation track this endpoint's OWN 1-RTT
+	// send-key generation, independently of app_read_keys' read-side
+	// generation chain (RFC 9001 §6.1: "each side's traffic secret chain
+	// advances on its own schedule" -- key_update.v's own doc comment says
+	// the same). RFC 9001 §6.2 requires this side's SEND keys to catch up
+	// to whatever generation the PEER has advanced to (see
+	// sync_write_keys_to_peer_update) -- the key phase bit sent on the wire
+	// is this generation's parity (odd generation -> phase 1), matching RFC
+	// 9001 §6's "toggled to signal each subsequent key update".
+	app_write_secret     []u8
+	app_write_generation int
+
 	initial_crypto               &CryptoStreamReassembler
 	initial_crypto_consumed      u64
 	handshake_crypto             &CryptoStreamReassembler
@@ -153,6 +165,16 @@ mut:
 	initial_received_pns   map[u64]bool
 	handshake_received_pns map[u64]bool
 	app_received_pns       map[u64]bool
+
+	// *_ack_eliciting_pending track whether ANY frame in the packets
+	// currently accumulated in the sibling *_received_pns map above was
+	// ack-eliciting (RFC 9000 §13.2.1: all frames except ACK, PADDING, and
+	// CONNECTION_CLOSE). drain_outgoing's auto-ACK gates on this, not just
+	// on *_received_pns being non-empty -- see frame_is_ack_eliciting's own
+	// doc comment for why the two must be tracked separately.
+	initial_ack_eliciting_pending   bool
+	handshake_ack_eliciting_pending bool
+	app_ack_eliciting_pending       bool
 
 	connection_start u64
 
@@ -685,15 +707,29 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 		c.dcid = header.scid.clone()
 	}
 
+	frames := parse_frames(unprotected.payload)!
+	// RFC 9000 §13.2.1: whether THIS packet is ack-eliciting is determined
+	// by its frames, before any of them are dispatched (dispatch can itself
+	// close/transition the connection, but the ack-eliciting-ness of the
+	// packet that arrived is independent of that).
+	mut ack_eliciting := false
+	for frame in frames {
+		if frame_is_ack_eliciting(frame) {
+			ack_eliciting = true
+			break
+		}
+	}
+
 	if space == .initial {
 		c.pn_spaces.initial.note_received(unprotected.packet_number)
 		c.initial_received_pns[unprotected.packet_number] = true
+		c.initial_ack_eliciting_pending = c.initial_ack_eliciting_pending || ack_eliciting
 	} else {
 		c.pn_spaces.handshake.note_received(unprotected.packet_number)
 		c.handshake_received_pns[unprotected.packet_number] = true
+		c.handshake_ack_eliciting_pending = c.handshake_ack_eliciting_pending || ack_eliciting
 	}
 
-	frames := parse_frames(unprotected.payload)!
 	for frame in frames {
 		c.dispatch_pre_confirm_frame(space, frame, now, mut result)!
 	}
@@ -790,6 +826,11 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 		return
 	}
 	read_keys.note_successful_decrypt(resolution, full_pn)!
+	// RFC 9001 §6.2: "Sending keys MUST be updated before sending an
+	// acknowledgment for the packet that was received with updated keys."
+	// Called here, before this same poll() call's drain_outgoing can send
+	// anything (including the auto-ACK for the packet just processed).
+	c.sync_write_keys_to_peer_update()!
 
 	c.processed_first_server_packet = true
 	// RFC 9000 §10.1: receiving and successfully processing ANY packet
@@ -800,14 +841,76 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 	c.app_received_pns[full_pn] = true
 
 	frames := parse_frames(payload)!
+	// RFC 9000 §13.2.1: see frame_is_ack_eliciting's own doc comment and
+	// process_initial_or_handshake's identical block for the full
+	// rationale -- this packet must only ARM the auto-ACK if at least one
+	// of its frames is ack-eliciting.
+	for frame in frames {
+		if frame_is_ack_eliciting(frame) {
+			c.app_ack_eliciting_pending = true
+			break
+		}
+	}
 	for frame in frames {
 		c.dispatch_one_rtt_frame(frame, now, mut result)!
+	}
+}
+
+// sync_write_keys_to_peer_update advances this endpoint's OWN 1-RTT send
+// keys to match however many key updates the peer has initiated so far
+// (RFC 9001 §6.2): "If a packet is successfully processed using the next
+// key and IV, then the peer has initiated a key update. The endpoint MUST
+// update its send keys to the corresponding key phase in response... By
+// acknowledging the packet that triggered the key update in a packet
+// protected with the updated keys, the endpoint signals that the key
+// update is complete." The read and write traffic-secret chains advance
+// independently (§6.1; key_update.v's own doc comment says the same), so
+// this steps app_write_secret/app_write_generation forward one generation
+// at a time -- using the identical derive_updated_secret/
+// derive_updated_packet_protection_keys primitives KeyUpdateState uses for
+// the read side, since both chains use the same derivation, just seeded
+// from a different starting secret. A no-op once caught up (the common
+// case: every call after the first packet in a phase). This project's own
+// scope note ("client-initiated key rotation deferred past v1") is about
+// this endpoint choosing to START a new update on its own, which stays
+// unimplemented -- RESPONDING to a peer's update is not optional and is
+// exactly what this function does.
+fn (mut c QuicConn) sync_write_keys_to_peer_update() ! {
+	read_keys := c.app_read_keys or { return }
+	target_generation := read_keys.generation()
+	for c.app_write_generation < target_generation {
+		current_write_keys := c.app_write_keys or {
+			return error('quic: internal error: no 1-RTT write keys available to advance for key update')
+		}
+
+		next_secret := derive_updated_secret(c.app_write_secret)!
+		next_keys := derive_updated_packet_protection_keys(next_secret, current_write_keys.hp)!
+		c.app_write_secret = next_secret
+		c.app_write_keys = next_keys
+		c.app_write_generation++
 	}
 }
 
 // -------------------------------------------------------------------------
 // Frame dispatch
 // -------------------------------------------------------------------------
+
+// frame_is_ack_eliciting reports whether `frame` is one of the frame types
+// RFC 9000 §13.2.1 requires be acknowledged: "all frames other than ACK,
+// PADDING, and CONNECTION_CLOSE are ack-eliciting." This is distinct from
+// (and NOT interchangeable with) the *_received_pns bookkeeping used to
+// build ACK RANGES -- every successfully-processed packet's number belongs
+// in an ACK once one is sent, ack-eliciting or not, but whether a packet
+// being non-ack-eliciting-only should by ITSELF trigger sending an ACK at
+// all is a separate question: §13.2.1 is explicit that "an endpoint MUST
+// NOT send a non-ack-eliciting packet in response to a non-ack-eliciting
+// packet ... this avoids an infinite feedback loop of acknowledgments."
+fn frame_is_ack_eliciting(frame QuicFrame) bool {
+	return match frame {
+		AckFrame, PaddingFrame, ConnectionCloseFrame { false }
+		else { true }
+	}
+}
 
 fn (mut c QuicConn) dispatch_pre_confirm_frame(space QuicPacketNumberSpace, frame QuicFrame, now u64, mut result PollResult) ! {
 	match frame {
@@ -984,7 +1087,16 @@ fn (mut c QuicConn) handle_stop_sending_frame(frame StopSendingFrame) {
 fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame, now u64) {
 	handshake_confirmed := c.handshake_completion.is_confirmed()
 	max_ack_delay := c.effective_max_ack_delay()
-	result := c.loss_detection.on_ack_received(space, frame, default_ack_delay_exponent,
+	// on_ack_received's own doc comment: "ack_delay_exponent is the PEER's
+	// own ack_delay_exponent transport parameter" -- this ACK frame's raw
+	// ack_delay field was encoded by the peer using ITS advertised value
+	// (RFC 9000 §18.2), not ours, and not the RFC's own default-if-absent
+	// value unconditionally.
+	peer_ack_delay_exponent := c.handshake.peer_transport_parameters.ack_delay_exponent or {
+		default_ack_delay_exponent
+	}
+
+	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent,
 		max_ack_delay, handshake_confirmed, now)
 	c.congestion_control.on_packets_acked(result.newly_acked)
 	if result.lost.len > 0 {
@@ -1075,6 +1187,8 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 		.wait_finished {
 			client_finished, app_secrets := c.handshake.process_finished(msg, framed)!
 			c.app_write_keys = derive_packet_protection_keys(app_secrets.client_secret)!
+			c.app_write_secret = app_secrets.client_secret.clone()
+			c.app_write_generation = 0
 			c.app_read_keys = new_key_update_state(app_secrets.server_secret)!
 			c.handshake_completion.mark_peer_finished_verified()
 			c.pending_handshake_crypto = client_finished
@@ -1110,6 +1224,7 @@ fn (mut c QuicConn) discard_initial_keys() {
 	c.pn_spaces.initial = PacketNumberSpaceState{}
 	c.loss_detection.initial = LossDetectionSpaceState{}
 	c.initial_received_pns = map[u64]bool{}
+	c.initial_ack_eliciting_pending = false
 	c.pending_initial_crypto = none
 }
 
@@ -1120,6 +1235,7 @@ fn (mut c QuicConn) discard_handshake_keys() {
 	c.pn_spaces.handshake = PacketNumberSpaceState{}
 	c.loss_detection.handshake = LossDetectionSpaceState{}
 	c.handshake_received_pns = map[u64]bool{}
+	c.handshake_ack_eliciting_pending = false
 	c.pending_handshake_crypto = none
 }
 
@@ -1134,11 +1250,19 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		result.outgoing << datagram
 		c.pending_initial_crypto = none
 	}
-	if !c.initial_keys_discarded && c.initial_received_pns.len > 0 {
+	// RFC 9000 §13.2.1: gated on *_ack_eliciting_pending, not just
+	// *_received_pns.len > 0 -- see frame_is_ack_eliciting's own doc
+	// comment. A packet whose only frames were ACK/PADDING/CONNECTION_CLOSE
+	// must not itself trigger sending this ACK-only (non-ack-eliciting)
+	// reply; its packet number stays in *_received_pns to be included
+	// once an ack-eliciting packet DOES trigger one.
+	if !c.initial_keys_discarded && c.initial_received_pns.len > 0
+		&& c.initial_ack_eliciting_pending {
 		ack_frame := c.build_ack_frame_for(.initial)!
 		datagram := c.build_initial_packet(ack_frame, false, now)!
 		result.outgoing << datagram
 		c.initial_received_pns = map[u64]bool{}
+		c.initial_ack_eliciting_pending = false
 	}
 
 	if data := c.pending_handshake_crypto {
@@ -1151,20 +1275,23 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	}
 	if hs_keys := c.handshake_keys_client {
 		_ := hs_keys
-		if !c.handshake_keys_discarded && c.handshake_received_pns.len > 0 {
+		if !c.handshake_keys_discarded && c.handshake_received_pns.len > 0
+			&& c.handshake_ack_eliciting_pending {
 			ack_frame := c.build_ack_frame_for(.handshake)!
 			datagram := c.build_handshake_packet(ack_frame, false, now)!
 			result.outgoing << datagram
 			c.handshake_received_pns = map[u64]bool{}
+			c.handshake_ack_eliciting_pending = false
 		}
 	}
 
 	if _ := c.app_write_keys {
-		if c.app_received_pns.len > 0 {
+		if c.app_received_pns.len > 0 && c.app_ack_eliciting_pending {
 			ack_frame := c.build_ack_frame_for(.application_data)!
 			datagram := c.build_one_rtt_packet(ack_frame, false, now)!
 			result.outgoing << datagram
 			c.app_received_pns = map[u64]bool{}
+			c.app_ack_eliciting_pending = false
 		}
 		c.drain_pending_stream_writes(now, mut result)!
 		c.drain_pending_stream_resets(now, mut result)!
@@ -1389,10 +1516,14 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	pn_bytes, pn_length := encode_packet_number(pn,
 		c.pn_spaces.application_data.largest_acked_by_peer)!
 
-	// key_phase is always false: v1 never client-initiates a key update
-	// (key_update.v's own documented scope), so this endpoint's own write
-	// phase never advances past the first generation.
-	header_prefix := encode_short_header(c.dcid, false, 0, false, u8(pn_length - 1))!
+	// key_phase reflects app_write_generation's parity -- generation 0 is
+	// phase false (RFC 9000 §17.3.1's own initial value), toggling each
+	// time sync_write_keys_to_peer_update advances a generation (RFC 9001
+	// §6.2). This endpoint never INITIATES its own key update (v1 scope,
+	// key_update.v's own doc comment) but MUST follow a peer-initiated one,
+	// which is exactly what app_write_generation tracks.
+	key_phase := c.app_write_generation % 2 == 1
+	header_prefix := encode_short_header(c.dcid, false, 0, key_phase, u8(pn_length - 1))!
 	mut header := header_prefix.clone()
 	header << pn_bytes
 
