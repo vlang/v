@@ -290,3 +290,137 @@ fn main() {
 	compat := os.execute('${v3_bin} -autofree ${compat_src} -b c -o ${compat_out}')
 	assert compat.exit_code == 0, compat.output
 }
+
+fn test_autofree_default_clone_requires_nested_custom_drop_field_clone() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_autofree_nested_drop_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+	}
+	build :=
+		os.execute('${default_clone_vexe} -gc none -d ownership -path "${default_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${default_clone_v3_src}')
+	assert build.exit_code == 0, build.output
+
+	// An IClone wrapper whose field is a non-IClone struct with a custom destructor
+	// is deep-cloned strictly: the compiler-default clone shallow-copies that field,
+	// so the destructor would run through both wrapper copies. The nested field must
+	// be rejected even though its own type does not implement IClone.
+	bad_src := os.join_path(os.temp_dir(), 'v3_autofree_nested_drop_bad_${pid}.v')
+	bad_out := os.join_path(os.temp_dir(), 'v3_autofree_nested_drop_bad_${pid}')
+	defer {
+		os.rm(bad_src) or {}
+		os.rm(bad_out) or {}
+		os.rm(bad_out + '.c') or {}
+	}
+	os.write_file(bad_src, 'module main
+
+struct Handle {
+mut:
+	fd int
+}
+
+fn (mut h Handle) free() {
+	h.fd = -1
+}
+
+struct Wrapper implements IClone {
+mut:
+	handle Handle
+}
+
+fn main() {
+	w := Wrapper{
+		handle: Handle{
+			fd: 3
+		}
+	}
+	d := w.clone()
+	println(d.handle.fd)
+}
+') or {
+		panic(err)
+	}
+	bad := os.execute('${v3_bin} -autofree ${bad_src} -b c -o ${bad_out}')
+	assert bad.exit_code != 0, bad.output
+	assert bad.output.contains('has no `clone()` method'), bad.output
+
+	// Giving the nested field an explicit clone() lets the wrapper deep-clone again.
+	good_src := os.join_path(os.temp_dir(), 'v3_autofree_nested_drop_good_${pid}.v')
+	good_out := os.join_path(os.temp_dir(), 'v3_autofree_nested_drop_good_${pid}')
+	defer {
+		os.rm(good_src) or {}
+		os.rm(good_out) or {}
+		os.rm(good_out + '.c') or {}
+	}
+	os.write_file(good_src, 'module main
+
+struct Handle {
+mut:
+	fd int
+}
+
+fn (mut h Handle) free() {
+	h.fd = -1
+}
+
+fn (h Handle) clone() Handle {
+	return Handle{
+		fd: h.fd
+	}
+}
+
+struct Wrapper implements IClone {
+mut:
+	handle Handle
+}
+
+fn main() {
+	w := Wrapper{
+		handle: Handle{
+			fd: 3
+		}
+	}
+	d := w.clone()
+	println(d.handle.fd)
+}
+') or {
+		panic(err)
+	}
+	good := os.execute('${v3_bin} -autofree ${good_src} -b c -o ${good_out}')
+	assert good.exit_code == 0, good.output
+
+	// A non-IClone struct holding the same custom-drop field is still copied like V1
+	// through collection operations; only strict deep clones require the explicit
+	// clone, so the nested field stays a shallow copy here.
+	compat_src := os.join_path(os.temp_dir(), 'v3_autofree_nested_drop_compat_${pid}.v')
+	compat_out := os.join_path(os.temp_dir(), 'v3_autofree_nested_drop_compat_${pid}')
+	defer {
+		os.rm(compat_src) or {}
+		os.rm(compat_out) or {}
+		os.rm(compat_out + '.c') or {}
+	}
+	os.write_file(compat_src, "module main
+
+struct Handle {
+	fd int
+}
+
+fn (mut _ Handle) free() {}
+
+struct Holder {
+	name   string
+	handle Handle
+}
+
+fn main() {
+	holders := [Holder{
+		name: 'kept'
+	}]
+	println(holders.filter(it.name == 'kept').len)
+}
+") or {
+		panic(err)
+	}
+	compat := os.execute('${v3_bin} -autofree ${compat_src} -b c -o ${compat_out}')
+	assert compat.exit_code == 0, compat.output
+}

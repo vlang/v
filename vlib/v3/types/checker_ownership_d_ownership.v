@@ -1360,10 +1360,12 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, stri
 			// opaque handle/voidptr managed by the destructor would be shared between the
 			// original and the clone and then double-freed when both are dropped. Require
 			// the explicit clone whenever the destructor can run on both copies — strict
-			// ownership always, and autofree once the struct opts into `.clone()` via
-			// IClone. Non-IClone custom-drop structs keep V1's collection-copy behavior.
-			if tc.ownership_type_has_explicit_drop(name)
-				&& (!tc.autofree_mode || tc.named_type_implements_marker(name, 'IClone')) {
+			// ownership always, autofree once the struct opts into `.clone()` via IClone,
+			// and autofree when it is reached as a strictly-cloned field of such a struct
+			// (`strict_sum`). Non-IClone custom-drop structs copied on their own keep V1's
+			// collection-copy behavior.
+			if tc.ownership_type_has_explicit_drop(name) && (!tc.autofree_mode
+				|| strict_sum || tc.named_type_implements_marker(name, 'IClone')) {
 				return name
 			}
 			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone') {
@@ -1373,13 +1375,22 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, stri
 				return none
 			}
 			seen[name] = true
+			// A struct's fields are deep-cloned only when the struct itself is being
+			// deep-cloned: strict ownership always, an IClone `.clone()` target, or an
+			// already-strict field. A non-IClone autofree struct copied as a V1 aggregate
+			// shallow-copies its fields, so its fields inherit the non-strict context.
+			strict_field := strict_sum || !tc.autofree_mode
+				|| tc.named_type_implements_marker(name, 'IClone')
 			for field in tc.struct_fields_for_type(name) {
 				if !tc.ownership_type_requires_destruction(field.typ) {
 					continue
 				}
-				// Fields of a compiler-default clone must be deep-cloned, so a sum field
-				// (directly or nested) requires an explicit clone even under autofree.
-				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, true, mut seen) {
+				// Fields of a compiler-default clone must be deep-cloned, so a sum or
+				// custom-drop field (directly or nested) requires an explicit clone even
+				// under autofree.
+				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, strict_field, mut
+					seen)
+				{
 					return bad
 				}
 			}
