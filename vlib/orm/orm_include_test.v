@@ -54,22 +54,6 @@ struct IncludeOptionalChild {
 	name      string
 }
 
-@[table: 'orm_include_dual_parents']
-struct IncludeDualParent {
-	id     int @[primary; sql: serial]
-	name   string
-	lefts  []IncludeDualChild @[fkey: 'left_parent_id']
-	rights []IncludeDualChild @[fkey: 'right_parent_id']
-}
-
-@[table: 'orm_include_dual_children']
-struct IncludeDualChild {
-	id              int @[primary; sql: serial]
-	left_parent_id  int
-	right_parent_id int
-	name            string
-}
-
 fn new_include_database() !sqlite.DB {
 	mut db := sqlite.connect(':memory:')!
 	mut parents := orm.new_query[IncludeParent](db)
@@ -173,122 +157,6 @@ fn test_include_restarts_from_root_and_merges_sibling_paths() {
 	assert rows[0].children[0].grandkids2.len == 1
 }
 
-fn test_nested_where_filters_parents_without_filtering_included_relationships() {
-	mut db := new_include_database()!
-	defer {
-		db.close() or {}
-	}
-	mut parents := orm.new_query[IncludeParent](db)
-	mut children := orm.new_query[IncludeChild](db)
-	mut grandkids := orm.new_query[IncludeGrandkid](db)
-	parents.insert(IncludeParent{
-		name: 'other parent'
-	})!
-	children.insert(IncludeChild{
-		parent_id: parents.last_id()
-		name:      'other child'
-	})!
-	grandkids.insert(IncludeGrandkid{
-		child_id: children.last_id()
-		name:     'other grandkid'
-	})!
-
-	rows := parents.where('name = ? AND children.name = ? AND children.grandkids.name = ?',
-		'parent', 'child', 'grandkid')!.include('children')!.then_include('grandkids')!.query()!
-	assert rows.len == 1
-	assert rows[0].name == 'parent'
-	assert rows[0].children.len == 1
-	assert rows[0].children[0].grandkids.len == 1
-	assert rows[0].children[0].grandkids[0].name == 'grandkid'
-}
-
-fn test_nested_where_does_not_hydrate_relationships_without_include() {
-	mut db := new_include_database()!
-	defer {
-		db.close() or {}
-	}
-	mut parents := orm.new_query[IncludeParent](db)
-
-	rows := parents.where('children.grandkids.name = ?', 'grandkid')!.query()!
-	assert rows.len == 1
-	assert rows[0].name == 'parent'
-	assert rows[0].children.len == 0
-}
-
-fn test_nested_where_supports_optional_array_relationships() {
-	mut db := sqlite.connect(':memory:')!
-	defer {
-		db.close() or {}
-	}
-	sql db {
-		create table IncludeOptionalParent
-	}!
-	sql db {
-		create table IncludeOptionalChild
-	}!
-	parent := IncludeOptionalParent{
-		name: 'optional parent'
-	}
-	sql db {
-		insert parent into IncludeOptionalParent
-	}!
-	child := IncludeOptionalChild{
-		parent_id: 1
-		name:      'optional child'
-	}
-	sql db {
-		insert child into IncludeOptionalChild
-	}!
-	mut parents := orm.new_query[IncludeOptionalParent](db)
-
-	rows := parents.where('children.name = ?', 'optional child')!.include('children')!.query()!
-	assert rows.len == 1
-	assert rows[0].children?.len == 1
-}
-
-fn test_nested_where_rejects_non_relationship_intermediate_segment() {
-	mut db := new_include_database()!
-	defer {
-		db.close() or {}
-	}
-	mut parents := orm.new_query[IncludeParent](db)
-
-	if _ := parents.where('children.name.value = ?', 'x') {
-		assert false
-	} else {
-		assert err.msg().contains('not a `@[fkey]` relationship')
-	}
-}
-
-fn test_nested_where_supports_two_paths_to_the_same_table() {
-	mut db := sqlite.connect(':memory:')!
-	defer {
-		db.close() or {}
-	}
-	mut parents := orm.new_query[IncludeDualParent](db)
-	mut children := orm.new_query[IncludeDualChild](db)
-	parents.create()!
-	children.create()!
-	parents.insert(IncludeDualParent{
-		name: 'dual parent'
-	})!
-	parent_id := parents.last_id()
-	children.insert_many([
-		IncludeDualChild{
-			left_parent_id: parent_id
-			name:           'left'
-		},
-		IncludeDualChild{
-			right_parent_id: parent_id
-			name:            'right'
-		},
-	])!
-
-	rows := parents.where('lefts.name = ? AND rights.name = ?', 'left', 'right')!.query()!
-	assert rows.len == 1
-	assert rows[0].name == 'dual parent'
-}
-
 fn test_include_works_when_select_does_not_name_primary_key() {
 	mut db := new_include_database()!
 	defer {
@@ -297,8 +165,23 @@ fn test_include_works_when_select_does_not_name_primary_key() {
 	mut parents := orm.new_query[IncludeParent](db)
 
 	rows := parents.select('name')!.include('children')!.query()!
+	assert rows[0].id == 0
 	assert rows[0].name == 'parent'
 	assert rows[0].children.len == 1
+}
+
+fn test_where_rejects_relationship_paths() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	if _ := parents.where('children.name = ?', 'child') {
+		assert false
+	} else {
+		assert err.msg().len > 0
+	}
 }
 
 fn test_include_loads_optional_array_relationship() {

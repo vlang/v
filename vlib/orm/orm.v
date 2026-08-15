@@ -147,7 +147,6 @@ pub struct JoinConfig {
 pub mut:
 	kind          JoinType
 	table         Table
-	alias         string
 	on_left_table string // Table from the left side of the join predicate
 	on_left_col   string // Column from the left table (e.g., 'user_id')
 	on_right_col  string // Column from joined table (e.g., 'id')
@@ -1207,13 +1206,9 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 	// Generate JOIN clauses
 	for join in cfg.joins {
 		left_table := if join.on_left_table.len > 0 { join.on_left_table } else { cfg.table.name }
-		right_table := if join.alias.len > 0 { join.alias } else { join.table.name }
 		str += ' ${join.kind.to_str()} ${q}${join.table.name}${q}'
-		if join.alias.len > 0 {
-			str += ' AS ${q}${join.alias}${q}'
-		}
 		str += ' ON ${q}${left_table}${q}.${q}${join.on_left_col}${q}'
-		str += ' = ${q}${right_table}${q}.${q}${join.on_right_col}${q}'
+		str += ' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
 	}
 
 	mut c := PlaceholderCounter{

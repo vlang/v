@@ -610,18 +610,6 @@ parents := qb
 `where` continues to filter only the root query. The SQL-like API keeps its existing
 implicit relationship loading behavior.
 
-Function Call `where` also accepts a relationship path. It uses the relationship only to
-filter the root result; it does not populate that relationship. Use `include` separately
-when it is needed in the result:
-
-```v ignore
-parents := qb
-	.where('children.grandkids.name = ?', 'Bob')!
-	.include('children')!
-	.then_include('grandkids')!
-	.query()!
-```
-
 8. Update records​​ (note: `update()` must be placed last):
 
 ```v ignore
