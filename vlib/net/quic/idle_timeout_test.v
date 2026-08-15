@@ -60,12 +60,12 @@ fn test_idle_timeout_state_reset_asymmetry() {
 	assert !s.is_idle(timeout, ms500, 0)
 	assert s.is_idle(timeout, ms1500, 0)
 
-	// A non-ack-eliciting receive does NOT restart the timer.
-	s.note_packet_received(false, ms1400)
-	assert s.is_idle(timeout, ms1500, 0) // still measured from connection_start=0
-
-	// An ack-eliciting receive DOES restart the timer.
-	s.note_packet_received(true, ms1400)
+	// RFC 9000 §10.1: "An endpoint restarts its idle timer when a packet
+	// from its peer is received and processed successfully" -- ANY
+	// received packet, not just an ack-eliciting one (the ack-eliciting
+	// condition in the RFC text applies only to the SEND side, in the
+	// very next sentence).
+	s.note_packet_received(ms1400)
 	assert !s.is_idle(timeout, ms1500, 0) // now measured from ms1400
 	assert s.is_idle(timeout, ms2500, 0)
 

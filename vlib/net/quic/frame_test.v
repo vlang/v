@@ -27,6 +27,18 @@ fn test_parse_frame_ping() {
 	}
 }
 
+fn test_parse_frame_handshake_done() {
+	buf := [u8(0x1e)]
+	frame, n := parse_frame(buf)!
+	assert n == 1
+	match frame {
+		HandshakeDoneFrame {}
+		else {
+			assert false, 'expected a HandshakeDoneFrame'
+		}
+	}
+}
+
 fn test_parse_frame_crypto_round_trip() {
 	data := [u8(0xde), 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03]
 	encoded := encode_crypto_frame(1234, data)!
@@ -247,12 +259,14 @@ fn test_scaled_ack_delay_micros_saturates_at_exponent_ge_64() {
 }
 
 fn test_parse_frame_rejects_unimplemented_frame_type() {
-	// 0x1e (HANDSHAKE_DONE) is a real, valid QUIC frame type this module
-	// simply doesn't implement yet (Phase 8/9) -- must be a clear "not
-	// implemented" error, not a wire-format error or a panic. (0x08, used
-	// here before Phase 6 implemented STREAM frames, would no longer
+	// 0x18 (NEW_CONNECTION_ID) is a real, valid QUIC frame type this module
+	// simply doesn't implement yet -- connection ID rotation/migration is
+	// explicitly out of v1 scope (see stateless_reset.v's own doc comment)
+	// -- must be a clear "not implemented" error, not a wire-format error
+	// or a panic. (0x08 STREAM and 0x1e HANDSHAKE_DONE, both used here
+	// before their respective phases implemented them, would no longer
 	// demonstrate this.)
-	parse_frame([u8(0x1e)]) or {
+	parse_frame([u8(0x18)]) or {
 		assert err.msg().contains('not yet implemented')
 		return
 	}
