@@ -1326,7 +1326,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 			if include_arg.len == 0 {
 				continue
 			}
-			if c_include_arg_is_builtin_abi_helper(include_arg) {
+			if c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
 				continue
 			}
 			if !c_include_arg_is_literal(include_arg) {
@@ -3709,7 +3709,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		}
 		// These helper headers are superseded by the inline compiler helpers emitted in
 		// builtin_abi_decls(); also including them would redefine the helpers.
-		if c_include_arg_is_builtin_abi_helper(include_arg) {
+		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
@@ -3870,10 +3870,12 @@ const c_builtin_abi_helper_header_paths = [
 ]
 
 // c_include_arg_is_builtin_abi_helper matches only the superseded helper headers,
-// by their normalized VROOT-relative path. A basename or substring test would also
-// drop unrelated user headers of the same name, silently losing their declarations
-// from the translation unit.
-fn c_include_arg_is_builtin_abi_helper(include_arg string) bool {
+// resolved against the active compiler VROOT. A bare suffix test would also drop an
+// unrelated absolute user header that merely ends in a repository-shaped suffix
+// (e.g. `/tmp/vlib/os/filelock/filelock_helpers.h`), silently losing its
+// declarations from the translation unit; anchoring at `vroot` suppresses only the
+// helper actually shipped under the running V installation.
+fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
 	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
 		return false
@@ -3885,7 +3887,20 @@ fn c_include_arg_is_builtin_abi_helper(include_arg string) bool {
 		clean
 	}
 	normalized := path.replace('\\', '/')
-	return c_builtin_abi_helper_header_paths.any(normalized.ends_with(it))
+	root := vroot.replace('\\', '/').trim_right('/')
+	for suffix in c_builtin_abi_helper_header_paths {
+		// The helper's `#insert "@VEXEROOT/..."` resolves to `vroot` + suffix, so an
+		// exact anchored compare keeps a same-suffix header outside VROOT included.
+		if root.len > 0 && normalized == root + suffix {
+			return true
+		}
+		// When VROOT is unknown the pseudo-path stays unexpanded; `@VEXEROOT` is
+		// always the compiler's own root, so it still identifies the helper.
+		if normalized == '@VEXEROOT' + suffix {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {

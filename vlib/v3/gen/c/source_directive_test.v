@@ -185,24 +185,41 @@ fn test_whole_file_guard_rejects_alternative_branches() {
 }
 
 fn test_builtin_abi_helper_matches_only_exact_headers() {
-	// The genuinely superseded helpers are matched by their VROOT-relative path.
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"')
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"')
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"')
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"')
-	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"')
-	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"')
+	root := '/root'
+	// The genuinely superseded helpers are matched only when they resolve under the
+	// active VROOT (`@VEXEROOT/...` in the directive expands to `vroot` + suffix).
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"', root)
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"', root)
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"',
+		root)
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"',
+		root)
+	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"', root)
+	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"',
+		'C:\\root')
+	// A trailing slash on VROOT resolves to the same anchored path.
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"', '/root/')
+	// When VROOT is unknown the unexpanded pseudo-path still identifies the helper.
+	assert c_include_arg_is_builtin_abi_helper('"@VEXEROOT/vlib/builtin/prealloc_atomics.h"', '')
+
+	// An unrelated absolute user header that merely ends in a helper-shaped suffix,
+	// but lives outside the active VROOT, keeps its declarations.
+	assert !c_include_arg_is_builtin_abi_helper('"/tmp/vlib/os/filelock/filelock_helpers.h"', root)
+	// The same header under a different VROOT is likewise not the active helper.
+	assert !c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"',
+		'/other')
 
 	// A user header that merely shares a basename must not be dropped, even when the
 	// basename is exactly one of V's helper headers.
-	assert !c_include_arg_is_builtin_abi_helper('"src/filelock_helpers.h"')
-	assert !c_include_arg_is_builtin_abi_helper('"prealloc_atomics.h"')
-	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"')
-	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"')
+	assert !c_include_arg_is_builtin_abi_helper('"src/filelock_helpers.h"', root)
+	assert !c_include_arg_is_builtin_abi_helper('"prealloc_atomics.h"', root)
+	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"', root)
+	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"', root)
 	// The `/` boundary keeps a `.../myvlib/...` path from matching `/vlib/...`.
-	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"')
+	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"',
+		root)
 	// The real system header is not one of the superseded inline helpers either.
-	assert !c_include_arg_is_builtin_abi_helper('<stdatomic.h>')
+	assert !c_include_arg_is_builtin_abi_helper('<stdatomic.h>', root)
 }
 
 fn test_large_nested_angle_header_stays_an_include() {

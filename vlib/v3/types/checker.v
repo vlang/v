@@ -14765,6 +14765,8 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 	return true
 }
 
+// unalias_type follows an alias chain to its underlying type, unwrapping each
+// Alias to its base type until a non-alias type is reached and returned.
 pub fn unalias_type(t Type) Type {
 	if t is Alias {
 		return unalias_type(t.base_type)
