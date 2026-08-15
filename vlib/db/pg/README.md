@@ -225,10 +225,13 @@ When an operation cannot use parameters, `escape_literal` returns a complete quo
 literal using libpq's connection-aware escaping:
 
 ```v ignore
-value := db.escape_literal("O'Reilly")!
-row := db.exec_one('INSERT INTO authors (name) VALUES (${value}) RETURNING id')!
+mut conn := db.conn()!
+defer { conn.close() or {} }
+value := conn.escape_literal("O'Reilly")!
+row := conn.exec_one('INSERT INTO authors (name) VALUES (${value}) RETURNING id')!
 ```
 
+Escaping and execution must use the same connection because escaping depends on its settings.
 Prefer parameterized queries whenever possible. Do not add quotes around the returned value.
 
 ## Using LISTEN/NOTIFY

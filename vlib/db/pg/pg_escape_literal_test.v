@@ -12,9 +12,13 @@ fn test_escape_literal() {
 	defer {
 		db.close() or {}
 	}
+	mut conn := db.conn()!
+	defer {
+		conn.close() or {}
+	}
 
-	escaped := db.escape_literal("O'Reilly")!
+	escaped := conn.escape_literal("O'Reilly")!
 	assert escaped == "'O''Reilly'"
-	rows := db.exec('select ${escaped}')!
+	rows := conn.exec('select ${escaped}')!
 	assert rows[0].val(0) == "O'Reilly"
 }
