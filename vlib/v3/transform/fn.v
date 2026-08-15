@@ -4928,6 +4928,169 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 	}
 }
 
+fn default_clone_helper_name(aggregate string) string {
+	return '__v3_default_clone_${c_name(aggregate)}'
+}
+
+// request_default_clone_helper defers a recursive aggregate's clone to a
+// generated runtime-recursive helper. The helper deep-clones one level and calls
+// itself for the repeated member, so arbitrarily deep storage is duplicated
+// instead of being shared with the source.
+fn (mut t Transformer) request_default_clone_helper(source flat.NodeId, aggregate string) flat.NodeId {
+	helper := default_clone_helper_name(aggregate)
+	if aggregate !in t.default_clone_types {
+		t.default_clone_types[aggregate] = AutoStrRequest{
+			module:        t.cur_module
+			file:          t.cur_file
+			helper_module: t.auto_str_helper_owner_module(aggregate)
+		}
+	}
+	t.mark_fn_used_name(helper)
+	return t.make_call_typed(helper, arr1(source), aggregate)
+}
+
+fn (t &Transformer) has_pending_default_clone_helpers() bool {
+	for name, _ in t.default_clone_types {
+		if !t.default_clone_synthesized[name] && default_clone_helper_name(name) !in t.fn_ret_types {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) synthesize_default_clone_helpers() []string {
+	old_module := t.cur_module
+	old_file := t.cur_file
+	old_helper_module := t.default_clone_helper_module
+	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
+	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	was_log_active := t.used_fns_log_active
+	log_start := t.used_fns_log.len
+	t.used_fns_log_active = true
+	for {
+		mut pending := []string{}
+		for name, _ in t.default_clone_types {
+			if name in t.default_clone_synthesized {
+				continue
+			}
+			if default_clone_helper_name(name) in t.fn_ret_types {
+				t.default_clone_synthesized[name] = true
+				continue
+			}
+			pending << name
+		}
+		if pending.len == 0 {
+			break
+		}
+		pending.sort()
+		for name in pending {
+			t.default_clone_synthesized[name] = true
+			req := t.default_clone_types[name] or { AutoStrRequest{} }
+			t.cur_module = req.module
+			t.cur_file = req.file
+			t.default_clone_helper_module = if req.helper_module.len > 0 {
+				req.helper_module
+			} else {
+				'main'
+			}
+			if !isnil(t.tc) {
+				t.tc.cur_module = req.module
+				t.tc.cur_file = req.file
+			}
+			t.build_default_clone_helper_fn(name)
+		}
+	}
+	mut new_names := []string{}
+	mut seen := map[string]bool{}
+	for i in log_start .. t.used_fns_log.len {
+		name := t.used_fns_log[i]
+		if name.len > 0 && !seen[name] {
+			seen[name] = true
+			new_names << name
+		}
+	}
+	if !was_log_active {
+		t.used_fns_log_active = false
+		t.used_fns_log = t.used_fns_log[..log_start].clone()
+	}
+	t.cur_module = old_module
+	t.cur_file = old_file
+	t.default_clone_helper_module = old_helper_module
+	if !isnil(t.tc) {
+		t.tc.cur_module = old_tc_module
+		t.tc.cur_file = old_tc_file
+	}
+	return new_names
+}
+
+// build_default_clone_helper_fn emits `fn __v3_default_clone_T(v T) T`. The body
+// clones one level of `aggregate` inline; the repeated same-type member routes
+// back to this helper via request_default_clone_helper, giving true runtime
+// recursion whose depth follows the live data instead of the type graph.
+fn (mut t Transformer) build_default_clone_helper_fn(aggregate string) {
+	helper := default_clone_helper_name(aggregate)
+	saved_pending := t.pending_stmts
+	saved_vars := t.var_types.clone()
+	saved_fn_name := t.cur_fn_name
+	saved_ret_type := t.cur_fn_ret_type
+	t.pending_stmts = []flat.NodeId{}
+	t.reset_var_types()
+	t.cur_fn_name = helper
+	t.cur_fn_ret_type = aggregate
+	param_name := '__default_clone_value'
+	param := t.a.add_node(flat.Node{
+		kind:  .param
+		value: param_name
+		typ:   aggregate
+	})
+	t.set_var_type(param_name, aggregate)
+	value := t.make_ident(param_name)
+	t.set_node_typ(int(value), aggregate)
+	mut visiting := map[string]bool{}
+	result := t.make_compiler_default_clone_value_inner(value, aggregate, false, mut visiting)
+	mut stmts := t.pending_stmts.clone()
+	stmts << t.make_return(result, aggregate)
+	t.pending_stmts = saved_pending
+	t.restore_var_types(saved_vars)
+	t.cur_fn_name = saved_fn_name
+	t.cur_fn_ret_type = saved_ret_type
+	t.a.add_node(flat.Node{
+		kind:  .module_decl
+		value: if t.default_clone_helper_module.len > 0 {
+			t.default_clone_helper_module
+		} else {
+			'main'
+		}
+	})
+	start := t.a.children.len
+	t.a.children << param
+	t.a.children << stmts
+	t.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          helper
+		typ:            aggregate
+		children_start: i32(start)
+		children_count: flat.child_count(1 + stmts.len)
+	})
+	helper_key := if t.default_clone_helper_module !in ['', 'main', 'builtin'] {
+		'${t.default_clone_helper_module}.${helper}'
+	} else {
+		helper
+	}
+	t.set_fn_ret_type(helper, aggregate)
+	t.set_fn_ret_type(helper_key, aggregate)
+	t.mark_fn_used_name(helper_key)
+	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_signatures()
+		t.tc.fn_ret_types[helper] = t.tc.parse_type(aggregate)
+		t.tc.fn_ret_types[helper_key] = t.tc.parse_type(aggregate)
+		t.tc.fn_param_types[helper] = [t.tc.parse_type(aggregate)]
+		t.tc.fn_param_types[helper_key] = [t.tc.parse_type(aggregate)]
+		t.tc.fn_variadic[helper] = false
+		t.tc.fn_variadic[helper_key] = false
+	}
+}
+
 fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string) flat.NodeId {
 	return t.lower_ref_str_guarded(expr, aggregate, true, '', '&nil')
 }
@@ -7819,12 +7982,12 @@ fn (mut t Transformer) make_compiler_default_clone_value_inner(source flat.NodeI
 	if owning_fields.len == 0 {
 		return source
 	}
-	// Inline recursive aggregates (for example StructField -> StructDecl ->
-	// []StructField) have a zero/default recursive member at runtime. Stop the
-	// compiler-generated clone at the repeated aggregate instead of recursively
-	// expanding an unbounded synthetic expression tree.
+	// Recursive aggregates (for example StructField -> StructDecl -> []StructField)
+	// cannot be expanded into a bounded inline clone, and copying the repeated member
+	// unchanged would leave its owned storage shared with the source. Defer the repeat
+	// to a runtime-recursive helper so nested storage is deep-cloned at every depth.
 	if visiting[clean] {
-		return source
+		return t.request_default_clone_helper(source, clean)
 	}
 	visiting[clean] = true
 	// An addressable source keeps owning its fields, so the aggregate copy below is

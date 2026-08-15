@@ -261,6 +261,9 @@ mut:
 	auto_str_synthesized         map[string]bool
 	auto_str_helper_module       string
 	auto_str_synthesis_type      string
+	default_clone_types          map[string]AutoStrRequest
+	default_clone_synthesized    map[string]bool
+	default_clone_helper_module  string
 	interface_boxed_types        map[string]bool
 	interface_boxed_types_done   bool
 	interface_boxed_types_frozen bool
@@ -892,11 +895,13 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 	}
 	t.apply_ignored_comptime_for_nodes()
 	t.run_sum_eq_synthesis_rounds(base_node_count)
+	t.run_default_clone_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
 	mut synthesized_helpers := []string{}
 	for idx in base_node_count .. t.a.nodes.len {
 		node := t.a.nodes[idx]
-		if node.kind == .fn_decl && node.value.starts_with('__v3_sum_eq_') {
+		if node.kind == .fn_decl && (node.value.starts_with('__v3_sum_eq_')
+			|| node.value.starts_with('__v3_default_clone_')) {
 			synthesized_helpers << node.value
 		}
 	}
@@ -976,6 +981,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	impl_sw.restart()
 	t.run_auto_str_synthesis_rounds(base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
+	t.run_default_clone_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
 	t.retain_current_worker_scope_all()
 	t.timing_profile('  [ttime] sum_eq+tail        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -1182,6 +1188,22 @@ fn (mut t Transformer) run_auto_str_synthesis_rounds(node_limit int) {
 	}
 }
 
+// run_default_clone_synthesis_rounds alternates recursive-clone helper synthesis
+// with the late-used-fn transform: building a helper body can request further
+// helpers (a mutually recursive owned aggregate) and marks nested clone calls as
+// used, whose bodies must then be transformed in turn.
+fn (mut t Transformer) run_default_clone_synthesis_rounds(node_limit int) {
+	for _ in 0 .. 16 {
+		new_names := t.synthesize_default_clone_helpers()
+		if new_names.len > 0 {
+			t.transform_late_used_fn_bodies(new_names, node_limit)
+		}
+		if !t.has_pending_default_clone_helpers() {
+			return
+		}
+	}
+}
+
 fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, node_limit int) []string {
 	if used.len == 0 || node_limit <= 0 {
 		return []string{}
@@ -1362,6 +1384,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	t.materialize_generic_structs(true)
 	t.monomorph_profile('mono wrapper structs: ${time.ticks() - debug_started} ms')
 	t.run_sum_eq_synthesis_rounds(base_node_count)
+	t.run_default_clone_synthesis_rounds(base_node_count)
 	t.monomorph_profile('mono wrapper sums: ${time.ticks() - debug_started} ms')
 	t.apply_ignored_comptime_for_nodes()
 	t.monomorph_profile('mono wrapper ignored: ${time.ticks() - debug_started} ms')
@@ -3723,6 +3746,9 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		auto_str_synthesized:               t.auto_str_synthesized.clone()
 		auto_str_helper_module:             t.auto_str_helper_module
 		auto_str_synthesis_type:            t.auto_str_synthesis_type
+		default_clone_types:                t.default_clone_types.clone()
+		default_clone_synthesized:          t.default_clone_synthesized.clone()
+		default_clone_helper_module:        t.default_clone_helper_module
 		used_fns:                           used_fns.clone()
 		mut_param_values:                   map[string]bool{}
 		pointer_value_lvalues:              map[string]bool{}
@@ -3821,6 +3847,19 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 				}
 			} else {
 				t.auto_str_types[name] = req
+			}
+		}
+	}
+	for name, req in w.default_clone_types {
+		if name !in t.default_clone_types {
+			if scoped {
+				t.default_clone_types[name.clone()] = AutoStrRequest{
+					module:        req.module.clone()
+					file:          req.file.clone()
+					helper_module: req.helper_module.clone()
+				}
+			} else {
+				t.default_clone_types[name] = req
 			}
 		}
 	}

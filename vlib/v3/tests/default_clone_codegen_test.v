@@ -45,3 +45,61 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 }
+
+fn test_compiler_default_clone_deep_clones_recursive_aggregates() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_recursive_clone_${pid}')
+	src := os.join_path(os.temp_dir(), 'v3_recursive_clone_${pid}.v')
+	out := os.join_path(os.temp_dir(), 'v3_recursive_clone_program_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rm(src) or {}
+		os.rm(out) or {}
+		os.rm(out + '.c') or {}
+	}
+	build :=
+		os.execute('${default_clone_vexe} -gc none -d ownership -path "${default_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${default_clone_v3_src}')
+	assert build.exit_code == 0, build.output
+	// A type that recurses through owned storage cannot be inlined into a bounded
+	// clone. The compiler must emit a runtime-recursive helper so nested children are
+	// duplicated; a shallow copy would alias the source, and mutating the clone would
+	// corrupt the original (and double-free on cleanup).
+	os.write_file(src, "module main
+
+struct Node implements IClone {
+mut:
+	name     string
+	children []Node
+}
+
+fn main() {
+	original := Node{
+		name:     'root'
+		children: [
+			Node{
+				name:     'child'
+				children: [
+					Node{
+						name:     'grandchild'
+						children: []
+					},
+				]
+			},
+		]
+	}
+	mut copy := original.clone()
+	copy.children[0].children[0].name = 'MUTATED'
+	assert original.children[0].children[0].name == 'grandchild'
+	assert copy.children[0].children[0].name == 'MUTATED'
+}
+") or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	c_source := os.read_file(out + '.c') or { panic(err) }
+	// The repeated aggregate is cloned through the generated recursive helper.
+	assert c_source.contains('__v3_default_clone_'), c_source
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+}
