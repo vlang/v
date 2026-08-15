@@ -644,8 +644,12 @@ fn main() {
 		files: files
 	}
 	a.tui = tui.init(
-		user_data:      a
-		init_fn:        unsafe { InitFn(init) }
+		user_data: a
+		init_fn:   unsafe { InitFn(init) }
+		// The tui callback slots are `voidptr`; `frame`/`event` instead take the typed app
+		// pointer that `user_data` hands back. `&T` and `voidptr` share a representation, so
+		// reinterpreting the fn pointer across that parameter is ABI-safe; the cast only
+		// satisfies the static fn-type check.
 		frame_fn:       unsafe { FrameFn(frame) }
 		event_fn:       unsafe { EventFn(event) }
 		capture_events: true

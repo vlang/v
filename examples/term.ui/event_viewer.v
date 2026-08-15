@@ -40,7 +40,11 @@ type EventFn = fn (&tui.Event, voidptr)
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
-		user_data:            app
+		user_data: app
+		// The tui callback slot is `voidptr`; `event` instead takes the typed app pointer
+		// that `user_data` hands back. `&T` and `voidptr` share a representation, so
+		// reinterpreting the fn pointer across that parameter is ABI-safe; the cast only
+		// satisfies the static fn-type check.
 		event_fn:             unsafe { EventFn(event) }
 		window_title:         'V term.ui event viewer'
 		hide_cursor:          true
