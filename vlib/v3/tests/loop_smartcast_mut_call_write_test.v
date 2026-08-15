@@ -212,3 +212,78 @@ fn main() {
 ')
 	assert readonly_out == '5'
 }
+
+fn test_nested_mut_receiver_call_invalidates_loop_smartcast() {
+	v3_bin := loop_smartcast_build_v3()
+
+	// The loop narrows a nested field `holder.value`, and a mut-receiver method resolves
+	// through its declared sum type and can swap the active variant. The receiver is the
+	// full field-access key `holder.value`, not a bare identifier, so it must still be
+	// recognised as a write; otherwise the loop narrowing is restored for a later
+	// `holder.value.foo` and unsafe C is emitted.
+	loop_smartcast_run_bad(v3_bin, 'bad_loop_nested_mut_sum_receiver', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn (mut v Value) replace() {
+	v = Value(Bar{})
+}
+
+fn main() {
+	mut h := Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}
+	for h.value is Foo {
+		h.value.replace()
+		println(int_str(h.value.foo))
+		break
+	}
+}
+',
+		'field `foo` does not exist')
+
+	// A mut-receiver method on the narrowed variant type keeps the nested narrowing.
+	variant_out := loop_smartcast_run_good(v3_bin, 'good_loop_nested_mut_variant_receiver', 'struct Foo {
+mut:
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn (mut f Foo) bump() {
+	f.foo = 9
+}
+
+fn main() {
+	mut h := Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}
+	for h.value is Foo {
+		h.value.bump()
+		println(int_str(h.value.foo))
+		break
+	}
+}
+')
+	assert variant_out == '9'
+}

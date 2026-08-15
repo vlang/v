@@ -822,6 +822,7 @@ pub mut:
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
 	autofree_mode                 bool
+	no_main                       bool
 	warns_are_errors              bool
 	notes_are_errors              bool
 	is_prod                       bool
@@ -1226,6 +1227,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unsupported_generics:        tc.reject_unsupported_generics
 		checker_fixture_mode:               tc.checker_fixture_mode
 		autofree_mode:                      tc.autofree_mode
+		no_main:                            tc.no_main
 		warns_are_errors:                   tc.warns_are_errors
 		notes_are_errors:                   tc.notes_are_errors
 		is_prod:                            tc.is_prod

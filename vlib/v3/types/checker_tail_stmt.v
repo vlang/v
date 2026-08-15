@@ -12505,15 +12505,17 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 		}
 		// A `mut` receiver is stored under the selector callee rather than among the
 		// arguments: `key.replace()` where `fn (mut v Value) replace()` can swap the
-		// active variant writes `key` just as `replace(mut key)` does. Resolve the
-		// receiver's declared type with a plain scope lookup — this scan must stay
-		// free of smartcast resolution, which would recurse back through here.
+		// active variant writes `key` just as `replace(mut key)` does. Match the
+		// receiver on its full expression key so a nested `holder.value.replace()`
+		// counts as a write to `holder.value`, and resolve its declared type with
+		// scope/field lookups only — this scan must stay free of smartcast
+		// resolution, which would recurse back through here.
 		if node.children_count > 0 {
 			callee := tc.a.node(tc.a.child(node, 0))
 			if callee.kind == .selector && callee.children_count > 0 {
-				recv := tc.a.node(tc.a.child(callee, 0))
-				if recv.kind == .ident && recv.value == key {
-					if declared := tc.cur_scope.lookup(recv.value) {
+				recv_id := tc.a.child(callee, 0)
+				if tc.expr_key(recv_id) == key {
+					if declared := tc.declared_receiver_expr_type(recv_id) {
 						if tc.sum_type_has_mut_receiver_method(declared, callee.value) {
 							return true
 						}

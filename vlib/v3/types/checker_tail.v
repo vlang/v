@@ -3334,7 +3334,10 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if callee.kind == .ident && callee.value == 'main' && !tc.cur_file.ends_with('_test.v') {
+		if callee.kind == .ident && callee.value == 'main' && !tc.cur_file.ends_with('_test.v')
+			&& !tc.no_main {
+			// Under `-d no_main` the entry `main` is an ordinary function (emitted as
+			// `main__main`), so calling it is allowed just like in test builds.
 			tc.record_error_at(.call_arg_mismatch,
 				'the `main` function cannot be called in the program', id, node.pos)
 		}
@@ -7282,9 +7285,25 @@ fn (tc &TypeChecker) declared_smartcast_receiver_type(id flat.NodeId) ?Type {
 	if tc.smartcast_type(id) == none || !tc.valid_node_id(id) {
 		return none
 	}
+	return tc.declared_receiver_expr_type(id)
+}
+
+// declared_receiver_expr_type resolves the declared (non-smartcast) type of an
+// identifier or a field-access chain like `holder.value`, using only scope and
+// struct-field lookups. It never re-enters smartcast resolution, so it is safe to
+// call from the lexical loop-write scan (which smartcast resolution calls into).
+fn (tc &TypeChecker) declared_receiver_expr_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
 	node := tc.a.node(id)
 	if node.kind == .ident {
 		return tc.cur_scope.lookup(node.value)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.declared_receiver_expr_type(tc.a.child(node, 0))?
+		base_struct := struct_type_from_type(unwrap_all_pointers(unalias_type(base)))?
+		return tc.struct_field_type(base_struct.name, node.value)
 	}
 	return none
 }

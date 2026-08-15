@@ -1087,6 +1087,11 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 	if g.test_files.len > 0 && (name == 'main' || name == 'main.main') {
 		return g.test_user_main_c_name()
 	}
+	if g.suppress_main && (name == 'main' || name == 'main.main') {
+		// `-d no_main` renames the entry `main` to `main__main`; a call to it must use
+		// the renamed symbol rather than the bare `main`.
+		return g.cname('main.main')
+	}
 	if name == 'free' {
 		return 'v_free'
 	}
@@ -14142,7 +14147,11 @@ fn (mut g FlatGen) forward_decls() {
 fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_exports []string) {
 	for item in items {
 		node := g.a.nodes[int(item.node_id)]
-		if is_main_fn_in_main_module(item.module, node.value) && g.test_files.len == 0 {
+		// The entry `main` becomes the C `main()` and needs no prototype, but under
+		// `-d no_main` it is renamed to an ordinary symbol (`main__main`) that other
+		// functions can call, so it must be forward-declared like any other function.
+		if is_main_fn_in_main_module(item.module, node.value) && g.test_files.len == 0
+			&& !g.suppress_main {
 			continue
 		}
 		qfn := item.c_name
