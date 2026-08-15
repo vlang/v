@@ -10360,6 +10360,20 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			tc.check_node_with_expected_context(check_arg_id, expected_for_check)
 			checked_with_context = true
+			// A `mut` argument bound to a sum-typed parameter lets the callee swap
+			// the variable to a different variant, so an active variant narrowing for
+			// it is unsound after the call and must be dropped like an assignment
+			// write. A `mut Variant` parameter cannot change the tag, so the narrowing
+			// is left intact.
+			if tc.smartcasts.len > 0 && tc.a.node(arg_id).is_mut {
+				arg_key := tc.expr_key(arg_id)
+				if arg_key.len > 0 && arg_key in tc.smartcasts {
+					param_type := unalias_type(unwrap_pointer(unalias_type(info.params[param_idx])))
+					if param_type is SumType {
+						tc.invalidate_smartcasts_for_write_key(arg_key)
+					}
+				}
+			}
 		}
 		$if ownership ? {
 			tc.ownership_check_node_with_aggregate_consumption_mode(check_arg_id, tc.ownership_should_defer_call_arg_aggregate_consumption(node,

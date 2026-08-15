@@ -12464,8 +12464,11 @@ fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int
 	return tc.subtree_assigns_key(current, key)
 }
 
-// subtree_assigns_key reports whether `root` contains an assignment or short
-// declaration whose target resolves to `key`.
+// subtree_assigns_key reports whether `root` contains an assignment, short
+// declaration, or a call passing `key` to a `mut` parameter whose target
+// resolves to `key`. A mutating call is treated as a write because the callee
+// can reassign the argument (for example `replace(mut x)` swapping a sum's
+// active variant), which changes the runtime tag just like a direct assignment.
 fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 	if !tc.valid_node_id(root) {
 		return false
@@ -12487,6 +12490,16 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 		}
 		for i in 2 .. node.children_count {
 			if tc.expr_key(tc.a.child(node, i)) == key {
+				return true
+			}
+		}
+	} else if node.kind == .call {
+		// Child 0 is the callee; the arguments follow. An argument spelled
+		// `mut key` lets the callee overwrite the binding (for example
+		// `replace(mut x)` swapping a sum's active variant), which changes the
+		// runtime tag just like a direct assignment, so treat it as a write.
+		for i in 1 .. node.children_count {
+			if tc.expr_is_mut_arg_for_key(tc.a.child(node, i), key) {
 				return true
 			}
 		}
