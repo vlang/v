@@ -15468,10 +15468,27 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 
 fn (mut tc TypeChecker) record_bool_condition_binding(owner ScopeBindingOwner, rhs_id flat.NodeId, typ Type, is_mut bool) {
 	key := owner.storage_key()
-	if key.len == 0 || is_mut || !tc.condition_type_is_bool_like(typ) {
+	if key.len == 0 || is_mut || !tc.condition_type_is_bool_like(typ)
+		|| tc.condition_references_mutable_binding(rhs_id) {
 		return
 	}
 	tc.fn_context.bool_condition_exprs[key] = rhs_id
+}
+
+fn (tc &TypeChecker) condition_references_mutable_binding(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident && tc.ident_is_mutable_lvalue(node.value) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if tc.condition_references_mutable_binding(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) visible_mut_param_binding_owns_name(name string) bool {
