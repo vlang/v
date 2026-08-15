@@ -4,6 +4,8 @@ mut:
 }
 
 fn reset_mut_pointer_free_state(mut state &MutPointerFreeState) {
+	// Free the array's storage, then immediately reset the field to an empty array so a
+	// later ownership drop cannot free the same allocation twice.
 	unsafe {
 		state.values.free()
 	}

@@ -3884,6 +3884,11 @@ fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
 	if isnil(t.tc) || isnil(w.tc) || !w.tc.transform_signatures_changed() {
 		return
 	}
+	// The master checker is shared as `&TypeChecker`, but signature merging runs only on
+	// the master thread after every worker has been joined (their results are already
+	// consumed above), so nothing reads or writes it concurrently here. Reinterpret the
+	// shared reference as mutable to publish the worker's new signatures into the
+	// uniquely-owned master checker.
 	mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
 	master_tc.ensure_private_transform_signatures()
 	for name, ret in w.tc.fn_ret_types {
