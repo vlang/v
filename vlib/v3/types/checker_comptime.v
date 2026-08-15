@@ -15483,6 +15483,18 @@ fn (tc &TypeChecker) condition_references_mutable_binding(id flat.NodeId) bool {
 	if node.kind == .ident && tc.ident_is_mutable_lvalue(node.value) {
 		return true
 	}
+	// A value read through a pointer/reference touches storage another alias can mutate
+	// even when the pointer variable itself is immutable (for example `p := &holder;
+	// p.value is Foo` while `holder.value` is reassigned elsewhere). The recorded
+	// condition would then smartcast stale storage, so treat such reads as mutable.
+	if node.kind == .prefix && node.op == .mul {
+		return true
+	}
+	if node.kind in [.selector, .index] && node.children_count > 0 {
+		if unalias_type(tc.resolve_type(tc.a.child(node, 0))) is Pointer {
+			return true
+		}
+	}
 	for i in 0 .. node.children_count {
 		if tc.condition_references_mutable_binding(tc.a.child(node, i)) {
 			return true

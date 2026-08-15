@@ -2314,3 +2314,17 @@ fn test_for_loop_smartcast_is_dropped_after_write() {
 	output := run_good(v3_bin, 'good_for_loop_smartcast_before_write', good)
 	assert output == '7'
 }
+
+fn test_bool_condition_alias_rejects_pointer_pointee_writes() {
+	v3_bin := build_v3()
+	// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
+	// can be reassigned through another alias before the guard, so the smartcast must not
+	// be reused for `p.value` in the then-branch.
+	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n'
+	run_bad(v3_bin, 'bad_bool_condition_alias_pointer_pointee', bad, 'unknown field `foo`')
+
+	// An immutable local value cannot change, so its condition alias stays valid.
+	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tx := FB(Foo{\n\t\tfoo: 7\n\t})\n\twas_foo := x is Foo\n\tif was_foo {\n\t\tprintln(x.foo)\n\t}\n}\n'
+	output := run_good(v3_bin, 'good_bool_condition_alias_immutable_local', good)
+	assert output == '7'
+}
