@@ -164,6 +164,26 @@ fn test_reinclude_after_ambiguous_undef_rescans_new_dependencies() {
 	assert extra_path in files, 'ambiguous undef re-include did not rescan extra.h: ${files.str()}'
 }
 
+fn test_whole_file_guard_rejects_alternative_branches() {
+	// A plain `#ifndef`/`#define` guard, `#pragma once`, and a guard with only nested
+	// conditionals are whole-file guarded.
+	assert (c_whole_file_guard_macro('#ifndef H_H\n#define H_H\nint h_fn(void);\n#endif\n') or {
+		'?'
+	}) == 'H_H'
+	assert (c_whole_file_guard_macro('#pragma once\nint once_fn(void);\n') or { '?' }) == ''
+	assert (c_whole_file_guard_macro('#ifndef H_H\n#define H_H\n#ifdef X\nint a(void);\n#else\nint b(void);\n#endif\n#endif\n') or {
+		'?'
+	}) == 'H_H'
+	// A guard-level `#else` or `#elif` runs an alternative branch on a repeat include, so
+	// the file is not whole-file guarded and must not be classified as one.
+	if guard := c_whole_file_guard_macro('#ifndef H_H\n#define H_H\nint h_fn(void);\n#else\n#include "alt.h"\n#endif\n') {
+		assert false, 'guard-level #else must not be whole-file guarded, got `${guard}`'
+	}
+	if guard := c_whole_file_guard_macro('#ifndef H_H\n#define H_H\n#elif defined(OTHER)\n#include "alt.h"\n#endif\n') {
+		assert false, 'guard-level #elif must not be whole-file guarded, got `${guard}`'
+	}
+}
+
 fn test_builtin_abi_helper_matches_only_exact_headers() {
 	// The genuinely superseded helpers are matched by their VROOT-relative path.
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"')

@@ -1662,6 +1662,11 @@ fn c_whole_file_guard_macro(text string) ?string {
 			if conditional_depth == 0 {
 				guard_closed = true
 			}
+		} else if directive_name in ['else', 'elif'] && conditional_depth == 1 {
+			// A guard-level `#else`/`#elif` runs an alternative branch when the guard
+			// macro is already defined, so a repeat include is not skipped — the file is
+			// not whole-file guarded. (A nested branch at depth > 1 is guarded content.)
+			return none
 		}
 	}
 	if guard_defined && guard_closed {
