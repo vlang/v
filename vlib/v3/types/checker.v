@@ -10235,8 +10235,11 @@ fn (tc &TypeChecker) fn_has_veb_context_param(node flat.Node) bool {
 		// The signature pass can run before every embedded struct relation is
 		// available in a parallel worker. Recognize the conventional context
 		// spelling directly so an explicit `mut ctx Context` is never also given
-		// a hidden context parameter.
-		if p.typ.trim_space().trim_string_left('mut ').trim_left('&').all_after_last('.') == 'Context' {
+		// a hidden context parameter. Only the unqualified local `Context` counts:
+		// a qualified `other.Context` (for example an imported alias of `string`)
+		// shares the leaf name but is not a veb context, so it must fall through to
+		// the semantic check below.
+		if p.typ.trim_space().trim_string_left('mut ').trim_left('&') == 'Context' {
 			return true
 		}
 		if tc.is_veb_context_type(tc.parse_type(p.typ)) {
