@@ -12422,14 +12422,19 @@ fn (tc &TypeChecker) lexical_for_smartcast_type(id flat.NodeId, key string) ?Typ
 	for tc.valid_node_id(parent_id) {
 		parent := tc.a.node(parent_id)
 		if parent.kind == .for_stmt && parent.children_count > 3 {
-			mut body_child := false
+			mut body_index := -1
 			for i in 3 .. parent.children_count {
 				if tc.a.child(parent, i) == current {
-					body_child = true
+					body_index = i
 					break
 				}
 			}
-			if body_child {
+			// The loop condition re-narrows `key` at the top of every iteration, but a
+			// write to `key` earlier in the same iteration drops that narrowing for the
+			// rest of the body (the dynamic pass deletes the smartcast on assignment).
+			// Only reconstruct the condition smartcast when no preceding body statement,
+			// nor the statement holding `id`, writes `key`.
+			if body_index >= 3 && !tc.for_body_writes_key_before(parent, body_index, current, key) {
 				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
 					if binding.name == key {
 						return binding.typ
@@ -12444,6 +12449,54 @@ fn (tc &TypeChecker) lexical_for_smartcast_type(id flat.NodeId, key string) ?Typ
 		parent_id = tc.direct_parent_id(current)
 	}
 	return none
+}
+
+// for_body_writes_key_before reports whether any loop-body statement up to and
+// including `current` (the statement holding the checked node) assigns `key`.
+// Such a write invalidates the loop-condition narrowing for the rest of that
+// iteration, so the lexical fallback must not restore it.
+fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int, current flat.NodeId, key string) bool {
+	for i in 3 .. body_index {
+		if tc.subtree_assigns_key(tc.a.child(parent, i), key) {
+			return true
+		}
+	}
+	return tc.subtree_assigns_key(current, key)
+}
+
+// subtree_assigns_key reports whether `root` contains an assignment or short
+// declaration whose target resolves to `key`.
+fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
+	if !tc.valid_node_id(root) {
+		return false
+	}
+	node := tc.a.node(root)
+	if node.kind == .assign {
+		mut i := 0
+		for i + 1 < node.children_count {
+			if tc.expr_key(tc.a.child(node, i)) == key {
+				return true
+			}
+			i += 2
+		}
+	} else if node.kind == .decl_assign {
+		// decl_assign children are `lhs0, rhs, lhs1, lhs2, ...` for multi-return
+		// targets; a redeclaration of `key` also shadows the narrowed binding.
+		if node.children_count > 0 && tc.expr_key(tc.a.child(node, 0)) == key {
+			return true
+		}
+		for i in 2 .. node.children_count {
+			if tc.expr_key(tc.a.child(node, i)) == key {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.subtree_assigns_key(tc.a.child(node, i), key) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type {

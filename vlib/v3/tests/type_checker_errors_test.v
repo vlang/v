@@ -2301,3 +2301,16 @@ fn test_option_or_error_literal_in_result_match_branch() {
 		"fn maybe_number(text string) ?f64 {\n\treturn text.f64()\n}\n\nfn convert(text string) !f64 {\n\treturn match text {\n\t\t'' { 0.0 }\n\t\telse { maybe_number(text) or { error('bad number') } }\n\t}\n}\n\nfn main() {\n\tprintln(convert('2.5') or { 0.0 })\n}\n")
 	assert output == '2.5'
 }
+
+fn test_for_loop_smartcast_is_dropped_after_write() {
+	v3_bin := build_v3()
+	// A write to the loop-narrowed value inside the body drops the narrowing for the
+	// rest of that iteration; the lexical loop fallback must not reconstruct it.
+	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n'
+	run_bad(v3_bin, 'bad_for_loop_smartcast_after_write', bad, 'unknown field `foo`')
+
+	// Uses that precede the write stay narrowed, so the fallback must still apply there.
+	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{\n\t\tfoo: 7\n\t})\n\tfor x is Foo {\n\t\tprintln(x.foo)\n\t\tx = Bar{}\n\t\tbreak\n\t}\n}\n'
+	output := run_good(v3_bin, 'good_for_loop_smartcast_before_write', good)
+	assert output == '7'
+}
