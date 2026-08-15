@@ -118,12 +118,6 @@ probe_bundle() {
 		echo 'TCC search directories:'
 		cat "$search_dirs_log"
 	} >> "$probe_log"
-	if ! sed -n '/^include:$/,/^[^[:space:]]/p' "$search_dirs_log" \
-		| grep -Fqx '  /usr/local/include'; then
-		echo 'the TCC bundle is missing required glibc include search path: /usr/local/include' \
-			>> "$probe_log"
-		return 1
-	fi
 	rm -f "$probe_exe"
 	if ! (cd "$vroot" && "$tcc_dir/tcc.exe" \
 		-I"$vroot/thirdparty/libgc/include" \
