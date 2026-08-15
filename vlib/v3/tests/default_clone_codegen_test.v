@@ -103,3 +103,71 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 }
+
+fn test_autofree_default_clone_requires_sum_field_clone() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_autofree_sum_clone_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+	}
+	build :=
+		os.execute('${default_clone_vexe} -gc none -d ownership -path "${default_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${default_clone_v3_src}')
+	assert build.exit_code == 0, build.output
+
+	// A compiler-default clone of a struct whose sum field owns storage has no sum-cloning
+	// path, so it would share the payload and double-free; autofree must reject it.
+	bad_src := os.join_path(os.temp_dir(), 'v3_autofree_sum_bad_${pid}.v')
+	bad_out := os.join_path(os.temp_dir(), 'v3_autofree_sum_bad_${pid}')
+	defer {
+		os.rm(bad_src) or {}
+		os.rm(bad_out) or {}
+		os.rm(bad_out + '.c') or {}
+	}
+	os.write_file(bad_src, "module main
+
+type Value = string | int
+
+struct Holder implements IClone {
+mut:
+	value Value
+}
+
+fn main() {
+	h := Holder{
+		value: Value('x')
+	}
+	d := h.clone()
+	if d.value is string {
+		println(d.value)
+	}
+}
+") or {
+		panic(err)
+	}
+	bad := os.execute('${v3_bin} -autofree ${bad_src} -b c -o ${bad_out}')
+	assert bad.exit_code != 0, bad.output
+	assert bad.output.contains('has no `clone()` method'), bad.output
+
+	// A standalone collection copy of the same sum keeps V1's shallow-copy compatibility.
+	good_src := os.join_path(os.temp_dir(), 'v3_autofree_sum_good_${pid}.v')
+	good_out := os.join_path(os.temp_dir(), 'v3_autofree_sum_good_${pid}')
+	defer {
+		os.rm(good_src) or {}
+		os.rm(good_out) or {}
+		os.rm(good_out + '.c') or {}
+	}
+	os.write_file(good_src, "module main
+
+type Value = string | int
+
+fn main() {
+	arr := [Value('x'), Value(1)]
+	dup := arr.clone()
+	println(dup.len)
+}
+") or {
+		panic(err)
+	}
+	good := os.execute('${v3_bin} -autofree ${good_src} -b c -o ${good_out}')
+	assert good.exit_code == 0, good.output
+}

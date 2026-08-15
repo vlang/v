@@ -1304,36 +1304,51 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(typ Type) ?strin
 		return none
 	}
 	mut seen := map[string]bool{}
-	return tc.ownership_default_clone_missing_method_inner(typ, mut seen)
+	return tc.ownership_default_clone_missing_method_inner(typ, false, mut seen)
 }
 
-fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut seen map[string]bool) ?string {
+// ownership_default_clone_missing_method_inner walks a type's owned storage. When
+// `strict_sum` is set (the type is reached as a struct field of a compiler-default
+// clone) a sum with an owning variant is reported as needing an explicit clone,
+// because make_compiler_default_clone_value_inner has no sum-cloning path and would
+// share the payload. Standalone/collection-element sums keep V1's shallow-copy
+// compatibility under autofree (`strict_sum` stays false there).
+fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, strict_sum bool, mut seen map[string]bool) ?string {
 	match typ {
 		Alias {
 			// Compiler-default clone lowering normalizes aliases before recursive method
 			// dispatch, so only clone paths available on the underlying type are safe here.
-			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, strict_sum, mut
+				seen)
 		}
 		OptionType {
-			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, strict_sum, mut
+				seen)
 		}
 		ResultType {
-			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen) {
+			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, strict_sum, mut
+				seen)
+			{
 				return bad
 			}
 			return tc.ownership_default_clone_missing_ierror_method()
 		}
 		Array {
-			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, strict_sum, mut
+				seen)
 		}
 		ArrayFixed {
-			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, strict_sum, mut
+				seen)
 		}
 		Map {
-			if bad := tc.ownership_default_clone_missing_method_inner(typ.key_type, mut seen) {
+			if bad := tc.ownership_default_clone_missing_method_inner(typ.key_type, strict_sum, mut
+				seen)
+			{
 				return bad
 			}
-			return tc.ownership_default_clone_missing_method_inner(typ.value_type, mut seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.value_type, strict_sum, mut
+				seen)
 		}
 		Struct {
 			name := typ.name
@@ -1357,7 +1372,9 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 				if !tc.ownership_type_requires_destruction(field.typ) {
 					continue
 				}
-				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, mut seen) {
+				// Fields of a compiler-default clone must be deep-cloned, so a sum field
+				// (directly or nested) requires an explicit clone even under autofree.
+				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, true, mut seen) {
 					return bad
 				}
 			}
@@ -1367,9 +1384,13 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
-			// Compatibility autofree preserves V1's shallow sum-value copies. Strict
-			// ownership mode still requires an explicit clone method for those values.
-			if tc.autofree_mode {
+			// A sum value whose active variant owns storage cannot be cloned by the
+			// compiler-default clone: make_compiler_default_clone_value_inner has no
+			// sum-cloning path and would copy the payload by reference, so the original
+			// and clone would share (and later double-free) the same allocation. Require
+			// an explicit clone for sum fields of a compiler-default clone; standalone
+			// autofree collection copies keep V1's shallow-copy compatibility.
+			if tc.autofree_mode && !strict_sum {
 				return none
 			}
 			return typ.name
