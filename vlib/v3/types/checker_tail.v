@@ -3820,6 +3820,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		tc.check_call_deprecation(id, node, info)
 		tc.check_call_arg_types(id, node, info)
+		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
 		tc.check_instantiated_generic_as_casts(node, info)
 		tc.check_instantiated_generic_ordering_ops(node, info)
@@ -9926,6 +9927,65 @@ fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Nod
 	}
 }
 
+// sum_type_has_mut_receiver_method reports whether `method` is declared with a
+// `mut` receiver on the sum `recv_type`. Such a method can reassign the receiver
+// to a different variant, so a call to it writes through the receiver even though
+// the receiver is a call's selector child rather than a `mut` argument.
+fn (tc &TypeChecker) sum_type_has_mut_receiver_method(recv_type Type, method string) bool {
+	clean := unwrap_all_pointers(unalias_type(recv_type))
+	if clean !is SumType {
+		return false
+	}
+	for mname in receiver_method_name_candidates(clean, method, tc.cur_module) {
+		if tc.mut_receiver_methods[mname] {
+			return true
+		}
+	}
+	return false
+}
+
+// invalidate_smartcasts_after_call drops the variant narrowing of any sum value the
+// call can rebind: a `mut` argument bound to a sum parameter, or a mut-receiver
+// method on the declared sum type (`x.replace()` where `fn (mut v Value) replace()`).
+// A `mut Variant` parameter/receiver cannot change the runtime tag, so its narrowing
+// is left intact. This runs after the arguments are checked so that an argument that
+// reads the receiver's narrowed field (`x.replace_with(x.foo)`) still resolves.
+fn (mut tc TypeChecker) invalidate_smartcasts_after_call(node flat.Node, info CallInfo) {
+	if tc.smartcasts.len == 0 || !info.params_known || node.children_count == 0 {
+		return
+	}
+	// A mut receiver is written through the selector child rather than an argument.
+	if info.has_receiver && info.params.len > 0 {
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			recv_key := tc.expr_key(tc.a.child(callee, 0))
+			if recv_key.len > 0 && recv_key in tc.smartcasts
+				&& tc.sum_type_has_mut_receiver_method(info.params[0], callee.value) {
+				tc.invalidate_smartcasts_for_write_key(recv_key)
+			}
+		}
+	}
+	// A `mut` argument bound to a sum parameter lets the callee swap the variant.
+	recv_extra := if info.has_receiver { 1 } else { 0 }
+	for i in 1 + info.arg_offset .. node.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		if !tc.a.node(arg_id).is_mut {
+			continue
+		}
+		arg_key := tc.expr_key(arg_id)
+		if arg_key.len == 0 || arg_key !in tc.smartcasts {
+			continue
+		}
+		param_idx := i - 1 - info.arg_offset + recv_extra
+		if param_idx < 0 || param_idx >= info.params.len {
+			continue
+		}
+		if unwrap_all_pointers(unalias_type(info.params[param_idx])) is SumType {
+			tc.invalidate_smartcasts_for_write_key(arg_key)
+		}
+	}
+}
+
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
 	info := tc.specialized_plain_generic_call_info(node, info0)
 	if node.children_count == 0 {
@@ -10360,20 +10420,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			tc.check_node_with_expected_context(check_arg_id, expected_for_check)
 			checked_with_context = true
-			// A `mut` argument bound to a sum-typed parameter lets the callee swap
-			// the variable to a different variant, so an active variant narrowing for
-			// it is unsound after the call and must be dropped like an assignment
-			// write. A `mut Variant` parameter cannot change the tag, so the narrowing
-			// is left intact.
-			if tc.smartcasts.len > 0 && tc.a.node(arg_id).is_mut {
-				arg_key := tc.expr_key(arg_id)
-				if arg_key.len > 0 && arg_key in tc.smartcasts {
-					param_type := unalias_type(unwrap_pointer(unalias_type(info.params[param_idx])))
-					if param_type is SumType {
-						tc.invalidate_smartcasts_for_write_key(arg_key)
-					}
-				}
-			}
 		}
 		$if ownership ? {
 			tc.ownership_check_node_with_aggregate_consumption_mode(check_arg_id, tc.ownership_should_defer_call_arg_aggregate_consumption(node,

@@ -123,3 +123,92 @@ fn main() {
 ')
 	assert variant_out == '9'
 }
+
+fn test_mut_receiver_call_invalidates_loop_smartcast() {
+	v3_bin := loop_smartcast_build_v3()
+
+	// A mut-receiver method on the declared sum type resolves through that sum and can
+	// swap the active variant (`x.replace()` where `fn (mut v Value) replace()`). The
+	// receiver is stored under the call's selector child rather than among its `mut`
+	// arguments, so it must be recognised as a write too, otherwise the loop narrowing
+	// is wrongly restored for a later variant access and unsafe C is emitted.
+	loop_smartcast_run_bad(v3_bin, 'bad_loop_mut_sum_receiver_stale_smartcast', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+fn (mut v Value) replace() {
+	v = Value(Bar{})
+}
+
+fn main() {
+	mut x := Value(Foo{
+		foo: 1
+	})
+	for x is Foo {
+		x.replace()
+		println(int_str(x.foo))
+		break
+	}
+}
+',
+		'field `foo` does not exist')
+
+	// A mut-receiver method on the narrowed variant type cannot change the runtime
+	// tag, so the narrowing survives and the mutation is observed (no false positive).
+	variant_out := loop_smartcast_run_good(v3_bin,
+		'good_loop_mut_variant_receiver_keeps_smartcast', 'struct Foo {
+mut:
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+fn (mut f Foo) bump() {
+	f.foo = 9
+}
+
+fn main() {
+	mut x := Value(Foo{
+		foo: 1
+	})
+	for x is Foo {
+		x.bump()
+		println(int_str(x.foo))
+		break
+	}
+}
+')
+	assert variant_out == '9'
+
+	// A read-only method on the sum receiver is not a write, so the narrowing stays.
+	readonly_out := loop_smartcast_run_good(v3_bin, 'good_loop_readonly_receiver_keeps_smartcast', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+fn (v Value) describe() int {
+	return 1
+}
+
+fn main() {
+	mut x := Value(Foo{
+		foo: 5
+	})
+	for x is Foo {
+		_ := x.describe()
+		println(int_str(x.foo))
+		break
+	}
+}
+')
+	assert readonly_out == '5'
+}
