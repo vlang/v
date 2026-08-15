@@ -996,6 +996,12 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		}
 
 		for ci in 0 .. n_jobs {
+			// args[ci].worker is a &Transformer stored as a voidptr: the master `t`
+			// itself for ci == 0 (round-tripped through voidptr(t) at setup), otherwise a
+			// worker forked by fork_worker. worker_pool.run() above already joined every
+			// chunk thread, so each worker is finished and its region fully written, and
+			// the workers stay live for this merge (args owns them and their arenas back
+			// the merged regions), so reinterpreting the pointer here is sound.
 			mut w := unsafe { &Transformer(args[ci].worker) }
 			t.monomorph_profile('mono worker ${ci}: ${args[ci].emitted_specs.len} specs, ${w.a.nodes.len - node_starts[ci]} nodes, ${w.a.children.len - child_starts[ci]} children')
 			mut node_shift := 0
