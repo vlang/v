@@ -312,8 +312,18 @@ fi
 '
 }
 
-fn gc_compatible_tcc_script(version string, includes_local bool) string {
-	return tcc_probe_script_prefix(version, includes_local) +
+fn gc_compatible_tcc_script(version string, includes_local bool, requires_include_environment bool) string {
+	include_environment_check := if requires_include_environment {
+		'
+if [ -z "\${C_INCLUDE_PATH:-}" ] && [ -z "\${CPATH:-}" ]; then
+	echo "include path environment is unavailable" >&2
+	exit 4
+fi
+'
+	} else {
+		''
+	}
+	return tcc_probe_script_prefix(version, includes_local) + include_environment_check +
 		'
 if [ ! -f thirdparty/tcc/lib/tcc/include/stddef.h ]; then
 	echo "tcc: error: thirdparty/tcc/lib/tcc/include/stddef.h is unavailable from the current directory" >&2
@@ -354,11 +364,15 @@ chmod +x "\$out"
 }
 
 fn compatible_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, true)
+	return gc_compatible_tcc_script(version, true, false)
 }
 
 fn missing_local_include_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, false)
+	return gc_compatible_tcc_script(version, false, false)
+}
+
+fn include_environment_dependent_tcc_script(version string) string {
+	return gc_compatible_tcc_script(version, true, true)
 }
 
 fn runtime_incompatible_tcc_script(version string) string {
@@ -450,9 +464,13 @@ fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
 			'compatible-libgc-v0\n')
 		compatible_sha = commit_bundle_state(source, 'compatible-v1',
 			compatible_tcc_script('compatible-tcc-v1'), 'compatible-libgc-v1\n')
+		commit_bundle_state(source, 'runtime-incompatible',
+			runtime_incompatible_tcc_script('runtime-incompatible-tcc'),
+			'runtime-incompatible-libgc\n')
 	}
-	incompatible_sha := commit_bundle_state(source, 'runtime-incompatible',
-		runtime_incompatible_tcc_script('runtime-incompatible-tcc'), 'runtime-incompatible-libgc\n')
+	incompatible_sha := commit_bundle_state(source, 'include-environment-dependent',
+		include_environment_dependent_tcc_script('include-environment-dependent-tcc'),
+		'include-environment-dependent-libgc\n')
 	run_checked('git -C ${os.quoted_path(source)} push --quiet ${os.quoted_path(remote)} HEAD:refs/heads/thirdparty-linux-amd64')
 	create_unknown_branch(root, remote)
 	create_musl_branch(root, remote)
@@ -542,11 +560,12 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 		os.rmdir_all(fixture.root) or {}
 	}
 
-	fresh_result := os.execute('${fixture.fresh_cmd} 2>&1')
+	fresh_result :=
+		os.execute('export C_INCLUDE_PATH=/poison-c-include CPATH=/poison-cpath; ${fixture.fresh_cmd} 2>&1')
 	assert fresh_result.exit_code == 0, fresh_result.output
 	assert fresh_result.output.contains('is not host-compatible'), fresh_result.output
 	assert fresh_result.output.contains('TCC search directories:'), fresh_result.output
-	assert fresh_result.output.contains('incompatible-host-probe'), fresh_result.output
+	assert fresh_result.output.contains('include path environment is unavailable'), fresh_result.output
 	assert fresh_result.output.contains('Using newest host-compatible TCC commit ${fixture.compatible_sha}'), fresh_result.output
 
 	assert_historical_fallback(fixture)

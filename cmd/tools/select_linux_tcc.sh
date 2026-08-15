@@ -119,10 +119,14 @@ probe_bundle() {
 		cat "$search_dirs_log"
 	} >> "$probe_log"
 	rm -f "$probe_exe"
-	if ! (cd "$vroot" && "$tcc_dir/tcc.exe" \
-		-I"$vroot/thirdparty/libgc/include" \
-		-DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 \
-		-o "$probe_exe" "$probe_source" "$tcc_dir/lib/libgc.a" -ldl -lpthread) \
+	if ! (
+		unset C_INCLUDE_PATH CPATH
+		cd "$vroot"
+		"$tcc_dir/tcc.exe" \
+			-I"$vroot/thirdparty/libgc/include" \
+			-DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 \
+			-o "$probe_exe" "$probe_source" "$tcc_dir/lib/libgc.a" -ldl -lpthread
+	) \
 		>> "$probe_log" 2>&1; then
 		return 1
 	fi
