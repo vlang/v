@@ -141,6 +141,29 @@ fn test_reinclude_after_undef_rescans_new_dependencies() {
 	assert extra_path in files, 'undef re-include did not rescan extra.h: ${files.str()}'
 }
 
+fn test_reinclude_after_ambiguous_undef_rescans_new_dependencies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_reinclude_ambiguous_undef_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'extra.h'), '#pragma once\nint extra_fn(void);\n')!
+	os.write_file(os.join_path(root, 'a.h'),
+		'#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
+	// The guard and selection macro are undefined under an unresolved `#if`, so their
+	// defined state becomes ambiguous (`dynamic_include_macros[NAME] == false`) rather
+	// than definitely defined. The preprocessor may still traverse a.h a second time and
+	// select extra.h, so a membership-only guard test would wrongly skip and omit it.
+	top := os.join_path(root, 'top.h')
+	os.write_file(top,
+		'#define SKIP_EXTRA\n#include "a.h"\n#if V3_UNKNOWN_TOGGLE\n#undef A_H\n#undef SKIP_EXTRA\n#endif\n#include "a.h"\n')!
+
+	_, files := collect_external_input_tree_status(root, top, false)
+	extra_path := os.real_path(os.join_path(root, 'extra.h'))
+	assert extra_path in files, 'ambiguous undef re-include did not rescan extra.h: ${files.str()}'
+}
+
 fn test_builtin_abi_helper_matches_only_exact_headers() {
 	// The genuinely superseded helpers are still matched, by exact basename or, for the
 	// generically named stdatomic implementation, by a distinctive path tail.

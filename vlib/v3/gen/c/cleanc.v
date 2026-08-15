@@ -1492,14 +1492,18 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	if collected_paths[collection_key] {
 		text = os.read_file(real_path) or { return true }
 		if guard := c_whole_file_guard_macro(text) {
-			// The preprocessor skips a repeat include only while the guard is still in
-			// effect: `#pragma once` always is, and an `#ifndef NAME` guard is while NAME
-			// stays defined. An ordinary diamond re-include then contributes no new inputs
-			// and stays cacheable (subject to first-traversal ambiguity). But if the guard
-			// macro was `#undef`d before this include, the preprocessor traverses the file
-			// again and may pull in newly selected dependencies, so fall through and rescan.
+			// The preprocessor skips a repeat include only while the guard is definitely
+			// still defined: `#pragma once` always is, and an `#ifndef NAME` guard is when
+			// NAME is a concrete define or a definitely-defined dynamic macro. An ordinary
+			// diamond re-include then contributes no new inputs and stays cacheable (subject
+			// to first-traversal ambiguity). If the guard was `#undef`d — or its defined
+			// state is only ambiguous (`dynamic_include_macros[NAME] == false`) after a
+			// conditional `#undef` under an unresolved branch — the preprocessor may traverse
+			// the file again and pull in newly selected dependencies, so fall through and
+			// rescan. The value test matches c_cache_known_condition, where `false` is
+			// ambiguous rather than defined.
 			guard_in_effect := guard.len == 0 || guard in include_macros
-				|| guard in dynamic_include_macros
+				|| dynamic_include_macros[guard]
 			if guard_in_effect {
 				return ambiguous_collected_paths[collection_key]
 			}
