@@ -620,6 +620,44 @@ fn (mut c QuicConn) process_retry(raw []u8) ! {
 }
 
 fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, raw []u8, header QuicLongHeader, offset int, now u64, mut result PollResult) ! {
+	// RFC 9001 §4.9: once this space's keys are discarded, packets received
+	// in it MUST be discarded too -- the key material itself is NOT cleared
+	// by discard_initial_keys/discard_handshake_keys (see their own doc
+	// comments), so this check is the only thing preventing a stale,
+	// replayed, or attacker-injected packet from still being decrypted and
+	// processed after the RFC-required discard point.
+	if (space == .initial && c.initial_keys_discarded)
+		|| (space == .handshake && c.handshake_keys_discarded) {
+		return
+	}
+	// RFC 9000 §7.2: a packet not addressed to this connection's own SCID
+	// must be silently dropped. Initial keys are publicly derivable (RFC
+	// 9001 §5.2, from the DCID alone), so without this check an off-path
+	// attacker who observes the client's chosen DCID could forge a
+	// well-encrypted Initial packet with an ARBITRARY destination CID and
+	// have it accepted as if it were a legitimate reply, redirecting the
+	// client's subsequent packets.
+	if header.dcid != c.scid {
+		return
+	}
+	// RFC 9000 §7.2 (verbatim): "Once a client has received a valid Initial
+	// packet from the server, it MUST discard any subsequent packet it
+	// receives on that connection with a different Source Connection ID."
+	// Concretely exploitable for Initial packets specifically: Initial keys
+	// are derived from the DCID alone (RFC 9001 §5.2), with no dependency
+	// on the real server's identity, so an attacker who observes the
+	// client's chosen DCID can forge a second, well-encrypted Initial
+	// packet claiming an arbitrary source CID and have its frames (e.g.
+	// injected CRYPTO data) processed as if from the already-established
+	// peer. Checked here (before this connection's own peer_scid is ever
+	// latched below) so it applies uniformly to both spaces, matching the
+	// RFC's own unscoped "any subsequent packet... on that connection"
+	// wording, even though Handshake-space forgery isn't practically
+	// exploitable the same way (those keys derive from the real ECDHE
+	// shared secret).
+	if c.peer_scid.len != 0 && header.scid != c.peer_scid {
+		return
+	}
 	keys := if space == .initial {
 		c.initial_keys_server
 	} else {
@@ -693,7 +731,22 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 	}
 
 	dcid_len := c.scid.len
-	_, offset := parse_short_header(raw, dcid_len) or {
+	short_header, offset := parse_short_header(raw, dcid_len) or {
+		c.note_one_rtt_processing_failed(raw, now, mut result)
+		return
+	}
+	// RFC 9000 §7.2: a packet not addressed to this connection's own SCID
+	// must be silently dropped -- see process_initial_or_handshake's
+	// identical check for the full rationale. Routed through
+	// note_one_rtt_processing_failed (not a bare return) rather than
+	// dropped outright: a genuine stateless reset (RFC 9000 §10.3) is
+	// deliberately shaped like an ordinary short-header packet with
+	// unpredictable bytes where a real DCID would be, so it will almost
+	// always fail this exact check -- the stateless-reset comparison
+	// (against the packet's own trailing bytes, independent of anything
+	// parsed here) MUST still get a chance to run for a DCID mismatch, not
+	// be short-circuited before it ever fires.
+	if short_header.dcid != c.scid {
 		c.note_one_rtt_processing_failed(raw, now, mut result)
 		return
 	}
@@ -1417,10 +1470,24 @@ fn (c &QuicConn) closing_or_draining_deadline(now u64) u64 {
 // that enters draining without it would sit there forever, never reaching
 // .closed -- found via /vreview (this is the MORE common real-world close
 // path than our own close_with_error, yet was the one missing the bound).
+//
+// If closing_deadline is ALREADY set (this connection was already .closing
+// -- e.g. it sent its own CONNECTION_CLOSE and is now receiving the peer's
+// in reply, a real and reachable path since process_datagram only
+// special-cases .draining, not .closing, before dispatching frames), it
+// MUST NOT be recomputed from the current `now`: RFC 9000 §10.2.2 "the
+// endpoint uses the same end time but ceases transmission of any packets."
+// Recomputing here would extend the period every time a further packet
+// happened to arrive while closing, rather than preserving the original
+// bound. Self-found while auditing this function for the conformance
+// matrix's new §10.2 section; test:
+// test_closing_deadline_not_extended_by_peer_close_while_already_closing.
 fn (mut c QuicConn) enter_draining(now u64) {
 	c.connection_close.enter_draining()
 	c.state = .draining
-	c.closing_deadline = c.closing_or_draining_deadline(now)
+	if c.closing_deadline == none {
+		c.closing_deadline = c.closing_or_draining_deadline(now)
+	}
 }
 
 // close_with_error transitions to .closing and sends a best-effort
@@ -1434,7 +1501,24 @@ fn (mut c QuicConn) close_with_error(error_code u64, reason string, is_applicati
 	c.connection_close.enter_closing()
 	c.state = .closing
 	c.closing_deadline = c.closing_or_draining_deadline(now)
-	frame := encode_connection_close_frame(is_application_error, error_code, 0, reason) or {
+	// RFC 9000 §10.2.3: a CONNECTION_CLOSE of application-error type (0x1d)
+	// MUST be replaced by the transport-error type (0x1c), with the Reason
+	// Phrase field cleared, when sent in an Initial or Handshake packet --
+	// those levels aren't backed by the fully-authenticated 1-RTT keys yet,
+	// so an application-supplied reason string could leak application state
+	// to an observer before the peer is confirmed. build_best_effort_close_packet
+	// picks 1-RTT only when app_write_keys is available; every other branch
+	// falls back to Handshake or Initial, so that's the exact condition to
+	// mirror here, decided BEFORE encoding rather than after (the encoded
+	// frame is also what gets replayed verbatim on every §10.2.1 closing-state
+	// retransmission, so getting this right once here is sufficient).
+	mut wire_is_application_error := is_application_error
+	mut wire_reason := reason
+	if c.app_write_keys == none {
+		wire_is_application_error = false
+		wire_reason = ''
+	}
+	frame := encode_connection_close_frame(wire_is_application_error, error_code, 0, wire_reason) or {
 		result.events << QuicEvent{
 			kind:       .connection_closed
 			error_code: error_code

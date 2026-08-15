@@ -609,6 +609,84 @@ fn test_close_sends_connection_close_and_transitions_to_closing() {
 	assert found_close
 }
 
+// test_close_before_one_rtt_keys_downgrades_to_transport_connection_close
+// covers RFC 9000 §10.2.3: a CONNECTION_CLOSE of application-error type
+// (0x1d) MUST be replaced by the transport-error type (0x1c) -- with the
+// Reason Phrase field cleared -- when it has to be sent in an Initial or
+// Handshake packet, since those levels aren't fully authenticated/protected
+// yet and could expose application state to an observer. close() always
+// marks its request as application-level (is_application_error: true,
+// carrying the caller's real reason string) with no way for the caller to
+// know which packet level will actually carry it -- reproduced here by
+// calling close() in the window between EncryptedExtensions and Finished,
+// where only Handshake keys are available (app_write_keys is still none).
+fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
+	mut now := u64(1000)
+	mut c, initial_dg := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, now)!
+	defer {
+		c.handshake.free()
+	}
+	assert initial_dg.bytes.len >= min_initial_datagram_size
+
+	server_initial_scid := [u8(0xaa), 0xbb, 0xcc, 0xdd]
+
+	server_pub, server_priv := ecdsa.generate_key(nid: .prime256v1)!
+	defer {
+		server_pub.free()
+		unsafe { server_priv.free() }
+	}
+	server_ecdhe_public_bytes := server_pub.uncompressed_bytes()!
+	server_random := []u8{len: 32, init: 0x22}
+	client_key_exchange := conn_test_extract_client_hello_key_exchange(c.client_hello)!
+	client_pub := ecdsa.PublicKey.from_uncompressed_bytes(client_key_exchange, nid: .prime256v1)!
+	defer {
+		client_pub.free()
+	}
+	server_shared_secret := server_priv.derive_shared_secret(client_pub)!
+	server_hello_framed := conn_test_build_fake_server_hello(server_random,
+		server_ecdhe_public_bytes)!
+
+	sh_payload := encode_crypto_frame(0, server_hello_framed)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0,
+		sh_payload, c.initial_keys_server)!
+	result1 := c.poll(sh_datagram.bytes, now)!
+	assert result1.events.len == 0
+	now += 10
+
+	hs_keys_server := c.handshake_keys_server or { panic('unreachable: just asserted != none') }
+	mut ee_params := QuicTransportParameters{}
+	ee_params.initial_source_connection_id = server_initial_scid
+	ee_params.original_destination_connection_id = c.original_dcid
+	ee_framed := conn_test_build_fake_encrypted_extensions(ee_params)!
+	ee_payload := encode_crypto_frame(0, ee_framed)!
+	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0,
+		ee_payload, hs_keys_server)!
+	result2 := c.poll(ee_datagram.bytes, now)!
+	assert result2.events.len == 0
+	assert c.handshake.state() == .wait_certificate
+	assert c.app_write_keys == none // still pre-1-RTT -- the window this bug lives in
+	now += 10
+
+	c.close(99, 'application-level reason that must not leak')
+	poll_result := c.poll(none, now)!
+	assert c.state() == .closing
+	assert poll_result.outgoing.len > 0
+
+	sent := c.sent_close_payload or {
+		panic('unreachable: close_with_error always sets this on success')
+	}
+
+	frame, _ := parse_frame(sent)!
+	close_frame := frame as ConnectionCloseFrame
+	assert !close_frame.is_application_error
+	assert close_frame.reason == ''
+}
+
 // test_peer_connection_close_enters_draining covers the receive side of
 // RFC 9000 §10.2.2: a CONNECTION_CLOSE from the peer transitions this
 // connection straight to .draining (never .closing -- draining requires no
@@ -649,6 +727,56 @@ fn test_peer_connection_close_enters_draining() {
 	timeout_result := c.process_timeouts(far_future)!
 	assert c.state() == .closed
 	assert timeout_result.events.any(it.kind == .connection_closed)
+}
+
+// test_closing_deadline_not_extended_by_peer_close_while_already_closing
+// covers RFC 9000 §10.2.2's "same end time" rule: "An endpoint MAY enter
+// the draining state from the closing state if it receives a
+// CONNECTION_CLOSE frame... the endpoint uses the same end time but
+// ceases transmission." enter_draining unconditionally recomputed
+// closing_deadline from the `now` at the moment of the closing->draining
+// transition -- if that transition happens meaningfully later than the
+// original close_with_error call (this endpoint sent its own close, THEN
+// received the peer's close some time afterward, while still within the
+// original closing period), the recomputed deadline is now+3xPTO from the
+// LATER time, extending the period instead of preserving it. Self-found
+// while auditing §10.2 for the conformance matrix -- process_datagram only
+// special-cases .draining (not .closing) before dispatching frames, so a
+// peer CONNECTION_CLOSE arriving while already .closing is a real,
+// reachable path, not a theoretical one.
+fn test_closing_deadline_not_extended_by_peer_close_while_already_closing() {
+	mut c, _, now0 :=
+		drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	c.close(1, 'bye')
+	result1 := c.poll(none, now0)!
+	assert c.state() == .closing
+	assert result1.outgoing.len > 0
+	original_deadline := c.closing_deadline or {
+		panic('unreachable: close_with_error always sets this')
+	}
+
+	// Advance `now` by a small amount, still well within the original
+	// closing period (3x PTO, at minimum hundreds of ms with default
+	// smoothed_rtt) -- large enough to prove recomputation would actually
+	// change the deadline, small enough the ORIGINAL deadline hasn't
+	// elapsed yet.
+	now1 := now0 + 50_000_000 // 50ms, nanosecond-scale per this module's convention
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	cc_frame := encode_connection_close_frame(false, 7, 0, 'server done too')!
+	incoming := build_fake_one_rtt_packet(c.scid, 1, cc_frame, server_app_keys)!
+	c.poll(incoming.bytes, now1)!
+	assert c.state() == .draining
+
+	preserved_deadline := c.closing_deadline or {
+		panic('unreachable: enter_draining always sets this')
+	}
+
+	assert preserved_deadline == original_deadline
 }
 
 // test_idle_timeout_mechanism_fires_after_configured_window is a sanity
@@ -759,6 +887,222 @@ fn test_handshake_done_rejected_when_role_is_server() {
 		return
 	}
 	assert false, 'expected dispatch_one_rtt_frame to reject HANDSHAKE_DONE when role is server'
+}
+
+// test_discarded_initial_keys_reject_further_packets is a regression test
+// for a reviewer finding on PR #28083: process_initial_or_handshake used
+// c.initial_keys_server/c.handshake_keys_server to decrypt without checking
+// c.initial_keys_discarded/c.handshake_keys_discarded first. discard_initial_
+// keys/discard_handshake_keys (RFC 9001 §4.9) only reset per-space
+// bookkeeping -- they never clear the key material itself -- so a stale,
+// replayed, or attacker-injected packet in a discarded space was still
+// successfully decrypted and its frames dispatched after the RFC-required
+// discard point. RFC 9001 §4.9: "once an endpoint has discarded its
+// Initial/Handshake keys, it MUST discard all packets it receives in that
+// space." Observable via c.initial_received_pns staying empty: discard
+// resets it to a fresh map, and only a successfully-processed packet in
+// that space would repopulate it.
+fn test_discarded_initial_keys_reject_further_packets() {
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	assert c.initial_keys_discarded
+
+	// A bare PING frame (RFC 9000 §19.2, legal in the Initial space, always
+	// a harmless no-op) so the ONLY thing that can explain a difference in
+	// c.initial_received_pns is whether the discard check runs -- a CRYPTO
+	// frame with arbitrary content would ALSO get rejected by the TLS layer
+	// post-handshake for an unrelated reason (unexpected message), giving a
+	// false pass/fail signal.
+	// RFC 9001 §5.4.2: header protection sampling needs at least 4 bytes of
+	// packet number plus a 16-byte sample after it -- a bare 1-byte PING
+	// frame's resulting packet is a few bytes too short, so pad with
+	// PADDING frames (0x00, RFC 9000 §19.1 -- legal anywhere).
+	mut ping_payload := [u8(frame_type_ping)]
+	ping_payload << [u8(0), 0, 0, 0]
+	stale_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 5,
+		ping_payload, c.initial_keys_server)!
+	result := c.poll(stale_datagram.bytes, now)!
+	assert result.events.len == 0
+	assert c.initial_received_pns.len == 0
+}
+
+// test_discarded_handshake_keys_reject_further_packets is the Handshake-space
+// sibling of test_discarded_initial_keys_reject_further_packets above -- same
+// finding, same RFC 9001 §4.9 requirement, same gap in
+// process_initial_or_handshake's .handshake branch.
+fn test_discarded_handshake_keys_reject_further_packets() {
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	assert c.handshake_keys_discarded
+	hs_keys_server := c.handshake_keys_server or {
+		panic('unreachable: discard does not clear this')
+	}
+
+	// RFC 9001 §5.4.2: header protection sampling needs at least 4 bytes of
+	// packet number plus a 16-byte sample after it -- a bare 1-byte PING
+	// frame's resulting packet is a few bytes too short, so pad with
+	// PADDING frames (0x00, RFC 9000 §19.1 -- legal anywhere).
+	mut ping_payload := [u8(frame_type_ping)]
+	ping_payload << [u8(0), 0, 0, 0]
+	stale_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 5,
+		ping_payload, hs_keys_server)!
+	result := c.poll(stale_datagram.bytes, now)!
+	assert result.events.len == 0
+	assert c.handshake_received_pns.len == 0
+}
+
+// test_wrong_destination_cid_rejected_on_long_header is a regression test for
+// a reviewer finding on PR #28083: process_initial_or_handshake accepts any
+// authenticated server packet and updates c.dcid/c.peer_scid from its source
+// CID without ever checking header.dcid == c.scid. Initial keys are publicly
+// derivable (RFC 9001 §5.2, from the DCID alone), so an off-path attacker
+// who observes (or guesses) the client's chosen DCID can forge a
+// well-encrypted Initial packet addressed with an ARBITRARY (wrong)
+// destination CID and have it accepted as if it were a legitimate reply,
+// letting it redirect the client's subsequent packets to a CID of the
+// attacker's choosing. Fed as the very FIRST incoming packet (mirroring
+// drive_to_established's own first step) so a pre-fix acceptance is
+// observable via c.peer_scid/c.dcid changing from empty.
+fn test_wrong_destination_cid_rejected_on_long_header() {
+	mut c, initial_dg := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	assert initial_dg.bytes.len >= min_initial_datagram_size
+	assert c.peer_scid.len == 0
+
+	// A bare PING frame (harmless no-op) rather than a CRYPTO frame with
+	// arbitrary content -- garbage handshake-message bytes would ALSO get
+	// rejected by the TLS layer as an unexpected/malformed message,
+	// producing a false pass/fail signal unrelated to the DCID check.
+	wrong_dcid := [u8(0xde), 0xad, 0xbe, 0xef]
+	attacker_scid := [u8(0x99), 0x99, 0x99, 0x99]
+	mut forged_payload := [u8(frame_type_ping)]
+	forged_payload << [u8(0), 0, 0, 0]
+	forged_datagram := build_fake_long_header_packet(.initial, wrong_dcid, attacker_scid, 0,
+		forged_payload, c.initial_keys_server)!
+	result := c.poll(forged_datagram.bytes, u64(10))!
+	assert result.events.len == 0
+	assert c.peer_scid.len == 0
+	assert c.handshake.state() == .wait_server_hello
+}
+
+// test_wrong_destination_cid_rejected_on_short_header is the 1-RTT sibling of
+// test_wrong_destination_cid_rejected_on_long_header above -- same finding,
+// same missing check, in process_one_rtt_packet's use of parse_short_header's
+// discarded header return value (previously `_, offset := ...`).
+fn test_wrong_destination_cid_rejected_on_short_header() {
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	// Short headers don't self-describe their DCID length (the receiver
+	// supplies it from its own connection state, c.scid.len) -- unlike the
+	// long-header test above, this MUST be the same length as c.scid or
+	// the parse itself is corrupted (a length mismatch, not a content
+	// mismatch), which would fail for an unrelated reason.
+	wrong_dcid := []u8{len: c.scid.len, init: 0xde}
+	stream_frame := encode_stream_frame(1, 0, 'forged'.bytes(), false, false)!
+	forged_datagram := build_fake_one_rtt_packet(wrong_dcid, 0, stream_frame, server_app_keys)!
+	result := c.poll(forged_datagram.bytes, now)!
+	assert result.events.len == 0
+	assert c.streams.len() == 0
+}
+
+// test_wrong_source_cid_rejected_after_peer_scid_established is a regression
+// test SELF-FOUND while auditing RFC 9000 §7.2/§17.2.2.1 to build a proper
+// conn.v conformance-matrix section (in direct response to a maintainer
+// reviewer's separate DCID/discarded-key findings on PR #28083, plus the
+// user's explicit feedback that /vreview kept missing this class of gap).
+// RFC 9000 §7.2 (verbatim): "Once a client has received a valid Initial
+// packet from the server, it MUST discard any subsequent packet it
+// receives on that connection with a different Source Connection ID."
+// process_initial_or_handshake only ever WRITES c.peer_scid on the first
+// packet (`if c.peer_scid.len == 0 {...}`) -- it never checks a LATER
+// packet's header.scid against the already-established c.peer_scid. Unlike
+// the destination-CID finding, this is concretely exploitable: Initial
+// packet protection keys are derived from the DCID ALONE (RFC 9001 §5.2),
+// with no dependency on the real server's identity, so an attacker who
+// observes the client's chosen DCID can forge a second, well-encrypted
+// Initial packet claiming an ARBITRARY source CID and have its frames
+// (e.g. injected CRYPTO data) processed as if from the already-established
+// peer. (Handshake-space packets are NOT exploitable the same way --
+// Handshake keys derive from the real ECDHE shared secret -- but the fix
+// still covers both spaces uniformly, matching the RFC's own unscoped
+// "any subsequent packet... on that connection" wording and this file's
+// established practice of implementing the full MUST rather than only the
+// practically-exploitable subset.)
+fn test_wrong_source_cid_rejected_after_peer_scid_established() {
+	mut c, initial_dg := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	assert initial_dg.bytes.len >= min_initial_datagram_size
+
+	real_server_scid := [u8(0xaa), 0xbb, 0xcc, 0xdd]
+	server_pub, server_priv := ecdsa.generate_key(nid: .prime256v1)!
+	defer {
+		server_pub.free()
+		unsafe { server_priv.free() }
+	}
+	server_ecdhe_public_bytes := server_pub.uncompressed_bytes()!
+	server_random := []u8{len: 32, init: 0x22}
+	client_key_exchange := conn_test_extract_client_hello_key_exchange(c.client_hello)!
+	client_pub := ecdsa.PublicKey.from_uncompressed_bytes(client_key_exchange, nid: .prime256v1)!
+	defer {
+		client_pub.free()
+	}
+	_ := server_priv.derive_shared_secret(client_pub)!
+	server_hello_framed := conn_test_build_fake_server_hello(server_random,
+		server_ecdhe_public_bytes)!
+	sh_payload := encode_crypto_frame(0, server_hello_framed)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, real_server_scid, 0, sh_payload,
+		c.initial_keys_server)!
+	result1 := c.poll(sh_datagram.bytes, u64(10))!
+	assert result1.events.len == 0
+	assert c.peer_scid == real_server_scid
+	assert !c.initial_keys_discarded
+
+	// Forged SECOND Initial packet: correct dcid (=c.scid, so it passes the
+	// separate destination-CID check), but a DIFFERENT scid than the one
+	// just established above.
+	forged_scid := [u8(0x99), 0x99, 0x99, 0x99]
+	mut forged_payload := [u8(frame_type_ping)]
+	forged_payload << [u8(0), 0, 0, 0]
+	forged_datagram := build_fake_long_header_packet(.initial, c.scid, forged_scid, 1,
+		forged_payload, c.initial_keys_server)!
+	result2 := c.poll(forged_datagram.bytes, u64(20))!
+	assert result2.events.len == 0
+	assert c.peer_scid == real_server_scid
+	// initial_received_pns itself is drained (reset to empty) by
+	// drain_outgoing's own ACK-building logic on every poll() call, so it
+	// can't distinguish "nothing new arrived" from "something arrived and
+	// got ACKed" across two separate poll() calls -- pn_spaces.initial's
+	// own largest_received is the stable, persistent signal: it stays at 0
+	// (the first legit packet) if the forged pn=1 packet was correctly
+	// rejected, or advances to 1 if it was wrongly processed.
+	largest_received := c.pn_spaces.initial.largest_received or { u64(999) }
+	assert largest_received == 0
 }
 
 // test_compute_next_timeout_includes_closing_deadline is a regression test
