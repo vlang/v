@@ -4281,6 +4281,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	should_print_fn := g.print_fn_selector_matches(generated_fn_name, module_name, node.value)
 		|| (is_entry_main && 'main' in g.print_fn_names)
 	fn_start_pos := g.sb.len
+	mut is_direct_no_main_export := false
 	if is_entry_main {
 		g.writeln('int main(int argc, char** argv) {')
 		if g.has_builtins {
@@ -4300,6 +4301,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		if export_name := g.export_fn_name_in_module(module_name, node.value) {
 			if export_name == generated_fn_name {
 				g.write(g.exported_symbol_attribute())
+				// A natural-name export is called under its own symbol; no wrapper is
+				// generated, so this body itself must run the guarded initializer.
+				is_direct_no_main_export = g.needs_no_main_runtime_init_caller()
 			}
 		}
 		g.write(g.fn_return_type_name(ret_type))
@@ -4313,6 +4317,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// before emitting the body so lookup/preparation work cannot affect spelling.
 	g.tmp_count = 0
 	g.indent++
+	if is_direct_no_main_export {
+		g.writeln('_vno_main_init_caller();')
+	}
 	g.gen_function_defer_prelude()
 
 	for i in 0 .. node.children_count {
