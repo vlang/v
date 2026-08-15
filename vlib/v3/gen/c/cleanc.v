@@ -3840,9 +3840,52 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	return false
 }
 
+// c_builtin_abi_helper_headers are the superseded helper headers whose declarations
+// builtin_abi_decls() already emits inline; re-including them would redefine those
+// helpers. Their basenames are distinctive, so an exact basename match is safe.
+const c_builtin_abi_helper_headers = [
+	'prealloc_atomics.h',
+	'filelock_helpers.h',
+	'stdatomic_include_after_compat.h',
+	'tcc_compat_aliases.h',
+	'tcc_compat_cleanup.h',
+	'tcc_compat_freebsd_amd64_fence.h',
+	'tcc_compat_freebsd_amd64_fence_pre.h',
+	'tcc_compat_linux_fence.h',
+	'tcc_compat_restore.h',
+]
+
+// c_builtin_abi_helper_header_paths are the superseded thirdparty stdatomic headers
+// whose basenames (`atomic.h`, `atomic_cpp.h`) are too generic to match on their own,
+// so they are matched by their distinctive path tail to avoid dropping a user header
+// of the same basename.
+const c_builtin_abi_helper_header_paths = [
+	'thirdparty/stdatomic/nix/atomic.h',
+	'thirdparty/stdatomic/nix/atomic_cpp.h',
+	'thirdparty/stdatomic/win/atomic.h',
+]
+
+// c_include_arg_is_builtin_abi_helper matches only the superseded helper headers,
+// comparing normalized basenames (or distinctive path tails) against the exact known
+// set. A substring test would also drop unrelated user headers whose path merely
+// contains one of these names (for example `my_stdatomic_wrapper.h`), silently losing
+// their declarations from the translation unit.
 fn c_include_arg_is_builtin_abi_helper(include_arg string) bool {
-	return include_arg.contains('prealloc_atomics.h') || include_arg.contains('filelock_helpers.h')
-		|| include_arg.contains('stdatomic')
+	clean := trimmed_space(include_arg)
+	if clean.len < 2 {
+		return false
+	}
+	path := if (clean[0] == `"` && clean[clean.len - 1] == `"`)
+		|| (clean[0] == `<` && clean[clean.len - 1] == `>`) {
+		clean[1..clean.len - 1]
+	} else {
+		clean
+	}
+	normalized := path.replace('\\', '/')
+	if normalized.all_after_last('/') in c_builtin_abi_helper_headers {
+		return true
+	}
+	return c_builtin_abi_helper_header_paths.any(normalized.ends_with(it))
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {

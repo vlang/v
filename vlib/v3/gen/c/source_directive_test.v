@@ -141,6 +141,24 @@ fn test_reinclude_after_undef_rescans_new_dependencies() {
 	assert extra_path in files, 'undef re-include did not rescan extra.h: ${files.str()}'
 }
 
+fn test_builtin_abi_helper_matches_only_exact_headers() {
+	// The genuinely superseded helpers are still matched, by exact basename or, for the
+	// generically named stdatomic implementation, by a distinctive path tail.
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"')
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"')
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"')
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"')
+	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"')
+	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"')
+
+	// User headers whose path merely contains a superseded name must not be dropped.
+	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"')
+	assert !c_include_arg_is_builtin_abi_helper('"my_prealloc_atomics.h"')
+	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"')
+	// The real system header is not one of the superseded inline helpers either.
+	assert !c_include_arg_is_builtin_abi_helper('<stdatomic.h>')
+}
+
 fn test_large_nested_angle_header_stays_an_include() {
 	root := os.join_path(os.vtmp_dir(), 'v3_nested_large_header_${os.getpid()}')
 	os.rmdir_all(root) or {}
