@@ -471,6 +471,12 @@ fn c_backend_fn_file_rank(file string) int {
 }
 
 fn (mut g FlatGen) gen_synthetic_main_after_fns() {
+	if g.suppress_main {
+		if g.needs_no_main_runtime_init_caller() {
+			g.gen_no_main_runtime_init_caller()
+		}
+		return
+	}
 	if g.test_files.len > 0 {
 		if g.cache_split {
 			g.writeln('/* V3CACHE_MODULE main */')
@@ -531,7 +537,7 @@ fn (mut g FlatGen) gen_executable_cleanup_registration() {
 }
 
 fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
-	return g.test_files.len == 0 && !g.has_entry_main()
+	return g.test_files.len == 0 && (g.suppress_main || !g.has_entry_main())
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
@@ -982,6 +988,9 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 	}
 	if enum_method_name := g.enum_method_c_name_in_module(module_name, name) {
 		return enum_method_name
+	}
+	if g.suppress_main && is_main_fn_in_main_module(module_name, name) {
+		return g.cname('main.main')
 	}
 	if g.should_rename_user_main_for_tests(module_name, name) {
 		return g.test_user_main_c_name()
@@ -4263,6 +4272,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.insert_cur_implicit_veb_ctx_param(node)
 	g.prepare_function_defers(prelude_scan.defer_ids)
 	is_entry_main := is_main_fn_in_main_module(module_name, node.value) && g.test_files.len == 0
+		&& !g.suppress_main
 	generated_fn_name := g.fn_c_name_in_module(module_name, node.value)
 	should_print_fn := g.print_fn_selector_matches(generated_fn_name, module_name, node.value)
 		|| (is_entry_main && 'main' in g.print_fn_names)
