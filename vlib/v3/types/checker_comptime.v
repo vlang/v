@@ -13179,8 +13179,12 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		owner := tc.insert_decl_lhs(lhs_id, expected, lhs_is_mut)
 		tc.record_bool_condition_binding(owner, rhs_id, expected, lhs_is_mut)
 		tc.record_pointer_binding_alias(owner, rhs_id, expected)
-		if owner.storage_key().len > 0 && unalias_type(expected) is Map
-			&& tc.expr_is_unsafe_reference_alias(rhs_id) {
+		clean_decl_type := unalias_type(expected)
+		// A collection alias created with `unsafe` shares its source's storage: a map
+		// reference (`m2 := unsafe { m1 }`) or an array slice (`view := unsafe { a[..] }`).
+		// Record the binding so reads through it are treated as mutable dependencies.
+		if owner.storage_key().len > 0 && tc.expr_is_unsafe_reference_alias(rhs_id)
+			&& (clean_decl_type is Map || clean_decl_type is Array || clean_decl_type is ArrayFixed) {
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
 		}
 		if lhs_node.value != '_' && lhs_is_mut {
@@ -15491,7 +15495,15 @@ fn (tc &TypeChecker) condition_references_mutable_binding(id flat.NodeId) bool {
 		return true
 	}
 	if node.kind in [.selector, .index] && node.children_count > 0 {
-		if unalias_type(tc.resolve_type(tc.a.child(node, 0))) is Pointer {
+		base_id := tc.a.child(node, 0)
+		if unalias_type(tc.resolve_type(base_id)) is Pointer {
+			return true
+		}
+		// A reference-backed collection alias (for example `view := unsafe { values[..] }`)
+		// deliberately shares another binding's mutable storage, so a read through it can
+		// be invalidated by a write to that storage even though its base resolves to Array
+		// rather than Pointer. Treat it as a mutable dependency using the alias provenance.
+		if tc.expr_is_reference_alias(base_id, false) {
 			return true
 		}
 	}
