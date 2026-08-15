@@ -165,8 +165,7 @@ fn test_reinclude_after_ambiguous_undef_rescans_new_dependencies() {
 }
 
 fn test_builtin_abi_helper_matches_only_exact_headers() {
-	// The genuinely superseded helpers are still matched, by exact basename or, for the
-	// generically named stdatomic implementation, by a distinctive path tail.
+	// The genuinely superseded helpers are matched by their VROOT-relative path.
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"')
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"')
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"')
@@ -174,10 +173,14 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"')
 	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"')
 
-	// User headers whose path merely contains a superseded name must not be dropped.
+	// A user header that merely shares a basename must not be dropped, even when the
+	// basename is exactly one of V's helper headers.
+	assert !c_include_arg_is_builtin_abi_helper('"src/filelock_helpers.h"')
+	assert !c_include_arg_is_builtin_abi_helper('"prealloc_atomics.h"')
 	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"')
-	assert !c_include_arg_is_builtin_abi_helper('"my_prealloc_atomics.h"')
 	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"')
+	// The `/` boundary keeps a `.../myvlib/...` path from matching `/vlib/...`.
+	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"')
 	// The real system header is not one of the superseded inline helpers either.
 	assert !c_include_arg_is_builtin_abi_helper('<stdatomic.h>')
 }

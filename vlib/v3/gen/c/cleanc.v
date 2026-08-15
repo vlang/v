@@ -3844,36 +3844,30 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	return false
 }
 
-// c_builtin_abi_helper_headers are the superseded helper headers whose declarations
-// builtin_abi_decls() already emits inline; re-including them would redefine those
-// helpers. Their basenames are distinctive, so an exact basename match is safe.
-const c_builtin_abi_helper_headers = [
-	'prealloc_atomics.h',
-	'filelock_helpers.h',
-	'stdatomic_include_after_compat.h',
-	'tcc_compat_aliases.h',
-	'tcc_compat_cleanup.h',
-	'tcc_compat_freebsd_amd64_fence.h',
-	'tcc_compat_freebsd_amd64_fence_pre.h',
-	'tcc_compat_linux_fence.h',
-	'tcc_compat_restore.h',
-]
-
-// c_builtin_abi_helper_header_paths are the superseded thirdparty stdatomic headers
-// whose basenames (`atomic.h`, `atomic_cpp.h`) are too generic to match on their own,
-// so they are matched by their distinctive path tail to avoid dropping a user header
-// of the same basename.
+// c_builtin_abi_helper_header_paths are the superseded helper headers whose
+// declarations builtin_abi_decls() already emits inline; re-including them would
+// redefine those helpers. Each is its VROOT-relative path anchored at a `/`
+// boundary, so an unrelated user header that merely shares a basename (its own
+// `filelock_helpers.h`, or a `my_stdatomic_wrapper.h`) is never dropped.
 const c_builtin_abi_helper_header_paths = [
-	'thirdparty/stdatomic/nix/atomic.h',
-	'thirdparty/stdatomic/nix/atomic_cpp.h',
-	'thirdparty/stdatomic/win/atomic.h',
+	'/vlib/builtin/prealloc_atomics.h',
+	'/vlib/os/filelock/filelock_helpers.h',
+	'/vlib/sync/stdatomic/stdatomic_include_after_compat.h',
+	'/vlib/sync/stdatomic/tcc_compat_aliases.h',
+	'/vlib/sync/stdatomic/tcc_compat_cleanup.h',
+	'/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence.h',
+	'/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence_pre.h',
+	'/vlib/sync/stdatomic/tcc_compat_linux_fence.h',
+	'/vlib/sync/stdatomic/tcc_compat_restore.h',
+	'/thirdparty/stdatomic/nix/atomic.h',
+	'/thirdparty/stdatomic/nix/atomic_cpp.h',
+	'/thirdparty/stdatomic/win/atomic.h',
 ]
 
 // c_include_arg_is_builtin_abi_helper matches only the superseded helper headers,
-// comparing normalized basenames (or distinctive path tails) against the exact known
-// set. A substring test would also drop unrelated user headers whose path merely
-// contains one of these names (for example `my_stdatomic_wrapper.h`), silently losing
-// their declarations from the translation unit.
+// by their normalized VROOT-relative path. A basename or substring test would also
+// drop unrelated user headers of the same name, silently losing their declarations
+// from the translation unit.
 fn c_include_arg_is_builtin_abi_helper(include_arg string) bool {
 	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
@@ -3886,9 +3880,6 @@ fn c_include_arg_is_builtin_abi_helper(include_arg string) bool {
 		clean
 	}
 	normalized := path.replace('\\', '/')
-	if normalized.all_after_last('/') in c_builtin_abi_helper_headers {
-		return true
-	}
 	return c_builtin_abi_helper_header_paths.any(normalized.ends_with(it))
 }
 
