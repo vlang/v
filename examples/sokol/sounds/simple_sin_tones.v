@@ -16,6 +16,9 @@ fn my_audio_stream_callback(mut soundbuffer &f32, num_frames int, num_channels i
 	for frame := 0; frame < num_frames; frame++ {
 		for ch := 0; ch < num_channels; ch++ {
 			idx := frame * num_channels + ch
+			// The sokol audio callback guarantees `soundbuffer` points to at least
+			// `num_frames * num_channels` writable samples, so `idx` (`frame < num_frames`,
+			// `ch < num_channels`) is always in bounds for the writes below.
 			if ms < 250 {
 				unsafe {
 					soundbuffer[idx] = 0.5 * sintone(20, frame, num_frames)

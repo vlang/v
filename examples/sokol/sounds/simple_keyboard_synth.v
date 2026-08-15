@@ -109,6 +109,9 @@ fn audio_callback(mut soundbuffer &f32, num_frames int, num_channels int, mut ap
 				note.amplitude -= c_note_decay
 			}
 			for ch in 0 .. num_channels {
+				// The sokol audio callback guarantees `soundbuffer` points to at least
+				// `num_frames * num_channels` writable samples, so this index
+				// (`frame < num_frames`, `ch < num_channels`) is always in bounds.
 				unsafe {
 					soundbuffer[frame * num_channels + ch] = sample
 				}
