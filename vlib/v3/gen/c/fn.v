@@ -926,7 +926,8 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 		return 'v_panic'
 	}
 	synthetic_name := name.all_after_last('.')
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_') {
+	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return g.cname(synthetic_name)
 	}
 	if g.tc.autofree_mode && module_name in ['', 'main'] {
@@ -959,7 +960,8 @@ fn qualified_fn_name_in_module(module_name string, name string) string {
 		return 'v_panic'
 	}
 	synthetic_name := name.all_after_last('.')
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_') {
+	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return c_name(synthetic_name)
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
@@ -1063,7 +1065,8 @@ fn (g &FlatGen) c_fn_symbol_exists(candidate string) bool {
 // direct_call_name supports direct call name handling for FlatGen.
 fn (mut g FlatGen) direct_call_name(name string) string {
 	synthetic_name := name.all_after_last('.')
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_') {
+	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return g.cname(synthetic_name)
 	}
 	if abi_name := g.c_decl_abi_names[name] {
@@ -1218,7 +1221,8 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 	// Synthesized helpers carry their complete, globally unique C symbol in the
 	// source name. Their owning module only controls cache-object placement; it
 	// must not be prepended to calls made from that same module.
-	if name.starts_with('__v3_sum_eq_') || name.starts_with('__v3_autostr_') {
+	if name.starts_with('__v3_sum_eq_') || name.starts_with('__v3_autostr_')
+		|| name.starts_with('__v3_default_clone_') {
 		return g.direct_call_name(name)
 	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
