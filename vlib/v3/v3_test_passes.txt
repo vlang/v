@@ -2462,6 +2462,7 @@ vlib/v/tests/options/option_void_2_test.v
 vlib/v/tests/options/option_void_fn_return_test.v
 vlib/v/tests/options/option_with_error_test.v
 vlib/v/tests/options/or_block_err_var_collision_test.v
+vlib/v/tests/options/or_block_comptime_if_issue_28018_test.v
 vlib/v/tests/options/or_expr_with_comptime_test.v
 vlib/v/tests/options/or_expr_with_multi_stmts_test.v
 vlib/v/tests/options/var_option_arr_test.v

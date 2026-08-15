@@ -1027,6 +1027,20 @@ pub fn (c &Conn) unlisten_all() ! {
 	}
 }
 
+// escape_literal returns `value` as a quoted PostgreSQL literal that is safe to interpolate into
+// a query. Prefer parameterized queries when they can express the operation.
+pub fn (c &Conn) escape_literal(value string) !string {
+	c.ensure_active()!
+	escaped := C.PQescapeLiteral(c.conn, &char(value.str), usize(value.len))
+	if escaped == unsafe { nil } {
+		e := unsafe { C.PQerrorMessage(c.conn).vstring() }
+		return error('pg escape_literal error: "${e}"')
+	}
+	result := unsafe { escaped.vstring().clone() }
+	C.PQfreemem(escaped)
+	return result
+}
+
 // notify sends a notification on the specified channel with an optional payload.
 // All connections currently listening on that channel will receive the notification.
 pub fn (c &Conn) notify(channel string, payload string) ! {
@@ -1036,14 +1050,8 @@ pub fn (c &Conn) notify(channel string, payload string) ! {
 	}
 	mut sql_stmt := ''
 	if payload.len > 0 {
-		// Use PQescapeLiteral to safely escape the payload
-		escaped := C.PQescapeLiteral(c.conn, &char(payload.str), usize(payload.len))
-		if escaped == unsafe { nil } {
-			e := unsafe { C.PQerrorMessage(c.conn).vstring() }
-			return error('pg notify error: failed to escape payload: "${e}"')
-		}
-		sql_stmt = unsafe { 'NOTIFY ${channel}, ' + escaped.vstring() + ';' }
-		C.PQfreemem(escaped)
+		escaped := c.escape_literal(payload)!
+		sql_stmt = 'NOTIFY ${channel}, ${escaped};'
 	} else {
 		sql_stmt = 'NOTIFY ${channel};'
 	}
