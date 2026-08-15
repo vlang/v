@@ -49,7 +49,16 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	rhs_type = t.qualify_optional_type(rhs_type)
 	value_type := t.optional_base_type(rhs_type)
 	tmp_name := t.new_temp('if_guard')
-	rhs_expr := t.transform_expr(rhs_id)
+	mut rhs_expr := flat.empty_node
+	mut source_clear := flat.empty_node
+	if !isnil(t.tc) && t.tc.ownership_guard_read_moves_value(rhs_id)
+		&& t.expr_can_take_address(rhs_id) {
+		source := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(rhs_id))
+		rhs_expr = source
+		source_clear = t.make_assign_without_ownership_drop(source, t.make_optional_none(rhs_type))
+	} else {
+		rhs_expr = t.transform_expr(rhs_id)
+	}
 	if !t.is_optional_type_name(t.node_type(rhs_expr)) {
 		t.set_node_typ(int(rhs_expr), rhs_type)
 	}
@@ -110,11 +119,14 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 		else_node := t.a.nodes[int(else_id)]
 		else_block = t.transform_if_guard_else_block(else_id, else_node, tmp_name)
 	}
-	mut expanded := []flat.NodeId{cap: prelude.len + 2}
+	mut expanded := []flat.NodeId{cap: prelude.len + 3}
 	for stmt in prelude {
 		expanded << stmt
 	}
 	expanded << tmp_decl
+	if source_clear != flat.empty_node {
+		expanded << source_clear
+	}
 	expanded << t.make_if(ok_cond, then_block, else_block)
 	return expanded
 }

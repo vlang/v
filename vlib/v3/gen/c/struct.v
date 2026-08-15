@@ -407,7 +407,11 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
-	if is_optional_init && name == 'Optional'
+	// Lowered optional literals can retain their concrete V spelling (`?IError`)
+	// instead of the legacy synthetic `Optional` name. The wrapper ABI still comes
+	// from the expected option/result type; otherwise trimming the `?` above emits
+	// the payload C type and attempts to initialize an interface with option fields.
+	if is_optional_init
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
 		name = g.optional_type_name(g.expected_expr_type)
 	} else if init_value == 'Optional' && g.expected_expr_is_optional_struct() {

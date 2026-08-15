@@ -283,27 +283,34 @@ fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type stri
 		&& !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type))
 	mut receiver := t.transform_expr(base_id)
+	transformed_receiver_type := t.node_type(receiver)
+	effective_base_type := if transformed_receiver_type.starts_with('&')
+		&& t.normalize_type_alias(transformed_receiver_type[1..]) == clean_type {
+		transformed_receiver_type
+	} else {
+		base_type
+	}
 	if clean_type.starts_with('[]') && !isnil(t.tc) {
 		elem_type := t.tc.parse_type(clean_type[2..])
 		if !t.tc.ownership_type_requires_destruction(elem_type) {
 			if source_is_owned_temporary {
 				return t.make_array_clone_from_owned_temporary(receiver, clean_type)
 			}
-			return t.make_array_clone_value(receiver, base_type)
+			return t.make_array_clone_value(receiver, effective_base_type)
 		}
 		// The checker rejects this call. Do not lower it to the unsafe raw clone while
 		// processing the invalid program.
 		if _ := t.tc.ownership_default_clone_missing_method(elem_type) {
 			return receiver
 		}
-		if base_type.starts_with('&') {
+		if effective_base_type.starts_with('&') {
 			receiver = t.make_prefix(.mul, receiver)
 			t.set_node_typ(int(receiver), clean_type)
 		}
 		return t.make_compiler_default_array_clone_value(receiver, clean_type,
 			source_is_owned_temporary)
 	}
-	return t.make_array_clone_value(receiver, base_type)
+	return t.make_array_clone_value(receiver, effective_base_type)
 }
 
 // make_array_clone_from_owned_temporary saves a non-addressable source until its backing
@@ -401,10 +408,12 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	mut cap_expr := t.make_int_literal(0)
 	mut init_expr := flat.empty_node
 	mut init_expr_id := flat.empty_node
+	mut has_len := false
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
 		if child.kind == .field_init && child.children_count > 0 {
 			if child.value == 'len' {
+				has_len = true
 				val := t.transform_expr(t.a.child(child, 0))
 				len_expr = val
 			} else if child.value == 'cap' {
@@ -416,7 +425,10 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		}
 	}
 	new_call := t.make_array_new_call(elem_type, len_expr, cap_expr)
-	if node.children_count == 0 {
+	// Capacity reserves storage but creates no elements. In particular, do not
+	// synthesize a default-value fill loop merely because `{cap: n}` has a field
+	// child: its runtime length is zero and no element initializer is needed.
+	if node.children_count == 0 || !has_len {
 		return new_call
 	}
 	if int(init_expr_id) < 0 {

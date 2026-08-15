@@ -31,6 +31,10 @@ fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
+	if node.kind == .ident && g.current_param_is_mut_pointer(node.value) {
+		g.gen_mut_pointer_slot_expr(id)
+		return
+	}
 	if node.kind == .index {
 		base_id := g.a.child(&node, 0)
 		base_type := g.usable_expr_type(base_id)
@@ -43,10 +47,17 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 		if base.kind == .prefix && base.op == .mul && base.children_count > 0 {
 			child_id := g.a.child(&base, 0)
 			child := g.a.nodes[int(child_id)]
-			child_type := g.usable_expr_type(child_id)
-			if child.kind == .ident && child_type is types.Pointer
-				&& g.current_param_is_mut(child.value) {
-				g.gen_expr(child_id)
+			if child.kind == .ident && g.current_param_is_mut(child.value) {
+				// A source `mut p &T` parameter has pointer-slot ABI (`T**`),
+				// while a plain `mut value T` parameter has `T*` ABI.
+				// The transformed lvalue base is `*p` in both cases.
+				if g.current_param_is_mut_pointer(child.value) {
+					g.write('(*')
+					g.gen_mut_pointer_slot_expr(child_id)
+					g.write(')')
+				} else {
+					g.gen_expr(child_id)
+				}
 				g.write('[')
 				g.gen_expr(g.a.child(&node, 1))
 				g.write(']')
@@ -797,15 +808,32 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
 		cname := g.cname(entry.name)
+		typ := g.tc.parse_type(entry.type_name)
+		mut expr := cname
+		mut free_pointer_storage := false
+		if local_ct := g.local_storage_c_type(entry.name) {
+			expected_ct := g.tc.c_type(typ)
+			local_depth := cgen_c_type_pointer_depth(local_ct)
+			expected_depth := cgen_c_type_pointer_depth(expected_ct)
+			if local_depth > expected_depth {
+				for _ in 0 .. local_depth - expected_depth {
+					expr = '*(${expr})'
+				}
+				free_pointer_storage = true
+			}
+		}
 		if entry.optional_wrapper {
-			g.writeln('if (${cname}.ok) {')
+			g.writeln('if ((${expr}).ok) {')
 			g.indent++
-			g.gen_ownership_drop_value(g.tc.parse_type(entry.type_name), '${cname}.value', 0)
+			g.gen_ownership_drop_value(typ, '(${expr}).value', 0)
 			g.indent--
 			g.writeln('}')
-			continue
+		} else {
+			g.gen_ownership_drop_value(typ, expr, 0)
 		}
-		g.gen_ownership_drop_value(g.tc.parse_type(entry.type_name), cname, 0)
+		if free_pointer_storage {
+			g.writeln('free(${cname});')
+		}
 	}
 }
 
@@ -840,8 +868,9 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	mut struct_names := drop_struct_names.keys()
 	struct_names.sort()
 	for name in struct_names {
+		parsed := g.tc.parse_type(name)
 		if name.starts_with('C.') || name in g.tc.unions || g.is_generic_struct(name)
-			|| g.skip_builtin_struct(name)
+			|| g.type_contains_generic_placeholder(parsed) || g.skip_builtin_struct(name)
 			|| g.resolve_method_name(name, g.ownership_destructor_method_name()).len > 0 {
 			continue
 		}
@@ -1033,6 +1062,11 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
 	if g.recursive_drop_helpers.len == 0 {
 		return
 	}
+	// Recursive drop helpers are emitted before const definitions and their
+	// generated Result/Option cleanup guards reference the process-wide IError
+	// sentinels. Declare those globals before the helper bodies.
+	g.writeln('extern IError builtin__none__;')
+	g.writeln('extern IError builtin__error_sentinel;')
 	mut keys := g.recursive_drop_helpers.keys()
 	keys.sort()
 	for key in keys {
@@ -2868,7 +2902,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			// NOTE: match_stmt is intentionally absent — the transformer lowers every
 			// match into an if/else-if chain (see transform.lower_match_stmts), so the
 			// backend never sees one. Match lowering lives in the transformer, not here.
-			eprintln('gen_node: unsupported node kind: ${node.kind}')
+			source_name := if source_file := g.a.source_files[node.pos.id] {
+				source_file.name
+			} else {
+				''
+			}
+			eprintln('gen_node: unsupported node kind: ${node.kind}; fn=${g.cur_fn_name}; source=${source_name}:${node.pos.offset}; value=${node.value}; typ=${node.typ}; op=${node.op}; children=${node.children_count}')
 		}
 	}
 }
@@ -3186,6 +3225,9 @@ fn (mut g FlatGen) pointer_value_return_expr_string(ret_id flat.NodeId, expected
 
 fn (mut g FlatGen) write_pointer_value_return_expr(ret_id flat.NodeId, expected types.Type) bool {
 	source_id := g.pointer_value_return_source_id(ret_id)
+	if g.source_mut_pointer_param_deref_type(source_id) != none {
+		return false
+	}
 	actual := g.usable_expr_type(source_id)
 	expected0 := if expected is types.Alias { expected.base_type } else { expected }
 	if expected0 is types.Pointer {
@@ -4039,6 +4081,12 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 			return ret
 		}
 	} else if fn_node.kind == .ident {
+		// A local or parameter fn value takes precedence over same-named declarations.
+		if local_type := g.local_ident_type(fn_node.value) {
+			if local_fn := fn_type_from(local_type) {
+				return local_fn.return_type
+			}
+		}
 		if ret := g.module_c_fn_return_type(fn_node.value) {
 			return ret
 		}
@@ -4232,14 +4280,8 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		return type_is_optional_result(typ)
 	}
 	if node.kind == .call {
-		typ := g.usable_expr_type(id)
-		if typ !is types.Unknown && typ !is types.Void {
-			return type_is_optional_result(typ)
-		}
-		if fname := g.tc.resolved_call_name(id) {
-			ret_type := g.tc.fn_ret_types[fname] or { return false }
-			return ret_type is types.OptionType || ret_type is types.ResultType
-		}
+		ret_type := g.declared_call_return_type(id)
+		return ret_type is types.OptionType || ret_type is types.ResultType
 	}
 	return type_is_optional_result(g.usable_expr_type(id))
 }

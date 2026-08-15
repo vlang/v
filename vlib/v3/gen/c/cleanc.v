@@ -12,6 +12,7 @@ import v3.types
 import v3.util
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
+const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const c_inline_header_size_limit = 262_144
 const v1_c_headers_source = $embed_file('../../../v/gen/c/cheaders.v').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
@@ -398,6 +399,7 @@ mut:
 	cur_param_types              map[string]types.Type
 	cur_concrete_optional_params map[string]bool
 	cur_mut_params               map[string]bool
+	cur_mut_pointer_params       map[string]bool
 	cur_mut_param_owners         map[string]types.ScopeBindingOwner
 	cur_fn_ret                   types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional       bool
@@ -1016,6 +1018,7 @@ pub fn FlatGen.new() FlatGen {
 		cur_param_types:                 map[string]types.Type{}
 		cur_concrete_optional_params:    map[string]bool{}
 		cur_mut_params:                  map[string]bool{}
+		cur_mut_pointer_params:          map[string]bool{}
 		cur_mut_param_owners:            map[string]types.ScopeBindingOwner{}
 		active_locks:                    []ActiveLock{}
 		conditional_branch_scopes:       []&types.Scope{}
@@ -2102,6 +2105,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_types.clear()
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
+	g.cur_mut_pointer_params.clear()
 	g.cur_mut_param_owners.clear()
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
@@ -9433,6 +9437,44 @@ fn (mut g FlatGen) expr_to_string_with_expected_type(id flat.NodeId, expected ty
 	return result
 }
 
+fn (mut g FlatGen) gen_mut_pointer_slot_expr(id flat.NodeId) {
+	node := g.a.nodes[int(id)]
+	if node.kind == .ident && g.current_param_is_mut_pointer(node.value) {
+		g.write(g.local_decl_cname(node.value))
+		return
+	}
+	g.gen_expr(id)
+}
+
+fn (g &FlatGen) source_mut_pointer_param_deref_type(id flat.NodeId) ?types.Type {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.node(id)
+	if node.kind in [.expr_stmt, .paren] && node.children_count > 0 {
+		return g.source_mut_pointer_param_deref_type(g.a.child(node, 0))
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return g.source_mut_pointer_param_deref_type(g.a.child(node, node.children_count - 1))
+	}
+	if node.kind == .prefix && node.op == .mul && node.value.len == 0 && node.children_count > 0 {
+		return g.source_mut_pointer_param_deref_type(g.a.child(node, 0))
+	}
+	if node.kind != .prefix || node.op != .mul || node.value != source_mut_pointer_deref_marker
+		|| node.children_count == 0 {
+		return none
+	}
+	child := g.a.child_node(node, 0)
+	if child.kind != .ident || !g.current_param_is_mut_pointer(child.value) {
+		return none
+	}
+	slot_type := g.current_param_type(child.value) or { return none }
+	if slot_type is types.Pointer && slot_type.base_type is types.Pointer {
+		return slot_type.base_type.base_type
+	}
+	return none
+}
+
 fn (mut g FlatGen) default_value_to_string(typ types.Type) string {
 	orig := g.sb
 	orig_line_start := g.line_start
@@ -9625,7 +9667,11 @@ fn (mut g FlatGen) gen_cast_from_mut_param_address(id flat.NodeId, ct string) bo
 		return false
 	}
 	g.write('(${ct})(')
-	g.gen_expr(child_id)
+	if g.current_param_is_mut_pointer(child.value) {
+		g.gen_mut_pointer_slot_expr(child_id)
+	} else {
+		g.gen_expr(child_id)
+	}
 	g.write(')')
 	return true
 }
@@ -9830,7 +9876,11 @@ fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected typ
 		return false
 	}
 	g.write('*')
-	g.gen_expr(id)
+	if g.current_param_is_mut_pointer(node.value) {
+		g.gen_mut_pointer_slot_expr(id)
+	} else {
+		g.gen_expr(id)
+	}
 	return true
 }
 
@@ -9913,6 +9963,9 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		}
 	}
 	mut actual := if has_known_actual { known_actual } else { g.usable_expr_type(id) }
+	if deref_type := g.source_mut_pointer_param_deref_type(id) {
+		actual = deref_type
+	}
 	if node.kind == .ident {
 		if local_type := g.local_ident_type(node.value) {
 			actual = local_type
@@ -10946,16 +10999,26 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 		return false
 	}
 	struct_name := (struct_type as types.Struct).name
+	base := g.a.nodes[int(base_id)]
+	base_is_mut_pointer_param := base.kind == .ident && g.current_param_is_mut_pointer(base.value)
 
 	if _ := g.struct_field_type(struct_name, field) {
 		g.write('(*(')
-		g.gen_expr(base_id)
+		if base_is_mut_pointer_param {
+			g.gen_mut_pointer_slot_expr(base_id)
+		} else {
+			g.gen_expr(base_id)
+		}
 		g.write('))->${g.cname(field)}')
 		return true
 	}
 	if embedded_path := g.embedded_field_path_for_promoted_selector(inner_base, field) {
 		g.write('(*(')
-		g.gen_expr(base_id)
+		if base_is_mut_pointer_param {
+			g.gen_mut_pointer_slot_expr(base_id)
+		} else {
+			g.gen_expr(base_id)
+		}
 		g.write('))')
 		for embedded in embedded_path {
 			g.write('->${g.cname(embedded.name)}')
@@ -12814,6 +12877,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.ident {
+			if g.current_param_is_mut_pointer(node.value) {
+				// A `mut p &T` parameter is stored as a `T**` slot; its value in an
+				// expression is the `&T` pointer `*p`. Slot/lvalue consumers emit the
+				// raw parameter name through gen_mut_pointer_slot_expr instead.
+				g.write('(*')
+				g.gen_mut_pointer_slot_expr(id)
+				g.write(')')
+				return
+			}
 			if c_fn_name := g.test_user_main_fn_value_c_name(id, node) {
 				g.write(c_fn_name)
 				return
@@ -13103,6 +13175,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op == .mul && node.value.len == 0
+				&& g.source_mut_pointer_param_deref_type(child_id) != none {
+				g.gen_expr(child_id)
+				return
+			}
 			if node.value == 'shared' {
 				g.gen_expr(child_id)
 				return
@@ -13128,6 +13205,18 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if node.op == .mul && child.kind == .ident {
+				if g.current_param_is_mut_pointer(child.value) {
+					// A source `*item` must dereference both the `T**` ABI slot and its
+					// semantic `&T` value. Synthetic dereferences only read the slot.
+					g.write('(*')
+					if g.source_mut_pointer_param_deref_type(id) != none {
+						g.gen_expr(child_id)
+					} else {
+						g.gen_mut_pointer_slot_expr(child_id)
+					}
+					g.write(')')
+					return
+				}
 				if typ := g.current_param_type(child.value) {
 					if typ !is types.Pointer {
 						g.gen_expr(child_id)
@@ -13347,7 +13436,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			if child.kind == .ident && g.current_param_is_mut(child.value) {
 				g.write('(*')
-				g.gen_expr(child_id)
+				if g.current_param_is_mut_pointer(child.value) {
+					g.gen_mut_pointer_slot_expr(child_id)
+				} else {
+					g.gen_expr(child_id)
+				}
 				g.write(')')
 			} else {
 				g.gen_expr(child_id)
@@ -13372,7 +13465,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			base_type0 := g.usable_expr_type(base_id)
+			mut base_type0 := g.usable_expr_type(base_id)
+			base_is_source_mut_pointer_deref := g.source_mut_pointer_param_deref_type(base_id) != none
+			if deref_type := g.source_mut_pointer_param_deref_type(base_id) {
+				base_type0 = deref_type
+			}
 			base_type_clean := types.unwrap_pointer(base_type0)
 			if base_type0 is types.Channel && node.value in ['closed', 'len', 'cap'] {
 				if node.value == 'closed' {
@@ -13683,7 +13780,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(')')
 				}
 				mut is_ptr := false
-				mut local_type_known := false
+				mut local_type_known := base_is_source_mut_pointer_deref
 				if base.kind == .ident {
 					if typ := g.tc.cur_scope.lookup(base.value) {
 						local_type_known = true
