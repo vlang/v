@@ -430,3 +430,143 @@ fn main() {
 ')
 	assert variant_out == '9'
 }
+
+fn test_mut_ancestor_call_invalidates_loop_smartcast() {
+	v3_bin := loop_smartcast_build_v3()
+
+	// Passing the parent `holder` to a `mut` parameter lets the callee reassign the
+	// narrowed field `holder.value`, so it must count as a write to `holder.value`
+	// even though the argument key is only an ancestor of the narrowed key.
+	loop_smartcast_run_bad(v3_bin, 'bad_loop_mut_ancestor_arg', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn replace(mut h Holder) {
+	h.value = Value(Bar{})
+}
+
+fn main() {
+	mut holder := Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}
+	for holder.value is Foo {
+		replace(mut holder)
+		println(int_str(holder.value.foo))
+		break
+	}
+}
+',
+		'field `foo` does not exist')
+
+	// A mut-receiver method on the ancestor `holder` can likewise reassign the narrowed
+	// field, so the ancestor receiver counts as a write too.
+	loop_smartcast_run_bad(v3_bin, 'bad_loop_mut_ancestor_receiver', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn (mut h Holder) reset() {
+	h.value = Value(Bar{})
+}
+
+fn main() {
+	mut holder := Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}
+	for holder.value is Foo {
+		holder.reset()
+		println(int_str(holder.value.foo))
+		break
+	}
+}
+',
+		'field `foo` does not exist')
+
+	// A read-only method on the ancestor is not a write, so the narrowing stays.
+	readonly_out := loop_smartcast_run_good(v3_bin, 'good_loop_readonly_ancestor_receiver', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn (h Holder) describe() int {
+	return 1
+}
+
+fn main() {
+	mut holder := Holder{
+		value: Value(Foo{
+			foo: 7
+		})
+	}
+	for holder.value is Foo {
+		_ := holder.describe()
+		println(int_str(holder.value.foo))
+		break
+	}
+}
+')
+	assert readonly_out == '7'
+
+	// A `mut` argument that is neither the key nor an ancestor of it keeps the narrowing.
+	unrelated_out := loop_smartcast_run_good(v3_bin, 'good_loop_unrelated_mut_arg', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn touch(mut xs []int) {
+	xs << 1
+}
+
+fn main() {
+	mut holder := Holder{
+		value: Value(Foo{
+			foo: 4
+		})
+	}
+	mut other := []int{}
+	for holder.value is Foo {
+		touch(mut other)
+		println(int_str(holder.value.foo))
+		break
+	}
+}
+')
+	assert unrelated_out == '4'
+}

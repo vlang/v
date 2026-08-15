@@ -652,6 +652,27 @@ fn (tc &TypeChecker) expr_is_mut_arg_for_key(id flat.NodeId, key string) bool {
 	return node.is_mut && tc.expr_key(id) == key
 }
 
+// expr_mut_arg_key returns the resolved expression key of a `mut` argument
+// (unwrapping paren/expr_stmt wrappers), or none if the argument is not `mut` or
+// has no key. Unlike expr_is_mut_arg_for_key it does not require an exact match, so
+// callers can apply the ancestor-aware write_key_invalidates_key relationship.
+fn (tc &TypeChecker) expr_mut_arg_key(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.is_mut {
+		k := tc.expr_key(id)
+		if k.len > 0 {
+			return k
+		}
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.expr_mut_arg_key(tc.a.child(&node, 0))
+	}
+	return none
+}
+
 fn assignment_marker_value_is_error(value string) bool {
 	return value.starts_with('for init assignment mismatch:')
 		|| value.starts_with('for post assignment mismatch:')
@@ -9958,15 +9979,12 @@ fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Nod
 	}
 }
 
-// sum_type_has_mut_receiver_method reports whether `method` is declared with a
-// `mut` receiver on the sum `recv_type`. Such a method can reassign the receiver
-// to a different variant, so a call to it writes through the receiver even though
-// the receiver is a call's selector child rather than a `mut` argument.
-fn (tc &TypeChecker) sum_type_has_mut_receiver_method(recv_type Type, method string) bool {
+// type_has_mut_receiver_method reports whether `method` is declared with a `mut`
+// receiver on `recv_type`. Such a call mutates the receiver in place, so it can
+// reassign a narrowed field/element within it even though the receiver is the
+// call's selector child rather than a `mut` argument.
+fn (tc &TypeChecker) type_has_mut_receiver_method(recv_type Type, method string) bool {
 	clean := unwrap_all_pointers(unalias_type(recv_type))
-	if clean !is SumType {
-		return false
-	}
 	for mname in receiver_method_name_candidates(clean, method, tc.cur_module) {
 		if tc.mut_receiver_methods[mname] {
 			return true
@@ -9975,12 +9993,48 @@ fn (tc &TypeChecker) sum_type_has_mut_receiver_method(recv_type Type, method str
 	return false
 }
 
+// sum_type_has_mut_receiver_method reports whether `method` is a `mut` receiver
+// method on the sum `recv_type` — one that can reassign the receiver to a different
+// variant, changing its runtime tag.
+fn (tc &TypeChecker) sum_type_has_mut_receiver_method(recv_type Type, method string) bool {
+	if unwrap_all_pointers(unalias_type(recv_type)) !is SumType {
+		return false
+	}
+	return tc.type_has_mut_receiver_method(recv_type, method)
+}
+
+// invalidate_smartcasts_for_mut_lvalue drops narrowings a mutable access to
+// `lvalue_key` can invalidate: any narrowing on a field/element strictly within it
+// (the callee can reassign that sub-field through the mutable aggregate), and the
+// narrowing on `lvalue_key` itself only when `can_retag` (the parameter/receiver is
+// the sum type, so the callee can change its own runtime tag). A `mut Variant`
+// binding cannot change its own tag, so `can_retag` is false there.
+fn (mut tc TypeChecker) invalidate_smartcasts_for_mut_lvalue(lvalue_key string, can_retag bool) {
+	if lvalue_key.len == 0 {
+		return
+	}
+	mut writes := []string{}
+	for sc_key in tc.smartcasts.keys() {
+		if sc_key == lvalue_key {
+			if can_retag {
+				writes << sc_key
+			}
+		} else if write_key_invalidates_key(lvalue_key, sc_key) {
+			writes << sc_key
+		}
+	}
+	for k in writes {
+		tc.invalidate_smartcasts_for_write_key(k)
+	}
+}
+
 // invalidate_smartcasts_after_call drops the variant narrowing of any sum value the
-// call can rebind: a `mut` argument bound to a sum parameter, or a mut-receiver
-// method on the declared sum type (`x.replace()` where `fn (mut v Value) replace()`).
-// A `mut Variant` parameter/receiver cannot change the runtime tag, so its narrowing
-// is left intact. This runs after the arguments are checked so that an argument that
-// reads the receiver's narrowed field (`x.replace_with(x.foo)`) still resolves.
+// call can rebind: a `mut` argument or mut-receiver whose lvalue is a narrowed sum
+// (or an ancestor of one). A `mut Variant` parameter/receiver cannot change its own
+// runtime tag, so that exact narrowing is left intact, but it can still reassign a
+// narrowed descendant field. This runs after the arguments are checked so that an
+// argument that reads the receiver's narrowed field (`x.replace_with(x.foo)`) still
+// resolves.
 fn (mut tc TypeChecker) invalidate_smartcasts_after_call(node flat.Node, info CallInfo) {
 	if tc.smartcasts.len == 0 || !info.params_known || node.children_count == 0 {
 		return
@@ -9990,13 +10044,13 @@ fn (mut tc TypeChecker) invalidate_smartcasts_after_call(node flat.Node, info Ca
 		callee := tc.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			recv_key := tc.expr_key(tc.a.child(callee, 0))
-			if recv_key.len > 0 && recv_key in tc.smartcasts
-				&& tc.sum_type_has_mut_receiver_method(info.params[0], callee.value) {
-				tc.invalidate_smartcasts_for_write_key(recv_key)
+			if recv_key.len > 0 && tc.type_has_mut_receiver_method(info.params[0], callee.value) {
+				can_retag := tc.sum_type_has_mut_receiver_method(info.params[0], callee.value)
+				tc.invalidate_smartcasts_for_mut_lvalue(recv_key, can_retag)
 			}
 		}
 	}
-	// A `mut` argument bound to a sum parameter lets the callee swap the variant.
+	// A `mut` argument lets the callee reassign the passed lvalue (and its fields).
 	recv_extra := if info.has_receiver { 1 } else { 0 }
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
@@ -10004,16 +10058,15 @@ fn (mut tc TypeChecker) invalidate_smartcasts_after_call(node flat.Node, info Ca
 			continue
 		}
 		arg_key := tc.expr_key(arg_id)
-		if arg_key.len == 0 || arg_key !in tc.smartcasts {
+		if arg_key.len == 0 {
 			continue
 		}
 		param_idx := i - 1 - info.arg_offset + recv_extra
 		if param_idx < 0 || param_idx >= info.params.len {
 			continue
 		}
-		if unwrap_all_pointers(unalias_type(info.params[param_idx])) is SumType {
-			tc.invalidate_smartcasts_for_write_key(arg_key)
-		}
+		can_retag := unwrap_all_pointers(unalias_type(info.params[param_idx])) is SumType
+		tc.invalidate_smartcasts_for_mut_lvalue(arg_key, can_retag)
 	}
 }
 

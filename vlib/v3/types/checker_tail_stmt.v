@@ -12513,29 +12513,39 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 			}
 		}
 	} else if node.kind == .call {
-		// Child 0 is the callee; the arguments follow. An argument spelled
-		// `mut key` lets the callee overwrite the binding (for example
-		// `replace(mut x)` swapping a sum's active variant), which changes the
-		// runtime tag just like a direct assignment, so treat it as a write.
+		// Child 0 is the callee; the arguments follow. A `mut` argument lets the callee
+		// overwrite the passed lvalue (for example `replace(mut x)` swapping a sum's
+		// active variant), which changes the runtime tag just like a direct assignment.
+		// Passing `mut holder` likewise writes a narrowed descendant `holder.value`, so
+		// use the ancestor-aware relationship, not an exact-key match.
 		for i in 1 .. node.children_count {
-			if tc.expr_is_mut_arg_for_key(tc.a.child(node, i), key) {
-				return true
+			if arg_key := tc.expr_mut_arg_key(tc.a.child(node, i)) {
+				if write_key_invalidates_key(arg_key, key) {
+					return true
+				}
 			}
 		}
 		// A `mut` receiver is stored under the selector callee rather than among the
-		// arguments: `key.replace()` where `fn (mut v Value) replace()` can swap the
-		// active variant writes `key` just as `replace(mut key)` does. Match the
-		// receiver on its full expression key so a nested `holder.value.replace()`
-		// counts as a write to `holder.value`, and resolve its declared type with
-		// scope/field lookups only — this scan must stay free of smartcast
-		// resolution, which would recurse back through here.
+		// arguments. Match the receiver on its full expression key so a nested
+		// `holder.value.replace()` counts as a write to `holder.value`, and an ancestor
+		// receiver `holder.reset()` counts as a write to a narrowed `holder.value`.
+		// Resolve the receiver's declared type with scope/field lookups only — this scan
+		// must stay free of smartcast resolution, which would recurse back through here.
 		if node.children_count > 0 {
 			callee := tc.a.node(tc.a.child(node, 0))
 			if callee.kind == .selector && callee.children_count > 0 {
 				recv_id := tc.a.child(callee, 0)
-				if tc.expr_key(recv_id) == key {
+				recv_key := tc.expr_key(recv_id)
+				if write_key_invalidates_key(recv_key, key) {
 					if declared := tc.declared_receiver_expr_type(recv_id) {
-						if tc.sum_type_has_mut_receiver_method(declared, callee.value) {
+						// An exact-key sum receiver can re-tag itself; an ancestor receiver
+						// only needs a `mut` receiver to reassign the narrowed descendant.
+						has_write := if recv_key == key {
+							tc.sum_type_has_mut_receiver_method(declared, callee.value)
+						} else {
+							tc.type_has_mut_receiver_method(declared, callee.value)
+						}
+						if has_write {
 							return true
 						}
 					}
