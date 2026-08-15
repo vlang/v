@@ -57,6 +57,66 @@ fn test_preserved_header_trees_scan_shared_files_once() {
 	assert g.preserved_header_files_seen.len == 3
 }
 
+fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
+	mut active_paths := map[string]bool{}
+	mut collected_paths := map[string]bool{}
+	mut ambiguous_collected_paths := map[string]bool{}
+	mut files := []string{}
+	mut include_macros := map[string][]string{}
+	mut dynamic_include_macros := map[string]bool{}
+	mut resolution_dirs := map[string]bool{}
+	mut missing_resolution_paths := map[string]bool{}
+	untracked := c_collect_external_input_tree(entry, '', [root], mut active_paths, mut
+		collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
+		dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, 'main',
+		ambient_ambiguous)
+	return untracked, files
+}
+
+fn test_diamond_guarded_reinclude_stays_cacheable() {
+	root := os.join_path(os.vtmp_dir(), 'v3_diamond_guarded_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'shared.h'), '#pragma once\nint shared_diamond_fn(void);\n')!
+	os.write_file(os.join_path(root, 'left.h'), '#include "shared.h"\nint left_diamond_fn(void);\n')!
+	os.write_file(os.join_path(root, 'right.h'),
+		'#include "shared.h"\nint right_diamond_fn(void);\n')!
+	top := os.join_path(root, 'top.h')
+	os.write_file(top, '#include "left.h"\n#include "right.h"\n')!
+
+	untracked, files := collect_external_input_tree_status(root, top, false)
+	// An ordinary diamond include of a whole-file-guarded header is fully resolved
+	// statically, so it must keep the module cache enabled.
+	assert !untracked
+	// The shared header is still recorded exactly once despite both branches including it.
+	shared_path := os.real_path(os.join_path(root, 'shared.h'))
+	assert files.filter(it == shared_path).len == 1, files.str()
+}
+
+fn test_ambiguous_guarded_reinclude_disables_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_diamond_guarded_ambiguous_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'shared.h'), '#pragma once\nint shared_ambiguous_fn(void);\n')!
+	// The first traversal reaches the guarded header through an uncertain macro branch,
+	// so whether its guard actually defined leaves the repeat include indeterminate.
+	os.write_file(os.join_path(root, 'left.h'),
+		'#ifdef V3_UNKNOWN_TOGGLE\n#include "shared.h"\n#endif\nint left_ambiguous_fn(void);\n')!
+	os.write_file(os.join_path(root, 'right.h'),
+		'#include "shared.h"\nint right_ambiguous_fn(void);\n')!
+	top := os.join_path(root, 'top.h')
+	os.write_file(top, '#include "left.h"\n#include "right.h"\n')!
+
+	untracked, _ := collect_external_input_tree_status(root, top, false)
+	assert untracked
+}
+
 fn test_large_nested_angle_header_stays_an_include() {
 	root := os.join_path(os.vtmp_dir(), 'v3_nested_large_header_${os.getpid()}')
 	os.rmdir_all(root) or {}

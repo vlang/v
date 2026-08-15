@@ -1295,6 +1295,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	mut unscoped_inputs := map[string][]string{}
 	mut has_untracked_include := false
 	mut collected_paths := map[string]bool{}
+	mut ambiguous_collected_paths := map[string]bool{}
 	mut cur_module := ''
 	mut cur_file := ''
 	mut cur_file_is_program := false
@@ -1350,8 +1351,9 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				mut active_paths := map[string]bool{}
 				mut files := []string{}
 				if c_collect_external_input_tree(path, vroot, include_dirs, mut active_paths, mut
-					collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
-					resolution_dirs, mut missing_resolution_paths, owner_module, false)
+					collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
+					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths,
+					owner_module, false)
 				{
 					has_untracked_include = true
 				}
@@ -1403,6 +1405,7 @@ fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[str
 	include_dirs := c_flag_include_dirs(flags)
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}
+	mut ambiguous_collected_paths := map[string]bool{}
 	mut files := []string{}
 	mut resolution_dirs := map[string]bool{}
 	mut missing_resolution_paths := map[string]bool{}
@@ -1415,8 +1418,9 @@ fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[str
 				continue
 			}
 			if c_collect_external_input_tree(path, '', include_dirs, mut active_paths, mut
-				collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut
-				resolution_dirs, mut missing_resolution_paths, '__v3_c_flags__', false)
+				collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
+				dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths,
+				'__v3_c_flags__', false)
 			{
 				has_untracked_include = true
 			}
@@ -1475,7 +1479,7 @@ mut:
 	ambiguous bool
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, collection_scope string, ambient_ambiguous bool) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut ambiguous_collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, collection_scope string, ambient_ambiguous bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
 	}
@@ -1488,9 +1492,11 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	if collected_paths[collection_key] {
 		text = os.read_file(real_path) or { return true }
 		if c_header_has_whole_file_guard(text) {
-			// The first traversal recorded the guarded tree. If its guard was reached
-			// through an uncertain macro branch, conservatively disable cache reuse.
-			return true
+			// A whole-file guard makes the preprocessor skip this repeat include, so an
+			// ordinary diamond re-include contributes no new inputs and stays cacheable.
+			// Only when the first traversal recorded the guard through an uncertain macro
+			// branch is the guard's defined state unknown, so disable cache reuse there.
+			return ambiguous_collected_paths[collection_key]
 		}
 	}
 	active_paths[real_path] = true
@@ -1499,6 +1505,9 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	}
 	if !collected_paths[collection_key] {
 		collected_paths[collection_key] = true
+		if ambient_ambiguous {
+			ambiguous_collected_paths[collection_key] = true
+		}
 		files << real_path
 	}
 	if text.len == 0 {
@@ -1582,9 +1591,9 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 				}
 				nested_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
 				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut
-					active_paths, mut collected_paths, mut files, mut include_macros, mut
-					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths,
-					collection_scope, nested_ambiguous)
+					active_paths, mut collected_paths, mut ambiguous_collected_paths, mut files, mut
+					include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
+					missing_resolution_paths, collection_scope, nested_ambiguous)
 				{
 					has_untracked_include = true
 				}
