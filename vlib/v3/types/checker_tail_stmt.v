@@ -12885,11 +12885,6 @@ fn type_recent_hash_slot(typ Type) (u64, int) {
 	return hash, int(hash & 2047)
 }
 
-@[inline]
-fn type_text_recent_slot(typ string) int {
-	return int(type_hash_string(u64(14_695_981_039_346_656_037), typ) & 2047)
-}
-
 // type_value_words exposes the transient Type representation for immediate
 // equality checks. Do not retain these words as a cache key: payload addresses
 // can be reused after the compared values leave scope.
@@ -15893,28 +15888,32 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 		return tc.c_type_uncached(t)
 	}
 	mut cache := unsafe { tc.type_cache }
-	key := t.name()
-	slot := type_text_recent_slot(key)
+	// Key on the interned semantic identity, not t.name(): distinct semantic types
+	// can share a source spelling (`[size]int` with different resolved `size`, or
+	// same-named aliases over different resolved bases) yet fold to different C
+	// representations, so a textual key would hand back the wrong layout.
+	id, canonical := tc.intern_type(t)
+	slot := int(u32(id) & 2047)
 	if tc.fast_c_type_recent {
-		if cache.c_recent_set[slot] && cache.c_recent_keys[slot] == key {
+		if cache.c_recent_set[slot] && cache.c_recent_ids[slot] == id {
 			cache.c_hits++
 			return cache.c_recent_vals[slot]
 		}
 	}
-	if cached := cache.c_entries[key] {
+	if cached := cache.c_entries[id] {
 		cache.c_hits++
 		if tc.fast_c_type_recent {
-			cache.c_recent_keys[slot] = key
+			cache.c_recent_ids[slot] = id
 			cache.c_recent_vals[slot] = cached
 			cache.c_recent_set[slot] = true
 		}
 		return cached
 	}
 	cache.c_misses++
-	result := tc.c_type_uncached(t)
-	cache.c_entries[key] = result
+	result := tc.c_type_uncached(canonical)
+	cache.c_entries[id] = result
 	if tc.fast_c_type_recent {
-		cache.c_recent_keys[slot] = key
+		cache.c_recent_ids[slot] = id
 		cache.c_recent_vals[slot] = result
 		cache.c_recent_set[slot] = true
 	}

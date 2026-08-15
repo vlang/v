@@ -2518,7 +2518,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 			false
 		}
 		parse_entries:               map[u64]ParseTypeCacheEntry{}
-		c_entries:                   map[string]string{}
+		c_entries:                   map[TypeId]string{}
 		struct_field_entries:        map[string]Type{}
 		struct_field_misses:         map[string]bool{}
 		sum_variant_pattern_entries: map[string]string{}

@@ -380,12 +380,14 @@ mut:
 	// active expansion chain private to each checker/cache so parsing such a
 	// recursive alias terminates without introducing shared parallel state.
 	alias_parse_stack []string
-	c_entries         map[string]string
+	c_entries         map[TypeId]string
 	c_name_entries    map[string]string
-	// Lock-free recent slots for c_type use exact canonical type text. Sum-type
-	// payload storage can reuse the same address for different values, so neither
-	// raw interface words nor retained Type payloads are stable cache identities.
-	c_recent_keys [2048]string
+	// Lock-free recent slots for c_type keyed by the interned semantic TypeId.
+	// A textual name would fold distinct semantic types that share a spelling
+	// (`[size]int` with different resolved `size`, or same-named aliases over
+	// different bases); raw interface words and retained Type payloads are not
+	// stable either, since sum-type payload storage can reuse an address.
+	c_recent_ids  [2048]TypeId
 	c_recent_vals [2048]string
 	c_recent_set  [2048]bool
 	// type_name cannot use its result as its lookup key. Semantic hashes choose a
@@ -1072,7 +1074,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		smartcasts:                              map[string]Type{}
 		type_cache:                              &TypeCache{
 			parse_entries:              map[u64]ParseTypeCacheEntry{}
-			c_entries:                  map[string]string{}
+			c_entries:                  map[TypeId]string{}
 			struct_field_entries:       map[string]Type{}
 			struct_field_misses:        map[string]bool{}
 			ierror_compat_entries:      map[string]int{}
@@ -1393,7 +1395,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 			false
 		}
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[string]string{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -1590,7 +1592,7 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 	tc.type_cache = &TypeCache{
 		parse_enabled:              parse_enabled
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[string]string{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -2669,7 +2671,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 	tc.type_cache = &TypeCache{
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[string]string{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
