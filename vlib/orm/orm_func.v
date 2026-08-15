@@ -555,8 +555,8 @@ fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData) {
 	mut qb := unsafe { qb_ }
 	for i in 0 .. qb.include_filters.len {
 		if qb.include_filters[i].path == path {
-			qb.include_filters[i].where =
-				append_query_data(qb.include_filters[i].where, filter, true)
+			qb.include_filters[i].where = append_query_data(v_sql_query_data_parentheses(qb.include_filters[i].where, 0),
+				v_sql_query_data_parentheses(filter, 0), true)
 			return
 		}
 	}
