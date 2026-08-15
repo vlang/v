@@ -4775,6 +4775,23 @@ fn test_array_filter_and_map_reuse_capturing_callback_state() {
 	assert out == '[2, 3]\n[11, 22, 33]'
 }
 
+fn test_capturing_callback_variable_keeps_declared_parameters() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'capturing_callback_variable_parameters', 'fn report(callback fn (int, string)) {
+	callback(42, "ready")
+}
+
+fn main() {
+	prefix := "progress"
+	callback := fn [prefix] (percent int, stage string) {
+		println("\${prefix}:\${percent}:\${stage}")
+	}
+	report(callback)
+}
+')
+	assert out == 'progress:42:ready'
+}
+
 fn test_array_filter_and_map_hoist_bound_method_callbacks() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]

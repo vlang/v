@@ -678,7 +678,7 @@ fn file_has_c_includes(file &ast.File) bool {
 		return false
 	}
 	for stmt in file.stmts {
-		if stmt is ast.HashStmt && stmt.kind in ['include', 'preinclude'] {
+		if stmt is ast.HashStmt && stmt.kind in ['include', 'preinclude', 'insert'] {
 			return true
 		}
 	}

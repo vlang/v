@@ -586,7 +586,7 @@ fn test_coverage_output_checks_counter_file_open() {
 	}
 }
 
-fn test_c_fallback_decl_uses_module_wide_c_includes() {
+fn test_c_fallback_decl_uses_module_wide_c_inserts() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_module_c_include')
 	os.rmdir_all(test_source) or {}
@@ -595,13 +595,16 @@ fn test_c_fallback_decl_uses_module_wide_c_includes() {
 		os.rmdir_all(test_source) or {}
 	}
 	header_path := os.join_path(test_source, 'c_header_decl.h')
-	os.write_file(header_path, 'int c_header_decl(const char* input);\n')!
+	os.write_file(header_path,
+		'static int c_header_decl(const char *input) { return input != 0; }\n')!
 	header_include_path := header_path.replace('\\', '/')
 	os.write_file(os.join_path(test_source, 'include.v'), 'module main
 
-#include "${header_include_path}"
+#insert "${header_include_path}"
 ')!
 	os.write_file(os.join_path(test_source, 'decl.v'), "module main
+
+#flag -lm
 
 fn C.c_header_decl(input &char) int
 
@@ -609,10 +612,39 @@ fn main() {
 	C.c_header_decl(c'text')
 }
 ")!
-	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('static int c_header_decl(const char *input)')
 	assert !compilation.output.contains('extern int c_header_decl(')
+}
+
+fn test_c_fallback_decl_uses_inserted_header() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_inserted_c_header')
+	os.rmdir_all(test_source) or {}
+	os.mkdir_all(test_source)!
+	defer {
+		os.rmdir_all(test_source) or {}
+	}
+	os.write_file(os.join_path(test_source, 'inserted.h'),
+		'static int inserted_const_decl(const char *input) { return input != 0; }\n')!
+	os.write_file(os.join_path(test_source, 'linked.c'), 'int inserted_link_anchor = 0;\n')!
+	os.write_file(os.join_path(test_source, 'main.v'), 'module main
+
+#flag @DIR/linked.c
+#insert "@DIR/inserted.h"
+
+fn C.inserted_const_decl(input &char) int
+
+fn main() {
+	assert C.inserted_const_decl(c\'text\') == 1
+}
+')!
+	executable := os.join_path(test_source, 'inserted_header_test')
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(executable)} ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
 }
 
 fn test_c_fallback_decl_uses_c_helper_submodule_includes() {
