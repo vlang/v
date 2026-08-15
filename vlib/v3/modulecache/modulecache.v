@@ -5217,8 +5217,11 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		// Generic operator calls are represented by the infix node itself, not a
 		// call node with a resolved generic callee. Preserve the containing source
 		// body so a warm build can recreate the concrete operator specialization
-		// required by the cached module object.
-		operand_type := tc.resolve_type(a.child(&node, 0)).name().trim_left('&?!')
+		// required by the cached module object. Unwrap aliases first: a `type
+		// IntNumber = Number[int]` operand resolves to the alias name (no `[`), which
+		// would otherwise hide the generic receiver base.
+		operand_type :=
+			types.unalias_type(tc.resolve_type(a.child(&node, 0))).name().trim_left('&?!')
 		receiver_base := operand_type.all_before('[')
 		if operand_type.contains('[') && (receiver_base in tc.struct_generic_params
 			|| receiver_base.all_after_last('.') in tc.struct_generic_params) {
@@ -5234,7 +5237,8 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		}
 		callee := a.nodes[int(callee_id)]
 		if callee.kind == .selector && callee.children_count > 0 {
-			receiver_type := tc.resolve_type(a.child(callee, 0)).name().trim_left('&?')
+			receiver_type :=
+				types.unalias_type(tc.resolve_type(a.child(callee, 0))).name().trim_left('&?')
 			receiver_base := receiver_type.all_before('[')
 			if receiver_type.contains('[') && (receiver_base in tc.struct_generic_params
 				|| receiver_base.all_after_last('.') in tc.struct_generic_params) {

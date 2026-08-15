@@ -249,6 +249,78 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_cached_generic_operator_through_alias_retains_body() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_generic_alias_op_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'numdef/numdef.v', 'module numdef
+
+pub struct Number[T] {
+pub:
+	value T
+}
+
+pub fn (a Number[T]) + (b Number[T]) Number[T] {
+	return Number[T]{
+		value: a.value + b.value
+	}
+}
+
+pub type IntNumber = Number[int]
+
+pub fn make(v int) IntNumber {
+	return IntNumber(Number[int]{
+		value: v
+	})
+}
+')
+	// `calc` performs the generic `+` operator through the imported alias
+	// `numdef.IntNumber`. The operand resolves to the alias name (no `[`), so the
+	// cache must unwrap it to keep this body; a declaration-only header cannot
+	// recreate the `Number[int]` operator specialization on a warm build.
+	write_module_cache_file(root, 'calc/calc.v', 'module calc
+
+import numdef
+
+pub fn total(a numdef.IntNumber, b numdef.IntNumber) int {
+	c := a + b
+	return c.value
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import numdef
+import calc
+
+fn main() {
+	println(calc.total(numdef.make(20), numdef.make(22)))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	calc_headers := os.walk_ext(cache_dir, '.vh').filter(os.file_name(it).starts_with('calc_'))
+	assert calc_headers.len > 0, 'no calc module header was cached'
+	mut retained_body := false
+	for header_path in calc_headers {
+		if (os.read_file(header_path) or { '' }).contains('a + b') {
+			retained_body = true
+		}
+	}
+	assert retained_body, 'calc header dropped the aliased generic operator body: ${calc_headers.str()}'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_header_preserves_mutable_pointer_parameters() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_mut_pointer_param_${os.getpid()}')

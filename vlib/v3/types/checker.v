@@ -14765,7 +14765,7 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 	return true
 }
 
-fn unalias_type(t Type) Type {
+pub fn unalias_type(t Type) Type {
 	if t is Alias {
 		return unalias_type(t.base_type)
 	}
