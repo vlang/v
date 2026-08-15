@@ -607,8 +607,20 @@ parents := qb
 	.query()!
 ```
 
-`where` continues to filter only the root query. The SQL-like API keeps its existing
-implicit relationship loading behavior.
+An unprefixed `where` field filters the root query. After `include` or `then_include`, a
+field prefixed by the last included relationship filters only that relationship while it is
+loaded; it does not remove the root row. Root and relationship predicates can be combined with
+`&&`; `||` is supported only within one scope:
+
+```v ignore
+parents := qb
+	.include('children')!
+	.then_include('grandkids')!
+	.where('name = ? && grandkids.name != ?', 'parent', 'excluded')!
+	.query()!
+```
+
+The SQL-like API keeps its existing implicit relationship loading behavior.
 
 8. Update records​​ (note: `update()` must be placed last):
 
