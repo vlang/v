@@ -287,3 +287,146 @@ fn main() {
 ')
 	assert variant_out == '9'
 }
+
+fn test_parent_assignment_invalidates_nested_loop_smartcast() {
+	v3_bin := loop_smartcast_build_v3()
+
+	// The loop narrows `holder.value`, and reassigning the parent `holder` replaces the
+	// storage that field reads, so its runtime tag no longer holds. A write to the
+	// ancestor key must invalidate the narrowed descendant; otherwise the loop narrowing
+	// is restored for a later `holder.value.foo` and unsafe C is emitted.
+	loop_smartcast_run_bad(v3_bin, 'bad_loop_parent_assign_stale_nested', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn main() {
+	mut holder := Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}
+	for holder.value is Foo {
+		holder = Holder{
+			value: Value(Bar{})
+		}
+		println(int_str(holder.value.foo))
+		break
+	}
+}
+',
+		'field `foo` does not exist')
+
+	// Writing a descendant field (`holder.value.foo`) does not change the tag, so the
+	// nested narrowing survives.
+	descendant_out := loop_smartcast_run_good(v3_bin, 'good_loop_descendant_write_keeps_nested', 'struct Foo {
+mut:
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn main() {
+	mut holder := Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}
+	for holder.value is Foo {
+		holder.value.foo = 2
+		println(int_str(holder.value.foo))
+		break
+	}
+}
+')
+	assert descendant_out == '2'
+}
+
+fn test_indexed_mut_receiver_invalidates_loop_smartcast() {
+	v3_bin := loop_smartcast_build_v3()
+
+	// The narrowed receiver contains an index (`items[0].value`). The mut-receiver sum
+	// method resolves through the declared element type and can swap the active variant,
+	// so it must be recognised as a write even though the receiver is not a plain
+	// identifier/selector chain.
+	loop_smartcast_run_bad(v3_bin, 'bad_loop_indexed_mut_sum_receiver', 'struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn (mut v Value) replace() {
+	v = Value(Bar{})
+}
+
+fn main() {
+	mut items := [Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}]
+	for items[0].value is Foo {
+		items[0].value.replace()
+		println(int_str(items[0].value.foo))
+		break
+	}
+}
+',
+		'field `foo` does not exist')
+
+	// A mut-receiver method on the narrowed variant type keeps the indexed narrowing.
+	variant_out := loop_smartcast_run_good(v3_bin, 'good_loop_indexed_mut_variant_receiver', 'struct Foo {
+mut:
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+struct Holder {
+mut:
+	value Value
+}
+
+fn (mut f Foo) bump() {
+	f.foo = 9
+}
+
+fn main() {
+	mut items := [Holder{
+		value: Value(Foo{
+			foo: 1
+		})
+	}]
+	for items[0].value is Foo {
+		items[0].value.bump()
+		println(int_str(items[0].value.foo))
+		break
+	}
+}
+')
+	assert variant_out == '9'
+}

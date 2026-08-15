@@ -7289,9 +7289,10 @@ fn (tc &TypeChecker) declared_smartcast_receiver_type(id flat.NodeId) ?Type {
 }
 
 // declared_receiver_expr_type resolves the declared (non-smartcast) type of an
-// identifier or a field-access chain like `holder.value`, using only scope and
-// struct-field lookups. It never re-enters smartcast resolution, so it is safe to
-// call from the lexical loop-write scan (which smartcast resolution calls into).
+// identifier, a field-access chain like `holder.value`, or an index like
+// `items[0].value`, using only scope, struct-field, and container-element lookups.
+// It never re-enters smartcast resolution, so it is safe to call from the lexical
+// loop-write scan (which smartcast resolution calls into).
 fn (tc &TypeChecker) declared_receiver_expr_type(id flat.NodeId) ?Type {
 	if !tc.valid_node_id(id) {
 		return none
@@ -7304,6 +7305,17 @@ fn (tc &TypeChecker) declared_receiver_expr_type(id flat.NodeId) ?Type {
 		base := tc.declared_receiver_expr_type(tc.a.child(node, 0))?
 		base_struct := struct_type_from_type(unwrap_all_pointers(unalias_type(base)))?
 		return tc.struct_field_type(base_struct.name, node.value)
+	}
+	if node.kind == .index && node.children_count > 0 {
+		base := tc.declared_receiver_expr_type(tc.a.child(node, 0))?
+		container := unwrap_all_pointers(unalias_type(base))
+		if elem := array_like_elem_type(container) {
+			return elem
+		}
+		if container is Map {
+			return map_value_type(container)
+		}
+		return none
 	}
 	return none
 }

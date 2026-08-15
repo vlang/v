@@ -12464,11 +12464,28 @@ fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int
 	return tc.subtree_assigns_key(current, key)
 }
 
+// write_key_invalidates_key reports whether assigning `write_key` invalidates the
+// narrowing tracked for `key`. Besides an exact match, reassigning an ancestor
+// (`holder` or `items[0]`) replaces the storage a narrowed descendant
+// (`holder.value`) reads, so its runtime tag no longer holds — mirroring how
+// invalidate_smartcasts_for_write_key drops descendant smartcasts.
+fn write_key_invalidates_key(write_key string, key string) bool {
+	if write_key.len == 0 {
+		return false
+	}
+	if write_key == key {
+		return true
+	}
+	return key.len > write_key.len && key.starts_with(write_key)
+		&& (key[write_key.len] == `.` || key[write_key.len] == `[`)
+}
+
 // subtree_assigns_key reports whether `root` contains an assignment, short
 // declaration, or a call passing `key` to a `mut` parameter whose target
-// resolves to `key`. A mutating call is treated as a write because the callee
-// can reassign the argument (for example `replace(mut x)` swapping a sum's
-// active variant), which changes the runtime tag just like a direct assignment.
+// resolves to `key` (or an ancestor of it). A mutating call is treated as a write
+// because the callee can reassign the argument (for example `replace(mut x)`
+// swapping a sum's active variant), which changes the runtime tag just like a
+// direct assignment.
 fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 	if !tc.valid_node_id(root) {
 		return false
@@ -12477,19 +12494,21 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 	if node.kind == .assign {
 		mut i := 0
 		for i + 1 < node.children_count {
-			if tc.expr_key(tc.a.child(node, i)) == key {
+			if write_key_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
 				return true
 			}
 			i += 2
 		}
 	} else if node.kind == .decl_assign {
 		// decl_assign children are `lhs0, rhs, lhs1, lhs2, ...` for multi-return
-		// targets; a redeclaration of `key` also shadows the narrowed binding.
-		if node.children_count > 0 && tc.expr_key(tc.a.child(node, 0)) == key {
+		// targets; a redeclaration of `key` (or an ancestor of it) also shadows the
+		// narrowed binding.
+		if node.children_count > 0
+			&& write_key_invalidates_key(tc.expr_key(tc.a.child(node, 0)), key) {
 			return true
 		}
 		for i in 2 .. node.children_count {
-			if tc.expr_key(tc.a.child(node, i)) == key {
+			if write_key_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
 				return true
 			}
 		}
