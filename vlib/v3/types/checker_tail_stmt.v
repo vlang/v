@@ -3238,8 +3238,17 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 		}
 	}
 	if cond.kind == .infix && cond.op == .logical_or && cond.children_count >= 2 {
-		mut result := tc.extract_else_branch_smartcasts(tc.a.child(&cond, 0))
-		result << tc.extract_else_branch_smartcasts(tc.a.child(&cond, 1))
+		rhs_id := tc.a.child(&cond, 1)
+		mut result := []LocalBinding{}
+		for binding in tc.extract_else_branch_smartcasts(tc.a.child(&cond, 0)) {
+			// The right operand is evaluated after the left, so if it can write the
+			// binding's storage (for example `!(x is Foo) || retag_false(mut x)`), the
+			// reconstructed left-side narrowing is stale once the else branch runs.
+			if !tc.subtree_assigns_key(rhs_id, binding.name) {
+				result << binding
+			}
+		}
+		result << tc.extract_else_branch_smartcasts(rhs_id)
 		return result
 	}
 	return []LocalBinding{}
