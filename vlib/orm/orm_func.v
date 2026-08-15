@@ -2720,7 +2720,7 @@ fn query_relation_array_with_includes[U](mut conn Connection, key Primitive, fke
 	field_key := primitive_for_field[U](key, fkey)
 	qb.v_sql_where_primitive(fkey, .eq, field_key)
 	if filter.fields.len > 0 {
-		qb.v_sql_where_query_data(filter)
+		qb.v_sql_where_query_data(v_sql_query_data_parentheses(filter, 0))
 	}
 	return qb.query() or {
 		if err.msg().contains('no such table') {

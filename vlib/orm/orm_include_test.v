@@ -189,6 +189,61 @@ fn test_where_filters_the_last_included_relationship_without_filtering_the_root(
 	assert rows[0].children[0].grandkids[0].name == 'grandkid'
 }
 
+fn test_where_filters_a_direct_included_relationship() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.include('children')!.where('children.name = ?', 'missing')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 0
+}
+
+fn test_where_accepts_the_full_path_of_the_last_included_relationship() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.include('children')!.then_include('grandkids')!.where('children.grandkids.name = ?',
+		'grandkid')!.query()!
+	assert rows.len == 1
+	assert rows[0].children[0].grandkids.len == 1
+	assert rows[0].children[0].grandkids[0].name == 'grandkid'
+}
+
+fn test_where_accumulates_filters_on_the_same_included_relationship() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.include('children')!.then_include('grandkids')!.where('grandkids.name != ?',
+		'excluded grandkid')!.where('grandkids.name = ?', 'grandkid')!.query()!
+	assert rows.len == 1
+	assert rows[0].children[0].grandkids.len == 1
+	assert rows[0].children[0].grandkids[0].name == 'grandkid'
+}
+
+fn test_where_filters_independent_included_paths() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.include('children')!.then_include('grandkids')!.where('grandkids.name = ?',
+		'grandkid')!.include('children')!.then_include('grandkids2')!.where('grandkids2.name = ?',
+		'missing')!.query()!
+	assert rows.len == 1
+	assert rows[0].children[0].grandkids.len == 1
+	assert rows[0].children[0].grandkids2.len == 0
+}
+
 fn test_where_keeps_the_root_when_an_included_relationship_has_no_matches() {
 	mut db := new_include_database()!
 	defer {
@@ -209,11 +264,88 @@ fn test_where_keeps_boolean_expressions_within_an_included_relationship() {
 		db.close() or {}
 	}
 	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	mut grandkids := orm.new_query[IncludeGrandkid](db)
+	parents.insert(IncludeParent{
+		name: 'other parent'
+	})!
+	other_parent_id := parents.last_id()
+	children.insert(IncludeChild{
+		parent_id: other_parent_id
+		name:      'other child'
+	})!
+	grandkids.insert(IncludeGrandkid{
+		child_id: children.last_id()
+		name:     'other grandkid'
+	})!
 
-	rows := parents.include('children')!.then_include('grandkids')!.where('grandkids.name = ? || grandkids.name = ?',
-		'grandkid', 'excluded grandkid')!.query()!
+	rows := parents.where('name = ?', 'parent')!.include('children')!.then_include('grandkids')!.where('grandkids.name = ? || grandkids.name = ?',
+		'grandkid', 'other grandkid')!.query()!
 	assert rows.len == 1
-	assert rows[0].children[0].grandkids.len == 2
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].grandkids.len == 1
+	assert rows[0].children[0].grandkids[0].name == 'grandkid'
+}
+
+fn test_where_filters_an_optional_array_relationship() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	sql db {
+		create table IncludeOptionalParent
+	}!
+	sql db {
+		create table IncludeOptionalChild
+	}!
+	parent := IncludeOptionalParent{
+		name: 'optional parent'
+	}
+	sql db {
+		insert parent into IncludeOptionalParent
+	}!
+	child := IncludeOptionalChild{
+		parent_id: 1
+		name:      'optional child'
+	}
+	sql db {
+		insert child into IncludeOptionalChild
+	}!
+	mut parents := orm.new_query[IncludeOptionalParent](db)
+
+	rows := parents.include('children')!.where('children.name = ?', 'missing')!.query()!
+	assert rows.len == 1
+	assert rows[0].children?.len == 0
+}
+
+fn test_where_rejects_or_between_root_and_included_relationship_conditions() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	if _ := parents.include('children')!.where('name = ? || children.name = ?', 'parent', 'child') {
+		assert false
+	} else {
+		assert err.msg().contains('must be combined with `AND`')
+	}
+}
+
+fn test_or_where_rejects_an_included_relationship_condition() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	if _ := parents.where('name = ?', 'parent')!.include('children')!.or_where('children.name = ?',
+		'child')
+	{
+		assert false
+	} else {
+		assert err.msg().contains('or_where')
+	}
 }
 
 fn test_where_rejects_an_invalid_included_relationship_field() {
