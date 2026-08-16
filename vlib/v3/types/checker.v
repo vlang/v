@@ -1695,6 +1695,16 @@ pub fn (mut tc TypeChecker) refresh_direct_parent_index(a &flat.FlatAst) {
 	tc.build_direct_parent_index(a)
 }
 
+// reuse_direct_parent_index_for_unchanged_ast restores the parsed-tree index's trusted
+// status when an internal valid-build path has not structurally rewritten the AST.
+pub fn (mut tc TypeChecker) reuse_direct_parent_index_for_unchanged_ast(a &flat.FlatAst) bool {
+	if tc.direct_parent_ids.len != a.nodes.len || tc.value_used_nodes.len != a.nodes.len {
+		return false
+	}
+	tc.direct_parent_index_trusted = true
+	return true
+}
+
 // invalidate_direct_parent_index makes generated-node lookups validate parent metadata.
 pub fn (mut tc TypeChecker) invalidate_direct_parent_index() {
 	tc.direct_parent_index_trusted = false
@@ -7743,6 +7753,14 @@ pub fn (tc &TypeChecker) direct_dependencies(fn_node_id int) []string {
 		names << tc.symbol_name(id)
 	}
 	return names
+}
+
+// share_direct_dependencies_from reuses the immutable post-check dependency graph in a
+// synchronous compiler stage view. Parallel checker/transform workers must keep their
+// private dependency maps so resolution writes cannot race.
+pub fn (mut tc TypeChecker) share_direct_dependencies_from(source &TypeChecker) {
+	tc.direct_dependencies_by_fn = source.direct_dependencies_by_fn.clone()
+	tc.symbols = source.symbols
 }
 
 fn (mut tc TypeChecker) record_direct_dependency(id SymbolId) {

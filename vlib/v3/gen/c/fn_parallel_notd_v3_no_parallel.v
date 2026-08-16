@@ -9,7 +9,7 @@ import v3.gen.c.naming
 import v3.types
 import v3.workers
 
-const max_flat_cgen_jobs = 10
+const max_flat_cgen_jobs = 17
 const min_flat_cgen_parallel_items = 128
 // Bound each worker's retained scratch while generating compiler-sized ASTs.
 const scoped_cgen_worker_batches = 32
@@ -130,9 +130,9 @@ $if !windows {
 		defer {
 			w.timing_profile('  [ttime]     cg typedecls   ${f64(tdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task)')
 		}
-		// This force-sync task uses the master generator without entering a
-		// prealloc worker arena. Keep context caches disabled here; body workers
-		// own arena-local caches and account for nearly all lookup traffic.
+		// This task uses the master generator from a pool thread. Keep caches
+		// disabled because their entries would otherwise borrow that thread's
+		// disposable arena.
 		w.import_alias_cache = unsafe { nil }
 		w.enum_selector_cache = unsafe { nil }
 		w.enum_method_cache = unsafe { nil }
@@ -148,10 +148,10 @@ $if !windows {
 		tdpsw.restart()
 		w.gen_type_declaration_block()
 		w.timing_profile('  [ttime]       td typedecl  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		tdpsw.restart()
 		w.parallel_type_decls = w.sb.str()
 		unsafe { w.sb.free() }
 		w.sb = strings.new_builder(4096)
+		tdpsw.restart()
 		w.forward_decls()
 		w.timing_profile('  [ttime]       td fwd decls ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.parallel_forward_decls = w.sb.str()
@@ -176,6 +176,33 @@ $if !windows {
 		fssw.restart()
 		w.precompute_concrete_optional_abi_fns()
 		w.timing_profile('  [ttime]       fs opt abi    ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return unsafe { nil }
+	}
+
+	// fixed_array_support_thread moves the independent whole-AST fixed-array
+	// discovery out of the serial type-declaration task.
+	fn fixed_array_support_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		fsw := time.new_stopwatch()
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		_ = w.collect_fixed_array_typedefs_needed()
+		w.timing_profile('  [ttime]       fs fixed types ${f64(fsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return unsafe { nil }
+	}
+
+	// optional_support_thread fuses the declaration-signature, multi-return and
+	// unresolved-call optional scans on a helper while the other predispatch
+	// workers traverse the same immutable AST.
+	fn optional_support_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		osw := time.new_stopwatch()
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		w.collect_optional_typedefs()
+		w.timing_profile('  [ttime]       fs opt types   ${f64(osw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
@@ -884,6 +911,28 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.clone()
 	cgen_worker_scope_free(fs_worker.worker_scope)
 	fs_worker.worker_scope = unsafe { nil }
+}
+
+fn (mut g FlatGen) publish_fixed_array_support(mut worker FlatGen) {
+	g.fixed_array_typedefs_needed = worker.fixed_array_typedefs_needed.move()
+	g.fixed_array_typedefs_ready = worker.fixed_array_typedefs_ready
+	if worker.worker_scope != unsafe { nil } {
+		g.parallel_worker_scopes << worker.worker_scope
+		worker.worker_scope = unsafe { nil }
+	}
+}
+
+fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
+	g.needed_optional_types = worker.needed_optional_types.move()
+	g.optional_types_ready = worker.optional_types_ready
+	g.multi_return_types = worker.multi_return_types
+	g.multi_return_type_names = worker.multi_return_type_names.move()
+	g.multi_return_types_ready = worker.multi_return_types_ready
+	g.decl_types_ready = worker.decl_types_ready
+	if worker.worker_scope != unsafe { nil } {
+		g.parallel_worker_scopes << worker.worker_scope
+		worker.worker_scope = unsafe { nil }
+	}
 }
 
 // gen_fns_dispatch emits fns dispatch output for c.
@@ -1897,6 +1946,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		expected_expr_type:             g.expected_expr_type
 		expected_enum:                  g.expected_enum
 		needed_optional_types:          g.needed_optional_types.clone()
+		optional_types_ready:           g.optional_types_ready
 		emitted_optional_types:         if result_only {
 			g.emitted_optional_types
 		} else {
@@ -2381,6 +2431,10 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		}
 		mut fs_worker := g.new_parallel_worker(0)
 		fs_worker.tc.verbose = g.tc.verbose
+		mut fixed_array_worker := g.new_parallel_worker(1)
+		fixed_array_worker.tc.verbose = g.tc.verbose
+		mut optional_worker := g.new_parallel_worker(2)
+		optional_worker.tc.verbose = g.tc.verbose
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		if fail.len > 0 {
 			g.a.worker_pool.run([
@@ -2388,6 +2442,16 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 					run:        fixed_storage_scan_thread
 					arg:        voidptr(fs_worker)
 					force_sync: fail == 'cgen:all' || fail == 'cgen:pre:all' || fail == 'cgen:pre:0'
+				},
+				workers.Task{
+					run:        fixed_array_support_thread
+					arg:        voidptr(fixed_array_worker)
+					force_sync: fail == 'cgen:all' || fail == 'cgen:pre:all'
+				},
+				workers.Task{
+					run:        optional_support_thread
+					arg:        voidptr(optional_worker)
+					force_sync: fail == 'cgen:all' || fail == 'cgen:pre:all'
 				},
 				workers.Task{
 					run:        pre_dispatch_master_thread
@@ -2402,6 +2466,8 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			// fixed-storage scan finishes on a helper thread.
 			mut psw := time.new_stopwatch()
 			fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
+			fixed_array_thread := spawn fixed_array_support_thread(voidptr(fixed_array_worker))
+			optional_thread := spawn optional_support_thread(voidptr(optional_worker))
 			g.prepare_pre_dispatch_master()
 			g.timing_profile('  [ttime]     cg prep master ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			psw.restart()
@@ -2409,9 +2475,13 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			g.timing_profile('  [ttime]     cg cost refine ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			psw.restart()
 			_ = fixed_storage_thread.wait()
+			_ = fixed_array_thread.wait()
+			_ = optional_thread.wait()
 			g.timing_profile('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		g.publish_fixed_storage_scan(mut fs_worker)
+		g.publish_fixed_array_support(mut fixed_array_worker)
+		g.publish_optional_support(mut optional_worker)
 		if g.parallel_prepared && !g.prep_externs_pending {
 			// Item-body and top-level C-extern refs are fully collected (fused
 			// prep + exact-cost pass or its serial fallback); the pre-dispatch

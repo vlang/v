@@ -11,7 +11,7 @@ import runtime
 import v3.flat
 import v3.workers
 
-const max_markused_jobs = 10
+const max_markused_jobs = 17
 const min_markused_parallel_bodies = 512
 const scoped_markused_chunk_oversubscribe = 2
 const scoped_markused_worker_batches = 4

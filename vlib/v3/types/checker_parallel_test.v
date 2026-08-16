@@ -58,6 +58,9 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	mut transform_worker := tc.fork_for_parallel_transform(&a)
 	assert isnil(transform_worker.visible_mutation_cache)
 	assert transform_worker.direct_dependencies_by_fn.len == 0
+	transform_worker.share_direct_dependencies_from(&tc)
+	assert transform_worker.direct_dependencies_by_fn[10] == [master_dependency, worker_dependency]
+	assert transform_worker.symbol_name(master_dependency) == 'main.master_dependency'
 	transform_worker.free_parallel_transform_caches()
 }
 
@@ -83,6 +86,9 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	tc.build_direct_parent_index(&a)
 	assert tc.direct_parent_id(child) == first_parent
 	assert tc.direct_parent_id(first_parent) == flat.empty_node
+	tc.invalidate_direct_parent_index()
+	assert tc.reuse_direct_parent_index_for_unchanged_ast(&a)
+	assert tc.direct_parent_id(child) == first_parent
 
 	appended_child := a.add_val(.ident, 'appended')
 	appended_children := a.begin_children()
@@ -92,6 +98,7 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 		children_start: appended_children
 		children_count: 1
 	})
+	assert !tc.reuse_direct_parent_index_for_unchanged_ast(&a)
 	assert tc.direct_parent_id(appended_child) == appended_parent
 }
 
