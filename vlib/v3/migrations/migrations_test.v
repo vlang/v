@@ -30,7 +30,37 @@ fn (mut conn RecordingConnection) last_id() int {
 
 fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	conn.queries << query
+	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
+		|| query.starts_with('SELECT pg_advisory_unlock(') {
+		return [orm.Row{
+			vals: ['1']
+		}]
+	}
 	return []
+}
+
+fn (mut conn RecordingConnection) orm_begin() ! {
+	conn.queries << 'ORM BEGIN'
+}
+
+fn (mut conn RecordingConnection) orm_commit() ! {
+	conn.queries << 'ORM COMMIT'
+}
+
+fn (mut conn RecordingConnection) orm_rollback() ! {
+	conn.queries << 'ORM ROLLBACK'
+}
+
+fn (mut conn RecordingConnection) orm_savepoint(name string) ! {
+	conn.queries << 'ORM SAVEPOINT ${name}'
+}
+
+fn (mut conn RecordingConnection) orm_rollback_to(name string) ! {
+	conn.queries << 'ORM ROLLBACK TO ${name}'
+}
+
+fn (mut conn RecordingConnection) orm_release_savepoint(name string) ! {
+	conn.queries << 'ORM RELEASE SAVEPOINT ${name}'
 }
 
 struct MigrationWidget {
@@ -112,6 +142,10 @@ fn drop_widget_with_orm_dsl(mut ctx Context) ! {
 	sql ctx {
 		drop table MigrationWidget
 	}!
+}
+
+fn record_locked_migration(mut ctx Context) ! {
+	ctx.execute('migration callback;')!
 }
 
 fn test_migrate_rollback_redo_and_status() {
@@ -210,6 +244,46 @@ fn test_context_supports_v3_orm_sql_blocks() {
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'migrationwidget';")! == 1
 	runner.rollback(1)!
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'migrationwidget';")! == 0
+}
+
+fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
+	for dialect in [Dialect.sqlite, .pg, .mysql] {
+		mut recorder := &RecordingConnection{}
+		mut runner := new(mut recorder, [
+			Migration{
+				version: 1
+				name:    'locked'
+				up:      record_locked_migration
+				down:    record_locked_migration
+			},
+		], Config{
+			dialect: dialect
+		})!
+		runner.migrate()!
+		key := migration_lock_key('schema_migrations')
+		match dialect {
+			.sqlite {
+				assert recorder.queries[0] == 'BEGIN IMMEDIATE;'
+				assert recorder.queries.last() == 'ORM COMMIT'
+				assert 'ORM BEGIN' !in recorder.queries
+			}
+			.pg {
+				assert recorder.queries[0] == 'SELECT pg_advisory_lock(${key});'
+				assert recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
+				assert 'ORM BEGIN' in recorder.queries
+				assert 'ORM COMMIT' in recorder.queries
+			}
+			.mysql {
+				name := migration_lock_name(key)
+				assert recorder.queries[0] == "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
+				assert recorder.queries.last() == "SELECT RELEASE_LOCK('${name}');"
+				assert 'ORM BEGIN' !in recorder.queries
+			}
+		}
+		callback_index := recorder.queries.index('migration callback;')
+		assert callback_index > 0
+		assert callback_index < recorder.queries.len - 1
+	}
 }
 
 fn test_postgresql_change_column_rejects_constraint_options_before_sql() {
@@ -346,6 +420,102 @@ fn test_rename_table_rejects_qualified_targets_where_required() {
 	assert mysql_recorder.queries == [
 		'ALTER TABLE `app`.`users` RENAME TO `archive`.`users`;',
 	]
+}
+
+fn test_sqlite_add_column_rejects_unsupported_constraints() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .sqlite)
+	mut error_message := ''
+	ctx.add_column('accounts', Column{
+		name:        'owner_id'
+		kind:        .bigint
+		primary_key: true
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_column does not support primary-key, unique, or auto-increment columns; rebuild the table in the migration'
+
+	error_message = ''
+	ctx.add_column('accounts', Column{
+		name:   'email'
+		kind:   .text
+		unique: true
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_column does not support primary-key, unique, or auto-increment columns; rebuild the table in the migration'
+
+	mut invalid_defaults := []?string{}
+	invalid_defaults << none
+	invalid_defaults << ''
+	invalid_defaults << 'NULL'
+	for default_sql in invalid_defaults {
+		error_message = ''
+		ctx.add_column('accounts', Column{
+			name:        'label'
+			kind:        .text
+			nullable:    false
+			default_sql: default_sql
+		}) or { error_message = err.msg() }
+		assert error_message == 'SQLite add_column requires a non-NULL default for a NOT NULL column; rebuild the table in the migration'
+	}
+	assert recorder.queries.len == 0
+
+	ctx.add_column('accounts', Column{
+		name:        'label'
+		kind:        .text
+		nullable:    false
+		default_sql: "''"
+	})!
+	assert recorder.queries == [
+		'ALTER TABLE "accounts" ADD COLUMN "label" TEXT NOT NULL DEFAULT \'\';',
+	]
+}
+
+fn test_sqlite_autoincrement_precedes_other_constraints() {
+	definition := column_sql(.sqlite, Column{
+		name:           'id'
+		kind:           .integer
+		primary_key:    true
+		auto_increment: true
+		unique:         true
+		default_sql:    '5'
+	})!
+	assert definition == '"id" INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE DEFAULT 5'
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('CREATE TABLE items (${definition});')!
+}
+
+fn test_column_level_identifiers_must_be_unqualified() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	mut error_message := ''
+	ctx.add_column('users', Column{
+		name: 'users.email'
+		kind: .text
+	}) or { error_message = err.msg() }
+	assert error_message == 'column name `users.email` must be unqualified'
+
+	error_message = ''
+	ctx.rename_column('users', 'users.email', 'address') or { error_message = err.msg() }
+	assert error_message == 'column name `users.email` must be unqualified'
+
+	error_message = ''
+	ctx.add_index(Index{
+		table:   'public.users'
+		columns: ['users.email']
+	}) or { error_message = err.msg() }
+	assert error_message == 'column name `users.email` must be unqualified'
+
+	error_message = ''
+	ctx.add_foreign_key(ForeignKey{
+		from_table:  'public.posts'
+		column:      'posts.author_id'
+		to_table:    'public.users'
+		primary_key: 'id'
+		name:        'fk_posts_author'
+	}) or { error_message = err.msg() }
+	assert error_message == 'column name `posts.author_id` must be unqualified'
+	assert recorder.queries.len == 0
 }
 
 fn test_validation_and_portable_sql_generation() {

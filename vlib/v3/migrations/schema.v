@@ -107,7 +107,7 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 	mut column_names := map[string]bool{}
 	mut has_primary_key := false
 	if table.id {
-		validate_identifier(table.id_name, 'primary key')!
+		validate_unqualified_identifier(table.id_name, 'primary key')!
 		definitions << auto_primary_key_sql(ctx.dialect, table.id_name)
 		column_names[table.id_name] = true
 		has_primary_key = true
@@ -125,6 +125,7 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 		has_primary_key = has_primary_key || is_primary_key
 	}
 	for key in table.foreign_keys {
+		validate_foreign_key(key)!
 		if key.from_table != table.name {
 			return error('foreign key `${key.name}` must use from_table `${table.name}`')
 		}
@@ -162,13 +163,16 @@ pub fn (mut ctx Context) rename_table(from string, to string) ! {
 pub fn (mut ctx Context) add_column(table string, column Column) ! {
 	validate_identifier(table, 'table')!
 	definition := column_sql(ctx.dialect, column)!
+	if ctx.dialect == .sqlite {
+		validate_sqlite_add_column(column)!
+	}
 	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} ADD COLUMN ${definition};')!
 }
 
 // remove_column removes a column from an existing table.
 pub fn (mut ctx Context) remove_column(table string, column string) ! {
 	validate_identifier(table, 'table')!
-	validate_identifier(column, 'column')!
+	validate_unqualified_identifier(column, 'column')!
 	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP COLUMN ${quote_identifier(ctx.dialect,
 		column)};')!
 }
@@ -176,8 +180,8 @@ pub fn (mut ctx Context) remove_column(table string, column string) ! {
 // rename_column renames a column.
 pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 	validate_identifier(table, 'table')!
-	validate_identifier(from, 'column')!
-	validate_identifier(to, 'column')!
+	validate_unqualified_identifier(from, 'column')!
+	validate_unqualified_identifier(to, 'column')!
 	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} RENAME COLUMN ${quote_identifier(ctx.dialect,
 		from)} TO ${quote_identifier(ctx.dialect, to)};')!
 }
@@ -287,7 +291,7 @@ pub fn (mut ctx Context) add_foreign_key(key ForeignKey) ! {
 // remove_foreign_key removes a named foreign-key constraint.
 pub fn (mut ctx Context) remove_foreign_key(table string, name string) ! {
 	validate_identifier(table, 'table')!
-	validate_identifier(name, 'foreign key')!
+	validate_unqualified_identifier(name, 'foreign key')!
 	match ctx.dialect {
 		.sqlite {
 			return error('remove_foreign_key is not directly supported by SQLite; create a replacement table in the migration')
@@ -360,7 +364,7 @@ fn auto_primary_key_sql(dialect Dialect, name string) string {
 }
 
 fn column_sql(dialect Dialect, column Column) !string {
-	validate_identifier(column.name, 'column')!
+	validate_unqualified_identifier(column.name, 'column')!
 	if column.limit < 0 {
 		return error('column `${column.name}` limit must not be negative')
 	}
@@ -392,7 +396,11 @@ fn column_sql(dialect Dialect, column Column) !string {
 	}
 	mut parts := [quote_identifier(dialect, column.name), sql_type]
 	if primary_key {
-		parts << 'PRIMARY KEY'
+		if dialect == .sqlite && auto_increment {
+			parts << 'PRIMARY KEY AUTOINCREMENT'
+		} else {
+			parts << 'PRIMARY KEY'
+		}
 	}
 	if !column_nullable(column) && !primary_key {
 		parts << 'NOT NULL'
@@ -404,10 +412,24 @@ fn column_sql(dialect Dialect, column Column) !string {
 	if default_sql != '' {
 		parts << 'DEFAULT ${default_sql}'
 	}
-	if dialect == .sqlite && auto_increment && primary_key {
-		parts << 'AUTOINCREMENT'
-	}
 	return parts.join(' ')
+}
+
+fn validate_sqlite_add_column(column Column) ! {
+	if column_primary_key(column) || column_unique(column) || column_auto_increment(column) {
+		return error('SQLite add_column does not support primary-key, unique, or auto-increment columns; rebuild the table in the migration')
+	}
+	if !column_nullable(column) && !sqlite_has_non_null_default(column) {
+		return error('SQLite add_column requires a non-NULL default for a NOT NULL column; rebuild the table in the migration')
+	}
+}
+
+fn sqlite_has_non_null_default(column Column) bool {
+	if default_sql := column.default_sql {
+		normalized := default_sql.trim_space().to_upper()
+		return normalized != '' && normalized != 'NULL'
+	}
+	return false
 }
 
 fn column_nullable(column Column) bool {
@@ -519,7 +541,7 @@ fn index_name(index Index) !string {
 		return error('index on `${index.table}` must include at least one column')
 	}
 	for column in index.columns {
-		validate_identifier(column, 'column')!
+		validate_unqualified_identifier(column, 'column')!
 	}
 	name := if index.name != '' {
 		index.name
@@ -536,7 +558,7 @@ fn quoted_columns(dialect Dialect, columns []string) !string {
 	}
 	mut quoted := []string{cap: columns.len}
 	for column in columns {
-		validate_identifier(column, 'column')!
+		validate_unqualified_identifier(column, 'column')!
 		quoted << quote_identifier(dialect, column)
 	}
 	return quoted.join(', ')
@@ -548,13 +570,13 @@ fn foreign_key_name(key ForeignKey) !string {
 	} else {
 		'fk_${key.from_table.replace('.', '_')}_${key.column}'
 	}
-	validate_identifier(name, 'foreign key')!
+	validate_unqualified_identifier(name, 'foreign key')!
 	return name
 }
 
 fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
-	name := foreign_key_name(key)!
 	validate_foreign_key(key)!
+	name := foreign_key_name(key)!
 	mut query := 'CONSTRAINT ${quote_identifier(dialect, name)} FOREIGN KEY (${quote_identifier(dialect,
 		key.column)}) REFERENCES ${quote_identifier(dialect, key.to_table)} (${quote_identifier(dialect,
 		key.primary_key)})'
@@ -569,9 +591,9 @@ fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
 
 fn validate_foreign_key(key ForeignKey) ! {
 	validate_identifier(key.from_table, 'table')!
-	validate_identifier(key.column, 'column')!
+	validate_unqualified_identifier(key.column, 'column')!
 	validate_identifier(key.to_table, 'table')!
-	validate_identifier(key.primary_key, 'column')!
+	validate_unqualified_identifier(key.primary_key, 'column')!
 }
 
 fn foreign_key_action(action string) !string {
@@ -595,6 +617,13 @@ fn validate_identifier(value string, kind string) ! {
 				return error('invalid ${kind} name `${value}`')
 			}
 		}
+	}
+}
+
+fn validate_unqualified_identifier(value string, kind string) ! {
+	validate_identifier(value, kind)!
+	if value.contains('.') {
+		return error('${kind} name `${value}` must be unqualified')
 	}
 }
 

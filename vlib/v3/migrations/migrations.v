@@ -4,6 +4,8 @@ import orm
 import strconv
 import time
 
+const migration_lock_timeout_seconds = 60
+
 // MigrationFn changes the schema through a migration Context.
 pub type MigrationFn = fn (mut Context) !
 
@@ -47,6 +49,13 @@ pub enum MigrationState {
 	applied
 	pending
 	missing
+}
+
+enum MigrationOperation {
+	migrate_to
+	rollback
+	redo
+	reset
 }
 
 // Status is one row returned by Migrator.status.
@@ -127,6 +136,10 @@ pub fn (mut m Migrator) migrate_to(target_version i64) ![]AppliedMigration {
 	if target_version < 0 {
 		return error('migration target version must not be negative')
 	}
+	return m.run_locked(.migrate_to, target_version)
+}
+
+fn (mut m Migrator) migrate_to_unlocked(target_version i64) ![]AppliedMigration {
 	applied := m.applied()!
 	mut applied_versions := map[i64]bool{}
 	for item in applied {
@@ -167,6 +180,10 @@ pub fn (mut m Migrator) rollback(steps int) ![]AppliedMigration {
 	if steps < 1 {
 		return error('rollback steps must be at least 1')
 	}
+	return m.run_locked(.rollback, i64(steps))
+}
+
+fn (mut m Migrator) rollback_unlocked(steps int) ![]AppliedMigration {
 	mut applied := m.applied()!
 	applied.sort_with_compare(compare_applied_desc)
 	mut reverted := []AppliedMigration{}
@@ -193,7 +210,14 @@ pub fn (mut m Migrator) rollback_last() ![]AppliedMigration {
 
 // redo rolls back the newest `steps` migrations and applies them again.
 pub fn (mut m Migrator) redo(steps int) ![]AppliedMigration {
-	reverted := m.rollback(steps)!
+	if steps < 1 {
+		return error('rollback steps must be at least 1')
+	}
+	return m.run_locked(.redo, i64(steps))
+}
+
+fn (mut m Migrator) redo_unlocked(steps int) ![]AppliedMigration {
+	reverted := m.rollback_unlocked(steps)!
 	if reverted.len == 0 {
 		return []
 	}
@@ -217,11 +241,45 @@ pub fn (mut m Migrator) redo_last() ![]AppliedMigration {
 
 // reset rolls back every applied migration while preserving the history table.
 pub fn (mut m Migrator) reset() ![]AppliedMigration {
+	return m.run_locked(.reset, 0)
+}
+
+fn (mut m Migrator) reset_unlocked() ![]AppliedMigration {
 	applied := m.applied()!
 	if applied.len == 0 {
 		return []
 	}
-	return m.rollback(applied.len)
+	return m.rollback_unlocked(applied.len)
+}
+
+fn (mut m Migrator) run_locked(operation MigrationOperation, argument i64) ![]AppliedMigration {
+	m.acquire_migration_lock()!
+	result := m.run_unlocked(operation, argument) or {
+		operation_err := err
+		m.release_migration_lock(false) or {
+			return error('${operation_err.msg()}; releasing migration lock failed: ${err.msg()}')
+		}
+		return operation_err
+	}
+	m.release_migration_lock(true)!
+	return result
+}
+
+fn (mut m Migrator) run_unlocked(operation MigrationOperation, argument i64) ![]AppliedMigration {
+	match operation {
+		.migrate_to {
+			return m.migrate_to_unlocked(argument)
+		}
+		.rollback {
+			return m.rollback_unlocked(int(argument))
+		}
+		.redo {
+			return m.redo_unlocked(int(argument))
+		}
+		.reset {
+			return m.reset_unlocked()
+		}
+	}
 }
 
 // applied returns the migrations recorded in the database, oldest first.
@@ -334,6 +392,68 @@ fn (mut m Migrator) ensure_history_table() ! {
 	m.conn.execute('CREATE TABLE IF NOT EXISTS ${table} (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
 }
 
+fn (mut m Migrator) acquire_migration_lock() ! {
+	key := migration_lock_key(m.config.table)
+	match m.config.dialect {
+		.sqlite {
+			m.conn.execute('BEGIN IMMEDIATE;')!
+		}
+		.pg {
+			m.conn.execute('SELECT pg_advisory_lock(${key});')!
+		}
+		.mysql {
+			name := migration_lock_name(key)
+			rows :=
+				m.conn.execute("SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});")!
+			if !migration_lock_result(rows) {
+				return error('could not acquire MySQL migration lock `${name}` within ${migration_lock_timeout_seconds} seconds')
+			}
+		}
+	}
+}
+
+fn (mut m Migrator) release_migration_lock(success bool) ! {
+	key := migration_lock_key(m.config.table)
+	match m.config.dialect {
+		.sqlite {
+			if success {
+				m.conn.orm_commit()!
+			} else {
+				m.conn.orm_rollback()!
+			}
+		}
+		.pg {
+			rows := m.conn.execute('SELECT pg_advisory_unlock(${key});')!
+			if !migration_lock_result(rows) {
+				return error('could not release PostgreSQL migration lock ${key}')
+			}
+		}
+		.mysql {
+			name := migration_lock_name(key)
+			rows := m.conn.execute("SELECT RELEASE_LOCK('${name}');")!
+			if !migration_lock_result(rows) {
+				return error('could not release MySQL migration lock `${name}`')
+			}
+		}
+	}
+}
+
+fn migration_lock_key(table string) i64 {
+	mut hash := u64(5381)
+	for ch in table.bytes() {
+		hash = ((hash * 33) ^ u64(ch)) & u64(0x7fffffff)
+	}
+	return i64(hash)
+}
+
+fn migration_lock_name(key i64) string {
+	return 'v3_migrations_${key}'
+}
+
+fn migration_lock_result(rows []orm.Row) bool {
+	return rows.len == 1 && rows[0].vals.len > 0 && rows[0].vals[0] in ['1', 't', 'true']
+}
+
 fn (m &Migrator) uses_transactions() bool {
 	return match m.config.transaction_mode {
 		.always { true }
@@ -345,7 +465,7 @@ fn (m &Migrator) uses_transactions() bool {
 fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 	m.ensure_history_table()!
 	applied_at := time.utc().format_rfc3339()
-	if m.uses_transactions() {
+	if m.config.dialect != .sqlite && m.uses_transactions() {
 		mut tx := orm.begin(mut m.conn)!
 		mut ctx := new_context(tx, m.config.dialect)
 		migration.up(mut ctx) or {
@@ -376,7 +496,7 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 }
 
 fn (mut m Migrator) run_down(migration Migration) ! {
-	if m.uses_transactions() {
+	if m.config.dialect != .sqlite && m.uses_transactions() {
 		mut tx := orm.begin(mut m.conn)!
 		mut ctx := new_context(tx, m.config.dialect)
 		migration.down(mut ctx) or {

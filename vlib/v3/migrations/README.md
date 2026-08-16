@@ -1,9 +1,12 @@
 # V3 ORM migrations
 
 `v3.migrations` provides ordered, reversible ORM migrations for the V3 compiler. It records
-applied versions in `schema_migrations`, runs each migration in its own transaction when the
-database supports transactional DDL, and supports migrate, rollback, redo, reset, target-version,
-and status workflows.
+applied versions in `schema_migrations`, uses transactions when the database supports transactional
+DDL, and supports migrate, rollback, redo, reset, target-version, and status workflows.
+
+Mutating workflows hold a database-level lock from before the applied-version snapshot through all
+callbacks and history updates. PostgreSQL uses an advisory lock, MySQL uses a named lock, and
+SQLite uses an immediate transaction so concurrent runners cannot apply the same migration.
 
 ```v ignore
 import db.sqlite
@@ -55,12 +58,15 @@ fn create_users(mut ctx migrations.Context) ! {
 The schema helpers include table and column creation/removal/renaming, indexes, inline or altered
 foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly change a column or
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
-explicitly rebuild the table. PostgreSQL `change_column` supports type-related fields only and
-rejects explicitly supplied constraint options, including false or empty values, before executing
-SQL; use `ctx.execute()` for explicit constraint DDL. MySQL `change_column` requires all optional
-constraint fields because `MODIFY COLUMN` replaces the complete definition, and MySQL
-auto-increment columns must be primary keys or unique. PostgreSQL and SQLite table rename targets
-must be unqualified; MySQL keeps support for qualified targets. MySQL migrations default to
-non-transactional execution because MySQL DDL implicitly commits. The migrator accepts
+explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
+auto-increment columns, plus non-nullable columns without a non-NULL default. PostgreSQL
+`change_column` supports type-related fields only and rejects explicitly supplied constraint
+options, including false or empty values, before executing SQL; use `ctx.execute()` for explicit
+constraint DDL. MySQL `change_column` requires all optional constraint fields because `MODIFY
+COLUMN` replaces the complete definition, and MySQL auto-increment columns must be primary keys or
+unique. Column-level identifiers must be unqualified. PostgreSQL and SQLite table rename targets
+must also be unqualified; MySQL keeps support for qualified table targets. MySQL migrations default
+to non-transactional execution because MySQL DDL implicitly commits. The migrator accepts
 `orm.TransactionalConnection` implementations, and `Config.transaction_mode` can override whether
-their transaction methods are used for DDL.
+per-migration transaction methods are used for DDL. SQLite's immediate lock transaction still
+covers each mutating workflow.
