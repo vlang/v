@@ -468,7 +468,7 @@ fn test_postgresql_add_index_rejects_qualified_names() {
 	]
 }
 
-fn test_mysql_add_index_rejects_qualified_names() {
+fn test_mysql_index_names_must_be_unqualified() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .mysql)
 	mut error_message := ''
@@ -487,6 +487,17 @@ fn test_mysql_add_index_rejects_qualified_names() {
 	})!
 	assert recorder.queries == [
 		'CREATE INDEX `users_email_idx` ON `app`.`users` (`email`);',
+	]
+
+	error_message = ''
+	ctx.remove_index('app.users', 'app.users_email_idx') or { error_message = err.msg() }
+	assert error_message == 'MySQL remove_index name `app.users_email_idx` must be unqualified'
+	assert recorder.queries.len == 1
+
+	ctx.remove_index('app.users', 'users_email_idx')!
+	assert recorder.queries == [
+		'CREATE INDEX `users_email_idx` ON `app`.`users` (`email`);',
+		'DROP INDEX `users_email_idx` ON `app`.`users`;',
 	]
 }
 

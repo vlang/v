@@ -292,10 +292,14 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 }
 
 // remove_index removes an index by name. PostgreSQL derives the index schema
-// from a qualified table unless name is already qualified.
+// from a qualified table unless name is already qualified. MySQL index names
+// must be unqualified.
 pub fn (mut ctx Context) remove_index(table string, name string) ! {
 	validate_identifier(table, 'table')!
 	validate_identifier(name, 'index')!
+	if ctx.dialect == .mysql && name.contains('.') {
+		return error('MySQL remove_index name `${name}` must be unqualified')
+	}
 	match ctx.dialect {
 		.mysql {
 			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)} ON ${quote_identifier(ctx.dialect,
