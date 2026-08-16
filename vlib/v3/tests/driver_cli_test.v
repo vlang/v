@@ -54,9 +54,12 @@ fn test_driver_v1_compatible_profile_options() {
 	v3_bin := build_driver_cli_v3(root)
 
 	api_source := os.join_path(root, 'profile_api.v')
-	os.write_file(api_source, 'module main
+	os.write_file(api_source, '@[has_globals]
+module main
 
 import v.profile
+
+__global v__profile_enabled = false
 
 fn abc() {
 	println("abc")
@@ -109,6 +112,50 @@ fn main() {
 	assert user_profile_run.output.trim_space() == '42', user_profile_run.output
 	user_profile_output := os.read_file(user_profile_output_path)!
 	assert v3_profile_counter(user_profile_output, 'profile__answer') == 1, user_profile_output
+
+	operator_profile_source := os.join_path(root, 'operator_profile.v')
+	os.write_file(operator_profile_source, 'module main
+
+struct Number {
+	value int
+}
+
+fn (left Number) plus(right Number) Number {
+	return Number{
+		value: left.value + right.value + 1
+	}
+}
+
+fn (left Number) + (right Number) Number {
+	return Number{
+		value: left.value + right.value
+	}
+}
+
+fn main() {
+	left := Number{
+		value: 20
+	}
+	right := Number{
+		value: 22
+	}
+	println(left.plus(right).value)
+	println((left + right).value)
+}
+')!
+	operator_profile_binary := os.join_path(root, 'operator_profile')
+	operator_profile_output_path := os.join_path(root, 'operator_profile.txt')
+	operator_profile_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns',
+		'main__Number__plus__operator', '-profile', operator_profile_output_path, '-o',
+		operator_profile_binary, operator_profile_source])
+	assert operator_profile_compile.exit_code == 0, operator_profile_compile.output
+	operator_profile_run := cmdexec.run(operator_profile_binary, [])
+	assert operator_profile_run.exit_code == 0, operator_profile_run.output
+	assert operator_profile_run.output.trim_space() == '43\n42', operator_profile_run.output
+	operator_profile_output := os.read_file(operator_profile_output_path)!
+	assert v3_profile_counter(operator_profile_output, 'main__Number__plus__operator') == 1, operator_profile_output
+
+	assert v3_profile_counter(operator_profile_output, 'main__Number__plus') == -1, operator_profile_output
 
 	// With no output path, the following source remains the compiler input and
 	// the V1 `-prof` alias writes its report to stdout.

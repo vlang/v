@@ -6,37 +6,42 @@ struct ProfileCounterMeta {
 	calls_name   string
 }
 
-fn (g &FlatGen) profile_enabled_c_name() string {
-	for name, _ in g.global_types {
-		if name == 'v__profile_enabled' || name.ends_with('.v__profile_enabled') {
-			return g.global_c_name(name)
-		}
+// The loader uses the declared short name until a user `profile` module makes
+// the canonical `v.profile` name necessary to keep the two modules distinct.
+fn (g &FlatGen) profile_runtime_module_name() string {
+	if 'v.profile.v__profile_enabled' in g.global_types {
+		return 'v.profile'
 	}
-	return g.cname('profile.v__profile_enabled')
+	return 'profile'
+}
+
+fn (g &FlatGen) profile_enabled_c_name() string {
+	return g.global_c_name('${g.profile_runtime_module_name()}.v__profile_enabled')
 }
 
 fn (g &FlatGen) profile_timer_c_name() string {
 	return if g.target.os == 'macos' { 'time__vpc_now_darwin' } else { 'time__vpc_now' }
 }
 
-fn (g &FlatGen) profile_v1_fn_name(module_name string, fn_name string) string {
-	module_cname := if module_name.len == 0 || module_name == 'main' {
-		'main'
-	} else {
-		g.cname(module_name)
+fn profile_v1_fn_name(cfn_name string, module_name string, fn_name string) string {
+	if cfn_name == 'main' && fn_name == 'main' && module_name in ['', 'main'] {
+		return 'main__main'
 	}
-	mut short_name := fn_name
-	if module_name.len > 0 && short_name.starts_with('${module_name}.') {
-		short_name = short_name[module_name.len + 1..]
+	if module_name in ['', 'main'] && !cfn_name.starts_with('main__') {
+		return 'main__${cfn_name}'
 	}
-	return '${module_cname}__${g.cname(short_name.replace('.', '_'))}'
+	if module_name == 'builtin' && !cfn_name.starts_with('builtin__') {
+		return 'builtin__${cfn_name}'
+	}
+	return cfn_name
 }
 
 fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_name string, is_inline bool) {
 	g.profile_fn_active = false
 	g.profile_fn_restore_enabled = false
 	if g.profile_file.len == 0 || (g.profile_no_inline && is_inline)
-		|| module_name == 'v.profile' || fn_name.starts_with('time.vpc_now')
+		|| module_name == g.profile_runtime_module_name()
+		|| fn_name.starts_with('time.vpc_now')
 		|| cfn_name.starts_with('time__vpc_now') {
 		return
 	}
@@ -47,7 +52,7 @@ fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_
 	// `_only_current` suffix. The index makes every base name unambiguous.
 	counter_name := 'vpc_${g.profile_counters.len}_${cfn_name}'
 	calls_name := '${counter_name}_calls'
-	profile_fn_name := g.profile_v1_fn_name(module_name, fn_name)
+	profile_fn_name := profile_v1_fn_name(cfn_name, module_name, fn_name)
 	g.profile_fn_active = true
 	g.profile_fn_restore_enabled = g.profile_fns.len > 0 && profile_fn_name in g.profile_fns
 	profile_enabled := g.profile_enabled_c_name()
