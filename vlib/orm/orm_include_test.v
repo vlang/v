@@ -441,6 +441,74 @@ fn test_or_where_keeps_working_for_root_conditions_with_includes() {
 	assert rows[0].children.len == 1
 }
 
+fn test_update_rejects_an_included_relationship_filter_without_writing() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	if _ := parents.include('children')!.where('name = ? && children.name = ?', 'parent', 'child')!.set('name = ?',
+		'updated')!.update()
+	{
+		assert false
+	} else {
+		assert err.msg().contains('update()')
+		assert err.msg().contains('relationship-scoped filters')
+	}
+	rows := parents.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+}
+
+fn test_delete_rejects_an_included_relationship_filter_without_writing() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	if _ := parents.include('children')!.where('children.name = ?', 'child')!.delete() {
+		assert false
+	} else {
+		assert err.msg().contains('delete()')
+		assert err.msg().contains('relationship-scoped filters')
+	}
+	rows := parents.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+}
+
+fn test_insert_rejects_included_relationship_filters() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	value := IncludeParent{
+		name: 'not inserted'
+	}
+
+	if _ := parents.include('children')!.where('children.name = ?', 'child')!.insert(value) {
+		assert false
+	} else {
+		assert err.msg().contains('insert()')
+		assert err.msg().contains('relationship-scoped filters')
+	}
+	if _ := parents.include('children')!.where('children.name = ?', 'child')!.insert_many([
+		value,
+	])
+	{
+		assert false
+	} else {
+		assert err.msg().contains('insert_many()')
+		assert err.msg().contains('relationship-scoped filters')
+	}
+	rows := parents.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+}
+
 fn test_where_rejects_an_invalid_included_relationship_field() {
 	mut db := new_include_database()!
 	defer {

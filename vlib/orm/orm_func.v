@@ -566,6 +566,12 @@ fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData) {
 	}
 }
 
+fn (qb &QueryBuilder[T]) reject_include_filters_for_write(operation string) ! {
+	if qb.include_filters.len > 0 {
+		return error('${operation}(): relationship-scoped filters cannot be used for write operations')
+	}
+}
+
 fn append_query_data(existing QueryData, addition QueryData, is_and bool) QueryData {
 	if existing.fields.len == 0 {
 		return clone_query_data(addition)
@@ -2143,6 +2149,7 @@ pub fn (qb_ &QueryBuilder[T]) insert[T](value T) !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
+	qb.reject_include_filters_for_write('insert')!
 	_ = qb.insert_value_with_fields(value, []string{})!
 	return qb
 }
@@ -2260,6 +2267,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
+	qb.reject_include_filters_for_write('insert_many')!
 	qb.prepare()!
 	if values.len == 0 {
 		return error('${@FN}(): `insert` need at least one record')
@@ -3120,6 +3128,7 @@ pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
+	qb.reject_include_filters_for_write('update')!
 	qb.prepare()!
 	if qb.data.fields.len == 0 {
 		return error('${@FN}(): `update` need at least one `set` clause')
@@ -3203,6 +3212,7 @@ pub fn (qb_ &QueryBuilder[T]) delete() !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
+	qb.reject_include_filters_for_write('delete')!
 	qb.prepare()!
 	qb.conn.delete(qb.config.table, qb.where)!
 	return qb
