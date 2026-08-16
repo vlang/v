@@ -481,6 +481,24 @@ fn test_mysql_history_literals_are_backslash_safe() {
 	assert string_literal_sql(.sqlite, "quote'only") == "'quote''only'"
 }
 
+fn test_postgresql_history_literals_are_backslash_mode_independent() {
+	mut recorder := &RecordingConnection{}
+	name := "quote\\'and_trailing\\"
+	migration := Migration{
+		version: 8
+		name:    name
+		up:      record_locked_migration
+		down:    record_locked_migration
+	}
+	runner := new(mut recorder, [migration], Config{
+		dialect: .pg
+	})!
+	applied_at := '2026-08-16T00:00:00Z'
+	escaped_name := escape_postgresql_literal(name)
+	assert escaped_name == "quote\\\\''and_trailing\\\\"
+	assert runner.history_insert_sql(migration, applied_at) == 'INSERT INTO "schema_migrations" (version, name, applied_at) VALUES (8, E\'${escaped_name}\', E\'${applied_at}\');'
+}
+
 fn test_postgresql_change_column_rejects_constraint_options_before_sql() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .pg)

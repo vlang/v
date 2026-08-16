@@ -931,9 +931,14 @@ fn escape_literal(value string) string {
 	return value.replace("'", "''")
 }
 
+fn escape_postgresql_literal(value string) string {
+	return value.replace('\\', '\\\\').replace("'", "''")
+}
+
 fn string_literal_sql(dialect Dialect, value string) string {
-	if dialect == .mysql {
-		return "X'${value.hex()}'"
+	return match dialect {
+		.sqlite { "'${escape_literal(value)}'" }
+		.pg { "E'${escape_postgresql_literal(value)}'" }
+		.mysql { "X'${value.hex()}'" }
 	}
-	return "'${escape_literal(value)}'"
 }

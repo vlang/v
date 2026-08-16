@@ -86,7 +86,8 @@ dialect limits, and qualified table, history, or index names may contain at most
 SQLite and MySQL reject case-insensitive duplicate table columns.
 PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps support for
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
-implicitly commits, and its history strings use hex literals to avoid SQL-mode-sensitive escaping.
+implicitly commits. MySQL history strings use hex literals, while PostgreSQL uses explicit escape
+strings with doubled backslashes, avoiding session-mode-sensitive escaping.
 The migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode`
 can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
 transaction still covers each mutating workflow.
