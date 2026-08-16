@@ -3908,10 +3908,13 @@ fn test_cached_header_preserves_mutable_interface_method_and_parameter() {
 pub interface Writer {
 mut:
 	write(mut bytes []u8) !int
+	write_byte(mut byte &u8) !int
 }
 
 pub fn fill(mut writer Writer, mut bytes []u8) !int {
-	return writer.write(mut bytes)!
+	writer.write(mut bytes)!
+	mut byte := unsafe { &bytes[0] }
+	return writer.write_byte(mut byte)!
 }
 ')
 	main_file := os.join_path(root, 'main.v')
@@ -3924,6 +3927,12 @@ struct Device {}
 fn (mut device Device) write(mut bytes []u8) !int {
 	_ = device
 	bytes[0] = 7
+	return 1
+}
+
+fn (mut device Device) write_byte(mut byte &u8) !int {
+	_ = device
+	_ = byte
 	return 1
 }
 
@@ -3942,6 +3951,7 @@ fn main() {
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
 	assert header.contains('mut:\n\twrite(mut arg0 []u8) !int'), header
+	assert header.contains('\twrite_byte(mut arg0 &u8) !int'), header
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)

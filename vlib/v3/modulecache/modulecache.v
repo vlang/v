@@ -6087,8 +6087,10 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 			mut param_type := param.typ
 			if param.is_mut {
 				prefix = 'mut '
-				if param.op == .amp && !param_type.starts_with('&') {
-					param_type = '&${param_type}'
+				if param.op == .amp {
+					if !param_type.starts_with('&') {
+						param_type = '&${param_type}'
+					}
 				} else if param_type.starts_with('&') {
 					param_type = param_type[1..].trim_space()
 				}
