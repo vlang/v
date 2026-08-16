@@ -3031,6 +3031,59 @@ fn main() {
 
 fn test_ownership_branch_moves_are_isolated_between_siblings() {
 	v3_bin := ownership_build_v3()
+	distinct_field_moves := run_ownership_check(v3_bin, 'branch_distinct_field_moves', '
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements Drop {
+	id int
+}
+
+fn (mut resource Resource) drop() {
+	println(resource.id)
+}
+
+struct Pair {
+	left  Resource
+	right Resource
+}
+
+fn consume(resource Resource) {
+	_ = resource.id
+}
+
+fn run(cond bool, base int) {
+	value := Pair{
+		left: Resource{
+			id: base
+		}
+		right: Resource{
+			id: base + 1
+		}
+	}
+	if cond {
+		consume(value.left)
+	} else {
+		consume(value.right)
+	}
+}
+
+fn main() {
+	run(true, 1)
+	run(false, 3)
+}
+')
+	assert distinct_field_moves.exit_code == 0, distinct_field_moves.output
+	distinct_field_binary := os.join_path(os.temp_dir(),
+		'v3_ownership_branch_distinct_field_moves_${os.getpid()}', 'out')
+	distinct_field_run := os.execute(distinct_field_binary)
+	assert distinct_field_run.exit_code == 0, distinct_field_run.output
+	dropped_ids := distinct_field_run.output.fields()
+	assert '2' in dropped_ids, distinct_field_run.output
+	assert '3' in dropped_ids, distinct_field_run.output
+
 	ok_sibling := run_ownership_check(v3_bin, 'branch_sibling_isolation', "
 fn main() {
 	cond := true

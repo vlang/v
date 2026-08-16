@@ -6177,14 +6177,8 @@ fn (mut tc TypeChecker) ownership_merge_branch_moved(group OwnershipBranchGroup)
 	for name, _ in group.base.owned_vars {
 		mut moved_on_every_path := true
 		for branch in group.branches {
-			mut moved_on_path := false
-			for moved_name, _ in branch.moved_vars {
-				if ownership_storage_keys_overlap(name, moved_name) {
-					moved_on_path = true
-					break
-				}
-			}
-			if !moved_on_path {
+			// Different overlapping descendants can remain owned on different paths.
+			if name !in branch.moved_vars {
 				moved_on_every_path = false
 				break
 			}
