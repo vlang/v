@@ -240,6 +240,25 @@ fn test_postgresql_change_column_rejects_constraint_options_before_sql() {
 	assert false
 }
 
+fn test_postgresql_change_column_rejects_explicit_constraint_removals() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	ctx.change_column('accounts', Column{
+		name:           'score'
+		kind:           .bigint
+		nullable:       true
+		default_sql:    ''
+		unique:         false
+		primary_key:    false
+		auto_increment: false
+	}) or {
+		assert err.msg() == 'PostgreSQL change_column only supports type, limit, precision, and scale; unsupported options: nullable, default_sql, unique, primary_key, auto_increment; use ctx.execute() for constraint changes'
+		assert recorder.queries.len == 0
+		return
+	}
+	assert false
+}
+
 fn test_validation_and_portable_sql_generation() {
 	mut db := sqlite.connect(':memory:')!
 	defer {

@@ -30,6 +30,8 @@ pub enum ColumnType {
 
 // Column describes a column used by create_table, add_column, or change_column.
 // default_sql is inserted verbatim and should contain a trusted SQL expression.
+// Constraint fields are optional so change_column can distinguish omitted
+// options from explicit false or empty values.
 pub struct Column {
 pub:
 	name           string
@@ -37,11 +39,11 @@ pub:
 	limit          int
 	precision      int
 	scale          int
-	nullable       bool = true
-	default_sql    string
-	primary_key    bool
-	auto_increment bool
-	unique         bool
+	nullable       ?bool
+	default_sql    ?string
+	primary_key    ?bool
+	auto_increment ?bool
+	unique         ?bool
 }
 
 // Table describes a table for Context.create_table. An auto-incrementing
@@ -114,12 +116,13 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 		if column.name in column_names {
 			return error('table `${table.name}` has duplicate column `${column.name}`')
 		}
-		if has_primary_key && column.primary_key {
+		is_primary_key := column_primary_key(column)
+		if has_primary_key && is_primary_key {
 			return error('table `${table.name}` cannot have more than one primary key column')
 		}
 		definitions << column_sql(ctx.dialect, column)!
 		column_names[column.name] = true
-		has_primary_key = has_primary_key || column.primary_key
+		has_primary_key = has_primary_key || is_primary_key
 	}
 	for key in table.foreign_keys {
 		if key.from_table != table.name {
@@ -202,19 +205,19 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 
 fn pg_change_column_unsupported_options(column Column) []string {
 	mut options := []string{}
-	if !column.nullable {
+	if _ := column.nullable {
 		options << 'nullable'
 	}
-	if column.default_sql != '' {
+	if _ := column.default_sql {
 		options << 'default_sql'
 	}
-	if column.unique {
+	if _ := column.unique {
 		options << 'unique'
 	}
-	if column.primary_key {
+	if _ := column.primary_key {
 		options << 'primary_key'
 	}
-	if column.auto_increment {
+	if _ := column.auto_increment {
 		options << 'auto_increment'
 	}
 	return options
@@ -332,14 +335,16 @@ fn column_sql(dialect Dialect, column Column) !string {
 	if column.limit < 0 {
 		return error('column `${column.name}` limit must not be negative')
 	}
-	if column.auto_increment && column.kind !in [.integer, .bigint] {
+	auto_increment := column_auto_increment(column)
+	primary_key := column_primary_key(column)
+	if auto_increment && column.kind !in [.integer, .bigint] {
 		return error('auto-increment column `${column.name}` must be integer or bigint')
 	}
-	if dialect == .sqlite && column.auto_increment && !column.primary_key {
+	if dialect == .sqlite && auto_increment && !primary_key {
 		return error('SQLite auto-increment column `${column.name}` must be a primary key')
 	}
 	mut sql_type := column_type_sql(dialect, column)!
-	if column.auto_increment {
+	if auto_increment {
 		sql_type = match dialect {
 			.sqlite {
 				'INTEGER'
@@ -353,22 +358,43 @@ fn column_sql(dialect Dialect, column Column) !string {
 		}
 	}
 	mut parts := [quote_identifier(dialect, column.name), sql_type]
-	if column.primary_key {
+	if primary_key {
 		parts << 'PRIMARY KEY'
 	}
-	if !column.nullable && !column.primary_key {
+	if !column_nullable(column) && !primary_key {
 		parts << 'NOT NULL'
 	}
-	if column.unique {
+	if column_unique(column) {
 		parts << 'UNIQUE'
 	}
-	if column.default_sql != '' {
-		parts << 'DEFAULT ${column.default_sql}'
+	default_sql := column_default_sql(column)
+	if default_sql != '' {
+		parts << 'DEFAULT ${default_sql}'
 	}
-	if dialect == .sqlite && column.auto_increment && column.primary_key {
+	if dialect == .sqlite && auto_increment && primary_key {
 		parts << 'AUTOINCREMENT'
 	}
 	return parts.join(' ')
+}
+
+fn column_nullable(column Column) bool {
+	return column.nullable or { true }
+}
+
+fn column_default_sql(column Column) string {
+	return column.default_sql or { '' }
+}
+
+fn column_primary_key(column Column) bool {
+	return column.primary_key or { false }
+}
+
+fn column_auto_increment(column Column) bool {
+	return column.auto_increment or { false }
+}
+
+fn column_unique(column Column) bool {
+	return column.unique or { false }
 }
 
 fn column_type_sql(dialect Dialect, column Column) !string {

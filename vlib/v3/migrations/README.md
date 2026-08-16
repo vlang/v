@@ -56,7 +56,8 @@ The schema helpers include table and column creation/removal/renaming, indexes, 
 foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly change a column or
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
 explicitly rebuild the table. PostgreSQL `change_column` supports type-related fields only and
-rejects constraint options before executing SQL; use `ctx.execute()` for explicit constraint DDL.
-MySQL migrations default to non-transactional execution because MySQL DDL implicitly commits. The
-migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode` can
-override whether their transaction methods are used for DDL.
+rejects explicitly supplied constraint options, including false or empty values, before executing
+SQL; use `ctx.execute()` for explicit constraint DDL. MySQL migrations default to non-transactional
+execution because MySQL DDL implicitly commits. The migrator accepts `orm.TransactionalConnection`
+implementations, and `Config.transaction_mode` can override whether their transaction methods are
+used for DDL.
