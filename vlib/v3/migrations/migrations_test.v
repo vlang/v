@@ -1799,6 +1799,10 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	invalid_defaults << '((+NULL)) /* absent */ COLLATE binary'
 	invalid_defaults << 'NULL COLLATE binary'
 	invalid_defaults << '+NULL /* absent */ COLLATE binary'
+	invalid_defaults << '(CAST(NULL AS INTEGER))'
+	invalid_defaults << '(CAST((+NULL) AS TEXT))'
+	invalid_defaults << '(CAST(CAST(NULL AS TEXT) AS INTEGER))'
+	invalid_defaults << '(CAST(NULL /* absent */ AS INTEGER)) COLLATE binary'
 	for default_sql in invalid_defaults {
 		error_message = ''
 		ctx.add_column('accounts', Column{
@@ -1853,6 +1857,13 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 		'ALTER TABLE "accounts" ADD COLUMN "parenthesized_1" TEXT DEFAULT (\'x\');',
 		'ALTER TABLE "accounts" ADD COLUMN "parenthesized_2" TEXT DEFAULT (NULL);',
 	]
+	ctx.add_column('accounts', Column{
+		name:        'cast_null_text'
+		kind:        .text
+		nullable:    false
+		default_sql: "(CAST('NULL' AS TEXT))"
+	})!
+	assert recorder.queries.last() == 'ALTER TABLE "accounts" ADD COLUMN "cast_null_text" TEXT NOT NULL DEFAULT (CAST(\'NULL\' AS TEXT));'
 }
 
 fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {

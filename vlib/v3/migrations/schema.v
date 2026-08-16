@@ -744,11 +744,19 @@ fn sqlite_default_first_identifier(default_sql string) string {
 
 fn sqlite_has_non_null_default(column Column) bool {
 	if default_sql := column.default_sql {
-		normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
-		return normalized != ''
-			&& sqlite_default_first_identifier(sqlite_unwrapped_default(normalized)) != 'NULL'
+		normalized := sqlite_default_without_comments(default_sql).trim_space()
+		return normalized != '' && !sqlite_default_resolves_to_null(normalized)
 	}
 	return false
+}
+
+fn sqlite_default_resolves_to_null(default_sql string) bool {
+	literal := sqlite_unwrapped_default(default_sql)
+	if sqlite_default_first_identifier(literal.to_upper()) == 'NULL' {
+		return true
+	}
+	cast_expression := sqlite_cast_expression(literal) or { return false }
+	return sqlite_default_resolves_to_null(cast_expression.value)
 }
 
 fn sqlite_is_literal_default(default_sql string) bool {
