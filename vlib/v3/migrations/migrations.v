@@ -75,6 +75,7 @@ mut:
 	conn            orm.TransactionalConnection
 	migrations      []Migration
 	config          Config
+	pg_lock_key     ?i64
 	mysql_lock_name string
 }
 
@@ -395,13 +396,20 @@ fn (mut m Migrator) ensure_history_table() ! {
 }
 
 fn (mut m Migrator) acquire_migration_lock() ! {
-	key := migration_lock_key(m.config.table)
 	match m.config.dialect {
 		.sqlite {
 			m.conn.execute('BEGIN IMMEDIATE;')!
 		}
 		.pg {
+			schema := if m.config.table.contains('.') {
+				m.config.table.all_before('.')
+			} else {
+				schema_rows := m.conn.execute('SELECT current_schema();')!
+				postgresql_schema_name(schema_rows)!
+			}
+			key := postgresql_migration_lock_key(schema, m.config.table)
 			m.conn.execute('SELECT pg_advisory_lock(${key});')!
+			m.pg_lock_key = key
 		}
 		.mysql {
 			database := if m.config.table.contains('.') {
@@ -422,7 +430,6 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 }
 
 fn (mut m Migrator) release_migration_lock(success bool) ! {
-	key := migration_lock_key(m.config.table)
 	match m.config.dialect {
 		.sqlite {
 			if success {
@@ -432,10 +439,15 @@ fn (mut m Migrator) release_migration_lock(success bool) ! {
 			}
 		}
 		.pg {
+			key := m.pg_lock_key or {
+				return error('cannot release PostgreSQL migration lock before it is acquired')
+			}
+
 			rows := m.conn.execute('SELECT pg_advisory_unlock(${key});')!
 			if !migration_lock_result(rows) {
 				return error('could not release PostgreSQL migration lock ${key}')
 			}
+			m.pg_lock_key = none
 		}
 		.mysql {
 			name := m.mysql_lock_name
@@ -451,12 +463,18 @@ fn (mut m Migrator) release_migration_lock(success bool) ! {
 	}
 }
 
-fn migration_lock_key(table string) i64 {
-	hash := fnv1a.sum64_string(table)
+fn migration_lock_key(identity string) i64 {
+	hash := fnv1a.sum64_string(identity)
 	if hash <= u64(max_i64) {
 		return i64(hash)
 	}
 	return -i64(~hash) - 1
+}
+
+fn postgresql_migration_lock_key(schema string, table string) i64 {
+	table_name := if table.contains('.') { table.all_after('.') } else { table }
+	identity := '${schema.len}:${schema}:${table_name.len}:${table_name}'
+	return migration_lock_key(identity)
 }
 
 fn mysql_migration_lock_name(database string, table string) string {
@@ -468,6 +486,13 @@ fn mysql_migration_lock_name(database string, table string) string {
 fn mysql_database_name(rows []orm.Row) !string {
 	if rows.len != 1 || rows[0].vals.len == 0 || rows[0].vals[0] == '' {
 		return error('could not determine current MySQL database for migration lock')
+	}
+	return rows[0].vals[0]
+}
+
+fn postgresql_schema_name(rows []orm.Row) !string {
+	if rows.len != 1 || rows[0].vals.len == 0 || rows[0].vals[0] == '' {
+		return error('could not determine current PostgreSQL schema for migration lock')
 	}
 	return rows[0].vals[0]
 }

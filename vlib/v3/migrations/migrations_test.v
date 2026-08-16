@@ -9,6 +9,7 @@ struct RecordingConnection {
 mut:
 	queries  []string
 	database string = 'test_database'
+	schema   string = 'public'
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -34,6 +35,11 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'SELECT DATABASE();' {
 		return [orm.Row{
 			vals: [conn.database]
+		}]
+	}
+	if query == 'SELECT current_schema();' {
+		return [orm.Row{
+			vals: [conn.schema]
 		}]
 	}
 	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
@@ -266,7 +272,6 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 			dialect: dialect
 		})!
 		runner.migrate()!
-		key := migration_lock_key('schema_migrations')
 		match dialect {
 			.sqlite {
 				assert recorder.queries[0] == 'BEGIN IMMEDIATE;'
@@ -274,7 +279,9 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 				assert 'ORM BEGIN' !in recorder.queries
 			}
 			.pg {
-				assert recorder.queries[0] == 'SELECT pg_advisory_lock(${key});'
+				key := postgresql_migration_lock_key(recorder.schema, 'schema_migrations')
+				assert recorder.queries[0] == 'SELECT current_schema();'
+				assert recorder.queries[1] == 'SELECT pg_advisory_lock(${key});'
 				assert recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 				assert 'ORM BEGIN' in recorder.queries
 				assert 'ORM COMMIT' in recorder.queries
@@ -363,8 +370,8 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 fn test_postgresql_migration_locks_use_full_64bit_keys() {
 	first_table := 's_d015hmpz1cdl'
 	second_table := 's_syia3wc6g1qq'
-	first_key := migration_lock_key(first_table)
-	second_key := migration_lock_key(second_table)
+	first_key := postgresql_migration_lock_key('public', first_table)
+	second_key := postgresql_migration_lock_key('public', second_table)
 	assert first_key != second_key
 
 	mut recorder := &RecordingConnection{}
@@ -375,9 +382,40 @@ fn test_postgresql_migration_locks_use_full_64bit_keys() {
 	runner.acquire_migration_lock()!
 	runner.release_migration_lock(true)!
 	assert recorder.queries == [
+		'SELECT current_schema();',
 		'SELECT pg_advisory_lock(${first_key});',
 		'SELECT pg_advisory_unlock(${first_key});',
 	]
+}
+
+fn test_postgresql_migration_locks_canonicalize_history_table() {
+	key := postgresql_migration_lock_key('app', 'schema_migrations')
+	assert key == postgresql_migration_lock_key('app', 'app.schema_migrations')
+
+	mut unqualified_recorder := &RecordingConnection{
+		schema: 'app'
+	}
+	mut unqualified_runner := new(mut unqualified_recorder, []Migration{}, Config{
+		dialect: .pg
+	})!
+	unqualified_runner.acquire_migration_lock()!
+	unqualified_runner.release_migration_lock(true)!
+	assert unqualified_recorder.queries == [
+		'SELECT current_schema();',
+		'SELECT pg_advisory_lock(${key});',
+		'SELECT pg_advisory_unlock(${key});',
+	]
+
+	mut qualified_recorder := &RecordingConnection{
+		schema: 'unrelated'
+	}
+	mut qualified_runner := new(mut qualified_recorder, []Migration{}, Config{
+		dialect: .pg
+		table:   'app.schema_migrations'
+	})!
+	qualified_runner.acquire_migration_lock()!
+	qualified_runner.release_migration_lock(true)!
+	assert qualified_recorder.queries == unqualified_recorder.queries[1..]
 }
 
 fn test_mysql_history_literals_are_backslash_safe() {
@@ -1143,6 +1181,17 @@ fn test_generated_index_names_distinguish_column_boundaries() {
 		columns: ['a_AnD_b']
 	})!
 	assert case_variant_name != index_name(.mysql, composite)!
+	table_boundary := Index{
+		table:   'a_on_b'
+		columns: ['c']
+	}
+	column_boundary := Index{
+		table:   'a'
+		columns: ['b_on_c']
+	}
+	for dialect in [Dialect.sqlite, .pg] {
+		assert index_name(dialect, table_boundary)! != index_name(dialect, column_boundary)!
+	}
 
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -1152,7 +1201,11 @@ fn test_generated_index_names_distinguish_column_boundaries() {
 	mut ctx := new_context(db, .sqlite)
 	ctx.add_index(single_column)!
 	ctx.add_index(composite)!
-	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'users';")! == 2
+	db.exec('CREATE TABLE a_on_b (c TEXT);')!
+	db.exec('CREATE TABLE a (b_on_c TEXT);')!
+	ctx.add_index(table_boundary)!
+	ctx.add_index(column_boundary)!
+	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'index';")! == 4
 }
 
 fn test_generated_foreign_key_names_respect_dialect_limits() {
@@ -1228,6 +1281,49 @@ fn test_generated_mysql_foreign_key_names_distinguish_component_boundaries() {
 	ctx.add_foreign_key(second)!
 	assert recorder.queries[0].contains('CONSTRAINT `${first_name}` FOREIGN KEY')
 	assert recorder.queries[1].contains('CONSTRAINT `${second_name}` FOREIGN KEY')
+}
+
+fn test_generated_foreign_key_names_include_targets() {
+	parent_key := ForeignKey{
+		from_table: 'accounts'
+		column:     'owner_id'
+		to_table:   'parents'
+	}
+	other_table := ForeignKey{
+		...parent_key
+		to_table: 'guardians'
+	}
+	other_primary_key := ForeignKey{
+		...parent_key
+		primary_key: 'uuid'
+	}
+	for dialect in [Dialect.pg, .mysql] {
+		parent_name := foreign_key_name(dialect, parent_key)!
+		other_table_name := foreign_key_name(dialect, other_table)!
+		other_primary_key_name := foreign_key_name(dialect, other_primary_key)!
+		assert parent_name != other_table_name
+		assert parent_name != other_primary_key_name
+		assert other_table_name != other_primary_key_name
+
+		mut recorder := &RecordingConnection{}
+		mut ctx := new_context(recorder, dialect)
+		ctx.create_table(Table{
+			name:         'accounts'
+			id:           false
+			columns:      [
+				Column{
+					name: 'owner_id'
+					kind: .bigint
+				},
+			]
+			foreign_keys: [parent_key, other_table, other_primary_key]
+		})!
+		assert recorder.queries[0].contains('CONSTRAINT ${quote_identifier(dialect, parent_name)} FOREIGN KEY')
+		assert recorder.queries[0].contains('CONSTRAINT ${quote_identifier(dialect,
+			other_table_name)} FOREIGN KEY')
+		assert recorder.queries[0].contains('CONSTRAINT ${quote_identifier(dialect,
+			other_primary_key_name)} FOREIGN KEY')
+	}
 }
 
 fn test_caller_supplied_identifiers_respect_dialect_limits() {
