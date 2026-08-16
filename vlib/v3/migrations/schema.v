@@ -814,10 +814,19 @@ fn foreign_key_name(dialect Dialect, key ForeignKey) !string {
 	name := if key.name != '' {
 		key.name
 	} else {
-		'fk_${key.from_table.replace('.', '_')}_${key.column}'
+		generated_foreign_key_name(dialect, key)
 	}
 	validate_unqualified_identifier(name, 'foreign key')!
 	return bounded_identifier_name(dialect, name, key.name == '', 'foreign key')
+}
+
+fn generated_foreign_key_name(dialect Dialect, key ForeignKey) string {
+	base := 'fk_${key.from_table.replace('.', '_')}_${key.column}'
+	if dialect == .mysql {
+		identity := '${key.from_table.len}:${key.from_table}:${key.column.len}:${key.column}'
+		return '${base}_${fnv1a.sum64_string(identity).hex()}'
+	}
+	return base
 }
 
 fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {

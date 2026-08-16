@@ -78,10 +78,11 @@ MySQL auto-increment columns must be primary keys or unique, MySQL index names m
 when adding or removing them, and tables cannot contain more than one auto-increment column. MySQL
 foreign keys reject `SET DEFAULT`. Column-level identifiers must be unqualified. Generated
 PostgreSQL and MySQL index and foreign-key names are shortened deterministically to their dialect
-limits; ambiguous index column boundaries receive deterministic hash suffixes, and overlong
-explicit names are rejected. Caller-supplied table, column, and history-table name components are
-also checked against those dialect limits, and qualified table, history, or index names may contain
-at most two components. SQLite and MySQL reject case-insensitive duplicate table columns.
+limits; ambiguous index column boundaries and generated MySQL foreign-key component boundaries
+receive deterministic hash suffixes, and overlong explicit names are rejected. Caller-supplied
+table, column, and history-table name components are also checked against those dialect limits, and
+qualified table, history, or index names may contain at most two components. SQLite and MySQL reject
+case-insensitive duplicate table columns.
 PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps support for
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
 implicitly commits, and its history strings use hex literals to avoid SQL-mode-sensitive escaping.

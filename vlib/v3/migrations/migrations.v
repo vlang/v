@@ -460,7 +460,8 @@ fn migration_lock_key(table string) i64 {
 }
 
 fn mysql_migration_lock_name(database string, table string) string {
-	identity := '${database.len}:${database}:${table}'
+	table_name := if table.contains('.') { table.all_after('.') } else { table }
+	identity := '${database.len}:${database}:${table_name.len}:${table_name}'
 	return 'v3_migrations_${fnv1a.sum64_string(identity).hex()}'
 }
 

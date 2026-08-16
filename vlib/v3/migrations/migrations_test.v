@@ -323,6 +323,7 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 
 	qualified_table := 'shared.schema_migrations'
 	qualified_name := mysql_migration_lock_name('shared', qualified_table)
+	assert qualified_name == mysql_migration_lock_name('shared', 'schema_migrations')
 	mut qualified_first_recorder := &RecordingConnection{
 		database: 'application_one'
 	}
@@ -347,6 +348,16 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	qualified_second_runner.acquire_migration_lock()!
 	qualified_second_runner.release_migration_lock(true)!
 	assert qualified_second_recorder.queries == qualified_first_recorder.queries
+
+	mut unqualified_recorder := &RecordingConnection{
+		database: 'shared'
+	}
+	mut unqualified_runner := new(mut unqualified_recorder, []Migration{}, Config{
+		dialect: .mysql
+	})!
+	unqualified_runner.acquire_migration_lock()!
+	unqualified_runner.release_migration_lock(true)!
+	assert unqualified_recorder.queries[1..] == qualified_first_recorder.queries
 }
 
 fn test_postgresql_migration_locks_use_full_64bit_keys() {
@@ -1192,6 +1203,31 @@ fn test_generated_foreign_key_names_respect_dialect_limits() {
 	}) or { error_message = err.msg() }
 	assert error_message == 'MySQL foreign key name `${long_explicit_name}` must not exceed 64 bytes'
 	assert recorder.queries.len == 2
+}
+
+fn test_generated_mysql_foreign_key_names_distinguish_component_boundaries() {
+	first := ForeignKey{
+		from_table: 'a_b'
+		column:     'c'
+		to_table:   'parents'
+	}
+	second := ForeignKey{
+		from_table: 'a'
+		column:     'b_c'
+		to_table:   'parents'
+	}
+	first_name := foreign_key_name(.mysql, first)!
+	second_name := foreign_key_name(.mysql, second)!
+	assert first_name.starts_with('fk_a_b_c_')
+	assert second_name.starts_with('fk_a_b_c_')
+	assert first_name != second_name
+
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	ctx.add_foreign_key(first)!
+	ctx.add_foreign_key(second)!
+	assert recorder.queries[0].contains('CONSTRAINT `${first_name}` FOREIGN KEY')
+	assert recorder.queries[1].contains('CONSTRAINT `${second_name}` FOREIGN KEY')
 }
 
 fn test_caller_supplied_identifiers_respect_dialect_limits() {
