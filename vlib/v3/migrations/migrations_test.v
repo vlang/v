@@ -486,6 +486,26 @@ fn test_postgresql_open_transaction_is_rejected_in_every_mode_without_being_fini
 	}
 }
 
+fn test_mysql_open_transaction_is_rejected_in_every_mode_without_being_finished() {
+	for mode in [TransactionMode.automatic, .always, .never] {
+		mut recorder := &RecordingConnection{
+			in_transaction: true
+		}
+		mut runner := new(mut recorder, []Migration{}, Config{
+			dialect:          .mysql
+			transaction_mode: mode
+		})!
+		mut error_message := ''
+		runner.migrate() or { error_message = err.msg() }
+		assert error_message == 'MySQL migrations require a connection without an already-open transaction'
+		assert recorder.in_transaction
+		assert recorder.queries == [
+			'ORM SAVEPOINT v3_migrations_transaction_probe',
+			'ORM RELEASE SAVEPOINT v3_migrations_transaction_probe',
+		]
+	}
+}
+
 fn test_sqlite_history_table_is_pinned_to_main() {
 	for temp_table_exists in [false, true] {
 		mut db := sqlite.connect(':memory:')!
@@ -741,6 +761,41 @@ fn test_postgresql_inspection_resolves_and_retains_existing_history_schema() {
 	query := postgresql_history_schema_query('schema_migrations')
 	assert query.contains('current_schemas(false)')
 	assert query.contains('n.oid <> pg_catalog.pg_my_temp_schema()')
+}
+
+fn test_mysql_inspection_resolves_and_retains_history_database() {
+	mut recorder := &RecordingConnection{
+		database:     'app'
+		history_rows: [
+			orm.Row{
+				vals: ['7', 'already_applied', '2026-08-16T00:00:00Z']
+			},
+		]
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{
+		dialect: .mysql
+	})!
+	assert runner.applied()!.map(it.version) == [i64(7)]
+	assert runner.pending()!.len == 0
+	assert runner.current_version()! == 7
+	status := runner.status()!
+	assert status.len == 1
+	assert status[0].state == .missing
+	assert runner.resolved_history_namespace == 'app'
+	assert recorder.queries.filter(it == 'SELECT DATABASE();').len == 1
+	for query in recorder.queries {
+		if query.starts_with('CREATE TABLE IF NOT EXISTS ')
+			|| query.starts_with('SELECT version, name, applied_at FROM ') {
+			assert query.contains('`app`.`schema_migrations`')
+		}
+	}
+	recorder.execute('USE other_database;')!
+	assert runner.migrate()!.len == 0
+	assert recorder.queries.filter(it == 'SELECT DATABASE();').len == 1
+	name := mysql_migration_lock_name('app', 'schema_migrations', 0)
+	assert "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});" in recorder.queries
+	assert recorder.queries.filter(it.starts_with('CREATE TABLE IF NOT EXISTS ')
+		|| it.starts_with('SELECT version, name, applied_at FROM ')).all(it.contains('`app`.`schema_migrations`'))
 }
 
 fn test_mysql_history_literals_are_backslash_safe() {

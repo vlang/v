@@ -105,3 +105,6 @@ transactions, including `pg.Tx`, are rejected in every transaction mode so the s
 be released before their work commits. Unqualified PostgreSQL history tables resolve an existing
 persistent relation before falling back to the normal creation schema for inspection, creation,
 and lock namespacing. Temporary relations are ignored unless explicitly qualified in `Config.table`.
+MySQL migrations and inspections also reject connections with active transactions. An unqualified
+MySQL history table is resolved and retained on first use, so later database changes on the same
+connection cannot redirect history operations or lock namespacing.

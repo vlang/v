@@ -401,8 +401,17 @@ fn (m &Migrator) find_migration(version i64) ?Migration {
 }
 
 fn (mut m Migrator) ensure_history_table() ! {
-	if m.config.dialect == .pg {
-		m.resolve_postgresql_history_schema()!
+	match m.config.dialect {
+		.pg {
+			m.resolve_postgresql_history_schema()!
+		}
+		.mysql {
+			if m.mysql_lock_name == '' {
+				m.reject_existing_mysql_transaction()!
+			}
+			m.resolve_mysql_history_database()!
+		}
+		.sqlite {}
 	}
 	table := m.history_table_sql()
 	m.conn.execute('CREATE TABLE IF NOT EXISTS ${table} (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
@@ -440,14 +449,8 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			m.retain_history_relation(.pg, schema)
 		}
 		.mysql {
-			database := if m.resolved_history_namespace != '' {
-				m.resolved_history_namespace
-			} else if m.config.table.contains('.') {
-				m.config.table.all_before('.')
-			} else {
-				database_rows := m.conn.execute('SELECT DATABASE();')!
-				mysql_database_name(database_rows)!
-			}
+			m.reject_existing_mysql_transaction()!
+			database := m.resolve_mysql_history_database()!
 			case_rows := m.conn.execute('SELECT @@lower_case_table_names;')!
 			lower_case_table_names := mysql_lower_case_table_names(case_rows)!
 			name := mysql_migration_lock_name(database, m.config.table, lower_case_table_names)
@@ -476,6 +479,20 @@ fn (mut m Migrator) resolve_postgresql_history_schema() !string {
 	return schema
 }
 
+fn (mut m Migrator) resolve_mysql_history_database() !string {
+	if m.resolved_history_namespace != '' {
+		return m.resolved_history_namespace
+	}
+	database := if m.config.table.contains('.') {
+		m.config.table.all_before('.')
+	} else {
+		database_rows := m.conn.execute('SELECT DATABASE();')!
+		mysql_database_name(database_rows)!
+	}
+	m.retain_history_relation(.mysql, database)
+	return database
+}
+
 fn (mut m Migrator) reject_existing_postgresql_transaction() ! {
 	probe := 'v3_migrations_transaction_probe'
 	m.conn.orm_savepoint(probe) or {
@@ -487,6 +504,17 @@ fn (mut m Migrator) reject_existing_postgresql_transaction() ! {
 		return error('could not release PostgreSQL transaction ownership probe: ${err.msg()}')
 	}
 	return error('PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported')
+}
+
+fn (mut m Migrator) reject_existing_mysql_transaction() ! {
+	probe := 'v3_migrations_transaction_probe'
+	m.conn.orm_savepoint(probe) or {
+		// MySQL rejects the savepoint outside a transaction, or discards it at
+		// the end of the probe statement when autocommit is enabled.
+		return
+	}
+	m.conn.orm_release_savepoint(probe) or { return }
+	return error('MySQL migrations require a connection without an already-open transaction')
 }
 
 fn (mut m Migrator) retain_history_relation(dialect Dialect, namespace string) {
