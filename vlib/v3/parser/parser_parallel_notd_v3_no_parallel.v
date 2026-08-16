@@ -19,8 +19,8 @@ import v3.workers
 
 const min_parallel_parse_files = 4
 const min_parallel_parse_bytes = 131072
-const max_parallel_parse_jobs = 10
-const max_parallel_parse_chunks = 32
+const max_parallel_parse_jobs = 17
+const max_parallel_parse_chunks = 48
 const parallel_parse_chunks_per_job = 2
 const comptime_const_prepass_alias_prefix = '\x00v3-comptime-alias:'
 

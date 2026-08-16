@@ -388,6 +388,9 @@ fn (mut g FlatGen) optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_optional_typedefs() {
+	if g.optional_types_ready {
+		return
+	}
 	g.collect_declaration_signature_types()
 	// Calls without a resolved expression type are the only optional-type source
 	// not covered by the shared declaration-signature scan.
@@ -407,6 +410,7 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 			g.collect_optional_typedef_type(g.parse_node_type(&node))
 		}
 	}
+	g.optional_types_ready = true
 }
 
 fn cgen_type_text_is_complete(text string) bool {

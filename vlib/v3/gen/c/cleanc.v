@@ -330,6 +330,7 @@ mut:
 	multi_return_type_names        map[string]bool
 	multi_return_types_ready       bool
 	decl_types_ready               bool
+	optional_types_ready           bool
 	fixed_array_ret_wrappers       map[string]bool // bare fixed-array c_type name -> has a return wrapper struct
 	emitted_fixed_array_typedefs   map[string]bool // bare fixed-array typedefs already written (shared across passes)
 	concrete_optional_abi_fns      map[string]bool // emitted fn names whose option/result params use Optional_T ABI
@@ -2203,6 +2204,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.multi_return_type_names.clear()
 	g.multi_return_types_ready = false
 	g.decl_types_ready = false
+	g.optional_types_ready = false
 	g.fixed_array_ret_wrappers.clear()
 	g.emitted_fixed_array_typedefs.clear()
 	g.concrete_optional_abi_fns.clear()
@@ -11272,6 +11274,15 @@ fn (mut g FlatGen) gen_sum_shared_field_selector(base_id flat.NodeId, base_type0
 	return true
 }
 
+fn (g &FlatGen) pointer_pointer_selector_base_type(base &flat.Node, fallback types.Type) types.Type {
+	if base.kind == .ident {
+		if local_type := g.local_ident_type(base.value) {
+			return local_type
+		}
+	}
+	return fallback
+}
+
 fn (mut g FlatGen) gen_sum_type_tag_selector(base_id flat.NodeId, base_type0 types.Type, op flat.Op) bool {
 	sum_name := g.sum_type_name_for_type(base_type0) or { return false }
 	sum_ct := g.tc.c_type(g.interface_concrete_type(sum_name))
@@ -11910,6 +11921,8 @@ struct FixedStorageNodeScanArgs {
 	g                      &FlatGen
 	start                  int
 	end                    int
+	file                   string
+	module                 string
 	fixed_candidate_idents map[string]bool
 	fixed_candidate_shorts map[string]bool
 	ident_filter           &FixedStorageCandidateNameFilter
@@ -12028,8 +12041,8 @@ fn fixed_storage_node_scan_thread(arg voidptr) voidptr {
 }
 
 fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs) {
-	mut cur_module := 'main'
-	mut cur_file := ''
+	mut cur_module := scan.module
+	mut cur_file := scan.file
 	for idx := scan.start; idx < scan.end; idx++ {
 		node := unsafe { &g.a.nodes[idx] }
 		kind_id := int(node.kind)
@@ -12145,21 +12158,14 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 	}
 }
 
-fn (g &FlatGen) fixed_storage_node_scan_split() int {
-	target := g.a.nodes.len / 2
-	mut split := 0
-	mut best_distance := g.a.nodes.len
-	for idx in g.top_level_nodes() {
-		if idx <= 0 || idx >= g.a.nodes.len || g.a.nodes[idx].kind != .file {
-			continue
-		}
-		distance := if idx > target { idx - target } else { target - idx }
-		if distance < best_distance {
-			split = idx
-			best_distance = distance
-		}
+fn (g &FlatGen) fixed_storage_node_scan_bounds(max_jobs int) []int {
+	mut bounds := []int{cap: max_jobs + 1}
+	bounds << 0
+	for job in 1 .. max_jobs {
+		bounds << g.a.nodes.len * job / max_jobs
 	}
-	return split
+	bounds << g.a.nodes.len
+	return bounds
 }
 
 fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
@@ -12198,40 +12204,43 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 	fixed_candidate_short_filter := fixed_storage_candidate_name_filter(fixed_candidate_shorts)
 	g.timing_profile('  [ttime]         fs setup     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms (candidates: ${fixed_storage_candidates.len})')
 	fssw.restart()
-	split := if allow_parallel && os.getenv('V3_NO_PAR_FIXED_STORAGE_SCAN') == '' {
-		g.fixed_storage_node_scan_split()
-	} else {
-		0
+	mut scan_jobs := if !isnil(g.a.worker_pool) { g.a.worker_pool.size() + 1 } else { 2 }
+	if scan_jobs > 8 {
+		scan_jobs = 8
 	}
-	mut scans := [
-		FixedStorageNodeScanArgs{
+	bounds := if allow_parallel && os.getenv('V3_NO_PAR_FIXED_STORAGE_SCAN') == '' {
+		g.fixed_storage_node_scan_bounds(scan_jobs)
+	} else {
+		[0, g.a.nodes.len]
+	}
+	mut scans := []FixedStorageNodeScanArgs{cap: bounds.len - 1}
+	for i in 0 .. bounds.len - 1 {
+		start := bounds[i]
+		mut scan_file := ''
+		if start < g.a.nodes.len {
+			if source_file := g.a.source_files[g.a.nodes[start].pos.id] {
+				scan_file = source_file.name
+			}
+		}
+		scans << FixedStorageNodeScanArgs{
 			g:                      g
-			start:                  0
-			end:                    if split > 0 { split } else { g.a.nodes.len }
+			start:                  start
+			end:                    bounds[i + 1]
+			file:                   scan_file
+			module:                 g.tc.file_modules[scan_file] or { 'main' }
 			fixed_candidate_idents: fixed_candidate_idents
 			fixed_candidate_shorts: fixed_candidate_shorts
 			ident_filter:           &fixed_candidate_ident_filter
 			short_filter:           &fixed_candidate_short_filter
 			fixed_safe_refs:        map[int]bool{}
-		},
-		FixedStorageNodeScanArgs{
-			g:                      g
-			start:                  split
-			end:                    g.a.nodes.len
-			fixed_candidate_idents: fixed_candidate_idents
-			fixed_candidate_shorts: fixed_candidate_shorts
-			ident_filter:           &fixed_candidate_ident_filter
-			short_filter:           &fixed_candidate_short_filter
-			fixed_safe_refs:        map[int]bool{}
-		},
-	]
-	if split > 0 {
-		second_scan_thread := spawn fixed_storage_node_scan_thread(unsafe { voidptr(&scans[1]) })
-		g.scan_fixed_storage_node_range(mut scans[0])
-		_ = second_scan_thread.wait()
-	} else {
-		g.scan_fixed_storage_node_range(mut scans[0])
+		}
 	}
+	mut scan_threads := []thread voidptr{cap: scans.len - 1}
+	for scan_idx in 1 .. scans.len {
+		scan_threads << spawn fixed_storage_node_scan_thread(unsafe { voidptr(&scans[scan_idx]) })
+	}
+	g.scan_fixed_storage_node_range(mut scans[0])
+	scan_threads.wait()
 	for scan in scans {
 		address_items << scan.address_items
 		ref_items << scan.ref_items
@@ -13854,11 +13863,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// handled
 			} else if g.gen_sum_shared_field_selector(base_id, base_type0, node.value) {
 				// handled
-			} else if g.gen_pointer_pointer_struct_selector(base_id, if base.kind == .ident {
-				g.local_ident_type(base.value) or { base_type0 }
-			} else {
-				base_type0
-			}, node.value)
+			} else if g.gen_pointer_pointer_struct_selector(base_id, g.pointer_pointer_selector_base_type(&base,
+				base_type0), node.value)
 			{
 				// handled
 			} else if base.kind == .call && base.children_count == 2

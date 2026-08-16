@@ -194,6 +194,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut const_decls := map[string]ConstDeclInfo{}
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
+	// The checker already knows the declaration cardinalities. Reserve once here
+	// instead of repeatedly growing the alias-heavy reachability indexes.
+	fn_decls.reserve(u32(tc.fn_ret_types.len))
+	fn_decl_lists.reserve(u32(tc.fn_ret_types.len))
+	struct_decls.reserve(u32(tc.structs.len * 2))
+	const_decls.reserve(u32(tc.const_types.len))
+	fn_name_suffixes.reserve(u32(tc.fn_ret_types.len))
+	const_name_suffixes.reserve(u32(tc.const_types.len))
 	mut generic_type_bases := map[string]bool{}
 	if detect_reachable_generics {
 		for node in a.nodes {
@@ -205,12 +213,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 
 	// Reverse index: short name (after last '.') -> list of full qualified names
 	mut suffix_map := map[string][]string{}
+	suffix_map.reserve(u32(tc.fn_ret_types.len / 2))
 
 	// Every fn_decl/c_fn_decl node (and its module), in AST order: the worklist
 	// for the parallel body-call precollection below.
 	mut body_ids := []int{cap: 8192}
 	mut body_modules := []string{cap: 8192}
 	mut body_import_contexts := []int{cap: 8192}
+	collect_body_metadata := detect_reachable_generics || all_functions
 	mut cache_roots := []string{}
 	mut c_interface_roots := []string{}
 	mut marked_roots := []string{}
@@ -287,9 +297,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			fn_decl_import_context := import_context_by_file[fn_decl_file] or {
 				decl_import_context
 			}
-			body_ids << node_idx
-			body_modules << fn_decl_module
-			body_import_contexts << fn_decl_import_context
+			if collect_body_metadata {
+				body_ids << node_idx
+				body_modules << fn_decl_module
+				body_import_contexts << fn_decl_import_context
+			}
 			has_dot := node.value.index_u8(`.`) >= 0
 			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
@@ -373,7 +385,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 
 	// BFS from main
 	mut used := map[string]bool{}
-	mut queue := []string{}
+	used.reserve(u32(fn_decls.len))
+	mut queue := []string{cap: fn_decls.len}
 	reachable_modules := markused_reachable_modules(a, tc)
 	queue << 'main'
 	used['main'] = true
@@ -416,8 +429,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		for seed in ['c.FlatGen.gen_fn_items_scoped_batches',
 			'markused.CallCollector.collect_bodies_scoped_batches',
 			'parser.Parser.precollect_parallel_comptime_consts',
-			'types.TypeChecker.check_scoped_batches', 'sync.Semaphore.timed_wait',
-			'sync.Semaphore.destroy'] {
+			'types.TypeChecker.check_scoped_batches', 'driver.compare_print_notices',
+			'pref.detect_vroot', 'pref.detect_vexe', 'types.compare_type_errors',
+			'types.compare_type_notices', 'types.TypeChecker.result_return_uses_multi_tail',
+			'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy'] {
 			queue << seed
 			used[seed] = true
 		}
@@ -551,7 +566,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
-	if body_ids.len >= min_eager_markused_bodies {
+	if detect_reachable_generics && body_ids.len >= min_eager_markused_bodies {
 		for i, id in body_ids {
 			body_index[id] = i
 		}
@@ -680,20 +695,22 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			for dependency in tc.direct_dependency_ids(node_key) {
 				calls << tc.symbol_name(dependency)
 			}
-			if body_i := body_index[node_key] {
-				body := body_results[body_i]
-				calls << body.calls
-				initializer_refs << body.refs
-				uses_generics = uses_generics || body.uses_generics
-			} else {
-				// Not part of the precollected decl set (should not happen; the BFS
-				// resolves names through the same decl scan) — collect inline.
-				node := a.node(fn_info.node_id)
-				body := collector.collect_body(node, fn_info.module,
-					collector.imports(fn_info.import_context))
-				calls << body.calls
-				initializer_refs << body.refs
-				uses_generics = uses_generics || body.uses_generics
+			if detect_reachable_generics {
+				if body_i := body_index[node_key] {
+					body := body_results[body_i]
+					calls << body.calls
+					initializer_refs << body.refs
+					uses_generics = uses_generics || body.uses_generics
+				} else {
+					// Not part of the precollected decl set (should not happen; the BFS
+					// resolves names through the same decl scan) — collect inline.
+					node := a.node(fn_info.node_id)
+					body := collector.collect_body(node, fn_info.module,
+						collector.imports(fn_info.import_context))
+					calls << body.calls
+					initializer_refs << body.refs
+					uses_generics = uses_generics || body.uses_generics
+				}
 			}
 			call_epoch++
 			mut unique_call_count := 0

@@ -18,8 +18,8 @@ const max_parallel_transform_jobs = 7
 // Shared-base (clone-free) transform: workers share the master arrays and
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
-const max_shared_transform_jobs = 10
-const max_parallel_monomorph_jobs = 10
+const max_shared_transform_jobs = 17
+const max_parallel_monomorph_jobs = 17
 // Recycle scratch arenas throughout large self-hosting transforms.
 const scoped_transform_worker_batches = 16
 const scoped_transform_master_batches = 16
