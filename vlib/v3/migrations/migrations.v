@@ -72,20 +72,24 @@ pub:
 // Migrator applies an ordered set of migrations and records their versions.
 pub struct Migrator {
 mut:
-	conn                         orm.TransactionalConnection
-	migrations                   []Migration
-	config                       Config
-	pg_lock_key                  ?i64
-	mysql_lock_name              string
-	resolved_history_namespace   string
-	resolved_history_table_sql   string
-	session_connection_validated bool
+	conn                       orm.TransactionalConnection
+	migrations                 []Migration
+	config                     Config
+	pg_lock_key                ?i64
+	mysql_lock_name            string
+	resolved_history_namespace string
+	resolved_history_table_sql string
 }
 
 // new creates and validates a migrator. It does not access the database until
 // one of the migration or inspection methods is called.
 pub fn new(mut conn orm.TransactionalConnection, registered []Migration, config Config) !Migrator {
 	validate_identifier_for_dialect(config.dialect, config.table, 'migration history table')!
+	if config.dialect == .pg {
+		if mut conn is orm.DB {
+			return error('PostgreSQL migrations require a direct session-pinned connection; orm.DB wrappers cannot be validated without mutating the wrapped connection; pass pg.Conn or pg.Tx directly')
+		}
+	}
 	mut ordered := registered.clone()
 	ordered.sort_with_compare(compare_migrations)
 	mut previous := i64(0)
@@ -412,7 +416,6 @@ fn (m &Migrator) history_table_sql() string {
 }
 
 fn (mut m Migrator) acquire_migration_lock() ! {
-	m.validate_session_connection()!
 	match m.config.dialect {
 		.sqlite {
 			m.conn.execute('BEGIN IMMEDIATE;')!
@@ -468,21 +471,6 @@ fn (mut m Migrator) retain_history_relation(dialect Dialect, namespace string) {
 	}
 	m.resolved_history_namespace = namespace
 	m.resolved_history_table_sql = qualified_history_table_sql(dialect, namespace, m.config.table)
-}
-
-fn (mut m Migrator) validate_session_connection() ! {
-	if m.config.dialect != .pg || m.session_connection_validated {
-		return
-	}
-	if m.conn is orm.DB {
-		m.conn.orm_begin() or {
-			return error('PostgreSQL migrations require a session-pinned connection; orm.DB wrapper validation failed: ${err.msg()}; use pg.DB.conn() or pg.connect_direct()')
-		}
-		m.conn.orm_rollback() or {
-			return error('PostgreSQL migrations could not roll back the session-affinity validation transaction: ${err.msg()}')
-		}
-	}
-	m.session_connection_validated = true
 }
 
 fn (mut m Migrator) release_migration_lock(success bool) ! {

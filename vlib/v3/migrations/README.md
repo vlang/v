@@ -95,5 +95,5 @@ strings with doubled backslashes, avoiding session-mode-sensitive escaping.
 The migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode`
 can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
 transaction still covers each mutating workflow. Migration names containing NUL bytes are rejected
-before any database access. PostgreSQL `orm.DB` decorators must wrap a session-pinned transactional
-connection, such as `pg.Conn`; pool-backed wrappers are rejected before advisory-lock acquisition.
+before any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
+transactions; pass a direct session-pinned `pg.Conn` or `pg.Tx` instead.

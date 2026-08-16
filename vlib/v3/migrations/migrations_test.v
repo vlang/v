@@ -91,30 +91,6 @@ fn (mut conn RecordingConnection) orm_release_savepoint(name string) ! {
 	conn.queries << 'ORM RELEASE SAVEPOINT ${name}'
 }
 
-struct PoolBackedConnection {}
-
-fn (mut conn PoolBackedConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
-	return []
-}
-
-fn (mut conn PoolBackedConnection) insert(_ orm.Table, _ orm.QueryData) ! {}
-
-fn (mut conn PoolBackedConnection) update(_ orm.Table, _ orm.QueryData, _ orm.QueryData) ! {}
-
-fn (mut conn PoolBackedConnection) delete(_ orm.Table, _ orm.QueryData) ! {}
-
-fn (mut conn PoolBackedConnection) create(_ orm.Table, _ []orm.TableField) ! {}
-
-fn (mut conn PoolBackedConnection) drop(_ orm.Table) ! {}
-
-fn (mut conn PoolBackedConnection) last_id() int {
-	return 0
-}
-
-fn (mut conn PoolBackedConnection) execute(_ string) ![]orm.Row {
-	return error('pool query should not execute')
-}
-
 struct MigrationWidget {
 	id    int @[primary; sql: serial]
 	label string
@@ -442,15 +418,15 @@ fn test_locked_history_table_survives_callback_namespace_changes() {
 	}
 }
 
-fn test_postgresql_pool_backed_orm_wrapper_is_rejected_before_locking() {
-	pool := PoolBackedConnection{}
-	mut scoped := orm.new_db(pool, orm.DataScope{})
-	mut runner := new(mut scoped, []Migration{}, Config{
-		dialect: .pg
-	})!
+fn test_postgresql_orm_wrapper_is_rejected_without_mutating_its_transaction() {
+	mut recorder := &RecordingConnection{}
+	mut scoped := orm.new_db(recorder, orm.DataScope{})
 	mut error_message := ''
-	runner.acquire_migration_lock() or { error_message = err.msg() }
-	assert error_message == 'PostgreSQL migrations require a session-pinned connection; orm.DB wrapper validation failed: orm.DB: underlying connection does not support transactions; use pg.DB.conn() or pg.connect_direct()'
+	new(mut scoped, []Migration{}, Config{
+		dialect: .pg
+	}) or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL migrations require a direct session-pinned connection; orm.DB wrappers cannot be validated without mutating the wrapped connection; pass pg.Conn or pg.Tx directly'
+	assert recorder.queries.len == 0
 }
 
 fn test_sqlite_history_table_is_pinned_to_main() {
