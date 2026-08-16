@@ -77,6 +77,8 @@ functional `git` installation.
 
 Note: On Windows, run `makev.bat` instead of `make` in CMD, or `./makev.bat` in
 PowerShell.
+Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
+`gmake`.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 To get started, execute the following in your terminal/shell:

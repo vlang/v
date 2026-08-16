@@ -295,7 +295,7 @@ fn get_tcc_update_cmd() string {
 fn get_tcc_make_cmd_name() string {
 	return match os.user_os() {
 		'windows' { 'makev.bat' }
-		'freebsd', 'openbsd', 'netbsd' { 'gmake' }
+		'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris' { 'gmake' }
 		else { 'make' }
 	}
 }
