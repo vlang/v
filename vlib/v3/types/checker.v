@@ -1415,6 +1415,7 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 	if tc.transform_signature_maps_shared {
 		tc.fn_ret_types = tc.fn_ret_types.clone()
 		tc.fn_param_types = tc.fn_param_types.clone()
+		tc.receiver_method_suffix_index = tc.receiver_method_suffix_index.clone()
 		tc.fn_variadic = tc.fn_variadic.clone()
 		tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
 		tc.fn_type_modules = tc.fn_type_modules.clone()
