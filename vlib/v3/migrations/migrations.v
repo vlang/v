@@ -434,9 +434,21 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 	match m.config.dialect {
 		.sqlite {
 			m.prepare_sqlite_transaction_probe()!
-			m.conn.execute('BEGIN IMMEDIATE;')!
+			m.conn.execute('BEGIN IMMEDIATE;') or {
+				lock_err := err
+				m.release_sqlite_migration_lock(false) or {
+					return error('${lock_err.msg()}; cleaning up SQLite lock acquisition state failed: ${err.msg()}')
+				}
+				return lock_err
+			}
 			m.sqlite_lock_active = true
-			m.conn.execute('SAVEPOINT ${m.sqlite_transaction_probe};')!
+			m.conn.execute('SAVEPOINT ${m.sqlite_transaction_probe};') or {
+				lock_err := err
+				m.release_sqlite_migration_lock(false) or {
+					return error('${lock_err.msg()}; cleaning up SQLite lock acquisition state failed: ${err.msg()}')
+				}
+				return lock_err
+			}
 			namespace := if m.resolved_history_namespace != '' {
 				m.resolved_history_namespace
 			} else if m.config.table.contains('.') {
@@ -582,15 +594,7 @@ fn (mut m Migrator) retain_history_relation(dialect Dialect, namespace string) {
 fn (mut m Migrator) release_migration_lock(success bool) ! {
 	match m.config.dialect {
 		.sqlite {
-			if m.sqlite_lock_active {
-				if success {
-					m.conn.orm_commit()!
-				} else {
-					m.conn.orm_rollback()!
-				}
-				m.sqlite_lock_active = false
-			}
-			m.cleanup_sqlite_transaction_probe()!
+			m.release_sqlite_migration_lock(success)!
 		}
 		.pg {
 			key := m.pg_lock_key or {
@@ -614,6 +618,43 @@ fn (mut m Migrator) release_migration_lock(success bool) ! {
 			}
 			m.mysql_lock_name = ''
 		}
+	}
+}
+
+fn (mut m Migrator) release_sqlite_migration_lock(success bool) ! {
+	mut release_error := ''
+	mut transaction_ended := false
+	if m.sqlite_lock_active {
+		if success {
+			m.conn.orm_commit() or {
+				commit_err := err
+				m.conn.orm_rollback() or {
+					release_error = '${commit_err.msg()}; rolling back the failed SQLite lock transaction failed: ${err.msg()}'
+				}
+				if release_error == '' {
+					transaction_ended = true
+					release_error = commit_err.msg()
+				}
+			}
+			if release_error == '' {
+				transaction_ended = true
+			}
+		} else {
+			m.conn.orm_rollback() or { release_error = err.msg() }
+			transaction_ended = release_error == ''
+		}
+		if transaction_ended {
+			m.sqlite_lock_active = false
+		}
+	}
+	m.cleanup_sqlite_transaction_probe() or {
+		if release_error != '' {
+			return error('${release_error}; cleaning up the SQLite transaction probe failed: ${err.msg()}')
+		}
+		return err
+	}
+	if release_error != '' {
+		return error(release_error)
 	}
 }
 

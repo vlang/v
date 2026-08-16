@@ -100,8 +100,9 @@ implicitly commits. MySQL history strings use hex literals, while PostgreSQL use
 strings with doubled backslashes, avoiding session-mode-sensitive escaping.
 The migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode`
 can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
-transaction still covers each mutating workflow. Migration names containing NUL bytes are rejected
-before any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
+transaction still covers each mutating workflow; failed acquisition and commit paths roll back and
+remove their temporary transaction probes. Migration names containing NUL bytes are rejected before
+any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
 transactions; pass a direct session-pinned `pg.Conn` without an active transaction. Existing
 transactions, including `pg.Tx`, are rejected in every transaction mode so the session lock cannot
 be released before their work commits. Unqualified PostgreSQL history tables resolve an existing

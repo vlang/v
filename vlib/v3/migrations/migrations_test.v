@@ -23,6 +23,8 @@ mut:
 	postgresql_aborted        bool
 	sqlite_table_schema       string = 'main'
 	sqlite_version            string = '3.46.0'
+	fail_sqlite_lock          bool
+	fail_sqlite_commit        bool
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -45,6 +47,9 @@ fn (mut conn RecordingConnection) last_id() int {
 
 fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	conn.queries << query
+	if query == 'BEGIN IMMEDIATE;' && conn.fail_sqlite_lock {
+		return error('database is locked')
+	}
 	if query == 'USE other_database;' {
 		conn.database = 'other_database'
 	}
@@ -189,6 +194,9 @@ fn (mut conn RecordingConnection) orm_begin() ! {
 
 fn (mut conn RecordingConnection) orm_commit() ! {
 	conn.queries << 'ORM COMMIT'
+	if conn.fail_sqlite_commit {
+		return error('FOREIGN KEY constraint failed')
+	}
 	conn.in_transaction = false
 	conn.postgresql_probe_value = ''
 	conn.postgresql_aborted = false
@@ -1006,6 +1014,66 @@ fn test_sqlite_callback_cannot_replace_lock_transaction_before_history_write() {
 	assert error_message == 'SQLite migration callback ended the migration lock transaction before history was recorded'
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'replaced_transaction_table';")! == 0
 	assert db.q_int('SELECT count(*) FROM schema_migrations;')! == 0
+	assert runner.sqlite_transaction_probe == ''
+}
+
+fn test_sqlite_failed_lock_acquisition_cleans_up_transaction_probe() {
+	mut recorder := &RecordingConnection{
+		fail_sqlite_lock: true
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{
+		dialect: .sqlite
+	})!
+	mut error_message := ''
+	runner.migrate() or { error_message = err.msg() }
+	assert error_message.contains('database is locked'), error_message
+	assert !runner.sqlite_lock_active
+	assert runner.sqlite_transaction_probe == ''
+	assert recorder.queries.len == 3
+	assert recorder.queries[0].starts_with('CREATE TEMP TABLE temp."v3_migrations_transaction_')
+	assert recorder.queries[1] == 'BEGIN IMMEDIATE;'
+	assert recorder.queries[2].starts_with('DROP TABLE IF EXISTS temp."v3_migrations_transaction_')
+
+	recorder.fail_sqlite_lock = false
+	runner.migrate()!
+	assert runner.sqlite_transaction_probe == ''
+	assert recorder.queries.filter(it.starts_with('CREATE TEMP TABLE temp."v3_migrations_transaction_')).len == 2
+	assert recorder.queries.filter(it.starts_with('DROP TABLE IF EXISTS temp."v3_migrations_transaction_')).len == 2
+}
+
+fn test_sqlite_failed_lock_commit_rolls_back_and_cleans_up_transaction_probe() {
+	mut recorder := &RecordingConnection{
+		fail_sqlite_commit: true
+	}
+	mut runner := new(mut recorder, [
+		Migration{
+			version: 1
+			name:    'deferred_foreign_key_violation'
+			up:      record_locked_migration
+			down:    record_locked_migration
+		},
+	], Config{
+		dialect: .sqlite
+	})!
+	mut error_message := ''
+	runner.migrate() or { error_message = err.msg() }
+	assert error_message.contains('FOREIGN KEY constraint failed'), error_message
+	assert !runner.sqlite_lock_active
+	assert runner.sqlite_transaction_probe == ''
+	assert !recorder.in_transaction
+	commit_index := recorder.queries.index('ORM COMMIT')
+	rollback_index := recorder.queries.index('ORM ROLLBACK')
+	probe_drops :=
+		recorder.queries.filter(it.starts_with('DROP TABLE IF EXISTS temp."v3_migrations_transaction_'))
+	assert probe_drops.len == 1
+	probe_drop_index := recorder.queries.index(probe_drops[0])
+	assert commit_index > recorder.queries.index('migration callback;')
+	assert rollback_index > commit_index
+	assert probe_drop_index > rollback_index
+
+	recorder.fail_sqlite_commit = false
+	runner.migrate()!
+	assert !runner.sqlite_lock_active
 	assert runner.sqlite_transaction_probe == ''
 }
 
