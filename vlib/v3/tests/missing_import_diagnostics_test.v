@@ -134,4 +134,56 @@ fn main() {
 	string_run := os.execute(output)
 	assert string_run.exit_code == 0, string_run.output
 	assert string_run.output.trim_space() == 'before\nimport eager_string_literal_trap\nafter', string_run.output
+
+	collision_root := os.join_path(root, 'suffix_collision')
+	plain_bar_dir := os.join_path(collision_root, 'bar')
+	dotted_bar_dir := os.join_path(collision_root, 'foo', 'bar')
+	user_dir := os.join_path(collision_root, 'user')
+	os.mkdir_all(plain_bar_dir) or { panic(err) }
+	os.mkdir_all(dotted_bar_dir) or { panic(err) }
+	os.mkdir_all(user_dir) or { panic(err) }
+	os.write_file(os.join_path(plain_bar_dir, 'bar.v'), "module bar
+
+pub fn value() string {
+	return 'plain bar'
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dotted_bar_dir, 'bar.v'), "module bar
+
+pub fn value() string {
+	return 'dotted bar'
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(user_dir, 'user.v'), 'module user
+
+import foo.bar
+
+pub fn value() string {
+	return bar.value()
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(collision_root, 'main.v'), 'module main
+
+import bar
+import user
+
+fn main() {
+	println(bar.value())
+	println(user.value())
+}
+') or {
+		panic(err)
+	}
+	collision_build :=
+		os.execute('${v3_bin} -nocache -building-v -o ${output} ${collision_root}/main.v')
+	assert collision_build.exit_code == 0, collision_build.output
+	collision_run := os.execute(output)
+	assert collision_run.exit_code == 0, collision_run.output
+	assert collision_run.output.trim_space() == 'plain bar\ndotted bar', collision_run.output
 }

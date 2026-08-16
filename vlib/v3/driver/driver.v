@@ -13028,11 +13028,9 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 				dir:   result.dir
 				files: result.files
 			}
-			if import_req.path.contains('.') {
-				suffix := import_req.path.all_after_last('.')
-				if import_req.path !in paths_by_suffix[suffix] {
-					paths_by_suffix[suffix] << import_req.path
-				}
+			suffix := import_req.path.all_after_last('.')
+			if import_req.path !in paths_by_suffix[suffix] {
+				paths_by_suffix[suffix] << import_req.path
 			}
 			wave_files << result.files
 		}
