@@ -111,14 +111,15 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 	if table.id {
 		validate_unqualified_identifier_for_dialect(ctx.dialect, table.id_name, 'primary key')!
 		definitions << auto_primary_key_sql(ctx.dialect, table.id_name)
-		column_names[table.id_name] = true
+		column_names[column_name_key(ctx.dialect, table.id_name)] = true
 		has_primary_key = true
 		if ctx.dialect == .mysql {
 			auto_increment_columns = 1
 		}
 	}
 	for column in table.columns {
-		if column.name in column_names {
+		column_key := column_name_key(ctx.dialect, column.name)
+		if column_key in column_names {
 			return error('table `${table.name}` has duplicate column `${column.name}`')
 		}
 		is_primary_key := column_primary_key(column)
@@ -133,7 +134,7 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 			}
 		}
 		definitions << definition
-		column_names[column.name] = true
+		column_names[column_key] = true
 		has_primary_key = has_primary_key || is_primary_key
 	}
 	for key in table.foreign_keys {
@@ -141,7 +142,7 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 		if key.from_table != table.name {
 			return error('foreign key `${key.name}` must use from_table `${table.name}`')
 		}
-		if key.column !in column_names {
+		if column_name_key(ctx.dialect, key.column) !in column_names {
 			return error('foreign key column `${key.column}` does not exist in table `${table.name}`')
 		}
 		definitions << foreign_key_constraint_sql(ctx.dialect, key)!
@@ -303,9 +304,9 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 		index.table)} (${columns});')!
 }
 
-// remove_index removes an index by name. PostgreSQL derives the index schema
-// from a qualified table unless name is already qualified. MySQL index names
-// must be unqualified.
+// remove_index removes an index by name. PostgreSQL and SQLite derive the index
+// schema from a qualified table unless name is already qualified. MySQL index
+// names must be unqualified.
 pub fn (mut ctx Context) remove_index(table string, name string) ! {
 	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
 	validate_identifier_for_dialect(ctx.dialect, name, 'index')!
@@ -318,22 +319,30 @@ pub fn (mut ctx Context) remove_index(table string, name string) ! {
 				table)};')!
 		}
 		.pg {
-			drop_name := postgres_index_drop_name(table, name)
+			drop_name := schema_qualified_index_name(table, name)
 			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, drop_name)};')!
 		}
 		.sqlite {
-			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)};')!
+			drop_name := schema_qualified_index_name(table, name)
+			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, drop_name)};')!
 		}
 	}
 }
 
-fn postgres_index_drop_name(table string, name string) string {
+fn schema_qualified_index_name(table string, name string) string {
 	if name.contains('.') || !table.contains('.') {
 		return name
 	}
 	mut parts := table.split('.')
 	parts[parts.len - 1] = name
 	return parts.join('.')
+}
+
+fn column_name_key(dialect Dialect, name string) string {
+	if dialect in [.sqlite, .mysql] {
+		return name.to_lower_ascii()
+	}
+	return name
 }
 
 // add_foreign_key adds a named foreign-key constraint. SQLite cannot add one

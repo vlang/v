@@ -507,6 +507,63 @@ fn test_mysql_create_table_rejects_multiple_auto_increment_columns() {
 	assert recorder.queries.len == 1
 }
 
+fn test_sqlite_and_mysql_reject_case_insensitive_duplicate_columns() {
+	for dialect in [Dialect.sqlite, .mysql] {
+		mut recorder := &RecordingConnection{}
+		mut ctx := new_context(recorder, dialect)
+		mut error_message := ''
+		ctx.create_table(Table{
+			name:    'records'
+			columns: [
+				Column{
+					name: 'ID'
+					kind: .bigint
+				},
+			]
+		}) or { error_message = err.msg() }
+		assert error_message == 'table `records` has duplicate column `ID`'
+		assert recorder.queries.len == 0
+
+		error_message = ''
+		ctx.create_table(Table{
+			name:    'contacts'
+			id:      false
+			columns: [
+				Column{
+					name: 'email'
+					kind: .text
+				},
+				Column{
+					name: 'Email'
+					kind: .text
+				},
+			]
+		}) or { error_message = err.msg() }
+		assert error_message == 'table `contacts` has duplicate column `Email`'
+		assert recorder.queries.len == 0
+	}
+
+	mut postgres_recorder := &RecordingConnection{}
+	mut postgres_ctx := new_context(postgres_recorder, .pg)
+	postgres_ctx.create_table(Table{
+		name:    'contacts'
+		id:      false
+		columns: [
+			Column{
+				name: 'email'
+				kind: .text
+			},
+			Column{
+				name: 'Email'
+				kind: .text
+			},
+		]
+	})!
+	assert postgres_recorder.queries == [
+		'CREATE TABLE "contacts" ("email" TEXT, "Email" TEXT);',
+	]
+}
+
 fn test_rename_table_rejects_qualified_targets_where_required() {
 	mut pg_recorder := &RecordingConnection{}
 	mut pg_ctx := new_context(pg_recorder, .pg)
@@ -545,6 +602,23 @@ fn test_postgresql_remove_index_uses_the_table_schema() {
 		'DROP INDEX "reporting"."custom_email_index";',
 		'DROP INDEX "index_users_on_email";',
 	]
+}
+
+fn test_sqlite_remove_index_uses_the_table_schema() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec("ATTACH DATABASE ':memory:' AS aux;")!
+	db.exec('CREATE TABLE main.users (email TEXT);')!
+	db.exec('CREATE TABLE aux.users (email TEXT);')!
+	db.exec('CREATE INDEX main.same_idx ON users (email);')!
+	db.exec('CREATE INDEX aux.same_idx ON users (email);')!
+
+	mut ctx := new_context(db, .sqlite)
+	ctx.remove_index('aux.users', 'same_idx')!
+	assert db.q_int("SELECT count(*) FROM main.sqlite_master WHERE type = 'index' AND name = 'same_idx';")! == 1
+	assert db.q_int("SELECT count(*) FROM aux.sqlite_master WHERE type = 'index' AND name = 'same_idx';")! == 0
 }
 
 fn test_postgresql_add_index_rejects_qualified_names() {
