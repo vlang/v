@@ -652,6 +652,27 @@ fn (tc &TypeChecker) expr_is_mut_arg_for_key(id flat.NodeId, key string) bool {
 	return node.is_mut && tc.expr_key(id) == key
 }
 
+// expr_mut_arg_key returns the resolved expression key of a `mut` argument
+// (unwrapping paren/expr_stmt wrappers), or none if the argument is not `mut` or
+// has no key. Unlike expr_is_mut_arg_for_key it does not require an exact match, so
+// callers can apply the ancestor-aware write_key_invalidates_key relationship.
+fn (tc &TypeChecker) expr_mut_arg_key(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.is_mut {
+		k := tc.expr_key(id)
+		if k.len > 0 {
+			return k
+		}
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.expr_mut_arg_key(tc.a.child(&node, 0))
+	}
+	return none
+}
+
 fn assignment_marker_value_is_error(value string) bool {
 	return value.starts_with('for init assignment mismatch:')
 		|| value.starts_with('for post assignment mismatch:')
@@ -3334,7 +3355,10 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if callee.kind == .ident && callee.value == 'main' && !tc.cur_file.ends_with('_test.v') {
+		if callee.kind == .ident && callee.value == 'main' && !tc.cur_file.ends_with('_test.v')
+			&& !tc.no_main {
+			// Under `-d no_main` the entry `main` is an ordinary function (emitted as
+			// `main__main`), so calling it is allowed just like in test builds.
 			tc.record_error_at(.call_arg_mismatch,
 				'the `main` function cannot be called in the program', id, node.pos)
 		}
@@ -3820,6 +3844,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		tc.check_call_deprecation(id, node, info)
 		tc.check_call_arg_types(id, node, info)
+		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
 		tc.check_instantiated_generic_as_casts(node, info)
 		tc.check_instantiated_generic_ordering_ops(node, info)
@@ -6552,7 +6577,16 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				}
 				return tc.call_info(mname, true)
 			}
-			alias_target_name := resolve_type_name_for_method(clean.base_type)
+			// The semantic alias payload can be the open generic form after a
+			// declaration-module parse. Reparse the recorded target text in the
+			// caller so `type Vec = vec.Vec3[f64]` retains its concrete argument
+			// when resolving inherited methods such as `Vec.cross()`.
+			alias_target_type := if target := tc.alias_target_type_text(clean.name) {
+				tc.parse_type(target)
+			} else {
+				clean.base_type
+			}
+			alias_target_name := resolve_type_name_for_method(alias_target_type)
 			if alias_target_name.len > 0 {
 				if info := tc.resolve_generic_struct_method(alias_target_name, fn_node.value) {
 					return info
@@ -7140,6 +7174,20 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				return tc.call_info(mname, true)
 			}
 		}
+		if declared := tc.declared_smartcast_receiver_type(base_id) {
+			declared_clean := unwrap_all_pointers(declared)
+			if declared_clean is SumType {
+				if info := tc.resolve_generic_sum_method(declared_clean.name, fn_node.value) {
+					return info
+				}
+			}
+			for mname in receiver_method_name_candidates(declared_clean, fn_node.value,
+				tc.cur_module) {
+				if mname in tc.fn_ret_types {
+					return tc.call_info(mname, true)
+				}
+			}
+		}
 		if fn_node.value == 'clone' && tc.type_has_compiler_default_clone(clean) {
 			if bad_type := tc.ownership_default_clone_missing_method(clean) {
 				tc.record_error(.call_arg_mismatch,
@@ -7252,6 +7300,45 @@ fn (tc &TypeChecker) binding_is_strings_builder(name string) bool {
 		return false
 	}
 	return strings_builder_binding_key(tc.fn_context.node_id, name) in tc.strings_builder_bindings
+}
+
+fn (tc &TypeChecker) declared_smartcast_receiver_type(id flat.NodeId) ?Type {
+	if tc.smartcast_type(id) == none || !tc.valid_node_id(id) {
+		return none
+	}
+	return tc.declared_receiver_expr_type(id)
+}
+
+// declared_receiver_expr_type resolves the declared (non-smartcast) type of an
+// identifier, a field-access chain like `holder.value`, or an index like
+// `items[0].value`, using only scope, struct-field, and container-element lookups.
+// It never re-enters smartcast resolution, so it is safe to call from the lexical
+// loop-write scan (which smartcast resolution calls into).
+fn (tc &TypeChecker) declared_receiver_expr_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return tc.cur_scope.lookup(node.value)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.declared_receiver_expr_type(tc.a.child(node, 0))?
+		base_struct := struct_type_from_type(unwrap_all_pointers(unalias_type(base)))?
+		return tc.struct_field_type(base_struct.name, node.value)
+	}
+	if node.kind == .index && node.children_count > 0 {
+		base := tc.declared_receiver_expr_type(tc.a.child(node, 0))?
+		container := unwrap_all_pointers(unalias_type(base))
+		if elem := array_like_elem_type(container) {
+			return elem
+		}
+		if container is Map {
+			return map_value_type(container)
+		}
+		return none
+	}
+	return none
 }
 
 fn (tc &TypeChecker) expr_is_strings_new_builder_call(id flat.NodeId) bool {
@@ -9896,6 +9983,97 @@ fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Nod
 	}
 }
 
+// type_has_mut_receiver_method reports whether `method` is declared with a `mut`
+// receiver on `recv_type`. Such a call mutates the receiver in place, so it can
+// reassign a narrowed field/element within it even though the receiver is the
+// call's selector child rather than a `mut` argument.
+fn (tc &TypeChecker) type_has_mut_receiver_method(recv_type Type, method string) bool {
+	clean := unwrap_all_pointers(unalias_type(recv_type))
+	for mname in receiver_method_name_candidates(clean, method, tc.cur_module) {
+		if tc.mut_receiver_methods[mname] {
+			return true
+		}
+	}
+	return false
+}
+
+// sum_type_has_mut_receiver_method reports whether `method` is a `mut` receiver
+// method on the sum `recv_type` — one that can reassign the receiver to a different
+// variant, changing its runtime tag.
+fn (tc &TypeChecker) sum_type_has_mut_receiver_method(recv_type Type, method string) bool {
+	if unwrap_all_pointers(unalias_type(recv_type)) !is SumType {
+		return false
+	}
+	return tc.type_has_mut_receiver_method(recv_type, method)
+}
+
+// invalidate_smartcasts_for_mut_lvalue drops narrowings a mutable access to
+// `lvalue_key` can invalidate: any narrowing on a field/element strictly within it
+// (the callee can reassign that sub-field through the mutable aggregate), and the
+// narrowing on `lvalue_key` itself only when `can_retag` (the parameter/receiver is
+// the sum type, so the callee can change its own runtime tag). A `mut Variant`
+// binding cannot change its own tag, so `can_retag` is false there.
+fn (mut tc TypeChecker) invalidate_smartcasts_for_mut_lvalue(lvalue_key string, can_retag bool) {
+	if lvalue_key.len == 0 {
+		return
+	}
+	mut writes := []string{}
+	for sc_key in tc.smartcasts.keys() {
+		if sc_key == lvalue_key {
+			if can_retag {
+				writes << sc_key
+			}
+		} else if write_key_invalidates_key(lvalue_key, sc_key) {
+			writes << sc_key
+		}
+	}
+	for k in writes {
+		tc.invalidate_smartcasts_for_write_key(k)
+	}
+}
+
+// invalidate_smartcasts_after_call drops the variant narrowing of any sum value the
+// call can rebind: a `mut` argument or mut-receiver whose lvalue is a narrowed sum
+// (or an ancestor of one). A `mut Variant` parameter/receiver cannot change its own
+// runtime tag, so that exact narrowing is left intact, but it can still reassign a
+// narrowed descendant field. This runs after the arguments are checked so that an
+// argument that reads the receiver's narrowed field (`x.replace_with(x.foo)`) still
+// resolves.
+fn (mut tc TypeChecker) invalidate_smartcasts_after_call(node flat.Node, info CallInfo) {
+	if tc.smartcasts.len == 0 || !info.params_known || node.children_count == 0 {
+		return
+	}
+	// A mut receiver is written through the selector child rather than an argument.
+	if info.has_receiver && info.params.len > 0 {
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			recv_key := tc.expr_key(tc.a.child(callee, 0))
+			if recv_key.len > 0 && tc.type_has_mut_receiver_method(info.params[0], callee.value) {
+				can_retag := tc.sum_type_has_mut_receiver_method(info.params[0], callee.value)
+				tc.invalidate_smartcasts_for_mut_lvalue(recv_key, can_retag)
+			}
+		}
+	}
+	// A `mut` argument lets the callee reassign the passed lvalue (and its fields).
+	recv_extra := if info.has_receiver { 1 } else { 0 }
+	for i in 1 + info.arg_offset .. node.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		if !tc.a.node(arg_id).is_mut {
+			continue
+		}
+		arg_key := tc.expr_key(arg_id)
+		if arg_key.len == 0 {
+			continue
+		}
+		param_idx := i - 1 - info.arg_offset + recv_extra
+		if param_idx < 0 || param_idx >= info.params.len {
+			continue
+		}
+		can_retag := unwrap_all_pointers(unalias_type(info.params[param_idx])) is SumType
+		tc.invalidate_smartcasts_for_mut_lvalue(arg_key, can_retag)
+	}
+}
+
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
 	info := tc.specialized_plain_generic_call_info(node, info0)
 	if node.children_count == 0 {
@@ -10261,8 +10439,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				} else {
 					tc.resolve_type(arg_id)
 				}
-				if !tc.type_compatible(actual, expected) && !tc.type_compatible(expected, actual)
-					&& !tc.pointer_value_compatible(actual, expected) {
+				if !tc.params_field_expr_compatible(arg_id, actual, expected) {
 					expected_name := tc.params_field_diagnostic_type(raw_arg.value, info, expected)
 					actual_name := if unalias_type(expected) is FnType
 						&& unalias_type(actual) is FnType {
@@ -10968,6 +11145,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 			&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
 			&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+			&& !tc.fn_voidptr_expr_compatible(pointer_check_actual, expected)
 			&& !(info.name.starts_with('C.') && tc.is_zero_literal(arg_id))
 			&& !(info.name.starts_with('C.') && fn_param_is_voidptr_type(pointer_check_actual))
 			&& !tc.implicit_ref_arg_compatible(arg_id, pointer_check_actual, expected)
@@ -11175,6 +11353,20 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	for arg_id in pointer_slot_call_args {
 		tc.invalidate_pointer_binding_alias_after_mut_call(arg_id)
 	}
+}
+
+fn (tc &TypeChecker) params_field_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+	// Compatibility is directional: the supplied value (`actual`) must be assignable to
+	// the field (`expected`). The reverse `type_compatible(expected, actual)` wrongly
+	// accepted e.g. a sum `Foo | Bar` for a concrete `Foo` field (because `Foo` converts
+	// to the sum), letting an invalid assignment reach C generation. Keep only the
+	// directional check plus the targeted callback/pointer/voidptr exceptions.
+	return tc.expr_compatible(id, actual, expected)
+		|| tc.pointer_value_compatible(actual, expected)
+		|| tc.method_value_matches_voidptr_callback(id, actual, expected)
+		|| tc.fn_callback_adapter_compatible(actual, expected)
+		|| voidptr_arg_compatible(expected, actual)
+		|| (fn_param_is_voidptr_type(expected) && tc.expr_can_take_address(id))
 }
 
 fn (tc &TypeChecker) call_is_direct_spawn_child(id flat.NodeId) bool {
@@ -12777,13 +12969,43 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 			tc.type_from_known_symbol(arg) or { tc.parse_type(arg) }
 		}
 	}
+	// A generic receiver method can also have its own generic parameters, e.g.
+	// `fn (v Vec3[T]) mul_scalar[U](u U) Vec3[T]`. The method inference above
+	// resolves `U`, while resolve_generic_struct_method has already made the
+	// receiver concrete. Retain both substitutions when rebuilding signature
+	// text so the receiver's `T` does not become open again.
+	mut signature_params := generic_params.clone()
+	mut signature_args := concrete_args.clone()
+	if info.has_receiver && info.params.len > 0 && param_texts.len > 0 {
+		receiver_pattern := info.name.all_before_last('.')
+		_, receiver_params, receiver_is_generic := generic_type_application_parts(receiver_pattern)
+		if receiver_is_generic {
+			mut receiver_inferred := map[string]string{}
+			actual_receiver := unwrap_pointer(info.params[0]).name()
+			tc.infer_generic_type_text_from_text(receiver_pattern, actual_receiver,
+				receiver_params, mut receiver_inferred)
+			if receiver_inferred.len == 0 {
+				tc.infer_generic_type_text_from_type(param_texts[0], info.params[0],
+					receiver_params, mut receiver_inferred)
+			}
+			for receiver_param in receiver_params {
+				if receiver_param in signature_params {
+					continue
+				}
+				if receiver_arg := receiver_inferred[receiver_param] {
+					signature_params << receiver_param
+					signature_args << receiver_arg
+				}
+			}
+		}
+	}
 	mut sub_params := []Type{}
 	for i, param_text in param_texts {
 		if generic_type_application(param_text) {
 			// Named applications such as `Box[T]` lose their arguments in the
 			// open parsed type, so retain the textual reconstruction for them.
 			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
-				concrete_args, generic_params))
+				signature_args, signature_params))
 		} else if i < info.params.len {
 			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types,
 				generic_params)
@@ -12795,8 +13017,8 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	ret_text := tc.fn_ret_type_texts[info.name] or { '' }
 	sub_ret := if ret_text.len > 0 {
 		if generic_type_application(ret_text) || ret_text.starts_with('(') {
-			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, concrete_args,
-				generic_params))
+			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, signature_args,
+				signature_params))
 		} else {
 			tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 		}

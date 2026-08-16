@@ -131,6 +131,12 @@ fn is_anonymous_struct_type_name(name string) bool {
 }
 
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
+	if node.value.starts_with('main.') && !node.value['main.'.len..].contains('.') {
+		// Monomorphization pins a caller-owned program type with `main.` when the
+		// generic declaration's module has a same-named type. The expression type
+		// predates that clone and must not replace the explicit lock.
+		return node.value
+	}
 	if node.value == 'struct' {
 		expected := types.unwrap_pointer(g.expected_expr_type)
 		if expected is types.Struct && is_anonymous_struct_type_name(expected.name) {

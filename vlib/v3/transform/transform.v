@@ -463,6 +463,8 @@ mut:
 	retained_worker_regions     []ScopedTransformRegion
 	stage_scope                 voidptr
 	scoped_monomorphize         bool
+	signature_maps_shared       bool
+	signature_maps_changed      bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -2122,6 +2124,7 @@ const sum_type_tag_selector_field = '__v_sum_type_tag__'
 const pending_loop_label_marker = '__v_pending_loop_label:'
 
 fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
+	t.ensure_private_signature_maps()
 	t.receiver_method_suffix_index.clear()
 	for name, _ in t.fn_ret_types {
 		t.add_receiver_method_suffix_index(name)
@@ -2152,16 +2155,32 @@ fn (mut t Transformer) add_receiver_method_suffix_index(name string) {
 	}
 }
 
+fn (mut t Transformer) ensure_private_signature_maps() {
+	if t.signature_maps_shared {
+		t.fn_ret_types = t.fn_ret_types.clone()
+		t.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
+		t.signature_maps_shared = false
+	}
+	t.signature_maps_changed = true
+}
+
+fn (mut t Transformer) set_fn_ret_type(name string, typ string) {
+	t.ensure_private_signature_maps()
+	t.fn_ret_types[name] = typ
+}
+
 fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string) {
 	if key.len == 0 {
 		return
 	}
 	if existing := t.receiver_method_suffix_index[key] {
 		if existing != name {
+			t.ensure_private_signature_maps()
 			t.receiver_method_suffix_index[key] = receiver_method_suffix_ambiguous
 		}
 		return
 	}
+	t.ensure_private_signature_maps()
 	t.receiver_method_suffix_index[key] = name
 }
 
@@ -3791,10 +3810,13 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		stage_scope:                        t.stage_scope
 		scoped_monomorphize:                t.scoped_monomorphize
 		node_context_read_only:             t.node_context_read_only
+		signature_maps_shared:              true
+		signature_maps_changed:             false
 	}
 }
 
 fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
+	t.merge_worker_signatures(w)
 	scoped := w.worker_scope != unsafe { nil }
 	for name, used in w.used_fns {
 		if used {
@@ -3844,6 +3866,54 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 			} else {
 				t.default_clone_types[name] = req
 			}
+		}
+	}
+}
+
+// merge_worker_signatures publishes declarations synthesized by a private
+// transform worker before its disposable arena is released.
+fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
+	if !w.signature_maps_changed && (isnil(w.tc) || !w.tc.transform_signatures_changed()) {
+		return
+	}
+	if w.signature_maps_changed {
+		t.ensure_private_signature_maps()
+	}
+	for name, ret in w.fn_ret_types {
+		if name !in t.fn_ret_types {
+			owned_name := name.clone()
+			t.fn_ret_types[owned_name] = ret.clone()
+			t.add_receiver_method_suffix_index(owned_name)
+		}
+	}
+	if isnil(t.tc) || isnil(w.tc) || !w.tc.transform_signatures_changed() {
+		return
+	}
+	// The master checker is shared as `&TypeChecker`, but signature merging runs only on
+	// the master thread after every worker has been joined (their results are already
+	// consumed above), so nothing reads or writes it concurrently here. Reinterpret the
+	// shared reference as mutable to publish the worker's new signatures into the
+	// uniquely-owned master checker.
+	mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+	master_tc.ensure_private_transform_signatures()
+	for name, ret in w.tc.fn_ret_types {
+		if name in master_tc.fn_ret_types {
+			continue
+		}
+		owned_name := name.clone()
+		master_tc.fn_ret_types[owned_name] = types.clone_owned_type(ret)
+		if params := w.tc.fn_param_types[name] {
+			master_tc.fn_param_types[owned_name] = types.clone_owned_types(params)
+		}
+		master_tc.fn_variadic[owned_name] = w.tc.fn_variadic[name]
+		if w.tc.specialized_generic_fns[name] {
+			master_tc.specialized_generic_fns[owned_name] = true
+		}
+		if module_name := w.tc.fn_type_modules[name] {
+			master_tc.fn_type_modules[owned_name] = module_name.clone()
+		}
+		if file := w.tc.fn_type_files[name] {
+			master_tc.fn_type_files[owned_name] = file.clone()
 		}
 	}
 }
@@ -8123,7 +8193,13 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		} else {
 			''
 		}
-		mut typ := if param_idx < param_types.len && param_types[param_idx] !is types.Unknown {
+		mut typ := if t.validating_generic_spec && raw_source_typ.contains('main.') {
+			// A generic clone uses `main.` to pin a caller-owned type that collides
+			// with a type in the declaration module. The checker's semantic type was
+			// resolved before cloning, so preferring it here would rebase the param to
+			// the declaration module and discard that lock.
+			raw_source_typ
+		} else if param_idx < param_types.len && param_types[param_idx] !is types.Unknown {
 			t.normalize_type_alias(param_types[param_idx].name())
 		} else if raw_typ.len > 0 {
 			raw_typ
@@ -13793,7 +13869,7 @@ fn (t &Transformer) multi_return_types_for_expr(id flat.NodeId, expected_count i
 	// see the concrete source slots that need conversion.
 	if node.kind == .call {
 		ret := t.get_call_return_type(id, node)
-		if ret.len > 0 {
+		if ret.len > 0 && !t.generic_arg_is_unresolved(ret) {
 			if items := multi_return_types_from_type(t.tc.parse_type(ret), expected_count) {
 				return items
 			}
@@ -13803,12 +13879,14 @@ fn (t &Transformer) multi_return_types_for_expr(id flat.NodeId, expected_count i
 				return items
 			}
 		}
-		if items := t.find_multi_return_call_types(node, expected_count) {
-			return items
-		}
 	}
 	if typ := t.tc.expr_type(id) {
 		if items := multi_return_types_from_type(typ, expected_count) {
+			return items
+		}
+	}
+	if node.kind == .call {
+		if items := t.find_multi_return_call_types(node, expected_count) {
 			return items
 		}
 	}
@@ -17350,8 +17428,8 @@ fn (mut t Transformer) owned_method_receiver_clone_helper(site flat.NodeId, typ 
 	})
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(fn_decl, module_name, t.cur_file)
-	t.fn_ret_types[name] = typ
-	t.fn_ret_types[qname] = typ
+	t.set_fn_ret_type(name, typ)
+	t.set_fn_ret_type(qname, typ)
 	t.mark_fn_used_name(qname)
 	return qname
 }
@@ -17999,13 +18077,18 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .ident && t.pointer_value_rvalues[child.value] {
 			value := t.transform_expr_preserving_pointer_value(child_id)
-			result := t.make_prefix(.mul, value)
+			mut result := t.make_prefix(.mul, value)
 			if node.pos.end > node.pos.offset {
 				// Cgen must distinguish this source dereference from the synthetic
 				// dereference that reads a mutable parameter's pointer slot.
 				t.a.nodes[int(result)].value = source_mut_pointer_deref_marker
 			}
-			value_type := t.node_type(value)
+			mut value_type := t.node_type(value)
+			if child.value in t.mut_param_values && value_type.starts_with('&&') {
+				t.set_node_typ(int(result), value_type[1..])
+				value_type = value_type[1..]
+				result = t.make_prefix(.mul, result)
+			}
 			if value_type.starts_with('&') {
 				t.set_node_typ(int(result), value_type[1..])
 			}
@@ -20924,6 +21007,31 @@ fn (t &Transformer) is_stmt_kind(kind flat.NodeKind) bool {
 
 // infer_decl_type resolves infer decl type information for transform.
 fn (t &Transformer) infer_decl_type(node &flat.Node) string {
+	if t.validating_generic_spec && node.children_count > 0 {
+		lhs := t.a.child_node(node, 0)
+		if lhs.typ.contains('main.') && decl_type_is_usable(lhs.typ) {
+			// The cloned identifier carries the same caller-type lock as a cloned
+			// struct literal. Keep it ahead of checker RHS authority, which still
+			// describes the unspecialized declaration in its original module.
+			return lhs.typ
+		}
+	}
+	if t.validating_generic_spec && node.typ.contains('main.') && decl_type_is_usable(node.typ) {
+		return node.typ
+	}
+	if !isnil(t.tc) && node.children_count > 0 {
+		// Use only the type that the checker recorded for this declaration. Falling
+		// back to resolving the lhs identifier can select a same-named function
+		// before the transformer has installed the new local binding (`copy := ...`).
+		if lhs_semantic_type := t.tc.expr_type(t.a.child(node, 0)) {
+			lhs_type := t.tc.type_name(lhs_semantic_type)
+			if decl_type_is_usable(lhs_type) {
+				// The declaration type can intentionally differ from the visible
+				// smartcast of the rhs after an exiting guard or assertion.
+				return lhs_type
+			}
+		}
+	}
 	mut rhs_authority := ''
 	if node.children_count >= 2 {
 		rhs_id := t.a.child(node, 1)

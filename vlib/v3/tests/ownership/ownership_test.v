@@ -2813,6 +2813,25 @@ fn main() {
 	assert ok.exit_code == 0, ok.output
 }
 
+fn test_autofree_nested_aggregate_transfer_moves_cleanup_owner_forward() {
+	v3_bin := ownership_build_v3()
+	ok := run_autofree_check(v3_bin, 'nested_aggregate_transfer', '
+struct Data {
+	value ?string
+}
+
+fn main() {
+	value := "owned".to_owned()
+	mut rows := map[string]Data{}
+	rows["key"] = Data{
+		value: ?string(value)
+	}
+	println(rows.len)
+}
+')
+	assert ok.exit_code == 0, ok.output
+}
+
 fn test_ownership_callee_params_are_order_independent() {
 	v3_bin := ownership_build_v3()
 	fail := run_ownership_check(v3_bin, 'callee_before_owned_call', "

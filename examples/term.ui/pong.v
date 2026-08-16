@@ -490,11 +490,15 @@ type CleanupFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.tui = ui.init(
-		user_data:      app
-		init_fn:        InitFn(init)
-		frame_fn:       FrameFn(frame)
-		cleanup_fn:     CleanupFn(cleanup)
-		event_fn:       EventFn(event)
+		user_data: app
+		// The tui callback slots are `voidptr`; these handlers (`init`, `frame`, `cleanup`,
+		// `event`) instead take the typed app pointer that `user_data` hands back. `&T` and
+		// `voidptr` share a representation, so reinterpreting each fn pointer across that
+		// parameter is ABI-safe; the casts only satisfy the static fn-type check.
+		init_fn:        unsafe { InitFn(init) }
+		frame_fn:       unsafe { FrameFn(frame) }
+		cleanup_fn:     unsafe { CleanupFn(cleanup) }
+		event_fn:       unsafe { EventFn(event) }
 		fail_fn:        fail
 		capture_events: true
 		hide_cursor:    true

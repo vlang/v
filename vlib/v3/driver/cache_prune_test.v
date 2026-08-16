@@ -3,6 +3,22 @@ module driver
 import os
 import v3.pref
 
+fn test_whole_program_cache_is_not_persistent_for_test_inputs() {
+	assert persistent_program_cache_enabled(true, false, os.join_path(os.temp_dir(), 'v3_cache'))
+	assert !persistent_program_cache_enabled(true, true, os.join_path(os.temp_dir(), 'v3_cache'))
+	assert !persistent_program_cache_enabled(false, false, os.join_path(os.temp_dir(), 'v3_cache'))
+	assert !persistent_program_cache_enabled(true, false, os.join_path(os.temp_dir(),
+		'tsession_test'))
+}
+
+fn test_builtin_bundle_module_inputs_do_not_reuse_the_bundle_object() {
+	assert input_owns_builtin_bundle_module(os.join_path(@VEXEROOT, 'vlib', 'math', 'bits',
+		'bits_test.v'), @VEXEROOT)
+	assert input_owns_builtin_bundle_module(os.join_path(@VEXEROOT, 'vlib', 'strings'), @VEXEROOT)
+	assert !input_owns_builtin_bundle_module(os.join_path(@VEXEROOT, 'vlib', 'math', 'math_test.v'),
+		@VEXEROOT)
+}
+
 fn test_cache_function_reference_counts_scans_source_once() {
 	candidates := {
 		'alpha__one': true

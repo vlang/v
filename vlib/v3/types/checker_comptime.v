@@ -2124,10 +2124,14 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, 1))
 		}
 	}
-	if node.kind == .infix && node.op == .logical_and && node.children_count >= 2 {
+	if node.kind == .infix && node.op in [.logical_and, .logical_or] && node.children_count >= 2 {
 		lhs_id := tc.a.child(&node, 0)
 		rhs_id := tc.a.child(&node, 1)
-		smartcasts := tc.extract_smartcasts(lhs_id)
+		smartcasts := if node.op == .logical_and {
+			tc.extract_smartcasts(lhs_id)
+		} else {
+			tc.extract_else_branch_smartcasts(lhs_id)
+		}
 		if smartcasts.len > 0 {
 			tc.check_node(lhs_id)
 			unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
@@ -3363,8 +3367,8 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 	}
 	spec := letters[0]
 	spec_pos := token.new_span(node.pos.id, node.pos.end - 1, node.pos.end)
-	known := spec in [`d`, `u`, `x`, `X`, `o`, `b`, `c`, `s`, `e`, `E`, `f`, `F`, `g`, `G`, `r`,
-		`R`, `p`]
+	known := spec in [`d`, `u`, `x`, `X`, `o`, `b`, `c`, `s`, `S`, `e`, `E`, `f`, `F`, `g`, `G`,
+		`r`, `R`, `p`]
 	if !known {
 		tc.record_error_at(.call_arg_mismatch, 'unknown format specifier `${spec.ascii_str()}`',
 			id, spec_pos)
@@ -3385,10 +3389,10 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 		|| (tc.a.node(expr_id).kind == .ident
 		&& tc.current_fn_param_is_mut_receiver(tc.a.node(expr_id).value))) {
 		allowed = true
-	} else if spec == `s` && unalias_type(actual) is Pointer {
+	} else if spec in [`s`, `S`] && unalias_type(actual) is Pointer {
 		allowed = true
 	} else if clean.is_string() {
-		allowed = spec in [`s`, `r`, `R`]
+		allowed = spec in [`s`, `S`, `r`, `R`]
 	} else if clean.is_float() {
 		allowed = spec in [`e`, `E`, `f`, `F`, `g`, `G`]
 	} else if clean.is_integer() {
@@ -3398,6 +3402,11 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 		} else {
 			spec in [`d`, `x`, `X`, `o`, `b`, `c`]
 		}
+	} else if spec in [`s`, `S`] {
+		// Composite values use their generated/custom `str()` representation. Match
+		// V1, where width/alignment with `s` is valid for arrays, maps, structs,
+		// interfaces, sum types, options/results, and function values.
+		allowed = clean !is Void && clean !is Char
 	}
 	if !allowed {
 		actual_name := if tc.a.node(expr_id).kind == .none_expr { 'none' } else { actual.name() }
@@ -8850,7 +8859,7 @@ fn (tc &TypeChecker) current_fn_is_test() bool {
 		return false
 	}
 	source_file := tc.a.source_files[node.pos.id] or { return false }
-	return is_regular_v_test_file(source_file.name)
+	return is_c_backend_test_file(source_file.name)
 }
 
 fn (mut tc TypeChecker) record_nested_propagation_return_errors(id flat.NodeId, source_id flat.NodeId, wrapper string, marker string) {
@@ -13179,9 +13188,14 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		owner := tc.insert_decl_lhs(lhs_id, expected, lhs_is_mut)
+		tc.record_bool_condition_binding(owner, rhs_id, expected, lhs_is_mut)
 		tc.record_pointer_binding_alias(owner, rhs_id, expected)
-		if owner.storage_key().len > 0 && unalias_type(expected) is Map
-			&& tc.expr_is_unsafe_reference_alias(rhs_id) {
+		clean_decl_type := unalias_type(expected)
+		// A collection alias created with `unsafe` shares its source's storage: a map
+		// reference (`m2 := unsafe { m1 }`) or an array slice (`view := unsafe { a[..] }`).
+		// Record the binding so reads through it are treated as mutable dependencies.
+		if owner.storage_key().len > 0 && tc.expr_is_unsafe_reference_alias(rhs_id)
+			&& (clean_decl_type is Map || clean_decl_type is Array || clean_decl_type is ArrayFixed) {
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
 		}
 		if lhs_node.value != '_' && lhs_is_mut {
@@ -13263,6 +13277,11 @@ fn (mut tc TypeChecker) check_valid_decl_assign(id flat.NodeId, node flat.Node) 
 		}
 		lhs_is_mut := tc.decl_lhs_is_mut(node, lhs_id)
 		owner := tc.insert_decl_lhs(lhs_id, if explicit_expected is Void {
+			inferred
+		} else {
+			explicit_expected
+		}, lhs_is_mut)
+		tc.record_bool_condition_binding(owner, rhs_id, if explicit_expected is Void {
 			inferred
 		} else {
 			explicit_expected
@@ -14391,6 +14410,14 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 		}
 	}
 	if smartcast := tc.smartcast_type(rhs_id) {
+		if rhs.kind == .ident && tc.lexical_smartcast_type(rhs_id, rhs.value) == none {
+			// A guard/assert fallthrough narrows reads of the original binding, but V1
+			// infers a new declaration from its declared type. Lexical branch and loop
+			// smartcasts still infer the narrowed variant.
+			if declared := tc.cur_scope.lookup(rhs.value) {
+				return declared
+			}
+		}
 		return smartcast
 	}
 	if rhs.kind == .selector {
@@ -15452,6 +15479,51 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 		return owner
 	}
 	return ScopeBindingOwner{}
+}
+
+fn (mut tc TypeChecker) record_bool_condition_binding(owner ScopeBindingOwner, rhs_id flat.NodeId, typ Type, is_mut bool) {
+	key := owner.storage_key()
+	if key.len == 0 || is_mut || !tc.condition_type_is_bool_like(typ)
+		|| tc.condition_references_mutable_binding(rhs_id) {
+		return
+	}
+	tc.fn_context.bool_condition_exprs[key] = rhs_id
+}
+
+fn (tc &TypeChecker) condition_references_mutable_binding(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident && tc.ident_is_mutable_lvalue(node.value) {
+		return true
+	}
+	// A value read through a pointer/reference touches storage another alias can mutate
+	// even when the pointer variable itself is immutable (for example `p := &holder;
+	// p.value is Foo` while `holder.value` is reassigned elsewhere). The recorded
+	// condition would then smartcast stale storage, so treat such reads as mutable.
+	if node.kind == .prefix && node.op == .mul {
+		return true
+	}
+	if node.kind in [.selector, .index] && node.children_count > 0 {
+		base_id := tc.a.child(node, 0)
+		if unalias_type(tc.resolve_type(base_id)) is Pointer {
+			return true
+		}
+		// A reference-backed collection alias (for example `view := unsafe { values[..] }`)
+		// deliberately shares another binding's mutable storage, so a read through it can
+		// be invalidated by a write to that storage even though its base resolves to Array
+		// rather than Pointer. Treat it as a mutable dependency using the alias provenance.
+		if tc.expr_is_reference_alias(base_id, false) {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.condition_references_mutable_binding(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) visible_mut_param_binding_owns_name(name string) bool {

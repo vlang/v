@@ -1455,12 +1455,9 @@ fn veb_context_binding_name(a &flat.FlatAst, param_ids []flat.NodeId, ret_type s
 			return param.value
 		}
 	}
-	for id in param_ids {
-		param := a.nodes[int(id)]
-		if param.kind == .param && param.is_mut {
-			return param.value
-		}
-	}
+	// An app handler can omit its request-context parameter. Its only mutable
+	// parameter is then the method receiver, which must not become the context
+	// used by `$veb.html()`; the checker supplies the implicit `ctx` binding.
 	return ''
 }
 
@@ -1796,7 +1793,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				field_type := full_type + p.parse_type_generic_suffix()
 				fid := p.add_node(flat.Node{
 					kind:  .field_decl
-					value: full_type
+					value: field_type
 					typ:   field_type
 					pos:   p.span_to(field_start)
 				})

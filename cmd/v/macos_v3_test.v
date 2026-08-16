@@ -928,13 +928,14 @@ fn test_macos_v3_forwards_compatibility_c99_mode() {
 		assert macos_v3_compat_c99_flag in forwarded
 		assert '-nocache' !in forwarded
 		assert '--no-cache' !in forwarded
-		assert '-no-memory-limit' in forwarded
+		assert '-no-memory-limit' !in forwarded
+		assert '--no-memory-limit' !in forwarded
 		assert '-no-parallel' !in forwarded
 		assert forwarded.count(it == macos_v3_compat_c99_flag) == 1
 		already_present := macos_v3_forwarded_args(prefs, [macos_v3_compat_c99_flag, 'main.v'])
 		assert already_present.count(it == macos_v3_compat_c99_flag) == 1
 		assert already_present.count(it in ['-nocache', '--no-cache']) == 0
-		assert already_present.count(it == '-no-memory-limit') == 1
+		assert already_present.count(it in ['-no-memory-limit', '--no-memory-limit']) == 0
 		explicit_no_cache := macos_v3_forwarded_args(prefs, ['--no-cache', 'main.v'])
 		assert explicit_no_cache.count(it in ['-nocache', '--no-cache']) == 1
 		explicit_memory_limit := macos_v3_forwarded_args(prefs, ['--no-memory-limit', 'main.v'])

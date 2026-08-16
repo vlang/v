@@ -10430,16 +10430,24 @@ fn (mut tc TypeChecker) ownership_move_var(name string, target string, pos flat.
 fn (mut tc TypeChecker) ownership_move_var_result(name string, target string, pos flat.NodeId, is_fn_call bool, fn_name string, suggest_clone bool) bool {
 	mut st := tc.ownership_state()
 	if moved := tc.ownership_moved_conflict(name) {
-		// Re-moving the exact same value to the same target at the same node is one logical
-		// move recorded twice, not a use-after-move. This happens when a returned struct's
-		// owned descendant (e.g. `args.positional[*]`) is both marked as a return descendant
-		// and swept again as overlapping dynamic storage in the same `return`. Treat it as a
-		// no-op instead of reporting a spurious `use of moved value`.
-		if moved.name == name && moved.info.moved_to == target && moved.info.move_pos == pos {
+		// Autofree retains V1's aliasing semantics. Aggregate lowering can first
+		// transfer a value into a temporary field and then transfer the same source
+		// expression into its final container slot. Move the cleanup owner forward
+		// instead of diagnosing that second transfer as a strict ownership error.
+		if tc.autofree_mode && moved.name == name {
+			st.moved_vars.delete(name)
+		} else {
+			// Re-moving the exact same value to the same target at the same node is one logical
+			// move recorded twice, not a use-after-move. This happens when a returned struct's
+			// owned descendant (e.g. `args.positional[*]`) is both marked as a return descendant
+			// and swept again as overlapping dynamic storage in the same `return`. Treat it as a
+			// no-op instead of reporting a spurious `use of moved value`.
+			if moved.name == name && moved.info.moved_to == target && moved.info.move_pos == pos {
+				return false
+			}
+			tc.ownership_report_moved(moved.name, moved.info, pos)
 			return false
 		}
-		tc.ownership_report_moved(moved.name, moved.info, pos)
-		return false
 	}
 	if conflict := tc.ownership_borrow_conflict(name) {
 		msg := if conflict.name == name {
@@ -10561,6 +10569,11 @@ fn (mut tc TypeChecker) ownership_owned_dynamic_overlap_names(source_name string
 }
 
 fn (mut tc TypeChecker) ownership_report_moved(name string, info MovedVar, id flat.NodeId) {
+	// Autofree retains V1's aliasing semantics. It still records moves to choose
+	// one cleanup owner, but using an earlier alias is not a source-level error.
+	if tc.autofree_mode {
+		return
+	}
 	tname := if info.type_name.len > 0 { info.type_name } else { 'string' }
 	mut msg := 'use of moved value: `${name}`'
 	msg += '; move occurs because `${name}` has type `${tname}`, which does not implement `Copy`'

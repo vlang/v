@@ -30,6 +30,15 @@ fn test_self_host_memory_limit() {
 		'RSS').contains('(limit: 4 GiB)')
 }
 
+fn test_compiler_tree_memory_limit() {
+	mut b := new()
+	b.use_compiler_tree_memory_limit()
+	assert memory_limit_error(self_host_memory_limit_kb, b.memory_limit_kb, 'after transform',
+		'RSS') == ''
+	assert memory_limit_error(compiler_tree_memory_limit_kb, b.memory_limit_kb, 'after transform',
+		'RSS') != ''
+}
+
 fn test_step_parts_record_individual_timings() {
 	mut b := new()
 	b.disable_memory_limit()

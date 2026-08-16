@@ -467,10 +467,14 @@ type FrameFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.termui = termui.init(
-		user_data:   app
-		event_fn:    EventFn(event)
-		frame_fn:    FrameFn(frame)
-		init_fn:     InitFn(init)
+		user_data: app
+		// The tui callback slots are `voidptr`; these handlers (`event`, `frame`, `init`)
+		// instead take the typed app pointer that `user_data` hands back. `&T` and `voidptr`
+		// share a representation, so reinterpreting each fn pointer across that parameter is
+		// ABI-safe; the casts only satisfy the static fn-type check.
+		event_fn:    unsafe { EventFn(event) }
+		frame_fn:    unsafe { FrameFn(frame) }
+		init_fn:     unsafe { InitFn(init) }
 		hide_cursor: true
 		frame_rate:  10
 	)

@@ -343,6 +343,10 @@ fn main() {
 	}
 }
 
+fn read_byte(mut bytes &u8) u8 {
+	return *bytes
+}
+
 fn terminate(mut bytes &u8) {
 	write_byte(mut bytes, `Z`)
 	unsafe {
@@ -356,6 +360,7 @@ fn main() {
 	terminate(mut bytes)
 	assert storage[0] == `Z`
 	assert storage[1] == 0
+	assert read_byte(mut bytes) == `Z`
 	println("ok")
 }
 ')

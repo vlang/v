@@ -628,8 +628,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	for cid in ids {
 		t.a.children << cid
 	}
+	// Without ownership lowering, map iteration bindings are borrowed shallow copies.
+	// Destroying a temporary container here would invalidate values retained by the body.
+	map_container_needs_drop := !isnil(t.tc) && map_iter_type.starts_with('map[')
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(map_iter_type))
 	cleanup_owned_container := cleanup_owned_snapshot
-		|| (map_iter_type.starts_with('map[') && source_is_owned_temporary)
+		|| (source_is_owned_temporary && map_container_needs_drop)
 	mut cleanup_guard_name := ''
 	if cleanup_owned_container {
 		cleanup_guard_name = t.new_temp('for_map_container_live')

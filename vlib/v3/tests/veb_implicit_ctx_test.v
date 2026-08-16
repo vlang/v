@@ -61,3 +61,47 @@ fn main() {
 	// so the explicit argument still lines up with its parameter.
 	assert c_code.contains('App__show(app, ctx, 5)'), c_code
 }
+
+// A route parameter whose imported type leaf is `Context` but which is not a veb
+// context (here `other.Context` aliases `string`) must not be mistaken for the
+// request context. The handler still receives the hidden `Context`, so its
+// implicit `ctx` use resolves.
+fn test_veb_imported_context_alias_param_still_gets_hidden_ctx() {
+	v3_bin := build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_veb_imported_ctx_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'other')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vebimportedctx' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'other', 'other.v'),
+		'module other\n\npub type Context = string\n') or { panic(err) }
+	main_src := "module main
+
+import veb
+import other
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (mut app App) index(mut ctx Context) veb.Result {
+	return ctx.text('ok')
+}
+
+pub fn (mut app App) show(slug other.Context) veb.Result {
+	return ctx.text('slug=\${slug}')
+}
+
+fn main() {}
+"
+	os.write_file(os.join_path(root, 'main.v'), main_src) or { panic(err) }
+	out := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'main.v')} -o ${out}')
+	assert compile.exit_code == 0, compile.output
+}

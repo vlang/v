@@ -3215,17 +3215,29 @@ fn sql_clean_tokens(tokens []string) []string {
 				continue
 			}
 			if token == '.' && clean.len > 0 && i + 1 < tokens.len {
-				if sql_token_can_precede_selector(clean[clean.len - 1]) {
-					clean[clean.len - 1] += '.${tokens[i + 1]}'
-				} else {
-					clean << '.${tokens[i + 1]}'
+				mut selector := '.${tokens[i + 1]}'
+				mut consumed := 2
+				if i + 3 < tokens.len && tokens[i + 2] == '(' && tokens[i + 3] == ')' {
+					selector += '()'
+					consumed = 4
 				}
-				i += 2
+				if sql_token_can_precede_selector(clean[clean.len - 1]) {
+					clean[clean.len - 1] += selector
+				} else {
+					clean << selector
+				}
+				i += consumed
 				continue
 			}
 			if token == '.' && clean.len == 0 && i + 1 < tokens.len {
-				clean << '.${tokens[i + 1]}'
-				i += 2
+				mut selector := '.${tokens[i + 1]}'
+				mut consumed := 2
+				if i + 3 < tokens.len && tokens[i + 2] == '(' && tokens[i + 3] == ')' {
+					selector += '()'
+					consumed = 4
+				}
+				clean << selector
+				i += consumed
 				continue
 			}
 			clean << token

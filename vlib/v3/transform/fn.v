@@ -4769,16 +4769,27 @@ fn auto_str_helper_name(aggregate string) string {
 	return '__v3_autostr_${c_name(aggregate)}'
 }
 
+fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
+	if !isnil(t.tc) {
+		if module_name := t.tc.struct_modules[aggregate] {
+			return module_name
+		}
+	}
+	if !aggregate.starts_with('C.') && aggregate.contains('.') {
+		return aggregate.all_before_last('.')
+	}
+	return if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+}
+
 fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate string) flat.NodeId {
 	helper := auto_str_helper_name(aggregate)
 	if aggregate !in t.auto_str_types {
 		t.auto_str_types[aggregate] = AutoStrRequest{
 			module: t.cur_module
 			file:   t.cur_file
-			// The helper name already contains the aggregate's fully qualified C
-			// name. Emit it in `main` so every transformed call uses that exact,
-			// module-independent symbol.
-			helper_module: 'main'
+			// The helper name contains the fully qualified C type, while the module
+			// assignment keeps its definition with the cached object that owns it.
+			helper_module: t.auto_str_helper_owner_module(aggregate)
 		}
 	}
 	t.mark_fn_used_name(helper)
@@ -4913,10 +4924,11 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 	} else {
 		helper
 	}
-	t.fn_ret_types[helper] = 'string'
-	t.fn_ret_types[helper_key] = 'string'
+	t.set_fn_ret_type(helper, 'string')
+	t.set_fn_ret_type(helper_key, 'string')
 	t.mark_fn_used_name(helper_key)
 	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_signatures()
 		t.tc.fn_ret_types[helper] = t.tc.parse_type('string')
 		t.tc.fn_ret_types[helper_key] = t.tc.parse_type('string')
 		t.tc.fn_param_types[helper] = [t.tc.parse_type(aggregate)]
@@ -5772,9 +5784,18 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
 }
 
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
-	clean := typ.trim_space()
+	mut clean := typ.trim_space()
 	if clean.len == 0 {
 		return none
+	}
+	// Main-module declarations are stored under their bare names, while checker-resolved
+	// generic parameter types can retain a `main.` qualifier after specialization.
+	if clean.starts_with('main.') && !clean['main.'.len..].contains('.') {
+		short := clean['main.'.len..]
+		if short in t.structs || short in t.sum_types
+			|| (!isnil(t.tc) && (short in t.tc.structs || short in t.tc.sum_types)) {
+			clean = short
+		}
 	}
 	base, args, is_generic := generic_app_parts(clean)
 	if is_generic && args.len > 0 && t.generic_aggregate_base_exists(base, args.len) {
@@ -5822,17 +5843,16 @@ fn (t &Transformer) generic_specialized_source_type_name(typ string) ?string {
 	if args.len == 0 {
 		return none
 	}
-	suffix := generic_type_suffixes(args)
 	if !isnil(t.tc) {
 		for base, params in t.tc.struct_generic_params {
 			if params.len == args.len
-				&& generic_specialized_type_matches_flat_name(clean, base, suffix) {
+				&& generic_specialized_type_matches_flat_name(clean, base, args) {
 				return generic_specialized_source_type_name_for_base(base, args)
 			}
 		}
 		for base, params in t.tc.sum_generic_params {
 			if params.len == args.len
-				&& generic_specialized_type_matches_flat_name(clean, base, suffix) {
+				&& generic_specialized_type_matches_flat_name(clean, base, args) {
 				return generic_specialized_source_type_name_for_base(base, args)
 			}
 		}
@@ -5863,11 +5883,20 @@ fn (t &Transformer) generic_aggregate_base_exists(base string, arg_count int) bo
 	return false
 }
 
-fn generic_specialized_type_matches_flat_name(flat_name string, base string, suffix string) bool {
-	if flat_name.len == 0 || base.len == 0 || suffix.len == 0 {
+fn generic_specialized_type_matches_flat_name(flat_name string, base string, args []string) bool {
+	if flat_name.len == 0 || base.len == 0 || args.len == 0 {
 		return false
 	}
 	mut candidates := []string{}
+	source_name := generic_specialized_source_type_name_for_base(base, args)
+	add_generic_specialized_type_candidate(mut candidates, source_name)
+	source_cname := c_name(source_name)
+	add_generic_specialized_type_candidate(mut candidates, source_cname)
+	// A specialized callee is decoded from its C spelling before live-argument
+	// inference. That restores module separators inside a flattened aggregate
+	// (`Box_mod__Type` -> `Box_mod.Type`) without restoring the generic brackets.
+	add_generic_specialized_type_candidate(mut candidates, source_cname.replace('__', '.'))
+	suffix := generic_type_suffixes(args)
 	add_generic_specialized_type_candidate(mut candidates, '${base}_${suffix}')
 	add_generic_specialized_type_candidate(mut candidates, c_name('${base}_${suffix}'))
 	if base.contains('.') {
@@ -8226,6 +8255,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	base_id := t.a.children[fn_node.children_start]
 	if fn_node.value == 'str' {
+		if smartcast_call := t.try_lower_smartcast_target_receiver_method_call(call_id, node) {
+			return smartcast_call
+		}
 		if smartcast_str := t.smartcast_sum_str_call(base_id) {
 			return smartcast_str
 		}
@@ -8421,6 +8453,14 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			raw_alias_type := t.raw_alias_type_for_expr(base_id)
 			stringify_type := if raw_alias_type.len > 0 { raw_alias_type } else { clean_base_type }
 			return t.wrap_string_conversion(receiver, stringify_type)
+		}
+		// A fixed-array alias may declare a method with the same name as an array
+		// builtin. Honor the checker-selected alias method before adapting the
+		// fixed array to a dynamic array for builtin lowering.
+		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
+			array_builtin_method)
+		{
+			return exact_call
 		}
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := '[]${elem_type}'
@@ -9813,6 +9853,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(fn_decl, generated_module, t.cur_file)
 	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(ret_type)
 		t.tc.fn_ret_types[name] = ret
 		t.tc.fn_param_types[name] = param_types.clone()
@@ -10877,6 +10918,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
+	}
+	if base_node.kind == .or_expr && base_node.children_count > 0
+		&& (base_type.len == 0 || t.generic_arg_is_unresolved(base_type)) {
+		_, unwrapped_type := t.or_expr_types(t.a.child(&base_node, 0), base_type)
+		if decl_type_is_usable(unwrapped_type) && !t.generic_arg_is_unresolved(unwrapped_type) {
+			base_type = unwrapped_type
+		}
 	}
 	if t.active_specialization_args.len > 0 {
 		specialized := t.subst_type(base_type, t.active_specialization_args)

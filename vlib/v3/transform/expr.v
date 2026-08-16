@@ -866,8 +866,8 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	// Skip the checker/transformer agreement guard for generic-struct instances:
 	// they resolve reliably, and an alias name (`SimdFloat4`) vs the resolved form
 	// (`vec.Vec4[f32]`) would otherwise spuriously fail the comparison.
-	if checker_lhs_type.len > 0 && !has_smartcast && !lhs_is_pointer && !struct_type.contains('[')
-		&& !is_alias_operator {
+	if !t.validating_generic_spec && checker_lhs_type.len > 0 && !has_smartcast && !lhs_is_pointer
+		&& !struct_type.contains('[') && !is_alias_operator {
 		checker_struct_type := t.struct_lookup_name(checker_lhs_type)
 		if checker_struct_type.len > 0 && checker_struct_type != struct_type {
 			return none
@@ -1475,10 +1475,6 @@ fn (t &Transformer) struct_operator_fn_name_with_usage(struct_type string, op_na
 		if name := t.generic_struct_operator_fn_name(receiver, op_name) {
 			return name
 		}
-		cmethod_name := c_name(method_name)
-		if t.is_known_operator_fn_name(cmethod_name, require_used) {
-			return cmethod_name
-		}
 	}
 	return none
 }
@@ -1968,6 +1964,15 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 				return resolved_base + type_name[base.len..]
 			}
 			return type_name
+		}
+	}
+	if type_name.starts_with('main.') && !type_name['main.'.len..].contains('.')
+		&& !t.ident_is_import_alias('main') {
+		short_type := type_name['main.'.len..]
+		if info := t.structs[short_type] {
+			if info.module in ['', 'main'] {
+				return short_type
+			}
 		}
 	}
 	if type_name.contains('.') {
@@ -2910,9 +2915,10 @@ fn (t &Transformer) sum_variant_is_direct_pointer(variant string) bool {
 }
 
 fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum string) {
-	t.fn_ret_types[helper] = 'bool'
+	t.set_fn_ret_type(helper, 'bool')
 	t.mark_fn_used_name(helper)
 	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type('bool')
 		params := [t.tc.parse_type(clean_sum), t.tc.parse_type(clean_sum)]
 		t.tc.fn_ret_types[helper] = ret

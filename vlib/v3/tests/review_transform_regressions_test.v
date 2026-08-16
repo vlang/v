@@ -5125,6 +5125,66 @@ fn main() {
 	assert out == '[2, 3]'
 }
 
+fn test_autofree_array_map_preserves_v1_sum_value_copy_compatibility() {
+	v3_bin := build_v3_review_transform_ownership()
+	out := run_good_with_flags(v3_bin, 'autofree_collection_copy_compatibility', '-autofree', 'struct Box {
+	value string
+}
+
+type Node = Box | int
+
+struct Pos {
+	index int
+}
+
+fn (mut _ Pos) free() {}
+
+struct Comment {
+	text string
+	pos  Pos
+}
+
+struct RecursiveField {
+	name string
+	decl RecursiveDecl
+}
+
+struct RecursiveDecl {
+	fields []RecursiveField
+}
+
+fn values() []int {
+	return [1, 2]
+}
+
+fn has_two() bool {
+	if true && values().any(it == 2) {
+		return true
+	}
+	return false
+}
+
+fn main() {
+	values := [Box{
+		value: "ok"
+	}]
+	nodes := values.map(Node(it))
+	println(nodes.len)
+	println((nodes[0] as Box).value)
+	println(has_two())
+	comments := [Comment{
+		text: "kept"
+	}]
+	println(comments.filter(it.text == "kept").len)
+	fields := [RecursiveField{
+		name: "field"
+	}]
+	println(fields.filter(it.name == "field").len)
+}
+')
+	assert out == '1\nok\ntrue\n1\n1'
+}
+
 fn test_smartcast_sum_value_in_direct_array_literal_is_reboxed() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'smartcast_sum_direct_array_literal', 'type Value = int | string

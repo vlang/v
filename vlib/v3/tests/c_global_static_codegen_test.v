@@ -175,6 +175,8 @@ fn main() {}
 ')
 	assert c_code.contains('Array names = {0};')
 	assert c_code.contains('map lookup = {0};')
+	assert c_code.contains('names = array_new(sizeof(string), 0, 0);')
+	assert c_code.contains('lookup = new_map(')
 	assert c_code.contains('Box box = {0};')
 	assert c_code.contains('int empty[0];')
 	assert c_code.contains('int slots[2] = {0};')

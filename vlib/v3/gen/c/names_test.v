@@ -66,6 +66,36 @@ fn test_direct_call_uses_custom_enum_method_symbol() {
 	assert g.direct_call_name('Kind.str') == 'Kind_str'
 }
 
+fn test_direct_call_does_not_prefix_synthetic_helper_with_owner_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'ast'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.non_generic_fn_names_by_module['ast\x01__v3_autostr_ast__Comment'] = true
+
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+}
+
+fn test_array_receiver_method_is_not_reselected_as_generic() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
+		GenericMethodCandidate{
+			name: 'jsonrpc.[]Request.encode_batch'
+			ret:  types.Type(types.string_)
+		},
+	]
+
+	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node,
+		'jsonrpc.[]Response.encode_batch', -1) == none
+}
+
 fn test_context_lookup_cache_tracks_source_file_imports() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -135,6 +165,26 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
 }
 
+fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut used := {
+		'main': true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.used_fns = &used
+	assert g.should_emit_fn_node_in_module_known(flat.Node{
+		kind:  .fn_decl
+		value: 'FlatGen.sum_type_index'
+	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
+	assert !g.should_emit_fn_node_in_module_known(flat.Node{
+		kind:  .fn_decl
+		value: 'Transformer.sum_type_index'
+	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
+}
+
 fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -188,6 +238,12 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 		'objc_msgSend',
 	]
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_resolved_preserved_header_keeps_macro_declared_functions_authoritative() {
+	mut g := FlatGen.new()
+	g.collect_preserved_header_tree('<openssl/ssl.h>', '', []string{})
+	assert !g.should_emit_c_extern_decl('X509_free')
 }
 
 fn test_apple_framework_include_does_not_match_x11() {
@@ -336,4 +392,15 @@ fn test_large_transitive_header_tree_is_preserved() {
 	assert !c_header_tree_exceeds_inline_limit(one_path, '', []string{}, mut one_size)
 	mut two_size := CHeaderTreeSize{}
 	assert c_header_tree_exceeds_inline_limit(two_path, '', []string{}, mut two_size)
+}
+
+fn test_specialized_generic_abi_name_does_not_classify_array_receivers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.name_uses_specialized_generic_abi('pick[int]')
+	assert !g.name_uses_specialized_generic_abi('cli.[]Flag.get_int')
+	assert !g.name_uses_specialized_generic_abi('[]Flag.get_int')
 }

@@ -176,7 +176,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		param_texts << param_type
 		shared_params << param_type_text_is_shared(child.typ)
 	}
-	has_forwardable_ctx := tc.fn_is_veb_app_handler(node)
+	has_forwardable_ctx := tc.fn_needs_implicit_veb_ctx(node)
 	ptypes = tc.fn_param_types_with_implicit_veb_ctx(node, ptypes)
 	shared_params = tc.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
 	return Pass2FnPrep{

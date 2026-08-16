@@ -886,9 +886,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			wtc.fn_param_types = t.tc.fn_param_types.clone()
 			wtc.fn_variadic = t.tc.fn_variadic.clone()
 			wtc.specialized_generic_fns = t.tc.specialized_generic_fns.clone()
+			wtc.fn_type_modules = t.tc.fn_type_modules.clone()
+			wtc.fn_type_files = t.tc.fn_type_files.clone()
+			wtc.transform_signature_maps_shared = false
 			mut w := t.fork_worker(view, wtc)
 			w.fn_ret_types = t.fn_ret_types.clone()
 			w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
+			w.signature_maps_shared = false
 			w.generic_fn_decls_cache = decls.clone()
 			w.generic_fn_decls_ready = true
 			w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
@@ -905,6 +909,10 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			}
 		}
 
+		// The caller can itself be a scoped worker sharing its parent's immutable
+		// signature base. This algorithm moves and mutates those maps, so detach
+		// once before taking ownership of their storage.
+		t.ensure_private_signature_maps()
 		mut shared_fn_ret_types := t.fn_ret_types.move()
 		mut shared_receiver_index := t.receiver_method_suffix_index.move()
 		t.parallel_monomorph_scan_nodes = []int{}
@@ -988,11 +996,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		}
 
 		for ci in 0 .. n_jobs {
-			mut w := if ci == 0 {
-				unsafe { t }
-			} else {
-				unsafe { &Transformer(args[ci].worker) }
-			}
+			// args[ci].worker is a &Transformer stored as a voidptr: the master `t`
+			// itself for ci == 0 (round-tripped through voidptr(t) at setup), otherwise a
+			// worker forked by fork_worker. worker_pool.run() above already joined every
+			// chunk thread, so each worker is finished and its region fully written, and
+			// the workers stay live for this merge (args owns them and their arenas back
+			// the merged regions), so reinterpreting the pointer here is sound.
+			mut w := unsafe { &Transformer(args[ci].worker) }
 			t.monomorph_profile('mono worker ${ci}: ${args[ci].emitted_specs.len} specs, ${w.a.nodes.len - node_starts[ci]} nodes, ${w.a.children.len - child_starts[ci]} children')
 			mut node_shift := 0
 			if ci > 0 {
@@ -1547,6 +1557,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	defer {
 		t.end_promote_text_window()
 	}
+	t.merge_worker_signatures(batch)
 	if t.skip_generics {
 		// Non-generic workers mutate only newly appended nodes and slots recorded by
 		// the setter log. This avoids a full, growing-AST scan after every batch.

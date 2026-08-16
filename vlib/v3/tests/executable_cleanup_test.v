@@ -7,18 +7,24 @@ const executable_cleanup_v3_src = os.join_path(executable_cleanup_v3_dir, 'v3.v'
 
 fn executable_cleanup_compile_and_run(v3_bin string, root string, name string, suffix string,
 	source string) (os.Result, string) {
+	generated_c := executable_cleanup_generate_c(v3_bin, root, name, suffix, '', source)
 	source_path := os.join_path(root, '${name}${suffix}')
 	output_path := os.join_path(root, name)
-	c_path := output_path + '.c'
-	os.write_file(source_path, source) or { panic(err) }
-	generate :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
-	assert generate.exit_code == 0, generate.output
-	generated_c := os.read_file(c_path) or { panic(err) }
 	compile :=
 		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
 	assert compile.exit_code == 0, compile.output
 	return os.execute(os.quoted_path(output_path)), generated_c
+}
+
+fn executable_cleanup_generate_c(v3_bin string, root string, name string, suffix string,
+	flags string, source string) string {
+	source_path := os.join_path(root, '${name}${suffix}')
+	c_path := os.join_path(root, '${name}.c')
+	os.write_file(source_path, source) or { panic(err) }
+	generate :=
+		os.execute('${os.quoted_path(v3_bin)} -nocache ${flags} -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
+	assert generate.exit_code == 0, generate.output
+	return os.read_file(c_path) or { panic(err) }
 }
 
 fn assert_cleanup_registered_after_init(c_code string) {
@@ -109,6 +115,16 @@ fn test_one() {
 	assert test_c.contains('atexit(_vcleanup);'), test_c
 	assert_cleanup_registered_after_init(test_c)
 
+	function_only_run, function_only_c := executable_cleanup_compile_and_run(v3_bin, root,
+		'function_only', '.v', 'module main
+
+pub fn answer() int {
+	return 42
+}
+')
+	assert function_only_run.exit_code == 0, function_only_run.output
+	assert function_only_c.contains('int main(int argc, char** argv) {'), function_only_c
+
 	no_main_source := os.join_path(root, 'no_main.v')
 	no_main_c_path := os.join_path(root, 'no_main.c')
 	os.write_file(no_main_source, "module main
@@ -134,4 +150,46 @@ pub fn answer() int {
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
 	assert no_main_c.contains('int exported_answer(void)'), no_main_c
 	assert_cleanup_registered_after_init(no_main_c)
+
+	// A natural-name export (export name equal to the C symbol) is emitted directly
+	// with no wrapper, so its own body must run the guarded initializer; otherwise a
+	// host calling it observes uninitialized globals and skipped module init().
+	direct_export_source := os.join_path(root, 'direct_export.v')
+	direct_export_c_path := os.join_path(root, 'direct_export.c')
+	os.write_file(direct_export_source, "module main
+
+__global (
+	direct_export_counter int
+)
+
+fn init() {
+	direct_export_counter = 100
+}
+
+@[export: 'start']
+pub fn start() int {
+	return direct_export_counter
+}
+")!
+	generate_direct :=
+		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(direct_export_c_path)} ${os.quoted_path(direct_export_source)}')
+	assert generate_direct.exit_code == 0, generate_direct.output
+	direct_export_c := os.read_file(direct_export_c_path)!
+	assert direct_export_c.contains('int start(void) {'), direct_export_c
+	direct_start_body := direct_export_c.all_after('int start(void) {').all_before('}')
+	assert direct_start_body.contains('_vno_main_init_caller();'), direct_export_c
+
+	explicit_main_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'explicit_main_no_main',
+		'.v', '-d no_main', "fn main() {
+	println('not called')
+}
+")
+	assert !explicit_main_no_main_c.contains('int main(int argc, char** argv) {'), explicit_main_no_main_c
+	assert !explicit_main_no_main_c.contains('void main(void) {'), explicit_main_no_main_c
+	assert explicit_main_no_main_c.contains('main__main'), explicit_main_no_main_c
+
+	top_level_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'top_level_no_main', '.vsh',
+		'-d no_main', "println('not called')
+")
+	assert !top_level_no_main_c.contains('int main(int argc, char** argv) {'), top_level_no_main_c
 }

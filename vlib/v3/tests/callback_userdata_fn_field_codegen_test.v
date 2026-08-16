@@ -8,7 +8,7 @@ const callback_vlib_dir = os.dir(callback_v3_dir)
 const callback_v3_src = os.join_path(callback_v3_dir, 'v3.v')
 
 fn callback_build_v3() string {
-	return callback_build_v3_with_flags('serial', '')
+	return callback_build_v3_with_flags('serial', '-d ownership')
 }
 
 fn callback_build_v3_parallel() string {
@@ -58,6 +58,8 @@ fn callback_adapter_names(generated string, prefix string) []string {
 fn test_callback_userdata_fn_field_adapters() {
 	v3_bin := callback_build_v3()
 	good_src := callback_write_source('good', 'module main
+
+__global C.user_data voidptr
 
 struct Event {
 	code int
@@ -178,8 +180,8 @@ fn main() {
 	assert generated.contains('frame_callback_adapter'), generated
 	assert generated.contains('on_event_callback_adapter'), generated
 	assert generated.contains('erased_event_callback_adapter'), generated
-	assert generated.contains('frame((App*)arg0);'), generated
-	assert generated.contains('on_event(arg0, (App*)arg1);'), generated
+	assert generated.contains('frame((main__App*)arg0);'), generated
+	assert generated.contains('on_event(arg0, (main__App*)arg1);'), generated
 	assert generated.contains('erased_event((void*)arg0, arg1);'), generated
 	assert generated.contains('use_cb(frame_callback_adapter_'), generated
 	assert generated.contains('.alias_frame = frame_callback_adapter_'), generated
@@ -200,6 +202,16 @@ fn main() {
 	assert !generated.contains('use_cb((_fn_ptr'), generated
 	assert !generated.contains('use_cb(frame,'), generated
 	assert !generated.contains('direct_callback_adapter'), generated
+
+	autofree_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_autofree_${os.getpid()}')
+	autofree_compile := os.execute('${v3_bin} -autofree ${good_src} -b c -o ${autofree_out}')
+	assert autofree_compile.exit_code == 0, autofree_compile.output
+	autofree_run := os.execute(autofree_out)
+	assert autofree_run.exit_code == 0, autofree_run.output
+	assert autofree_run.output.trim_space() == '82'
+	autofree_c := os.read_file(autofree_out + '.c') or { panic(err) }
+	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
+	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
 
 	wrong_arity := callback_write_source('wrong_arity', 'module main
 struct Config {
