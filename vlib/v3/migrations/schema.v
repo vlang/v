@@ -1,5 +1,6 @@
 module migrations
 
+import hash.fnv1a
 import orm
 
 // Dialect selects the SQL emitted by schema helpers.
@@ -212,11 +213,11 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 			if removals.len > 0 {
 				return error('MySQL change_column cannot remove key constraints; unsupported false options: ${removals.join(', ')}; use remove_index() or ctx.execute()')
 			}
-			definition := column_sql(ctx.dialect, column)!
 			missing := mysql_change_column_missing_options(column)
 			if missing.len > 0 {
 				return error('MySQL change_column requires a complete column definition; missing options: ${missing.join(', ')}')
 			}
+			definition := mysql_change_column_sql(column)!
 			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} MODIFY COLUMN ${definition};')!
 		}
 	}
@@ -275,7 +276,7 @@ fn mysql_change_column_unsupported_key_removals(column Column) []string {
 // `index_<table>_on_<columns>` name is used. SQLite tables and PostgreSQL/MySQL
 // index names must be unqualified.
 pub fn (mut ctx Context) add_index(index Index) ! {
-	name := index_name(index)!
+	name := index_name(ctx.dialect, index)!
 	if ctx.dialect == .sqlite && index.table.contains('.') {
 		return error('SQLite add_index table `${index.table}` must be unqualified')
 	}
@@ -410,6 +411,14 @@ fn auto_primary_key_sql(dialect Dialect, name string) string {
 }
 
 fn column_sql(dialect Dialect, column Column) !string {
+	return column_sql_internal(dialect, column, false)
+}
+
+fn mysql_change_column_sql(column Column) !string {
+	return column_sql_internal(.mysql, column, true)
+}
+
+fn column_sql_internal(dialect Dialect, column Column, preserve_omitted_mysql_key bool) !string {
 	validate_unqualified_identifier(column.name, 'column')!
 	if column.limit < 0 {
 		return error('column `${column.name}` limit must not be negative')
@@ -427,7 +436,9 @@ fn column_sql(dialect Dialect, column Column) !string {
 	if dialect == .sqlite && auto_increment && !primary_key {
 		return error('SQLite auto-increment column `${column.name}` must be a primary key')
 	}
-	if dialect == .mysql && auto_increment && !primary_key && !unique {
+	preserves_mysql_key := preserve_omitted_mysql_key && column.primary_key == none
+		&& column.unique == none
+	if dialect == .mysql && auto_increment && !primary_key && !unique && !preserves_mysql_key {
 		return error('MySQL auto-increment column `${column.name}` must be a primary key or unique')
 	}
 	mut sql_type := column_type_sql(dialect, column)!
@@ -599,7 +610,7 @@ fn column_type_sql(dialect Dialect, column Column) !string {
 	}
 }
 
-fn index_name(index Index) !string {
+fn index_name(dialect Dialect, index Index) !string {
 	validate_identifier(index.table, 'table')!
 	if index.columns.len == 0 {
 		return error('index on `${index.table}` must include at least one column')
@@ -607,13 +618,37 @@ fn index_name(index Index) !string {
 	for column in index.columns {
 		validate_unqualified_identifier(column, 'column')!
 	}
-	name := if index.name != '' {
+	mut name := if index.name != '' {
 		index.name
 	} else {
 		'index_${index.table.replace('.', '_')}_on_${index.columns.join('_and_')}'
 	}
 	validate_identifier(name, 'index')!
+	limit := index_name_limit(dialect)
+	if limit > 0 && name.len > limit {
+		if index.name != '' {
+			return error('${dialect_name(dialect)} index name `${name}` must not exceed ${limit} bytes')
+		}
+		hash := fnv1a.sum64_string(name).hex()
+		name = '${name[..limit - hash.len - 1]}_${hash}'
+	}
 	return name
+}
+
+fn index_name_limit(dialect Dialect) int {
+	return match dialect {
+		.sqlite { 0 }
+		.pg { 63 }
+		.mysql { 64 }
+	}
+}
+
+fn dialect_name(dialect Dialect) string {
+	return match dialect {
+		.sqlite { 'SQLite' }
+		.pg { 'PostgreSQL' }
+		.mysql { 'MySQL' }
+	}
 }
 
 fn quoted_columns(dialect Dialect, columns []string) !string {
@@ -704,4 +739,11 @@ fn quote_identifier(dialect Dialect, value string) string {
 
 fn escape_literal(value string) string {
 	return value.replace("'", "''")
+}
+
+fn string_literal_sql(dialect Dialect, value string) string {
+	if dialect == .mysql {
+		return "X'${value.hex()}'"
+	}
+	return "'${escape_literal(value)}'"
 }

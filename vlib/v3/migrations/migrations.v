@@ -523,7 +523,9 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 
 fn (m &Migrator) history_insert_sql(migration Migration, applied_at string) string {
 	table := quote_identifier(m.config.dialect, m.config.table)
-	return "INSERT INTO ${table} (version, name, applied_at) VALUES (${migration.version}, '${escape_literal(migration.name)}', '${escape_literal(applied_at)}');"
+	name := string_literal_sql(m.config.dialect, migration.name)
+	timestamp := string_literal_sql(m.config.dialect, applied_at)
+	return 'INSERT INTO ${table} (version, name, applied_at) VALUES (${migration.version}, ${name}, ${timestamp});'
 }
 
 fn (m &Migrator) history_delete_sql(version i64) string {

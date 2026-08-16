@@ -67,12 +67,15 @@ constraint DDL. PostgreSQL serial columns reject explicit defaults, and index re
 index schema from a qualified table; PostgreSQL index names are unqualified when adding them.
 SQLite non-integer primary keys are explicitly non-nullable. Decimal scale requires a positive
 precision. MySQL `change_column` requires nullable, default, and auto-increment attributes; omitted
-key options are preserved, additions use `true`, and removals must use `remove_index()` or raw SQL.
+key options, including those on auto-increment columns, are preserved, additions use `true`, and
+removals must use `remove_index()` or raw SQL.
 MySQL auto-increment columns must be primary keys or unique, MySQL index names must be unqualified
 when adding or removing them, and MySQL foreign keys reject `SET DEFAULT`. Column-level identifiers
-must be unqualified.
+must be unqualified. Generated PostgreSQL and MySQL index names are deterministically shortened to
+their dialect limits; overlong explicit add-index names are rejected.
 PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps support for
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
-implicitly commits. The migrator accepts `orm.TransactionalConnection` implementations, and
-`Config.transaction_mode` can override whether per-migration transaction methods are used for DDL.
-SQLite's immediate lock transaction still covers each mutating workflow.
+implicitly commits, and its history strings use hex literals to avoid SQL-mode-sensitive escaping.
+The migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode`
+can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
+transaction still covers each mutating workflow.

@@ -286,6 +286,23 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 	}
 }
 
+fn test_mysql_history_literals_are_backslash_safe() {
+	mut recorder := &RecordingConnection{}
+	name := "quote\\'and_trailing\\"
+	migration := Migration{
+		version: 7
+		name:    name
+		up:      record_locked_migration
+		down:    record_locked_migration
+	}
+	runner := new(mut recorder, [migration], Config{
+		dialect: .mysql
+	})!
+	applied_at := '2026-08-16T00:00:00Z'
+	assert runner.history_insert_sql(migration, applied_at) == "INSERT INTO `schema_migrations` (version, name, applied_at) VALUES (7, X'${name.hex()}', X'${applied_at.hex()}');"
+	assert string_literal_sql(.sqlite, "quote'only") == "'quote''only'"
+}
+
 fn test_postgresql_change_column_rejects_constraint_options_before_sql() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .pg)
@@ -366,6 +383,21 @@ fn test_mysql_change_column_requires_complete_definition() {
 	})!
 	assert recorder.queries == [
 		'ALTER TABLE `accounts` MODIFY COLUMN `score` BIGINT NOT NULL DEFAULT 0;',
+	]
+}
+
+fn test_mysql_change_column_preserves_omitted_auto_increment_key() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	ctx.change_column('accounts', Column{
+		name:           'id'
+		kind:           .bigint
+		nullable:       false
+		default_sql:    ''
+		auto_increment: true
+	})!
+	assert recorder.queries == [
+		'ALTER TABLE `accounts` MODIFY COLUMN `id` BIGINT AUTO_INCREMENT NOT NULL;',
 	]
 }
 
@@ -787,11 +819,46 @@ fn test_validation_and_portable_sql_generation() {
 		assert err.msg() == 'duplicate migration version 7'
 		assert column_type_sql(.pg, Column{ name: 'payload', kind: .jsonb })! == 'JSONB'
 		assert column_type_sql(.mysql, Column{ name: 'amount', kind: .double_precision })! == 'DOUBLE'
-		assert index_name(Index{
+		assert index_name(.sqlite, Index{
 			table:   'accounts'
 			columns: ['email', 'name']
 		})! == 'index_accounts_on_email_and_name'
 		return
 	}
 	assert false
+}
+
+fn test_generated_index_names_respect_dialect_limits() {
+	index := Index{
+		table:   'customer_account_records_archive'
+		columns: ['external_customer_reference', 'external_organization_reference']
+	}
+	raw_name := 'index_customer_account_records_archive_on_external_customer_reference_and_external_organization_reference'
+	mysql_name := index_name(.mysql, index)!
+	postgres_name := index_name(.pg, index)!
+	assert mysql_name.len == 64
+	assert postgres_name.len == 63
+	assert index_name(.sqlite, index)! == raw_name
+	assert index_name(.mysql, index)! == mysql_name
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	ctx.add_index(index)!
+	assert recorder.queries == [
+		'CREATE INDEX `${mysql_name}` ON `customer_account_records_archive` (`external_customer_reference`, `external_organization_reference`);',
+	]
+
+	other_mysql_name := index_name(.mysql, Index{
+		table:   index.table
+		columns: ['external_customer_reference', 'external_organization_identifier']
+	})!
+	assert other_mysql_name != mysql_name
+
+	long_explicit_name := 'x'.repeat(65)
+	mut error_message := ''
+	index_name(.mysql, Index{
+		table:   'accounts'
+		columns: ['email']
+		name:    long_explicit_name
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL index name `${long_explicit_name}` must not exceed 64 bytes'
 }
