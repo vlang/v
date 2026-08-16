@@ -341,7 +341,20 @@ fn test_mysql_change_column_requires_complete_definition() {
 		name: 'score'
 		kind: .bigint
 	}) or { error_message = err.msg() }
-	assert error_message == 'MySQL change_column requires a complete column definition; missing options: nullable, default_sql, unique, primary_key, auto_increment'
+	assert error_message == 'MySQL change_column requires a complete column definition; missing options: nullable, default_sql, auto_increment'
+	assert recorder.queries.len == 0
+
+	error_message = ''
+	ctx.change_column('accounts', Column{
+		name:           'score'
+		kind:           .bigint
+		nullable:       true
+		default_sql:    ''
+		unique:         false
+		primary_key:    false
+		auto_increment: false
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL change_column cannot remove key constraints; unsupported false options: unique, primary_key; use remove_index() or ctx.execute()'
 	assert recorder.queries.len == 0
 
 	ctx.change_column('accounts', Column{
@@ -349,8 +362,6 @@ fn test_mysql_change_column_requires_complete_definition() {
 		kind:           .bigint
 		nullable:       false
 		default_sql:    '0'
-		unique:         false
-		primary_key:    false
 		auto_increment: false
 	})!
 	assert recorder.queries == [
@@ -454,6 +465,28 @@ fn test_postgresql_add_index_rejects_qualified_names() {
 	})!
 	assert recorder.queries == [
 		'CREATE INDEX "users_email_idx" ON "reporting"."users" ("email");',
+	]
+}
+
+fn test_mysql_add_index_rejects_qualified_names() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	mut error_message := ''
+	ctx.add_index(Index{
+		table:   'app.users'
+		columns: ['email']
+		name:    'app.users_email_idx'
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL add_index name `app.users_email_idx` must be unqualified'
+	assert recorder.queries.len == 0
+
+	ctx.add_index(Index{
+		table:   'app.users'
+		columns: ['email']
+		name:    'users_email_idx'
+	})!
+	assert recorder.queries == [
+		'CREATE INDEX `users_email_idx` ON `app`.`users` (`email`);',
 	]
 }
 
@@ -659,6 +692,33 @@ fn test_sqlite_autoincrement_precedes_other_constraints() {
 		db.close() or {}
 	}
 	db.exec('CREATE TABLE items (${definition});')!
+}
+
+fn test_sqlite_non_integer_primary_keys_are_not_null() {
+	text_definition := column_sql(.sqlite, Column{
+		name:        'code'
+		kind:        .text
+		primary_key: true
+	})!
+	assert text_definition == '"code" TEXT PRIMARY KEY NOT NULL'
+	integer_definition := column_sql(.sqlite, Column{
+		name:        'id'
+		kind:        .integer
+		primary_key: true
+	})!
+	assert integer_definition == '"id" INTEGER PRIMARY KEY'
+
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('CREATE TABLE custom_keys (${text_definition});')!
+	columns := db.exec("PRAGMA table_info('custom_keys');")!
+	assert columns.len == 1
+	assert columns[0].vals[3] == '1'
+	db.exec('INSERT INTO custom_keys (code) VALUES (NULL);')!
+	rows := db.exec('SELECT count(*) FROM custom_keys;')!
+	assert rows[0].vals[0] == '0'
 }
 
 fn test_column_level_identifiers_must_be_unqualified() {

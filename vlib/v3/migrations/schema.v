@@ -189,8 +189,8 @@ pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 // change_column changes a column definition. SQLite requires a table rebuild.
 // PostgreSQL supports type-related fields only and rejects constraint changes
 // before executing SQL; use execute for explicit PostgreSQL constraint DDL.
-// MySQL requires every optional constraint field to be supplied because MODIFY
-// COLUMN replaces the complete column definition.
+// MySQL requires nullable, default_sql, and auto_increment to be supplied because
+// MODIFY COLUMN replaces those attributes. Omitted key options are preserved.
 pub fn (mut ctx Context) change_column(table string, column Column) ! {
 	validate_identifier(table, 'table')!
 	match ctx.dialect {
@@ -208,6 +208,10 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 				column.name)} TYPE ${column_type_sql(ctx.dialect, column)!};')!
 		}
 		.mysql {
+			removals := mysql_change_column_unsupported_key_removals(column)
+			if removals.len > 0 {
+				return error('MySQL change_column cannot remove key constraints; unsupported false options: ${removals.join(', ')}; use remove_index() or ctx.execute()')
+			}
 			definition := column_sql(ctx.dialect, column)!
 			missing := mysql_change_column_missing_options(column)
 			if missing.len > 0 {
@@ -246,20 +250,29 @@ fn mysql_change_column_missing_options(column Column) []string {
 	if column.default_sql == none {
 		options << 'default_sql'
 	}
-	if column.unique == none {
-		options << 'unique'
-	}
-	if column.primary_key == none {
-		options << 'primary_key'
-	}
 	if column.auto_increment == none {
 		options << 'auto_increment'
 	}
 	return options
 }
 
+fn mysql_change_column_unsupported_key_removals(column Column) []string {
+	mut options := []string{}
+	if unique := column.unique {
+		if !unique {
+			options << 'unique'
+		}
+	}
+	if primary_key := column.primary_key {
+		if !primary_key {
+			options << 'primary_key'
+		}
+	}
+	return options
+}
+
 // add_index adds an index. When name is empty, a deterministic Rails-style
-// `index_<table>_on_<columns>` name is used. SQLite tables and PostgreSQL
+// `index_<table>_on_<columns>` name is used. SQLite tables and PostgreSQL/MySQL
 // index names must be unqualified.
 pub fn (mut ctx Context) add_index(index Index) ! {
 	name := index_name(index)!
@@ -268,6 +281,9 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 	}
 	if ctx.dialect == .pg && name.contains('.') {
 		return error('PostgreSQL add_index name `${name}` must be unqualified')
+	}
+	if ctx.dialect == .mysql && name.contains('.') {
+		return error('MySQL add_index name `${name}` must be unqualified')
 	}
 	columns := quoted_columns(ctx.dialect, index.columns)!
 	unique := if index.unique { 'UNIQUE ' } else { '' }
@@ -432,7 +448,8 @@ fn column_sql(dialect Dialect, column Column) !string {
 			parts << 'PRIMARY KEY'
 		}
 	}
-	if !column_nullable(column) && !primary_key {
+	if (!column_nullable(column) && !primary_key)
+		|| (dialect == .sqlite && primary_key && sql_type != 'INTEGER') {
 		parts << 'NOT NULL'
 	}
 	if unique {
