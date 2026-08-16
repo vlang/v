@@ -901,17 +901,11 @@ fn index_name(dialect Dialect, index Index) !string {
 
 fn generated_index_name(index Index) string {
 	base := 'index_${index.table.replace('.', '_')}_on_${index.columns.join('_and_')}'
-	encoded_table := index.table.replace('.', '_').to_lower_ascii()
-	if index.table.contains('.') || encoded_table.contains('_on_')
-		|| index.columns.any(it.to_lower_ascii().contains('_and_')
-		|| it.to_lower_ascii().contains('_on_')) {
-		mut identity := '${index.table.len}:${index.table}'
-		for column in index.columns {
-			identity += ':${column.len}:${column}'
-		}
-		return '${base}_${fnv1a.sum64_string(identity).hex()}'
+	mut identity := '${index.table.len}:${index.table}'
+	for column in index.columns {
+		identity += ':${column.len}:${column}'
 	}
-	return base
+	return '${base}_${fnv1a.sum64_string(identity).hex()}'
 }
 
 fn identifier_name_limit(dialect Dialect) int {

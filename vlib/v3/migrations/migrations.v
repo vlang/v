@@ -672,8 +672,19 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 		tx.commit()!
 	} else {
 		mut ctx := new_context(m.conn, m.config.dialect)
-		migration.up(mut ctx)!
+		migration.up(mut ctx) or {
+			migration_err := err
+			if m.config.dialect == .mysql {
+				m.validate_mysql_session_after_callback() or {
+					return error('${migration_err.msg()}; ${err.msg()}')
+				}
+			}
+			return migration_err
+		}
 		ctx.execute(m.history_insert_sql(migration, applied_at))!
+	}
+	if m.config.dialect == .mysql {
+		m.validate_mysql_session_after_callback()!
 	}
 	return AppliedMigration{
 		version:    migration.version
@@ -703,8 +714,29 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 		tx.commit()!
 	} else {
 		mut ctx := new_context(m.conn, m.config.dialect)
-		migration.down(mut ctx)!
+		migration.down(mut ctx) or {
+			migration_err := err
+			if m.config.dialect == .mysql {
+				m.validate_mysql_session_after_callback() or {
+					return error('${migration_err.msg()}; ${err.msg()}')
+				}
+			}
+			return migration_err
+		}
 		ctx.execute(m.history_delete_sql(migration.version))!
+	}
+	if m.config.dialect == .mysql {
+		m.validate_mysql_session_after_callback()!
+	}
+}
+
+fn (mut m Migrator) validate_mysql_session_after_callback() ! {
+	m.validate_mysql_session() or {
+		session_err := err
+		m.conn.orm_rollback() or {
+			return error('${session_err.msg()}; rolling back callback-created MySQL transaction state failed: ${err.msg()}')
+		}
+		return error('MySQL migration callback left unsafe session state: ${session_err.msg()}')
 	}
 }
 

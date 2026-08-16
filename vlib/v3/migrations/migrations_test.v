@@ -42,6 +42,12 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'USE other_database;' {
 		conn.database = 'other_database'
 	}
+	if query == 'SET autocommit=0;' {
+		conn.autocommit = false
+	}
+	if query == 'START TRANSACTION;' {
+		conn.in_transaction = true
+	}
 	if query == 'SET search_path TO other_schema;' {
 		conn.schema = 'other_schema'
 	}
@@ -240,6 +246,14 @@ fn drop_widget_with_orm_dsl(mut ctx Context) ! {
 
 fn record_locked_migration(mut ctx Context) ! {
 	ctx.execute('migration callback;')!
+}
+
+fn disable_mysql_autocommit(mut ctx Context) ! {
+	ctx.execute('SET autocommit=0;')!
+}
+
+fn start_mysql_transaction(mut ctx Context) ! {
+	ctx.execute('START TRANSACTION;')!
 }
 
 fn test_migrate_rollback_redo_and_status() {
@@ -532,6 +546,59 @@ fn test_mysql_disabled_autocommit_is_rejected_before_locking_or_inspection() {
 		runner.applied() or { error_message = err.msg() }
 		assert error_message == 'MySQL migrations require session autocommit to be enabled'
 		assert recorder.queries == ['SELECT @@autocommit;', 'SELECT @@autocommit;']
+	}
+}
+
+fn test_mysql_callback_session_state_is_rechecked_before_unlocking() {
+	for mode in [TransactionMode.automatic, .never] {
+		mut autocommit_recorder := &RecordingConnection{}
+		mut autocommit_runner := new(mut autocommit_recorder, [
+			Migration{
+				version: 1
+				name:    'disable_autocommit'
+				up:      disable_mysql_autocommit
+				down:    disable_mysql_autocommit
+			},
+		], Config{
+			dialect:          .mysql
+			transaction_mode: mode
+		})!
+		mut error_message := ''
+		autocommit_runner.migrate() or { error_message = err.msg() }
+		assert error_message == 'MySQL migration callback left unsafe session state: MySQL migrations require session autocommit to be enabled'
+		assert !autocommit_recorder.in_transaction
+		assert !autocommit_recorder.autocommit
+		rollback_index := autocommit_recorder.queries.index('ORM ROLLBACK')
+		history_inserts := autocommit_recorder.queries.filter(it.starts_with('INSERT INTO '))
+		assert history_inserts.len == 1
+		assert rollback_index > autocommit_recorder.queries.index('SET autocommit=0;')
+		assert rollback_index > autocommit_recorder.queries.index(history_inserts[0])
+		assert autocommit_recorder.queries.last().starts_with('SELECT RELEASE_LOCK(')
+
+		mut transaction_recorder := &RecordingConnection{}
+		mut transaction_runner := new(mut transaction_recorder, [
+			Migration{
+				version: 1
+				name:    'start_transaction'
+				up:      start_mysql_transaction
+				down:    start_mysql_transaction
+			},
+		], Config{
+			dialect:          .mysql
+			transaction_mode: mode
+		})!
+		error_message = ''
+		transaction_runner.migrate() or { error_message = err.msg() }
+		assert error_message == 'MySQL migration callback left unsafe session state: MySQL migrations require a connection without an already-open transaction'
+		assert !transaction_recorder.in_transaction
+		assert transaction_recorder.autocommit
+		transaction_rollback_index := transaction_recorder.queries.index('ORM ROLLBACK')
+		transaction_history_inserts :=
+			transaction_recorder.queries.filter(it.starts_with('INSERT INTO '))
+		assert transaction_history_inserts.len == 1
+		assert transaction_rollback_index > transaction_recorder.queries.index('START TRANSACTION;')
+		assert transaction_rollback_index > transaction_recorder.queries.index(transaction_history_inserts[0])
+		assert transaction_recorder.queries.last().starts_with('SELECT RELEASE_LOCK(')
 	}
 }
 
@@ -1464,6 +1531,10 @@ fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
 	assert recorder.queries.len == 0
 
 	error_message = ''
+	generated_name := index_name(.sqlite, Index{
+		table:   'users'
+		columns: ['email']
+	})!
 	ctx.add_index(Index{
 		table:   'users'
 		columns: ['email']
@@ -1518,7 +1589,7 @@ fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
 		'PRAGMA database_list;',
 		'SELECT 1 FROM "temp".sqlite_schema WHERE type = \'table\' AND name = \'users\' COLLATE NOCASE LIMIT 1;',
 		'SELECT 1 FROM "main".sqlite_schema WHERE type = \'table\' AND name = \'users\' COLLATE NOCASE LIMIT 1;',
-		'CREATE INDEX "main"."index_users_on_email" ON "users" ("email");',
+		'CREATE INDEX "main"."${generated_name}" ON "users" ("email");',
 		'CREATE TABLE "main"."children" ("parent_id" BIGINT, CONSTRAINT "fk_main_children_parent_id" FOREIGN KEY ("parent_id") REFERENCES "parents" ("id"));',
 	]
 }
@@ -1643,10 +1714,11 @@ fn test_validation_and_portable_sql_generation() {
 		assert err.msg() == 'duplicate migration version 7'
 		assert column_type_sql(.pg, Column{ name: 'payload', kind: .jsonb })! == 'JSONB'
 		assert column_type_sql(.mysql, Column{ name: 'amount', kind: .double_precision })! == 'DOUBLE'
-		assert index_name(.sqlite, Index{
+		generated_name := index_name(.sqlite, Index{
 			table:   'accounts'
 			columns: ['email', 'name']
-		})! == 'index_accounts_on_email_and_name'
+		})!
+		assert generated_name.starts_with('index_accounts_on_email_and_name_')
 		return
 	}
 	assert false
@@ -1657,7 +1729,9 @@ fn test_generated_index_names_respect_dialect_limits() {
 		table:   'customer_account_records_archive'
 		columns: ['external_customer_reference', 'external_organization_reference']
 	}
-	raw_name := 'index_customer_account_records_archive_on_external_customer_reference_and_external_organization_reference'
+	raw_base := 'index_customer_account_records_archive_on_external_customer_reference_and_external_organization_reference'
+	raw_name := generated_index_name(index)
+	assert raw_name.starts_with('${raw_base}_')
 	mysql_name := index_name(.mysql, index)!
 	postgres_name := index_name(.pg, index)!
 	assert mysql_name.len == 64
@@ -1700,7 +1774,7 @@ fn test_generated_index_names_distinguish_column_boundaries() {
 	composite_name := index_name(.sqlite, composite)!
 	assert single_name != composite_name
 	assert single_name.starts_with('index_users_on_a_and_b_')
-	assert composite_name == 'index_users_on_a_and_b'
+	assert composite_name.starts_with('index_users_on_a_and_b_')
 	case_variant_name := index_name(.mysql, Index{
 		table:   'users'
 		columns: ['a_AnD_b']
@@ -1717,6 +1791,18 @@ fn test_generated_index_names_distinguish_column_boundaries() {
 	for dialect in [Dialect.sqlite, .pg] {
 		assert index_name(dialect, table_boundary)! != index_name(dialect, column_boundary)!
 	}
+	fragment_table_boundary := Index{
+		table:   'a_on'
+		columns: ['b']
+	}
+	fragment_column_boundary := Index{
+		table:   'a'
+		columns: ['on_b']
+	}
+	for dialect in [Dialect.sqlite, .pg] {
+		assert index_name(dialect, fragment_table_boundary)! != index_name(dialect,
+			fragment_column_boundary)!
+	}
 
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -1730,7 +1816,11 @@ fn test_generated_index_names_distinguish_column_boundaries() {
 	db.exec('CREATE TABLE a (b_on_c TEXT);')!
 	ctx.add_index(table_boundary)!
 	ctx.add_index(column_boundary)!
-	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'index';")! == 4
+	db.exec('CREATE TABLE a_on (b TEXT);')!
+	db.exec('ALTER TABLE a ADD COLUMN on_b TEXT;')!
+	ctx.add_index(fragment_table_boundary)!
+	ctx.add_index(fragment_column_boundary)!
+	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'index';")! == 6
 }
 
 fn test_generated_foreign_key_names_respect_dialect_limits() {
