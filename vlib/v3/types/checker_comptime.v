@@ -9421,7 +9421,9 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 				}
 			}
 		}
-		return flat.empty_node
+		// A later rewrite may replace the first recorded edge while another
+		// parent still references this shared generated node. Fall through to
+		// the arena scan when the indexed edge is stale.
 	}
 	for parent_idx, candidate in tc.a.nodes {
 		for i in 0 .. candidate.children_count {

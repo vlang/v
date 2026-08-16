@@ -109,6 +109,35 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	assert tc.direct_parent_id(appended_child) == appended_parent
 }
 
+fn test_rewritten_parent_index_falls_back_from_a_stale_shared_edge() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.build_direct_parent_index(&a)
+
+	shared_child := a.add_val(.ident, 'shared')
+	replacement := a.add_val(.ident, 'replacement')
+	first_children := a.begin_children()
+	a.add_child(shared_child)
+	first_parent := a.add_node(flat.Node{
+		kind:           .paren
+		children_start: first_children
+		children_count: 1
+	})
+	second_children := a.begin_children()
+	a.add_child(shared_child)
+	second_parent := a.add_node(flat.Node{
+		kind:           .expr_stmt
+		children_start: second_children
+		children_count: 1
+	})
+
+	tc.refresh_rewritten_parent_index(&a)
+	assert tc.direct_parent_id(shared_child) == first_parent
+
+	a.children[first_children] = replacement
+	assert tc.direct_parent_id(shared_child) == second_parent
+}
+
 fn test_generated_fn_params_update_method_suffix_index() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
