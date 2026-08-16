@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn test_data_frame_roundtrip() {

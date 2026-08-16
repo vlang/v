@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 fn test_classify_h3_unidirectional_stream_type_known_kinds() {
