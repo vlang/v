@@ -550,7 +550,8 @@ fn validate_sqlite_add_column(column Column) ! {
 }
 
 fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
-	normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
+	normalized :=
+		sqlite_default_without_leading_signs(sqlite_default_without_comments(default_sql)).to_upper()
 	return sqlite_default_starts_with_current_time_keyword(normalized)
 		|| (normalized.starts_with('(') && normalized.ends_with(')')
 		&& !sqlite_is_literal_default(normalized))
@@ -577,7 +578,7 @@ fn sqlite_has_non_null_default(column Column) bool {
 }
 
 fn sqlite_is_literal_default(default_sql string) bool {
-	literal := default_sql.trim_space()
+	literal := sqlite_default_without_leading_signs(default_sql)
 	if literal == '' {
 		return false
 	}
@@ -625,8 +626,20 @@ fn sqlite_is_single_quoted_literal(literal string) bool {
 
 fn sqlite_unwrapped_default(default_sql string) string {
 	mut literal := default_sql.trim_space()
-	for literal.len >= 2 && literal.starts_with('(') && literal.ends_with(')') {
-		literal = literal[1..literal.len - 1].trim_space()
+	for {
+		literal = sqlite_default_without_leading_signs(literal)
+		if literal.len < 2 || !literal.starts_with('(') || !literal.ends_with(')') {
+			return literal
+		}
+		literal = literal[1..literal.len - 1]
+	}
+	return literal
+}
+
+fn sqlite_default_without_leading_signs(default_sql string) string {
+	mut literal := default_sql.trim_space()
+	for literal.len > 0 && literal[0] in [u8(`+`), `-`] {
+		literal = literal[1..].trim_space()
 	}
 	return literal
 }

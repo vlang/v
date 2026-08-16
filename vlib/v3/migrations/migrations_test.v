@@ -1146,6 +1146,9 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	invalid_defaults << 'NULL'
 	invalid_defaults << 'NULL /* absent */'
 	invalid_defaults << '(NULL)'
+	invalid_defaults << '+NULL'
+	invalid_defaults << '- /* absent */ NULL'
+	invalid_defaults << '((+NULL))'
 	for default_sql in invalid_defaults {
 		error_message = ''
 		ctx.add_column('accounts', Column{
@@ -1159,7 +1162,8 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	for default_sql in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP', "(datetime('now'))",
 		'CURRENT_TIMESTAMP /* now */', '/* now */ CURRENT_DATE', 'CURRENT_TIME -- now',
 		"(datetime('now')) /* now */", 'CURRENT_TIMESTAMP COLLATE binary',
-		'CURRENT_DATE\tCOLLATE binary', 'CURRENT_TIME/* now */ COLLATE binary'] {
+		'CURRENT_DATE\tCOLLATE binary', 'CURRENT_TIME/* now */ COLLATE binary', '+CURRENT_TIMESTAMP',
+		'- CURRENT_DATE', '+/* now */ CURRENT_TIME'] {
 		error_message = ''
 		ctx.add_column('accounts', Column{
 			name:        'created_at'
@@ -1226,6 +1230,18 @@ fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {
 	assert db.q_int('SELECT count FROM accounts WHERE id = 1;')! == 0
 	assert db.q_string('SELECT label FROM accounts WHERE id = 1;')! == 'x'
 	assert db.q_int('SELECT count(*) FROM accounts WHERE optional IS NULL;')! == 1
+	ctx.add_column('accounts', Column{
+		name:        'signed_count'
+		kind:        .integer
+		default_sql: '(-1)'
+	})!
+	ctx.add_column('accounts', Column{
+		name:        'signed_label'
+		kind:        .text
+		default_sql: "(+'signed')"
+	})!
+	assert db.q_int('SELECT signed_count FROM accounts WHERE id = 1;')! == -1
+	assert db.q_string('SELECT signed_label FROM accounts WHERE id = 1;')! == 'signed'
 }
 
 fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
