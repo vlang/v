@@ -4585,6 +4585,15 @@ fn (mut t Transformer) lower_interface_auto_str(expr flat.NodeId, iface_name str
 }
 
 fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface_name string, allow_nil bool) flat.NodeId {
+	if t.stringify_stack_count(iface_name) > 0
+		|| (t.stringify_stack.len >= t.stringify_depth_cap
+		&& !t.stringify_types_match(t.auto_str_synthesis_type, iface_name)) {
+		return t.request_auto_str_helper(expr, iface_name)
+	}
+	t.stringify_stack << iface_name
+	defer {
+		t.stringify_stack.delete_last()
+	}
 	display_name := iface_name.all_after_last('.')
 	if isnil(t.tc) {
 		return t.make_string_literal('${display_name}{}')
@@ -4892,7 +4901,9 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 	t.set_var_type(param_name, aggregate)
 	value := t.make_ident(param_name)
 	t.set_node_typ(int(value), aggregate)
-	result := if aggregate in t.sum_types {
+	result := if t.is_interface_type(aggregate) {
+		t.lower_interface_auto_str(value, aggregate)
+	} else if aggregate in t.sum_types {
 		t.lower_sum_str(value, aggregate)
 	} else {
 		t.lower_struct_str(value, aggregate) or {
@@ -4935,6 +4946,10 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 		t.tc.fn_param_types[helper_key] = [t.tc.parse_type(aggregate)]
 		t.tc.fn_variadic[helper] = false
 		t.tc.fn_variadic[helper_key] = false
+		t.tc_signature_names_log << helper
+		if helper_key != helper {
+			t.tc_signature_names_log << helper_key
+		}
 	}
 }
 
@@ -5467,15 +5482,32 @@ fn (t &Transformer) stringify_type_at_circular_limit(typ string) bool {
 	return t.stringify_stack_count(aggregate) >= limit
 }
 
-fn (t &Transformer) struct_autostr_allows_recurse(struct_type string) bool {
-	decl_name := generic_base_name_text(struct_type)
+fn (mut t Transformer) rebuild_struct_autostr_recurse_index() {
+	mut allow_nodes := map[int]bool{}
+	for node in t.a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		mut allows_recurse := false
+		for attr in node.generic_params() {
+			clean := attr.trim_space()
+			if clean.starts_with('autostr') && clean.contains('allowrecurse') {
+				allows_recurse = true
+				break
+			}
+		}
+		if allows_recurse {
+			allow_nodes[node.value['@attributes:'.len..].int()] = true
+		}
+	}
+	mut recurse_types := map[string]bool{}
 	mut cur_module := ''
 	for idx, node in t.a.nodes {
 		if node.kind == .module_decl {
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .struct_decl {
+		if node.kind != .struct_decl || !allow_nodes[idx] {
 			continue
 		}
 		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
@@ -5483,19 +5515,16 @@ fn (t &Transformer) struct_autostr_allows_recurse(struct_type string) bool {
 		} else {
 			node.value
 		}
-		if decl_name != node.value && decl_name != qualified
-			&& decl_name.all_after_last('.') != node.value {
-			continue
-		}
-		for attr in t.comptime_node_raw_attributes(idx) {
-			clean := attr.trim_space()
-			if clean.starts_with('autostr') && clean.contains('allowrecurse') {
-				return true
-			}
-		}
-		return false
+		recurse_types[node.value] = true
+		recurse_types[qualified] = true
 	}
-	return false
+	t.struct_autostr_recurse_types = recurse_types.move()
+}
+
+fn (t &Transformer) struct_autostr_allows_recurse(struct_type string) bool {
+	decl_name := generic_base_name_text(struct_type)
+	return t.struct_autostr_recurse_types[decl_name]
+		|| t.struct_autostr_recurse_types[decl_name.all_after_last('.')]
 }
 
 fn struct_string_display_name(typ string) string {
@@ -8041,12 +8070,13 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 	})
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(fn_decl, 'main', t.cur_file)
-	t.fn_ret_types[helper] = typ
+	t.set_fn_ret_type(helper, typ)
 	t.mark_fn_used_name(helper)
 	if !isnil(t.tc) {
 		t.tc.fn_ret_types[helper] = t.tc.parse_type(typ)
 		t.tc.fn_param_types[helper] = [t.tc.parse_type('voidptr')]
 		t.tc.fn_variadic[helper] = false
+		t.tc_signature_names_log << helper
 	}
 }
 
@@ -9859,12 +9889,14 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		t.tc.fn_param_types[name] = param_types.clone()
 		t.tc.fn_variadic[name] = false
 		t.add_receiver_method_suffix_index(name)
+		t.tc_signature_names_log << name
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${name}'
 			t.tc.fn_ret_types[qname] = ret
 			t.tc.fn_param_types[qname] = param_types.clone()
 			t.tc.fn_variadic[qname] = false
 			t.add_receiver_method_suffix_index(qname)
+			t.tc_signature_names_log << qname
 		}
 	}
 	// Fn literals are materialized after markused has already walked the parsed

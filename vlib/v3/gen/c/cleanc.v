@@ -16282,6 +16282,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_darwin_task_info_struct()
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;')
+	g.writeln('u64 mach_absolute_time(void);')
+	g.writeln('int mach_timebase_info(mach_timebase_info_data_t*);')
 	g.writeln('#endif')
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()

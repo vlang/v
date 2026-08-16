@@ -949,6 +949,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id
+	} else if t.expr_has_smartcast(container_id) {
+		// The checker-facing iterator type is already the narrowed collection, but
+		// taking the original expression as an lvalue would bypass the active sum
+		// smartcast and make cgen index the sum wrapper itself.
+		t.transform_expr(container_id)
 	} else if t.expr_can_take_address(container_id) {
 		mut lvalue := t.transform_lvalue(container_id)
 		if !t.is_stable_expr_for_reuse(lvalue) {

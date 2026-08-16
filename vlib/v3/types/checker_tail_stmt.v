@@ -3647,7 +3647,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					&& tc.resolve_selective_import_type_symbol(init_type_text) == none {
 					owner_base := strip_generic_args_name(init_name)
 					decl_mod := tc.struct_modules[owner_base] or { '' }
-					if decl_mod.len > 0 && decl_mod != tc.cur_module
+					same_main_module := decl_mod in ['', 'main'] && tc.cur_module in ['', 'main']
+					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module
 						&& !is_anonymous_struct_name(init_name) {
 						is_public := tc.visible_mutation_struct_field_is_public(init_name,
 							field.value, decl_mod) or { true }

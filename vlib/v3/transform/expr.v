@@ -2924,6 +2924,7 @@ fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum
 		t.tc.fn_ret_types[helper] = ret
 		t.tc.fn_param_types[helper] = params.clone()
 		t.tc.fn_variadic[helper] = false
+		t.tc_signature_names_log << helper
 	}
 }
 

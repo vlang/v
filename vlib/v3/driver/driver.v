@@ -8150,8 +8150,8 @@ pub fn run(args []string) {
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
-				&pre_tc, monomorph_input_used, should_parallel_monomorphize()
-				&& cache_state.parsed_from_source.len == 0, monomorph_scope, cached_monomorph_specs)
+				&pre_tc, monomorph_input_used, should_parallel_monomorphize(), monomorph_scope,
+				cached_monomorph_specs)
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			prealloc_scope_leave_for_v3(monomorph_scope)
 			// Specialization can rewrite payload text on pre-existing nodes as
@@ -8191,8 +8191,11 @@ pub fn run(args []string) {
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
 				&pre_tc, monomorph_input_used, should_parallel_monomorphize()
-				&& cache_state.parsed_from_source.len == 0, unsafe { nil }, cached_monomorph_specs)
+				&& !incremental_cache_hit, unsafe { nil }, cached_monomorph_specs)
 		}
+		// Monomorphization publishes every synthesized or rewritten AST string
+		// after its final worker merge, including the serial/no-worker path.
+		transform_texts_canonical = true
 		if incremental_cache_hit {
 			incremental_stage_used_fns = monomorph_used_fns.move()
 			for idx in incremental_monomorph_node_start .. a.nodes.len {

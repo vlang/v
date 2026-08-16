@@ -6007,6 +6007,53 @@ fn test_imported_private_free_function_is_rejected() {
 	}, ['main.v'], 'function `other.hidden` is private')
 }
 
+fn test_private_declarations_in_main_module_accept_empty_module_alias() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'review_main_module_private_alias', {
+		'v.mod':  "Module { name: 'review_main_module_private_alias' }\n"
+		'app.v':  'module main
+
+struct App {
+	value int
+}
+
+fn (app App) hidden() int {
+	return app.value
+}
+'
+		'main.v': 'module main
+
+fn main() {
+	app := App{
+		value: 7
+	}
+	println(app.hidden())
+}
+'
+	}, '')
+	assert out == '7'
+}
+
+fn test_map_index_value_can_be_implicit_non_mut_reference_argument() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'review_map_index_implicit_ref_arg', 'struct Image {
+	value int
+}
+
+fn draw(image &Image) int {
+	return image.value
+}
+
+fn main() {
+	images := {
+		"avatar": Image{value: 9}
+	}
+	println(draw(images["avatar"]))
+}
+')
+	assert out == '9'
+}
+
 fn test_cross_module_mut_receiver_checks_visible_mutation() {
 	v3_bin := build_v3()
 	run_bad_project(v3_bin, 'review_cross_module_public_mut_receiver', {

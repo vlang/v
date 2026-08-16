@@ -2361,7 +2361,9 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	}
 	tmp := g.interface_tmp('iface_str_struct')
 	out := g.interface_tmp('iface_str_out')
-	ct := g.cname(struct_name)
+	ct := g.tc.c_type(types.Type(types.Struct{
+		name: struct_name
+	}))
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('${display_name}{\n')};'
 	for field in fields {
 		field_expr := '${tmp}.${c_field_name(field.name)}'

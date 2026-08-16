@@ -414,6 +414,41 @@ fn main() {
 }'
 }
 
+fn test_recursive_interface_auto_str_uses_helper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'recursive_interface_auto_str', "interface Entry {
+	name() string
+}
+
+struct Leaf {
+	value int
+}
+
+fn (Leaf) name() string {
+	return 'leaf'
+}
+
+struct Branch {
+	child Entry
+}
+
+fn (Branch) name() string {
+	return 'branch'
+}
+
+fn main() {
+	value := Entry(Branch{
+		child: Entry(Leaf{
+			value: 42
+		})
+	})
+	println(value)
+}
+")
+	assert out.contains('child: Entry(Leaf{'), out
+	assert out.contains('value: 42'), out
+}
+
 fn test_auto_str_preserves_distinct_sum_beyond_inline_depth() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'auto_str_distinct_sum_depth', 'struct Leaf {
@@ -3892,6 +3927,22 @@ fn test_parallel_monomorphization_grows_uneven_worker_regions() {
 	assert out == '40'
 }
 
+fn test_parallel_monomorphization_expands_single_seed() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut calls := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct MonoSeed${i} {}'
+		calls << '\ttotal += inner(MonoSeed${i}{})'
+	}
+	src := '${declarations.join('\n')}\n\nfn inner[T](value T) int {\n\t_ = value\n\treturn 1\n}\n\nfn seed[T]() int {\n\t_ = T{}\n\tmut total := 0\n${calls.join('\n')}\n\treturn total\n}\n\nfn main() {\n\tprintln(seed[MonoSeed0]())\n}\n'
+	out := run_good_with_env(v3_bin, 'parallel_monomorph_single_seed', 'VJOBS=4', src)
+	assert out == '40'
+}
+
 fn test_parallel_monomorphization_registers_worker_fixed_array_signatures() {
 	$if windows {
 		return
@@ -4825,6 +4876,17 @@ fn test_parallel_json2_specializations_emit_registered_bodies() {
 	assert out == '42'
 }
 
+fn test_parallel_json2_exact_callee_does_not_rebind_main_type_to_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_project(v3_bin, 'parallel_json2_exact_callee_homonym', {
+		'v.mod':             "Module { name: 'parallel_json2_exact_callee_homonym' }\n"
+		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
+		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tvalue := json2.decode[Discord](r\'{"value":42}\')!\n\tprintln(value.value)\n}\n'
+	}, 'main.v')
+	assert c_source.contains('decode_struct_key_T_Discord(')
+	assert !c_source.contains('decode_struct_key_T_discord__Discord(')
+}
+
 fn test_module_local_const_array_struct_types_do_not_use_previous_module() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'module_local_const_array_struct_types', 'import encoding.utf8
@@ -5217,6 +5279,32 @@ fn main() {
 }
 ')
 	assert out == '[2, 3]'
+}
+
+fn test_for_in_sum_array_smartcast_indexes_variant_payload() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'for_in_sum_array_smartcast', 'type Size = []f64 | f64
+
+fn values(size Size) []f32 {
+	mut result := []f32{}
+	match size {
+		[]f64 {
+			for _, value in size {
+				result << f32(value)
+			}
+		}
+		f64 {
+			result << f32(size)
+		}
+	}
+	return result
+}
+
+fn main() {
+	println(values(Size([1.5, 2.5])))
+}
+')
+	assert out == '[1.5, 2.5]'
 }
 
 fn test_autofree_array_map_preserves_v1_sum_value_copy_compatibility() {
