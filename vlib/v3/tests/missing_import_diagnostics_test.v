@@ -57,3 +57,81 @@ fn helper() {}
 		assert result.output.contains('second.v'), result.output
 	}
 }
+
+fn test_eager_import_resolution_matches_authoritative_resolution() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_eager_import_resolution_${os.getpid()}')
+	root := os.join_path(os.temp_dir(), 'v3_eager_import_project_${os.getpid()}')
+	output := os.join_path(os.temp_dir(), 'v3_eager_import_output_${os.getpid()}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rmdir_all(root) or {}
+		os.rm(output) or {}
+		os.rm(output + '.c') or {}
+	}
+	build :=
+		os.execute('${missing_import_vexe} -gc none -path "${missing_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${missing_import_v3_src}')
+	assert build.exit_code == 0, build.output
+
+	precedence_root := os.join_path(root, 'precedence')
+	local_arrays_dir := os.join_path(precedence_root, 'modules', 'arrays')
+	os.mkdir_all(local_arrays_dir) or { panic(err) }
+	os.write_file(os.join_path(local_arrays_dir, 'arrays.v'), "module arrays
+
+pub fn eager_local_marker() string {
+	return 'local arrays'
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(precedence_root, 'main.v'), 'module main
+
+import arrays
+
+fn main() {
+	println(arrays.eager_local_marker())
+}
+') or {
+		panic(err)
+	}
+	precedence_build :=
+		os.execute('${v3_bin} -nocache -building-v -o ${output} ${precedence_root}/main.v')
+	assert precedence_build.exit_code == 0, precedence_build.output
+	precedence_run := os.execute(output)
+	assert precedence_run.exit_code == 0, precedence_run.output
+	assert precedence_run.output.trim_space() == 'local arrays', precedence_run.output
+
+	string_root := os.join_path(root, 'string_literal')
+	bridge_dir := os.join_path(string_root, 'modules', 'eager_string_bridge')
+	trap_dir := os.join_path(string_root, 'modules', 'eager_string_literal_trap')
+	os.mkdir_all(bridge_dir) or { panic(err) }
+	os.mkdir_all(trap_dir) or { panic(err) }
+	os.write_file(os.join_path(bridge_dir, 'bridge.v'), "module eager_string_bridge
+
+pub const text = 'before
+import eager_string_literal_trap
+after'
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(trap_dir, 'trap.v'), 'module eager_string_literal_trap
+
+this source must never be parsed
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(string_root, 'main.v'), 'module main
+
+import eager_string_bridge
+
+fn main() {
+	println(eager_string_bridge.text)
+}
+') or {
+		panic(err)
+	}
+	string_build := os.execute('${v3_bin} -nocache -building-v -o ${output} ${string_root}/main.v')
+	assert string_build.exit_code == 0, string_build.output
+	string_run := os.execute(output)
+	assert string_run.exit_code == 0, string_run.output
+	assert string_run.output.trim_space() == 'before\nimport eager_string_literal_trap\nafter', string_run.output
+}

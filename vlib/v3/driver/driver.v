@@ -12743,17 +12743,12 @@ fn eager_selfhost_scan_thread(arg voidptr) voidptr {
 fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	mut result := unsafe { &EagerSelfhostResolveArgs(arg) }
 	prefs := unsafe { &pref.Preferences(result.prefs) }
-	// `-building-v` imports compiler/stdlib modules from vlib. Probe that direct
-	// path before the general project/module search, which otherwise repeats
-	// parent-directory and v.mod discovery for every BFS wave.
-	vlib_dir := prefs.get_vlib_module_path(result.path)
-	if os.is_dir(vlib_dir) {
-		result.dir = vlib_dir
-	} else {
-		mut local_cache := map[string]string{}
-		result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file,
-			result.project_root, mut local_cache)
-	}
+	// Preserve the authoritative resolver's local/project/global precedence.
+	// Every wave contains each import path once, and the chosen result is cached
+	// for the authoritative pass by discover_eager_selfhost_modules.
+	mut local_cache := map[string]string{}
+	result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file,
+		result.project_root, mut local_cache)
 	if result.dir.len > 0 && os.is_dir(result.dir) {
 		result.files = pref.get_v_files_from_dir_for_target(result.dir, prefs.user_defines,
 			prefs.target)
@@ -12791,46 +12786,103 @@ fn resolve_eager_selfhost_wave(a &flat.FlatAst, prefs &pref.Preferences, request
 // without constructing tokens. It is used only to assemble the trusted
 // -building-v parse batch; the real parser remains authoritative immediately
 // afterwards.
+@[direct_array_access]
 fn source_imports_fast(path string) []string {
 	source := os.read_file(path) or { return []string{} }
 	mut imports := []string{cap: 16}
-	mut line_start := 0
-	mut in_block_comment := false
-	for line_start < source.len {
-		mut line_end := line_start
-		for line_end < source.len && source[line_end] != `\n` {
-			line_end++
-		}
-		mut i := line_start
-		for i < line_end {
-			if in_block_comment {
-				if i + 1 < line_end && source[i] == `*` && source[i + 1] == `/` {
-					in_block_comment = false
+	mut i := 0
+	mut at_line_head := true
+	mut block_comment_depth := 0
+	mut quote := u8(0)
+	mut raw_string := false
+	for i < source.len {
+		if quote != 0 {
+			for i < source.len {
+				c := source[i]
+				if !raw_string && c == `\\` && i + 1 < source.len {
 					i += 2
 					continue
 				}
 				i++
-				continue
+				if c == quote {
+					quote = 0
+					raw_string = false
+					at_line_head = false
+					break
+				}
+				if c == `\n` {
+					at_line_head = true
+				}
 			}
-			if source[i] in [` `, `\t`, `\r`] {
+			continue
+		}
+		if block_comment_depth > 0 {
+			for i < source.len {
+				c := source[i]
+				if i + 1 < source.len && c == `/` && source[i + 1] == `*` {
+					block_comment_depth++
+					i += 2
+					continue
+				}
+				if i + 1 < source.len && c == `*` && source[i + 1] == `/` {
+					block_comment_depth--
+					i += 2
+					if block_comment_depth == 0 {
+						break
+					}
+					continue
+				}
+				if c == `\n` {
+					at_line_head = true
+				}
+				i++
+			}
+			continue
+		}
+		for i < source.len {
+			c := source[i]
+			if c == `\n` {
+				at_line_head = true
 				i++
 				continue
 			}
-			if i + 1 < line_end && source[i] == `/` && source[i + 1] == `*` {
-				in_block_comment = true
-				i += 2
+			if i + 1 < source.len && c == `/` && source[i + 1] == `/` {
+				for i < source.len && source[i] != `\n` {
+					i++
+				}
 				continue
 			}
-			if i + 1 < line_end && source[i] == `/` && source[i + 1] == `/` {
+			if i + 1 < source.len && c == `/` && source[i + 1] == `*` {
+				block_comment_depth = 1
+				i += 2
 				break
 			}
-			if i + 7 <= line_end && source[i..i + 6] == 'import' && source[i + 6] in [` `, `\t`] {
+			if c == `r` && i + 1 < source.len && source[i + 1] in [`'`, `"`] {
+				quote = source[i + 1]
+				raw_string = true
+				at_line_head = false
+				i += 2
+				break
+			}
+			if c in [`'`, `"`, `\``] {
+				quote = c
+				raw_string = false
+				at_line_head = false
+				i++
+				break
+			}
+			if at_line_head && c in [` `, `\t`, `\r`] {
+				i++
+				continue
+			}
+			if at_line_head && i + 7 <= source.len && source[i..i + 6] == 'import'
+				&& source[i + 6] in [` `, `\t`] {
 				i += 7
-				for i < line_end && source[i] in [` `, `\t`] {
+				for i < source.len && source[i] in [` `, `\t`] {
 					i++
 				}
 				start := i
-				for i < line_end && ((source[i] >= `a` && source[i] <= `z`)
+				for i < source.len && ((source[i] >= `a` && source[i] <= `z`)
 					|| (source[i] >= `A` && source[i] <= `Z`)
 					|| (source[i] >= `0` && source[i] <= `9`)
 					|| source[i] in [`_`, `.`]) {
@@ -12839,10 +12891,12 @@ fn source_imports_fast(path string) []string {
 				if i > start {
 					imports << source[start..i]
 				}
+				at_line_head = false
+				continue
 			}
-			break
+			at_line_head = false
+			i++
 		}
-		line_start = line_end + 1
 	}
 	return imports
 }
@@ -13707,36 +13761,10 @@ fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name 
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {
 	mod_path := mod_name.replace('.', os.path_separator)
-	if importing_file.len > 0 {
-		importer_dir := os.dir(importing_file)
-		if alias_path := pref.resolve_module_alias_path(importer_dir, mod_name) {
-			return alias_path
-		}
-		local_modules_root := os.join_path_single(importer_dir, 'modules')
-		if alias_path := pref.resolve_module_alias_path(local_modules_root, mod_name) {
-			return alias_path
-		}
-		local_modules_path := os.join_path_single(local_modules_root, mod_path)
-		if module_path_has_v_sources(local_modules_path) {
-			return local_modules_path
-		}
-	}
-	if project_root.len > 0 {
-		if alias_path := pref.resolve_module_alias_path(project_root, mod_name) {
-			return alias_path
-		}
-		project_path := os.join_path_single(project_root, mod_path)
-		if module_path_has_v_sources(project_path) {
-			return project_path
-		}
-	}
-	// Preserve the existing resolver priority: explicit local `modules/` and
-	// project-root modules precede a module beside the importing file.
-	if importing_file.len > 0 {
-		relative_path := os.join_path_single(os.dir(importing_file), mod_path)
-		if module_path_has_v_sources(relative_path) {
-			return relative_path
-		}
+	local_path := resolve_local_or_project_module_path(mod_name, mod_path, importing_file,
+		project_root)
+	if local_path.len > 0 {
+		return local_path
 	}
 	// vlib and the global module directory do not depend on the importing file.
 	// Resolve them once per import name instead of repeating the same alias probes
@@ -13755,6 +13783,51 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 		}
 	}
 	return prefs.get_module_path(mod_name, importing_file)
+}
+
+fn resolve_local_or_project_module_path(mod_name string, mod_path string, importing_file string, project_root string) string {
+	top_name := mod_name.all_before('.')
+	if importing_file.len > 0 {
+		importer_dir := os.dir(importing_file)
+		if alias_path := resolve_local_module_alias_path(importer_dir, top_name, mod_name) {
+			return alias_path
+		}
+		local_modules_root := os.join_path_single(importer_dir, 'modules')
+		if alias_path := resolve_local_module_alias_path(local_modules_root, top_name, mod_name) {
+			return alias_path
+		}
+		local_modules_path := os.join_path_single(local_modules_root, mod_path)
+		if module_path_has_v_sources(local_modules_path) {
+			return local_modules_path
+		}
+	}
+	if project_root.len > 0 {
+		if alias_path := resolve_local_module_alias_path(project_root, top_name, mod_name) {
+			return alias_path
+		}
+		project_path := os.join_path_single(project_root, mod_path)
+		if module_path_has_v_sources(project_path) {
+			return project_path
+		}
+	}
+	// Preserve the existing resolver priority: explicit local `modules/` and
+	// project-root modules precede a module beside the importing file.
+	if importing_file.len > 0 {
+		relative_path := os.join_path_single(os.dir(importing_file), mod_path)
+		if module_path_has_v_sources(relative_path) {
+			return relative_path
+		}
+	}
+	return ''
+}
+
+fn resolve_local_module_alias_path(root string, top_name string, mod_name string) ?string {
+	// An alias for `a.b` can only exist below root/a. Avoid probing every
+	// possible alias.v prefix for the overwhelmingly common missing local root.
+	if !os.is_dir(os.join_path_single(root, top_name)) {
+		return none
+	}
+	return pref.resolve_module_alias_path(root, mod_name)
 }
 
 fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) bool {
