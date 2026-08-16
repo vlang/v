@@ -6393,8 +6393,8 @@ fn (mut tc TypeChecker) ownership_check_expr(id flat.NodeId) {
 	if moved := tc.ownership_moved_conflict(name) {
 		// Call arguments are context-checked and can subsequently be resolved
 		// again by the enclosing call. If this identifier is still inside the
-		// exact call node that recorded its move, this is the same AST use being
-		// revisited, not a second source-level use.
+		// exact enclosing expression that recorded its move, this is the same AST
+		// use being revisited, not a second source-level use.
 		if tc.ownership_move_site_contains(moved.info.move_pos, id) {
 			return
 		}
@@ -8855,7 +8855,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		if borrow_name.len > 0 {
 			if moved := tc.ownership_moved_conflict(borrow_name) {
 				if moved.name == borrow_name && moved.info.moved_to == call_name
-					&& moved.info.move_pos == id {
+					&& moved.info.move_pos == arg_id {
 					continue
 				}
 				tc.ownership_report_moved(moved.name, moved.info, arg_id)
@@ -8868,7 +8868,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 			call_borrows << borrow_name
 			continue
 		}
-		method_value := tc.ownership_consume_method_value_receiver(arg_id, call_name, id)
+		method_value := tc.ownership_consume_method_value_receiver(arg_id, call_name, arg_id)
 		if method_value.consumed {
 			if method_value.borrow_name.len > 0 {
 				call_borrows << method_value.borrow_name
@@ -8878,22 +8878,22 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		arg_name := tc.ownership_expr_ident_name(arg_id)
 		if arg_name.len == 0 {
 			if expected !is Void && expected !is Pointer {
-				if tc.ownership_consume_array_element_method_result(arg_id, call_name, id) {
+				if tc.ownership_consume_array_element_method_result(arg_id, call_name, arg_id) {
 					continue
 				}
 				if tc.ownership_consume_conditional_call_arg(call_name, target_param_idx,
-					target_suffix, arg_id, expected, id)
+					target_suffix, arg_id, expected, arg_id)
 				{
 					continue
 				}
 				tc.ownership_mark_fn_param_aggregate_literal_descendants(call_name,
-					target_param_idx, target_suffix, arg_id, id)
+					target_param_idx, target_suffix, arg_id, arg_id)
 			}
 			continue
 		}
 		if moved := tc.ownership_moved_conflict(arg_name) {
 			if moved.name == arg_name && moved.info.moved_to == call_name
-				&& moved.info.move_pos == id {
+				&& moved.info.move_pos == arg_id {
 				continue
 			}
 			tc.ownership_report_moved(moved.name, moved.info, arg_id)
@@ -8905,11 +8905,11 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		// `string`; passing `borrowed.tag` when it is an enum is a plain copy).
 		if _ := tc.ownership_borrowed_alias_source(arg_name, false) {
 			if tc.ownership_type_requires_destruction(tc.resolve_type(arg_id)) {
-				tc.ownership_reject_global_move(arg_name, id, call_name, true)
+				tc.ownership_reject_global_move(arg_name, arg_id, call_name, true)
 				continue
 			}
 		} else {
-			tc.ownership_reject_global_move(arg_name, id, call_name, true)
+			tc.ownership_reject_global_move(arg_name, arg_id, call_name, true)
 		}
 		mut moved_base := false
 		if arg_name in st.owned_vars {
@@ -8919,7 +8919,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 			// to move them a second time.
 			descendants := tc.ownership_owned_descendant_names(arg_name)
 			type_name := tc.ownership_type_name_for_var(arg_name)
-			if tc.ownership_move_var_result(arg_name, call_name, id, true, call_name, true) {
+			if tc.ownership_move_var_result(arg_name, call_name, arg_id, true, call_name, true) {
 				moved_base = true
 				if variadic_elem_idx >= 0 {
 					tc.ownership_add_fn_param_descendant(call_name, target_param_idx,
@@ -8940,8 +8940,8 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 				}
 			}
 		} else {
-			moved_types := tc.ownership_move_overlapping_dynamic_storage(arg_name, call_name, id,
-				true, call_name, true)
+			moved_types := tc.ownership_move_overlapping_dynamic_storage(arg_name, call_name,
+				arg_id, true, call_name, true)
 			if moved_types.len > 0 {
 				if variadic_elem_idx >= 0 {
 					tc.ownership_add_fn_param_descendant(call_name, target_param_idx,
@@ -8954,7 +8954,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		}
 		if expected !is Void && expected !is Pointer && !moved_base {
 			tc.ownership_transfer_owned_descendants_to_param_with_suffix(arg_name, call_name,
-				target_param_idx, target_suffix, id)
+				target_param_idx, target_suffix, arg_id)
 		}
 	}
 	for name in call_borrows {
