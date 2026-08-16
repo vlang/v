@@ -912,3 +912,60 @@ fn test_generated_foreign_key_names_respect_dialect_limits() {
 	assert error_message == 'MySQL foreign key name `${long_explicit_name}` must not exceed 64 bytes'
 	assert recorder.queries.len == 2
 }
+
+fn test_caller_supplied_identifiers_respect_dialect_limits() {
+	mysql_limit_name := 'm'.repeat(64)
+	mysql_long_name := 'm'.repeat(65)
+	mut mysql_recorder := &RecordingConnection{}
+	mut mysql_ctx := new_context(mysql_recorder, .mysql)
+	mysql_ctx.create_table(Table{
+		name:    mysql_limit_name
+		id:      false
+		columns: [
+			Column{
+				name: mysql_limit_name
+				kind: .text
+			},
+		]
+	})!
+	assert mysql_recorder.queries.len == 1
+
+	mut error_message := ''
+	mysql_ctx.create_table(Table{
+		name: 'app.${mysql_long_name}'
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL table name component `${mysql_long_name}` must not exceed 64 bytes'
+	assert mysql_recorder.queries.len == 1
+
+	error_message = ''
+	mysql_ctx.add_column(mysql_limit_name, Column{
+		name: mysql_long_name
+		kind: .text
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL column name component `${mysql_long_name}` must not exceed 64 bytes'
+	assert mysql_recorder.queries.len == 1
+
+	postgres_limit_name := 'p'.repeat(63)
+	postgres_long_name := 'p'.repeat(64)
+	mut postgres_recorder := &RecordingConnection{}
+	mut postgres_ctx := new_context(postgres_recorder, .pg)
+	postgres_ctx.drop_table(postgres_limit_name)!
+	error_message = ''
+	postgres_ctx.drop_table(postgres_long_name) or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL table name component `${postgres_long_name}` must not exceed 63 bytes'
+	assert postgres_recorder.queries.len == 1
+
+	mut history_recorder := &RecordingConnection{}
+	runner := new(mut history_recorder, []Migration{}, Config{
+		dialect: .mysql
+		table:   '${mysql_limit_name}.${mysql_limit_name}'
+	})!
+	assert runner.config.table == '${mysql_limit_name}.${mysql_limit_name}'
+	error_message = ''
+	new(mut history_recorder, []Migration{}, Config{
+		dialect: .mysql
+		table:   'app.${mysql_long_name}'
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL migration history table name component `${mysql_long_name}` must not exceed 64 bytes'
+	assert history_recorder.queries.len == 0
+}

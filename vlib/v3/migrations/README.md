@@ -72,7 +72,8 @@ removals must use `remove_index()` or raw SQL.
 MySQL auto-increment columns must be primary keys or unique, MySQL index names must be unqualified
 when adding or removing them, and MySQL foreign keys reject `SET DEFAULT`. Column-level identifiers
 must be unqualified. Generated PostgreSQL and MySQL index and foreign-key names are shortened
-deterministically to their dialect limits; overlong explicit names are rejected.
+deterministically to their dialect limits; overlong explicit names are rejected. Caller-supplied
+table, column, and history-table name components are also checked against those dialect limits.
 PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps support for
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
 implicitly commits, and its history strings use hex literals to avoid SQL-mode-sensitive escaping.

@@ -79,7 +79,7 @@ mut:
 // new creates and validates a migrator. It does not access the database until
 // one of the migration or inspection methods is called.
 pub fn new(mut conn orm.TransactionalConnection, registered []Migration, config Config) !Migrator {
-	validate_identifier(config.table, 'migration history table')!
+	validate_identifier_for_dialect(config.dialect, config.table, 'migration history table')!
 	mut ordered := registered.clone()
 	ordered.sort_with_compare(compare_migrations)
 	mut previous := i64(0)

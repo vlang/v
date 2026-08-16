@@ -103,12 +103,12 @@ pub fn (mut ctx Context) execute(query string) ![]orm.Row {
 
 // create_table creates a table from a Rails-style table definition.
 pub fn (mut ctx Context) create_table(table Table) ! {
-	validate_identifier(table.name, 'table')!
+	validate_identifier_for_dialect(ctx.dialect, table.name, 'table')!
 	mut definitions := []string{}
 	mut column_names := map[string]bool{}
 	mut has_primary_key := false
 	if table.id {
-		validate_unqualified_identifier(table.id_name, 'primary key')!
+		validate_unqualified_identifier_for_dialect(ctx.dialect, table.id_name, 'primary key')!
 		definitions << auto_primary_key_sql(ctx.dialect, table.id_name)
 		column_names[table.id_name] = true
 		has_primary_key = true
@@ -126,7 +126,7 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 		has_primary_key = has_primary_key || is_primary_key
 	}
 	for key in table.foreign_keys {
-		validate_foreign_key(key)!
+		validate_foreign_key(ctx.dialect, key)!
 		if key.from_table != table.name {
 			return error('foreign key `${key.name}` must use from_table `${table.name}`')
 		}
@@ -145,14 +145,14 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 
 // drop_table drops a table by name.
 pub fn (mut ctx Context) drop_table(name string) ! {
-	validate_identifier(name, 'table')!
+	validate_identifier_for_dialect(ctx.dialect, name, 'table')!
 	ctx.execute('DROP TABLE ${quote_identifier(ctx.dialect, name)};')!
 }
 
 // rename_table renames a table. PostgreSQL and SQLite targets must be unqualified.
 pub fn (mut ctx Context) rename_table(from string, to string) ! {
-	validate_identifier(from, 'table')!
-	validate_identifier(to, 'table')!
+	validate_identifier_for_dialect(ctx.dialect, from, 'table')!
+	validate_identifier_for_dialect(ctx.dialect, to, 'table')!
 	if ctx.dialect in [.sqlite, .pg] && to.contains('.') {
 		return error('rename_table target `${to}` must be unqualified for PostgreSQL and SQLite')
 	}
@@ -162,7 +162,7 @@ pub fn (mut ctx Context) rename_table(from string, to string) ! {
 
 // add_column adds a column to an existing table.
 pub fn (mut ctx Context) add_column(table string, column Column) ! {
-	validate_identifier(table, 'table')!
+	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
 	definition := column_sql(ctx.dialect, column)!
 	if ctx.dialect == .sqlite {
 		validate_sqlite_add_column(column)!
@@ -172,17 +172,17 @@ pub fn (mut ctx Context) add_column(table string, column Column) ! {
 
 // remove_column removes a column from an existing table.
 pub fn (mut ctx Context) remove_column(table string, column string) ! {
-	validate_identifier(table, 'table')!
-	validate_unqualified_identifier(column, 'column')!
+	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
+	validate_unqualified_identifier_for_dialect(ctx.dialect, column, 'column')!
 	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP COLUMN ${quote_identifier(ctx.dialect,
 		column)};')!
 }
 
 // rename_column renames a column.
 pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
-	validate_identifier(table, 'table')!
-	validate_unqualified_identifier(from, 'column')!
-	validate_unqualified_identifier(to, 'column')!
+	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
+	validate_unqualified_identifier_for_dialect(ctx.dialect, from, 'column')!
+	validate_unqualified_identifier_for_dialect(ctx.dialect, to, 'column')!
 	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} RENAME COLUMN ${quote_identifier(ctx.dialect,
 		from)} TO ${quote_identifier(ctx.dialect, to)};')!
 }
@@ -193,7 +193,7 @@ pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 // MySQL requires nullable, default_sql, and auto_increment to be supplied because
 // MODIFY COLUMN replaces those attributes. Omitted key options are preserved.
 pub fn (mut ctx Context) change_column(table string, column Column) ! {
-	validate_identifier(table, 'table')!
+	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
 	match ctx.dialect {
 		.sqlite {
 			column_sql(ctx.dialect, column)!
@@ -296,8 +296,8 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 // from a qualified table unless name is already qualified. MySQL index names
 // must be unqualified.
 pub fn (mut ctx Context) remove_index(table string, name string) ! {
-	validate_identifier(table, 'table')!
-	validate_identifier(name, 'index')!
+	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
+	validate_identifier_for_dialect(ctx.dialect, name, 'index')!
 	if ctx.dialect == .mysql && name.contains('.') {
 		return error('MySQL remove_index name `${name}` must be unqualified')
 	}
@@ -337,8 +337,8 @@ pub fn (mut ctx Context) add_foreign_key(key ForeignKey) ! {
 
 // remove_foreign_key removes a named foreign-key constraint.
 pub fn (mut ctx Context) remove_foreign_key(table string, name string) ! {
-	validate_identifier(table, 'table')!
-	validate_unqualified_identifier(name, 'foreign key')!
+	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
+	validate_unqualified_identifier_for_dialect(ctx.dialect, name, 'foreign key')!
 	match ctx.dialect {
 		.sqlite {
 			return error('remove_foreign_key is not directly supported by SQLite; create a replacement table in the migration')
@@ -419,7 +419,7 @@ fn mysql_change_column_sql(column Column) !string {
 }
 
 fn column_sql_internal(dialect Dialect, column Column, preserve_omitted_mysql_key bool) !string {
-	validate_unqualified_identifier(column.name, 'column')!
+	validate_unqualified_identifier_for_dialect(dialect, column.name, 'column')!
 	if column.limit < 0 {
 		return error('column `${column.name}` limit must not be negative')
 	}
@@ -611,12 +611,12 @@ fn column_type_sql(dialect Dialect, column Column) !string {
 }
 
 fn index_name(dialect Dialect, index Index) !string {
-	validate_identifier(index.table, 'table')!
+	validate_identifier_for_dialect(dialect, index.table, 'table')!
 	if index.columns.len == 0 {
 		return error('index on `${index.table}` must include at least one column')
 	}
 	for column in index.columns {
-		validate_unqualified_identifier(column, 'column')!
+		validate_unqualified_identifier_for_dialect(dialect, column, 'column')!
 	}
 	name := if index.name != '' {
 		index.name
@@ -661,7 +661,7 @@ fn quoted_columns(dialect Dialect, columns []string) !string {
 	}
 	mut quoted := []string{cap: columns.len}
 	for column in columns {
-		validate_unqualified_identifier(column, 'column')!
+		validate_unqualified_identifier_for_dialect(dialect, column, 'column')!
 		quoted << quote_identifier(dialect, column)
 	}
 	return quoted.join(', ')
@@ -678,7 +678,7 @@ fn foreign_key_name(dialect Dialect, key ForeignKey) !string {
 }
 
 fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
-	validate_foreign_key(key)!
+	validate_foreign_key(dialect, key)!
 	if dialect == .sqlite && key.to_table.contains('.') {
 		return error('SQLite foreign-key target table `${key.to_table}` must be unqualified')
 	}
@@ -695,11 +695,11 @@ fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
 	return query
 }
 
-fn validate_foreign_key(key ForeignKey) ! {
-	validate_identifier(key.from_table, 'table')!
-	validate_unqualified_identifier(key.column, 'column')!
-	validate_identifier(key.to_table, 'table')!
-	validate_unqualified_identifier(key.primary_key, 'column')!
+fn validate_foreign_key(dialect Dialect, key ForeignKey) ! {
+	validate_identifier_for_dialect(dialect, key.from_table, 'table')!
+	validate_unqualified_identifier_for_dialect(dialect, key.column, 'column')!
+	validate_identifier_for_dialect(dialect, key.to_table, 'table')!
+	validate_unqualified_identifier_for_dialect(dialect, key.primary_key, 'column')!
 }
 
 fn foreign_key_action(dialect Dialect, action string) !string {
@@ -729,8 +729,28 @@ fn validate_identifier(value string, kind string) ! {
 	}
 }
 
+fn validate_identifier_for_dialect(dialect Dialect, value string, kind string) ! {
+	validate_identifier(value, kind)!
+	limit := identifier_name_limit(dialect)
+	if limit == 0 {
+		return
+	}
+	for part in value.split('.') {
+		if part.len > limit {
+			return error('${dialect_name(dialect)} ${kind} name component `${part}` must not exceed ${limit} bytes')
+		}
+	}
+}
+
 fn validate_unqualified_identifier(value string, kind string) ! {
 	validate_identifier(value, kind)!
+	if value.contains('.') {
+		return error('${kind} name `${value}` must be unqualified')
+	}
+}
+
+fn validate_unqualified_identifier_for_dialect(dialect Dialect, value string, kind string) ! {
+	validate_identifier_for_dialect(dialect, value, kind)!
 	if value.contains('.') {
 		return error('${kind} name `${value}` must be unqualified')
 	}
