@@ -1270,9 +1270,14 @@ pub fn (a &array) free() {
 	$if prealloc {
 		return
 	}
-	// if a.is_slice {
-	// return
-	// }
+	// A slice is a borrowed view into another array's buffer; its `.data` points
+	// into (not at the start of) that buffer. Freeing it resolves back to the
+	// owner's block (via `.data - .offset`) and frees live memory out from under
+	// the owner. Harmless with the default allocator (the block is still mapped),
+	// but a use-after-free that guard-malloc/ASAN flag. Only the owner frees.
+	if a.flags.has(.is_slice) {
+		return
+	}
 	if a.flags.has(.nofree) {
 		return
 	}

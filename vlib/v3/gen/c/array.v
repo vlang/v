@@ -546,7 +546,11 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 	}
 	c_elem := g.value_c_type(elem_type)
 	base_node := g.a.nodes[int(base_id)]
-	is_ptr := receiver_type0 is types.Pointer
+	// A receiver already yields a pointer (e.g. `arc.Arc[[]T].get()` returns
+	// `&[]T`) for any expression kind, not just idents. Detect it uniformly so
+	// `clone` does not take the address of a pointer rvalue (`array__clone(&p)`)
+	// and element accessors dereference correctly.
+	is_ptr := g.usable_expr_type(base_id) is types.Pointer
 	dot := if is_ptr { '->' } else { '.' }
 	match fn_node.value {
 		'clone' {

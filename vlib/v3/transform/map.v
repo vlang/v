@@ -1211,7 +1211,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	rhs_name := t.new_temp('map_field_value')
 	result << t.make_decl_assign_typed(rhs_name, rhs, field_type)
 	t.append_owned_lvalue_drop_before_assign_if(field, field_type, current_existed, mut result)
-	result << t.make_assign(field, t.make_ident(rhs_name))
+	result << t.make_assign_after_owned_drop(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
 	return result

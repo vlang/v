@@ -10506,12 +10506,20 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				&& check_node.typ.len == 0 && array_like_elem_type(expected_for_check) != none {
 				tc.register_synth_type(check_arg_id, expected_for_check)
 			}
-			tc.check_node_with_expected_context(check_arg_id, expected_for_check)
+			$if ownership ? {
+				tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(check_arg_id,
+					expected_for_check, tc.ownership_should_defer_call_arg_aggregate_consumption(node,
+					info, i))
+			} $else {
+				tc.check_node_with_expected_context(check_arg_id, expected_for_check)
+			}
 			checked_with_context = true
 		}
 		$if ownership ? {
-			tc.ownership_check_node_with_aggregate_consumption_mode(check_arg_id, tc.ownership_should_defer_call_arg_aggregate_consumption(node,
-				info, i))
+			if !checked_with_context {
+				tc.ownership_check_node_with_aggregate_consumption_mode(check_arg_id, tc.ownership_should_defer_call_arg_aggregate_consumption(node,
+					info, i))
+			}
 		} $else {
 			if !checked_with_context {
 				tc.check_node(check_arg_id)
@@ -11005,7 +11013,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 		}
-		tc.check_node_with_expected_context(arg_id, expected)
+		if !checked_with_context {
+			$if ownership ? {
+				tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(arg_id,
+					expected, tc.ownership_should_defer_call_arg_aggregate_consumption(node, info,
+					i))
+			} $else {
+				tc.check_node_with_expected_context(arg_id, expected)
+			}
+		}
 		mut actual := Type(void_)
 		if has_dsl_scope {
 			actual = tc.resolve_expr(arg_id, expected)
@@ -11083,7 +11099,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
-		if expected is Pointer && !is_channel_builtin_method_call_name(info.name, 'try_push')
+		if expected is Pointer && param_is_mut
+			&& !is_channel_builtin_method_call_name(info.name, 'try_push')
 			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .string_interp] {
 			mut reference_name := call_argument_type_name(expected)
 			if !info.has_receiver {
@@ -13041,8 +13058,23 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 
 fn (mut tc TypeChecker) resolve_generic_call_arg_type(id flat.NodeId) Type {
 	mut typ := tc.resolve_type(id)
+	node := tc.a.node(id)
+	if node.kind == .call {
+		// A cached generic call type can still be open (`Summary[W]`) when an
+		// enclosing generic call asks for its argument type before the nested call
+		// itself is checked. Specialize the nested signature from its own arguments
+		// first so the enclosing call sees the concrete return application.
+		if info0 := tc.resolve_call_info(id, node) {
+			if tc.call_generic_params(info0.name).len > 0 {
+				info := tc.specialized_plain_generic_call_info(node, info0)
+				if info.return_type !is Void && info.return_type !is Unknown {
+					typ = info.return_type
+					tc.remember_expr_type(id, typ)
+				}
+			}
+		}
+	}
 	if type_contains_unknown(typ) {
-		node := tc.a.node(id)
 		if node.kind == .call && node.children_count >= 2 {
 			callee := tc.a.child_node(node, 0)
 			if callee.kind == .selector && callee.value == 'map' {
@@ -14364,7 +14396,8 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	}
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.
-	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .if_expr, .match_stmt]
+	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .if_expr, .match_stmt,
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .string_interp]
 }
 
 fn type_pointer_depth_and_base(typ Type) (int, Type) {

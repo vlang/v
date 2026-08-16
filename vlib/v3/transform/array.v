@@ -481,7 +481,14 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	}
 	assign := t.make_assign(elem_lhs, assign_value)
 	loop_body << assign
-	t.pending_stmts << t.make_for_stmt(init_idx, cond, post, loop_body, node)
+	// This synthetic default-fill loop carries no user code and owns nothing, so
+	// it must not consume an ownership-drop loop-iteration slot. The checker only
+	// indexed the source-level loops; if this transform-inserted loop claimed a
+	// slot, the following real loop's per-iteration drops would be emitted here
+	// (referencing a variable not in scope) and dropped from their real loop.
+	for_id := t.make_for_stmt(init_idx, cond, post, loop_body, node)
+	t.a.nodes[int(for_id)].skip_ownership_drops = true
+	t.pending_stmts << for_id
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), '[]${elem_type}')
 	return result
@@ -525,7 +532,19 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 			if field.typ.len > 0 { field.typ } else { field.raw_typ }
 		}
 		clean_type := t.normalize_type_alias(field_type)
+		// An `?T`/`!T` field with no explicit default is `none`/the zero value,
+		// which the zeroed array element already provides. Never expand it into a
+		// runtime default of its base struct: cross-module `normalize_type_alias`
+		// can strip the `?`/`!`, which would otherwise emit the base struct's
+		// fields into the optional wrapper (`(Optional_T){<T fields>}`).
+		raw_field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		field_is_optional := field_type.starts_with('?') || field_type.starts_with('!')
+			|| raw_field_type.starts_with('?') || raw_field_type.starts_with('!')
+			|| clean_type.starts_with('?') || clean_type.starts_with('!')
 		mut value := flat.empty_node
+		if field_is_optional && int(field.default_expr) < 0 {
+			continue
+		}
 		if int(field.default_expr) >= 0 {
 			default_node := t.a.nodes[int(field.default_expr)]
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
@@ -1490,6 +1509,14 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 
 fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, value flat.NodeId, elem_type string) flat.NodeId {
 	if isnil(t.tc) || !t.expr_can_take_address(source_id) {
+		return value
+	}
+	// Ownership mode transfers an addressable by-value RHS into the appended
+	// element. The non-ownership lowering clones it to preserve ordinary V
+	// value semantics, but doing that here would leave the moved source owning
+	// the same nested storage and make its later reinitialization free the
+	// destination's data.
+	if t.tc.ownership_expr_moves_storage(source_id, source_id) {
 		return value
 	}
 	if !t.compiler_default_clone_type_needs_work(elem_type) {

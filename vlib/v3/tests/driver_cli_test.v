@@ -34,6 +34,260 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn v3_profile_counter(profile_output string, fn_name string) int {
+	for line in profile_output.split_into_lines() {
+		fields := line.fields()
+		if fields.len > 0 && fields.last() == fn_name {
+			return fields[0].int()
+		}
+	}
+	return -1
+}
+
+fn test_driver_v1_compatible_profile_options() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_profile_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+
+	api_source := os.join_path(root, 'profile_api.v')
+	os.write_file(api_source, '@[has_globals]
+module main
+
+import v.profile
+
+__global v__profile_enabled = false
+
+fn abc() {
+	println("abc")
+}
+
+fn main() {
+	profile.on(false)
+	abc()
+	profile.on(true)
+	abc()
+}
+')!
+	api_binary := os.join_path(root, 'profile_api')
+	api_profile := os.join_path(root, 'profile_api.txt')
+	api_compile := cmdexec.run(v3_bin, ['-silent', '-profile', api_profile, '-o', api_binary,
+		api_source])
+	assert api_compile.exit_code == 0, api_compile.output
+	api_run := cmdexec.run(api_binary, [])
+	assert api_run.exit_code == 0, api_run.output
+	api_output := os.read_file(api_profile)!
+	assert v3_profile_counter(api_output, 'builtin__builtin_init') == 1, api_output
+	assert v3_profile_counter(api_output, 'main__main') == 1, api_output
+	assert v3_profile_counter(api_output, 'main__abc') == 1, api_output
+	assert v3_profile_counter(api_output, 'v__profile__on') == -1, api_output
+
+	missing_profile := os.join_path(root, 'missing', 'profile.txt')
+	missing_profile_binary := os.join_path(root, 'missing_profile')
+	missing_profile_compile := cmdexec.run(v3_bin, ['-silent', '-profile', missing_profile, '-o',
+		missing_profile_binary, api_source])
+	assert missing_profile_compile.exit_code == 0, missing_profile_compile.output
+	missing_profile_run := cmdexec.run(missing_profile_binary, [])
+	assert missing_profile_run.exit_code == 0, missing_profile_run.output
+	assert !os.exists(missing_profile)
+
+	user_profile_module := os.join_path(root, 'profile')
+	os.mkdir_all(user_profile_module)!
+	os.write_file(os.join_path(user_profile_module, 'profile.v'), 'module profile
+
+pub fn answer() int {
+	return 42
+}
+')!
+	user_profile_source := os.join_path(root, 'user_profile.v')
+	os.write_file(user_profile_source, 'module main
+
+import profile
+
+fn main() {
+	println(profile.answer())
+}
+')!
+	user_profile_binary := os.join_path(root, 'user_profile')
+	user_profile_output_path := os.join_path(root, 'user_profile.txt')
+	user_profile_compile := cmdexec.run(v3_bin, ['-silent', '-profile', user_profile_output_path,
+		'-o', user_profile_binary, user_profile_source])
+	assert user_profile_compile.exit_code == 0, user_profile_compile.output
+	user_profile_run := cmdexec.run(user_profile_binary, [])
+	assert user_profile_run.exit_code == 0, user_profile_run.output
+	assert user_profile_run.output.trim_space() == '42', user_profile_run.output
+	user_profile_output := os.read_file(user_profile_output_path)!
+	assert v3_profile_counter(user_profile_output, 'profile__answer') == 1, user_profile_output
+
+	operator_profile_source := os.join_path(root, 'operator_profile.v')
+	os.write_file(operator_profile_source, 'module main
+
+struct Number {
+	value int
+}
+
+fn (left Number) plus(right Number) Number {
+	return Number{
+		value: left.value + right.value + 1
+	}
+}
+
+fn (left Number) + (right Number) Number {
+	return Number{
+		value: left.value + right.value
+	}
+}
+
+fn main() {
+	left := Number{
+		value: 20
+	}
+	right := Number{
+		value: 22
+	}
+	println(left.plus(right).value)
+	println((left + right).value)
+}
+')!
+	operator_profile_binary := os.join_path(root, 'operator_profile')
+	operator_profile_output_path := os.join_path(root, 'operator_profile.txt')
+	operator_profile_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns',
+		'main__Number__plus__operator', '-profile', operator_profile_output_path, '-o',
+		operator_profile_binary, operator_profile_source])
+	assert operator_profile_compile.exit_code == 0, operator_profile_compile.output
+	operator_profile_run := cmdexec.run(operator_profile_binary, [])
+	assert operator_profile_run.exit_code == 0, operator_profile_run.output
+	assert operator_profile_run.output.trim_space() == '43\n42', operator_profile_run.output
+	operator_profile_output := os.read_file(operator_profile_output_path)!
+	assert v3_profile_counter(operator_profile_output, 'main__Number__plus__operator') == 1, operator_profile_output
+
+	assert v3_profile_counter(operator_profile_output, 'main__Number__plus') == -1, operator_profile_output
+
+	// With no output path, the following source remains the compiler input and
+	// the V1 `-prof` alias writes its report to stdout.
+	stdout_binary := os.join_path(root, 'profile_stdout')
+	stdout_compile := cmdexec.run(v3_bin, ['-silent', '-prof', '-o', stdout_binary, api_source])
+	assert stdout_compile.exit_code == 0, stdout_compile.output
+	stdout_run := cmdexec.run(stdout_binary, [])
+	assert stdout_run.exit_code == 0, stdout_run.output
+	assert v3_profile_counter(stdout_run.output, 'main__main') == 1, stdout_run.output
+	assert v3_profile_counter(stdout_run.output, 'main__abc') == 1, stdout_run.output
+
+	reset_binary := os.join_path(root, 'profile_reset')
+	reset_profile := os.join_path(root, 'profile_reset.txt')
+	reset_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_profile_startup', '-profile',
+		reset_profile, '-o', reset_binary, api_source])
+	assert reset_compile.exit_code == 0, reset_compile.output
+	reset_run := cmdexec.run(reset_binary, [])
+	assert reset_run.exit_code == 0, reset_run.output
+	reset_output := os.read_file(reset_profile)!
+	assert v3_profile_counter(reset_output, 'builtin__builtin_init') == -1, reset_output
+	assert v3_profile_counter(reset_output, 'main__main') == 1, reset_output
+	assert v3_profile_counter(reset_output, 'main__abc') == 1, reset_output
+
+	reset_c := os.join_path(root, 'profile_reset.c')
+	reset_c_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_profile_startup', '-profile',
+		reset_profile, '-o', reset_c, api_source])
+	assert reset_c_compile.exit_code == 0, reset_c_compile.output
+	reset_c_source := os.read_file(reset_c)!
+	reset_body := reset_c_source.all_after('void vreset_profile_stats(void) {').all_before('\n}')
+	assert reset_body.contains('_only_current = 0.0;'), reset_body
+
+	no_main_source := os.join_path(root, 'profile_no_main.v')
+	os.write_file(no_main_source, "@[export: 'profiled_answer']
+pub fn profiled_answer() int {
+	return 42
+}
+")!
+	no_main_c := os.join_path(root, 'profile_no_main.c')
+	no_main_profile := os.join_path(root, 'profile_no_main.txt')
+	no_main_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_main', '-profile', no_main_profile,
+		'-o', no_main_c, no_main_source])
+	assert no_main_compile.exit_code == 0, no_main_compile.output
+	no_main_c_source := os.read_file(no_main_c)!
+	no_main_init_body :=
+		no_main_c_source.all_after('static void _vno_main_init_caller(void) {').all_before('\n}')
+	assert no_main_init_body.contains('atexit(vprint_profile_stats);'), no_main_init_body
+	$if !windows {
+		no_main_host_source := os.join_path(root, 'profile_no_main_host.c')
+		os.write_file(no_main_host_source, 'extern int profiled_answer(void);
+int main(void) {
+	return profiled_answer() == 42 ? 0 : 1;
+}
+')!
+		no_main_host := os.join_path(root, 'profile_no_main_host')
+		cc := os.getenv_opt('CC') or { 'cc' }
+		no_main_host_compile := cmdexec.run(cc, ['-std=gnu11', '-w', no_main_c, no_main_host_source,
+			'-lpthread', '-lm', '-o', no_main_host])
+		assert no_main_host_compile.exit_code == 0, no_main_host_compile.output
+		no_main_host_run := cmdexec.run(no_main_host, [])
+		assert no_main_host_run.exit_code == 0, no_main_host_run.output
+		no_main_output := os.read_file(no_main_profile)!
+		assert v3_profile_counter(no_main_output, 'main__profiled_answer') == 1, no_main_output
+	}
+	shared_c := os.join_path(root, 'profile_shared.c')
+	shared_profile := os.join_path(root, 'profile_shared.txt')
+	shared_compile := cmdexec.run(v3_bin, ['-silent', '-shared', '-profile', shared_profile, '-o',
+		shared_c, no_main_source])
+	assert shared_compile.exit_code == 0, shared_compile.output
+	shared_c_source := os.read_file(shared_c)!
+	shared_init_body :=
+		shared_c_source.all_after('static void _vno_main_init_caller(void) {').all_before('\n}')
+	assert shared_init_body.contains('atexit(vprint_profile_stats);'), shared_init_body
+
+	synthetic_main_c := os.join_path(root, 'profile_synthetic_main.c')
+	synthetic_main_compile := cmdexec.run(v3_bin, ['-silent', '-profile', no_main_profile, '-o',
+		synthetic_main_c, no_main_source])
+	assert synthetic_main_compile.exit_code == 0, synthetic_main_compile.output
+	synthetic_main_c_source := os.read_file(synthetic_main_c)!
+	assert synthetic_main_c_source.count('atexit(vprint_profile_stats);') == 1, synthetic_main_c_source
+
+	selective_source := os.join_path(root, 'profile_selective.v')
+	os.write_file(selective_source, 'module main
+
+@[inline]
+fn inline_fn() {
+	println("inline")
+}
+
+fn leaf() {
+	println("leaf")
+}
+
+fn selected() {
+	leaf()
+	leaf()
+	inline_fn()
+}
+
+fn ignored() {
+	leaf()
+}
+
+fn main() {
+	ignored()
+	selected()
+}
+')!
+	selective_binary := os.join_path(root, 'profile_selective')
+	selective_profile := os.join_path(root, 'profile_selective.txt')
+	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
+	assert selective_compile.exit_code == 0, selective_compile.output
+	selective_run := cmdexec.run(selective_binary, [])
+	assert selective_run.exit_code == 0, selective_run.output
+	selective_output := os.read_file(selective_profile)!
+	assert v3_profile_counter(selective_output, 'main__main') == -1, selective_output
+	assert v3_profile_counter(selective_output, 'main__ignored') == -1, selective_output
+	assert v3_profile_counter(selective_output, 'main__selected') == 1, selective_output
+	assert v3_profile_counter(selective_output, 'main__leaf') == 2, selective_output
+	assert v3_profile_counter(selective_output, 'main__inline_fn') == -1, selective_output
+	assert v3_profile_counter(selective_output, 'builtin__println') == 3, selective_output
+}
+
 fn test_driver_only_monomorphizes_when_generics_are_used() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_generics_${os.getpid()}')
 	os.rmdir_all(root) or {}

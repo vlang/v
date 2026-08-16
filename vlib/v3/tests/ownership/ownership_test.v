@@ -81,6 +81,20 @@ fn main() {}
 	assert ok.exit_code == 0, ok.output
 }
 
+fn test_non_mut_reference_parameter_accepts_literal_temporary() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'borrow_literal_temporary', '
+fn borrowed_len(value &string) int {
+	return value.len
+}
+
+fn main() {
+	assert borrowed_len("literal") == 7
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
 fn test_ownership_move_on_assign_and_clone_escape() {
 	v3_bin := ownership_build_v3()
 	fail := run_ownership_check(v3_bin, 'move_assign', "
@@ -2716,6 +2730,31 @@ fn main() {
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
 }
 
+fn test_ownership_array_alias_builtin_method_keeps_receiver() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'array_alias_insert_keeps_receiver', '
+type Strings = []string
+
+struct State {
+mut:
+	values map[string]string
+}
+
+fn (mut state State) reset() {
+	state.values = map[string]string{}
+}
+
+fn main() {
+	mut values := Strings{}
+	values.insert(0, "item".to_owned())
+	println(values.len)
+	mut state := State{}
+	state.reset()
+}
+')
+	assert ok.exit_code == 0, ok.output
+}
+
 fn test_ownership_aggregate_borrows_block_overlapping_reassignment() {
 	v3_bin := ownership_build_v3()
 	fail_field_borrow := run_ownership_check(v3_bin, 'field_borrow_blocks_whole_assign', '
@@ -2992,6 +3031,59 @@ fn main() {
 
 fn test_ownership_branch_moves_are_isolated_between_siblings() {
 	v3_bin := ownership_build_v3()
+	distinct_field_moves := run_ownership_check(v3_bin, 'branch_distinct_field_moves', '
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements Drop {
+	id int
+}
+
+fn (mut resource Resource) drop() {
+	println(resource.id)
+}
+
+struct Pair {
+	left  Resource
+	right Resource
+}
+
+fn consume(resource Resource) {
+	_ = resource.id
+}
+
+fn run(cond bool, base int) {
+	value := Pair{
+		left: Resource{
+			id: base
+		}
+		right: Resource{
+			id: base + 1
+		}
+	}
+	if cond {
+		consume(value.left)
+	} else {
+		consume(value.right)
+	}
+}
+
+fn main() {
+	run(true, 1)
+	run(false, 3)
+}
+')
+	assert distinct_field_moves.exit_code == 0, distinct_field_moves.output
+	distinct_field_binary := os.join_path(os.temp_dir(),
+		'v3_ownership_branch_distinct_field_moves_${os.getpid()}', 'out')
+	distinct_field_run := os.execute(distinct_field_binary)
+	assert distinct_field_run.exit_code == 0, distinct_field_run.output
+	dropped_ids := distinct_field_run.output.fields()
+	assert '2' in dropped_ids, distinct_field_run.output
+	assert '3' in dropped_ids, distinct_field_run.output
+
 	ok_sibling := run_ownership_check(v3_bin, 'branch_sibling_isolation', "
 fn main() {
 	cond := true

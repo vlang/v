@@ -66,10 +66,10 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_liveshared = false
 		prefs.is_prof = true
-		assert !is_macos_v3_relevant_command('main.v', prefs)
+		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_prof = false
 		prefs.profile_fns = ['main__work']
-		assert !is_macos_v3_relevant_command('main.v', prefs)
+		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.profile_fns.clear()
 		prefs.use_os_system_to_run = true
 		assert !is_macos_v3_relevant_command('run', prefs)
@@ -273,7 +273,7 @@ fn test_remaining_unsupported_autofree_modes_require_standard_compiler() {
 	}
 }
 
-fn test_selective_profile_autofree_requires_standard_compiler() {
+fn test_selective_profile_autofree_uses_v3_compiler() {
 	$if macos {
 		prefs, _ := pref.parse_args_and_show_errors([], [
 			'',
@@ -283,7 +283,7 @@ fn test_selective_profile_autofree_requires_standard_compiler() {
 			'main.v',
 		], false)
 		assert prefs.profile_fns == ['main__work']
-		assert autofree_requires_standard_compiler(prefs)
+		assert !autofree_requires_standard_compiler(prefs)
 	}
 }
 
@@ -971,6 +971,16 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 	assert !ownership_delegation_is_requested(true, false, true, 'macos')
 }
 
+fn test_ownership_forwarding_keeps_internal_define_out_of_target_args() {
+	prefs := &pref.Preferences{}
+	forwarded := v3_ownership_forwarded_args(prefs, ['-ownership', 'main.v'])
+	assert '-ownership' !in forwarded
+	assert 'ownership' !in forwarded
+	assert !forwarded.any(it in ['-d=ownership', '-downership'])
+	explicit := v3_ownership_forwarded_args(prefs, ['-ownership', '-d', 'ownership', 'main.v'])
+	assert explicit.count(it == 'ownership') == 1
+}
+
 fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 	$if macos {
 		prefs, _ := pref.parse_args_and_show_errors([], [
@@ -984,6 +994,8 @@ fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 			'x86', 'main.v'])
 		assert macos_v3_internal_quiet_flag in forwarded
 		assert '-ownership' !in forwarded
+		assert 'ownership' !in forwarded
+		assert !forwarded.any(it in ['-d=ownership', '-downership'])
 		assert forwarded.count(it == 'amd64') == 2
 		assert 'x86' !in forwarded
 
@@ -994,6 +1006,57 @@ fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 			assert macos_v3_internal_quiet_flag !in explicit
 		}
 	}
+}
+
+fn test_ownership_delegation_does_not_define_target_ownership() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_ownership_target_define_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main')
+	module_dir := os.join_path(root, 'marker')
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(module_dir, 'marker.v'), 'module marker
+
+pub fn value() string {
+	return "ok"
+}
+')!
+	os.write_file(os.join_path(module_dir, 'marker_d_ownership.v'), 'module marker
+
+$compile_error("ownership-suffixed target file was included")
+')!
+	os.write_file(source, r'
+import marker
+
+$if ownership ? {
+	$compile_error("ownership define leaked into target")
+}
+
+fn main() {
+	println(marker.value())
+}
+')!
+	mut environment := os.environ()
+	environment['VFLAGS'] = ''
+	environment['VOSARGS'] = ''
+	mut process := os.new_process(@VEXE)
+	process.set_args(['-ownership', '-gc', 'none', '-o', output, source])
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	compiler_output := process.stdout_slurp() + process.stderr_slurp()
+	exit_code := process.code
+	process.close()
+	assert exit_code == 0, compiler_output
+	assert os.is_executable(output)
+	run := os.execute(os.quoted_path(output))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
 }
 
 fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {

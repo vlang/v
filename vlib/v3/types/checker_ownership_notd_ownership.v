@@ -71,6 +71,10 @@ pub fn (tc &TypeChecker) ownership_guard_read_moves_value(_ flat.NodeId) bool {
 	return false
 }
 
+pub fn (tc &TypeChecker) ownership_assignment_reinitializes_moved_value(_ flat.NodeId) bool {
+	return false
+}
+
 pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(_ flat.NodeId, _ string, _ string) bool {
 	return false
 }

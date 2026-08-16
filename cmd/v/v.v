@@ -278,9 +278,8 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		return true
 	}
 	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
-		|| prefs.is_prof || prefs.profile_fns.len > 0 || prefs.output_cross_c
-		|| prefs.experimental || prefs.use_os_system_to_run || prefs.is_apk
-		|| prefs.json_errors || prefs.no_preludes || prefs.is_quiet
+		|| prefs.output_cross_c || prefs.experimental || prefs.use_os_system_to_run
+		|| prefs.is_apk || prefs.json_errors || prefs.no_preludes || prefs.is_quiet
 		|| prefs.skip_warnings || prefs.skip_notes || prefs.fatal_errors
 		|| prefs.print_watched_files || prefs.dump_modules.len > 0
 		|| prefs.dump_files.len > 0 || prefs.dump_defines.len > 0

@@ -10804,7 +10804,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 		}
 	}
+	// Capture the lvalue's declared storage type before the optional-assign
+	// smartcast unwraps it (`?string` -> `string`), so the drop-before-assign
+	// temp below keeps the optional storage type the assigned value is wrapped
+	// to, instead of a `string` temp initialised with an `Optional_string`.
+	mut pre_smartcast_lhs_type := ''
 	if node.kind == .assign && node.op == .assign && node.children_count == 2 {
+		pre_smartcast_lhs_type = t.lvalue_type(t.a.child(&node, 0))
 		t.update_option_assignment_smartcast(t.a.child(&node, 0), t.a.child(&node, 1))
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
@@ -10814,10 +10820,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		lhs_node := t.a.nodes[int(lhs_id)]
 		// Whole-variable assignment overwrites the variable's storage type, even
 		// when an active optional smartcast makes the expression read as its payload.
-		mut lhs_type_name := if lhs_node.kind == .ident {
-			t.var_type(lhs_node.value)
-		} else {
-			t.lvalue_type(t.a.child(&node, 0))
+		mut lhs_type_name := pre_smartcast_lhs_type
+		if lhs_type_name.len == 0 {
+			lhs_type_name = if lhs_node.kind == .ident {
+				t.var_type(lhs_node.value)
+			} else {
+				t.lvalue_type(t.a.child(&node, 0))
+			}
 		}
 		if lhs_type_name.len == 0 {
 			lhs_type_name = t.lvalue_type(new_children[0])
@@ -10833,6 +10842,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			&& node.kind in [.selector_assign, .index_assign]
 		if !t.cur_fn_manualfree && !autofree_aggregate_lvalue
 			&& t.tc.ownership_type_requires_destruction(lhs_type)
+			&& !t.tc.ownership_assignment_reinitializes_moved_value(id)
 			&& !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
 			mut result := []flat.NodeId{}
 			t.drain_pending(mut result)
@@ -10869,7 +10879,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			t.drain_pending(mut result)
 			drop_call := t.make_call_typed('drop_owned', arr1(lvalue), 'void')
 			result << t.make_expr_stmt(drop_call)
-			result << t.make_assign(lvalue, t.make_ident(tmp_name))
+			result << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_name))
 			t.invalidate_smartcast_for_lvalue(t.a.child(&node, 0))
 			return result
 		}
@@ -11281,7 +11291,7 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 			stable_lhs := t.stabilize_transformed_lvalue_for_reuse(lowered_lhs)
 			t.drain_pending(mut result)
 			t.append_owned_lvalue_drop_before_assign(stable_lhs, lhs_type, mut result)
-			result << t.make_assign(stable_lhs, t.make_ident(rhs_name))
+			result << t.make_assign_after_owned_drop(stable_lhs, t.make_ident(rhs_name))
 			return result
 		}
 	}
@@ -13727,7 +13737,7 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 				t.drain_pending(mut result)
 				t.append_owned_lvalue_drop_before_assign(lvalue, field_type_name, mut result)
 			}
-			result << t.make_assign(lvalue, field)
+			result << t.make_assign_after_owned_drop(lvalue, field)
 		}
 		return result
 	}
@@ -13821,7 +13831,7 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 			t.drain_pending(mut result)
 			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut result)
 		}
-		result << t.make_assign(lvalue, t.make_ident(tmp_names[i]))
+		result << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_names[i]))
 	}
 	return result
 }
@@ -14511,7 +14521,7 @@ fn (mut t Transformer) multi_if_multi_return_assign_block(block_id flat.NodeId, 
 			t.drain_pending(mut stmts)
 			t.append_owned_lvalue_drop_before_assign(lvalue, field_type, mut stmts)
 		}
-		stmts << t.make_assign(lvalue, field)
+		stmts << t.make_assign_after_owned_drop(lvalue, field)
 	}
 	return t.make_block(stmts)
 }
@@ -14576,7 +14586,7 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 			t.drain_pending(mut stmts)
 			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut stmts)
 		}
-		stmts << t.make_assign(lvalue, t.make_ident(tmp_name))
+		stmts << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_name))
 	}
 	return stmts
 }
@@ -20341,6 +20351,15 @@ fn (mut t Transformer) make_assign_without_ownership_drop(lhs flat.NodeId, rhs f
 		children_count:       2
 		skip_ownership_drops: true
 	})
+}
+
+// make_assign_after_owned_drop builds the final store for a lowering that has
+// already destroyed the previous lvalue. Transform may revisit synthetic
+// nodes, so mark this assignment to prevent a second drop-before-assign pass.
+fn (mut t Transformer) make_assign_after_owned_drop(lhs flat.NodeId, rhs flat.NodeId) flat.NodeId {
+	id := t.make_assign(lhs, rhs)
+	t.a.nodes[int(id)].skip_ownership_drops = true
+	return id
 }
 
 // make_assign_op builds make assign op data for transform.

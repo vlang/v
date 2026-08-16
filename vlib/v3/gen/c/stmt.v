@@ -649,6 +649,7 @@ fn (mut g FlatGen) gen_return_cleanup() {
 	g.gen_return_loop_control_copybacks()
 	if g.active_locks.len == 0 {
 		g.gen_all_defers()
+		g.gen_profile_fn_exit()
 		g.gen_current_return_ownership_drops()
 		return
 	}
@@ -660,6 +661,7 @@ fn (mut g FlatGen) gen_return_cleanup() {
 		i--
 	}
 	g.gen_all_defers_range(0, defer_end)
+	g.gen_profile_fn_exit()
 	g.gen_current_return_ownership_drops()
 }
 
@@ -864,6 +866,31 @@ fn (g &FlatGen) ownership_recursive_drop_helper_name(type_name string) string {
 	return '__v3_ownership_drop_${g.cname(type_name)}'
 }
 
+// ownership_recursive_drop_helper_types collapses the logical ownership type
+// keys that share one emitted C struct. In particular, lifetime arguments are
+// erased from C generic names, so two lifetime instantiations can require the
+// same helper symbol. Prefer the spelling for which the checker has the most
+// complete field information when choosing the helper body.
+fn (g &FlatGen) ownership_recursive_drop_helper_types() map[string]string {
+	mut representatives := map[string]string{}
+	mut keys := g.recursive_drop_helpers.keys()
+	keys.sort()
+	for key in keys {
+		type_name := g.recursive_drop_helpers[key]
+		helper_name := g.ownership_recursive_drop_helper_name(type_name)
+		if current := representatives[helper_name] {
+			current_fields := g.tc.struct_fields_for_type(current).len
+			candidate_fields := g.tc.struct_fields_for_type(type_name).len
+			if candidate_fields > current_fields {
+				representatives[helper_name] = type_name
+			}
+			continue
+		}
+		representatives[helper_name] = type_name
+	}
+	return representatives
+}
+
 fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	g.recursive_drop_helpers.clear()
 	$if !ownership ? {
@@ -879,8 +906,13 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	struct_names.sort()
 	for name in struct_names {
 		parsed := g.tc.parse_type(name)
+		// An unmonomorphized generic template (e.g. `Printer[W]`) must not get a
+		// drop helper: only its concrete instantiations (`Printer[cli.Buffer]`)
+		// have emitted C types. `is_generic_struct` only matches the base decl
+		// name, so also reject names whose generic args still hold a placeholder.
 		if name.starts_with('C.') || name in g.tc.unions || g.is_generic_struct(name)
-			|| g.type_contains_generic_placeholder(parsed) || g.skip_builtin_struct(name)
+			|| g.type_contains_generic_placeholder(parsed)
+			|| g.type_name_contains_generic_placeholder(name) || g.skip_builtin_struct(name)
 			|| g.resolve_method_name(name, g.ownership_destructor_method_name()).len > 0 {
 			continue
 		}
@@ -1077,11 +1109,11 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
 	// sentinels. Declare those globals before the helper bodies.
 	g.writeln('extern IError builtin__none__;')
 	g.writeln('extern IError builtin__error_sentinel;')
-	mut keys := g.recursive_drop_helpers.keys()
-	keys.sort()
-	for key in keys {
-		type_name := g.recursive_drop_helpers[key]
-		helper_name := g.ownership_recursive_drop_helper_name(type_name)
+	representatives := g.ownership_recursive_drop_helper_types()
+	mut helper_names := representatives.keys()
+	helper_names.sort()
+	for helper_name in helper_names {
+		type_name := representatives[helper_name]
 		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value);')
 	}
 	g.writeln('')
@@ -1093,13 +1125,13 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 	}
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
-	mut keys := g.recursive_drop_helpers.keys()
-	keys.sort()
-	for key in keys {
-		type_name := g.recursive_drop_helpers[key]
+	representatives := g.ownership_recursive_drop_helper_types()
+	mut helper_names := representatives.keys()
+	helper_names.sort()
+	for helper_name in helper_names {
+		type_name := representatives[helper_name]
 		g.tc.cur_module = g.tc.struct_modules[type_name] or { old_module }
 		g.tc.cur_file = g.tc.struct_files[type_name] or { old_file }
-		helper_name := g.ownership_recursive_drop_helper_name(type_name)
 		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value) {')
 		g.indent++
 		mut expanding := map[string]bool{}
@@ -2478,7 +2510,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				g.expected_enum = g.cur_fn_ret.name
 			}
 			has_return_cleanup := g.has_pending_defers() || g.active_locks.len > 0
-				|| g.cur_return_drops.len > 0 || g.loop_control_copybacks.len > 0
+				|| g.profile_fn_active || g.cur_return_drops.len > 0
+				|| g.loop_control_copybacks.len > 0
 			if node.children_count > 0 && has_return_cleanup {
 				g.gen_return_with_defers(node)
 				g.expected_enum = ''
@@ -2517,7 +2550,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					if return_node_is_direct_optional_forward(node.value)
 						&& g.expr_really_returns_optional(ret_id) {
 						g.write('return ')
-						g.gen_expr(ret_id)
+						if converted := g.optional_forward_return_abi_expr(ret_id, ct) {
+							g.write(converted)
+						} else {
+							g.gen_expr(ret_id)
+						}
 						g.writeln(';')
 						return
 					}
@@ -3747,6 +3784,45 @@ fn (mut g FlatGen) gen_heap_local_address_expr(ret_id flat.NodeId, expected type
 	return false
 }
 
+// optional_forward_return_abi_wrap_expr converts a directly forwarded option/result
+// after a specialized generic callee and its caller resolve to different C wrapper names.
+fn (mut g FlatGen) optional_forward_return_abi_wrap_expr(source_ct string, expected_ct string, base types.Type, expr string) string {
+	tmp := g.tmp_name()
+	if _ := array_fixed_type(base) {
+		out := g.tmp_name()
+		return '({ ${source_ct} ${tmp} = ${expr}; ${expected_ct} ${out} = { .ok = ${tmp}.ok, .err = ${tmp}.err }; if (${tmp}.ok) { memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value)); } ${out}; })'
+	}
+	value := if base is types.Void { '' } else { ', .value = ${tmp}.value' }
+	return '({ ${source_ct} ${tmp} = ${expr}; (${expected_ct}){ .ok = ${tmp}.ok, .err = ${tmp}.err${value} }; })'
+}
+
+// optional_forward_return_abi_expr resolves the source and destination ABI wrappers
+// for a directly forwarded option/result expression.
+fn (mut g FlatGen) optional_forward_return_abi_expr(ret_id flat.NodeId, expected_ct string) ?string {
+	mut source_type := g.usable_expr_type(ret_id)
+	declared := g.declared_call_return_type(ret_id)
+	if type_is_optional_result(declared) {
+		source_type = declared
+	}
+	if !type_is_optional_result(source_type) {
+		return none
+	}
+	source_ct := g.optional_type_name_for_expr(ret_id, source_type)
+	if source_ct == expected_ct {
+		return none
+	}
+	clean_type := optional_result_unalias_type(source_type)
+	base := if clean_type is types.OptionType {
+		clean_type.base_type
+	} else if clean_type is types.ResultType {
+		clean_type.base_type
+	} else {
+		return none
+	}
+	expr := g.expr_to_string(ret_id)
+	return g.optional_forward_return_abi_wrap_expr(source_ct, expected_ct, base, expr)
+}
+
 fn optional_error_payload_return_expr(value_expr string, base_ct string, opt_ct string) ?string {
 	_ = base_ct
 	marker := '){.ok = false, .err = '
@@ -3773,6 +3849,9 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		base := g.cur_fn_ret_base
 		if return_node_is_direct_optional_forward(node.value)
 			&& g.expr_really_returns_optional(ret_id) {
+			if converted := g.optional_forward_return_abi_expr(ret_id, ct) {
+				return converted
+			}
 			return g.expr_to_string(ret_id)
 		}
 		if err_id := g.optional_error_payload_err_expr(ret_id) {
@@ -4175,7 +4254,7 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 	}
 	clean_type := types.unwrap_pointer(base_type)
 	if fn_node.value == 'clone' && (clean_type is types.Array || clean_type is types.Map) {
-		return base_type
+		return clean_type
 	}
 	mut receiver_name := clean_type.name()
 	if clean_type is types.Struct {
@@ -4299,8 +4378,23 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		return type_is_optional_result(typ)
 	}
 	if node.kind == .call {
-		ret_type := g.declared_call_return_type(id)
-		return ret_type is types.OptionType || ret_type is types.ResultType
+		typ := g.usable_expr_type(id)
+		if typ !is types.Unknown && typ !is types.Void {
+			// The successful payload type annotates a propagated `call()!`.
+			// Keep consulting the declared callee return in that case so a
+			// compatible Result return is forwarded instead of wrapped twice.
+			if type_is_optional_result(typ) {
+				return true
+			}
+		}
+		declared := g.declared_call_return_type(id)
+		if declared is types.OptionType || declared is types.ResultType {
+			return true
+		}
+		if fname := g.tc.resolved_call_name(id) {
+			ret_type := g.tc.fn_ret_types[fname] or { return false }
+			return ret_type is types.OptionType || ret_type is types.ResultType
+		}
 	}
 	return type_is_optional_result(g.usable_expr_type(id))
 }

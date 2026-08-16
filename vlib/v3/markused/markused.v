@@ -467,13 +467,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		queue << 'array.delete_last'
 		used['array.delete_last'] = true
-		ownership_drop_value_types := tc.ownership_drop_value_type_names()
-		if ownership_drop_value_types.len > 0 {
-			// Ownership cleanup is synthesized after markused. Its recursive array/map
-			// destructors therefore have no AST call sites for the collector to follow.
-			for helper in ['array.free', 'array__free', 'map.free', 'map__free'] {
-				enqueue(helper, mut used, mut queue)
-			}
+		// Ownership cleanup is synthesized after markused. Its array/map destructors
+		// therefore have no AST call sites for the collector to follow. This also
+		// applies to drop-before-reassignment, which is not part of the exit snapshots.
+		for helper in ['array.free', 'array__free', 'map.free', 'map__free'] {
+			enqueue(helper, mut used, mut queue)
 		}
 		for type_name in tc.ownership_drop_type_names() {
 			method := if tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }

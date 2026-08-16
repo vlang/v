@@ -3429,6 +3429,100 @@ fn test_generic_interface_method_body_marks_log_debug_dispatch() {
 	assert out == 'ok'
 }
 
+fn test_generic_interface_mut_pointer_parameter_uses_erased_dispatch_abi() {
+	v3_bin := build_v3_review_transform_ownership()
+	out := run_good_with_flags(v3_bin, 'generic_interface_mut_pointer_dispatch', '-ownership', 'interface Writer[T] {
+	write(mut value T) !bool
+}
+
+struct Text {
+mut:
+	value string
+}
+
+struct Count {
+	padding [7]u8
+mut:
+	value int
+}
+
+struct TextWriter {}
+struct CountWriter {}
+
+fn (_ TextWriter) write(mut value Text) !bool {
+	value.value = "done"
+	return true
+}
+
+fn (_ CountWriter) write(mut value Count) !bool {
+	value.value = 42
+	return true
+}
+
+fn apply[T](writer &Writer[T], mut value T) !bool {
+	return writer.write(mut value)
+}
+
+fn main() {
+	mut text := Text{
+		value: "before"
+	}
+	mut count := Count{
+		value: 1
+	}
+	assert apply(TextWriter{}, mut text)!
+	assert apply(CountWriter{}, mut count)!
+	println(text.value + ":" + int_str(count.value))
+}
+')
+	assert out == 'done:42'
+}
+
+fn test_generic_interface_implementer_result_uses_dispatch_abi() {
+	v3_bin := build_v3_review_transform_ownership()
+	out := run_good_with_flags(v3_bin, 'generic_interface_implementer_result_dispatch',
+		'-ownership', 'interface Writer {
+mut:
+	write(buf []u8) !int
+}
+
+struct Buffer {}
+
+fn (mut b Buffer) write(buf []u8) !int {
+	_ = b
+	return buf.len
+}
+
+struct CounterWriter[W] {
+mut:
+	inner W
+}
+
+fn (mut w CounterWriter[W]) write(buf []u8) !int {
+	$if W is Writer {
+		return w.inner.write(buf)
+	} $else {
+		return error("not a writer")
+	}
+}
+
+fn write_len(mut writer Writer) !int {
+	return writer.write([u8(1), 2, 3])
+}
+
+fn main() {
+	mut plain := Buffer{}
+	assert write_len(mut plain)! == 3
+	mut counter := CounterWriter[Buffer]{
+		inner: Buffer{}
+	}
+	assert write_len(mut counter)! == 3
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_materialized_generic_interface_implementer_has_runtime_type_name() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_body_materialized_interface_implementer', 'interface Any {

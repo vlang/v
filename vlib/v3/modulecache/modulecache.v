@@ -6056,35 +6056,54 @@ fn interface_text(a &flat.FlatAst, node flat.Node, source_is_public bool) string
 	mut out := strings.new_builder(128)
 	visibility := if source_is_public { 'pub ' } else { '' }
 	out.writeln('${visibility}interface ${node.value}${generic_suffix(node.generic_params())} {')
+	mut has_mut_fields := false
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
-		if field.op == .dot {
-			mut params := []string{}
-			for pi in 0 .. field.children_count {
-				param := a.child_node(field, pi)
-				mut param_type := param.typ
-				mut prefix := ''
-				if param.is_mut && param.op == .amp {
-					prefix = 'mut '
-					if !param_type.starts_with('&') {
-						param_type = '&${param_type}'
-					}
-				} else if param_type.starts_with('&') && param.is_mut {
-					prefix = 'mut '
-					param_type = param_type[1..].trim_space()
-				}
-				params << '${prefix}arg${pi} ${param_type}'
-			}
-			ret := if field.typ.len > 0 { ' ${field.typ}' } else { '' }
-			out.writeln('\t${field.value}(${params.join(', ')})${ret}')
-		} else if field.typ.len > 0 {
-			out.writeln('\t${field.value} ${field.typ}')
+		if !field.is_mut {
+			out.writeln(interface_field_text(a, field))
 		} else {
-			out.writeln('\t${field.value}')
+			has_mut_fields = true
+		}
+	}
+	if has_mut_fields {
+		out.writeln('mut:')
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.is_mut {
+				out.writeln(interface_field_text(a, field))
+			}
 		}
 	}
 	out.write_string('}')
 	return out.str()
+}
+
+fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
+	if field.op == .dot {
+		mut params := []string{}
+		for pi in 0 .. field.children_count {
+			param := a.child_node(field, pi)
+			mut prefix := ''
+			mut param_type := param.typ
+			if param.is_mut {
+				prefix = 'mut '
+				if param.op == .amp {
+					if !param_type.starts_with('&') {
+						param_type = '&${param_type}'
+					}
+				} else if param_type.starts_with('&') {
+					param_type = param_type[1..].trim_space()
+				}
+			}
+			params << '${prefix}arg${pi} ${param_type}'
+		}
+		ret := if field.typ.len > 0 { ' ${field.typ}' } else { '' }
+		return '\t${field.value}(${params.join(', ')})${ret}'
+	}
+	if field.typ.len > 0 {
+		return '\t${field.value} ${field.typ}'
+	}
+	return '\t${field.value}'
 }
 
 fn expr_text(a &flat.FlatAst, id flat.NodeId) string {

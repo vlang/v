@@ -7868,7 +7868,7 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			t.pending_stmts << t.make_expr_stmt(drop_call)
 			cloned_field = t.make_ident(cloned_name)
 		}
-		t.pending_stmts << t.make_assign_without_ownership_drop(t.make_selector(t.make_ident(tmp_name),
+		t.pending_stmts << t.make_assign_after_owned_drop(t.make_selector(t.make_ident(tmp_name),
 			field.name, field_type), cloned_field)
 	}
 	return t.make_ident(tmp_name)

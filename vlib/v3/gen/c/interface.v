@@ -229,11 +229,13 @@ fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Typ
 }
 
 fn (g &FlatGen) interface_method_signature_key(iface_name string, method string) ?string {
-	key := '${iface_name}.${method}'
+	base, _, is_generic := g.shared_generic_app_parts(iface_name)
+	metadata_name := if is_generic { base } else { iface_name }
+	key := '${metadata_name}.${method}'
 	if key in g.tc.fn_ret_types || key in g.tc.fn_param_types {
 		return key
 	}
-	for embed in g.tc.interface_embeds[iface_name] or { []string{} } {
+	for embed in g.tc.interface_embeds[metadata_name] or { []string{} } {
 		if found := g.interface_method_signature_key(embed, method) {
 			return found
 		}
@@ -665,7 +667,10 @@ fn (mut g FlatGen) collect_interface_impls() {
 
 fn (g &FlatGen) interface_dispatch_return_type(decl_key string, concrete_key string) types.Type {
 	decl_type := g.tc.fn_ret_types[decl_key] or { types.Type(types.void_) }
-	if !g.type_contains_generic_placeholder(decl_type) || concrete_key.len == 0 {
+	wrapped_base := interface_dispatch_wrapped_base_type(decl_type) or { types.Type(types.void_) }
+	needs_concrete := g.type_contains_generic_placeholder(decl_type)
+		|| wrapped_base is types.Unknown || wrapped_base is types.Void
+	if !needs_concrete || concrete_key.len == 0 {
 		return decl_type
 	}
 	return g.tc.fn_ret_types[concrete_key] or { decl_type }
@@ -679,14 +684,22 @@ fn (g &FlatGen) interface_dispatch_param_types(decl_key string, concrete_key str
 		[]types.Type{}
 	}
 	mut decl_has_generic := false
-	for param in decl_params {
+	mut generic_params_use_pointer_abi := true
+	for i, param in decl_params {
 		if g.type_contains_generic_placeholder(param) {
 			decl_has_generic = true
-			break
+			// A generic interface has one runtime box for every specialization.
+			// Generic parameters passed through pointers therefore need one stable
+			// erased ABI instead of inheriting the first discovered implementer's
+			// concrete pointer type. `void *` is lossless for every such parameter;
+			// by-value generic parameters still require a concrete ABI below.
+			if i > 0 && param !is types.Pointer {
+				generic_params_use_pointer_abi = false
+			}
 		}
 	}
-	if concrete_params.len > 0
-		&& (decl_has_generic || decl_params.len == 0 || decl_params.len != concrete_params.len) {
+	if concrete_params.len > 0 && ((decl_has_generic && !generic_params_use_pointer_abi)
+		|| decl_params.len == 0 || decl_params.len != concrete_params.len) {
 		return concrete_params
 	}
 	return decl_params
@@ -1416,20 +1429,10 @@ fn (g &FlatGen) interface_object_expr_is_boxed(id flat.NodeId) bool {
 // implementation, passing `_object` as the receiver. Interfaces with no known
 // implementers (and the special builtin `IError`) fall back to a panic stub.
 fn (mut g FlatGen) interface_method_stubs() {
-	mut wrote_prototype := false
-	for iface_name, methods in g.interfaces {
-		cn := g.cname(iface_name)
-		for method in methods {
-			if !g.should_emit_interface_dispatch(iface_name, method) {
-				continue
-			}
-			g.writeln('${g.interface_dispatch_signature(iface_name, cn, method)};')
-			wrote_prototype = true
-		}
-	}
-	if wrote_prototype {
-		g.writeln('')
-	}
+	// `interface_method_forward_decls` has already declared every dispatch stub.
+	// Recomputing the declarations here can observe a different current-module
+	// context after `_vinit` generation and give a generic interface placeholder a
+	// different C signature from its specialized forward declaration.
 	for iface_name, methods in g.interfaces {
 		cn := g.cname(iface_name)
 		for method in methods {
@@ -1724,9 +1727,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 				call += ')'
 				if ret_ct == 'void' {
 					g.writeln('${call}; return;')
+				} else if g.gen_interface_dispatch_optional_abi_return(call, ret_type, g.tc.fn_ret_types[decl] or {
+					ret_type
+				}, decl)
+				{
 				} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[decl] or {
 					ret_type
-				})
+				}, decl)
 				{
 				} else {
 					g.writeln('return ${call};')
@@ -1782,9 +1789,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			call += ')'
 			if ret_ct == 'void' {
 				g.writeln('${call}; return;')
+			} else if g.gen_interface_dispatch_optional_abi_return(call, ret_type, g.tc.fn_ret_types[method_key] or {
+				ret_type
+			}, method_key)
+			{
 			} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[method_key] or {
 				ret_type
-			})
+			}, method_key)
 			{
 			} else {
 				g.writeln('return ${call};')
@@ -1804,9 +1815,57 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	g.writeln('}')
 }
 
+// gen_interface_dispatch_optional_abi_value_return emits the adapted wrapper return
+// after a specialized generic method and its interface dispatch use different C ABIs.
+fn (mut g FlatGen) gen_interface_dispatch_optional_abi_value_return(expected_ct string, result string, expected_base types.Type) {
+	if _ := array_fixed_type(expected_base) {
+		out := g.interface_tmp('iface_abi_result_out')
+		g.writeln('\t\t\t${expected_ct} ${out} = { .ok = ${result}.ok, .err = ${result}.err };')
+		g.writeln('\t\t\tif (${result}.ok) {')
+		g.writeln('\t\t\t\tmemcpy(${out}.value, ${result}.value, sizeof(${out}.value));')
+		g.writeln('\t\t\t}')
+		g.writeln('\t\t\treturn ${out};')
+	} else {
+		g.writeln('\t\t\treturn (${expected_ct}){ .ok = ${result}.ok, .err = ${result}.err, .value = ${result}.value };')
+	}
+}
+
+// gen_interface_dispatch_optional_abi_return adapts specialized generic methods
+// whose option/result C ABI differs from the interface dispatch ABI.
+fn (mut g FlatGen) gen_interface_dispatch_optional_abi_return(call string, expected types.Type, actual types.Type, actual_key string) bool {
+	expected_wrapped := optional_result_unalias_type(expected)
+	actual_wrapped := optional_result_unalias_type(actual)
+	if (expected_wrapped is types.OptionType) != (actual_wrapped is types.OptionType)
+		|| (expected_wrapped is types.ResultType) != (actual_wrapped is types.ResultType) {
+		return false
+	}
+	expected_base := interface_dispatch_wrapped_base_type(expected) or { return false }
+	actual_base := interface_dispatch_wrapped_base_type(actual) or { return false }
+	if expected_base is types.Void || expected_base is types.Unknown || actual_base is types.Void
+		|| actual_base is types.Unknown {
+		return false
+	}
+	if !g.type_names_match(actual_base, expected_base)
+		&& g.value_c_type(actual_base) != g.value_c_type(expected_base) {
+		return false
+	}
+	expected_ct := g.fn_return_type_name_for_context(expected, false)
+	actual_ct := g.fn_return_type_name_for_context(actual,
+		g.call_uses_concrete_optional_params(actual_key))
+	if actual_ct == expected_ct {
+		return false
+	}
+	result := g.interface_tmp('iface_abi_result')
+	g.writeln('{')
+	g.writeln('\t\t\t${actual_ct} ${result} = ${call};')
+	g.gen_interface_dispatch_optional_abi_value_return(expected_ct, result, expected_base)
+	g.writeln('\t\t}')
+	return true
+}
+
 // gen_interface_dispatch_wrapped_return adapts an option/result whose successful
 // concrete payload implements the interface returned by the dispatch signature.
-fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type) bool {
+fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type, actual_key string) bool {
 	if !g.interface_dispatch_wrapped_return_can_adapt(expected, actual) {
 		return false
 	}
@@ -1826,8 +1885,9 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 	if type_id == 0 {
 		return false
 	}
-	actual_ct := g.fn_return_type_name(actual)
-	expected_ct := g.fn_return_type_name(expected)
+	actual_ct := g.fn_return_type_name_for_context(actual,
+		g.call_uses_concrete_optional_params(actual_key))
+	expected_ct := g.fn_return_type_name_for_context(expected, false)
 	iface_ct := g.tc.c_type(expected_iface_type)
 	concrete_ct := g.tc.c_type(actual_value)
 	result := g.interface_tmp('iface_result')
@@ -1886,6 +1946,9 @@ fn interface_dispatch_wrapped_base_type(typ types.Type) ?types.Type {
 }
 
 fn (mut g FlatGen) interface_dispatch_param_c_type(typ types.Type) string {
+	if typ is types.Pointer && g.type_contains_generic_placeholder(typ) {
+		return 'void*'
+	}
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
 		g.optional_type_name(typ)
 	} else {
