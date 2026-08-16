@@ -79,6 +79,7 @@ mut:
 	pg_lock_key                ?i64
 	mysql_lock_name            string
 	sqlite_lock_active         bool
+	sqlite_transaction_probe   string
 	resolved_history_namespace string
 	resolved_history_table_sql string
 }
@@ -432,8 +433,10 @@ fn (m &Migrator) history_table_sql() string {
 fn (mut m Migrator) acquire_migration_lock() ! {
 	match m.config.dialect {
 		.sqlite {
+			m.prepare_sqlite_transaction_probe()!
 			m.conn.execute('BEGIN IMMEDIATE;')!
 			m.sqlite_lock_active = true
+			m.conn.execute('SAVEPOINT ${m.sqlite_transaction_probe};')!
 			namespace := if m.resolved_history_namespace != '' {
 				m.resolved_history_namespace
 			} else if m.config.table.contains('.') {
@@ -541,6 +544,18 @@ fn verify_postgresql_owned_transaction(mut ctx Context, token string) ! {
 	}
 }
 
+fn (mut m Migrator) mark_mysql_owned_transaction() !string {
+	savepoint := 'v3_migrations_owned_${time.now().unix_nano()}'
+	m.conn.orm_savepoint(savepoint)!
+	return savepoint
+}
+
+fn (mut m Migrator) verify_mysql_owned_transaction(savepoint string) ! {
+	m.conn.orm_release_savepoint(savepoint) or {
+		return error('MySQL migration callback ended the migrator-owned transaction before history was recorded')
+	}
+}
+
 fn (mut m Migrator) validate_mysql_session() ! {
 	autocommit_rows := m.conn.execute('SELECT @@autocommit;')!
 	if !mysql_autocommit_enabled(autocommit_rows)! {
@@ -567,15 +582,15 @@ fn (mut m Migrator) retain_history_relation(dialect Dialect, namespace string) {
 fn (mut m Migrator) release_migration_lock(success bool) ! {
 	match m.config.dialect {
 		.sqlite {
-			if !m.sqlite_lock_active {
-				return
+			if m.sqlite_lock_active {
+				if success {
+					m.conn.orm_commit()!
+				} else {
+					m.conn.orm_rollback()!
+				}
+				m.sqlite_lock_active = false
 			}
-			if success {
-				m.conn.orm_commit()!
-			} else {
-				m.conn.orm_rollback()!
-			}
-			m.sqlite_lock_active = false
+			m.cleanup_sqlite_transaction_probe()!
 		}
 		.pg {
 			key := m.pg_lock_key or {
@@ -680,36 +695,61 @@ fn migration_lock_result(rows []orm.Row) bool {
 	return rows.len == 1 && rows[0].vals.len > 0 && rows[0].vals[0] in ['1', 't', 'true']
 }
 
+fn (mut m Migrator) prepare_sqlite_transaction_probe() ! {
+	m.sqlite_transaction_probe = 'v3_migrations_transaction_${time.now().unix_nano()}'
+	table := sqlite_transaction_probe_table_sql(m.sqlite_transaction_probe)
+	m.conn.execute('CREATE TEMP TABLE ${table} (marker INTEGER NOT NULL);')!
+}
+
+fn (mut m Migrator) cleanup_sqlite_transaction_probe() ! {
+	if m.sqlite_transaction_probe == '' {
+		return
+	}
+	table := sqlite_transaction_probe_table_sql(m.sqlite_transaction_probe)
+	m.conn.execute('DROP TABLE IF EXISTS ${table};')!
+	m.sqlite_transaction_probe = ''
+}
+
 fn (mut m Migrator) verify_sqlite_lock_transaction() ! {
-	foreign_keys_rows := m.conn.execute('PRAGMA foreign_keys;')!
-	foreign_keys_enabled := sqlite_foreign_keys_enabled(foreign_keys_rows)!
-	toggled_value := if foreign_keys_enabled { 'OFF' } else { 'ON' }
-	m.conn.execute('PRAGMA foreign_keys = ${toggled_value};')!
-	toggled_rows := m.conn.execute('PRAGMA foreign_keys;')!
-	if sqlite_foreign_keys_enabled(toggled_rows)! == foreign_keys_enabled {
-		// SQLite ignores foreign_keys changes inside a transaction. An unchanged
-		// value confirms that the BEGIN IMMEDIATE transaction is still active.
+	if m.sqlite_transaction_probe == '' {
+		return error('cannot verify SQLite migration lock transaction before it is acquired')
+	}
+	table := sqlite_transaction_probe_table_sql(m.sqlite_transaction_probe)
+	check_savepoint := '${m.sqlite_transaction_probe}_check'
+	m.conn.execute('SAVEPOINT ${check_savepoint};')!
+	m.conn.execute('RELEASE SAVEPOINT ${m.sqlite_transaction_probe};') or {
+		return error('SQLite migration callback ended the migration lock transaction before history was recorded')
+	}
+	m.conn.execute('INSERT INTO ${table} (marker) VALUES (1);')!
+	m.conn.execute('ROLLBACK TO SAVEPOINT ${check_savepoint};') or {
+		// Releasing the original savepoint also released the nested check
+		// savepoint, proving that the original lock transaction is still active.
+		m.conn.execute('DELETE FROM ${table};')!
+		m.conn.execute('SAVEPOINT ${m.sqlite_transaction_probe};')!
+		return
+	}
+	rows := m.conn.execute('SELECT COUNT(*) FROM ${table};')!
+	marker_count := sqlite_transaction_probe_count(rows)!
+	m.conn.execute('DELETE FROM ${table};')!
+	m.conn.execute('RELEASE SAVEPOINT ${check_savepoint};') or {}
+	if marker_count == 1 {
+		m.conn.execute('SAVEPOINT ${m.sqlite_transaction_probe};')!
 		return
 	}
 	state_err := 'SQLite migration callback ended the migration lock transaction before history was recorded'
-	restored_value := if foreign_keys_enabled { 'ON' } else { 'OFF' }
-	m.conn.execute('PRAGMA foreign_keys = ${restored_value};')!
-	restored_rows := m.conn.execute('PRAGMA foreign_keys;')!
-	if sqlite_foreign_keys_enabled(restored_rows)! != foreign_keys_enabled {
-		return error('${state_err}; restoring SQLite foreign_keys state failed')
-	}
-	m.sqlite_lock_active = false
 	return error(state_err)
 }
 
-fn sqlite_foreign_keys_enabled(rows []orm.Row) !bool {
+fn sqlite_transaction_probe_table_sql(name string) string {
+	return 'temp.${quote_identifier_component(.sqlite, name)}'
+}
+
+fn sqlite_transaction_probe_count(rows []orm.Row) !int {
 	if rows.len != 1 || rows[0].vals.len == 0 {
 		return error('could not determine SQLite transaction state')
 	}
-	return match rows[0].vals[0] {
-		'0' { false }
-		'1' { true }
-		else { return error('unsupported SQLite foreign_keys value `${rows[0].vals[0]}`') }
+	return strconv.atoi(rows[0].vals[0]) or {
+		return error('could not determine SQLite transaction state')
 	}
 }
 
@@ -728,6 +768,7 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 		mut tx := orm.begin(mut m.conn)!
 		mut ctx := new_context(tx, m.config.dialect)
 		mut postgresql_transaction_token := ''
+		mut mysql_transaction_savepoint := ''
 		if m.config.dialect == .pg {
 			postgresql_transaction_token = mark_postgresql_owned_transaction(mut ctx) or {
 				probe_err := err
@@ -735,6 +776,14 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 					return error('could not mark the migrator-owned PostgreSQL transaction: ${probe_err.msg()}; rollback failed: ${err.msg()}')
 				}
 				return error('could not mark the migrator-owned PostgreSQL transaction: ${probe_err.msg()}')
+			}
+		} else if m.config.dialect == .mysql {
+			mysql_transaction_savepoint = m.mark_mysql_owned_transaction() or {
+				probe_err := err
+				tx.rollback() or {
+					return error('could not mark the migrator-owned MySQL transaction: ${probe_err.msg()}; rollback failed: ${err.msg()}')
+				}
+				return error('could not mark the migrator-owned MySQL transaction: ${probe_err.msg()}')
 			}
 		}
 		migration.up(mut ctx) or {
@@ -746,6 +795,14 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 		}
 		if m.config.dialect == .pg {
 			verify_postgresql_owned_transaction(mut ctx, postgresql_transaction_token) or {
+				transaction_err := err
+				tx.rollback() or {
+					return error('${transaction_err.msg()}; rollback failed: ${err.msg()}')
+				}
+				return transaction_err
+			}
+		} else if m.config.dialect == .mysql {
+			m.verify_mysql_owned_transaction(mysql_transaction_savepoint) or {
 				transaction_err := err
 				tx.rollback() or {
 					return error('${transaction_err.msg()}; rollback failed: ${err.msg()}')
@@ -788,6 +845,7 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 		mut tx := orm.begin(mut m.conn)!
 		mut ctx := new_context(tx, m.config.dialect)
 		mut postgresql_transaction_token := ''
+		mut mysql_transaction_savepoint := ''
 		if m.config.dialect == .pg {
 			postgresql_transaction_token = mark_postgresql_owned_transaction(mut ctx) or {
 				probe_err := err
@@ -795,6 +853,14 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 					return error('could not mark the migrator-owned PostgreSQL transaction: ${probe_err.msg()}; transaction rollback failed: ${err.msg()}')
 				}
 				return error('could not mark the migrator-owned PostgreSQL transaction: ${probe_err.msg()}')
+			}
+		} else if m.config.dialect == .mysql {
+			mysql_transaction_savepoint = m.mark_mysql_owned_transaction() or {
+				probe_err := err
+				tx.rollback() or {
+					return error('could not mark the migrator-owned MySQL transaction: ${probe_err.msg()}; transaction rollback failed: ${err.msg()}')
+				}
+				return error('could not mark the migrator-owned MySQL transaction: ${probe_err.msg()}')
 			}
 		}
 		migration.down(mut ctx) or {
@@ -806,6 +872,14 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 		}
 		if m.config.dialect == .pg {
 			verify_postgresql_owned_transaction(mut ctx, postgresql_transaction_token) or {
+				transaction_err := err
+				tx.rollback() or {
+					return error('${transaction_err.msg()}; transaction rollback failed: ${err.msg()}')
+				}
+				return transaction_err
+			}
+		} else if m.config.dialect == .mysql {
+			m.verify_mysql_owned_transaction(mysql_transaction_savepoint) or {
 				transaction_err := err
 				tx.rollback() or {
 					return error('${transaction_err.msg()}; transaction rollback failed: ${err.msg()}')

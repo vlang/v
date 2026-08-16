@@ -14,7 +14,9 @@ mut:
 	history_rows              []orm.Row
 	in_transaction            bool
 	autocommit                bool = true
-	foreign_keys              bool
+	savepoints                []string
+	savepoint_probe_rows      map[string]int
+	sqlite_probe_rows         int
 	postgresql_history_schema string
 	postgresql_table_schema   string = 'public'
 	postgresql_probe_value    string
@@ -49,16 +51,43 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	}
 	if query == 'START TRANSACTION;' {
 		conn.in_transaction = true
+		conn.clear_savepoints()
 	}
 	if query in ['BEGIN;', 'BEGIN IMMEDIATE;'] {
 		if conn.in_transaction {
 			return error('cannot start a transaction within a transaction')
 		}
 		conn.in_transaction = true
+		conn.clear_savepoints()
 	}
 	if query in ['ROLLBACK;', 'COMMIT;'] {
 		conn.in_transaction = false
 		conn.postgresql_probe_value = ''
+		conn.sqlite_probe_rows = 0
+		conn.clear_savepoints()
+	}
+	if query.starts_with('SAVEPOINT ') {
+		if !conn.in_transaction {
+			conn.in_transaction = true
+		}
+		conn.add_savepoint(query.all_after('SAVEPOINT ').all_before(';'))
+	}
+	if query.starts_with('RELEASE SAVEPOINT ') {
+		conn.release_savepoint(query.all_after('RELEASE SAVEPOINT ').all_before(';'))
+	}
+	if query.starts_with('INSERT INTO temp."v3_migrations_transaction_') {
+		conn.sqlite_probe_rows++
+	}
+	if query.starts_with('ROLLBACK TO SAVEPOINT ') {
+		conn.rollback_to_savepoint(query.all_after('ROLLBACK TO SAVEPOINT ').all_before(';'))
+	}
+	if query.starts_with('SELECT COUNT(*) FROM temp."v3_migrations_transaction_') {
+		return [orm.Row{
+			vals: [conn.sqlite_probe_rows.str()]
+		}]
+	}
+	if query.starts_with('DELETE FROM temp."v3_migrations_transaction_') {
+		conn.sqlite_probe_rows = 0
 	}
 	if query == 'SET search_path TO other_schema;' {
 		conn.schema = 'other_schema'
@@ -128,17 +157,6 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 			vals: [if conn.autocommit { '1' } else { '0' }]
 		}]
 	}
-	if query == 'PRAGMA foreign_keys;' {
-		return [orm.Row{
-			vals: [if conn.foreign_keys { '1' } else { '0' }]
-		}]
-	}
-	if query == 'PRAGMA foreign_keys = ON;' && !conn.in_transaction {
-		conn.foreign_keys = true
-	}
-	if query == 'PRAGMA foreign_keys = OFF;' && !conn.in_transaction {
-		conn.foreign_keys = false
-	}
 	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
 		|| query.starts_with('SELECT pg_advisory_unlock(') {
 		return [orm.Row{
@@ -157,12 +175,15 @@ fn (mut conn RecordingConnection) orm_commit() ! {
 	conn.queries << 'ORM COMMIT'
 	conn.in_transaction = false
 	conn.postgresql_probe_value = ''
+	conn.clear_savepoints()
 }
 
 fn (mut conn RecordingConnection) orm_rollback() ! {
 	conn.queries << 'ORM ROLLBACK'
 	conn.in_transaction = false
 	conn.postgresql_probe_value = ''
+	conn.sqlite_probe_rows = 0
+	conn.clear_savepoints()
 }
 
 fn (mut conn RecordingConnection) orm_savepoint(name string) ! {
@@ -170,14 +191,56 @@ fn (mut conn RecordingConnection) orm_savepoint(name string) ! {
 		return error('savepoint requires an active transaction')
 	}
 	conn.queries << 'ORM SAVEPOINT ${name}'
+	conn.add_savepoint(name)
 }
 
 fn (mut conn RecordingConnection) orm_rollback_to(name string) ! {
+	if !conn.rollback_to_savepoint(name) {
+		return error('savepoint `${name}` does not exist')
+	}
 	conn.queries << 'ORM ROLLBACK TO ${name}'
 }
 
 fn (mut conn RecordingConnection) orm_release_savepoint(name string) ! {
+	if !conn.release_savepoint(name) {
+		return error('savepoint `${name}` does not exist')
+	}
 	conn.queries << 'ORM RELEASE SAVEPOINT ${name}'
+}
+
+fn (mut conn RecordingConnection) add_savepoint(name string) {
+	conn.savepoints << name
+	conn.savepoint_probe_rows[name] = conn.sqlite_probe_rows
+}
+
+fn (mut conn RecordingConnection) release_savepoint(name string) bool {
+	index := conn.savepoints.index(name)
+	if index < 0 {
+		return false
+	}
+	for savepoint in conn.savepoints[index..] {
+		conn.savepoint_probe_rows.delete(savepoint)
+	}
+	conn.savepoints = conn.savepoints[..index].clone()
+	return true
+}
+
+fn (mut conn RecordingConnection) rollback_to_savepoint(name string) bool {
+	index := conn.savepoints.index(name)
+	if index < 0 {
+		return false
+	}
+	conn.sqlite_probe_rows = conn.savepoint_probe_rows[name]
+	for savepoint in conn.savepoints[index + 1..] {
+		conn.savepoint_probe_rows.delete(savepoint)
+	}
+	conn.savepoints = conn.savepoints[..index + 1].clone()
+	return true
+}
+
+fn (mut conn RecordingConnection) clear_savepoints() {
+	conn.savepoints.clear()
+	conn.savepoint_probe_rows.clear()
 }
 
 struct MigrationWidget {
@@ -316,6 +379,14 @@ fn drop_sqlite_table_then_rollback(mut ctx Context) ! {
 	ctx.execute('ROLLBACK;')!
 }
 
+fn create_sqlite_table_then_replace_transaction(mut ctx Context) ! {
+	ctx.create_table(Table{
+		name: 'replaced_transaction_table'
+	})!
+	ctx.execute('ROLLBACK;')!
+	ctx.execute('BEGIN;')!
+}
+
 fn assert_postgresql_transaction_probe(queries []string) {
 	assert queries.len >= 2
 	assert queries[0].starts_with("SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', 'probe_")
@@ -436,9 +507,11 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 		runner.migrate()!
 		match dialect {
 			.sqlite {
-				assert recorder.queries[0] == 'BEGIN IMMEDIATE;'
-				assert recorder.queries.last() == 'ORM COMMIT'
+				assert recorder.queries[0].starts_with('CREATE TEMP TABLE temp."v3_migrations_transaction_')
+				assert recorder.queries[1] == 'BEGIN IMMEDIATE;'
+				assert recorder.queries.last().starts_with('DROP TABLE IF EXISTS temp."v3_migrations_transaction_')
 				assert 'ORM BEGIN' !in recorder.queries
+				assert 'ORM COMMIT' in recorder.queries
 			}
 			.pg {
 				key := postgresql_migration_lock_key(recorder.schema, 'schema_migrations')
@@ -757,6 +830,44 @@ fn test_postgresql_owned_transaction_is_verified_before_history_writes() {
 	}
 }
 
+fn test_mysql_owned_transaction_is_verified_before_history_writes() {
+	migration := Migration{
+		version: 1
+		name:    'rollback_transaction'
+		up:      rollback_callback_transaction
+		down:    rollback_callback_transaction
+	}
+	mut up_recorder := &RecordingConnection{}
+	mut up_runner := new(mut up_recorder, [migration], Config{
+		dialect:          .mysql
+		transaction_mode: .always
+	})!
+	mut error_message := ''
+	up_runner.migrate() or { error_message = err.msg() }
+	assert error_message == 'MySQL migration callback ended the migrator-owned transaction before history was recorded'
+	assert !up_recorder.in_transaction
+	assert up_recorder.queries.filter(it.starts_with('INSERT INTO ')).len == 0
+	assert up_recorder.queries.last().starts_with('SELECT RELEASE_LOCK(')
+
+	mut down_recorder := &RecordingConnection{
+		history_rows: [
+			orm.Row{
+				vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+			},
+		]
+	}
+	mut down_runner := new(mut down_recorder, [migration], Config{
+		dialect:          .mysql
+		transaction_mode: .always
+	})!
+	error_message = ''
+	down_runner.rollback(1) or { error_message = err.msg() }
+	assert error_message == 'MySQL migration callback ended the migrator-owned transaction before history was recorded'
+	assert !down_recorder.in_transaction
+	assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
+	assert down_recorder.queries.last().starts_with('SELECT RELEASE_LOCK(')
+}
+
 fn test_sqlite_callback_cannot_end_lock_transaction_before_history_writes() {
 	mut up_db := sqlite.connect(':memory:')!
 	up_db.exec('CREATE TABLE schema_migrations (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
@@ -797,6 +908,30 @@ fn test_sqlite_callback_cannot_end_lock_transaction_before_history_writes() {
 	assert down_db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'rolled_back_callback_table';")! == 1
 	assert down_db.q_int('SELECT count(*) FROM schema_migrations;')! == 1
 	down_db.close()!
+}
+
+fn test_sqlite_callback_cannot_replace_lock_transaction_before_history_write() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('CREATE TABLE schema_migrations (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+	mut runner := new(mut db, [
+		Migration{
+			version: 1
+			name:    'replace_transaction'
+			up:      create_sqlite_table_then_replace_transaction
+			down:    drop_sqlite_table_then_rollback
+		},
+	], Config{
+		dialect: .sqlite
+	})!
+	mut error_message := ''
+	runner.migrate() or { error_message = err.msg() }
+	assert error_message == 'SQLite migration callback ended the migration lock transaction before history was recorded'
+	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'replaced_transaction_table';")! == 0
+	assert db.q_int('SELECT count(*) FROM schema_migrations;')! == 0
+	assert runner.sqlite_transaction_probe == ''
 }
 
 fn test_sqlite_history_table_is_pinned_to_main() {
