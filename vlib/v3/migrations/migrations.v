@@ -435,7 +435,7 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			} else if m.config.table.contains('.') {
 				m.config.table.all_before('.')
 			} else {
-				schema_rows := m.conn.execute('SELECT current_schema();')!
+				schema_rows := m.conn.execute(postgresql_history_schema_query(m.config.table))!
 				postgresql_schema_name(schema_rows)!
 			}
 			key := postgresql_migration_lock_key(schema, m.config.table)
@@ -535,6 +535,11 @@ fn postgresql_migration_lock_key(schema string, table string) i64 {
 	return migration_lock_key(identity)
 }
 
+fn postgresql_history_schema_query(table string) string {
+	return 'SELECT COALESCE((SELECT n.nspname FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE c.relname = ${string_literal_sql(.pg,
+		table)} AND pg_catalog.pg_table_is_visible(c.oid) LIMIT 1), pg_catalog.current_schema());'
+}
+
 fn qualified_history_table_sql(dialect Dialect, namespace string, table string) string {
 	table_name := if table.contains('.') { table.all_after('.') } else { table }
 	return '${quote_identifier_component(dialect, namespace)}.${quote_identifier_component(dialect,
@@ -574,7 +579,7 @@ fn mysql_lower_case_table_names(rows []orm.Row) !int {
 
 fn postgresql_schema_name(rows []orm.Row) !string {
 	if rows.len != 1 || rows[0].vals.len == 0 || rows[0].vals[0] == '' {
-		return error('could not determine current PostgreSQL schema for migration lock')
+		return error('could not determine PostgreSQL migration history schema for migration lock')
 	}
 	return rows[0].vals[0]
 }

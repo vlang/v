@@ -7,14 +7,15 @@ import orm
 @[heap]
 struct RecordingConnection {
 mut:
-	queries                 []string
-	database                string = 'test_database'
-	schema                  string = 'public'
-	lower_case_table_names  int
-	history_rows            []orm.Row
-	in_transaction          bool
-	postgresql_table_schema string = 'public'
-	sqlite_table_schema     string = 'main'
+	queries                   []string
+	database                  string = 'test_database'
+	schema                    string = 'public'
+	lower_case_table_names    int
+	history_rows              []orm.Row
+	in_transaction            bool
+	postgresql_history_schema string
+	postgresql_table_schema   string = 'public'
+	sqlite_table_schema       string = 'main'
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -51,10 +52,16 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 			vals: [conn.database]
 		}]
 	}
-	if query == 'SELECT current_schema();' {
-		return [orm.Row{
-			vals: [conn.schema]
-		}]
+	if query.starts_with('SELECT COALESCE((SELECT n.nspname FROM pg_catalog.pg_class AS c ') {
+		return [
+			orm.Row{
+				vals: [if conn.postgresql_history_schema == '' {
+					conn.schema
+				} else {
+					conn.postgresql_history_schema
+				}]
+			},
+		]
 	}
 	if query.starts_with('SELECT n.nspname FROM pg_catalog.pg_class AS c ') {
 		return [orm.Row{
@@ -349,7 +356,7 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 			}
 			.pg {
 				key := postgresql_migration_lock_key(recorder.schema, 'schema_migrations')
-				assert recorder.queries[0] == 'SELECT current_schema();'
+				assert recorder.queries[0] == postgresql_history_schema_query('schema_migrations')
 				assert recorder.queries[1] == 'SELECT pg_advisory_lock(${key});'
 				assert recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 				assert 'ORM BEGIN' in recorder.queries
@@ -423,7 +430,7 @@ fn test_locked_history_table_survives_callback_namespace_changes() {
 		assert up_runner.resolved_history_namespace == 'app'
 		if dialect == .pg {
 			assert up_recorder.schema == 'other_schema'
-			assert up_recorder.queries.filter(it == 'SELECT current_schema();').len == 1
+			assert up_recorder.queries.filter(it == postgresql_history_schema_query('schema_migrations')).len == 1
 		} else {
 			assert up_recorder.database == 'other_database'
 			assert up_recorder.queries.filter(it == 'SELECT DATABASE();').len == 1
@@ -646,18 +653,19 @@ fn test_postgresql_migration_locks_use_full_64bit_keys() {
 	runner.acquire_migration_lock()!
 	runner.release_migration_lock(true)!
 	assert recorder.queries == [
-		'SELECT current_schema();',
+		postgresql_history_schema_query(first_table),
 		'SELECT pg_advisory_lock(${first_key});',
 		'SELECT pg_advisory_unlock(${first_key});',
 	]
 }
 
 fn test_postgresql_migration_locks_canonicalize_history_table() {
-	key := postgresql_migration_lock_key('app', 'schema_migrations')
-	assert key == postgresql_migration_lock_key('app', 'app.schema_migrations')
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	assert key == postgresql_migration_lock_key('public', 'public.schema_migrations')
 
 	mut unqualified_recorder := &RecordingConnection{
-		schema: 'app'
+		schema:                    'tenant'
+		postgresql_history_schema: 'public'
 	}
 	mut unqualified_runner := new(mut unqualified_recorder, []Migration{}, Config{
 		dialect: .pg
@@ -665,17 +673,18 @@ fn test_postgresql_migration_locks_canonicalize_history_table() {
 	unqualified_runner.acquire_migration_lock()!
 	unqualified_runner.release_migration_lock(true)!
 	assert unqualified_recorder.queries == [
-		'SELECT current_schema();',
+		postgresql_history_schema_query('schema_migrations'),
 		'SELECT pg_advisory_lock(${key});',
 		'SELECT pg_advisory_unlock(${key});',
 	]
+	assert unqualified_runner.resolved_history_namespace == 'public'
 
 	mut qualified_recorder := &RecordingConnection{
 		schema: 'unrelated'
 	}
 	mut qualified_runner := new(mut qualified_recorder, []Migration{}, Config{
 		dialect: .pg
-		table:   'app.schema_migrations'
+		table:   'public.schema_migrations'
 	})!
 	qualified_runner.acquire_migration_lock()!
 	qualified_runner.release_migration_lock(true)!
@@ -1168,6 +1177,8 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	invalid_defaults << '((+NULL))'
 	invalid_defaults << '(NULL) COLLATE binary'
 	invalid_defaults << '((+NULL)) /* absent */ COLLATE binary'
+	invalid_defaults << 'NULL COLLATE binary'
+	invalid_defaults << '+NULL /* absent */ COLLATE binary'
 	for default_sql in invalid_defaults {
 		error_message = ''
 		ctx.add_column('accounts', Column{

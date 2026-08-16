@@ -101,4 +101,5 @@ transaction still covers each mutating workflow. Migration names containing NUL 
 before any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
 transactions; pass a direct session-pinned `pg.Conn` without an active transaction. Existing
 transactions, including `pg.Tx`, are rejected in every transaction mode so the session lock cannot
-be released before their work commits.
+be released before their work commits. Unqualified PostgreSQL history tables resolve an existing
+visible relation before falling back to the current schema for creation and lock namespacing.

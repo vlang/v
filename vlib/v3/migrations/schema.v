@@ -567,21 +567,24 @@ fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
 }
 
 fn sqlite_default_starts_with_current_time_keyword(default_sql string) bool {
+	return sqlite_default_first_identifier(default_sql) in ['CURRENT_TIME', 'CURRENT_DATE',
+		'CURRENT_TIMESTAMP']
+}
+
+fn sqlite_default_first_identifier(default_sql string) string {
 	mut token_end := 0
 	for token_end < default_sql.len
 		&& (default_sql[token_end].is_alnum() || default_sql[token_end] == `_`) {
 		token_end++
 	}
-	if token_end == 0 {
-		return false
-	}
-	return default_sql[..token_end] in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP']
+	return default_sql[..token_end]
 }
 
 fn sqlite_has_non_null_default(column Column) bool {
 	if default_sql := column.default_sql {
 		normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
-		return normalized != '' && sqlite_unwrapped_default(normalized) != 'NULL'
+		return normalized != ''
+			&& sqlite_default_first_identifier(sqlite_unwrapped_default(normalized)) != 'NULL'
 	}
 	return false
 }
