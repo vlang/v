@@ -3255,12 +3255,19 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				// folds into this item's cost so its region is sized to fit. The
 				// estimate is 0 for every type v3 self-host interpolates, so its work
 				// items and node numbering are untouched.
-				if sc_profile {
-					scsw.restart()
-				}
-				str_est := t.fn_span_interp_estimate(range_lo, i)
-				if sc_profile {
-					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+				str_est := if t.building_v && t.parallel_enabled {
+					// The compiler's interpolated types are all bounded primitives and
+					// metadata names; none can trigger aggregate auto-str expansion.
+					0
+				} else {
+					if sc_profile {
+						scsw.restart()
+					}
+					estimate := t.fn_span_interp_estimate(range_lo, i)
+					if sc_profile {
+						est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+					}
+					estimate
 				}
 				if str_est > deferred_str_expansion_threshold {
 					t.deferred_str_items << FnWorkItem{

@@ -11,7 +11,7 @@ const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
 // Scoped workers use bounded arena batches, so let self-host checks occupy all
 // of the worker pool's cores without retaining one large arena per core.
-const max_scoped_check_jobs = 10
+const max_scoped_check_jobs = 17
 // The historical 96-batch limit remains the low-memory fallback. Prealloc
 // self-host checks default to one twelfth as many batches below, amortizing
 // checker fork/promotion setup while keeping each worker's scratch bounded.
@@ -24,9 +24,9 @@ const scoped_check_serial_batches = 64
 // (Re-verified 2026-08: oversubscribe=4 costs ~25ms here — the extra per-chunk
 // fork/promote overhead outweighs the straggler absorption.)
 const check_chunk_oversubscribe = 1
-// Extra share of the total work (in percent of an even bucket) pre-assigned to
-// the master's bucket; see split_check_items.
-const check_master_bias_pct = i64(0)
+// The caller also runs the top-level signature pass while workers check bodies.
+// Give its body bucket one fifth less work so it does not become the pool tail.
+const check_master_bias_pct = i64(-20)
 
 struct CheckWorkItem {
 	fn_idx   int
@@ -1249,10 +1249,8 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	mut buckets := [][]CheckWorkItem{len: n, init: []CheckWorkItem{}}
 	mut loads := []i64{len: n}
 	if n > 1 && check_master_bias_pct != 0 {
-		// Historical bias: bucket 0 once finished early on this split. Measured
-		// 2026-07-25 the master chunk was instead the pool tail by ~30% (its
-		// span cost undercounts the dense builtin bodies), so the bias is off;
-		// the knob stays for machines where the old premise holds.
+		// A negative bias preloads bucket 0, causing the greedy splitter to assign
+		// it less body work than the helpers.
 		mut total := i64(0)
 		for it in items {
 			total += i64(it.cost) + 1

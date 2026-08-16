@@ -7530,13 +7530,17 @@ pub fn run(args []string) {
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
 		// parent index once here so markused type queries do not fall back to a full
 		// arena scan for every generated selector base.
-		pre_tc.refresh_direct_parent_index(a)
+		if !building_v || !pre_tc.reuse_direct_parent_index_for_unchanged_ast(a) {
+			pre_tc.refresh_direct_parent_index(a)
+		}
 		mut markused_scope := unsafe { nil }
 		mut markused_tc := &pre_tc
 		if scope_prealloc_markused && !generic_cache_hit {
 			markused_scope = prealloc_scope_begin_for_v3()
 			markused_tc = pre_tc.fork_for_parallel_transform(a)
+			markused_tc.share_direct_dependencies_from(&pre_tc)
 			markused_tc.enable_scoped_parallel_workers()
+			markused_tc.verbose = prefs.verbose
 		}
 		if no_skip_unused {
 			used_fns, uses_generics = markused.mark_all_used_with_generic_usage(a, markused_tc,
@@ -7560,7 +7564,7 @@ pub fn run(args []string) {
 		} else if is_checker_fixture {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a,
 				markused_tc)
-		} else if building_v {
+		} else if building_v && current_parallel_transform {
 			used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
 			uses_generics = false
 		} else {
@@ -7568,7 +7572,7 @@ pub fn run(args []string) {
 		}
 		program_used_fns = clone_string_bool_map(used_fns)
 		if cache_state.manager.enabled && !generic_cache_hit {
-			if building_v {
+			if building_v && current_parallel_transform {
 				used_fns = markused.mark_used_for_cache_without_generic_detection(a, markused_tc,
 					test_files, cache_state.source_body_modules)
 			} else {
@@ -7702,9 +7706,9 @@ pub fn run(args []string) {
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
-			retain_transform_scope := building_v && backend == 'c' && !cache_state.manager.enabled
-				&& retained_transform_regions.len == 0
-				&& os.getenv('V3_RETAIN_TRANSFORM_SCOPE') == '1'
+			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
+				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
+				&& os.getenv('V3_NO_RETAIN_TRANSFORM_SCOPE') == ''
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning
@@ -12806,7 +12810,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if mod_dir_exists {
 				mod_files := pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines,
 					prefs.target)
-				if !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
+				// -building-v compiles the trusted compiler tree and already skips other
+				// validity-only diagnostics. Avoid reading every imported source once here
+				// just before the parser reads the same files.
+				if !prefs.building_v
+					&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
 					expected_module := mod_name.all_after_last('.')
 					for imported_file in mod_files {
 						declared := declared_module_in_file(imported_file)

@@ -5633,6 +5633,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 	// Ownership lowering appends its calls after checking, so they have no source position.
 	is_ownership_drop := (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
+		|| (g.tc.cur_module == 'builtin' && ownership_synthetic_drop_name(fn_name))
 		|| (resolved_target_name.len > 0 && g.ownership_drop_intrinsic_name(resolved_target_name))
 	if node.children_count == 2 && is_ownership_drop {
 		arg_id := g.a.child(&node, 1)
@@ -14135,8 +14136,10 @@ fn (mut g FlatGen) forward_decls() {
 		g.writeln('')
 		return
 	}
-	for start := 0; start < items.len; start += 256 {
-		end := if start + 256 < items.len { start + 256 } else { items.len }
+	// Compiler-sized output is still only a few hundred KiB per 1024-item
+	// batch. Amortize checker forks and map snapshots across that larger unit.
+	for start := 0; start < items.len; start += 1024 {
+		end := if start + 1024 < items.len { start + 1024 } else { items.len }
 		// Map lookups below can return batch-owned string values. Do not retain them after the
 		// scratch arena is freed; duplicate compatible C prototypes across batches are harmless.
 		forwarded_exports.clear()
