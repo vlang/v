@@ -53,6 +53,7 @@ section in the README.md.
 If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
+This also refreshes the bundled TCC binaries used for fast C compilation.
 
 ## Project-local compiler versions with `.vvmrc`
 
