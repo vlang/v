@@ -11352,8 +11352,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 }
 
 fn (tc &TypeChecker) params_field_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+	// Compatibility is directional: the supplied value (`actual`) must be assignable to
+	// the field (`expected`). The reverse `type_compatible(expected, actual)` wrongly
+	// accepted e.g. a sum `Foo | Bar` for a concrete `Foo` field (because `Foo` converts
+	// to the sum), letting an invalid assignment reach C generation. Keep only the
+	// directional check plus the targeted callback/pointer/voidptr exceptions.
 	return tc.expr_compatible(id, actual, expected)
-		|| tc.type_compatible(expected, actual)
 		|| tc.pointer_value_compatible(actual, expected)
 		|| tc.method_value_matches_voidptr_callback(id, actual, expected)
 		|| tc.fn_callback_adapter_compatible(actual, expected)
