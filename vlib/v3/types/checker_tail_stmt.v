@@ -12489,6 +12489,56 @@ fn write_key_invalidates_key(write_key string, key string) bool {
 		&& (key[write_key.len] == `.` || key[write_key.len] == `[`)
 }
 
+// canonical_storage_alias_key rewrites the base identifier of `key` to its scope
+// storage key, following a single pointer-binding alias (`p := &holder` records
+// `p -> holder` in pointer_binding_value_keys). A write to `holder.value` and a
+// narrowed `p.value` then resolve to the same canonical key. Returns `key`
+// unchanged when the base cannot be resolved to a storage key.
+fn (tc &TypeChecker) canonical_storage_alias_key(key string) string {
+	if key.len == 0 {
+		return key
+	}
+	mut base_len := key.len
+	for i in 0 .. key.len {
+		if key[i] == `.` || key[i] == `[` {
+			base_len = i
+			break
+		}
+	}
+	base := key[..base_len]
+	owner := tc.cur_scope.lookup_owner(base) or { return key }
+	storage := owner.storage_key()
+	if storage.len == 0 {
+		return key
+	}
+	suffix := key[base_len..]
+	if values := tc.fn_context.pointer_binding_value_keys[storage] {
+		// A single unambiguous, resolvable pointee (not an `@unknown/@parameter/@global`
+		// marker) means the base is a pure alias of that storage.
+		if values.len == 1 && values[0].len > 0 && !values[0].starts_with('@') {
+			return values[0] + suffix
+		}
+		return key
+	}
+	return storage + suffix
+}
+
+// write_invalidates_key extends write_key_invalidates_key with pointer-alias
+// provenance: a write to `holder.value` also invalidates a narrowed `p.value` when
+// `p` aliases `holder` (recorded in pointer_binding_value_keys).
+fn (tc &TypeChecker) write_invalidates_key(write_key string, key string) bool {
+	if write_key_invalidates_key(write_key, key) {
+		return true
+	}
+	if tc.fn_context.pointer_binding_value_keys.len == 0 {
+		return false
+	}
+	canon_write := tc.canonical_storage_alias_key(write_key)
+	canon_key := tc.canonical_storage_alias_key(key)
+	return (canon_write != write_key || canon_key != key)
+		&& write_key_invalidates_key(canon_write, canon_key)
+}
+
 // subtree_assigns_key reports whether `root` contains an assignment, short
 // declaration, or a call passing `key` to a `mut` parameter whose target
 // resolves to `key` (or an ancestor of it). A mutating call is treated as a write
@@ -12503,7 +12553,7 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 	if node.kind == .assign {
 		mut i := 0
 		for i + 1 < node.children_count {
-			if write_key_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
+			if tc.write_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
 				return true
 			}
 			i += 2
@@ -12513,11 +12563,11 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 		// targets; a redeclaration of `key` (or an ancestor of it) also shadows the
 		// narrowed binding.
 		if node.children_count > 0
-			&& write_key_invalidates_key(tc.expr_key(tc.a.child(node, 0)), key) {
+			&& tc.write_invalidates_key(tc.expr_key(tc.a.child(node, 0)), key) {
 			return true
 		}
 		for i in 2 .. node.children_count {
-			if write_key_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
+			if tc.write_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
 				return true
 			}
 		}
@@ -12529,7 +12579,7 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 		// use the ancestor-aware relationship, not an exact-key match.
 		for i in 1 .. node.children_count {
 			if arg_key := tc.expr_mut_arg_key(tc.a.child(node, i)) {
-				if write_key_invalidates_key(arg_key, key) {
+				if tc.write_invalidates_key(arg_key, key) {
 					return true
 				}
 			}
@@ -12545,7 +12595,7 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 			if callee.kind == .selector && callee.children_count > 0 {
 				recv_id := tc.a.child(callee, 0)
 				recv_key := tc.expr_key(recv_id)
-				if write_key_invalidates_key(recv_key, key) {
+				if tc.write_invalidates_key(recv_key, key) {
 					if declared := tc.declared_receiver_expr_type(recv_id) {
 						// An exact-key sum receiver can re-tag itself; an ancestor receiver
 						// only needs a `mut` receiver to reassign the narrowed descendant.
