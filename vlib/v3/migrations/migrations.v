@@ -467,19 +467,16 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 }
 
 fn (mut m Migrator) reject_existing_postgresql_transaction() ! {
-	if !m.uses_transactions() {
-		return
-	}
 	probe := 'v3_migrations_transaction_probe'
 	m.conn.orm_savepoint(probe) or {
-		// PostgreSQL rejects SAVEPOINT outside a transaction, which is the expected
-		// state when the migrator owns per-migration transactions.
+		// PostgreSQL rejects SAVEPOINT outside a transaction, which is the required
+		// state before the migrator acquires its session lock.
 		return
 	}
 	m.conn.orm_release_savepoint(probe) or {
 		return error('could not release PostgreSQL transaction ownership probe: ${err.msg()}')
 	}
-	return error('PostgreSQL migrations cannot manage transactions on a connection with an already-open transaction (including pg.Tx); use transaction_mode: .never to preserve the caller-owned transaction')
+	return error('PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported')
 }
 
 fn (mut m Migrator) retain_history_relation(dialect Dialect, namespace string) {

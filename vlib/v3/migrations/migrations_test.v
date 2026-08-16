@@ -442,33 +442,24 @@ fn test_postgresql_orm_wrapper_is_rejected_without_mutating_its_transaction() {
 	assert recorder.queries.len == 0
 }
 
-fn test_postgresql_open_transaction_is_rejected_without_being_finished() {
-	mut recorder := &RecordingConnection{
-		in_transaction: true
+fn test_postgresql_open_transaction_is_rejected_in_every_mode_without_being_finished() {
+	for mode in [TransactionMode.automatic, .always, .never] {
+		mut recorder := &RecordingConnection{
+			in_transaction: true
+		}
+		mut runner := new(mut recorder, []Migration{}, Config{
+			dialect:          .pg
+			transaction_mode: mode
+		})!
+		mut error_message := ''
+		runner.migrate() or { error_message = err.msg() }
+		assert error_message == 'PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported'
+		assert recorder.in_transaction
+		assert recorder.queries == [
+			'ORM SAVEPOINT v3_migrations_transaction_probe',
+			'ORM RELEASE SAVEPOINT v3_migrations_transaction_probe',
+		]
 	}
-	mut runner := new(mut recorder, []Migration{}, Config{
-		dialect: .pg
-	})!
-	mut error_message := ''
-	runner.migrate() or { error_message = err.msg() }
-	assert error_message == 'PostgreSQL migrations cannot manage transactions on a connection with an already-open transaction (including pg.Tx); use transaction_mode: .never to preserve the caller-owned transaction'
-	assert recorder.in_transaction
-	assert recorder.queries == [
-		'ORM SAVEPOINT v3_migrations_transaction_probe',
-		'ORM RELEASE SAVEPOINT v3_migrations_transaction_probe',
-	]
-
-	mut externally_managed := &RecordingConnection{
-		in_transaction: true
-	}
-	mut never_runner := new(mut externally_managed, []Migration{}, Config{
-		dialect:          .pg
-		transaction_mode: .never
-	})!
-	assert never_runner.migrate()!.len == 0
-	assert externally_managed.in_transaction
-	assert 'ORM COMMIT' !in externally_managed.queries
-	assert 'ORM ROLLBACK' !in externally_managed.queries
 }
 
 fn test_sqlite_history_table_is_pinned_to_main() {
@@ -1167,7 +1158,8 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	}
 	for default_sql in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP', "(datetime('now'))",
 		'CURRENT_TIMESTAMP /* now */', '/* now */ CURRENT_DATE', 'CURRENT_TIME -- now',
-		"(datetime('now')) /* now */"] {
+		"(datetime('now')) /* now */", 'CURRENT_TIMESTAMP COLLATE binary',
+		'CURRENT_DATE\tCOLLATE binary', 'CURRENT_TIME/* now */ COLLATE binary'] {
 		error_message = ''
 		ctx.add_column('accounts', Column{
 			name:        'created_at'

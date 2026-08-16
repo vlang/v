@@ -551,9 +551,21 @@ fn validate_sqlite_add_column(column Column) ! {
 
 fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
 	normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
-	return normalized in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP']
+	return sqlite_default_starts_with_current_time_keyword(normalized)
 		|| (normalized.starts_with('(') && normalized.ends_with(')')
 		&& !sqlite_is_literal_default(normalized))
+}
+
+fn sqlite_default_starts_with_current_time_keyword(default_sql string) bool {
+	mut token_end := 0
+	for token_end < default_sql.len
+		&& (default_sql[token_end].is_alnum() || default_sql[token_end] == `_`) {
+		token_end++
+	}
+	if token_end == 0 {
+		return false
+	}
+	return default_sql[..token_end] in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP']
 }
 
 fn sqlite_has_non_null_default(column Column) bool {

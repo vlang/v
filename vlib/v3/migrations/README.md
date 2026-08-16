@@ -67,7 +67,8 @@ foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly ch
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
 explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
 auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults
-even when prohibited expressions have SQL comments. Parenthesized literal defaults remain allowed.
+even when prohibited expressions have SQL comments or postfix clauses. Parenthesized literal
+defaults remain allowed.
 SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
 schema from a qualified table or resolves an unqualified table using SQLite lookup order.
 PostgreSQL `change_column` supports type-related fields only and rejects explicitly supplied
@@ -96,5 +97,6 @@ The migrator accepts `orm.TransactionalConnection` implementations, and `Config.
 can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
 transaction still covers each mutating workflow. Migration names containing NUL bytes are rejected
 before any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
-transactions; pass a direct session-pinned `pg.Conn`. Transaction-managed modes reject an already
-open transaction, including `pg.Tx`; use `.never` when the caller owns the transaction.
+transactions; pass a direct session-pinned `pg.Conn` without an active transaction. Existing
+transactions, including `pg.Tx`, are rejected in every transaction mode so the session lock cannot
+be released before their work commits.
