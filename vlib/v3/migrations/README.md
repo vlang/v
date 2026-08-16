@@ -8,8 +8,9 @@ Mutating workflows hold a database-level lock from before the applied-version sn
 callbacks and history updates. PostgreSQL uses an advisory lock, MySQL uses a named lock, and
 SQLite uses an immediate transaction so concurrent runners cannot apply the same migration. MySQL
 lock names use a qualified history table's database, or otherwise the current database, so
-independent databases on one server do not contend. PostgreSQL lock keys use the effective history
-schema and the full signed 64-bit advisory-lock space.
+independent databases on one server do not contend, and follow the server's
+`lower_case_table_names` mode. PostgreSQL lock keys use the effective history schema and the full
+signed 64-bit advisory-lock space.
 
 ```v ignore
 import db.sqlite

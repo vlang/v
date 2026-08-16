@@ -418,7 +418,9 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 				database_rows := m.conn.execute('SELECT DATABASE();')!
 				mysql_database_name(database_rows)!
 			}
-			name := mysql_migration_lock_name(database, m.config.table)
+			case_rows := m.conn.execute('SELECT @@lower_case_table_names;')!
+			lower_case_table_names := mysql_lower_case_table_names(case_rows)!
+			name := mysql_migration_lock_name(database, m.config.table, lower_case_table_names)
 			rows :=
 				m.conn.execute("SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});")!
 			if !migration_lock_result(rows) {
@@ -477,9 +479,14 @@ fn postgresql_migration_lock_key(schema string, table string) i64 {
 	return migration_lock_key(identity)
 }
 
-fn mysql_migration_lock_name(database string, table string) string {
-	table_name := if table.contains('.') { table.all_after('.') } else { table }
-	identity := '${database.len}:${database}:${table_name.len}:${table_name}'
+fn mysql_migration_lock_name(database string, table string, lower_case_table_names int) string {
+	mut database_name := database
+	mut table_name := if table.contains('.') { table.all_after('.') } else { table }
+	if lower_case_table_names in [1, 2] {
+		database_name = database_name.to_lower_ascii()
+		table_name = table_name.to_lower_ascii()
+	}
+	identity := '${database_name.len}:${database_name}:${table_name.len}:${table_name}'
 	return 'v3_migrations_${fnv1a.sum64_string(identity).hex()}'
 }
 
@@ -488,6 +495,19 @@ fn mysql_database_name(rows []orm.Row) !string {
 		return error('could not determine current MySQL database for migration lock')
 	}
 	return rows[0].vals[0]
+}
+
+fn mysql_lower_case_table_names(rows []orm.Row) !int {
+	if rows.len != 1 || rows[0].vals.len == 0 {
+		return error('could not determine MySQL lower_case_table_names for migration lock')
+	}
+	value := strconv.atoi(rows[0].vals[0]) or {
+		return error('could not determine MySQL lower_case_table_names for migration lock')
+	}
+	if value !in [0, 1, 2] {
+		return error('unsupported MySQL lower_case_table_names value `${rows[0].vals[0]}`')
+	}
+	return value
 }
 
 fn postgresql_schema_name(rows []orm.Row) !string {

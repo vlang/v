@@ -7,9 +7,10 @@ import orm
 @[heap]
 struct RecordingConnection {
 mut:
-	queries  []string
-	database string = 'test_database'
-	schema   string = 'public'
+	queries                []string
+	database               string = 'test_database'
+	schema                 string = 'public'
+	lower_case_table_names int
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -40,6 +41,11 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'SELECT current_schema();' {
 		return [orm.Row{
 			vals: [conn.schema]
+		}]
+	}
+	if query == 'SELECT @@lower_case_table_names;' {
+		return [orm.Row{
+			vals: [conn.lower_case_table_names.str()]
 		}]
 	}
 	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
@@ -287,9 +293,11 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 				assert 'ORM COMMIT' in recorder.queries
 			}
 			.mysql {
-				name := mysql_migration_lock_name(recorder.database, 'schema_migrations')
+				name := mysql_migration_lock_name(recorder.database, 'schema_migrations',
+					recorder.lower_case_table_names)
 				assert recorder.queries[0] == 'SELECT DATABASE();'
-				assert recorder.queries[1] == "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
+				assert recorder.queries[1] == 'SELECT @@lower_case_table_names;'
+				assert recorder.queries[2] == "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
 				assert recorder.queries.last() == "SELECT RELEASE_LOCK('${name}');"
 				assert 'ORM BEGIN' !in recorder.queries
 			}
@@ -309,9 +317,10 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	})!
 	first_runner.acquire_migration_lock()!
 	first_runner.release_migration_lock(true)!
-	first_name := mysql_migration_lock_name('application_one', 'schema_migrations')
+	first_name := mysql_migration_lock_name('application_one', 'schema_migrations', 0)
 	assert first_recorder.queries == [
 		'SELECT DATABASE();',
+		'SELECT @@lower_case_table_names;',
 		"SELECT GET_LOCK('${first_name}', ${migration_lock_timeout_seconds});",
 		"SELECT RELEASE_LOCK('${first_name}');",
 	]
@@ -324,13 +333,13 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	})!
 	second_runner.acquire_migration_lock()!
 	second_runner.release_migration_lock(true)!
-	second_name := mysql_migration_lock_name('application_two', 'schema_migrations')
+	second_name := mysql_migration_lock_name('application_two', 'schema_migrations', 0)
 	assert second_name != first_name
-	assert second_recorder.queries[1] == "SELECT GET_LOCK('${second_name}', ${migration_lock_timeout_seconds});"
+	assert second_recorder.queries[2] == "SELECT GET_LOCK('${second_name}', ${migration_lock_timeout_seconds});"
 
 	qualified_table := 'shared.schema_migrations'
-	qualified_name := mysql_migration_lock_name('shared', qualified_table)
-	assert qualified_name == mysql_migration_lock_name('shared', 'schema_migrations')
+	qualified_name := mysql_migration_lock_name('shared', qualified_table, 0)
+	assert qualified_name == mysql_migration_lock_name('shared', 'schema_migrations', 0)
 	mut qualified_first_recorder := &RecordingConnection{
 		database: 'application_one'
 	}
@@ -341,6 +350,7 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	qualified_first_runner.acquire_migration_lock()!
 	qualified_first_runner.release_migration_lock(true)!
 	assert qualified_first_recorder.queries == [
+		'SELECT @@lower_case_table_names;',
 		"SELECT GET_LOCK('${qualified_name}', ${migration_lock_timeout_seconds});",
 		"SELECT RELEASE_LOCK('${qualified_name}');",
 	]
@@ -364,7 +374,43 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	})!
 	unqualified_runner.acquire_migration_lock()!
 	unqualified_runner.release_migration_lock(true)!
-	assert unqualified_recorder.queries[1..] == qualified_first_recorder.queries
+	assert unqualified_recorder.queries[2..] == qualified_first_recorder.queries[1..]
+}
+
+fn test_mysql_migration_locks_follow_lower_case_table_names() {
+	assert mysql_migration_lock_name('app', 'app.schema_migrations', 0) != mysql_migration_lock_name('APP',
+		'APP.Schema_Migrations', 0)
+	for mode in [1, 2] {
+		lower_name := mysql_migration_lock_name('app', 'app.schema_migrations', mode)
+		upper_name := mysql_migration_lock_name('APP', 'APP.Schema_Migrations', mode)
+		assert lower_name == upper_name
+
+		mut lower_recorder := &RecordingConnection{
+			lower_case_table_names: mode
+		}
+		mut lower_runner := new(mut lower_recorder, []Migration{}, Config{
+			dialect: .mysql
+			table:   'app.schema_migrations'
+		})!
+		lower_runner.acquire_migration_lock()!
+		lower_runner.release_migration_lock(true)!
+
+		mut upper_recorder := &RecordingConnection{
+			lower_case_table_names: mode
+		}
+		mut upper_runner := new(mut upper_recorder, []Migration{}, Config{
+			dialect: .mysql
+			table:   'APP.Schema_Migrations'
+		})!
+		upper_runner.acquire_migration_lock()!
+		upper_runner.release_migration_lock(true)!
+		assert upper_recorder.queries == lower_recorder.queries
+		assert lower_recorder.queries == [
+			'SELECT @@lower_case_table_names;',
+			"SELECT GET_LOCK('${lower_name}', ${migration_lock_timeout_seconds});",
+			"SELECT RELEASE_LOCK('${lower_name}');",
+		]
+	}
 }
 
 fn test_postgresql_migration_locks_use_full_64bit_keys() {
