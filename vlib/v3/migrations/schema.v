@@ -300,8 +300,13 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 		return error('MySQL add_index name `${name}` must be unqualified')
 	}
 	columns := quoted_columns(ctx.dialect, index.columns)!
+	mut create_name_sql := quote_identifier(ctx.dialect, name)
+	if ctx.dialect == .sqlite && !name.contains('.') {
+		schema := ctx.sqlite_table_schema(index.table)!
+		create_name_sql = '${quote_identifier_component(.sqlite, schema)}.${quote_identifier_component(.sqlite, name)}'
+	}
 	unique := if index.unique { 'UNIQUE ' } else { '' }
-	ctx.execute('CREATE ${unique}INDEX ${quote_identifier(ctx.dialect, name)} ON ${quote_identifier(ctx.dialect,
+	ctx.execute('CREATE ${unique}INDEX ${create_name_sql} ON ${quote_identifier(ctx.dialect,
 		index.table)} (${columns});')!
 }
 
@@ -552,9 +557,13 @@ fn validate_sqlite_add_column(column Column) ! {
 fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
 	normalized :=
 		sqlite_default_without_leading_signs(sqlite_default_without_comments(default_sql)).to_upper()
-	return sqlite_default_starts_with_current_time_keyword(normalized)
-		|| (normalized.starts_with('(') && normalized.ends_with(')')
-		&& !sqlite_is_literal_default(normalized))
+	if sqlite_default_starts_with_current_time_keyword(normalized) {
+		return true
+	}
+	if core := sqlite_parenthesized_default_core(normalized) {
+		return !sqlite_is_literal_default(core)
+	}
+	return false
 }
 
 fn sqlite_default_starts_with_current_time_keyword(default_sql string) bool {
@@ -628,12 +637,46 @@ fn sqlite_unwrapped_default(default_sql string) string {
 	mut literal := default_sql.trim_space()
 	for {
 		literal = sqlite_default_without_leading_signs(literal)
-		if literal.len < 2 || !literal.starts_with('(') || !literal.ends_with(')') {
-			return literal
-		}
-		literal = literal[1..literal.len - 1]
+		core := sqlite_parenthesized_default_core(literal) or { return literal }
+		literal = core
 	}
 	return literal
+}
+
+fn sqlite_parenthesized_default_core(default_sql string) ?string {
+	literal := default_sql.trim_space()
+	if literal.len < 2 || literal[0] != `(` {
+		return none
+	}
+	mut depth := 0
+	mut quote := u8(0)
+	mut i := 0
+	for i < literal.len {
+		ch := literal[i]
+		if quote != 0 {
+			if ch == quote {
+				if i + 1 < literal.len && literal[i + 1] == quote {
+					i += 2
+					continue
+				}
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if ch in [u8(39), 34] {
+			quote = ch
+		} else if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			depth--
+			if depth == 0 {
+				return literal[1..i]
+			}
+		}
+		i++
+	}
+	return none
 }
 
 fn sqlite_default_without_leading_signs(default_sql string) string {

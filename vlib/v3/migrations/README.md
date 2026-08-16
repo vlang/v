@@ -70,7 +70,9 @@ auto-increment columns, non-nullable columns without a non-NULL default, and non
 even when prohibited expressions have unary signs, SQL comments, or postfix clauses.
 Parenthesized and signed literal defaults remain allowed.
 SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
-schema from a qualified table or resolves an unqualified table using SQLite lookup order.
+schema from a qualified table or resolves an unqualified table using SQLite lookup order. Index
+creation resolves the table and qualifies an unqualified index name with the same schema; an
+explicitly qualified index name selects its attached database.
 PostgreSQL `change_column` supports type-related fields only and rejects explicitly supplied
 constraint options, including false or empty values, before executing SQL; use `ctx.execute()` for
 explicit constraint DDL. PostgreSQL serial columns reject

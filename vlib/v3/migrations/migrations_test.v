@@ -14,6 +14,7 @@ mut:
 	history_rows            []orm.Row
 	in_transaction          bool
 	postgresql_table_schema string = 'public'
+	sqlite_table_schema     string = 'main'
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -58,6 +59,22 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query.starts_with('SELECT n.nspname FROM pg_catalog.pg_class AS c ') {
 		return [orm.Row{
 			vals: [conn.postgresql_table_schema]
+		}]
+	}
+	if query == 'PRAGMA database_list;' {
+		mut rows := [orm.Row{
+			vals: ['0', 'main', '']
+		}]
+		if conn.sqlite_table_schema !in ['temp', 'main'] {
+			rows << orm.Row{
+				vals: ['2', conn.sqlite_table_schema, '']
+			}
+		}
+		return rows
+	}
+	if query.starts_with('SELECT 1 FROM "${conn.sqlite_table_schema}".sqlite_schema ') {
+		return [orm.Row{
+			vals: ['1']
 		}]
 	}
 	if query == 'SELECT @@lower_case_table_names;' {
@@ -1149,6 +1166,8 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	invalid_defaults << '+NULL'
 	invalid_defaults << '- /* absent */ NULL'
 	invalid_defaults << '((+NULL))'
+	invalid_defaults << '(NULL) COLLATE binary'
+	invalid_defaults << '((+NULL)) /* absent */ COLLATE binary'
 	for default_sql in invalid_defaults {
 		error_message = ''
 		ctx.add_column('accounts', Column{
@@ -1163,7 +1182,8 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 		'CURRENT_TIMESTAMP /* now */', '/* now */ CURRENT_DATE', 'CURRENT_TIME -- now',
 		"(datetime('now')) /* now */", 'CURRENT_TIMESTAMP COLLATE binary',
 		'CURRENT_DATE\tCOLLATE binary', 'CURRENT_TIME/* now */ COLLATE binary', '+CURRENT_TIMESTAMP',
-		'- CURRENT_DATE', '+/* now */ CURRENT_TIME'] {
+		'- CURRENT_DATE', '+/* now */ CURRENT_TIME', '(CURRENT_TIMESTAMP) COLLATE binary',
+		'((+CURRENT_DATE)) /* now */ COLLATE binary'] {
 		error_message = ''
 		ctx.add_column('accounts', Column{
 			name:        'created_at'
@@ -1242,6 +1262,18 @@ fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {
 	})!
 	assert db.q_int('SELECT signed_count FROM accounts WHERE id = 1;')! == -1
 	assert db.q_string('SELECT signed_label FROM accounts WHERE id = 1;')! == 'signed'
+	ctx.add_column('accounts', Column{
+		name:        'collated_count'
+		kind:        .integer
+		default_sql: '(0) COLLATE binary'
+	})!
+	ctx.add_column('accounts', Column{
+		name:        'collated_label'
+		kind:        .text
+		default_sql: "('collated') COLLATE binary"
+	})!
+	assert db.q_int('SELECT collated_count FROM accounts WHERE id = 1;')! == 0
+	assert db.q_string('SELECT collated_label FROM accounts WHERE id = 1;')! == 'collated'
 }
 
 fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
@@ -1307,9 +1339,33 @@ fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
 		]
 	})!
 	assert recorder.queries == [
-		'CREATE INDEX "index_users_on_email" ON "users" ("email");',
+		'PRAGMA database_list;',
+		'SELECT 1 FROM "temp".sqlite_schema WHERE type = \'table\' AND name = \'users\' COLLATE NOCASE LIMIT 1;',
+		'SELECT 1 FROM "main".sqlite_schema WHERE type = \'table\' AND name = \'users\' COLLATE NOCASE LIMIT 1;',
+		'CREATE INDEX "main"."index_users_on_email" ON "users" ("email");',
 		'CREATE TABLE "main"."children" ("parent_id" BIGINT, CONSTRAINT "fk_main_children_parent_id" FOREIGN KEY ("parent_id") REFERENCES "parents" ("id"));',
 	]
+}
+
+fn test_sqlite_add_index_uses_the_resolved_table_schema() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec("ATTACH DATABASE ':memory:' AS aux;")!
+	db.exec('CREATE TABLE aux.users (email TEXT);')!
+	mut ctx := new_context(db, .sqlite)
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+	})!
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+		name:    'aux.custom_users_email_idx'
+	})!
+	assert db.q_int("SELECT count(*) FROM main.sqlite_master WHERE type = 'index';")! == 0
+	assert db.q_int("SELECT count(*) FROM aux.sqlite_master WHERE type = 'index';")! == 2
 }
 
 fn test_sqlite_autoincrement_precedes_other_constraints() {
