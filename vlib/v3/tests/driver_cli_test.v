@@ -80,6 +80,35 @@ fn main() {
 	assert v3_profile_counter(api_output, 'builtin__builtin_init') == 1, api_output
 	assert v3_profile_counter(api_output, 'main__main') == 1, api_output
 	assert v3_profile_counter(api_output, 'main__abc') == 1, api_output
+	assert v3_profile_counter(api_output, 'v__profile__on') == -1, api_output
+
+	user_profile_module := os.join_path(root, 'profile')
+	os.mkdir_all(user_profile_module)!
+	os.write_file(os.join_path(user_profile_module, 'profile.v'), 'module profile
+
+pub fn answer() int {
+	return 42
+}
+')!
+	user_profile_source := os.join_path(root, 'user_profile.v')
+	os.write_file(user_profile_source, 'module main
+
+import profile
+
+fn main() {
+	println(profile.answer())
+}
+')!
+	user_profile_binary := os.join_path(root, 'user_profile')
+	user_profile_output_path := os.join_path(root, 'user_profile.txt')
+	user_profile_compile := cmdexec.run(v3_bin, ['-silent', '-profile', user_profile_output_path,
+		'-o', user_profile_binary, user_profile_source])
+	assert user_profile_compile.exit_code == 0, user_profile_compile.output
+	user_profile_run := cmdexec.run(user_profile_binary, [])
+	assert user_profile_run.exit_code == 0, user_profile_run.output
+	assert user_profile_run.output.trim_space() == '42', user_profile_run.output
+	user_profile_output := os.read_file(user_profile_output_path)!
+	assert v3_profile_counter(user_profile_output, 'profile__answer') == 1, user_profile_output
 
 	// With no output path, the following source remains the compiler input and
 	// the V1 `-prof` alias writes its report to stdout.

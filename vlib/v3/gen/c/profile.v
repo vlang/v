@@ -36,9 +36,8 @@ fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_
 	g.profile_fn_active = false
 	g.profile_fn_restore_enabled = false
 	if g.profile_file.len == 0 || (g.profile_no_inline && is_inline)
-		|| fn_name.starts_with('time.vpc_now') || fn_name.starts_with('v.profile.')
-		|| fn_name.starts_with('profile.') || cfn_name.starts_with('time__vpc_now')
-		|| cfn_name.starts_with('profile__') || cfn_name.starts_with('v__profile__') {
+		|| module_name == 'v.profile' || fn_name.starts_with('time.vpc_now')
+		|| cfn_name.starts_with('time__vpc_now') {
 		return
 	}
 	// Prefix the counter names with a unique per-function index. Without it the derived
