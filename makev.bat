@@ -52,7 +52,7 @@ if !shift_counter! LSS 1 (
 	if "%~1" == "help" (
 		if not ["%~2"] == [""] set subcmd=%~2& shift& set /a shift_counter+=1
 	)
-	for %%z in (build clean cleanall check help rebuild) do (
+	for %%z in (build clean cleanall check help latest_tcc rebuild) do (
 		if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
 	)
 )
@@ -116,6 +116,11 @@ exit /b 0
 call :cleanall
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 goto :build
+
+:latest_tcc
+call :download_tcc
+if !ERRORLEVEL! NEQ 0 goto :error
+exit /b 0
 
 :help
 if [!subcmd!] == [] (
@@ -355,6 +360,7 @@ echo     clean             Clean build artifacts and debugging symbols
 echo     cleanall          Cleanup entire ALL build artifacts and vc repository
 echo     check             Check that tests pass, and the repository is in a good shape for Pull Requests
 echo     help              Display help for the given target
+echo     latest_tcc        Update the bundled TCC without rebuilding V
 echo     rebuild           Fully clean/reset repository and rebuild V
 echo.
 echo Examples:
@@ -399,6 +405,12 @@ echo.
 echo Options:
 echo    --local     Use the local vc repository without
 echo                syncing with remote
+exit /b 0
+
+:help_latest_tcc
+echo Usage:
+echo     makev.bat latest_tcc
+echo.
 exit /b 0
 
 :help_rebuild

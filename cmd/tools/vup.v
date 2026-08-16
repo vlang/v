@@ -39,6 +39,12 @@ fn main() {
 	os.chdir(app.vroot)!
 	println('Updating V...')
 	app.update_from_master()
+	if !app.update_tcc() {
+		app.show_current_v_version()
+		eprintln('Updating TCC *failed*.')
+		eprintln('Try running `${get_tcc_update_cmd()}` .')
+		exit(1)
+	}
 	hash_when_vup_was_compiled := @VCURRENTHASH
 	current_hash_from_filesystem := version.githash(vroot) or { hash_when_vup_was_compiled }
 	if !app.skip_current && hash_when_vup_was_compiled == current_hash_from_filesystem {
@@ -95,6 +101,23 @@ fn (app App) update_from_master() {
 
 fn v_upstream_pull_command() string {
 	return 'git pull --rebase ${v_upstream_url} ${v_upstream_branch}'
+}
+
+fn (app App) update_tcc() bool {
+	command := get_tcc_update_cmd()
+	if os.user_os() != 'windows' {
+		make_sure_cmd_is_available('make')
+	}
+	println('> updating TCC ...')
+	result := os.execute(command)
+	if result.exit_code != 0 {
+		eprintln('> `${command}` failed:')
+		eprintln(result.output)
+		return false
+	}
+	app.vprintln(result.output)
+	println('> done updating TCC.')
+	return true
 }
 
 fn (app App) recompile_v() bool {
@@ -263,6 +286,13 @@ fn get_make_cmd_name() string {
 	cc := os.getenv_opt('CC') or { 'cc' }
 	make_sure_cmd_is_available(cc)
 	return cmd
+}
+
+fn get_tcc_update_cmd() string {
+	if os.user_os() == 'windows' {
+		return 'makev.bat latest_tcc'
+	}
+	return 'make latest_tcc'
 }
 
 fn make_sure_cmd_is_available(cmd string) {

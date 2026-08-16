@@ -103,6 +103,8 @@ Note: V is being constantly updated. To update V to its latest version, simply r
 v up
 ```
 
+This also refreshes the bundled TCC binaries used for fast C compilation.
+
 > [!NOTE]
 > If you run into any trouble, or you have a different operating
 > system or Linux distribution that doesn't install or work immediately, please see
