@@ -48,6 +48,9 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'START TRANSACTION;' {
 		conn.in_transaction = true
 	}
+	if query == 'BEGIN;' {
+		conn.in_transaction = true
+	}
 	if query == 'SET search_path TO other_schema;' {
 		conn.schema = 'other_schema'
 	}
@@ -254,6 +257,10 @@ fn disable_mysql_autocommit(mut ctx Context) ! {
 
 fn start_mysql_transaction(mut ctx Context) ! {
 	ctx.execute('START TRANSACTION;')!
+}
+
+fn start_postgresql_transaction(mut ctx Context) ! {
+	ctx.execute('BEGIN;')!
 }
 
 fn test_migrate_rollback_redo_and_status() {
@@ -600,6 +607,53 @@ fn test_mysql_callback_session_state_is_rechecked_before_unlocking() {
 		assert transaction_rollback_index > transaction_recorder.queries.index(transaction_history_inserts[0])
 		assert transaction_recorder.queries.last().starts_with('SELECT RELEASE_LOCK(')
 	}
+}
+
+fn test_postgresql_callback_transactions_are_rolled_back_before_unlocking() {
+	migration := Migration{
+		version: 1
+		name:    'start_transaction'
+		up:      start_postgresql_transaction
+		down:    start_postgresql_transaction
+	}
+	mut up_recorder := &RecordingConnection{}
+	mut up_runner := new(mut up_recorder, [migration], Config{
+		dialect:          .pg
+		transaction_mode: .never
+	})!
+	mut error_message := ''
+	up_runner.migrate() or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL migration callback left unsafe session state: PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported'
+	assert !up_recorder.in_transaction
+	up_rollback_index := up_recorder.queries.index('ORM ROLLBACK')
+	history_inserts := up_recorder.queries.filter(it.starts_with('INSERT INTO '))
+	assert history_inserts.len == 1
+	assert up_rollback_index > up_recorder.queries.index('BEGIN;')
+	assert up_rollback_index > up_recorder.queries.index(history_inserts[0])
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	assert up_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
+
+	mut down_recorder := &RecordingConnection{
+		history_rows: [
+			orm.Row{
+				vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+			},
+		]
+	}
+	mut down_runner := new(mut down_recorder, [migration], Config{
+		dialect:          .pg
+		transaction_mode: .never
+	})!
+	error_message = ''
+	down_runner.rollback(1) or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL migration callback left unsafe session state: PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported'
+	assert !down_recorder.in_transaction
+	down_rollback_index := down_recorder.queries.index('ORM ROLLBACK')
+	history_deletes := down_recorder.queries.filter(it.starts_with('DELETE FROM '))
+	assert history_deletes.len == 1
+	assert down_rollback_index > down_recorder.queries.index('BEGIN;')
+	assert down_rollback_index > down_recorder.queries.index(history_deletes[0])
+	assert down_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 }
 
 fn test_sqlite_history_table_is_pinned_to_main() {
