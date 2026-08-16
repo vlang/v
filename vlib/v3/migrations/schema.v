@@ -107,11 +107,15 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 	mut definitions := []string{}
 	mut column_names := map[string]bool{}
 	mut has_primary_key := false
+	mut auto_increment_columns := 0
 	if table.id {
 		validate_unqualified_identifier_for_dialect(ctx.dialect, table.id_name, 'primary key')!
 		definitions << auto_primary_key_sql(ctx.dialect, table.id_name)
 		column_names[table.id_name] = true
 		has_primary_key = true
+		if ctx.dialect == .mysql {
+			auto_increment_columns = 1
+		}
 	}
 	for column in table.columns {
 		if column.name in column_names {
@@ -121,7 +125,14 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 		if has_primary_key && is_primary_key {
 			return error('table `${table.name}` cannot have more than one primary key column')
 		}
-		definitions << column_sql(ctx.dialect, column)!
+		definition := column_sql(ctx.dialect, column)!
+		if ctx.dialect == .mysql && column_auto_increment(column) {
+			auto_increment_columns++
+			if auto_increment_columns > 1 {
+				return error('MySQL table `${table.name}` cannot have more than one auto-increment column')
+			}
+		}
+		definitions << definition
 		column_names[column.name] = true
 		has_primary_key = has_primary_key || is_primary_key
 	}
@@ -731,14 +742,25 @@ fn validate_identifier(value string, kind string) ! {
 
 fn validate_identifier_for_dialect(dialect Dialect, value string, kind string) ! {
 	validate_identifier(value, kind)!
+	parts := value.split('.')
+	max_components := identifier_max_components(dialect)
+	if parts.len > max_components {
+		return error('${dialect_name(dialect)} ${kind} name `${value}` must not exceed ${max_components} components')
+	}
 	limit := identifier_name_limit(dialect)
 	if limit == 0 {
 		return
 	}
-	for part in value.split('.') {
+	for part in parts {
 		if part.len > limit {
 			return error('${dialect_name(dialect)} ${kind} name component `${part}` must not exceed ${limit} bytes')
 		}
+	}
+}
+
+fn identifier_max_components(dialect Dialect) int {
+	return match dialect {
+		.sqlite, .pg, .mysql { 2 }
 	}
 }
 

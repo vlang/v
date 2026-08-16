@@ -1,5 +1,6 @@
 module migrations
 
+import hash.fnv1a
 import orm
 import strconv
 import time
@@ -71,9 +72,10 @@ pub:
 // Migrator applies an ordered set of migrations and records their versions.
 pub struct Migrator {
 mut:
-	conn       orm.TransactionalConnection
-	migrations []Migration
-	config     Config
+	conn            orm.TransactionalConnection
+	migrations      []Migration
+	config          Config
+	mysql_lock_name string
 }
 
 // new creates and validates a migrator. It does not access the database until
@@ -402,12 +404,15 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			m.conn.execute('SELECT pg_advisory_lock(${key});')!
 		}
 		.mysql {
-			name := migration_lock_name(key)
+			database_rows := m.conn.execute('SELECT DATABASE();')!
+			database := mysql_database_name(database_rows)!
+			name := mysql_migration_lock_name(database, m.config.table)
 			rows :=
 				m.conn.execute("SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});")!
 			if !migration_lock_result(rows) {
 				return error('could not acquire MySQL migration lock `${name}` within ${migration_lock_timeout_seconds} seconds')
 			}
+			m.mysql_lock_name = name
 		}
 	}
 }
@@ -429,11 +434,15 @@ fn (mut m Migrator) release_migration_lock(success bool) ! {
 			}
 		}
 		.mysql {
-			name := migration_lock_name(key)
+			name := m.mysql_lock_name
+			if name == '' {
+				return error('cannot release MySQL migration lock before it is acquired')
+			}
 			rows := m.conn.execute("SELECT RELEASE_LOCK('${name}');")!
 			if !migration_lock_result(rows) {
 				return error('could not release MySQL migration lock `${name}`')
 			}
+			m.mysql_lock_name = ''
 		}
 	}
 }
@@ -448,6 +457,18 @@ fn migration_lock_key(table string) i64 {
 
 fn migration_lock_name(key i64) string {
 	return 'v3_migrations_${key}'
+}
+
+fn mysql_migration_lock_name(database string, table string) string {
+	identity := '${database.len}:${database}:${table}'
+	return 'v3_migrations_${fnv1a.sum64_string(identity).hex()}'
+}
+
+fn mysql_database_name(rows []orm.Row) !string {
+	if rows.len != 1 || rows[0].vals.len == 0 || rows[0].vals[0] == '' {
+		return error('could not determine current MySQL database for migration lock')
+	}
+	return rows[0].vals[0]
 }
 
 fn migration_lock_result(rows []orm.Row) bool {

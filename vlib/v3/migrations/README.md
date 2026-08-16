@@ -6,7 +6,8 @@ DDL, and supports migrate, rollback, redo, reset, target-version, and status wor
 
 Mutating workflows hold a database-level lock from before the applied-version snapshot through all
 callbacks and history updates. PostgreSQL uses an advisory lock, MySQL uses a named lock, and
-SQLite uses an immediate transaction so concurrent runners cannot apply the same migration.
+SQLite uses an immediate transaction so concurrent runners cannot apply the same migration. MySQL
+lock names include the current database so independent databases on one server do not contend.
 
 ```v ignore
 import db.sqlite
@@ -70,10 +71,12 @@ precision. MySQL `change_column` requires nullable, default, and auto-increment 
 key options, including those on auto-increment columns, are preserved, additions use `true`, and
 removals must use `remove_index()` or raw SQL.
 MySQL auto-increment columns must be primary keys or unique, MySQL index names must be unqualified
-when adding or removing them, and MySQL foreign keys reject `SET DEFAULT`. Column-level identifiers
-must be unqualified. Generated PostgreSQL and MySQL index and foreign-key names are shortened
-deterministically to their dialect limits; overlong explicit names are rejected. Caller-supplied
-table, column, and history-table name components are also checked against those dialect limits.
+when adding or removing them, and tables cannot contain more than one auto-increment column. MySQL
+foreign keys reject `SET DEFAULT`. Column-level identifiers must be unqualified. Generated
+PostgreSQL and MySQL index and foreign-key names are shortened deterministically to their dialect
+limits; overlong explicit names are rejected. Caller-supplied table, column, and history-table name
+components are also checked against those dialect limits, and qualified table or history names may
+contain at most two components.
 PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps support for
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
 implicitly commits, and its history strings use hex literals to avoid SQL-mode-sensitive escaping.

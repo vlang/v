@@ -7,7 +7,8 @@ import orm
 @[heap]
 struct RecordingConnection {
 mut:
-	queries []string
+	queries  []string
+	database string = 'test_database'
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -30,6 +31,11 @@ fn (mut conn RecordingConnection) last_id() int {
 
 fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	conn.queries << query
+	if query == 'SELECT DATABASE();' {
+		return [orm.Row{
+			vals: [conn.database]
+		}]
+	}
 	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
 		|| query.starts_with('SELECT pg_advisory_unlock(') {
 		return [orm.Row{
@@ -274,8 +280,9 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 				assert 'ORM COMMIT' in recorder.queries
 			}
 			.mysql {
-				name := migration_lock_name(key)
-				assert recorder.queries[0] == "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
+				name := mysql_migration_lock_name(recorder.database, 'schema_migrations')
+				assert recorder.queries[0] == 'SELECT DATABASE();'
+				assert recorder.queries[1] == "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
 				assert recorder.queries.last() == "SELECT RELEASE_LOCK('${name}');"
 				assert 'ORM BEGIN' !in recorder.queries
 			}
@@ -284,6 +291,35 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 		assert callback_index > 0
 		assert callback_index < recorder.queries.len - 1
 	}
+}
+
+fn test_mysql_migration_locks_are_namespaced_by_database() {
+	mut first_recorder := &RecordingConnection{
+		database: 'application_one'
+	}
+	mut first_runner := new(mut first_recorder, []Migration{}, Config{
+		dialect: .mysql
+	})!
+	first_runner.acquire_migration_lock()!
+	first_runner.release_migration_lock(true)!
+	first_name := mysql_migration_lock_name('application_one', 'schema_migrations')
+	assert first_recorder.queries == [
+		'SELECT DATABASE();',
+		"SELECT GET_LOCK('${first_name}', ${migration_lock_timeout_seconds});",
+		"SELECT RELEASE_LOCK('${first_name}');",
+	]
+
+	mut second_recorder := &RecordingConnection{
+		database: 'application_two'
+	}
+	mut second_runner := new(mut second_recorder, []Migration{}, Config{
+		dialect: .mysql
+	})!
+	second_runner.acquire_migration_lock()!
+	second_runner.release_migration_lock(true)!
+	second_name := mysql_migration_lock_name('application_two', 'schema_migrations')
+	assert second_name != first_name
+	assert second_recorder.queries[1] == "SELECT GET_LOCK('${second_name}', ${migration_lock_timeout_seconds});"
 }
 
 fn test_mysql_history_literals_are_backslash_safe() {
@@ -436,6 +472,39 @@ fn test_mysql_auto_increment_requires_a_key() {
 	assert recorder.queries == [
 		'ALTER TABLE `accounts` ADD COLUMN `sequence` BIGINT AUTO_INCREMENT UNIQUE;',
 	]
+}
+
+fn test_mysql_create_table_rejects_multiple_auto_increment_columns() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	mut error_message := ''
+	ctx.create_table(Table{
+		name:    'events'
+		columns: [
+			Column{
+				name:           'sequence'
+				kind:           .bigint
+				auto_increment: true
+				unique:         true
+			},
+		]
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL table `events` cannot have more than one auto-increment column'
+	assert recorder.queries.len == 0
+
+	ctx.create_table(Table{
+		name:    'single_sequence'
+		id:      false
+		columns: [
+			Column{
+				name:           'sequence'
+				kind:           .bigint
+				auto_increment: true
+				unique:         true
+			},
+		]
+	})!
+	assert recorder.queries.len == 1
 }
 
 fn test_rename_table_rejects_qualified_targets_where_required() {
@@ -967,5 +1036,27 @@ fn test_caller_supplied_identifiers_respect_dialect_limits() {
 		table:   'app.${mysql_long_name}'
 	}) or { error_message = err.msg() }
 	assert error_message == 'MySQL migration history table name component `${mysql_long_name}` must not exceed 64 bytes'
+	assert history_recorder.queries.len == 0
+
+	error_message = ''
+	mysql_ctx.drop_table('application.archive.users') or { error_message = err.msg() }
+	assert error_message == 'MySQL table name `application.archive.users` must not exceed 2 components'
+	assert mysql_recorder.queries.len == 1
+
+	mut sqlite_recorder := &RecordingConnection{}
+	mut sqlite_ctx := new_context(sqlite_recorder, .sqlite)
+	error_message = ''
+	sqlite_ctx.create_table(Table{
+		name: 'main.application.users'
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite table name `main.application.users` must not exceed 2 components'
+	assert sqlite_recorder.queries.len == 0
+
+	error_message = ''
+	new(mut history_recorder, []Migration{}, Config{
+		dialect: .mysql
+		table:   'application.archive.schema_migrations'
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL migration history table name `application.archive.schema_migrations` must not exceed 2 components'
 	assert history_recorder.queries.len == 0
 }
