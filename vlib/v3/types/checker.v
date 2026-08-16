@@ -902,6 +902,7 @@ mut:
 	// checker workers. Transformed or appended nodes use the scan fallback in
 	// direct_parent_id.
 	direct_parent_ids           []flat.NodeId
+	rewritten_parent_ids        []flat.NodeId
 	value_used_nodes            []bool
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
@@ -1246,6 +1247,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		top_level_idx:                      tc.top_level_idx
 		top_level_idx_nodes_len:            tc.top_level_idx_nodes_len
 		direct_parent_ids:                  tc.direct_parent_ids
+		rewritten_parent_ids:               tc.rewritten_parent_ids
 		value_used_nodes:                   tc.value_used_nodes
 		direct_parent_index_trusted:        tc.direct_parent_index_trusted
 		has_goto_nodes:                     tc.has_goto_nodes
@@ -1621,6 +1623,7 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 
 fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
+	tc.rewritten_parent_ids = []flat.NodeId{}
 	tc.value_used_nodes = []bool{len: a.nodes.len}
 	tc.declaration_attributes = map[int][]string{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
@@ -1707,6 +1710,28 @@ pub fn (mut tc TypeChecker) reuse_direct_parent_index_for_unchanged_ast(a &flat.
 
 // invalidate_direct_parent_index makes generated-node lookups validate parent metadata.
 pub fn (mut tc TypeChecker) invalidate_direct_parent_index() {
+	tc.direct_parent_index_trusted = false
+}
+
+// refresh_rewritten_parent_index rebuilds the node-parent edges after transform
+// without resetting declaration metadata collected during semantic checking.
+// Rewritten trees can contain hundreds of thousands of new nodes; leaving those
+// nodes outside direct_parent_ids makes every parent query scan the whole AST.
+pub fn (mut tc TypeChecker) refresh_rewritten_parent_index(a &flat.FlatAst) {
+	// Lexical smartcasts deliberately apply only to parsed source nodes, so keep
+	// direct_parent_ids at its original length and index appended nodes separately.
+	tc.rewritten_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
+	for parent_idx, node in a.nodes {
+		for child_idx in 0 .. node.children_count {
+			idx := int(a.child(&node, child_idx))
+			if idx >= tc.direct_parent_ids.len && idx < tc.rewritten_parent_ids.len
+				&& tc.rewritten_parent_ids[idx] == flat.empty_node {
+				tc.rewritten_parent_ids[idx] = flat.NodeId(parent_idx)
+			}
+		}
+	}
+	// Keep validation enabled because transformed trees may intentionally share
+	// a node or rewrite an edge after this index is built.
 	tc.direct_parent_index_trusted = false
 }
 
@@ -6115,6 +6140,23 @@ fn (mut tc TypeChecker) register_fn_ancillary_owned(name string, shared_params [
 	tc.add_receiver_method_suffix_index(name)
 }
 
+// register_generated_fn_param_types records a synthesized function signature
+// and keeps the receiver/method suffix index complete for post-check phases.
+pub fn (mut tc TypeChecker) register_generated_fn_param_types(name string, params []Type) {
+	tc.fn_param_types[name] = params
+	tc.add_receiver_method_suffix_index(name)
+}
+
+// rebuild_fn_param_suffix_index refreshes the suffix index after a batch
+// replaces or removes synthesized signatures.
+pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
+	tc.receiver_method_suffix_index.clear()
+	tc.receiver_method_suffix_index.reserve(u32(tc.fn_param_types.len * 3))
+	for name, _ in tc.fn_param_types {
+		tc.add_receiver_method_suffix_index(name)
+	}
+}
+
 fn (mut tc TypeChecker) register_fn_ret_type_text(name string, text string) {
 	if tc.defer_fn_ancillary {
 		tc.fn_ret_text_registrations << FnTextRegistration{
@@ -7652,6 +7694,13 @@ pub fn (tc &TypeChecker) fn_param_types_for_name(name string) []Type {
 		if params := tc.fn_param_types[indexed] {
 			return params
 		}
+	}
+	// add_receiver_method_suffix_index records every source declaration, while
+	// register_generated_fn_param_types records post-check synthesized functions.
+	// A missing key is therefore a definitive miss. Keep the scan only behind the
+	// existing compatibility switch for diagnosing index construction issues.
+	if tc.method_suffix_prescreen {
+		return []Type{}
 	}
 	mut found := []Type{}
 	mut matches := 0

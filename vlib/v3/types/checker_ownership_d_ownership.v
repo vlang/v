@@ -7862,6 +7862,11 @@ fn ownership_assoc_base_descendant_overridden(source_prefix string, source_name 
 
 fn (tc &TypeChecker) ownership_struct_decl_node(struct_name string) ?flat.Node {
 	target := generic_base_name(struct_name)
+	if decl := tc.source_struct_decl_for_name(target) {
+		return decl
+	}
+	// Keep the historical spelling fallback for synthesized declarations that
+	// were appended after the immutable source declaration index was built.
 	mut cur_module := ''
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]

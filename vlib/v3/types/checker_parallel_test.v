@@ -100,6 +100,31 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	})
 	assert !tc.reuse_direct_parent_index_for_unchanged_ast(&a)
 	assert tc.direct_parent_id(appended_child) == appended_parent
+
+	tc.refresh_rewritten_parent_index(&a)
+	assert tc.direct_parent_ids.len < a.nodes.len
+	assert tc.rewritten_parent_ids.len == a.nodes.len
+	assert !tc.direct_parent_index_trusted
+	assert tc.direct_parent_id(child) == first_parent
+	assert tc.direct_parent_id(appended_child) == appended_parent
+}
+
+fn test_generated_fn_params_update_method_suffix_index() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	params := [Type(int_)]
+	tc.register_generated_fn_param_types('widgets.Box.open', params)
+
+	assert tc.fn_param_types_for_name('Box.open') == params
+	assert tc.fn_param_types_for_name('open') == params
+
+	tc.register_generated_fn_param_types('other.Door.open', [Type(string_)])
+	assert tc.fn_param_types_for_name('open').len == 0
+	assert tc.fn_param_types_for_name('Box.open') == params
+
+	tc.fn_param_types.delete('other.Door.open')
+	tc.rebuild_fn_param_suffix_index()
+	assert tc.fn_param_types_for_name('open') == params
 }
 
 fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
