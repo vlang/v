@@ -57,7 +57,10 @@ foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly ch
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
 explicitly rebuild the table. PostgreSQL `change_column` supports type-related fields only and
 rejects explicitly supplied constraint options, including false or empty values, before executing
-SQL; use `ctx.execute()` for explicit constraint DDL. MySQL migrations default to non-transactional
-execution because MySQL DDL implicitly commits. The migrator accepts `orm.TransactionalConnection`
-implementations, and `Config.transaction_mode` can override whether their transaction methods are
-used for DDL.
+SQL; use `ctx.execute()` for explicit constraint DDL. MySQL `change_column` requires all optional
+constraint fields because `MODIFY COLUMN` replaces the complete definition, and MySQL
+auto-increment columns must be primary keys or unique. PostgreSQL and SQLite table rename targets
+must be unqualified; MySQL keeps support for qualified targets. MySQL migrations default to
+non-transactional execution because MySQL DDL implicitly commits. The migrator accepts
+`orm.TransactionalConnection` implementations, and `Config.transaction_mode` can override whether
+their transaction methods are used for DDL.

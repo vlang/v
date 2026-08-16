@@ -259,6 +259,95 @@ fn test_postgresql_change_column_rejects_explicit_constraint_removals() {
 	assert false
 }
 
+fn test_mysql_change_column_requires_complete_definition() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	mut error_message := ''
+	ctx.change_column('accounts', Column{
+		name: 'score'
+		kind: .bigint
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL change_column requires a complete column definition; missing options: nullable, default_sql, unique, primary_key, auto_increment'
+	assert recorder.queries.len == 0
+
+	ctx.change_column('accounts', Column{
+		name:           'score'
+		kind:           .bigint
+		nullable:       false
+		default_sql:    '0'
+		unique:         false
+		primary_key:    false
+		auto_increment: false
+	})!
+	assert recorder.queries == [
+		'ALTER TABLE `accounts` MODIFY COLUMN `score` BIGINT NOT NULL DEFAULT 0;',
+	]
+}
+
+fn test_mysql_auto_increment_requires_a_key() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	mut add_error := ''
+	ctx.add_column('accounts', Column{
+		name:           'sequence'
+		kind:           .bigint
+		auto_increment: true
+	}) or { add_error = err.msg() }
+	assert add_error == 'MySQL auto-increment column `sequence` must be a primary key or unique'
+
+	mut create_error := ''
+	ctx.create_table(Table{
+		name:    'events'
+		id:      false
+		columns: [
+			Column{
+				name:           'sequence'
+				kind:           .bigint
+				auto_increment: true
+			},
+		]
+	}) or { create_error = err.msg() }
+	assert create_error == 'MySQL auto-increment column `sequence` must be a primary key or unique'
+	assert recorder.queries.len == 0
+
+	ctx.add_column('accounts', Column{
+		name:           'sequence'
+		kind:           .bigint
+		auto_increment: true
+		unique:         true
+	})!
+	assert recorder.queries == [
+		'ALTER TABLE `accounts` ADD COLUMN `sequence` BIGINT AUTO_INCREMENT UNIQUE;',
+	]
+}
+
+fn test_rename_table_rejects_qualified_targets_where_required() {
+	mut pg_recorder := &RecordingConnection{}
+	mut pg_ctx := new_context(pg_recorder, .pg)
+	mut pg_error := ''
+	pg_ctx.rename_table('public.users', 'public.new_users') or { pg_error = err.msg() }
+	assert pg_error == 'rename_table target `public.new_users` must be unqualified for PostgreSQL and SQLite'
+	assert pg_recorder.queries.len == 0
+	pg_ctx.rename_table('public.users', 'new_users')!
+	assert pg_recorder.queries == [
+		'ALTER TABLE "public"."users" RENAME TO "new_users";',
+	]
+
+	mut sqlite_recorder := &RecordingConnection{}
+	mut sqlite_ctx := new_context(sqlite_recorder, .sqlite)
+	mut sqlite_error := ''
+	sqlite_ctx.rename_table('main.users', 'main.new_users') or { sqlite_error = err.msg() }
+	assert sqlite_error == 'rename_table target `main.new_users` must be unqualified for PostgreSQL and SQLite'
+	assert sqlite_recorder.queries.len == 0
+
+	mut mysql_recorder := &RecordingConnection{}
+	mut mysql_ctx := new_context(mysql_recorder, .mysql)
+	mysql_ctx.rename_table('app.users', 'archive.users')!
+	assert mysql_recorder.queries == [
+		'ALTER TABLE `app`.`users` RENAME TO `archive`.`users`;',
+	]
+}
+
 fn test_validation_and_portable_sql_generation() {
 	mut db := sqlite.connect(':memory:')!
 	defer {

@@ -147,10 +147,13 @@ pub fn (mut ctx Context) drop_table(name string) ! {
 	ctx.execute('DROP TABLE ${quote_identifier(ctx.dialect, name)};')!
 }
 
-// rename_table renames a table.
+// rename_table renames a table. PostgreSQL and SQLite targets must be unqualified.
 pub fn (mut ctx Context) rename_table(from string, to string) ! {
 	validate_identifier(from, 'table')!
 	validate_identifier(to, 'table')!
+	if ctx.dialect in [.sqlite, .pg] && to.contains('.') {
+		return error('rename_table target `${to}` must be unqualified for PostgreSQL and SQLite')
+	}
 	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, from)} RENAME TO ${quote_identifier(ctx.dialect,
 		to)};')!
 }
@@ -182,6 +185,8 @@ pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 // change_column changes a column definition. SQLite requires a table rebuild.
 // PostgreSQL supports type-related fields only and rejects constraint changes
 // before executing SQL; use execute for explicit PostgreSQL constraint DDL.
+// MySQL requires every optional constraint field to be supplied because MODIFY
+// COLUMN replaces the complete column definition.
 pub fn (mut ctx Context) change_column(table string, column Column) ! {
 	validate_identifier(table, 'table')!
 	definition := column_sql(ctx.dialect, column)!
@@ -198,6 +203,10 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 				column.name)} TYPE ${column_type_sql(ctx.dialect, column)!};')!
 		}
 		.mysql {
+			missing := mysql_change_column_missing_options(column)
+			if missing.len > 0 {
+				return error('MySQL change_column requires a complete column definition; missing options: ${missing.join(', ')}')
+			}
 			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} MODIFY COLUMN ${definition};')!
 		}
 	}
@@ -218,6 +227,26 @@ fn pg_change_column_unsupported_options(column Column) []string {
 		options << 'primary_key'
 	}
 	if _ := column.auto_increment {
+		options << 'auto_increment'
+	}
+	return options
+}
+
+fn mysql_change_column_missing_options(column Column) []string {
+	mut options := []string{}
+	if column.nullable == none {
+		options << 'nullable'
+	}
+	if column.default_sql == none {
+		options << 'default_sql'
+	}
+	if column.unique == none {
+		options << 'unique'
+	}
+	if column.primary_key == none {
+		options << 'primary_key'
+	}
+	if column.auto_increment == none {
 		options << 'auto_increment'
 	}
 	return options
@@ -337,11 +366,15 @@ fn column_sql(dialect Dialect, column Column) !string {
 	}
 	auto_increment := column_auto_increment(column)
 	primary_key := column_primary_key(column)
+	unique := column_unique(column)
 	if auto_increment && column.kind !in [.integer, .bigint] {
 		return error('auto-increment column `${column.name}` must be integer or bigint')
 	}
 	if dialect == .sqlite && auto_increment && !primary_key {
 		return error('SQLite auto-increment column `${column.name}` must be a primary key')
+	}
+	if dialect == .mysql && auto_increment && !primary_key && !unique {
+		return error('MySQL auto-increment column `${column.name}` must be a primary key or unique')
 	}
 	mut sql_type := column_type_sql(dialect, column)!
 	if auto_increment {
@@ -364,7 +397,7 @@ fn column_sql(dialect Dialect, column Column) !string {
 	if !column_nullable(column) && !primary_key {
 		parts << 'NOT NULL'
 	}
-	if column_unique(column) {
+	if unique {
 		parts << 'UNIQUE'
 	}
 	default_sql := column_default_sql(column)
