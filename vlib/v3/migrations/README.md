@@ -11,7 +11,8 @@ lock names use a qualified history table's database, or otherwise the current da
 independent databases on one server do not contend, and follow the server's
 `lower_case_table_names` mode. PostgreSQL lock keys use the effective history schema and the full
 signed 64-bit advisory-lock space. Locked workflows retain that resolved database or schema for all
-history reads and writes, even when a callback changes the connection namespace.
+history reads and writes, even when a callback changes the connection namespace. Unqualified SQLite
+history tables are pinned to `main`, preventing TEMP tables from shadowing persistent history.
 
 ```v ignore
 import db.sqlite
@@ -91,4 +92,5 @@ implicitly commits. MySQL history strings use hex literals, while PostgreSQL use
 strings with doubled backslashes, avoiding session-mode-sensitive escaping.
 The migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode`
 can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
-transaction still covers each mutating workflow.
+transaction still covers each mutating workflow. Migration names containing NUL bytes are rejected
+before any database access.

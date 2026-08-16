@@ -94,6 +94,9 @@ pub fn new(mut conn orm.TransactionalConnection, registered []Migration, config 
 		if migration.name.trim_space() == '' {
 			return error('migration ${migration.version} must have a name')
 		}
+		if migration.name.contains_u8(u8(0)) {
+			return error('migration ${migration.version} name must not contain NUL bytes')
+		}
 		if migration.name.len > 255 {
 			return error('migration ${migration.version} name must not exceed 255 bytes')
 		}
@@ -400,6 +403,9 @@ fn (m &Migrator) history_table_sql() string {
 	if m.locked_history_table_sql != '' {
 		return m.locked_history_table_sql
 	}
+	if m.config.dialect == .sqlite && !m.config.table.contains('.') {
+		return qualified_history_table_sql(.sqlite, 'main', m.config.table)
+	}
 	return quote_identifier(m.config.dialect, m.config.table)
 }
 
@@ -407,7 +413,13 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 	match m.config.dialect {
 		.sqlite {
 			m.conn.execute('BEGIN IMMEDIATE;')!
-			m.locked_history_table_sql = quote_identifier(.sqlite, m.config.table)
+			namespace := if m.config.table.contains('.') {
+				m.config.table.all_before('.')
+			} else {
+				'main'
+			}
+			m.locked_history_table_sql = qualified_history_table_sql(.sqlite, namespace,
+				m.config.table)
 		}
 		.pg {
 			schema := if m.config.table.contains('.') {

@@ -172,6 +172,17 @@ fn change_connection_namespace(mut ctx Context) ! {
 	}
 }
 
+fn create_sqlite_temp_history_shadow(mut ctx Context) ! {
+	ctx.create_table(Table{
+		name: 'persistent_from_migration'
+	})!
+	ctx.execute('CREATE TEMP TABLE IF NOT EXISTS schema_migrations (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+}
+
+fn drop_sqlite_temp_history_shadow(mut ctx Context) ! {
+	ctx.drop_table('persistent_from_migration')!
+}
+
 fn create_widget_with_orm_dsl(mut ctx Context) ! {
 	sql ctx {
 		create table MigrationWidget
@@ -383,6 +394,53 @@ fn test_locked_history_table_survives_callback_namespace_changes() {
 		delete_query := down_recorder.queries.filter(it.starts_with('DELETE FROM '))
 		assert delete_query == ['DELETE FROM ${qualified_table} WHERE version = 1;']
 	}
+}
+
+fn test_sqlite_history_table_is_pinned_to_main() {
+	for temp_table_exists in [false, true] {
+		mut db := sqlite.connect(':memory:')!
+		if temp_table_exists {
+			db.exec('CREATE TEMP TABLE schema_migrations (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+			db.exec("INSERT INTO temp.schema_migrations VALUES (1, 'shadow', '2026-08-16T00:00:00Z');")!
+		}
+		mut runner := new(mut db, [
+			Migration{
+				version: 1
+				name:    'persistent_history'
+				up:      create_sqlite_temp_history_shadow
+				down:    drop_sqlite_temp_history_shadow
+			},
+		], Config{
+			dialect: .sqlite
+		})!
+		assert runner.migrate()!.map(it.version) == [i64(1)]
+		assert runner.applied()!.map(it.name) == ['persistent_history']
+		assert db.q_int("SELECT count(*) FROM main.sqlite_master WHERE type = 'table' AND name = 'persistent_from_migration';")! == 1
+		assert db.q_string('SELECT name FROM main.schema_migrations WHERE version = 1;')! == 'persistent_history'
+		if temp_table_exists {
+			assert db.q_string('SELECT name FROM temp.schema_migrations WHERE version = 1;')! == 'shadow'
+		} else {
+			assert db.q_int('SELECT count(*) FROM temp.schema_migrations;')! == 0
+		}
+		db.close()!
+	}
+}
+
+fn test_migration_names_reject_nul_bytes_before_database_access() {
+	mut recorder := &RecordingConnection{}
+	new(mut recorder, [
+		Migration{
+			version: 1
+			name:    'before\x00after'
+			up:      record_locked_migration
+			down:    record_locked_migration
+		},
+	], Config{}) or {
+		assert err.msg() == 'migration 1 name must not contain NUL bytes'
+		assert recorder.queries.len == 0
+		return
+	}
+	assert false
 }
 
 fn test_mysql_migration_locks_are_namespaced_by_database() {
