@@ -3784,8 +3784,20 @@ fn (mut g FlatGen) gen_heap_local_address_expr(ret_id flat.NodeId, expected type
 	return false
 }
 
-// optional_forward_return_abi_expr converts a directly forwarded option/result
-// when a specialized generic callee and its caller use different C wrapper names.
+// optional_forward_return_abi_wrap_expr converts a directly forwarded option/result
+// after a specialized generic callee and its caller resolve to different C wrapper names.
+fn (mut g FlatGen) optional_forward_return_abi_wrap_expr(source_ct string, expected_ct string, base types.Type, expr string) string {
+	tmp := g.tmp_name()
+	if _ := array_fixed_type(base) {
+		out := g.tmp_name()
+		return '({ ${source_ct} ${tmp} = ${expr}; ${expected_ct} ${out} = { .ok = ${tmp}.ok, .err = ${tmp}.err }; if (${tmp}.ok) { memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value)); } ${out}; })'
+	}
+	value := if base is types.Void { '' } else { ', .value = ${tmp}.value' }
+	return '({ ${source_ct} ${tmp} = ${expr}; (${expected_ct}){ .ok = ${tmp}.ok, .err = ${tmp}.err${value} }; })'
+}
+
+// optional_forward_return_abi_expr resolves the source and destination ABI wrappers
+// for a directly forwarded option/result expression.
 fn (mut g FlatGen) optional_forward_return_abi_expr(ret_id flat.NodeId, expected_ct string) ?string {
 	mut source_type := g.usable_expr_type(ret_id)
 	declared := g.declared_call_return_type(ret_id)
@@ -3807,10 +3819,8 @@ fn (mut g FlatGen) optional_forward_return_abi_expr(ret_id flat.NodeId, expected
 	} else {
 		return none
 	}
-	tmp := g.tmp_name()
-	value := if base is types.Void { '' } else { ', .value = ${tmp}.value' }
 	expr := g.expr_to_string(ret_id)
-	return '({ ${source_ct} ${tmp} = ${expr}; (${expected_ct}){ .ok = ${tmp}.ok, .err = ${tmp}.err${value} }; })'
+	return g.optional_forward_return_abi_wrap_expr(source_ct, expected_ct, base, expr)
 }
 
 fn optional_error_payload_return_expr(value_expr string, base_ct string, opt_ct string) ?string {

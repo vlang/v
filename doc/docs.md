@@ -6165,10 +6165,22 @@ before using the shader in your code.
 
 ### Profiling
 
-V has good support for profiling your programs: `v -profile profile.txt run file.v`
-That will produce a profile.txt file, which you can then analyze.
+V has good support for profiling your programs: `v -profile profile.txt run file.v`.
+That will produce a `profile.txt` file when the program exits, which you can then
+analyze. If the output file is omitted, as in `v -profile run file.v`, the report
+is written to standard output. `-prof` is an alias for `-profile`.
 
-The generated profile.txt file will have lines with 4 columns:
+The V3 compiler supports profiling with its C backend. Other V3 backends reject
+`-profile`. V3 also supports these V1-compatible selection options:
+
+- `-profile-fns name1,name2` profiles only the named functions and functions
+  called from them. Use the function names shown in profile output, such as
+  `main__work`.
+- `-profile-no-inline` omits functions marked `@[inline]` from the report.
+- `-d no_profile_startup` excludes calls made during module initialization.
+
+Use the selection options together with `-profile`. The generated profile file
+has lines with 5 columns:
 
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
@@ -6177,8 +6189,8 @@ The generated profile.txt file will have lines with 4 columns:
 4. How much time on average, a call to a function took (in ns).
 5. The name of the v function.
 
-You can sort on column 3 (average time per function) using:
-`sort -n -k3 profile.txt|tail`
+You can sort on column 3 (exclusive time per function) using:
+`sort -n -k3 profile.txt | tail`
 
 You can also use stopwatches to measure just portions of your code explicitly:
 

@@ -1815,6 +1815,21 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	g.writeln('}')
 }
 
+// gen_interface_dispatch_optional_abi_value_return emits the adapted wrapper return
+// after a specialized generic method and its interface dispatch use different C ABIs.
+fn (mut g FlatGen) gen_interface_dispatch_optional_abi_value_return(expected_ct string, result string, expected_base types.Type) {
+	if _ := array_fixed_type(expected_base) {
+		out := g.interface_tmp('iface_abi_result_out')
+		g.writeln('\t\t\t${expected_ct} ${out} = { .ok = ${result}.ok, .err = ${result}.err };')
+		g.writeln('\t\t\tif (${result}.ok) {')
+		g.writeln('\t\t\t\tmemcpy(${out}.value, ${result}.value, sizeof(${out}.value));')
+		g.writeln('\t\t\t}')
+		g.writeln('\t\t\treturn ${out};')
+	} else {
+		g.writeln('\t\t\treturn (${expected_ct}){ .ok = ${result}.ok, .err = ${result}.err, .value = ${result}.value };')
+	}
+}
+
 // gen_interface_dispatch_optional_abi_return adapts specialized generic methods
 // whose option/result C ABI differs from the interface dispatch ABI.
 fn (mut g FlatGen) gen_interface_dispatch_optional_abi_return(call string, expected types.Type, actual types.Type, actual_key string) bool {
@@ -1843,7 +1858,7 @@ fn (mut g FlatGen) gen_interface_dispatch_optional_abi_return(call string, expec
 	result := g.interface_tmp('iface_abi_result')
 	g.writeln('{')
 	g.writeln('\t\t\t${actual_ct} ${result} = ${call};')
-	g.writeln('\t\t\treturn (${expected_ct}){ .ok = ${result}.ok, .err = ${result}.err, .value = ${result}.value };')
+	g.gen_interface_dispatch_optional_abi_value_return(expected_ct, result, expected_base)
 	g.writeln('\t\t}')
 	return true
 }
