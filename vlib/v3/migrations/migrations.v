@@ -561,7 +561,7 @@ fn (mut m Migrator) validate_mysql_session() ! {
 	if !mysql_autocommit_enabled(autocommit_rows)! {
 		return error('MySQL migrations require session autocommit to be enabled')
 	}
-	probe := 'v3_migrations_transaction_probe'
+	probe := 'v3_migrations_transaction_probe_${time.now().unix_nano()}'
 	m.conn.orm_savepoint(probe) or {
 		// MySQL rejects the savepoint outside a transaction, or discards it at
 		// the end of the probe statement when autocommit is enabled.

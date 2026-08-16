@@ -2,6 +2,9 @@ module migrations
 
 import hash.fnv1a
 import orm
+import strconv
+
+const sqlite_digit_separator_min_version = 3_046_000
 
 // Dialect selects the SQL emitted by schema helpers.
 pub enum Dialect {
@@ -84,7 +87,8 @@ pub:
 // normal V3 `sql ctx { ... }` ORM statements can be used alongside schema helpers.
 pub struct Context {
 mut:
-	conn orm.Connection
+	conn                   orm.Connection
+	sqlite_runtime_version ?int
 pub:
 	dialect Dialect
 }
@@ -177,7 +181,7 @@ pub fn (mut ctx Context) add_column(table string, column Column) ! {
 	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
 	definition := column_sql(ctx.dialect, column)!
 	if ctx.dialect == .sqlite {
-		validate_sqlite_add_column(column)!
+		validate_sqlite_add_column(mut ctx, column)!
 	}
 	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} ADD COLUMN ${definition};')!
 }
@@ -539,7 +543,7 @@ fn column_sql_internal(dialect Dialect, column Column, preserve_omitted_mysql_ke
 	return parts.join(' ')
 }
 
-fn validate_sqlite_add_column(column Column) ! {
+fn validate_sqlite_add_column(mut ctx Context, column Column) ! {
 	if column_primary_key(column) || column_unique(column) || column_auto_increment(column) {
 		return error('SQLite add_column does not support primary-key, unique, or auto-increment columns; rebuild the table in the migration')
 	}
@@ -547,10 +551,56 @@ fn validate_sqlite_add_column(column Column) ! {
 		if sqlite_add_column_default_is_nonconstant(default_sql) {
 			return error('SQLite add_column does not support nonconstant default `${default_sql}`; rebuild the table in the migration')
 		}
+		if sqlite_numeric_default_uses_digit_separators(default_sql)
+			&& ctx.sqlite_version_number()! < sqlite_digit_separator_min_version {
+			return error('SQLite add_column default `${default_sql}` uses numeric digit separators, which require SQLite 3.46.0 or newer')
+		}
 	}
 	if !column_nullable(column) && !sqlite_has_non_null_default(column) {
 		return error('SQLite add_column requires a non-NULL default for a NOT NULL column; rebuild the table in the migration')
 	}
+}
+
+fn (mut ctx Context) sqlite_version_number() !int {
+	if version := ctx.sqlite_runtime_version {
+		return version
+	}
+	rows := ctx.execute('SELECT sqlite_version();')!
+	version := sqlite_version_number(rows)!
+	ctx.sqlite_runtime_version = version
+	return version
+}
+
+fn sqlite_version_number(rows []orm.Row) !int {
+	if rows.len != 1 || rows[0].vals.len == 0 {
+		return error('could not determine SQLite runtime version')
+	}
+	parts := rows[0].vals[0].split('.')
+	if parts.len != 3 {
+		return error('unsupported SQLite runtime version `${rows[0].vals[0]}`')
+	}
+	major := strconv.atoi(parts[0]) or {
+		return error('unsupported SQLite runtime version `${rows[0].vals[0]}`')
+	}
+	minor := strconv.atoi(parts[1]) or {
+		return error('unsupported SQLite runtime version `${rows[0].vals[0]}`')
+	}
+	patch := strconv.atoi(parts[2]) or {
+		return error('unsupported SQLite runtime version `${rows[0].vals[0]}`')
+	}
+	return major * 1_000_000 + minor * 1_000 + patch
+}
+
+fn sqlite_numeric_default_uses_digit_separators(default_sql string) bool {
+	literal := sqlite_unwrapped_default(sqlite_default_without_comments(default_sql))
+	if !literal.contains('_') {
+		return false
+	}
+	normalized := sqlite_numeric_literal_without_separators(literal) or { return false }
+	if normalized.len > 2 && normalized[0] == `0` && normalized[1] in [u8(`x`), `X`] {
+		return normalized[2..].bytes().all(it.is_hex_digit())
+	}
+	return sqlite_is_decimal_numeric_literal(normalized)
 }
 
 fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {

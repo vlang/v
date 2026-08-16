@@ -22,6 +22,7 @@ mut:
 	postgresql_probe_value    string
 	postgresql_aborted        bool
 	sqlite_table_schema       string = 'main'
+	sqlite_version            string = '3.46.0'
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -164,6 +165,11 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'SELECT @@autocommit;' {
 		return [orm.Row{
 			vals: [if conn.autocommit { '1' } else { '0' }]
+		}]
+	}
+	if query == 'SELECT sqlite_version();' {
+		return [orm.Row{
+			vals: [conn.sqlite_version]
 		}]
 	}
 	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
@@ -650,6 +656,7 @@ fn test_postgresql_open_transaction_is_rejected_in_every_mode_without_being_fini
 	for mode in [TransactionMode.automatic, .always, .never] {
 		mut recorder := &RecordingConnection{
 			in_transaction: true
+			savepoints:     ['v3_migrations_transaction_probe']
 		}
 		mut runner := new(mut recorder, []Migration{}, Config{
 			dialect:          .pg
@@ -678,11 +685,12 @@ fn test_mysql_open_transaction_is_rejected_in_every_mode_without_being_finished(
 		runner.migrate() or { error_message = err.msg() }
 		assert error_message == 'MySQL migrations require a connection without an already-open transaction'
 		assert recorder.in_transaction
-		assert recorder.queries == [
-			'SELECT @@autocommit;',
-			'ORM SAVEPOINT v3_migrations_transaction_probe',
-			'ORM RELEASE SAVEPOINT v3_migrations_transaction_probe',
-		]
+		assert recorder.queries.len == 3
+		assert recorder.queries[0] == 'SELECT @@autocommit;'
+		assert recorder.queries[1].starts_with('ORM SAVEPOINT v3_migrations_transaction_probe_')
+		probe := recorder.queries[1].all_after('ORM SAVEPOINT ')
+		assert probe != 'v3_migrations_transaction_probe'
+		assert recorder.queries[2] == 'ORM RELEASE SAVEPOINT ${probe}'
 	}
 }
 
@@ -1922,6 +1930,7 @@ fn test_sqlite_accepts_numeric_literal_digit_separators() {
 		default_sql: '(0xCA_FE)'
 	})!
 	assert recorder.queries == [
+		'SELECT sqlite_version();',
 		'ALTER TABLE "accounts" ADD COLUMN "population" INTEGER DEFAULT (1_000);',
 		'ALTER TABLE "accounts" ADD COLUMN "mask" INTEGER DEFAULT (0xCA_FE);',
 	]
@@ -1932,7 +1941,20 @@ fn test_sqlite_accepts_numeric_literal_digit_separators() {
 		default_sql: '(e1)'
 	}) or { error_message = err.msg() }
 	assert error_message == 'SQLite add_column does not support nonconstant default `(e1)`; rebuild the table in the migration'
-	assert recorder.queries.len == 2
+	assert recorder.queries.len == 3
+
+	mut old_recorder := &RecordingConnection{
+		sqlite_version: '3.45.1'
+	}
+	mut old_ctx := new_context(old_recorder, .sqlite)
+	error_message = ''
+	old_ctx.add_column('accounts', Column{
+		name:        'population'
+		kind:        .integer
+		default_sql: '(1_000)'
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_column default `(1_000)` uses numeric digit separators, which require SQLite 3.46.0 or newer'
+	assert old_recorder.queries == ['SELECT sqlite_version();']
 }
 
 fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {

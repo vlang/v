@@ -68,8 +68,8 @@ add/remove a foreign key on an existing table; those helpers return an error so 
 explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
 auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults
 even when prohibited expressions have unary signs, SQL comments, or postfix clauses.
-Parenthesized and signed literal defaults, including SQLite numeric digit separators, remain
-allowed. Numeric defaults require a mantissa and a complete exponent.
+Parenthesized and signed literal defaults remain allowed. Numeric defaults require a mantissa and a
+complete exponent; digit separators require SQLite 3.46.0 or newer.
 SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
 schema from a qualified table or resolves an unqualified table using SQLite lookup order. Index
 creation resolves the table and qualifies an unqualified index name with the same schema; an
@@ -112,7 +112,7 @@ history is written. MySQL `always` mode verifies an owned savepoint before writi
 callbacks likewise cannot end or replace the original immediate lock transaction before the history
 write.
 MySQL migrations and inspections also reject connections with active transactions or disabled
-session autocommit. An unqualified MySQL history table is resolved and retained on first use, so
-later database changes on the same connection cannot redirect history operations or lock
-namespacing. Callback-created MySQL transaction state is rolled back and rejected before the named
-migration lock is released.
+session autocommit, using a unique savepoint name for each transaction-state probe. An unqualified
+MySQL history table is resolved and retained on first use, so later database changes on the same
+connection cannot redirect history operations or lock namespacing. Callback-created MySQL
+transaction state is rolled back and rejected before the named migration lock is released.
