@@ -6151,7 +6151,9 @@ pub fn (mut tc TypeChecker) register_generated_fn_param_types(name string, param
 // rebuild_fn_param_suffix_index refreshes the suffix index after a batch
 // replaces or removes synthesized signatures.
 pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
-	tc.receiver_method_suffix_index.clear()
+	// Allocate a new map so callers rebuilding after a disposable prealloc
+	// scope do not retain its keys, values, or backing storage.
+	tc.receiver_method_suffix_index = map[string]string{}
 	tc.receiver_method_suffix_index.reserve(u32(tc.fn_param_types.len * 3))
 	for name, _ in tc.fn_param_types {
 		tc.add_receiver_method_suffix_index(name)
