@@ -12711,11 +12711,12 @@ struct EagerSelfhostImport {
 }
 
 struct EagerSelfhostModule {
-	path  string
-	dir   string
-	files []string
-mut:
+	path     string
+	dir      string
+	files    []string
 	identity string
+mut:
+	import_paths []string
 }
 
 struct EagerSelfhostScanArgs {
@@ -12730,8 +12731,10 @@ struct EagerSelfhostResolveArgs {
 	importing_file string
 	project_root   string
 mut:
-	dir   string
-	files []string
+	dir      string
+	real_dir string
+	files    []string
+	identity string
 }
 
 fn eager_selfhost_scan_thread(arg voidptr) voidptr {
@@ -12750,8 +12753,13 @@ fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file,
 		result.project_root, mut local_cache)
 	if result.dir.len > 0 && os.is_dir(result.dir) {
+		result.real_dir = os.real_path(result.dir)
 		result.files = pref.get_v_files_from_dir_for_target(result.dir, prefs.user_defines,
 			prefs.target)
+		if result.files.len > 0 {
+			result.identity = import_module_identity_with_path_cache(prefs, result.path,
+				result.importing_file, result.project_root, result.dir, mut local_cache)
+		}
 	}
 	return unsafe { nil }
 }
@@ -12995,7 +13003,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 		}
 	}
 	mut modules := []EagerSelfhostModule{cap: 64}
-	mut paths_by_suffix := map[string][]string{}
+	mut module_by_real_dir := map[string]int{}
 	mut qi := 0
 	for qi < pending.len {
 		wave_end := pending.len
@@ -13023,14 +13031,18 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 			}
 			module_path_cache['${importing_dir}\n${import_req.path}'] = result.dir
 			parsed_modules[import_req.path] = true
-			modules << EagerSelfhostModule{
-				path:  import_req.path
-				dir:   result.dir
-				files: result.files
+			if result.real_dir in module_by_real_dir {
+				module_idx := module_by_real_dir[result.real_dir]
+				modules[module_idx].import_paths << import_req.path
+				continue
 			}
-			suffix := import_req.path.all_after_last('.')
-			if import_req.path !in paths_by_suffix[suffix] {
-				paths_by_suffix[suffix] << import_req.path
+			module_by_real_dir[result.real_dir] = modules.len
+			modules << EagerSelfhostModule{
+				path:         import_req.path
+				dir:          result.dir
+				files:        result.files
+				identity:     result.identity
+				import_paths: [import_req.path]
 			}
 			wave_files << result.files
 		}
@@ -13043,12 +13055,6 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 				}
 			}
 		}
-	}
-	for i in 0 .. modules.len {
-		path := modules[i].path
-		suffix := path.all_after_last('.')
-		collides := path.contains('.') && paths_by_suffix[suffix].len > 1
-		modules[i].identity = if collides { path } else { suffix }
 	}
 	return modules
 }
@@ -13114,10 +13120,16 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		mut eager_canons := []string{}
 		for module_info in modules {
 			identity := module_info.identity
-			parsed_module_identities[module_info.path] = identity
+			for import_path in module_info.import_paths {
+				parsed_module_identities[import_path] = identity
+			}
 			parsed_modules[identity] = true
 			parsed_identity_dirs[identity] = module_info.dir
-			cache_state.module_import_paths[identity] = module_info.path
+			cache_state.module_import_paths[identity] = if identity in module_info.import_paths {
+				identity
+			} else {
+				module_info.path
+			}
 			cache_state.module_sources[identity] = module_info.files
 			cache_state.parsed_from_source[identity] = true
 			cache_state.source_body_modules[identity] = true

@@ -186,4 +186,53 @@ fn main() {
 	collision_run := os.execute(output)
 	assert collision_run.exit_code == 0, collision_run.output
 	assert collision_run.output.trim_space() == 'plain bar\ndotted bar', collision_run.output
+
+	alias_root := os.join_path(root, 'module_alias')
+	legacy_dir := os.join_path(alias_root, 'modules', 'legacy')
+	canonical_dir := os.join_path(alias_root, 'modules', 'canonical')
+	os.mkdir_all(legacy_dir) or { panic(err) }
+	os.mkdir_all(canonical_dir) or { panic(err) }
+	os.write_file(os.join_path(alias_root, 'v.mod'), "Module {
+	name: 'eager_alias_identity'
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(legacy_dir, 'alias.v'),
+		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n") or { panic(err) }
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical
+
+pub struct Value {
+pub:
+	n int
+}
+
+pub fn make() Value {
+	return Value{
+		n: 42
+	}
+}
+
+pub fn read(value Value) int {
+	return value.n
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(alias_root, 'main.v'), 'module main
+
+import legacy
+import canonical
+
+fn main() {
+	println(canonical.read(legacy.make()))
+}
+') or {
+		panic(err)
+	}
+	alias_build := os.execute('${v3_bin} -nocache -building-v -o ${output} ${alias_root}/main.v')
+	assert alias_build.exit_code == 0, alias_build.output
+	alias_run := os.execute(output)
+	assert alias_run.exit_code == 0, alias_run.output
+	assert alias_run.output.trim_space() == '42', alias_run.output
 }
