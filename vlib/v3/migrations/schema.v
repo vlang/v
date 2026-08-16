@@ -631,7 +631,7 @@ fn sqlite_is_constant_default_expression(default_sql string) bool {
 }
 
 fn sqlite_cast_expression(default_sql string) ?SqliteCastExpression {
-	literal := default_sql.trim_space()
+	literal := sqlite_default_without_leading_signs(default_sql)
 	if literal.len < 6 || literal[..4].to_upper() != 'CAST' {
 		return none
 	}

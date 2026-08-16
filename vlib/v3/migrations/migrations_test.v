@@ -1919,14 +1919,27 @@ fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {
 		kind:        .integer
 		default_sql: '(CAST(42 AS INTEGER))'
 	})!
+	ctx.add_column('accounts', Column{
+		name:        'signed_cast_count'
+		kind:        .integer
+		default_sql: '(+CAST(42 AS INTEGER))'
+	})!
+	ctx.add_column('accounts', Column{
+		name:        'nested_signed_cast_count'
+		kind:        .integer
+		default_sql: '(CAST(-CAST(42 AS INTEGER) AS INTEGER))'
+	})!
 	assert db.q_int('SELECT collated_count FROM accounts WHERE id = 1;')! == 0
 	assert db.q_string('SELECT collated_label FROM accounts WHERE id = 1;')! == 'collated'
 	assert db.q_int('SELECT cast_count FROM accounts WHERE id = 1;')! == 42
+	assert db.q_int('SELECT signed_cast_count FROM accounts WHERE id = 1;')! == 42
+	assert db.q_int('SELECT nested_signed_cast_count FROM accounts WHERE id = 1;')! == -42
 }
 
 fn test_sqlite_constant_cast_default_classification() {
 	for default_sql in ['(CAST(42 AS INTEGER))', "(CAST('x AS y' AS TEXT))",
-		'(CAST(CAST(42 AS TEXT) AS INTEGER))', '(CAST((+42) AS DECIMAL(10, 2)))'] {
+		'(CAST(CAST(42 AS TEXT) AS INTEGER))', '(CAST((+42) AS DECIMAL(10, 2)))',
+		'(+CAST(42 AS INTEGER))', '(CAST(-CAST(42 AS INTEGER) AS INTEGER))'] {
 		assert !sqlite_add_column_default_is_nonconstant(default_sql)
 	}
 	for default_sql in ['(CAST(CURRENT_TIMESTAMP AS TEXT))', "(CAST(datetime('now') AS TEXT))",
