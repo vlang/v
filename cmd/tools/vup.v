@@ -106,7 +106,7 @@ fn v_upstream_pull_command() string {
 fn (app App) update_tcc() bool {
 	command := get_tcc_update_cmd()
 	if os.user_os() != 'windows' {
-		make_sure_cmd_is_available('make')
+		make_sure_cmd_is_available(get_tcc_make_cmd_name())
 	}
 	println('> updating TCC ...')
 	result := os.execute(command)
@@ -289,10 +289,15 @@ fn get_make_cmd_name() string {
 }
 
 fn get_tcc_update_cmd() string {
-	if os.user_os() == 'windows' {
-		return 'makev.bat latest_tcc'
+	return '${get_tcc_make_cmd_name()} latest_tcc'
+}
+
+fn get_tcc_make_cmd_name() string {
+	return match os.user_os() {
+		'windows' { 'makev.bat' }
+		'freebsd', 'openbsd', 'netbsd' { 'gmake' }
+		else { 'make' }
 	}
-	return 'make latest_tcc'
 }
 
 fn make_sure_cmd_is_available(cmd string) {

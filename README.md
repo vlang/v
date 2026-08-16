@@ -161,14 +161,14 @@ You should see something like this:
 
 ### FreeBSD
 
-On FreeBSD, V needs `boehm-gc-threaded` package preinstalled. After installing it, you can use the
-same script, like on Linux/macos:
+On FreeBSD, V needs `boehm-gc-threaded` and GNU `make` packages preinstalled. After installing
+them, use `gmake` to build V:
 
 ```bash
-pkg install boehm-gc-threaded
+pkg install boehm-gc-threaded gmake
 git clone --depth=1 https://github.com/vlang/v
 cd v
-make
+gmake
 ```
 
 ### OpenBSD
