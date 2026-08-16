@@ -20,6 +20,7 @@ mut:
 	postgresql_history_schema string
 	postgresql_table_schema   string = 'public'
 	postgresql_probe_value    string
+	postgresql_aborted        bool
 	sqlite_table_schema       string = 'main'
 }
 
@@ -63,8 +64,16 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query in ['ROLLBACK;', 'COMMIT;'] {
 		conn.in_transaction = false
 		conn.postgresql_probe_value = ''
+		conn.postgresql_aborted = false
 		conn.sqlite_probe_rows = 0
 		conn.clear_savepoints()
+	}
+	if query == 'force PostgreSQL statement error;' {
+		conn.postgresql_aborted = true
+		return error('forced PostgreSQL statement error')
+	}
+	if conn.postgresql_aborted {
+		return error('current PostgreSQL transaction is aborted')
 	}
 	if query.starts_with('SAVEPOINT ') {
 		if !conn.in_transaction {
@@ -169,12 +178,14 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 fn (mut conn RecordingConnection) orm_begin() ! {
 	conn.queries << 'ORM BEGIN'
 	conn.in_transaction = true
+	conn.postgresql_aborted = false
 }
 
 fn (mut conn RecordingConnection) orm_commit() ! {
 	conn.queries << 'ORM COMMIT'
 	conn.in_transaction = false
 	conn.postgresql_probe_value = ''
+	conn.postgresql_aborted = false
 	conn.clear_savepoints()
 }
 
@@ -182,6 +193,7 @@ fn (mut conn RecordingConnection) orm_rollback() ! {
 	conn.queries << 'ORM ROLLBACK'
 	conn.in_transaction = false
 	conn.postgresql_probe_value = ''
+	conn.postgresql_aborted = false
 	conn.sqlite_probe_rows = 0
 	conn.clear_savepoints()
 }
@@ -361,6 +373,12 @@ fn start_mysql_transaction(mut ctx Context) ! {
 
 fn start_postgresql_transaction(mut ctx Context) ! {
 	ctx.execute('BEGIN;')!
+}
+
+fn abort_postgresql_transaction_and_catch_error(mut ctx Context) ! {
+	ctx.execute('BEGIN;')!
+	ctx.execute('force PostgreSQL statement error;') or { return }
+	return error('expected the PostgreSQL statement to fail')
 }
 
 fn rollback_callback_transaction(mut ctx Context) ! {
@@ -786,6 +804,55 @@ fn test_postgresql_callback_transactions_are_rolled_back_before_unlocking() {
 	assert history_deletes.len == 1
 	assert down_rollback_index > down_recorder.queries.index('BEGIN;')
 	assert down_rollback_index > down_recorder.queries.index(history_deletes[0])
+	assert down_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
+}
+
+fn test_postgresql_history_write_errors_rollback_callback_transaction_state() {
+	migration := Migration{
+		version: 1
+		name:    'aborted_transaction'
+		up:      abort_postgresql_transaction_and_catch_error
+		down:    abort_postgresql_transaction_and_catch_error
+	}
+	mut up_recorder := &RecordingConnection{}
+	mut up_runner := new(mut up_recorder, [migration], Config{
+		dialect:          .pg
+		transaction_mode: .never
+	})!
+	mut error_message := ''
+	up_runner.migrate() or { error_message = err.msg() }
+	assert error_message.contains('could not record migration 1: current PostgreSQL transaction is aborted')
+	assert !up_recorder.in_transaction
+	assert !up_recorder.postgresql_aborted
+	up_inserts := up_recorder.queries.filter(it.starts_with('INSERT INTO '))
+	assert up_inserts.len == 1
+	up_insert_index := up_recorder.queries.index(up_inserts[0])
+	assert up_insert_index > up_recorder.queries.index('force PostgreSQL statement error;')
+	assert up_recorder.queries.index('ORM ROLLBACK') > up_insert_index
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	assert up_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
+
+	mut down_recorder := &RecordingConnection{
+		history_rows: [
+			orm.Row{
+				vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+			},
+		]
+	}
+	mut down_runner := new(mut down_recorder, [migration], Config{
+		dialect:          .pg
+		transaction_mode: .never
+	})!
+	error_message = ''
+	down_runner.rollback(1) or { error_message = err.msg() }
+	assert error_message.contains('could not remove migration 1 from history: current PostgreSQL transaction is aborted')
+	assert !down_recorder.in_transaction
+	assert !down_recorder.postgresql_aborted
+	down_deletes := down_recorder.queries.filter(it.starts_with('DELETE FROM '))
+	assert down_deletes.len == 1
+	down_delete_index := down_recorder.queries.index(down_deletes[0])
+	assert down_delete_index > down_recorder.queries.index('force PostgreSQL statement error;')
+	assert down_recorder.queries.index('ORM ROLLBACK') > down_delete_index
 	assert down_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 }
 
@@ -1833,10 +1900,12 @@ fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {
 }
 
 fn test_sqlite_accepts_numeric_literal_digit_separators() {
-	for literal in ['1_000', '(1_000)', '1_2.3_4e5_6', '1e+1_0', '0xCA_FE', '(0xA_B_C)'] {
+	for literal in ['1_000', '(1_000)', '1_2.3_4e5_6', '1e+1_0', '0xCA_FE', '(0xA_B_C)', '.5',
+		'1.', '1e-2'] {
 		assert sqlite_is_literal_default(literal)
 	}
-	for literal in ['_1000', '1000_', '1__000', '1_.0', '0x_FF', '0xFF_', '0xA__B'] {
+	for literal in ['_1000', '1000_', '1__000', '1_.0', '0x_FF', '0xFF_', '0xA__B', 'e1', 'E+1',
+		'.e1', '1e', '1e+', '1.2.3'] {
 		assert !sqlite_is_literal_default(literal)
 	}
 
@@ -1856,6 +1925,14 @@ fn test_sqlite_accepts_numeric_literal_digit_separators() {
 		'ALTER TABLE "accounts" ADD COLUMN "population" INTEGER DEFAULT (1_000);',
 		'ALTER TABLE "accounts" ADD COLUMN "mask" INTEGER DEFAULT (0xCA_FE);',
 	]
+	mut error_message := ''
+	ctx.add_column('accounts', Column{
+		name:        'invalid_exponent'
+		kind:        .real
+		default_sql: '(e1)'
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_column does not support nonconstant default `(e1)`; rebuild the table in the migration'
+	assert recorder.queries.len == 2
 }
 
 fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {

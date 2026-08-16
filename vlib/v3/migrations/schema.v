@@ -2,7 +2,6 @@ module migrations
 
 import hash.fnv1a
 import orm
-import strconv
 
 // Dialect selects the SQL emitted by schema helpers.
 pub enum Dialect {
@@ -613,10 +612,40 @@ fn sqlite_is_literal_default(default_sql string) bool {
 		&& numeric_literal[2..].bytes().all(it.is_hex_digit()) {
 		return true
 	}
-	if _ := strconv.atof64(numeric_literal) {
-		return true
+	return sqlite_is_decimal_numeric_literal(numeric_literal)
+}
+
+fn sqlite_is_decimal_numeric_literal(literal string) bool {
+	mut index := 0
+	mut mantissa_digits := 0
+	for index < literal.len && literal[index].is_digit() {
+		index++
+		mantissa_digits++
 	}
-	return false
+	if index < literal.len && literal[index] == `.` {
+		index++
+		for index < literal.len && literal[index].is_digit() {
+			index++
+			mantissa_digits++
+		}
+	}
+	if mantissa_digits == 0 {
+		return false
+	}
+	if index < literal.len && literal[index] in [u8(`e`), `E`] {
+		index++
+		if index < literal.len && literal[index] in [u8(`+`), `-`] {
+			index++
+		}
+		exponent_start := index
+		for index < literal.len && literal[index].is_digit() {
+			index++
+		}
+		if index == exponent_start {
+			return false
+		}
+	}
+	return index == literal.len
 }
 
 fn sqlite_numeric_literal_without_separators(literal string) ?string {

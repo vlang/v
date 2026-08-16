@@ -830,7 +830,13 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 		if m.config.dialect == .sqlite {
 			m.verify_sqlite_lock_transaction()!
 		}
-		ctx.execute(m.history_insert_sql(migration, applied_at))!
+		ctx.execute(m.history_insert_sql(migration, applied_at)) or {
+			history_err := err
+			m.validate_session_after_callback() or {
+				return error('could not record migration ${migration.version}: ${history_err.msg()}; ${err.msg()}')
+			}
+			return error('could not record migration ${migration.version}: ${history_err.msg()}')
+		}
 	}
 	m.validate_session_after_callback()!
 	return AppliedMigration{
@@ -907,7 +913,13 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 		if m.config.dialect == .sqlite {
 			m.verify_sqlite_lock_transaction()!
 		}
-		ctx.execute(m.history_delete_sql(migration.version))!
+		ctx.execute(m.history_delete_sql(migration.version)) or {
+			history_err := err
+			m.validate_session_after_callback() or {
+				return error('could not remove migration ${migration.version} from history: ${history_err.msg()}; ${err.msg()}')
+			}
+			return error('could not remove migration ${migration.version} from history: ${history_err.msg()}')
+		}
 	}
 	m.validate_session_after_callback()!
 }

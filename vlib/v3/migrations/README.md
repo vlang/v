@@ -69,7 +69,7 @@ explicitly rebuild the table. SQLite `add_column` also rejects primary-key, uniq
 auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults
 even when prohibited expressions have unary signs, SQL comments, or postfix clauses.
 Parenthesized and signed literal defaults, including SQLite numeric digit separators, remain
-allowed.
+allowed. Numeric defaults require a mantissa and a complete exponent.
 SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
 schema from a qualified table or resolves an unqualified table using SQLite lookup order. Index
 creation resolves the table and qualifies an unqualified index name with the same schema; an
@@ -106,10 +106,11 @@ be released before their work commits. Unqualified PostgreSQL history tables res
 persistent relation before falling back to the normal creation schema for inspection, creation,
 and lock namespacing. Temporary relations are ignored unless explicitly qualified in `Config.table`.
 PostgreSQL transactions opened by callbacks in `never` mode are rolled back and rejected before the
-advisory migration lock is released. In transactional modes, callbacks cannot end the
-migrator-owned PostgreSQL transaction before history is written. MySQL `always` mode verifies an
-owned savepoint before writing history. SQLite callbacks likewise cannot end or replace the
-original immediate lock transaction before the history write.
+advisory migration lock is released, including when an aborted transaction makes the history write
+fail. In transactional modes, callbacks cannot end the migrator-owned PostgreSQL transaction before
+history is written. MySQL `always` mode verifies an owned savepoint before writing history. SQLite
+callbacks likewise cannot end or replace the original immediate lock transaction before the history
+write.
 MySQL migrations and inspections also reject connections with active transactions or disabled
 session autocommit. An unqualified MySQL history table is resolved and retained on first use, so
 later database changes on the same connection cannot redirect history operations or lock
