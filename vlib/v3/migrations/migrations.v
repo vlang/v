@@ -407,7 +407,7 @@ fn (mut m Migrator) ensure_history_table() ! {
 		}
 		.mysql {
 			if m.mysql_lock_name == '' {
-				m.reject_existing_mysql_transaction()!
+				m.validate_mysql_session()!
 			}
 			m.resolve_mysql_history_database()!
 		}
@@ -449,7 +449,7 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			m.retain_history_relation(.pg, schema)
 		}
 		.mysql {
-			m.reject_existing_mysql_transaction()!
+			m.validate_mysql_session()!
 			database := m.resolve_mysql_history_database()!
 			case_rows := m.conn.execute('SELECT @@lower_case_table_names;')!
 			lower_case_table_names := mysql_lower_case_table_names(case_rows)!
@@ -506,7 +506,11 @@ fn (mut m Migrator) reject_existing_postgresql_transaction() ! {
 	return error('PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported')
 }
 
-fn (mut m Migrator) reject_existing_mysql_transaction() ! {
+fn (mut m Migrator) validate_mysql_session() ! {
+	autocommit_rows := m.conn.execute('SELECT @@autocommit;')!
+	if !mysql_autocommit_enabled(autocommit_rows)! {
+		return error('MySQL migrations require session autocommit to be enabled')
+	}
 	probe := 'v3_migrations_transaction_probe'
 	m.conn.orm_savepoint(probe) or {
 		// MySQL rejects the savepoint outside a transaction, or discards it at
@@ -613,6 +617,17 @@ fn mysql_lower_case_table_names(rows []orm.Row) !int {
 		return error('unsupported MySQL lower_case_table_names value `${rows[0].vals[0]}`')
 	}
 	return value
+}
+
+fn mysql_autocommit_enabled(rows []orm.Row) !bool {
+	if rows.len != 1 || rows[0].vals.len == 0 {
+		return error('could not determine MySQL session autocommit state')
+	}
+	return match rows[0].vals[0].to_lower_ascii() {
+		'1', 'on', 'true' { true }
+		'0', 'off', 'false' { false }
+		else { return error('unsupported MySQL session autocommit value `${rows[0].vals[0]}`') }
+	}
 }
 
 fn postgresql_schema_name(rows []orm.Row) !string {

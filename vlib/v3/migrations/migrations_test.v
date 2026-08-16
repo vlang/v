@@ -13,6 +13,7 @@ mut:
 	lower_case_table_names    int
 	history_rows              []orm.Row
 	in_transaction            bool
+	autocommit                bool = true
 	postgresql_history_schema string
 	postgresql_table_schema   string = 'public'
 	sqlite_table_schema       string = 'main'
@@ -87,6 +88,11 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'SELECT @@lower_case_table_names;' {
 		return [orm.Row{
 			vals: [conn.lower_case_table_names.str()]
+		}]
+	}
+	if query == 'SELECT @@autocommit;' {
+		return [orm.Row{
+			vals: [if conn.autocommit { '1' } else { '0' }]
 		}]
 	}
 	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
@@ -365,9 +371,10 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 			.mysql {
 				name := mysql_migration_lock_name(recorder.database, 'schema_migrations',
 					recorder.lower_case_table_names)
-				assert recorder.queries[0] == 'SELECT DATABASE();'
-				assert recorder.queries[1] == 'SELECT @@lower_case_table_names;'
-				assert recorder.queries[2] == "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
+				assert recorder.queries[0] == 'SELECT @@autocommit;'
+				assert recorder.queries[1] == 'SELECT DATABASE();'
+				assert recorder.queries[2] == 'SELECT @@lower_case_table_names;'
+				assert recorder.queries[3] == "SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
 				assert recorder.queries.last() == "SELECT RELEASE_LOCK('${name}');"
 				assert 'ORM BEGIN' !in recorder.queries
 			}
@@ -500,9 +507,31 @@ fn test_mysql_open_transaction_is_rejected_in_every_mode_without_being_finished(
 		assert error_message == 'MySQL migrations require a connection without an already-open transaction'
 		assert recorder.in_transaction
 		assert recorder.queries == [
+			'SELECT @@autocommit;',
 			'ORM SAVEPOINT v3_migrations_transaction_probe',
 			'ORM RELEASE SAVEPOINT v3_migrations_transaction_probe',
 		]
+	}
+}
+
+fn test_mysql_disabled_autocommit_is_rejected_before_locking_or_inspection() {
+	for mode in [TransactionMode.automatic, .always, .never] {
+		mut recorder := &RecordingConnection{
+			autocommit: false
+		}
+		mut runner := new(mut recorder, []Migration{}, Config{
+			dialect:          .mysql
+			transaction_mode: mode
+		})!
+		mut error_message := ''
+		runner.migrate() or { error_message = err.msg() }
+		assert error_message == 'MySQL migrations require session autocommit to be enabled'
+		assert recorder.queries == ['SELECT @@autocommit;']
+
+		error_message = ''
+		runner.applied() or { error_message = err.msg() }
+		assert error_message == 'MySQL migrations require session autocommit to be enabled'
+		assert recorder.queries == ['SELECT @@autocommit;', 'SELECT @@autocommit;']
 	}
 }
 
@@ -564,6 +593,7 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	first_runner.release_migration_lock(true)!
 	first_name := mysql_migration_lock_name('application_one', 'schema_migrations', 0)
 	assert first_recorder.queries == [
+		'SELECT @@autocommit;',
 		'SELECT DATABASE();',
 		'SELECT @@lower_case_table_names;',
 		"SELECT GET_LOCK('${first_name}', ${migration_lock_timeout_seconds});",
@@ -580,7 +610,7 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	second_runner.release_migration_lock(true)!
 	second_name := mysql_migration_lock_name('application_two', 'schema_migrations', 0)
 	assert second_name != first_name
-	assert second_recorder.queries[2] == "SELECT GET_LOCK('${second_name}', ${migration_lock_timeout_seconds});"
+	assert second_recorder.queries[3] == "SELECT GET_LOCK('${second_name}', ${migration_lock_timeout_seconds});"
 
 	qualified_table := 'shared.schema_migrations'
 	qualified_name := mysql_migration_lock_name('shared', qualified_table, 0)
@@ -595,6 +625,7 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	qualified_first_runner.acquire_migration_lock()!
 	qualified_first_runner.release_migration_lock(true)!
 	assert qualified_first_recorder.queries == [
+		'SELECT @@autocommit;',
 		'SELECT @@lower_case_table_names;',
 		"SELECT GET_LOCK('${qualified_name}', ${migration_lock_timeout_seconds});",
 		"SELECT RELEASE_LOCK('${qualified_name}');",
@@ -651,6 +682,7 @@ fn test_mysql_migration_locks_follow_lower_case_table_names() {
 		upper_runner.release_migration_lock(true)!
 		assert upper_recorder.queries == lower_recorder.queries
 		assert lower_recorder.queries == [
+			'SELECT @@autocommit;',
 			'SELECT @@lower_case_table_names;',
 			"SELECT GET_LOCK('${lower_name}', ${migration_lock_timeout_seconds});",
 			"SELECT RELEASE_LOCK('${lower_name}');",
