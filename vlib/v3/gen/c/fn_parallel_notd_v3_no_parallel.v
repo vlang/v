@@ -2211,6 +2211,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 
 fn (g &FlatGen) new_parallel_tail_worker(worker_id int) &FlatGen {
 	mut w := g.new_parallel_worker(worker_id)
+	w.is_shared = g.is_shared
 	// gen_vinit pairs each initializer with its owning module. These arrays are
 	// declaration-task output and remain read-only while the tail is generated.
 	w.const_runtime_init_modules = g.const_runtime_init_modules.clone()

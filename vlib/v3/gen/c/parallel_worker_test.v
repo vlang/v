@@ -74,6 +74,18 @@ fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	assert init_pos > global_pos
 }
 
+fn test_parallel_tail_worker_preserves_shared_cleanup_mode() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.is_shared = true
+	assert g.module_cleanup_fns.len == 0
+
+	mut tail := g.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
+	tail.gen_vcleanup()
+	output := tail.sb.str()
+	assert tail.is_shared
+	assert output.contains('void _vcleanup(void) {')
+}
+
 fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	g, mut tc := parallel_worker_test_gen(false)
 	tc.a.nodes = [flat.Node{
