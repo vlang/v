@@ -52,7 +52,7 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 			vals: [conn.database]
 		}]
 	}
-	if query.starts_with('SELECT COALESCE((SELECT n.nspname FROM pg_catalog.pg_class AS c ') {
+	if query.starts_with('WITH persistent_search_path AS (') {
 		return [
 			orm.Row{
 				vals: [if conn.postgresql_history_schema == '' {
@@ -689,6 +689,58 @@ fn test_postgresql_migration_locks_canonicalize_history_table() {
 	qualified_runner.acquire_migration_lock()!
 	qualified_runner.release_migration_lock(true)!
 	assert qualified_recorder.queries == unqualified_recorder.queries[1..]
+
+	temp_key := postgresql_migration_lock_key('pg_temp', 'schema_migrations')
+	mut temp_recorder := &RecordingConnection{}
+	mut temp_runner := new(mut temp_recorder, []Migration{}, Config{
+		dialect: .pg
+		table:   'pg_temp.schema_migrations'
+	})!
+	temp_runner.acquire_migration_lock()!
+	temp_runner.release_migration_lock(true)!
+	assert temp_recorder.queries == [
+		'SELECT pg_advisory_lock(${temp_key});',
+		'SELECT pg_advisory_unlock(${temp_key});',
+	]
+}
+
+fn test_postgresql_inspection_resolves_and_retains_existing_history_schema() {
+	mut recorder := &RecordingConnection{
+		schema:                    'tenant'
+		postgresql_history_schema: 'public'
+		history_rows:              [
+			orm.Row{
+				vals: ['7', 'already_applied', '2026-08-16T00:00:00Z']
+			},
+		]
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{
+		dialect: .pg
+	})!
+	assert runner.applied()!.map(it.version) == [i64(7)]
+	assert runner.pending()!.len == 0
+	assert runner.current_version()! == 7
+	status := runner.status()!
+	assert status.len == 1
+	assert status[0].state == .missing
+	assert runner.resolved_history_namespace == 'public'
+	assert recorder.queries.filter(it == postgresql_history_schema_query('schema_migrations')).len == 1
+	for query in recorder.queries {
+		if query.starts_with('CREATE TABLE IF NOT EXISTS ')
+			|| query.starts_with('SELECT version, name, applied_at FROM ') {
+			assert query.contains('"public"."schema_migrations"')
+		}
+	}
+	runner.acquire_migration_lock()!
+	runner.release_migration_lock(true)!
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	assert recorder.queries#[-2..] == [
+		'SELECT pg_advisory_lock(${key});',
+		'SELECT pg_advisory_unlock(${key});',
+	]
+	query := postgresql_history_schema_query('schema_migrations')
+	assert query.contains('current_schemas(false)')
+	assert query.contains('n.oid <> pg_catalog.pg_my_temp_schema()')
 }
 
 fn test_mysql_history_literals_are_backslash_safe() {

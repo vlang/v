@@ -401,6 +401,9 @@ fn (m &Migrator) find_migration(version i64) ?Migration {
 }
 
 fn (mut m Migrator) ensure_history_table() ! {
+	if m.config.dialect == .pg {
+		m.resolve_postgresql_history_schema()!
+	}
 	table := m.history_table_sql()
 	m.conn.execute('CREATE TABLE IF NOT EXISTS ${table} (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
 }
@@ -430,14 +433,7 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 		}
 		.pg {
 			m.reject_existing_postgresql_transaction()!
-			schema := if m.resolved_history_namespace != '' {
-				m.resolved_history_namespace
-			} else if m.config.table.contains('.') {
-				m.config.table.all_before('.')
-			} else {
-				schema_rows := m.conn.execute(postgresql_history_schema_query(m.config.table))!
-				postgresql_schema_name(schema_rows)!
-			}
+			schema := m.resolve_postgresql_history_schema()!
 			key := postgresql_migration_lock_key(schema, m.config.table)
 			m.conn.execute('SELECT pg_advisory_lock(${key});')!
 			m.pg_lock_key = key
@@ -464,6 +460,20 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			m.retain_history_relation(.mysql, database)
 		}
 	}
+}
+
+fn (mut m Migrator) resolve_postgresql_history_schema() !string {
+	if m.resolved_history_namespace != '' {
+		return m.resolved_history_namespace
+	}
+	schema := if m.config.table.contains('.') {
+		m.config.table.all_before('.')
+	} else {
+		schema_rows := m.conn.execute(postgresql_history_schema_query(m.config.table))!
+		postgresql_schema_name(schema_rows)!
+	}
+	m.retain_history_relation(.pg, schema)
+	return schema
 }
 
 fn (mut m Migrator) reject_existing_postgresql_transaction() ! {
@@ -536,8 +546,8 @@ fn postgresql_migration_lock_key(schema string, table string) i64 {
 }
 
 fn postgresql_history_schema_query(table string) string {
-	return 'SELECT COALESCE((SELECT n.nspname FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE c.relname = ${string_literal_sql(.pg,
-		table)} AND pg_catalog.pg_table_is_visible(c.oid) LIMIT 1), pg_catalog.current_schema());'
+	return 'WITH persistent_search_path AS (SELECT n.oid AS namespace_oid, schemas.schema_name, schemas.search_order FROM pg_catalog.unnest(pg_catalog.current_schemas(false)) WITH ORDINALITY AS schemas(schema_name, search_order) JOIN pg_catalog.pg_namespace AS n ON n.nspname = schemas.schema_name WHERE n.oid <> pg_catalog.pg_my_temp_schema()) SELECT COALESCE((SELECT path.schema_name FROM persistent_search_path AS path JOIN pg_catalog.pg_class AS c ON c.relnamespace = path.namespace_oid WHERE c.relname = ${string_literal_sql(.pg,
+		table)} ORDER BY path.search_order LIMIT 1), (SELECT path.schema_name FROM persistent_search_path AS path ORDER BY path.search_order LIMIT 1));'
 }
 
 fn qualified_history_table_sql(dialect Dialect, namespace string, table string) string {
