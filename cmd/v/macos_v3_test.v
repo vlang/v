@@ -66,10 +66,10 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_liveshared = false
 		prefs.is_prof = true
-		assert !is_macos_v3_relevant_command('main.v', prefs)
+		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_prof = false
 		prefs.profile_fns = ['main__work']
-		assert !is_macos_v3_relevant_command('main.v', prefs)
+		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.profile_fns.clear()
 		prefs.use_os_system_to_run = true
 		assert !is_macos_v3_relevant_command('run', prefs)
@@ -273,7 +273,7 @@ fn test_remaining_unsupported_autofree_modes_require_standard_compiler() {
 	}
 }
 
-fn test_selective_profile_autofree_requires_standard_compiler() {
+fn test_selective_profile_autofree_uses_v3_compiler() {
 	$if macos {
 		prefs, _ := pref.parse_args_and_show_errors([], [
 			'',
@@ -283,7 +283,7 @@ fn test_selective_profile_autofree_requires_standard_compiler() {
 			'main.v',
 		], false)
 		assert prefs.profile_fns == ['main__work']
-		assert autofree_requires_standard_compiler(prefs)
+		assert !autofree_requires_standard_compiler(prefs)
 	}
 }
 
@@ -971,6 +971,15 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 	assert !ownership_delegation_is_requested(true, false, true, 'macos')
 }
 
+fn test_ownership_forwarding_adds_the_compile_time_define_once() {
+	prefs := &pref.Preferences{}
+	forwarded := v3_ownership_forwarded_args(prefs, ['-ownership', 'main.v'])
+	assert '-ownership' !in forwarded
+	assert v3_args_have_ownership_define(forwarded)
+	explicit := v3_ownership_forwarded_args(prefs, ['-ownership', '-d', 'ownership', 'main.v'])
+	assert explicit.count(it == 'ownership') == 1
+}
+
 fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 	$if macos {
 		prefs, _ := pref.parse_args_and_show_errors([], [
@@ -984,6 +993,7 @@ fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 			'x86', 'main.v'])
 		assert macos_v3_internal_quiet_flag in forwarded
 		assert '-ownership' !in forwarded
+		assert v3_args_have_ownership_define(forwarded)
 		assert forwarded.count(it == 'amd64') == 2
 		assert 'x86' !in forwarded
 

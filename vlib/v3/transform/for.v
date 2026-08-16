@@ -577,6 +577,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
 		}
+	} else if iter_type.starts_with('[]') || t.is_fixed_array_type(iter_type) {
+		value_name := if has_index {
+			if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
+		} else {
+			if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+		}
+		elem_type := t.infer_for_in_elem_type(iter_type, node)
+		value_type := if node.op == .amp { '&${elem_type}' } else { elem_type }
+		binding_clones << t.make_for_in_binding_clone(value_name, value_type)
 	}
 
 	mut ids := []flat.NodeId{}

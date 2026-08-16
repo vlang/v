@@ -3895,7 +3895,7 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
-fn test_cached_header_preserves_mutable_interface_parameter() {
+fn test_cached_header_preserves_mutable_interface_method_and_parameter() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_interface_mut_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -3905,8 +3905,13 @@ fn test_cached_header_preserves_mutable_interface_parameter() {
 	}
 	write_module_cache_file(root, 'contract/contract.v', 'module contract
 
-pub interface Sink {
-	fill(mut values []int)
+pub interface Writer {
+mut:
+	write(mut bytes []u8) !int
+}
+
+pub fn fill(mut writer Writer, mut bytes []u8) !int {
+	return writer.write(mut bytes)!
 }
 ')
 	main_file := os.join_path(root, 'main.v')
@@ -3914,35 +3919,33 @@ pub interface Sink {
 
 import contract
 
-struct Writer {}
+struct Device {}
 
-fn (writer Writer) fill(mut values []int) {
-	_ = writer
-	values << 43
-}
-
-fn apply(sink contract.Sink, mut values []int) {
-	sink.fill(mut values)
+fn (mut device Device) write(mut bytes []u8) !int {
+	_ = device
+	bytes[0] = 7
+	return 1
 }
 
 fn main() {
-	mut values := []int{}
-	apply(Writer{}, mut values)
-	println(values[0])
+	mut writer := contract.Writer(Device{})
+	mut bytes := [u8(0)]
+	contract.fill(mut writer, mut bytes) or { panic(err) }
+	println(bytes[0])
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
-	assert run_module_cache_binary(first_output) == '43'
+	assert run_module_cache_binary(first_output) == '7'
 	header_path := module_cache_artifact(cache_dir, 'contract_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('fill(mut arg0 []int)'), header
+	assert header.contains('mut:\n\twrite(mut arg0 []u8) !int'), header
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
-	assert run_module_cache_binary(second_output) == '43'
+	assert run_module_cache_binary(second_output) == '7'
 }
 
 fn test_cached_interface_implementer_with_embedded_body_has_forward_declaration() {

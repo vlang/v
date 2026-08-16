@@ -557,6 +557,11 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	g.writeln('static void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
+	if g.has_builtins {
+		g.writeln('\tg_main_argc = 0;')
+		g.writeln('\tg_main_argv = NULL;')
+	}
+	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
 		g.writeln('\t_vinit();')
 	}
@@ -4312,10 +4317,12 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 		g.gen_compiler_vexe_env_setup()
 		g.gen_coverage_registration()
+		g.gen_profile_startup_enable()
 		if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 			|| g.global_inits.len > 0 {
 			g.writeln('\t_vinit();')
 		}
+		g.gen_profile_registration()
 		g.gen_executable_cleanup_registration()
 	} else {
 		ret_type := g.fn_node_return_type(node, module_name)
@@ -4343,6 +4350,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.writeln('_vno_main_init_caller();')
 	}
 	g.gen_function_defer_prelude()
+	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value, g.tc.declaration_has_attribute(node_id,
+		'inline'))
 
 	for i in 0 .. node.children_count {
 		id := g.a.child(&node, i)
@@ -4353,6 +4362,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 	}
 	g.gen_all_defers()
+	g.gen_profile_fn_exit()
 	g.gen_ownership_drops(g.tc.ownership_drop_entries_at_fn_exit(qualify_name_in_module(module_name,
 		node.value)))
 	if is_entry_main {
@@ -4572,6 +4582,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
+	g.gen_profile_startup_enable()
 	if g.needs_no_main_runtime_init_caller() {
 		// Exported callbacks can be invoked without main. Share their guarded
 		// initializer so main and callback startup cannot initialize twice.
@@ -4582,14 +4593,17 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 		}
 		g.gen_executable_cleanup_registration()
 	}
+	g.gen_profile_registration()
 	g.indent++
 	g.gen_function_defer_prelude()
+	g.gen_profile_fn_begin('main', 'main', 'main', false)
 	for stmt in stmts {
 		g.tc.cur_file = stmt.file
 		g.tc.cur_module = stmt.module
 		g.gen_top_level_main_stmt(stmt.id)
 	}
 	g.gen_all_defers()
+	g.gen_profile_fn_exit()
 	g.writeln('return 0;')
 	g.indent--
 	g.writeln('}')
@@ -4663,10 +4677,12 @@ fn (mut g FlatGen) gen_test_main() {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
+	g.gen_profile_startup_enable()
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('\t_vinit();')
 	}
+	g.gen_profile_registration()
 	g.gen_executable_cleanup_registration()
 	g.indent++
 	if g.show_test_stats && tests.len > 0 {
@@ -5631,8 +5647,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
-	// Ownership lowering appends its calls after checking, so they have no source position.
+	// Ownership lowering appends calls after checking, while a generic builtin
+	// drop specialized inside another module can retain its original source
+	// position. Recognize both forms by their resolved/synthetic names.
 	is_ownership_drop := (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
+		|| g.ownership_drop_intrinsic_name(fn_name)
+		|| (target_name.len > 0 && g.ownership_drop_intrinsic_name(target_name))
 		|| (resolved_target_name.len > 0 && g.ownership_drop_intrinsic_name(resolved_target_name))
 	if node.children_count == 2 && is_ownership_drop {
 		arg_id := g.a.child(&node, 1)
@@ -7192,8 +7212,30 @@ fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
 	if !ownership_synthetic_drop_name(name) {
 		return false
 	}
-	module_name := g.tc.fn_type_modules[name] or { return false }
-	return module_name == 'builtin'
+	if module_name := g.tc.fn_type_modules[name] {
+		return module_name == 'builtin'
+	}
+	// A generic builtin drop can be specialized while transforming another
+	// module (for example `sync.arc.Arc[[]string].drop`). Its concrete name is
+	// synthesized after signature collection, so only the generic declaration
+	// is present in `fn_type_modules`.
+	base_name := if name.starts_with('drop_owned_v3_interface_T_') {
+		'drop_owned_v3_interface'
+	} else if name.starts_with('drop_owned_T_') {
+		'drop_owned'
+	} else {
+		name
+	}
+	for candidate in [base_name, 'builtin.${base_name}', 'builtin__${base_name}'] {
+		if module_name := g.tc.fn_type_modules[candidate] {
+			if module_name == 'builtin' {
+				return true
+			}
+		}
+	}
+	// Unqualified `drop_owned_T_*` names are reserved for these generated
+	// specializations. User functions resolve with their module prefix.
+	return name.starts_with('drop_owned_T_') || name.starts_with('drop_owned_v3_interface_T_')
 }
 
 fn (mut g FlatGen) gen_fixed_array_get_call(node flat.Node, fn_name string, target_name string) bool {
@@ -7676,16 +7718,23 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 		return false
 	}
 	iface := clean as types.Interface
-	if g.is_ierror_type_name(iface.name) {
+	mut iface_name := iface.name
+	base_name, _, is_generic_iface := g.shared_generic_app_parts(iface_name)
+	if is_generic_iface {
+		// A specialized generic interface dispatches through the base
+		// interface's runtime box and method table.
+		iface_name = base_name
+	}
+	if g.is_ierror_type_name(iface_name) {
 		return false
 	}
-	if iface.name !in g.interfaces {
+	if iface_name !in g.interfaces {
 		return false
 	}
 	if _ := g.field_type(base_type, fn_node.value) {
 		return false
 	}
-	method_name := '${iface.name}.${fn_node.value}'
+	method_name := '${iface_name}.${fn_node.value}'
 	param_types := g.interface_method_param_types(method_name) or { []types.Type{} }
 	base_id := g.a.child(fn_node, 0)
 	g.write(g.cname(method_name))
@@ -9770,10 +9819,19 @@ fn (mut g FlatGen) precompute_concrete_optional_abi_fns() {
 			continue
 		}
 		params := g.fn_node_param_types_or_decl(node, cur_module)
-		if !params_have_optional_result(params) {
+		ret_type := g.fn_node_return_type(node, cur_module)
+		if !params_have_optional_result(params) && !type_is_optional_result(ret_type) {
 			continue
 		}
 		g.register_concrete_optional_abi_fn(cur_module, node.value)
+		for param in params {
+			if type_is_optional_result(param) {
+				g.concrete_optional_type_name(param)
+			}
+		}
+		if type_is_optional_result(ret_type) {
+			g.concrete_optional_type_name(ret_type)
+		}
 	}
 }
 

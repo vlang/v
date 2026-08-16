@@ -1430,6 +1430,21 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name string, concrete_type
 			return true
 		}
 	}
+	// A concrete instantiation (`Foo[int]`) is boxed if its generic form was
+	// boxed: the box scan only sees the generic-form argument and records the
+	// base name `Foo` (see mark_interface_boxed_type), because the concrete
+	// instantiations are materialised after the scan has frozen.
+	if bracket := concrete_type.index('[') {
+		base := concrete_type[..bracket].trim_space()
+		if base.len > 0 {
+			for iface in iface_names {
+				if t.interface_boxed_types[interface_boxed_type_key(iface, base)]
+					|| t.interface_boxed_types[interface_boxed_type_key(iface, c_name(base))] {
+					return true
+				}
+			}
+		}
+	}
 	for candidate in [concrete_type, t.tc.qualify_name(concrete_type)] {
 		target := t.tc.type_aliases[candidate] or { continue }
 		for iface in iface_names {
@@ -2226,6 +2241,19 @@ fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_typ
 	for iface in iface_names {
 		t.interface_boxed_types[interface_boxed_type_key(iface, concrete_type)] = true
 		t.interface_boxed_types[interface_boxed_type_key(iface, c_name(concrete_type))] = true
+		// Also record the generic base name (`Foo` for `Foo[T]`). The box scan
+		// runs once and then freezes, so it sees only the generic-form box (a
+		// `Foo[W]` argument passed to an interface parameter); the concrete
+		// instantiations (`Foo[int]`) are created later and cannot be marked.
+		// Recording the base lets `interface_boxed_type_marked` recognise any of
+		// those instantiations as boxed.
+		if bracket := concrete_type.index('[') {
+			base := concrete_type[..bracket].trim_space()
+			if base.len > 0 {
+				t.interface_boxed_types[interface_boxed_type_key(iface, base)] = true
+				t.interface_boxed_types[interface_boxed_type_key(iface, c_name(base))] = true
+			}
+		}
 	}
 }
 

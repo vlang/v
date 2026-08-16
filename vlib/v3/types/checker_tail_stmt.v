@@ -15914,8 +15914,13 @@ fn (tc &TypeChecker) lambda_expr_type(node flat.Node) Type {
 	mut params_mut := []bool{}
 	if node.children_count > 0 {
 		for i in 0 .. node.children_count - 1 {
-			params << unknown_type('lambda parameter')
-			params_mut << tc.a.child_node(&node, i).is_mut
+			param := tc.a.child_node(&node, i)
+			if param.typ.len > 0 {
+				params << tc.parse_type(normalize_fn_type_param_text(param.typ))
+			} else {
+				params << unknown_type('lambda parameter')
+			}
+			params_mut << param.is_mut
 		}
 	}
 	ret_type := if node.children_count > 0 {
@@ -16219,6 +16224,13 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return tc.c_struct_type_name(t.name)
 	}
 	if t is Interface {
+		base, _, is_generic := generic_type_application_parts(t.name)
+		if is_generic {
+			// Generic interface applications all use the base interface's runtime
+			// box. Their type arguments specialize method signatures, but do not
+			// introduce a distinct C struct.
+			return naming.c_name(base)
+		}
 		return naming.c_name(t.name)
 	}
 	if t is Enum {

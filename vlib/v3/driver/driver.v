@@ -2199,6 +2199,9 @@ fn cli_usage() string {
 		'  -v                           verbose stage profiling\n' +
 		'  -silent                      suppress benchmark output\n' +
 		'  -showcc                      print C compiler commands\n' +
+		'  -profile [file]              write V1-compatible function profile data\n' +
+		'  -profile-fns <names>         profile only named functions and their callees\n' +
+		'  -profile-no-inline           omit @[inline] functions from the profile\n' +
 		'  -no-memory-limit             disable the 2.25 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
@@ -5835,7 +5838,7 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project',
-		'-test-runner', '-run-only']
+		'-test-runner', '-run-only', '-profile-fns']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -5848,6 +5851,41 @@ fn apply_v3_diagnostic_color_option(option string) {
 
 fn apply_v3_default_diagnostic_color() {
 	ansi.set_colors_enabled(ansi.stderr_supports_escape_sequences())
+}
+
+fn v3_has_following_positional_arg(args []string, start int) bool {
+	for idx := start; idx < args.len; idx++ {
+		if !args[idx].starts_with('-') {
+			return true
+		}
+	}
+	return false
+}
+
+// Keep the optional `-profile [file]` argument compatible with V1: a lone
+// source path remains the compiler input, while an earlier non-source path is
+// consumed as the profile output when another positional argument follows it.
+fn v3_profile_optional_arg_value(args []string, idx int, command_seen bool) (string, bool) {
+	next := args[idx + 1] or { return '-', false }
+	if next == '-' {
+		return next, true
+	}
+	if next.starts_with('-') {
+		return '-', false
+	}
+	if !command_seen && (next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
+		|| next.ends_with('.vsh') || os.is_dir(next)
+		|| !v3_has_following_positional_arg(args, idx + 2)) {
+		return '-', false
+	}
+	return next, true
+}
+
+fn add_v3_profile_used_fns(mut used_fns map[string]bool) {
+	for name in ['time.vpc_now', 'time.vpc_now_darwin', 'v.profile.state', 'v.profile.on',
+		'profile.state', 'profile.on'] {
+		used_fns[name] = true
+	}
 }
 
 // run executes the V3 compiler driver with `args`.
@@ -5971,6 +6009,11 @@ pub fn run(args []string) {
 	mut run_args := []string{}
 	mut run_only := v3_environment_run_only()
 	mut print_fn_names := []string{}
+	mut is_prof := false
+	mut profile_file := ''
+	mut profile_no_inline := false
+	mut profile_fns := []string{}
+	mut command_seen := false
 	environment_c_flags := parse_v3_environment_flags('CFLAGS')
 	environment_ld_flags := parse_v3_environment_flags('LDFLAGS')
 	if environment_c_flags.len > 0 || environment_ld_flags.len > 0 {
@@ -6002,12 +6045,15 @@ pub fn run(args []string) {
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
 			should_run = true
+			command_seen = true
 			i++
 		} else if args[i] == 'build' && input_file.len == 0 && !should_run {
 			skip_running = true
+			command_seen = true
 			i++
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
+			command_seen = true
 			i++
 		} else if args[i] in ['-o', '-output'] && i + 1 < args.len {
 			output_file = args[i + 1]
@@ -6154,6 +6200,26 @@ pub fn run(args []string) {
 			print_fn_names << args[i + 1].split(',')
 			no_cache = true
 			i += 2
+		} else if args[i] in ['-prof', '-profile'] {
+			parsed_profile_file, profile_file_consumed := v3_profile_optional_arg_value(args, i,
+				command_seen)
+			profile_file = parsed_profile_file
+			is_prof = true
+			no_cache = true
+			if 'profile' !in user_defines {
+				user_defines << 'profile'
+			}
+			i += if profile_file_consumed { 2 } else { 1 }
+		} else if args[i] == '-profile-fns' && i + 1 < args.len {
+			for fn_name in args[i + 1].split(',') {
+				if fn_name.len > 0 {
+					profile_fns << fn_name
+				}
+			}
+			i += 2
+		} else if args[i] == '-profile-no-inline' {
+			profile_no_inline = true
+			i++
 		} else if args[i] == '-path' && i + 1 < args.len {
 			module_search_path_spec = args[i + 1]
 			i += 2
@@ -6342,6 +6408,10 @@ pub fn run(args []string) {
 		// `-no-bounds-checking`, matching the established parser contract.
 		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
 	}
+	if is_prof && backend != 'c' {
+		eprintln('option `-profile` is only supported by the C backend')
+		exit(1)
+	}
 	should_run = should_run && !skip_running
 	if is_o && (backend != 'c' || !explicit_output || (!output_file.ends_with('.c')
 		&& !output_file.ends_with('.o'))) {
@@ -6356,6 +6426,12 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	mut current_no_parallel := no_parallel
+	if is_prof {
+		// Profile counters are assigned in function emission order and accumulated
+		// in one generator, just as they are in V1.
+		current_no_parallel = true
+		no_cache = true
+	}
 	if coverage_dir.len > 0 {
 		current_no_parallel = true
 		no_cache = true
@@ -6701,8 +6777,8 @@ pub fn run(args []string) {
 		eprintln('v.pref.lookup_path: ${os.join_path(prefs.vroot, 'vlib')}')
 	}
 	prefs.supports_inline_asm = is_checker_fixture
-	minimal_literal_output := input_uses_minimal_literal_output_builtin(input_file, prefs,
-		is_test_command, is_checker_fixture)
+	minimal_literal_output := !is_prof
+		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
@@ -6875,6 +6951,9 @@ pub fn run(args []string) {
 			eprintln('${listed_path} does not exist')
 			exit(1)
 		}
+	}
+	if is_prof {
+		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
@@ -7566,6 +7645,9 @@ pub fn run(args []string) {
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
 		}
+		if is_prof {
+			add_v3_profile_used_fns(mut used_fns)
+		}
 		program_used_fns = clone_string_bool_map(used_fns)
 		if cache_state.manager.enabled && !generic_cache_hit {
 			if building_v {
@@ -7937,6 +8019,9 @@ pub fn run(args []string) {
 				incremental_changed_names[name] = true
 			}
 		}
+		if is_prof {
+			add_v3_profile_used_fns(mut used_fns)
+		}
 		if !building_v && !uses_generics && transformed_used_fns_need_monomorphize(used_fns) {
 			uses_generics = true
 			skip_transform_generics = false
@@ -8143,6 +8228,9 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
+	if is_prof {
+		add_v3_profile_used_fns(mut used_fns)
+	}
 	pre_tc.clear_c_type_cache()
 	mut mono_tail_sw := time.new_stopwatch()
 	// Transform and monomorphization can synthesize or rewrite payload text.
@@ -8320,6 +8408,7 @@ pub fn run(args []string) {
 			g.set_show_test_summary(is_test_command)
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
+			g.set_profile(profile_file, profile_no_inline, profile_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
 			g.set_suppress_main('no_main' in prefs.user_defines)
@@ -8370,6 +8459,7 @@ pub fn run(args []string) {
 			g.set_show_test_summary(is_test_command)
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
+			g.set_profile(profile_file, profile_no_inline, profile_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
 			g.set_suppress_main('no_main' in prefs.user_defines)

@@ -366,8 +366,14 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 			return t.is_optional_type_name(smartcast_ret)
 		}
 		if typ := t.tc.expr_type(id) {
-			if typ is types.OptionType || typ is types.ResultType {
-				return true
+			if typ !is types.Unknown && typ !is types.Void {
+				// A propagated `call()!` is annotated with its successful payload
+				// type. In a compatible `return` position it can still forward the
+				// callee's complete Result directly, so a non-wrapper expression
+				// annotation must not hide the declared call return below.
+				if typ is types.OptionType || typ is types.ResultType {
+					return true
+				}
 			}
 		}
 		if name := t.tc.resolved_call_name(id) {

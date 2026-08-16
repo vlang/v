@@ -34,6 +34,118 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn v3_profile_counter(profile_output string, fn_name string) int {
+	for line in profile_output.split_into_lines() {
+		fields := line.fields()
+		if fields.len > 0 && fields.last() == fn_name {
+			return fields[0].int()
+		}
+	}
+	return -1
+}
+
+fn test_driver_v1_compatible_profile_options() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_profile_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+
+	api_source := os.join_path(root, 'profile_api.v')
+	os.write_file(api_source, 'module main
+
+import v.profile
+
+fn abc() {
+	println("abc")
+}
+
+fn main() {
+	profile.on(false)
+	abc()
+	profile.on(true)
+	abc()
+}
+')!
+	api_binary := os.join_path(root, 'profile_api')
+	api_profile := os.join_path(root, 'profile_api.txt')
+	api_compile := cmdexec.run(v3_bin, ['-silent', '-profile', api_profile, '-o', api_binary,
+		api_source])
+	assert api_compile.exit_code == 0, api_compile.output
+	api_run := cmdexec.run(api_binary, [])
+	assert api_run.exit_code == 0, api_run.output
+	api_output := os.read_file(api_profile)!
+	assert v3_profile_counter(api_output, 'builtin__builtin_init') == 1, api_output
+	assert v3_profile_counter(api_output, 'main__main') == 1, api_output
+	assert v3_profile_counter(api_output, 'main__abc') == 1, api_output
+
+	// With no output path, the following source remains the compiler input and
+	// the V1 `-prof` alias writes its report to stdout.
+	stdout_binary := os.join_path(root, 'profile_stdout')
+	stdout_compile := cmdexec.run(v3_bin, ['-silent', '-prof', '-o', stdout_binary, api_source])
+	assert stdout_compile.exit_code == 0, stdout_compile.output
+	stdout_run := cmdexec.run(stdout_binary, [])
+	assert stdout_run.exit_code == 0, stdout_run.output
+	assert v3_profile_counter(stdout_run.output, 'main__main') == 1, stdout_run.output
+	assert v3_profile_counter(stdout_run.output, 'main__abc') == 1, stdout_run.output
+
+	reset_binary := os.join_path(root, 'profile_reset')
+	reset_profile := os.join_path(root, 'profile_reset.txt')
+	reset_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_profile_startup', '-profile',
+		reset_profile, '-o', reset_binary, api_source])
+	assert reset_compile.exit_code == 0, reset_compile.output
+	reset_run := cmdexec.run(reset_binary, [])
+	assert reset_run.exit_code == 0, reset_run.output
+	reset_output := os.read_file(reset_profile)!
+	assert v3_profile_counter(reset_output, 'builtin__builtin_init') == -1, reset_output
+	assert v3_profile_counter(reset_output, 'main__main') == 1, reset_output
+	assert v3_profile_counter(reset_output, 'main__abc') == 1, reset_output
+
+	selective_source := os.join_path(root, 'profile_selective.v')
+	os.write_file(selective_source, 'module main
+
+@[inline]
+fn inline_fn() {
+	println("inline")
+}
+
+fn leaf() {
+	println("leaf")
+}
+
+fn selected() {
+	leaf()
+	leaf()
+	inline_fn()
+}
+
+fn ignored() {
+	leaf()
+}
+
+fn main() {
+	ignored()
+	selected()
+}
+')!
+	selective_binary := os.join_path(root, 'profile_selective')
+	selective_profile := os.join_path(root, 'profile_selective.txt')
+	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
+	assert selective_compile.exit_code == 0, selective_compile.output
+	selective_run := cmdexec.run(selective_binary, [])
+	assert selective_run.exit_code == 0, selective_run.output
+	selective_output := os.read_file(selective_profile)!
+	assert v3_profile_counter(selective_output, 'main__main') == -1, selective_output
+	assert v3_profile_counter(selective_output, 'main__ignored') == -1, selective_output
+	assert v3_profile_counter(selective_output, 'main__selected') == 1, selective_output
+	assert v3_profile_counter(selective_output, 'main__leaf') == 2, selective_output
+	assert v3_profile_counter(selective_output, 'main__inline_fn') == -1, selective_output
+	assert v3_profile_counter(selective_output, 'builtin__println') == 3, selective_output
+}
+
 fn test_driver_only_monomorphizes_when_generics_are_used() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_generics_${os.getpid()}')
 	os.rmdir_all(root) or {}

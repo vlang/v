@@ -870,6 +870,9 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 }
 
 fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
+	for opt_name, val_type in fs_worker.needed_optional_types {
+		g.needed_optional_types[opt_name.clone()] = val_type.clone()
+	}
 	if fs_worker.worker_scope == unsafe { nil } {
 		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
 		g.param_types_by_short = fs_worker.param_types_by_short.move()

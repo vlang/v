@@ -81,6 +81,20 @@ fn main() {}
 	assert ok.exit_code == 0, ok.output
 }
 
+fn test_non_mut_reference_parameter_accepts_literal_temporary() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'borrow_literal_temporary', '
+fn borrowed_len(value &string) int {
+	return value.len
+}
+
+fn main() {
+	assert borrowed_len("literal") == 7
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
 fn test_ownership_move_on_assign_and_clone_escape() {
 	v3_bin := ownership_build_v3()
 	fail := run_ownership_check(v3_bin, 'move_assign', "
@@ -2714,6 +2728,31 @@ fn main() {
 ')
 	assert fail_map_dynamic_index_read.exit_code != 0
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
+}
+
+fn test_ownership_array_alias_builtin_method_keeps_receiver() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'array_alias_insert_keeps_receiver', '
+type Strings = []string
+
+struct State {
+mut:
+	values map[string]string
+}
+
+fn (mut state State) reset() {
+	state.values = map[string]string{}
+}
+
+fn main() {
+	mut values := Strings{}
+	values.insert(0, "item".to_owned())
+	println(values.len)
+	mut state := State{}
+	state.reset()
+}
+')
+	assert ok.exit_code == 0, ok.output
 }
 
 fn test_ownership_aggregate_borrows_block_overlapping_reassignment() {

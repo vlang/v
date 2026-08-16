@@ -250,11 +250,27 @@ fn autofree_args_require_standard_compiler(args []string, command string) bool {
 }
 
 fn v3_ownership_forwarded_args(prefs &pref.Preferences, merged_args []string) []string {
-	ownership_args := merged_args.filter(it != '-ownership')
+	mut ownership_args := merged_args.filter(it != '-ownership')
+	if !v3_args_have_ownership_define(ownership_args) {
+		ownership_args.prepend('ownership')
+		ownership_args.prepend('-d')
+	}
 	$if macos {
 		return macos_v3_forwarded_args(prefs, ownership_args)
 	}
 	return ownership_args
+}
+
+fn v3_args_have_ownership_define(args []string) bool {
+	for i, arg in args {
+		if arg in ['-d=ownership', '-downership'] {
+			return true
+		}
+		if arg == '-d' && i + 1 < args.len && args[i + 1] == 'ownership' {
+			return true
+		}
+	}
+	return false
 }
 
 fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
@@ -278,9 +294,8 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		return true
 	}
 	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
-		|| prefs.is_prof || prefs.profile_fns.len > 0 || prefs.output_cross_c
-		|| prefs.experimental || prefs.use_os_system_to_run || prefs.is_apk
-		|| prefs.json_errors || prefs.no_preludes || prefs.is_quiet
+		|| prefs.output_cross_c || prefs.experimental || prefs.use_os_system_to_run
+		|| prefs.is_apk || prefs.json_errors || prefs.no_preludes || prefs.is_quiet
 		|| prefs.skip_warnings || prefs.skip_notes || prefs.fatal_errors
 		|| prefs.print_watched_files || prefs.dump_modules.len > 0
 		|| prefs.dump_files.len > 0 || prefs.dump_defines.len > 0

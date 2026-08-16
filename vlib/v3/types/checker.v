@@ -6580,6 +6580,9 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 						}
 						if typ !is MultiReturn && typ !is Void {
 							owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+							if lhs.value != '_' && tc.decl_lhs_is_mut(node, lhs_id) {
+								tc.fn_context.mut_local_owners[lhs.value] = owner
+							}
 							if owner.storage_key().len > 0
 								&& decl_assign_is_shared_marker(node.value) {
 								tc.mark_shared_binding_owner(lhs.value, owner)
@@ -6714,6 +6717,11 @@ fn (mut tc TypeChecker) annotate_multi_return_decl_assign(node flat.Node) {
 			continue
 		}
 		tc.cur_scope.insert(lhs.value, item_types[i])
+		if tc.decl_lhs_is_mut(node, lhs_id) {
+			if owner := tc.cur_scope.lookup_owner(lhs.value) {
+				tc.fn_context.mut_local_owners[lhs.value] = owner
+			}
+		}
 		tc.remember_expr_type(lhs_id, item_types[i])
 	}
 }

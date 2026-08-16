@@ -240,6 +240,12 @@ mut:
 	test_run_only                  []string
 	assert_expr_overrides          map[int]string
 	print_fn_names                 []string
+	profile_file                   string
+	profile_no_inline              bool
+	profile_fns                    []string
+	profile_counters               []ProfileCounterMeta
+	profile_fn_active              bool
+	profile_fn_restore_enabled     bool
 	is_prod                        bool
 	check_overflow                 bool
 	ignore_overflow                bool
@@ -924,6 +930,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_seg_chunk_indexes:            []int{}
 		parallel_chunk_wrapper_defs:     []ParallelChunkWrapperDefs{}
 		test_files:                      map[string]bool{}
+		profile_counters:                []ProfileCounterMeta{}
 		coverage_files:                  map[string]&CoverageInfo{}
 		cache_program_files:             map[string]bool{}
 		incremental_fn_names:            map[string]bool{}
@@ -1138,6 +1145,13 @@ pub fn (mut g FlatGen) set_test_run_only(patterns []string) {
 // set_print_fn_names selects generated C functions to print to stdout.
 pub fn (mut g FlatGen) set_print_fn_names(names []string) {
 	g.print_fn_names = names.clone()
+}
+
+// set_profile configures V1-compatible per-function runtime profiling.
+pub fn (mut g FlatGen) set_profile(file string, no_inline bool, fn_names []string) {
+	g.profile_file = file
+	g.profile_no_inline = no_inline
+	g.profile_fns = fn_names.clone()
 }
 
 // set_shared configures shared-library entry point generation.
@@ -2105,6 +2119,11 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
+	effective_no_parallel := no_parallel || g.profile_file.len > 0
+	if g.profile_file.len > 0 {
+		// Counter metadata and numbering are accumulated by one serial generator.
+		g.scope_parallel_workers = false
+	}
 	g.a = a
 	// Mark-used is immutable during cgen. Sharing this potentially very large
 	// post-monomorph map matches the worker path and avoids a full-program clone
@@ -2127,6 +2146,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.parallel_support_ready = false
 	g.coverage_files.clear()
 	g.coverage_counter_count = 0
+	g.profile_counters = []ProfileCounterMeta{}
+	g.profile_fn_active = false
+	g.profile_fn_restore_enabled = false
 	g.str_lits = []string{}
 	g.str_lits_shared = false
 	g.defers = []flat.NodeId{}
@@ -2356,14 +2378,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.precompute_embedded_fields()
 		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
-		parallel_prep_done := g.run_pre_dispatch_parallel(no_parallel)
+		parallel_prep_done := g.run_pre_dispatch_parallel(effective_no_parallel)
 		g.timing_profile('  [ttime]   cg predispatch   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if !parallel_prep_done {
 			g.collect_fixed_storage_consts(false)
 			g.precompute_param_type_index()
 			g.precompute_concrete_optional_abi_fns()
-			if no_parallel {
+			if effective_no_parallel {
 				g.prepare_serial_fn_tables()
 			}
 		}
@@ -2399,8 +2421,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.precompute_ownership_recursive_drop_helpers()
 	g.precompute_fixed_array_map_key_types()
-	defer_parallel_support := g.scope_parallel_workers && !no_parallel && !g.program_body_only
-		&& g.incremental_fn_names.len == 0
+	defer_parallel_support := g.scope_parallel_workers && !effective_no_parallel
+		&& !g.program_body_only && g.incremental_fn_names.len == 0
 	mut const_code := if g.program_body_only || defer_parallel_support {
 		''
 	} else {
@@ -2412,7 +2434,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	orig_line_start := g.line_start
 	g.sb = strings.new_builder(4096)
 	g.line_start = true
-	g.gen_fns_dispatch(no_parallel)
+	g.gen_fns_dispatch(effective_no_parallel)
 	g.writeln('// THE END.')
 	g.timing_profile('  [ttime] cg fns dispatch    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
@@ -2488,6 +2510,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Leave headroom for the small body-dependent supplement emitted below.
 	g.sb.ensure_cap(known_output_len + 1_048_576) // 1 MiB
 	g.c99_feature_test_macros()
+	if g.profile_file.len > 0 {
+		g.writeln('#define _VPROFILE (1)')
+	}
 	g.thread_stack_size_definition()
 	g.emit_preinclude_directives()
 	g.emit_preserved_c_directives()
@@ -2516,6 +2541,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
 	g.global_decls()
+	g.gen_profile_support()
 	g.emit_coverage_support()
 	// Objective-C implementation files commonly use complete V structs in their
 	// function signatures and bodies. Their framework imports are lifted above
@@ -10297,12 +10323,21 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 			return
 		}
 	}
+	mut pointer_actual := actual
+	if node.kind == .call && actual !is types.Pointer {
+		declared := g.declared_call_return_type(id)
+		if declared is types.Pointer {
+			pointer_actual = declared
+		}
+	}
 	if !expected_is_shared_alias && expected !is types.Pointer && expected !is types.Void
-		&& expected !is types.OptionType && expected !is types.ResultType && actual is types.Pointer
-		&& (g.type_names_match(actual.base_type, expected)
-		|| g.type_names_match(actual.base_type, semantic_expected)) && !(node.kind == .ident
-		&& g.local_storage_is_shared(node.value)) && !(node.kind == .char_literal
-		&& node.value.starts_with('c:')) {
+		&& expected !is types.OptionType && expected !is types.ResultType
+		&& pointer_actual is types.Pointer
+		&& (g.type_names_match(pointer_actual.base_type, expected)
+		|| g.type_names_match(pointer_actual.base_type, semantic_expected)
+		|| g.value_c_type(pointer_actual.base_type) == g.value_c_type(semantic_expected))
+		&& !(node.kind == .ident && g.local_storage_is_shared(node.value))
+		&& !(node.kind == .char_literal && node.value.starts_with('c:')) {
 		needs_paren := node.kind !in [.ident, .selector, .call, .index]
 		g.write('*')
 		if needs_paren {
@@ -16759,6 +16794,7 @@ fn (mut g FlatGen) headerless_platform_constants() {
 }
 
 fn (mut g FlatGen) headerless_signal_constants() {
+	g.writeln('#define SIGINT 2')
 	g.writeln('#define SIGKILL 9')
 	g.writeln('#define SIGTERM 15')
 	g.writeln('#define SIGPIPE 13')
@@ -19851,10 +19887,20 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.tc.cur_module = old_module
 		return
 	}
-	v_type := if val_node.kind == .offsetof_expr {
+	mut v_type := if val_node.kind == .offsetof_expr {
 		types.Type(types.usize_)
 	} else {
 		g.const_storage_type_for_value(name, val_id, g.tc.resolve_type(val_id))
+	}
+	// A const initialised by a generic call (e.g. `stdatomic.new_atomic(0)`)
+	// keeps the generic return type `&AtomicVal[T]`. The initializer is already
+	// monomorphized, so recover the concrete storage type from it to avoid
+	// emitting an undeclared `AtomicVal_T`.
+	if g.type_contains_generic_placeholder(v_type) {
+		concrete := g.usable_expr_type(val_id)
+		if !g.type_contains_generic_placeholder(concrete) {
+			v_type = concrete
+		}
 	}
 	mut ct := if v_type is types.OptionType || v_type is types.ResultType {
 		g.optional_type_name(v_type)

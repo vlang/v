@@ -57,6 +57,20 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 	assert dynamic_init.count('array_new(') == 2
 }
 
+fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	// Distinct logical ownership keys can refer to the same runtime struct after
+	// lifetime erasure. Only one C helper definition may be emitted for it.
+	g.recursive_drop_helpers['struct:pkg.Sink[^p,^s,Writer]'] = 'pkg.Sink[Writer]'
+	g.recursive_drop_helpers['struct:pkg.Sink[^s,^s,Writer]'] = 'pkg.Sink[Writer]'
+	g.gen_ownership_recursive_drop_helpers()
+	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
+}
+
 fn test_usable_resolved_sum_type_requires_exact_qualified_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
