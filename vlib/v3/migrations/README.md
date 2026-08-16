@@ -106,7 +106,9 @@ be released before their work commits. Unqualified PostgreSQL history tables res
 persistent relation before falling back to the normal creation schema for inspection, creation,
 and lock namespacing. Temporary relations are ignored unless explicitly qualified in `Config.table`.
 PostgreSQL transactions opened by callbacks in `never` mode are rolled back and rejected before the
-advisory migration lock is released.
+advisory migration lock is released. In transactional modes, callbacks cannot end the
+migrator-owned PostgreSQL transaction before history is written. SQLite callbacks likewise cannot
+end the immediate lock transaction before the history write.
 MySQL migrations and inspections also reject connections with active transactions or disabled
 session autocommit. An unqualified MySQL history table is resolved and retained on first use, so
 later database changes on the same connection cannot redirect history operations or lock

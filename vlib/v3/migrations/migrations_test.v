@@ -14,6 +14,7 @@ mut:
 	history_rows              []orm.Row
 	in_transaction            bool
 	autocommit                bool = true
+	foreign_keys              bool
 	postgresql_history_schema string
 	postgresql_table_schema   string = 'public'
 	postgresql_probe_value    string
@@ -49,8 +50,15 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'START TRANSACTION;' {
 		conn.in_transaction = true
 	}
-	if query == 'BEGIN;' {
+	if query in ['BEGIN;', 'BEGIN IMMEDIATE;'] {
+		if conn.in_transaction {
+			return error('cannot start a transaction within a transaction')
+		}
 		conn.in_transaction = true
+	}
+	if query in ['ROLLBACK;', 'COMMIT;'] {
+		conn.in_transaction = false
+		conn.postgresql_probe_value = ''
 	}
 	if query == 'SET search_path TO other_schema;' {
 		conn.schema = 'other_schema'
@@ -119,6 +127,17 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 		return [orm.Row{
 			vals: [if conn.autocommit { '1' } else { '0' }]
 		}]
+	}
+	if query == 'PRAGMA foreign_keys;' {
+		return [orm.Row{
+			vals: [if conn.foreign_keys { '1' } else { '0' }]
+		}]
+	}
+	if query == 'PRAGMA foreign_keys = ON;' && !conn.in_transaction {
+		conn.foreign_keys = true
+	}
+	if query == 'PRAGMA foreign_keys = OFF;' && !conn.in_transaction {
+		conn.foreign_keys = false
 	}
 	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
 		|| query.starts_with('SELECT pg_advisory_unlock(') {
@@ -279,6 +298,22 @@ fn start_mysql_transaction(mut ctx Context) ! {
 
 fn start_postgresql_transaction(mut ctx Context) ! {
 	ctx.execute('BEGIN;')!
+}
+
+fn rollback_callback_transaction(mut ctx Context) ! {
+	ctx.execute('ROLLBACK;')!
+}
+
+fn create_sqlite_table_then_rollback(mut ctx Context) ! {
+	ctx.create_table(Table{
+		name: 'rolled_back_callback_table'
+	})!
+	ctx.execute('ROLLBACK;')!
+}
+
+fn drop_sqlite_table_then_rollback(mut ctx Context) ! {
+	ctx.drop_table('rolled_back_callback_table')!
+	ctx.execute('ROLLBACK;')!
 }
 
 fn assert_postgresql_transaction_probe(queries []string) {
@@ -679,6 +714,89 @@ fn test_postgresql_callback_transactions_are_rolled_back_before_unlocking() {
 	assert down_rollback_index > down_recorder.queries.index('BEGIN;')
 	assert down_rollback_index > down_recorder.queries.index(history_deletes[0])
 	assert down_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
+}
+
+fn test_postgresql_owned_transaction_is_verified_before_history_writes() {
+	migration := Migration{
+		version: 1
+		name:    'rollback_transaction'
+		up:      rollback_callback_transaction
+		down:    rollback_callback_transaction
+	}
+	for mode in [TransactionMode.automatic, .always] {
+		mut up_recorder := &RecordingConnection{}
+		mut up_runner := new(mut up_recorder, [migration], Config{
+			dialect:          .pg
+			transaction_mode: mode
+		})!
+		mut error_message := ''
+		up_runner.migrate() or { error_message = err.msg() }
+		assert error_message == 'PostgreSQL migration callback ended the migrator-owned transaction before history was recorded'
+		assert !up_recorder.in_transaction
+		assert up_recorder.queries.filter(it.starts_with('INSERT INTO ')).len == 0
+		callback_index := up_recorder.queries.index('ROLLBACK;')
+		assert callback_index > up_recorder.queries.index('ORM BEGIN')
+		assert postgresql_transaction_probe_read_query() in up_recorder.queries[callback_index + 1..]
+
+		mut down_recorder := &RecordingConnection{
+			history_rows: [
+				orm.Row{
+					vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+				},
+			]
+		}
+		mut down_runner := new(mut down_recorder, [migration], Config{
+			dialect:          .pg
+			transaction_mode: mode
+		})!
+		error_message = ''
+		down_runner.rollback(1) or { error_message = err.msg() }
+		assert error_message == 'PostgreSQL migration callback ended the migrator-owned transaction before history was recorded'
+		assert !down_recorder.in_transaction
+		assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
+	}
+}
+
+fn test_sqlite_callback_cannot_end_lock_transaction_before_history_writes() {
+	mut up_db := sqlite.connect(':memory:')!
+	up_db.exec('CREATE TABLE schema_migrations (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+	mut up_runner := new(mut up_db, [
+		Migration{
+			version: 1
+			name:    'rollback_transaction'
+			up:      create_sqlite_table_then_rollback
+			down:    drop_sqlite_table_then_rollback
+		},
+	], Config{
+		dialect: .sqlite
+	})!
+	mut error_message := ''
+	up_runner.migrate() or { error_message = err.msg() }
+	assert error_message == 'SQLite migration callback ended the migration lock transaction before history was recorded'
+	assert up_db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'rolled_back_callback_table';")! == 0
+	assert up_db.q_int('SELECT count(*) FROM schema_migrations;')! == 0
+	up_db.close()!
+
+	mut down_db := sqlite.connect(':memory:')!
+	down_db.exec('CREATE TABLE schema_migrations (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+	down_db.exec('CREATE TABLE rolled_back_callback_table (id INTEGER PRIMARY KEY AUTOINCREMENT);')!
+	down_db.exec("INSERT INTO schema_migrations VALUES (1, 'rollback_transaction', '2026-08-16T00:00:00Z');")!
+	mut down_runner := new(mut down_db, [
+		Migration{
+			version: 1
+			name:    'rollback_transaction'
+			up:      create_sqlite_table_then_rollback
+			down:    drop_sqlite_table_then_rollback
+		},
+	], Config{
+		dialect: .sqlite
+	})!
+	error_message = ''
+	down_runner.rollback(1) or { error_message = err.msg() }
+	assert error_message == 'SQLite migration callback ended the migration lock transaction before history was recorded'
+	assert down_db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'rolled_back_callback_table';")! == 1
+	assert down_db.q_int('SELECT count(*) FROM schema_migrations;')! == 1
+	down_db.close()!
 }
 
 fn test_sqlite_history_table_is_pinned_to_main() {
