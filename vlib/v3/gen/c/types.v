@@ -471,12 +471,16 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 				concrete_optional)
 		}
 	}
+	mut seen := &PreseedTypeSeen{}
 	for name, ret in g.tc.fn_ret_types {
 		// Generic template signatures keep unspecialized placeholder types
 		// (`!&Tls[T]`); their typedefs would reference C types that are never
 		// emitted. Specializations register concrete signatures under their
 		// own suffixed names.
 		if name in g.tc.fn_generic_params {
+			continue
+		}
+		if !cgen_type_first_seen(ret, mut seen) {
 			continue
 		}
 		g.collect_declaration_signature_type(ret)
@@ -486,33 +490,67 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 			continue
 		}
 		for param in params {
+			if !cgen_type_first_seen(param, mut seen) {
+				continue
+			}
 			g.collect_declaration_signature_type(param)
 		}
 	}
 	for _, fields in g.tc.structs {
 		for field in fields {
+			if !cgen_type_first_seen(field.typ, mut seen) {
+				continue
+			}
 			g.collect_declaration_signature_type(field.typ)
 		}
 	}
 	for _, fields in g.tc.interface_fields {
 		for field in fields {
+			if !cgen_type_first_seen(field.typ, mut seen) {
+				continue
+			}
 			g.collect_declaration_signature_type(field.typ)
 		}
 	}
 	for _, typ in g.tc.c_globals {
+		if !cgen_type_first_seen(typ, mut seen) {
+			continue
+		}
 		g.collect_declaration_signature_type(typ)
 	}
 	for _, typ in g.tc.const_types {
+		if !cgen_type_first_seen(typ, mut seen) {
+			continue
+		}
 		g.collect_declaration_signature_type(typ)
 	}
 	for idx, is_set in g.tc.expr_type_set {
 		if !is_set || idx >= g.tc.expr_type_values.len {
 			continue
 		}
-		g.collect_declaration_signature_type(g.tc.expr_type_values[idx])
+		typ := g.tc.expr_type_values[idx]
+		if !cgen_type_first_seen(typ, mut seen) {
+			continue
+		}
+		g.collect_declaration_signature_type(typ)
 	}
 	g.decl_types_ready = true
 	g.multi_return_types_ready = true
+}
+
+@[inline]
+fn cgen_type_first_seen(typ &types.Type, mut seen PreseedTypeSeen) bool {
+	words := unsafe { &u64(voidptr(typ)) }
+	w0 := unsafe { words[0] }
+	w1 := unsafe { words[1] }
+	slot := int((w0 >> 4 ^ w1) & 4095)
+	if seen.seen[slot] && seen.w0[slot] == w0 && seen.w1[slot] == w1 {
+		return false
+	}
+	seen.w0[slot] = w0
+	seen.w1[slot] = w1
+	seen.seen[slot] = true
+	return true
 }
 
 fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {

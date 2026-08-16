@@ -19,7 +19,7 @@ import v3.workers
 
 const min_parallel_parse_files = 4
 const min_parallel_parse_bytes = 131072
-const max_parallel_parse_jobs = 17
+const max_parallel_parse_jobs = 18
 const max_parallel_parse_chunks = 48
 const parallel_parse_chunks_per_job = 2
 const comptime_const_prepass_alias_prefix = '\x00v3-comptime-alias:'
@@ -1068,6 +1068,17 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	for ci in 0 .. thread_count {
 		node_offsets[ci + 1] = node_offsets[ci] + parser_workers[ci].a.nodes.len
 		child_offsets[ci + 1] = child_offsets[ci] + parser_workers[ci].a.children.len
+	}
+	// Each worker has already interned its node payloads in source order. Merge
+	// those unique tables once, in chunk order, so the copy threads can rebind
+	// every payload without leaving a serial per-node miss pass behind.
+	mut text_headroom := 0
+	for worker in parser_workers {
+		text_headroom += worker.a.text_count()
+	}
+	p.a.reserve_transform_texts(text_headroom)
+	for worker in parser_workers {
+		p.a.intern_texts_from(worker.a)
 	}
 	unsafe {
 		p.a.nodes.grow_len(node_offsets[thread_count] - base_nodes)

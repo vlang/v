@@ -21,6 +21,7 @@ import v3.tempname
 import v3.token as v3token
 import v3.transform
 import v3.types
+import v3.workers
 import v.vmod
 
 $if !skip_eval ? {
@@ -7396,6 +7397,7 @@ pub fn run(args []string) {
 	mut skip_transform_generics := true
 	mut transform_texts_canonical := cgen_cache_hit
 	mut retained_transform_scope := unsafe { nil }
+	mut retained_transform_prepare_scope := unsafe { nil }
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -7446,6 +7448,14 @@ pub fn run(args []string) {
 		if verbose {
 			eprintln('  [ttime]   ck iface idx     ${f64(cvsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
+		// The parallel checker deliberately leaves one logical core outside its
+		// worker pool. Use it to build the immutable markused declaration indexes.
+		prepare_markused_overlap := building_v && current_parallel_transform
+			&& scope_prealloc_markused && !incremental_cache_hit && !generic_cache_hit
+			&& !cache_state.manager.enabled && test_files.len == 0 && !is_checker_fixture
+			&& !trivial_literal_output && !input_file.ends_with('.vsh') && !no_skip_unused
+		prepared_markused_thread := spawn markused.prepare_markused_declarations(a, &pre_tc,
+			prepare_markused_overlap)
 		mut check_was_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
 			used_fns = markused.mark_used_without_generic_detection(a, &pre_tc)
@@ -7455,6 +7465,7 @@ pub fn run(args []string) {
 		} else {
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
 		}
+		mut prepared_markused := prepared_markused_thread.wait()
 		ckpre_sw.restart()
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
@@ -7605,6 +7616,14 @@ pub fn run(args []string) {
 			}
 		}
 		_ = pre_tc.ierror_impl_names()
+		// Self-host markused is dominated by serial reachability/index work. Build
+		// transform's read-only indexes beside it so the otherwise-idle cores do
+		// useful work without delaying either stage's mutable AST operations.
+		prepare_transform_overlap := building_v && current_parallel_transform
+			&& scope_prealloc_transform && !incremental_cache_hit && !generic_cache_hit
+			&& !cache_state.manager.enabled
+		prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc,
+			prepare_transform_overlap)
 
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
@@ -7646,7 +7665,12 @@ pub fn run(args []string) {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a,
 				markused_tc)
 		} else if building_v && current_parallel_transform {
-			used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
+			if prepare_markused_overlap {
+				used_fns = markused.mark_used_without_generic_detection_prepared(a, markused_tc, mut
+					prepared_markused)
+			} else {
+				used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
+			}
 			uses_generics = false
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
@@ -7654,7 +7678,12 @@ pub fn run(args []string) {
 		if is_prof {
 			add_v3_profile_used_fns(mut used_fns)
 		}
-		program_used_fns = clone_string_bool_map(used_fns)
+		// The separate program reachability snapshot is consumed only by the
+		// module/generic cache publishers. A -nocache self-host can skip cloning
+		// ~10k entries twice around the disposable markused arena.
+		if cache_state.manager.enabled {
+			program_used_fns = clone_string_bool_map(used_fns)
+		}
 		if cache_state.manager.enabled && !generic_cache_hit {
 			if building_v && current_parallel_transform {
 				used_fns = markused.mark_used_for_cache_without_generic_detection(a, markused_tc,
@@ -7668,10 +7697,16 @@ pub fn run(args []string) {
 		}
 		if scope_prealloc_markused && !generic_cache_hit {
 			prealloc_scope_leave_for_v3(markused_scope)
-			program_used_fns = clone_string_bool_map(program_used_fns)
 			used_fns = clone_string_bool_map(used_fns)
+			if cache_state.manager.enabled {
+				program_used_fns = clone_string_bool_map(program_used_fns)
+			}
 			prealloc_scope_free_for_v3(markused_scope)
 		}
+		if prepare_markused_overlap {
+			prepared_markused.release()
+		}
+		mut prepared_transform := prepared_transform_thread.wait()
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
 		mut tfpre_sw := time.new_stopwatch()
@@ -7729,7 +7764,7 @@ pub fn run(args []string) {
 		if incremental_cache_hit {
 			skip_transform_generics = true
 		}
-		mut transform_used_fns := clone_string_bool_map(used_fns)
+		mut transform_used_fns := map[string]bool{}
 		if incremental_cache_hit {
 			transform_used_fns = clone_string_bool_map(incremental_changed_names)
 			// `main` activates the transformer's used-function filter. If another
@@ -7784,9 +7819,16 @@ pub fn run(args []string) {
 			transform_scope := prealloc_scope_begin_for_v3()
 			mut scoped_owned_base_nodes := []int{}
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
-			transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
-				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				true, building_v || trivial_literal_output, transform_scope)
+			if prepare_transform_overlap {
+				transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_prepared_selfhost_owned(mut prepared_transform, mut
+					a, &pre_tc, used_fns, transform_scope)
+				retained_transform_prepare_scope = prepared_transform.take_scope()
+			} else {
+				transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
+					&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, true,
+
+					building_v || trivial_literal_output, transform_scope)
+			}
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
@@ -8011,8 +8053,9 @@ pub fn run(args []string) {
 			}
 		} else {
 			transform_used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
-				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
-				false, building_v || trivial_literal_output)
+				&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false,
+
+				building_v || trivial_literal_output)
 		}
 		if !incremental_cache_hit {
 			used_fns = transform_used_fns.move()
@@ -9370,6 +9413,10 @@ Please install the corresponding development package/libraries and make sure the
 	if retained_transform_scope != unsafe { nil } {
 		prealloc_scope_free_for_v3(retained_transform_scope)
 		retained_transform_scope = unsafe { nil }
+	}
+	if retained_transform_prepare_scope != unsafe { nil } {
+		prealloc_scope_free_for_v3(retained_transform_prepare_scope)
+		retained_transform_prepare_scope = unsafe { nil }
 	}
 	if show_test_stats {
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
@@ -12649,6 +12696,258 @@ fn file_index_usable_for_imports(a &flat.FlatAst) bool {
 		&& os.getenv('V3_NO_FILE_IDX') == '' && os.getenv('V3_NO_IMPORT_IDX') == ''
 }
 
+struct ImportCollisionSeed {
+	path           string
+	importing_file string
+}
+
+struct EagerSelfhostImport {
+	path           string
+	importing_file string
+}
+
+struct EagerSelfhostModule {
+	path  string
+	dir   string
+	files []string
+mut:
+	identity string
+}
+
+struct EagerSelfhostScanArgs {
+	path string
+mut:
+	imports []string
+}
+
+struct EagerSelfhostResolveArgs {
+	prefs          voidptr
+	path           string
+	importing_file string
+	project_root   string
+mut:
+	dir   string
+	files []string
+}
+
+fn eager_selfhost_scan_thread(arg voidptr) voidptr {
+	mut scan := unsafe { &EagerSelfhostScanArgs(arg) }
+	scan.imports = source_imports_fast(scan.path)
+	return unsafe { nil }
+}
+
+fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
+	mut result := unsafe { &EagerSelfhostResolveArgs(arg) }
+	prefs := unsafe { &pref.Preferences(result.prefs) }
+	// `-building-v` imports compiler/stdlib modules from vlib. Probe that direct
+	// path before the general project/module search, which otherwise repeats
+	// parent-directory and v.mod discovery for every BFS wave.
+	vlib_dir := prefs.get_vlib_module_path(result.path)
+	if os.is_dir(vlib_dir) {
+		result.dir = vlib_dir
+	} else {
+		mut local_cache := map[string]string{}
+		result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file,
+			result.project_root, mut local_cache)
+	}
+	if result.dir.len > 0 && os.is_dir(result.dir) {
+		result.files = pref.get_v_files_from_dir_for_target(result.dir, prefs.user_defines,
+			prefs.target)
+	}
+	return unsafe { nil }
+}
+
+fn resolve_eager_selfhost_wave(a &flat.FlatAst, prefs &pref.Preferences, requests []EagerSelfhostImport, project_root string) []EagerSelfhostResolveArgs {
+	mut results := []EagerSelfhostResolveArgs{cap: requests.len}
+	mut tasks := []workers.Task{cap: requests.len}
+	for i, import_req in requests {
+		results << EagerSelfhostResolveArgs{
+			prefs:          voidptr(prefs)
+			path:           import_req.path
+			importing_file: import_req.importing_file
+			project_root:   project_root
+		}
+		tasks << workers.Task{
+			run:        eager_selfhost_resolve_thread
+			arg:        unsafe { voidptr(&results[i]) }
+			force_sync: i == 0
+		}
+	}
+	if isnil(a.worker_pool) || a.worker_pool.size() == 0 {
+		for i in 0 .. results.len {
+			eager_selfhost_resolve_thread(unsafe { voidptr(&results[i]) })
+		}
+	} else {
+		a.worker_pool.run(tasks)
+	}
+	return results
+}
+
+// source_imports_fast extracts the compiler tree's one-line import declarations
+// without constructing tokens. It is used only to assemble the trusted
+// -building-v parse batch; the real parser remains authoritative immediately
+// afterwards.
+fn source_imports_fast(path string) []string {
+	source := os.read_file(path) or { return []string{} }
+	mut imports := []string{cap: 16}
+	mut line_start := 0
+	mut in_block_comment := false
+	for line_start < source.len {
+		mut line_end := line_start
+		for line_end < source.len && source[line_end] != `\n` {
+			line_end++
+		}
+		mut i := line_start
+		for i < line_end {
+			if in_block_comment {
+				if i + 1 < line_end && source[i] == `*` && source[i + 1] == `/` {
+					in_block_comment = false
+					i += 2
+					continue
+				}
+				i++
+				continue
+			}
+			if source[i] in [` `, `\t`, `\r`] {
+				i++
+				continue
+			}
+			if i + 1 < line_end && source[i] == `/` && source[i + 1] == `*` {
+				in_block_comment = true
+				i += 2
+				continue
+			}
+			if i + 1 < line_end && source[i] == `/` && source[i + 1] == `/` {
+				break
+			}
+			if i + 7 <= line_end && source[i..i + 6] == 'import' && source[i + 6] in [` `, `\t`] {
+				i += 7
+				for i < line_end && source[i] in [` `, `\t`] {
+					i++
+				}
+				start := i
+				for i < line_end && ((source[i] >= `a` && source[i] <= `z`)
+					|| (source[i] >= `A` && source[i] <= `Z`)
+					|| (source[i] >= `0` && source[i] <= `9`)
+					|| source[i] in [`_`, `.`]) {
+					i++
+				}
+				if i > start {
+					imports << source[start..i]
+				}
+			}
+			break
+		}
+		line_start = line_end + 1
+	}
+	return imports
+}
+
+fn source_imports_fast_parallel(a &flat.FlatAst, files []string) [][]string {
+	if files.len < 2 || isnil(a.worker_pool) || a.worker_pool.size() == 0 {
+		mut imports := [][]string{cap: files.len}
+		for file in files {
+			imports << source_imports_fast(file)
+		}
+		return imports
+	}
+	mut scans := []EagerSelfhostScanArgs{cap: files.len}
+	mut tasks := []workers.Task{cap: files.len}
+	for i, file in files {
+		scans << EagerSelfhostScanArgs{
+			path: file
+		}
+		tasks << workers.Task{
+			run:        eager_selfhost_scan_thread
+			arg:        unsafe { voidptr(&scans[i]) }
+			force_sync: i == 0
+		}
+	}
+	a.worker_pool.run(tasks)
+	mut imports := [][]string{cap: files.len}
+	for scan in scans {
+		imports << scan.imports
+	}
+	return imports
+}
+
+// discover_eager_selfhost_modules resolves the complete trusted compiler import
+// graph with a byte-level import scan. Parsing the resulting files in one batch
+// avoids three parse/merge barriers while preserving the ordinary resolver as
+// the source of truth for the resulting AST.
+fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string, mut parsed_modules map[string]bool, mut module_path_cache map[string]string) []EagerSelfhostModule {
+	mut pending := []EagerSelfhostImport{cap: 128}
+	mut cur_file := first_file
+	for node in a.nodes {
+		if node.kind == .file && node.value.len > 0 {
+			cur_file = node.value
+		} else if node.kind == .import_decl && node.value.len > 0 {
+			pending << EagerSelfhostImport{
+				path:           node.value
+				importing_file: cur_file
+			}
+		}
+	}
+	mut modules := []EagerSelfhostModule{cap: 64}
+	mut paths_by_suffix := map[string][]string{}
+	mut qi := 0
+	for qi < pending.len {
+		wave_end := pending.len
+		mut wave_requests := []EagerSelfhostImport{}
+		for qi < wave_end {
+			import_req := pending[qi]
+			qi++
+			if import_req.path in parsed_modules {
+				continue
+			}
+			parsed_modules[import_req.path] = true
+			wave_requests << import_req
+		}
+		wave_results := resolve_eager_selfhost_wave(a, prefs, wave_requests, project_root)
+		mut wave_files := []string{}
+		for i, result in wave_results {
+			import_req := wave_requests[i]
+			importing_dir := if import_req.importing_file.len > 0 {
+				os.dir(import_req.importing_file)
+			} else {
+				''
+			}
+			module_path_cache['${importing_dir}\n${import_req.path}'] = result.dir
+			if result.files.len == 0 {
+				continue
+			}
+			modules << EagerSelfhostModule{
+				path:  import_req.path
+				dir:   result.dir
+				files: result.files
+			}
+			if import_req.path.contains('.') {
+				suffix := import_req.path.all_after_last('.')
+				if import_req.path !in paths_by_suffix[suffix] {
+					paths_by_suffix[suffix] << import_req.path
+				}
+			}
+			wave_files << result.files
+		}
+		wave_imports := source_imports_fast_parallel(a, wave_files)
+		for i, file in wave_files {
+			for imported in wave_imports[i] {
+				pending << EagerSelfhostImport{
+					path:           imported
+					importing_file: file
+				}
+			}
+		}
+	}
+	for i in 0 .. modules.len {
+		path := modules[i].path
+		suffix := path.all_after_last('.')
+		collides := path.contains('.') && paths_by_suffix[suffix].len > 1
+		modules[i].identity = if collides { path } else { suffix }
+	}
+	return modules
+}
+
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
@@ -12690,6 +12989,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut forced_full_module_paths := map[string]bool{}
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
+	mut first_collision_seed_by_short := map[string]ImportCollisionSeed{}
+	mut resolved_collision_seeds := map[string]bool{}
 	mut unresolved_modules := map[string]bool{}
 	mut cached_header_source_contexts := map[string]string{}
 	bundle_import_file := cache_bundle_import_file(prefs.get_vlib_module_path('builtin'))
@@ -12699,8 +13000,46 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			cached_header_source_contexts[builtin_header] = builtin_sources[0]
 		}
 	}
-
 	mut was_parallel := false
+	if prefs.building_v && allow_parallel && !cache_state.manager.enabled
+		&& os.getenv('V3_NO_EAGER_SELFHOST_IMPORTS') == '' {
+		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root, mut
+			parsed_modules, mut module_path_cache)
+		mut eager_files := []string{}
+		mut eager_canons := []string{}
+		for module_info in modules {
+			identity := module_info.identity
+			parsed_module_identities[module_info.path] = identity
+			parsed_modules[identity] = true
+			parsed_identity_dirs[identity] = module_info.dir
+			cache_state.module_import_paths[identity] = module_info.path
+			cache_state.module_sources[identity] = module_info.files
+			cache_state.parsed_from_source[identity] = true
+			cache_state.source_body_modules[identity] = true
+			for file in module_info.files {
+				eager_files << file
+				eager_canons << if identity == module_info.path { identity } else { '' }
+			}
+		}
+		if eager_files.len > 0 {
+			starts, eager_parallel := parse_files_dispatch_profiled(mut p, eager_files,
+				allow_parallel, mut parse_timing)
+			was_parallel = was_parallel || eager_parallel
+			end_node := a.nodes.len
+			for i, canon in eager_canons {
+				if canon.len == 0 {
+					continue
+				}
+				file_end := if i + 1 < starts.len { starts[i + 1] } else { end_node }
+				canonicalize_imported_module_name(mut a, starts[i], file_end, canon)
+			}
+			// Imported code can be the first user of embed/channel/closure syntax.
+			// Seed those compiler-provided modules before the authoritative resolver
+			// scans the now-complete AST.
+			seed_implicit_imports(mut a, skip_closure_runtime)
+		}
+	}
+
 	mut cur_file := first_file
 	mut cur_module := 'main'
 	mut node_idx := 0
@@ -12767,21 +13106,53 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			scan_path := scan_node.value
 			scan_importing_file := if scan_file.len > 0 { scan_file } else { first_file }
-			scan_dir := resolve_project_or_pref_module_path_cached(prefs, scan_path,
-				scan_importing_file, project_root, mut module_path_cache)
-			scan_identity := import_module_identity_cached(prefs, scan_path, scan_importing_file,
-				project_root, scan_dir, mut module_path_cache, mut module_identity_cache)
-			if owner_path := identity_source_paths[scan_identity] {
-				owner_dir := identity_source_dirs[scan_identity] or { '' }
-				if owner_path != scan_path && owner_dir.len > 0 && scan_dir.len > 0
-					&& os.is_dir(owner_dir) && os.is_dir(scan_dir)
-					&& os.real_path(owner_dir) != os.real_path(scan_dir) {
-					forced_full_module_paths[owner_path] = true
-					forced_full_module_paths[scan_path] = true
+			mut collision_seeds := [
+				ImportCollisionSeed{
+					path:           scan_path
+					importing_file: scan_importing_file
+				},
+			]
+			if prefs.building_v {
+				// Compiler-tree modules declare their path suffix as the module name.
+				// A unique suffix cannot collide, so defer filesystem/identity work
+				// until a second distinct dotted path with that suffix appears.
+				short := scan_path.all_after_last('.')
+				if first := first_collision_seed_by_short[short] {
+					if first.path == scan_path {
+						continue
+					}
+					first_key := '${first.importing_file}\x00${first.path}'
+					if !resolved_collision_seeds[first_key] {
+						collision_seeds.prepend(first)
+					}
+				} else {
+					first_collision_seed_by_short[short] = collision_seeds[0]
+					continue
 				}
-			} else {
-				identity_source_paths[scan_identity] = scan_path
-				identity_source_dirs[scan_identity] = scan_dir
+			}
+			for seed in collision_seeds {
+				seed_key := '${seed.importing_file}\x00${seed.path}'
+				if resolved_collision_seeds[seed_key] {
+					continue
+				}
+				resolved_collision_seeds[seed_key] = true
+				scan_dir := resolve_project_or_pref_module_path_cached(prefs, seed.path,
+					seed.importing_file, project_root, mut module_path_cache)
+				scan_identity := import_module_identity_cached(prefs, seed.path,
+					seed.importing_file, project_root, scan_dir, mut module_path_cache, mut
+					module_identity_cache)
+				if owner_path := identity_source_paths[scan_identity] {
+					owner_dir := identity_source_dirs[scan_identity] or { '' }
+					if owner_path != seed.path && owner_dir.len > 0 && scan_dir.len > 0
+						&& os.is_dir(owner_dir) && os.is_dir(scan_dir)
+						&& os.real_path(owner_dir) != os.real_path(scan_dir) {
+						forced_full_module_paths[owner_path] = true
+						forced_full_module_paths[seed.path] = true
+					}
+				} else {
+					identity_source_paths[scan_identity] = seed.path
+					identity_source_dirs[scan_identity] = scan_dir
+				}
 			}
 		}
 		ri_collision_ns += time.sys_mono_now() - ri_t0

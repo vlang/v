@@ -204,7 +204,7 @@ fn (mut g FlatGen) preseed_type_first_seen(typ &types.Type) bool {
 	words := unsafe { &u64(voidptr(typ)) }
 	w0 := unsafe { words[0] }
 	w1 := unsafe { words[1] }
-	slot := int(((w0 >> 4) ^ w1) & 4095)
+	slot := int((w0 >> 4 ^ w1) & 4095)
 	if cache.seen[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
 		return false
 	}
@@ -231,7 +231,12 @@ mut:
 	parallel_chunk_wrapper_defs    []ParallelChunkWrapperDefs
 	parallel_chunk_wrapper_capture int = -1
 	parallel_type_decls            string
+	parallel_global_decls          string
 	parallel_forward_decls         string
+	parallel_support_decls         string
+	parallel_enum_str_defs         string
+	parallel_interface_stubs       string
+	parallel_init_defs             string
 	parallel_const_code            string
 	parallel_support_ready         bool
 	test_files                     map[string]bool
@@ -526,6 +531,21 @@ mut:
 struct FixedArrayTypedefInfo {
 	arr    types.ArrayFixed
 	module string
+}
+
+struct FixedArrayTypeSeen {
+mut:
+	w0      [4096]u64
+	w1      [4096]u64
+	modules [4096]string
+	seen    [4096]bool
+}
+
+struct FixedArrayTextSeen {
+mut:
+	ptrs    [4096]voidptr
+	lens    [4096]int
+	modules [4096]string
 }
 
 struct CDirective {
@@ -2142,7 +2162,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.parallel_chunk_wrapper_defs = []ParallelChunkWrapperDefs{}
 	g.parallel_chunk_wrapper_capture = -1
 	g.parallel_type_decls = ''
+	g.parallel_global_decls = ''
 	g.parallel_forward_decls = ''
+	g.parallel_support_decls = ''
+	g.parallel_enum_str_defs = ''
+	g.parallel_interface_stubs = ''
+	g.parallel_init_defs = ''
 	g.parallel_const_code = ''
 	g.parallel_support_ready = false
 	g.coverage_files.clear()
@@ -2344,6 +2369,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preintern_json_encode_strings()
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
+	mut parallel_support_precomputed := false
 	if g.incremental_fn_names.len > 0 {
 		// Cached declarations already contain whole-program typedefs, wrappers,
 		// interface tables and shared-parameter metadata. A body-only update only
@@ -2359,10 +2385,28 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// Function-item selection can run during pre-dispatch preparation. Populate
 		// interface implementers first so that late-lowered dispatch targets are not
 		// pruned before their concrete method bodies are emitted.
-		g.collect_interface_impls()
-		g.precompute_required_interface_dispatch_methods()
-		g.timing_profile('  [ttime]   cg iface impls   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		cgsw.restart()
+		mut parallel_iface_scan := false
+		mut iface_worker := &FlatGen{}
+		mut iface_threads := []thread voidptr{cap: 1}
+		$if !v3_no_parallel ? {
+			parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
+		}
+		if parallel_iface_scan {
+			$if !v3_no_parallel ? {
+				iface_worker = g.new_parallel_worker(4)
+				iface_worker.interface_boxed_types = map[string]bool{}
+				iface_worker.interface_boxed_types_done = false
+				iface_worker.iface_impls = map[string][]string{}
+				iface_worker.iface_type_ids = map[string]int{}
+				iface_worker.ierror_method_emit_names = map[string]bool{}
+				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
+			}
+		} else {
+			g.collect_interface_impls()
+			g.precompute_required_interface_dispatch_methods()
+			g.timing_profile('  [ttime]   cg iface impls   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			cgsw.restart()
+		}
 		// Struct field defaults are emitted from their declarations when an otherwise
 		// unrelated function initializes the struct. Parallel function pre-scanning only
 		// visits that function body, so seed literals from defaults before workers fork.
@@ -2380,6 +2424,15 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.precompute_embedded_fields()
 		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
+		if parallel_iface_scan {
+			$if !v3_no_parallel ? {
+				_ = iface_threads[0].wait()
+				g.publish_interface_impl_scan(mut iface_worker)
+				g.precompute_required_interface_dispatch_methods()
+				g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+				cgsw.restart()
+			}
+		}
 		parallel_prep_done := g.run_pre_dispatch_parallel(effective_no_parallel)
 		g.timing_profile('  [ttime]   cg predispatch   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
@@ -2391,17 +2444,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 				g.prepare_serial_fn_tables()
 			}
 		}
-		g.collect_shared_type_names()
-		g.precompute_sum_name_lookup()
-		if !g.skip_generics {
-			g.precompute_generic_method_candidate_index()
-		}
-		g.timing_profile('  [ttime]     wr shared+sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		cgsw.restart()
-		// Decide fixed-array return wrappers before generating function bodies, so
-		// signatures, returns and call sites all agree on the wrapped types.
-		g.populate_fixed_array_ret_wrappers()
-		g.timing_profile('  [ttime]     wr fixed ret   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		// The fixed-array return scan only reads completed declaration tables. Run
+		// it beside the independent shared/sum indexes on the parallel self-host
+		// path; both must finish before any function body is generated.
+		parallel_support_precomputed =
+			g.prepare_shared_sum_and_fixed_array_ret_wrappers(parallel_prep_done)
 		cgsw.restart()
 		// Seed declaration-owned function-pointer types before parallel type
 		// generation starts. The pre-dispatch item walk adds body-local types
@@ -2421,8 +2468,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.timing_profile('  [ttime]   cg wrappers      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sig+extern)')
 		cgsw.restart()
 	}
-	g.precompute_ownership_recursive_drop_helpers()
-	g.precompute_fixed_array_map_key_types()
+	if !parallel_support_precomputed {
+		g.precompute_ownership_recursive_drop_helpers()
+		g.precompute_fixed_array_map_key_types()
+	}
 	defer_parallel_support := g.scope_parallel_workers && !effective_no_parallel
 		&& !g.program_body_only && g.incremental_fn_names.len == 0
 	mut const_code := if g.program_body_only || defer_parallel_support {
@@ -2505,26 +2554,16 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		}
 		return result
 	}
-	mut known_output_len := g.sb.len + fn_code.len + const_code.len + g.parallel_type_decls.len
+	mut known_output_len := g.sb.len + fn_code.len + const_code.len + g.parallel_type_decls.len +
+		g.parallel_global_decls.len + g.parallel_support_decls.len + g.parallel_enum_str_defs.len +
+		g.parallel_interface_stubs.len + g.parallel_init_defs.len
 	for segment in g.fn_segs {
 		known_output_len += segment.len
 	}
 	// Leave headroom for the small body-dependent supplement emitted below.
 	g.sb.ensure_cap(known_output_len + 1_048_576) // 1 MiB
-	g.c99_feature_test_macros()
-	if g.profile_file.len > 0 {
-		g.writeln('#define _VPROFILE (1)')
-	}
-	g.thread_stack_size_definition()
-	g.emit_preinclude_directives()
-	g.emit_preserved_c_directives()
-	g.preamble()
-	if g.cache_split {
-		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */')
-	}
-	g.emit_c_directives(false)
-	if g.cache_split {
-		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_END */')
+	if g.parallel_type_decls.len == 0 {
+		g.gen_translation_unit_prefix()
 	}
 	g.write_type_declaration_block()
 	if g.cache_split {
@@ -2535,26 +2574,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('/* V3CACHE_SOURCE_DIRECTIVES_END */')
 	}
 	g.c_extern_forward_decls()
-	if g.object_file_mode {
-		g.writeln('#if defined(__clang__)')
-		g.writeln('#pragma clang attribute push(__attribute__((internal_linkage)), apply_to = any(function, variable(is_global)))')
-		g.writeln('#endif')
-	}
-	g.builtin_abi_decls()
-	g.test_failure_helpers()
-	g.global_decls()
-	g.gen_profile_support()
-	g.emit_coverage_support()
-	// Objective-C implementation files commonly use complete V structs in their
-	// function signatures and bodies. Their framework imports are lifted above
-	// the headerless preamble, but the implementation itself belongs after the V
-	// type declarations.
-	if g.cache_split {
-		g.writeln('/* V3CACHE_LATE_DIRECTIVES_BEGIN */')
-	}
-	g.emit_c_directives(true)
-	if g.cache_split {
-		g.writeln('/* V3CACHE_LATE_DIRECTIVES_END */')
+	if g.parallel_global_decls.len > 0 {
+		g.sb.write_string(g.parallel_global_decls)
+		unsafe { g.parallel_global_decls.free() }
+		g.parallel_global_decls = ''
+	} else {
+		g.gen_global_declaration_block()
 	}
 	if g.parallel_forward_decls.len > 0 {
 		g.sb.write_string(g.parallel_forward_decls)
@@ -2563,25 +2588,35 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	} else {
 		g.forward_decls()
 	}
-	g.fixed_array_map_key_forward_decls()
-	g.fixed_array_map_key_definitions()
-	g.gen_ownership_recursive_drop_helpers()
-	g.release_scoped_fn_items()
-	g.cached_header_forward_decls()
-	g.interface_method_forward_decls()
-	g.shared_dup_fns()
-	if !g.skip_enum_autostr {
-		g.enum_str_forward_decls()
+	if g.parallel_support_decls.len > 0 {
+		g.sb.write_string(g.parallel_support_decls)
+		unsafe { g.parallel_support_decls.free() }
+		g.parallel_support_decls = ''
+	} else {
+		g.gen_pre_body_support_declarations()
 	}
+	g.release_scoped_fn_items()
 	g.callback_wrapper_decls()
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
 	g.string_literals()
 	if !g.cache_split {
-		g.interface_method_stubs()
+		if g.parallel_interface_stubs.len > 0 {
+			g.sb.write_string(g.parallel_interface_stubs)
+			unsafe { g.parallel_interface_stubs.free() }
+			g.parallel_interface_stubs = ''
+		} else {
+			g.interface_method_stubs()
+		}
 	}
 	if !g.skip_enum_autostr {
-		g.enum_str_defs()
+		if g.parallel_enum_str_defs.len > 0 {
+			g.sb.write_string(g.parallel_enum_str_defs)
+			unsafe { g.parallel_enum_str_defs.free() }
+			g.parallel_enum_str_defs = ''
+		} else {
+			g.enum_str_defs()
+		}
 	}
 	g.sb.write_string(const_code)
 	// The final builder now owns a copy of the const code.
@@ -2594,8 +2629,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// every edited translation unit.
 		g.writeln('/* V3CACHE_MODULE __v3_program_support */')
 	}
-	g.gen_vinit()
-	g.gen_vcleanup()
+	if g.parallel_init_defs.len > 0 {
+		g.sb.write_string(g.parallel_init_defs)
+		unsafe { g.parallel_init_defs.free() }
+		g.parallel_init_defs = ''
+	} else {
+		g.gen_vinit()
+		g.gen_vcleanup()
+	}
 	if g.cache_split {
 		g.interface_method_stubs()
 	}
@@ -2677,6 +2718,60 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
 	return result
+}
+
+fn (mut g FlatGen) gen_pre_body_support_declarations() {
+	g.fixed_array_map_key_forward_decls()
+	g.fixed_array_map_key_definitions()
+	g.gen_ownership_recursive_drop_helpers()
+	g.cached_header_forward_decls()
+	g.interface_method_forward_decls()
+	g.shared_dup_fns()
+	if !g.skip_enum_autostr {
+		g.enum_str_forward_decls()
+	}
+}
+
+fn (mut g FlatGen) gen_translation_unit_prefix() {
+	g.c99_feature_test_macros()
+	if g.profile_file.len > 0 {
+		g.writeln('#define _VPROFILE (1)')
+	}
+	g.thread_stack_size_definition()
+	g.emit_preinclude_directives()
+	g.emit_preserved_c_directives()
+	g.preamble()
+	if g.cache_split {
+		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */')
+	}
+	g.emit_c_directives(false)
+	if g.cache_split {
+		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_END */')
+	}
+}
+
+fn (mut g FlatGen) gen_global_declaration_block() {
+	if g.object_file_mode {
+		g.writeln('#if defined(__clang__)')
+		g.writeln('#pragma clang attribute push(__attribute__((internal_linkage)), apply_to = any(function, variable(is_global)))')
+		g.writeln('#endif')
+	}
+	g.builtin_abi_decls()
+	g.test_failure_helpers()
+	g.global_decls()
+	g.gen_profile_support()
+	g.emit_coverage_support()
+	// Objective-C implementation files commonly use complete V structs in their
+	// function signatures and bodies. Their framework imports are lifted above
+	// the headerless preamble, but the implementation itself belongs after the V
+	// type declarations.
+	if g.cache_split {
+		g.writeln('/* V3CACHE_LATE_DIRECTIVES_BEGIN */')
+	}
+	g.emit_c_directives(true)
+	if g.cache_split {
+		g.writeln('/* V3CACHE_LATE_DIRECTIVES_END */')
+	}
 }
 
 // gen_type_declaration_block emits the declaration block whose inputs are
@@ -2994,6 +3089,18 @@ mut:
 	first_param_is_mut bool
 }
 
+struct FnSignatureRegistration {
+	module_key    string
+	short_name    string
+	aliases       [6]string
+	alias_count   u8
+	ptypes        []types.Type
+	shared_params []bool
+	is_variadic   bool
+	is_mut        bool
+	return_type   types.Type
+}
+
 fn (g &FlatGen) new_collect_gen_info_view() FlatGen {
 	mut view := *g
 	view.tc = g.clone_parallel_type_checker()
@@ -3140,6 +3247,9 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut preferred_shared_fn_file_ranks := map[string]int{}
 	mut preferred_shared_fn_node_indexes := map[string]int{}
 	mut preferred_shared_fn_params := map[string][]bool{}
+	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
+	defer_fn_signature_registrations := g.scope_parallel_workers && g.skip_generics
+		&& g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	top_level_nodes := g.top_level_nodes()
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes)
 	for top_level_pos, node_idx in top_level_nodes {
@@ -3220,8 +3330,14 @@ fn (mut g FlatGen) collect_gen_info() {
 			if profile {
 				ci_ret_ns += time.sys_mono_now() - ci_r0
 			}
-			g.register_fn_decl_signature_type(node.value, full_name, ptypes, shared_params,
-				decl_is_variadic, first_param_is_mut, return_type)
+			if defer_fn_signature_registrations {
+				fn_signature_registrations << g.prepare_fn_signature_registration(node.value,
+					full_name, ptypes, shared_params, decl_is_variadic, first_param_is_mut,
+					return_type)
+			} else {
+				g.register_fn_decl_signature_type(node.value, full_name, ptypes, shared_params,
+					decl_is_variadic, first_param_is_mut, return_type)
+			}
 			if profile {
 				ci_reg_ns += time.sys_mono_now() - ci_r0
 			}
@@ -3404,6 +3520,9 @@ fn (mut g FlatGen) collect_gen_info() {
 			continue
 		}
 	}
+	if defer_fn_signature_registrations {
+		g.apply_fn_signature_registrations(fn_signature_registrations)
+	}
 	if g.has_shared_params {
 		for full_name, flags in preferred_shared_fn_params {
 			g.fn_decl_shared_params[full_name] = flags
@@ -3450,21 +3569,13 @@ fn (mut g FlatGen) collect_gen_info() {
 }
 
 @[direct_array_access]
-fn (mut g FlatGen) reserve_collect_gen_info_maps() {
-	mut fn_count := 0
-	mut struct_count := 0
-	mut global_count := 0
-	mut const_count := 0
-	mut enum_field_count := 0
-	mut interface_count := 0
-	mut import_count := 0
+fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
+	mut counts := CollectGenInfoScanCounts{}
 	incremental := g.incremental_fn_names.len > 0
 	g.ast_string_literals = []string{cap: 4096}
+	g.top_level_node_ids = []int{cap: 4096}
 	for node_idx, node in g.a.nodes {
 		if node.kind == .string_literal {
-			// The parallel pre-dispatch pass needs these in exact AST order.
-			// Retain the small value list while this unavoidable sizing scan is
-			// hot, avoiding another pass over the multi-million-node AST.
 			g.ast_string_literals << node.value
 		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
@@ -3474,30 +3585,55 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps() {
 		match node.kind {
 			.fn_decl {
 				if !incremental || g.incremental_fn_names[node.value] {
-					fn_count++
+					counts.fn_count++
 				}
 			}
 			.struct_decl {
-				struct_count++
+				counts.struct_count++
 			}
 			.global_decl {
-				global_count += int(node.children_count)
+				counts.global_count += int(node.children_count)
 			}
 			.const_decl {
-				const_count += int(node.children_count)
+				counts.const_count += int(node.children_count)
 			}
 			.enum_decl {
-				enum_field_count += int(node.children_count)
+				counts.enum_field_count += int(node.children_count)
 			}
 			.interface_decl {
-				interface_count++
+				counts.interface_count++
 			}
 			.import_decl {
-				import_count++
+				counts.import_count++
 			}
 			else {}
 		}
 	}
+	return counts
+}
+
+struct CollectGenInfoScanCounts {
+mut:
+	fn_count         int
+	struct_count     int
+	global_count     int
+	const_count      int
+	enum_field_count int
+	interface_count  int
+	import_count     int
+}
+
+@[direct_array_access]
+fn (mut g FlatGen) reserve_collect_gen_info_maps() {
+	counts := g.scan_collect_gen_info()
+	mut fn_count := counts.fn_count
+	struct_count := counts.struct_count
+	global_count := counts.global_count
+	const_count := counts.const_count
+	enum_field_count := counts.enum_field_count
+	interface_count := counts.interface_count
+	import_count := counts.import_count
+	incremental := g.incremental_fn_names.len > 0
 	g.ast_string_literals_ready = true
 	if incremental && fn_count < g.incremental_fn_names.len {
 		fn_count = g.incremental_fn_names.len
@@ -9198,68 +9334,136 @@ fn (mut g FlatGen) register_fn_decl_signature(name string, full_name string, pty
 }
 
 fn (mut g FlatGen) register_fn_decl_signature_type(name string, full_name string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, rt types.Type) {
-	module_key := fn_decl_module_key(g.tc.cur_module, name)
-	g.fn_decl_param_types[module_key] = ptypes
-	g.fn_decl_ret_types[module_key] = rt
-	if is_variadic {
-		g.fn_decl_variadic[module_key] = true
-	}
-	short_name := c_short_name_view(name)
-	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
+	registration := g.prepare_fn_signature_registration(name, full_name, ptypes, shared_params,
+		is_variadic, is_mut, rt)
+	g.apply_fn_signature_registration_group(registration, 0)
+	g.apply_fn_signature_registration_group(registration, 1)
+	g.apply_fn_signature_registration_group(registration, 2)
+	g.apply_fn_signature_registration_group(registration, 3)
+}
+
+fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, rt types.Type) FnSignatureRegistration {
 	for flag in shared_params {
 		if flag {
 			g.has_shared_params = true
 			break
 		}
 	}
+	mut aliases := [6]string{}
+	mut alias_count := 0
 	if !g.dedup_fn_decl_aliases {
-		g.register_fn_decl_signature_alias(name, ptypes, shared_params, is_variadic, is_mut, rt)
+		aliases[alias_count] = name
+		alias_count++
 		cname := g.cname(name)
-		g.register_fn_decl_signature_alias(cname, ptypes, shared_params, is_variadic, is_mut, rt)
+		aliases[alias_count] = cname
+		alias_count++
 		if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 			dotted_name := '${g.tc.cur_module}.${name}'
-			g.register_fn_decl_signature_alias(dotted_name, ptypes, shared_params, is_variadic,
-				is_mut, rt)
+			aliases[alias_count] = dotted_name
+			alias_count++
 			cdotted_name := g.cname(dotted_name)
-			g.register_fn_decl_signature_alias(cdotted_name, ptypes, shared_params, is_variadic,
-				is_mut, rt)
+			aliases[alias_count] = cdotted_name
+			alias_count++
 		}
-		g.register_fn_decl_signature_alias(full_name, ptypes, shared_params, is_variadic, is_mut,
-			rt)
+		aliases[alias_count] = full_name
+		alias_count++
 		cfull_name := g.cname(full_name)
-		g.register_fn_decl_signature_alias(cfull_name, ptypes, shared_params, is_variadic, is_mut,
-			rt)
-		return
-	}
-	g.register_fn_decl_signature_alias(name, ptypes, shared_params, is_variadic, is_mut, rt)
-	cname := g.cname(name)
-	if cname != name {
-		g.register_fn_decl_signature_alias(cname, ptypes, shared_params, is_variadic, is_mut, rt)
-	}
-	mut dotted_name := ''
-	mut cdotted_name := ''
-	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
-		dotted_name = '${g.tc.cur_module}.${name}'
-		if dotted_name != name && dotted_name != cname {
-			g.register_fn_decl_signature_alias(dotted_name, ptypes, shared_params, is_variadic,
-				is_mut, rt)
+		aliases[alias_count] = cfull_name
+		alias_count++
+	} else {
+		aliases[alias_count] = name
+		alias_count++
+		cname := g.cname(name)
+		if cname != name {
+			aliases[alias_count] = cname
+			alias_count++
 		}
-		cdotted_name = g.cname(dotted_name)
-		if cdotted_name != name && cdotted_name != cname && cdotted_name != dotted_name {
-			g.register_fn_decl_signature_alias(cdotted_name, ptypes, shared_params, is_variadic,
-				is_mut, rt)
+		mut dotted_name := ''
+		mut cdotted_name := ''
+		if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
+			dotted_name = '${g.tc.cur_module}.${name}'
+			if dotted_name != name && dotted_name != cname {
+				aliases[alias_count] = dotted_name
+				alias_count++
+			}
+			cdotted_name = g.cname(dotted_name)
+			if cdotted_name != name && cdotted_name != cname && cdotted_name != dotted_name {
+				aliases[alias_count] = cdotted_name
+				alias_count++
+			}
+		}
+		if full_name != name && full_name != cname && full_name != dotted_name
+			&& full_name != cdotted_name {
+			aliases[alias_count] = full_name
+			alias_count++
+		}
+		cfull_name := g.cname(full_name)
+		if cfull_name != name && cfull_name != cname && cfull_name != dotted_name
+			&& cfull_name != cdotted_name && cfull_name != full_name {
+			aliases[alias_count] = cfull_name
+			alias_count++
 		}
 	}
-	if full_name != name && full_name != cname && full_name != dotted_name
-		&& full_name != cdotted_name {
-		g.register_fn_decl_signature_alias(full_name, ptypes, shared_params, is_variadic, is_mut,
-			rt)
+	return FnSignatureRegistration{
+		module_key:    fn_decl_module_key(g.tc.cur_module, name)
+		short_name:    c_short_name_view(name)
+		aliases:       aliases
+		alias_count:   u8(alias_count)
+		ptypes:        ptypes
+		shared_params: shared_params
+		is_variadic:   is_variadic
+		is_mut:        is_mut
+		return_type:   rt
 	}
-	cfull_name := g.cname(full_name)
-	if cfull_name != name && cfull_name != cname && cfull_name != dotted_name
-		&& cfull_name != cdotted_name && cfull_name != full_name {
-		g.register_fn_decl_signature_alias(cfull_name, ptypes, shared_params, is_variadic, is_mut,
-			rt)
+}
+
+fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatureRegistration, group int) {
+	match group {
+		0 {
+			g.fn_decl_param_types[registration.module_key] = registration.ptypes
+			if registration.is_variadic {
+				g.fn_decl_variadic[registration.module_key] = true
+			}
+			g.fn_decl_variadic_short_counts[registration.short_name] =
+				g.fn_decl_variadic_short_counts[registration.short_name] + 1
+			for alias_idx in 0 .. registration.alias_count {
+				alias := registration.aliases[alias_idx]
+				if alias !in g.fn_decl_param_types {
+					g.fn_decl_param_types[alias] = registration.ptypes
+					if registration.is_variadic {
+						g.fn_decl_variadic[alias] = true
+					}
+				}
+			}
+		}
+		1 {
+			g.fn_decl_ret_types[registration.module_key] = registration.return_type
+			for alias_idx in 0 .. registration.alias_count {
+				alias := registration.aliases[alias_idx]
+				if alias !in g.fn_decl_ret_types {
+					g.fn_decl_ret_types[alias] = registration.return_type
+				}
+			}
+		}
+		2 {
+			if registration.shared_params.len > 0 {
+				for alias_idx in 0 .. registration.alias_count {
+					alias := registration.aliases[alias_idx]
+					if alias !in g.fn_decl_shared_params {
+						g.fn_decl_shared_params[alias] = registration.shared_params
+					}
+				}
+			}
+		}
+		3 {
+			if registration.is_mut {
+				for alias_idx in 0 .. registration.alias_count {
+					alias := registration.aliases[alias_idx]
+					g.fn_decl_mut_receivers[alias] = true
+				}
+			}
+		}
+		else {}
 	}
 }
 
@@ -18343,41 +18547,57 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		return g.fixed_array_typedefs_needed
 	}
 	mut needed := map[string]FixedArrayTypedefInfo{}
+	mut type_seen := &FixedArrayTypeSeen{}
+	mut text_seen := &FixedArrayTextSeen{}
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	for name, ret_type in g.tc.fn_ret_types {
 		g.tc.cur_module = module_from_qualified_name(name)
-		g.collect_fixed_array_typedef(ret_type, g.tc.cur_module, mut needed)
+		if fixed_array_type_first_seen(ret_type, g.tc.cur_module, mut type_seen) {
+			g.collect_fixed_array_typedef(ret_type, g.tc.cur_module, mut needed)
+		}
 	}
 	for name, param_types in g.tc.fn_param_types {
 		g.tc.cur_module = module_from_qualified_name(name)
 		for param_type in param_types {
-			g.collect_fixed_array_typedef(param_type, g.tc.cur_module, mut needed)
+			if fixed_array_type_first_seen(param_type, g.tc.cur_module, mut type_seen) {
+				g.collect_fixed_array_typedef(param_type, g.tc.cur_module, mut needed)
+			}
 		}
 	}
 	for name, fields in g.tc.structs {
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 		for field in fields {
-			g.collect_fixed_array_typedef(field.typ, g.tc.cur_module, mut needed)
+			if fixed_array_type_first_seen(field.typ, g.tc.cur_module, mut type_seen) {
+				g.collect_fixed_array_typedef(field.typ, g.tc.cur_module, mut needed)
+			}
 		}
 	}
 	for name, fields in g.tc.interface_fields {
 		g.tc.cur_module = module_from_qualified_name(name)
 		for field in fields {
-			g.collect_fixed_array_typedef(field.typ, g.tc.cur_module, mut needed)
+			if fixed_array_type_first_seen(field.typ, g.tc.cur_module, mut type_seen) {
+				g.collect_fixed_array_typedef(field.typ, g.tc.cur_module, mut needed)
+			}
 		}
 	}
 	for name, typ in g.global_types {
 		g.tc.cur_module = g.global_modules[name] or { old_module }
-		g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
+		if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
+			g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
+		}
 	}
 	for _, typ in g.tc.c_globals {
 		g.tc.cur_module = old_module
-		g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
+		if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
+			g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
+		}
 	}
 	for name, typ in g.tc.const_types {
 		g.tc.cur_module = g.const_modules[name] or { old_module }
-		g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
+		if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
+			g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
+		}
 	}
 	mut cur_file := old_file
 	mut cur_module := old_module
@@ -18400,12 +18620,16 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		g.tc.cur_module = cur_module
 		// Struct-init node types use scratch text while fields are transformed; the
 		// declared struct metadata above is the authoritative fixed-array source.
-		if node.kind != .struct_init {
+		if node.kind != .struct_init && fixed_array_type_text_may_need_typedef(node.typ)
+			&& fixed_array_text_first_seen(node.typ, cur_module, mut text_seen) {
 			g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
 		}
 		match node.kind {
 			.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr {
-				g.collect_fixed_array_typedef_text(node.value, cur_module, mut needed)
+				if fixed_array_type_text_may_need_typedef(node.value)
+					&& fixed_array_text_first_seen(node.value, cur_module, mut text_seen) {
+					g.collect_fixed_array_typedef_text(node.value, cur_module, mut needed)
+				}
 			}
 			else {}
 		}
@@ -18415,6 +18639,39 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 	g.fixed_array_typedefs_needed = needed.move()
 	g.fixed_array_typedefs_ready = true
 	return g.fixed_array_typedefs_needed
+}
+
+@[inline]
+fn fixed_array_type_first_seen(typ &types.Type, module_name string, mut seen FixedArrayTypeSeen) bool {
+	words := unsafe { &u64(voidptr(typ)) }
+	w0 := unsafe { words[0] }
+	w1 := unsafe { words[1] }
+	slot := int((w0 >> 4 ^ w1 ^ u64(module_name.len)) & 4095)
+	if seen.seen[slot] && seen.w0[slot] == w0 && seen.w1[slot] == w1
+		&& seen.modules[slot] == module_name {
+		return false
+	}
+	seen.w0[slot] = w0
+	seen.w1[slot] = w1
+	seen.modules[slot] = module_name
+	seen.seen[slot] = true
+	return true
+}
+
+@[inline]
+fn fixed_array_text_first_seen(text string, module_name string, mut seen FixedArrayTextSeen) bool {
+	if text.len == 0 {
+		return false
+	}
+	ptr := voidptr(text.str)
+	slot := int((u64(ptr) >> 4 ^ u64(text.len) ^ u64(module_name.len)) & 4095)
+	if seen.ptrs[slot] == ptr && seen.lens[slot] == text.len && seen.modules[slot] == module_name {
+		return false
+	}
+	seen.ptrs[slot] = ptr
+	seen.lens[slot] = text.len
+	seen.modules[slot] = module_name
+	return true
 }
 
 fn (mut g FlatGen) fixed_array_typedefs() {

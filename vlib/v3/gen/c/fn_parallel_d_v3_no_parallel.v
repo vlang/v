@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import time
 
 fn (mut g FlatGen) refine_fn_item_costs(_ bool, _ bool) {}
 
@@ -8,8 +9,40 @@ fn par_cgen_prep_enabled() bool {
 	return false
 }
 
+fn (mut g FlatGen) scan_collect_gen_info() CollectGenInfoScanCounts {
+	return g.scan_collect_gen_info_serial()
+}
+
+fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration) {
+	for group in 0 .. 4 {
+		for registration in registrations {
+			g.apply_fn_signature_registration_group(registration, group)
+		}
+	}
+}
+
+fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(_ bool) bool {
+	mut sw := time.new_stopwatch()
+	g.collect_shared_type_names()
+	g.precompute_sum_name_lookup()
+	if !g.skip_generics {
+		g.precompute_generic_method_candidate_index()
+	}
+	g.timing_profile('  [ttime]     wr shared+sum  ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	sw.restart()
+	g.populate_fixed_array_ret_wrappers()
+	g.timing_profile('  [ttime]     wr fixed ret   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	return false
+}
+
 fn (mut g FlatGen) collect_gen_info_fn_preps(_ []int) []CollectGenFnPrep {
 	return []CollectGenFnPrep{}
+}
+
+fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
+	nodes := g.top_level_nodes()
+	return g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns,
+		ignore_overflow_fns, program_modules)
 }
 
 // gen_fns_dispatch emits all functions serially when v3 is built with the

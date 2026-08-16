@@ -125,92 +125,37 @@ fn (mut g FlatGen) ensure_fn_gen_items() []FlatFnGenItem {
 
 // collect_fn_gen_items updates collect fn gen items state for c.
 fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
-	mut candidates := []FlatFnGenCandidate{}
 	direct_array_access_fns := g.direct_array_access_fns()
 	ignore_overflow_fns := g.function_attribute_fns('ignore_overflow')
+	program_modules := g.cache_program_module_names()
+	// Defer cost/prep until after preferred-file and emission filtering. When
+	// the parallel path asks for prep, that walk also collects C-extern refs.
+	prep := g.want_parallel_prep
+	mut candidates := if prep && g.scope_parallel_workers && par_cgen_prep_enabled() {
+		g.collect_fn_gen_candidates_parallel(direct_array_access_fns, ignore_overflow_fns,
+			program_modules)
+	} else {
+		nodes := g.top_level_nodes()
+		g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns,
+			ignore_overflow_fns, program_modules)
+	}
 	mut preferred_fns := map[string]int{}
 	mut ranks := map[string]int{}
 	mut program_specializations := map[string]bool{}
 	mut preferred_program_specializations := map[string]bool{}
-	program_modules := g.cache_program_module_names()
-	mut cur_module := ''
-	mut cur_file := ''
-	// Defer cost/prep until after preferred-file and emission filtering. When
-	// the parallel path asks for prep, that walk also collects C-extern refs.
-	prep := g.want_parallel_prep
-	for i in g.top_level_nodes() {
-		node := g.a.nodes[i]
-		kind_id := node_kind_id(node)
-		if kind_id == 77 {
-			cur_file = node.value
-			g.tc.cur_file = cur_file
-			cur_module = ''
-			g.tc.cur_module = cur_module
-			continue
+	for candidate in candidates {
+		if candidate.item.is_program_specialization {
+			program_specializations[candidate.preferred_name] = true
 		}
-		if kind_id == 73 {
-			cur_module = node.value
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			continue
-		}
-
-		if kind_id == 61 {
-			is_specialization := g.a.specialized_fn_nodes[i]
-			item_module := g.a.specialized_fn_modules[i] or { cur_module }
-			item_file := g.a.specialized_fn_files[i] or {
-				if is_specialization {
-					g.tc.fn_type_files[node.value] or { cur_file }
-				} else {
-					cur_file
-				}
-			}
-			if g.program_body_only && !is_specialization && !g.cache_program_files[item_file]
-				&& item_module !in ['', 'main'] {
-				continue
-			}
-			if g.incremental_fn_names.len > 0 {
-				qname := if item_module in ['', 'main', 'builtin'] {
-					node.value
-				} else {
-					'${item_module}.${node.value}'
-				}
-				if !g.incremental_fn_names[qname] && !g.incremental_fn_names[node.value] {
-					continue
-				}
-			}
-			qfn := g.qualified_fn_name_in_module_c(item_module, node.value)
-			is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, i, qfn)
-			if !g.should_emit_fn_node_in_module_known(node, item_module, item_file, qfn,
-				is_program_specialization) {
-				continue
-			}
-			preferred_name := g.fn_c_name_in_module(item_module, node.value)
-			if is_program_specialization {
-				program_specializations[preferred_name] = true
-			}
-			rank := c_backend_fn_file_rank(item_file)
-			preferred_is_program_specialization := program_specializations[preferred_name]
-			if preferred_name !in preferred_fns || rank > ranks[preferred_name]
-				|| (rank == ranks[preferred_name] && preferred_is_program_specialization
-				&& !preferred_program_specializations[preferred_name]) {
-				preferred_fns[preferred_name] = i
-				ranks[preferred_name] = rank
-				preferred_program_specializations[preferred_name] = preferred_is_program_specialization
-			}
-			candidates << FlatFnGenCandidate{
-				preferred_name: preferred_name
-				item:           FlatFnGenItem{
-					node_id:             flat.NodeId(i)
-					file:                item_file
-					module:              item_module
-					c_name:              preferred_name
-					is_program:          g.cache_program_files[item_file]
-						|| program_modules[item_module]
-					direct_array_access: direct_array_access_fns.contains(i, node)
-					ignore_overflow:     ignore_overflow_fns.contains(i, node)
-				}
-			}
+		rank := c_backend_fn_file_rank(candidate.item.file)
+		preferred_is_program_specialization := program_specializations[candidate.preferred_name]
+		if candidate.preferred_name !in preferred_fns
+			|| rank > ranks[candidate.preferred_name]
+			|| (rank == ranks[candidate.preferred_name] && preferred_is_program_specialization
+			&& !preferred_program_specializations[candidate.preferred_name]) {
+			preferred_fns[candidate.preferred_name] = int(candidate.item.node_id)
+			ranks[candidate.preferred_name] = rank
+			preferred_program_specializations[candidate.preferred_name] = preferred_is_program_specialization
 		}
 	}
 	mut items := []FlatFnGenItem{cap: candidates.len}
@@ -271,6 +216,78 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	}
 	items.sort(a.c_name < b.c_name)
 	return items
+}
+
+fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []int, start int, end int, first_file string, first_module string, direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
+	mut candidates := []FlatFnGenCandidate{cap: end - start}
+	mut cur_module := first_module
+	mut cur_file := first_file
+	for pos in start .. end {
+		i := nodes[pos]
+		node := g.a.nodes[i]
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_file = node.value
+			g.tc.cur_file = cur_file
+			cur_module = ''
+			g.tc.cur_module = cur_module
+			continue
+		}
+		if kind_id == 73 {
+			cur_module = node.value
+			g.tc.cur_file = cur_file
+			g.tc.cur_module = cur_module
+			continue
+		}
+		if kind_id != 61 {
+			continue
+		}
+		is_specialization := g.a.specialized_fn_nodes[i]
+		item_module := g.a.specialized_fn_modules[i] or { cur_module }
+		item_file := g.a.specialized_fn_files[i] or {
+			if is_specialization {
+				g.tc.fn_type_files[node.value] or { cur_file }
+			} else {
+				cur_file
+			}
+		}
+		if g.program_body_only && !is_specialization && !g.cache_program_files[item_file]
+			&& item_module !in ['', 'main'] {
+			continue
+		}
+		if g.incremental_fn_names.len > 0 {
+			qname := if item_module in ['', 'main', 'builtin'] {
+				node.value
+			} else {
+				'${item_module}.${node.value}'
+			}
+			if !g.incremental_fn_names[qname] && !g.incremental_fn_names[node.value] {
+				continue
+			}
+		}
+		qfn := g.qualified_fn_name_in_module_c(item_module, node.value)
+		is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, i, qfn)
+		if !g.should_emit_fn_node_in_module_known(node, item_module, item_file, qfn,
+			is_program_specialization) {
+			continue
+		}
+		preferred_name := g.fn_c_name_in_module(item_module, node.value)
+		candidates << FlatFnGenCandidate{
+			preferred_name: preferred_name
+			item:           FlatFnGenItem{
+				node_id:                   flat.NodeId(i)
+				file:                      item_file
+				module:                    item_module
+				c_name:                    preferred_name
+				is_program_specialization: is_program_specialization
+				is_program:                g.cache_program_files[item_file]
+					|| program_modules[item_module]
+				direct_array_access:       direct_array_access_fns.contains(i, node)
+				ignore_overflow:           ignore_overflow_fns.contains(i, node)
+			}
+		}
+	}
+	return candidates
 }
 
 fn (g &FlatGen) cache_program_module_names() map[string]bool {
