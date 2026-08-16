@@ -15879,13 +15879,18 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	mut params := []Type{}
 	mut params_mut := []bool{}
+	mut reached_params := false
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		if child.kind != .param {
 			// Captures precede parameters in a function literal's flat children, so a
-			// prefix-only scan would stop at the first capture and infer `fn()`.
+			// prefix-only scan must skip those identifiers, then stop once the body begins.
+			if tc.prefix_param_scan && (reached_params || child.kind != .ident) {
+				break
+			}
 			continue
 		}
+		reached_params = true
 		params_mut << child.is_mut
 		parsed := tc.parse_type(normalize_fn_type_param_text(child.typ))
 		if child.value.len == 0 && child.typ.len > 0 && parsed is Unknown {
@@ -16982,6 +16987,25 @@ fn resolve_type_name_for_method(t Type) string {
 		return prim_name(t)
 	}
 	return ''
+}
+
+// ownership_type_has_clone_method reports whether typ declares a handwritten clone method.
+// It is kept in the always-built checker surface because ownership transform support is
+// compiled into the V executable even when the executable itself is built without ownership.
+pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
+	name := resolve_type_name_for_method(typ)
+	if name.len == 0 {
+		return false
+	}
+	if _ := tc.resolve_generic_struct_method(name, 'clone') {
+		return true
+	}
+	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+		if method_name in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
 }
 
 fn receiver_type_name_variant(t Type, fixed_array_prefix bool, shorten_modules bool) string {

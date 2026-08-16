@@ -4775,6 +4775,23 @@ fn test_array_filter_and_map_reuse_capturing_callback_state() {
 	assert out == '[2, 3]\n[11, 22, 33]'
 }
 
+fn test_capturing_callback_variable_keeps_declared_parameters() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'capturing_callback_variable_parameters', 'fn report(callback fn (int, string)) {
+	callback(42, "ready")
+}
+
+fn main() {
+	prefix := "progress"
+	callback := fn [prefix] (percent int, stage string) {
+		println("\${prefix}:\${percent}:\${stage}")
+	}
+	report(callback)
+}
+')
+	assert out == 'progress:42:ready'
+}
+
 fn test_array_filter_and_map_hoist_bound_method_callbacks() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
@@ -5514,4 +5531,70 @@ fn main() {
 }
 ')
 	assert out == '2\n1'
+}
+
+fn test_last_lvalue_stabilizes_side_effecting_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'last_lvalue_side_effecting_receiver', '__global calls int
+
+fn next() int {
+	index := calls
+	calls++
+	return index
+}
+
+fn main() {
+	mut arrays := [[[1, 2]], [[3, 4]]]
+	arrays[next()].last() << 9
+	println(int_str(calls))
+	println(arrays[0])
+	println(arrays[1])
+}
+')
+	assert out == '1\n[[1, 2, 9]]\n[[3, 4]]'
+}
+
+fn test_shadowed_allocation_helper_fn_values_preserve_address_escapes() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'shadowed_allocation_helper_fn_value_escape', 'fn pass(p &int) &int {
+	return p
+}
+
+fn make_memdup() &int {
+	local := 41
+	memdup := pass
+	return memdup(&local)
+}
+
+fn make_memdup_noscan() &int {
+	local := 42
+	memdup_noscan := pass
+	return memdup_noscan(&local)
+}
+
+fn make_aligned_memdup() &int {
+	local := 43
+	v3_aligned_memdup := pass
+	return v3_aligned_memdup(&local)
+}
+
+fn make_builtin_memdup() &int {
+	local := 44
+	return unsafe { &int(memdup(&local, sizeof(int))) }
+}
+
+fn main() {
+	println(unsafe { *make_memdup() })
+	println(unsafe { *make_memdup_noscan() })
+	println(unsafe { *make_aligned_memdup() })
+	println(unsafe { *make_builtin_memdup() })
+}
+')
+	for fn_name in ['make_memdup', 'make_memdup_noscan', 'make_aligned_memdup'] {
+		body := c_fn_body(c_source, 'int* ${fn_name}(void) {')
+		assert body.contains('int* local ='), body
+	}
+	builtin_body := c_fn_body(c_source, 'int* make_builtin_memdup(void) {')
+	assert builtin_body.contains('int local = 44;'), builtin_body
+	assert builtin_body.contains('memdup(&local, sizeof(int))'), builtin_body
 }

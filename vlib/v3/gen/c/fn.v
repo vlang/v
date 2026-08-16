@@ -926,8 +926,7 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 		return 'v_panic'
 	}
 	synthetic_name := name.all_after_last('.')
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
-		|| synthetic_name.starts_with('__v3_default_clone_') {
+	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_') {
 		return g.cname(synthetic_name)
 	}
 	if g.tc.autofree_mode && module_name in ['', 'main'] {
@@ -960,8 +959,7 @@ fn qualified_fn_name_in_module(module_name string, name string) string {
 		return 'v_panic'
 	}
 	synthetic_name := name.all_after_last('.')
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
-		|| synthetic_name.starts_with('__v3_default_clone_') {
+	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_') {
 		return c_name(synthetic_name)
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
@@ -1065,8 +1063,7 @@ fn (g &FlatGen) c_fn_symbol_exists(candidate string) bool {
 // direct_call_name supports direct call name handling for FlatGen.
 fn (mut g FlatGen) direct_call_name(name string) string {
 	synthetic_name := name.all_after_last('.')
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
-		|| synthetic_name.starts_with('__v3_default_clone_') {
+	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_') {
 		return g.cname(synthetic_name)
 	}
 	if abi_name := g.c_decl_abi_names[name] {
@@ -1226,8 +1223,7 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 	// Synthesized helpers carry their complete, globally unique C symbol in the
 	// source name. Their owning module only controls cache-object placement; it
 	// must not be prepended to calls made from that same module.
-	if name.starts_with('__v3_sum_eq_') || name.starts_with('__v3_autostr_')
-		|| name.starts_with('__v3_default_clone_') {
+	if name.starts_with('__v3_sum_eq_') || name.starts_with('__v3_autostr_') {
 		return g.direct_call_name(name)
 	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
@@ -1505,6 +1501,23 @@ fn (g &FlatGen) selector_base_is_value(name string) bool {
 		return true
 	}
 	if _ := g.global_type_for_ident(name) {
+		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) selector_base_is_local_value(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
+		if typ := g.tc.cur_scope.lookup(name) {
+			if typ !is types.Void {
+				return true
+			}
+		}
+	}
+	if _ := g.current_param_type(name) {
 		return true
 	}
 	return false
@@ -4236,6 +4249,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.cur_param_types.clear()
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
+	g.cur_mut_pointer_params.clear()
 	g.cur_mut_param_owners.clear()
 	typed_params := g.fn_node_param_types(node, module_name)
 	concrete_optional_params := g.is_specialized_generic_fn_node(node)
@@ -4270,6 +4284,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 				}
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
+					if p.op == .amp {
+						g.cur_mut_pointer_params[p.value] = true
+					}
 					g.cur_mut_param_owners[p.value] = owner
 				}
 				if concrete_optional_params && type_is_optional_result(param_type) {
@@ -4535,12 +4552,14 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	mut old_param_types := g.cur_param_types.move()
 	mut old_concrete_optional_params := g.cur_concrete_optional_params.move()
 	mut old_mut_params := g.cur_mut_params.move()
+	mut old_mut_pointer_params := g.cur_mut_pointer_params.move()
 	mut old_mut_param_owners := g.cur_mut_param_owners.move()
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
+	g.cur_mut_pointer_params = map[string]bool{}
 	g.cur_mut_param_owners = map[string]types.ScopeBindingOwner{}
 	g.prepare_function_defers(prelude_scan.defer_ids)
 	g.goto_label_c_names.clear()
@@ -4583,6 +4602,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_param_types = old_param_types.move()
 	g.cur_concrete_optional_params = old_concrete_optional_params.move()
 	g.cur_mut_params = old_mut_params.move()
+	g.cur_mut_pointer_params = old_mut_pointer_params.move()
 	g.cur_mut_param_owners = old_mut_param_owners.move()
 	g.cur_fn_name = old_fn_name
 	g.loop_depth = 0
@@ -5611,12 +5631,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
-	drop_target_name := if resolved_target_name.len > 0 {
-		resolved_target_name
-	} else {
-		target_name
-	}
-	if node.children_count == 2 && g.ownership_drop_intrinsic_name(drop_target_name) {
+	// Ownership lowering appends its calls after checking, so they have no source position.
+	is_ownership_drop := (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
+		|| (resolved_target_name.len > 0 && g.ownership_drop_intrinsic_name(resolved_target_name))
+	if node.children_count == 2 && is_ownership_drop {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
 		g.writeln('({')
@@ -7158,21 +7176,23 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 		|| clean is types.ISize || clean is types.USize || clean is types.Enum
 }
 
+fn ownership_synthetic_drop_name(name string) bool {
+	return name == 'drop_owned' || name.starts_with('drop_owned_T_')
+		|| name == 'drop_owned_v3_interface' || name.starts_with('drop_owned_v3_interface_T_')
+}
+
 fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
 	if name in ['builtin.drop_owned', 'builtin__drop_owned']
-		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
-		return true
-	}
-	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
-		|| name.starts_with('drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
+		|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
 		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
 		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
 		return true
 	}
-	if name != 'drop_owned' && !name.starts_with('drop_owned_T_') {
+	if !ownership_synthetic_drop_name(name) {
 		return false
 	}
-	module_name := g.tc.fn_type_modules['drop_owned'] or { return false }
+	module_name := g.tc.fn_type_modules[name] or { return false }
 	return module_name == 'builtin'
 }
 
@@ -7385,7 +7405,11 @@ fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wa
 	if base.kind != .ident || !g.current_param_is_mut(base.value) {
 		return false
 	}
-	g.write(g.cname(base.value))
+	if g.current_param_is_mut_pointer(base.value) {
+		g.gen_expr(base_id)
+	} else {
+		g.write(g.cname(base.value))
+	}
 	return true
 }
 
@@ -9930,6 +9954,10 @@ fn (g &FlatGen) current_param_is_mut(name string) bool {
 	return g.tc.cur_scope.nearest_binding_owned_by(name, owner)
 }
 
+fn (g &FlatGen) current_param_is_mut_pointer(name string) bool {
+	return g.current_param_is_mut(name) && (g.cur_mut_pointer_params[name] or { false })
+}
+
 fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
 	if g.cur_mut_params.len == 0 {
 		return false
@@ -11000,12 +11028,18 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		return true
 	}
 	arg_node := g.a.nodes[int(arg_id)]
+	// The checker can contextually type a plain call as `?T` when it is used
+	// where an option is expected. The callee's declared return type remains
+	// authoritative: only treat a call as an already materialized option when
+	// that function actually returns one.
+	plain_call_in_optional_context := arg_node.kind == .call
+		&& !g.expr_really_returns_optional(arg_id)
 	if concrete_abi && arg_node.kind == .none_expr {
 		ct := g.concrete_optional_type_name(expected)
 		g.write('(${ct}){.ok = false}')
 		return true
 	}
-	if arg_node.typ.len > 0 {
+	if arg_node.typ.len > 0 && !plain_call_in_optional_context {
 		raw_arg_type := g.parse_node_type(&arg_node)
 		if raw_arg_type is types.OptionType || raw_arg_type is types.ResultType {
 			if concrete_abi {
@@ -11034,7 +11068,8 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 	}
 	arg_type := g.usable_expr_type(arg_id)
 	arg_optional_type := optional_result_unalias_type(arg_type)
-	if arg_optional_type is types.OptionType || arg_optional_type is types.ResultType {
+	if !plain_call_in_optional_context
+		&& (arg_optional_type is types.OptionType || arg_optional_type is types.ResultType) {
 		if concrete_abi {
 			g.gen_concrete_optional_arg_from_optional_expr(arg_id, arg_optional_type, expected,
 				base_type)
@@ -12457,15 +12492,20 @@ fn (g &FlatGen) target_module_call_name(target string, node flat.Node) ?string {
 	if base.len == 0 || method.len == 0 {
 		return none
 	}
-	if typ := g.tc.cur_scope.lookup(base) {
-		if typ !is types.Void {
-			return none
+	arg_start := g.target_module_call_arg_start(target, node)
+	// A transformed module selector carries its namespace ident as a synthetic
+	// first argument. That syntactic marker remains authoritative when a global
+	// constant happens to share the module alias; the argument is discarded below.
+	if arg_start != 2 {
+		if typ := g.tc.cur_scope.lookup(base) {
+			if typ !is types.Void {
+				return none
+			}
 		}
 	}
 	static_name := '${base}.${method}'
 	if static_name in g.tc.fn_param_types || static_name in g.tc.fn_ret_types
 		|| static_name in g.tc.fn_generic_params {
-		arg_start := g.target_module_call_arg_start(target, node)
 		params := g.tc.fn_param_types[static_name] or {
 			if static_name in g.tc.fn_ret_types && node.children_count == arg_start {
 				return static_name
@@ -12487,7 +12527,6 @@ fn (g &FlatGen) target_module_call_name(target string, node flat.Node) ?string {
 		return none
 	}
 	call_name := '${mod_name}.${method}'
-	arg_start := g.target_module_call_arg_start(target, node)
 	params := g.tc.fn_param_types[call_name] or {
 		if call_name in g.tc.fn_ret_types && node.children_count == arg_start {
 			return call_name
@@ -12506,8 +12545,12 @@ fn (g &FlatGen) target_module_call_arg_start(target string, node flat.Node) int 
 	}
 	base := target.all_before_last('.')
 	first_arg := g.a.child_node(&node, 1)
-	if first_arg.kind == .ident
-		&& (first_arg.value == base || base.ends_with('.${first_arg.value}')) {
+	// Constant resolution can qualify the synthetic module-base argument when the
+	// imported module exports a same-named constant (`flags` -> `flags.flags`). It
+	// is still the namespace marker inserted while lowering the selector.
+	qualified_same_name := '${base}.${base.all_after_last('.')}'
+	if first_arg.kind == .ident && (first_arg.value == base || base.ends_with('.${first_arg.value}')
+		|| first_arg.value == qualified_same_name) {
 		return 2
 	}
 	return 1
@@ -13051,7 +13094,15 @@ fn (g &FlatGen) call_callee_is_module_selector(node flat.Node) bool {
 		return false
 	}
 	base := g.a.child_node(callee, 0)
-	if base.kind != .ident || g.selector_base_is_value(base.value) {
+	if base.kind != .ident {
+		return false
+	}
+	if source_file := g.a.source_files[callee.pos.id] {
+		if _ := g.tc.file_imports[source_file.name + '\n' + base.value] {
+			return !g.selector_base_is_local_value(base.value)
+		}
+	}
+	if g.selector_base_is_value(base.value) {
 		return false
 	}
 	return g.selector_base_module(base.value) != none
@@ -13816,7 +13867,8 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	// by the callee, so emitting the lowered dereference would lose one level.
 	if arg_node.kind == .prefix && arg_node.op == .mul && arg_node.children_count == 1 {
 		child := g.a.child_node(&arg_node, 0)
-		if child.kind == .ident && g.current_param_is_mut(child.value) {
+		if child.kind == .ident && g.current_param_is_mut(child.value)
+			&& !g.current_param_is_mut_pointer(child.value) {
 			param_type := g.current_param_type(child.value) or { types.Type(types.void_) }
 			if g.tc.c_type(param_type) == g.tc.c_type(expected) {
 				g.write(g.cname(child.value))

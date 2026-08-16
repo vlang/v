@@ -110,11 +110,24 @@ pub mut:
 	vals []string
 }
 
+// Field contains the metadata that libpq reports for a result column.
+pub struct Field {
+pub:
+	name          string
+	type_oid      u32
+	type_modifier int
+	size          int
+	format        int
+	table_oid     u32
+	table_column  int
+}
+
 pub struct Result {
 pub:
-	cols  map[string]int
-	names []string
-	rows  []Row
+	cols   map[string]int
+	names  []string
+	rows   []Row
+	fields []Field
 }
 
 // SslMode controls PostgreSQL SSL/TLS negotiation through libpq's `sslmode`
@@ -229,6 +242,18 @@ fn C.PQntuples(const_res &C.PGresult) i32
 fn C.PQnfields(const_res &C.PGresult) i32
 
 fn C.PQfname(const_res &C.PGresult, i32) &char
+
+fn C.PQftype(const_res &C.PGresult, i32) u32
+
+fn C.PQfmod(const_res &C.PGresult, i32) i32
+
+fn C.PQfsize(const_res &C.PGresult, i32) i32
+
+fn C.PQfformat(const_res &C.PGresult, i32) i32
+
+fn C.PQftable(const_res &C.PGresult, i32) u32
+
+fn C.PQftablecol(const_res &C.PGresult, i32) i32
 
 // Params:
 // const Oid *paramTypes
@@ -490,10 +515,20 @@ fn res_to_result(res voidptr) Result {
 
 	mut cols := map[string]int{}
 	mut names := []string{}
+	mut fields := []Field{cap: nr_cols}
 	for j in 0 .. nr_cols {
 		field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
 		cols[field_name] = j
 		names << field_name
+		fields << Field{
+			name:          field_name
+			type_oid:      C.PQftype(res, j)
+			type_modifier: C.PQfmod(res, j)
+			size:          C.PQfsize(res, j)
+			format:        C.PQfformat(res, j)
+			table_oid:     C.PQftable(res, j)
+			table_column:  C.PQftablecol(res, j)
+		}
 	}
 	mut rows := []Row{}
 	for i in 0 .. nr_rows {
@@ -510,7 +545,12 @@ fn res_to_result(res voidptr) Result {
 	}
 
 	C.PQclear(res)
-	return Result{cols, names, rows}
+	return Result{
+		cols:   cols
+		names:  names
+		rows:   rows
+		fields: fields
+	}
 }
 
 // close releases this conn back to its pool. Safe to call more than once:
@@ -987,6 +1027,20 @@ pub fn (c &Conn) unlisten_all() ! {
 	}
 }
 
+// escape_literal returns `value` as a quoted PostgreSQL literal that is safe to interpolate into
+// a query. Prefer parameterized queries when they can express the operation.
+pub fn (c &Conn) escape_literal(value string) !string {
+	c.ensure_active()!
+	escaped := C.PQescapeLiteral(c.conn, &char(value.str), usize(value.len))
+	if escaped == unsafe { nil } {
+		e := unsafe { C.PQerrorMessage(c.conn).vstring() }
+		return error('pg escape_literal error: "${e}"')
+	}
+	result := unsafe { escaped.vstring().clone() }
+	C.PQfreemem(escaped)
+	return result
+}
+
 // notify sends a notification on the specified channel with an optional payload.
 // All connections currently listening on that channel will receive the notification.
 pub fn (c &Conn) notify(channel string, payload string) ! {
@@ -996,14 +1050,8 @@ pub fn (c &Conn) notify(channel string, payload string) ! {
 	}
 	mut sql_stmt := ''
 	if payload.len > 0 {
-		// Use PQescapeLiteral to safely escape the payload
-		escaped := C.PQescapeLiteral(c.conn, &char(payload.str), usize(payload.len))
-		if escaped == unsafe { nil } {
-			e := unsafe { C.PQerrorMessage(c.conn).vstring() }
-			return error('pg notify error: failed to escape payload: "${e}"')
-		}
-		sql_stmt = unsafe { 'NOTIFY ${channel}, ' + escaped.vstring() + ';' }
-		C.PQfreemem(escaped)
+		escaped := c.escape_literal(payload)!
+		sql_stmt = 'NOTIFY ${channel}, ${escaped};'
 	} else {
 		sql_stmt = 'NOTIFY ${channel};'
 	}

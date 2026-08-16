@@ -469,7 +469,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				if stmt.kind == 'flag' && stmt.main.contains('-l') {
 					global_g.mods_with_c_libs[file.mod.name] = true
 				}
-				if stmt.kind in ['include', 'preinclude'] {
+				if stmt.kind in ['include', 'preinclude', 'insert'] {
 					global_g.mods_with_c_includes[file.mod.name] = true
 				}
 			}

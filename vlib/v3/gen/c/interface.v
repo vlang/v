@@ -1199,7 +1199,13 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	mut actual := g.interface_source_type(id)
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
-			actual = param_type
+			// A `mut p &T` parameter uses `&&T` storage, but reading `p` yields
+			// the semantic `&T` value that is being boxed into the interface.
+			actual = if g.current_param_is_mut_pointer(node.value) && param_type is types.Pointer {
+				param_type.base_type
+			} else {
+				param_type
+			}
 		}
 	}
 	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
@@ -1360,7 +1366,13 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
-			obj_type := g.tc.resolve_type(g.a.child(field, 0))
+			obj_id := g.a.child(field, 0)
+			obj_node := g.a.node(obj_id)
+			mut obj_type := g.tc.resolve_type(obj_id)
+			if obj_node.kind == .ident && g.current_param_is_mut_pointer(obj_node.value)
+				&& obj_type is types.Pointer {
+				obj_type = obj_type.base_type
+			}
 			concrete := types.unwrap_pointer(obj_type)
 			id := g.iface_type_id_for_concrete(iface, concrete)
 			if id != 0 {

@@ -165,6 +165,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut changed := true
 	mut scan_start := 0
 	mut generic_fn_value_scan_start := 0
+	mut interface_box_scan_start := 0
 	mut used_fns_at_scan := t.used_fn_count()
 	mut generic_struct_specs := if t.generic_materialization_ready {
 		t.generic_struct_specs_cache.clone()
@@ -409,6 +410,17 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		t.generic_sum_specs_cache = generic_sum_specs.clone()
 		t.generic_materialization_scan_from = node_count
 		t.generic_materialization_ready = true
+		// Generic specialization can turn an unresolved interface conversion such as
+		// `Sink[W] -> Interface` into a concrete boxed type. Include those newly
+		// materialized boxes before deciding which interface methods need bodies.
+		if interface_box_scan_start < node_count {
+			was_frozen := t.interface_boxed_types_frozen
+			t.interface_boxed_types_frozen = false
+			t.collect_interface_boxed_types_range(interface_box_scan_start, node_count)
+			t.interface_boxed_types_frozen = was_frozen
+			t.refresh_interface_impl_indexes_for_boxed_types()
+			interface_box_scan_start = node_count
+		}
 		// Specialize methods of instantiated generic structs that are never reached
 		// through an explicit call node — notably operator overloads (`a + b`), which
 		// are infix expressions lowered to method calls only later in the pipeline.
@@ -3428,6 +3440,25 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	clone_id := t.clone_generic_fn_node(decl.node, concrete_args)
 	t.cur_fn_ret_type = old_clone_ret_type
 	t.cloning_generic_fn_depth--
+	// Declaration attributes are indexed by the parsed declaration node. A
+	// specialization is appended later and therefore has no entry in that map.
+	// Preserve the transform-relevant `manualfree` bit on the cloned function so
+	// ownership lowering does not inject frees into an explicitly manual body.
+	if !isnil(t.tc) && t.tc.declaration_has_attribute(decl.id, 'manualfree') {
+		cloned_fn := t.a.nodes[int(clone_id)]
+		t.set_node(int(clone_id), flat.Node{
+			kind:                 cloned_fn.kind
+			op:                   cloned_fn.op
+			pos:                  cloned_fn.pos
+			value:                cloned_fn.value
+			typ:                  cloned_fn.typ
+			payload:              cloned_fn.payload
+			children_start:       cloned_fn.children_start
+			children_count:       cloned_fn.children_count
+			is_mut:               cloned_fn.is_mut
+			skip_ownership_drops: true
+		})
+	}
 	t.a.specialized_fn_nodes[int(clone_id)] = true
 	t.a.specialized_fn_modules[int(clone_id)] = decl.module
 	t.a.specialized_fn_files[int(clone_id)] = decl.file
@@ -5540,6 +5571,22 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		if callee.kind == .ident && t.generic_callee_is_specialization(callee.value) {
 			decl_key := t.generic_call_decl_key(id, node, module_name, decls) or { return none }
 			decl := decls[decl_key] or { return none }
+			// The checker and the earlier transform register a concrete signature
+			// before the monomorphization Transformer exists. A specialized callee
+			// therefore does not prove that its body was emitted. Recover its exact
+			// arguments (including return-type-only generics with no value argument)
+			// and queue the missing body before applying the usual stale-callee checks.
+			exact_args := t.exact_generic_specialization_args_from_callee(callee.value) or {
+				t.specialized_plain_generic_call_args(node, decl, module_name) or { []string{} }
+			}
+			if exact_args.len > 0 && !t.generic_args_have_placeholders(exact_args)
+				&& !t.generic_specialization_registered(decl, exact_args) {
+				t.generic_call_spec_cache[idx] = GenericCallSpec{
+					decl_key: decl_key
+					args:     exact_args
+				}
+				return decl_key, exact_args
+			}
 			if node.value.len > 0 {
 				if explicit := t.explicit_generic_call_args(node, module_name) {
 					if scoped := t.infer_generic_call_args_with_explicit(decl, id, node,
@@ -10217,6 +10264,11 @@ fn (mut t Transformer) generic_decl_has_method_level_params(decl GenericFnDecl) 
 		}
 	}
 	for param in all_params {
+		// Lifetimes do not change the emitted runtime signature. A method-level
+		// lifetime can therefore share the receiver's concrete type specialization.
+		if param.starts_with('^') {
+			continue
+		}
 		if param !in receiver_params {
 			return true
 		}

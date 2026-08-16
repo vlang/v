@@ -278,6 +278,34 @@ fn test_short_header_round_trip_and_zero_length_dcid() {
 	assert parsed2.dcid == dcid
 }
 
+fn test_encode_short_header_round_trips_through_parse() {
+	dcid := [u8(0xDE), 0xAD, 0xBE, 0xEF]
+	encoded := encode_short_header(dcid, true, 0, true, 0x3)!
+	assert encoded.len == 1 + dcid.len
+	// Protected low bits (reserved+key_phase+pn_length) are checked directly
+	// here rather than round-tripped through parse_short_header, since that
+	// function assumes header protection has already been removed and would
+	// reject these reserved bits as nonzero.
+	assert encoded[0] & 0x40 != 0 // Fixed Bit always set
+	assert encoded[0] & 0x20 != 0 // spin_bit
+	assert encoded[0] & 0x04 != 0 // key_phase
+	assert encoded[0] & 0x03 == 0x3 // pn_length_bits
+	assert encoded[1..] == dcid
+
+	encoded_off := encode_short_header(dcid, false, 0, false, 0)!
+	assert encoded_off[0] & 0x20 == 0
+	assert encoded_off[0] & 0x04 == 0
+	assert encoded_off[0] & 0x03 == 0
+}
+
+fn test_encode_short_header_rejects_out_of_range_fields() {
+	encode_short_header([]u8{}, false, 0x4, false, 0) or {
+		assert err.msg().contains('reserved_bits')
+		return
+	}
+	assert false, 'expected out-of-range reserved_bits to be rejected'
+}
+
 // test_short_header_rejects_negative_dcid_len is a regression test for a
 // Codex finding (vlang/v#27680 pullrequestreview-4806500473): a negative
 // `dcid_len` (e.g. from unvalidated connection state) made

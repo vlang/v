@@ -312,8 +312,18 @@ fi
 '
 }
 
-fn gc_compatible_tcc_script(version string, includes_local bool) string {
-	return tcc_probe_script_prefix(version, includes_local) +
+fn gc_compatible_tcc_script(version string, includes_local bool, requires_include_environment bool) string {
+	include_environment_check := if requires_include_environment {
+		'
+if [ -z "\${C_INCLUDE_PATH:-}" ] && [ -z "\${CPATH:-}" ]; then
+	echo "include path environment is unavailable" >&2
+	exit 4
+fi
+'
+	} else {
+		''
+	}
+	return tcc_probe_script_prefix(version, includes_local) + include_environment_check +
 		'
 if [ ! -f thirdparty/tcc/lib/tcc/include/stddef.h ]; then
 	echo "tcc: error: thirdparty/tcc/lib/tcc/include/stddef.h is unavailable from the current directory" >&2
@@ -354,11 +364,15 @@ chmod +x "\$out"
 }
 
 fn compatible_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, true)
+	return gc_compatible_tcc_script(version, true, false)
 }
 
 fn missing_local_include_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, false)
+	return gc_compatible_tcc_script(version, false, false)
+}
+
+fn include_environment_dependent_tcc_script(version string) string {
+	return gc_compatible_tcc_script(version, true, true)
 }
 
 fn runtime_incompatible_tcc_script(version string) string {
@@ -454,9 +468,9 @@ fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
 			runtime_incompatible_tcc_script('runtime-incompatible-tcc'),
 			'runtime-incompatible-libgc\n')
 	}
-	incompatible_sha := commit_bundle_state(source, 'missing-local-include-head',
-		missing_local_include_tcc_script('missing-local-include-head-tcc'),
-		'missing-local-include-head-libgc\n')
+	incompatible_sha := commit_bundle_state(source, 'include-environment-dependent',
+		include_environment_dependent_tcc_script('include-environment-dependent-tcc'),
+		'include-environment-dependent-libgc\n')
 	run_checked('git -C ${os.quoted_path(source)} push --quiet ${os.quoted_path(remote)} HEAD:refs/heads/thirdparty-linux-amd64')
 	create_unknown_branch(root, remote)
 	create_musl_branch(root, remote)
@@ -529,6 +543,14 @@ fn push_compatible_head(mut fixture TccHistoryFixture) string {
 	return compatible_head_sha
 }
 
+fn push_compatible_head_without_local_include(mut fixture TccHistoryFixture) string {
+	compatible_head_sha := commit_bundle_state(fixture.source, 'compatible-without-local-include',
+		missing_local_include_tcc_script('compatible-without-local-include-tcc'),
+		'compatible-without-local-include-libgc\n')
+	run_checked('git -C ${os.quoted_path(fixture.source)} push --quiet ${os.quoted_path(fixture.remote)} HEAD:refs/heads/thirdparty-linux-amd64')
+	return compatible_head_sha
+}
+
 fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	if os.user_os() != 'linux' {
 		return
@@ -538,17 +560,12 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 		os.rmdir_all(fixture.root) or {}
 	}
 
-	poisoned_search_result := os.execute('C_INCLUDE_PATH=/usr/local/include CPATH=/usr/local/include ${os.quoted_path(os.join_path(fixture.source,
-		'tcc.exe'))} -print-search-dirs 2>&1')
-	assert poisoned_search_result.exit_code == 0, poisoned_search_result.output
-	assert poisoned_search_result.output.split_into_lines().contains('  /usr/local/include'), poisoned_search_result.output
-
 	fresh_result :=
-		os.execute('export C_INCLUDE_PATH=/usr/local/include CPATH=/usr/local/include; ${fixture.fresh_cmd} 2>&1')
+		os.execute('export C_INCLUDE_PATH=/poison-c-include CPATH=/poison-cpath; ${fixture.fresh_cmd} 2>&1')
 	assert fresh_result.exit_code == 0, fresh_result.output
 	assert fresh_result.output.contains('is not host-compatible'), fresh_result.output
 	assert fresh_result.output.contains('TCC search directories:'), fresh_result.output
-	assert fresh_result.output.contains('the TCC bundle is missing required glibc include search path: /usr/local/include'), fresh_result.output
+	assert fresh_result.output.contains('include path environment is unavailable'), fresh_result.output
 	assert fresh_result.output.contains('Using newest host-compatible TCC commit ${fixture.compatible_sha}'), fresh_result.output
 
 	assert_historical_fallback(fixture)
@@ -584,6 +601,31 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == local_sha
 	assert os.read_file(local_file)! == 'preserve this branch commit\n'
+	assert_clean_checkout(fixture.tcc_dir)
+}
+
+fn test_linux_tcc_accepts_compatible_bundle_without_usr_local_include() {
+	if os.user_os() != 'linux' {
+		return
+	}
+	mut fixture := new_tcc_history_fixture(false)
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+
+	compatible_head_sha := push_compatible_head_without_local_include(mut fixture)
+	search_result :=
+		os.execute('${os.quoted_path(os.join_path(fixture.source, 'tcc.exe'))} -print-search-dirs 2>&1')
+	assert search_result.exit_code == 0, search_result.output
+	assert !search_result.output.split_into_lines().contains('  /usr/local/include'), search_result.output
+
+	fresh_result := os.execute('${fixture.fresh_cmd} 2>&1')
+	assert fresh_result.exit_code == 0, fresh_result.output
+	assert !fresh_result.output.contains('is not host-compatible'), fresh_result.output
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
+	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == compatible_head_sha
+	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'compatible-without-local-include-libgc\n'
+	assert !os.exists(compatible_marker_dir(fixture))
 	assert_clean_checkout(fixture.tcc_dir)
 }
 

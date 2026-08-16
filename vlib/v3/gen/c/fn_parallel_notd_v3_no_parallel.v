@@ -1872,6 +1872,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		} else {
 			g.cur_mut_params.clone()
 		}
+		cur_mut_pointer_params:         if result_only {
+			g.cur_mut_pointer_params
+		} else {
+			g.cur_mut_pointer_params.clone()
+		}
 		cur_mut_param_owners:           if result_only {
 			g.cur_mut_param_owners
 		} else {

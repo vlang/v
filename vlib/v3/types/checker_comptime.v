@@ -8666,7 +8666,18 @@ fn (tc &TypeChecker) or_block_call_display_name(call &flat.Node) string {
 
 fn (mut tc TypeChecker) check_option_propagation(id flat.NodeId, source_id flat.NodeId) {
 	source := tc.a.node(source_id)
-	source_type := tc.resolve_type(source_id)
+	mut source_type := tc.resolve_type(source_id)
+	// A preceding `field != none` guard smartcasts a selector to its payload,
+	// but `&field?` still needs the declared Option type so it can address the
+	// payload storage itself. Preserve the declared type for propagation while
+	// retaining the smartcast for ordinary selector use.
+	if source.kind == .selector {
+		if declared := tc.selector_declared_value_type(*source) {
+			if declared is OptionType {
+				source_type = declared
+			}
+		}
+	}
 	clean_source_type := unalias_type(source_type)
 	clean_return_type := unalias_type(tc.fn_context.return_type)
 	is_channel_send := int(id) == tc.channel_send_or_expr_id
@@ -14867,15 +14878,15 @@ fn (tc &TypeChecker) multi_expr_branch_tail_type_groups(branch_id flat.NodeId, c
 	if groups := tc.tuple_tail_value_groups(branch_id, count, explicit_comma_tail) {
 		mut result := [][]Type{cap: groups.len}
 		for group in groups {
-			mut types := []Type{cap: group.len}
+			mut tail_types := []Type{cap: group.len}
 			for value_id in group {
 				typ := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
 				if !type_has_runtime_value(typ) {
 					return none
 				}
-				types << typ
+				tail_types << typ
 			}
-			result << types
+			result << tail_types
 		}
 		return result
 	}

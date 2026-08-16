@@ -86,6 +86,12 @@ by using any of the following commands in a terminal:
 
 The `v new --web` template uses `veb`, V's web framework.
 
+When run in a terminal, `v new` and `v init` interactively prompt for the project's
+description, version and license. When stdin is *not* a terminal (for example when the
+input is piped or redirected, as in CI), the prompts are skipped and the defaults are
+used instead of blocking on input; in that case the project name must be passed as an
+argument, e.g. `v new abc`.
+
 ## Table of Contents
 
 <table>
@@ -6322,6 +6328,9 @@ Package are up to date.
    Initialising ...
    Complete!
    ```
+
+   The prompts above appear only when running in a terminal; with a non-terminal
+   stdin the defaults are used instead (see [Getting started](#getting-started)).
 
    Example `v.mod`:
    ```v ignore

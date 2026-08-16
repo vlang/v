@@ -311,6 +311,31 @@ fn main() {
 	')
 	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
 
+	fail_iclone_drop_temporary := run_ownership_check(v3_bin, 'iclone_drop_temporary', '
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements IClone, Drop {
+	id int
+}
+
+fn make_resource() Resource {
+	return Resource{id: 7}
+}
+
+fn (mut resource Resource) drop() {
+	println(resource.id)
+}
+
+fn main() {
+	_ := make_resource().clone()
+}
+	')
+	assert fail_iclone_drop_temporary.exit_code != 0
+	assert fail_iclone_drop_temporary.output.contains('cannot generate default clone for `Resource`: `Resource` requires ownership destruction but has no `clone()` method'), fail_iclone_drop_temporary.output
+
 	ok_iclone_if_expr_clone := run_ownership_check(v3_bin, 'iclone_if_expr_clone', '
 struct Resource implements IClone {
 	id int

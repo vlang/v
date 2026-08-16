@@ -1608,6 +1608,14 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 			}
 		}
 	}
+	for name, req in batch.default_clone_types {
+		if name !in t.default_clone_types {
+			t.default_clone_types[t.promote_scoped_result_text(name)] = DefaultCloneRequest{
+				module: t.promote_scoped_result_text(req.module)
+				file:   t.promote_scoped_result_text(req.file)
+			}
+		}
+	}
 	for message in batch.monomorph_errors {
 		t.monomorph_errors << t.promote_scoped_result_text(message)
 	}
@@ -2217,6 +2225,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		if t.retain_worker_results {
 			t.clone_sum_eq_types_owned()
 			t.clone_auto_str_types_owned()
+			t.clone_default_clone_types_owned()
 		}
 		t.base_write_intercept = false
 		t.defer_oor_writes = false

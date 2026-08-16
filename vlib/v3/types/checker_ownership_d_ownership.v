@@ -3,7 +3,6 @@ module types
 import time
 import v3.flat
 import v3.gen.c.naming
-import os
 
 struct MovedVar {
 	moved_to      string
@@ -225,6 +224,7 @@ mut:
 	pending_loop_label               string
 	deferred_aggregate_consumption   map[int]int
 	index_move_reads                 map[int]bool
+	guard_move_reads                 map[int]bool
 	scope_frames                     []OwnershipScopeFrame
 	suppressed_checks                int
 	path_active                      bool
@@ -309,6 +309,7 @@ fn new_ownership_state() &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		guard_move_reads:                 map[int]bool{}
 		scope_frames:                     []OwnershipScopeFrame{}
 		suppressed_checks:                0
 		path_active:                      true
@@ -415,6 +416,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		guard_move_reads:                 map[int]bool{}
 		scope_frames:                     []OwnershipScopeFrame{}
 		suppressed_checks:                0
 		path_active:                      true
@@ -501,13 +503,26 @@ fn ownership_merge_return_descs(mut dst map[string][]OwnershipReturnDescendant, 
 
 fn ownership_return_param_desc_in(values []OwnershipReturnParamDescendant, needle OwnershipReturnParamDescendant) bool {
 	for value in values {
-		if value.param_idx == needle.param_idx && value.slot_idx == needle.slot_idx
-			&& value.source_suffix == needle.source_suffix
-			&& value.target_suffix == needle.target_suffix {
+		if ownership_return_param_desc_subsumes(value, needle) {
 			return true
 		}
 	}
 	return false
+}
+
+// A shallower alias path is a conservative representation of any alias below
+// it. This also makes the return-alias fixed point converge for recursive call
+// graphs instead of growing paths such as `.next.next...` without bound.
+fn ownership_return_param_desc_subsumes(existing OwnershipReturnParamDescendant, candidate OwnershipReturnParamDescendant) bool {
+	return existing.param_idx == candidate.param_idx && existing.slot_idx == candidate.slot_idx
+		&& ownership_storage_suffix_contains(existing.source_suffix, candidate.source_suffix)
+		&& ownership_storage_suffix_contains(existing.target_suffix, candidate.target_suffix)
+}
+
+fn ownership_storage_suffix_contains(parent string, child string) bool {
+	return parent == child
+		|| (parent.len == 0 && child.len > 0 && child[0] in [`.`, `[`])
+		|| ownership_storage_key_is_descendant(child, parent)
 }
 
 fn ownership_merge_return_param_descs(mut dst map[string][]OwnershipReturnParamDescendant, src map[string][]OwnershipReturnParamDescendant) {
@@ -647,6 +662,11 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	for id, moved in src.index_move_reads {
 		if moved {
 			dst.index_move_reads[id] = true
+		}
+	}
+	for id, moved in src.guard_move_reads {
+		if moved {
+			dst.guard_move_reads[id] = true
 		}
 	}
 }
@@ -1268,8 +1288,11 @@ fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth i
 		return false
 	}
 	match typ {
-		String, Array, Map, Interface, OptionType, ResultType, SumType {
+		String, Array, Map, Interface, ResultType, SumType {
 			return true
+		}
+		OptionType {
+			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
 		}
 		Alias {
 			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
@@ -1304,68 +1327,43 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(typ Type) ?strin
 		return none
 	}
 	mut seen := map[string]bool{}
-	return tc.ownership_default_clone_missing_method_inner(typ, false, mut seen)
+	return tc.ownership_default_clone_missing_method_inner(typ, mut seen)
 }
 
-// ownership_default_clone_missing_method_inner walks a type's owned storage. When
-// `strict_sum` is set (the type is reached as a struct field of a compiler-default
-// clone) a sum with an owning variant is reported as needing an explicit clone,
-// because make_compiler_default_clone_value_inner has no sum-cloning path and would
-// share the payload. Standalone/collection-element sums keep V1's shallow-copy
-// compatibility under autofree (`strict_sum` stays false there).
-fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, strict_sum bool, mut seen map[string]bool) ?string {
+fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut seen map[string]bool) ?string {
 	match typ {
 		Alias {
 			// Compiler-default clone lowering normalizes aliases before recursive method
 			// dispatch, so only clone paths available on the underlying type are safe here.
-			return tc.ownership_default_clone_missing_method_inner(typ.base_type, strict_sum, mut
-				seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
 		}
 		OptionType {
-			return tc.ownership_default_clone_missing_method_inner(typ.base_type, strict_sum, mut
-				seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
 		}
 		ResultType {
-			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, strict_sum, mut
-				seen)
-			{
+			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen) {
 				return bad
 			}
 			return tc.ownership_default_clone_missing_ierror_method()
 		}
 		Array {
-			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, strict_sum, mut
-				seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
 		}
 		ArrayFixed {
-			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, strict_sum, mut
-				seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
 		}
 		Map {
-			if bad := tc.ownership_default_clone_missing_method_inner(typ.key_type, strict_sum, mut
-				seen)
-			{
+			if bad := tc.ownership_default_clone_missing_method_inner(typ.key_type, mut seen) {
 				return bad
 			}
-			return tc.ownership_default_clone_missing_method_inner(typ.value_type, strict_sum, mut
-				seen)
+			return tc.ownership_default_clone_missing_method_inner(typ.value_type, mut seen)
 		}
 		Struct {
 			name := typ.name
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
-			// A struct with custom destruction semantics needs a user-provided clone:
-			// the compiler-default clone only duplicates recognized owned storage, so an
-			// opaque handle/voidptr managed by the destructor would be shared between the
-			// original and the clone and then double-freed when both are dropped. Require
-			// the explicit clone whenever the destructor can run on both copies — strict
-			// ownership always, autofree once the struct opts into `.clone()` via IClone,
-			// and autofree when it is reached as a strictly-cloned field of such a struct
-			// (`strict_sum`). Non-IClone custom-drop structs copied on their own keep V1's
-			// collection-copy behavior.
-			if tc.ownership_type_has_explicit_drop(name) && (!tc.autofree_mode
-				|| strict_sum || tc.named_type_implements_marker(name, 'IClone')) {
+			if tc.ownership_type_has_explicit_drop(name) {
 				return name
 			}
 			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone') {
@@ -1375,22 +1373,11 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, stri
 				return none
 			}
 			seen[name] = true
-			// A struct's fields are deep-cloned only when the struct itself is being
-			// deep-cloned: strict ownership always, an IClone `.clone()` target, or an
-			// already-strict field. A non-IClone autofree struct copied as a V1 aggregate
-			// shallow-copies its fields, so its fields inherit the non-strict context.
-			strict_field := strict_sum || !tc.autofree_mode
-				|| tc.named_type_implements_marker(name, 'IClone')
 			for field in tc.struct_fields_for_type(name) {
 				if !tc.ownership_type_requires_destruction(field.typ) {
 					continue
 				}
-				// Fields of a compiler-default clone must be deep-cloned, so a sum or
-				// custom-drop field (directly or nested) requires an explicit clone even
-				// under autofree.
-				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, strict_field, mut
-					seen)
-				{
+				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, mut seen) {
 					return bad
 				}
 			}
@@ -1400,16 +1387,23 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, stri
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
-			// A sum value whose active variant owns storage cannot be cloned by the
-			// compiler-default clone: make_compiler_default_clone_value_inner has no
-			// sum-cloning path and would copy the payload by reference, so the original
-			// and clone would share (and later double-free) the same allocation. Require
-			// an explicit clone for sum fields of a compiler-default clone; standalone
-			// autofree collection copies keep V1's shallow-copy compatibility.
-			if tc.autofree_mode && !strict_sum {
+			name := typ.name
+			if seen[name] {
 				return none
 			}
-			return typ.name
+			seen[name] = true
+			base := tc.sum_base_name(name)
+			for variant in tc.sum_types[base] or { return name } {
+				concrete := tc.concrete_sum_variant_name(name, variant)
+				variant_type := tc.parse_type(concrete)
+				if !tc.ownership_type_requires_destruction(variant_type) {
+					continue
+				}
+				if bad := tc.ownership_default_clone_missing_method_inner(variant_type, mut seen) {
+					return bad
+				}
+			}
+			return none
 		}
 		Interface {
 			return typ.name
@@ -1435,22 +1429,6 @@ fn (tc &TypeChecker) ownership_default_clone_missing_ierror_method() ?string {
 		}
 	}
 	return none
-}
-
-fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
-	name := resolve_type_name_for_method(typ)
-	if name.len == 0 {
-		return false
-	}
-	if _ := tc.resolve_generic_struct_method(name, 'clone') {
-		return true
-	}
-	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
-		if method_name in tc.fn_ret_types {
-			return true
-		}
-	}
-	return false
 }
 
 fn (tc &TypeChecker) ownership_ierror_has_compatible_clone_method(typ Type) bool {
@@ -1710,15 +1688,24 @@ fn (mut tc TypeChecker) ownership_note_binding(name string, typ Type, pos flat.N
 	source_id := tc.ownership_guard_source_for_binding(pos, name)
 	source_name := tc.ownership_expr_ident_name(source_id)
 	source_participates := source_name.len > 0 && tc.ownership_storage_participates(source_name)
-	if tc.ownership_type_is_owned(typ) || source_participates {
+	mutable_owned_source := source_name.len > 0 && tc.expr_root_is_mutable_lvalue(source_id)
+		&& tc.ownership_type_requires_destruction(typ)
+	if tc.ownership_type_is_owned(typ) || source_participates || mutable_owned_source {
+		mut moved_source := false
 		if source_name.len > 0 {
 			tc.ownership_reject_global_move(source_name, pos, name, false)
 			if source_name in st.owned_vars {
-				tc.ownership_move_var(source_name, name, pos, false, '', true)
+				moved_source = tc.ownership_move_var_result(source_name, name, pos, false, '', true)
 			} else {
-				_ := tc.ownership_move_overlapping_dynamic_storage(source_name, name, pos, false,
-					'', true)
+				moved_source = tc.ownership_move_overlapping_dynamic_storage(source_name, name,
+					pos, false, '', true).len > 0
 			}
+		}
+		if !source_participates && mutable_owned_source {
+			moved_source = true
+		}
+		if moved_source && tc.valid_node_id(source_id) {
+			st.guard_move_reads[int(source_id)] = true
 		}
 		tc.ownership_mark_owned(name, typ, pos)
 		return
@@ -3451,18 +3438,18 @@ fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string,
 	mut descs := st.ownership_fn_return_param_descs[fn_name] or {
 		[]OwnershipReturnParamDescendant{}
 	}
-	for desc in descs {
-		if desc.param_idx == param_idx && desc.slot_idx == slot_idx
-			&& desc.source_suffix == source_suffix && desc.target_suffix == target_suffix {
-			return
-		}
-	}
-	descs << OwnershipReturnParamDescendant{
+	candidate := OwnershipReturnParamDescendant{
 		param_idx:     param_idx
 		slot_idx:      slot_idx
 		source_suffix: source_suffix
 		target_suffix: target_suffix
 	}
+	for desc in descs {
+		if ownership_return_param_desc_subsumes(desc, candidate) {
+			return
+		}
+	}
+	descs << candidate
 	st.ownership_fn_return_param_descs[fn_name] = descs
 }
 
@@ -6672,6 +6659,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 			return
 		}
 		rhs_type := tc.resolve_type(rhs_id)
+		if tc.ownership_expr_is_mutable_index_move(rhs_id, rhs_type) {
+			tc.ownership_mark_index_move_read(rhs_name, assign_id)
+			tc.ownership_mark_owned(lhs_name, rhs_type, assign_id)
+			return
+		}
 		rhs_owned := tc.ownership_type_is_owned(rhs_type)
 		if rhs_owned || lhs_owned {
 			source_type := if rhs_owned { rhs_type } else { lhs_type }
@@ -6690,6 +6682,23 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		st.owned_vars.delete(lhs_name)
 		st.owned_var_types.delete(lhs_name)
 	}
+}
+
+fn (tc &TypeChecker) ownership_expr_is_mutable_index_move(id flat.NodeId, typ Type) bool {
+	if !tc.valid_node_id(id) || !tc.ownership_type_requires_destruction(typ)
+		|| !tc.expr_root_is_mutable_lvalue(id) || !tc.ownership_expr_ident_name(id).contains('.') {
+		return false
+	}
+	mut source_id := id
+	for tc.valid_node_id(source_id) {
+		node := tc.a.nodes[int(source_id)]
+		if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
+			source_id = tc.a.child(&node, 0)
+			continue
+		}
+		return node.kind == .index && node.value != 'range'
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) ownership_assign_shadowing_same_name(lhs_name string, rhs_id flat.NodeId, lhs_type Type, assign_id flat.NodeId) bool {
@@ -10270,7 +10279,8 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 	if has_receiver && fn_node.kind == .selector && fn_node.children_count > 0 {
 		receiver_id := tc.a.child(fn_node, 0)
 		receiver_type := if params.len > 0 { params[0] } else { Type(void_) }
-		if receiver_type !is Pointer && !tc.ownership_method_keeps_receiver(fn_node.value)
+		if (receiver_type !is Pointer || tc.ownership_call_returns_param(call_name, 0))
+			&& !tc.ownership_method_keeps_receiver(fn_node.value)
 			&& !tc.ownership_array_builtin_keeps_receiver(receiver_id, fn_node.value)
 			&& !tc.ownership_string_builtin_keeps_receiver(receiver_id, fn_node.value)
 			&& tc.ownership_expr_moves_named_storage(receiver_id, target) {
@@ -10280,7 +10290,8 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 	for i in 1 .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		param_idx := if has_receiver { i } else { i - 1 }
-		if param_idx >= 0 && param_idx < params.len && params[param_idx] is Pointer {
+		if param_idx >= 0 && param_idx < params.len && params[param_idx] is Pointer
+			&& !tc.ownership_call_returns_param(call_name, param_idx) {
 			continue
 		}
 		if tc.ownership_expr_moves_named_storage(arg_id, target) {
@@ -10288,6 +10299,14 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) ownership_call_returns_param(fn_name string, param_idx int) bool {
+	if fn_name.len == 0 || param_idx < 0 || tc.ownership == unsafe { nil } {
+		return false
+	}
+	params := tc.ownership.ownership_fn_returns_param[fn_name] or { return false }
+	return param_idx in params
 }
 
 fn (tc &TypeChecker) ownership_call_has_receiver(node flat.Node, fn_node flat.Node, params []Type) bool {
@@ -10517,6 +10536,13 @@ fn (mut tc TypeChecker) ownership_mark_index_move_read_in(id flat.NodeId, name s
 // materializing the moved value.
 pub fn (tc &TypeChecker) ownership_index_read_moves_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.index_move_reads[int(id)]
+}
+
+// ownership_guard_read_moves_value reports whether an optional/result guard binding
+// consumed the addressable wrapper at `id`. The transformer clears that source after
+// materializing the moved wrapper so its storage cannot destroy the payload again.
+pub fn (tc &TypeChecker) ownership_guard_read_moves_value(id flat.NodeId) bool {
+	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.guard_move_reads[int(id)]
 }
 
 fn (mut tc TypeChecker) ownership_owned_dynamic_overlap_names(source_name string) []string {
@@ -10869,7 +10895,7 @@ fn (tc &TypeChecker) ownership_type_is_owned(typ Type) bool {
 		return tc.ownership_type_is_owned(typ.base_type)
 	}
 	if typ is OptionType {
-		return true
+		return tc.ownership_type_is_owned(typ.base_type)
 	}
 	if typ is ResultType {
 		return true
