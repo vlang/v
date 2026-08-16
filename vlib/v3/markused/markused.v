@@ -186,14 +186,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	detect_reachable_generics := detect_generics && !trivial_literal_output
 	use_prepared := !isnil(prepared) && prepared.ready && !detect_reachable_generics && !cache_mode
 		&& !all_functions
-	// The runtime-helper detection scan only reads the AST and (forked) checker
-	// caches, so it runs on its own thread under the decl scan + precollect and
-	// its enqueue requests are replayed in scan order at the seeds step below.
+	// Runtime-helper detection reads completed semantic types. Start it here,
+	// after checking, and overlap it with the declaration scan + precollect.
+	// Its enqueue requests are replayed in scan order at the seeds step below.
 	mut rt_scan := &RtHelpersScanArgs{
 		a:  a
-		tc: if use_prepared { tc } else { tc.fork_for_parallel_transform(a) }
+		tc: tc.fork_for_parallel_transform(a)
 	}
-	rt_scan_parallel := !use_prepared && par_markused_seeds_enabled() && !trivial_literal_output
+	rt_scan_parallel := par_markused_seeds_enabled() && !trivial_literal_output
 	rt_scan.enabled = rt_scan_parallel
 	mut rt_scan_threads := []thread{cap: 1}
 	if rt_scan_parallel {
@@ -625,18 +625,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		mu_sw.restart()
 	}
 	has_entry_main := markused_has_entry_main_indexed(a, tc)
-	if use_prepared {
-		for name in prepared.runtime_helper_roots {
-			enqueue(name, mut used, mut queue)
-		}
-	} else if rt_scan_parallel {
-		rt_scan_threads[0].wait()
-		for name in rt_scan.queue {
-			// Clone into the master arena: the scan scope is freed right below.
-			enqueue(name.clone(), mut used, mut queue)
-		}
-		markused_worker_scope_free(rt_scan.scope)
-	} else if !trivial_literal_output {
+	if !rt_scan_parallel && !trivial_literal_output {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	}
 	needs_closure_runtime := if use_prepared && prepared.needs_closure_runtime {
@@ -700,7 +689,21 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		mu_sw.restart()
 	}
 	mut qi := 0
-	for qi < queue.len {
+	mut runtime_helpers_pending := rt_scan_parallel
+	for qi < queue.len || runtime_helpers_pending {
+		if qi >= queue.len {
+			// Runtime-helper scanning starts only after semantic checking. Let the
+			// ordinary reachability roots keep the caller busy while it runs, then
+			// append its roots before allowing the fixed-point queue to finish.
+			rt_scan_threads[0].wait()
+			for helper_name in rt_scan.queue {
+				// Clone into the master arena: the scan scope is freed right below.
+				enqueue(helper_name.clone(), mut used, mut queue)
+			}
+			markused_worker_scope_free(rt_scan.scope)
+			runtime_helpers_pending = false
+			continue
+		}
 		name := queue[qi]
 		qi++
 		prev_len := queue.len
@@ -1737,7 +1740,6 @@ mut:
 	import_contexts       []map[string]string
 	marked_roots          []string
 	c_interface_roots     []string
-	runtime_helper_roots  []string
 	auto_roots            []string
 	needs_closure_runtime bool
 	scope                 voidptr
@@ -1920,10 +1922,6 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 			}
 		}
 	}
-	runtime_tc := tc.fork_for_parallel_transform(a)
-	mut runtime_used := map[string]bool{}
-	enqueue_detected_runtime_helpers(a, runtime_tc, mut runtime_used, mut
-		result.runtime_helper_roots)
 	reachable_modules := markused_reachable_modules(a, tc)
 	mut auto_used := map[string]bool{}
 	enqueue_auto_roots(a, result.fn_decls, reachable_modules, mut auto_used, mut result.auto_roots)

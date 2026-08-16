@@ -22,9 +22,15 @@ fn test_each_unresolved_module_import_is_reported() {
 
 	os.mkdir_all(root) or { panic(err) }
 	module_name := 'definitely_missing_v3_review_module'
+	empty_module_name := 'empty_target_v3_review_module'
+	empty_module_dir := os.join_path(root, 'modules', empty_module_name)
+	os.mkdir_all(empty_module_dir) or { panic(err) }
+	os.write_file(os.join_path(empty_module_dir, 'only_d_v3_review_never.v'),
+		'module ${empty_module_name}\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
 import ${module_name}
+import ${empty_module_name}
 
 fn main() {}
 ') or {
@@ -33,16 +39,21 @@ fn main() {}
 	os.write_file(os.join_path(root, 'second.v'), 'module main
 
 import ${module_name}
+import ${empty_module_name}
 
 fn helper() {}
 ') or {
 		panic(err)
 	}
 
-	result := os.execute('${v3_bin} -nocache -no-parallel -o ${output} ${root}')
-	assert result.exit_code != 0, result.output
-	message := 'cannot import module "${module_name}" (not found)'
-	assert result.output.count(message) == 2, result.output
-	assert result.output.contains('main.v'), result.output
-	assert result.output.contains('second.v'), result.output
+	for flags in ['-no-parallel', '-building-v'] {
+		result := os.execute('${v3_bin} -nocache ${flags} -o ${output} ${root}')
+		assert result.exit_code != 0, result.output
+		for unresolved in [module_name, empty_module_name] {
+			message := 'cannot import module "${unresolved}" (not found)'
+			assert result.output.count(message) == 2, result.output
+		}
+		assert result.output.contains('main.v'), result.output
+		assert result.output.contains('second.v'), result.output
+	}
 }

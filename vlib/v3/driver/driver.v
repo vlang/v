@@ -7387,7 +7387,10 @@ pub fn run(args []string) {
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
 	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
-	pre_tc.valid_diagnostic_fast = building_v && os.getenv('V3_NO_VALID_DIAGNOSTIC_FAST') == ''
+	// Missing imports are rare error paths and need the authoritative serial
+	// diagnostic pass, even for an otherwise-fast parallel self-host build.
+	pre_tc.valid_diagnostic_fast = building_v && a.missing_imports.len == 0
+		&& os.getenv('V3_NO_VALID_DIAGNOSTIC_FAST') == ''
 	pre_tc.valid_resolution_fast = building_v && os.getenv('V3_NO_VALID_RESOLUTION_FAST') == ''
 	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
@@ -7401,7 +7404,7 @@ pub fn run(args []string) {
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
-		if scope_prealloc_check {
+		if scope_prealloc_check && a.missing_imports.len == 0 {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
@@ -7463,7 +7466,8 @@ pub fn run(args []string) {
 		} else if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
-			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel)
+			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel
+				&& a.missing_imports.len == 0)
 		}
 		mut prepared_markused := prepared_markused_thread.wait()
 		ckpre_sw.restart()
@@ -12876,6 +12880,9 @@ fn source_imports_fast_parallel(a &flat.FlatAst, files []string) [][]string {
 // avoids three parse/merge barriers while preserving the ordinary resolver as
 // the source of truth for the resulting AST.
 fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string, mut parsed_modules map[string]bool, mut module_path_cache map[string]string) []EagerSelfhostModule {
+	// Traversal attempts are separate from successfully parsed modules. An
+	// unresolved eager probe must remain visible to the authoritative resolver.
+	mut visited_modules := parsed_modules.clone()
 	mut pending := []EagerSelfhostImport{cap: 128}
 	mut cur_file := first_file
 	for node in a.nodes {
@@ -12897,10 +12904,10 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 		for qi < wave_end {
 			import_req := pending[qi]
 			qi++
-			if import_req.path in parsed_modules {
+			if import_req.path in visited_modules {
 				continue
 			}
-			parsed_modules[import_req.path] = true
+			visited_modules[import_req.path] = true
 			wave_requests << import_req
 		}
 		wave_results := resolve_eager_selfhost_wave(a, prefs, wave_requests, project_root)
@@ -12912,10 +12919,11 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 			} else {
 				''
 			}
-			module_path_cache['${importing_dir}\n${import_req.path}'] = result.dir
 			if result.files.len == 0 {
 				continue
 			}
+			module_path_cache['${importing_dir}\n${import_req.path}'] = result.dir
+			parsed_modules[import_req.path] = true
 			modules << EagerSelfhostModule{
 				path:  import_req.path
 				dir:   result.dir
@@ -13255,7 +13263,13 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
-			if !mod_dir_exists && !is_bundle_warmup_import {
+			mod_files := if mod_dir_exists {
+				pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target)
+			} else {
+				[]string{}
+			}
+			module_resolved := mod_dir_exists && mod_files.len > 0
+			if !module_resolved && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
 				unresolved_modules[mod_name] = true
 			}
@@ -13274,9 +13288,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				mod_name
 			}
 
-			if mod_dir_exists {
-				mod_files := pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines,
-					prefs.target)
+			if module_resolved {
 				// -building-v compiles the trusted compiler tree and already skips other
 				// validity-only diagnostics. Avoid reading every imported source once here
 				// just before the parser reads the same files.
