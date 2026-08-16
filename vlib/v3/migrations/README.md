@@ -68,7 +68,8 @@ add/remove a foreign key on an existing table; those helpers return an error so 
 explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
 auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults
 even when prohibited expressions have unary signs, SQL comments, or postfix clauses.
-Parenthesized and signed literal defaults remain allowed.
+Parenthesized and signed literal defaults, including SQLite numeric digit separators, remain
+allowed.
 SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
 schema from a qualified table or resolves an unqualified table using SQLite lookup order. Index
 creation resolves the table and qualifies an unqualified index name with the same schema; an

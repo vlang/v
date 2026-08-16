@@ -605,17 +605,49 @@ fn sqlite_is_literal_default(default_sql string) bool {
 		&& sqlite_is_single_quoted_literal(literal[1..]) {
 		return true
 	}
-	if literal.len > 2 && literal[0] == `0` && literal[1] in [u8(`x`), `X`]
-		&& literal[2..].bytes().all(it.is_hex_digit()) {
-		return true
-	}
-	if _ := strconv.atof64(literal) {
-		return true
-	}
 	if literal.starts_with('(') && literal.ends_with(')') {
 		return sqlite_is_literal_default(literal[1..literal.len - 1])
 	}
+	numeric_literal := sqlite_numeric_literal_without_separators(literal) or { return false }
+	if numeric_literal.len > 2 && numeric_literal[0] == `0` && numeric_literal[1] in [u8(`x`), `X`]
+		&& numeric_literal[2..].bytes().all(it.is_hex_digit()) {
+		return true
+	}
+	if _ := strconv.atof64(numeric_literal) {
+		return true
+	}
 	return false
+}
+
+fn sqlite_numeric_literal_without_separators(literal string) ?string {
+	if !literal.contains('_') {
+		return literal
+	}
+	is_hex := literal.len > 2 && literal[0] == `0` && literal[1] in [u8(`x`), `X`]
+	mut normalized := []u8{cap: literal.len}
+	for i, character in literal {
+		if character != `_` {
+			normalized << character
+			continue
+		}
+		if i == 0 || i == literal.len - 1 {
+			return none
+		}
+		previous_is_digit := if is_hex {
+			literal[i - 1].is_hex_digit()
+		} else {
+			literal[i - 1].is_digit()
+		}
+		next_is_digit := if is_hex {
+			literal[i + 1].is_hex_digit()
+		} else {
+			literal[i + 1].is_digit()
+		}
+		if !previous_is_digit || !next_is_digit {
+			return none
+		}
+	}
+	return normalized.bytestr()
 }
 
 fn sqlite_is_single_quoted_literal(literal string) bool {

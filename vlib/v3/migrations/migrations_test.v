@@ -1339,6 +1339,32 @@ fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {
 	assert db.q_string('SELECT collated_label FROM accounts WHERE id = 1;')! == 'collated'
 }
 
+fn test_sqlite_accepts_numeric_literal_digit_separators() {
+	for literal in ['1_000', '(1_000)', '1_2.3_4e5_6', '1e+1_0', '0xCA_FE', '(0xA_B_C)'] {
+		assert sqlite_is_literal_default(literal)
+	}
+	for literal in ['_1000', '1000_', '1__000', '1_.0', '0x_FF', '0xFF_', '0xA__B'] {
+		assert !sqlite_is_literal_default(literal)
+	}
+
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .sqlite)
+	ctx.add_column('accounts', Column{
+		name:        'population'
+		kind:        .integer
+		default_sql: '(1_000)'
+	})!
+	ctx.add_column('accounts', Column{
+		name:        'mask'
+		kind:        .integer
+		default_sql: '(0xCA_FE)'
+	})!
+	assert recorder.queries == [
+		'ALTER TABLE "accounts" ADD COLUMN "population" INTEGER DEFAULT (1_000);',
+		'ALTER TABLE "accounts" ADD COLUMN "mask" INTEGER DEFAULT (0xCA_FE);',
+	]
+}
+
 fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .sqlite)
