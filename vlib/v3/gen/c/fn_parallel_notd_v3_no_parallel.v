@@ -311,7 +311,7 @@ $if !windows {
 		// tables; running these emitters on the master would mutate shared name and
 		// type caches. The private worker keeps those writes isolated while its
 		// already-complete const/global metadata is read-only.
-		mut tail := w.new_parallel_worker(max_flat_cgen_jobs + 1)
+		mut tail := w.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
 		if !w.cache_split {
 			tail.interface_method_stubs()
 			w.parallel_interface_stubs = tail.sb.str()
@@ -2207,6 +2207,15 @@ fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 // worker and, under -gc none, never freed.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return g.new_parallel_worker_config(worker_id, false)
+}
+
+fn (g &FlatGen) new_parallel_tail_worker(worker_id int) &FlatGen {
+	mut w := g.new_parallel_worker(worker_id)
+	// gen_vinit pairs each initializer with its owning module. These arrays are
+	// declaration-task output and remain read-only while the tail is generated.
+	w.const_runtime_init_modules = g.const_runtime_init_modules.clone()
+	w.runtime_init_modules = g.runtime_init_modules.clone()
+	return w
 }
 
 // new_parallel_dispatch_worker selects the lightweight accumulator only when

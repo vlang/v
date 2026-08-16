@@ -54,6 +54,26 @@ fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() 
 	assert w.c_extern_refs_ready
 }
 
+fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.const_runtime_inits = ['\tmoda__runtime_const = moda__make_const();']
+	g.const_runtime_init_modules = ['moda']
+	g.runtime_inits = ['\tmoda__runtime_global = moda__make_global();']
+	g.runtime_init_modules = ['moda']
+	g.module_init_fns = ['moda__init']
+	g.module_init_fn_modules['moda__init'] = 'moda'
+
+	mut tail := g.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
+	tail.gen_vinit()
+	output := tail.sb.str()
+	const_pos := output.index('moda__runtime_const = moda__make_const();') or { -1 }
+	global_pos := output.index('moda__runtime_global = moda__make_global();') or { -1 }
+	init_pos := output.index('moda__init();') or { -1 }
+	assert const_pos >= 0
+	assert global_pos > const_pos
+	assert init_pos > global_pos
+}
+
 fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	g, mut tc := parallel_worker_test_gen(false)
 	tc.a.nodes = [flat.Node{
