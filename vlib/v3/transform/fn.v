@@ -4942,8 +4942,8 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 		t.tc.ensure_private_transform_signatures()
 		t.tc.fn_ret_types[helper] = t.tc.parse_type('string')
 		t.tc.fn_ret_types[helper_key] = t.tc.parse_type('string')
-		t.tc.fn_param_types[helper] = [t.tc.parse_type(aggregate)]
-		t.tc.fn_param_types[helper_key] = [t.tc.parse_type(aggregate)]
+		t.tc.register_generated_fn_param_types(helper, [t.tc.parse_type(aggregate)])
+		t.tc.register_generated_fn_param_types(helper_key, [t.tc.parse_type(aggregate)])
 		t.tc.fn_variadic[helper] = false
 		t.tc.fn_variadic[helper_key] = false
 		t.tc_signature_names_log << helper
@@ -8074,7 +8074,7 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 	t.mark_fn_used_name(helper)
 	if !isnil(t.tc) {
 		t.tc.fn_ret_types[helper] = t.tc.parse_type(typ)
-		t.tc.fn_param_types[helper] = [t.tc.parse_type('voidptr')]
+		t.tc.register_generated_fn_param_types(helper, [t.tc.parse_type('voidptr')])
 		t.tc.fn_variadic[helper] = false
 		t.tc_signature_names_log << helper
 	}
@@ -9886,14 +9886,14 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(ret_type)
 		t.tc.fn_ret_types[name] = ret
-		t.tc.fn_param_types[name] = param_types.clone()
+		t.tc.register_generated_fn_param_types(name, param_types.clone())
 		t.tc.fn_variadic[name] = false
 		t.add_receiver_method_suffix_index(name)
 		t.tc_signature_names_log << name
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${name}'
 			t.tc.fn_ret_types[qname] = ret
-			t.tc.fn_param_types[qname] = param_types.clone()
+			t.tc.register_generated_fn_param_types(qname, param_types.clone())
 			t.tc.fn_variadic[qname] = false
 			t.add_receiver_method_suffix_index(qname)
 			t.tc_signature_names_log << qname

@@ -5091,7 +5091,7 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 		tc.specialized_generic_fns.delete(name)
 		owned_name := name.clone()
 		tc.fn_ret_types[owned_name] = ret
-		tc.fn_param_types[owned_name] = params
+		tc.register_generated_fn_param_types(owned_name, params)
 		tc.fn_variadic[owned_name] = variadic
 		if specialized {
 			tc.specialized_generic_fns[owned_name] = true
@@ -5101,6 +5101,8 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 	// string-key text or nested type metadata is allocated in the disposable
 	// stage arena. Rebuild all signature ownership before releasing that arena.
 	tc.rebuild_scoped_transform_signature_maps()
+	// Re-own suffix keys/values after the scoped signatures above are promoted.
+	tc.rebuild_fn_param_suffix_index()
 }
 
 // default_cc_identity returns a precise identity for the resolved default `cc`.
@@ -8035,7 +8037,7 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('transform', transform_was_parallel)
 		}
-		pre_tc.invalidate_direct_parent_index()
+		pre_tc.refresh_rewritten_parent_index(a)
 		if transform_errors.len > 0 {
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
@@ -8179,6 +8181,7 @@ pub fn run(args []string) {
 			}
 			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes)
 			pre_tc.rebuild_scoped_transform_signature_maps()
+			pre_tc.rebuild_fn_param_suffix_index()
 			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
 			promote_scoped_type_metadata(mut pre_tc)
 			pre_tc.errors = clone_type_errors(pre_tc.errors)

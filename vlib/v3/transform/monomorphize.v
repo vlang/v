@@ -4212,7 +4212,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		t.record_generic_specialization_args_for_names(names, args)
 		for name in names {
 			t.tc.fn_ret_types[name] = ret
-			t.tc.fn_param_types[name] = params.clone()
+			t.tc.register_generated_fn_param_types(name, params.clone())
 			t.tc.fn_variadic[name] = variadic
 			t.tc.fn_type_modules[name] = decl.module
 			t.tc.fn_type_files[name] = decl.file
@@ -5588,6 +5588,9 @@ fn (mut t Transformer) erase_generic_fn_decls(decls map[string]GenericFnDecl) {
 			})
 			t.clear_typechecker_node_cache(idx)
 		}
+	}
+	if !isnil(t.tc) && decls.len > 0 {
+		t.tc.rebuild_fn_param_suffix_index()
 	}
 }
 

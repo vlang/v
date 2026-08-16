@@ -4008,7 +4008,7 @@ fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
 		owned_name := name.clone()
 		master_tc.fn_ret_types[owned_name] = types.clone_owned_type(ret)
 		if params := w.tc.fn_param_types[name] {
-			master_tc.fn_param_types[owned_name] = types.clone_owned_types(params)
+			master_tc.register_generated_fn_param_types(owned_name, types.clone_owned_types(params))
 		}
 		master_tc.fn_variadic[owned_name] = w.tc.fn_variadic[name]
 		if w.tc.specialized_generic_fns[name] {

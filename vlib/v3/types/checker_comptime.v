@@ -9411,6 +9411,20 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 		// entire arena for every type query makes parallel transform quadratic.
 		return flat.empty_node
 	}
+	if idx >= 0 && idx < tc.rewritten_parent_ids.len {
+		parent_id := tc.rewritten_parent_ids[idx]
+		if parent_id != flat.empty_node {
+			parent := tc.a.node(parent_id)
+			for i in 0 .. parent.children_count {
+				if tc.a.child(parent, i) == id {
+					return parent_id
+				}
+			}
+		}
+		// A later rewrite may replace the first recorded edge while another
+		// parent still references this shared generated node. Fall through to
+		// the arena scan when the indexed edge is stale.
+	}
 	for parent_idx, candidate in tc.a.nodes {
 		for i in 0 .. candidate.children_count {
 			if tc.a.child(&candidate, i) == id {
