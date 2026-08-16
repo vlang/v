@@ -8,7 +8,8 @@ Mutating workflows hold a database-level lock from before the applied-version sn
 callbacks and history updates. PostgreSQL uses an advisory lock, MySQL uses a named lock, and
 SQLite uses an immediate transaction so concurrent runners cannot apply the same migration. MySQL
 lock names use a qualified history table's database, or otherwise the current database, so
-independent databases on one server do not contend.
+independent databases on one server do not contend. PostgreSQL lock keys use the full signed 64-bit
+advisory-lock space.
 
 ```v ignore
 import db.sqlite
@@ -61,12 +62,12 @@ The schema helpers include table and column creation/removal/renaming, indexes, 
 foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly change a column or
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
 explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
-auto-increment columns, non-nullable columns without a non-NULL default, and defaults that are not
-constant even when prohibited expressions have SQL comments. SQLite index tables and foreign-key
-targets must be unqualified; index removal derives the index schema from a qualified table.
-PostgreSQL `change_column` supports type-related fields
-only and rejects explicitly supplied constraint options, including false or empty values, before
-executing SQL; use `ctx.execute()` for explicit constraint DDL. PostgreSQL serial columns reject
+auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults
+even when prohibited expressions have SQL comments. Parenthesized literal defaults remain allowed.
+SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
+schema from a qualified table. PostgreSQL `change_column` supports type-related fields only and
+rejects explicitly supplied constraint options, including false or empty values, before executing
+SQL; use `ctx.execute()` for explicit constraint DDL. PostgreSQL serial columns reject
 explicit defaults, and index removal derives the index schema from a qualified table; PostgreSQL
 index names are unqualified when adding them.
 SQLite non-integer primary keys are explicitly non-nullable. Decimal scale requires a positive
@@ -77,10 +78,10 @@ MySQL auto-increment columns must be primary keys or unique, MySQL index names m
 when adding or removing them, and tables cannot contain more than one auto-increment column. MySQL
 foreign keys reject `SET DEFAULT`. Column-level identifiers must be unqualified. Generated
 PostgreSQL and MySQL index and foreign-key names are shortened deterministically to their dialect
-limits; overlong explicit names are rejected. Caller-supplied table, column, and history-table name
-components are also checked against those dialect limits, and qualified table, history, or index
-names may contain at most two components. SQLite and MySQL reject case-insensitive duplicate table
-columns.
+limits; ambiguous index column boundaries receive deterministic hash suffixes, and overlong
+explicit names are rejected. Caller-supplied table, column, and history-table name components are
+also checked against those dialect limits, and qualified table, history, or index names may contain
+at most two components. SQLite and MySQL reject case-insensitive duplicate table columns.
 PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps support for
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
 implicitly commits, and its history strings use hex literals to avoid SQL-mode-sensitive escaping.

@@ -349,6 +349,26 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	assert qualified_second_recorder.queries == qualified_first_recorder.queries
 }
 
+fn test_postgresql_migration_locks_use_full_64bit_keys() {
+	first_table := 's_d015hmpz1cdl'
+	second_table := 's_syia3wc6g1qq'
+	first_key := migration_lock_key(first_table)
+	second_key := migration_lock_key(second_table)
+	assert first_key != second_key
+
+	mut recorder := &RecordingConnection{}
+	mut runner := new(mut recorder, []Migration{}, Config{
+		dialect: .pg
+		table:   first_table
+	})!
+	runner.acquire_migration_lock()!
+	runner.release_migration_lock(true)!
+	assert recorder.queries == [
+		'SELECT pg_advisory_lock(${first_key});',
+		'SELECT pg_advisory_unlock(${first_key});',
+	]
+}
+
 fn test_mysql_history_literals_are_backslash_safe() {
 	mut recorder := &RecordingConnection{}
 	name := "quote\\'and_trailing\\"
@@ -800,6 +820,7 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	invalid_defaults << ''
 	invalid_defaults << 'NULL'
 	invalid_defaults << 'NULL /* absent */'
+	invalid_defaults << '(NULL)'
 	for default_sql in invalid_defaults {
 		error_message = ''
 		ctx.add_column('accounts', Column{
@@ -839,6 +860,46 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 		default_sql: "'CURRENT_TIMESTAMP /* literal */'"
 	})!
 	assert recorder.queries[1] == 'ALTER TABLE "accounts" ADD COLUMN "literal_comment" TEXT NOT NULL DEFAULT \'CURRENT_TIMESTAMP /* literal */\';'
+	for i, default_sql in ['(0)', "('x')", '(NULL)'] {
+		ctx.add_column('accounts', Column{
+			name:        'parenthesized_${i}'
+			kind:        .text
+			default_sql: default_sql
+		})!
+	}
+	assert recorder.queries[2..] == [
+		'ALTER TABLE "accounts" ADD COLUMN "parenthesized_0" TEXT DEFAULT (0);',
+		'ALTER TABLE "accounts" ADD COLUMN "parenthesized_1" TEXT DEFAULT (\'x\');',
+		'ALTER TABLE "accounts" ADD COLUMN "parenthesized_2" TEXT DEFAULT (NULL);',
+	]
+}
+
+fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('CREATE TABLE accounts (id INTEGER PRIMARY KEY);')!
+	db.exec('INSERT INTO accounts (id) VALUES (1);')!
+	mut ctx := new_context(db, .sqlite)
+	ctx.add_column('accounts', Column{
+		name:        'count'
+		kind:        .integer
+		default_sql: '(0)'
+	})!
+	ctx.add_column('accounts', Column{
+		name:        'label'
+		kind:        .text
+		default_sql: "('x')"
+	})!
+	ctx.add_column('accounts', Column{
+		name:        'optional'
+		kind:        .text
+		default_sql: '(NULL)'
+	})!
+	assert db.q_int('SELECT count FROM accounts WHERE id = 1;')! == 0
+	assert db.q_string('SELECT label FROM accounts WHERE id = 1;')! == 'x'
+	assert db.q_int('SELECT count(*) FROM accounts WHERE optional IS NULL;')! == 1
 }
 
 fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
@@ -1050,6 +1111,37 @@ fn test_generated_index_names_respect_dialect_limits() {
 		name:    long_explicit_name
 	}) or { error_message = err.msg() }
 	assert error_message == 'MySQL index name component `${long_explicit_name}` must not exceed 64 bytes'
+}
+
+fn test_generated_index_names_distinguish_column_boundaries() {
+	single_column := Index{
+		table:   'users'
+		columns: ['a_and_b']
+	}
+	composite := Index{
+		table:   'users'
+		columns: ['a', 'b']
+	}
+	single_name := index_name(.sqlite, single_column)!
+	composite_name := index_name(.sqlite, composite)!
+	assert single_name != composite_name
+	assert single_name.starts_with('index_users_on_a_and_b_')
+	assert composite_name == 'index_users_on_a_and_b'
+	case_variant_name := index_name(.mysql, Index{
+		table:   'users'
+		columns: ['a_AnD_b']
+	})!
+	assert case_variant_name != index_name(.mysql, composite)!
+
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('CREATE TABLE users (a_and_b TEXT, a TEXT, b TEXT);')!
+	mut ctx := new_context(db, .sqlite)
+	ctx.add_index(single_column)!
+	ctx.add_index(composite)!
+	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'users';")! == 2
 }
 
 fn test_generated_foreign_key_names_respect_dialect_limits() {

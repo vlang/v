@@ -452,15 +452,11 @@ fn (mut m Migrator) release_migration_lock(success bool) ! {
 }
 
 fn migration_lock_key(table string) i64 {
-	mut hash := u64(5381)
-	for ch in table.bytes() {
-		hash = ((hash * 33) ^ u64(ch)) & u64(0x7fffffff)
+	hash := fnv1a.sum64_string(table)
+	if hash <= u64(max_i64) {
+		return i64(hash)
 	}
-	return i64(hash)
-}
-
-fn migration_lock_name(key i64) string {
-	return 'v3_migrations_${key}'
+	return -i64(~hash) - 1
 }
 
 fn mysql_migration_lock_name(database string, table string) string {

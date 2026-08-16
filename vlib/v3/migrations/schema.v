@@ -2,6 +2,7 @@ module migrations
 
 import hash.fnv1a
 import orm
+import strconv
 
 // Dialect selects the SQL emitted by schema helpers.
 pub enum Dialect {
@@ -513,15 +514,71 @@ fn validate_sqlite_add_column(column Column) ! {
 fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
 	normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
 	return normalized in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP']
-		|| (normalized.starts_with('(') && normalized.ends_with(')'))
+		|| (normalized.starts_with('(') && normalized.ends_with(')')
+		&& !sqlite_is_literal_default(normalized))
 }
 
 fn sqlite_has_non_null_default(column Column) bool {
 	if default_sql := column.default_sql {
 		normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
-		return normalized != '' && normalized != 'NULL'
+		return normalized != '' && sqlite_unwrapped_default(normalized) != 'NULL'
 	}
 	return false
+}
+
+fn sqlite_is_literal_default(default_sql string) bool {
+	literal := default_sql.trim_space()
+	if literal == '' {
+		return false
+	}
+	upper := literal.to_upper()
+	if upper in ['NULL', 'TRUE', 'FALSE'] {
+		return true
+	}
+	if sqlite_is_single_quoted_literal(literal) {
+		return true
+	}
+	if literal.len > 1 && literal[0] in [u8(`x`), `X`]
+		&& sqlite_is_single_quoted_literal(literal[1..]) {
+		return true
+	}
+	if literal.len > 2 && literal[0] == `0` && literal[1] in [u8(`x`), `X`]
+		&& literal[2..].bytes().all(it.is_hex_digit()) {
+		return true
+	}
+	if _ := strconv.atof64(literal) {
+		return true
+	}
+	if literal.starts_with('(') && literal.ends_with(')') {
+		return sqlite_is_literal_default(literal[1..literal.len - 1])
+	}
+	return false
+}
+
+fn sqlite_is_single_quoted_literal(literal string) bool {
+	if literal.len < 2 || literal[0] != 39 || literal[literal.len - 1] != 39 {
+		return false
+	}
+	mut i := 1
+	for i < literal.len - 1 {
+		if literal[i] == 39 {
+			if i + 1 >= literal.len - 1 || literal[i + 1] != 39 {
+				return false
+			}
+			i += 2
+			continue
+		}
+		i++
+	}
+	return true
+}
+
+fn sqlite_unwrapped_default(default_sql string) string {
+	mut literal := default_sql.trim_space()
+	for literal.len >= 2 && literal.starts_with('(') && literal.ends_with(')') {
+		literal = literal[1..literal.len - 1].trim_space()
+	}
+	return literal
 }
 
 fn sqlite_default_without_comments(default_sql string) string {
@@ -691,7 +748,7 @@ fn index_name(dialect Dialect, index Index) !string {
 	name := if index.name != '' {
 		index.name
 	} else {
-		'index_${index.table.replace('.', '_')}_on_${index.columns.join('_and_')}'
+		generated_index_name(index)
 	}
 	if index.name != '' {
 		validate_identifier_for_dialect(dialect, name, 'index')!
@@ -699,6 +756,18 @@ fn index_name(dialect Dialect, index Index) !string {
 		validate_identifier(name, 'index')!
 	}
 	return bounded_identifier_name(dialect, name, index.name == '', 'index')
+}
+
+fn generated_index_name(index Index) string {
+	base := 'index_${index.table.replace('.', '_')}_on_${index.columns.join('_and_')}'
+	if index.columns.any(it.to_lower_ascii().contains('_and_')) {
+		mut identity := '${index.table.len}:${index.table}'
+		for column in index.columns {
+			identity += ':${column.len}:${column}'
+		}
+		return '${base}_${fnv1a.sum64_string(identity).hex()}'
+	}
+	return base
 }
 
 fn identifier_name_limit(dialect Dialect) int {
