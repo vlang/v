@@ -91,6 +91,30 @@ fn (mut conn RecordingConnection) orm_release_savepoint(name string) ! {
 	conn.queries << 'ORM RELEASE SAVEPOINT ${name}'
 }
 
+struct PoolBackedConnection {}
+
+fn (mut conn PoolBackedConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
+	return []
+}
+
+fn (mut conn PoolBackedConnection) insert(_ orm.Table, _ orm.QueryData) ! {}
+
+fn (mut conn PoolBackedConnection) update(_ orm.Table, _ orm.QueryData, _ orm.QueryData) ! {}
+
+fn (mut conn PoolBackedConnection) delete(_ orm.Table, _ orm.QueryData) ! {}
+
+fn (mut conn PoolBackedConnection) create(_ orm.Table, _ []orm.TableField) ! {}
+
+fn (mut conn PoolBackedConnection) drop(_ orm.Table) ! {}
+
+fn (mut conn PoolBackedConnection) last_id() int {
+	return 0
+}
+
+fn (mut conn PoolBackedConnection) execute(_ string) ![]orm.Row {
+	return error('pool query should not execute')
+}
+
 struct MigrationWidget {
 	id    int @[primary; sql: serial]
 	label string
@@ -358,6 +382,12 @@ fn test_locked_history_table_survives_callback_namespace_changes() {
 			transaction_mode: .never
 		})!
 		up_runner.migrate()!
+		up_recorder.history_rows = [
+			orm.Row{
+				vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+			},
+		]
+		assert up_runner.migrate()!.len == 0
 		qualified_table := quote_identifier(dialect, 'app.schema_migrations')
 		mut saw_insert := false
 		for query in up_recorder.queries {
@@ -371,10 +401,26 @@ fn test_locked_history_table_survives_callback_namespace_changes() {
 			}
 		}
 		assert saw_insert
+		assert up_recorder.queries.filter(it == if dialect == .pg {
+			'SET search_path TO other_schema;'
+		} else {
+			'USE other_database;'
+		}).len == 1
+		lock_query := if dialect == .pg {
+			key := postgresql_migration_lock_key('app', 'schema_migrations')
+			'SELECT pg_advisory_lock(${key});'
+		} else {
+			name := mysql_migration_lock_name('app', 'schema_migrations', 0)
+			"SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});"
+		}
+		assert up_recorder.queries.filter(it == lock_query).len == 2
+		assert up_runner.resolved_history_namespace == 'app'
 		if dialect == .pg {
 			assert up_recorder.schema == 'other_schema'
+			assert up_recorder.queries.filter(it == 'SELECT current_schema();').len == 1
 		} else {
 			assert up_recorder.database == 'other_database'
+			assert up_recorder.queries.filter(it == 'SELECT DATABASE();').len == 1
 		}
 
 		mut down_recorder := &RecordingConnection{
@@ -394,6 +440,17 @@ fn test_locked_history_table_survives_callback_namespace_changes() {
 		delete_query := down_recorder.queries.filter(it.starts_with('DELETE FROM '))
 		assert delete_query == ['DELETE FROM ${qualified_table} WHERE version = 1;']
 	}
+}
+
+fn test_postgresql_pool_backed_orm_wrapper_is_rejected_before_locking() {
+	pool := PoolBackedConnection{}
+	mut scoped := orm.new_db(pool, orm.DataScope{})
+	mut runner := new(mut scoped, []Migration{}, Config{
+		dialect: .pg
+	})!
+	mut error_message := ''
+	runner.acquire_migration_lock() or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL migrations require a session-pinned connection; orm.DB wrapper validation failed: orm.DB: underlying connection does not support transactions; use pg.DB.conn() or pg.connect_direct()'
 }
 
 fn test_sqlite_history_table_is_pinned_to_main() {
@@ -912,6 +969,14 @@ fn test_sqlite_remove_index_uses_the_table_schema() {
 
 	mut ctx := new_context(db, .sqlite)
 	ctx.remove_index('aux.users', 'same_idx')!
+	assert db.q_int("SELECT count(*) FROM main.sqlite_master WHERE type = 'index' AND name = 'same_idx';")! == 1
+	assert db.q_int("SELECT count(*) FROM aux.sqlite_master WHERE type = 'index' AND name = 'same_idx';")! == 0
+
+	db.exec('DROP TABLE main.users;')!
+	db.exec('CREATE TABLE main.other (email TEXT);')!
+	db.exec('CREATE INDEX main.same_idx ON other (email);')!
+	db.exec('CREATE INDEX aux.same_idx ON users (email);')!
+	ctx.remove_index('users', 'same_idx')!
 	assert db.q_int("SELECT count(*) FROM main.sqlite_master WHERE type = 'index' AND name = 'same_idx';")! == 1
 	assert db.q_int("SELECT count(*) FROM aux.sqlite_master WHERE type = 'index' AND name = 'same_idx';")! == 0
 }

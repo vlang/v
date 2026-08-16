@@ -10,9 +10,10 @@ SQLite uses an immediate transaction so concurrent runners cannot apply the same
 lock names use a qualified history table's database, or otherwise the current database, so
 independent databases on one server do not contend, and follow the server's
 `lower_case_table_names` mode. PostgreSQL lock keys use the effective history schema and the full
-signed 64-bit advisory-lock space. Locked workflows retain that resolved database or schema for all
-history reads and writes, even when a callback changes the connection namespace. Unqualified SQLite
-history tables are pinned to `main`, preventing TEMP tables from shadowing persistent history.
+signed 64-bit advisory-lock space. A migrator retains its resolved database or schema across
+workflow calls, so callback namespace changes cannot redirect later locks or history access.
+Unqualified SQLite history tables are pinned to `main`, preventing TEMP tables from shadowing
+persistent history.
 
 ```v ignore
 import db.sqlite
@@ -68,9 +69,10 @@ explicitly rebuild the table. SQLite `add_column` also rejects primary-key, uniq
 auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults
 even when prohibited expressions have SQL comments. Parenthesized literal defaults remain allowed.
 SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
-schema from a qualified table. PostgreSQL `change_column` supports type-related fields only and
-rejects explicitly supplied constraint options, including false or empty values, before executing
-SQL; use `ctx.execute()` for explicit constraint DDL. PostgreSQL serial columns reject
+schema from a qualified table or resolves an unqualified table using SQLite lookup order.
+PostgreSQL `change_column` supports type-related fields only and rejects explicitly supplied
+constraint options, including false or empty values, before executing SQL; use `ctx.execute()` for
+explicit constraint DDL. PostgreSQL serial columns reject
 explicit defaults, and index removal derives the index schema from a qualified table; PostgreSQL
 index names are unqualified when adding them.
 SQLite non-integer primary keys are explicitly non-nullable. Decimal scale requires a positive
@@ -93,4 +95,5 @@ strings with doubled backslashes, avoiding session-mode-sensitive escaping.
 The migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode`
 can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
 transaction still covers each mutating workflow. Migration names containing NUL bytes are rejected
-before any database access.
+before any database access. PostgreSQL `orm.DB` decorators must wrap a session-pinned transactional
+connection, such as `pg.Conn`; pool-backed wrappers are rejected before advisory-lock acquisition.

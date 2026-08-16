@@ -72,12 +72,14 @@ pub:
 // Migrator applies an ordered set of migrations and records their versions.
 pub struct Migrator {
 mut:
-	conn                     orm.TransactionalConnection
-	migrations               []Migration
-	config                   Config
-	pg_lock_key              ?i64
-	mysql_lock_name          string
-	locked_history_table_sql string
+	conn                         orm.TransactionalConnection
+	migrations                   []Migration
+	config                       Config
+	pg_lock_key                  ?i64
+	mysql_lock_name              string
+	resolved_history_namespace   string
+	resolved_history_table_sql   string
+	session_connection_validated bool
 }
 
 // new creates and validates a migrator. It does not access the database until
@@ -400,8 +402,8 @@ fn (mut m Migrator) ensure_history_table() ! {
 }
 
 fn (m &Migrator) history_table_sql() string {
-	if m.locked_history_table_sql != '' {
-		return m.locked_history_table_sql
+	if m.resolved_history_table_sql != '' {
+		return m.resolved_history_table_sql
 	}
 	if m.config.dialect == .sqlite && !m.config.table.contains('.') {
 		return qualified_history_table_sql(.sqlite, 'main', m.config.table)
@@ -410,19 +412,23 @@ fn (m &Migrator) history_table_sql() string {
 }
 
 fn (mut m Migrator) acquire_migration_lock() ! {
+	m.validate_session_connection()!
 	match m.config.dialect {
 		.sqlite {
 			m.conn.execute('BEGIN IMMEDIATE;')!
-			namespace := if m.config.table.contains('.') {
+			namespace := if m.resolved_history_namespace != '' {
+				m.resolved_history_namespace
+			} else if m.config.table.contains('.') {
 				m.config.table.all_before('.')
 			} else {
 				'main'
 			}
-			m.locked_history_table_sql = qualified_history_table_sql(.sqlite, namespace,
-				m.config.table)
+			m.retain_history_relation(.sqlite, namespace)
 		}
 		.pg {
-			schema := if m.config.table.contains('.') {
+			schema := if m.resolved_history_namespace != '' {
+				m.resolved_history_namespace
+			} else if m.config.table.contains('.') {
 				m.config.table.all_before('.')
 			} else {
 				schema_rows := m.conn.execute('SELECT current_schema();')!
@@ -431,10 +437,12 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			key := postgresql_migration_lock_key(schema, m.config.table)
 			m.conn.execute('SELECT pg_advisory_lock(${key});')!
 			m.pg_lock_key = key
-			m.locked_history_table_sql = qualified_history_table_sql(.pg, schema, m.config.table)
+			m.retain_history_relation(.pg, schema)
 		}
 		.mysql {
-			database := if m.config.table.contains('.') {
+			database := if m.resolved_history_namespace != '' {
+				m.resolved_history_namespace
+			} else if m.config.table.contains('.') {
 				m.config.table.all_before('.')
 			} else {
 				database_rows := m.conn.execute('SELECT DATABASE();')!
@@ -449,10 +457,32 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 				return error('could not acquire MySQL migration lock `${name}` within ${migration_lock_timeout_seconds} seconds')
 			}
 			m.mysql_lock_name = name
-			m.locked_history_table_sql = qualified_history_table_sql(.mysql, database,
-				m.config.table)
+			m.retain_history_relation(.mysql, database)
 		}
 	}
+}
+
+fn (mut m Migrator) retain_history_relation(dialect Dialect, namespace string) {
+	if m.resolved_history_namespace != '' {
+		return
+	}
+	m.resolved_history_namespace = namespace
+	m.resolved_history_table_sql = qualified_history_table_sql(dialect, namespace, m.config.table)
+}
+
+fn (mut m Migrator) validate_session_connection() ! {
+	if m.config.dialect != .pg || m.session_connection_validated {
+		return
+	}
+	if m.conn is orm.DB {
+		m.conn.orm_begin() or {
+			return error('PostgreSQL migrations require a session-pinned connection; orm.DB wrapper validation failed: ${err.msg()}; use pg.DB.conn() or pg.connect_direct()')
+		}
+		m.conn.orm_rollback() or {
+			return error('PostgreSQL migrations could not roll back the session-affinity validation transaction: ${err.msg()}')
+		}
+	}
+	m.session_connection_validated = true
 }
 
 fn (mut m Migrator) release_migration_lock(success bool) ! {
@@ -487,7 +517,6 @@ fn (mut m Migrator) release_migration_lock(success bool) ! {
 			m.mysql_lock_name = ''
 		}
 	}
-	m.locked_history_table_sql = ''
 }
 
 fn migration_lock_key(identity string) i64 {

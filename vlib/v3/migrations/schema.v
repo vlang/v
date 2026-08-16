@@ -324,10 +324,40 @@ pub fn (mut ctx Context) remove_index(table string, name string) ! {
 			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, drop_name)};')!
 		}
 		.sqlite {
-			drop_name := schema_qualified_index_name(table, name)
+			drop_name := if name.contains('.') {
+				name
+			} else {
+				schema := ctx.sqlite_table_schema(table)!
+				'${schema}.${name}'
+			}
 			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, drop_name)};')!
 		}
 	}
+}
+
+fn (mut ctx Context) sqlite_table_schema(table string) !string {
+	if table.contains('.') {
+		return table.all_before('.')
+	}
+	database_rows := ctx.execute('PRAGMA database_list;')!
+	mut schemas := ['temp', 'main']
+	for row in database_rows {
+		if row.vals.len < 2 {
+			return error('SQLite PRAGMA database_list returned ${row.vals.len} columns; expected at least 2')
+		}
+		schema := row.vals[1]
+		if schema !in schemas {
+			schemas << schema
+		}
+	}
+	for schema in schemas {
+		rows := ctx.execute("SELECT 1 FROM ${quote_identifier_component(.sqlite, schema)}.sqlite_schema WHERE type = 'table' AND name = ${string_literal_sql(.sqlite,
+			table)} COLLATE NOCASE LIMIT 1;")!
+		if rows.len > 0 {
+			return schema
+		}
+	}
+	return error('SQLite remove_index could not resolve table `${table}` to a database')
 }
 
 fn schema_qualified_index_name(table string, name string) string {
