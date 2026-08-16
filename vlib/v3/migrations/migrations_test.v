@@ -422,6 +422,56 @@ fn test_rename_table_rejects_qualified_targets_where_required() {
 	]
 }
 
+fn test_postgresql_remove_index_uses_the_table_schema() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	ctx.remove_index('archive.users', 'index_archive_users_on_email')!
+	ctx.remove_index('archive.users', 'reporting.custom_email_index')!
+	ctx.remove_index('users', 'index_users_on_email')!
+	assert recorder.queries == [
+		'DROP INDEX "archive"."index_archive_users_on_email";',
+		'DROP INDEX "reporting"."custom_email_index";',
+		'DROP INDEX "index_users_on_email";',
+	]
+}
+
+fn test_column_sql_rejects_postgresql_serial_defaults_and_scale_without_precision() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	mut error_message := ''
+	ctx.add_column('accounts', Column{
+		name:           'sequence'
+		kind:           .bigint
+		auto_increment: true
+		default_sql:    '5'
+	}) or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL auto-increment column `sequence` cannot specify default_sql'
+
+	error_message = ''
+	ctx.add_column('accounts', Column{
+		name:      'amount'
+		kind:      .decimal
+		precision: 0
+		scale:     2
+	}) or { error_message = err.msg() }
+	assert error_message == 'decimal scale requires a positive precision'
+	assert recorder.queries.len == 0
+
+	assert column_sql(.pg, Column{
+		name:           'sequence'
+		kind:           .bigint
+		primary_key:    true
+		auto_increment: true
+		default_sql:    ''
+	})! == '"sequence" BIGSERIAL PRIMARY KEY'
+	assert column_type_sql(.mysql, Column{
+		name:      'amount'
+		kind:      .decimal
+		precision: 8
+		scale:     2
+	})! == 'DECIMAL(8, 2)'
+}
+
 fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .sqlite)

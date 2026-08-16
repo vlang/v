@@ -193,9 +193,9 @@ pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 // COLUMN replaces the complete column definition.
 pub fn (mut ctx Context) change_column(table string, column Column) ! {
 	validate_identifier(table, 'table')!
-	definition := column_sql(ctx.dialect, column)!
 	match ctx.dialect {
 		.sqlite {
+			column_sql(ctx.dialect, column)!
 			return error('change_column is not directly supported by SQLite; create a replacement table in the migration')
 		}
 		.pg {
@@ -203,10 +203,12 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 			if unsupported.len > 0 {
 				return error('PostgreSQL change_column only supports type, limit, precision, and scale; unsupported options: ${unsupported.join(', ')}; use ctx.execute() for constraint changes')
 			}
+			column_sql(ctx.dialect, column)!
 			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} ALTER COLUMN ${quote_identifier(ctx.dialect,
 				column.name)} TYPE ${column_type_sql(ctx.dialect, column)!};')!
 		}
 		.mysql {
+			definition := column_sql(ctx.dialect, column)!
 			missing := mysql_change_column_missing_options(column)
 			if missing.len > 0 {
 				return error('MySQL change_column requires a complete column definition; missing options: ${missing.join(', ')}')
@@ -269,16 +271,33 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 		index.table)} (${columns});')!
 }
 
-// remove_index removes an index by name.
+// remove_index removes an index by name. PostgreSQL derives the index schema
+// from a qualified table unless name is already qualified.
 pub fn (mut ctx Context) remove_index(table string, name string) ! {
 	validate_identifier(table, 'table')!
 	validate_identifier(name, 'index')!
-	if ctx.dialect == .mysql {
-		ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)} ON ${quote_identifier(ctx.dialect,
-			table)};')!
-	} else {
-		ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)};')!
+	match ctx.dialect {
+		.mysql {
+			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)} ON ${quote_identifier(ctx.dialect,
+				table)};')!
+		}
+		.pg {
+			drop_name := postgres_index_drop_name(table, name)
+			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, drop_name)};')!
+		}
+		.sqlite {
+			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)};')!
+		}
 	}
+}
+
+fn postgres_index_drop_name(table string, name string) string {
+	if name.contains('.') || !table.contains('.') {
+		return name
+	}
+	mut parts := table.split('.')
+	parts[parts.len - 1] = name
+	return parts.join('.')
 }
 
 // add_foreign_key adds a named foreign-key constraint. SQLite cannot add one
@@ -374,8 +393,12 @@ fn column_sql(dialect Dialect, column Column) !string {
 	auto_increment := column_auto_increment(column)
 	primary_key := column_primary_key(column)
 	unique := column_unique(column)
+	default_sql := column_default_sql(column)
 	if auto_increment && column.kind !in [.integer, .bigint] {
 		return error('auto-increment column `${column.name}` must be integer or bigint')
+	}
+	if dialect == .pg && auto_increment && default_sql != '' {
+		return error('PostgreSQL auto-increment column `${column.name}` cannot specify default_sql')
 	}
 	if dialect == .sqlite && auto_increment && !primary_key {
 		return error('SQLite auto-increment column `${column.name}` must be a primary key')
@@ -411,7 +434,6 @@ fn column_sql(dialect Dialect, column Column) !string {
 	if unique {
 		parts << 'UNIQUE'
 	}
-	default_sql := column_default_sql(column)
 	if default_sql != '' {
 		parts << 'DEFAULT ${default_sql}'
 	}
@@ -534,6 +556,9 @@ fn column_type_sql(dialect Dialect, column Column) !string {
 		.decimal {
 			if column.precision < 0 || column.scale < 0 {
 				return error('decimal precision and scale must not be negative')
+			}
+			if column.precision == 0 && column.scale > 0 {
+				return error('decimal scale requires a positive precision')
 			}
 			if column.precision == 0 {
 				'DECIMAL'
