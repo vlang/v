@@ -435,6 +435,64 @@ fn test_postgresql_remove_index_uses_the_table_schema() {
 	]
 }
 
+fn test_postgresql_add_index_rejects_qualified_names() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	mut error_message := ''
+	ctx.add_index(Index{
+		table:   'reporting.users'
+		columns: ['email']
+		name:    'reporting.users_email_idx'
+	}) or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL add_index name `reporting.users_email_idx` must be unqualified'
+	assert recorder.queries.len == 0
+
+	ctx.add_index(Index{
+		table:   'reporting.users'
+		columns: ['email']
+		name:    'users_email_idx'
+	})!
+	assert recorder.queries == [
+		'CREATE INDEX "users_email_idx" ON "reporting"."users" ("email");',
+	]
+}
+
+fn test_mysql_foreign_keys_reject_set_default_actions() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	mut error_message := ''
+	ctx.add_foreign_key(ForeignKey{
+		from_table: 'accounts'
+		column:     'organization_id'
+		to_table:   'organizations'
+		on_delete:  'set_default'
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL does not support SET DEFAULT for foreign-key actions'
+
+	error_message = ''
+	ctx.create_table(Table{
+		name:         'accounts'
+		id:           false
+		columns:      [
+			Column{
+				name: 'organization_id'
+				kind: .bigint
+			},
+		]
+		foreign_keys: [
+			ForeignKey{
+				from_table: 'accounts'
+				column:     'organization_id'
+				to_table:   'organizations'
+				on_update:  'SET DEFAULT'
+			},
+		]
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL does not support SET DEFAULT for foreign-key actions'
+	assert recorder.queries.len == 0
+	assert foreign_key_action(.pg, 'set_default')! == 'SET DEFAULT'
+}
+
 fn test_column_sql_rejects_postgresql_serial_defaults_and_scale_without_precision() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .pg)

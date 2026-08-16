@@ -259,11 +259,15 @@ fn mysql_change_column_missing_options(column Column) []string {
 }
 
 // add_index adds an index. When name is empty, a deterministic Rails-style
-// `index_<table>_on_<columns>` name is used. SQLite tables must be unqualified.
+// `index_<table>_on_<columns>` name is used. SQLite tables and PostgreSQL
+// index names must be unqualified.
 pub fn (mut ctx Context) add_index(index Index) ! {
 	name := index_name(index)!
 	if ctx.dialect == .sqlite && index.table.contains('.') {
 		return error('SQLite add_index table `${index.table}` must be unqualified')
+	}
+	if ctx.dialect == .pg && name.contains('.') {
+		return error('PostgreSQL add_index name `${name}` must be unqualified')
 	}
 	columns := quoted_columns(ctx.dialect, index.columns)!
 	unique := if index.unique { 'UNIQUE ' } else { '' }
@@ -623,10 +627,10 @@ fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
 		key.column)}) REFERENCES ${quote_identifier(dialect, key.to_table)} (${quote_identifier(dialect,
 		key.primary_key)})'
 	if key.on_delete != '' {
-		query += ' ON DELETE ${foreign_key_action(key.on_delete)!}'
+		query += ' ON DELETE ${foreign_key_action(dialect, key.on_delete)!}'
 	}
 	if key.on_update != '' {
-		query += ' ON UPDATE ${foreign_key_action(key.on_update)!}'
+		query += ' ON UPDATE ${foreign_key_action(dialect, key.on_update)!}'
 	}
 	return query
 }
@@ -638,10 +642,13 @@ fn validate_foreign_key(key ForeignKey) ! {
 	validate_unqualified_identifier(key.primary_key, 'column')!
 }
 
-fn foreign_key_action(action string) !string {
+fn foreign_key_action(dialect Dialect, action string) !string {
 	normalized := action.trim_space().to_upper().replace('_', ' ')
 	if normalized !in ['CASCADE', 'RESTRICT', 'NO ACTION', 'SET NULL', 'SET DEFAULT'] {
 		return error('unsupported foreign-key action `${action}`')
+	}
+	if dialect == .mysql && normalized == 'SET DEFAULT' {
+		return error('MySQL does not support SET DEFAULT for foreign-key actions')
 	}
 	return normalized
 }
