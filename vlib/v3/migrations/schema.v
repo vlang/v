@@ -257,9 +257,12 @@ fn mysql_change_column_missing_options(column Column) []string {
 }
 
 // add_index adds an index. When name is empty, a deterministic Rails-style
-// `index_<table>_on_<columns>` name is used.
+// `index_<table>_on_<columns>` name is used. SQLite tables must be unqualified.
 pub fn (mut ctx Context) add_index(index Index) ! {
 	name := index_name(index)!
+	if ctx.dialect == .sqlite && index.table.contains('.') {
+		return error('SQLite add_index table `${index.table}` must be unqualified')
+	}
 	columns := quoted_columns(ctx.dialect, index.columns)!
 	unique := if index.unique { 'UNIQUE ' } else { '' }
 	ctx.execute('CREATE ${unique}INDEX ${quote_identifier(ctx.dialect, name)} ON ${quote_identifier(ctx.dialect,
@@ -419,9 +422,20 @@ fn validate_sqlite_add_column(column Column) ! {
 	if column_primary_key(column) || column_unique(column) || column_auto_increment(column) {
 		return error('SQLite add_column does not support primary-key, unique, or auto-increment columns; rebuild the table in the migration')
 	}
+	if default_sql := column.default_sql {
+		if sqlite_add_column_default_is_nonconstant(default_sql) {
+			return error('SQLite add_column does not support nonconstant default `${default_sql}`; rebuild the table in the migration')
+		}
+	}
 	if !column_nullable(column) && !sqlite_has_non_null_default(column) {
 		return error('SQLite add_column requires a non-NULL default for a NOT NULL column; rebuild the table in the migration')
 	}
+}
+
+fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
+	normalized := default_sql.trim_space().to_upper()
+	return normalized in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP']
+		|| (normalized.starts_with('(') && normalized.ends_with(')'))
 }
 
 fn sqlite_has_non_null_default(column Column) bool {
@@ -576,6 +590,9 @@ fn foreign_key_name(key ForeignKey) !string {
 
 fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
 	validate_foreign_key(key)!
+	if dialect == .sqlite && key.to_table.contains('.') {
+		return error('SQLite foreign-key target table `${key.to_table}` must be unqualified')
+	}
 	name := foreign_key_name(key)!
 	mut query := 'CONSTRAINT ${quote_identifier(dialect, name)} FOREIGN KEY (${quote_identifier(dialect,
 		key.column)}) REFERENCES ${quote_identifier(dialect, key.to_table)} (${quote_identifier(dialect,

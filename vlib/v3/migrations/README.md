@@ -59,7 +59,8 @@ The schema helpers include table and column creation/removal/renaming, indexes, 
 foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly change a column or
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
 explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
-auto-increment columns, plus non-nullable columns without a non-NULL default. PostgreSQL
+auto-increment columns, non-nullable columns without a non-NULL default, and defaults that are not
+constant. SQLite index tables and foreign-key targets must be unqualified. PostgreSQL
 `change_column` supports type-related fields only and rejects explicitly supplied constraint
 options, including false or empty values, before executing SQL; use `ctx.execute()` for explicit
 constraint DDL. MySQL `change_column` requires all optional constraint fields because `MODIFY

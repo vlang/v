@@ -455,6 +455,15 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 		}) or { error_message = err.msg() }
 		assert error_message == 'SQLite add_column requires a non-NULL default for a NOT NULL column; rebuild the table in the migration'
 	}
+	for default_sql in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP', "(datetime('now'))"] {
+		error_message = ''
+		ctx.add_column('accounts', Column{
+			name:        'created_at'
+			kind:        .timestamp
+			default_sql: default_sql
+		}) or { error_message = err.msg() }
+		assert error_message == 'SQLite add_column does not support nonconstant default `${default_sql}`; rebuild the table in the migration'
+	}
 	assert recorder.queries.len == 0
 
 	ctx.add_column('accounts', Column{
@@ -465,6 +474,65 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	})!
 	assert recorder.queries == [
 		'ALTER TABLE "accounts" ADD COLUMN "label" TEXT NOT NULL DEFAULT \'\';',
+	]
+}
+
+fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .sqlite)
+	mut error_message := ''
+	ctx.add_index(Index{
+		table:   'main.users'
+		columns: ['email']
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_index table `main.users` must be unqualified'
+	assert recorder.queries.len == 0
+
+	error_message = ''
+	ctx.create_table(Table{
+		name:         'main.children'
+		id:           false
+		columns:      [
+			Column{
+				name: 'parent_id'
+				kind: .bigint
+			},
+		]
+		foreign_keys: [
+			ForeignKey{
+				from_table: 'main.children'
+				column:     'parent_id'
+				to_table:   'main.parents'
+			},
+		]
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite foreign-key target table `main.parents` must be unqualified'
+	assert recorder.queries.len == 0
+
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+	})!
+	ctx.create_table(Table{
+		name:         'main.children'
+		id:           false
+		columns:      [
+			Column{
+				name: 'parent_id'
+				kind: .bigint
+			},
+		]
+		foreign_keys: [
+			ForeignKey{
+				from_table: 'main.children'
+				column:     'parent_id'
+				to_table:   'parents'
+			},
+		]
+	})!
+	assert recorder.queries == [
+		'CREATE INDEX "index_users_on_email" ON "users" ("email");',
+		'CREATE TABLE "main"."children" ("parent_id" BIGINT, CONSTRAINT "fk_main_children_parent_id" FOREIGN KEY ("parent_id") REFERENCES "parents" ("id"));',
 	]
 }
 
