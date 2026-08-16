@@ -862,3 +862,53 @@ fn test_generated_index_names_respect_dialect_limits() {
 	}) or { error_message = err.msg() }
 	assert error_message == 'MySQL index name `${long_explicit_name}` must not exceed 64 bytes'
 }
+
+fn test_generated_foreign_key_names_respect_dialect_limits() {
+	key := ForeignKey{
+		from_table: 'customer_account_records_archive'
+		column:     'external_organization_reference'
+		to_table:   'organizations'
+	}
+	raw_name := 'fk_customer_account_records_archive_external_organization_reference'
+	mysql_name := foreign_key_name(.mysql, key)!
+	postgres_name := foreign_key_name(.pg, key)!
+	assert mysql_name.len == 64
+	assert postgres_name.len == 63
+	assert foreign_key_name(.sqlite, key)! == raw_name
+	assert foreign_key_name(.mysql, key)! == mysql_name
+
+	other_mysql_name := foreign_key_name(.mysql, ForeignKey{
+		from_table: key.from_table
+		column:     'external_organization_identifier'
+		to_table:   key.to_table
+	})!
+	assert other_mysql_name != mysql_name
+
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	ctx.add_foreign_key(key)!
+	ctx.create_table(Table{
+		name:         key.from_table
+		id:           false
+		columns:      [
+			Column{
+				name: key.column
+				kind: .bigint
+			},
+		]
+		foreign_keys: [key]
+	})!
+	assert recorder.queries[0].contains('CONSTRAINT `${mysql_name}` FOREIGN KEY')
+	assert recorder.queries[1].contains('CONSTRAINT `${mysql_name}` FOREIGN KEY')
+
+	long_explicit_name := 'x'.repeat(65)
+	mut error_message := ''
+	ctx.add_foreign_key(ForeignKey{
+		from_table: 'accounts'
+		column:     'organization_id'
+		to_table:   'organizations'
+		name:       long_explicit_name
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL foreign key name `${long_explicit_name}` must not exceed 64 bytes'
+	assert recorder.queries.len == 2
+}

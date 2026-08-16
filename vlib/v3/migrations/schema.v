@@ -618,29 +618,33 @@ fn index_name(dialect Dialect, index Index) !string {
 	for column in index.columns {
 		validate_unqualified_identifier(column, 'column')!
 	}
-	mut name := if index.name != '' {
+	name := if index.name != '' {
 		index.name
 	} else {
 		'index_${index.table.replace('.', '_')}_on_${index.columns.join('_and_')}'
 	}
 	validate_identifier(name, 'index')!
-	limit := index_name_limit(dialect)
-	if limit > 0 && name.len > limit {
-		if index.name != '' {
-			return error('${dialect_name(dialect)} index name `${name}` must not exceed ${limit} bytes')
-		}
-		hash := fnv1a.sum64_string(name).hex()
-		name = '${name[..limit - hash.len - 1]}_${hash}'
-	}
-	return name
+	return bounded_identifier_name(dialect, name, index.name == '', 'index')
 }
 
-fn index_name_limit(dialect Dialect) int {
+fn identifier_name_limit(dialect Dialect) int {
 	return match dialect {
 		.sqlite { 0 }
 		.pg { 63 }
 		.mysql { 64 }
 	}
+}
+
+fn bounded_identifier_name(dialect Dialect, name string, generated bool, kind string) !string {
+	limit := identifier_name_limit(dialect)
+	if limit == 0 || name.len <= limit {
+		return name
+	}
+	if !generated {
+		return error('${dialect_name(dialect)} ${kind} name `${name}` must not exceed ${limit} bytes')
+	}
+	hash := fnv1a.sum64_string(name).hex()
+	return '${name[..limit - hash.len - 1]}_${hash}'
 }
 
 fn dialect_name(dialect Dialect) string {
@@ -663,14 +667,14 @@ fn quoted_columns(dialect Dialect, columns []string) !string {
 	return quoted.join(', ')
 }
 
-fn foreign_key_name(key ForeignKey) !string {
+fn foreign_key_name(dialect Dialect, key ForeignKey) !string {
 	name := if key.name != '' {
 		key.name
 	} else {
 		'fk_${key.from_table.replace('.', '_')}_${key.column}'
 	}
 	validate_unqualified_identifier(name, 'foreign key')!
-	return name
+	return bounded_identifier_name(dialect, name, key.name == '', 'foreign key')
 }
 
 fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
@@ -678,7 +682,7 @@ fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
 	if dialect == .sqlite && key.to_table.contains('.') {
 		return error('SQLite foreign-key target table `${key.to_table}` must be unqualified')
 	}
-	name := foreign_key_name(key)!
+	name := foreign_key_name(dialect, key)!
 	mut query := 'CONSTRAINT ${quote_identifier(dialect, name)} FOREIGN KEY (${quote_identifier(dialect,
 		key.column)}) REFERENCES ${quote_identifier(dialect, key.to_table)} (${quote_identifier(dialect,
 		key.primary_key)})'
