@@ -176,6 +176,7 @@ fn (mut g FlatGen) gen_profile_support() {
 	for pc in g.profile_counters {
 		g.writeln('${pc.calls_name} = 0;')
 		g.writeln('${pc.counter_name} = 0.0;')
+		g.writeln('${pc.counter_name}_only_current = 0.0;')
 	}
 	g.indent--
 	g.writeln('}')

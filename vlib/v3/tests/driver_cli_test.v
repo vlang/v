@@ -103,6 +103,63 @@ fn main() {
 	assert v3_profile_counter(reset_output, 'main__main') == 1, reset_output
 	assert v3_profile_counter(reset_output, 'main__abc') == 1, reset_output
 
+	reset_c := os.join_path(root, 'profile_reset.c')
+	reset_c_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_profile_startup', '-profile',
+		reset_profile, '-o', reset_c, api_source])
+	assert reset_c_compile.exit_code == 0, reset_c_compile.output
+	reset_c_source := os.read_file(reset_c)!
+	reset_body := reset_c_source.all_after('void vreset_profile_stats(void) {').all_before('\n}')
+	assert reset_body.contains('_only_current = 0.0;'), reset_body
+
+	no_main_source := os.join_path(root, 'profile_no_main.v')
+	os.write_file(no_main_source, "@[export: 'profiled_answer']
+pub fn profiled_answer() int {
+	return 42
+}
+")!
+	no_main_c := os.join_path(root, 'profile_no_main.c')
+	no_main_profile := os.join_path(root, 'profile_no_main.txt')
+	no_main_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_main', '-profile', no_main_profile,
+		'-o', no_main_c, no_main_source])
+	assert no_main_compile.exit_code == 0, no_main_compile.output
+	no_main_c_source := os.read_file(no_main_c)!
+	no_main_init_body :=
+		no_main_c_source.all_after('static void _vno_main_init_caller(void) {').all_before('\n}')
+	assert no_main_init_body.contains('atexit(vprint_profile_stats);'), no_main_init_body
+	$if !windows {
+		no_main_host_source := os.join_path(root, 'profile_no_main_host.c')
+		os.write_file(no_main_host_source, 'extern int profiled_answer(void);
+int main(void) {
+	return profiled_answer() == 42 ? 0 : 1;
+}
+')!
+		no_main_host := os.join_path(root, 'profile_no_main_host')
+		cc := os.getenv_opt('CC') or { 'cc' }
+		no_main_host_compile := cmdexec.run(cc, ['-std=gnu11', '-w', no_main_c, no_main_host_source,
+			'-lpthread', '-lm', '-o', no_main_host])
+		assert no_main_host_compile.exit_code == 0, no_main_host_compile.output
+		no_main_host_run := cmdexec.run(no_main_host, [])
+		assert no_main_host_run.exit_code == 0, no_main_host_run.output
+		no_main_output := os.read_file(no_main_profile)!
+		assert v3_profile_counter(no_main_output, 'main__profiled_answer') == 1, no_main_output
+	}
+	shared_c := os.join_path(root, 'profile_shared.c')
+	shared_profile := os.join_path(root, 'profile_shared.txt')
+	shared_compile := cmdexec.run(v3_bin, ['-silent', '-shared', '-profile', shared_profile, '-o',
+		shared_c, no_main_source])
+	assert shared_compile.exit_code == 0, shared_compile.output
+	shared_c_source := os.read_file(shared_c)!
+	shared_init_body :=
+		shared_c_source.all_after('static void _vno_main_init_caller(void) {').all_before('\n}')
+	assert shared_init_body.contains('atexit(vprint_profile_stats);'), shared_init_body
+
+	synthetic_main_c := os.join_path(root, 'profile_synthetic_main.c')
+	synthetic_main_compile := cmdexec.run(v3_bin, ['-silent', '-profile', no_main_profile, '-o',
+		synthetic_main_c, no_main_source])
+	assert synthetic_main_compile.exit_code == 0, synthetic_main_compile.output
+	synthetic_main_c_source := os.read_file(synthetic_main_c)!
+	assert synthetic_main_c_source.count('atexit(vprint_profile_stats);') == 1, synthetic_main_c_source
+
 	selective_source := os.join_path(root, 'profile_selective.v')
 	os.write_file(selective_source, 'module main
 

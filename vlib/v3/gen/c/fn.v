@@ -565,6 +565,7 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	if g.runtime_init_is_needed() {
 		g.writeln('\t_vinit();')
 	}
+	g.gen_profile_registration()
 	if !g.is_shared {
 		g.gen_executable_cleanup_registration()
 	}
@@ -4583,7 +4584,8 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
 	g.gen_profile_startup_enable()
-	if g.needs_no_main_runtime_init_caller() {
+	needs_no_main_runtime_init_caller := g.needs_no_main_runtime_init_caller()
+	if needs_no_main_runtime_init_caller {
 		// Exported callbacks can be invoked without main. Share their guarded
 		// initializer so main and callback startup cannot initialize twice.
 		g.writeln('\t_vno_main_init_caller();')
@@ -4593,7 +4595,9 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 		}
 		g.gen_executable_cleanup_registration()
 	}
-	g.gen_profile_registration()
+	if !needs_no_main_runtime_init_caller {
+		g.gen_profile_registration()
+	}
 	g.indent++
 	g.gen_function_defer_prelude()
 	g.gen_profile_fn_begin('main', 'main', 'main', false)
