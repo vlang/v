@@ -7,11 +7,13 @@ import orm
 @[heap]
 struct RecordingConnection {
 mut:
-	queries                []string
-	database               string = 'test_database'
-	schema                 string = 'public'
-	lower_case_table_names int
-	history_rows           []orm.Row
+	queries                 []string
+	database                string = 'test_database'
+	schema                  string = 'public'
+	lower_case_table_names  int
+	history_rows            []orm.Row
+	in_transaction          bool
+	postgresql_table_schema string = 'public'
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -53,6 +55,11 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 			vals: [conn.schema]
 		}]
 	}
+	if query.starts_with('SELECT n.nspname FROM pg_catalog.pg_class AS c ') {
+		return [orm.Row{
+			vals: [conn.postgresql_table_schema]
+		}]
+	}
 	if query == 'SELECT @@lower_case_table_names;' {
 		return [orm.Row{
 			vals: [conn.lower_case_table_names.str()]
@@ -69,17 +76,23 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 
 fn (mut conn RecordingConnection) orm_begin() ! {
 	conn.queries << 'ORM BEGIN'
+	conn.in_transaction = true
 }
 
 fn (mut conn RecordingConnection) orm_commit() ! {
 	conn.queries << 'ORM COMMIT'
+	conn.in_transaction = false
 }
 
 fn (mut conn RecordingConnection) orm_rollback() ! {
 	conn.queries << 'ORM ROLLBACK'
+	conn.in_transaction = false
 }
 
 fn (mut conn RecordingConnection) orm_savepoint(name string) ! {
+	if !conn.in_transaction {
+		return error('savepoint requires an active transaction')
+	}
 	conn.queries << 'ORM SAVEPOINT ${name}'
 }
 
@@ -425,8 +438,37 @@ fn test_postgresql_orm_wrapper_is_rejected_without_mutating_its_transaction() {
 	new(mut scoped, []Migration{}, Config{
 		dialect: .pg
 	}) or { error_message = err.msg() }
-	assert error_message == 'PostgreSQL migrations require a direct session-pinned connection; orm.DB wrappers cannot be validated without mutating the wrapped connection; pass pg.Conn or pg.Tx directly'
+	assert error_message == 'PostgreSQL migrations require a direct session-pinned connection; orm.DB wrappers cannot be validated without mutating the wrapped connection; pass pg.Conn directly'
 	assert recorder.queries.len == 0
+}
+
+fn test_postgresql_open_transaction_is_rejected_without_being_finished() {
+	mut recorder := &RecordingConnection{
+		in_transaction: true
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{
+		dialect: .pg
+	})!
+	mut error_message := ''
+	runner.migrate() or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL migrations cannot manage transactions on a connection with an already-open transaction (including pg.Tx); use transaction_mode: .never to preserve the caller-owned transaction'
+	assert recorder.in_transaction
+	assert recorder.queries == [
+		'ORM SAVEPOINT v3_migrations_transaction_probe',
+		'ORM RELEASE SAVEPOINT v3_migrations_transaction_probe',
+	]
+
+	mut externally_managed := &RecordingConnection{
+		in_transaction: true
+	}
+	mut never_runner := new(mut externally_managed, []Migration{}, Config{
+		dialect:          .pg
+		transaction_mode: .never
+	})!
+	assert never_runner.migrate()!.len == 0
+	assert externally_managed.in_transaction
+	assert 'ORM COMMIT' !in externally_managed.queries
+	assert 'ORM ROLLBACK' !in externally_managed.queries
 }
 
 fn test_sqlite_history_table_is_pinned_to_main() {
@@ -920,7 +962,9 @@ fn test_rename_table_rejects_qualified_targets_where_required() {
 }
 
 fn test_postgresql_remove_index_uses_the_table_schema() {
-	mut recorder := &RecordingConnection{}
+	mut recorder := &RecordingConnection{
+		postgresql_table_schema: 'later_schema'
+	}
 	mut ctx := new_context(recorder, .pg)
 	ctx.remove_index('archive.users', 'index_archive_users_on_email')!
 	ctx.remove_index('archive.users', 'reporting.custom_email_index')!
@@ -928,7 +972,8 @@ fn test_postgresql_remove_index_uses_the_table_schema() {
 	assert recorder.queries == [
 		'DROP INDEX "archive"."index_archive_users_on_email";',
 		'DROP INDEX "reporting"."custom_email_index";',
-		'DROP INDEX "index_users_on_email";',
+		"SELECT n.nspname FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE c.relname = E'users' AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND pg_catalog.pg_table_is_visible(c.oid) LIMIT 1;",
+		'DROP INDEX "later_schema"."index_users_on_email";',
 	]
 }
 

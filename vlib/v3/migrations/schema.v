@@ -320,8 +320,13 @@ pub fn (mut ctx Context) remove_index(table string, name string) ! {
 				table)};')!
 		}
 		.pg {
-			drop_name := schema_qualified_index_name(table, name)
-			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, drop_name)};')!
+			drop_name_sql := if name.contains('.') {
+				quote_identifier(.pg, name)
+			} else {
+				schema := ctx.postgresql_table_schema(table)!
+				'${quote_identifier_component(.pg, schema)}.${quote_identifier_component(.pg, name)}'
+			}
+			ctx.execute('DROP INDEX ${drop_name_sql};')!
 		}
 		.sqlite {
 			drop_name := if name.contains('.') {
@@ -333,6 +338,18 @@ pub fn (mut ctx Context) remove_index(table string, name string) ! {
 			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, drop_name)};')!
 		}
 	}
+}
+
+fn (mut ctx Context) postgresql_table_schema(table string) !string {
+	if table.contains('.') {
+		return table.all_before('.')
+	}
+	rows := ctx.execute("SELECT n.nspname FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE c.relname = ${string_literal_sql(.pg,
+		table)} AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND pg_catalog.pg_table_is_visible(c.oid) LIMIT 1;")!
+	if rows.len != 1 || rows[0].vals.len == 0 || rows[0].vals[0] == '' {
+		return error('PostgreSQL remove_index could not resolve table `${table}` to a schema')
+	}
+	return rows[0].vals[0]
 }
 
 fn (mut ctx Context) sqlite_table_schema(table string) !string {
@@ -358,15 +375,6 @@ fn (mut ctx Context) sqlite_table_schema(table string) !string {
 		}
 	}
 	return error('SQLite remove_index could not resolve table `${table}` to a database')
-}
-
-fn schema_qualified_index_name(table string, name string) string {
-	if name.contains('.') || !table.contains('.') {
-		return name
-	}
-	mut parts := table.split('.')
-	parts[parts.len - 1] = name
-	return parts.join('.')
 }
 
 fn column_name_key(dialect Dialect, name string) string {

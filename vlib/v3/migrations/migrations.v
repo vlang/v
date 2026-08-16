@@ -87,7 +87,7 @@ pub fn new(mut conn orm.TransactionalConnection, registered []Migration, config 
 	validate_identifier_for_dialect(config.dialect, config.table, 'migration history table')!
 	if config.dialect == .pg {
 		if mut conn is orm.DB {
-			return error('PostgreSQL migrations require a direct session-pinned connection; orm.DB wrappers cannot be validated without mutating the wrapped connection; pass pg.Conn or pg.Tx directly')
+			return error('PostgreSQL migrations require a direct session-pinned connection; orm.DB wrappers cannot be validated without mutating the wrapped connection; pass pg.Conn directly')
 		}
 	}
 	mut ordered := registered.clone()
@@ -429,6 +429,7 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			m.retain_history_relation(.sqlite, namespace)
 		}
 		.pg {
+			m.reject_existing_postgresql_transaction()!
 			schema := if m.resolved_history_namespace != '' {
 				m.resolved_history_namespace
 			} else if m.config.table.contains('.') {
@@ -463,6 +464,22 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			m.retain_history_relation(.mysql, database)
 		}
 	}
+}
+
+fn (mut m Migrator) reject_existing_postgresql_transaction() ! {
+	if !m.uses_transactions() {
+		return
+	}
+	probe := 'v3_migrations_transaction_probe'
+	m.conn.orm_savepoint(probe) or {
+		// PostgreSQL rejects SAVEPOINT outside a transaction, which is the expected
+		// state when the migrator owns per-migration transactions.
+		return
+	}
+	m.conn.orm_release_savepoint(probe) or {
+		return error('could not release PostgreSQL transaction ownership probe: ${err.msg()}')
+	}
+	return error('PostgreSQL migrations cannot manage transactions on a connection with an already-open transaction (including pg.Tx); use transaction_mode: .never to preserve the caller-owned transaction')
 }
 
 fn (mut m Migrator) retain_history_relation(dialect Dialect, namespace string) {
