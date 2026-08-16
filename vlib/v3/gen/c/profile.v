@@ -167,6 +167,7 @@ fn (mut g FlatGen) gen_profile_support() {
 	} else {
 		g.writeln('FILE* fp;')
 		g.writeln('fp = fopen("${c_escape(g.profile_file)}", "w+");')
+		g.writeln('if (fp == NULL) { return; }')
 		for pc in g.profile_counters {
 			g.writeln('if (${pc.calls_name}) fprintf(fp, ${fstring}, ${pc.calls_name}, (${pc.counter_name} * f) / 1000000.0, (${pc.counter_name}_only_current * f) / 1000000.0, (${pc.counter_name} * f) / ${pc.calls_name}, "${c_escape(pc.fn_name)}");')
 		}

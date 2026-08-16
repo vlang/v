@@ -85,6 +85,15 @@ fn main() {
 	assert v3_profile_counter(api_output, 'main__abc') == 1, api_output
 	assert v3_profile_counter(api_output, 'v__profile__on') == -1, api_output
 
+	missing_profile := os.join_path(root, 'missing', 'profile.txt')
+	missing_profile_binary := os.join_path(root, 'missing_profile')
+	missing_profile_compile := cmdexec.run(v3_bin, ['-silent', '-profile', missing_profile, '-o',
+		missing_profile_binary, api_source])
+	assert missing_profile_compile.exit_code == 0, missing_profile_compile.output
+	missing_profile_run := cmdexec.run(missing_profile_binary, [])
+	assert missing_profile_run.exit_code == 0, missing_profile_run.output
+	assert !os.exists(missing_profile)
+
 	user_profile_module := os.join_path(root, 'profile')
 	os.mkdir_all(user_profile_module)!
 	os.write_file(os.join_path(user_profile_module, 'profile.v'), 'module profile
