@@ -2331,7 +2331,7 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 	return none
 }
 
-fn (t &Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMeta) ?string {
+fn (mut t Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMeta) ?string {
 	if name.len == 0 {
 		return none
 	}
@@ -2339,35 +2339,61 @@ fn (t &Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMe
 	if !iter_type.starts_with('map[') && !iter_type.starts_with('[]') {
 		return none
 	}
+	t.prepare_comptime_reflected_for_roles()
+	role := t.comptime_reflected_for_roles[name] or { return none }
+	if iter_type.starts_with('map[') {
+		if role in [u8(1), 3] {
+			return t.map_key_type(iter_type)
+		}
+		return t.map_value_type(iter_type)
+	}
+	if role == 1 {
+		return 'int'
+	}
+	return iter_type[2..]
+}
+
+// prepare_comptime_reflected_for_roles indexes the first reflected-field loop role for each
+// local name. Generic JSON decoders query this while cloning every reflected field; rescanning
+// the complete, growing AST for each query made monomorphization quadratic on large programs.
+fn (mut t Transformer) prepare_comptime_reflected_for_roles() {
+	if t.comptime_reflected_for_ready {
+		return
+	}
+	t.comptime_reflected_for_ready = true
+	mut reflected_locals := map[string]bool{}
+	for node in t.a.nodes {
+		if node.kind != .decl_assign || node.children_count < 2 {
+			continue
+		}
+		lhs := t.a.child_node(&node, 0)
+		if lhs.kind == .ident && lhs.value.len > 0
+			&& t.subtree_has_comptime_field_selector(t.a.child(&node, 1)) {
+			reflected_locals[lhs.value] = true
+		}
+	}
+	mut roles := map[string]u8{}
 	for node in t.a.nodes {
 		if node.kind != .for_in_stmt || node.children_count < 3 {
 			continue
 		}
-		key := t.a.child_node(&node, 0)
-		value := t.a.child_node(&node, 1)
 		container_id := t.a.child(&node, 2)
-		if !t.comptime_for_container_uses_reflected_field(container_id) {
+		container := t.a.nodes[int(container_id)]
+		if !t.subtree_has_comptime_field_selector(container_id) && !(container.kind == .ident
+			&& reflected_locals[container.value]) {
 			continue
 		}
+		key := t.a.child_node(&node, 0)
+		value := t.a.child_node(&node, 1)
 		has_index := value.kind == .ident && value.value.len > 0
-		if iter_type.starts_with('map[') {
-			if key.kind == .ident && key.value == name {
-				return t.map_key_type(iter_type)
-			}
-			if value.kind == .ident && value.value == name {
-				return t.map_value_type(iter_type)
-			}
-		} else {
-			elem_type := iter_type[2..]
-			if has_index && key.kind == .ident && key.value == name {
-				return 'int'
-			}
-			if (has_index && value.value == name) || (!has_index && key.value == name) {
-				return elem_type
-			}
+		if key.kind == .ident && key.value.len > 0 && key.value !in roles {
+			roles[key.value] = if has_index { u8(1) } else { u8(3) }
+		}
+		if has_index && value.value !in roles {
+			roles[value.value] = 2
 		}
 	}
-	return none
+	t.comptime_reflected_for_roles = roles.move()
 }
 
 fn (t &Transformer) comptime_for_container_uses_reflected_field(container_id flat.NodeId) bool {

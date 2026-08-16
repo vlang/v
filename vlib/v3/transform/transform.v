@@ -164,6 +164,8 @@ mut:
 	sum_variant_fields            map[string]string
 	qualified_types               map[string]string
 	fn_ret_types                  map[string]string
+	fn_ret_types_log              []string
+	tc_signature_names_log        []string
 	multi_return_fn_ret_types     map[string]types.Type
 	receiver_method_suffix_index  map[string]string
 	declared_fn_name_counts       map[string]u8
@@ -252,6 +254,8 @@ mut:
 	local_decl_nodes_by_name        map[string][]int
 	struct_field_decl_metas_cache   map[string]map[string]FieldDeclMeta
 	comptime_field_metas_cache      map[string][]FieldMeta
+	comptime_reflected_for_roles    map[string]u8
+	comptime_reflected_for_ready    bool
 	call_param_types_decl_cache     map[int][]types.Type
 	call_param_types_decl_misses    map[string]bool
 	call_param_types_decl_index     map[string]FnParamDeclRef
@@ -266,23 +270,24 @@ mut:
 	// module/file context of the requesting call site (type resolution inside
 	// the helper body needs that context). The helpers are synthesized
 	// serially after the (possibly parallel) transform completes.
-	sum_eq_types                  map[string]SumEqRequest
-	sum_eq_synthesized            map[string]bool
-	sum_eq_helper_module          string
-	auto_str_types                map[string]AutoStrRequest
-	auto_str_synthesized          map[string]bool
-	auto_str_helper_module        string
-	auto_str_synthesis_type       string
-	default_clone_types           map[string]DefaultCloneRequest
-	default_clone_synthesized     map[string]bool
-	default_clone_expansion_stack []string
-	interface_boxed_types         map[string]bool
-	interface_boxed_types_done    bool
-	interface_boxed_types_frozen  bool
-	interface_impl_indexes        map[string]&types.InterfaceImplIndex
-	interface_impl_spec_count     int
-	ierror_none_type_id           int
-	interface_var_concrete_types  map[string]string
+	sum_eq_types                   map[string]SumEqRequest
+	sum_eq_synthesized             map[string]bool
+	sum_eq_helper_module           string
+	auto_str_types                 map[string]AutoStrRequest
+	auto_str_synthesized           map[string]bool
+	auto_str_helper_module         string
+	auto_str_synthesis_type        string
+	default_clone_types            map[string]DefaultCloneRequest
+	default_clone_synthesized      map[string]bool
+	default_clone_expansion_stack  []string
+	interface_boxed_types          map[string]bool
+	interface_boxed_impl_processed map[string]bool
+	interface_boxed_types_done     bool
+	interface_boxed_types_frozen   bool
+	interface_impl_indexes         map[string]&types.InterfaceImplIndex
+	interface_impl_spec_count      int
+	ierror_none_type_id            int
+	interface_var_concrete_types   map[string]string
 	// used_struct_operator_fns holds the callee names of direct calls seen during
 	// monomorphize. Infix operators on generic instances are lowered to direct calls
 	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
@@ -358,6 +363,7 @@ mut:
 	active_specialization_main_types   map[string]bool
 	specialization_main_type_closures  map[string]map[string]bool
 	generic_specialization_args        map[string][]string
+	generic_specialization_args_log    []string
 	generic_specialization_args_parent &map[string][]string = unsafe { nil }
 	generic_fn_specs_in_progress       map[string]bool
 	generic_fn_spec_nodes              map[string]flat.NodeId
@@ -373,6 +379,7 @@ mut:
 	pending_generic_fn_spec_keys       map[string]bool
 	generic_fn_decls_cache             map[string]GenericFnDecl
 	generic_receiver_methods_by_name   map[string][]string
+	generic_fn_call_names              map[string]bool
 	generic_fn_decls_ready             bool
 	generic_struct_specs_cache         map[string]string
 	generic_sum_specs_cache            map[string]GenericSpecContext
@@ -388,6 +395,7 @@ mut:
 	generic_call_spec_misses           map[int]bool
 	stringify_stack                    []string
 	stringify_depth_cap                int = max_stringify_nesting_depth
+	struct_autostr_recurse_types       map[string]bool
 	str_expansion_memo                 map[string]int
 	deferred_str_items                 []FnWorkItem
 	deferred_str_count                 int
@@ -463,6 +471,7 @@ mut:
 	retained_worker_regions     []ScopedTransformRegion
 	stage_scope                 voidptr
 	scoped_monomorphize         bool
+	monomorph_worker_scopes     []voidptr
 	signature_maps_shared       bool
 	signature_maps_changed      bool
 }
@@ -1355,6 +1364,14 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.scope_parallel_workers = true
 	}
 	t.prepare()
+	// Interface conversions are explicit struct-init nodes after transform. Scan
+	// only that lowered form here; the semantic source scan already ran in the
+	// preceding transform and would be far more expensive on the enlarged AST.
+	t.interface_boxed_types_done = true
+	t.interface_boxed_types_frozen = false
+	t.collect_lowered_interface_boxed_types_range(0, t.a.nodes.len)
+	t.interface_boxed_types_frozen = true
+	t.refresh_interface_impl_indexes_for_boxed_types()
 	t.seed_cached_monomorph_specs(cached_specs)
 	t.monomorph_profile('mono wrapper prepare: ${time.ticks() - debug_started} ms')
 	base_node_count := t.a.nodes.len
@@ -1394,14 +1411,37 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	t.monomorph_profile('mono wrapper sums: ${time.ticks() - debug_started} ms')
 	t.apply_ignored_comptime_for_nodes()
 	t.monomorph_profile('mono wrapper ignored: ${time.ticks() - debug_started} ms')
+	final_specs := t.sorted_monomorph_cache_specs()
 	if stage_scope != unsafe { nil } {
 		parent_state := transform_stage_scope_suspend(stage_scope)
-		for idx in 0 .. t.a.nodes.len {
-			t.clone_scoped_worker_node(idx, stage_scope)
-		}
+		// Rebuild the canonical table outside the disposable monomorph arena, then
+		// publish all worker-owned node strings while their arenas are still live.
+		t.a.promote_transform_texts_from(0, stage_scope)
+		t.monomorph_profile('mono wrapper text table: ${time.ticks() - debug_started} ms')
+		t.release_monomorph_worker_scopes()
 		transform_stage_scope_resume(stage_scope, parent_state)
+	} else {
+		t.release_monomorph_worker_scopes()
 	}
-	return t.used_fns, t.monomorph_errors, t.sorted_monomorph_cache_specs()
+	return t.used_fns, t.monomorph_errors, final_specs
+}
+
+fn (mut t Transformer) release_monomorph_worker_scopes() {
+	started := time.ticks()
+	// This is also the final monomorph text-publication barrier when no helper
+	// scope was retained. Keep it unconditional so the driver does not need a
+	// second full-AST canonicalization pass after this function returns.
+	t.a.intern_node_texts_from(0)
+	t.monomorph_profile('mono wrapper intern: ${time.ticks() - started} ms')
+	if !free_worker_scopes_parallel(t.a, t.monomorph_worker_scopes) {
+		for scope in t.monomorph_worker_scopes {
+			if scope != unsafe { nil } {
+				transform_worker_scope_free(scope)
+			}
+		}
+	}
+	t.monomorph_worker_scopes = []voidptr{}
+	t.monomorph_profile('mono wrapper release: ${time.ticks() - started} ms')
 }
 
 // register_cached_monomorph_signatures installs persistent concrete signatures
@@ -1441,6 +1481,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		sql_query_data_aliases:            map[string][]string{}
 		bound_method_arrays:               map[string]BoundMethodArrayInfo{}
 		comptime_field_metas_cache:        map[string][]FieldMeta{}
+		comptime_reflected_for_roles:      map[string]u8{}
 		const_array_fixed_storage_cache:   map[string]i8{}
 		invalidated_smartcasts:            map[string]bool{}
 		escaping_amp_ptrs:                 map[string]bool{}
@@ -1474,6 +1515,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		used_fns:                          used_fns.clone()
 		comptime_reflected_params:         map[string][]ParamMeta{}
 		interface_boxed_types:             map[string]bool{}
+		interface_boxed_impl_processed:    map[string]bool{}
 		interface_impl_indexes:            map[string]&types.InterfaceImplIndex{}
 		interface_var_concrete_types:      map[string]string{}
 		interface_box_param_cache:         &BoolLookupCache{
@@ -1595,6 +1637,7 @@ fn (mut t Transformer) prepare() {
 	}
 	mut psw := time.new_stopwatch()
 	t.collect_types()
+	t.rebuild_struct_autostr_recurse_index()
 	if !t.defer_pre_scan_indexes {
 		t.build_source_parent_index()
 	}
@@ -1734,37 +1777,65 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 		return
 	}
 	mut boxed_types := map[string][]string{}
+	mut boxed_seen := map[string]bool{}
+	mut iface_names_cache := map[string]string{}
 	mut runtime_type_names := []string{}
 	for key, _ in t.interface_boxed_types {
-		parts := key.split('\n')
-		if parts.len != 2 || t.generic_arg_is_unresolved(parts[1]) {
+		if t.interface_boxed_impl_processed[key] {
 			continue
 		}
-		iface := t.resolve_interface_type_name(parts[0])
+		separator := key.index_u8(`\n`)
+		if separator <= 0 || separator + 1 >= key.len {
+			continue
+		}
+		raw_iface := key[..separator]
+		raw_concrete := key[separator + 1..]
+		if t.generic_arg_is_unresolved(raw_concrete)
+			|| !t.interface_boxed_impl_name_is_direct(raw_concrete) {
+			continue
+		}
+		t.interface_boxed_impl_processed[key] = true
+		iface := if cached := iface_names_cache[raw_iface] {
+			cached
+		} else {
+			resolved := t.resolve_interface_type_name(raw_iface)
+			iface_names_cache[raw_iface] = resolved
+			resolved
+		}
 		if iface.len == 0 {
 			continue
 		}
-		concrete := t.interface_concrete_impl_name(parts[1]) or { continue }
-		mut concrete_types := boxed_types[iface] or { []string{} }
-		if concrete !in concrete_types {
-			concrete_types << concrete
-			boxed_types[iface] = concrete_types
-			runtime_type_names << concrete
+		concrete := t.interface_concrete_impl_name(raw_concrete) or { continue }
+		seen_key := '${iface}\n${concrete}'
+		if boxed_seen[seen_key] {
+			continue
 		}
+		boxed_seen[seen_key] = true
+		mut concrete_types := boxed_types[iface] or { []string{} }
+		concrete_types << concrete
+		boxed_types[iface] = concrete_types
+		runtime_type_names << concrete
+	}
+	if boxed_types.len == 0 {
+		return
 	}
 	types.extend_stable_type_indexes_ref(mut t.runtime_type_indexes, &runtime_type_names)
 	mut refreshed := t.interface_impl_indexes.clone()
-	mut iface_names := t.interface_impl_indexes.keys()
+	mut iface_names := boxed_types.keys()
 	iface_names.sort()
 	for iface_name in iface_names {
 		old_index := t.interface_impl_indexes[iface_name] or { continue }
 		mut impls := old_index.names.clone()
-		resolved_iface := t.resolve_interface_type_name(iface_name)
-		mut concrete_types := boxed_types[resolved_iface] or { []string{} }
+		mut seen := map[string]bool{}
+		for name in impls {
+			seen[name] = true
+		}
+		mut concrete_types := boxed_types[iface_name] or { []string{} }
 		concrete_types.sort()
 		for concrete in concrete_types {
-			if concrete !in impls {
+			if !seen[concrete] {
 				impls << concrete
+				seen[concrete] = true
 			}
 		}
 		if impls.len == old_index.names.len {
@@ -1776,6 +1847,25 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 		}
 	}
 	t.interface_impl_indexes = refreshed.move()
+}
+
+fn (t &Transformer) interface_boxed_impl_name_is_direct(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name.starts_with('fn(') || name.starts_with('fn ') || name.starts_with('[]')
+		|| name.starts_with('map[') || name.starts_with('builtin.') {
+		return true
+	}
+	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
+		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+		return true
+	}
+	if name in t.tc.structs || name in t.tc.type_aliases {
+		return true
+	}
+	base, _, is_generic_app := generic_app_parts(name)
+	return is_generic_app && (base in t.tc.structs || base in t.tc.type_aliases)
 }
 
 fn (t &Transformer) interface_impl_index_for_transform(iface_name string) &types.InterfaceImplIndex {
@@ -2167,6 +2257,7 @@ fn (mut t Transformer) ensure_private_signature_maps() {
 fn (mut t Transformer) set_fn_ret_type(name string, typ string) {
 	t.ensure_private_signature_maps()
 	t.fn_ret_types[name] = typ
+	t.fn_ret_types_log << name
 }
 
 fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string) {
@@ -3721,6 +3812,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		local_decl_nodes_by_name:        t.local_decl_nodes_by_name
 		struct_field_decl_metas_cache:   t.struct_field_decl_metas_cache
 		comptime_field_metas_cache:      map[string][]FieldMeta{}
+		comptime_reflected_for_roles:    t.comptime_reflected_for_roles
+		comptime_reflected_for_ready:    t.comptime_reflected_for_ready
 		call_param_types_decl_cache:     t.call_param_types_decl_cache
 		call_param_types_decl_misses:    t.call_param_types_decl_misses.clone()
 		call_param_types_decl_index:     t.call_param_types_decl_index
@@ -3791,6 +3884,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		building_v:                         t.building_v
 		memo_node_types:                    t.memo_node_types
 		stringify_depth_cap:                t.stringify_depth_cap
+		struct_autostr_recurse_types:       t.struct_autostr_recurse_types
 		has_spawn_expr:                     t.has_spawn_expr
 		base_write_intercept:               t.base_write_intercept
 		defer_oor_writes:                   t.defer_oor_writes
@@ -3886,7 +3980,8 @@ fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
 	if w.signature_maps_changed {
 		t.ensure_private_signature_maps()
 	}
-	for name, ret in w.fn_ret_types {
+	for name in w.fn_ret_types_log {
+		ret := w.fn_ret_types[name] or { continue }
 		if name !in t.fn_ret_types {
 			owned_name := name.clone()
 			t.fn_ret_types[owned_name] = ret.clone()
@@ -3903,7 +3998,10 @@ fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
 	// uniquely-owned master checker.
 	mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
 	master_tc.ensure_private_transform_signatures()
-	for name, ret in w.tc.fn_ret_types {
+	mut tc_signature_names := w.tc_signature_names_log.clone()
+	tc_signature_names << w.fn_ret_types_log
+	for name in tc_signature_names {
+		ret := w.tc.fn_ret_types[name] or { continue }
 		if name in master_tc.fn_ret_types {
 			continue
 		}
@@ -4244,7 +4342,10 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		}
 	}
 	for idx, typ in w.refined_node_types {
-		shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
+		if idx < base_nodes {
+			continue
+		}
+		shifted := idx + int(node_shift)
 		owned_typ := if w.worker_scope != unsafe { nil } { typ.clone() } else { typ }
 		t.record_refined_node_type(shifted, owned_typ)
 	}

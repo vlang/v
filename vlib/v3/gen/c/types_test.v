@@ -49,6 +49,40 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	})) == 'Array'
 }
 
+fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
+	mut ast := flat.FlatAst.new()
+	ast.add_node(flat.Node{
+		kind:  .fn_decl
+		value: 'load'
+		typ:   '!Image'
+	})
+	mut tc := types.TypeChecker.new(&ast)
+	tc.cur_module = 'json2'
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+
+	g.collect_declaration_signature_types()
+	assert 'Optional_json2__Image' !in g.needed_optional_types
+}
+
+fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
+	mut ast := flat.FlatAst.new()
+	fn_id := ast.add_node(flat.Node{
+		kind:  .fn_decl
+		value: 'decode_T_Data'
+		typ:   '!Data'
+	})
+	ast.specialized_fn_nodes[int(fn_id)] = true
+	mut tc := types.TypeChecker.new(&ast)
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+
+	g.collect_declaration_signature_types()
+	assert 'Optional_Data' in g.needed_optional_types
+}
+
 fn test_optional_value_info_preserves_pointer_payload_abi() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

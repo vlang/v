@@ -10411,16 +10411,27 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		raw_arg := tc.a.child_node(&node, i)
 		if raw_arg.kind == .field_init {
 			$if ownership ? {
-				tc.ownership_check_node_with_deferred_aggregate_consumption(arg_id)
+				if expected := tc.params_field_expected_type(raw_arg.value, info) {
+					tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(arg_id,
+						expected, true)
+				} else {
+					tc.ownership_check_node_with_deferred_aggregate_consumption(arg_id)
+				}
 			} $else {
-				tc.check_node(arg_id)
+				if expected := tc.params_field_expected_type(raw_arg.value, info) {
+					tc.check_node_with_expected_context(arg_id, expected)
+				} else {
+					tc.check_node(arg_id)
+				}
 			}
 			if tc.unsafe_depth == 0 {
 				if owner := tc.params_field_owner(raw_arg.value, info) {
 					if !is_anonymous_struct_name(owner) {
 						owner_base := strip_generic_args_name(owner)
 						decl_mod := tc.struct_modules[owner_base] or { '' }
-						if decl_mod.len > 0 && decl_mod != tc.cur_module {
+						same_main_module := decl_mod in ['', 'main']
+							&& tc.cur_module in ['', 'main']
+						if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module {
 							is_public := tc.visible_mutation_struct_field_is_public(owner,
 								raw_arg.value, decl_mod) or { true }
 							if !is_public {
@@ -14396,7 +14407,7 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	}
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.
-	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .if_expr, .match_stmt,
+	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .if_expr, .match_stmt, .index,
 		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .string_interp]
 }
 

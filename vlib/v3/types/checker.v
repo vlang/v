@@ -5101,7 +5101,8 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	}
 	for candidate in candidates {
 		visibility := tc.declaration_visibility[candidate] or { continue }
-		if !visibility.is_pub && visibility.module_name != tc.cur_module {
+		same_main_module := visibility.module_name in ['', 'main'] && tc.cur_module in ['', 'main']
+		if !visibility.is_pub && visibility.module_name != tc.cur_module && !same_main_module {
 			return visibility
 		}
 		return none
