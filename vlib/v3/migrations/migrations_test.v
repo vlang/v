@@ -16,6 +16,7 @@ mut:
 	autocommit                bool = true
 	postgresql_history_schema string
 	postgresql_table_schema   string = 'public'
+	postgresql_probe_value    string
 	sqlite_table_schema       string = 'main'
 }
 
@@ -53,6 +54,21 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	}
 	if query == 'SET search_path TO other_schema;' {
 		conn.schema = 'other_schema'
+	}
+	probe_prefix := "SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', '"
+	if query.starts_with(probe_prefix) {
+		value := query.all_after(probe_prefix).all_before("', true);")
+		if conn.in_transaction {
+			conn.postgresql_probe_value = value
+		}
+		return [orm.Row{
+			vals: [value]
+		}]
+	}
+	if query == postgresql_transaction_probe_read_query() {
+		return [orm.Row{
+			vals: [conn.postgresql_probe_value]
+		}]
 	}
 	if query.starts_with('SELECT version, name, applied_at FROM ') {
 		return conn.history_rows.clone()
@@ -121,11 +137,13 @@ fn (mut conn RecordingConnection) orm_begin() ! {
 fn (mut conn RecordingConnection) orm_commit() ! {
 	conn.queries << 'ORM COMMIT'
 	conn.in_transaction = false
+	conn.postgresql_probe_value = ''
 }
 
 fn (mut conn RecordingConnection) orm_rollback() ! {
 	conn.queries << 'ORM ROLLBACK'
 	conn.in_transaction = false
+	conn.postgresql_probe_value = ''
 }
 
 fn (mut conn RecordingConnection) orm_savepoint(name string) ! {
@@ -263,6 +281,12 @@ fn start_postgresql_transaction(mut ctx Context) ! {
 	ctx.execute('BEGIN;')!
 }
 
+fn assert_postgresql_transaction_probe(queries []string) {
+	assert queries.len >= 2
+	assert queries[0].starts_with("SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', 'probe_")
+	assert queries[1] == postgresql_transaction_probe_read_query()
+}
+
 fn test_migrate_rollback_redo_and_status() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -383,8 +407,10 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 			}
 			.pg {
 				key := postgresql_migration_lock_key(recorder.schema, 'schema_migrations')
-				assert recorder.queries[0] == postgresql_history_schema_query('schema_migrations')
-				assert recorder.queries[1] == 'SELECT pg_advisory_lock(${key});'
+				assert recorder.queries[0].starts_with("SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', 'probe_")
+				assert recorder.queries[1] == postgresql_transaction_probe_read_query()
+				assert recorder.queries[2] == postgresql_history_schema_query('schema_migrations')
+				assert recorder.queries[3] == 'SELECT pg_advisory_lock(${key});'
 				assert recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 				assert 'ORM BEGIN' in recorder.queries
 				assert 'ORM COMMIT' in recorder.queries
@@ -507,10 +533,9 @@ fn test_postgresql_open_transaction_is_rejected_in_every_mode_without_being_fini
 		runner.migrate() or { error_message = err.msg() }
 		assert error_message == 'PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported'
 		assert recorder.in_transaction
-		assert recorder.queries == [
-			'ORM SAVEPOINT v3_migrations_transaction_probe',
-			'ORM RELEASE SAVEPOINT v3_migrations_transaction_probe',
-		]
+		assert recorder.queries.len == 2
+		assert recorder.queries[0].starts_with("SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', 'probe_")
+		assert recorder.queries[1] == postgresql_transaction_probe_read_query()
 	}
 }
 
@@ -825,7 +850,8 @@ fn test_postgresql_migration_locks_use_full_64bit_keys() {
 	})!
 	runner.acquire_migration_lock()!
 	runner.release_migration_lock(true)!
-	assert recorder.queries == [
+	assert_postgresql_transaction_probe(recorder.queries)
+	assert recorder.queries[2..] == [
 		postgresql_history_schema_query(first_table),
 		'SELECT pg_advisory_lock(${first_key});',
 		'SELECT pg_advisory_unlock(${first_key});',
@@ -845,7 +871,8 @@ fn test_postgresql_migration_locks_canonicalize_history_table() {
 	})!
 	unqualified_runner.acquire_migration_lock()!
 	unqualified_runner.release_migration_lock(true)!
-	assert unqualified_recorder.queries == [
+	assert_postgresql_transaction_probe(unqualified_recorder.queries)
+	assert unqualified_recorder.queries[2..] == [
 		postgresql_history_schema_query('schema_migrations'),
 		'SELECT pg_advisory_lock(${key});',
 		'SELECT pg_advisory_unlock(${key});',
@@ -861,7 +888,11 @@ fn test_postgresql_migration_locks_canonicalize_history_table() {
 	})!
 	qualified_runner.acquire_migration_lock()!
 	qualified_runner.release_migration_lock(true)!
-	assert qualified_recorder.queries == unqualified_recorder.queries[1..]
+	assert_postgresql_transaction_probe(qualified_recorder.queries)
+	assert qualified_recorder.queries[2..] == [
+		'SELECT pg_advisory_lock(${key});',
+		'SELECT pg_advisory_unlock(${key});',
+	]
 
 	temp_key := postgresql_migration_lock_key('pg_temp', 'schema_migrations')
 	mut temp_recorder := &RecordingConnection{}
@@ -871,7 +902,8 @@ fn test_postgresql_migration_locks_canonicalize_history_table() {
 	})!
 	temp_runner.acquire_migration_lock()!
 	temp_runner.release_migration_lock(true)!
-	assert temp_recorder.queries == [
+	assert_postgresql_transaction_probe(temp_recorder.queries)
+	assert temp_recorder.queries[2..] == [
 		'SELECT pg_advisory_lock(${temp_key});',
 		'SELECT pg_advisory_unlock(${temp_key});',
 	]

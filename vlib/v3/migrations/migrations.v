@@ -6,6 +6,7 @@ import strconv
 import time
 
 const migration_lock_timeout_seconds = 60
+const postgresql_transaction_probe_setting = 'v3_migrations.transaction_probe'
 
 // MigrationFn changes the schema through a migration Context.
 pub type MigrationFn = fn (mut Context) !
@@ -494,16 +495,27 @@ fn (mut m Migrator) resolve_mysql_history_database() !string {
 }
 
 fn (mut m Migrator) reject_existing_postgresql_transaction() ! {
-	probe := 'v3_migrations_transaction_probe'
-	m.conn.orm_savepoint(probe) or {
-		// PostgreSQL rejects SAVEPOINT outside a transaction, which is the required
-		// state before the migrator acquires its session lock.
-		return
+	token := 'probe_${time.now().unix_nano()}'
+	m.conn.execute(postgresql_transaction_probe_set_query(token))!
+	rows := m.conn.execute(postgresql_transaction_probe_read_query())!
+	if postgresql_transaction_probe_value(rows)! == token {
+		return error('PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported')
 	}
-	m.conn.orm_release_savepoint(probe) or {
-		return error('could not release PostgreSQL transaction ownership probe: ${err.msg()}')
+}
+
+fn postgresql_transaction_probe_set_query(token string) string {
+	return "SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', '${token}', true);"
+}
+
+fn postgresql_transaction_probe_read_query() string {
+	return "SELECT pg_catalog.current_setting('${postgresql_transaction_probe_setting}', true);"
+}
+
+fn postgresql_transaction_probe_value(rows []orm.Row) !string {
+	if rows.len != 1 || rows[0].vals.len == 0 {
+		return error('could not determine PostgreSQL transaction state')
 	}
-	return error('PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported')
+	return rows[0].vals[0]
 }
 
 fn (mut m Migrator) validate_mysql_session() ! {
