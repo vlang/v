@@ -72,11 +72,12 @@ pub:
 // Migrator applies an ordered set of migrations and records their versions.
 pub struct Migrator {
 mut:
-	conn            orm.TransactionalConnection
-	migrations      []Migration
-	config          Config
-	pg_lock_key     ?i64
-	mysql_lock_name string
+	conn                     orm.TransactionalConnection
+	migrations               []Migration
+	config                   Config
+	pg_lock_key              ?i64
+	mysql_lock_name          string
+	locked_history_table_sql string
 }
 
 // new creates and validates a migrator. It does not access the database until
@@ -288,7 +289,7 @@ fn (mut m Migrator) run_unlocked(operation MigrationOperation, argument i64) ![]
 // applied returns the migrations recorded in the database, oldest first.
 pub fn (mut m Migrator) applied() ![]AppliedMigration {
 	m.ensure_history_table()!
-	table := quote_identifier(m.config.dialect, m.config.table)
+	table := m.history_table_sql()
 	rows := m.conn.execute('SELECT version, name, applied_at FROM ${table} ORDER BY version ASC;')!
 	mut result := []AppliedMigration{cap: rows.len}
 	for row in rows {
@@ -391,14 +392,22 @@ fn (m &Migrator) find_migration(version i64) ?Migration {
 }
 
 fn (mut m Migrator) ensure_history_table() ! {
-	table := quote_identifier(m.config.dialect, m.config.table)
+	table := m.history_table_sql()
 	m.conn.execute('CREATE TABLE IF NOT EXISTS ${table} (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+}
+
+fn (m &Migrator) history_table_sql() string {
+	if m.locked_history_table_sql != '' {
+		return m.locked_history_table_sql
+	}
+	return quote_identifier(m.config.dialect, m.config.table)
 }
 
 fn (mut m Migrator) acquire_migration_lock() ! {
 	match m.config.dialect {
 		.sqlite {
 			m.conn.execute('BEGIN IMMEDIATE;')!
+			m.locked_history_table_sql = quote_identifier(.sqlite, m.config.table)
 		}
 		.pg {
 			schema := if m.config.table.contains('.') {
@@ -410,6 +419,7 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			key := postgresql_migration_lock_key(schema, m.config.table)
 			m.conn.execute('SELECT pg_advisory_lock(${key});')!
 			m.pg_lock_key = key
+			m.locked_history_table_sql = qualified_history_table_sql(.pg, schema, m.config.table)
 		}
 		.mysql {
 			database := if m.config.table.contains('.') {
@@ -427,6 +437,8 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 				return error('could not acquire MySQL migration lock `${name}` within ${migration_lock_timeout_seconds} seconds')
 			}
 			m.mysql_lock_name = name
+			m.locked_history_table_sql = qualified_history_table_sql(.mysql, database,
+				m.config.table)
 		}
 	}
 }
@@ -463,6 +475,7 @@ fn (mut m Migrator) release_migration_lock(success bool) ! {
 			m.mysql_lock_name = ''
 		}
 	}
+	m.locked_history_table_sql = ''
 }
 
 fn migration_lock_key(identity string) i64 {
@@ -477,6 +490,12 @@ fn postgresql_migration_lock_key(schema string, table string) i64 {
 	table_name := if table.contains('.') { table.all_after('.') } else { table }
 	identity := '${schema.len}:${schema}:${table_name.len}:${table_name}'
 	return migration_lock_key(identity)
+}
+
+fn qualified_history_table_sql(dialect Dialect, namespace string, table string) string {
+	table_name := if table.contains('.') { table.all_after('.') } else { table }
+	return '${quote_identifier_component(dialect, namespace)}.${quote_identifier_component(dialect,
+		table_name)}'
 }
 
 fn mysql_migration_lock_name(database string, table string, lower_case_table_names int) string {
@@ -589,13 +608,13 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 }
 
 fn (m &Migrator) history_insert_sql(migration Migration, applied_at string) string {
-	table := quote_identifier(m.config.dialect, m.config.table)
+	table := m.history_table_sql()
 	name := string_literal_sql(m.config.dialect, migration.name)
 	timestamp := string_literal_sql(m.config.dialect, applied_at)
 	return 'INSERT INTO ${table} (version, name, applied_at) VALUES (${migration.version}, ${name}, ${timestamp});'
 }
 
 fn (m &Migrator) history_delete_sql(version i64) string {
-	table := quote_identifier(m.config.dialect, m.config.table)
+	table := m.history_table_sql()
 	return 'DELETE FROM ${table} WHERE version = ${version};'
 }

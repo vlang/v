@@ -923,8 +923,12 @@ fn validate_unqualified_identifier_for_dialect(dialect Dialect, value string, ki
 }
 
 fn quote_identifier(dialect Dialect, value string) string {
+	return value.split('.').map(quote_identifier_component(dialect, it)).join('.')
+}
+
+fn quote_identifier_component(dialect Dialect, value string) string {
 	quote := if dialect == .mysql { '`' } else { '"' }
-	return value.split('.').map('${quote}${it}${quote}').join('.')
+	return '${quote}${value.replace(quote, quote + quote)}${quote}'
 }
 
 fn escape_literal(value string) string {

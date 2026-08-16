@@ -11,6 +11,7 @@ mut:
 	database               string = 'test_database'
 	schema                 string = 'public'
 	lower_case_table_names int
+	history_rows           []orm.Row
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -33,6 +34,15 @@ fn (mut conn RecordingConnection) last_id() int {
 
 fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	conn.queries << query
+	if query == 'USE other_database;' {
+		conn.database = 'other_database'
+	}
+	if query == 'SET search_path TO other_schema;' {
+		conn.schema = 'other_schema'
+	}
+	if query.starts_with('SELECT version, name, applied_at FROM ') {
+		return conn.history_rows.clone()
+	}
 	if query == 'SELECT DATABASE();' {
 		return [orm.Row{
 			vals: [conn.database]
@@ -148,6 +158,18 @@ fn fail_after_create(mut ctx Context) ! {
 
 fn drop_should_rollback(mut ctx Context) ! {
 	ctx.drop_table('should_rollback')!
+}
+
+fn change_connection_namespace(mut ctx Context) ! {
+	match ctx.dialect {
+		.sqlite {}
+		.pg {
+			ctx.execute('SET search_path TO other_schema;')!
+		}
+		.mysql {
+			ctx.execute('USE other_database;')!
+		}
+	}
 }
 
 fn create_widget_with_orm_dsl(mut ctx Context) ! {
@@ -305,6 +327,61 @@ fn test_mutating_runner_holds_dialect_lock_around_callbacks() {
 		callback_index := recorder.queries.index('migration callback;')
 		assert callback_index > 0
 		assert callback_index < recorder.queries.len - 1
+	}
+}
+
+fn test_locked_history_table_survives_callback_namespace_changes() {
+	for dialect in [Dialect.pg, .mysql] {
+		migration := Migration{
+			version: 1
+			name:    'change_namespace'
+			up:      change_connection_namespace
+			down:    change_connection_namespace
+		}
+		mut up_recorder := &RecordingConnection{
+			database: 'app'
+			schema:   'app'
+		}
+		mut up_runner := new(mut up_recorder, [migration], Config{
+			dialect:          dialect
+			transaction_mode: .never
+		})!
+		up_runner.migrate()!
+		qualified_table := quote_identifier(dialect, 'app.schema_migrations')
+		mut saw_insert := false
+		for query in up_recorder.queries {
+			if query.starts_with('CREATE TABLE IF NOT EXISTS ')
+				|| query.starts_with('SELECT version, name, applied_at FROM ')
+				|| query.starts_with('INSERT INTO ') {
+				assert query.contains(qualified_table)
+			}
+			if query.starts_with('INSERT INTO ') {
+				saw_insert = true
+			}
+		}
+		assert saw_insert
+		if dialect == .pg {
+			assert up_recorder.schema == 'other_schema'
+		} else {
+			assert up_recorder.database == 'other_database'
+		}
+
+		mut down_recorder := &RecordingConnection{
+			database:     'app'
+			schema:       'app'
+			history_rows: [
+				orm.Row{
+					vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+				},
+			]
+		}
+		mut down_runner := new(mut down_recorder, [migration], Config{
+			dialect:          dialect
+			transaction_mode: .never
+		})!
+		down_runner.rollback(1)!
+		delete_query := down_recorder.queries.filter(it.starts_with('DELETE FROM '))
+		assert delete_query == ['DELETE FROM ${qualified_table} WHERE version = 1;']
 	}
 }
 

@@ -10,7 +10,8 @@ SQLite uses an immediate transaction so concurrent runners cannot apply the same
 lock names use a qualified history table's database, or otherwise the current database, so
 independent databases on one server do not contend, and follow the server's
 `lower_case_table_names` mode. PostgreSQL lock keys use the effective history schema and the full
-signed 64-bit advisory-lock space.
+signed 64-bit advisory-lock space. Locked workflows retain that resolved database or schema for all
+history reads and writes, even when a callback changes the connection namespace.
 
 ```v ignore
 import db.sqlite
