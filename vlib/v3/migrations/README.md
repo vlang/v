@@ -7,7 +7,8 @@ DDL, and supports migrate, rollback, redo, reset, target-version, and status wor
 Mutating workflows hold a database-level lock from before the applied-version snapshot through all
 callbacks and history updates. PostgreSQL uses an advisory lock, MySQL uses a named lock, and
 SQLite uses an immediate transaction so concurrent runners cannot apply the same migration. MySQL
-lock names include the current database so independent databases on one server do not contend.
+lock names use a qualified history table's database, or otherwise the current database, so
+independent databases on one server do not contend.
 
 ```v ignore
 import db.sqlite
@@ -61,8 +62,9 @@ foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly ch
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
 explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
 auto-increment columns, non-nullable columns without a non-NULL default, and defaults that are not
-constant. SQLite index tables and foreign-key targets must be unqualified; index removal derives
-the index schema from a qualified table. PostgreSQL `change_column` supports type-related fields
+constant even when prohibited expressions have SQL comments. SQLite index tables and foreign-key
+targets must be unqualified; index removal derives the index schema from a qualified table.
+PostgreSQL `change_column` supports type-related fields
 only and rejects explicitly supplied constraint options, including false or empty values, before
 executing SQL; use `ctx.execute()` for explicit constraint DDL. PostgreSQL serial columns reject
 explicit defaults, and index removal derives the index schema from a qualified table; PostgreSQL
@@ -76,8 +78,9 @@ when adding or removing them, and tables cannot contain more than one auto-incre
 foreign keys reject `SET DEFAULT`. Column-level identifiers must be unqualified. Generated
 PostgreSQL and MySQL index and foreign-key names are shortened deterministically to their dialect
 limits; overlong explicit names are rejected. Caller-supplied table, column, and history-table name
-components are also checked against those dialect limits, and qualified table or history names may
-contain at most two components. SQLite and MySQL reject case-insensitive duplicate table columns.
+components are also checked against those dialect limits, and qualified table, history, or index
+names may contain at most two components. SQLite and MySQL reject case-insensitive duplicate table
+columns.
 PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps support for
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
 implicitly commits, and its history strings use hex literals to avoid SQL-mode-sensitive escaping.

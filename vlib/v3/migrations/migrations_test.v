@@ -320,6 +320,33 @@ fn test_mysql_migration_locks_are_namespaced_by_database() {
 	second_name := mysql_migration_lock_name('application_two', 'schema_migrations')
 	assert second_name != first_name
 	assert second_recorder.queries[1] == "SELECT GET_LOCK('${second_name}', ${migration_lock_timeout_seconds});"
+
+	qualified_table := 'shared.schema_migrations'
+	qualified_name := mysql_migration_lock_name('shared', qualified_table)
+	mut qualified_first_recorder := &RecordingConnection{
+		database: 'application_one'
+	}
+	mut qualified_first_runner := new(mut qualified_first_recorder, []Migration{}, Config{
+		dialect: .mysql
+		table:   qualified_table
+	})!
+	qualified_first_runner.acquire_migration_lock()!
+	qualified_first_runner.release_migration_lock(true)!
+	assert qualified_first_recorder.queries == [
+		"SELECT GET_LOCK('${qualified_name}', ${migration_lock_timeout_seconds});",
+		"SELECT RELEASE_LOCK('${qualified_name}');",
+	]
+
+	mut qualified_second_recorder := &RecordingConnection{
+		database: 'application_two'
+	}
+	mut qualified_second_runner := new(mut qualified_second_recorder, []Migration{}, Config{
+		dialect: .mysql
+		table:   qualified_table
+	})!
+	qualified_second_runner.acquire_migration_lock()!
+	qualified_second_runner.release_migration_lock(true)!
+	assert qualified_second_recorder.queries == qualified_first_recorder.queries
 }
 
 fn test_mysql_history_literals_are_backslash_safe() {
@@ -772,6 +799,7 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	invalid_defaults << none
 	invalid_defaults << ''
 	invalid_defaults << 'NULL'
+	invalid_defaults << 'NULL /* absent */'
 	for default_sql in invalid_defaults {
 		error_message = ''
 		ctx.add_column('accounts', Column{
@@ -782,7 +810,9 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 		}) or { error_message = err.msg() }
 		assert error_message == 'SQLite add_column requires a non-NULL default for a NOT NULL column; rebuild the table in the migration'
 	}
-	for default_sql in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP', "(datetime('now'))"] {
+	for default_sql in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP', "(datetime('now'))",
+		'CURRENT_TIMESTAMP /* now */', '/* now */ CURRENT_DATE', 'CURRENT_TIME -- now',
+		"(datetime('now')) /* now */"] {
 		error_message = ''
 		ctx.add_column('accounts', Column{
 			name:        'created_at'
@@ -802,6 +832,13 @@ fn test_sqlite_add_column_rejects_unsupported_constraints() {
 	assert recorder.queries == [
 		'ALTER TABLE "accounts" ADD COLUMN "label" TEXT NOT NULL DEFAULT \'\';',
 	]
+	ctx.add_column('accounts', Column{
+		name:        'literal_comment'
+		kind:        .text
+		nullable:    false
+		default_sql: "'CURRENT_TIMESTAMP /* literal */'"
+	})!
+	assert recorder.queries[1] == 'ALTER TABLE "accounts" ADD COLUMN "literal_comment" TEXT NOT NULL DEFAULT \'CURRENT_TIMESTAMP /* literal */\';'
 }
 
 fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
@@ -813,6 +850,15 @@ fn test_sqlite_requires_unqualified_index_and_foreign_key_tables() {
 		columns: ['email']
 	}) or { error_message = err.msg() }
 	assert error_message == 'SQLite add_index table `main.users` must be unqualified'
+	assert recorder.queries.len == 0
+
+	error_message = ''
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+		name:    'main.aux.users_email_idx'
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite index name `main.aux.users_email_idx` must not exceed 2 components'
 	assert recorder.queries.len == 0
 
 	error_message = ''
@@ -1003,7 +1049,7 @@ fn test_generated_index_names_respect_dialect_limits() {
 		columns: ['email']
 		name:    long_explicit_name
 	}) or { error_message = err.msg() }
-	assert error_message == 'MySQL index name `${long_explicit_name}` must not exceed 64 bytes'
+	assert error_message == 'MySQL index name component `${long_explicit_name}` must not exceed 64 bytes'
 }
 
 fn test_generated_foreign_key_names_respect_dialect_limits() {

@@ -404,8 +404,12 @@ fn (mut m Migrator) acquire_migration_lock() ! {
 			m.conn.execute('SELECT pg_advisory_lock(${key});')!
 		}
 		.mysql {
-			database_rows := m.conn.execute('SELECT DATABASE();')!
-			database := mysql_database_name(database_rows)!
+			database := if m.config.table.contains('.') {
+				m.config.table.all_before('.')
+			} else {
+				database_rows := m.conn.execute('SELECT DATABASE();')!
+				mysql_database_name(database_rows)!
+			}
 			name := mysql_migration_lock_name(database, m.config.table)
 			rows :=
 				m.conn.execute("SELECT GET_LOCK('${name}', ${migration_lock_timeout_seconds});")!

@@ -511,17 +511,67 @@ fn validate_sqlite_add_column(column Column) ! {
 }
 
 fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
-	normalized := default_sql.trim_space().to_upper()
+	normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
 	return normalized in ['CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP']
 		|| (normalized.starts_with('(') && normalized.ends_with(')'))
 }
 
 fn sqlite_has_non_null_default(column Column) bool {
 	if default_sql := column.default_sql {
-		normalized := default_sql.trim_space().to_upper()
+		normalized := sqlite_default_without_comments(default_sql).trim_space().to_upper()
 		return normalized != '' && normalized != 'NULL'
 	}
 	return false
+}
+
+fn sqlite_default_without_comments(default_sql string) string {
+	mut result := []u8{cap: default_sql.len}
+	mut i := 0
+	mut quote := u8(0)
+	for i < default_sql.len {
+		ch := default_sql[i]
+		if quote != 0 {
+			result << ch
+			if ch == quote {
+				if i + 1 < default_sql.len && default_sql[i + 1] == quote {
+					result << default_sql[i + 1]
+					i += 2
+					continue
+				}
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if ch == 39 || ch == 34 {
+			quote = ch
+			result << ch
+			i++
+			continue
+		}
+		if ch == 47 && i + 1 < default_sql.len && default_sql[i + 1] == 42 {
+			i += 2
+			for i + 1 < default_sql.len && !(default_sql[i] == 42 && default_sql[i + 1] == 47) {
+				i++
+			}
+			if i + 1 < default_sql.len {
+				i += 2
+			}
+			result << u8(32)
+			continue
+		}
+		if ch == 45 && i + 1 < default_sql.len && default_sql[i + 1] == 45 {
+			i += 2
+			for i < default_sql.len && default_sql[i] !in [u8(10), 13] {
+				i++
+			}
+			result << u8(32)
+			continue
+		}
+		result << ch
+		i++
+	}
+	return result.bytestr()
 }
 
 fn column_nullable(column Column) bool {
@@ -643,7 +693,11 @@ fn index_name(dialect Dialect, index Index) !string {
 	} else {
 		'index_${index.table.replace('.', '_')}_on_${index.columns.join('_and_')}'
 	}
-	validate_identifier(name, 'index')!
+	if index.name != '' {
+		validate_identifier_for_dialect(dialect, name, 'index')!
+	} else {
+		validate_identifier(name, 'index')!
+	}
 	return bounded_identifier_name(dialect, name, index.name == '', 'index')
 }
 
