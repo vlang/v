@@ -235,4 +235,67 @@ fn main() {
 	alias_run := os.execute(output)
 	assert alias_run.exit_code == 0, alias_run.output
 	assert alias_run.output.trim_space() == '42', alias_run.output
+
+	dotted_root := os.join_path(root, 'dotted_suffix_collision')
+	a_bar_dir := os.join_path(dotted_root, 'a', 'bar')
+	b_bar_dir := os.join_path(dotted_root, 'b', 'bar')
+	left_dir := os.join_path(dotted_root, 'left')
+	right_dir := os.join_path(dotted_root, 'right')
+	os.mkdir_all(a_bar_dir) or { panic(err) }
+	os.mkdir_all(b_bar_dir) or { panic(err) }
+	os.mkdir_all(left_dir) or { panic(err) }
+	os.mkdir_all(right_dir) or { panic(err) }
+	os.write_file(os.join_path(a_bar_dir, 'bar.v'), "module bar
+
+pub fn value() string {
+	return 'a.bar'
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(b_bar_dir, 'bar.v'), "module bar
+
+pub fn value() string {
+	return 'b.bar'
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(left_dir, 'left.v'), 'module left
+
+import a.bar
+
+pub fn value() string {
+	return bar.value()
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(right_dir, 'right.v'), 'module right
+
+import b.bar
+
+pub fn value() string {
+	return bar.value()
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dotted_root, 'main.v'), 'module main
+
+import left
+import right
+
+fn main() {
+	println(left.value())
+	println(right.value())
+}
+') or {
+		panic(err)
+	}
+	dotted_build := os.execute('${v3_bin} -nocache -building-v -o ${output} ${dotted_root}/main.v')
+	assert dotted_build.exit_code == 0, dotted_build.output
+	dotted_run := os.execute(output)
+	assert dotted_run.exit_code == 0, dotted_run.output
+	assert dotted_run.output.trim_space() == 'a.bar\nb.bar', dotted_run.output
 }

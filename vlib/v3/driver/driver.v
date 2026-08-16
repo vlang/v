@@ -12713,9 +12713,10 @@ struct EagerSelfhostImport {
 struct EagerSelfhostModule {
 	path     string
 	dir      string
+	real_dir string
 	files    []string
-	identity string
 mut:
+	identity     string
 	import_paths []string
 }
 
@@ -13040,6 +13041,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 			modules << EagerSelfhostModule{
 				path:         import_req.path
 				dir:          result.dir
+				real_dir:     result.real_dir
 				files:        result.files
 				identity:     result.identity
 				import_paths: [import_req.path]
@@ -13055,6 +13057,19 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 				}
 			}
 		}
+	}
+	// Alias-aware resolution is local to each request. Reconcile its short
+	// identities in discovery order so distinct directories with the same module
+	// suffix receive the same qualification as the authoritative resolver.
+	mut identity_dirs := map[string]string{}
+	for i in 0 .. modules.len {
+		identity := modules[i].identity
+		if owner_dir := identity_dirs[identity] {
+			if owner_dir != modules[i].real_dir {
+				modules[i].identity = modules[i].path
+			}
+		}
+		identity_dirs[modules[i].identity] = modules[i].real_dir
 	}
 	return modules
 }
