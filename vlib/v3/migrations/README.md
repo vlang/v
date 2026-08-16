@@ -69,7 +69,8 @@ explicitly rebuild the table. SQLite `add_column` also rejects primary-key, uniq
 auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults
 even when prohibited expressions have unary signs, SQL comments, or postfix clauses.
 Parenthesized and signed literal defaults remain allowed. Numeric defaults require a mantissa and a
-complete exponent; digit separators require SQLite 3.46.0 or newer.
+complete exponent; digit separators require SQLite 3.46.0 or newer. Constant `CAST` expressions are
+also accepted, while casts of functions, column identifiers, or current-time values remain rejected.
 SQLite index tables and foreign-key targets must be unqualified; index removal derives the index
 schema from a qualified table or resolves an unqualified table using SQLite lookup order. Index
 creation resolves the table and qualifies an unqualified index name with the same schema; an

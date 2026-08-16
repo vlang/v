@@ -596,6 +596,9 @@ fn sqlite_numeric_default_uses_digit_separators(default_sql string) bool {
 	if !literal.contains('_') {
 		return false
 	}
+	if cast_expression := sqlite_cast_expression(literal) {
+		return sqlite_numeric_default_uses_digit_separators(cast_expression.value)
+	}
 	normalized := sqlite_numeric_literal_without_separators(literal) or { return false }
 	if normalized.len > 2 && normalized[0] == `0` && normalized[1] in [u8(`x`), `X`] {
 		return normalized[2..].bytes().all(it.is_hex_digit())
@@ -610,9 +613,119 @@ fn sqlite_add_column_default_is_nonconstant(default_sql string) bool {
 		return true
 	}
 	if core := sqlite_parenthesized_default_core(normalized) {
-		return !sqlite_is_literal_default(core)
+		return !sqlite_is_constant_default_expression(core)
 	}
 	return false
+}
+
+struct SqliteCastExpression {
+	value string
+}
+
+fn sqlite_is_constant_default_expression(default_sql string) bool {
+	if sqlite_is_literal_default(default_sql) {
+		return true
+	}
+	cast_expression := sqlite_cast_expression(default_sql) or { return false }
+	return sqlite_is_constant_default_expression(cast_expression.value)
+}
+
+fn sqlite_cast_expression(default_sql string) ?SqliteCastExpression {
+	literal := default_sql.trim_space()
+	if literal.len < 6 || literal[..4].to_upper() != 'CAST' {
+		return none
+	}
+	mut open_parenthesis := 4
+	for open_parenthesis < literal.len && literal[open_parenthesis].is_space() {
+		open_parenthesis++
+	}
+	if open_parenthesis >= literal.len || literal[open_parenthesis] != `(` {
+		return none
+	}
+	close_parenthesis := sqlite_matching_parenthesis(literal, open_parenthesis) or { return none }
+	if literal[close_parenthesis + 1..].trim_space() != '' {
+		return none
+	}
+	inner := literal[open_parenthesis + 1..close_parenthesis]
+	as_index := sqlite_top_level_as_index(inner) or { return none }
+	value := inner[..as_index].trim_space()
+	type_name := inner[as_index + 2..].trim_space()
+	if value == '' || type_name == '' {
+		return none
+	}
+	return SqliteCastExpression{
+		value: value
+	}
+}
+
+fn sqlite_matching_parenthesis(expression string, open_parenthesis int) ?int {
+	mut depth := 0
+	mut quote := u8(0)
+	mut index := open_parenthesis
+	for index < expression.len {
+		character := expression[index]
+		if quote != 0 {
+			if character == quote {
+				if index + 1 < expression.len && expression[index + 1] == quote {
+					index += 2
+					continue
+				}
+				quote = 0
+			}
+			index++
+			continue
+		}
+		if character in [u8(39), 34] {
+			quote = character
+		} else if character == `(` {
+			depth++
+		} else if character == `)` {
+			depth--
+			if depth == 0 {
+				return index
+			}
+		}
+		index++
+	}
+	return none
+}
+
+fn sqlite_top_level_as_index(expression string) ?int {
+	mut depth := 0
+	mut quote := u8(0)
+	mut index := 0
+	for index + 1 < expression.len {
+		character := expression[index]
+		if quote != 0 {
+			if character == quote {
+				if index + 1 < expression.len && expression[index + 1] == quote {
+					index += 2
+					continue
+				}
+				quote = 0
+			}
+			index++
+			continue
+		}
+		if character in [u8(39), 34] {
+			quote = character
+		} else if character == `(` {
+			depth++
+		} else if character == `)` {
+			depth--
+		} else if depth == 0 && character in [u8(`A`), `a`]
+			&& expression[index + 1] in [u8(`S`), `s`]
+			&& (index == 0 || !sqlite_identifier_character(expression[index - 1]))
+			&& (index + 2 == expression.len || !sqlite_identifier_character(expression[index + 2])) {
+			return index
+		}
+		index++
+	}
+	return none
+}
+
+fn sqlite_identifier_character(character u8) bool {
+	return character.is_alnum() || character == `_`
 }
 
 fn sqlite_default_starts_with_current_time_keyword(default_sql string) bool {

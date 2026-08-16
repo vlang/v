@@ -1903,8 +1903,25 @@ fn test_sqlite_add_column_accepts_parenthesized_literal_defaults() {
 		kind:        .text
 		default_sql: "('collated') COLLATE binary"
 	})!
+	ctx.add_column('accounts', Column{
+		name:        'cast_count'
+		kind:        .integer
+		default_sql: '(CAST(42 AS INTEGER))'
+	})!
 	assert db.q_int('SELECT collated_count FROM accounts WHERE id = 1;')! == 0
 	assert db.q_string('SELECT collated_label FROM accounts WHERE id = 1;')! == 'collated'
+	assert db.q_int('SELECT cast_count FROM accounts WHERE id = 1;')! == 42
+}
+
+fn test_sqlite_constant_cast_default_classification() {
+	for default_sql in ['(CAST(42 AS INTEGER))', "(CAST('x AS y' AS TEXT))",
+		'(CAST(CAST(42 AS TEXT) AS INTEGER))', '(CAST((+42) AS DECIMAL(10, 2)))'] {
+		assert !sqlite_add_column_default_is_nonconstant(default_sql)
+	}
+	for default_sql in ['(CAST(CURRENT_TIMESTAMP AS TEXT))', "(CAST(datetime('now') AS TEXT))",
+		'(CAST(account_id AS INTEGER))', '(CAST( AS TEXT))'] {
+		assert sqlite_add_column_default_is_nonconstant(default_sql)
+	}
 }
 
 fn test_sqlite_accepts_numeric_literal_digit_separators() {
@@ -1929,10 +1946,16 @@ fn test_sqlite_accepts_numeric_literal_digit_separators() {
 		kind:        .integer
 		default_sql: '(0xCA_FE)'
 	})!
+	ctx.add_column('accounts', Column{
+		name:        'cast_population'
+		kind:        .integer
+		default_sql: '(CAST(1_000 AS INTEGER))'
+	})!
 	assert recorder.queries == [
 		'SELECT sqlite_version();',
 		'ALTER TABLE "accounts" ADD COLUMN "population" INTEGER DEFAULT (1_000);',
 		'ALTER TABLE "accounts" ADD COLUMN "mask" INTEGER DEFAULT (0xCA_FE);',
+		'ALTER TABLE "accounts" ADD COLUMN "cast_population" INTEGER DEFAULT (CAST(1_000 AS INTEGER));',
 	]
 	mut error_message := ''
 	ctx.add_column('accounts', Column{
@@ -1941,7 +1964,7 @@ fn test_sqlite_accepts_numeric_literal_digit_separators() {
 		default_sql: '(e1)'
 	}) or { error_message = err.msg() }
 	assert error_message == 'SQLite add_column does not support nonconstant default `(e1)`; rebuild the table in the migration'
-	assert recorder.queries.len == 3
+	assert recorder.queries.len == 4
 
 	mut old_recorder := &RecordingConnection{
 		sqlite_version: '3.45.1'
@@ -1954,6 +1977,14 @@ fn test_sqlite_accepts_numeric_literal_digit_separators() {
 		default_sql: '(1_000)'
 	}) or { error_message = err.msg() }
 	assert error_message == 'SQLite add_column default `(1_000)` uses numeric digit separators, which require SQLite 3.46.0 or newer'
+	assert old_recorder.queries == ['SELECT sqlite_version();']
+	error_message = ''
+	old_ctx.add_column('accounts', Column{
+		name:        'cast_population'
+		kind:        .integer
+		default_sql: '(CAST(1_000 AS INTEGER))'
+	}) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_column default `(CAST(1_000 AS INTEGER))` uses numeric digit separators, which require SQLite 3.46.0 or newer'
 	assert old_recorder.queries == ['SELECT sqlite_version();']
 }
 
