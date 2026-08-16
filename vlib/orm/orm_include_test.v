@@ -54,6 +54,27 @@ struct IncludeOptionalChild {
 	name      string
 }
 
+@[table: 'orm_include_singular_roots']
+struct IncludeSingularRoot {
+	id    int @[primary; sql: serial]
+	name  string
+	child IncludeSingularChild @[fkey: 'id']
+}
+
+@[table: 'orm_include_singular_children']
+struct IncludeSingularChild {
+	id        int @[primary; sql: serial]
+	name      string
+	grandkids []IncludeSingularGrandkid @[fkey: 'child_id']
+}
+
+@[table: 'orm_include_singular_grandkids']
+struct IncludeSingularGrandkid {
+	id       int @[primary; sql: serial]
+	child_id int
+	name     string
+}
+
 fn new_include_database() !sqlite.DB {
 	mut db := sqlite.connect(':memory:')!
 	mut parents := orm.new_query[IncludeParent](db)
@@ -120,6 +141,35 @@ fn test_sql_like_keeps_implicit_relationship_loading() {
 	assert rows[0].children.len == 1
 }
 
+fn test_sql_like_keeps_implicit_loading_through_a_singular_relationship() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut children := orm.new_query[IncludeSingularChild](db)
+	mut grandkids := orm.new_query[IncludeSingularGrandkid](db)
+	db.exec('create table orm_include_singular_roots (id integer primary key, name text, child_id integer)')!
+	children.create()!
+	grandkids.create()!
+	children.insert(IncludeSingularChild{
+		name: 'child'
+	})!
+	child_id := children.last_id()
+	grandkids.insert(IncludeSingularGrandkid{
+		child_id: child_id
+		name:     'grandkid'
+	})!
+	db.exec("insert into orm_include_singular_roots (name, child_id) values ('root', ${child_id})")!
+
+	rows := sql db {
+		select from IncludeSingularRoot
+	}!
+	assert rows.len == 1
+	assert rows[0].child.id == child_id
+	assert rows[0].child.grandkids.len == 1
+	assert rows[0].child.grandkids[0].name == 'grandkid'
+}
+
 fn test_include_loads_direct_relationship_only() {
 	mut db := new_include_database()!
 	defer {
@@ -172,6 +222,21 @@ fn test_include_works_when_select_does_not_name_primary_key() {
 	assert rows[0].id == 0
 	assert rows[0].name == 'parent'
 	assert rows[0].children.len == 1
+}
+
+fn test_include_rejects_a_partial_distinct_selection_without_the_primary_key() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	if _ := parents.select('name')!.distinct()!.include('children')!.query() {
+		assert false
+	} else {
+		assert err.msg().contains('distinct')
+		assert err.msg().contains('primary key')
+	}
 }
 
 fn test_where_filters_the_last_included_relationship_without_filtering_the_root() {

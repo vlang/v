@@ -1624,7 +1624,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 					if index >= 0 && index < row.len
 						&& orm_relation_lookup_key_has_value(row[index]) {
 						instance.$(field.name) = query_relation_one_optional_like(mut conn,
-							row[index], instance.$(field.name))
+							row[index], qb.relation_load_mode, instance.$(field.name))
 					}
 				}
 			}
@@ -1638,7 +1638,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 					if index >= 0 && index < row.len
 						&& orm_relation_lookup_key_has_value(row[index]) {
 						instance.$(field.name) = query_relation_one_like(mut conn, row[index],
-							instance.$(field.name))!
+							qb.relation_load_mode, instance.$(field.name))!
 					}
 				}
 			}
@@ -1815,7 +1815,7 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 	if qb.builder_error.len > 0 {
 		return error(qb.builder_error)
 	}
-	qb.ensure_primary_key_for_includes()
+	qb.ensure_primary_key_for_includes()!
 
 	// check for mismatch `(` and `)`
 	for p in qb.where.parentheses {
@@ -1868,13 +1868,16 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 	}
 }
 
-fn (qb_ &QueryBuilder[T]) ensure_primary_key_for_includes() {
+fn (qb_ &QueryBuilder[T]) ensure_primary_key_for_includes() ! {
 	if qb_.include_paths.len == 0 || qb_.config.fields.len == 0 {
 		return
 	}
 	primary := find_save_primary_field_name(qb_.meta) or { return }
 	if primary in qb_.config.fields {
 		return
+	}
+	if qb_.config.has_distinct {
+		return error('${@FN}(): `include` with `distinct` requires selecting the primary key `${primary}`')
 	}
 	mut qb := unsafe { qb_ }
 	qb.config.fields << primary
@@ -2683,8 +2686,9 @@ fn primitive_for_field[U](value Primitive, field_name string) Primitive {
 	return value
 }
 
-fn query_relation_one[U](mut conn Connection, key Primitive) !U {
+fn query_relation_one[U](mut conn Connection, key Primitive, mode RelationLoadMode) !U {
 	mut qb := new_query[U](conn)
+	qb.relation_load_mode = mode
 	primary := find_save_primary_field_name(qb.meta) or { return U{} }
 	rows := qb.v_sql_where_primitive(primary, .eq, primitive_for_field[U](key, primary)).query()!
 	if rows.len == 0 {
@@ -2693,15 +2697,15 @@ fn query_relation_one[U](mut conn Connection, key Primitive) !U {
 	return rows[0]
 }
 
-fn query_relation_one_like[U](mut conn Connection, key Primitive, _ U) !U {
-	return query_relation_one[U](mut conn, key)
+fn query_relation_one_like[U](mut conn Connection, key Primitive, mode RelationLoadMode, _ U) !U {
+	return query_relation_one[U](mut conn, key, mode)
 }
 
-fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, _ ?U) ?U {
+fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, mode RelationLoadMode, _ ?U) ?U {
 	$if U is time.Time {
 		return none
 	} $else $if U is $struct {
-		return query_relation_one[U](mut conn, key) or { return none }
+		return query_relation_one[U](mut conn, key, mode) or { return none }
 	} $else {
 		return none
 	}
