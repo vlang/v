@@ -2,6 +2,36 @@
 module migrations
 
 import db.sqlite
+import orm
+
+@[heap]
+struct RecordingConnection {
+mut:
+	queries []string
+}
+
+fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
+	return []
+}
+
+fn (mut conn RecordingConnection) insert(_ orm.Table, _ orm.QueryData) ! {}
+
+fn (mut conn RecordingConnection) update(_ orm.Table, _ orm.QueryData, _ orm.QueryData) ! {}
+
+fn (mut conn RecordingConnection) delete(_ orm.Table, _ orm.QueryData) ! {}
+
+fn (mut conn RecordingConnection) create(_ orm.Table, _ []orm.TableField) ! {}
+
+fn (mut conn RecordingConnection) drop(_ orm.Table) ! {}
+
+fn (mut conn RecordingConnection) last_id() int {
+	return 0
+}
+
+fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
+	conn.queries << query
+	return []
+}
 
 struct MigrationWidget {
 	id    int @[primary; sql: serial]
@@ -180,6 +210,34 @@ fn test_context_supports_v3_orm_sql_blocks() {
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'migrationwidget';")! == 1
 	runner.rollback(1)!
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'migrationwidget';")! == 0
+}
+
+fn test_postgresql_change_column_rejects_constraint_options_before_sql() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	ctx.change_column('accounts', Column{
+		name:  'score'
+		kind:  .bigint
+		limit: 64
+	})!
+	assert recorder.queries == [
+		'ALTER TABLE "accounts" ALTER COLUMN "score" TYPE BIGINT;',
+	]
+
+	ctx.change_column('accounts', Column{
+		name:           'score'
+		kind:           .bigint
+		nullable:       false
+		default_sql:    '0'
+		unique:         true
+		primary_key:    true
+		auto_increment: true
+	}) or {
+		assert err.msg() == 'PostgreSQL change_column only supports type, limit, precision, and scale; unsupported options: nullable, default_sql, unique, primary_key, auto_increment; use ctx.execute() for constraint changes'
+		assert recorder.queries.len == 1
+		return
+	}
+	assert false
 }
 
 fn test_validation_and_portable_sql_generation() {

@@ -176,8 +176,9 @@ pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 		from)} TO ${quote_identifier(ctx.dialect, to)};')!
 }
 
-// change_column changes a column type and constraints. SQLite requires a table
-// rebuild for this operation, so the helper returns an explicit error there.
+// change_column changes a column definition. SQLite requires a table rebuild.
+// PostgreSQL supports type-related fields only and rejects constraint changes
+// before executing SQL; use execute for explicit PostgreSQL constraint DDL.
 pub fn (mut ctx Context) change_column(table string, column Column) ! {
 	validate_identifier(table, 'table')!
 	definition := column_sql(ctx.dialect, column)!
@@ -186,6 +187,10 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 			return error('change_column is not directly supported by SQLite; create a replacement table in the migration')
 		}
 		.pg {
+			unsupported := pg_change_column_unsupported_options(column)
+			if unsupported.len > 0 {
+				return error('PostgreSQL change_column only supports type, limit, precision, and scale; unsupported options: ${unsupported.join(', ')}; use ctx.execute() for constraint changes')
+			}
 			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} ALTER COLUMN ${quote_identifier(ctx.dialect,
 				column.name)} TYPE ${column_type_sql(ctx.dialect, column)!};')!
 		}
@@ -193,6 +198,26 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} MODIFY COLUMN ${definition};')!
 		}
 	}
+}
+
+fn pg_change_column_unsupported_options(column Column) []string {
+	mut options := []string{}
+	if !column.nullable {
+		options << 'nullable'
+	}
+	if column.default_sql != '' {
+		options << 'default_sql'
+	}
+	if column.unique {
+		options << 'unique'
+	}
+	if column.primary_key {
+		options << 'primary_key'
+	}
+	if column.auto_increment {
+		options << 'auto_increment'
+	}
+	return options
 }
 
 // add_index adds an index. When name is empty, a deterministic Rails-style
