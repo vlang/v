@@ -12793,20 +12793,39 @@ fn source_imports_fast(path string) []string {
 	mut i := 0
 	mut at_line_head := true
 	mut block_comment_depth := 0
-	mut quote := u8(0)
-	mut raw_string := false
+	// Context 0 is root code. Strings and their `${...}` code regions are
+	// pushed in alternating slots, so same-quoted strings inside interpolation
+	// cannot accidentally close the outer string.
+	mut context_kinds := [64]u8{}
+	mut context_quotes := [64]u8{}
+	mut context_raw := [64]bool{}
+	mut interpolation_brace_depths := [64]int{}
+	mut context_top := 0
 	for i < source.len {
-		if quote != 0 {
+		if context_kinds[context_top] == 1 {
+			quote := context_quotes[context_top]
+			raw_string := context_raw[context_top]
 			for i < source.len {
 				c := source[i]
 				if !raw_string && c == `\\` && i + 1 < source.len {
 					i += 2
 					continue
 				}
+				if !raw_string && quote != `\`` && c == `$` && i + 1 < source.len
+					&& source[i + 1] == `{` {
+					if context_top + 1 >= context_kinds.len {
+						return imports
+					}
+					context_top++
+					context_kinds[context_top] = 0
+					interpolation_brace_depths[context_top] = 1
+					at_line_head = false
+					i += 2
+					break
+				}
 				i++
 				if c == quote {
-					quote = 0
-					raw_string = false
+					context_top--
 					at_line_head = false
 					break
 				}
@@ -12858,25 +12877,51 @@ fn source_imports_fast(path string) []string {
 				break
 			}
 			if c == `r` && i + 1 < source.len && source[i + 1] in [`'`, `"`] {
-				quote = source[i + 1]
-				raw_string = true
+				if context_top + 1 >= context_kinds.len {
+					return imports
+				}
+				context_top++
+				context_kinds[context_top] = 1
+				context_quotes[context_top] = source[i + 1]
+				context_raw[context_top] = true
 				at_line_head = false
 				i += 2
 				break
 			}
 			if c in [`'`, `"`, `\``] {
-				quote = c
-				raw_string = false
+				if context_top + 1 >= context_kinds.len {
+					return imports
+				}
+				context_top++
+				context_kinds[context_top] = 1
+				context_quotes[context_top] = c
+				context_raw[context_top] = false
 				at_line_head = false
 				i++
 				break
+			}
+			if context_top > 0 && c == `{` {
+				interpolation_brace_depths[context_top]++
+				at_line_head = false
+				i++
+				continue
+			}
+			if context_top > 0 && c == `}` {
+				interpolation_brace_depths[context_top]--
+				at_line_head = false
+				i++
+				if interpolation_brace_depths[context_top] == 0 {
+					context_top--
+					break
+				}
+				continue
 			}
 			if at_line_head && c in [` `, `\t`, `\r`] {
 				i++
 				continue
 			}
-			if at_line_head && i + 7 <= source.len && source[i..i + 6] == 'import'
-				&& source[i + 6] in [` `, `\t`] {
+			if context_top == 0 && at_line_head && i + 7 <= source.len
+				&& source[i..i + 6] == 'import' && source[i + 6] in [` `, `\t`] {
 				i += 7
 				for i < source.len && source[i] in [` `, `\t`] {
 					i++
