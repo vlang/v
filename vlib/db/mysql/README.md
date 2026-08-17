@@ -116,6 +116,9 @@ helpers flatten NULL to an empty string. For multi-statement queries, `query_str
 first result and discards later results when the stream is exhausted or closed, keeping the
 connection reusable. Use `exec_multi()` when every result is needed.
 
+Copied stream handles refer to the same cursor and share its lifecycle state. Closing any copy
+closes the cursor for all copies, and subsequent `close()` calls are safe.
+
 The legacy `use_result()` method is retained for compatibility and only discards a pending
 result. Use `query_stream()` to read unbuffered rows.
 

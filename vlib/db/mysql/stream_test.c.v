@@ -133,6 +133,41 @@ fn test_prepare_stream_reads_unbuffered_batches() {
 	assert_stream_connection_reusable(&db)!
 }
 
+fn test_copied_stream_handles_share_lifecycle_state() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	mut db := connect_for_stream_test()!
+	defer {
+		db.close() or {}
+	}
+	create_stream_test_table(&db)!
+	defer {
+		db.exec_none('DROP TABLE IF EXISTS mysql_stream_test')
+	}
+
+	mut stream := db.query_stream('SELECT id FROM mysql_stream_test ORDER BY id')!
+	mut stream_copy := stream
+	assert stream.next_batch(1)![0].val(0) == '1'
+	assert stream_copy.next_batch(1)![0].val(0) == '2'
+	stream.close()
+	stream_copy.close()
+	assert stream_copy.next_batch(1)!.len == 0
+	assert_stream_connection_reusable(&db)!
+
+	mut stmt := db.prepare_stream('SELECT id FROM mysql_stream_test ORDER BY id')!
+	mut stmt_copy := stmt
+	stmt_copy.execute([])!
+	assert stmt.fields().map(it.name) == ['id']
+	assert stmt.next_batch(1)![0].val(0) == '1'
+	stmt.close()
+	stmt_copy.close()
+	assert stmt_copy.next_batch(1)!.len == 0
+	assert_stream_connection_reusable(&db)!
+}
+
 fn test_query_stream_blob_and_empty_result() {
 	$if !network ? {
 		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')

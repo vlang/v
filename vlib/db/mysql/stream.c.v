@@ -5,6 +5,12 @@ module mysql
 // A StreamResult must be consumed and closed on the thread that created it.
 pub struct StreamResult {
 mut:
+	state &StreamResultState = unsafe { nil }
+}
+
+@[heap]
+struct StreamResultState {
+mut:
 	result &C.MYSQL_RES = unsafe { nil }
 	guard  MySQLConnectionGuard
 	fields []Field
@@ -19,9 +25,11 @@ fn stream_result_from_guard(mut guard MySQLConnectionGuard) !StreamResult {
 		return err
 	}
 	return StreamResult{
-		result: result
-		guard:  guard
-		fields: fields_from_result(result)
+		state: &StreamResultState{
+			result: result
+			guard:  guard
+			fields: fields_from_result(result)
+		}
 	}
 }
 
@@ -62,7 +70,10 @@ pub fn (db &DB) query_stream(query string) !StreamResult {
 
 // fields returns metadata for the streamed result columns.
 pub fn (r &StreamResult) fields() []Field {
-	return r.fields.clone()
+	if r.state == unsafe { nil } {
+		return []Field{}
+	}
+	return r.state.fields.clone()
 }
 
 // next_batch reads at most `size` rows from the server. An empty batch means
@@ -71,32 +82,36 @@ pub fn (mut r StreamResult) next_batch(size int) ![]NullableRow {
 	if size <= 0 {
 		return error('db.mysql: stream batch size must be greater than zero')
 	}
-	if r.closed || r.result == unsafe { nil } {
-		r.close()
+	if r.state == unsafe { nil } {
+		return []NullableRow{}
+	}
+	mut state := r.state
+	if state.closed || state.result == unsafe { nil } {
+		state.close()
 		return []NullableRow{}
 	}
 	mut rows := []NullableRow{cap: size}
 	for rows.len < size {
-		row_data := C.mysql_fetch_row(r.result)
+		row_data := C.mysql_fetch_row(state.result)
 		if row_data == unsafe { nil } {
-			if get_errno(r.guard.conn) != 0 {
-				err := error_with_code(get_error_msg(r.guard.conn), get_errno(r.guard.conn))
-				r.close()
+			if get_errno(state.guard.conn) != 0 {
+				err := error_with_code(get_error_msg(state.guard.conn), get_errno(state.guard.conn))
+				state.close()
 				return err
 			}
-			r.close()
+			state.close()
 			break
 		}
 		mut row := NullableRow{
-			vals: []?string{cap: r.fields.len}
+			vals: []?string{cap: state.fields.len}
 		}
-		for i in 0 .. r.fields.len {
+		for i in 0 .. state.fields.len {
 			if unsafe { row_data[i] == nil } {
 				row.vals << none
 			} else {
-				length := checked_stream_value_length(C.v_mysql_fetch_column_length(r.result,
+				length := checked_stream_value_length(C.v_mysql_fetch_column_length(state.result,
 					u32(i))) or {
-					r.close()
+					state.close()
 					return err
 				}
 				value := unsafe { (&u8(row_data[i])).vstring_with_len(length).clone() }
@@ -108,26 +123,40 @@ pub fn (mut r StreamResult) next_batch(size int) ![]NullableRow {
 	return rows
 }
 
-// close frees an unbuffered result, discards any later results from a
-// multi-statement query, and releases its connection lock. It is safe to call
-// close more than once.
-pub fn (mut r StreamResult) close() {
-	if r.closed {
+fn (mut state StreamResultState) close() {
+	if state.closed {
 		return
 	}
-	if r.result != unsafe { nil } {
-		C.mysql_free_result(r.result)
-		r.result = unsafe { nil }
+	if state.result != unsafe { nil } {
+		C.mysql_free_result(state.result)
+		state.result = unsafe { nil }
 	}
-	drain_remaining_stream_results(r.guard.conn)
-	r.guard.release()
-	r.closed = true
+	drain_remaining_stream_results(state.guard.conn)
+	state.guard.release()
+	state.closed = true
+}
+
+// close frees an unbuffered result, discards any later results from a
+// multi-statement query, and releases its connection lock. It is safe to call
+// close more than once, including through copied handles.
+pub fn (mut r StreamResult) close() {
+	if r.state == unsafe { nil } {
+		return
+	}
+	mut state := r.state
+	state.close()
 }
 
 // StreamStmt is a one-shot prepared statement whose result is fetched in
 // batches. It keeps the connection exclusively locked until exhausted or
 // closed, and must be consumed and closed on the thread that created it.
 pub struct StreamStmt {
+mut:
+	state &StreamStmtState = unsafe { nil }
+}
+
+@[heap]
+struct StreamStmtState {
 mut:
 	stmt     &C.MYSQL_STMT = unsafe { nil }
 	guard    MySQLConnectionGuard
@@ -156,22 +185,28 @@ pub fn (db &DB) prepare_stream(query string) !StreamStmt {
 		return err
 	}
 	return StreamStmt{
-		stmt:  stmt
-		guard: guard
+		state: &StreamStmtState{
+			stmt:  stmt
+			guard: guard
+		}
 	}
 }
 
 // execute binds string parameters and starts the unbuffered statement result.
 pub fn (mut stmt StreamStmt) execute(params []string) ! {
-	if stmt.closed {
+	if stmt.state == unsafe { nil } {
+		return error('db.mysql: cannot execute an uninitialized stream statement')
+	}
+	mut state := stmt.state
+	if state.closed {
 		return error('db.mysql: cannot execute a closed stream statement')
 	}
-	if stmt.executed {
+	if state.executed {
 		return error('db.mysql: a stream statement can only be executed once')
 	}
-	expected_params := int(C.mysql_stmt_param_count(stmt.stmt))
+	expected_params := int(C.mysql_stmt_param_count(state.stmt))
 	if params.len != expected_params {
-		stmt.close()
+		state.close()
 		return error('db.mysql: stream statement parameter count mismatch: expected ${expected_params}, got ${params.len}')
 	}
 	mut params_bind := []C.MYSQL_BIND{cap: params.len}
@@ -183,51 +218,54 @@ pub fn (mut stmt StreamStmt) execute(params []string) ! {
 		}
 	}
 	if params_bind.len > 0
-		&& C.mysql_stmt_bind_param(stmt.stmt, unsafe { &C.MYSQL_BIND(params_bind.data) }) {
-		err := error_with_code(get_stmt_error_msg(stmt.stmt), get_stmt_errno(stmt.stmt))
-		stmt.close()
+		&& C.mysql_stmt_bind_param(state.stmt, unsafe { &C.MYSQL_BIND(params_bind.data) }) {
+		err := error_with_code(get_stmt_error_msg(state.stmt), get_stmt_errno(state.stmt))
+		state.close()
 		return err
 	}
-	if C.mysql_stmt_execute(stmt.stmt) != 0 {
-		err := error_with_code(get_stmt_error_msg(stmt.stmt), get_stmt_errno(stmt.stmt))
-		stmt.close()
+	if C.mysql_stmt_execute(state.stmt) != 0 {
+		err := error_with_code(get_stmt_error_msg(state.stmt), get_stmt_errno(state.stmt))
+		state.close()
 		return err
 	}
-	stmt.executed = true
-	metadata_result := C.mysql_stmt_result_metadata(stmt.stmt)
+	state.executed = true
+	metadata_result := C.mysql_stmt_result_metadata(state.stmt)
 	if metadata_result == unsafe { nil } {
-		stmt.close()
+		state.close()
 		return
 	}
-	stmt.fields = fields_from_result(metadata_result)
+	state.fields = fields_from_result(metadata_result)
 	C.mysql_free_result(metadata_result)
-	num_fields := stmt.fields.len
-	stmt.lengths = C.v_mysql_lengths_new(u32(num_fields))
-	if stmt.lengths == unsafe { nil } {
-		stmt.close()
+	num_fields := state.fields.len
+	state.lengths = C.v_mysql_lengths_new(u32(num_fields))
+	if state.lengths == unsafe { nil } {
+		state.close()
 		return error('db.mysql: failed to allocate stream result lengths')
 	}
-	stmt.is_null = []bool{len: num_fields}
-	stmt.binds = []C.MYSQL_BIND{cap: num_fields}
+	state.is_null = []bool{len: num_fields}
+	state.binds = []C.MYSQL_BIND{cap: num_fields}
 	for i in 0 .. num_fields {
-		stmt.binds << C.MYSQL_BIND{
+		state.binds << C.MYSQL_BIND{
 			buffer_type: mysql_type_string
-			is_null:     unsafe { &stmt.is_null[i] }
+			is_null:     unsafe { &state.is_null[i] }
 		}
 	}
 	for i in 0 .. num_fields {
-		C.v_mysql_bind_set_length_at(unsafe { &stmt.binds[i] }, stmt.lengths, u32(i))
+		C.v_mysql_bind_set_length_at(unsafe { &state.binds[i] }, state.lengths, u32(i))
 	}
-	if C.mysql_stmt_bind_result(stmt.stmt, unsafe { &C.MYSQL_BIND(stmt.binds.data) }) {
-		err := error_with_code(get_stmt_error_msg(stmt.stmt), get_stmt_errno(stmt.stmt))
-		stmt.close()
+	if C.mysql_stmt_bind_result(state.stmt, unsafe { &C.MYSQL_BIND(state.binds.data) }) {
+		err := error_with_code(get_stmt_error_msg(state.stmt), get_stmt_errno(state.stmt))
+		state.close()
 		return err
 	}
 }
 
 // fields returns metadata for the prepared statement result columns.
 pub fn (stmt &StreamStmt) fields() []Field {
-	return stmt.fields.clone()
+	if stmt.state == unsafe { nil } {
+		return []Field{}
+	}
+	return stmt.state.fields.clone()
 }
 
 // next_batch reads at most `size` rows from the prepared statement result. An
@@ -236,34 +274,38 @@ pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 	if size <= 0 {
 		return error('db.mysql: stream batch size must be greater than zero')
 	}
-	if !stmt.executed {
+	if stmt.state == unsafe { nil } {
 		return error('db.mysql: execute the stream statement before fetching rows')
 	}
-	if stmt.closed {
+	mut state := stmt.state
+	if !state.executed {
+		return error('db.mysql: execute the stream statement before fetching rows')
+	}
+	if state.closed {
 		return []NullableRow{}
 	}
 	mut rows := []NullableRow{cap: size}
 	for rows.len < size {
-		code := C.mysql_stmt_fetch(stmt.stmt)
+		code := C.mysql_stmt_fetch(state.stmt)
 		if code == mysql_no_data {
-			stmt.close()
+			state.close()
 			break
 		}
 		if code !in [0, mysql_data_truncated] {
-			err := error_with_code(get_stmt_error_msg(stmt.stmt), get_stmt_errno(stmt.stmt))
-			stmt.close()
+			err := error_with_code(get_stmt_error_msg(state.stmt), get_stmt_errno(state.stmt))
+			state.close()
 			return err
 		}
 		mut row := NullableRow{
-			vals: []?string{cap: stmt.fields.len}
+			vals: []?string{cap: state.fields.len}
 		}
-		for i in 0 .. stmt.fields.len {
-			if stmt.is_null[i] {
+		for i in 0 .. state.fields.len {
+			if state.is_null[i] {
 				row.vals << none
 				continue
 			}
-			length := checked_stream_value_length(C.v_mysql_length_at(stmt.lengths, u32(i))) or {
-				stmt.close()
+			length := checked_stream_value_length(C.v_mysql_length_at(state.lengths, u32(i))) or {
+				state.close()
 				return err
 			}
 			if length == 0 {
@@ -272,21 +314,21 @@ pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 			}
 			mut data := unsafe { malloc(length) }
 			if data == unsafe { nil } {
-				stmt.close()
+				state.close()
 				return error('db.mysql: failed to allocate streamed column data')
 			}
 			mut column_bind := C.MYSQL_BIND{
 				buffer_type:   mysql_type_string
 				buffer:        data
 				buffer_length: u32(length)
-				is_null:       unsafe { &stmt.is_null[i] }
+				is_null:       unsafe { &state.is_null[i] }
 			}
-			C.v_mysql_bind_set_length_at(&column_bind, stmt.lengths, u32(i))
-			column_code := C.mysql_stmt_fetch_column(stmt.stmt, &column_bind, i, 0)
+			C.v_mysql_bind_set_length_at(&column_bind, state.lengths, u32(i))
+			column_code := C.mysql_stmt_fetch_column(state.stmt, &column_bind, i, 0)
 			if column_code !in [0, mysql_data_truncated] {
 				unsafe { free(data) }
-				err := error_with_code(get_stmt_error_msg(stmt.stmt), get_stmt_errno(stmt.stmt))
-				stmt.close()
+				err := error_with_code(get_stmt_error_msg(state.stmt), get_stmt_errno(state.stmt))
+				state.close()
 				return err
 			}
 			value := unsafe { (&u8(data)).vstring_with_len(length).clone() }
@@ -298,21 +340,29 @@ pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 	return rows
 }
 
+fn (mut state StreamStmtState) close() {
+	if state.closed {
+		return
+	}
+	if state.stmt != unsafe { nil } {
+		C.mysql_stmt_free_result(state.stmt)
+		C.mysql_stmt_close(state.stmt)
+		state.stmt = unsafe { nil }
+	}
+	if state.lengths != unsafe { nil } {
+		unsafe { free(state.lengths) }
+		state.lengths = unsafe { nil }
+	}
+	state.guard.release()
+	state.closed = true
+}
+
 // close frees pending statement results, closes the statement, and releases
 // its connection lock. It is safe to call close more than once.
 pub fn (mut stmt StreamStmt) close() {
-	if stmt.closed {
+	if stmt.state == unsafe { nil } {
 		return
 	}
-	if stmt.stmt != unsafe { nil } {
-		C.mysql_stmt_free_result(stmt.stmt)
-		C.mysql_stmt_close(stmt.stmt)
-		stmt.stmt = unsafe { nil }
-	}
-	if stmt.lengths != unsafe { nil } {
-		unsafe { free(stmt.lengths) }
-		stmt.lengths = unsafe { nil }
-	}
-	stmt.guard.release()
-	stmt.closed = true
+	mut state := stmt.state
+	state.close()
 }
