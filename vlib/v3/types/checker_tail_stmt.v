@@ -5674,6 +5674,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 			if key := tc.selector_fn_value_key(node) {
 				if typ := tc.fn_type_from_key(key) {
+					tc.remember_resolved_fn_value(id, key)
 					tc.register_synth_type(id, typ)
 					return
 				}
@@ -5703,6 +5704,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		}
 		if key := tc.selector_fn_value_key(node) {
 			if typ := tc.fn_type_from_key(key) {
+				tc.remember_resolved_fn_value(id, key)
 				tc.register_synth_type(id, typ)
 			}
 		}
@@ -6939,6 +6941,7 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 		}
 		if key := tc.selector_fn_value_key(node) {
 			if typ := tc.fn_type_from_key(key) {
+				tc.remember_resolved_fn_value(id, key)
 				tc.register_synth_type(id, typ)
 				return
 			}
@@ -7398,6 +7401,9 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if typ := tc.fn_value_type(node.value) {
+		if key := tc.ident_fn_value_key(node.value) {
+			tc.remember_resolved_fn_value(id, key)
+		}
 		tc.register_synth_type(id, typ)
 		return
 	}
@@ -12255,13 +12261,15 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 			return node.typ
 		}
 		if node.value.len > 0 && node.pos.offset > 0 {
-			file := tc.a.source_files[node.pos.id] or { return none }
-			source := tc.source_texts_by_file[file.name] or { return none }
-			if node.pos.offset < source.len && source[node.pos.offset] in [`?`, `!`] {
-				return source[node.pos.offset..node.pos.offset + 1] + node.value
-			}
-			if node.pos.offset <= source.len && source[node.pos.offset - 1] in [`?`, `!`] {
-				return source[node.pos.offset - 1..node.pos.offset] + node.value
+			if file := tc.a.source_files[node.pos.id] {
+				if source := tc.source_texts_by_file[file.name] {
+					if node.pos.offset < source.len && source[node.pos.offset] in [`?`, `!`] {
+						return source[node.pos.offset..node.pos.offset + 1] + node.value
+					}
+					if node.pos.offset <= source.len && source[node.pos.offset - 1] in [`?`, `!`] {
+						return source[node.pos.offset - 1..node.pos.offset] + node.value
+					}
+				}
 			}
 		}
 		if node.value.starts_with('fn(') || node.value.starts_with('fn (') {
@@ -12416,19 +12424,42 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	return result
 }
 
-fn (tc &TypeChecker) lexical_smartcast_type(id flat.NodeId, key string) ?Type {
-	if typ := tc.lexical_if_smartcast_type(id, key) {
-		return typ
-	}
-	if typ := tc.lexical_for_smartcast_type(id, key) {
-		return typ
-	}
-	return tc.lexical_match_smartcast_type_with_key(id, key)
+struct LexicalSmartcastCandidate {
+	typ   Type
+	depth int
 }
 
-fn (tc &TypeChecker) lexical_for_smartcast_type(id flat.NodeId, key string) ?Type {
+fn (tc &TypeChecker) lexical_smartcast_type(id flat.NodeId, key string) ?Type {
+	mut best := LexicalSmartcastCandidate{
+		depth: max_int
+	}
+	mut found := false
+	if candidate := tc.lexical_if_smartcast_candidate(id, key) {
+		best = candidate
+		found = true
+	}
+	if candidate := tc.lexical_for_smartcast_candidate(id, key) {
+		if !found || candidate.depth < best.depth {
+			best = candidate
+			found = true
+		}
+	}
+	if candidate := tc.lexical_match_smartcast_candidate(id, key) {
+		if !found || candidate.depth < best.depth {
+			best = candidate
+			found = true
+		}
+	}
+	if found {
+		return best.typ
+	}
+	return none
+}
+
+fn (tc &TypeChecker) lexical_for_smartcast_candidate(id flat.NodeId, key string) ?LexicalSmartcastCandidate {
 	mut current := id
 	mut parent_id := tc.direct_parent_id(current)
+	mut depth := 1
 	for tc.valid_node_id(parent_id) {
 		parent := tc.a.node(parent_id)
 		if parent.kind == .for_stmt && parent.children_count > 3 {
@@ -12447,7 +12478,10 @@ fn (tc &TypeChecker) lexical_for_smartcast_type(id flat.NodeId, key string) ?Typ
 			if body_index >= 3 && !tc.for_body_writes_key_before(parent, body_index, current, key) {
 				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
 					if binding.name == key {
-						return binding.typ
+						return LexicalSmartcastCandidate{
+							typ:   binding.typ
+							depth: depth
+						}
 					}
 				}
 			}
@@ -12457,6 +12491,7 @@ fn (tc &TypeChecker) lexical_for_smartcast_type(id flat.NodeId, key string) ?Typ
 		}
 		current = parent_id
 		parent_id = tc.direct_parent_id(current)
+		depth++
 	}
 	return none
 }
@@ -12621,13 +12656,14 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 	return false
 }
 
-fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type {
+fn (tc &TypeChecker) lexical_if_smartcast_candidate(id flat.NodeId, key string) ?LexicalSmartcastCandidate {
 	idx := int(id)
 	if idx < 0 || idx >= tc.direct_parent_ids.len {
 		return none
 	}
 	mut current := id
 	mut parent_id := tc.direct_parent_id(current)
+	mut depth := 1
 	for tc.valid_node_id(parent_id) {
 		parent := tc.a.node(parent_id)
 		if parent.kind == .if_expr && parent.children_count >= 2 {
@@ -12647,7 +12683,10 @@ fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type
 				}
 				for binding in bindings {
 					if binding.name == key {
-						return binding.typ
+						return LexicalSmartcastCandidate{
+							typ:   binding.typ
+							depth: depth
+						}
 					}
 				}
 			}
@@ -12657,15 +12696,19 @@ fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type
 		}
 		current = parent_id
 		parent_id = tc.direct_parent_id(current)
+		depth++
 	}
 	return none
 }
 
 fn (tc &TypeChecker) lexical_match_smartcast_type(id flat.NodeId) ?Type {
-	return tc.lexical_match_smartcast_type_with_key(id, tc.expr_key(id))
+	if candidate := tc.lexical_match_smartcast_candidate(id, tc.expr_key(id)) {
+		return candidate.typ
+	}
+	return none
 }
 
-fn (tc &TypeChecker) lexical_match_smartcast_type_with_key(id flat.NodeId, key string) ?Type {
+fn (tc &TypeChecker) lexical_match_smartcast_candidate(id flat.NodeId, key string) ?LexicalSmartcastCandidate {
 	idx := int(id)
 	if idx < 0 || idx >= tc.direct_parent_ids.len {
 		return none
@@ -12675,7 +12718,9 @@ fn (tc &TypeChecker) lexical_match_smartcast_type_with_key(id flat.NodeId, key s
 	}
 	mut current := id
 	mut branch_id := flat.NodeId(-1)
+	mut depth := 0
 	for _ in 0 .. 64 {
+		depth++
 		parent_id := tc.direct_parent_id(current)
 		if !tc.valid_node_id(parent_id) {
 			return none
@@ -12702,10 +12747,18 @@ fn (tc &TypeChecker) lexical_match_smartcast_type_with_key(id flat.NodeId, key s
 				tc.resolve_ierror_match_pattern(pattern) or { return none }
 			} else if subject_type is Interface {
 				tc.resolve_interface_match_pattern(pattern) or { return none }
+			} else if short_type_name(subject_type.name()) == short_type_name(pattern) {
+				// During the branch check, the dynamic smartcast already exposes the
+				// matched variant. Keep recognizing the lexical match so declarations
+				// inside nested sum matches infer that concrete variant.
+				subject_type.name()
 			} else {
 				return none
 			}
-			return tc.parse_type(name)
+			return LexicalSmartcastCandidate{
+				typ:   tc.parse_type(name)
+				depth: depth
+			}
 		} else if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 			return none
 		}

@@ -479,9 +479,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			'markused.CallCollector.collect_bodies_scoped_batches',
 			'parser.Parser.precollect_parallel_comptime_consts',
 			'types.TypeChecker.check_scoped_batches', 'driver.compare_print_notices',
-			'pref.detect_vroot', 'pref.detect_vexe', 'types.compare_type_errors',
-			'types.compare_type_notices', 'types.TypeChecker.result_return_uses_multi_tail',
-			'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy'] {
+			'pref.detect_vroot', 'pref.detect_vexe', 'v3.pref.detect_vroot', 'v3.pref.detect_vexe',
+			'types.compare_type_errors', 'types.compare_type_notices',
+			'types.TypeChecker.result_return_uses_multi_tail', 'sync.Semaphore.timed_wait',
+			'sync.Semaphore.destroy'] {
 			queue << seed
 			used[seed] = true
 		}

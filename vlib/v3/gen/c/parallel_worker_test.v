@@ -54,6 +54,24 @@ fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() 
 	assert w.c_extern_refs_ready
 }
 
+fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut used := {
+		'filelock.FileLock.lock_handle': true
+	}
+	g.used_fns = &used
+	// Isolate used-function reachability from the later function-body reference scan.
+	g.c_extern_refs_ready = true
+	g.preseed_libc_compat_fns()
+	assert g.libc_compat_fns['filelock']
+
+	g.libc_compat_fns.delete('filelock')
+	g.filelock_compat_decls()
+	c_code := g.sb.str()
+	assert c_code.contains('static inline int v_filelock_lock(HANDLE handle'), c_code
+	assert c_code.contains('static inline int v_filelock_unlock(HANDLE handle'), c_code
+}
+
 fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.const_runtime_inits = ['\tmoda__runtime_const = moda__make_const();']
