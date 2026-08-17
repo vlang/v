@@ -113,6 +113,31 @@ fn test_merge_worker_signatures_updates_checker_method_suffix_index() {
 	assert master.tc.fn_param_types_for_name('open') == params
 }
 
+fn test_parallel_master_detaches_signature_maps_before_writing() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.fn_ret_types['main.base'] = 'int'
+	tc.fn_param_types['main.base'] = [types.Type(types.int_)]
+
+	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
+	worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	worker := master.fork_worker(worker_ast, worker_tc)
+	master.mark_parallel_signature_maps_shared()
+
+	master.set_fn_ret_type('main.master_generated', 'bool')
+	mut master_tc := unsafe { &types.TypeChecker(voidptr(master.tc)) }
+	master_tc.ensure_private_transform_signatures()
+	master_tc.register_generated_fn_param_types('main.master_generated', [
+		types.Type(types.bool_),
+	])
+
+	assert master.fn_ret_types['main.master_generated'] == 'bool'
+	assert 'main.master_generated' !in worker.fn_ret_types
+	assert 'main.master_generated' in master.tc.fn_param_types
+	assert 'main.master_generated' !in worker.tc.fn_param_types
+}
+
 fn test_transform_ast_clone_preserves_template_metadata() {
 	mut a := flat.FlatAst.new()
 	a.template_call_sites[7] = token.new_pos(3, 11)
