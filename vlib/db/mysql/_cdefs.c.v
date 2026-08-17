@@ -17,8 +17,8 @@ pub struct C.MYSQL_FIELD {
 	db               &u8 // Name of the database that the field comes from
 	catalog          &u8 // Catalog for table
 	def              &u8 // Default value (set by `mysql_list_fields`)
-	length           int // Width of column (create length)
-	max_length       int // Max width for selected set
+	length           u64 // Width of column (create length)
+	max_length       u64 // Max width for selected set
 	name_length      u32
 	org_name_length  u32
 	table_length     u32

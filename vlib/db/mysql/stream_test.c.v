@@ -14,7 +14,7 @@ fn connect_for_stream_test() !DB {
 fn create_stream_test_table(db &DB) ! {
 	db.exec_none('DROP TABLE IF EXISTS mysql_stream_test')
 	db.exec('CREATE TABLE mysql_stream_test (
-		id INT,
+		id INT PRIMARY KEY,
 		name VARCHAR(50),
 		amount DECIMAL(10, 2),
 		payload BLOB
@@ -252,6 +252,13 @@ fn test_prepare_stream_blob_param_empty_result_and_execute_failure() {
 	extra.execute(['1', '2']) or { extra_error = err.msg() }
 	assert extra_error == 'db.mysql: stream statement parameter count mismatch: expected 1, got 2'
 	extra.close()
+	assert_stream_connection_reusable(&db)!
+
+	mut duplicate := db.prepare_stream('INSERT INTO mysql_stream_test (id) VALUES (?)')!
+	mut server_execute_error := ''
+	duplicate.execute(['1']) or { server_execute_error = err.msg() }
+	assert server_execute_error != ''
+	duplicate.close()
 	assert_stream_connection_reusable(&db)!
 }
 

@@ -119,6 +119,9 @@ connection reusable. Use `exec_multi()` when every result is needed.
 The legacy `use_result()` method is retained for compatibility and only discards a pending
 result. Use `query_stream()` to read unbuffered rows.
 
+`Result.fields()` and `StreamResult.fields()` expose the server's column metadata. The `length`
+and `max_length` values are unsigned 64-bit integers so large MySQL column widths are preserved.
+
 ## Concurrent Usage
 
 Sharing one `mysql.DB` across threads now serializes connection-level queries safely.

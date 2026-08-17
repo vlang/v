@@ -40,6 +40,13 @@ fn drain_remaining_stream_results(conn &C.MYSQL) {
 	}
 }
 
+fn checked_stream_value_length(length u64) !int {
+	if length > u64(max_int) {
+		return error('db.mysql: streamed column length ${length} exceeds the supported maximum ${max_int}')
+	}
+	return int(length)
+}
+
 // query_stream executes `query` and returns an unbuffered result. Unlike
 // `query`, rows are read directly from the server instead of being buffered by
 // the client. The caller must close the result if it is not read to exhaustion.
@@ -87,7 +94,11 @@ pub fn (mut r StreamResult) next_batch(size int) ![]NullableRow {
 			if unsafe { row_data[i] == nil } {
 				row.vals << none
 			} else {
-				length := int(C.v_mysql_fetch_column_length(r.result, u32(i)))
+				length := checked_stream_value_length(C.v_mysql_fetch_column_length(r.result,
+					u32(i))) or {
+					r.close()
+					return err
+				}
 				value := unsafe { (&u8(row_data[i])).vstring_with_len(length).clone() }
 				row.vals << value
 			}
@@ -251,12 +262,19 @@ pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 				row.vals << none
 				continue
 			}
-			length := int(C.v_mysql_length_at(stmt.lengths, u32(i)))
+			length := checked_stream_value_length(C.v_mysql_length_at(stmt.lengths, u32(i))) or {
+				stmt.close()
+				return err
+			}
 			if length == 0 {
 				row.vals << ''
 				continue
 			}
-			mut data := unsafe { malloc(length + 1) }
+			mut data := unsafe { malloc(length) }
+			if data == unsafe { nil } {
+				stmt.close()
+				return error('db.mysql: failed to allocate streamed column data')
+			}
 			mut column_bind := C.MYSQL_BIND{
 				buffer_type:   mysql_type_string
 				buffer:        data

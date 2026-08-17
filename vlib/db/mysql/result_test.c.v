@@ -22,20 +22,26 @@ fn test_result_fields_use_each_columns_metadata() {
 		db.exec_none('DROP TABLE IF EXISTS field_metadata_test')
 	}
 	db.exec('CREATE TABLE field_metadata_test (
-		id INT,
+		id INT PRIMARY KEY,
 		name VARCHAR(50),
-		amount DECIMAL(10, 2)
+		amount DECIMAL(10, 2),
+		payload LONGTEXT
 	)')!
-	result := db.query('SELECT id, name, amount FROM field_metadata_test')!
+	db.exec("INSERT INTO field_metadata_test VALUES
+		(12345, 'abcdefghijkl', 123.45, 'xyz')")!
+	result := db.query('SELECT id, name, amount, payload FROM field_metadata_test')!
 	defer {
 		unsafe { result.free() }
 	}
 	fields := result.fields()
-	assert fields.len == 3
-	assert fields.map(it.name) == ['id', 'name', 'amount']
+	assert fields.len == 4
+	assert fields.map(it.name) == ['id', 'name', 'amount', 'payload']
 	assert fields[0].type == .type_long
 	assert fields[1].type in [.type_var_string, .type_varchar]
 	assert fields[2].type == .type_newdecimal
+	assert typeof(fields[3].length).name == 'u64'
+	assert typeof(fields[3].max_length).name == 'u64'
+	assert fields[3].length > u64(2_147_483_647)
 
 	original := C.mysql_fetch_fields(result.result)
 	for i, field in fields {
@@ -57,6 +63,8 @@ fn test_result_fields_use_each_columns_metadata() {
 	}
 	assert fields[1].length != fields[0].length
 	assert fields[2].length != fields[0].length
+	assert fields[1].max_length != fields[0].max_length
+	assert fields[2].max_length != fields[0].max_length
 	assert fields[1].charsetnr != fields[0].charsetnr
 	assert fields[1].flags != fields[0].flags
 }

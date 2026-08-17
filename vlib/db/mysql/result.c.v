@@ -45,6 +45,7 @@ pub:
 	rows  []Row
 }
 
+// Field contains metadata for one column in a MySQL result set.
 pub struct Field {
 pub:
 	name             string
@@ -54,8 +55,8 @@ pub:
 	db               string
 	catalog          string
 	def              string
-	length           int
-	max_length       int
+	length           u64
+	max_length       u64
 	name_length      u32
 	org_name_length  u32
 	table_length     u32
