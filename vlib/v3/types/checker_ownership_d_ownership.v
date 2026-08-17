@@ -2570,6 +2570,10 @@ fn (mut tc TypeChecker) ownership_prescan_returns_in(fn_name string, id flat.Nod
 		}
 		return
 	}
+	if node.kind == .expr_stmt {
+		_ := tc.ownership_prescan_expr_for_owned_calls(id, mut owned_locals, mut local_types)
+		return
+	}
 	if node.kind == .block {
 		tc.ownership_prescan_returns_in_sequence(fn_name, node, 0, param_names, mut owned_locals, mut
 			local_types)

@@ -3055,6 +3055,30 @@ fn main() {
 	assert fail.output.contains('use of moved value: `s`'), fail.output
 }
 
+fn test_ownership_expression_statement_call_seeds_param_fixed_point() {
+	v3_bin := ownership_build_v3()
+	fail := run_ownership_check(v3_bin, 'expression_statement_call_param_fixed_point', "
+fn forward(s string) int {
+	sink(s)
+	println(s)
+	return 0
+}
+
+fn seed() int {
+	forward('owned'.to_owned())
+	return 0
+}
+
+fn sink(s string) {}
+
+fn main() {
+	_ = seed()
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('use of moved value: `s`'), fail.output
+}
+
 fn test_ownership_branch_moves_are_isolated_between_siblings() {
 	v3_bin := ownership_build_v3()
 	distinct_field_moves := run_ownership_check(v3_bin, 'branch_distinct_field_moves', '
