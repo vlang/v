@@ -978,6 +978,10 @@ fn test_ownership_forwarding_adds_the_compile_time_define_once() {
 	assert v3_args_have_ownership_define(forwarded)
 	explicit := v3_ownership_forwarded_args(prefs, ['-ownership', '-d', 'ownership', 'main.v'])
 	assert explicit.count(it == 'ownership') == 1
+	invalid_compact := v3_ownership_forwarded_args(prefs, ['-ownership', '-d=ownership', 'main.v'])
+	assert '-d=ownership' in invalid_compact
+	assert invalid_compact.count(it == '-d') == 1
+	assert invalid_compact.count(it == 'ownership') == 1
 }
 
 fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
@@ -1040,7 +1044,7 @@ fn main() {
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-ownership', '-gc', 'none', '-o', output, source])
+	process.set_args(['-ownership', '-d=ownership', '-gc', 'none', '-o', output, source])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()

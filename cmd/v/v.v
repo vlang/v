@@ -263,7 +263,7 @@ fn v3_ownership_forwarded_args(prefs &pref.Preferences, merged_args []string) []
 
 fn v3_args_have_ownership_define(args []string) bool {
 	for i, arg in args {
-		if arg in ['-d=ownership', '-downership'] {
+		if arg == '-downership' {
 			return true
 		}
 		if arg == '-d' && i + 1 < args.len && args[i + 1] == 'ownership' {

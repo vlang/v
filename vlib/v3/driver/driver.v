@@ -6119,9 +6119,9 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
 			// The ownership checker itself is compiled into v3 via `-d ownership`.
-			// The runtime `-ownership` flag should only load the builtin ownership
-			// overlays; it must not expose `ownership` to target `$if` blocks or target
-			// `_d_ownership.v` files.
+			// The main V launcher pairs this flag with a target `-d ownership`, which
+			// intentionally exposes `ownership` to target `$if` blocks and selects target
+			// `_d_ownership.v` files. This flag enables the ownership analysis itself.
 			ownership_mode = true
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {

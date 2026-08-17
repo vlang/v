@@ -316,7 +316,8 @@ for generated programs, which support `-gc none` only.
 The standard v3 executable is built without `-d ownership`, so the ownership checker and its
 analysis stages are compiled out. It rejects both `-ownership` and `-d ownership`; the main V
 driver builds a separate ownership-enabled v3 executable only for an explicit `v -ownership`
-invocation.
+invocation. Target compilations receive both `-ownership` and `-d ownership`, so the custom
+`ownership` option is visible in target `$if` blocks and selects target `*_d_ownership.v` files.
 
 The table uses the first v3-generated C stage, `./v3 -o v4 v3.v`. The plain
 bootstrap includes thread support. v3 self-hosts parallel-capable successors by
