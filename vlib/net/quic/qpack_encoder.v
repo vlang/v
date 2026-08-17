@@ -261,6 +261,26 @@ pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFie
 				stream_buf << encode_literal_with_name_ref(true, never_index, name_index,
 					line.value)
 			} else {
+				// This is STILL a reference to the dynamic table (for the NAME),
+				// exactly like the exact-match and post-insert cases above -- it
+				// must be tracked the same way: add_ref to protect the entry from
+				// eviction before this section is acknowledged, record it in
+				// `referenced` so note_section_acknowledged/note_stream_cancelled
+				// can release it, and fold it into Required Insert Count so the
+				// encoded prefix actually reflects that this section depends on
+				// it (RFC 9204 §2.1.2: RIC is "one larger than the largest
+				// absolute index of all referenced dynamic table entries" --
+				// unconditionally, not only for entries this call itself
+				// inserted). Skipping this produced a RIC that didn't cover a
+				// reference the field section actually made, which a decoder
+				// correctly rejects as QPACK_DECOMPRESSION_FAILED (RFC 9204
+				// §2.2.3) -- self-found via Luna review, Phase-R reproduced
+				// before this fix.
+				e.dynamic_table.add_ref(int(name_index)) or {}
+				referenced << int(name_index)
+				if name_index + 1 > required_insert_count {
+					required_insert_count = name_index + 1
+				}
 				// Field-line context: convert the absolute index `find_name` returned
 				// to a Base-relative index (§4.5.4) -- distinct from the
 				// insert-count-relative context the encoder instruction above uses.

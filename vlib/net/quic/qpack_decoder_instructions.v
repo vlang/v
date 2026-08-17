@@ -34,33 +34,76 @@ pub type QpackDecoderInstruction = QpackInsertCountIncrement
 	| QpackSectionAck
 	| QpackStreamCancellation
 
+// QpackDecodedDecoderInstruction is the result of attempting to decode one
+// decoder-stream instruction -- mirrors `QpackDecodedEncoderInstruction`'s
+// shape and reasoning exactly (qpack_encoder_instructions.v).
+pub struct QpackDecodedDecoderInstruction {
+pub:
+	has_instruction bool
+	instr           QpackDecoderInstruction = QpackSectionAck{}
+	consumed        int
+}
+
 // decode_qpack_decoder_instruction decodes ONE instruction starting at
 // `buf[0]` (RFC 9204 Figures 9-11: `1...`=Section-Ack, `01..`=Stream-
-// Cancellation, `00..`=Insert-Count-Increment). Returns `none`, not an
-// error, when `buf` does not yet hold a complete instruction -- same
-// resumable-parsing contract as `decode_qpack_encoder_instruction`. On
-// success, also returns the number of bytes consumed.
-pub fn decode_qpack_decoder_instruction(buf []u8) ?(QpackDecoderInstruction, int) {
+// Cancellation, `00..`=Insert-Count-Increment). Returns
+// `has_instruction: false` (not an error) when `buf` does not yet hold a
+// complete instruction -- same resumable-parsing contract as
+// `decode_qpack_encoder_instruction`, including the same obligation to
+// propagate (not swallow) a genuine malformed-data error rather than
+// treating it as "not yet complete": this decoder-stream sibling had the
+// identical swallow-everything bug (a `?` return type with no error
+// channel at all), fixed here for the same reason even though no
+// production caller yet exists for it -- the same class of bug, not just
+// the one instance a reviewer named.
+pub fn decode_qpack_decoder_instruction(buf []u8) !QpackDecodedDecoderInstruction {
 	if buf.len == 0 {
-		return none
+		return QpackDecodedDecoderInstruction{}
 	}
 	first := buf[0]
 	if first & 0x80 != 0 {
-		stream_id, len := decode_prefixed_int(buf, 7) or { return none }
-		return QpackDecoderInstruction(QpackSectionAck{
-			stream_id: stream_id
-		}), len
+		stream_id, len := decode_prefixed_int(buf, 7) or {
+			if err.code() == qpack_err_need_more_data {
+				return QpackDecodedDecoderInstruction{}
+			}
+			return err
+		}
+		return QpackDecodedDecoderInstruction{
+			has_instruction: true
+			instr:           QpackDecoderInstruction(QpackSectionAck{
+				stream_id: stream_id
+			})
+			consumed:        len
+		}
 	}
 	if first & 0x40 != 0 {
-		stream_id, len := decode_prefixed_int(buf, 6) or { return none }
-		return QpackDecoderInstruction(QpackStreamCancellation{
-			stream_id: stream_id
-		}), len
+		stream_id, len := decode_prefixed_int(buf, 6) or {
+			if err.code() == qpack_err_need_more_data {
+				return QpackDecodedDecoderInstruction{}
+			}
+			return err
+		}
+		return QpackDecodedDecoderInstruction{
+			has_instruction: true
+			instr:           QpackDecoderInstruction(QpackStreamCancellation{
+				stream_id: stream_id
+			})
+			consumed:        len
+		}
 	}
-	increment, len := decode_prefixed_int(buf, 6) or { return none }
-	return QpackDecoderInstruction(QpackInsertCountIncrement{
-		increment: increment
-	}), len
+	increment, len := decode_prefixed_int(buf, 6) or {
+		if err.code() == qpack_err_need_more_data {
+			return QpackDecodedDecoderInstruction{}
+		}
+		return err
+	}
+	return QpackDecodedDecoderInstruction{
+		has_instruction: true
+		instr:           QpackDecoderInstruction(QpackInsertCountIncrement{
+			increment: increment
+		})
+		consumed:        len
+	}
 }
 
 // encode_qpack_section_ack encodes a Section Acknowledgment instruction

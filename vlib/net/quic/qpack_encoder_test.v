@@ -207,3 +207,41 @@ fn test_encoder_note_insert_count_increment_rejects_exceeding_actual_inserts() {
 		assert err.code() == int(QpackErrorCode.decoder_stream_error)
 	}
 }
+
+fn test_phase_r_dynamic_name_reference_without_insertion_tracks_required_insert_count() {
+	mut e := new_qpack_encoder()
+	entry_a_size := qpack_entry_size('x-custom', 'original')
+	cap_instr := e.set_capacity(u64(entry_a_size), u64(entry_a_size)) or { panic('${err}') }
+	mut dec := new_qpack_decoder(u64(entry_a_size))
+	dec.apply_encoder_instruction(cap_instr) or { panic('${err}') }
+
+	first := e.encode_field_section(1, [
+		QpackFieldLine{
+			name:  'x-custom'
+			value: 'original'
+		},
+	])
+	assert first.encoder_instructions.len > 0 // confirms it actually got inserted
+	e.note_section_acknowledged(1) or { panic('${err}') }
+
+	// Same NAME, a value long enough that entry_size exceeds the 1-entry
+	// capacity even after evicting everything -- can_insert must return
+	// false, forcing the "use existing dynamic NAME reference, emit
+	// literal" path this bug skips all tracking for.
+	long_value := 'a-value-far-too-long-to-ever-fit-in-this-tiny-table'
+	assert qpack_entry_size('x-custom', long_value) > entry_a_size
+
+	second := e.encode_field_section(2, [
+		QpackFieldLine{
+			name:  'x-custom'
+			value: long_value
+		},
+	])
+
+	dec.apply_encoder_instruction(first.encoder_instructions) or { panic('${err}') }
+	result := dec.decode_field_section(2, second.field_section) or {
+		panic('BUG REPRODUCED: decoder rejected a field section the encoder itself produced: ${err}')
+	}
+	assert !result.blocked
+	assert result.lines[0].value == long_value
+}

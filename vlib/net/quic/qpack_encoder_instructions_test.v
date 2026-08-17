@@ -4,11 +4,12 @@ module quic
 fn test_encode_decode_set_dynamic_table_capacity_roundtrip() {
 	for cap in [u64(0), 1, 63, 64, 220, 1_000_000] {
 		buf := encode_qpack_set_dynamic_table_capacity(cap)
-		instr, consumed := decode_qpack_encoder_instruction(buf) or { panic('cap=${cap}: ${err}') }
-		assert consumed == buf.len
-		match instr {
+		decoded := decode_qpack_encoder_instruction(buf) or { panic('cap=${cap}: ${err}') }
+		assert decoded.has_instruction
+		assert decoded.consumed == buf.len
+		match decoded.instr {
 			QpackSetDynamicTableCapacity {
-				assert instr.capacity == cap
+				assert decoded.instr.capacity == cap
 			}
 			else {
 				assert false, 'expected QpackSetDynamicTableCapacity'
@@ -19,13 +20,14 @@ fn test_encode_decode_set_dynamic_table_capacity_roundtrip() {
 
 fn test_encode_decode_insert_with_name_ref_static_roundtrip() {
 	buf := encode_qpack_insert_with_name_ref(true, 42, 'value here')
-	instr, consumed := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
-	assert consumed == buf.len
-	match instr {
+	decoded := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
+	assert decoded.has_instruction
+	assert decoded.consumed == buf.len
+	match decoded.instr {
 		QpackInsertWithNameRef {
-			assert instr.is_static
-			assert instr.name_index == 42
-			assert instr.value == 'value here'
+			assert decoded.instr.is_static
+			assert decoded.instr.name_index == 42
+			assert decoded.instr.value == 'value here'
 		}
 		else {
 			assert false, 'expected QpackInsertWithNameRef'
@@ -35,11 +37,11 @@ fn test_encode_decode_insert_with_name_ref_static_roundtrip() {
 
 fn test_encode_decode_insert_with_name_ref_dynamic_roundtrip() {
 	buf := encode_qpack_insert_with_name_ref(false, 7, 'v')
-	instr, _ := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
-	match instr {
+	decoded := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
+	match decoded.instr {
 		QpackInsertWithNameRef {
-			assert !instr.is_static
-			assert instr.name_index == 7
+			assert !decoded.instr.is_static
+			assert decoded.instr.name_index == 7
 		}
 		else {
 			assert false, 'expected QpackInsertWithNameRef'
@@ -49,12 +51,13 @@ fn test_encode_decode_insert_with_name_ref_dynamic_roundtrip() {
 
 fn test_encode_decode_insert_with_literal_name_roundtrip() {
 	buf := encode_qpack_insert_with_literal_name('x-custom-header', 'a value')
-	instr, consumed := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
-	assert consumed == buf.len
-	match instr {
+	decoded := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
+	assert decoded.has_instruction
+	assert decoded.consumed == buf.len
+	match decoded.instr {
 		QpackInsertWithLiteralName {
-			assert instr.name == 'x-custom-header'
-			assert instr.value == 'a value'
+			assert decoded.instr.name == 'x-custom-header'
+			assert decoded.instr.value == 'a value'
 		}
 		else {
 			assert false, 'expected QpackInsertWithLiteralName'
@@ -64,11 +67,12 @@ fn test_encode_decode_insert_with_literal_name_roundtrip() {
 
 fn test_encode_decode_duplicate_roundtrip() {
 	buf := encode_qpack_duplicate(9)
-	instr, consumed := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
-	assert consumed == buf.len
-	match instr {
+	decoded := decode_qpack_encoder_instruction(buf) or { panic('${err}') }
+	assert decoded.has_instruction
+	assert decoded.consumed == buf.len
+	match decoded.instr {
 		QpackDuplicate {
-			assert instr.rel_index == 9
+			assert decoded.instr.rel_index == 9
 		}
 		else {
 			assert false, 'expected QpackDuplicate'
@@ -76,23 +80,24 @@ fn test_encode_decode_duplicate_roundtrip() {
 	}
 }
 
-fn test_decode_qpack_encoder_instruction_returns_none_on_empty_buffer() {
-	if _, _ := decode_qpack_encoder_instruction([]u8{}) {
-		assert false, 'expected none'
-	}
+fn test_decode_qpack_encoder_instruction_returns_not_complete_on_empty_buffer() {
+	decoded := decode_qpack_encoder_instruction([]u8{}) or { panic('${err}') }
+	assert !decoded.has_instruction
 }
 
-fn test_decode_qpack_encoder_instruction_returns_none_on_partial_instruction() {
+fn test_decode_qpack_encoder_instruction_returns_not_complete_on_partial_instruction() {
 	full := encode_qpack_insert_with_literal_name('name', 'value')
 	for n in 1 .. full.len {
-		if _, _ := decode_qpack_encoder_instruction(full[..n]) {
-			assert false, 'expected none with only ${n}/${full.len} bytes buffered'
+		decoded := decode_qpack_encoder_instruction(full[..n]) or {
+			panic('unexpected error with only ${n}/${full.len} bytes buffered: ${err}')
 		}
+		assert !decoded.has_instruction, 'expected not-yet-complete with only ${n}/${full.len} bytes buffered'
 	}
-	_, consumed := decode_qpack_encoder_instruction(full) or {
+	decoded := decode_qpack_encoder_instruction(full) or {
 		panic('expected success with full buffer')
 	}
-	assert consumed == full.len
+	assert decoded.has_instruction
+	assert decoded.consumed == full.len
 }
 
 fn test_four_instruction_bit_patterns_are_mutually_exclusive() {
@@ -102,13 +107,58 @@ fn test_four_instruction_bit_patterns_are_mutually_exclusive() {
 	insert_lit := encode_qpack_insert_with_literal_name('n', 'v')
 	dup := encode_qpack_duplicate(5)
 
-	i1, _ := decode_qpack_encoder_instruction(set_cap) or { panic('${err}') }
-	i2, _ := decode_qpack_encoder_instruction(insert_ref) or { panic('${err}') }
-	i3, _ := decode_qpack_encoder_instruction(insert_lit) or { panic('${err}') }
-	i4, _ := decode_qpack_encoder_instruction(dup) or { panic('${err}') }
+	d1 := decode_qpack_encoder_instruction(set_cap) or { panic('${err}') }
+	d2 := decode_qpack_encoder_instruction(insert_ref) or { panic('${err}') }
+	d3 := decode_qpack_encoder_instruction(insert_lit) or { panic('${err}') }
+	d4 := decode_qpack_encoder_instruction(dup) or { panic('${err}') }
 
-	assert i1 is QpackSetDynamicTableCapacity
-	assert i2 is QpackInsertWithNameRef
-	assert i3 is QpackInsertWithLiteralName
-	assert i4 is QpackDuplicate
+	assert d1.instr is QpackSetDynamicTableCapacity
+	assert d2.instr is QpackInsertWithNameRef
+	assert d3.instr is QpackInsertWithLiteralName
+	assert d4.instr is QpackDuplicate
+}
+
+fn test_phase_r_malformed_huffman_value_is_not_silently_treated_as_incomplete() {
+	// Insert With Literal Name: pattern '01' + H=0 + NameLen(5+)=4, name="test",
+	// then H=1 + Len(7+)=4 + 4 bytes of Huffman data invalid for ANY valid
+	// symbol boundary within 30 bits.
+	buf := [u8(0x44), `t`, `e`, `s`, `t`, 0x84, 0xFF, 0xFF, 0xFF, 0xFF]
+
+	// First confirm the underlying primitive genuinely treats this as
+	// malformed (a real decode failure), not merely short -- i.e. this is
+	// not a false-alarm truncation case.
+	mut primitive_errored := false
+	mut primitive_msg := ''
+	if _, _, _ := decode_prefixed_string(buf[5..], 7) {
+	} else {
+		primitive_errored = true
+		primitive_msg = err.msg()
+	}
+	assert primitive_errored, 'expected decode_prefixed_string to reject invalid Huffman data'
+	assert primitive_msg.contains('huffman'), 'expected a Huffman-specific error, got: ${primitive_msg}'
+
+	// decode_qpack_encoder_instruction must now propagate this as a real
+	// error, carrying it up to QPACK_ENCODER_STREAM_ERROR at the
+	// apply_encoder_instruction layer -- NOT report "not yet complete".
+	if _ := decode_qpack_encoder_instruction(buf) {
+		assert false, 'expected a propagated error for malformed Huffman data, not success'
+	} else {
+		assert err.msg().contains('huffman'), 'expected the Huffman error to propagate through, got: ${err.msg()}'
+	}
+}
+
+fn test_decode_qpack_encoder_instruction_propagates_oversized_integer_error() {
+	// Set Dynamic Table Capacity: pattern '001', 5-bit prefix forcing
+	// continuation, with enough continuation bytes to exceed
+	// qpack_max_prefixed_int -- genuinely malformed, not truncated.
+	mut buf := [u8(0x3f)] // 5-bit prefix, max_prefix=31, forces continuation
+	for _ in 0 .. 10 {
+		buf << 0xff
+	}
+	buf << 0x7f
+	if _ := decode_qpack_encoder_instruction(buf) {
+		assert false, 'expected a propagated error for an over-limit integer'
+	} else {
+		assert err.msg().contains('exceeds implementation limit')
+	}
 }

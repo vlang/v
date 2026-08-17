@@ -53,19 +53,31 @@ pub fn new_qpack_decoder(max_table_capacity u64) QpackDecoder {
 // encoder-stream bytes starting at `buf[0]` (RFC 9204 §4.3), mutating this
 // decoder's mirrored dynamic table. Returns `applied: false` (not an
 // error) when `buf` does not yet hold a complete instruction, matching
-// this module's established resumable-parsing contract. Every error
-// carries `QpackErrorCode.encoder_stream_error` (RFC 9204 §2.2.3, §3.2.2:
-// every failure mode an encoder instruction can trigger on the decoder
-// side maps to this one code). After every insertion or duplication, this
-// decoder immediately emits an Insert Count Increment of 1 (RFC 9204
-// §2.2.2.3 leaves the exact timing to decoder policy; "emit after adding
-// each new entry" is explicitly named as the timeliest, if not the most
+// this module's established resumable-parsing contract. Every error --
+// including a malformed instruction `decode_qpack_encoder_instruction`
+// itself rejects, not only ones raised while applying it -- carries
+// `QpackErrorCode.encoder_stream_error` (RFC 9204 §2.2.3, §3.2.2: every
+// failure mode an encoder instruction can trigger on the decoder side
+// maps to this one code). Malformed input previously fell through
+// `decode_qpack_encoder_instruction`'s old none-only contract and came
+// back here as `applied: false`, indistinguishable from "just needs more
+// bytes" -- silently hanging instead of raising the required connection
+// error (self-found via GPT-5.6 Luna review, Phase-R reproduced before
+// this fix). After every insertion or duplication, this decoder
+// immediately emits an Insert Count Increment of 1 (RFC 9204 §2.2.2.3
+// leaves the exact timing to decoder policy; "emit after adding each new
+// entry" is explicitly named as the timeliest, if not the most
 // bandwidth-efficient, choice -- picked here for simplicity and testable
 // correctness over coalescing).
 pub fn (mut d QpackDecoder) apply_encoder_instruction(buf []u8) !QpackApplyInstructionResult {
-	instr, consumed := decode_qpack_encoder_instruction(buf) or {
+	decoded := decode_qpack_encoder_instruction(buf) or {
+		return error_with_code('qpack: ${err.msg()}', int(QpackErrorCode.encoder_stream_error))
+	}
+	if !decoded.has_instruction {
 		return QpackApplyInstructionResult{}
 	}
+	instr := decoded.instr
+	consumed := decoded.consumed
 	mut inserted := false
 	match instr {
 		QpackSetDynamicTableCapacity {

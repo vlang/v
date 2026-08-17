@@ -47,52 +47,117 @@ pub type QpackEncoderInstruction = QpackDuplicate
 	| QpackInsertWithNameRef
 	| QpackSetDynamicTableCapacity
 
+// QpackDecodedEncoderInstruction is the result of attempting to decode one
+// encoder-stream instruction: `has_instruction` is false when `buf` does
+// not yet hold a complete instruction (genuinely need more bytes, not an
+// error -- see `decode_qpack_encoder_instruction`'s doc comment). `instr`'s
+// default value is never meaningful when `has_instruction` is false; V sum
+// types require SOME default to satisfy the struct literal.
+pub struct QpackDecodedEncoderInstruction {
+pub:
+	has_instruction bool
+	instr           QpackEncoderInstruction = QpackDuplicate{}
+	consumed        int
+}
+
 // decode_qpack_encoder_instruction decodes ONE instruction starting at
 // `buf[0]`, distinguishing the 4 types by their leading bit pattern (RFC
 // 9204 Figures 5-8, checked in the order that lets each subsequent branch
 // assume the higher bits already ruled out: `1...`=Insert-with-name-ref,
 // `01..`=Insert-with-literal-name, `001.`=Set-capacity, `000.`=Duplicate).
-// Returns `none`, not an error, when `buf` does not yet hold a complete
-// instruction: encoder-stream data can arrive fragmented across QUIC STREAM
-// frames the same as HTTP/3 frames do, so this mirrors `H3FrameDecoder`'s
-// "need more data" contract rather than treating a short read as invalid.
-// On success, also returns the number of bytes consumed from the start of
-// `buf`.
-pub fn decode_qpack_encoder_instruction(buf []u8) ?(QpackEncoderInstruction, int) {
+// Returns `has_instruction: false` (not an error) when `buf` does not yet
+// hold a complete instruction: encoder-stream data can arrive fragmented
+// across QUIC STREAM frames the same as HTTP/3 frames do, so this mirrors
+// `H3FrameDecoder`'s "need more data" contract rather than treating a
+// short read as invalid. Returns a real error -- which the caller MUST
+// propagate, not treat as "not yet complete" -- for genuinely malformed
+// data (an oversized integer, invalid Huffman coding): conflating the two
+// previously let a malformed encoder-stream instruction be silently
+// retried forever instead of raising QPACK_ENCODER_STREAM_ERROR and
+// closing the connection (RFC 9204 §2.2.3, §3.2.2). Self-found via GPT-5.6
+// Luna review, Phase-R reproduced before this fix. Uses the shared
+// `qpack_err_need_more_data` sentinel (qpack_primitives.v) to tell the two
+// cases apart at every `decode_prefixed_int`/`decode_prefixed_string`
+// call site below.
+pub fn decode_qpack_encoder_instruction(buf []u8) !QpackDecodedEncoderInstruction {
 	if buf.len == 0 {
-		return none
+		return QpackDecodedEncoderInstruction{}
 	}
 	first := buf[0]
 	if first & 0x80 != 0 {
 		is_static := first & 0x40 != 0
-		name_index, idx_len := decode_prefixed_int(buf, 6) or { return none }
-		value, _, val_len := decode_prefixed_string(buf[idx_len..], 7) or { return none }
-		instr := QpackEncoderInstruction(QpackInsertWithNameRef{
-			is_static:  is_static
-			name_index: name_index
-			value:      value
-		})
-		return instr, idx_len + val_len
+		name_index, idx_len := decode_prefixed_int(buf, 6) or {
+			if err.code() == qpack_err_need_more_data {
+				return QpackDecodedEncoderInstruction{}
+			}
+			return err
+		}
+		value, _, val_len := decode_prefixed_string(buf[idx_len..], 7) or {
+			if err.code() == qpack_err_need_more_data {
+				return QpackDecodedEncoderInstruction{}
+			}
+			return err
+		}
+		return QpackDecodedEncoderInstruction{
+			has_instruction: true
+			instr:           QpackEncoderInstruction(QpackInsertWithNameRef{
+				is_static:  is_static
+				name_index: name_index
+				value:      value
+			})
+			consumed:        idx_len + val_len
+		}
 	}
 	if first & 0x40 != 0 {
-		name, _, name_len := decode_prefixed_string(buf, 5) or { return none }
-		value, _, val_len := decode_prefixed_string(buf[name_len..], 7) or { return none }
-		instr := QpackEncoderInstruction(QpackInsertWithLiteralName{
-			name:  name
-			value: value
-		})
-		return instr, name_len + val_len
+		name, _, name_len := decode_prefixed_string(buf, 5) or {
+			if err.code() == qpack_err_need_more_data {
+				return QpackDecodedEncoderInstruction{}
+			}
+			return err
+		}
+		value, _, val_len := decode_prefixed_string(buf[name_len..], 7) or {
+			if err.code() == qpack_err_need_more_data {
+				return QpackDecodedEncoderInstruction{}
+			}
+			return err
+		}
+		return QpackDecodedEncoderInstruction{
+			has_instruction: true
+			instr:           QpackEncoderInstruction(QpackInsertWithLiteralName{
+				name:  name
+				value: value
+			})
+			consumed:        name_len + val_len
+		}
 	}
 	if first & 0x20 != 0 {
-		capacity, len := decode_prefixed_int(buf, 5) or { return none }
-		return QpackEncoderInstruction(QpackSetDynamicTableCapacity{
-			capacity: capacity
-		}), len
+		capacity, len := decode_prefixed_int(buf, 5) or {
+			if err.code() == qpack_err_need_more_data {
+				return QpackDecodedEncoderInstruction{}
+			}
+			return err
+		}
+		return QpackDecodedEncoderInstruction{
+			has_instruction: true
+			instr:           QpackEncoderInstruction(QpackSetDynamicTableCapacity{
+				capacity: capacity
+			})
+			consumed:        len
+		}
 	}
-	rel_index, len := decode_prefixed_int(buf, 5) or { return none }
-	return QpackEncoderInstruction(QpackDuplicate{
-		rel_index: rel_index
-	}), len
+	rel_index, len := decode_prefixed_int(buf, 5) or {
+		if err.code() == qpack_err_need_more_data {
+			return QpackDecodedEncoderInstruction{}
+		}
+		return err
+	}
+	return QpackDecodedEncoderInstruction{
+		has_instruction: true
+		instr:           QpackEncoderInstruction(QpackDuplicate{
+			rel_index: rel_index
+		})
+		consumed:        len
+	}
 }
 
 // encode_qpack_set_dynamic_table_capacity encodes a Set Dynamic Table

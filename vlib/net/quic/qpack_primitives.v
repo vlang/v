@@ -21,6 +21,19 @@ pub const qpack_max_prefixed_int = u64(0x3fff_ffff_ffff_ffff) // 2^62 - 1
 // a malicious peer to force allocated.
 pub const qpack_max_string_literal_len = 1 << 20
 
+// qpack_err_need_more_data is a private sentinel error code marking "buf
+// does not yet hold enough bytes" (RFC 9204's resumable-parsing
+// requirement -- encoder/decoder-stream data can arrive fragmented across
+// QUIC STREAM frames). Every OTHER error these primitives return
+// represents genuinely malformed data (an integer/string exceeding this
+// implementation's limits, or invalid Huffman coding) and MUST be
+// propagated as a real error by any caller distinguishing the two cases
+// -- conflating them let a malformed encoder-stream instruction be
+// silently retried forever instead of raising QPACK_ENCODER_STREAM_ERROR
+// (RFC 9204 §2.2.3, §3.2.2) and closing the connection. Self-found via
+// GPT-5.6 Luna review, Phase-R reproduced before this fix.
+const qpack_err_need_more_data = 1
+
 // decode_prefixed_int decodes an RFC 7541 §5.1 prefixed integer (reused
 // unmodified by RFC 9204 §4.1.1) whose low `prefix_bits` bits of `buf[0]`
 // carry the initial value, with any continuation bytes following. The
@@ -30,7 +43,7 @@ pub const qpack_max_string_literal_len = 1 << 20
 // bytes consumed.
 pub fn decode_prefixed_int(buf []u8, prefix_bits int) !(u64, int) {
 	if buf.len == 0 {
-		return error('qpack: prefixed integer truncated')
+		return error_with_code('qpack: prefixed integer truncated', qpack_err_need_more_data)
 	}
 	max_prefix := u64((1 << prefix_bits) - 1)
 	mut value := u64(buf[0]) & max_prefix
@@ -41,14 +54,17 @@ pub fn decode_prefixed_int(buf []u8, prefix_bits int) !(u64, int) {
 	mut m := 0
 	for {
 		if consumed >= buf.len {
-			return error('qpack: prefixed integer continuation truncated')
+			return error_with_code('qpack: prefixed integer continuation truncated',
+				qpack_err_need_more_data)
 		}
 		b := buf[consumed]
 		consumed++
 		value += u64(b & 0x7f) << u32(m)
 		m += 7
 		// Checked well before u64 could actually wrap (worst case ~2^63 at
-		// m=56, still far under u64::max) -- see this file's module doc.
+		// m=56, still far under u64::max) -- see this file's module doc. This
+		// is genuinely malformed data, not truncation: no amount of
+		// additional buffered bytes makes an already-over-limit value valid.
 		if value > qpack_max_prefixed_int || m > 63 {
 			return error('qpack: prefixed integer exceeds implementation limit')
 		}
@@ -90,20 +106,29 @@ pub fn encode_prefixed_int(mut out []u8, value u64, prefix_bits int, high_bits u
 // decoded string, whether it was Huffman-coded, and bytes consumed.
 pub fn decode_prefixed_string(buf []u8, length_prefix_bits int) !(string, bool, int) {
 	if buf.len == 0 {
-		return error('qpack: string literal truncated')
+		return error_with_code('qpack: string literal truncated', qpack_err_need_more_data)
 	}
 	huffman := (buf[0] >> u32(length_prefix_bits)) & 1 != 0
+	// decode_prefixed_int's own `!` propagation preserves whichever error
+	// (and code) it raised, truncated or malformed alike -- no re-wrapping
+	// needed here to keep that distinction intact.
 	length, len_consumed := decode_prefixed_int(buf, length_prefix_bits)!
 	if length > u64(qpack_max_string_literal_len) {
 		return error('qpack: string literal exceeds implementation limit')
 	}
 	n := int(length)
 	if n > buf.len - len_consumed {
-		return error('qpack: string literal length exceeds buffer')
+		// The declared length is itself within limits; we simply don't have
+		// all of it buffered yet -- genuine truncation, not malformed data.
+		return error_with_code('qpack: string literal length exceeds buffer',
+			qpack_err_need_more_data)
 	}
 	raw := buf[len_consumed..len_consumed + n]
 	consumed := len_consumed + n
 	if huffman {
+		// `raw` is already a complete, length-validated slice at this point,
+		// so any failure qpack_huffman_decode raises is real malformed data,
+		// never truncation.
 		decoded := qpack_huffman_decode(raw)!
 		return decoded.bytestr(), true, consumed
 	}
