@@ -4,6 +4,24 @@ import v3.flat
 import v3.token
 import v3.types
 
+fn test_monomorph_job_count_does_not_start_empty_workers() {
+	$if !v3_no_parallel ? {
+		assert monomorph_job_count(16, 1) == 1
+		assert monomorph_job_count(16, 3) == 3
+		assert monomorph_job_count(2, 8) == 2
+	}
+}
+
+fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	call_id := t.make_call('main.helper', []flat.NodeId{})
+	assert tc.resolved_call_name(call_id)? == 'main.helper'
+	intrinsic_id := t.make_call('__v3_clone_owned_ierror', []flat.NodeId{})
+	assert tc.resolved_call_name(intrinsic_id) == none
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{
@@ -93,6 +111,41 @@ fn test_merge_worker_signatures_updates_checker_method_suffix_index() {
 	assert master.tc.receiver_method_suffix_index['Box.open'] == 'widgets.Box.open'
 	assert master.tc.fn_param_types_for_name('Box.open') == params
 	assert master.tc.fn_param_types_for_name('open') == params
+}
+
+fn test_parallel_master_detaches_metadata_maps_before_writing() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.fn_ret_types['main.base'] = 'int'
+	tc.fn_param_types['main.base'] = [types.Type(types.int_)]
+	master.structs['main.Base'] = StructInfo{
+		name: 'main.Base'
+	}
+	tc.structs['main.Base'] = []types.StructField{}
+
+	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
+	worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	worker := master.fork_worker(worker_ast, worker_tc)
+	master.mark_parallel_worker_maps_shared()
+
+	master.set_fn_ret_type('main.master_generated', 'bool')
+	mut master_tc := unsafe { &types.TypeChecker(voidptr(master.tc)) }
+	master_tc.ensure_private_transform_signatures()
+	master_tc.register_generated_fn_param_types('main.master_generated', [
+		types.Type(types.bool_),
+	])
+
+	assert master.fn_ret_types['main.master_generated'] == 'bool'
+	assert 'main.master_generated' !in worker.fn_ret_types
+	assert 'main.master_generated' in master.tc.fn_param_types
+	assert 'main.master_generated' !in worker.tc.fn_param_types
+
+	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]string{})
+	assert 'CaptureContext' in master.structs
+	assert 'CaptureContext' !in worker.structs
+	assert 'CaptureContext' in master.tc.structs
+	assert 'CaptureContext' !in worker.tc.structs
 }
 
 fn test_transform_ast_clone_preserves_template_metadata() {

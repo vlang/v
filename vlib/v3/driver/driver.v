@@ -7769,6 +7769,7 @@ pub fn run(args []string) {
 			skip_transform_generics = true
 		}
 		mut transform_used_fns := map[string]bool{}
+		pre_transform_node_count := a.nodes.len
 		if incremental_cache_hit {
 			transform_used_fns = clone_string_bool_map(incremental_changed_names)
 			// `main` activates the transformer's used-function filter. If another
@@ -8118,12 +8119,11 @@ pub fn run(args []string) {
 				// Generic lowering rewrites and clones call nodes in disposable arenas.
 				// Resolve their final names from the owned transformed AST instead of
 				// retaining pre-transform canonical string views across arena release.
-				pre_tc.reset_resolved_calls_for_reannotation()
-				pre_tc.annotate_types_with_used(if incremental_cache_hit {
+				pre_tc.annotate_types_with_used_missing_calls(if incremental_cache_hit {
 					transform_used_fns
 				} else {
 					used_fns
-				})
+				}, pre_transform_node_count)
 			} else {
 				restore_transformed_fn_value_types(mut pre_tc, a, if incremental_cache_hit {
 					incremental_stage_used_fns
