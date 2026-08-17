@@ -1,9 +1,6 @@
 name: Apply v3 migrations follow-up fixes
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
-    branches: [master]
   push:
     branches:
       - agent/fix-v3-migration-safety-and-rails-compat
@@ -12,30 +9,51 @@ permissions:
   contents: write
 
 concurrency:
-  group: agent-fix-v3-migrations-${{ github.event.pull_request.number || github.ref }}
+  group: agent-fix-v3-migrations-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply:
+  apply-and-validate:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-slim
-    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - name: Check out source branch
+      - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: true
 
-      - name: Apply and commit fixes
+      - name: Apply reviewed migration fixes
         shell: bash
-        env:
-          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           base64 --decode .github/agent_fix_v3_migrations.py.gz.b64 | gzip --decompress --stdout > /tmp/agent_fix_v3_migrations.py
           python3 /tmp/agent_fix_v3_migrations.py
           git diff --check
+
+      - name: Build V
+        shell: bash
+        run: make -j2
+
+      - name: Format changed V files
+        shell: bash
+        run: |
+          ./v fmt -w vlib/v3/migrations/migrations.v
+          ./v fmt -w vlib/v3/migrations/schema.v
+          ./v fmt -w vlib/v3/migrations/migrations_test.v
+          git diff --check
+
+      - name: Run migration tests and checks
+        shell: bash
+        run: |
+          ./v -cc clang -g vlib/v3/migrations/migrations_test.v
+          ./v -cc clang -g vlib/v3/tests/migrations_public_api_test.v
+          ./v vet vlib/v3/migrations
+          ./v check-md vlib/v3/migrations/README.md
+
+      - name: Commit validated changes
+        shell: bash
+        run: |
           rm -f .github/agent_fix_v3_migrations.py.gz.b64
           rm -f .github/workflows/agent-fix-v3-migrations.yml
           git config user.name 'github-actions[bot]'
@@ -47,4 +65,4 @@ jobs:
             .github/agent_fix_v3_migrations.py.gz.b64 \
             .github/workflows/agent-fix-v3-migrations.yml
           git commit -m 'v3: harden ORM migrations and align Rails history'
-          git push origin HEAD:${TARGET_BRANCH}
+          git push origin HEAD:${GITHUB_REF_NAME}
