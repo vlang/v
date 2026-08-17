@@ -2812,7 +2812,7 @@ fn cache_native_implementation_context_macros(path string, context []string, all
 	mut full_active_paths := map[string]bool{}
 	full_source, _ := cache_c_source_definitely_active_code_for_path_with_status(path,
 		allowed_paths, mut full_active_paths, mut full_macros, false)
-	full_identifiers := cache_native_static_identifiers(full_source)
+	full_identifiers := cache_native_implementation_identifiers(full_source)
 	if full_identifiers.len == 0 {
 		return implementation_macros
 	}
@@ -2835,7 +2835,7 @@ fn cache_native_implementation_context_macros(path string, context []string, all
 		mut candidate_active_paths := map[string]bool{}
 		candidate_source, _ := cache_c_source_definitely_active_code_for_path_with_status(path,
 			allowed_paths, mut candidate_active_paths, mut candidate_macros, false)
-		candidate_identifiers := cache_native_static_identifiers(candidate_source)
+		candidate_identifiers := cache_native_implementation_identifiers(candidate_source)
 		if full_identifiers.keys().any(!candidate_identifiers[it]) {
 			implementation_macros[name] = true
 		}
@@ -2843,8 +2843,8 @@ fn cache_native_implementation_context_macros(path string, context []string, all
 	return implementation_macros
 }
 
-fn cache_native_static_identifiers(source string) map[string]bool {
-	mut identifiers, _ := modulecache.c_source_static_function_identifiers_with_status(source)
+fn cache_native_implementation_identifiers(source string) map[string]bool {
+	mut identifiers, _ := modulecache.c_source_function_identifiers_with_status(source)
 	variables, _ := modulecache.c_source_static_variable_identifiers(source)
 	for identifier, present in variables {
 		if present {

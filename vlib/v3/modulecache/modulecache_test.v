@@ -126,6 +126,13 @@ fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert !function_identifiers['helper_alias']
 }
 
+fn test_static_storage_detects_macro_generated_declarations() {
+	assert c_source_has_static_storage('#define DECL(name) static int name;\nDECL(shared_state)\n')
+	assert c_source_has_static_storage('#define STORAGE static\n#define DECL(name) STORAGE int name;\nDECL(shared_state)\n')
+	assert c_source_has_static_storage('#define LOCAL_FN(name) static int name(void)\nLOCAL_FN(helper) { return 1; }\n')
+	assert !c_source_has_static_storage('#define DECL(name) int name;\nDECL(shared_state)\n')
+}
+
 fn test_static_variable_identifiers_classify_attributes() {
 	identifiers, complete := c_source_static_variable_identifiers('__attribute__((availability(macos,introduced=14.0))) static const unsigned long DynamicStride = 42;
 static inline __attribute__((__always_inline__)) __attribute__((__overloadable__)) int simd_any(int value);

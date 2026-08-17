@@ -54,6 +54,31 @@ fn test_cache_native_public_include_strips_conventional_implementation_macros() 
 	assert !include.contains('#define SOKOL_FONTSTASH_IMPL')
 }
 
+fn test_cache_native_public_include_detects_external_function_implementation_macro() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_external_implementation_macro_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(dir, 'native.h')
+	os.write_file(header, 'typedef struct { int value; } V3LibType;
+#ifdef LIB_IMPL
+int v3_lib_value(void) { return 42; }
+#endif
+')!
+	real_header := os.real_path(header)
+	implementation_macros := cache_native_implementation_context_macros(real_header, [
+		'#define LIB_IMPL',
+	], {
+		real_header: true
+	}, []string{}, 'cc', pref.host_target())
+	assert implementation_macros['LIB_IMPL']
+	include := cache_native_public_include(real_header, ['#define LIB_IMPL'], implementation_macros)
+	assert include.contains('#undef LIB_IMPL')
+	assert !include.contains('#define LIB_IMPL')
+}
+
 fn test_c_source_file_scope_identifiers_excludes_function_bodies_and_directives() {
 	identifiers := c_source_file_scope_identifiers('#define SYSTEM_HELPER() ignored_helper()
 #define LOCAL_FN(name) static int name(void)

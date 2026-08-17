@@ -3222,6 +3222,9 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 	mut preprocessor_in_item := false
 	mut in_extern_c_block := false
 	type_declaration_macros := c_type_declaration_macro_names(prefix)
+	static_storage_macros := c_sources_macro_identifiers_referencing([prefix], {
+		'static': true
+	})
 	lines := prefix.split_into_lines()
 	for line_idx, raw_line in lines {
 		line := raw_line + '\n'
@@ -3335,9 +3338,11 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 			continue
 		}
 		declaration := item.str()
+		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
+		storage_macro_name := c_static_storage_macro_invocation_name(declaration, has_brace)
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
-		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
+			|| static_storage_macros[storage_macro_name]
 		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
 			|| type_declaration_macros[macro_name]
 		if types_only && macro_name.len > 0 && !item_declares_type {
@@ -3356,9 +3361,11 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 	}
 	if item.len > 0 {
 		declaration := item.str()
+		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
+		storage_macro_name := c_static_storage_macro_invocation_name(declaration, has_brace)
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
-		macro_name := c_declaration_macro_invocation_name(declaration, has_brace) or { '' }
+			|| static_storage_macros[storage_macro_name]
 		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
 			|| type_declaration_macros[macro_name]
 		if types_only && macro_name.len > 0 && !item_declares_type {
@@ -3572,6 +3579,17 @@ fn c_declaration_macro_invocation_name(item string, has_brace bool) ?string {
 		return none
 	}
 	return name
+}
+
+fn c_static_storage_macro_invocation_name(item string, has_brace bool) string {
+	if !has_brace {
+		return c_declaration_macro_invocation_name(item, false) or { '' }
+	}
+	brace := item.index_u8(`{`)
+	if brace < 0 {
+		return ''
+	}
+	return c_declaration_macro_invocation_name(item[..brace], false) or { '' }
 }
 
 fn c_function_block_closes_at_line_start(line string) bool {
