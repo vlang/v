@@ -734,6 +734,37 @@ fn test_cache_input_scan_tracks_native_header_macro_context() {
 	assert static_inputs['sample'] == [os.real_path(header)]
 }
 
+fn test_cache_input_scan_rejects_conditional_native_root_context() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_conditional_native_header_context_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(dir, 'implementation.h')
+	os.write_file(header, '#ifdef V3_HEADER_IMPLEMENTATION\nstatic int v3_header_state;\n#endif\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#if 0
+#define V3_HEADER_IMPLEMENTATION
+#endif
+#insert "implementation.h"
+')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
+	assert has_untracked
+	assert native_roots['sample'] == [os.real_path(header)]
+	assert native_contexts[os.real_path(header)] == [
+		'#define V3_HEADER_IMPLEMENTATION',
+	]
+}
+
 fn test_cache_input_scan_rejects_repeated_native_root_with_different_context() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_header_context_conflict_${os.getpid()}')
 	os.rmdir_all(dir) or {}

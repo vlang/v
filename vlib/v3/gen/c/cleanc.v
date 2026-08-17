@@ -1351,11 +1351,14 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	mut cur_file := ''
 	mut cur_file_is_program := false
 	mut context_directives := map[string][]string{}
+	mut conditional_context_mutations := map[string]bool{}
+	mut conditional_depth := 0
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
 			cur_file_is_program = program_files[cur_file] || program_files[os.real_path(cur_file)]
 			cur_module = ''
+			conditional_depth = 0
 			continue
 		}
 		if node.kind == .module_decl {
@@ -1372,13 +1375,24 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 		if !collect_modules[owner_module] {
 			continue
 		}
+		if node.kind == .directive {
+			if node.value in ['if', 'ifdef', 'ifndef'] {
+				conditional_depth++
+			} else if node.value == 'endif' && conditional_depth > 0 {
+				conditional_depth--
+			}
+		}
 		if node.kind == .directive && node.value in ['define', 'undef'] {
 			directive := c_preprocessor_directive_line(node.value, node.typ)
-			c_record_include_macro_definition(directive, false, mut include_macros, mut
+			is_conditional := conditional_depth > 0
+			c_record_include_macro_definition(directive, is_conditional, mut include_macros, mut
 				dynamic_include_macros)
 			mut module_context := context_directives[owner_module]
 			module_context << directive
 			context_directives[owner_module] = module_context
+			if is_conditional {
+				conditional_context_mutations[owner_module] = true
+			}
 			continue
 		}
 		if node.kind == .directive
@@ -1408,7 +1422,8 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 					real_path := os.real_path(path)
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
 						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module]) {
+						context_directives[owner_module],
+						!conditional_context_mutations[owner_module]) {
 						has_untracked_include = true
 					}
 				}
@@ -1438,7 +1453,8 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 					real_path := os.real_path(path)
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
 						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module]) {
+						context_directives[owner_module],
+						!conditional_context_mutations[owner_module]) {
 						has_untracked_include = true
 					}
 				}
@@ -1478,7 +1494,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, sorted_resolution_dirs, sorted_missing_resolution_paths, has_untracked_include
 }
 
-fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, mut native_root_contexts map[string][]string, owner_module string, real_path string, context []string) bool {
+fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, mut native_root_contexts map[string][]string, owner_module string, real_path string, context []string, context_is_replayable bool) bool {
 	mut roots := native_source_roots[owner_module]
 	if real_path !in roots {
 		roots << real_path
@@ -1491,9 +1507,15 @@ fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, m
 			}
 			return false
 		}
-		return true
+	} else {
+		native_root_contexts[real_path] = context.clone()
 	}
-	native_root_contexts[real_path] = context.clone()
+	if !context_is_replayable {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 module cache conditional native root context: module=${owner_module} path=${real_path}')
+		}
+		return false
+	}
 	return true
 }
 
