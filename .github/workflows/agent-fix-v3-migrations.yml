@@ -1,6 +1,9 @@
 name: Apply v3 migrations follow-up fixes
 
 on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [master]
   push:
     branches:
       - agent/fix-v3-migration-safety-and-rails-compat
@@ -9,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: agent-fix-v3-migrations
+  group: agent-fix-v3-migrations-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,14 +21,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out branch
+      - name: Check out source branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
           persist-credentials: true
 
       - name: Apply and commit fixes
         shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           base64 --decode .github/agent_fix_v3_migrations.py.gz.b64 | gzip --decompress --stdout > /tmp/agent_fix_v3_migrations.py
           python3 /tmp/agent_fix_v3_migrations.py
@@ -41,4 +47,4 @@ jobs:
             .github/agent_fix_v3_migrations.py.gz.b64 \
             .github/workflows/agent-fix-v3-migrations.yml
           git commit -m 'v3: harden ORM migrations and align Rails history'
-          git push origin HEAD:${GITHUB_REF_NAME}
+          git push origin HEAD:${TARGET_BRANCH}
