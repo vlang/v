@@ -21,7 +21,7 @@ const scoped_check_worker_batches = 96
 const scoped_check_serial_batches = 64
 // Keep one scheduled chunk per scoped worker. Finer arena batches within each
 // chunk release transient checker allocations without retaining extra shards.
-// (Re-verified 2026-08: oversubscribe=4 costs ~25ms here — the extra per-chunk
+// (Re-verified 2026-08: oversubscribe=2 costs ~3-5ms here — the extra per-chunk
 // fork/promote overhead outweighs the straggler absorption.)
 const check_chunk_oversubscribe = 1
 // The caller also runs the top-level signature pass while workers check bodies.
@@ -50,6 +50,12 @@ struct CollectIndexPrepArgs {
 	n    int
 }
 
+struct CollectDeclarationIndexArgs {
+	tc   voidptr
+	a    &flat.FlatAst
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = function declarations
+}
+
 fn collect_index_prep_thread(arg voidptr) voidptr {
 	a := unsafe { &CollectIndexPrepArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -66,6 +72,17 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 		else {
 			tc.reset_node_caches(a.n)
 		}
+	}
+	return unsafe { nil }
+}
+
+fn collect_declaration_index_thread(arg voidptr) voidptr {
+	a := unsafe { &CollectDeclarationIndexArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	match a.kind {
+		0 { tc.build_enclosing_generic_param_index(a.a) }
+		1 { tc.build_type_declaration_index(a.a) }
+		else { tc.build_fn_declaration_indexes(a.a) }
 	}
 	return unsafe { nil }
 }
@@ -108,6 +125,49 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	])
 	tc.collect_direct_parent_metadata(a)
 	tc.direct_parent_index_trusted = true
+	return true
+}
+
+// prepare_collect_declaration_indexes_parallel builds the three independent
+// read-only-AST declaration indexes on separate persistent lanes.
+fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
+	if !tc.building_v_fast || !tc.scope_parallel_check_workers
+		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(a.worker_pool)
+		|| a.worker_pool.size() < 2 || tc.top_level_idx.len < 2048 {
+		return false
+	}
+	mut args := [
+		CollectDeclarationIndexArgs{
+			tc:   voidptr(tc)
+			a:    a
+			kind: 0
+		},
+		CollectDeclarationIndexArgs{
+			tc:   voidptr(tc)
+			a:    a
+			kind: 1
+		},
+		CollectDeclarationIndexArgs{
+			tc:   voidptr(tc)
+			a:    a
+			kind: 2
+		},
+	]
+	a.worker_pool.run([
+		workers.Task{
+			run: collect_declaration_index_thread
+			arg: unsafe { voidptr(&args[0]) }
+		},
+		workers.Task{
+			run: collect_declaration_index_thread
+			arg: unsafe { voidptr(&args[1]) }
+		},
+		workers.Task{
+			run:        collect_declaration_index_thread
+			arg:        unsafe { voidptr(&args[2]) }
+			force_sync: true
+		},
+	])
 	return true
 }
 
@@ -842,7 +902,12 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				cost := i - prev_tl
+				span := i - prev_tl
+				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
+					tc.fn_check_costs[i]
+				} else {
+					span
+				}
 				items << CheckWorkItem{
 					fn_idx:   i
 					range_lo: prev_tl + 1
@@ -2687,6 +2752,19 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 }
 
 fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
+	// Scoped checkers use a private symbol interner. Translate each distinct
+	// spelling once per worker, then replay dependency edges with O(1) ids; the
+	// old per-edge name+intern path repeated the same locked hash probes across
+	// thousands of call sites.
+	mut symbol_remap := []SymbolId{}
+	if scoped && !isnil(w.symbols) {
+		worker_symbols := unsafe { w.symbols }
+		symbol_remap = []SymbolId{len: worker_symbols.names.len + 1}
+		for index, name in worker_symbols.names {
+			id, _ := tc.intern_scoped_symbol(name)
+			symbol_remap[index + 1] = id
+		}
+	}
 	for err in w.errors {
 		tc.errors << if scoped { clone_parallel_type_error(err) } else { err }
 	}
@@ -2734,11 +2812,36 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		tc.expr_type_set[idx] = true
 	}
 	for fn_idx, dependencies in w.direct_dependencies_by_fn {
+		if fn_idx !in tc.direct_dependencies_by_fn {
+			if scoped {
+				mut owned := []SymbolId{cap: dependencies.len}
+				for dependency in dependencies {
+					dependency_index := int(dependency)
+					if dependency_index > 0 && dependency_index < symbol_remap.len {
+						owned << symbol_remap[dependency_index]
+					} else {
+						id, _ := tc.intern_scoped_symbol(w.symbol_name(dependency))
+						owned << id
+					}
+				}
+				if owned.len > 0 {
+					tc.direct_dependencies_by_fn[fn_idx] = owned
+				}
+			} else if dependencies.len > 0 {
+				tc.direct_dependencies_by_fn[fn_idx] = dependencies
+			}
+			continue
+		}
 		mut merged := tc.direct_dependencies_by_fn[fn_idx] or { []SymbolId{} }
 		for dependency in dependencies {
 			owned_dependency := if scoped {
-				id, _ := tc.intern_symbol(w.symbol_name(dependency))
-				id
+				dependency_index := int(dependency)
+				if dependency_index > 0 && dependency_index < symbol_remap.len {
+					symbol_remap[dependency_index]
+				} else {
+					id, _ := tc.intern_scoped_symbol(w.symbol_name(dependency))
+					id
+				}
 			} else {
 				dependency
 			}

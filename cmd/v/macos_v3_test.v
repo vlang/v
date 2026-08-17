@@ -971,14 +971,17 @@ fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
 	assert !ownership_delegation_is_requested(true, false, true, 'macos')
 }
 
-fn test_ownership_forwarding_keeps_internal_define_out_of_target_args() {
+fn test_ownership_forwarding_adds_the_compile_time_define_once() {
 	prefs := &pref.Preferences{}
 	forwarded := v3_ownership_forwarded_args(prefs, ['-ownership', 'main.v'])
 	assert '-ownership' !in forwarded
-	assert 'ownership' !in forwarded
-	assert !forwarded.any(it in ['-d=ownership', '-downership'])
+	assert v3_args_have_ownership_define(forwarded)
 	explicit := v3_ownership_forwarded_args(prefs, ['-ownership', '-d', 'ownership', 'main.v'])
 	assert explicit.count(it == 'ownership') == 1
+	invalid_compact := v3_ownership_forwarded_args(prefs, ['-ownership', '-d=ownership', 'main.v'])
+	assert '-d=ownership' in invalid_compact
+	assert invalid_compact.count(it == '-d') == 1
+	assert invalid_compact.count(it == 'ownership') == 1
 }
 
 fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
@@ -994,8 +997,7 @@ fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 			'x86', 'main.v'])
 		assert macos_v3_internal_quiet_flag in forwarded
 		assert '-ownership' !in forwarded
-		assert 'ownership' !in forwarded
-		assert !forwarded.any(it in ['-d=ownership', '-downership'])
+		assert v3_args_have_ownership_define(forwarded)
 		assert forwarded.count(it == 'amd64') == 2
 		assert 'x86' !in forwarded
 
@@ -1008,7 +1010,7 @@ fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 	}
 }
 
-fn test_ownership_delegation_does_not_define_target_ownership() {
+fn test_ownership_delegation_defines_target_ownership() {
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_ownership_target_define_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -1020,20 +1022,18 @@ fn test_ownership_delegation_does_not_define_target_ownership() {
 	module_dir := os.join_path(root, 'marker')
 	os.mkdir_all(module_dir) or { panic(err) }
 	os.write_file(os.join_path(module_dir, 'marker.v'), 'module marker
-
-pub fn value() string {
-	return "ok"
-}
 ')!
 	os.write_file(os.join_path(module_dir, 'marker_d_ownership.v'), 'module marker
 
-$compile_error("ownership-suffixed target file was included")
+pub fn value() string {
+	return "ownership"
+}
 ')!
 	os.write_file(source, r'
 import marker
 
-$if ownership ? {
-	$compile_error("ownership define leaked into target")
+$if !ownership ? {
+	$compile_error("ownership define was not forwarded to target")
 }
 
 fn main() {
@@ -1044,7 +1044,7 @@ fn main() {
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-ownership', '-gc', 'none', '-o', output, source])
+	process.set_args(['-ownership', '-d=ownership', '-gc', 'none', '-o', output, source])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()
@@ -1056,7 +1056,7 @@ fn main() {
 	assert os.is_executable(output)
 	run := os.execute(os.quoted_path(output))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space() == 'ownership'
 }
 
 fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {

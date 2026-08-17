@@ -18,8 +18,13 @@ const max_parallel_transform_jobs = 7
 // Shared-base (clone-free) transform: workers share the master arrays and
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
-const max_shared_transform_jobs = 17
-const max_parallel_monomorph_jobs = 17
+const max_shared_transform_jobs = 18
+// Shared regions are cheap views over the same AST. Keep two chunks per lane so
+// the persistent queue can absorb heterogeneous-core and scheduler stragglers;
+// the caller consumes two synchronous chunks while each pool worker consumes
+// two queued chunks.
+const shared_transform_chunks_per_job = 2
+const max_parallel_monomorph_jobs = 18
 // Recycle scratch arenas throughout large self-hosting transforms.
 const scoped_transform_worker_batches = 16
 const scoped_transform_master_batches = 16
@@ -2158,9 +2163,20 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	} $else {
 		mut ttsw := time.new_stopwatch()
 		t.tc.freeze_type_cache_for_forks()
-		mut chunks := split_work_items_ex(items, n_jobs, false)
+		mut chunk_target := n_jobs * shared_transform_chunks_per_job
+		if chunk_target > items.len {
+			chunk_target = items.len
+		}
+		mut chunks := split_work_items_ex(items, chunk_target, false)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
+		// Pool.run queues asynchronous work before running synchronous tasks. Give
+		// the caller the same number of chunks as every persistent worker so its
+		// core remains useful across both scheduling waves.
+		mut sync_chunk_count := chunk_count - (n_jobs - 1) * shared_transform_chunks_per_job
+		if sync_chunk_count < 1 {
+			sync_chunk_count = 1
+		}
 		// Partition the reserved capacity into per-chunk append regions,
 		// proportional to chunk cost (the caller reserved ~2x the expected
 		// total growth for this pool).
@@ -2237,7 +2253,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			tasks << workers.Task{
 				run:        shared_chunk_thread
 				arg:        unsafe { voidptr(&args[ci]) }
-				force_sync: ci == 0 || fail == 'transform:all' || fail == 'transform:${helper_idx}'
+				force_sync: ci < sync_chunk_count || fail == 'transform:all'
+					|| fail == 'transform:${helper_idx}'
 			}
 		}
 		transform_worker_scope_leave(setup_scope)

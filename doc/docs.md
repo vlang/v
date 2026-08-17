@@ -7173,6 +7173,9 @@ V can bring in values at compile time from `-d ident=value` flag defines, passed
 the command line to the compiler. You can also pass `-d ident`, which will have the
 same meaning as passing `-d ident=true`.
 
+The `-ownership` compiler mode supplies `ownership` as a target-visible custom option.
+This enables `$if ownership ? {}` branches and includes `*_d_ownership.v` files.
+
 To get the value in your code, use: `$d('ident', default)`, where `default`
 can be `false` for booleans, `0` or `123` for i64 numbers, `0.0` or `113.0`
 for f64 numbers, `'a string'` for strings.

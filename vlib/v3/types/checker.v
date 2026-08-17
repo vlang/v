@@ -904,6 +904,7 @@ mut:
 	direct_parent_ids           []flat.NodeId
 	rewritten_parent_ids        []flat.NodeId
 	value_used_nodes            []bool
+	fn_check_costs              []int
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
 	// Immutable declaration indexes shared by checker workers.
@@ -1626,6 +1627,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
 	tc.rewritten_parent_ids = []flat.NodeId{}
 	tc.value_used_nodes = []bool{len: a.nodes.len}
+	tc.fn_check_costs = if tc.building_v_fast { []int{len: a.nodes.len} } else { []int{} }
 	tc.declaration_attributes = map[int][]string{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
@@ -1635,7 +1637,9 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 }
 
 fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
+	mut fn_cost := 0
 	for parent_idx, node in a.nodes {
+		fn_cost += 1 + int(node.children_count) * 2
 		if node.kind == .goto_stmt {
 			tc.has_goto_nodes = true
 		}
@@ -1650,6 +1654,13 @@ fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 				&& tc.direct_parent_ids[idx] == flat.empty_node {
 				tc.direct_parent_ids[idx] = flat.NodeId(parent_idx)
 			}
+		}
+		if node.kind == .fn_decl && parent_idx < tc.fn_check_costs.len {
+			tc.fn_check_costs[parent_idx] = fn_cost
+		}
+		if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl, .enum_decl,
+			.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
+			fn_cost = 0
 		}
 	}
 }
@@ -3013,9 +3024,11 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node) {
 // and the full-scan fallback in collect()).
 fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
-	tc.build_enclosing_generic_param_index(a)
-	tc.build_type_declaration_index(a)
-	tc.build_fn_declaration_indexes(a)
+	if !tc.prepare_collect_declaration_indexes_parallel(a) {
+		tc.build_enclosing_generic_param_index(a)
+		tc.build_type_declaration_index(a)
+		tc.build_fn_declaration_indexes(a)
+	}
 	if !tc.valid_diagnostic_fast {
 		tc.index_multiple_module_import_lines(a)
 	}
@@ -7852,6 +7865,17 @@ fn (tc &TypeChecker) intern_symbol(name string) (SymbolId, string) {
 	return symbols.intern(name)
 }
 
+// intern_scoped_symbol bypasses the pointer-identity hot cache when promoting
+// names from a worker arena. Those addresses can be reused after each scoped
+// batch, so retaining them in the cache could alias a later, different name.
+fn (tc &TypeChecker) intern_scoped_symbol(name string) (SymbolId, string) {
+	if isnil(tc.symbols) {
+		return SymbolId(0), name
+	}
+	mut symbols := unsafe { tc.symbols }
+	return symbols.intern(name)
+}
+
 // symbol_name resolves a checker symbol identity to its canonical name.
 pub fn (tc &TypeChecker) symbol_name(id SymbolId) string {
 	if isnil(tc.symbols) {
@@ -7859,6 +7883,21 @@ pub fn (tc &TypeChecker) symbol_name(id SymbolId) string {
 	}
 	mut symbols := unsafe { tc.symbols }
 	return symbols.name(id)
+}
+
+// frozen_symbol_name resolves an id after semantic checking has frozen the
+// compilation's symbol table. Post-check reachability runs concurrently only
+// with read-only transform preparation, so it does not need the interner lock.
+pub fn (tc &TypeChecker) frozen_symbol_name(id SymbolId) string {
+	if isnil(tc.symbols) {
+		return ''
+	}
+	symbols := unsafe { tc.symbols }
+	index := int(id) - 1
+	if index < 0 || index >= symbols.names.len {
+		return ''
+	}
+	return symbols.names[index]
 }
 
 // canonical_symbol returns the compilation-owned canonical spelling of name.

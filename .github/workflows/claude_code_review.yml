@@ -48,7 +48,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Claude Code review
-        uses: anthropics/claude-code-action@v1.0.191
+        uses: anthropics/claude-code-action@v1.0.193
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
