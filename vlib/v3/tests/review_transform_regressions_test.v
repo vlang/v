@@ -116,6 +116,33 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_sum_equality_uses_canonical_struct_field_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'sum_equality_canonical_struct_field_types', '-building-v', 'import v.token
+
+struct Box {
+	pos token.Pos
+}
+
+type Value = Box | int
+
+fn main() {
+	left := Value(Box{
+		pos: token.Pos{
+			line_nr: 1
+		}
+	})
+	right := Value(Box{
+		pos: token.Pos{
+			line_nr: 1
+		}
+	})
+	println(left == right)
+}
+')
+	assert out == 'true'
+}
+
 fn test_map_interface_equality_keeps_typed_map_get() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_interface_equality_typed_get', 'interface Value {
@@ -330,6 +357,10 @@ fn write_project_file(root string, rel string, src string) {
 }
 
 fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
+	return run_good_project_with_flags(v3_bin, name, '', files, input)
+}
+
+fn run_good_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -340,7 +371,7 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${input_path} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.execute(good_bin)
@@ -792,6 +823,17 @@ fn test_imported_module_generic_function_value_prefers_local_declaration() {
 		'main.v': 'module main\n\nimport a\n\nfn pick[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\timported := a.make_picker()\n\tlocal := pick[int]\n\tprintln(int_str(imported(1)))\n\tprintln(int_str(local(1)))\n}\n'
 	}, 'main.v')
 	assert out == '2\n101'
+}
+
+fn test_building_v_function_values_keep_plain_and_module_helpers() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project_with_flags(v3_bin, 'building_v_function_value_reachability',
+		'-building-v', {
+		'v.mod':           "Module { name: 'building_v_function_value_reachability' }\n"
+		'worker/worker.v': 'module worker\n\nfn local_helper() int {\n\treturn 19\n}\n\nfn apply(callback fn () int) int {\n\treturn callback()\n}\n\npub fn local_value() int {\n\treturn apply(local_helper)\n}\n\npub fn selected_helper() int {\n\treturn 23\n}\n'
+		'main.v':          'module main\n\nimport worker\n\nfn apply(callback fn () int) int {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(worker.local_value() + apply(worker.selected_helper))\n}\n'
+	}, 'main.v')
+	assert out == '42'
 }
 
 fn test_imported_selector_generic_function_value_is_specialized() {
@@ -5671,6 +5713,42 @@ fn main() {
 }
 ')
 	assert out == 'integer'
+}
+
+fn test_nested_match_smartcast_declaration_uses_nearest_variant() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'nested_match_smartcast_nearest_variant', '-building-v', 'struct Assoc {
+	exprs []Expr
+}
+
+struct Empty {}
+struct Other {}
+
+type Expr = Assoc | Empty
+type Node = Expr | Other
+
+fn child_count(node Node) int {
+	if node is Expr {
+		match node {
+			Assoc {
+				assoc := node
+				return assoc.exprs.len
+			}
+			Empty {
+				return 0
+			}
+		}
+	}
+	return 0
+}
+
+fn main() {
+	println(child_count(Expr(Assoc{
+		exprs: [Expr(Empty{})]
+	})))
+}
+')
+	assert out == '1'
 }
 
 fn test_building_v_keeps_valid_match_and_filtered_array_expression_types() {

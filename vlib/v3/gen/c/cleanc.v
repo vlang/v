@@ -18526,7 +18526,10 @@ fn (mut g FlatGen) json_number_token_helpers() {
 }
 
 fn (mut g FlatGen) filelock_compat_decls() {
-	if !g.libc_compat_fns['filelock'] {
+	if !g.libc_compat_fns['filelock'] && !g.used_fn_contains('C.v_filelock_lock')
+		&& !g.used_fn_contains('C.v_filelock_unlock')
+		&& !g.used_fn_contains_in_module('FileLock.lock_fd', 'filelock')
+		&& !g.used_fn_contains_in_module('FileLock.close_lock', 'filelock') {
 		return
 	}
 	g.writeln('#ifndef V_OS_FILELOCK_HELPERS_H')

@@ -3208,7 +3208,9 @@ fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs 
 	next_seen << struct_type
 	mut eq := flat.empty_node
 	for field in info.fields {
-		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		field_type := t.lookup_struct_field_type(struct_type, field.name) or {
+			if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		}
 		lhs_field := t.make_selector(lhs, field.name, field_type)
 		rhs_field := t.make_selector(rhs, field.name, field_type)
 		field_eq := if t.membership_type_is_pointer(field_type) {
