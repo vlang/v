@@ -2078,10 +2078,10 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
 			}
 		}
-		// Helper forks share the current signature-map backing arrays. The master
-		// participates in the transform as chunk 0, so make its next write detach
+		// Helper forks share the current signature and struct-map backing arrays.
+		// The master participates as chunk 0, so make its next metadata write detach
 		// instead of reallocating storage while helpers are reading it.
-		t.mark_parallel_signature_maps_shared()
+		t.mark_parallel_worker_maps_shared()
 		t.temp_counter = 0
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		mut tasks := []workers.Task{cap: chunk_count}
@@ -2105,11 +2105,13 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	}
 }
 
-fn (mut t Transformer) mark_parallel_signature_maps_shared() {
+fn (mut t Transformer) mark_parallel_worker_maps_shared() {
 	t.signature_maps_shared = true
+	t.struct_maps_shared = true
 	if !isnil(t.tc) {
 		mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
 		master_tc.transform_signature_maps_shared = true
+		master_tc.transform_struct_maps_shared = true
 	}
 }
 

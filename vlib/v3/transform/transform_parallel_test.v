@@ -113,17 +113,21 @@ fn test_merge_worker_signatures_updates_checker_method_suffix_index() {
 	assert master.tc.fn_param_types_for_name('open') == params
 }
 
-fn test_parallel_master_detaches_signature_maps_before_writing() {
+fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 	master.fn_ret_types['main.base'] = 'int'
 	tc.fn_param_types['main.base'] = [types.Type(types.int_)]
+	master.structs['main.Base'] = StructInfo{
+		name: 'main.Base'
+	}
+	tc.structs['main.Base'] = []types.StructField{}
 
 	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
 	worker_tc := tc.fork_for_parallel_transform(worker_ast)
 	worker := master.fork_worker(worker_ast, worker_tc)
-	master.mark_parallel_signature_maps_shared()
+	master.mark_parallel_worker_maps_shared()
 
 	master.set_fn_ret_type('main.master_generated', 'bool')
 	mut master_tc := unsafe { &types.TypeChecker(voidptr(master.tc)) }
@@ -136,6 +140,12 @@ fn test_parallel_master_detaches_signature_maps_before_writing() {
 	assert 'main.master_generated' !in worker.fn_ret_types
 	assert 'main.master_generated' in master.tc.fn_param_types
 	assert 'main.master_generated' !in worker.tc.fn_param_types
+
+	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]string{})
+	assert 'CaptureContext' in master.structs
+	assert 'CaptureContext' !in worker.structs
+	assert 'CaptureContext' in master.tc.structs
+	assert 'CaptureContext' !in worker.tc.structs
 }
 
 fn test_transform_ast_clone_preserves_template_metadata() {
