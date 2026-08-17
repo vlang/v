@@ -1399,7 +1399,9 @@ fn (mut g FlatGen) preseed_libc_compat_fns() {
 		g.libc_compat_fns['gettid'] = true
 	}
 	if refs['C.v_filelock_lock'] || refs['C.v_filelock_unlock'] || refs['v_filelock_lock']
-		|| refs['v_filelock_unlock'] || g.used_fn_contains_in_module('FileLock.lock_fd', 'filelock')
+		|| refs['v_filelock_unlock']
+		|| g.used_fn_contains_in_module('FileLock.lock_handle', 'filelock')
+		|| g.used_fn_contains_in_module('FileLock.lock_fd', 'filelock')
 		|| g.used_fn_contains_in_module('FileLock.close_lock', 'filelock') {
 		g.libc_compat_fns['filelock'] = true
 	}
