@@ -1374,6 +1374,102 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
 }
 
+fn test_incomplete_static_variable_scan_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_incomplete_static_variable_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/state.h', 'static int v3_recognized_static_state;
+static int __attribute__((unused)) v3_unclassified_static_state;
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/state.h"
+
+pub fn marker() {}
+')
+	write_module_cache_file(root, 'sibling/sibling.v', 'module sibling
+
+import owner
+
+__global C.v3_unclassified_static_state int
+
+pub fn value() int {
+	owner.marker()
+	return C.v3_unclassified_static_state
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import sibling
+
+fn main() {
+	println(sibling.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '0'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
+}
+
+fn test_objective_c_native_source_uses_objective_c_macros_for_cache_dependencies() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_objective_c_macros_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	value_header := os.join_path(root, 'owner/value.h')
+	write_module_cache_file(root, 'owner/value.h', '#define V3_OBJC_CACHE_VALUE 41\n')
+	write_module_cache_file(root, 'owner/implementation.m', '#ifdef __OBJC__
+#include "value.h"
+#endif
+
+int v3_objc_cache_value(void) {
+	return V3_OBJC_CACHE_VALUE;
+}
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#include "@DIR/implementation.m"
+
+fn C.v3_objc_cache_value() int
+
+pub fn value() int {
+	return C.v3_objc_cache_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import owner
+
+fn main() {
+	println(owner.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+
+	os.write_file(value_header, '#define V3_OBJC_CACHE_VALUE 42\n')!
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_macro_declared_static_helper_used_by_sibling_disables_module_cache_split() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_macro_static_helper_${os.getpid()}')

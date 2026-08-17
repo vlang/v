@@ -2421,8 +2421,10 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		cache_input_modules[module_name] = true
 	}
 	cache_input_modules['main'] = true
+	native_inputs_need_objective_c := cgen.cache_native_inputs_need_objective_c(a, prefs.vroot,
+		user_c_flags, prefs.c99, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
-		prefs.ccompiler, prefs.target)
+		prefs.ccompiler, prefs.target, native_inputs_need_objective_c)
 	external_inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
 		module_cache_source_path_set(user_files), compiler_macros,
@@ -2469,7 +2471,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	return !has_untracked_c_include && can_scope_static_inputs && can_extract_native_types
 }
 
-fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target) (map[string]string, bool) {
+fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_need_objective_c bool) (map[string]string, bool) {
 	path := os.join_path(os.vtmp_dir(), 'v3_compiler_macros_${tempname.unique_token()}.c')
 	defer {
 		os.rm(path) or {}
@@ -2477,8 +2479,11 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 	os.write_file(path, '') or { return map[string]string{}, false }
 	mut args := c_compiler_target_args(target, false) or { return map[string]string{}, false }
 	args << c_object_compile_flags(flags)
-	args << ['-dM', '-E', '-x', if c_flags_need_objective_c(flags) { 'objective-c' } else { 'c' },
-		path]
+	args << ['-dM', '-E', '-x', if native_inputs_need_objective_c || c_flags_need_objective_c(flags) {
+		'objective-c'
+	} else {
+		'c'
+	}, path]
 	result := cmdexec.run(ccompiler, args)
 	if result.exit_code != 0 {
 		if os.getenv('V3_CACHE_TRACE') != '' {
@@ -10972,11 +10977,15 @@ fn cache_static_input_is_private_to_module(a &flat.FlatAst, state &V3ModuleCache
 		preprocessed := cache_preprocessed_native_input(path, state.native_root_contexts[os.real_path(path)] or {
 			[]string{}
 		}, c_flags, ccompiler, target) or { return false }
-		header_identifiers, function_identifiers_complete =
-			modulecache.c_source_static_function_identifiers_with_status(preprocessed)
-		static_identifiers, static_identifiers_complete =
-			modulecache.c_source_static_variable_identifiers(preprocessed)
 		if !function_identifiers_complete {
+			header_identifiers, function_identifiers_complete =
+				modulecache.c_source_static_function_identifiers_with_status(preprocessed)
+		}
+		if !static_identifiers_complete {
+			static_identifiers, static_identifiers_complete =
+				modulecache.c_source_static_variable_identifiers(preprocessed)
+		}
+		if !function_identifiers_complete || !static_identifiers_complete {
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 module cache incomplete preprocessed static identifier scan: functions=${function_identifiers_complete} variables=${static_identifiers_complete} path=${path}')
 			}
@@ -10988,7 +10997,7 @@ fn cache_static_input_is_private_to_module(a &flat.FlatAst, state &V3ModuleCache
 			}
 		}
 		for identifier in static_identifiers.keys() {
-			if !source.contains(identifier) {
+			if !file_scope_identifiers[identifier] {
 				static_identifiers.delete(identifier)
 			}
 		}
@@ -11019,8 +11028,12 @@ fn cache_preprocessed_native_input(path string, context []string, c_flags []stri
 	unsafe { source.free() }
 	mut args := c_compiler_target_args(target, false) or { return none }
 	args << c_object_compile_flags(c_flags)
-	args << ['-E', '-P', '-x', if c_flags_need_objective_c(c_flags) { 'objective-c' } else { 'c' },
-		wrapper]
+	args << ['-E', '-P', '-x', if c_flags_need_objective_c(c_flags)
+		|| cgen.cache_native_input_path_needs_objective_c(path, c_flags, false, target) {
+		'objective-c'
+	} else {
+		'c'
+	}, wrapper]
 	result := cmdexec.run(ccompiler, args)
 	if result.exit_code != 0 {
 		if os.getenv('V3_CACHE_TRACE') != '' {

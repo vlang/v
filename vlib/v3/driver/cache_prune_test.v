@@ -128,6 +128,15 @@ fn test_cache_c_source_definitely_active_code_uses_target_predefined_macros() {
 	assert !disabled.contains('apple_api')
 }
 
+fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {
+	$if macos {
+		macros, complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
+			pref.host_target(), true)
+		assert complete
+		assert '__OBJC__' in macros
+	}
+}
+
 fn test_cache_c_source_definitely_active_code_evaluates_compound_known_guards() {
 	source := '#if FOO && BAR\nstatic int compound_api(void) { return 1; }\n#else\nint fallback_api(void) { return 2; }\n#endif\n'
 	mut enabled_macros := cache_local_c_flag_macros(['-DFOO=1', '-DBAR=1'])

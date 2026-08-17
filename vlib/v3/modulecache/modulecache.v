@@ -2747,7 +2747,7 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 			in_objc_declaration = true
 			continue
 		}
-		if trimmed.starts_with('@') {
+		if brace_depth == 0 && trimmed.starts_with('@') {
 			continue
 		}
 		if brace_depth == 0 || !item_is_function {
@@ -2756,7 +2756,7 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 		delta, _, next_comment, last_code, first_open := c_line_braces(raw_line, in_block_comment)
 		in_block_comment = next_comment
 		if brace_depth == 0 && first_open >= 0 {
-			declaration := pending.str()
+			declaration := pending.after(0)
 			current_line_start := declaration.len - raw_line.len - 1
 			head :=
 				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
@@ -2771,6 +2771,38 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 				item_has_brace = false
 				item_is_function = false
 			}
+			continue
+		}
+		if brace_depth == 0 && item_has_brace && last_code == `}` {
+			declaration := pending.after(0)
+			if block := c_extern_c_block(declaration) {
+				nested_identifiers, nested_complete :=
+					c_source_static_variable_identifiers(block.inner)
+				for identifier, present in nested_identifiers {
+					if present {
+						identifiers[identifier] = true
+					}
+				}
+				complete = complete && nested_complete
+				pending.clear()
+				item_has_brace = false
+				continue
+			}
+			clean_declaration := trim_leading_c_comments(declaration.trim_space())
+			brace := clean_declaration.index_u8(`{`)
+			if brace >= 0 && !c_has_static_storage_class(clean_declaration[..brace]) {
+				pending.clear()
+				item_has_brace = false
+				continue
+			}
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				trace_declaration := declaration.trim_space().replace('\n', ' ')
+				eprintln('  V3 module cache incomplete static braced item: ${trace_declaration[..int_min(trace_declaration.len,
+					400)]}')
+			}
+			complete = false
+			pending.clear()
+			item_has_brace = false
 			continue
 		}
 		if brace_depth > 0 || last_code != `;` {
@@ -2788,6 +2820,10 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 		} else if c_declaration_item_has_static_storage(declaration, item_has_brace) {
 			declaration_identifiers := c_static_variable_declaration_identifiers(declaration)
 			if declaration_identifiers.len == 0 {
+				if os.getenv('V3_CACHE_TRACE') != '' {
+					eprintln('  V3 module cache incomplete static variable declaration: ${declaration.trim_space().replace('\n',
+						' ')}')
+				}
 				complete = false
 			}
 			for identifier in declaration_identifiers {
@@ -2803,7 +2839,8 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 }
 
 fn c_static_variable_declaration_identifiers(declaration string) []string {
-	clean := trim_leading_c_comments(declaration.trim_space()).trim_right(';').trim_space()
+	mut clean := trim_leading_c_comments(declaration.trim_space()).trim_right(';').trim_space()
+	clean = c_declarator_without_leading_attributes(clean) or { return [] }
 	if clean.len == 0 {
 		return []
 	}
@@ -3645,6 +3682,12 @@ fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 	}
 	if !has_brace {
 		mut declaration_head := clean.trim_right(';').trim_space()
+		if c_function_declaration_identifier(declaration_head) != none {
+			return false
+		}
+		declaration_head = c_declarator_without_leading_attributes(declaration_head) or {
+			return true
+		}
 		for suffix in ['__attribute__', '__declspec', '__asm__', '__asm', 'asm'] {
 			if pos := c_declaration_annotation_index(declaration_head, suffix) {
 				declaration_head = declaration_head[..pos].trim_space()

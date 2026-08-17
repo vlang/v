@@ -1405,13 +1405,12 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				}
 				is_source_input := c_include_arg_is_source_file(include_arg)
 				if is_source_input || node.value == 'insert' {
-					mut roots := native_source_roots[owner_module]
 					real_path := os.real_path(path)
-					if real_path !in roots {
-						roots << real_path
+					if !c_add_cache_native_source_root(mut native_source_roots, mut
+						native_root_contexts, owner_module, real_path,
+						context_directives[owner_module]) {
+						has_untracked_include = true
 					}
-					native_source_roots[owner_module] = roots
-					native_root_contexts[real_path] = context_directives[owner_module].clone()
 				}
 				mut active_paths := map[string]bool{}
 				mut files := []string{}
@@ -1436,13 +1435,12 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				}
 				if !is_source_input && include_arg.trim_space().starts_with('"')
 					&& files.any(active_static_storage_paths[owner_module + '\x00' + os.real_path(it)]) {
-					mut roots := native_source_roots[owner_module]
 					real_path := os.real_path(path)
-					if real_path !in roots {
-						roots << real_path
-						native_source_roots[owner_module] = roots
+					if !c_add_cache_native_source_root(mut native_source_roots, mut
+						native_root_contexts, owner_module, real_path,
+						context_directives[owner_module]) {
+						has_untracked_include = true
 					}
-					native_root_contexts[real_path] = context_directives[owner_module].clone()
 				}
 				break
 			}
@@ -1478,6 +1476,73 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	mut sorted_missing_resolution_paths := missing_resolution_paths.keys()
 	sorted_missing_resolution_paths.sort()
 	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, sorted_resolution_dirs, sorted_missing_resolution_paths, has_untracked_include
+}
+
+fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, mut native_root_contexts map[string][]string, owner_module string, real_path string, context []string) bool {
+	mut roots := native_source_roots[owner_module]
+	if real_path !in roots {
+		roots << real_path
+		native_source_roots[owner_module] = roots
+	}
+	if real_path in native_root_contexts {
+		if native_root_contexts[real_path] != context {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache incompatible native root contexts: module=${owner_module} path=${real_path}')
+			}
+			return false
+		}
+		return true
+	}
+	native_root_contexts[real_path] = context.clone()
+	return true
+}
+
+// cache_native_inputs_need_objective_c reports whether cgen will implicitly
+// compile the generated translation unit as Objective-C because of a source
+// directive rather than an explicit compiler flag.
+pub fn cache_native_inputs_need_objective_c(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, target pref.Target) bool {
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut cur_file := ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value !in ['include', 'insert'] || node.typ.len == 0 {
+			continue
+		}
+		include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
+		if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+			continue
+		}
+		if c_include_arg_is_source_file(include_arg) {
+			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				if cache_native_input_path_needs_objective_c(path, c_flags, c99_mode, target) {
+					return true
+				}
+			}
+			continue
+		}
+		if header := c_inline_header_text(include_arg, vroot, cur_file, include_dirs, false) {
+			if c_header_text_needs_objective_c_for_target(header.text, c_flags, c99_mode, target) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// cache_native_input_path_needs_objective_c reports whether a native input
+// must use the Objective-C preprocessor language selected by cgen.
+pub fn cache_native_input_path_needs_objective_c(path string, c_flags []string, c99_mode bool, target pref.Target) bool {
+	if !os.is_file(path) {
+		return false
+	}
+	if path.ends_with('.m') {
+		return true
+	}
+	text := os.read_file(path) or { return false }
+	return c_header_text_needs_objective_c_for_target(text, c_flags, c99_mode, target)
 }
 
 // cache_c_flag_input_files returns forced include/macro files whose contents

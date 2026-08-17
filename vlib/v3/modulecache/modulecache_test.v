@@ -126,6 +126,14 @@ fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert !function_identifiers['helper_alias']
 }
 
+fn test_static_variable_identifiers_classify_attributes() {
+	identifiers, complete := c_source_static_variable_identifiers('__attribute__((availability(macos,introduced=14.0))) static const unsigned long DynamicStride = 42;
+static inline __attribute__((__always_inline__)) __attribute__((__overloadable__)) int simd_any(int value);
+')
+	assert complete
+	assert identifiers.keys() == ['DynamicStride']
+}
+
 fn test_static_variable_identifiers_ignore_preprocessor_directives() {
 	identifiers, complete := c_source_static_variable_identifiers('/* declaration guard */
 #if defined(ENABLE_STATE) \\
@@ -143,6 +151,42 @@ fn test_static_variable_identifiers_ignore_objc_declarations() {
 @end
 @protocol ForwardDeclaration;
 static int state;
+')
+	assert complete
+	assert identifiers.keys() == ['state']
+}
+
+fn test_static_variable_identifiers_track_objc_function_braces() {
+	identifiers, complete := c_source_static_variable_identifiers('static void helper(void) {
+	@autoreleasepool {
+		static int local_state;
+		if (local_state) {
+			local_state++;
+		}
+	}
+}
+static int file_state;
+')
+	assert complete
+	assert identifiers.keys() == ['file_state']
+}
+
+fn test_static_variable_identifiers_keep_anonymous_aggregate_declarator() {
+	identifiers, complete := c_source_static_variable_identifiers('static struct {
+	const char *str;
+	int code;
+} keymap[] = {
+	{"Enter", 1},
+};
+')
+	assert complete
+	assert identifiers.keys() == ['keymap']
+}
+
+fn test_static_variable_identifiers_scan_extern_c_block() {
+	identifiers, complete := c_source_static_variable_identifiers('extern "C" {
+static int state;
+}
 ')
 	assert complete
 	assert identifiers.keys() == ['state']
