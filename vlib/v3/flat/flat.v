@@ -348,6 +348,15 @@ pub fn (mut a FlatAst) intern_text(value string) (TextId, string) {
 	return id, a.text_values.last()
 }
 
+// intern_texts_from replays the source AST's compact text table into a.
+// The source table is already ordered by first occurrence, so this preserves
+// deterministic text identities while avoiding a second walk over every node.
+pub fn (mut a FlatAst) intern_texts_from(source &FlatAst) {
+	for value in source.text_values {
+		a.intern_text(value)
+	}
+}
+
 // reserve_transform_texts keeps canonical text-table backing in the
 // compilation arena before a disposable transform scope starts.
 pub fn (mut a FlatAst) reserve_transform_texts(headroom int) {

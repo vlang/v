@@ -396,6 +396,38 @@ fn main() {
 	assert used['new_map']
 }
 
+// test_prepared_markused_scans_runtime_helpers_after_semantic_check validates
+// that declaration preparation never captures incomplete semantic results.
+fn test_prepared_markused_scans_runtime_helpers_after_semantic_check() {
+	src := os.join_path(os.temp_dir(), 'v3_markused_prepared_runtime_helpers.v')
+	os.write_file(src, '
+fn maybe_map() ?map[string]int {
+	return none
+}
+
+fn main() {
+	m := maybe_map() or { return }
+	_ := m
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(src)
+	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
+	tc.collect(a)
+	tc.diagnostic_files[src] = true
+	prepared_thread := spawn markused.prepare_markused_declarations(a, &tc, true)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	mut prepared := prepared_thread.wait()
+	used := markused.mark_used_without_generic_detection_prepared(a, &tc, mut prepared)
+	prepared.release()
+	assert used['new_map']
+}
+
 fn test_self_typed_default_collects_explicit_initializer_calls() {
 	used := mark_used_source('self_typed_default_explicit_call', '
 interface Value {}

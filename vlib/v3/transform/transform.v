@@ -389,6 +389,8 @@ mut:
 	parallel_monomorph_scan_start      int
 	parallel_monomorph_scan_end        int
 	fn_scan_costs                      []int
+	literal_fn_decls                   []int
+	literal_fn_decls_ready             bool
 	parallel_monomorph_struct_specs    map[string]string
 	parallel_monomorph_sum_specs       map[string]GenericSpecContext
 	generic_call_spec_cache            map[int]GenericCallSpec
@@ -826,6 +828,67 @@ pub:
 
 // --- entry point ---
 
+// PreparedSelfhostTransform owns the read-only transformer indexes built while
+// markused walks the same checked AST on the driver thread.
+@[heap]
+pub struct PreparedSelfhostTransform {
+mut:
+	transformer Transformer
+	scope       voidptr
+	ready       bool
+}
+
+// take_scope transfers ownership of the preparation arena to the driver. The
+// arena can back lowered AST text, so it must remain alive through codegen.
+pub fn (mut prepared PreparedSelfhostTransform) take_scope() voidptr {
+	scope := prepared.scope
+	prepared.scope = unsafe { nil }
+	return scope
+}
+
+// prepare_selfhost_transform builds the immutable transform indexes on a
+// helper-local arena. The caller keeps the returned value alive until
+// transform_prepared_selfhost_owned consumes it.
+pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enabled bool) &PreparedSelfhostTransform {
+	mut prepared := &PreparedSelfhostTransform{}
+	if !enabled {
+		return prepared
+	}
+	scope := transform_worker_scope_begin(true)
+	prep_tc := tc.fork_for_parallel_transform(a)
+	mut t := new_transformer_view(a, prep_tc, map[string]bool{})
+	configure_transformer(mut t, true, true, true, true, false, unsafe { nil })
+	t.prepare_with_pre_scans()
+	// This whole-AST scan is independent of reachability and otherwise leaves
+	// the persistent worker pool idle at the start of transform.
+	t.collect_exclusive_closure_return_fns()
+	prepared = &PreparedSelfhostTransform{
+		transformer: t
+		scope:       scope
+		ready:       true
+	}
+	transform_worker_scope_leave(scope)
+	return prepared
+}
+
+// transform_prepared_selfhost_owned completes a self-host transform whose
+// immutable indexes were prepared concurrently with markused.
+pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform, mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
+	if !prepared.ready {
+		return transform_with_used_opt_config_scoped_workers_checked_impl(mut a, tc, used_fns,
+			true, true, true, true, true, stage_scope)
+	}
+	mut t := &prepared.transformer
+	t.a = unsafe { &a }
+	t.tc = unsafe { tc }
+	t.used_fns = used_fns.clone()
+	configure_transformer(mut t, true, true, true, true, true, stage_scope)
+	augmented, was_parallel, errors, owned_base_nodes, retained_regions := transform_after_prepare(mut t, mut
+		a, used_fns, true, true)
+	prepared.ready = false
+	return augmented, was_parallel, errors, owned_base_nodes, retained_regions
+}
+
 // transform supports transform handling for transform.
 pub fn transform(mut a flat.FlatAst, tc &types.TypeChecker) {
 	transform_with_used(mut a, tc, map[string]bool{})
@@ -932,6 +995,14 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
 	mut impl_sw := time.new_stopwatch()
 	mut t := new_transformer(mut a, tc, used_fns)
+	configure_transformer(mut t, want_parallel, skip_generics, scope_parallel_workers, building_v,
+		retain_worker_results, stage_scope)
+	t.prepare_with_pre_scans()
+	t.timing_profile('  [ttime] new+prepare        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	return transform_after_prepare(mut t, mut a, used_fns, want_parallel, skip_generics)
+}
+
+fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) {
 	t.skip_generics = skip_generics
 	t.building_v = building_v
 	t.memo_node_types = building_v && os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
@@ -966,9 +1037,10 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	if scope_parallel_workers {
 		t.scoped_base_nodes = t.a.nodes.len
 	}
-	t.prepare_with_pre_scans()
-	t.timing_profile('  [ttime] new+prepare        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	impl_sw.restart()
+}
+
+fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, used_fns map[string]bool, want_parallel bool, skip_generics bool) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
+	mut impl_sw := time.new_stopwatch()
 	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
 		reserve_parallel_transform_ast(mut a, skip_generics)
@@ -976,7 +1048,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	t.timing_profile('  [ttime] reflect+reserve    ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	impl_sw.restart()
 	base_node_count := t.a.nodes.len
-	if scope_parallel_workers {
+	if t.scope_parallel_workers {
 		t.scoped_base_nodes = base_node_count
 	}
 	t.transformed_fns = []bool{len: t.a.nodes.len}
@@ -989,7 +1061,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	// non-generic programs too: a call on a narrowed sum-type variant can become a
 	// concrete primitive method only after transform.
 	mut late_names := newly_used_fn_names(used_fns, t.used_fns)
-	if !building_v {
+	if !t.building_v {
 		// Interface implementers can become reachable while their interface calls
 		// are transformed. Include them in the type-aware call scan so dependencies
 		// from their already-transformed bodies are queued too.
@@ -3207,7 +3279,11 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	// contains a function literal (the only construct that lifts new top-level
 	// declarations and mutates the shared TypeChecker). Collect the remaining,
 	// closure-free functions as parallelizable work items.
-	literal_decls := t.collect_literal_fn_decls(t.a.nodes.len)
+	literal_decls := if t.literal_fn_decls_ready {
+		t.literal_fn_decls
+	} else {
+		t.collect_literal_fn_decls(t.a.nodes.len)
+	}
 	t.timing_profile('  [ttime] literal_decls      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ttsw.restart()
 	pure_items := t.transform_serial_then_collect_pure(literal_decls)
@@ -4642,7 +4718,17 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 	mut candidates := []LateFnCandidate{}
 	mut scan_file := ''
 	mut scan_module := ''
-	for i in 0 .. limit {
+	late_scan_ids := if t.building_v && t.tc.top_level_idx.len > 0 {
+		t.tc.top_level_idx
+	} else {
+		[]int{}
+	}
+	scan_count := if late_scan_ids.len > 0 { late_scan_ids.len } else { limit }
+	for scan_pos in 0 .. scan_count {
+		i := if late_scan_ids.len > 0 { late_scan_ids[scan_pos] } else { scan_pos }
+		if i < 0 || i >= limit {
+			continue
+		}
 		node := t.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
@@ -5675,8 +5761,36 @@ fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 		t.cur_module = old_module
 	}
 	mut module_name := ''
+	mut literal_pending := false
+	mut span_cost := 0
+	t.literal_fn_decls = []int{cap: 64}
+	t.fn_scan_costs = []int{len: t.a.nodes.len}
 	for idx in 0 .. t.a.nodes.len {
 		node := t.a.nodes[idx]
+		span_cost += match node.kind {
+			.call, .struct_init { 8 }
+			.selector { 6 }
+			.assign, .decl_assign, .selector_assign, .index_assign { 5 }
+			.array_literal, .array_init, .map_init, .fn_literal, .lambda_expr, .string_interp { 4 }
+			.index, .if_expr, .match_stmt, .for_stmt, .for_in_stmt, .select_stmt { 3 }
+			.infix, .cast_expr, .as_expr, .or_expr, .return_stmt { 2 }
+			else { 1 }
+		}
+		if node.kind in [.fn_literal, .lambda_expr] {
+			literal_pending = true
+		} else if node.kind == .fn_decl {
+			if literal_pending {
+				t.literal_fn_decls << idx
+			}
+			literal_pending = false
+			t.fn_scan_costs[idx] = span_cost
+		} else if node.kind in [.const_decl, .global_decl] {
+			literal_pending = false
+		}
+		if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl, .enum_decl,
+			.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
+			span_cost = 0
+		}
 		if node.kind == .module_decl {
 			module_name = node.value
 			t.cur_module = module_name
@@ -5698,6 +5812,7 @@ fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 			t.exclusive_closure_return_fns['${module_name}.${node.value}'] = true
 		}
 	}
+	t.literal_fn_decls_ready = true
 }
 
 fn (t &Transformer) fn_decl_returns_fn_pointer(node flat.Node, module_name string) bool {

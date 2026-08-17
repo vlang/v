@@ -9,7 +9,8 @@ import v3.gen.c.naming
 import v3.types
 import v3.workers
 
-const max_flat_cgen_jobs = 17
+const max_flat_cgen_jobs = 18
+const max_flat_cgen_select_jobs = 15
 const min_flat_cgen_parallel_items = 128
 // Bound each worker's retained scratch while generating compiler-sized ASTs.
 const scoped_cgen_worker_batches = 32
@@ -55,6 +56,61 @@ $if !windows {
 		module_name  string
 	}
 
+	struct CollectGenInfoScanArgs {
+		g     voidptr // read-only &FlatGen master
+		start int
+		end   int
+	mut:
+		counts         CollectGenInfoScanCounts
+		top_level_pos  int
+		string_pos     int
+		top_levels_ptr voidptr
+		strings_ptr    voidptr
+	}
+
+	struct FnSignatureRegistrationArgs {
+		g                 voidptr
+		registrations_ptr voidptr
+		group             int
+	}
+
+	fn fn_signature_registration_thread(arg voidptr) voidptr {
+		a := unsafe { &FnSignatureRegistrationArgs(arg) }
+		mut g := unsafe { &FlatGen(a.g) }
+		registrations := unsafe { &[]FnSignatureRegistration(a.registrations_ptr) }
+		for registration in registrations {
+			g.apply_fn_signature_registration_group(registration, a.group)
+		}
+		return unsafe { nil }
+	}
+
+	struct FlatCgenSelectArgs {
+		g                       voidptr
+		nodes_ptr               voidptr
+		start                   int
+		end                     int
+		file                    string
+		module_name             string
+		direct_array_access_fns DirectArrayAccessFns
+		ignore_overflow_fns     DirectArrayAccessFns
+		program_modules         map[string]bool
+	mut:
+		candidates []FlatFnGenCandidate
+		scope      voidptr
+	}
+
+	fn flat_cgen_select_thread(arg voidptr) voidptr {
+		mut a := unsafe { &FlatCgenSelectArgs(arg) }
+		a.scope = cgen_worker_scope_begin(true)
+		master := unsafe { &FlatGen(a.g) }
+		mut view := master.new_collect_gen_info_view()
+		nodes := unsafe { &[]int(a.nodes_ptr) }
+		a.candidates = view.collect_fn_gen_candidates_range(*nodes, a.start, a.end, a.file,
+			a.module_name, a.direct_array_access_fns, a.ignore_overflow_fns, a.program_modules)
+		cgen_worker_scope_leave(a.scope)
+		return unsafe { nil }
+	}
+
 	fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 		a := unsafe { &CollectGenInfoFnPrepArgs(arg) }
 		master := unsafe { &FlatGen(a.g) }
@@ -78,6 +134,77 @@ $if !windows {
 				unsafe {
 					preps[pos] = view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
 				}
+			}
+		}
+		return unsafe { nil }
+	}
+
+	@[direct_array_access]
+	fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
+		mut a := unsafe { &CollectGenInfoScanArgs(arg) }
+		g := unsafe { &FlatGen(a.g) }
+		incremental := g.incremental_fn_names.len > 0
+		for node_idx in a.start .. a.end {
+			node := g.a.nodes[node_idx]
+			if node.kind == .string_literal {
+				a.string_pos++
+			}
+			if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
+				.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
+				a.top_level_pos++
+			}
+			match node.kind {
+				.fn_decl {
+					if !incremental || g.incremental_fn_names[node.value] {
+						a.counts.fn_count++
+					}
+				}
+				.struct_decl {
+					a.counts.struct_count++
+				}
+				.global_decl {
+					a.counts.global_count += int(node.children_count)
+				}
+				.const_decl {
+					a.counts.const_count += int(node.children_count)
+				}
+				.enum_decl {
+					a.counts.enum_field_count += int(node.children_count)
+				}
+				.interface_decl {
+					a.counts.interface_count++
+				}
+				.import_decl {
+					a.counts.import_count++
+				}
+				else {}
+			}
+		}
+		return unsafe { nil }
+	}
+
+	@[direct_array_access]
+	fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
+		mut a := unsafe { &CollectGenInfoScanArgs(arg) }
+		g := unsafe { &FlatGen(a.g) }
+		mut top_levels := unsafe { &[]int(a.top_levels_ptr) }
+		mut literals := unsafe { &[]string(a.strings_ptr) }
+		mut top_level_pos := a.top_level_pos
+		mut string_pos := a.string_pos
+		for node_idx in a.start .. a.end {
+			node := g.a.nodes[node_idx]
+			if node.kind == .string_literal {
+				unsafe {
+					literals[string_pos] = node.value
+				}
+				string_pos++
+			}
+			if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
+				.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
+				unsafe {
+					top_levels[top_level_pos] = node_idx
+				}
+				top_level_pos++
 			}
 		}
 		return unsafe { nil }
@@ -146,17 +273,61 @@ $if !windows {
 		w.parallel_const_code = w.precompute_consts()
 		w.timing_profile('  [ttime]       td consts    ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		tdpsw.restart()
+		w.gen_translation_unit_prefix()
 		w.gen_type_declaration_block()
-		w.timing_profile('  [ttime]       td typedecl  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.timing_profile('  [ttime]       td prefix+type ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.parallel_type_decls = w.sb.str()
 		unsafe { w.sb.free() }
 		w.sb = strings.new_builder(4096)
+		tdpsw.restart()
+		w.gen_global_declaration_block()
+		w.parallel_global_decls = w.sb.str()
+		unsafe { w.sb.free() }
+		w.sb = strings.new_builder(4096)
+		w.timing_profile('  [ttime]       td globals    ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		tdpsw.restart()
 		w.forward_decls()
 		w.timing_profile('  [ttime]       td fwd decls ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.parallel_forward_decls = w.sb.str()
 		unsafe { w.sb.free() }
 		w.sb = strings.new_builder(4096)
+		tdpsw.restart()
+		w.gen_pre_body_support_declarations()
+		w.parallel_support_decls = w.sb.str()
+		unsafe { w.sb.free() }
+		w.sb = strings.new_builder(4096)
+		w.timing_profile('  [ttime]       td support   ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		tdpsw.restart()
+		if !w.skip_enum_autostr {
+			w.enum_str_defs()
+			w.parallel_enum_str_defs = w.sb.str()
+			unsafe { w.sb.free() }
+			w.sb = strings.new_builder(4096)
+		}
+		w.timing_profile('  [ttime]       td enum str  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		tdpsw.restart()
+		// Tail generation uses a full private worker. The master generator is also
+		// the declaration task, while body lanes concurrently read its frozen
+		// tables; running these emitters on the master would mutate shared name and
+		// type caches. The private worker keeps those writes isolated while its
+		// already-complete const/global metadata is read-only.
+		mut tail := w.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
+		if !w.cache_split {
+			tail.interface_method_stubs()
+			w.parallel_interface_stubs = tail.sb.str()
+			unsafe { tail.sb.free() }
+			tail.sb = strings.new_builder(4096)
+		}
+		w.timing_profile('  [ttime]       td iface defs ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		tdpsw.restart()
+		if w.print_fn_names.len == 0 {
+			tail.gen_vinit()
+			tail.gen_vcleanup()
+			w.parallel_init_defs = tail.sb.str()
+			unsafe { tail.sb.free() }
+			tail.sb = strings.new_builder(0)
+		}
+		w.timing_profile('  [ttime]       td init defs  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.parallel_support_ready = true
 		return unsafe { nil }
 	}
@@ -208,6 +379,36 @@ $if !windows {
 		return unsafe { nil }
 	}
 
+	// interface_impl_scan_thread builds the structural-interface dispatch tables
+	// while the master pre-seeds independent declaration metadata.
+	fn interface_impl_scan_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		w.collect_interface_impls()
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return arg
+	}
+
+	fn fixed_array_ret_wrappers_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		w.populate_fixed_array_ret_wrappers()
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return unsafe { nil }
+	}
+
+	fn cgen_support_precompute_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		w.precompute_ownership_recursive_drop_helpers()
+		w.precompute_fixed_array_map_key_types()
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return unsafe { nil }
+	}
+
 	fn pre_dispatch_master_thread(arg voidptr) voidptr {
 		mut g := unsafe { &FlatGen(arg) }
 		g.prepare_pre_dispatch_master()
@@ -243,6 +444,243 @@ $if !windows {
 		chunks := unsafe { &[][]FlatFnGenItem(a.work_chunks_ptr) }
 		w.gen_fn_chunks_scoped_dynamic(*chunks, a.chunk_queue, a.reserve_cost)
 		return unsafe { nil }
+	}
+}
+
+fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
+	$if windows {
+		nodes := g.top_level_nodes()
+		return g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '',
+			direct_array_access_fns, ignore_overflow_fns, program_modules)
+	} $else {
+		nodes := g.top_level_nodes()
+		if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 || nodes.len < 2048 {
+			return g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '',
+				direct_array_access_fns, ignore_overflow_fns, program_modules)
+		}
+		mut n_jobs := g.a.worker_pool.size() + 1
+		if n_jobs > max_flat_cgen_select_jobs {
+			n_jobs = max_flat_cgen_select_jobs
+		}
+		if n_jobs > nodes.len {
+			n_jobs = nodes.len
+		}
+		mut files := []string{len: n_jobs}
+		mut modules := []string{len: n_jobs}
+		mut boundary := 0
+		mut cur_file := ''
+		mut cur_module := ''
+		for pos in 0 .. nodes.len {
+			for boundary < n_jobs && pos == nodes.len * boundary / n_jobs {
+				files[boundary] = cur_file
+				modules[boundary] = cur_module
+				boundary++
+			}
+			node := g.a.nodes[nodes[pos]]
+			if node.kind == .file {
+				cur_file = node.value
+				cur_module = ''
+			} else if node.kind == .module_decl {
+				cur_module = node.value
+			}
+		}
+		mut args := []FlatCgenSelectArgs{cap: n_jobs}
+		for job in 0 .. n_jobs {
+			args << FlatCgenSelectArgs{
+				g:                       voidptr(g)
+				nodes_ptr:               unsafe { voidptr(&nodes) }
+				start:                   nodes.len * job / n_jobs
+				end:                     nodes.len * (job + 1) / n_jobs
+				file:                    files[job]
+				module_name:             modules[job]
+				direct_array_access_fns: direct_array_access_fns
+				ignore_overflow_fns:     ignore_overflow_fns
+				program_modules:         program_modules
+				candidates:              []FlatFnGenCandidate{}
+				scope:                   unsafe { nil }
+			}
+		}
+		mut tasks := []workers.Task{cap: n_jobs}
+		for job in 0 .. n_jobs {
+			tasks << workers.Task{
+				run:        flat_cgen_select_thread
+				arg:        unsafe { voidptr(&args[job]) }
+				force_sync: job == 0
+			}
+		}
+		g.a.worker_pool.run(tasks)
+		mut candidates := []FlatFnGenCandidate{}
+		for arg in args {
+			candidates << arg.candidates
+			if arg.scope != unsafe { nil } {
+				g.parallel_worker_scopes << arg.scope
+			}
+		}
+		return candidates
+	}
+}
+
+// scan_collect_gen_info partitions the read-only whole-AST sizing scan across
+// the persistent pool. A count pass computes exact output offsets, then a fill
+// pass writes disjoint ranges while preserving AST order.
+fn (mut g FlatGen) scan_collect_gen_info() CollectGenInfoScanCounts {
+	$if windows {
+		return g.scan_collect_gen_info_serial()
+	} $else {
+		if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 || g.a.nodes.len < 65_536
+			|| os.getenv('V3_NO_PAR_CGEN_INFO_SCAN') != '' {
+			return g.scan_collect_gen_info_serial()
+		}
+		mut n_jobs := g.a.worker_pool.size() + 1
+		if n_jobs > max_flat_cgen_jobs {
+			n_jobs = max_flat_cgen_jobs
+		}
+		mut args := []CollectGenInfoScanArgs{cap: n_jobs}
+		mut tasks := []workers.Task{cap: n_jobs}
+		for job in 0 .. n_jobs {
+			args << CollectGenInfoScanArgs{
+				g:     voidptr(g)
+				start: g.a.nodes.len * job / n_jobs
+				end:   g.a.nodes.len * (job + 1) / n_jobs
+			}
+		}
+		for job in 0 .. n_jobs {
+			tasks << workers.Task{
+				run:        collect_gen_info_scan_count_thread
+				arg:        unsafe { voidptr(&args[job]) }
+				force_sync: job == 0
+			}
+		}
+		g.a.worker_pool.run(tasks)
+		mut counts := CollectGenInfoScanCounts{}
+		mut top_level_count := 0
+		mut string_count := 0
+		for mut arg in args {
+			counts.fn_count += arg.counts.fn_count
+			counts.struct_count += arg.counts.struct_count
+			counts.global_count += arg.counts.global_count
+			counts.const_count += arg.counts.const_count
+			counts.enum_field_count += arg.counts.enum_field_count
+			counts.interface_count += arg.counts.interface_count
+			counts.import_count += arg.counts.import_count
+			counted_top_levels := arg.top_level_pos
+			counted_strings := arg.string_pos
+			arg.top_level_pos = top_level_count
+			arg.string_pos = string_count
+			top_level_count += counted_top_levels
+			string_count += counted_strings
+		}
+		g.top_level_node_ids = []int{len: top_level_count}
+		g.ast_string_literals = []string{len: string_count}
+		for mut arg in args {
+			arg.top_levels_ptr = unsafe { voidptr(&g.top_level_node_ids) }
+			arg.strings_ptr = unsafe { voidptr(&g.ast_string_literals) }
+		}
+		tasks.clear()
+		for job in 0 .. n_jobs {
+			tasks << workers.Task{
+				run:        collect_gen_info_scan_fill_thread
+				arg:        unsafe { voidptr(&args[job]) }
+				force_sync: job == 0
+			}
+		}
+		g.a.worker_pool.run(tasks)
+		return counts
+	}
+}
+
+fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration) {
+	$if windows {
+		for group in 0 .. 4 {
+			for registration in registrations {
+				g.apply_fn_signature_registration_group(registration, group)
+			}
+		}
+	} $else {
+		if registrations.len < 128 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4
+			|| os.getenv('V3_NO_PAR_CGEN_SIG_REG') != '' {
+			for group in 0 .. 4 {
+				for registration in registrations {
+					g.apply_fn_signature_registration_group(registration, group)
+				}
+			}
+			return
+		}
+		mut args := []FnSignatureRegistrationArgs{cap: 4}
+		mut tasks := []workers.Task{cap: 4}
+		for group in 0 .. 4 {
+			args << FnSignatureRegistrationArgs{
+				g:                 voidptr(g)
+				registrations_ptr: unsafe { voidptr(&registrations) }
+				group:             group
+			}
+		}
+		for group in 0 .. 4 {
+			tasks << workers.Task{
+				run:        fn_signature_registration_thread
+				arg:        unsafe { voidptr(&args[group]) }
+				force_sync: group == 0
+			}
+		}
+		g.a.worker_pool.run(tasks)
+	}
+}
+
+fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool) bool {
+	mut sw := time.new_stopwatch()
+	$if windows {
+		g.collect_shared_type_names()
+		g.precompute_sum_name_lookup()
+		if !g.skip_generics {
+			g.precompute_generic_method_candidate_index()
+		}
+		g.timing_profile('  [ttime]     wr shared+sum  ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		sw.restart()
+		g.populate_fixed_array_ret_wrappers()
+		g.timing_profile('  [ttime]     wr fixed ret   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		return false
+	} $else {
+		if !parallel || os.getenv('V3_NO_PAR_FIXED_RET') != '' {
+			g.collect_shared_type_names()
+			g.precompute_sum_name_lookup()
+			if !g.skip_generics {
+				g.precompute_generic_method_candidate_index()
+			}
+			g.timing_profile('  [ttime]     wr shared+sum  ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			sw.restart()
+			g.populate_fixed_array_ret_wrappers()
+			g.timing_profile('  [ttime]     wr fixed ret   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			return false
+		}
+		mut worker := g.new_parallel_worker(3)
+		worker.fixed_array_ret_wrappers = map[string]bool{}
+		mut support_worker := g.new_parallel_worker(5)
+		support_worker.recursive_drop_helpers = map[string]string{}
+		support_worker.fixed_array_map_key_types = map[string]types.ArrayFixed{}
+		wrapper_thread := spawn fixed_array_ret_wrappers_thread(voidptr(worker))
+		support_thread := spawn cgen_support_precompute_thread(voidptr(support_worker))
+		g.collect_shared_type_names()
+		g.precompute_sum_name_lookup()
+		if !g.skip_generics {
+			g.precompute_generic_method_candidate_index()
+		}
+		g.timing_profile('  [ttime]     wr shared+sum  ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		sw.restart()
+		_ = wrapper_thread.wait()
+		_ = support_thread.wait()
+		g.fixed_array_ret_wrappers = worker.fixed_array_ret_wrappers.move()
+		g.recursive_drop_helpers = support_worker.recursive_drop_helpers.move()
+		g.fixed_array_map_key_types = support_worker.fixed_array_map_key_types.move()
+		if worker.worker_scope != unsafe { nil } {
+			g.parallel_worker_scopes << worker.worker_scope
+			worker.worker_scope = unsafe { nil }
+		}
+		if support_worker.worker_scope != unsafe { nil } {
+			g.parallel_worker_scopes << support_worker.worker_scope
+			support_worker.worker_scope = unsafe { nil }
+		}
+		g.timing_profile('  [ttime]     wr fixed ret   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+		return true
 	}
 }
 
@@ -870,14 +1308,6 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 	}
 }
 
-fn clone_param_types_by_short(values map[string][]types.Type) map[string][]types.Type {
-	mut cloned := map[string][]types.Type{}
-	for name, params in values {
-		cloned[name.clone()] = types.clone_owned_types(params)
-	}
-	return cloned
-}
-
 fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[string][]types.StructField {
 	mut cloned := map[string][]types.StructField{}
 	for name, fields in values {
@@ -900,17 +1330,16 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type in fs_worker.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
-	if fs_worker.worker_scope == unsafe { nil } {
-		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
-		g.param_types_by_short = fs_worker.param_types_by_short.move()
-		g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
-		return
+	g.fixed_storage_consts = fs_worker.fixed_storage_consts.move()
+	g.param_types_by_short = fs_worker.param_types_by_short.move()
+	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
+	if fs_worker.worker_scope != unsafe { nil } {
+		// These tables stay live through function emission. Retaining the small
+		// helper arena is cheaper than deep-cloning their type/string payloads and
+		// matches the optional/fixed-array support publishers below.
+		g.parallel_worker_scopes << fs_worker.worker_scope
+		fs_worker.worker_scope = unsafe { nil }
 	}
-	g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
-	g.param_types_by_short = clone_param_types_by_short(fs_worker.param_types_by_short)
-	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.clone()
-	cgen_worker_scope_free(fs_worker.worker_scope)
-	fs_worker.worker_scope = unsafe { nil }
 }
 
 fn (mut g FlatGen) publish_fixed_array_support(mut worker FlatGen) {
@@ -929,6 +1358,18 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 	g.multi_return_type_names = worker.multi_return_type_names.move()
 	g.multi_return_types_ready = worker.multi_return_types_ready
 	g.decl_types_ready = worker.decl_types_ready
+	if worker.worker_scope != unsafe { nil } {
+		g.parallel_worker_scopes << worker.worker_scope
+		worker.worker_scope = unsafe { nil }
+	}
+}
+
+fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
+	g.interface_boxed_types = worker.interface_boxed_types.move()
+	g.interface_boxed_types_done = worker.interface_boxed_types_done
+	g.iface_impls = worker.iface_impls.move()
+	g.iface_type_ids = worker.iface_type_ids.move()
+	g.ierror_method_emit_names = worker.ierror_method_emit_names.move()
 	if worker.worker_scope != unsafe { nil } {
 		g.parallel_worker_scopes << worker.worker_scope
 		worker.worker_scope = unsafe { nil }
@@ -1646,7 +2087,7 @@ fn preseed_type_words(typ &types.Type) (u64, u64, int) {
 	words := unsafe { &u64(voidptr(typ)) }
 	w0 := unsafe { words[0] }
 	w1 := unsafe { words[1] }
-	return w0, w1, int(((w0 >> 4) ^ w1) & 4095)
+	return w0, w1, int((w0 >> 4 ^ w1) & 4095)
 }
 
 // par_cgen_prep_enabled gates the parallel fused item prep, so a single binary
@@ -1766,6 +2207,16 @@ fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 // worker and, under -gc none, never freed.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return g.new_parallel_worker_config(worker_id, false)
+}
+
+fn (g &FlatGen) new_parallel_tail_worker(worker_id int) &FlatGen {
+	mut w := g.new_parallel_worker(worker_id)
+	w.is_shared = g.is_shared
+	// gen_vinit pairs each initializer with its owning module. These arrays are
+	// declaration-task output and remain read-only while the tail is generated.
+	w.const_runtime_init_modules = g.const_runtime_init_modules.clone()
+	w.runtime_init_modules = g.runtime_init_modules.clone()
+	return w
 }
 
 // new_parallel_dispatch_worker selects the lightweight accumulator only when
