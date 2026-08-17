@@ -26,7 +26,7 @@ pub mut:
 }
 
 // new_query create a new query object for struct `T`
-@[deprecated: 'the Function Call API (orm_fn) will be moved out of the standard library; see https://github.com/vlang/v/issues/27001']
+@[deprecated: 'the Function Call API (orm_fn) will be moved out of the standard library after 2027-08-17; see https://github.com/vlang/v/issues/27001']
 @[deprecated_after: '2027-08-17']
 pub fn new_query[T](conn Connection) &QueryBuilder[T] {
 	meta := struct_meta[T]()
