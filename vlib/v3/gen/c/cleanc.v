@@ -3943,6 +3943,12 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg,
 				g.compiler_vroot, source_file, include_dirs), before_import)
 		}
+		if trimmed_space(include_arg) == '<objc/message.h>' {
+			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
+			return true
+		}
 		// Resolved angle headers already have a compiler search path. Preserve the
 		// include and scan their tree for declaration metadata without recursively
 		// materializing every header body into the generated translation unit.
@@ -6270,7 +6276,7 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	// System headers whose macros have per-OS values (RTLD_*, CHAR_BIT) cannot be
 	// replaced by inline declarations; keep the include in place inside its #if
 	// context.
-	return clean in ['<dlfcn.h>', '<limits.h>', '<arm_neon.h>']
+	return clean in ['<dlfcn.h>', '<limits.h>', '<arm_neon.h>', '<objc/message.h>']
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {

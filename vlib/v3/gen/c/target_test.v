@@ -642,7 +642,7 @@ fn test_cache_input_scan_bounds_repeated_header_trees() {
 	inputs, _, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
 	}, [], prefs.target)
-	assert has_untracked
+	assert !has_untracked
 	mut expected := [os.real_path(left_header), os.real_path(right_header),
 		os.real_path(common_header)]
 	expected.sort()

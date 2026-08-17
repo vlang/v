@@ -180,12 +180,12 @@ fn main() {}
 	assert c_code.contains('Box box = {0};')
 	assert c_code.contains('int empty[0];')
 	assert c_code.contains('int slots[2] = {0};')
-	assert c_code.contains('\nZeroLeading zero;\n')
-	assert c_code.contains('\nNestedZeroLeading nested;\n')
-	assert c_code.contains('\nZeroLeading zero_slots[2];\n')
+	assert c_code.contains('\nmain__ZeroLeading zero;\n')
+	assert c_code.contains('\nmain__NestedZeroLeading nested;\n')
+	assert c_code.contains('\nmain__ZeroLeading zero_slots[2];\n')
 	assert c_code.contains('\nint const_empty[0];\n')
-	assert c_code.contains('\nZeroLeadingConst const_zero;\n')
-	assert c_code.contains('\nZeroLeadingConst const_zero_slots[2];\n')
+	assert c_code.contains('\nmain__ZeroLeadingConst const_zero;\n')
+	assert c_code.contains('\nmain__ZeroLeadingConst const_zero_slots[2];\n')
 	assert !c_code.contains('Array names = 0;')
 	assert !c_code.contains('map lookup = 0;')
 	assert !c_code.contains('Box box = 0;')
@@ -257,6 +257,6 @@ fn main() {
 }
 ',
 		'box', 'Box')
-	assert c_code.contains('box = (Box){0};'), c_code
+	assert c_code.contains('box = (main__Box){0};'), c_code
 	assert !c_code.contains('box = {0};')
 }

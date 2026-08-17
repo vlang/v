@@ -165,7 +165,7 @@ fn main() {
 	$if macos {
 		objc_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.m')
 		os.write_file(objc_src,
-			'#include <Cocoa/Cocoa.h>\n\nint v3_point_sum(V3PointUnique p) {\n\treturn p.x + 1;\n}\n') or {
+			'#include <Cocoa/Cocoa.h>\n\nint v3_point_sum(main__V3PointUnique p) {\n\treturn p.x + 1;\n}\n') or {
 			panic(err)
 		}
 		objc_v := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.v')
@@ -177,10 +177,10 @@ fn main() {
 		objc_compile := os.execute('${v3_bin} ${objc_v} -b c -o ${objc_bin}')
 		assert objc_compile.exit_code == 0, objc_compile.output
 		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
-		type_pos := objc_code.index('struct V3PointUnique {') or { -1 }
+		type_pos := objc_code.index('struct main__V3PointUnique {') or { -1 }
 		assert type_pos >= 0, objc_code
 		// Objective-C source bodies are compiled in a separate native unit.
-		assert !objc_code.contains('int v3_point_sum(V3PointUnique p) {'), objc_code
+		assert !objc_code.contains('int v3_point_sum(main__V3PointUnique p) {'), objc_code
 		objc_run := os.execute(objc_bin)
 		assert objc_run.exit_code == 0, objc_run.output
 		assert objc_run.output.trim_space() == '9'

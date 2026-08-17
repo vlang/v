@@ -6874,6 +6874,47 @@ fn main() {
 	assert out == '7\n7'
 }
 
+fn test_map_retains_addresses_of_same_named_branch_locals() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'map_retains_addresses_of_same_named_branch_locals', 'struct Item {
+mut:
+	value int
+}
+
+fn make_cache() map[string]&Item {
+	mut cache := map[string]&Item{}
+	mut outer := Item{
+		value: 3
+	}
+	cache["outer"] = &outer
+	if true {
+		mut local := Item{
+			value: 1
+		}
+		cache["first"] = &local
+		local.value = 11
+	}
+	if true {
+		mut local := Item{
+			value: 2
+		}
+		cache["second"] = &local
+		local.value = 22
+	}
+	outer.value = 33
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["first"].value))
+	println(int_str(cache["second"].value))
+	println(int_str(cache["outer"].value))
+}
+')
+	assert out == '11\n22\n33'
+}
+
 fn test_lambda_capture_counts_as_local_use_without_counting_shadowed_parameters() {
 	check_src := '${tmp_test_path('lambda_capture_local_usage')}.v'
 	os.write_file(check_src, 'fn apply(f fn (int) int, value int) int {
