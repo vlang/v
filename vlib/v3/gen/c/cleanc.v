@@ -1411,6 +1411,8 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				has_untracked_include = true
 				continue
 			}
+			context_is_replayable := conditional_depth == 0
+				&& !conditional_context_mutations[owner_module]
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
 				c_record_cache_resolution_path(path, mut resolution_dirs, mut
 					missing_resolution_paths)
@@ -1422,8 +1424,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 					real_path := os.real_path(path)
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
 						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module],
-						!conditional_context_mutations[owner_module]) {
+						context_directives[owner_module], context_is_replayable) {
 						has_untracked_include = true
 					}
 				}
@@ -1453,8 +1454,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 					real_path := os.real_path(path)
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
 						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module],
-						!conditional_context_mutations[owner_module]) {
+						context_directives[owner_module], context_is_replayable) {
 						has_untracked_include = true
 					}
 				}
